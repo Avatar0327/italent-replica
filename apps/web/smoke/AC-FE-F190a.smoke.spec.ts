@@ -53,6 +53,10 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   await page.goto('/fixture-second');
   await expect(page.locator('.shell-workspace')).toContainText(ui.denied);
   await expect(sidebar.getByText('合成子页乙', { exact: true })).toHaveCount(0);
+  for (const path of ['/%66ixture-second', '/FIXTURE-SECOND']) {
+    await page.goto(path);
+    await expect(page.locator('.shell-workspace')).toContainText(ui.denied);
+  }
   allowed = [];
   await page.reload();
   await expect(title).toHaveCount(0);
