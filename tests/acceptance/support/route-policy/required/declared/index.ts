@@ -9,6 +9,7 @@ import { ESTABLISHMENT_DECLARED } from './establishment.js';
 import { EVALUATION_DECLARED } from './evaluation.js';
 import { IDP_DECLARED } from './idp.js';
 import { JOB_DECLARED } from './job.js';
+import { OFFERS_DECLARED } from './offers.js';
 import { ORG_DECLARED } from './org.js';
 import { PERMISSION_DECLARED } from './permission.js';
 import { PERSONNEL_DECLARED } from './personnel.js';
@@ -33,6 +34,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   evaluation: EVALUATION_DECLARED,
   idp: IDP_DECLARED,
   job: JOB_DECLARED,
+  offers: OFFERS_DECLARED,
   org: ORG_DECLARED,
   permission: PERMISSION_DECLARED,
   personnel: PERSONNEL_DECLARED,

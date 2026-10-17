@@ -30,6 +30,7 @@ import {
   EVALUATION_ORG_OBJECTS,
   IDP_OBJECTS,
   linkedViewable,
+  OFFER_OBJECT,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
@@ -567,6 +568,8 @@ const RULES: readonly Rule[] = [
       (SELECT c.created_by FROM contract_records c WHERE c.tenant_id = ${viewer.tenantId} AND c.id = ${id}),
       (SELECT r.created_by FROM contract_requests r WHERE r.tenant_id = ${viewer.tenantId} AND r.id = ${id}))`;
   }),
+  // R2 BE-14a：Offer 审计归属录用部门，创建人取审计的首条 offer.create（删除后仍可判断）
+  orgRule(['offer'], OFFER_OBJECT, (row, viewer) => creatorSql(viewer.tenantId, row.objectId, 'offer.create', 'offer')),
   orgRule(['organization'], ORG, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'org.create', 'organization'),
   ),
@@ -823,6 +826,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_settings: { code: 'TenantBase.EmploymentSettings' },
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
+  offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },

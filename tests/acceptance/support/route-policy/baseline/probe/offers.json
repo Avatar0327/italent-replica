@@ -1,0 +1,162 @@
+{
+  "DELETE /api/tenant/offers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:delete"
+    ]
+  },
+  "GET /api/tenant/offers": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Offer"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:view"
+    ]
+  },
+  "GET /api/tenant/offers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:view"
+    ]
+  },
+  "GET /api/tenant/offers/dictionaries/:kind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ab8d13376ba1",
+      "reason": "OFFER_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Offer:view"
+    ]
+  },
+  "GET /api/tenant/offers/views": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Offer:view"
+    ]
+  },
+  "POST /api/tenant/offers": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3ace828a683f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/offers/:id/copy": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:create"
+    ]
+  },
+  "POST /api/tenant/offers/dictionaries/:kind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ab8d13376ba1",
+      "reason": "OFFER_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/offers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2a146d3522c1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Offer/-"
+    ],
+    "trace": [
+      "obj:TenantBase.Offer:update"
+    ]
+  },
+  "PUT /api/tenant/offers/dictionaries/:kind/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ab8d13376ba1",
+      "reason": "OFFER_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "ab8d13376ba1",
+      "reason": "OFFER_DICTIONARY_KIND_INVALID",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

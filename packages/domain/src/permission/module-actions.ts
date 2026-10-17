@@ -1,5 +1,6 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
+import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
 import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
@@ -108,6 +109,17 @@ export const MODULE_OBJECTS = {
   contractRules: object('ContractRenewalRule', ['name', 'priority', 'orgIds', 'personIds', 'enabled', 'details']),
   contractType: object('ContractType', ['code', 'name', 'enabled']),
   contractCompany: object('ContractCompany', ['code', 'name', 'enabled']),
+  // R2 BE-14a（34 §2、OF-R1）：状态与转移 / 失效表单字段只经转移与失效命令写入，登记为系统字段（只可查看）
+  offer: object(
+    'Offer',
+    ['entry', 'offerType', 'source', 'campusOfferId', ...OFFER_FIELDS],
+    [
+      ...crud,
+      button(OFFER_BUTTONS.statusTransfer.code, OFFER_BUTTONS.statusTransfer.level, 'update'),
+      button(OFFER_BUTTONS.lineStatusTransfer.code, OFFER_BUTTONS.lineStatusTransfer.level, 'update'),
+    ],
+    ['status', 'approvalStatus', ...OFFER_STATUS_FIELDS, 'sentBy', 'sentAt', 'copiedFromOfferId', 'hasPendingEntry'],
+  ),
   organization: object(
     'Organization',
     [
