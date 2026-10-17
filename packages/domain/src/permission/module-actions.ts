@@ -130,8 +130,14 @@ export const MODULE_OBJECTS = {
       ...OFFER_APPROVAL_PROGRESS_FIELDS,
     ],
   ),
-  // R2 BE-14a3（OF-R15）：批量审批单只经“批量发起审批”生成、审批中心按其字段权限披露，没有自己的增删改按钮
-  offerBatchApproval: object('OfferBatchApproval', OFFER_BATCH_FIELDS, [], ['status']),
+  // R2 BE-14a3（OF-R15）：批量审批单经 Offer 列表“批量发起审批”生成、在审批中心撤回；按钮照同类集合审批单
+  // TalentReview.ResultApproval 登记（DEC-080：批量发起 create@list、撤回 withdraw@detail）。字段权限供审批中心披露
+  offerBatchApproval: object(
+    'OfferBatchApproval',
+    OFFER_BATCH_FIELDS,
+    [button('create', 'list', 'create'), button('withdraw', 'detail', 'update')],
+    ['status'],
+  ),
   organization: object(
     'Organization',
     [

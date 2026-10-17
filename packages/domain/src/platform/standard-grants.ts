@@ -43,7 +43,7 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
 export const STANDARD_GRANT_VERSION = 24;
-export const STANDARD_GRANT_DIGEST = 'c804a70e537a0010';
+export const STANDARD_GRANT_DIGEST = '0c846449a622c96a';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
