@@ -794,6 +794,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersion': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersions': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/entry-probation.ts#saveAddedProbation': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
     '#savePendingProbation',
@@ -1311,6 +1314,111 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible': [
+    '#assertNothingEndsInternshipAfter',
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertNothingEndsInternshipAfter': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/intern-regularization.ts#confirmEstablishment': [
+    'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
+  ],
+  'apps/api/src/modules/employment/intern-regularization.ts#internRegularizationInput': [
+    '#id',
+    'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MAX',
+    'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MIN',
+  ],
+  'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern': [
+    '#confirmEstablishment',
+    '#regularizationFields',
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': [
+    'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#requireViewableInternFilters',
+    '#trimInternItems',
+    '#viewFilter',
+    '#viewableIn',
+    'apps/api/src/modules/employment/intern-views.ts#listInternView',
+    'apps/api/src/modules/job/context.ts#pageQuery',
+    'packages/domain/src/employment/intern.ts#INTERN_VIEWS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-regularization.ts#internRegularizationInput',
+    'apps/api/src/modules/employment/intern-regularization.ts#regularizationFields',
+    'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern',
+    'apps/api/src/modules/employment/replay-guard.ts#internRegularizationGuard',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#pick',
+    '#viewableIn',
+    'apps/api/src/modules/employment/rehire-match.ts#matchRehire',
+    'apps/api/src/modules/employment/rehire-match.ts#rehireMatchInput',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#trimInternItems': [
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    '#pick',
+    '#trimProbation',
+    '#viewableIn',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#trimProbation': ['#PROBATION_FIELDS'],
+  'apps/api/src/modules/employment/intern-routes.ts#viewableIn': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#convertingQuery': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+    '#filters',
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#filters': [
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#listInternView': [
+    'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersions',
+    '#convertingQuery',
+    '#recordQuery',
+    '#regularizedProbation',
+    'apps/api/src/modules/employment/read-model.ts#checkPage',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#recordPredicate': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#recordQuery': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+    '#filters',
+    '#recordPredicate',
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+  ],
+  'apps/api/src/modules/employment/intern-views.ts#regularizedProbation': [
+    'apps/api/src/modules/employment/probation.ts#resolveProbationInfo',
+  ],
   'apps/api/src/modules/employment/late-transfer.ts#assertNoRebuildRequired': [
     'apps/api/src/modules/employment/activation-store.ts#REBUILD_REQUIRED',
     '#lateWindowBlockers',
@@ -1618,9 +1726,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersion',
     '#loadAnchor',
     '#loadCycleRegularization',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
-    'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
+    '#resolveProbationInfo',
   ],
   'apps/api/src/modules/employment/probation.ts#probationDetail': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -1628,6 +1734,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'packages/domain/src/employment/probation.ts#actualProbationEndDate',
+  ],
+  'apps/api/src/modules/employment/probation.ts#resolveProbationInfo': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
+    'packages/domain/src/employment/probation.ts#resolveDeferredProbation',
   ],
   'apps/api/src/modules/employment/read-model.ts#findCurrentRecord': ['#record', '#recordsQuery', '#rowsOf'],
   'apps/api/src/modules/employment/read-model.ts#findPredecessor': ['#loadEmploymentRecord', '#rowsOf'],
@@ -1840,6 +1951,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
+  'apps/api/src/modules/employment/rehire-match.ts#matchRehire': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard': [
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
@@ -1855,6 +1969,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#scopedGuard',
     '#requireEditTargets',
     '#requireObjectUpdate',
+  ],
+  'apps/api/src/modules/employment/replay-guard.ts#internRegularizationGuard': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard': [
     'apps/api/src/modules/employment/context.ts#commandContext',
@@ -2402,6 +2524,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#sequenceViolation',
   ],
@@ -2433,6 +2556,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization',
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
@@ -2443,6 +2567,7 @@ export const GRAPH: Graph = {
     '#assertBusinessSequence',
     '#assertDirectTransferAllowed',
     '#assertEmployTypeUsage',
+    '#defaultChangeType',
     '#initializeEmploymentBusiness',
     '#materializeEmploymentRecord',
     '#payloadAudit',

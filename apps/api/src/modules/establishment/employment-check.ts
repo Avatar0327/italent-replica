@@ -61,8 +61,26 @@ export async function affectsEstablishmentOccupancy(
   return false;
 }
 
+/**
+ * 计入编制判定的业务：调动（R1-T09）与实习转正（BE-6a：雇佣关系由实习生转为内部员工，按占编条件可能新占一编；
+ * R2f B41 实测保存前先弹超编确认）。其他业务维持原有口径（入职等不判）。
+ */
+const CAPACITY_KINDS: readonly string[] = ['transfer', 'intern_regularization'];
+
+/** 编制判定结果：严格控编超编（拒绝）、非严格控编超编（提示后由用户确认）、未超编。 */
+export type EstablishmentAssessment = 'strict' | 'warning' | 'none';
+
+/** 严格控编判定（定时生效、保存的单一判定入口沿用）；非严格超编不拦。 */
 export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
-  if (target.kind !== 'transfer' || !target.departmentId) return false;
+  return (await employmentEstablishmentAssessment(tx, ctx, target)) === 'strict';
+}
+
+export async function employmentEstablishmentAssessment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+): Promise<EstablishmentAssessment> {
+  if (!CAPACITY_KINDS.includes(target.kind) || !target.departmentId) return 'none';
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
   const previous = await findPredecessor(tx, ctx.tenantId, target.employeeId, target.effectiveDate);
@@ -74,10 +92,15 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     ...(target.fields ?? business?.fields),
     departmentId: target.departmentId,
     positionId: target.positionId,
-    employType: target.fields?.employType ?? previous?.fields.employType ?? 'internal',
+    // 实习转正落地后一律是内部员工（write-service effectiveEmployType）；保存时的继承值仍是实习生，按落地口径判
+    employType:
+      target.kind === 'intern_regularization'
+        ? ('internal' as const)
+        : (target.fields?.employType ?? previous?.fields.employType ?? 'internal'),
   };
   await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
-  if (!target.occupancyOnly && fields.employType === 'external') return false;
+  if (!target.occupancyOnly && fields.employType === 'external') return 'none';
+  let warning = false;
   const transfer = {
     ...target,
     targetOrgId: target.departmentId,
@@ -116,15 +139,18 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     const exceeds = (local: number | null, inclusive: number | null, positionId?: string) =>
       (capacity.orgId === target.departmentId && local !== null && count(false, positionId) > local) ||
       (inclusive !== null && count(true, positionId) > inclusive);
-    if (capacity.strictControl && exceeds(capacity.localCapacity, capacity.inclusiveCapacity)) return true;
+    const over = exceeds(capacity.localCapacity, capacity.inclusiveCapacity);
+    if (over && capacity.strictControl) return 'strict';
+    warning ||= over;
     if (scheme.subdivision === 'position') {
       const part = capacity.subdivisions.find((item) => item.positionId === target.positionId);
-      if (!part && scheme.unmatchedPolicy === 'reject') return true;
-      if (part && capacity.strictControl && exceeds(part.localCapacity, part.inclusiveCapacity, part.positionId))
-        return true;
+      if (!part && scheme.unmatchedPolicy === 'reject') return 'strict';
+      const partOver = !!part && exceeds(part.localCapacity, part.inclusiveCapacity, part.positionId);
+      if (partOver && capacity.strictControl) return 'strict';
+      warning ||= partOver;
     }
   }
-  return false;
+  return warning ? 'warning' : 'none';
 }
 
 /**

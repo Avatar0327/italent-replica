@@ -1,0 +1,64 @@
+/**
+ * 按证件号的重聘判定（R2 BE-6a；差距表 B38、A48；31 IN-R1；R2f B41）。原站可按证件、手机、邮箱匹配，三键优先级与唯一性
+ * 未验证，保守口径：只按“证件类型 + 证件号码”在租户内精确匹配已离职 / 退休人员，多人命中拒绝、不自动挑选；只判定不入职。
+ */
+import { sql, type Tx } from '@italent/db';
+import { z } from 'zod';
+import { AppError } from '../../errors.js';
+import { rowsOf } from './read-model.js';
+
+export const rehireMatchInput = z.strictObject({
+  idType: z.string().trim().min(1).max(100),
+  idNumber: z.string().trim().min(1).max(100),
+});
+export type RehireMatchInput = z.infer<typeof rehireMatchInput>;
+
+export interface RehireCandidate {
+  readonly employeeId: string;
+  readonly name: string;
+  readonly code: string;
+  /** 个人邮箱（人员信息 email）。 */
+  readonly email: string | null;
+  readonly endKind: 'leave' | 'retirement';
+  readonly lastWorkDate: string | null;
+  /** 离职 / 退休那条任职的部门。 */
+  readonly departmentId: string | null;
+  /** 表单“重聘”默认否（R2f B41）。 */
+  readonly rehire: false;
+}
+
+/**
+ * 当前人员信息（personnel 版本链最新一版）证件匹配、且租户今天有效的任职（今天及以前最后一条）是离职 / 退休。
+ * 先限定今天再取最后一条：未来的重聘待入职不挡当前已离职（PR #386 第 1 轮 P2-2）；在职、未来才离职的人不算。
+ * 取两条判断是否唯一。
+ */
+export async function matchRehire(
+  tx: Tx,
+  tenantId: string,
+  input: RehireMatchInput,
+  today: string,
+): Promise<RehireCandidate | null> {
+  const rows = rowsOf<Omit<RehireCandidate, 'rehire'>>(
+    await tx.execute(sql`
+    SELECT e.id AS "employeeId", COALESCE(v.name, e.name) AS name, e.code, v.email,
+      r.kind AS "endKind", r.last_work_date::text AS "lastWorkDate",
+      COALESCE(snap.department_id, r.department_id) AS "departmentId"
+    FROM employment_employees e
+    JOIN LATERAL (SELECT v.name, v.email, v.id_type, v.id_number FROM personnel_employee_versions v
+      WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY v.revision DESC LIMIT 1) v ON true
+    JOIN LATERAL (SELECT t.record_id FROM employment_timeline t
+      WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.start_date<=${today}::date
+      ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current ON true
+    JOIN employment_records r ON r.tenant_id=e.tenant_id AND r.id=current.record_id
+    LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
+      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+      ORDER BY p.version_no DESC LIMIT 1) snap ON true
+    WHERE e.tenant_id=${tenantId} AND v.id_type=${input.idType} AND btrim(v.id_number)=${input.idNumber}
+      AND r.kind IN ('leave','retirement')
+    ORDER BY e.id LIMIT 2
+  `),
+  );
+  if (rows.length > 1)
+    throw new AppError('CONFLICT', '该证件号码匹配到多名离职人员，请核对后处理', { reason: 'REHIRE_MATCH_AMBIGUOUS' });
+  return rows[0] ? { ...rows[0], rehire: false } : null;
+}

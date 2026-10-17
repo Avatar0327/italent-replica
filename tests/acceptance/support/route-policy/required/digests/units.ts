@@ -229,6 +229,12 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '9e9497cd9082',
   },
+  'apps/api/src/modules/employment/intern-routes.ts': {
+    requireViewableInternFilters: '24f248bf8141',
+    'route:GET /interns': '30204c189bd9',
+    'route:POST /interns/:id/regularize': '30a7f759a110',
+    'route:POST /rehire-matches': '0f65f77ec626',
+  },
   'apps/api/src/modules/employment/probation-routes.ts': {
     'route:GET /employees/:id/probation': '3c6095c242e8',
     'route:GET /probation-results': '140957a8db47',
@@ -1574,6 +1580,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '4f083b329455',
+  'apps/api/src/modules/employment/intern-routes.ts#requireViewableInternFilters': 'f5174f751364',
+  'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/probation': 'e6e23223f716',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-results': 'f82f37db2db0',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-views': 'e76cb7aa6f74',

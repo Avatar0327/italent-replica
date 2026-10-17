@@ -86,13 +86,34 @@ export async function loadProbationVersion(
   return row ?? null;
 }
 
+/** 版本来源：入职（含办理入职）、调整试用信息、实习转正（BE-6a，DEC-585 与入职共用这张版本表）。 */
+export type ProbationSource = 'entry' | 'adjust' | 'intern_regularization';
+
+/** 按页批量读多条开启记录的最新一版（列表用，避免逐行查询；单条同 loadProbationVersion）。 */
+export async function loadProbationVersions(
+  tx: Tx,
+  tenantId: string,
+  businessIds: readonly string[],
+): Promise<Map<string, ProbationVersion>> {
+  if (!businessIds.length) return new Map();
+  const rows = rowsOf<ProbationVersion>(
+    await tx.execute(sql`SELECT DISTINCT ON (business_id) id, business_id AS "businessId", version_no AS "versionNo",
+        has_probation AS "hasProbation", start_date::text AS "startDate", months,
+        expected_end_date::text AS "expectedEndDate"
+      FROM employment_probation_versions
+      WHERE tenant_id=${tenantId} AND business_id = ANY(${`{${businessIds.join(',')}}`}::uuid[])
+      ORDER BY business_id, version_no DESC`),
+  );
+  return new Map(rows.map((row) => [row.businessId, row]));
+}
+
 /** 追加一版试用期信息并写字段级审计（DEC-019）；调用方已持该员工锁。 */
 export async function appendProbationVersion(
   tx: Tx,
   ctx: EmploymentContext,
   target: { readonly employeeId: string; readonly businessId: string },
   info: ProbationInfo,
-  source: 'entry' | 'adjust',
+  source: ProbationSource,
 ): Promise<ProbationVersion> {
   const normalized = normalizeProbationInfo(info);
   if (normalized.startDate && normalized.expectedEndDate && normalized.expectedEndDate < normalized.startDate)
@@ -146,6 +167,7 @@ export async function saveEntryProbation(
     readonly deferStart?: boolean;
   },
   entry: EntryOptions | undefined,
+  source: ProbationSource = 'entry',
 ): Promise<void> {
   if (!entry || entry.pendingEntry || entry.probation === undefined) return;
   if (entry.probation && entry.probationEndDate !== undefined && entry.probationEndDate < target.effectiveDate)
@@ -162,7 +184,7 @@ export async function saveEntryProbation(
       months: entry.probationMonths ?? null,
       expectedEndDate: entry.probationEndDate ?? null,
     },
-    'entry',
+    source,
   );
 }
 
@@ -180,5 +202,6 @@ export async function saveCreatedProbation(
 ): Promise<void> {
   if (!ENTRY_LIKE_KINDS.includes(input.kind)) return;
   const target = { employeeId, businessId, effectiveDate: input.effectiveDate, deferStart: input.mode !== 'direct' };
-  await saveEntryProbation(tx, ctx, target, entry);
+  const source = input.kind === 'intern_regularization' ? 'intern_regularization' : 'entry';
+  await saveEntryProbation(tx, ctx, target, entry, source);
 }

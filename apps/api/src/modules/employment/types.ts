@@ -15,10 +15,10 @@ export const BUSINESS_KINDS = [
 ] as const;
 export type BusinessKind = (typeof BUSINESS_KINDS)[number];
 /**
- * 变动类型（原站与业务类型、异动类型并列，W-416）。只由系统联动写入：职位变更同步直线经理记“职位调整”
- * （`19` §3.1）；其他业务与存量记录没有原站依据，保持空值（F-006）。
+ * 变动类型（原站与业务类型、异动类型并列，W-416）。只由系统写入：职位变更同步直线经理记“职位调整”
+ * （`19` §3.1，F-006）；实习转正记“实习转正”（BE-6a，R2f B41）。其他业务与存量记录没有原站依据，保持空值。
  */
-export const CHANGE_TYPES = ['position_adjustment'] as const;
+export const CHANGE_TYPES = ['position_adjustment', 'intern_regularization'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 /**
  * disapproved：审批沿「不同意」流转到结束，申请办结、不生效（F-003 第二轮，DEC-144）。
