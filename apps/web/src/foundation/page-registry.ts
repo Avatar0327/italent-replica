@@ -27,7 +27,7 @@ export interface AppPageDeclaration {
   readonly children?: (snapshot: ServerSnapshot, route: AppRoute) => MenuNode[];
 }
 /** 应用内单独的菜单入口（不新增后端应用）：所属应用的入口对象含 objectCode 时才显示；路由挂在 /<id>/*，子路径由入口页自管 */
-export interface EntryPageDeclaration {
+interface EntryPageLeaf {
   readonly id: string;
   readonly app: AppId;
   readonly label: string;
@@ -35,7 +35,19 @@ export interface EntryPageDeclaration {
   readonly objectCode: string;
   readonly page?: ModulePage;
   readonly legacy?: boolean;
+  readonly children?: never;
 }
+/** F-190a：子项继承 app / group，独立声明 objectCode、id（/<id>/*）、page 和 legacy，保持声明顺序。 */
+export type EntryPageChild = Omit<EntryPageLeaf, 'app' | 'group'>;
+/** 分组无页面或额外权限，只容纳一层叶子；所有子项不可见时隐藏分组。 */
+export type EntryPageDeclaration =
+  | EntryPageLeaf
+  | (Pick<EntryPageLeaf, 'id' | 'app' | 'label' | 'group'> & {
+      readonly children: readonly EntryPageChild[];
+      readonly objectCode?: never;
+      readonly page?: never;
+      readonly legacy?: never;
+    });
 export interface SubRouteDeclaration {
   readonly path: string;
   readonly page: ModulePage;
@@ -65,7 +77,10 @@ interface Owned {
   readonly legacy: boolean;
 }
 export type AppRoute = Omit<AppPageDeclaration, 'legacy'> & Owned & { readonly id: AppId };
-export type EntryRoute = Omit<EntryPageDeclaration, 'legacy'> & Owned;
+export type EntryRoute = Omit<EntryPageDeclaration, 'legacy' | 'children'> &
+  Owned & {
+    readonly children?: readonly EntryRoute[];
+  };
 export type MenuRoute = AppRoute | EntryRoute;
 export type SubRoute = Omit<SubRouteDeclaration, 'legacy'> & Owned;
 export interface PageRegistry {
@@ -79,6 +94,9 @@ export interface PageRegistry {
 export const isEntry = (route: MenuRoute): route is EntryRoute => route.id !== route.app;
 /** 菜单路由的挂载路径：应用页精确匹配，应用内入口带 /* */
 export const mountPath = (route: MenuRoute) => (isEntry(route) ? `${route.path}/*` : route.path);
+/** 分组只组织菜单，不挂载页面；旧入口保持原位置。 */
+export const pageRoutes = (routes: readonly MenuRoute[]): MenuRoute[] =>
+  routes.flatMap((route) => (isEntry(route) && route.children ? [...route.children] : [route]));
 
 /** 模块页面懒加载：导出名受类型检查，代码拆分与原先逐页 lazy 相同 */
 export function lazyPage<K extends string, M extends Record<K, ComponentType>>(
@@ -144,16 +162,36 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
   for (const route of appRoutes) claim(paths, '路径', route.path, route.module);
   const entries = found
     .flatMap(({ module, pages }) =>
-      (pages.entries ?? []).map(({ legacy, ...entry }) => ({
+      (pages.entries ?? []).map(({ legacy, children, ...entry }) => ({
         ...entry,
         path: `/${entry.id}`,
         module,
         legacy: legacy ?? false,
+        ...(children
+          ? {
+              children: children.map((child) => {
+                if (child.children) throw new Error('入口子菜单只支持一层');
+                // 子项独立鉴权，不允许路径前缀/路由模式与所属应用的匹配相互遮蔽。
+                if (!/^[\p{L}\p{N}_-]+$/u.test(child.id)) throw new Error('子菜单 id 必须是单段静态路径键');
+                return {
+                  ...child,
+                  app: entry.app,
+                  group: entry.group,
+                  path: `/${child.id}`,
+                  module,
+                  legacy: child.legacy ?? false,
+                };
+              }),
+            }
+          : {}),
       })),
     )
     .sort((a, b) => compareText(a.id, b.id));
   for (const entry of entries) {
     claim(ids, '菜单键', entry.id, entry.module);
+    for (const child of entry.children ?? []) claim(ids, '菜单键', child.id, child.module);
+  }
+  for (const entry of pageRoutes(entries)) {
     claim(paths, '路径', entry.path, entry.module);
     claim(paths, '路径', mountPath(entry), entry.module);
   }
