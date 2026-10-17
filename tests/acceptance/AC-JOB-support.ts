@@ -49,12 +49,15 @@ export async function jobSession(db: Db, label: string) {
     return ((await response.json()) as { items: JobRecord[] }).items;
   }
 
-  async function org(name: string): Promise<{ id: string; name: string; revision: number }> {
+  async function org(
+    name: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<{ id: string; name: string; revision: number }> {
     const response = await api.request('POST', '/api/tenant/org/organizations', {
       user: member.user.id,
       tenant: member.tenant.id,
       ifMatch: 0,
-      body: { name, parents: { admin: { parentId: member.tenant.id } } },
+      body: { name, parents: { admin: { parentId: member.tenant.id } }, ...extra },
     });
     expect(response.status).toBe(201);
     return (await response.json()) as { id: string; name: string; revision: number };
