@@ -202,7 +202,8 @@ export const offerDictionaryItems = pgTable(
 
 /**
  * Offer 发送记录（BE-14b1，OF-R5）：每次发送 / 重发写一行，兼作邮件 outbox（状态 pending / sent / failed / unknown，
- * AGENTS §10 事件）。随 Offer 删除（只有待发可删）一并删除，删除前的发送历史写进删除审计的快照（AGENTS §5）。首版没有投递通道，只记 pending，界面不显示投递状态；答复链接令牌归候选人答复页（F-183），不在这里存。
+ * AGENTS §10 事件）。随 Offer 删除（只有待发可删）一并删除，删除前的发送历史写进删除审计的快照（AGENTS §5）。
+ * 首版没有投递通道，只记 pending，界面不显示投递状态；答复链接令牌归候选人答复页（F-183），不在这里存。
  */
 export const offerSendRecords = pgTable(
   'offer_send_records',
