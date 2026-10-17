@@ -38,6 +38,7 @@ import {
   EXIT_INITIATIONS,
   EXIT_STATES,
   EXIT_VIEWS,
+  exitSortRights,
   filterFieldsOf,
   listExitView,
   loadExitDetail,
@@ -353,7 +354,12 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const departmentIds = departmentId
         ? await resolveDepartmentIds(tx, ctx.tenantId, departmentId, includeChildren !== 'false', today)
         : undefined;
-      return listExitView(tx, ctx.tenantId, { view, page, filter: { ...filter, departmentIds } }, ctx.scope);
+      return listExitView(
+        tx,
+        ctx.tenantId,
+        { view, page, filter: { ...filter, departmentIds }, sort: exitSortRights(show) },
+        ctx.scope,
+      );
     });
     return c.json({
       items: items.map((item) => trimExit(item, show)),

@@ -1147,7 +1147,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#toItem': ['#iso'],
-  'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#RECORD_FIELD'],
+  'apps/api/src/modules/employment/exit-queries.ts#trimExit': ['#RECORD_ALIAS', '#STRUCTURE_KEYS'],
   'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail': ['#trimExit'],
   'apps/api/src/modules/employment/exit-routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [
@@ -1192,6 +1192,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-queries.ts#exitSortRights',
     'apps/api/src/modules/employment/exit-queries.ts#listExitView',
     'apps/api/src/modules/employment/exit-queries.ts#resolveDepartmentIds',
     'apps/api/src/modules/employment/exit-queries.ts#trimExit',

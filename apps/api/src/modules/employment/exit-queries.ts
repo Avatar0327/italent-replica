@@ -195,15 +195,32 @@ function viewPredicate(view: ExitView): SQL {
   }
 }
 
+/**
+ * 排序是否可以用被隐藏字段的先后：查看人看不到最后工作日 / 生效日（二者只差一天、先后一致）时不能按日期排，
+ * 看不到创建时间时不能按创建时间排，否则借一条已知日期的参照记录就能推断其他人的先后；此时改用 id（随机 UUID，
+ * 与任何业务字段无关）作稳定排序。撤销视图按撤销记录的创建时间，该时间随撤销信息一并给出，不受此限。
+ */
+export interface ExitSortRights {
+  readonly byDate: boolean;
+  readonly byCreated: boolean;
+}
+
+export function exitSortRights(show: ExitViewable): ExitSortRights {
+  return {
+    byDate: show.employment('lastWorkDate') || show.employment('effectiveDate'),
+    byCreated: show.employment('createdAt'),
+  };
+}
+
 /** 默认排序（§3.2）；末位 b.id 保证翻页稳定。 */
-function viewOrder(view: ExitView): SQL {
+function viewOrder(view: ExitView, rights: ExitSortRights): SQL {
   switch (view) {
     case 'in_progress':
-      return sql`p.last_work_date ASC, b.id`;
+      return rights.byDate ? sql`p.last_work_date ASC, b.id` : sql`b.id`;
     case 'completed':
-      return sql`p.last_work_date DESC, b.id`;
+      return rights.byDate ? sql`p.last_work_date DESC, b.id` : sql`b.id`;
     case 'all':
-      return sql`b.created_at DESC, b.id DESC`;
+      return rights.byCreated ? sql`b.created_at DESC, b.id DESC` : sql`b.id`;
     case 'cancellations':
       return sql`c.created_at DESC, c.id DESC`;
   }
@@ -297,14 +314,19 @@ function candidates(tenantId: string, scope: EmploymentScope | undefined, where:
 export async function listExitView(
   tx: Tx,
   tenantId: string,
-  input: { readonly view: ExitView; readonly page: PageQuery; readonly filter: ExitViewFilter },
+  input: {
+    readonly view: ExitView;
+    readonly page: PageQuery;
+    readonly filter: ExitViewFilter;
+    readonly sort: ExitSortRights;
+  },
   scope: EmploymentScope | undefined,
 ): Promise<{ items: ExitItem[]; total: number }> {
   checkPage(input.page);
   const where = [viewPredicate(input.view), ...filterPredicates(tenantId, input.filter)];
   const rows = rowsOf<ExitRow & { total: number }>(
     await tx.execute(sql`
-    WITH base AS MATERIALIZED (${candidates(tenantId, scope, where, viewOrder(input.view))}),
+    WITH base AS MATERIALIZED (${candidates(tenantId, scope, where, viewOrder(input.view, input.sort))}),
       counted AS (SELECT count(*)::int AS total FROM base)
     SELECT counted.total, page.* FROM counted
     LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ord LIMIT ${input.page.limit} OFFSET ${input.page.offset}) page
@@ -438,35 +460,27 @@ export async function loadExitDetail(
 
 // ---- 字段裁剪（§9.1）-------------------------------------------------------------------------------------------
 
-/** 响应键 → 任职记录对象的字段编码；不在表里的键（ID、状态、revision、效果汇总等）是行可见即可见的控制项。 */
-const RECORD_FIELD: Readonly<Record<string, string>> = {
-  departmentId: 'departmentId',
-  positionId: 'positionId',
-  lastWorkDate: 'lastWorkDate',
+/**
+ * 响应键与字段目录（MODULE_OBJECTS.employmentRecord，含 EXIT_REQUEST_SYSTEM_FIELDS）的对应：默认键名就是字段编码，
+ * 逐键按自己的字段权裁剪，没有“默认放行”的控制项；派生的显示名跟随它的编码。下面的结构键没有自己的字段编码（汇总件数、
+ * 撤销信息、状态事件、版本、日期块），行可见即可见，其内部的字段键在 trimExitDetail 里再逐个按编码裁剪。
+ * AC-DM-19 有测试核对：响应里出现的每个键必须在目录里、是派生名或是结构键。
+ */
+const RECORD_ALIAS: Readonly<Record<string, string>> = {
   plannedLastWorkDate: 'lastWorkDate',
-  effectiveDate: 'effectiveDate',
-  exitTypeCode: 'exitTypeCode',
   exitTypeName: 'exitTypeCode',
-  reasonCode: 'reasonCode',
   reasonName: 'reasonCode',
-  whereaboutsCode: 'whereaboutsCode',
   whereaboutsName: 'whereaboutsCode',
-  mode: 'mode',
-  initiator: 'initiator',
-  initiatorUserId: 'initiator',
-  handoverEmployeeId: 'handoverEmployeeId',
-  addToBlacklist: 'addToBlacklist',
-  compensationAmount: 'compensationAmount',
-  nonCompeteAmount: 'nonCompeteAmount',
-  lastPayDate: 'lastPayDate',
-  socialInsuranceEndMonth: 'socialInsuranceEndMonth',
-  annualLeaveSettled: 'annualLeaveSettled',
-  taxPeriod: 'taxPeriod',
-  taxYear: 'taxYear',
-  employerName: 'employerName',
-  actualLeaveDate: 'actualLeaveDate',
-  attachmentRefs: 'attachmentRefs',
 };
+const STRUCTURE_KEYS: ReadonlySet<string> = new Set([
+  'cancellation',
+  'events',
+  'versions',
+  'effects',
+  'approvalInstanceId',
+  'dutyTransfer',
+  'dates',
+]);
 
 /** 姓名 / 工号属人员对象，其余按任职记录对象的字段权限；无权限的键缺席（不是 null）。 */
 export interface ExitViewable {
@@ -490,36 +504,44 @@ export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Parti
   return Object.fromEntries(
     Object.entries(item).filter(([key]) => {
       if (key === 'name' || key === 'code') return show.employee(key);
-      const field = RECORD_FIELD[key];
-      return field === undefined || show.employment(field);
+      return STRUCTURE_KEYS.has(key) || show.employment(RECORD_ALIAS[key] ?? key);
     }),
   ) as Partial<T>;
 }
 
-/** 详情：在 trimExit 之上加日期块与版本列表（日期各按 lastWorkDate / effectiveDate 的字段权限逐项裁剪）。 */
+/** 详情：在 trimExit 之上加日期块，并把结构键里的字段（转交时机、事件状态 / 时间、版本日期 / 时间）逐个按编码裁剪。 */
 export function trimExitDetail(detail: ExitDetail, show: ExitViewable) {
-  const { versions, ...rest } = detail;
-  const lastWork = show.employment('lastWorkDate');
-  const effective = show.employment('effectiveDate');
+  const { versions, events, dutyTransfer, ...rest } = detail;
+  const has = show.employment;
   const dates = (lastWorkDate: string | null, effectiveDate: string) => ({
-    ...(lastWork && lastWorkDate !== null ? { lastWorkDate } : {}),
-    ...(effective ? { effectiveDate } : {}),
+    ...(has('lastWorkDate') && lastWorkDate !== null ? { lastWorkDate } : {}),
+    ...(has('effectiveDate') ? { effectiveDate } : {}),
   });
   const planned = new Date(`${detail.plannedLastWorkDate}T00:00:00Z`);
   planned.setUTCDate(planned.getUTCDate() + 1);
   return {
     ...trimExit(rest, show),
+    dutyTransfer: {
+      ...(has('dutyTransferTiming') ? { timing: dutyTransfer.timing } : {}),
+      transferred: dutyTransfer.transferred,
+      failed: dutyTransfer.failed,
+    },
+    events: events.map((event) => ({
+      eventNo: event.eventNo,
+      ...(has('status') ? { state: event.state } : {}),
+      ...(has('createdAt') ? { createdAt: event.createdAt } : {}),
+    })),
     dates: {
       planned: dates(detail.plannedLastWorkDate, planned.toISOString().slice(0, 10)),
       final: dates(detail.lastWorkDate, detail.effectiveDate),
     },
     versions: versions.map((version) => ({
       versionNo: version.versionNo,
-      createdAt: version.createdAt,
-      ...(effective
+      ...(has('createdAt') ? { createdAt: version.createdAt } : {}),
+      ...(has('effectiveDate')
         ? { effectiveDate: version.effectiveDate, plannedEffectiveDate: version.plannedEffectiveDate }
         : {}),
-      ...(lastWork ? { lastWorkDate: version.lastWorkDate } : {}),
+      ...(has('lastWorkDate') ? { lastWorkDate: version.lastWorkDate } : {}),
     })),
   };
 }
