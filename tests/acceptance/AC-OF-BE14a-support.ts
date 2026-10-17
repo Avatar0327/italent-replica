@@ -45,6 +45,7 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
   const department = await created('/api/tenant/org/organizations', {
     name: `录用部门${uniqueSuffix()}`,
     parents: { admin: { parentId: member.tenant.id } },
+    establishedOn: '2026-01-01',
   });
   const employee = () =>
     created('/api/tenant/employment/employees', { name: '合成员工', code: `OF_${uniqueSuffix()}` });

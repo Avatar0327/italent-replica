@@ -9,9 +9,13 @@ import {
   missingOfferFields,
   OFFER_FIELDS,
   OFFER_REFUSAL_FIELDS,
+  OFFER_REVIEW_FIELDS_DEFAULT,
+  OFFER_REVIEW_FIELDS_KEY,
   OFFER_SEND_APPROVAL_DEFAULT,
   OFFER_SEND_APPROVAL_KEY,
   OFFER_WIRED_ROW_ACTIONS,
+  approvalAfterEdit,
+  birthDateFromIdCard,
   effectiveOfferType,
   offerEditable,
   offerRowActions,
@@ -19,8 +23,11 @@ import {
   planOfferInvalidation,
   planOfferSend,
   planOfferTransition,
+  validOfferReviewFieldsSetting,
   validOfferSendApprovalSetting,
   type OfferApprovalStatus,
+  type OfferReviewFieldsSetting,
+  type OfferSendApprovalSetting,
   type OfferField,
   type OfferPlan,
   type OfferRowAction,
@@ -40,6 +47,8 @@ import { JOB_OBJECT_CODES, visibleJob } from '../permission/module-route-access.
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import { requireEnabledOfferReason } from './dictionaries.js';
+import { requireQuotaConfirmed } from './establishment.js';
+import { rehireHintFor, requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
 
 export type OfferRow = typeof offers.$inferSelect;
@@ -60,9 +69,22 @@ const CAMPUS_CARRIED: readonly OfferField[] = [
   'birthDate',
 ];
 
+/** 改动这几项时重新做黑名单校验（OF-R2）。 */
+const IDENTITY_FIELDS = ['name', 'mobile', 'personalEmail', 'idNumber'] as const;
+
 const typeOf = (row: Pick<OfferRow, 'offerType'>) => row.offerType as OfferType | null;
 
-const facts = (row: OfferRow): OfferStateFacts => ({
+/** OF-R3 发送前须审批与 OF-R4 必审字段两项配置（取值不合法时按出厂值，与 send-check 同口径）。 */
+export async function readOfferApprovalSettings(tx: Tx, tenantId: string) {
+  const send = (await readEffectiveSetting(tx, tenantId, OFFER_SEND_APPROVAL_KEY)).value;
+  const review = (await readEffectiveSetting(tx, tenantId, OFFER_REVIEW_FIELDS_KEY)).value;
+  return {
+    send: validOfferSendApprovalSetting(send) ? send : OFFER_SEND_APPROVAL_DEFAULT,
+    review: validOfferReviewFieldsSetting(review) ? review : OFFER_REVIEW_FIELDS_DEFAULT,
+  } satisfies { send: OfferSendApprovalSetting; review: OfferReviewFieldsSetting };
+}
+
+export const facts = (row: OfferRow): OfferStateFacts => ({
   status: row.status as OfferStatus,
   approvalStatus: row.approvalStatus as OfferApprovalStatus,
   offerType: typeOf(row),
@@ -266,11 +288,15 @@ export async function createOffer(tx: Tx, ctx: OfferContext, writes: OfferCreate
   requireComplete(type, values);
   requireDepartment(ctx, values.departmentId as string | null, ctx.userId);
   await requireReferences(tx, ctx, values);
+  await requireNotBlacklisted(tx, ctx, values);
+  const rehireHint = await rehireHintFor(tx, ctx, values);
+  // OF-R2：身份证号带出出生日期（未填时）
+  const birthDate = values.birthDate ?? birthDateFromIdCard(values.idType, values.idNumber);
   const [row] = await guarded(() =>
     tx
       .insert(offers)
       .values({
-        ...toColumns(values),
+        ...toColumns({ ...values, birthDate }),
         tenantId: ctx.tenantId,
         entry,
         offerType: type,
@@ -283,10 +309,10 @@ export async function createOffer(tx: Tx, ctx: OfferContext, writes: OfferCreate
       .returning(),
   );
   await audit(tx, ctx, 'create', row!.id, null, row!);
-  return offerDto(row!);
+  return rehireHint ? { ...offerDto(row!), rehireHint } : offerDto(row!);
 }
 
-async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string, patch: Partial<OfferRow>) {
+export async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string, patch: Partial<OfferRow>) {
   const [after] = await guarded(() =>
     tx
       .update(offers)
@@ -312,7 +338,15 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
   requireComplete(typeOf(before), { ...offerDto(before), ...input });
   if ('departmentId' in input) requireDepartment(ctx, input.departmentId, before.createdBy);
   await requireReferences(tx, ctx, input);
-  return save(tx, ctx, before, 'update', patch);
+  if (IDENTITY_FIELDS.some((field) => field in input))
+    await requireNotBlacklisted(tx, ctx, { ...offerDto(before), ...input } as OfferIdentity);
+  // OF-R4 前半：审批通过后改了必审字段，旧的审批通过作废（含已发退回待发后再改）
+  const changed = OFFER_FIELDS.filter(
+    (field) => field in patch && patch[field as keyof typeof patch] !== before[field as keyof OfferRow],
+  );
+  const settings = await readOfferApprovalSettings(tx, ctx.tenantId);
+  const approvalStatus = approvalAfterEdit(facts(before), changed, settings.send, settings.review);
+  return save(tx, ctx, before, 'update', approvalStatus ? { ...patch, approvalStatus } : patch);
 }
 
 /** 删除只限待发（34 §2.1 行操作矩阵）；保留删除前快照在审计里（AGENTS §5）。 */
@@ -426,10 +460,12 @@ const PLAN_MESSAGES: Readonly<Record<string, string>> = {
   OFFER_SYNC_NOT_READY: '该操作需要联动待入职，暂未开放',
   OFFER_FORM_INCOMPLETE: '必填项未填写',
   OFFER_INVALIDATION_NOT_ALLOWED: '当前 Offer 不能失效',
+  OFFER_NOT_PENDING: '只有待发或已发的 Offer 可以发送',
+  OFFER_APPROVAL_REQUIRED: '该类型 Offer 发送前须审批通过',
 };
 
 /** 领域拒绝 → 统一错误码：表单缺项 400，状态不允许 / 待联动 409，details.reason 为机读原因。 */
-function failPlan(plan: Extract<OfferPlan<unknown>, { ok: false }>): never {
+export function failPlan(plan: Extract<OfferPlan<unknown>, { ok: false }>): never {
   const code = plan.reason === 'OFFER_FORM_INCOMPLETE' ? 'VALIDATION_FAILED' : 'CONFLICT';
   const details = plan.fields ? { reason: plan.reason, fields: plan.fields } : { reason: plan.reason };
   throw new AppError(code, PLAN_MESSAGES[plan.reason] ?? '操作不允许', details);
@@ -441,6 +477,8 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
   assertOfferRevision(ctx.expectedRevision, before.revision);
   const plan = planOfferTransition(facts(before), input.target, input);
   if (!plan.ok) failPlan(plan);
+  // 管理员转为已接受：超编弱控二次确认（OF-R10，候选人答复不校验）
+  if (input.target === 'accepted') await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
   const patch = plan.patch.refusalReasonCode
     ? {
         ...plan.patch,
@@ -488,8 +526,7 @@ export async function offerTransferForm(tx: Tx, ctx: OfferContext, id: string) {
 /** OF-R3 发送前拦截判定（发送动作在 BE-14b）：按 Offer 类型读开关，返回是否允许与机读原因。 */
 export async function offerSendCheck(tx: Tx, ctx: OfferContext, id: string) {
   const row = await loadOffer(tx, ctx, id);
-  const value = (await readEffectiveSetting(tx, ctx.tenantId, OFFER_SEND_APPROVAL_KEY)).value;
-  const plan = planOfferSend(facts(row), validOfferSendApprovalSetting(value) ? value : OFFER_SEND_APPROVAL_DEFAULT);
+  const plan = planOfferSend(facts(row), (await readOfferApprovalSettings(tx, ctx.tenantId)).send);
   return {
     id: row.id,
     offerType: effectiveOfferType(typeOf(row)),

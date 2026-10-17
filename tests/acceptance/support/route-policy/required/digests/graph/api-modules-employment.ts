@@ -315,6 +315,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES',
   ],
   'apps/api/src/modules/employment/blacklist.ts#deleteBlacklistEntries': ['#audit', '#lockBatch'],
+  'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistByIdentity': [
+    '#blankToNull',
+    '#identityKey',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistEntry': [
     '#identityKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

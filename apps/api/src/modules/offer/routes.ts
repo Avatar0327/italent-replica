@@ -33,6 +33,7 @@ import {
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { parseOfferCreate, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
+import { registerOfferSend } from './send.js';
 import {
   copyOffer,
   createOffer,
@@ -181,5 +182,6 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   });
   registerCommands(module, deps);
   registerOfferTransitions(module, deps);
+  registerOfferSend(module, deps);
   router.route('/api/tenant/offers', module);
 };

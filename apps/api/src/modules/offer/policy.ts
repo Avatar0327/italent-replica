@@ -75,7 +75,7 @@ const ACTION_DISCLOSURE = {
     scope: noScope('只判按钮'),
     fields: noFields('只决定 toolbarActions'),
   }),
-  rowUpdate: disclose('update', '行操作 edit / invalidate'),
+  rowUpdate: disclose('update', '行操作 edit / send / resend / invalidate'),
   rowDelete: disclose('delete', '行操作 delete'),
   rowCopy: disclose('create', '行操作 copy'),
 };
@@ -215,6 +215,17 @@ export const OFFER_POLICIES = defineTable('offers', {
   }),
   'POST /:id/transfer': transfer(ROW_TRANSFER),
   'POST /:id/toolbar-transfer': transfer(TOOLBAR_TRANSFER),
+  // 发送 / 重发（OF-R5）：待发按 OF-R3 判定、已发直接重发；超编（弱 / 强控）先 409 CONFIRMATION_REQUIRED，带 confirmed 重提；
+  // 同事务写发送记录（邮件 outbox，pending）。不新增按钮授权项，按对象编辑开关（原站按钮编码未取证）
+  'POST /:id/send': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('发送按对象编辑开关'),
+    scope: point,
+    fields: record,
+    write: commandOnly(['revision', 'offer.dispatch', 'offer.quotaConfirmation']),
+  }),
   // 失效：已发、已接受、非实习类待发可失效（OF-R7）；原因须为启用字典项；有待入职 → 409 OFFER_SYNC_NOT_READY
   'POST /:id/invalidate': object({
     ...byId,

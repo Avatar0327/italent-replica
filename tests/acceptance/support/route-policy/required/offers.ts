@@ -5,6 +5,7 @@
  * 字典写入：runDictionaryWrite → tenant.employment.configuration.write（admin other_settings）+ 任职设置对象字段编辑权。
  * C2（BE-14a2，transitions.ts）：转移两个入口各经 offerTransferCheck → button()（行级 / 列表级各一项）；失效经
  * offerOperationCheck(update)；转移表单与 OF-R3 发送判定只读，经 offerReadContext。
+ * BE-14b1（send.ts）：发送 / 重发经 runOfferWrite + offerOperationCheck(update)。
  */
 import { bound, NONE, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
@@ -13,6 +14,7 @@ const BASE = '/api/tenant/offers';
 const O = 'apps/api/src/modules/offer';
 const ROUTES = `${O}/routes.ts`;
 const TRANSITIONS = `${O}/transitions.ts`;
+const SEND = `${O}/send.ts`;
 const CTX = `${O}/context.ts`;
 const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
 const OFFER = 'TenantBase.Offer';
@@ -250,4 +252,5 @@ export const OFFERS: RequiredTable = {
     'statusTransfer',
   ),
   [`POST ${BASE}/:id/invalidate`]: offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
+  [`POST ${BASE}/:id/send`]: offerWrite('POST', '/:id/send', 'update', undefined, SEND),
 };

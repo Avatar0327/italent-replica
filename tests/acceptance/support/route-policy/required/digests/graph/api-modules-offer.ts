@@ -98,6 +98,18 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/dictionaries.ts#updateInput': ['#name', '#order'],
   'apps/api/src/modules/offer/dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed': [
+    'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
+  ],
+  'apps/api/src/modules/offer/identity.ts#rehireHintFor': [
+    'apps/api/src/modules/employment/rehire-match.ts#matchRehire',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted': [
+    'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistByIdentity',
+    'packages/domain/src/employment/blacklist.ts#blacklistBlockedMessage',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/offer/input.ts#OFFER_FIELD_SCHEMA': ['#day', '#money', '#ref', '#text'],
   'apps/api/src/modules/offer/input.ts#createSchema': [
     '#OFFER_FIELD_SCHEMA',
@@ -108,8 +120,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/input.ts#invalidateSchema': ['#text'],
   'apps/api/src/modules/offer/input.ts#parseOfferCreate': ['#createSchema', '#parse'],
   'apps/api/src/modules/offer/input.ts#parseOfferInvalidate': ['#invalidateSchema', '#parse'],
+  'apps/api/src/modules/offer/input.ts#parseOfferSend': ['#parse', '#sendSchema'],
   'apps/api/src/modules/offer/input.ts#parseOfferTransfer': ['#parse', '#transferSchema'],
   'apps/api/src/modules/offer/input.ts#parseOfferUpdate': ['#parse', '#updateSchema'],
+  'apps/api/src/modules/offer/input.ts#sendSchema': ['#emails'],
   'apps/api/src/modules/offer/input.ts#transferSchema': [
     '#day',
     '#text',
@@ -198,6 +212,25 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/dictionaries.ts#parseOfferDictionaryInput',
     'apps/api/src/modules/offer/dictionaries.ts#saveOfferDictionaryEntry',
   ],
+  'apps/api/src/modules/offer/send.ts#route:POST /:id/send': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/offer/context.ts#offerOperationCheck',
+    'apps/api/src/modules/offer/context.ts#runOfferWrite',
+    'apps/api/src/modules/offer/input.ts#parseOfferSend',
+    '#sendOffer',
+    'apps/api/src/modules/offer/service.ts#offerStillVisible',
+  ],
+  'apps/api/src/modules/offer/send.ts#sendOffer': [
+    'apps/api/src/modules/offer/context.ts#assertOfferRevision',
+    'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed',
+    'apps/api/src/modules/offer/service.ts#facts',
+    'apps/api/src/modules/offer/service.ts#failPlan',
+    'apps/api/src/modules/offer/service.ts#lockOffer',
+    'apps/api/src/modules/offer/service.ts#readOfferApprovalSettings',
+    'apps/api/src/modules/offer/service.ts#save',
+    'packages/domain/src/offer/rules.ts#planOfferDispatch',
+  ],
   'apps/api/src/modules/offer/service.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
@@ -213,6 +246,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
   ],
   'apps/api/src/modules/offer/service.ts#createOffer': [
+    'apps/api/src/modules/offer/identity.ts#rehireHintFor',
+    'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted',
     '#audit',
     '#guarded',
     '#offerDto',
@@ -220,6 +255,7 @@ export const GRAPH: Graph = {
     '#requireDepartment',
     '#requireReferences',
     '#toColumns',
+    'packages/domain/src/offer/identity.ts#birthDateFromIdCard',
   ],
   'apps/api/src/modules/offer/service.ts#deleteOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
@@ -260,19 +296,25 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#offerSendCheck': [
     '#facts',
     '#loadOffer',
+    '#readOfferApprovalSettings',
     '#typeOf',
-    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
-    'packages/domain/src/offer/rules.ts#OFFER_SEND_APPROVAL_DEFAULT',
-    'packages/domain/src/offer/rules.ts#OFFER_SEND_APPROVAL_KEY',
     'packages/domain/src/offer/rules.ts#effectiveOfferType',
     'packages/domain/src/offer/rules.ts#planOfferSend',
-    'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting',
   ],
   'apps/api/src/modules/offer/service.ts#offerStillVisible': ['#loadOffer'],
   'apps/api/src/modules/offer/service.ts#offerTransferForm': [
     '#facts',
     '#loadOffer',
     'packages/domain/src/offer/rules.ts#offerTransferTargets',
+  ],
+  'apps/api/src/modules/offer/service.ts#readOfferApprovalSettings': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/offer/rules.ts#OFFER_REVIEW_FIELDS_DEFAULT',
+    'packages/domain/src/offer/rules.ts#OFFER_REVIEW_FIELDS_KEY',
+    'packages/domain/src/offer/rules.ts#OFFER_SEND_APPROVAL_DEFAULT',
+    'packages/domain/src/offer/rules.ts#OFFER_SEND_APPROVAL_KEY',
+    'packages/domain/src/offer/rules.ts#validOfferReviewFieldsSetting',
+    'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting',
   ],
   'apps/api/src/modules/offer/service.ts#requireComplete': ['packages/domain/src/offer/rules.ts#missingOfferFields'],
   'apps/api/src/modules/offer/service.ts#requireDepartment': [
@@ -297,6 +339,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#transferOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     'apps/api/src/modules/offer/dictionaries.ts#requireEnabledOfferReason',
+    'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed',
     '#facts',
     '#failPlan',
     '#lockOffer',
@@ -305,8 +348,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/offer/service.ts#updateOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
+    'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted',
+    '#IDENTITY_FIELDS',
+    '#facts',
     '#lockOffer',
     '#offerDto',
+    '#readOfferApprovalSettings',
     '#requireComplete',
     '#requireDepartment',
     '#requireEditable',
@@ -314,6 +361,8 @@ export const GRAPH: Graph = {
     '#save',
     '#toColumns',
     '#typeOf',
+    'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
+    'packages/domain/src/offer/rules.ts#approvalAfterEdit',
   ],
   'apps/api/src/modules/offer/service.ts#withActions': [
     '#facts',

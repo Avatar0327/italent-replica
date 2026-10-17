@@ -20,7 +20,7 @@ describe('必审字段设置（OF-R3）', () => {
       review(['name']),
       review(['workPlace', 'workPlace']),
       { social: 'workPlace', campus: [], intern: [] },
-      { social: [], campus: [], intern: ['costCenter'] },
+      { social: ['costCenter'], campus: [], intern: [] },
     ];
     for (const value of bad) expect((await overrideSetting(w, KEY, value)).status, JSON.stringify(value)).toBe(400);
     const ok = await overrideSetting(w, KEY, review(['salaryAfterRegular', 'workPlace']));
@@ -57,7 +57,7 @@ describe('AC-OF-02 前半：审批通过后改必审字段，旧审批通过作�
     const response = await edit(w, offer, { salaryAfterRegular: 12000 });
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.json()).toMatchObject({ approvalStatus: 'unsubmitted', salaryAfterRegular: 12000 });
-    expect(await sendCheck(w, offer.id)).toEqual({ allowed: false, reason: 'OFFER_APPROVAL_REQUIRED' });
+    expect(await sendCheck(w, offer.id)).toMatchObject({ allowed: false, reason: 'OFFER_APPROVAL_REQUIRED' });
     const denied = await send(w, await w.get(offer.id));
     expect((await errorOf(denied)).details).toMatchObject({ reason: 'OFFER_APPROVAL_REQUIRED' });
   });
@@ -69,7 +69,7 @@ describe('AC-OF-02 前半：审批通过后改必审字段，旧审批通过作�
     expect(await other.json()).toMatchObject({ approvalStatus: 'approved' });
     const same = await edit(w, await w.get(offer.id), { salaryAfterRegular: 10000 });
     expect(await same.json()).toMatchObject({ approvalStatus: 'approved' });
-    expect(await sendCheck(w, offer.id)).toEqual({ allowed: true, reason: null });
+    expect(await sendCheck(w, offer.id)).toMatchObject({ allowed: true, reason: null });
   });
 
   it('已发退回待发后改必审字段：不得复用旧的审批通过', async () => {
@@ -80,7 +80,7 @@ describe('AC-OF-02 前半：审批通过后改必审字段，旧审批通过作�
     expect(back).toMatchObject({ status: 'pending', approvalStatus: 'approved' });
     const response = await edit(w, back, { workPlace: '上海' });
     expect(await response.json()).toMatchObject({ approvalStatus: 'unsubmitted' });
-    expect(await sendCheck(w, offer.id)).toEqual({ allowed: false, reason: 'OFFER_APPROVAL_REQUIRED' });
+    expect(await sendCheck(w, offer.id)).toMatchObject({ allowed: false, reason: 'OFFER_APPROVAL_REQUIRED' });
   });
 
   it('该类型没开“发送前须审批”或类型不同：必审字段不起作用', async () => {

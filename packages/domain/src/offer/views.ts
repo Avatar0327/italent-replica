@@ -294,11 +294,13 @@ export interface OfferRowActions {
 }
 
 /**
- * 已接线的行操作：接口只返回这些（再按当前用户权限裁剪）。发送 / 重发 / 编辑并同步 / 查看邮件 / 电子签署 /
+ * 已接线的行操作：接口只返回这些（再按当前用户权限裁剪）。发送 / 重发已由 BE-14b1 接线；编辑并同步 / 查看邮件 / 电子签署 /
  * 关联在职实习生归 BE-14b，发起审批 / 催办 / 转交 / 撤销归 BE-14a3，接线前不出现，不给可点但无效的入口。
  */
 export const OFFER_WIRED_ROW_ACTIONS: readonly OfferRowAction[] = [
   'edit',
+  'send',
+  'resend',
   'transfer',
   'invalidate',
   'view',
