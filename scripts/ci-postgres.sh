@@ -61,3 +61,15 @@ fi
 locks="$(docker exec "$NAME" psql -U postgres -tAc "SHOW max_locks_per_transaction")"
 echo "max_locks_per_transaction=$locks"
 test "$locks" = 256
+
+# F-212（DEC-568）：普通角色分片设 PG_APP_ROLE=1，建出与本地 dev-db.sh 同一份的 app_owner 等角色（scripts/pg-roles.sql）。
+# 测试连接串改用 app_owner（非超级用户、NOBYPASSRLS）：租户表 FORCE RLS，漏设租户上下文的用例在这里才会红。
+# 口令仅用于 CI 一次性容器，非机密；连接串：postgres://app_owner:app_owner@localhost:5432/italent_test
+if [ "${PG_APP_ROLE:-}" = 1 ]; then
+  docker exec -i "$NAME" psql -U postgres -d italent_test -v ON_ERROR_STOP=1 -q <"$(dirname "$0")/pg-roles.sql"
+  # 连接串真的落在普通角色上才放行，避免配置漂移后悄悄退回超级用户（与 tests/acceptance/AC-CI-F212-app-role.test.ts 双重把关）
+  bypass="$(docker exec -e PGPASSWORD=app_owner "$NAME" psql -h 127.0.0.1 -U app_owner -d italent_test -tAc \
+    "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")"
+  test "$bypass" = f
+  echo "普通角色 app_owner 就绪（非超级用户、不绕过 RLS）"
+fi
