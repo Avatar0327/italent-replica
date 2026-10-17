@@ -56,6 +56,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
+  // approval/adapters.ts：BE-7 PT-1 只占兼职业务类型位置，PT-4a 接入兼职申请适配器前任何回调 409
+  part_time: 'PART_TIME_NOT_AVAILABLE',
 };
 
 function sourceFiles(dir: string): string[] {

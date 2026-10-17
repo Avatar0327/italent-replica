@@ -256,6 +256,9 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
     case 'latest_record_department_head':
       return candidateOf(tx, subject, await orgRole(tx, subject, subject.latestDepartmentId, 'head'));
+    // BE-7（R2-T05 §1.5）：主职部门 HRBP，与上一条同构，兼职适配器把员工当前主职部门放在 latestDepartmentId
+    case 'latest_record_department_hrbp':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.latestDepartmentId, 'hrbp'));
     case 'record_department_head':
       return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
     case 'record_department_hrbp':

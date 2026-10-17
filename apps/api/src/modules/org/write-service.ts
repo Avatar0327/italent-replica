@@ -14,7 +14,13 @@ import { and, desc, eq, isUuid, orgHierarchyLinks, orgObjects, orgVersions, sql,
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
 import { applyEstablishedOnCorrection, planEstablishedOnCorrection } from './correction.js';
-import { assertParentAvailable, type CascadeAuthorizer, planDeactivation, unavailableFrom } from './deactivation.js';
+import {
+  assertDeactivationAfterEstablished,
+  assertParentAvailable,
+  type CascadeAuthorizer,
+  planDeactivation,
+  unavailableFrom,
+} from './deactivation.js';
 import { assertOrgPeopleEligible, submittedPeople } from './people.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgPath, type OrgRecord, resolveOrgPaths } from './read-model.js';
 import {
@@ -139,6 +145,8 @@ export async function updateOrganization(
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
+  // F-213：停用日须晚于设立日；先于“已有后续版本”等判断，早于设立日与等于设立日给同一条原站文案。
+  if (patch.enabled === false) await assertDeactivationAfterEstablished(tx, ctx, [orgId], effectiveDate);
   await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
   if (patch.establishedOn !== undefined) await assertEstablishedOnUnchanged(tx, ctx, orgId, patch.establishedOn);
   const current = await recordAt(tx, object, effectiveDate);
@@ -149,16 +157,16 @@ export async function updateOrganization(
   await assertOrgPeopleEligible(tx, ctx, submittedPeople(patch, current), effectiveDate);
   const code = patch.code?.trim() ?? current.code;
   if (code !== current.code) await assertCodeAvailable(tx, ctx, code, effectiveDate, orgId);
+  // DEC-129、`10` §9：停用（或失效日期提前）时整支下级同日级联停用；整支仍有在职人员或启用职位则整单拒绝。
+  // F-213：整支预检（含下级设立日）全部做在任何写入之前，非法请求不执行 revision 更新与版本追加。
+  const from = unavailableFrom(current, normalized);
+  const root = { ...current, code, name: normalized.name };
+  const descendants = from ? await planDeactivation(tx, ctx, root, from, options.authorizeCascade) : [];
   const revision = object.revision + 1;
   await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
   const path = parentPath(ctx, normalized, nodes);
   const saved = await appendVersion(tx, ctx, orgId, code, revision, normalized, path, current);
-  // DEC-129、`10` §9：停用（或失效日期提前）时整支下级同日级联停用；整支仍有在职人员或启用职位则整单拒绝。
-  const from = unavailableFrom(current, normalized);
-  if (from) {
-    const descendants = await planDeactivation(tx, ctx, saved, from, options.authorizeCascade);
-    await disableDescendants(tx, ctx, descendants, from);
-  }
+  if (from) await disableDescendants(tx, ctx, descendants, from);
   await validateFutureSnapshots(tx, ctx, effectiveDate);
   if (addEmployment) await applyOrgEmploymentLinkage(tx, employmentCtx, orgId, effectiveDate, lockedEmployees);
   await audit(tx, ctx, 'org.update', orgId, current, saved);

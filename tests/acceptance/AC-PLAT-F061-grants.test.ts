@@ -191,8 +191,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       19: '2b3c3ef8b3ecd838',
       // R2-T03 B1a：任职记录新增离职四个按钮与离职扩展字段（设计 §4A）
       20: 'b5714fcfa1ee115f',
+      // BE-7 PT-1：任职记录新增兼职六个按钮与兼职字段（R2-T05 §7.2）
+      21: '574b5179e1719f2d',
       // R2 BE-8a：新增黑名单对象，标准版系统管理员 / 人事管理员预置看全部（DEC-415）
-      21: '1b41cceab57b7892',
+      22: 'b0edfe8938d3d701',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
