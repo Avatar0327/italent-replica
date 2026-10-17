@@ -155,7 +155,7 @@ describe('P2-1 行操作在真实授权器下按数据操作开关裁剪', () =>
     await w.force(approved.id, 'approval_status', 'approved');
     const invalid = await w.social();
     await w.invalidated(invalid.id);
-    const full = { primary: [], menu: ['edit', 'transfer', 'invalidate', 'view', 'delete'] };
+    const full = { primary: [], menu: ['edit', 'send', 'transfer', 'invalidate', 'view', 'delete'] };
     expect(await detailActions(w, pending.id)).toEqual(full);
     expect(await listActions(w, 'pending', pending.id)).toEqual(full);
     expect(await detailActions(w, approved.id)).toEqual({ primary: ['edit'], menu: ['invalidate'] });
@@ -174,7 +174,7 @@ describe('P2-1 行操作在真实授权器下按数据操作开关裁剪', () =>
     await w.setOps({ create: false, delete: false });
     expect(await detailActions(w, pending.id)).toEqual({
       primary: [],
-      menu: ['edit', 'transfer', 'invalidate', 'view'],
+      menu: ['edit', 'send', 'transfer', 'invalidate', 'view'],
     });
     expect(await detailActions(w, invalid.id)).toEqual({ primary: [], menu: ['view'] });
     expect(await listActions(w, 'invalid', invalid.id)).toEqual({ primary: [], menu: ['view'] });

@@ -231,18 +231,18 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     expect(of('invalid')).toEqual({ primary: ['copy'], menu: ['viewMail', 'view'] });
   });
 
-  it('接口只返回已接线的动作：发送 / 重发 / 编辑并同步 / 审批 / 邮件 / 签署 / 关联实习生不出现', async () => {
+  it('接口只返回已接线的动作：编辑并同步 / 审批 / 邮件 / 签署 / 关联实习生不出现', async () => {
     const w = await offerWorld(testDb().db, 'matrix');
     const pending = await w.social();
     expect(actionsOf(await w.get(pending.id))).toEqual({
       primary: [],
-      menu: ['edit', 'transfer', 'invalidate', 'view', 'delete'],
+      menu: ['edit', 'send', 'transfer', 'invalidate', 'view', 'delete'],
     });
     const approved = await w.social();
     await w.force(approved.id, 'approval_status', 'approved');
     expect(actionsOf(await w.get(approved.id))).toEqual({ primary: ['edit'], menu: ['invalidate'] });
     const cases: [string, Actions][] = [
-      ['sent', { primary: [], menu: ['transfer', 'invalidate', 'view'] }],
+      ['sent', { primary: ['resend'], menu: ['transfer', 'invalidate', 'view'] }],
       ['accepted', { primary: [], menu: ['transfer', 'invalidate', 'view'] }],
       ['onboarded', { primary: [], menu: ['view'] }],
     ];
