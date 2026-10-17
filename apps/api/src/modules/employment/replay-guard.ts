@@ -7,7 +7,7 @@
  * 也用同一份事务内范围，所以这里只负责前置检查。
  */
 import type { Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, buttonResource, tenantLocalDate } from '@italent/domain';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -21,7 +21,15 @@ import {
   scopedGuard,
   type ScopedCommandGuard,
 } from './context.js';
-import { isExitKind, requireExitPermission, type ExitGateTarget, type ExitOperation } from './exit-gate.js';
+import { EmploymentError } from './errors.js';
+import {
+  businessState,
+  isExitKind,
+  requireExitPermission,
+  type ExitGateTarget,
+  type ExitOperation,
+} from './exit-gate.js';
+import type { ExitOptions } from './exit-initiation.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 
@@ -209,6 +217,114 @@ export function exitCommandGuard(
   });
 }
 
+/**
+ * 编辑离职 PATCH exits/:id 的命令内复核：同 exitCommandGuard（update），另加——单据处于审批中时，HR 编辑与审批编辑同约束，
+ * DimissionEdit 之外还要审批管理员（干预）按钮（设计 §4B / §9.1 PATCH 行，B-65a）。状态取命令事务内读到的当前值；
+ * 读到之后若单据被提交 / 撤回，业务 revision 已变，If-Match 不符，本命令随即 409。
+ */
+export function exitEditGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  target: ExitGateTarget,
+  businessId: string,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireExitScope(tx, scoped, target, { businessId });
+      await requireExitEditRights(tx, scoped, target, businessId);
+    },
+  });
+}
+
+/**
+ * 编辑离职的按钮与字段权，HR 编辑（PATCH exits/:id）与审批中编辑（独立编辑 / 编辑并同意）共用这一个入口
+ * （设计 §4 / §4B / §9.1 PATCH 行，DEC-455）：DimissionEdit + 实际写入字段的编辑权；单据审批中另需审批管理员（干预）按钮。
+ * 不含数据范围：HR 入口由调用方先判员工 / 业务范围，审批人只操作本单（DEC-057），不走 HR 员工范围。
+ * 状态取命令事务内读到的当前值；读到之后单据若被提交 / 撤回，业务 revision 已变，本命令随即 409。
+ */
+export async function requireExitEditRights(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ExitGateTarget,
+  businessId: string,
+): Promise<void> {
+  if (!ctx.authorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
+  await requireExitPermission(ctx, 'update', target);
+  if ((await businessState(tx, ctx.tenantId, businessId)) === 'in_review')
+    await requirePermission(ctx.authorize, {
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail'),
+    });
+}
+
+/** 批量离职一行（POST exits/batch）。 */
+export interface ExitBatchItem {
+  readonly employeeId: string;
+  readonly revision: number;
+  readonly lastWorkDate: string;
+  readonly exit?: ExitOptions;
+}
+
+/** 批量离职逐条原因：机读码 + 原拒绝的明细（已按查看人裁剪）。 */
+export interface ExitBatchFailure {
+  readonly index: number;
+  readonly employeeId: string;
+  readonly code: string;
+  readonly message: string;
+  readonly [detail: string]: unknown;
+}
+
+export function exitBatchFailure(index: number, employeeId: string, error: unknown): ExitBatchFailure | null {
+  if (!(error instanceof AppError) && !(error instanceof EmploymentError)) return null;
+  const details =
+    error.details && typeof error.details === 'object' && !Array.isArray(error.details) ? error.details : {};
+  return { ...details, index, employeeId, code: error.code, message: error.message };
+}
+
+export const exitBatchRejected = (failures: readonly ExitBatchFailure[]) =>
+  new AppError('CONFLICT', '批量离职中有人员未通过校验，整批未保存', {
+    reason: 'EXIT_BATCH_REJECTED',
+    items: [...failures].sort((a, b) => a.index - b.index),
+  });
+
+/**
+ * 批量离职的命令内复核（#199）：逐人按当前授权重过员工范围与离职申请权限链（同单人创建的 exitCommandGuard）。
+ * 某人不通过不在这里抛出，而是交给执行阶段与其余人的业务前置条件一起作为逐条原因（B-25 / B-64：整批 409、逐条原因）；
+ * 命中台账的重放不再执行，有人不通过就在 replayed 里整批 409，不返回缓存的成功回执。
+ */
+export function exitBatchGuard(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly ExitBatchItem[]) {
+  let failures: ExitBatchFailure[] = [];
+  const guard = scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      failures = [];
+      for (const [index, item] of items.entries()) {
+        const target: ExitGateTarget = {
+          employeeId: item.employeeId,
+          initiation: 'hr',
+          mode: 'application',
+          lastWorkDate: item.lastWorkDate,
+          exit: item.exit ?? {},
+        };
+        try {
+          await requireExitScope(tx, scoped, target, {});
+          await requireExitPermission(scoped, 'create', target);
+        } catch (error) {
+          const failure = exitBatchFailure(index, item.employeeId, error);
+          if (!failure) throw error;
+          failures.push(failure);
+        }
+      }
+    },
+    replayed: async () => {
+      if (failures.length) throw exitBatchRejected(failures);
+    },
+  });
+  return Object.assign(guard, { failures: () => failures });
+}
+
 async function requireExitScope(
   tx: Tx,
   scoped: EmploymentContext,
@@ -233,4 +349,28 @@ async function requireExitScope(
       resource: target.employeeId,
     });
   if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
+}
+
+/** 直接实习转正（BE-6a）的命令内复核：按当前授权重过入口同一口径（新增权、按钮、字段创建权、员工与目标部门范围）。 */
+export function internRegularizationGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  employeeId: string,
+  business: object,
+  departmentId: string,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      if (scoped.trustedScopeBypass)
+        await requirePermission(scoped.authorize!, {
+          ...scoped,
+          action: 'tenant.employment.write',
+          resource: employeeId,
+        });
+      await requireEmployeeInScope(tx, scoped, employeeId);
+      await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
+      requireEmploymentScope(scoped, employeeId, departmentId);
+    },
+  });
 }

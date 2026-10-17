@@ -131,6 +131,24 @@ export async function requireExitPermission(ctx: EmploymentContext, operation: E
     await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options);
 }
 
+/** 业务最新载荷的 kind（入口判断是否离职单；不加锁）。 */
+export async function businessKind(tx: Tx, tenantId: string, businessId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`SELECT kind FROM employment_payload_versions WHERE tenant_id=${tenantId}
+      AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  return row?.kind;
+}
+
+/** 业务最新状态（命令内复核用；不加锁）。 */
+export async function businessState(tx: Tx, tenantId: string, businessId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ state: string }>(
+    await tx.execute(sql`SELECT state FROM employment_state_events WHERE tenant_id=${tenantId}
+      AND business_id=${businessId}::uuid ORDER BY event_no DESC LIMIT 1`),
+  );
+  return row?.state;
+}
+
 // ---- §7.2 日期创建后不可改 ---------------------------------------------------------------------------------
 
 /** 请求里的最后工作日 / 生效日与当前最新载荷不同 → 400，且在任何写入之前（审批编辑、编辑并同意同路）。 */
@@ -145,19 +163,30 @@ export function assertExitDatesUnchanged(business: LockedEmploymentBusiness, pat
     });
 }
 
+/** 实际离岗日不晚于最后工作日（设计 §2.1 actual_leave_date ≤ 最后工作日；#388 P2-2）：新建按请求日期，编辑按当前载荷。 */
+export function assertActualLeaveDate(actualLeaveDate: string | undefined, lastWorkDate: string | null | undefined) {
+  if (actualLeaveDate && lastWorkDate && actualLeaveDate > lastWorkDate)
+    throw new AppError('VALIDATION_FAILED', '实际离岗日不能晚于最后工作日', {
+      reason: 'EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE',
+      lastWorkDate,
+    });
+}
+
 // ---- 在途申请清单与披露（§8 / §8A / §8B）-------------------------------------------------------------------
 
-interface InFlight {
+export interface InFlight {
   readonly id: string;
   readonly kind: string;
   readonly state: string;
   readonly planned: string;
+  /** 最新载荷的生效日（已落地记录即实际生效日）。 */
+  readonly effectiveDate: string;
   readonly departmentId: string | null;
   readonly landed: boolean;
 }
 
 /** 员工名下指定类型的未办结申请（最新载荷 + 最新状态；计划生效日只取 §5.0A）。 */
-async function inFlightApplications(
+export async function inFlightApplications(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
@@ -168,7 +197,8 @@ async function inFlightApplications(
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
   return rowsOf<InFlight>(
     await tx.execute(sql`
-      SELECT b.id, p.kind, s.state, ${planned}::text AS planned, p.department_id AS "departmentId",
+      SELECT b.id, p.kind, s.state, ${planned}::text AS planned, p.effective_date::text AS "effectiveDate",
+        p.department_id AS "departmentId",
         EXISTS (SELECT 1 FROM employment_records r WHERE r.tenant_id=b.tenant_id AND r.id=b.id) AS landed
       FROM employment_business_objects b
       JOIN LATERAL (SELECT * FROM employment_payload_versions p
@@ -182,7 +212,7 @@ async function inFlightApplications(
   );
 }
 
-interface Disclosable {
+export interface Disclosable {
   readonly id: string;
   readonly effectiveDate: string;
   readonly departmentId: string | null;
@@ -193,7 +223,7 @@ interface Disclosable {
  * 披露：逐项按 DEC-177 可见性 + 字段查看权裁剪，不可见的只计件数 hiddenCount（响应的每一层都按字段权限裁剪）。
  * 返回形态固定为 { items, hiddenCount }，items 只含 businessId / effectiveDate（及调用方附加的 extra）。
  */
-async function disclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
+export async function disclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
   if (rows.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '在途申请过多，请先处理');
   const creators = new Map<string, string | null>();
   if (ctx.scope?.terms?.some((term) => term.dimension === 'using_user') && rows.length) {
@@ -230,46 +260,43 @@ async function disclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows
   };
 }
 
-/** §8A：逾期迟到调动（A 未落地申请 / B 已落地联动未完成）→ 409 EXIT_LATE_TRANSFER_PENDING。 */
-async function assertNoOverdueTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+/** §8A：逾期迟到调动（A 未落地申请 / B 已落地联动未完成）的披露；没有返回 null（预览与门禁共用）。 */
+export async function overdueTransferBlocker(tx: Tx, ctx: EmploymentContext, employeeId: string) {
   const { blocking } = await findOverdueTransfers(tx, ctx, employeeId);
-  if (!blocking.length) return;
-  throw conflict(
-    'EXIT_LATE_TRANSFER_PENDING',
-    '存在已过计划生效日仍未执行的调动，请先处理',
-    await disclose(
-      tx,
-      ctx,
-      employeeId,
-      blocking.map((item) => ({ ...item, extra: { materialized: item.materialized } })),
-    ),
-  );
+  if (!blocking.length) return null;
+  const rows = blocking.map((item) => ({ ...item, extra: { materialized: item.materialized } }));
+  return disclose(tx, ctx, employeeId, rows);
+}
+
+/** §8A → 409 EXIT_LATE_TRANSFER_PENDING。 */
+async function assertNoOverdueTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+  const found = await overdueTransferBlocker(tx, ctx, employeeId);
+  if (found) throw conflict('EXIT_LATE_TRANSFER_PENDING', '存在已过计划生效日仍未执行的调动，请先处理', found);
 }
 
 /** 租户里按业务类型登记的“转正”任职类型（劳务转正式随 R2-T07 / BE-6 加入时自动纳入）。 */
 export const REGULARIZATION_KINDS = ['intern_regularization', 'labor_regularization'] as const;
 
-/** §8B：审批中、计划生效日 ≤ 最后工作日的劳务转正式 / 实习转正 → 409 EXIT_REGULARIZATION_IN_FLIGHT。 */
+const plannedRows = (rows: readonly InFlight[]) =>
+  rows.map((row) => ({ id: row.id, effectiveDate: row.planned, departmentId: row.departmentId }));
+
+/** §8B：审批中、计划生效日 ≤ 最后工作日的劳务转正式 / 实习转正的披露；没有返回 null。 */
+export async function regularizationBlocker(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
+  const rows = (await inFlightApplications(tx, ctx, employeeId, REGULARIZATION_KINDS, ['in_review'])).filter(
+    (row) => row.planned <= lastWorkDate,
+  );
+  return rows.length ? disclose(tx, ctx, employeeId, plannedRows(rows)) : null;
+}
+
+/** §8B → 409 EXIT_REGULARIZATION_IN_FLIGHT。 */
 async function assertNoRegularizationInFlight(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string,
 ) {
-  const rows = (await inFlightApplications(tx, ctx, employeeId, REGULARIZATION_KINDS, ['in_review'])).filter(
-    (row) => row.planned <= lastWorkDate,
-  );
-  if (!rows.length) return;
-  throw conflict(
-    'EXIT_REGULARIZATION_IN_FLIGHT',
-    '存在审批中的转正流程，请先处理',
-    await disclose(
-      tx,
-      ctx,
-      employeeId,
-      rows.map((row) => ({ id: row.id, effectiveDate: row.planned, departmentId: row.departmentId })),
-    ),
-  );
+  const found = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate);
+  if (found) throw conflict('EXIT_REGULARIZATION_IN_FLIGHT', '存在审批中的转正流程，请先处理', found);
 }
 
 // ---- §8 在途调动确认令牌 -----------------------------------------------------------------------------------
@@ -289,6 +316,15 @@ function ackToken(ctx: EmploymentContext, employeeId: string, lastWorkDate: stri
  * 确认清单 S = 审批中的调动（不论生效日，DEC-166）∪ 已批准未落地且计划生效日 > L 的调动（DEC-220，按 §5.0A 计划日比较）。
  * 集合为空无需确认（返回 null）；非空时令牌与已存哈希 / 请求带的令牌之一一致才算确认，否则 409 并给出新令牌。
  */
+export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
+  const rows = (await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'])).filter(
+    (row) => row.state === 'in_review' || (!row.landed && row.planned > lastWorkDate),
+  );
+  if (!rows.length) return null;
+  const ids = rows.map((row) => row.id).sort();
+  return { ids, hash: ackToken(ctx, employeeId, lastWorkDate, ids), rows: plannedRows(rows) };
+}
+
 async function checkPendingTransferAck(
   tx: Tx,
   ctx: EmploymentContext,
@@ -297,21 +333,13 @@ async function checkPendingTransferAck(
   provided: string | undefined,
   stored: AckRecord | null,
 ): Promise<AckRecord | null> {
-  const rows = (await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'])).filter(
-    (row) => row.state === 'in_review' || (!row.landed && row.planned > lastWorkDate),
-  );
-  if (!rows.length) return null;
-  const ids = rows.map((row) => row.id).sort();
-  const hash = ackToken(ctx, employeeId, lastWorkDate, ids);
+  const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
+  if (!set) return null;
+  const { ids, hash } = set;
   if (provided === hash || stored?.hash === hash) return { ids, hash };
   throw conflict('EXIT_PENDING_TRANSFER_ACK_REQUIRED', '离职生效时将作废以下调动申请，请确认', {
     ackToken: hash,
-    ...(await disclose(
-      tx,
-      ctx,
-      employeeId,
-      rows.map((row) => ({ id: row.id, effectiveDate: row.planned, departmentId: row.departmentId })),
-    )),
+    ...(await disclose(tx, ctx, employeeId, set.rows)),
   });
 }
 
@@ -350,16 +378,12 @@ async function assertDictionaries(tx: Tx, ctx: EmploymentContext, exit: ExitOpti
 }
 
 /** 同员工无未办结离职：调用方须已持员工行锁（并发的两笔申请在锁后重读，恰一笔成功）。 */
+export const leavesInProgress = (tx: Tx, ctx: EmploymentContext, employeeId: string) =>
+  inFlightApplications(tx, ctx, employeeId, ['leave'], ['draft', 'in_review', 'approved', 'rejected'], null);
+
 async function assertNoLeaveInProgress(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  const rows = await inFlightApplications(
-    tx,
-    ctx,
-    employeeId,
-    ['leave'],
-    ['draft', 'in_review', 'approved', 'rejected'],
-    null,
-  );
-  if (rows.length) throw conflict('EXIT_IN_PROGRESS', '该员工已有未办结的离职');
+  if ((await leavesInProgress(tx, ctx, employeeId)).length)
+    throw conflict('EXIT_IN_PROGRESS', '该员工已有未办结的离职');
 }
 
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
@@ -367,6 +391,7 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
   const lastWorkDate = target.lastWorkDate!;
   if (exit.dutyTransfer !== undefined)
     throw new AppError('VALIDATION_FAILED', '职责转交暂不可用', { reason: 'EXIT_DUTY_TRANSFER_NOT_AVAILABLE' });
+  assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
   await assertDictionaries(tx, ctx, exit);
   const cycle = await currentEmploymentCycle(tx, ctx, target.employeeId);
   if (cycle && lastWorkDate < cycle.entryDate)
@@ -430,6 +455,10 @@ export async function requireExitGate(
       return { ack: await createConditions(tx, ctx, target) };
     case 'update':
       assertExitDatesUnchanged(target.business!, target.patch ?? {});
+      assertActualLeaveDate(
+        (target.payload as { actualLeaveDate?: string } | undefined)?.actualLeaveDate,
+        target.business!.payload.lastWorkDate,
+      );
       return { ack: null };
     case 'submit':
       return { ack: await submitConditions(tx, ctx, target, provided) };
