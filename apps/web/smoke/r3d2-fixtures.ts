@@ -98,12 +98,12 @@ const participating = {
   id: otherPlanId,
   name: '合成参与计划',
   employeeId: otherEmployee,
-  tutorEmployeeId: undefined,
+  tutorEmployeeId: employee,
   tutorRole: undefined,
   processId: undefined,
 };
 function participantRow(row: typeof plan | typeof participating) {
-  const { tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest } = row;
+  const { tutorRole: _r, processId: _p, ...rest } = row;
   return rest;
 }
 /** 我辅导的发展计划（plan-routes tutor-plans）：指导人为本人的进行中计划，返回指导人，不含指导人角色与流程。 */
@@ -418,7 +418,7 @@ function staticReads(
 ): Record<string, unknown> {
   return {
     '/plans': list([plan, waiting].map((row) => trim('IDP.Idp', row, options))),
-    // 参与人列表固定字段：不含指导人角色、指导人与流程（plan-routes my-plans）
+    // F-182a：本人 / 指导人的行带 tutorEmployeeId，不含指导人角色与流程。
     '/my-plans': {
       page: 1,
       pageSize: 200,
