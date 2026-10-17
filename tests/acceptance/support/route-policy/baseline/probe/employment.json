@@ -260,6 +260,21 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/interns": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "37d8e1ebac4b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/pending-entries": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -1034,6 +1049,26 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "POST /api/tenant/employment/interns/:id/regularize": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6e0fce5e7140",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
   "POST /api/tenant/employment/pending-entries/:id/cancel": {
     "all": {
       "code": "NOT_FOUND",
@@ -1178,6 +1213,21 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "POST /api/tenant/employment/rehire-matches": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "437b98393c8b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Employee/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Employee:create"
     ]
   },
   "POST /api/tenant/employment/transfers/employees/:id": {

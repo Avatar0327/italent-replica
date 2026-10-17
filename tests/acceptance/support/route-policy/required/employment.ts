@@ -19,6 +19,7 @@ const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
+const INTERN = `${SRC}/employment/intern-routes.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
 // readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
@@ -1250,6 +1251,92 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/pending-entries': [
     recordView(at(ENTRY, 'GET', '/pending-entries', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  // ---- employment/intern-routes.ts：R2 BE-6a 实习四视图 / 直接实习转正 / 重聘判定 ------------------------------------------
+  'GET /api/tenant/employment/interns': [
+    recordView(at(INTERN, 'GET', '/interns', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(INTERN, 'GET', '/interns', 'requireViewableInternFilters(filter, await viewableIn(deps, ctx))'),
+        fn(INTERN, 'requireViewableInternFilters', "if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
+  'POST /api/tenant/employment/interns/:id/regularize': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/interns/:id/regularize',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Create@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/interns/:id/regularize',
+          "await requireEmploymentWrite(ctx, 'create', business, 'Employment.Create')",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(INTERN, 'POST', '/interns/:id/regularize', 'requireEmploymentScope(ctx, id, input.departmentId)'),
+        EMPLOYMENT_SCOPE,
+      ],
+    ),
+    directOperation(
+      at(INTERN, 'POST', '/interns/:id/regularize', 'body: await regularizeIntern(tx, context, id, input)'),
+    ),
+    linkage(
+      at(INTERN, 'POST', '/interns/:id/regularize', 'body: await regularizeIntern(tx, context, id, input)'),
+      '直接落地的实习转正把人员状态联动到后续记录前按 DEC-178 复核',
+    ),
+  ],
+  'POST /api/tenant/employment/rehire-matches': [
+    ob(
+      `obj:${EMPLOYEE}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.Employee:create', 'object:object.* 动作'],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/rehire-matches',
+          "const ctx = await readContext(c, deps, 'object.create', 0, undefined, EMPLOYEE_OBJECT)",
+        ),
+        READ,
+        WRITE_OBJECT,
+        EMPLOYEE_CONST,
+      ],
+    ),
+    ob(
+      `btn:${EMPLOYEE}#Employee.Create@list`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/rehire-matches',
+          "await requireEmploymentWrite(ctx, 'create', {}, 'Employee.Create', EMPLOYEE_OBJECT, { commandOnly: true })",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
   ],
   'POST /api/tenant/employment/businesses/:id/activation/retry': [
     ob(
