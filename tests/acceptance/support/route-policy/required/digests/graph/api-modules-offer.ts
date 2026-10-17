@@ -58,6 +58,8 @@ export const GRAPH: Graph = {
     '#settle',
   ],
   'apps/api/src/modules/offer/approval-adapter.ts#settleOne': ['#lockOne', '#settle'],
+  'apps/api/src/modules/offer/approval-adapter.ts#voidBatch': ['#settleBatch'],
+  'apps/api/src/modules/offer/approval-adapter.ts#voidOffer': ['#settleOne'],
   'apps/api/src/modules/offer/approval-progress.ts#approvalProgress': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
@@ -68,8 +70,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/offer/approval.ts#cancelOfferApproval': [
+  'apps/api/src/modules/offer/approval.ts#cancelOfferApprovals': [
     'apps/api/src/modules/approval/actions.ts#cancel',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/offer/approval-adapter.ts#voidBatch',
+    'apps/api/src/modules/offer/approval-adapter.ts#voidOffer',
     '#activeInstances',
   ],
   'apps/api/src/modules/offer/approval.ts#offerApprovalFields': [
@@ -328,7 +333,7 @@ export const GRAPH: Graph = {
     '#toColumns',
   ],
   'apps/api/src/modules/offer/service.ts#deleteOffer': [
-    'apps/api/src/modules/offer/approval.ts#cancelOfferApproval',
+    'apps/api/src/modules/offer/approval.ts#cancelOfferApprovals',
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     '#audit',
     '#guarded',

@@ -177,4 +177,27 @@ describe('P1-01 审批侧撤回按 Offer 权限复核', () => {
     expect(moved.status, await moved.clone().text()).toBe(200);
     expect(w.pending(await w.instance(offer.id)).map((t) => t.assigneeUserId)).toEqual([w.manager.userId]);
   });
+
+  it('真实授权器下的发起口径：Offer 编辑开关 + 范围即可单个 / 批量发起；范围外的 Offer 404；无编辑权 403', async () => {
+    const w = await world('submit-real');
+    await w.permit(OFFER_DEFINITION, true);
+    await w.scopeToDepartment();
+    const real = (path: string, ifMatch: number, body: Record<string, unknown> = {}) =>
+      w.prm.api.request('POST', `/api/tenant/offers${path}`, { ...w.as(w.applicant.userId), ifMatch, body });
+    const offer = await w.offer(w.applicant);
+    const submitted = await real(`/${offer.id}/approval`, offer.revision);
+    expect(submitted.status, await submitted.clone().text()).toBe(200);
+    expect(await w.approvalStatus(offer)).toBe('approving');
+
+    const inside = await w.offer(w.applicant);
+    const batch = await real('/batch-approvals', 0, { offerIds: [inside.id] });
+    expect(batch.status, await batch.clone().text()).toBe(201);
+    const far = await w.offer(w.applicant, await w.org(`范围外部门${uniqueSuffix()}`));
+    expect((await real(`/${far.id}/approval`, far.revision)).status).toBe(404);
+    expect((await real('/batch-approvals', 0, { offerIds: [far.id] })).status).toBe(404);
+
+    await w.permit(OFFER_DEFINITION, false);
+    const denied = await w.offer(w.applicant);
+    expect((await real(`/${denied.id}/approval`, denied.revision)).status).toBe(403);
+  });
 });
