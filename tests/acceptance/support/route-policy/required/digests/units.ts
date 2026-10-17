@@ -302,7 +302,7 @@ export const DIGESTS: Digests = {
     'route:PUT /settings': '7a84582006c4',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '3d1cbc5d3778',
+    materializeEmploymentRecord: '8463977b98fd',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -1651,7 +1651,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:POST /records/batch-edit': 'dcae97fe5fea',
   'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/inheritance': '300d9b910bf6',
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
-  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'f3260af586d0',
+  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': '3be2cb31f90c',
   'apps/api/src/modules/establishment/copy-service.ts#listNotifications': '5cecb2b72dfa',
   'apps/api/src/modules/establishment/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',
