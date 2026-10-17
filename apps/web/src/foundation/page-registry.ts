@@ -171,6 +171,8 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
           ? {
               children: children.map((child) => {
                 if (child.children) throw new Error('入口子菜单只支持一层');
+                // 子项独立鉴权，不允许路径前缀/路由模式与所属应用的匹配相互遮蔽。
+                if (!/^[\p{L}\p{N}_-]+$/u.test(child.id)) throw new Error('子菜单 id 必须是单段静态路径键');
                 return {
                   ...child,
                   app: entry.app,

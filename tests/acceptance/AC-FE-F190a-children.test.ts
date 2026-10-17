@@ -80,5 +80,7 @@ describe('AC-FE-F190a 共享入口子菜单契约', () => {
     expect(() => collect([{ ...group, children: [leaf('a'), leaf('a')] }])).toThrow(/重复/);
     expect(() => collect([group, { ...leaf('a'), app: 'idp', group: 'talent' }])).toThrow(/重复/);
     expect(() => collect([{ ...group, children: [{ ...leaf('a'), children: [leaf('b')] }] }])).toThrow(/一层/);
+    for (const id of ['idp/private', ':private', '*', '..', 'private?'])
+      expect(() => collect([{ ...group, children: [leaf(id)] }])).toThrow(/单段/);
   });
 });

@@ -11,8 +11,10 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
       'entries: [',
       `entries: [{
       id: 'fixture-group', app: 'idp', group: 'talent', label: '合成分组', children: [
-        { id: 'fixture-first', label: '合成子页甲', objectCode: 'IDP.Idp' },
-        { id: 'fixture-second', label: '合成子页乙', objectCode: 'IDP.Career', legacy: true }
+        { id: 'fixture-first', label: '合成子页甲', objectCode: 'IDP.Idp',
+          page: { Component: () => '合成子页甲' } },
+        { id: 'fixture-second', label: '合成子页乙', objectCode: 'IDP.Career', legacy: true,
+          page: { Component: () => '合成子页乙' } }
       ]
     },`,
     );
@@ -32,20 +34,20 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
     { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
     { name: 'italent_demo_user', value: user, url: baseURL! },
   ]);
-  await page.goto('/idp');
+  await page.goto('/idp/plans');
   const sidebar = page.locator('.shell-sidebar');
   const title = sidebar.locator('.ant-menu-submenu-title').filter({ hasText: '合成分组' });
   await expect(sidebar.getByText('合成子页乙', { exact: true })).not.toBeVisible();
   await title.click();
-  await expect(page).toHaveURL(/\/idp$/);
+  await expect(page).toHaveURL(/\/idp\/plans$/);
   const nested = title.locator('..');
   await nested.getByText('合成子页乙', { exact: true }).click();
   await expect(page).toHaveURL(/\/fixture-second$/);
-  await expect(page.locator('.legacy-page h1')).toHaveText('合成子页乙');
+  await expect(page.locator('.legacy-page')).toHaveText('合成子页乙');
   await page.reload();
   await expect(sidebar.getByText('合成子页乙', { exact: true })).toBeVisible();
   await sidebar.getByText('合成子页甲', { exact: true }).click();
-  await expect(page.locator('.shell-workspace h1')).toHaveText('合成子页甲');
+  await expect(page.locator('.shell-workspace')).toContainText('合成子页甲');
   await expect(page.locator('.legacy-page')).toHaveCount(0);
   allowed = ['IDP.Idp'];
   await page.goto('/fixture-second');
