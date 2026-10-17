@@ -28,6 +28,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -1918,6 +1919,49 @@ export const EMPLOYMENT: RequiredTable = {
             path,
             `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
               "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（同自动加黑规则，配置写入口 writeContext）--
+  'GET /api/tenant/employment/auto-regularization-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          AUTO_REG,
+          'GET',
+          '/auto-regularization-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/auto-regularization-rules', 'create', 'input'],
+        ['PUT', '/auto-regularization-rules/:id', 'update', 'input'],
+        ['POST', '/auto-regularization-rules/:id/copy', 'create', '{}'],
+        ['PUT', '/auto-regularization-rules/:id/enabled', 'update', '{ enabled }'],
+        ['DELETE', '/auto-regularization-rules/:id', 'update', '{}'],
+        ['POST', '/auto-regularization/run', 'update', '{}'],
+      ] as const
+    ).map(([method, path, operation, payload]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            AUTO_REG,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, 'TenantBase.EmploymentSettings'`,
           ),
         ),
       ),

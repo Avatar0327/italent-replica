@@ -58,23 +58,26 @@ function ruleGuard(
   };
 }
 
+/** 规则写入与立即执行的入口上下文：配置写别名 + If-Match（同自动加黑规则）。 */
+function writeContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  return readContext(
+    c,
+    deps,
+    'tenant.employment.configuration.write',
+    revision(c),
+    undefined,
+    'TenantBase.EmploymentSettings',
+  );
+}
+
 export function registerAutoRegularizationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const configuration = (c: Context<TenantEnv>) =>
-    readContext(
-      c,
-      deps,
-      'tenant.employment.configuration.write',
-      revision(c),
-      undefined,
-      'TenantBase.EmploymentSettings',
-    );
   router.get('/auto-regularization-rules', async (c) => {
     const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     const rules = await withTenant(deps.db, ctx.tenantId, (tx) => listAutoRegularizationRules(tx, ctx.tenantId));
     return c.json({ items: await trimModuleResponse(deps, ctx, SETTINGS, rules) });
   });
   router.post('/auto-regularization-rules', async (c) => {
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     const input = parseAutoRegularizationRule(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
@@ -88,7 +91,7 @@ export function registerAutoRegularizationRoutes(router: Hono<TenantEnv>, deps: 
   });
   router.put('/auto-regularization-rules/:id', async (c) => {
     const id = uuidParam(c);
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     const input = parseAutoRegularizationRule(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
@@ -100,17 +103,15 @@ export function registerAutoRegularizationRoutes(router: Hono<TenantEnv>, deps: 
       { guard: ruleGuard(deps, ctx, input) },
     );
   });
-  registerRuleRowActions(router, deps, configuration);
-  registerRunNow(router, deps, configuration);
+  registerRuleRowActions(router, deps);
+  registerRunNow(router, deps);
 }
 
-type Configuration = (c: Context<TenantEnv>) => Promise<EmploymentContext>;
-
 /** 行操作：复制（If-Match 0，另建一条）、单条启停（DEC-533②）、删除；配置对象没有删除操作，删除沿用 update。 */
-function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps, configuration: Configuration) {
+function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/auto-regularization-rules/:id/copy', async (c) => {
     const id = uuidParam(c);
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     await requireEmploymentWrite(ctx, 'create', {}, undefined, 'TenantBase.EmploymentSettings', {
       commandOnly: true,
     });
@@ -125,7 +126,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps, 
   });
   router.put('/auto-regularization-rules/:id/enabled', async (c) => {
     const id = uuidParam(c);
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     const enabled = parseRuleEnabled(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', { enabled }, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
@@ -142,7 +143,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps, 
   });
   router.delete('/auto-regularization-rules/:id', async (c) => {
     const id = uuidParam(c);
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', {
       commandOnly: true,
     });
@@ -161,9 +162,9 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps, 
  * 立即执行（DEC-539①）：body 严格 {}；按启用规则扫描并发起，回执逐人列出发起 / 失败（员工、规则、业务、原因），
  * 不含任职字段值。权限同规则维护。
  */
-function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps, configuration: Configuration) {
+function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/auto-regularization/run', async (c) => {
-    const ctx = await configuration(c);
+    const ctx = await writeContext(c, deps);
     parseRunBody(await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', {
       commandOnly: true,

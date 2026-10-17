@@ -5,6 +5,17 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_MODE_CODES': [
+    '#AUTO_REGULARIZATION_MODES',
+  ],
+  'packages/domain/src/employment/auto-regularization.ts#AUTO_RULE_INITIATOR_CODES': ['#AUTO_RULE_INITIATORS'],
+  'packages/domain/src/employment/auto-regularization.ts#autoRegularizationTargetDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/auto-regularization.ts#isAutoRegularizationDays': [
+    '#AUTO_REGULARIZATION_DAYS_MAX',
+    '#AUTO_REGULARIZATION_DAYS_MIN',
+  ],
   'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES': ['#BLACKLIST_REASONS'],
   'packages/domain/src/employment/blacklist.ts#BLACKLIST_RULE_TERM_CODES': ['#BLACKLIST_RULE_TERMS'],
   'packages/domain/src/employment/blacklist.ts#BLACKLIST_SOURCE_CODES': ['#BLACKLIST_SOURCES'],

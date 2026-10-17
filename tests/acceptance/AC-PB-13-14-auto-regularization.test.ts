@@ -8,7 +8,7 @@
  *   审批日志与发起台账带“系统代发”标记；同一任职同一规则只发起一次（立即执行、每日批次重复执行都不重复）。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, type Db } from '@italent/db';
+import { eq, orgHierarchyLinks, orgVersions, sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -434,6 +434,50 @@ describe('PB-R18 / R19 / R21 自动转正的触发与失败条件', () => {
     const receipt = await w.ran();
     expect(receipt.failed.map((item) => item.reason)).toEqual(['INITIATOR_NOT_FOUND']);
     expect(await regularizations(w, due.employee.id)).toEqual([]);
+  });
+
+  it('发起人按主职部门 HRBP（R2e7 B2 样本按身份 HRBP）：发起人为该 HRBP 的账号，台账带系统代发', async () => {
+    const w = await autoWorld('hrbp');
+    await w.created(w.body({ mode: 'direct', initiatorType: 'department_hrbp' }));
+    const hrbp = await hire(w, { date: '2026-01-05', probation: false, name: '部门 HRBP' });
+    const due = await hire(w, { date: '2026-09-01', months: 1 });
+    // 可信夹具：追加一条组织版本写入 HRBP（人员 ID），同 AC-APV-support setOrgRoles
+    const hrbpUser = await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      const [old] = await tx
+        .select()
+        .from(orgVersions)
+        .where(eq(orgVersions.orgId, w.org.id))
+        .orderBy(sql`version_no DESC`)
+        .limit(1);
+      const versionId = randomUUID();
+      await tx.insert(orgVersions).values({
+        ...old!,
+        id: versionId,
+        versionNo: old!.versionNo + 1,
+        previousVersionId: old!.id,
+        hrbpId: hrbp.employee.id,
+      });
+      const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
+      if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
+      const [link] = rows<{ user_id: string }>(
+        await tx.execute(sql`SELECT user_id::text FROM permission_user_person_links
+          WHERE tenant_id=${w.session.tenant.id} AND employee_id=${hrbp.employee.id}::uuid`),
+      );
+      return link!.user_id;
+    });
+    await w.enableSwitch();
+    const receipt = await w.ran();
+    expect(receipt.failed).toEqual([]);
+    expect(receipt.launched).toEqual([
+      expect.objectContaining({ employeeId: due.employee.id, initiatorUserId: hrbpUser }),
+    ]);
+    const [launch] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rows<{ initiator_user_id: string; system_proxy: boolean }>(
+        await tx.execute(sql`SELECT initiator_user_id::text, system_proxy FROM employment_auto_regularization_launches
+          WHERE tenant_id=${w.session.tenant.id} AND employee_id=${due.employee.id}::uuid`),
+      ),
+    );
+    expect(launch).toEqual({ initiator_user_id: hrbpUser, system_proxy: true });
   });
 
   it('每日批次：租户本地 04:00 前不执行；总开关关闭时不执行也不占用当天批次', async () => {

@@ -295,7 +295,15 @@ export async function runAutoRegularizationNow(
 ): Promise<AutoRegularizationRun & { readonly hasMore: boolean }> {
   if (!(await readAutoRegularizationEnabled(tx, ctx.tenantId)))
     throw new AppError('CONFLICT', '自动转正未开启', { reason: 'AUTO_REGULARIZATION_DISABLED' });
-  const system: EmploymentContext = { ...ctx, scope: undefined, expectedRevision: 0 };
+  // 只带系统任务需要的键：请求方的授权器、配置对象编码与数据范围不进入发起（发起人由规则决定）
+  const system: EmploymentContext = {
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    timezone: ctx.timezone,
+    now: ctx.now,
+    commandId: ctx.commandId,
+    expectedRevision: 0,
+  };
   const businessDate = tenantLocalDate(ctx.now, ctx.timezone);
   const run: AutoRegularizationRun = { businessDate, launched: [], failed: [] };
   const rules = await loadEnabledAutoRegularizationRules(tx, ctx.tenantId, businessDate);
