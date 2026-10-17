@@ -5,7 +5,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const { searchMenus, currentApp } = await import(resolve('apps/web/src/foundation/menu-nav.ts'));
-const groups = { people: '组织员工', talent: '人才管理', settings: '设置' };
+const { ui } = await import(resolve('apps/web/src/foundation/messages.ts'));
+const groups = ui.groups;
 const menus = [
   { key: 'org', label: '组织管理', path: '/org', group: 'people' },
   { key: 'staff', label: '员工', path: '/staff', group: 'people' },
@@ -49,6 +50,17 @@ describe('AC-FE-0-11 全部菜单搜索', () => {
 });
 
 describe('AC-FE-0-11 当前应用', () => {
+  it('AC-FE-0-11 F-191 顶栏应用名与搜索路径使用原站的“继任与发展”', () => {
+    expect(currentApp(menus, '/talent-review', groups)).toEqual({
+      key: 'talent',
+      label: '继任与发展',
+      menus: [menus[2]],
+    });
+    expect(searchMenus(menus, '人才盘点', groups)).toEqual([
+      { key: 'talent-review', label: '人才盘点', path: '/talent-review', trail: ['继任与发展'] },
+    ]);
+  });
+
   it('按当前菜单定位应用：名称取应用名而不是页面名，菜单只含本应用', () => {
     const app = currentApp(menus, '/staff', groups);
     expect(app?.label).toBe('组织员工');
