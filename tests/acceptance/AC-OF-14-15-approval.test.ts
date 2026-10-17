@@ -159,6 +159,31 @@ describe('单个 Offer 审批（录用部门负责人）', () => {
   });
 });
 
+describe('删除与审批单', () => {
+  it('被驳回待重发的 Offer 删除后实例作废；被批量单引用的 Offer 不能删除', async () => {
+    const w = await offerApprovalWorld(testDb().db, 'delete');
+    const returned = await w.offer(w.applicant);
+    await w.json(await w.submitRaw(returned));
+    const view = await w.instance(returned.id);
+    await w.decide(view, w.head, 'reject');
+    const back = await w.get(returned.id);
+    const removed = await w.request(w.applicant.userId, 'DELETE', `/api/tenant/offers/${returned.id}`, {
+      ifMatch: back.revision,
+    });
+    expect(removed.status, await removed.clone().text()).toBe(200);
+    expect((await w.detail(view.id, w.applicant.userId)).status).toBe('cancelled');
+
+    const batched = await w.offer(w.applicant);
+    const batch = await w.json<{ id: string }>(await w.batchRaw({ offerIds: [batched.id] }), 201);
+    await w.decide(await w.instance(batch.id), w.manager, 'disagree');
+    const refused = await w.get(batched.id);
+    const blocked = await w.request(w.applicant.userId, 'DELETE', `/api/tenant/offers/${batched.id}`, {
+      ifMatch: refused.revision,
+    });
+    expect(await reasonOf(blocked)).toMatchObject({ status: 409, reason: 'OFFER_REFERENCED' });
+  });
+});
+
 describe('Offer 批量审批（OF-R15）', () => {
   it('AC-OF-14：直接上级不同意 → 流程结束，不到一级组织负责人，子表 Offer 记不通过', async () => {
     const w = await offerApprovalWorld(testDb().db, 'batch-14');

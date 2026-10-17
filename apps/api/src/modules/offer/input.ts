@@ -63,7 +63,10 @@ const batchSchema = z.strictObject({
     .min(1)
     .max(MAX_OFFER_BATCH)
     .refine((ids) => new Set(ids).size === ids.length, { message: 'Offer 不能重复' }),
-  approvalSubjectOrgId: z.uuid().optional(),
+  approvalSubjectOrgId: z
+    .uuid()
+    .transform((id) => id.toLowerCase())
+    .optional(),
   remark: z.string().trim().max(500).optional(),
 });
 export type OfferBatchInput = z.infer<typeof batchSchema>;
