@@ -1,6 +1,7 @@
 /**
  * Offer 管理的 10 个视图（R2 BE-14a C1；34 §2.1，A19）；行操作矩阵随 C2（BE-14a2）接入。列序列宽与前端 apps/web/src/offers/messages.ts
- * （派发附录 B2）一致；field 为空的列是本段还没有数据来源的字段（简历、附件、签署、同步状态等），接口照样返回列定义、值为空。
+ * （派发附录 B2）一致；field 为空的列是还没有数据来源的字段（简历、附件、签署、同步状态等），接口照样返回列定义、值为空。
+ * 当前审批人 / 当前审批节点随 BE-14a3 取在途审批实例。
  */
 import type { OfferApprovalStatus, OfferField, OfferStatus } from './rules.js';
 
@@ -14,7 +15,9 @@ export type OfferListField =
   | 'refusalRemark'
   | 'invalidAt'
   | 'sentBy'
-  | 'sentAt';
+  | 'sentAt'
+  | 'currentApprovers'
+  | 'currentApprovalNode';
 
 /** 原站显示名 → 字段；不在表里的列（简历信息、Offer附件、签署状态等）没有数据来源。 */
 const LABEL_FIELDS: Readonly<Record<string, OfferListField>> = {
@@ -47,6 +50,8 @@ const LABEL_FIELDS: Readonly<Record<string, OfferListField>> = {
   失效时间: 'invalidAt',
   Offer发送人: 'sentBy',
   Offer发送日期: 'sentAt',
+  当前审批人: 'currentApprovers',
+  当前审批节点: 'currentApprovalNode',
 };
 
 type ColumnSpec = readonly [label: string, width: number];

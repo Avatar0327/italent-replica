@@ -24,6 +24,7 @@ import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
 import { JOB_OBJECT_CODES, visibleJob } from '../permission/module-route-access.js';
+import { withApprovalProgress } from './approval-progress.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import type { OfferCreateInput, OfferUpdateInput } from './input.js';
 
@@ -176,7 +177,8 @@ async function guarded<T>(work: () => Promise<T>, deleting = false): Promise<T> 
     return await work();
   } catch (error) {
     if (pgErrorCode(error) !== '23503') throw error;
-    if (deleting) throw new AppError('CONFLICT', 'Offer 已被其他 Offer 引用', { reason: 'OFFER_REFERENCED' });
+    if (deleting)
+      throw new AppError('CONFLICT', 'Offer 已被其他 Offer 或批量审批单引用', { reason: 'OFFER_REFERENCED' });
     throw new AppError('VALIDATION_FAILED', 'Offer 引用的对象不存在', { reason: 'OFFER_REFERENCE_INVALID' });
   }
 }
@@ -276,6 +278,18 @@ async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: string,
   return offerDto(after!);
 }
 
+/**
+ * 审批结果回写审批子状态（BE-14a3）：审批中心以可信身份调用（审批不授予范围，DEC-057），只改审批子状态，留审计。
+ */
+export function saveApprovalStatus(
+  tx: Tx,
+  ctx: Pick<OfferContext, 'tenantId' | 'userId' | 'commandId' | 'now'>,
+  before: OfferRow,
+  approvalStatus: OfferApprovalStatus,
+) {
+  return save(tx, ctx as OfferContext, before, 'approval', { approvalStatus });
+}
+
 function requireEditable(row: OfferRow) {
   if (!offerEditable({ status: row.status as OfferStatus, approvalStatus: row.approvalStatus as OfferApprovalStatus }))
     throw new AppError('CONFLICT', '只有待发且不在审批中的 Offer 可以编辑或删除', { reason: 'OFFER_NOT_EDITABLE' });
@@ -298,6 +312,9 @@ export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
   const before = await lockOffer(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
+  // 被驳回 / 撤回后待重新发起的单个 Offer 审批随删除作废（同任职申请删除，DEC-103）
+  const { cancelOfferApproval } = await import('./approval.js');
+  await cancelOfferApproval(tx, ctx, id);
   await guarded(() => tx.delete(offers).where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id))), true);
   await audit(tx, ctx, 'delete', id, before, null);
   return { id, deleted: true };
@@ -336,7 +353,8 @@ export async function copyOffer(tx: Tx, ctx: OfferContext, source: OfferRow) {
 }
 
 export async function offerDetail(tx: Tx, ctx: OfferContext, id: string) {
-  return offerDto(await loadOffer(tx, ctx, id));
+  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [offerDto(await loadOffer(tx, ctx, id))]);
+  return dto!;
 }
 
 export interface OfferListQuery {
@@ -376,5 +394,5 @@ export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuer
     .orderBy(desc(offers.createdAt), desc(offers.id))
     .limit(query.limit)
     .offset(query.offset);
-  return { total: count!.total, items: rows.map(offerDto) };
+  return { total: count!.total, items: await withApprovalProgress(tx, ctx.tenantId, rows.map(offerDto)) };
 }

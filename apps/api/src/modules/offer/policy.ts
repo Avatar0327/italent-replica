@@ -9,6 +9,8 @@
  *   只判数据操作开关），事务内经 CommandGuard.before 按当前授权与当前范围再判（#199），重放命中台账后复核结果仍在范围。
  * - 两个字典挂在任职设置配置对象上：写入 = tenant.employment.configuration.write + 配置对象字段编辑权，无数据范围。
  * - 转移状态两项按钮（Offer.StatusTransfer / OfferLineOpStatusTransfer）只登记授权项，入口随 C2（BE-14a2）接入，本表无对应路由。
+ * - 发起审批（BE-14a3）：单个 / 批量都走 runOfferWrite（object.update，与编辑同开关）+ 逐份 Offer 的当前范围；审批流转
+ *   在同一事务内交审批中心（approval/engine startOrResume），首节点为空等拒绝时整单回滚。
  */
 import { OFFER_OBJECT } from '@italent/domain';
 import { defineTable, type PolicyBase, type RoutePolicy } from '../../route-policy/index.js';
@@ -40,8 +42,11 @@ const DICTIONARY = fixed(['id', 'code', 'name', 'enabled', 'displayOrder', 'revi
 const RESULT = { generic: { targets: 'id', locator: 'offer.byId' } } as const;
 const bodyWrite = (preconditions: readonly string[]) =>
   write('body', 'offer.commandGuard', RESULT, { ledger: 'single', preconditions });
-const commandOnly = (preconditions: readonly string[]) =>
-  commandWrite('offer.commandGuard', RESULT, { ledger: 'single', preconditions });
+const commandOnly = (preconditions: readonly string[], result: typeof RESULT | typeof BATCH_RESULT = RESULT) =>
+  commandWrite('offer.commandGuard', result, { ledger: 'single', preconditions });
+/** 批量发起返回一组 Offer：重放时逐个复核仍在范围（routes.batchVisible）。 */
+const BATCH_RESULT = { generic: { targets: 'items[*].id', locator: 'offer.byId' } } as const;
+const APPROVAL_PRECONDITIONS = ['offer.approvable', 'approval.processMatched', 'approval.firstNodeAssignee'];
 
 /** 字典写入：配置别名 tenant.employment.configuration.write（admin other_settings）+ 任职设置对象的字段编辑权。 */
 function dictionaryWrite(operation: 'create' | 'update', extra: PolicyBase = {}): RoutePolicy {
@@ -142,5 +147,25 @@ export const OFFER_POLICIES = defineTable('offers', {
       ledger: 'single',
       preconditions: ['offer.copyable', 'revision'],
     }),
+  }),
+  // BE-14a3：body 只接受 {}；非待发 / 审批中 / 已通过 → 409 OFFER_APPROVAL_NOT_ALLOWED；首节点为空 → 409（DEC-054）
+  'POST /:id/approval': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('发起审批按对象编辑开关（行主按钮编码原站未取证）'),
+    scope: point,
+    fields: record,
+    write: commandOnly(['revision', ...APPROVAL_PRECONDITIONS]),
+  }),
+  // body { offerIds(1～100 不重复), approvalSubjectOrgId?, remark? }（400）；If-Match 须为 0；任一份不满足整单拒绝；
+  // 审批主体缺省取申请人主职部门，取不到 400 OFFER_BATCH_SUBJECT_REQUIRED，显式指定须在组织范围内
+  'POST /batch-approvals': object({
+    object: OFFER,
+    operation: 'update',
+    button: noButton('批量发起审批按对象编辑开关'),
+    scope: pointScope({ body: 'offerIds[*]' }, 'offer.byId', NOT_FOUND),
+    fields: record,
+    write: commandOnly(['offer.batchSubject', ...APPROVAL_PRECONDITIONS], BATCH_RESULT),
   }),
 });
