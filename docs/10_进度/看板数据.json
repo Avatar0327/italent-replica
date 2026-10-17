@@ -985,6 +985,10 @@
 "log": [
 [
 "10-17",
+"BE-7 #390 第 1 轮 8 项 P2 返工中；BE-14a 开 Draft PR #394；F-212 #389 待总编排确认"
+],
+[
+"10-17",
 "F-212 #389 第 1 轮审查可以合并；契约级，待 00 确认后入队"
 ],
 [
@@ -5409,14 +5413,15 @@
 {
 "k": "BE-14a",
 "n": "BE-14a Offer 对象、状态机、视图与审批类型",
-"s": "dev",
-"note": "开发中（云端会话 session_015Aut3ytajQgoMGtXx8NGpW，尚无 PR）· Opus High 开发 / Codex Sol high 审 · 分支 claude/BE-14a-offer · 前序取证 F-172 / F-175 / F-177 已完成，BE-2a / BE-2b 已合 · DEC-576",
+"s": "decide",
+"note": "开发中（Draft PR #394，分支 claude/optimistic-wozniak-kp39wa，云端会话 session_015Aut3ytajQgoMGtXx8NGpW）· Opus High 开发 / Codex Sol high 审 · DEC-576",
 "after": [
 "BE-2a",
 "F-172",
 "F-175",
 "F-177"
-]
+],
+"pr": 394
 },
 {
 "k": "BE-14b",
@@ -5698,8 +5703,8 @@
 {
 "k": "BE-7",
 "n": "BE-7 兼职（先 Opus 设计主职 / 兼职影响）",
-"s": "review",
-"note": "设计段开发完成待审（PR #390 兼职设计说明，纯文档 +658，03:57Z 第 1 轮，head bb2a4789）· 审查尚未发起 · 云端会话 session_016GXowSPDKr1dUxCi1sUCVS · Codex Sol high 审 · 设计合入后再出实现段（后端）",
+"s": "rework",
+"note": "设计段返工中（PR #390，第 1 轮暂不能合并：8 项 P2，Codex Sol high；返工已发云端会话 session_016GXowSPDKr1dUxCi1sUCVS）· 设计合入后再出实现段",
 "after": [],
 "pr": 390
 },
@@ -6210,8 +6215,8 @@
 {
 "k": "F-212",
 "n": "CI 增加 PG16 普通角色（无 BYPASSRLS）验收分片，并补齐暴露出的剩余缺租户上下文测试（DEC-568，契约级门禁）",
-"s": "review",
-"note": "审查：第 1 轮可以合并（Codex Sol high，04:09Z，head ba0a88ff，无 P0～P2）· CI 在跑，合并要求全绿 · 契约级门禁变更：先报 00 确认再入队（DEC-568）· 00 确认后才入队",
+"s": "merge",
+"note": "审查：第 1 轮可以合并（Codex Sol high，04:09Z，head ba0a88ff，无 P0～P2）· CI 在跑，合并要求全绿 · 契约级门禁变更：待总编排确认（DEC-568）后再入队",
 "mod": "底座",
 "ms": "D2",
 "pr": 389
