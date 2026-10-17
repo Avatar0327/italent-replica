@@ -58,6 +58,7 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
     MODULE_OBJECTS.contract,
     MODULE_OBJECTS.contractType,
     MODULE_OBJECTS.contractCompany,
+    MODULE_OBJECTS.offer,
   ]),
   transfer: withPrimary('TenantBase.EmploymentRecord', [MODULE_OBJECTS.employmentRecord]),
   approval: codes(APPROVAL_OBJECTS),

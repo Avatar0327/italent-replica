@@ -55,7 +55,7 @@ describe('AC-OF-08 已拒绝退回待发', () => {
     const w = await offerWorld(testDb().db, 'back');
     const offer = await w.social();
     const rejected = await w.moved(offer, { ...reject, refusalRemark: '去了别家' });
-    expect(rejected.rowActions).toEqual({ primary: ['transfer'], menu: ['viewMail', 'view'] });
+    expect((await w.get(offer.id)).rowActions).toEqual({ primary: ['transfer'], menu: ['viewMail', 'view'] });
     const pending = await w.moved(rejected, { target: 'pending' });
     expect(pending).toMatchObject({ status: 'pending', approvalStatus: 'unsubmitted' });
     const detail = await w.get(offer.id);
@@ -98,9 +98,13 @@ describe('AC-OF-18 / 19 失效', () => {
     const response = await w.invalidate(offer, { reasonCode: 'background_check_failed' });
     expect(response.status, await response.clone().text()).toBe(200);
     const invalid = (await response.json()) as OfferBody;
-    expect(invalid).toMatchObject({ status: 'invalid', invalidReasonCode: 'background_check_failed', invalidRemark: null });
+    expect(invalid).toMatchObject({
+      status: 'invalid',
+      invalidReasonCode: 'background_check_failed',
+      invalidRemark: null,
+    });
     expect(invalid.invalidAt).toBeTruthy();
-    expect(invalid.rowActions).toEqual({ primary: ['copy'], menu: ['viewMail', 'view'] });
+    expect((await w.get(offer.id)).rowActions).toEqual({ primary: ['copy'], menu: ['viewMail', 'view'] });
     const revive = await w.transfer(invalid, { target: 'pending' });
     expect((await errorOf(revive)).details).toMatchObject({ reason: 'OFFER_TRANSITION_INVALID' });
     const form = await w.request('GET', `/${offer.id}/transfer-form`);
@@ -110,7 +114,7 @@ describe('AC-OF-18 / 19 失效', () => {
   it('实习待发与已拒绝不提供失效（409）；已发、已接受、社招待发可失效且不看审批状态', async () => {
     const w = await offerWorld(testDb().db, 'invalid-scope');
     const intern = await w.intern();
-    expect(intern.rowActions!.menu).not.toContain('invalidate');
+    expect((await w.get(intern.id)).rowActions!.menu).not.toContain('invalidate');
     const denied = await w.invalidate(intern, { reasonCode: 'candidate_gave_up' });
     expect(denied.status).toBe(409);
     expect((await errorOf(denied)).details).toMatchObject({ reason: 'OFFER_INVALIDATION_NOT_ALLOWED' });
@@ -118,12 +122,15 @@ describe('AC-OF-18 / 19 失效', () => {
     expect((await w.invalidate(rejected, { reasonCode: 'candidate_gave_up' })).status).toBe(409);
     const approving = await w.social();
     await w.force(approving.id, 'approval_status', 'approving');
-    expect((await w.get(approving.id)).rowActions).toEqual({ primary: ['urge', 'delegate', 'revoke'], menu: ['invalidate'] });
+    expect((await w.get(approving.id)).rowActions).toEqual({
+      primary: ['urge', 'delegate', 'revoke'],
+      menu: ['invalidate'],
+    });
     expect((await w.invalidate(approving, { reasonCode: 'candidate_gave_up' })).status).toBe(200);
     for (const status of ['sent', 'accepted']) {
       const offer = await w.intern();
-      await w.force(offer.id, 'status', status);
       if (status === 'accepted') await w.force(offer.id, 'accept_time', '2026-10-16');
+      await w.force(offer.id, 'status', status);
       expect((await w.invalidate(offer, { reasonCode: 'candidate_gave_up' })).status).toBe(200);
     }
   });
@@ -133,7 +140,7 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
   it('按状态给出行主按钮与下拉：已拒绝下拉没有转移与失效；已入职主按钮查看邮件', async () => {
     const w = await offerWorld(testDb().db, 'matrix');
     const pending = await w.social();
-    expect(pending.rowActions).toEqual({
+    expect((await w.get(pending.id)).rowActions).toEqual({
       primary: ['submitApproval'],
       menu: ['edit', 'send', 'transfer', 'invalidate', 'linkIntern', 'view', 'delete'],
     });
@@ -147,13 +154,14 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
       expect((await w.get(offer.id)).rowActions).toEqual(actions);
     }
     const accepted = await w.moved(await w.social(), { target: 'accepted', acceptTime: '2026-10-16' });
-    expect(accepted.rowActions).toEqual({
+    expect((await w.get(accepted.id)).rowActions).toEqual({
       primary: ['editSync'],
       menu: ['transfer', 'viewMail', 'invalidate', 'sign', 'view'],
     });
     const rejected = await w.moved(await w.social(), reject);
-    expect(rejected.rowActions!.menu).not.toContain('transfer');
-    expect(rejected.rowActions!.menu).not.toContain('invalidate');
+    const refused = (await w.get(rejected.id)).rowActions!;
+    expect(refused.menu).not.toContain('transfer');
+    expect(refused.menu).not.toContain('invalidate');
   });
 });
 

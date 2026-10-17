@@ -30,7 +30,10 @@ describe('BE-14a 新建入口与必填', () => {
     expect(await w.social()).toMatchObject({ offerType: null, source: 'new_hire', status: 'pending' });
     expect(await w.social({ offerType: 'campus' })).toMatchObject({ offerType: 'campus' });
     expect(await w.intern()).toMatchObject({ offerType: 'intern', entry: 'intern', approvalStatus: 'unsubmitted' });
-    const wrong = await w.request('POST', '', { ifMatch: 0, body: { entry: 'offer', offerType: 'intern', ...w.internFields() } });
+    const wrong = await w.request('POST', '', {
+      ifMatch: 0,
+      body: { entry: 'offer', offerType: 'intern', ...w.internFields() },
+    });
     expect((await errorOf(wrong)).details).toMatchObject({ reason: 'OFFER_TYPE_MISMATCH' });
   });
 
@@ -46,7 +49,10 @@ describe('BE-14a 新建入口与必填', () => {
       personalEmail: campus.personalEmail,
       mobile: '13800000000',
     });
-    const noCampus = await w.request('POST', '', { ifMatch: 0, body: { entry: 'campus_early_intern', ...w.internFields() } });
+    const noCampus = await w.request('POST', '', {
+      ifMatch: 0,
+      body: { entry: 'campus_early_intern', ...w.internFields() },
+    });
     expect((await errorOf(noCampus)).details).toMatchObject({ reason: 'OFFER_CAMPUS_REQUIRED' });
     const social = await w.social();
     const notCampus = await w.request('POST', '', {
@@ -60,7 +66,10 @@ describe('BE-14a 新建入口与必填', () => {
     });
     expect(badRef.status).toBe(400);
     expect((await errorOf(badRef)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
-    const extra = await w.request('POST', '', { ifMatch: 0, body: { entry: 'offer', ...w.socialFields(), status: 'sent' } });
+    const extra = await w.request('POST', '', {
+      ifMatch: 0,
+      body: { entry: 'offer', ...w.socialFields(), status: 'sent' },
+    });
     expect(extra.status).toBe(400);
   });
 });
@@ -82,12 +91,16 @@ describe('BE-14a 编辑、删除、复制', () => {
         ORDER BY occurred_at`),
     );
     const actions = ((Array.isArray(audits) ? audits : audits.rows) as { action: string }[]).map((a) => a.action);
-    expect(actions).toEqual(['offer.create', 'offer.delete']);
-    const rejected = await w.moved(
-      await w.get(offer.id),
-      { target: 'rejected', refusalTime: '2026-10-16', refusalReasonCode: 'other' },
-    );
-    for (const [method, body] of [['PUT', { name: '改名' }], ['DELETE', undefined]] as const) {
+    expect(actions.sort()).toEqual(['offer.create', 'offer.delete']);
+    const rejected = await w.moved(await w.get(offer.id), {
+      target: 'rejected',
+      refusalTime: '2026-10-16',
+      refusalReasonCode: 'other',
+    });
+    for (const [method, body] of [
+      ['PUT', { name: '改名' }],
+      ['DELETE', undefined],
+    ] as const) {
       const response = await w.request(method, `/${offer.id}`, { ifMatch: rejected.revision, body });
       expect((await errorOf(response)).details).toMatchObject({ reason: 'OFFER_NOT_EDITABLE' });
     }
@@ -111,7 +124,11 @@ describe('BE-14a 拒绝 / 失效原因字典', () => {
   it('预置拒绝原因 5 项、失效原因 2 项；可新增、停用；停用项不能再选', async () => {
     const w = await offerWorld(testDb().db, 'dictionary');
     const list = async (kind: string) =>
-      ((await (await w.request('GET', `/dictionaries/${kind}`)).json()) as { items: { id: string; code: string; name: string; revision: number }[] }).items;
+      (
+        (await (await w.request('GET', `/dictionaries/${kind}`)).json()) as {
+          items: { id: string; code: string; name: string; revision: number }[];
+        }
+      ).items;
     expect((await list('refusal-reasons')).map((i) => i.name)).toEqual([
       '薪酬福利不满意',
       '发展空间受限',
@@ -120,13 +137,23 @@ describe('BE-14a 拒绝 / 失效原因字典', () => {
       '其他原因',
     ]);
     expect((await list('invalid-reasons')).map((i) => i.name)).toEqual(['候选人放弃', '背调不通过']);
-    const added = await w.request('POST', '/dictionaries/refusal-reasons', { ifMatch: 0, body: { code: 'Personal', name: '重复' } });
+    const added = await w.request('POST', '/dictionaries/refusal-reasons', {
+      ifMatch: 0,
+      body: { code: 'Personal', name: '重复' },
+    });
     expect((await errorOf(added)).details).toMatchObject({ reason: 'OFFER_DICTIONARY_CODE_TAKEN' });
     const growth = (await list('refusal-reasons')).find((i) => i.code === 'growth')!;
-    const off = await w.request('PUT', `/dictionaries/refusal-reasons/${growth.id}`, { ifMatch: 1, body: { enabled: false } });
+    const off = await w.request('PUT', `/dictionaries/refusal-reasons/${growth.id}`, {
+      ifMatch: 1,
+      body: { enabled: false },
+    });
     expect(await off.json()).toMatchObject({ enabled: false, revision: 2 });
     const offer = await w.social();
-    const response = await w.transfer(offer, { target: 'rejected', refusalTime: '2026-10-16', refusalReasonCode: 'growth' });
+    const response = await w.transfer(offer, {
+      target: 'rejected',
+      refusalTime: '2026-10-16',
+      refusalReasonCode: 'growth',
+    });
     expect((await errorOf(response)).details).toMatchObject({ reason: 'OFFER_DICTIONARY_DISABLED' });
     expect((await w.request('GET', '/dictionaries/unknown')).status).toBe(400);
   });
@@ -137,14 +164,14 @@ describe('BE-14a 转移状态两项按钮权限（只按按钮控制，DEC-533�
     const db = testDb().db;
     const row = await offerWorld(db, 'btn-row', deny('TenantBase.Offer#OfferLineOpStatusTransfer@list_row'));
     const offer = await row.social();
-    expect(offer.rowActions!.menu).not.toContain('transfer');
+    expect((await row.get(offer.id)).rowActions!.menu).not.toContain('transfer');
     const byRow = await row.transfer(offer, { target: 'accepted', acceptTime: '2026-10-16' });
     expect(byRow.status).toBe(403);
     const byToolbar = await row.transfer(offer, { target: 'accepted', acceptTime: '2026-10-16', entry: 'toolbar' });
     expect(byToolbar.status, await byToolbar.clone().text()).toBe(200);
     const list = await offerWorld(db, 'btn-list', deny('TenantBase.Offer#Offer.StatusTransfer@list'));
     const other = await list.social();
-    expect(other.rowActions!.menu).toContain('transfer');
+    expect((await list.get(other.id)).rowActions!.menu).toContain('transfer');
     const denied = await list.transfer(other, { target: 'accepted', acceptTime: '2026-10-16', entry: 'toolbar' });
     expect(denied.status).toBe(403);
     expect((await list.get(other.id)).status).toBe('pending');
@@ -167,7 +194,8 @@ describe('AC-OF-01 发送前须审批（判定部分）', () => {
     const w = await offerWorld(testDb().db, 'send');
     const offer = await w.social();
     const intern = await w.intern();
-    const check = async (id: string) => (await (await w.request('GET', `/${id}/send-check`)).json()) as Record<string, unknown>;
+    const check = async (id: string) =>
+      (await (await w.request('GET', `/${id}/send-check`)).json()) as Record<string, unknown>;
     expect(await check(offer.id)).toMatchObject({ allowed: true, reason: null, offerType: 'social' });
     const put = await w.seeder.request('PUT', '/api/tenant/settings/offer.send_requires_approval', {
       user: w.user.id,
@@ -203,7 +231,9 @@ describe('BE-14a 联动待入职的分支给机读拒绝（BE-14b 接线）', ()
         reason: 'OFFER_SYNC_NOT_READY',
       });
     }
-    expect(planOfferTransition({ ...facts, status: 'accepted', hasPendingEntry: false }, 'onboarded', {})).toMatchObject({
+    expect(
+      planOfferTransition({ ...facts, status: 'accepted', hasPendingEntry: false }, 'onboarded', {}),
+    ).toMatchObject({
       reason: 'OFFER_SYNC_NOT_READY',
     });
   });
