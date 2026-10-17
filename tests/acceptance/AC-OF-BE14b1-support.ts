@@ -80,9 +80,16 @@ export interface LeaverKeys {
   readonly email?: string;
 }
 
-/** 已离职人员（入职 2026-01-15、最后工作日 2026-09-20），人员档案带证件 / 手机 / 邮箱；造数走全部允许的实例。 */
-export async function leaver(w: OfferWorld, departmentId: string, keys: LeaverKeys, name = '离职合成员工') {
-  const as = { user: w.user.id, tenant: w.tenant.id };
+/** 已离职人员（入职 2026-01-15、最后工作日 2026-09-20），人员档案带证件 / 手机 / 邮箱；造数走全部允许的实例，actor 为操作人。 */
+export async function leaver(
+  w: OfferWorld,
+  departmentId: string,
+  keys: LeaverKeys,
+  name = '离职合成员工',
+  actor = w.user.id,
+) {
+  // actor 即这些任职记录的创建人（“使用用户”范围按创建人判定）；造数实例是全部允许的，只借它的身份
+  const as = { user: actor, tenant: w.tenant.id };
   const employmentApi = (method: string, path: string, options: object = {}) =>
     w.seeder.request(method, `/api/tenant/employment${path}`, { ...as, ...options });
   const created = await employmentApi('POST', '/employees', {
@@ -117,6 +124,17 @@ export async function leaver(w: OfferWorld, departmentId: string, keys: LeaverKe
   });
   expect(left.status, await left.clone().text()).toBe(201);
   return { id };
+}
+
+/** 任职记录实体的数据范围改成“使用用户”（只看自己创建的）。 */
+export async function employmentUsingUserScope(w: OfferRealWorld) {
+  const code = MODULE_OBJECTS.employmentRecord.code;
+  const response = await w.seed.api.request(
+    'PUT',
+    `/api/tenant/permission/scope-policies/TenantBase/${code}/entity/${code}`,
+    { ...w.seed.asAdmin, ifMatch: 0, body: { rules: [{ dimension: 'using_user' }] } },
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
 }
 
 /**
