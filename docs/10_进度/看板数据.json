@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-14",
 "stats": {
-"merged": 307,
-"open": 11,
+"merged": 308,
+"open": 10,
 "dec": 583,
 "ev": "43/177"
 },
@@ -983,6 +983,22 @@
 }
 },
 "log": [
+[
+"10-17",
+"台账新增 F-214（FE2b 两项 P3，并入下一个前端底座 PR，D2，等 FE2b）；FE2b #393 合并中"
+],
+[
+"10-17",
+"FE2b #393 第 1 轮可以合并（2 项 P3 后补），入合并队列"
+],
+[
+"10-17",
+"BE-7-PT1 已派出（云端 Opus High）；BE-10/BE-11 前序台账确认改排 BE-7-PT6 之后"
+],
+[
+"10-17",
+"F-213 #392 第 1 轮暂不能合并（2 项 P2 + 1 项 P3），返工中"
+],
 [
 "10-17",
 "DEC-583 用户选 A：BE-8a 整单送审；FE2b #393 第 1 轮审查发起"
@@ -5210,22 +5226,22 @@
 {
 "k": "D3b-PERF",
 "n": "D3b-PERF 绩效管理第 1 批远程取证（只读）",
-"s": "assigned",
+"s": "done",
 "kind": "取证",
 "mod": "蓝",
 "ms": "D3",
 "after": [],
-"note": "取证中 · 远程 Codex Sol 高 · Profile 2（A0）· 只读 · 完成标记 DONE-D3b-PERF（DEC-582）"
+"note": "取证已出（DONE-D3b-PERF 标记已落）· 等 03 验收 · 远程 Codex Sol 高 · Profile 2（A0）· 只读（DEC-582）"
 },
 {
 "k": "D3b-ATT",
 "n": "D3b-ATT 假勤管理第 1 批远程取证（只读）",
-"s": "assigned",
+"s": "done",
 "kind": "取证",
 "mod": "蓝",
 "ms": "D3",
 "after": [],
-"note": "取证中 · 远程 Codex Sol 高 · Profile 7（A5）· 只读 · 完成标记 DONE-D3b-ATT（DEC-582）"
+"note": "取证已出（DONE-D3b-ATT 标记已落）· 等 03 验收 · 远程 Codex Sol 高 · Profile 7（A5）· 只读（DEC-582）"
 },
 {
 "k": "M-perf",
@@ -5678,7 +5694,7 @@
 "k": "BE-3",
 "n": "BE-3 试用期与转正",
 "s": "dev",
-"note": "开发中（云端会话 session_01QV8zRy5TEzKPdU5fKMHyix，Draft PR #391，分支 claude/BE-3-probation）· F-205 并入同一会话 · Opus High 开发 / Codex Sol high 审 · 分支 claude/BE-3-probation · DEC-574⑤",
+"note": "待决（Draft #391 05:03Z 【等决定】：新增 2706 行超 DEC-521② 1500 行，选 整体送审(推荐)/拆四视图/拆视图+字典；另与 #386 各建一套试用期存储须留一套）· 已转 00",
 "after": [],
 "pr": 391
 },
@@ -5704,22 +5720,22 @@
 {
 "k": "FE2b",
 "n": "FE2b 离职三个字典设置页（从 FE-R2c 拆出，约 650 行）",
-"s": "review",
+"s": "done",
 "after": [],
 "kind": "前端",
 "mod": "R2",
 "ms": "D2",
-"note": "第 1 轮审查中（PR #393，head a4765333，Codex Sol high，04:44Z 发起）",
+"note": "合并中（PR #393，第 1 轮可以合并：无 P0～P2，2 项 P3 转 F-214；Codex Sol high，04:51Z）",
 "pr": 393
 },
 {
 "k": "BE-8a",
 "n": "BE-8a 黑名单（手动加黑、再入职保存拦截、自动加黑规则配置，DEC-569）",
-"s": "dev",
+"s": "rework",
 "after": [
 "BE-4d"
 ],
-"note": "开发中，等转 Ready 贴开发完成（Draft PR #387，+2258；DEC-583 用户选 A 整单送审不拆）· 分支 claude/BE-8a-blacklist，云端会话 session_01UsHXEmDcUEwrFcoyZqgKJ6",
+"note": "返工（第 1 轮 05:12Z 暂不能合并：2 项 P2——空证件号被当匹配键致误拦/误判重复、同优先级规则不能稳定取先登记者；另 P3 无写入断言固化；后补的两项权限问题按 DEC-406 转 F-087）· PR #387 · DEC-583 已豁免行数",
 "pr": 387
 },
 {
@@ -5760,11 +5776,11 @@
 {
 "k": "BE-6a",
 "n": "BE-6a 实习视图、直接实习转正、重聘判定（不碰离职生效）",
-"s": "dev",
+"s": "rework",
 "after": [
 "BE-2a"
 ],
-"note": "开发中（Draft PR #386，分支 claude/dazzling-hopper-mthnl2，云端会话 session_01K6swMbfsgXgNSh4byo5Bi9）· Codex Sol high 审 · 03 10-17 已开会话",
+"note": "返工（第 1 轮 05:09Z 暂不能合并：离职后回填转正日绕过拒绝、未来重聘记录致匹配不到、试用期日期绕过字段裁剪，共 3 项 P2）· PR #386 · 试用期存储与 #391 二选一，待 00 定",
 "pr": 386
 },
 {
@@ -5780,9 +5796,9 @@
 {
 "k": "BE-7-PT1",
 "n": "BE-7-PT-1 契约与数据",
-"s": "todo",
+"s": "dev",
 "after": [],
-"note": "待派 · 契约与数据约 1075 行 · 无外部依赖 · 拟派云端 Opus High 开发 / Sol high 审（派发单 cl_pt1.md） · DEC-505 由 BE-7 拆出"
+"note": "开发中（云端 Claude Opus High，会话 session_01XSLDcfLKEpu4icY9bMDRvC，PR 号待开发方建 Draft 后补）· 契约与数据约 1075 行 · Sol high 审 · DEC-505 由 BE-7 拆出"
 },
 {
 "k": "BE-7-PT2",
@@ -6394,7 +6410,7 @@
 "k": "F-212",
 "n": "CI 增加 PG16 普通角色（无 BYPASSRLS）验收分片，并补齐暴露出的剩余缺租户上下文测试（DEC-568，契约级门禁）",
 "s": "done",
-"note": "合并中（PR #389：第 1 轮可以合并；00 已确认 DEC-568，04:14Z 云端 merge:main + 完整 CI，5 个 app_owner 分片须全绿）",
+"note": "已合并（PR #389，04:39Z，d0ae9df6；完整 CI 全绿，DEC-568 契约级门禁 00 已确认）",
 "mod": "底座",
 "ms": "D2",
 "pr": 389
@@ -6416,9 +6432,20 @@
 "n": "F-205 转正日期口径：BE-3 与 BE-15 共用同一计算函数，默认转正日 = 预计试用结束日次日（03 核对原站 W-105b）",
 "s": "dev",
 "after": [],
-"note": "开发中（随 BE-3，session_01QV8zRy5TEzKPdU5fKMHyix）· 默认转正日 = 预计试用结束日次日，与 BE-15 共用一个函数",
+"note": "随 BE-3 · 待 00 对 BE-3 行数与试用期存储定论",
 "mod": "R2",
 "ms": "D2"
+},
+{
+"k": "F-214",
+"n": "F-214 FE2b 两项 P3 后补：ApiError 保留 details.reason；AC-DM-31 补真实 HTTP 403/409 集成断言",
+"s": "wait",
+"mod": "R2",
+"ms": "D2",
+"after": [
+"FE2b"
+],
+"note": "待前序 FE2b 合入 · 00 定并入下一个前端底座 PR，不单独派 · 来自 FE2b #393 第 1 轮 P3"
 },
 {
 "k": "F-206",
@@ -6544,10 +6571,10 @@
 {
 "k": "F-213",
 "n": "组织停用日校验：停用日不得早于或等于设立日（R2f3 §2.2；F 号待 00 补）",
-"s": "review",
+"s": "rework",
 "mod": "R1",
 "ms": "D2",
-"note": "审查中（PR #392，第 1 轮 Codex Sol high，04:40Z 发起，head 477eb56b）",
+"note": "返工（第 2 轮 05:21Z 暂不能合并：上轮 2 项 P2 已修，新增 1 项返工引入的 P2 回归——新建拒绝停用致 AC-PRM-scope-resolution DEC-083 夹具失败）· PR #392",
 "pr": 392
 }
 ]
