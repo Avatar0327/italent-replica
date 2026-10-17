@@ -128,6 +128,7 @@ export const MODULE_OBJECTS = {
       'hasPendingEntry',
       'pendingEntryBusinessId',
       'syncStatus',
+      'syncTarget',
       'syncReason',
       'syncMessage',
       'syncAttempts',

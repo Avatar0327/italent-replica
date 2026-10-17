@@ -1,5 +1,5 @@
 {
-  "id": "4ed2a934-e808-467d-ade2-198646ddd415",
+  "id": "317eb65f-4942-4dbf-abc2-d7d04f89554d",
   "prevId": "f964979e-41ae-4aad-900a-37c9460a12ff",
   "version": "7",
   "dialect": "postgresql",
@@ -55339,6 +55339,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "contract_company_id": {
+          "name": "contract_company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -55374,6 +55380,21 @@
           "columnsTo": [
             "tenant_id",
             "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_pending_entry_contract_company_fk": {
+          "name": "employment_pending_entry_contract_company_fk",
+          "tableFrom": "employment_pending_entry_contract",
+          "tableTo": "contract_companies",
+          "columnsFrom": [
+            "tenant_id",
+            "contract_company_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -55426,6 +55447,12 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
+        },
+        "months": {
+          "name": "months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -56528,6 +56555,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sync_target": {
+          "name": "sync_target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sync_reason": {
           "name": "sync_reason",
           "type": "text",
@@ -56747,6 +56780,21 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "offers_linkedEmployeeId_fk": {
+          "name": "offers_linkedEmployeeId_fk",
+          "tableFrom": "offers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "linked_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "offers_contract_company_fk": {
           "name": "offers_contract_company_fk",
           "tableFrom": "offers",
@@ -56806,21 +56854,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "offers_linked_employee_fk": {
-          "name": "offers_linked_employee_fk",
-          "tableFrom": "offers",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "linked_employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -56836,6 +56869,10 @@
       },
       "policies": {},
       "checkConstraints": {
+        "offers_sync_target": {
+          "name": "offers_sync_target",
+          "value": "\"offers\".\"sync_target\" IS NULL OR \"offers\".\"sync_target\" IN ('pending_entry', 'intern_regularization')"
+        },
         "offers_sync_status": {
           "name": "offers_sync_status",
           "value": "\"offers\".\"sync_status\" IS NULL OR \"offers\".\"sync_status\" IN ('success', 'failed')"

@@ -18,12 +18,16 @@ export async function savePendingProbation(
   employeeId: string,
   businessId: string,
   probation: boolean,
+  months: number | null = null,
 ): Promise<void> {
+  // 月数只在有试用期时保留；改为无试用期清空，没给月数（行内编辑只改是否有试用期）保持原值（Offer 同步带来的月数，BE-14b2）
   await tx.execute(sql`INSERT INTO employment_pending_entry_probation(tenant_id, employee_id, business_id,
-      probation, updated_at)
+      probation, months, updated_at)
     VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${businessId}::uuid, ${probation},
-      ${ctx.now.toISOString()}::timestamptz)
-    ON CONFLICT (tenant_id, business_id) DO UPDATE SET probation=EXCLUDED.probation, updated_at=EXCLUDED.updated_at`);
+      ${probation ? months : null}, ${ctx.now.toISOString()}::timestamptz)
+    ON CONFLICT (tenant_id, business_id) DO UPDATE SET probation=EXCLUDED.probation,
+      months=CASE WHEN EXCLUDED.probation THEN COALESCE(EXCLUDED.months, employment_pending_entry_probation.months)
+        ELSE NULL END, updated_at=EXCLUDED.updated_at`);
 }
 
 export async function loadPendingProbation(
@@ -31,11 +35,20 @@ export async function loadPendingProbation(
   ctx: EmploymentContext,
   businessId: string,
 ): Promise<boolean | null> {
-  const [row] = rowsOf<{ probation: boolean }>(
-    await tx.execute(sql`SELECT probation FROM employment_pending_entry_probation
+  return (await loadPendingProbationState(tx, ctx, businessId))?.probation ?? null;
+}
+
+/** 待入职试用期的完整状态（是否有试用期 + Offer 同步带来的月数）；改期 / 换日期替换记录时整体搬运。 */
+export async function loadPendingProbationState(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+): Promise<{ readonly probation: boolean; readonly months: number | null } | null> {
+  const [row] = rowsOf<{ probation: boolean; months: number | null }>(
+    await tx.execute(sql`SELECT probation, months FROM employment_pending_entry_probation
       WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
   );
-  return row ? row.probation : null;
+  return row ?? null;
 }
 
 export async function clearPendingProbation(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void> {
@@ -53,7 +66,9 @@ export async function saveAddedProbation(
   entry: EntryOptions | undefined,
 ): Promise<boolean | undefined> {
   const probation = entry?.pendingEntry && ENTRY_KINDS.includes(kind) ? entry.probation : undefined;
-  if (probation !== undefined) await savePendingProbation(tx, ctx, employeeId, businessId, probation);
+  // 月数只由可信的 Offer 同步经 EntryOptions 带入（请求体的待入职控制项不接受月数，entry-options.ts）
+  if (probation !== undefined)
+    await savePendingProbation(tx, ctx, employeeId, businessId, probation, entry?.probationMonths ?? null);
   return probation;
 }
 

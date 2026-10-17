@@ -18,6 +18,8 @@ import type { BusinessKind, EmploymentContext, NormalizedEmploymentInput } from 
 export interface PendingContract {
   readonly startDate: string;
   readonly endDate: string | null;
+  /** 合同公司（甲方）：Offer 同步带来；手工添加 / 存量为 null（BE-14b2，34 文末映射）。 */
+  readonly companyId?: string | null;
 }
 
 /** 改期入职响应里的提示数据：前端拼出“待入职记录中劳动合同起止日期改为YYYY/MM/DD-”，止日为空时尾部留空。 */
@@ -31,11 +33,12 @@ export async function savePendingContract(
   contract: PendingContract,
 ): Promise<void> {
   await tx.execute(sql`INSERT INTO employment_pending_entry_contract(tenant_id, employee_id, business_id,
-      start_date, end_date, updated_at)
+      start_date, end_date, contract_company_id, updated_at)
     VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${businessId}::uuid, ${contract.startDate}::date,
-      ${contract.endDate}::date, ${ctx.now.toISOString()}::timestamptz)
+      ${contract.endDate}::date, ${contract.companyId ?? null}::uuid, ${ctx.now.toISOString()}::timestamptz)
     ON CONFLICT (tenant_id, business_id) DO UPDATE SET start_date=EXCLUDED.start_date,
-      end_date=EXCLUDED.end_date, updated_at=EXCLUDED.updated_at`);
+      end_date=EXCLUDED.end_date, contract_company_id=EXCLUDED.contract_company_id,
+      updated_at=EXCLUDED.updated_at`);
 }
 
 export async function loadPendingContract(
@@ -44,7 +47,8 @@ export async function loadPendingContract(
   businessId: string,
 ): Promise<PendingContract | null> {
   const [row] = rowsOf<PendingContract>(
-    await tx.execute(sql`SELECT start_date::text AS "startDate", end_date::text AS "endDate"
+    await tx.execute(sql`SELECT start_date::text AS "startDate", end_date::text AS "endDate",
+        contract_company_id::text AS "companyId"
       FROM employment_pending_entry_contract
       WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
   );
@@ -95,7 +99,9 @@ export async function saveAddedPendingContract(
   if (!entry?.pendingEntry || !ENTRY_KINDS.includes(kind)) return undefined;
   // 缺省 = 新生成（起始日取计划入职日期、终止日为空）；null = 替换记录时原记录本来就没有合同（存量），不补生成
   const contract =
-    entry.pendingContract === undefined ? { startDate: effectiveDate, endDate: null } : entry.pendingContract;
+    entry.pendingContract === undefined
+      ? { startDate: effectiveDate, endDate: null, companyId: null }
+      : entry.pendingContract;
   if (contract === null) return undefined;
   await savePendingContract(tx, ctx, employeeId, businessId, contract);
   return contract;
@@ -105,6 +111,8 @@ export async function saveAddedPendingContract(
 export const pendingContractAudit = (contract: PendingContract | null | undefined) => ({
   contractStartDate: contract?.startDate ?? null,
   contractEndDate: contract?.endDate ?? null,
+  // 合同公司只在有值时出现：手工添加的待入职审计形状不变
+  ...(contract?.companyId ? { contractCompanyId: contract.companyId } : {}),
 });
 
 /**

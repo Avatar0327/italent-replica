@@ -15,6 +15,8 @@ import {
   MODULE_OBJECTS,
   OFFER_SYNC_DEFAULT,
   OFFER_SYNC_TIMING_KEY,
+  PROBATION_MONTHS_MAX,
+  PROBATION_MONTHS_MIN,
   offerManualSyncable,
   offerSyncDue,
   offerSyncKind,
@@ -32,6 +34,7 @@ import { lockEmploymentEmployee } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { createEmploymentBusiness } from '../employment/write-service.js';
+import { regularizeIntern } from '../employment/intern-regularization.js';
 import { appendEmployee } from '../personnel/employee-write.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
@@ -95,8 +98,39 @@ function profilePatch(offer: OfferRow) {
   });
 }
 
-/** 创建人员、绑定用户、生成待入职；返回待入职记录 ID。整个过程在调用方给的保存点里。 */
-async function createPendingEntry(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, linked: LinkedPerson | null) {
+type SyncPlan = 'hire' | 'rehire' | 'retire_rehire' | 'intern_regularization';
+
+/**
+ * 同步产物按计划入职日的任职版本链决定（任职记录不可绕过顺序规则，07 §2、DEC-077）：
+ * 没有任职 → 入职；前一条是离职 / 退休 → 重聘 / 返聘（已离职实习生走这条，不受在职实习生开关限制）；
+ * 前一条是在职实习生 → 实习转正（IN-R3 正式 Offer 是实习转正的方式之一，IN-R4 新增一条“实习转正”任职记录）。
+ */
+async function syncPlan(
+  tx: Tx,
+  ctx: OfferSyncContext,
+  employeeId: string,
+  plannedEntryDate: string,
+): Promise<SyncPlan> {
+  const latest = await findPredecessor(tx, ctx.tenantId, employeeId, plannedEntryDate);
+  if (!latest) return 'hire';
+  if (latest.kind === 'leave') return 'rehire';
+  if (latest.kind === 'retirement') return 'retire_rehire';
+  return latest.fields.employType === 'intern' ? 'intern_regularization' : 'hire';
+}
+
+/** 实习转正的试用期（月）取值范围与实习转正表单一致（1～6）；Offer 上更宽的取值在这里按业务规则拒绝。 */
+function regularizationProbation(offer: OfferRow) {
+  const probation = offer.hasProbation === true;
+  const months = offer.probationMonths;
+  if (probation && (months === null || months < PROBATION_MONTHS_MIN || months > PROBATION_MONTHS_MAX))
+    throw new AppError('VALIDATION_FAILED', '实习转正的试用期（月）须在 1～6 之间', {
+      reason: 'OFFER_PROBATION_MONTHS_INVALID',
+    });
+  return probation ? { probation, probationMonths: months! } : { probation };
+}
+
+/** 创建 / 复用人员、绑定用户、生成同步产物；返回记录 ID 与产物类型。整个过程在调用方给的保存点里。 */
+async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, linked: LinkedPerson | null) {
   const base = inboundEmploymentContext(ctx, 0);
   const kind = offerSyncKind(offer.offerType as OfferType | null);
   if (offer.contractEndDate && offer.contractEndDate < offer.plannedEntryDate!)
@@ -107,7 +141,7 @@ async function createPendingEntry(tx: Tx, ctx: OfferSyncContext, offer: OfferRow
   const employeeId =
     linked?.employeeId ?? (await createEmployee(tx, base, { code: `OFR-${offer.id}`, name: offer.name! })).id;
   await appendEmployee(tx, { ...ctx, expectedRevision: 0 }, employeeId, profilePatch(offer), false);
-  // DEC-128 / DEC-140：入职类业务同事务绑定租户用户，登录邮箱取 Offer 的个人邮箱
+  // DEC-128 / DEC-140：入职类业务同事务绑定租户用户，登录邮箱取 Offer 的个人邮箱；已绑定的人员不改绑（邮箱不同即冲突）
   await provisionEmployeeUser(tx, ctx, {
     employeeId,
     loginEmail: offer.personalEmail!,
@@ -115,34 +149,56 @@ async function createPendingEntry(tx: Tx, ctx: OfferSyncContext, offer: OfferRow
     accountRequired: true,
   });
   const employee = await lockEmploymentEmployee(tx, base, employeeId);
+  const employment = inboundEmploymentContext(ctx, employee.revision);
+  const plan = await syncPlan(tx, ctx, employeeId, offer.plannedEntryDate!);
+  const references = present({
+    positionId: offer.positionId,
+    directManagerId: offer.directManagerId,
+    dottedManagerId: offer.dottedManagerId,
+  });
+  if (plan === 'intern_regularization') {
+    // 弱控确认归 b1：同步不弹确认（confirmed），严格控编超编仍由落地时整单拒绝（ESTABLISHMENT_EXCEEDED）
+    const business = await regularizeIntern(tx, employment, employeeId, {
+      effectiveDate: offer.plannedEntryDate!,
+      departmentId: offer.departmentId!,
+      ...references,
+      ...regularizationProbation(offer),
+      confirmed: true,
+    });
+    return { id: business.id, target: 'intern_regularization' as const };
+  }
   const business = await createEmploymentBusiness(
     tx,
-    inboundEmploymentContext(ctx, employee.revision),
+    employment,
     employeeId,
     {
-      kind: linked && !linked.active ? 'rehire' : 'hire',
+      kind: plan,
       mode: 'direct',
       effectiveDate: offer.plannedEntryDate!,
       fields: present({
         employType: kind.employType,
         departmentId: offer.departmentId,
-        positionId: offer.positionId,
         postId: offer.postId,
         levelId: offer.levelId,
         place: offer.workPlace,
-        directManagerId: offer.directManagerId,
-        dottedManagerId: offer.dottedManagerId,
+        ...references,
       }),
     },
     {
       entry: {
         pendingEntry: true,
         ...(offer.hasProbation === null ? {} : { probation: offer.hasProbation }),
-        pendingContract: { startDate: offer.plannedEntryDate!, endDate: offer.contractEndDate },
+        ...(offer.hasProbation && offer.probationMonths !== null ? { probationMonths: offer.probationMonths } : {}),
+        // 合同公司（甲方）= Offer 的合同主体法人公司（34 文末映射）；起止日 = 计划入职日 ~ Offer 合同终止日
+        pendingContract: {
+          startDate: offer.plannedEntryDate!,
+          endDate: offer.contractEndDate,
+          companyId: offer.contractCompanyId,
+        },
       },
     },
   );
-  return business.id;
+  return { id: business.id, target: 'pending_entry' as const };
 }
 
 async function saveSync(tx: Tx, ctx: OfferSyncContext, before: OfferRow, patch: Partial<OfferRow>, action: string) {
@@ -169,13 +225,14 @@ export async function syncOffer(tx: Tx, ctx: OfferSyncContext, offer: OfferRow):
   if (offer.pendingEntryBusinessId !== null) return offer;
   const linked = offer.linkedEmployeeId ? await linkedPerson(tx, ctx.tenantId, offer.linkedEmployeeId) : null;
   try {
-    const entryId = await tx.transaction((savepoint) => createPendingEntry(savepoint, ctx, offer, linked));
+    const created = await tx.transaction((savepoint) => createSyncTarget(savepoint, ctx, offer, linked));
     return await saveSync(
       tx,
       ctx,
       offer,
       {
-        pendingEntryBusinessId: entryId,
+        pendingEntryBusinessId: created.id,
+        syncTarget: created.target,
         syncStatus: 'success',
         syncReason: null,
         syncMessage: null,
@@ -275,12 +332,9 @@ export async function linkEmployee(tx: Tx, ctx: OfferContext, id: string, employ
 export const offerEntryHooks: EntryOfferHooks = {
   onEntryCancelled: async () => undefined,
   onEntryRestored: async (tx, ctx, event) => {
-    const [before] = await tx
-      .select()
-      .from(offers)
-      .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.pendingEntryBusinessId, event.previousBusinessId)))
-      .for('update');
-    if (!before) return;
+    // 同步记录 A → 普通改期 B（不调端口）→ 取消 B → 改期恢复 C：Offer 存的仍是 A，沿记录链从 B 找回关联的 Offer，加锁后换成 C
+    const before = await findOfferByPendingEntry(tx, ctx.tenantId, event.previousBusinessId, { lock: true });
+    if (!before || before.pendingEntryBusinessId === event.businessId) return;
     const [after] = await tx
       .update(offers)
       .set({ pendingEntryBusinessId: event.businessId, revision: before.revision + 1, updatedAt: ctx.now })

@@ -232,6 +232,8 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           probation: _probation,
           contractStartDate: _start,
           contractEndDate: _end,
+          contractCompanyId: _company,
+          probationMonths: _months,
           cancelRemark: _cancelRemark,
           ...record
         }) => record,
@@ -243,6 +245,8 @@ function registerEntryViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         probation: items[index]!.probation,
         contractStartDate: items[index]!.contractStartDate,
         contractEndDate: items[index]!.contractEndDate,
+        contractCompanyId: items[index]!.contractCompanyId,
+        probationMonths: items[index]!.probationMonths,
         cancelRemark: items[index]!.cancelRemark,
         ...(shown('code') ? { code: items[index]!.code } : {}),
         ...(shown('name') ? { name: items[index]!.name } : {}),

@@ -36,7 +36,12 @@ export async function currentEntryIds(
 }
 
 /** 按待入职记录反查 Offer：记录自己或链上任一祖先被 Offer 关联即命中；没有关联为 null。 */
-export async function findOfferByPendingEntry(tx: Tx, tenantId: string, businessId: string): Promise<OfferRow | null> {
+export async function findOfferByPendingEntry(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  options: { readonly lock?: boolean } = {},
+): Promise<OfferRow | null> {
   const ancestors = rows<{ id: string }>(
     await tx.execute(sql`
       WITH RECURSIVE up(id, depth) AS (
@@ -48,7 +53,7 @@ export async function findOfferByPendingEntry(tx: Tx, tenantId: string, business
       )
       SELECT id::text FROM up`),
   );
-  const [offer] = await tx
+  const query = tx
     .select()
     .from(offers)
     .where(
@@ -61,5 +66,6 @@ export async function findOfferByPendingEntry(tx: Tx, tenantId: string, business
       ),
     )
     .limit(1);
+  const [offer] = await (options.lock ? query.for('update') : query);
   return offer ?? null;
 }

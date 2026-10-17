@@ -850,7 +850,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/entry-routes.ts：R2 BE-2b 入职四视图（34 EN-R1，DEC-484②）---------------------------------------------
   // view ∈ all / today / cancelled / hired（缺失或不合法 400）；readPageContext(list)：任职记录对象查看 + 列表范围，
   // listEntryView 的 employmentScopePredicate = scopeSql（人员 / 记录部门 / 创建人，范围为空什么也看不到）；
-  // 每项带 probation（F-188，待入职试用期，没填过 null）与 contractStartDate / contractEndDate（F-194，待入职合同起止日，存量 / 已办理入职为 null；
+  // 每项带 probation（F-188，待入职试用期，没填过 null）、probationMonths / contractCompanyId（BE-14b2，Offer 同步带来，
+  // 其他为 null）与 contractStartDate / contractEndDate（F-194，待入职合同起止日，存量 / 已办理入职为 null；
   // 控制项显式投影，权限沿用待入职列表本身的对象与字段权限，不另要求合同对象权限）；
   // cancelRemark（F-206，DEC-560）：最近一次取消动作的说明，无则 null，行可见即可见；
   // 记录字段按任职记录可见字段裁剪，姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键

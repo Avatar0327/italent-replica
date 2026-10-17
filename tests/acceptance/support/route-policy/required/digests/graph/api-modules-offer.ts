@@ -331,13 +331,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/views.ts#OFFER_WIRED_ROW_ACTIONS',
     'packages/domain/src/offer/views.ts#offerRowActions',
   ],
-  'apps/api/src/modules/offer/sync.ts#createPendingEntry': [
+  'apps/api/src/modules/offer/sync.ts#createSyncTarget': [
     'apps/api/src/modules/employment/employees.ts#createEmployee',
+    'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     '#inboundEmploymentContext',
     '#present',
     '#profilePatch',
+    '#regularizationProbation',
+    '#syncPlan',
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
     'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
     'packages/domain/src/offer/sync.ts#offerSyncKind',
@@ -363,10 +366,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/sync.ts#OFFER_SYNC_TIMING_KEY',
     'packages/domain/src/offer/sync.ts#validOfferSyncSetting',
   ],
+  'apps/api/src/modules/offer/sync.ts#regularizationProbation': [
+    'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MAX',
+    'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MIN',
+  ],
   'apps/api/src/modules/offer/sync.ts#saveSync': ['apps/api/src/modules/offer/service.ts#audit'],
   'apps/api/src/modules/offer/sync.ts#syncOffer': [
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
-    '#createPendingEntry',
+    '#createSyncTarget',
     '#linkedPerson',
     '#saveSync',
   ],
@@ -386,6 +393,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/sync.ts#offerSyncDue',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/offer/sync.ts#syncPlan': ['apps/api/src/modules/employment/read-model.ts#findPredecessor'],
   'apps/api/src/modules/offer/transitions.ts#offerActionAccess': [
     'packages/domain/src/offer/rules.ts#OFFER_BUTTONS',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
