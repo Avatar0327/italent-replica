@@ -12,15 +12,23 @@ export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
 export function appRoute(path: string) {
-  // 与 AppPages 使用相同挂载顺序、优先级和解码，只为实际命中的新子项替换旧入口判定。
-  const child = matchRoutes(
+  // 新子项及被拒路径按 AppPages 的实际挂载匹配；其他旧入口仍沿用原判定。
+  const matched = matchRoutes(
     [
       ...pageRoutes(MENU_ROUTES).map((item) => ({ path: mountPath(item), handle: item })),
       ...SUB_ROUTES.map((item) => ({ path: item.path, handle: undefined })),
     ],
     path,
-  )?.[0]?.route.handle;
+  )?.[0]?.route;
+  const child = matched?.handle;
   if (child && PAGES.entries.some((entry) => entry.children?.some((item) => item === child))) return child;
+  if (
+    matchRoutes(
+      PAGES.rejectedPaths.map((path) => ({ path })),
+      path,
+    )
+  )
+    path = matched?.path ?? path;
   return pageRoutes(MENU_ROUTES).find((item) => path === item.path || path.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {

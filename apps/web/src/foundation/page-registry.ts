@@ -85,6 +85,8 @@ export type EntryRoute = Omit<EntryPageDeclaration, 'legacy' | 'children'> &
 export type MenuRoute = AppRoute | EntryRoute;
 export type SubRoute = Omit<SubRouteDeclaration, 'legacy'> & Owned;
 export interface PageRegistry {
+  /** 被隔离子项的路径，仅供诊断和守卫识别其别名，不挂载页面或授予权限。 */
+  readonly rejectedPaths: readonly string[];
   readonly apps: readonly AppRoute[];
   readonly entries: readonly EntryRoute[];
   readonly menus: readonly MenuRoute[];
@@ -188,29 +190,30 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
       })),
     )
     .sort((a, b) => compareText(a.id, b.id));
-  for (const entry of entries) {
-    claim(ids, '菜单键', entry.id, entry.module);
-    for (const child of entry.children ?? []) claim(ids, '菜单键', child.id, child.module);
-  }
-  for (const entry of pageRoutes(entries)) {
-    claim(paths, '路径', entry.path, entry.module);
-    claim(paths, '路径', mountPath(entry), entry.module);
-  }
+  for (const entry of entries) claim(ids, '菜单键', entry.id, entry.module);
   const routes = found
     .flatMap(({ module, pages }) =>
       (pages.routes ?? []).map(({ legacy, ...route }) => ({ ...route, module, legacy: legacy ?? false })),
     )
     .sort((a, b) => compareText(a.path, b.path));
   for (const route of routes) claim(paths, '路径', route.path, route.module);
-  // 子项独占一个根路径；用路由器检查双向匹配，包含大小写、尾斜杠、编码和已有子路径。
+  // 子项独占根路径；隔离冲突子项，不能使合法入口在模块初始化时一起失效。
+  const rejected = new Set(entries.flatMap((entry) => entry.children ?? []).filter((child) => ids.has(child.id)));
   for (const child of entries.flatMap((entry) => entry.children ?? []))
     for (const route of [...appRoutes, ...pageRoutes(entries), ...routes]) {
       if (route === child) continue;
       const root = route.path.split('/').slice(0, 2).join('/');
       if (matchRoutes([{ path: root }], child.path) || matchRoutes([{ path: mountPath(child) }], route.path))
-        throw new Error(`子菜单路由冲突：${child.path} 与 ${route.path}`);
+        rejected.add(child);
     }
+  for (const entry of entries)
+    if (entry.children) entry.children = entry.children.filter((child) => !rejected.has(child));
+  for (const entry of pageRoutes(entries)) {
+    claim(paths, '路径', entry.path, entry.module);
+    claim(paths, '路径', mountPath(entry), entry.module);
+  }
   return {
+    rejectedPaths: [...rejected].map((child) => `${child.path}/*`),
     apps: appRoutes,
     entries,
     menus: [...appRoutes, ...entries],

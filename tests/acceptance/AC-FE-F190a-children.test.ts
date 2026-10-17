@@ -16,10 +16,10 @@ const group = {
   group: 'talent',
   children: [leaf('z'), { ...leaf('a'), legacy: true }],
 } satisfies EntryPageDeclaration;
-const collect = (entries: unknown[]) =>
+const collect = (entries: unknown[], routes: unknown[] = []) =>
   collectPages(
     {
-      '../fixture/pages.ts': { pages: { apps: [{ app: 'idp', label: '应用', group: 'talent' }], entries } },
+      '../fixture/pages.ts': { pages: { apps: [{ app: 'idp', label: '应用', group: 'talent' }], entries, routes } },
     },
     ['idp'],
   );
@@ -85,10 +85,18 @@ describe('AC-FE-F190a 共享入口子菜单契约', () => {
     const registry = collect([{ ...group, children: [leaf('IDP'), leaf('safe')] }]);
     expect(registry.apps.map((item) => item.id)).toEqual(['idp']);
     expect(pageRoutes(registry.entries).map((item) => item.id)).toEqual(['safe']);
+    expect(registry.rejectedPaths).toEqual(['/IDP/*']);
     for (const id of ['a', 'A', 'a/', '%61']) {
       const result = collect([group, { ...leaf(id), app: 'idp', group: 'talent' }]);
       expect(pageRoutes(result.entries).map((item) => item.id)).toEqual([id, 'z']);
     }
     expect(collect([{ ...group, children: [leaf('a'), leaf('a'), leaf('A')] }]).entries[0]?.children).toEqual([]);
+  });
+  it('07 隔离与既有子路由重叠的子项，但保留既有子路由', () => {
+    const page = lazyPage('Fixture', async () => ({ Fixture: () => null }));
+    const registry = collect([{ ...group, children: [leaf('CUSTOM')] }], [{ path: '/custom/detail', page }]);
+    expect(pageRoutes(registry.entries)).toEqual([]);
+    expect(registry.routes.map((item) => [item.path, item.page])).toEqual([['/custom/detail', page]]);
+    expect(registry.rejectedPaths).toEqual(['/CUSTOM/*']);
   });
 });

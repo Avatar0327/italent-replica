@@ -91,7 +91,13 @@ test('AC-FE-F190a-06 冲突子项不能借调动权限挂载隐藏的 IDP 应用
   for (const path of ['/idp', '/idp/', '/%69dp', '/IDP', '/transfer']) {
     await page.goto(path);
     await expect(page.locator('.shell-sidebar')).toBeVisible();
+    if (path !== '/transfer') await expect(page.locator('.shell-workspace')).toContainText(ui.denied);
     await expect(page.getByText('禁止挂载的合成 IDP 应用', { exact: true })).toHaveCount(0);
   }
-  await expect(page.getByRole('heading', { name: '调动管理', exact: true })).toBeVisible();
+  const views = page.getByRole('navigation', { name: '调动管理视图', exact: true });
+  await views.getByRole('button', { name: '已完成的调动', exact: true }).click();
+  await expect(views.getByRole('button', { name: '已完成的调动', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 });
