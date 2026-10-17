@@ -168,9 +168,10 @@ export async function saveBlacklistRule(
         reason: 'BLACKLIST_RULE_LIMIT_REACHED',
         limit: BLACKLIST_RULE_LIMIT,
       });
-    await tx.execute(sql`INSERT INTO employment_blacklist_rules(id, tenant_id, name, priority, org_ids, description, term,
-      reason, note, created_at, updated_at) VALUES (${ruleId}::uuid, ${ctx.tenantId}, ${input.name}, ${input.priority},
-      ${orgIds}::uuid[], ${input.description || null}, ${input.term}, ${input.reason}, ${input.note || null},
+    await tx.execute(sql`INSERT INTO employment_blacklist_rules(id, tenant_id, name, priority, org_ids, description,
+      term, reason, note, created_at, updated_at)
+      VALUES (${ruleId}::uuid, ${ctx.tenantId}, ${input.name}, ${input.priority}, ${orgIds}::uuid[],
+      ${input.description || null}, ${input.term}, ${input.reason}, ${input.note || null},
       ${now}::timestamptz, ${now}::timestamptz)`);
   } else {
     await tx.execute(sql`UPDATE employment_blacklist_rules SET name = ${input.name}, priority = ${input.priority},

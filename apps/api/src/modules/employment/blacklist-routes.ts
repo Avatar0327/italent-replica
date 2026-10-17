@@ -7,7 +7,12 @@
  * - 总开关：两层配置 exit.auto_blacklist_enabled，经既有 /api/tenant/settings/:key 读写，这里只登记取值校验。
  */
 import { type Tx, withTenant } from '@italent/db';
-import { AUTO_BLACKLIST_SETTING_KEY, buttonResource, isAutoBlacklistSettingValue } from '@italent/domain';
+import {
+  AUTO_BLACKLIST_SETTING_KEY,
+  buttonResource,
+  isAutoBlacklistSettingValue,
+  MODULE_OBJECTS,
+} from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { requirePermission } from '../../authorization.js';
 import { type CommandGuard, runCommand } from '../../commands.js';
@@ -51,7 +56,7 @@ import {
 
 registerSettingValidator(AUTO_BLACKLIST_SETTING_KEY, isAutoBlacklistSettingValue);
 
-const SETTINGS = 'TenantBase.EmploymentSettings';
+const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 
 interface BlacklistWrite {
   readonly operation: 'create' | 'update' | 'delete';
@@ -88,8 +93,9 @@ async function requireBlacklistWrite(tx: Tx, deps: TenantRouteDeps, ctx: Employm
   }
   if (write.employeeId) {
     const employment = await resolveModuleScopeInTransaction(deps, ctx, tx, EMPLOYMENT_OBJECT);
-    await requireEmployeeInScope(tx, { ...ctx, scope: employment }, write.employeeId).catch(() => {
-      throw new AppError('NOT_FOUND', '员工不存在');
+    // 范围外与不存在（personSnapshot 的 404）同一文案，不暴露员工是否存在
+    await requireEmployeeInScope(tx, { ...ctx, scope: employment }, write.employeeId).catch((error: unknown) => {
+      throw error instanceof AppError && error.code === 'NOT_FOUND' ? new AppError('NOT_FOUND', '员工不存在') : error;
     });
   }
 }
@@ -201,16 +207,23 @@ function ruleGuard(
 
 function registerBlacklistRuleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   const configuration = (c: Context<TenantEnv>) =>
-    readContext(c, deps, 'tenant.employment.configuration.write', revision(c), undefined, SETTINGS);
+    readContext(
+      c,
+      deps,
+      'tenant.employment.configuration.write',
+      revision(c),
+      undefined,
+      'TenantBase.EmploymentSettings',
+    );
   router.get('/blacklist-rules', async (c) => {
-    const ctx = await readContext(c, deps, 'object.view', 0, undefined, SETTINGS);
+    const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     const rules = await withTenant(deps.db, ctx.tenantId, (tx) => listBlacklistRules(tx, ctx.tenantId));
     return c.json({ items: await trimModuleResponse(deps, ctx, SETTINGS, rules) });
   });
   router.post('/blacklist-rules', async (c) => {
     const ctx = await configuration(c);
     const input = parseBlacklistRule(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'create', input, undefined, SETTINGS);
+    await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
       c,
       deps,
@@ -224,7 +237,7 @@ function registerBlacklistRuleRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     const id = uuidParam(c);
     const ctx = await configuration(c);
     const input = parseBlacklistRule(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', input, undefined, SETTINGS);
+    await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
       c,
       deps,
@@ -238,7 +251,9 @@ function registerBlacklistRuleRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
   router.delete('/blacklist-rules/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await configuration(c);
-    await requireEmploymentWrite(ctx, 'update', {}, undefined, SETTINGS, { commandOnly: true });
+    await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', {
+      commandOnly: true,
+    });
     return runWrite(
       c,
       deps,

@@ -84,6 +84,8 @@ describe('AC-DM-R2 手动加黑与列表', () => {
   it('筛选：姓名包含、证件号 / 手机号精确、原因、来源、状态；按加黑日期倒序', async () => {
     const w = await blacklistWorld(testDb().db, 'filters');
     const a = await w.added({ name: '筛选张一', idNumber: 'ID-SYN-0011', reason: 'integrity' });
+    // 同一加黑日期按创建时间倒序：时钟固定，显式拨后一分钟
+    w.session.setNow('2026-10-01T01:01:00.000Z');
     const b = await w.added({ name: '筛选李二', mobilePhone: '13800000012', reason: 'instability' });
     w.session.setNow('2026-10-02T01:00:00.000Z');
     const c = await w.added({ name: '筛选张三', email: 'synthetic-c@example.com', reason: 'integrity' });
@@ -151,6 +153,7 @@ describe('AC-DM-R2 编辑 / 移出 / 删除', () => {
   it('删除：整行删除并在审计留快照；批量上限 100、重复 id 400', async () => {
     const w = await blacklistWorld(testDb().db, 'delete');
     const entry = await w.added({ name: '删除对象', idNumber: 'ID-SYN-0040', reason: 'integrity' });
+    w.session.setNow('2026-10-01T01:01:00.000Z');
     const deleted = await w.destroy([{ id: entry.id, revision: 1 }]);
     expect(deleted.status, await deleted.clone().text()).toBe(200);
     expect((await w.list()).items).toHaveLength(0);

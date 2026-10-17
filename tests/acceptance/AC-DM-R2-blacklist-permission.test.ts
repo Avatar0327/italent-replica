@@ -3,6 +3,7 @@
  * DEC-415：新对象的看全部默认给组织员工的预置管理员（标准版系统管理员、人事管理员）；人事专员有对象权限但不预置
  * 看全部（给非管理员扩大范围须逐次问用户），所以列表为空、写入被拒。证件号 / 手机号 / 邮箱按字段查看权裁剪。
  */
+import { randomUUID } from 'node:crypto';
 import { grantMembership } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -104,6 +105,25 @@ describe('AC-DM-R2 黑名单权限（标准身份预置）', () => {
     expect(
       (await call(asSpecialist, 'POST', '/blacklist/remove', { items: [{ id: entry.id, revision: 1 }] })).status,
     ).toBe(404);
+  });
+
+  it('选人员加黑：员工不在操作人的任职数据范围内与员工不存在同一个 404，不写入', async () => {
+    const fixture = tenantApi(testDb().db, { clock: CLOCK });
+    const created = await fixture.request('POST', '/api/tenant/employment/employees', {
+      ...asAdmin,
+      ifMatch: 0,
+      body: { name: '范围外员工', code: `BL_${randomUUID()}` },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const missing = '00000000-0000-4000-8000-000000000000';
+    for (const employeeId of [id, missing]) {
+      const response = await call(asHr, 'POST', '/blacklist', { employeeId, reason: 'other' }, 0);
+      expect(response.status).toBe(404);
+      expect(((await response.json()) as { error: { message: string } }).error.message).toBe('员工不存在');
+    }
+    const listed = (await (await call(asHr, 'GET', '/blacklist')).json()) as { items: { employeeId: string }[] };
+    expect(listed.items.map((item) => item.employeeId)).not.toContain(id);
   });
 
   it('没有黑名单对象权限：读写 403', async () => {
