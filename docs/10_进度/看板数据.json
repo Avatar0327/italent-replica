@@ -2,8 +2,8 @@
 "updated": "2026-10-14",
 "stats": {
 "merged": 305,
-"open": 10,
-"dec": 577,
+"open": 11,
+"dec": 578,
 "ev": "43/177"
 },
 "tasks": {
@@ -983,6 +983,10 @@
 }
 },
 "log": [
+[
+"10-17",
+"FE2b 离职三个字典设置页已开会话，开发中"
+],
 [
 "10-17",
 "F-212 #389 第 1 轮审查已发起（Sol high）；契约级，过审后先报 00 确认再入队"
@@ -5611,7 +5615,7 @@
 "kind": "前端",
 "mod": "R2",
 "ms": "D2",
-"note": "拟派发（DEC-577，用户定）· Claude Opus High 按前端规则开发 / Codex Sol high 审 · 分支 claude/FE2b-exit-dictionaries · 前序 B1a（#347）已合 · FE-R2c 其余部分仍等 BE-3/4/5"
+"note": "开发中（云端会话 session_01B9kUz7NpamSXQDrwCeJBeb，尚无 PR）· Claude Opus High 按前端规则 / Codex Sol high 审 · 分支 claude/FE2b-exit-dictionaries · 前序 B1a（#347）已合 · DEC-577"
 },
 {
 "k": "BE-8a",
