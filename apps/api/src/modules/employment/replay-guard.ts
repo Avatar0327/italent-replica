@@ -232,15 +232,31 @@ export function exitEditGuard(
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireExitScope(tx, scoped, target, { businessId });
-      await requireExitPermission(scoped, 'update', target);
-      if ((await businessState(tx, scoped.tenantId, businessId)) === 'in_review')
-        await requirePermission(scoped.authorize!, {
-          ...scoped,
-          action: 'object.button',
-          resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail'),
-        });
+      await requireExitEditRights(tx, scoped, target, businessId);
     },
   });
+}
+
+/**
+ * 编辑离职的按钮与字段权，HR 编辑（PATCH exits/:id）与审批中编辑（独立编辑 / 编辑并同意）共用这一个入口
+ * （设计 §4 / §4B / §9.1 PATCH 行，DEC-455）：DimissionEdit + 实际写入字段的编辑权；单据审批中另需审批管理员（干预）按钮。
+ * 不含数据范围：HR 入口由调用方先判员工 / 业务范围，审批人只操作本单（DEC-057），不走 HR 员工范围。
+ * 状态取命令事务内读到的当前值；读到之后单据若被提交 / 撤回，业务 revision 已变，本命令随即 409。
+ */
+export async function requireExitEditRights(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ExitGateTarget,
+  businessId: string,
+): Promise<void> {
+  if (!ctx.authorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
+  await requireExitPermission(ctx, 'update', target);
+  if ((await businessState(tx, ctx.tenantId, businessId)) === 'in_review')
+    await requirePermission(ctx.authorize, {
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail'),
+    });
 }
 
 /** 批量离职一行（POST exits/batch）。 */

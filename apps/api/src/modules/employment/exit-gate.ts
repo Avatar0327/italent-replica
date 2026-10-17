@@ -163,6 +163,15 @@ export function assertExitDatesUnchanged(business: LockedEmploymentBusiness, pat
     });
 }
 
+/** 实际离岗日不晚于最后工作日（设计 §2.1 actual_leave_date ≤ 最后工作日；#388 P2-2）：新建按请求日期，编辑按当前载荷。 */
+export function assertActualLeaveDate(actualLeaveDate: string | undefined, lastWorkDate: string | null | undefined) {
+  if (actualLeaveDate && lastWorkDate && actualLeaveDate > lastWorkDate)
+    throw new AppError('VALIDATION_FAILED', '实际离岗日不能晚于最后工作日', {
+      reason: 'EXIT_ACTUAL_LEAVE_DATE_AFTER_LAST_WORK_DATE',
+      lastWorkDate,
+    });
+}
+
 // ---- 在途申请清单与披露（§8 / §8A / §8B）-------------------------------------------------------------------
 
 export interface InFlight {
@@ -382,6 +391,7 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
   const lastWorkDate = target.lastWorkDate!;
   if (exit.dutyTransfer !== undefined)
     throw new AppError('VALIDATION_FAILED', '职责转交暂不可用', { reason: 'EXIT_DUTY_TRANSFER_NOT_AVAILABLE' });
+  assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
   await assertDictionaries(tx, ctx, exit);
   const cycle = await currentEmploymentCycle(tx, ctx, target.employeeId);
   if (cycle && lastWorkDate < cycle.entryDate)
@@ -445,6 +455,10 @@ export async function requireExitGate(
       return { ack: await createConditions(tx, ctx, target) };
     case 'update':
       assertExitDatesUnchanged(target.business!, target.patch ?? {});
+      assertActualLeaveDate(
+        (target.payload as { actualLeaveDate?: string } | undefined)?.actualLeaveDate,
+        target.business!.payload.lastWorkDate,
+      );
       return { ack: null };
     case 'submit':
       return { ack: await submitConditions(tx, ctx, target, provided) };

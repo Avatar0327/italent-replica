@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
@@ -29,6 +30,8 @@ import { findCurrentRecord, findPredecessor, loadEmploymentBusiness } from '../e
 import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { parseExitPatch, updateExitFields } from '../employment/exit-application.js';
 import { loadExitRequest } from '../employment/exit-gate.js';
+import { requireExitEditRights } from '../employment/replay-guard.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
@@ -224,6 +227,23 @@ function originalsOf(before: Awaited<ReturnType<typeof findPredecessor>>, exit: 
     lastWorkDate: null,
     ...Object.fromEntries(Object.keys(exit).map((field) => [field, null])),
   };
+}
+
+/** 离职扩展字段的指纹（审批版本的一段）；不是离职单为空。 */
+const exitVersion = (exit: Row) =>
+  Object.keys(exit).length ? `exit-${createHash('sha256').update(JSON.stringify(exit)).digest('hex')}` : '';
+
+/**
+ * 审批中编辑离职单（独立编辑与编辑并同意都经适配器 edit）：与 HR 编辑同一复核入口 requireExitEditRights，
+ * 在本命令事务内按审批人当前授权判 DimissionEdit、审批管理员按钮与字段编辑权（设计 §4，DEC-455）。
+ * 审批人只操作本单，不走 HR 员工范围（DEC-057）；可信造数的离职（没有扩展行）保持 main 行为。
+ */
+async function requireExitApprovalEdit(tx: Tx, ctx: ApprovalContext, businessId: string, input: Readonly<Row>) {
+  const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
+  if (!exit) return;
+  if (!ctx.authorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
+  const scoped = { ...ctx, authorize: authorizeInTransaction(ctx.authorize, tx) };
+  await requireExitEditRights(tx, scoped, { employeeId: exit.employeeId, payload: input }, businessId);
 }
 
 /** 离职扩展字段的“有值”口径：没有前一版可比，填了（非空、非 false）即本单内容，进变化字段与盲审。 */
@@ -444,7 +464,8 @@ const employmentAdapter: BusinessAdapter = {
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
       ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
-      version: linkage.version ? `${payload.version}:${linkage.version}` : payload.version,
+      // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
+      version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
       processCode,
     };
   },
@@ -456,6 +477,7 @@ const employmentAdapter: BusinessAdapter = {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
   async edit(tx, ctx, id, input) {
+    await requireExitApprovalEdit(tx, ctx, id, input);
     // R2-T03 §4B：离职扩展字段（如补齐离职类型）写离职扩展行，其余任职字段照旧；日期与当前值不同两条路都 400
     const { exit, employment, datesOnly } = splitExitEdit(input);
     if (!Object.keys(exit).length || !datesOnly) {

@@ -203,5 +203,11 @@ export async function updateExitFields(
     undefined,
     { employeeId: business.employeeId },
   );
+  // HR 编辑审批中的单（#388 P2-1）：离职字段进了审批版本，同事务让在途实例记下新版本并推进 revision，旧审批页面随即 409；
+  // 审批编辑自己会在审批命令里刷新版本，这里不重复推进
+  if (business.state === 'in_review' && !options.approvalEdit) {
+    const { refreshBusinessVersion } = await import('../approval/engine.js');
+    await refreshBusinessVersion(tx, ctx, 'employment', businessId);
+  }
   return requireSavedBusiness(tx, ctx, businessId);
 }
