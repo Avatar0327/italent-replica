@@ -116,7 +116,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBatchEdit(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
-  registerExitRoutes(module, deps);
+  registerExitRoutes(module, deps, authorizeBusinessWrite);
   registerBlacklistRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
