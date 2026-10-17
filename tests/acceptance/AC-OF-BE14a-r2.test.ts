@@ -46,6 +46,20 @@ describe('P2-01 继承 / 复制带来的字段按字段编辑权校验', () => {
     expect(await w.traces(key)).toBe(0);
   });
 
+  it('有权时继承成功；撤掉手机号编辑权后同键重放也 403（重放按同一规则复核）', async () => {
+    const w = await offerRealWorld(testDb().db, 'inherit-replay');
+    const campus = await w.social({ offerType: 'campus', mobile: '13800000000' });
+    const { name: _n, personalEmail: _e, ...rest } = w.internFields();
+    const body = { entry: 'campus_early_intern', campusOfferId: campus.id, ...rest };
+    const key = randomUUID();
+    const first = await w.real('POST', '', { ifMatch: 0, idempotencyKey: key, body });
+    expect(first.status, await first.clone().text()).toBe(201);
+    expect(await first.json()).toMatchObject({ mobile: '13800000000' });
+    await w.denyEdit(['mobile']);
+    const replay = await w.real('POST', '', { ifMatch: 0, idempotencyKey: key, body });
+    expect(replay.status).toBe(403);
+  });
+
   it('对照：继承 / 复制的字段都有编辑权时成功', async () => {
     const w = await offerRealWorld(testDb().db, 'inherit-ok');
     const source = await w.intern({ salaryBeforeRegular: 12000.5 });
@@ -74,5 +88,27 @@ describe('P2-02 引用按被引用对象的当前范围校验', () => {
     expect(rebound.status, await rebound.clone().text()).toBe(400);
     expect((await errorOf(rebound)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
     expect(await w.get(offer.id)).toMatchObject({ positionId: null, revision: 1 });
+  });
+
+  it('职级（无组织、无看全部）与合同主体（主数据只认看全部）同样按范围：新建 / 改绑 400，不写入', async () => {
+    const w = await offerRealWorld(testDb().db, 'master-scope');
+    const before = await w.count();
+    for (const extra of [{ levelId: w.level.id }, { contractCompanyId: w.company.id }]) {
+      const created = await w.real('POST', '', {
+        ifMatch: 0,
+        body: { entry: 'intern', ...w.internFields(), ...extra },
+      });
+      expect(created.status, await created.clone().text()).toBe(400);
+      expect((await errorOf(created)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
+    }
+    expect(await w.count()).toBe(before);
+    const offer = (await (
+      await w.real('POST', '', { ifMatch: 0, body: { entry: 'intern', ...w.internFields() } })
+    ).json()) as OfferBody;
+    for (const extra of [{ levelId: w.level.id }, { contractCompanyId: w.company.id }]) {
+      const rebound = await w.real('PUT', `/${offer.id}`, { ifMatch: 1, body: extra });
+      expect((await errorOf(rebound)).details).toMatchObject({ reason: 'OFFER_REFERENCE_INVALID' });
+    }
+    expect(await w.get(offer.id)).toMatchObject({ levelId: null, contractCompanyId: null, revision: 1 });
   });
 });

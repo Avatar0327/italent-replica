@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin, type Authorizer } from '@italent/api';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, type ObjectDefinition } from '@italent/domain';
 import { sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
@@ -155,7 +155,7 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
   };
   const member = await addMember(seed, 'OfferHR');
   const profile = await createProfile(seed, `offer-${uniqueSuffix()}`);
-  for (const definition of [MODULE_OBJECTS.offer, MODULE_OBJECTS.jobPosition]) {
+  const permit = async (definition: ObjectDefinition, deniedEdit: readonly string[]) => {
     const response = await setObjectPermission(
       seed,
       profile,
@@ -171,7 +171,8 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
       definition.code,
     );
     expect(response.status, await response.clone().text()).toBe(200);
-  }
+  };
+  for (const definition of [MODULE_OBJECTS.offer, MODULE_OBJECTS.jobPosition]) await permit(definition, deniedEdit);
   await makeGrantable(seed, [profile.id]);
   expect((await grant(seed, member.id, profile.id)).status).toBe(201);
   const scope = await api.request('PUT', `/api/tenant/permission/scopes/${member.id}/TenantBase`, {
@@ -227,6 +228,8 @@ export async function offerRealWorld(db: Db, label: string, deniedEdit: readonly
     real,
     count,
     traces,
+    /** 改身份上 Offer 字段的编辑权（撤权后同键重放用）。 */
+    denyEdit: (fields: readonly string[]) => permit(MODULE_OBJECTS.offer, fields),
     outsidePosition: ((await position.json()) as { id: string }).id,
   };
 }
