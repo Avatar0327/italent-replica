@@ -5,7 +5,7 @@ test('AC-FE-F190a-04 外壳展开分组、子项路由与 legacy、直达鉴权�
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   // 仅在浏览器响应中注入合成登记，不修改业务模块或生产路由。
-  await page.route('**/src/idp/pages.ts', async (route) => {
+  await page.route(/\/src\/idp\/pages\.ts(?:\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       'entries: [',
