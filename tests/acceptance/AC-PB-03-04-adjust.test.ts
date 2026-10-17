@@ -124,11 +124,10 @@ describe('AC-PB-03 互斥校验（PB-R9）', () => {
   it('转正申请在审批中：草稿照常能保存（打开表单不拦），提交第二张时被拒', async () => {
     const { w, employee } = await inReview('pb-mutex-submit');
     const second = await draftRegularization(w, employee.id, '2026-12-01');
-    const submitted = await transition(w, second, 'submit');
-    expect(submitted.status).toBe(409);
-    expect((submitted.body as { error: { details: { reason: string } } }).error.details.reason).toBe(
-      'PROBATION_PROCESS_IN_REVIEW',
-    );
+    await expect(transition(w, second, 'submit')).rejects.toMatchObject({
+      code: 'CONFLICT',
+      details: { reason: 'PROBATION_PROCESS_IN_REVIEW' },
+    });
   });
 
   it('转正申请在审批中：直接转正、批量申请逐人失败，调整试用期 409', async () => {

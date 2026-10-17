@@ -37,7 +37,7 @@ describe('BE-3 试用期信息', () => {
       months: null,
       expectedEndDate: null,
     });
-    expect(regular.business.employeeStatus).toBe(3);
+    expect((regular.business as unknown as { employeeStatus: number }).employeeStatus).toBe(3);
   });
 
   it('入职控制项不合法：月数越界、无试用期却带月数、非入职类业务带月数均 400', async () => {

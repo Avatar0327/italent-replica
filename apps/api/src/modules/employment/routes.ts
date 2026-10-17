@@ -85,6 +85,7 @@ import { registerExitRoutes } from './exit-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
+import { registerProbationRoutes } from './probation-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -108,6 +109,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerExitRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
+  registerProbationRoutes(module, deps);
   router.route('/api/tenant/employment', module);
 };
 

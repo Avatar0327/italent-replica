@@ -125,6 +125,7 @@ const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
+const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
 
 /** 调动发起人 → 按钮：hr → Transfer.Hr、manager → Transfer.Manager、employee → Transfer.Self（detail；access.ts ROLE_BUTTONS）。 */
 const TRANSFER_INITIATORS = ['hr', 'manager', 'employee'] as const satisfies readonly TransferInitiator[];
@@ -609,7 +610,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         'requireScopedEmploymentObject',
         'requireLinkedEmploymentRecord',
       ],
-      { controls: ['loginEmail', 'pendingEntry', 'probation'] },
+      { controls: ['loginEmail', 'pendingEntry', 'probation', 'probationMonths', 'probationEndDate'] },
     ),
     ...byId,
   }),
@@ -1134,6 +1135,109 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     'update',
     SETTINGS_FIELDS,
     auditedConfigWrite('exit_dictionary'),
+    byId,
+  ),
+  // ---- employment/probation-routes.ts：R2 BE-3 试用期与转正（29 §2.1 / §2.3，差距表 B1 / B3～B8）----------------------------
+  // 四个视图：view ∈ expiring / in_review / all / regularized（缺失或不合法 400；其余筛选 employeeId / keyword /
+  // departmentId / postId / expectedEndFrom / expectedEndTo 严格校验 400）；readPageContext(list)，listProbationView 的
+  // employmentScopePredicate = scopeSql（人员 / 当前主职部门 / 创建人，范围为空什么也看不到）；行字段按任职记录可见字段裁剪，试用期 / 转正信息是控制项
+  // 显式放回（同入职视图），姓名 / 工号按人员对象可见字段另行裁剪；hasDataPermission 协议键
+  'GET /probation-views': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.probationViews'),
+  }),
+  // 试用人员详情（B6）：readPageContext(detail, resource=id) 人员范围 → 404「任职数据不存在」；不在职 404；
+  // 记录行按 DEC-177 可见谓词（employmentVisibilitySql）列出并按任职字段权裁剪，转正日期投影（PB-R13）与试用信息是控制项
+  'GET /employees/:id/probation': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
+    fields: projector('employment.response', 'employment.probationDetail'),
+    ...byId,
+  }),
+  // 调整试用信息（B6，PB-R9～R12）：If-Match = 员工 revision；body 严格 { hasProbation, startDate?, months?(1～6),
+  // expectedEndDate?, regularizationDate? }（400）；readContext('object.update', resource=id) 人员范围 404「任职数据不存在」+
+  // Employment.Edit（命令式，试用期是控制项不进字段协议）；命令内 lockEmploymentEmployee（409 REVISION_CONFLICT）→ 互斥
+  // （转正申请审批中 409 PROBATION_PROCESS_IN_REVIEW）→ PB-R11（409）/ PB-R12（400）→ 追加试用期版本；是否有试用期变化时
+  // switchProbationStatus 改开启记录及其后同周期记录的人员状态（requireScopedEmploymentObject，向后按 DEC-178 联动）；
+  // CommandGuard.before 在命令事务内复核对象编辑权、按钮与员工范围；回执是试用信息固定形状
+  'PUT /employees/:id/probation': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Edit', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: projector('employment.probationDetail', 'employment.probationDetail'),
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'lockEmploymentEmployee',
+        'assertRevision',
+        'assertProbationProcessesIdle',
+        'lockEmploymentBusiness',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+      ],
+      {
+        commandOnly: true,
+        controls: ['hasProbation', 'startDate', 'months', 'expectedEndDate', 'regularizationDate'],
+      },
+    ),
+    ...byId,
+  }),
+  // 单个 / 批量转正（B7 / B8，PB-R8）：不要求 If-Match（items[*].revision 逐人比对员工 revision）；body 严格
+  // { mode, effectiveDate?, probationResult, items[1～100] }，同一员工重复 400；试用结果须为字典启用项（400）；
+  // requireEmploymentWrite('create', { kind, mode, effectiveDate? }, Employment.Create)；命令内逐人保存点：员工范围
+  // （requireEmployeeInScope 404）→ 转正日期（统一填写或 F-205 默认，缺预计结束日 400）→ createEmploymentBusiness（直接转正
+  // 互斥 409、生效即向后传播正式）→ 申请则 transitionEmployment(submit) + 审批中心发起；单人失败只记在本人回执
+  'POST /regularizations': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    guards: [DIRECT_OPERATION, LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: projector('employment.regularizationReceipt', 'employment.regularizationReceipt'),
+    rows: {
+      path: 'items[*]',
+      fields: none('字段取自共享的 { kind, mode, effectiveDate }，不逐行提取'),
+      target: { body: 'items[*].employeeId' },
+      batch: 'receipt',
+    },
+    write: employmentWrite(
+      'body',
+      [
+        'requireEmployeeInScope',
+        'lockEmploymentEmployee',
+        'assertRevision',
+        'assertProbationProcessesIdle',
+        'requireScopedEmploymentObject',
+        'requireLinkedEmploymentRecord',
+      ],
+      { controls: ['probationResult', 'items'] },
+    ),
+  }),
+  // 试用结果字典（B7）：读取对持任职记录查看权者开放（转正表单下拉）；enabled 查询非法 → 400；无组织字段，不按范围裁剪
+  'GET /probation-results': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('字典读取无按钮（表单下拉、显示名称）'),
+    scope: noScope('试用结果字典是租户配置，无组织 / 人员字段'),
+    fields: fixed(PROBATION_RESULT_KEYS, 'BE-3：字典项固定键，配置对象不做字段裁剪'),
+  }),
+  // body 严格 { code, name, enabled?, displayOrder? }（400）；If-Match 须为 0；编码重复（不分大小写）→ 409
+  // PROBATION_RESULT_CODE_TAKEN；审计 probation_result.save / probation_result
+  'POST /probation-results': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('probation_result')),
+  // 管理员别名先于 uuidParam 校验（400）；body 严格 { code?, name?, enabled?, displayOrder? }，改编码 → 400
+  // PROBATION_RESULT_CODE_IMMUTABLE；项不存在 → 404「试用结果不存在」；审计 probation_result.save / probation_result
+  'PUT /probation-results/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('probation_result'),
     byId,
   ),
 });

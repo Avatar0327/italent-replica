@@ -46,7 +46,10 @@ describe('调整试用信息校验（PB-R11 / R12，W-597）', () => {
     expectedEndDate: '2026-11-30',
     regularizationDate: null,
   };
-  const facts = { entryDate: '2026-09-01', regularizationDate: null };
+  const facts: { entryDate: string; regularizationDate: string | null } = {
+    entryDate: '2026-09-01',
+    regularizationDate: null,
+  };
   const reason = (value: Parameters<typeof probationAdjustmentViolation>[0], f = facts) =>
     probationAdjustmentViolation(value, f)?.reason ?? null;
 

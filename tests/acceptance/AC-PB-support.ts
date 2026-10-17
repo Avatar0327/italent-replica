@@ -1,8 +1,9 @@
 /** BE-3 试用期与转正验收夹具（docs/02_业务建模/29 §2.1 / §2.3 / §4 / §8）：经路由入职、调整试用信息、转正。 */
 import { randomUUID } from 'node:crypto';
-import type { Db } from '@italent/db';
+import { withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
+import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession, withLoginEmail, type EmploymentBusiness } from './AC-EMP-support.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 
@@ -10,6 +11,14 @@ export async function pbWorld(db: Db, label: string, options: { approval?: boole
   const session = await employmentSession(db, label);
   const org = await session.org(`试用部门-${label}`, { establishedOn: '2026-01-01' });
   if (options.approval) await installApprovalFallbacks(db, session.tenant.id, session.user.id);
+  // 试用结果字典的预置项（DEC-361 种子）：新租户开通即装，夹具按模块补装
+  await withTenant(db, session.tenant.id, (tx) =>
+    installMissingSeeds(
+      tx,
+      { tenantId: session.tenant.id, actorUserId: null, now: new Date(), commandId: `pb-seed-${randomUUID()}` },
+      { modules: ['employment-probation'] },
+    ),
+  );
   return { db, session, org };
 }
 export type PbWorld = Awaited<ReturnType<typeof pbWorld>>;

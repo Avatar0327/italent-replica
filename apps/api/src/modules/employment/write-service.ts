@@ -4,9 +4,12 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { saveAddedPendingEntryData } from './entry-pending-contract.js';
+import { saveEntryProbation } from './entry-probation.js';
+import { assertProbationProcessesIdle } from './probation-guard.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
+  ENTRY_LIKE_KINDS,
   entryStatusFor,
   inheritedStatus,
   propagateEmployeeStatus,
@@ -112,6 +115,9 @@ export async function createEmploymentBusiness(
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
+  // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
+  if (normalized.kind === 'regularization' && normalized.mode === 'direct')
+    await assertProbationProcessesIdle(tx, ctx, { employeeId: employee.id, action: 'regularize' });
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
@@ -138,6 +144,14 @@ export async function createEmploymentBusiness(
   // F-188：待入职阶段的“是否有试用期”随记录落库（改期 / 编辑换日期替换记录时由 entry-actions 带到这里）
   // F-194：同时生成待入职合同（起始日 = 计划入职日期、终止日为空）；Offer 同步生成待入职（BE-14）走同一通道
   const pendingAudit = await saveAddedPendingEntryData(tx, ctx, employee.id, id, normalized, options.entry);
+  // BE-3：直接入职 / 实习转正带了是否有试用期时写试用期版本链，开始日 = 生效日（R2e6、R2f1）
+  if (ENTRY_LIKE_KINDS.includes(normalized.kind))
+    await saveEntryProbation(
+      tx,
+      ctx,
+      { employeeId: employee.id, businessId: id, startDate: normalized.effectiveDate },
+      options.entry,
+    );
   const payload = await appendEmploymentPayload(
     tx,
     ctx,
