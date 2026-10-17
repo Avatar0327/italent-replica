@@ -423,6 +423,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/adapters.ts#ADAPTERS': [
     '#employmentAdapter',
+    '#partTimeAdapter',
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
@@ -478,6 +479,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapters.ts#mayMergeSeat': [
     '#HELD_STATUSES',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/approval/adapters.ts#partTimeAdapter': ['#partTimeUnavailable'],
+  'apps/api/src/modules/approval/adapters.ts#partTimeUnavailable': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': [
     '#employeeHeader',
