@@ -1163,7 +1163,6 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/probation-results.ts#saveProbationResult': ['42e74000e48b', '236d6f5b4f10'],
   'apps/api/src/modules/employment/probation-results.ts#updateInput': ['36650ec4b696', '3cfe566be5f4'],
   'apps/api/src/modules/employment/probation-results.ts#writerOf': ['726823bc6275', '2d0845557894'],
-  'apps/api/src/modules/employment/probation-routes.ts#SETTINGS': ['d64ed3102976', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/probation-routes.ts#adjustInput': ['e9ea9932ad08', 'f56f51c61446'],
   'apps/api/src/modules/employment/probation-routes.ts#createRegularizationViaBusinesses': [
     '90d692f1af9e',

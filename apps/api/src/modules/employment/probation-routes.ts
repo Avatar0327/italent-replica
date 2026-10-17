@@ -57,7 +57,6 @@ const viewQuery = z.strictObject({
   expectedEndTo: date.optional(),
 });
 const enabledQuery = z.enum(['true', 'false']).optional();
-const SETTINGS = 'TenantBase.EmploymentSettings';
 
 /** 调整试用信息 / 转正的命令内复核（#199 CommandGuard.before）：按当前授权重过入口的对象、按钮、字段与员工范围。 */
 function probationWriteGuard(
@@ -291,19 +290,33 @@ function registerProbationResults(router: Hono<TenantEnv>, deps: TenantRouteDeps
     return c.json({ items });
   });
   router.post('/probation-results', async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.employment.configuration.write', revision(c), undefined, SETTINGS);
+    const ctx = await readContext(
+      c,
+      deps,
+      'tenant.employment.configuration.write',
+      revision(c),
+      undefined,
+      'TenantBase.EmploymentSettings',
+    );
     const input = parseProbationResultInput(await jsonBody(c), 'create');
-    await requireEmploymentWrite(ctx, 'create', input, undefined, SETTINGS);
+    await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(c, deps, ctx, { input }, async (tx, context) => ({
       status: 201,
       body: await saveProbationResult(tx, context, input),
     }));
   });
   router.put('/probation-results/:id', async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.employment.configuration.write', revision(c), undefined, SETTINGS);
+    const ctx = await readContext(
+      c,
+      deps,
+      'tenant.employment.configuration.write',
+      revision(c),
+      undefined,
+      'TenantBase.EmploymentSettings',
+    );
     const id = uuidParam(c);
     const input = parseProbationResultInput(await jsonBody(c), 'update');
-    await requireEmploymentWrite(ctx, 'update', input, undefined, SETTINGS);
+    await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(c, deps, ctx, { id, input }, async (tx, context) => ({
       status: 200,
       body: await saveProbationResult(tx, context, input, id),

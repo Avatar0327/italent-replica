@@ -15670,6 +15670,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
         ]
       }
     },
@@ -21883,6 +21886,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },

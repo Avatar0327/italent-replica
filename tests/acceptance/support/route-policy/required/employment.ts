@@ -1799,7 +1799,7 @@ export const EMPLOYMENT: RequiredTable = {
       PROBATION,
       'POST',
       '/probation-results',
-      "await requireEmploymentWrite(ctx, 'create', input, undefined, SETTINGS)",
+      "await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
   ),
   'PUT /api/tenant/employment/probation-results/:id': configWrite(
@@ -1810,7 +1810,7 @@ export const EMPLOYMENT: RequiredTable = {
       PROBATION,
       'PUT',
       '/probation-results/:id',
-      "await requireEmploymentWrite(ctx, 'update', input, undefined, SETTINGS)",
+      "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
   ),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（读：任职记录查看权；写：配置对象，设计 §9.1）----------------

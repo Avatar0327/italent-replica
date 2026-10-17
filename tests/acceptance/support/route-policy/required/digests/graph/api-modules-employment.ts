@@ -1525,7 +1525,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/probation-results.ts#parseProbationResultInput',
     'apps/api/src/modules/employment/probation-results.ts#saveProbationResult',
-    '#SETTINGS',
     'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/employment/probation-routes.ts#route:POST /regularizations': [
@@ -1558,7 +1557,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/probation-results.ts#parseProbationResultInput',
     'apps/api/src/modules/employment/probation-results.ts#saveProbationResult',
-    '#SETTINGS',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
