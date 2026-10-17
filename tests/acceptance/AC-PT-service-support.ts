@@ -117,11 +117,11 @@ export async function serviceWorld(db: Db, label: string) {
     withTenant(db, w.tenantId, async (tx) => {
       const [row] = rowsOf<Record<string, unknown>>(
         await tx.execute(sql`SELECT
-          (SELECT count(*) FROM employment_records WHERE tenant_id=${w.tenantId}) AS records,
-          (SELECT count(*) FROM employment_part_time_terms WHERE tenant_id=${w.tenantId}) AS terms,
-          (SELECT count(*) FROM employment_business_objects WHERE tenant_id=${w.tenantId}) AS heads,
-          (SELECT count(*) FROM audit_events WHERE tenant_id=${w.tenantId}) AS audits,
-          (SELECT count(*) FROM employment_outbox WHERE tenant_id=${w.tenantId}) AS outbox`),
+          (SELECT count(*)::int FROM employment_records WHERE tenant_id=${w.tenantId}) AS records,
+          (SELECT count(*)::int FROM employment_part_time_terms WHERE tenant_id=${w.tenantId}) AS terms,
+          (SELECT count(*)::int FROM employment_business_objects WHERE tenant_id=${w.tenantId}) AS heads,
+          (SELECT count(*)::int FROM audit_events WHERE tenant_id=${w.tenantId}) AS audits,
+          (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${w.tenantId}) AS outbox`),
       );
       return row;
     });

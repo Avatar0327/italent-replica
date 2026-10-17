@@ -63,6 +63,7 @@ async function comparablePrimary(w: PartTimeWorld) {
   const { code } = await w.getEmployee(w.employeeId);
   const aliases: [string, string][] = [
     ...all.map((record, index): [string, string] => [record.id, `RECORD-${index}`]),
+    [w.tenantId, 'TENANT'],
     [w.employeeId, 'EMPLOYEE'],
     [code, 'EMPLOYEE-CODE'],
     [w.primaryOrg.id, 'PRIMARY-ORG'],
