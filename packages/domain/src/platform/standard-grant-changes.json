@@ -1,11 +1,9 @@
 {
-  "reason": "R2 BE-8a：新增黑名单对象 TenantBase.Blacklist（三个标准 HR 身份的对象 / 字段 / 按钮授权项），并按 DEC-415 给标准版系统管理员、人事管理员预置看全部",
+  "reason": "R2 BE-14a：新增 Offer 对象（TenantBase.Offer）的字段、CRUD 与转移状态两项按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
   "add": [
-    "standard_hr_admin/TenantBase.Blacklist/*",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.Blacklist",
-    "standard_hr_specialist/TenantBase.Blacklist/*",
-    "standard_org_system_admin/TenantBase.Blacklist/*",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.Blacklist"
+    "standard_hr_admin/TenantBase.Offer/*",
+    "standard_hr_specialist/TenantBase.Offer/*",
+    "standard_org_system_admin/TenantBase.Offer/*"
   ],
   "remove": []
 }

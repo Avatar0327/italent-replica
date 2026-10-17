@@ -67,6 +67,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'exit-cancellation': { label: '撤销的离职记录', app: ORG_PEOPLE },
   'exit-effect': { label: '离职下游效果', app: ORG_PEOPLE },
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
+  offer: { label: 'Offer', app: ORG_PEOPLE },
+  offer_dictionary: { label: 'Offer 字典', app: ORG_PEOPLE },
   // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
   'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
   'part-time-request': { label: '兼职申请', app: ORG_PEOPLE },
@@ -321,6 +323,7 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'transfer_settings',
   'transfer_form',
   'exit_dictionary',
+  'offer_dictionary',
   'blacklist_rule',
   'personnel-order-settings',
   'org_setting',

@@ -1,5 +1,5 @@
 {
-  "id": "e2781481-5d94-40aa-8ad5-83183083b5af",
+  "id": "cfe6b466-896b-4e3b-98a6-48e212751ff5",
   "prevId": "c1bd7007-c7ac-4388-a7be-582799e88376",
   "version": "7",
   "dialect": "postgresql",
@@ -57204,8 +57204,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.employment_probation_results": {
-      "name": "employment_probation_results",
+    "public.offer_dictionary_items": {
+      "name": "offer_dictionary_items",
       "schema": "",
       "columns": {
         "id": {
@@ -57218,6 +57218,12 @@
         "tenant_id": {
           "name": "tenant_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -57270,11 +57276,17 @@
         }
       },
       "indexes": {
-        "employment_probation_results_code": {
-          "name": "employment_probation_results_code",
+        "offer_dictionary_items_code_unique": {
+          "name": "offer_dictionary_items_code_unique",
           "columns": [
             {
               "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -57293,9 +57305,9 @@
         }
       },
       "foreignKeys": {
-        "employment_probation_results_tenant_id_tenants_id_fk": {
-          "name": "employment_probation_results_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_probation_results",
+        "offer_dictionary_items_tenant_id_tenants_id_fk": {
+          "name": "offer_dictionary_items_tenant_id_tenants_id_fk",
+          "tableFrom": "offer_dictionary_items",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -57309,8 +57321,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "employment_probation_results_tenant_id": {
-          "name": "employment_probation_results_tenant_id",
+        "offer_dictionary_items_tenant_id": {
+          "name": "offer_dictionary_items_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
@@ -57320,34 +57332,39 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_probation_results_code_nonempty": {
-          "name": "employment_probation_results_code_nonempty",
-          "value": "btrim(\"employment_probation_results\".\"code\") <> ''"
+        "offer_dictionary_items_kind": {
+          "name": "offer_dictionary_items_kind",
+          "value": "\"offer_dictionary_items\".\"kind\" IN ('refusal-reasons', 'invalid-reasons')"
         },
-        "employment_probation_results_name_nonempty": {
-          "name": "employment_probation_results_name_nonempty",
-          "value": "btrim(\"employment_probation_results\".\"name\") <> ''"
+        "offer_dictionary_items_code": {
+          "name": "offer_dictionary_items_code",
+          "value": "btrim(\"offer_dictionary_items\".\"code\") <> ''"
         },
-        "employment_probation_results_revision_positive": {
-          "name": "employment_probation_results_revision_positive",
-          "value": "\"employment_probation_results\".\"revision\" > 0"
+        "offer_dictionary_items_name": {
+          "name": "offer_dictionary_items_name",
+          "value": "btrim(\"offer_dictionary_items\".\"name\") <> ''"
         },
-        "employment_probation_results_display_order": {
-          "name": "employment_probation_results_display_order",
-          "value": "\"employment_probation_results\".\"display_order\" >= 0"
+        "offer_dictionary_items_order": {
+          "name": "offer_dictionary_items_order",
+          "value": "\"offer_dictionary_items\".\"display_order\" >= 0"
+        },
+        "offer_dictionary_items_revision": {
+          "name": "offer_dictionary_items_revision",
+          "value": "\"offer_dictionary_items\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false
     },
-    "public.employment_probation_versions": {
-      "name": "employment_probation_versions",
+    "public.offers": {
+      "name": "offers",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "tenant_id": {
           "name": "tenant_id",
@@ -57355,51 +57372,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
+        "entry": {
+          "name": "entry",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_no": {
-          "name": "version_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "previous_version_id": {
-          "name": "previous_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "has_probation": {
-          "name": "has_probation",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "months": {
-          "name": "months",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expected_end_date": {
-          "name": "expected_end_date",
-          "type": "date",
+        "offer_type": {
+          "name": "offer_type",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -57407,11 +57388,291 @@
           "name": "source",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'new_hire'"
         },
-        "command_id": {
-          "name": "command_id",
+        "status": {
+          "name": "status",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "approval_status": {
+          "name": "approval_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unsubmitted'"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "personal_email": {
+          "name": "personal_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mobile": {
+          "name": "mobile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gender": {
+          "name": "gender",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_type": {
+          "name": "id_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_number": {
+          "name": "id_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "birth_date": {
+          "name": "birth_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "work_start_date": {
+          "name": "work_start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "channel_name": {
+          "name": "channel_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applied_position": {
+          "name": "applied_position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recruitment_demand": {
+          "name": "recruitment_demand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "planned_entry_date": {
+          "name": "planned_entry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_id": {
+          "name": "position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "work_place": {
+          "name": "work_place",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_probation": {
+          "name": "has_probation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "probation_months": {
+          "name": "probation_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "direct_manager_id": {
+          "name": "direct_manager_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dotted_manager_id": {
+          "name": "dotted_manager_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hrbp_id": {
+          "name": "hrbp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_center": {
+          "name": "cost_center",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_company_id": {
+          "name": "contract_company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_term_type": {
+          "name": "contract_term_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_months": {
+          "name": "contract_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_end_date": {
+          "name": "contract_end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_before_regular": {
+          "name": "salary_before_regular",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_after_regular": {
+          "name": "salary_after_regular",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "social_insurance_base": {
+          "name": "social_insurance_base",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "housing_fund_base": {
+          "name": "housing_fund_base",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accept_time": {
+          "name": "accept_time",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refusal_time": {
+          "name": "refusal_time",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refusal_reason_code": {
+          "name": "refusal_reason_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refusal_remark": {
+          "name": "refusal_remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invalid_reason_code": {
+          "name": "invalid_reason_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invalid_remark": {
+          "name": "invalid_remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invalid_at": {
+          "name": "invalid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_by": {
+          "name": "sent_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "campus_offer_id": {
+          "name": "campus_offer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "copied_from_offer_id": {
+          "name": "copied_from_offer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_entry_business_id": {
+          "name": "pending_entry_business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -57421,13 +57682,54 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "offers_status": {
+          "name": "offers_status",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approval_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "employment_probation_versions_tenant_id_tenants_id_fk": {
-          "name": "employment_probation_versions_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_probation_versions",
+        "offers_tenant_id_tenants_id_fk": {
+          "name": "offers_tenant_id_tenants_id_fk",
+          "tableFrom": "offers",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -57438,18 +57740,166 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "employment_probation_versions_business_fk": {
-          "name": "employment_probation_versions_business_fk",
-          "tableFrom": "employment_probation_versions",
-          "tableTo": "employment_business_objects",
+        "offers_department_fk": {
+          "name": "offers_department_fk",
+          "tableFrom": "offers",
+          "tableTo": "org_objects",
           "columnsFrom": [
             "tenant_id",
-            "employee_id",
-            "business_id"
+            "department_id"
           ],
           "columnsTo": [
             "tenant_id",
-            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_position_fk": {
+          "name": "offers_position_fk",
+          "tableFrom": "offers",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_post_fk": {
+          "name": "offers_post_fk",
+          "tableFrom": "offers",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_level_fk": {
+          "name": "offers_level_fk",
+          "tableFrom": "offers",
+          "tableTo": "job_level_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_directManagerId_fk": {
+          "name": "offers_directManagerId_fk",
+          "tableFrom": "offers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "direct_manager_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_dottedManagerId_fk": {
+          "name": "offers_dottedManagerId_fk",
+          "tableFrom": "offers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "dotted_manager_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_hrbpId_fk": {
+          "name": "offers_hrbpId_fk",
+          "tableFrom": "offers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "hrbp_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_contract_company_fk": {
+          "name": "offers_contract_company_fk",
+          "tableFrom": "offers",
+          "tableTo": "contract_companies",
+          "columnsFrom": [
+            "tenant_id",
+            "contract_company_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_campus_offer_fk": {
+          "name": "offers_campus_offer_fk",
+          "tableFrom": "offers",
+          "tableTo": "offers",
+          "columnsFrom": [
+            "tenant_id",
+            "campus_offer_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_copied_from_fk": {
+          "name": "offers_copied_from_fk",
+          "tableFrom": "offers",
+          "tableTo": "offers",
+          "columnsFrom": [
+            "tenant_id",
+            "copied_from_offer_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offers_pending_entry_fk": {
+          "name": "offers_pending_entry_fk",
+          "tableFrom": "offers",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "pending_entry_business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -57458,124 +57908,62 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "employment_probation_versions_no": {
-          "name": "employment_probation_versions_no",
+        "offers_tenant_id": {
+          "name": "offers_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
-            "business_id",
-            "version_no"
+            "id"
           ]
         }
       },
       "policies": {},
       "checkConstraints": {
-        "employment_probation_versions_source": {
-          "name": "employment_probation_versions_source",
-          "value": "\"employment_probation_versions\".\"source\" IN ('entry', 'adjust')"
+        "offers_entry": {
+          "name": "offers_entry",
+          "value": "\"offers\".\"entry\" IN ('offer', 'intern', 'campus_early_intern')"
         },
-        "employment_probation_versions_months": {
-          "name": "employment_probation_versions_months",
-          "value": "\"employment_probation_versions\".\"months\" IS NULL OR \"employment_probation_versions\".\"months\" BETWEEN 1 AND 6"
+        "offers_type": {
+          "name": "offers_type",
+          "value": "\"offers\".\"offer_type\" IS NULL OR \"offers\".\"offer_type\" IN ('social', 'campus', 'intern')"
         },
-        "employment_probation_versions_none": {
-          "name": "employment_probation_versions_none",
-          "value": "\"employment_probation_versions\".\"has_probation\" OR (\"employment_probation_versions\".\"start_date\" IS NULL AND \"employment_probation_versions\".\"months\" IS NULL AND \"employment_probation_versions\".\"expected_end_date\" IS NULL)"
+        "offers_source": {
+          "name": "offers_source",
+          "value": "\"offers\".\"source\" IN ('new_hire', 'intern_conversion')"
         },
-        "employment_probation_versions_dates": {
-          "name": "employment_probation_versions_dates",
-          "value": "\"employment_probation_versions\".\"expected_end_date\" IS NULL OR \"employment_probation_versions\".\"start_date\" IS NULL OR \"employment_probation_versions\".\"expected_end_date\" >= \"employment_probation_versions\".\"start_date\""
+        "offers_status_value": {
+          "name": "offers_status_value",
+          "value": "\"offers\".\"status\" IN ('pending', 'sent', 'accepted', 'rejected', 'onboarded', 'invalid')"
+        },
+        "offers_approval_status": {
+          "name": "offers_approval_status",
+          "value": "\"offers\".\"approval_status\" IN ('unsubmitted', 'approving', 'approved', 'disapproved')"
+        },
+        "offers_accepted_time": {
+          "name": "offers_accepted_time",
+          "value": "\"offers\".\"status\" <> 'accepted' OR \"offers\".\"accept_time\" IS NOT NULL"
+        },
+        "offers_rejected_form": {
+          "name": "offers_rejected_form",
+          "value": "\"offers\".\"status\" <> 'rejected' OR (\"offers\".\"refusal_time\" IS NOT NULL AND \"offers\".\"refusal_reason_code\" IS NOT NULL)"
+        },
+        "offers_invalid_form": {
+          "name": "offers_invalid_form",
+          "value": "\"offers\".\"status\" <> 'invalid' OR (\"offers\".\"invalid_reason_code\" IS NOT NULL AND \"offers\".\"invalid_at\" IS NOT NULL)"
+        },
+        "offers_probation_months": {
+          "name": "offers_probation_months",
+          "value": "\"offers\".\"probation_months\" IS NULL OR \"offers\".\"probation_months\" BETWEEN 0 AND 120"
+        },
+        "offers_contract_months": {
+          "name": "offers_contract_months",
+          "value": "\"offers\".\"contract_months\" IS NULL OR \"offers\".\"contract_months\" BETWEEN 0 AND 1200"
+        },
+        "offers_revision_positive": {
+          "name": "offers_revision_positive",
+          "value": "\"offers\".\"revision\" > 0"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.employment_regularization_results": {
-      "name": "employment_regularization_results",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "result_code": {
-          "name": "result_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "employment_regularization_results_tenant_id_tenants_id_fk": {
-          "name": "employment_regularization_results_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_regularization_results",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_regularization_results_business_fk": {
-          "name": "employment_regularization_results_business_fk",
-          "tableFrom": "employment_regularization_results",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "employment_regularization_results_pk": {
-          "name": "employment_regularization_results_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

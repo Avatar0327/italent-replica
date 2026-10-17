@@ -9,6 +9,7 @@ import '../modules/talent-review/matrix-presets.js';
 import '../modules/talent-review/form-presets.js';
 import '../modules/employment/exit-dictionaries.js';
 import '../modules/employment/probation-results.js';
+import '../modules/offer/dictionaries.js';
 
 export { installMissingSeeds, registeredSeeds, seedModules } from './registry.js';
 export type { SeedReportItem, SeedSkip, SeedWriteContext } from './registry.js';
