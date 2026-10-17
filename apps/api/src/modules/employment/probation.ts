@@ -125,18 +125,23 @@ export async function loadProbationCycle(
 ): Promise<ProbationCycle | null> {
   const anchor = await loadAnchor(tx, tenantId, employeeId, asOf);
   if (!anchor) return null;
-  const version = await loadProbationVersion(tx, tenantId, anchor.id);
-  const info = version
-    ? resolveDeferredProbation(normalizeProbationInfo(version), anchor.effectiveDate)
-    : normalizeProbationInfo({
-        hasProbation: anchor.employeeStatus === EMPLOYEE_STATUS.probation,
-        startDate: anchor.effectiveDate,
-        months: null,
-        expectedEndDate: null,
-      });
+  const info = resolveProbationInfo(await loadProbationVersion(tx, tenantId, anchor.id), anchor);
   const effective = await loadCycleRegularization(tx, anchor, tenantId, true);
   const regularization = await loadCycleRegularization(tx, anchor, tenantId, false);
   return { anchor, info, regularizationDate: effective?.effectiveDate ?? null, regularization };
+}
+
+/**
+ * 开启记录的试用期信息（loadProbationCycle 与 BE-6a 已转正列表共用）：有版本取最新一版（入职申请的开始日取记录实际生效日）；
+ * 没有版本时按开启记录自己的人员状态推断是否有试用期，开始日取它的生效日，其余为空。
+ */
+export function resolveProbationInfo(
+  version: ProbationInfo | null,
+  anchor: { readonly effectiveDate: string; readonly employeeStatus: number },
+): ProbationInfo {
+  if (version) return resolveDeferredProbation(normalizeProbationInfo(version), anchor.effectiveDate);
+  const hasProbation = anchor.employeeStatus === EMPLOYEE_STATUS.probation;
+  return normalizeProbationInfo({ hasProbation, startDate: anchor.effectiveDate, months: null, expectedEndDate: null });
 }
 
 /** 试用人员详情（B6）：试用信息 + 本周期各条任职记录上的转正日期投影（PB-R13）。 */

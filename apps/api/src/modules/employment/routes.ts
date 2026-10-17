@@ -87,6 +87,7 @@ import { registerBlacklistRoutes } from './blacklist-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
+import { registerInternRoutes } from './intern-routes.js';
 import {
   createRegularizationViaBusinesses,
   registerProbationRoutes,
@@ -117,6 +118,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBlacklistRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
+  registerInternRoutes(module, deps);
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
   router.route('/api/tenant/employment', module);

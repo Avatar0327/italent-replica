@@ -59,7 +59,7 @@ export const employmentProbationVersions = pgTable(
       columns: [t.tenantId, t.employeeId, t.businessId],
       foreignColumns: [...business],
     }),
-    check('employment_probation_versions_source', sql`${t.source} IN ('entry', 'adjust')`),
+    check('employment_probation_versions_source', sql`${t.source} IN ('entry', 'adjust', 'intern_regularization')`),
     check('employment_probation_versions_months', sql`${t.months} IS NULL OR ${t.months} BETWEEN 1 AND 6`),
     check(
       'employment_probation_versions_none',
