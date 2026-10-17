@@ -6257,7 +6257,7 @@
 "s": "assigned",
 "mod": "R1",
 "ms": "D2",
-"note": "拟派发（DEC-575 改 D2，现在派）· Sonnet High · 开发先确认现有停用是否已拦截 · 停用日不得早于或等于设立日（org/deactivation.ts），提示文案对齐原站 · 云端 Claude 开发 / Codex Sol high 审 · 分支 claude/F-213-org-deactivate-date · 此前 DEC-573 暂缓已撤销"
+"note": "开发中（云端会话 session_01KP3BdtPW2H6kgFUrmpRQ56，尚无 PR）· Sonnet High 开发 / Codex Sol high 审 · 分支 claude/F-213-org-deactivate-date · 停用日不得早于或等于设立日（org/deactivation.ts），先确认现有停用是否已拦截 · DEC-575"
 }
 ]
 }
