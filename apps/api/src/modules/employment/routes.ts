@@ -105,7 +105,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBatchEdit(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
-  registerExitRoutes(module, deps);
+  registerExitRoutes(module, deps, authorizeBusinessWrite);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   router.route('/api/tenant/employment', module);

@@ -30,17 +30,17 @@ const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (ro
 
 async function contractImpact(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
   const kept = `{${(await contractSettings(tx, ctx.tenantId)).postExitTypeIds.join(',')}}`;
+  const mine = (alias: string) =>
+    sql`${sql.raw(alias)}.tenant_id=${ctx.tenantId} AND ${sql.raw(alias)}.employee_id=${employeeId}::uuid
+      AND ${sql.raw(alias)}.type_id <> ALL(${kept}::uuid[])`;
+  const live = sql`${mine('r')} AND NOT r.deleted AND r.status<>'void'`;
   const [row] = rowsOf<{ terminate: number; delete: number; withdrawRequests: number }>(
     await tx.execute(sql`SELECT
-      (SELECT count(*)::int FROM contract_records r WHERE r.tenant_id=${ctx.tenantId}
-        AND r.employee_id=${employeeId}::uuid AND NOT r.deleted AND r.status<>'void' AND r.type_id <> ALL(${kept}::uuid[])
-        AND r.effective_date <= ${lastWorkDate}::date AND r.status='valid'
-        AND (r.end_date IS NULL OR r.end_date > ${lastWorkDate}::date)) AS terminate,
-      (SELECT count(*)::int FROM contract_records r WHERE r.tenant_id=${ctx.tenantId}
-        AND r.employee_id=${employeeId}::uuid AND NOT r.deleted AND r.status<>'void' AND r.type_id <> ALL(${kept}::uuid[])
-        AND r.effective_date > ${lastWorkDate}::date) AS delete,
-      (SELECT count(*)::int FROM contract_requests q WHERE q.tenant_id=${ctx.tenantId}
-        AND q.employee_id=${employeeId}::uuid AND q.type_id <> ALL(${kept}::uuid[])
+      (SELECT count(*)::int FROM contract_records r WHERE ${live} AND r.effective_date <= ${lastWorkDate}::date
+        AND r.status='valid' AND (r.end_date IS NULL OR r.end_date > ${lastWorkDate}::date)) AS terminate,
+      (SELECT count(*)::int FROM contract_records r
+        WHERE ${live} AND r.effective_date > ${lastWorkDate}::date) AS delete,
+      (SELECT count(*)::int FROM contract_requests q WHERE ${mine('q')}
         AND q.status IN ('approved','in_review','returned')) AS "withdrawRequests"`),
   );
   return { terminate: row?.terminate ?? 0, delete: row?.delete ?? 0, withdrawRequests: row?.withdrawRequests ?? 0 };

@@ -213,6 +213,18 @@ async function exitMetadata(tx: Tx, tenantId: string, businessId: string): Promi
   return row ? Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null])) : {};
 }
 
+/** 变更前原值：前一条任职的字段、自定义字段与业务日期；离职扩展字段没有前一版（为空）。 */
+function originalsOf(before: Awaited<ReturnType<typeof findPredecessor>>, exit: Row): Row | null {
+  if (!before) return null;
+  return {
+    ...before.fields,
+    ...customValues(before.customFields),
+    effectiveDate: before.effectiveDate,
+    lastWorkDate: null,
+    ...Object.fromEntries(Object.keys(exit).map((field) => [field, null])),
+  };
+}
+
 /** 离职扩展字段的“有值”口径：没有前一版可比，填了（非空、非 false）即本单内容，进变化字段与盲审。 */
 const filledExitFields = (exit: Row) =>
   Object.keys(exit).filter((field) => exit[field] !== null && exit[field] !== false);
@@ -375,15 +387,7 @@ const employmentAdapter: BusinessAdapter = {
     const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
     const exit = business.kind === 'leave' ? await exitMetadata(tx, ctx.tenantId, businessId) : {};
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
-    const originals: Row | null = before
-      ? {
-          ...before.fields,
-          ...customValues(before.customFields),
-          effectiveDate: before.effectiveDate,
-          lastWorkDate: null,
-          ...Object.fromEntries(Object.keys(exit).map((field) => [field, null])),
-        }
-      : null;
+    const originals = originalsOf(before, exit);
     const values: Row = {
       ...fields,
       ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),

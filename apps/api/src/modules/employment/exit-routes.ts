@@ -27,12 +27,13 @@ import {
 } from './context.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
-import { loadExitRequest } from './exit-gate.js';
+import { businessKind, loadExitRequest } from './exit-gate.js';
 import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
 import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { businessDate, normalizeEmploymentInput, normalizedUuid } from './fields.js';
-import { exitBatchGuard, exitCommandGuard, requireBusinessWriteScope } from './replay-guard.js';
+import type { BusinessWriteGuard } from './entry-routes.js';
+import { exitBatchGuard, exitCommandGuard, exitEditGuard } from './replay-guard.js';
 import { transitionEmployment } from './transitions.js';
 import {
   exitDictionaryKind,
@@ -46,10 +47,14 @@ for (const key of EXIT_SETTING_KEYS) registerSettingValidator(key, EXIT_SETTINGS
 
 const enabledQuery = z.enum(['true', 'false']).optional();
 
-export function registerExitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+export function registerExitRoutes(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
   registerExitDictionaries(router, deps);
   registerExitCreate(router, deps);
-  registerExitChanges(router, deps);
+  registerExitChanges(router, deps, authorizeBusinessWrite);
 }
 
 function registerExitDictionaries(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -205,13 +210,12 @@ const batchSchema = z.strictObject({
     .max(EXIT_BATCH_LIMIT),
 });
 
-/** 业务在写入口径范围内且是离职单（有扩展行），否则 404（调动等其他单不能走离职入口）。 */
+/** 离职单（有扩展行的 kind=leave）才走离职入口，调动等其他单 404；范围由 authorizeBusinessWrite 先判（写入口径 404）。 */
 async function requireExitBusiness(deps: TenantRouteDeps, ctx: EmploymentContext, id: string) {
-  return withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const business = await requireBusinessWriteScope(tx, deps.authorize, ctx, id);
-    if (business.kind !== 'leave' || !(await loadExitRequest(tx, ctx.tenantId, id)))
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const exit = await loadExitRequest(tx, ctx.tenantId, id);
+    if (!exit || (await businessKind(tx, ctx.tenantId, id)) !== 'leave')
       throw new AppError('NOT_FOUND', '离职单不存在');
-    return business;
   });
 }
 
@@ -223,13 +227,18 @@ async function transitionBody(c: Context<TenantEnv>, action: 'submit' | 'withdra
   return parse(z.strictObject({ pendingTransferAck: z.string().max(200).optional() }), body).pendingTransferAck;
 }
 
-function registerExitChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+function registerExitChanges(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
   // 编辑离职（B14）：非日期字段；日期与当前值不同 → 400 EXIT_DATE_IMMUTABLE（§7.2），审批中的单另需审批管理员按钮
   router.patch('/exits/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
     const patch = parseExitPatch(await jsonBody(c));
-    const current = await requireExitBusiness(deps, ctx, id);
+    const current = await authorizeBusinessWrite(deps, ctx, id);
+    await requireExitBusiness(deps, ctx, id);
     const gate = { employeeId: current.employeeId, patch: patch.dates, payload: patch.fields };
     return runWrite(
       c,
@@ -237,7 +246,7 @@ function registerExitChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       patch,
       async (tx, context) => ({ status: 200, body: await updateExitFields(tx, context, id, patch) }),
-      { guard: exitCommandGuard(deps, ctx, 'update', gate, { businessId: id }) },
+      { guard: exitEditGuard(deps, ctx, gate, id) },
     );
   });
   // 提交（含撤回 / 驳回后重提，只允许原发起人）与撤回：只要 DimissionApproval（hr 发起），不要求 Employment.Submit / Withdraw
@@ -246,7 +255,8 @@ function registerExitChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const id = uuidParam(c);
       const ctx = await readContext(c, deps, 'object.update', revision(c));
       const ack = await transitionBody(c, action);
-      const current = await requireExitBusiness(deps, ctx, id);
+      const current = await authorizeBusinessWrite(deps, ctx, id);
+      await requireExitBusiness(deps, ctx, id);
       return runWrite(
         c,
         deps,

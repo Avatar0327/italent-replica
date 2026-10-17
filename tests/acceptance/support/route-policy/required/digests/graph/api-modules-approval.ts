@@ -443,15 +443,21 @@ export const GRAPH: Graph = {
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
+    '#exitMetadata',
+    '#filledExitFields',
     '#latestPayload',
     '#mayMergeSeat',
+    '#originalsOf',
     '#profileValues',
     '#ref',
     '#same',
+    '#splitExitEdit',
     '#transferMetadata',
     '#transferProcessCode',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
+    'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -474,11 +480,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapters.ts#exitInitiation': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
   ],
+  'apps/api/src/modules/approval/adapters.ts#exitMetadata': [
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+    'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
+  ],
   'apps/api/src/modules/approval/adapters.ts#latestPayload': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#mayMergeSeat': [
     '#HELD_STATUSES',
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
+  'apps/api/src/modules/approval/adapters.ts#originalsOf': ['#customValues'],
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': [
     '#employeeHeader',
     '#personnelChange',
@@ -506,6 +517,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'packages/domain/src/personnel/tenure.ts#ageOn',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/adapters.ts#splitExitEdit': [
+    'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
   ],
   'apps/api/src/modules/approval/adapters.ts#subsetVersion': [
     '#camelRow',

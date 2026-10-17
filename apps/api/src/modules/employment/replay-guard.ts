@@ -7,7 +7,7 @@
  * 也用同一份事务内范围，所以这里只负责前置检查。
  */
 import type { Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, buttonResource, tenantLocalDate } from '@italent/domain';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -212,12 +212,33 @@ export function exitCommandGuard(
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       await requireExitScope(tx, scoped, target, scopeTarget);
-      // 编辑审批中的单另需审批管理员按钮：按命令事务内读到的当前状态判断（B-65a）
-      const state =
-        operation === 'update' && scopeTarget.businessId
-          ? await businessState(tx, scoped.tenantId, scopeTarget.businessId)
-          : undefined;
-      await requireExitPermission(scoped, operation, { ...target, ...(state ? { state } : {}) });
+      await requireExitPermission(scoped, operation, target);
+    },
+  });
+}
+
+/**
+ * 编辑离职 PATCH exits/:id 的命令内复核：同 exitCommandGuard（update），另加——单据处于审批中时，HR 编辑与审批编辑同约束，
+ * DimissionEdit 之外还要审批管理员（干预）按钮（设计 §4B / §9.1 PATCH 行，B-65a）。状态取命令事务内读到的当前值；
+ * 读到之后若单据被提交 / 撤回，业务 revision 已变，If-Match 不符，本命令随即 409。
+ */
+export function exitEditGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  target: ExitGateTarget,
+  businessId: string,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireExitScope(tx, scoped, target, { businessId });
+      await requireExitPermission(scoped, 'update', target);
+      if ((await businessState(tx, scoped.tenantId, businessId)) === 'in_review')
+        await requirePermission(scoped.authorize!, {
+          ...scoped,
+          action: 'object.button',
+          resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail'),
+        });
     },
   });
 }

@@ -71,6 +71,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/presets.ts#IDP_EMPLOYEE_ACTIONS': ['#IDP_ACTIONS'],
   'packages/domain/src/approval/presets.ts#IDP_TUTOR_ACTIONS': ['#IDP_ACTIONS'],
+  'packages/domain/src/approval/presets.ts#LEAVE_FORM': ['packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS'],
   'packages/domain/src/approval/presets.ts#PRESET_ACTIONS': ['#PRESET_RECUSAL'],
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
     '#IDP_EMPLOYEE_ACTIONS',

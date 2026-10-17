@@ -8,8 +8,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
-import { APPROVAL_INSTANCE_OBJECT, buttonResource, EXIT_BUTTONS } from '@italent/domain';
-import { requirePermission } from '../../authorization.js';
+import { EXIT_BUTTONS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
@@ -54,8 +53,6 @@ export interface ExitGateTarget {
   readonly row?: typeof exitRequests.$inferSelect;
   /** 审批编辑 / 编辑并同意：权限由审批中心按节点规则负责，本门禁只判日期。 */
   readonly approvalEdit?: boolean;
-  /** 业务当前状态（命令内复核没有锁定的业务行时由调用方读取）；update 遇 in_review 另需审批管理员按钮。 */
-  readonly state?: string;
 }
 
 export interface ExitGateResult {
@@ -132,13 +129,15 @@ export async function requireExitPermission(ctx: EmploymentContext, operation: E
   const options = Object.keys(spec.payload).length ? {} : { commandOnly: true };
   for (const button of spec.buttons)
     await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options);
-  // §4B / §9.1 PATCH 行：审批中的单 HR 编辑与审批编辑同约束，DimissionEdit 之外还要审批管理员（干预）按钮（B-65a）
-  if (operation === 'update' && (target.business?.state ?? target.state) === 'in_review')
-    await requirePermission(ctx.authorize, {
-      ...ctx,
-      action: 'object.button',
-      resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail'),
-    });
+}
+
+/** 业务最新载荷的 kind（入口判断是否离职单；不加锁）。 */
+export async function businessKind(tx: Tx, tenantId: string, businessId: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`SELECT kind FROM employment_payload_versions WHERE tenant_id=${tenantId}
+      AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  return row?.kind;
 }
 
 /** 业务最新状态（命令内复核用；不加锁）。 */

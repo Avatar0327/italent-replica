@@ -12,6 +12,7 @@ import { PRESET_PROCESSES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
+import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { gateWorld, leaveBody, type GateWorld } from './AC-EXIT-gate-support.js';
@@ -78,7 +79,10 @@ describe('confirmed 阶段：编制预减时点 R 与预减台账（DEC-266①�
 describe('审批适配：exitMetadata、LEAVE_FORM、审批编辑补齐离职类型', () => {
   it('预置离职流程节点表单含离职扩展字段；快照值与变化字段带离职类型 / 原因 / 去向', async () => {
     const preset = PRESET_PROCESSES.find((process) => process.presetKey === 'standard_leave')!;
-    for (const node of preset.definition.nodes as { formFields: string[]; actions: { avoidSelf: boolean } }[]) {
+    for (const node of preset.definition.nodes as unknown as {
+      formFields: string[];
+      actions: { avoidSelf: boolean };
+    }[]) {
       expect(node.formFields).toEqual(expect.arrayContaining(['exitTypeCode', 'reasonCode', 'whereaboutsCode']));
       expect(node.actions.avoidSelf).toBe(true);
     }
@@ -146,14 +150,11 @@ describe('审批适配：exitMetadata、LEAVE_FORM、审批编辑补齐离职类
       fields: { exitTypeCode: 'involuntary' },
     });
     expect(edited.status, await edited.clone().text()).toBe(200);
-    const [row] = await withTenant(
-      w.db,
-      w.tenant.id,
-      async (tx) =>
-        (
-          await tx.execute(sql`SELECT exit_type_code FROM exit_requests WHERE tenant_id=${w.tenant.id}
-        AND business_id=${draft.id}::uuid`)
-        ).rows as { exit_type_code: string }[],
+    const [row] = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ exit_type_code: string }>(
+        await tx.execute(sql`SELECT exit_type_code FROM exit_requests WHERE tenant_id=${w.tenant.id}
+          AND business_id=${draft.id}::uuid`),
+      ),
     );
     expect(row?.exit_type_code).toBe('involuntary');
     const after = await w.detail(instance.id);

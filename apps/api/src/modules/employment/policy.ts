@@ -255,11 +255,11 @@ const IMPORT_PREVIEW_ROWS: RowsPolicy = {
 };
 
 // ---- R2-T03 B2b 离职办理入口（employment/exit-routes.ts）------------------------------------------------------------
-/** 离职门禁（exit-gate.ts requireExitGate）：§4A 前置条件，命令内执行；按钮 / 范围 / 字段在命令内经 exitCommandGuard 复核。 */
-const EXIT_GATE = 'employment.exitGate';
-const EXIT_CREATE_BUTTONS = {
-  direct: button(EXIT_BUTTONS.direct, 'detail'),
-  application: button(EXIT_BUTTONS.application, 'detail'),
+/** 新建离职的按钮按办理方式：direct → Dimission、application → DimissionApproval（exit-gate.ts permissionSpec）。 */
+const EXIT_CREATE_BUTTON: ButtonPolicy = {
+  from: 'mapper',
+  mapper: 'employment.exitButton',
+  domain: ['application', 'direct'],
 };
 const EXIT_CREATE_PRECONDITIONS = ['lockEmploymentEmployee', 'requireExitGate', 'assertRevision'];
 const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings', 'contracts'] as const;
@@ -282,7 +282,8 @@ const exitTransition = () =>
     object: EMPLOYMENT,
     operation: 'update',
     button: button(EXIT_BUTTONS.application, 'detail'),
-    guards: [EXIT_GATE],
+    // 状态迁移改写后续记录前按 DEC-178 复核（同通用 submit / withdraw）
+    guards: [LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand(['lockEmploymentBusiness', 'assertRevision', 'assertTransition', 'requireExitGate']),
@@ -1146,15 +1147,18 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/exit-routes.ts：R2-T03 B2b 离职办理入口（设计 §4 / §4A / §9.1；命令内复核 exitCommandGuard）--------
   // 预览：readContext(object.view, resource=id) 人员范围 404「任职数据不存在」；body 严格 { lastWorkDate }（400）；
   // Dimission / DimissionApproval 任一（两项都无 403）；只读，清单逐项按 DEC-177 可见 + 字段查看权披露，合同只给件数
-  'POST /exits/employees/:id/preview': any([exitPreview(EXIT_BUTTONS.direct), exitPreview(EXIT_BUTTONS.application)]),
+  'POST /exits/employees/:id/preview': any(
+    [exitPreview(EXIT_BUTTONS.direct), exitPreview(EXIT_BUTTONS.application)],
+    byId,
+  ),
   // 新建：If-Match 必填；resource=id 人员范围 404；body 不接受 kind（400）；按 mode 取按钮（direct → Dimission、
   // application → DimissionApproval），不要求 Employment.Create；字段 = 任职载荷 + exit 区块；带 departmentId 时
   // requireEmploymentScope；命令内员工锁 → 门禁（§4A：未办结离职 / 字典 / §8A / §8B / §8 令牌 / 关口⑤）→ 申请服务
   'POST /exits/employees/:id': object({
     object: EMPLOYMENT,
     operation: 'create',
-    button: { from: 'body', path: 'mode', map: EXIT_CREATE_BUTTONS },
-    guards: [EXIT_GATE],
+    button: EXIT_CREATE_BUTTON,
+    guards: [LINKAGE],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),
@@ -1166,7 +1170,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'create',
     button: button(EXIT_BUTTONS.application, 'detail'),
-    guards: [EXIT_GATE],
+    guards: [LINKAGE],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     rows: {
@@ -1185,7 +1189,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         object: EMPLOYMENT,
         operation: 'update',
         button: button(EXIT_BUTTONS.edit, 'detail'),
-        guards: [EXIT_GATE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
