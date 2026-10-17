@@ -57,6 +57,22 @@ function holdThen(w: PartTimeWorld, work: (tx: Tx) => Promise<unknown>) {
   return { held: held.promise, release: release.resolve, done };
 }
 
+/** 主职读口径的可比较形态：员工 / 编码 / 部门 / 周期 / 记录 ID 换成占位，其余字段原样逐项比较。 */
+async function comparablePrimary(w: PartTimeWorld) {
+  const { all, current } = await w.primaryView();
+  const { code } = await w.getEmployee(w.employeeId);
+  const aliases: [string, string][] = [
+    ...all.map((record, index): [string, string] => [record.id, `RECORD-${index}`]),
+    [w.employeeId, 'EMPLOYEE'],
+    [code, 'EMPLOYEE-CODE'],
+    [w.primaryOrg.id, 'PRIMARY-ORG'],
+    [w.cycle.id, 'CYCLE'],
+  ];
+  let text = JSON.stringify({ all, current });
+  for (const [real, alias] of aliases) text = text.replaceAll(real, alias);
+  return JSON.parse(text) as unknown;
+}
+
 async function terms(w: PartTimeWorld, recordId: string) {
   return withTenant(w.db, w.tenantId, async (tx) =>
     rowsOf<{ term_no: number; end_date: string | null; source: string }>(
@@ -136,6 +152,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-schema-pg BE-7 PT-1 真 P
           effectiveDate: '2026-09-15',
           fields: { place: '主职调动地点' },
         });
+      // 串行基线：另一个干净租户只做同一次主职追加（没有兼职），作为主职链的期望
+      const serialBaseline = async () => {
+        const solo = await partTimeWorld(database().db, `pg-append-baseline-${order === '主职先持锁' ? 'p' : 'q'}`);
+        const soloEmployee = await solo.getEmployee(solo.employeeId);
+        await withTenant(solo.db, solo.tenantId, (tx) =>
+          createEmploymentBusiness(tx, solo.context(soloEmployee.revision), solo.employeeId, {
+            kind: 'transfer',
+            mode: 'direct',
+            effectiveDate: '2026-09-15',
+            fields: { place: '主职调动地点' },
+          }),
+        );
+        return comparablePrimary(solo);
+      };
       let recordId = '';
       const writePartTime = async (tx: Tx) => {
         await lockEmploymentEmployee(tx, w.context(), w.employeeId);
@@ -155,6 +185,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-schema-pg BE-7 PT-1 真 P
       expect(await held.done).toBeUndefined();
       expect(await waiting).toBeUndefined();
       const after = await w.primaryView();
+      // F-218②：与“只做主职追加”的串行基线逐字段对比（记录 / 字段 / 区间 / 当前标志），不只比种类与日期
+      expect(await comparablePrimary(w)).toEqual(await serialBaseline());
       // 主职链 = 入职 + 新调动；兼职记录不在主职读口径里
       expect(after.all.map((item) => item.kind).sort()).toEqual(['hire', 'transfer']);
       expect(after.all.map((item) => item.id)).toEqual(expect.arrayContaining(before.all.map((item) => item.id)));
