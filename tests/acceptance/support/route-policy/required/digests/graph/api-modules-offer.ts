@@ -101,15 +101,22 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed': [
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
   ],
-  'apps/api/src/modules/offer/identity.ts#rehireHintFor': [
-    'apps/api/src/modules/employment/rehire-match.ts#matchRehire',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
   'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted': [
     'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistByIdentity',
     'packages/domain/src/employment/blacklist.ts#blacklistBlockedMessage',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/offer/identity.ts#visibleRehireHint': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates',
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    '#ENDED_FIELDS',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/offer/identity.ts#withRehireHint': ['#visibleRehireHint'],
   'apps/api/src/modules/offer/input.ts#OFFER_FIELD_SCHEMA': ['#day', '#money', '#ref', '#text'],
   'apps/api/src/modules/offer/input.ts#createSchema': [
     '#OFFER_FIELD_SCHEMA',
@@ -174,6 +181,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/checks.ts#frozenPerTransaction',
     'apps/api/src/modules/offer/checks.ts#offerCreateCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
+    'apps/api/src/modules/offer/identity.ts#withRehireHint',
     'apps/api/src/modules/offer/input.ts#parseOfferCreate',
     'apps/api/src/modules/offer/service.ts#createOffer',
     'apps/api/src/modules/offer/service.ts#offerCreateWrites',
@@ -246,7 +254,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
   ],
   'apps/api/src/modules/offer/service.ts#createOffer': [
-    'apps/api/src/modules/offer/identity.ts#rehireHintFor',
     'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted',
     '#audit',
     '#guarded',
@@ -255,7 +262,6 @@ export const GRAPH: Graph = {
     '#requireDepartment',
     '#requireReferences',
     '#toColumns',
-    'packages/domain/src/offer/identity.ts#birthDateFromIdCard',
   ],
   'apps/api/src/modules/offer/service.ts#deleteOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
@@ -287,7 +293,11 @@ export const GRAPH: Graph = {
     '#present',
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
   ],
-  'apps/api/src/modules/offer/service.ts#offerCreateWrites': ['#campusCarried', '#requireEntry'],
+  'apps/api/src/modules/offer/service.ts#offerCreateWrites': [
+    '#campusCarried',
+    '#requireEntry',
+    'packages/domain/src/offer/identity.ts#birthDateFromIdCard',
+  ],
   'apps/api/src/modules/offer/service.ts#offerDetail': ['#loadOffer', '#withActions'],
   'apps/api/src/modules/offer/service.ts#offerDto': [
     '#MONEY',

@@ -2103,9 +2103,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
-  'apps/api/src/modules/employment/rehire-match.ts#matchRehire': [
+  'apps/api/src/modules/employment/rehire-match.ts#endedPeople': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates': ['#endedPeople'],
+  'apps/api/src/modules/employment/rehire-match.ts#matchRehire': ['#endedPeople'],
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure': [
     'apps/api/src/modules/employment/errors.ts#EmploymentError',
   ],

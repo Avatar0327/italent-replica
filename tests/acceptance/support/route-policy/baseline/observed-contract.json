@@ -18161,15 +18161,18 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.Offer:create"
         ],
         "scope": [
           "creator scope",
           "employment visibility",
           "requestScope",
+          "resolveModuleScope",
           "scope.all",
           "scopeSql",
           "visibleJob"
