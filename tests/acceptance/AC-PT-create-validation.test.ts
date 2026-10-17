@@ -204,7 +204,8 @@ describe('createPartTime：自定义字段按定义校验并进审计（§1.1，
           explicit_field_codes AS explicit FROM employment_payload_versions
           WHERE tenant_id=${w.tenantId} AND business_id=${result.id}`),
         audit: await one<{ after: Record<string, unknown>; changes: unknown }>(sql`SELECT after, changes
-          FROM audit_events WHERE tenant_id=${w.tenantId} AND object_id=${result.id} AND action='employment.part_time.create'`),
+          FROM audit_events WHERE tenant_id=${w.tenantId} AND object_id=${result.id}
+            AND action='employment.part_time.create'`),
         outbox: await one<{ payload: { after: Record<string, unknown> } }>(sql`SELECT payload FROM employment_outbox
           WHERE tenant_id=${w.tenantId} AND object_id=${result.id}::uuid AND event_type='employment.part_time.create'`),
       };
