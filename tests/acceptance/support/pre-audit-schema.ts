@@ -7,6 +7,7 @@
  */
 import { type Db, sql } from '@italent/db';
 import { withPreBlacklistSchema } from './pre-blacklist-schema.js';
+import { withPreOfferSchema } from './pre-offer-schema.js';
 import { withPrePartTimeSchema } from './pre-part-time-schema.js';
 
 const COLUMNS = [
@@ -58,10 +59,13 @@ async function dropColumns(db: Db, names: readonly string[]) {
 
 /**
  * R2 BE-8a 起入职保存会查黑名单表、BE-7 PT-2 起任职写入的提交前复核会查兼职表：旧结构上一并临时补出
- * （pre-blacklist-schema.ts、pre-part-time-schema.ts；外层先补后撤，内层异常时由外层 finally 依次撤掉）。
+ * （pre-blacklist-schema.ts、pre-part-time-schema.ts；外层先补后撤，内层异常时由外层 finally 依次撤掉）；BE-14a3 起审批中心
+ * 管理员范围按 Offer 表与批量审批单子表判定 Offer 实例（pre-offer-schema.ts）。
  */
 export function withPreAuditSchema<T>(db: Db, run: () => Promise<T>): Promise<T> {
-  return withPreBlacklistSchema(db, () => withPrePartTimeSchema(db, () => withPreAuditColumns(db, run)));
+  return withPreOfferSchema(db, () =>
+    withPreBlacklistSchema(db, () => withPrePartTimeSchema(db, () => withPreAuditColumns(db, run))),
+  );
 }
 
 async function withPreAuditColumns<T>(db: Db, run: () => Promise<T>): Promise<T> {
