@@ -8,10 +8,11 @@
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
-import { EXIT_BUTTONS } from '@italent/domain';
+import { EXIT_BUTTONS, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
+import { assessmentVoidNotice, inFlightAssessments, type InFlightAssessment } from './assessment-in-flight.js';
 import { EMPLOYMENT_OBJECT, employmentCreator, requireEmploymentWrite } from './context.js';
 import { currentEmploymentCycle } from './cycles.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
@@ -313,16 +314,61 @@ function ackToken(ctx: EmploymentContext, employeeId: string, lastWorkDate: stri
 }
 
 /**
- * 确认清单 S = 审批中的调动（不论生效日，DEC-166）∪ 已批准未落地且计划生效日 > L 的调动（DEC-220，按 §5.0A 计划日比较）。
+ * 披露在途考核（F-229）：先按员工与任职范围裁剪（与 disclose 同口径，看不到的只计 hiddenCount），再按考核对象的字段查看权
+ * 决定每项带出的字段；看不到“考核类型”时提示文案也不带类型名。
+ */
+export async function assessmentNoticeItems(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  rows: readonly InFlightAssessment[],
+) {
+  const shown = await disclose(
+    tx,
+    ctx,
+    employeeId,
+    rows.map((row) => ({ id: row.id, effectiveDate: row.assessmentDate, departmentId: row.departmentId })),
+  );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const viewable = ctx.authorize
+    ? await getModuleViewableFieldsInTransaction(
+        { authorize: ctx.authorize, clock: () => ctx.now },
+        ctx,
+        PROBATION_ASSESSMENT_OBJECT,
+        tx,
+      )
+    : undefined;
+  const may = (field: string) => viewable === undefined || viewable.has(field);
+  return {
+    items: shown.items.map((item) => {
+      const row = byId.get(item.businessId)!;
+      return {
+        assessmentId: row.id,
+        ...(may('assessmentType') ? { assessmentType: row.assessmentType } : {}),
+        ...(may('assessmentName') ? { assessmentName: row.assessmentName } : {}),
+        ...(may('assessmentDate') ? { assessmentDate: row.assessmentDate } : {}),
+        ...(may('status') ? { status: row.status } : {}),
+        message: assessmentVoidNotice(row, may('assessmentType')),
+      };
+    }),
+    hiddenCount: shown.hiddenCount,
+  };
+}
+
+/**
+ * 确认清单 S = 审批中的调动（不论生效日，DEC-166）∪ 已批准未落地且计划生效日 > L 的调动（DEC-220，按 §5.0A 计划日比较）
+ * ∪ 在途考核（F-229，DEC-617：审批中 / 已驳回待重提，离职生效时终止作废）。
  * 集合为空无需确认（返回 null）；非空时令牌与已存哈希 / 请求带的令牌之一一致才算确认，否则 409 并给出新令牌。
+ * 没有在途考核时集合与令牌与 F-229 之前逐位相同。
  */
 export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
   const rows = (await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'])).filter(
     (row) => row.state === 'in_review' || (!row.landed && row.planned > lastWorkDate),
   );
-  if (!rows.length) return null;
-  const ids = rows.map((row) => row.id).sort();
-  return { ids, hash: ackToken(ctx, employeeId, lastWorkDate, ids), rows: plannedRows(rows) };
+  const assessments = await inFlightAssessments(tx, ctx.tenantId, employeeId);
+  if (!rows.length && !assessments.length) return null;
+  const ids = [...rows.map((row) => row.id), ...assessments.map((row) => row.id)].sort();
+  return { ids, hash: ackToken(ctx, employeeId, lastWorkDate, ids), rows: plannedRows(rows), assessments };
 }
 
 async function checkPendingTransferAck(
@@ -337,10 +383,19 @@ async function checkPendingTransferAck(
   if (!set) return null;
   const { ids, hash } = set;
   if (provided === hash || stored?.hash === hash) return { ids, hash };
-  throw conflict('EXIT_PENDING_TRANSFER_ACK_REQUIRED', '离职生效时将作废以下调动申请，请确认', {
-    ackToken: hash,
-    ...(await disclose(tx, ctx, employeeId, set.rows)),
-  });
+  const withAssessments = set.assessments.length > 0;
+  // 只有在途考核时用单独的原因码，客户端按它显示 DEC-617 的提示；令牌、确认入参与保存方式与调动完全一致
+  throw conflict(
+    set.rows.length ? 'EXIT_PENDING_TRANSFER_ACK_REQUIRED' : 'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED',
+    set.rows.length
+      ? `离职生效时将作废以下调动申请${withAssessments ? '和在途考核流程' : ''}，请确认`
+      : '离职生效时将终止作废在途考核流程，请确认',
+    {
+      ackToken: hash,
+      ...(await disclose(tx, ctx, employeeId, set.rows)),
+      ...(withAssessments ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, set.assessments) } : {}),
+    },
+  );
 }
 
 export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string, ack: AckRecord) {
