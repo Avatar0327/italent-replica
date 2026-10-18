@@ -33,6 +33,7 @@ import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { requireLinkageSource, updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
 import { registerTransferDeletionProbes } from './deletion-probes.js';
+import { sameOrderScopeGuard } from '../same-order-guard.js';
 import { readTransferLinkage } from './view.js';
 
 type Deps = TenantRouteDeps;
@@ -95,10 +96,27 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
     await withTenant(deps.db, ctx.tenantId, (tx) => requireLinkageSource(tx, ctx, id, business.employeeId));
     const input = { employeeId: business.employeeId, operation: 'update' as const, options, businessId: id };
     const access = await preauthorizeLinkage(c, deps, ctx, input);
-    return runWrite(c, deps, ctx, raw, async (tx, context) => ({
-      status: 200,
-      body: await updateTransferLinkage(tx, context, id, options, access),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      raw,
+      async (tx, context) => ({
+        status: 200,
+        body: await updateTransferLinkage(tx, context, id, options, access),
+      }),
+      {
+        // 命令事务内按当前范围重验（统一 guard）：重放 / 失败回查不沿用入口的旧范围
+        guard: sameOrderScopeGuard(deps, ctx, {
+          authorize: async (tx, scoped) => {
+            const today = tenantLocalDate(scoped.now, scoped.timezone);
+            const current = await loadEmploymentBusiness(tx, scoped.tenantId, id, today, scoped.scope);
+            if (!current || current.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
+            await requireLinkageSource(tx, scoped, id, business.employeeId);
+          },
+        }),
+      },
+    );
   });
   registerRetry(router, deps);
   registerContractChoices(router, deps);
@@ -113,10 +131,24 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
     const access: LinkageAccess = {};
     // 子项所属调动须对当前操作人可见，改写的字段 / 组织按当前权限判定（每次请求重验，幂等重放同样经此）。
     await withTenant(deps.db, ctx.tenantId, (tx) => authorizeRetry(tx, deps, ctx, id, access));
-    return runWrite(c, deps, ctx, { id, action: 'retry-linkage-item' }, async (tx, context) => ({
-      status: 200,
-      body: await retryLinkageItem(tx, context, id, access),
-    }));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'retry-linkage-item' },
+      async (tx, context) => ({
+        status: 200,
+        body: await retryLinkageItem(tx, context, id, access),
+      }),
+      {
+        guard: sameOrderScopeGuard(deps, ctx, {
+          authorize: async (tx, scoped) => {
+            await requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation');
+            await authorizeRetry(tx, deps, scoped, id, {});
+          },
+        }),
+      },
+    );
   });
 }
 

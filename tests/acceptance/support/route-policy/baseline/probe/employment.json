@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/employment/auto-regularization-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ddb7f645966",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/employment/blacklist-rules/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -61,6 +81,27 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
+  "DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.Delete@detail",
+      "obj:TenantBase.EmploymentRecord:delete"
+    ]
+  },
   "GET /api/tenant/employment/activation-todos": {
     "all": {
       "status": 200
@@ -74,6 +115,20 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/auto-regularization-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
     ]
   },
   "GET /api/tenant/employment/blacklist": {
@@ -242,6 +297,41 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/employment/exits": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "92842abb86a0",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/exits/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
     ]
   },
   "GET /api/tenant/employment/exits/dictionaries/:dict": {
@@ -429,6 +519,27 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentContract:view",
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/transfers/employees/:id/draft": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Transfer.Hr@detail",
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
@@ -645,6 +756,57 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/auto-regularization-rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1c864e82451",
+      "reason": "AUTO_RULE_DAYS_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "POST /api/tenant/employment/auto-regularization-rules/:id/copy": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1ddb7f645966",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
+  },
+  "POST /api/tenant/employment/auto-regularization/run": {
+    "all": {
+      "code": "CONFLICT",
+      "error": "c7af9c8f6b95",
+      "reason": "AUTO_REGULARIZATION_DISABLED",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
     ]
   },
   "POST /api/tenant/employment/blacklist": {
@@ -1289,6 +1451,45 @@
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.RetryActivation@detail",
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PUT /api/tenant/employment/auto-regularization-rules/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a1c864e82451",
+      "reason": "AUTO_RULE_DAYS_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/auto-regularization-rules/:id/enabled": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "81651f3c624c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
     ]
   },
   "PUT /api/tenant/employment/blacklist-rules/:id": {

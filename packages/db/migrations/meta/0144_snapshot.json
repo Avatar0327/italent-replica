@@ -1,5 +1,5 @@
 {
-  "id": "9a42c9e4-1f9d-406c-8758-13f8f3d1af3e",
+  "id": "e42ad059-7788-41ce-b973-25033f7df312",
   "prevId": "2a848de7-b951-4efc-b419-24bb6d513cf1",
   "version": "7",
   "dialect": "postgresql",
@@ -58586,16 +58586,240 @@
       },
       "isRLSEnabled": false
     },
-    "public.offer_send_records": {
-      "name": "offer_send_records",
+    "public.employment_auto_regularization_daily_runs": {
+      "name": "employment_auto_regularization_daily_runs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_auto_regularization_daily_runs_tenant_id_tenants_id_fk": {
+          "name": "employment_auto_regularization_daily_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_auto_regularization_daily_runs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "employment_auto_regularization_daily_runs_pk": {
+          "name": "employment_auto_regularization_daily_runs_pk",
+          "columns": [
+            "tenant_id",
+            "business_date"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.employment_auto_regularization_launches": {
+      "name": "employment_auto_regularization_launches",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchor_id": {
+          "name": "anchor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "initiator_user_id": {
+          "name": "initiator_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "system_proxy": {
+          "name": "system_proxy",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "last_reason": {
+          "name": "last_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_auto_regularization_launches_tenant_id_tenants_id_fk": {
+          "name": "employment_auto_regularization_launches_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_auto_regularization_launches",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_auto_regularization_launches_anchor_fk": {
+          "name": "employment_auto_regularization_launches_anchor_fk",
+          "tableFrom": "employment_auto_regularization_launches",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "anchor_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_auto_regularization_launches_business_fk": {
+          "name": "employment_auto_regularization_launches_business_fk",
+          "tableFrom": "employment_auto_regularization_launches",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "employment_auto_regularization_launches_pk": {
+          "name": "employment_auto_regularization_launches_pk",
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "anchor_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "employment_auto_regularization_launches_state": {
+          "name": "employment_auto_regularization_launches_state",
+          "value": "\"employment_auto_regularization_launches\".\"state\" IN ('launched', 'failed')"
+        },
+        "employment_auto_regularization_launches_outcome": {
+          "name": "employment_auto_regularization_launches_outcome",
+          "value": "(\"employment_auto_regularization_launches\".\"state\" = 'launched') = (\"employment_auto_regularization_launches\".\"business_id\" IS NOT NULL)"
+        },
+        "employment_auto_regularization_launches_attempts": {
+          "name": "employment_auto_regularization_launches_attempts",
+          "value": "\"employment_auto_regularization_launches\".\"attempts\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.employment_auto_regularization_rules": {
+      "name": "employment_auto_regularization_rules",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
         "tenant_id": {
           "name": "tenant_id",
@@ -58603,47 +58827,198 @@
           "primaryKey": false,
           "notNull": true
         },
-        "offer_id": {
-          "name": "offer_id",
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence_no": {
+          "name": "sequence_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_ids": {
+          "name": "org_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "include_subordinates": {
+          "name": "include_subordinates",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "days_before": {
+          "name": "days_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initiator_type": {
+          "name": "initiator_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "probation_result": {
+          "name": "probation_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "operator_user_id": {
+          "name": "operator_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_auto_regularization_rules_tenant_id_tenants_id_fk": {
+          "name": "employment_auto_regularization_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_auto_regularization_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "employment_auto_regularization_rules_tenant_id": {
+          "name": "employment_auto_regularization_rules_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "employment_auto_regularization_rules_sequence": {
+          "name": "employment_auto_regularization_rules_sequence",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "sequence_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "employment_auto_regularization_rules_name": {
+          "name": "employment_auto_regularization_rules_name",
+          "value": "btrim(\"employment_auto_regularization_rules\".\"name\") <> '' AND char_length(\"employment_auto_regularization_rules\".\"name\") <= 100"
+        },
+        "employment_auto_regularization_rules_priority": {
+          "name": "employment_auto_regularization_rules_priority",
+          "value": "\"employment_auto_regularization_rules\".\"priority\" BETWEEN 0 AND 9999"
+        },
+        "employment_auto_regularization_rules_sequence_positive": {
+          "name": "employment_auto_regularization_rules_sequence_positive",
+          "value": "\"employment_auto_regularization_rules\".\"sequence_no\" > 0"
+        },
+        "employment_auto_regularization_rules_orgs": {
+          "name": "employment_auto_regularization_rules_orgs",
+          "value": "cardinality(\"employment_auto_regularization_rules\".\"org_ids\") BETWEEN 1 AND 50"
+        },
+        "employment_auto_regularization_rules_mode": {
+          "name": "employment_auto_regularization_rules_mode",
+          "value": "\"employment_auto_regularization_rules\".\"mode\" IN ('direct', 'application')"
+        },
+        "employment_auto_regularization_rules_days": {
+          "name": "employment_auto_regularization_rules_days",
+          "value": "\"employment_auto_regularization_rules\".\"days_before\" BETWEEN 0 AND 999"
+        },
+        "employment_auto_regularization_rules_initiator": {
+          "name": "employment_auto_regularization_rules_initiator",
+          "value": "\"employment_auto_regularization_rules\".\"initiator_type\" IN ('rule_operator', 'department_hrbp', 'department_head')"
+        },
+        "employment_auto_regularization_rules_revision_positive": {
+          "name": "employment_auto_regularization_rules_revision_positive",
+          "value": "\"employment_auto_regularization_rules\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.employment_auto_regularization_run_cursors": {
+      "name": "employment_auto_regularization_run_cursors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "recipient": {
-          "name": "recipient",
-          "type": "text",
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "cc": {
-          "name": "cc",
-          "type": "text[]",
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'"
+          "notNull": true
         },
-        "bcc": {
-          "name": "bcc",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'"
-        },
-        "sent_by": {
-          "name": "sent_by",
+        "position_employee_id": {
+          "name": "position_employee_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -58662,39 +59037,11 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "offer_send_records_offer": {
-          "name": "offer_send_records_offer",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "offer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "offer_send_records_tenant_id_tenants_id_fk": {
-          "name": "offer_send_records_tenant_id_tenants_id_fk",
-          "tableFrom": "offer_send_records",
+        "employment_auto_regularization_run_cursors_tenant_id_tenants_id_fk": {
+          "name": "employment_auto_regularization_run_cursors_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_auto_regularization_run_cursors",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -58704,27 +59051,12 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "offer_send_records_offer_fk": {
-          "name": "offer_send_records_offer_fk",
-          "tableFrom": "offer_send_records",
-          "tableTo": "offers",
-          "columnsFrom": [
-            "tenant_id",
-            "offer_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "offer_send_records_tenant_id": {
-          "name": "offer_send_records_tenant_id",
+        "employment_auto_regularization_run_cursors_tenant_id": {
+          "name": "employment_auto_regularization_run_cursors_tenant_id",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
@@ -58733,16 +59065,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "offer_send_records_kind": {
-          "name": "offer_send_records_kind",
-          "value": "\"offer_send_records\".\"kind\" IN ('send', 'resend')"
-        },
-        "offer_send_records_status": {
-          "name": "offer_send_records_status",
-          "value": "\"offer_send_records\".\"status\" IN ('pending', 'sent', 'failed', 'unknown')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

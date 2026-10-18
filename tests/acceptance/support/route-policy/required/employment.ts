@@ -29,6 +29,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -157,6 +158,33 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
   at: evidence,
   ...(note ? { note } : {}),
 });
+/**
+ * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支 receiptDisclosure，不参与准入（配置准入见 run 条目）。
+ * 回执内容受任职记录查看权控制：visibleEmployees 先判 object.view（承接这一探测事实），再按数据范围逐人过滤；
+ * 首次返回与同键重放都经 runWrite 的投影出口 visibleRunReceipt。
+ */
+const RUN_RECEIPT_DISCLOSURE: Obligation = {
+  perm: `obj:${RECORD}:view`,
+  purpose: 'disclosure:receiptDisclosure',
+  need: list('employment.runReceipt'),
+  facts: ['object:object.* 动作'],
+  at: [
+    at(
+      AUTO_REG,
+      'POST',
+      '/auto-regularization/run',
+      '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) }',
+    ),
+    fn(
+      AUTO_REG,
+      'visibleEmployees',
+      "if (!(await deps.authorize({ ...tenant, action: 'object.view', resource: EMPLOYMENT_OBJECT }))) " +
+        'return visible;',
+    ),
+    RECORD_CONST,
+    ...SCOPE_AT['employment.runReceipt'],
+  ],
+};
 const recordView = (call: Evidence, facts = ['object:readPageContext']) =>
   ob(`obj:${RECORD}:view`, facts, [call, PAGE, READ, RECORD_CONST]);
 const managerIdentity = (call: Evidence) =>
@@ -806,6 +834,104 @@ export const EMPLOYMENT: RequiredTable = {
         '/transfers/employees/:id',
         'body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess })',
       ),
+    ),
+  ],
+  // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
+  'GET /api/tenant/employment/transfers/employees/:id/draft': [
+    recordView(
+      at(TRF, 'GET', '/transfers/employees/:id/draft', "const ctx = await readPageContext(c, deps, 'detail')"),
+    ),
+    ob(
+      `btn:${RECORD}#Transfer.Hr@detail`,
+      ['button:requireTransferButton'],
+      [
+        at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"),
+        ...TRANSFER_BUTTON,
+      ],
+      '读口与暂存同一发起权限：他人调动入口 Transfer.Hr',
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source'],
+      [at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"), ...SOURCE],
+    ),
+  ],
+  'DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId': [
+    ob(
+      `obj:${RECORD}:delete`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:delete', 'object:object.* 动作'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "const base = await readContext(c, deps, 'object.delete', revision(c))",
+        ),
+        READ,
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_DELETE,
+        RECORD_CONST,
+      ],
+      '清除走与 DELETE /businesses/:id 同一条删除授权链',
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Delete@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_BUTTON,
+        RECORD_CONST,
+      ],
+    ),
+    ob(
+      'guard:employment.businessWrite',
+      ['guard:employment.businessWrite'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          'await authorizeBusinessWrite(deps, ctx, businessId, id)',
+        ),
+        {
+          role: 'impl',
+          unit: `${TRF}#authorizeBusinessWrite`,
+          anchor: '(tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId)',
+        },
+        BUSINESS_WRITE,
+      ],
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source', 'button:requireTransferButton'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "transferBusinessContext(tx, base, businessId, 'before-command')",
+        ),
+        ...BUSINESS_SOURCE,
+      ],
+    ),
+    linkage(
+      at(
+        TRF,
+        'DELETE',
+        '/transfers/employees/:id/draft/:businessId',
+        'const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision })',
+      ),
+      '删暂存单走 transitionEmployment delete 内核，同 DELETE /businesses/:id',
     ),
   ],
   // ---- transfer/linkage/routes.ts --------------------------------------------------------------------------------
@@ -2081,6 +2207,21 @@ export const EMPLOYMENT: RequiredTable = {
     'Employment.DimissionApproval',
     'registerExitChanges',
   ),
+  // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
+  'GET /api/tenant/employment/exits': [
+    recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(EXIT, 'GET', '/exits', 'requireViewableExitFilters(filter, show)'),
+        fn(EXIT, 'requireViewableExitFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
+  'GET /api/tenant/employment/exits/:id': [
+    recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+  ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
       `obj:${RECORD}:view`,
@@ -2190,6 +2331,94 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ]),
   ),
+  // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（同自动加黑规则，配置写入口 writeContext）--
+  'GET /api/tenant/employment/auto-regularization-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          AUTO_REG,
+          'GET',
+          '/auto-regularization-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/auto-regularization-rules', 'create', 'input'],
+        ['PUT', '/auto-regularization-rules/:id', 'update', 'input'],
+        ['POST', '/auto-regularization-rules/:id/copy', 'create', '{}'],
+        ['PUT', '/auto-regularization-rules/:id/enabled', 'update', '{ enabled }'],
+        ['DELETE', '/auto-regularization-rules/:id', 'update', '{}'],
+      ] as const
+    ).map(([method, path, operation, payload]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            AUTO_REG,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  /**
+   * 立即执行：准入只认配置写（admin:other_settings 不叠加数据范围，系统批次按规则适用组织办理）；任职记录查看权的
+   * 披露用途另列 RUN_RECEIPT_DISCLOSURE（第 4 轮审查 P2）。配置对象 update 义务的范围是回执的人员披露（BE-15a 第 2 轮审查 P1）——首次返回与同键重放都经 runWrite 的投影出口
+   * visibleRunReceipt → visibleEmployees，按操作人当前的任职记录查看权与数据范围逐人过滤。
+   */
+  'POST /api/tenant/employment/auto-regularization/run': [
+    ...withObjectWriteFact(
+      withNeeds(
+        configWriteBase(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          'update',
+          at(
+            AUTO_REG,
+            'POST',
+            '/auto-regularization/run',
+            "await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings'",
+          ),
+        ),
+        {
+          'admin:other_settings': bound(NONE),
+          'obj:TenantBase.EmploymentSettings:update': bound(list('employment.runReceipt'), [
+            at(
+              AUTO_REG,
+              'POST',
+              '/auto-regularization/run',
+              '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) }',
+            ),
+            ...SCOPE_AT['employment.runReceipt'],
+          ]),
+        },
+      ),
+    ),
+    // 任职记录查看权的披露用途（第 4 轮审查 P2）：object.view 的探测事实由这条 disclosure 义务承接
+    RUN_RECEIPT_DISCLOSURE,
+    // 逐人经 BE-3 转正入口发起，联动校验在那里照常调用（系统批次无数据范围）
+    linkage(
+      at(
+        AUTO_REG,
+        'POST',
+        '/auto-regularization/run',
+        'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
+      ),
+    ),
+  ],
 };
 
 /** 导入 / 导入预演共用 authorizeImport 的逐行守卫。 */

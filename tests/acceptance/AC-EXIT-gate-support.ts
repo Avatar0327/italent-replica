@@ -147,8 +147,11 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
   let nowIso = `${today}T01:00:00.000Z`;
   const as = { user: w.session.user.id, tenant: w.session.tenant.id };
 
-  /** 受限 HR：authorize 自定义；scopeCreator 给出时数据范围只含“该用户创建的对象”（使用用户维度）。 */
-  function restricted(authorize: Authorizer, scopeCreator?: string) {
+  /**
+   * 受限 HR：authorize 自定义；scopeCreator 给出时数据范围只含“该用户创建的对象”（使用用户维度）；
+   * fields 给出时可见字段集合取它（缺省为最小集合），用于字段裁剪验收。
+   */
+  function restricted(authorize: Authorizer, scopeCreator?: string, fields?: readonly string[]) {
     const scope = scopeCreator
       ? {
           ...EMPTY_SCOPE,
@@ -159,7 +162,8 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
     registerScopeProvider(authorize, {
       scope: async () => scope,
       authorize: async (request) => authorize(request),
-      fields: async () => new Set(['id', 'employeeId', 'kind', 'effectiveDate', 'status', 'revision', 'lastWorkDate']),
+      fields: async () =>
+        new Set(fields ?? ['id', 'employeeId', 'kind', 'effectiveDate', 'status', 'revision', 'lastWorkDate']),
     });
     const api = tenantApi(db, { authorize, clock: () => new Date(nowIso) });
     return (method: string, path: string, init: Parameters<typeof api.request>[2] = {}) =>
