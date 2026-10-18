@@ -42,6 +42,8 @@ export interface WorldOptions {
   readonly disagree?: boolean;
   /** 把四个节点改成审批中可编辑结束日 / 备注（PB-82 / 83）。 */
   readonly editMode?: 'separate' | 'with_approve';
+  /** 节点额外开放（表单字段 + 可编辑字段）的审批字段，用来分别覆盖“节点禁止编辑”与“适配器拒绝”两层。 */
+  readonly extraEditable?: readonly string[];
 }
 
 export async function requestWorld(db: Db, label: string, options: WorldOptions = {}) {
@@ -74,7 +76,13 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
         exceptionAdminUserId: external?.id ?? w.exceptionAdmin,
         nodes: preset.definition.nodes.map((node) => ({
           ...node,
-          ...(options.editMode ? { editMode: options.editMode, editableFields: ['endDate', 'requestRemark'] } : {}),
+          ...(options.editMode
+            ? {
+                editMode: options.editMode,
+                editableFields: ['endDate', 'requestRemark', ...(options.extraEditable ?? [])],
+                formFields: [...node.formFields, ...(options.extraEditable ?? [])],
+              }
+            : {}),
           ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
         })),
       };
