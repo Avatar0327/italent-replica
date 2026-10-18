@@ -2088,6 +2088,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
     'apps/api/src/modules/employment/fields.ts#presetFieldsSchema',
   ],
+  'apps/api/src/modules/employment/part-time/routes.ts#receipt': [
+    'apps/api/src/modules/employment/part-time/read.ts#loadPartTime',
+  ],
   'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#readPageContext',
@@ -2112,10 +2115,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
-    'apps/api/src/modules/employment/part-time/read.ts#loadPartTime',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeCreateGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeScope',
     '#createSchema',
+    '#receipt',
     '#serviceInput',
     '#writeBusiness',
     'apps/api/src/modules/employment/part-time/service.ts#createPartTime',
@@ -2192,14 +2195,21 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time.ts#exclusivePartTimeConflict',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#assertNoLinkage': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#assertNotBeforeFounded': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStart': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime': [
     'apps/api/src/modules/employment/fields.ts#businessDate',
     '#PART_TIME_FIELD_KEYS',
+    '#assertNoLinkage',
+    '#endBeforeStart',
     'apps/api/src/modules/job/validation.ts#invalid',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#partTimePresetFields': [
