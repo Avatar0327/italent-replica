@@ -313,8 +313,10 @@ describe('T11 DEC-332①：预置按业务敏感度显式取值（设计 §3.3�
       // R3-T04 设计 §3.3 D-34：集合审批（一单多个被盘点人）的盘点结果审批预置显式开启多主体回避
       const collective = item.approvalType === 'talent_review_result';
       for (const node of process.latestVersion.nodes) {
+        // BE-15b1：考核的员工自评节点由考核对象本人处理（同 IDP 的填写节点），经理评价节点照 DEC-332① 开启
+        const selfFill = idp || node.key === 'self_evaluation';
         expect(node.actions, `${item.approvalType}.${node.key}`).toMatchObject({
-          avoidSelf: !idp,
+          avoidSelf: !selfFill,
           avoidSubjects: collective,
         });
         expect(node.avoidSubjectsResult).toBe('skip');

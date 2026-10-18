@@ -272,6 +272,9 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return candidateOf(tx, subject, subject.subjectEmployeeId);
     case 'idp_tutor':
       return candidateOf(tx, subject, subject.tutorEmployeeId ?? null);
+    // R2 BE-15b1（29 PB-R3）：试用期考核的员工自评节点取考核对象本人（同 idp_employee 的取法，只用于两类考核审批）
+    case 'assessment_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
     // R2 BE-14a3（OF-R15）：Offer 适配器把录用部门（单个）/ 审批主体组织（批量）放在 recordDepartmentId；类型限制见
     // OFFER_APPROVERS，其他业务选不到这三项
     case 'offer_department_head':

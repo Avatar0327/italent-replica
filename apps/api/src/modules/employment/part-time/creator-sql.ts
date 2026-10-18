@@ -4,6 +4,7 @@
  */
 import { sql } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import { firstCreatorSql } from '../../permission/scope-audit.js';
 
 /** 兼职记录：第 1 期来自申请（申请落地新增）时取申请发起人，否则取直接新增的操作人。recordId 为 uuid 表达式。 */
 export function partTimeRecordCreator(tenantId: string, recordId: SQL): SQL {
@@ -11,9 +12,7 @@ export function partTimeRecordCreator(tenantId: string, recordId: SQL): SQL {
     (SELECT q.initiator_user_id FROM employment_part_time_terms t
       JOIN part_time_requests q ON q.tenant_id=t.tenant_id AND q.id=t.source_id
       WHERE t.tenant_id=${tenantId} AND t.record_id=${recordId} AND t.term_no=1 AND t.source='create'),
-    (SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=${tenantId}
-      AND a.object_id=${recordId}::text AND a.action='employment.part_time.create'
-      ORDER BY a.created_at LIMIT 1))`;
+    ${firstCreatorSql(tenantId, recordId, 'employment.part_time.create')})`;
 }
 
 /** 兼职申请：发起人（申请头 initiator_user_id）。requestId 为 uuid 表达式。 */
