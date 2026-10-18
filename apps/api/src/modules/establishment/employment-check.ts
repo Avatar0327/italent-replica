@@ -2,7 +2,7 @@ import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { projectOrgAdjustmentRecords } from '../employment/org-adjustment-projection.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
-import { loadCycleStarts, loadExitStates } from '../employment/exit-occupancy-store.js';
+import { cycleOn, loadCycleStarts, loadExitStates } from '../employment/exit-occupancy-store.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
 import { resolveEffectiveInheritance } from '../employment/inheritance.js';
 import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from '../employment/timeline.js';
@@ -197,6 +197,8 @@ interface MemberInterval {
   readonly fields: Partial<PresetFields>;
   readonly from: string;
   readonly until: string;
+  /** 来源任职周期（记录用时间轴 staff_id，申请用载荷 selectedStaffId）：切段、投影、合并全程携带，离职预减按它扣（P2-1）。 */
+  readonly staffId?: string;
 }
 
 async function projectedMembers(
@@ -220,7 +222,13 @@ async function projectedMembers(
   const members = new Map<string, MemberInterval[]>();
   for (const row of rows) {
     const intervals = members.get(row.employeeId) ?? [];
-    intervals.push({ employeeId: row.employeeId, fields: camelFields(row.fields), from: row.from, until: row.until });
+    intervals.push({
+      employeeId: row.employeeId,
+      fields: camelFields(row.fields),
+      from: row.from,
+      until: row.until,
+      staffId: row.staffId,
+    });
     members.set(row.employeeId, intervals);
   }
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
@@ -245,6 +253,10 @@ async function projectedMembers(
         fields,
         effectiveDate: payload.effectiveDate,
       });
+    // 申请的来源周期：载荷 selectedStaffId；确实没选周期的按申请自己的生效日所在周期（设计 §6-1），不按投影后的日期推断
+    const applicationStaff =
+      payload.selectedStaffId ??
+      (await cycleOn(tx, ctx.tenantId, row.employeeId, String(raw.declaredEffectiveDate ?? payload.effectiveDate)));
     const from = [payload.effectiveDate, target.effectiveDate].sort().at(-1)!;
     const until = window?.to && window.to < windowEnd ? window.to : windowEnd;
     if (predecessor && (timings.transferIn === 'submitted' || row.state !== 'in_review'))
@@ -261,6 +273,7 @@ async function projectedMembers(
         target.effectiveDate,
         windowEnd,
         timings.transferOut === 'submitted' || row.state !== 'in_review',
+        applicationStaff,
       );
     if (!window || from >= until) continue;
     const previous = members.get(row.employeeId) ?? [];
@@ -275,7 +288,7 @@ async function projectedMembers(
           })
         : previous;
     if (timings.transferIn === 'submitted' || row.state !== 'in_review')
-      intervals.push({ employeeId: row.employeeId, fields, from, until });
+      intervals.push({ employeeId: row.employeeId, fields, from, until, ...staffOf(applicationStaff) });
     members.set(row.employeeId, intervals);
   }
   if (!target.occupancyOnly)
@@ -299,13 +312,14 @@ async function subtractPendingExits(
   const exits = await loadExitStates(tx, ctx.tenantId, [...members.keys()]);
   if (!exits.length) return;
   const affected = [...new Set(exits.map((exit) => exit.employeeId))];
-  const staffOf = await loadCycleStarts(tx, ctx.tenantId, affected);
+  const cycleAt = await loadCycleStarts(tx, ctx.tenantId, affected);
   for (const employeeId of affected) {
     const intervals = members.get(employeeId) ?? [];
     const records: TimelineSegment[] = intervals.map((interval, index) => ({
       recordId: String(index),
       employeeId,
-      staffId: staffOf(employeeId, interval.from),
+      // 区间自带来源周期；没有的（只剩未选定周期的申请预占）按设计回退：取区间起点所在周期
+      staffId: interval.staffId ?? cycleAt(employeeId, interval.from),
       kind: 'member',
       departmentId: String(interval.fields.departmentId ?? ''),
       positionId: null,
@@ -329,6 +343,8 @@ async function subtractPendingExits(
     );
   }
 }
+
+const staffOf = (staffId: string | null | undefined) => (staffId ? { staffId } : {});
 
 async function adjustmentProjection(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
   const projectedAdjustments = new Map<string, EmploymentRecord>();
@@ -432,9 +448,15 @@ async function occupancyRows(
   until: string,
   orgIds: readonly string[],
 ) {
-  const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
+  const rows = rowsOf<{
+    employeeId: string;
+    staffId: string;
+    fields: Record<string, unknown>;
+    from: string;
+    until: string;
+  }>(
     await tx.execute(sql`
-    SELECT r.employee_id AS "employeeId", COALESCE(p.body,to_jsonb(r)) AS fields,
+    SELECT r.employee_id AS "employeeId", t.staff_id::text AS "staffId", COALESCE(p.body,to_jsonb(r)) AS fields,
       GREATEST(lower(t.valid_during),${target.effectiveDate}::date)::text AS "from",
       LEAST(upper(t.valid_during),${until}::date)::text AS until
     FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
@@ -459,7 +481,7 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
     await tx.execute(sql`
     SELECT b.employee_id AS "employeeId",
       to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal'),
-        'effective_date',${date}) AS fields,s.state
+        'effective_date',${date},'declared_effective_date',p.effective_date) AS fields,s.state
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
       ORDER BY version_no DESC LIMIT 1) p ON true
@@ -493,6 +515,11 @@ async function projectTarget(
   transferOut: string,
   projectedAdjustments: Map<string, EmploymentRecord>,
 ) {
+  const [selected] = rowsOf<{ staffId: string | null }>(
+    await tx.execute(sql`SELECT selected_staff_id::text AS "staffId" FROM employment_payload_versions
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${target.businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  const staffId = selected?.staffId ?? undefined;
   const [existing] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_timeline
     WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),
@@ -527,6 +554,7 @@ async function projectTarget(
       target.effectiveDate,
       next && next < periodUntil ? next : periodUntil,
       true,
+      staffId,
     );
   if (window) {
     const from = [window.from, target.effectiveDate].sort().at(-1)!;
@@ -545,6 +573,7 @@ async function projectTarget(
           fields: projectedAdjustments.get(target.businessId)?.fields ?? target.fields ?? {},
           from,
           until,
+          ...staffOf(staffId),
         },
       ]);
   }
@@ -559,6 +588,7 @@ async function projectAdjustments(
   start: string,
   end: string,
   replace: boolean,
+  staffId?: string | null,
 ) {
   for (const record of await projectOrgAdjustmentRecords(tx, ctx, source, projected)) {
     const from = [record.effectiveDate, start].sort().at(-1)!;
@@ -576,7 +606,7 @@ async function projectAdjustments(
       : previous;
     members.set(source.employeeId, [
       ...intervals,
-      { employeeId: source.employeeId, fields: record.fields, from, until },
+      { employeeId: source.employeeId, fields: record.fields, from, until, ...staffOf(staffId) },
     ]);
   }
 }

@@ -62,3 +62,13 @@ export async function loadCycleStarts(tx: Tx, tenantId: string, employeeIds: rea
     return (cycles.filter((cycle) => cycle.entryDate <= date).at(-1) ?? cycles[0])?.staffId ?? '';
   };
 }
+
+/** 员工在某日所属的任职周期（入职日 ≤ 该日的最后一个周期）；没有则空。 */
+export async function cycleOn(tx: Tx, tenantId: string, employeeId: string, date: string): Promise<string | undefined> {
+  const [row] = rowsOf<{ staffId: string }>(
+    await tx.execute(sql`SELECT id::text AS "staffId" FROM employment_cycles
+      WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND entry_date <= ${date}::date
+      ORDER BY entry_date DESC LIMIT 1`),
+  );
+  return row?.staffId;
+}
