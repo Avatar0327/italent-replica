@@ -255,6 +255,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   displayOrder: '显示顺序',
   syncQualification: '同步任职资格子集',
   createdBy: '创建人',
+  // F-222：codex-F185b B1/B2 的 Offer 批量审批单功能权限原文。
+  PartDisAgree: '部分不同意',
+  AllDisAgree: '全部不同意',
 };
 
 export function auditFieldLabel(field: string): string {
