@@ -381,3 +381,55 @@ for (const trimmed of ['levelTypeId', 'level']) {
     ]);
   });
 }
+
+test('AC-FE-F185-15 空10 / A / 空1 混合时仍按组内级别升序', async ({ page }) => {
+  await setup(page, { careerValues: { targetLevelId: null } });
+  await mockLevelSorting(
+    page,
+    [
+      { id: jobId(10), name: '合成空类别10', enabled: true, levelTypeId: null, level: 10, displayOrder: 1 },
+      { id: jobId(11), name: '合成类别A1', enabled: true, levelTypeId: jobId(1), level: 1, displayOrder: 2 },
+      { id: jobId(12), name: '合成空类别1', enabled: true, levelTypeId: null, level: 1, displayOrder: 3 },
+    ],
+    [{ id: jobId(1), name: '合成类别A', enabled: true, displayOrder: 1 }],
+  );
+  await enter(page);
+  await edit(page);
+  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('合成');
+  await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')).toHaveText([
+    '合成类别A1',
+    '合成空类别1',
+    '合成空类别10',
+  ]);
+});
+
+test('AC-FE-F185-16 有类别 / 空类别 / 缺键混合时类别为 A、B、C，缺键项原位保留', async ({ page }) => {
+  await setup(page, { careerValues: { targetLevelId: null } });
+  const levels = [
+    { name: '合成类别C1', levelTypeId: jobId(3), level: 1 },
+    { name: '合成裁剪类别', level: 9 },
+    { name: '合成空类别10', levelTypeId: null, level: 10 },
+    { name: '合成类别A1', levelTypeId: jobId(1), level: 1 },
+    { name: '合成类别B1', levelTypeId: jobId(2), level: 1 },
+    { name: '合成空类别1', levelTypeId: null, level: 1 },
+  ].map((value, i) => ({ ...value, id: jobId(i + 10), enabled: true, revision: 1, displayOrder: i + 1 }));
+  const categories = ['A', 'B', 'C'].map((name, i) => ({
+    id: jobId(i + 1),
+    name: `合成类别${name}`,
+    enabled: name !== 'B',
+    revision: 1,
+    displayOrder: i + 1,
+  }));
+  await mockLevelSorting(page, levels, categories);
+  await enter(page);
+  await edit(page);
+  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('合成');
+  await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')).toHaveText([
+    '合成类别A1',
+    '合成裁剪类别',
+    '合成类别B1',
+    '合成类别C1',
+    '合成空类别1',
+    '合成空类别10',
+  ]);
+});

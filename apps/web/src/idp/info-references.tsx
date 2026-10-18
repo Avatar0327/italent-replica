@@ -20,7 +20,7 @@ export const INFO_SOURCES = {
 const LEVEL_TYPES = '/api/tenant/job/level-types';
 const careerSources: readonly string[] = [INFO_SOURCES.professionalLine, INFO_SOURCES.level, INFO_SOURCES.post];
 /** #355：类别沿主数据顺序，同类别按数值级别升序；裁剪字段不参与排序。 */
-function sortLevels(rows: InfoRow[], categories: InfoRow[]) {
+export function sortLevels(rows: InfoRow[], categories: InfoRow[]) {
   const rank = new Map(categories.map((row, index) => [row.id, index]));
   return rows.sort((a, b) => {
     if (a.levelTypeId !== null && typeof a.levelTypeId !== 'string') return 0;
