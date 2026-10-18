@@ -115,7 +115,7 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
       SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, 'draft', 1, 'bulk-draft' FROM ids`);
   const stateCounts = () =>
     rows<{ state: string; n: number }>(sql`
-      SELECT s.state, count(*) AS n FROM employment_business_objects b
+      SELECT s.state, count(*)::int AS n FROM employment_business_objects b
       JOIN LATERAL (SELECT state FROM employment_state_events e WHERE e.tenant_id=b.tenant_id AND e.business_id=b.id
         ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${tenantId} AND b.employee_id=${x.employee.id}::uuid GROUP BY s.state ORDER BY s.state`);
