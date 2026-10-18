@@ -22,6 +22,7 @@ const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
 const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
+const PART_TIME_VALIDATION = `${SRC}/employment/part-time/validation.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
 // readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
@@ -420,18 +421,24 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
       ],
     ),
     directOperation(access),
-    // 两个入口的准入都观测到 guard:employment.scope（readContext 内的员工范围判定）
+    // 两个入口都不带 resource（readContext 不判员工范围）；范围守卫落在真实执行链：
+    // requirePartTimeWriteAccess → requirePartTimeRecordScope → requireScopedEmploymentObject（F-235①）
     ob(
       'guard:employment.scope',
       [],
       [
-        route(readCall),
-        {
-          role: 'impl',
-          unit: `${CTX}#readContext`,
-          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
-        },
-        EMPLOYEE_IN_SCOPE,
+        access,
+        fn(
+          PART_TIME_GUARD,
+          'requirePartTimeWriteAccess',
+          'await requirePartTimeRecordScope(tx, scoped, row, row.departmentId)',
+        ),
+        fn(
+          PART_TIME_VALIDATION,
+          'requirePartTimeRecordScope',
+          'await requireScopedEmploymentObject(tx, { ...ctx, userId }, record.employeeId, departmentId)',
+        ),
+        DIRECT_OPERATION,
       ],
     ),
   ];

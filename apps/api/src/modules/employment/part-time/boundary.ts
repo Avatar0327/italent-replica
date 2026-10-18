@@ -29,6 +29,8 @@ export interface PartTimeBoundaryInput {
   readonly endDate: string | null;
   /** 已有兼职记录时为记录所属周期：开始日主职须仍在该周期（编辑 / 延长）。新建时省略。 */
   readonly recordStaffId?: string;
+  /** 编辑兼职只提前结束日时为 true：跳过 B-3，其余规则照常（DEC-624，§4.3A 调用点）。由 isPartTimeEndShortened 判定。 */
+  readonly shortenOnly?: boolean;
 }
 
 export interface PartTimeBoundaryResult {
@@ -145,6 +147,7 @@ export async function assertPartTimeWithinCycle(
     recordStaffId: input.recordStaffId ?? null,
     exitEffectiveDate: facts.exit,
     pendingExitPlannedDate: facts.pending,
+    shortenOnly: input.shortenOnly === true,
   });
   const { violation } = outcome;
   if (violation || !primary)

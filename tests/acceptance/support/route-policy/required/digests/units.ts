@@ -285,6 +285,9 @@ export const DIGESTS: Digests = {
     'route:POST /employees/:id/part-times/preview': 'aa7b3af73c4f',
     'route:POST /part-times/batch-end': 'c68108e42b6a',
   },
+  'apps/api/src/modules/employment/part-time/validation.ts': {
+    requirePartTimeRecordScope: 'f02fef7d90af',
+  },
   'apps/api/src/modules/employment/probation-routes.ts': {
     'route:GET /employees/:id/probation': '3c6095c242e8',
     'route:GET /probation-results': '140957a8db47',
@@ -1695,6 +1698,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times': '8229ad45e5e6',
   'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times/preview': '13d1205192b7',
   'apps/api/src/modules/employment/part-time/routes.ts#route:POST /part-times/batch-end': 'd0ddc12723df',
+  'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope': '4f1afb323277',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/probation': 'e6e23223f716',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-results': 'f82f37db2db0',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-views': 'e76cb7aa6f74',
