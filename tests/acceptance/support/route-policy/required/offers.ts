@@ -6,6 +6,7 @@
  * 字典写入：runDictionaryWrite → tenant.employment.configuration.write（admin other_settings）+ 任职设置对象字段编辑权。
  * C2（BE-14a2，transitions.ts）：转移两个入口各经 offerTransferCheck → button()（行级 / 列表级各一项）；失效经
  * offerOperationCheck(update)；转移表单与 OF-R3 发送判定只读，经 offerReadContext。
+ * BE-14b1（send.ts）：发送 / 重发经 runOfferWrite + offerOperationCheck(update)。
  */
 import { bound, NONE, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
@@ -14,6 +15,7 @@ const BASE = '/api/tenant/offers';
 const O = 'apps/api/src/modules/offer';
 const ROUTES = `${O}/routes.ts`;
 const TRANSITIONS = `${O}/transitions.ts`;
+const SEND = `${O}/send.ts`;
 const CTX = `${O}/context.ts`;
 const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
 const OFFER = 'TenantBase.Offer';
@@ -193,6 +195,30 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
   ];
 };
 
+/** 新建响应的重聘提示（identity.ts）：按任职记录查看权裁剪后才附上，只决定响应是否带 rehireHint，不拒绝请求。 */
+const rehireDisclosure = (): Obligation[] => [
+  {
+    perm: 'obj:TenantBase.EmploymentRecord:view',
+    purpose: 'disclosure:rehireHint',
+    need: NONE,
+    facts: ['object:object.* 动作', 'objectOp:TenantBase.EmploymentRecord:view'],
+    note: '只决定响应是否带 rehireHint，不拒绝请求（无权 / 范围外 / 字段不可见都当作没有命中）',
+    at: [
+      at('POST', '/', 'respond: (ctx, body) => withRehireHint(deps, ctx, body)'),
+      {
+        role: 'impl',
+        unit: `${O}/identity.ts#visibleRehireHint`,
+        anchor: "action: 'object.view', resource: EMPLOYMENT_OBJECT",
+      },
+      {
+        role: 'const',
+        unit: 'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+        anchor: "'TenantBase.EmploymentRecord'",
+      },
+    ],
+  },
+];
+
 export const OFFERS: RequiredTable = {
   [`GET ${BASE}/views`]: [view("await objectContext(c, deps, OFFER_OBJECT, 'view')", '/views', false)],
   [`GET ${BASE}/dictionaries/:kind`]: [
@@ -221,15 +247,18 @@ export const OFFERS: RequiredTable = {
     ...readView('/:id'),
     ...actionDisclosure('/:id', 'const { allowed } = await offerActionAccess(deps, ctx)'),
   ],
-  [`POST ${BASE}`]: offerWrite(
-    'POST',
-    '/',
-    'create',
-    writesCheck(
-      'offerCreateCheck',
-      "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await writes(tx, ctx) : input)",
+  [`POST ${BASE}`]: [
+    ...offerWrite(
+      'POST',
+      '/',
+      'create',
+      writesCheck(
+        'offerCreateCheck',
+        "writeFields({ authorize }, ctx, OFFER_OBJECT, 'create', tx ? await writes(tx, ctx) : input)",
+      ),
     ),
-  ),
+    ...rehireDisclosure(),
+  ],
   [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
   // BE-14a3：单个 / 批量发起审批，与编辑同一判定（object.update + 范围），审批流转在同一事务内交审批中心
@@ -254,4 +283,5 @@ export const OFFERS: RequiredTable = {
     'statusTransfer',
   ),
   [`POST ${BASE}/:id/invalidate`]: offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
+  [`POST ${BASE}/:id/send`]: offerWrite('POST', '/:id/send', 'update', undefined, SEND),
 };

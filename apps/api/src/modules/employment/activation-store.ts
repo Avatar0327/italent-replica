@@ -52,9 +52,11 @@ const QUEUE_LIMIT = 200;
 /**
  * 已落地的未来调动统一复查；成功尝试退出队列，失败保留 HR 待办。兼容旧版联动事件及 PR-A 未写排队事件、保存时为未来生效的记录（租户日期）。
  * R2-T03 §18.1 关口①：走过离职门禁（有 exit_requests 行）的离职不进队列，B3-3 开闸前调度与 HR 待办都看不到它们；
- * 没有扩展行的离职（可信造数）保持 main 行为。
+ * 没有扩展行的离职（可信造数）保持 main 行为。includeExits 只给内部编排器（exit-activation.ts 步骤 0a，B3-1）：
+ * 离职（含 approved 直接离职）参与排序与前序，公开队列仍排除，B3-3 开闸时把它改成默认。
  */
-export const pendingActivationState = (timezone: string) => sql`((s.state='approved' AND p.mode='application' OR
+export const pendingActivationState = (timezone: string, includeExits = false) => sql`((s.state='approved' AND
+    (p.mode='application' OR ${includeExits} AND p.kind='leave') OR
   s.state='effective' AND p.kind='transfer' AND (EXISTS (
     SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type IN ('employment.transfer.recheck.pending','employment.transfer.linkage.pending'))
@@ -65,7 +67,8 @@ export const pendingActivationState = (timezone: string) => sql`((s.state='appro
       WHERE done.tenant_id=b.tenant_id AND done.business_id=b.id AND done.outcome='effective')
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type='employment.transfer.linked'))
-  AND NOT EXISTS (SELECT 1 FROM exit_requests gated WHERE gated.tenant_id=b.tenant_id AND gated.business_id=b.id))`;
+  AND (${includeExits} OR NOT EXISTS (SELECT 1 FROM exit_requests gated
+    WHERE gated.tenant_id=b.tenant_id AND gated.business_id=b.id)))`;
 
 export type ShiftedKind = 'transfer' | 'leave';
 
@@ -100,6 +103,7 @@ export async function pendingActivations(
   ctx: EmploymentContext,
   employeeId: string,
   shifted: readonly ShiftedKind[] = QUEUE_SHIFTED_KINDS,
+  includeExits = false,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
@@ -131,7 +135,7 @@ export async function pendingActivations(
       FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-      AND ${pendingActivationState(ctx.timezone)}
+      AND ${pendingActivationState(ctx.timezone, includeExits)}
     ORDER BY ${finalDate}, ${planned},
       p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
@@ -178,9 +182,21 @@ export async function findOverdueTransfers(tx: Tx, ctx: EmploymentContext, emplo
   };
 }
 
+/** 内部编排器看到的队列：离职参与排序与前序，离职与调动都按最终执行日期顺延（设计 §5.0）。 */
+export const pendingExitQueue = (tx: Tx, ctx: EmploymentContext, employeeId: string) =>
+  pendingActivations(tx, ctx, employeeId, ['transfer', 'leave'], true);
+
 /** 排在该业务之前的待生效业务（DEC-108 / DEC-112：前序未落地时不得越过它生效）。 */
-export async function activationPredecessors(tx: Tx, ctx: EmploymentContext, employeeId: string, businessId: string) {
-  const queue = await pendingActivations(tx, ctx, employeeId);
+export async function activationPredecessors(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  includeExits = false,
+) {
+  const queue = includeExits
+    ? await pendingExitQueue(tx, ctx, employeeId)
+    : await pendingActivations(tx, ctx, employeeId);
   const index = queue.findIndex((item) => item.id === businessId);
   return { item: index < 0 ? undefined : queue[index], before: index < 0 ? [] : queue.slice(0, index) };
 }

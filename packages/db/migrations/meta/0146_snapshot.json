@@ -1,5 +1,5 @@
 {
-  "id": "e6b4c0ca-fdb0-403a-8b2c-55a1f941caee",
+  "id": "9a42c9e4-1f9d-406c-8758-13f8f3d1af3e",
   "prevId": "bfb20353-6e78-4918-b4ed-c18368aec619",
   "version": "7",
   "dialect": "postgresql",
@@ -41266,42 +41266,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "target_professional_line_id": {
-          "name": "target_professional_line_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_level_id": {
-          "name": "target_level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_post_id": {
-          "name": "target_post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "current_level_id": {
-          "name": "current_level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "current_position_id": {
-          "name": "current_position_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "current_post_id": {
-          "name": "current_post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "strengths": {
           "name": "strengths",
           "type": "text",
@@ -41397,96 +41361,6 @@
           "columnsFrom": [
             "tenant_id",
             "target_position_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_target_line_fk": {
-          "name": "idp_careers_target_line_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_professional_line_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "target_professional_line_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_target_level_fk": {
-          "name": "idp_careers_target_level_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_level_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "target_level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_target_post_fk": {
-          "name": "idp_careers_target_post_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_post_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "target_post_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_current_level_fk": {
-          "name": "idp_careers_current_level_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_level_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "current_level_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_current_position_fk": {
-          "name": "idp_careers_current_position_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_position_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "current_position_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "idp_careers_current_post_fk": {
-          "name": "idp_careers_current_post_fk",
-          "tableFrom": "idp_careers",
-          "tableTo": "job_post_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "current_post_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -59305,6 +59179,165 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.offer_send_records": {
+      "name": "offer_send_records",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offer_id": {
+          "name": "offer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cc": {
+          "name": "cc",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "bcc": {
+          "name": "bcc",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "sent_by": {
+          "name": "sent_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "offer_send_records_offer": {
+          "name": "offer_send_records_offer",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "offer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "offer_send_records_tenant_id_tenants_id_fk": {
+          "name": "offer_send_records_tenant_id_tenants_id_fk",
+          "tableFrom": "offer_send_records",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "offer_send_records_offer_fk": {
+          "name": "offer_send_records_offer_fk",
+          "tableFrom": "offer_send_records",
+          "tableTo": "offers",
+          "columnsFrom": [
+            "tenant_id",
+            "offer_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "offer_send_records_tenant_id": {
+          "name": "offer_send_records_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "offer_send_records_kind": {
+          "name": "offer_send_records_kind",
+          "value": "\"offer_send_records\".\"kind\" IN ('send', 'resend')"
+        },
+        "offer_send_records_status": {
+          "name": "offer_send_records_status",
+          "value": "\"offer_send_records\".\"status\" IN ('pending', 'sent', 'failed', 'unknown')"
+        }
+      },
       "isRLSEnabled": false
     }
   },

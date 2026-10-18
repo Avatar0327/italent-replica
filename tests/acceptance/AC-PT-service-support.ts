@@ -122,7 +122,7 @@ export async function serviceWorld(db: Db, label: string) {
           ${departmentId})`);
     });
 
-  /** 兼职相关表与审计的写入指纹：被拒后逐项相等 = 无写入。 */
+  /** 兼职相关表（含载荷版本 / 状态事件 / 申请三表）与审计的写入指纹：被拒后逐项相等 = 无写入。 */
   const writes = () =>
     withTenant(db, w.tenantId, async (tx) => {
       const [row] = rowsOf<Record<string, unknown>>(
@@ -130,6 +130,11 @@ export async function serviceWorld(db: Db, label: string) {
           (SELECT count(*)::int FROM employment_records WHERE tenant_id=${w.tenantId}) AS records,
           (SELECT count(*)::int FROM employment_part_time_terms WHERE tenant_id=${w.tenantId}) AS terms,
           (SELECT count(*)::int FROM employment_business_objects WHERE tenant_id=${w.tenantId}) AS heads,
+          (SELECT count(*)::int FROM employment_payload_versions WHERE tenant_id=${w.tenantId}) AS payloads,
+          (SELECT count(*)::int FROM employment_state_events WHERE tenant_id=${w.tenantId}) AS events,
+          (SELECT count(*)::int FROM part_time_requests WHERE tenant_id=${w.tenantId}) AS requests,
+          (SELECT count(*)::int FROM part_time_request_versions WHERE tenant_id=${w.tenantId}) AS request_versions,
+          (SELECT count(*)::int FROM part_time_request_events WHERE tenant_id=${w.tenantId}) AS request_events,
           (SELECT count(*)::int FROM audit_events WHERE tenant_id=${w.tenantId}) AS audits,
           (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${w.tenantId}) AS outbox`),
       );
