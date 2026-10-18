@@ -1,71 +1,104 @@
-import { useEffect, useState } from 'react';
-import { EMPLOYMENT_API, TRANSFER_API, transferRequest, TransferApiError } from './api.js';
-import { clearDraft, parseDraft, restoreDraft } from './draft-restore.js';
-import { forgetHrDraft, hrDraftOf } from './hr-session.js';
+import { useEffect, useRef, useState } from 'react';
+import { createFormStore } from '../foundation/forms/store.js';
+import { slotKey } from '../foundation/forms/slot.js';
+import { useCommandForm, type CommandForm } from '../foundation/forms/useCommandForm.js';
+import { TRANSFER_API, TransferApiError } from './api.js';
+import { clearDraft, restoreDraft } from './draft-restore.js';
+import { deleteServerDraft, readServerDraft, type ServerDraft } from './draft-server.js';
 import type { TransferFormModel } from './types.js';
 
+// 页面层共用一份内核存储，关闭表单、切换视图或入口不销毁未确认命令（同合同模块）；刷新恢复归 F-110。
+const store = createFormStore();
 export type DraftRestoreStatus = 'idle' | 'loading' | 'restored' | 'failed';
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 
-function draftOf(scope: string, employeeId: string) {
-  try {
-    return hrDraftOf(scope, employeeId);
-  } catch {
-    // 会话存储不可读时按没有暂存处理；写入口另有 recoveryUnavailable 提示。
-    return undefined;
-  }
-}
-function forget(scope: string, employeeId: string) {
-  try {
-    forgetHrDraft(scope, employeeId);
-  } catch {
-    // 存储不可写时下次仍会回查，回查结果同样按当前状态判断，不影响正确性。
-  }
-}
-/**
- * F-153（DEC-511）：选人后按人查本会话已知的暂存单，按当前权限读取并带出。
- * 已不是草稿或已不存在（404）时静默忘掉；其他失败提示未带出，表单保持空白可用。
- */
+/** F-181b：元数据只从服务端读取；清除按员工暂存资源钉住，替换单号也不能绕过未知锁。 */
 export function useDraftRestore(tenantId: string, scope: string | undefined, employeeId: string, setModel: SetModel) {
   const [status, setStatus] = useState<DraftRestoreStatus>('idle');
+  const [draft, setDraft] = useState<ServerDraft | null>(null);
+  const command = useCommandForm(slotKey(`${TRANSFER_API}/employees`, employeeId || undefined), store);
+  const active = useRef<AbortController | undefined>(undefined);
+  const apply = (latest: ServerDraft | null, reset: boolean) => {
+    setDraft(latest);
+    setStatus(latest ? 'restored' : 'idle');
+    setModel((current) => {
+      if (current.employeeId !== employeeId) return current;
+      if (!latest) return reset ? clearDraft(current) : current;
+      return restoredModel(current, latest);
+    });
+  };
+  const load = async (reset: boolean, signal?: AbortSignal) => {
+    const latest = await readServerDraft(tenantId, employeeId, signal);
+    if (!signal?.aborted) apply(latest, reset);
+    return latest;
+  };
   useEffect(() => {
-    const ref = scope && employeeId ? draftOf(scope, employeeId) : undefined;
-    setStatus(ref ? 'loading' : 'idle');
-    if (!scope || !ref) return;
-    const draftId = ref.id;
     const controller = new AbortController();
-    const { signal } = controller;
-    void Promise.all([
-      transferRequest<unknown>(tenantId, `${EMPLOYMENT_API}/businesses/${draftId}`, { signal }),
-      transferRequest<unknown>(tenantId, `${TRANSFER_API}/${draftId}/linkage`, { signal }),
-    ])
-      .then(([business, linkage]) => {
-        if (signal.aborted) return;
-        const draft = parseDraft(draftId, employeeId, business, linkage, ref.transferTypeCode);
-        if (!draft) {
-          forget(scope, employeeId);
-          setStatus('idle');
-          return;
-        }
-        setModel((current) => restoreDraft(current, draft));
-        setStatus('restored');
-      })
-      .catch((cause: unknown) => {
-        if (signal.aborted) return;
-        if (cause instanceof TransferApiError && cause.status === 404) {
-          forget(scope, employeeId);
-          setStatus('idle');
-        } else setStatus('failed');
+    active.current = controller;
+    setDraft(null);
+    setStatus(scope && employeeId ? 'loading' : 'idle');
+    if (scope && employeeId) {
+      void load(false, controller.signal).catch(() => {
+        if (!controller.signal.aborted) setStatus('failed');
       });
+    }
     return () => controller.abort();
+    // 仅选人或会话切换触发带出，不因用户编辑而覆盖表单。
   }, [tenantId, scope, employeeId, setModel]);
+  const reload = () =>
+    command.reread(async () => {
+      const latest = await load(true, active.current?.signal);
+      // 恢复对象是该员工的暂存资源，单号只是它的值；替换后仍在原资源核对差异。
+      return { id: employeeId, revision: latest?.revision ?? 0, values: latest ? { ...latest } : { id: null } };
+    });
+  const form: CommandForm = {
+    ...command,
+    reload,
+    confirm: () => {
+      command.confirm();
+      command.clear();
+    },
+  };
   return {
     status,
-    /** 点击清除：忘掉该人的暂存索引并回到空白表单；服务端草稿不删除。 */
-    clear: () => {
-      if (scope && employeeId) forget(scope, employeeId);
-      setModel(clearDraft);
-      setStatus('idle');
+    command: form,
+    error: command.status === 'rejected' && command.state?.error instanceof Error ? command.state.error.message : '',
+    clear: async () => {
+      if (!scope || !draft || command.locked || status === 'loading') return;
+      command.clear();
+      const outcome = await command.submit({
+        values: { ...draft },
+        baseline: { ...draft },
+        editableFields: Object.keys(draft),
+        revision: draft.revision,
+        businessId: employeeId,
+        send: async (sent) => {
+          await deleteServerDraft(tenantId, employeeId, draft.id, sent);
+          // 成功后重读仍在 submitting 内，读取失败则 unknown，不留下可重复提交的解锁窗口。
+          await load(true, active.current?.signal);
+          return { id: employeeId };
+        },
+      });
+      if (outcome.status === 'conflict') await reload();
+      if (outcome.status === 'rejected' && outcome.error instanceof TransferApiError && outcome.error.status === 404) {
+        setStatus('loading');
+        try {
+          await load(true, active.current?.signal);
+          command.clear();
+        } catch {
+          setStatus('failed');
+        }
+      }
     },
+  };
+}
+
+function restoredModel(current: TransferFormModel, latest: ServerDraft): TransferFormModel {
+  const restored = restoreDraft(current, latest);
+  const editable = current.catalog.editableFields;
+  return {
+    ...restored,
+    reasonCode: !editable || editable.includes('reasonCode') ? (latest.reasonCode ?? '') : '',
+    withEstablishment: (!editable || editable.includes('withEstablishment')) && latest.withEstablishment === true,
   };
 }
