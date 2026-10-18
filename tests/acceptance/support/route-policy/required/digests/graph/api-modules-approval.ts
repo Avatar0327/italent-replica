@@ -1277,6 +1277,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
   ],
   'apps/api/src/modules/approval/notifications.ts#notifyCc': ['#insertNotice'],
+  'apps/api/src/modules/approval/notifications.ts#notifyMessage': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyTodo': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyUrge': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#recipientOf': [
@@ -1812,6 +1813,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/store.ts#instanceOf': ['#iso'],
   'apps/api/src/modules/approval/store.ts#instanceOfTask': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/store.ts#latestInstanceOf': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#instanceOf',
+  ],
   'apps/api/src/modules/approval/store.ts#loadInstance': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#instanceOf',
