@@ -42,12 +42,9 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
     ]);
   });
 
-  it('PT-3b 只开新增与读取四个入口（见 AC-PT-http-create）：编辑、批量结束、六视图、申请入口仍是 404', async () => {
+  it('PT-3c 只开新增、读取、编辑与批量结束（见 AC-PT-http-create / edit / 10-batch-end）：六视图、申请入口仍是 404', async () => {
     const w = await serviceWorld(database().db, 'pt-wiring-routes');
-    const id = await w.seedPartTime();
     for (const [method, path] of [
-      ['PATCH', `/part-times/${id}`],
-      ['POST', '/part-times/batch-end'],
       ['GET', '/part-times'],
       ['POST', '/part-time-requests'],
     ] as const) {

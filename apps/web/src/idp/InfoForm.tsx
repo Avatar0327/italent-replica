@@ -17,7 +17,7 @@ import {
   type InfoKind,
   type InfoRow,
 } from './info-model.js';
-import { InfoSelect, PEOPLE, ORGS, POSITIONS } from './info-references.js';
+import { InfoSelect, PEOPLE, INFO_SOURCES } from './info-references.js';
 
 export function InfoForm(props: { kind: InfoKind; row?: InfoRow; close(): void; saved(): void }) {
   const form = <InfoEditor {...props} />;
@@ -117,8 +117,8 @@ function InfoControl({
   const control =
     field.type === 'person' ? (
       <InfoSelect source={PEOPLE} person {...props} />
-    ) : field.type === 'org' || field.type === 'position' ? (
-      <InfoSelect source={field.type === 'org' ? ORGS : POSITIONS} {...props} />
+    ) : field.type in INFO_SOURCES ? (
+      <InfoSelect source={INFO_SOURCES[field.type as keyof typeof INFO_SOURCES]} {...props} />
     ) : field.type === 'date' ? (
       <TenantDatePicker {...props} value={props.value ?? undefined} />
     ) : (

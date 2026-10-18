@@ -5,7 +5,7 @@ export type InfoRow = Values & { id: string; revision?: number };
 export interface InfoField {
   name: string;
   label: string;
-  type: 'person' | 'date' | 'text' | 'org' | 'position';
+  type: 'person' | 'date' | 'text' | 'org' | 'position' | 'professionalLine' | 'level' | 'post';
   required?: boolean;
 }
 const field = (name: string, label: string, type: InfoField['type'], required = false): InfoField => ({
@@ -26,7 +26,6 @@ export const INFO = {
       ...dates('结束日期'),
     ],
   },
-  // DEC-543：缺后端契约的三字段后补 F-185（取证 #355），不造候选、不发不存在的字段。
   careers: {
     title: '职业发展信息',
     object: 'IDP.Career',
@@ -37,6 +36,9 @@ export const INFO = {
       field('strengths', '优势项', 'text'),
       field('developmentItems', '待发展项', 'text'),
       field('targetPositionId', '拟晋升职位', 'position'),
+      field('targetProfessionalLineId', '发展条线', 'professionalLine'),
+      field('targetLevelId', '拟晋升职级', 'level'),
+      field('targetPostId', '拟晋升职务', 'post'),
     ],
   },
   'work-shifts': {
@@ -54,6 +56,10 @@ export const INFO = {
 } satisfies Record<InfoKind, { title: string; object: string; create: string; fields: InfoField[] }>;
 export const infoText = {
   actions: '操作',
+  choose: '请选择',
+  currentLevel: '当前职级',
+  currentPosition: '当前职位',
+  currentPost: '当前职务',
   noDataPermission: '暂无数据权限',
   confirmAll: '删除所选记录',
   edit: '编辑',
