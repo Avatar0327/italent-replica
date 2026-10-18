@@ -1,5 +1,6 @@
 import { Alert, Button, Empty, Pagination, Select, Space, Table, type TableColumnsType } from 'antd';
 import { useState, type Key } from 'react';
+import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { PageState } from '../foundation/PageState.js';
 import { MenuIcon } from '../foundation/ViewHeading.js';
@@ -8,7 +9,16 @@ import { useLocalPage } from './listing.js';
 import { InfoForm } from './InfoForm.js';
 import { InfoDelete } from './InfoDelete.js';
 import { INFO, infoPath, infoText as m, textValue, type InfoKind, type InfoRow } from './info-model.js';
-import { useInfoReferences, ReferenceError, PersonName, PEOPLE, PROFILE, ORGS, POSITIONS } from './info-references.js';
+import {
+  useInfoReferences,
+  ReferenceError,
+  PersonName,
+  PEOPLE,
+  PROFILE,
+  ORGS,
+  POSITIONS,
+  INFO_SOURCES,
+} from './info-references.js';
 import './info.css';
 
 type References = ReturnType<typeof useInfoReferences>;
@@ -31,7 +41,10 @@ function useRelated(kind: InfoKind, rows: InfoRow[]) {
     ),
   ];
   const people = useInfoReferences(
-    ids.flatMap((id) => [`${PEOPLE}/${id}`, `${PROFILE}/${id}`, `${PEOPLE}/${id}/records`]),
+    ids.flatMap((id) => [
+      `${PEOPLE}/${id}`,
+      ...(kind === 'careers' ? [] : [`${PROFILE}/${id}`, `${PEOPLE}/${id}/records`]),
+    ]),
   );
   const current = (id: unknown) =>
     typeof id === 'string'
@@ -45,6 +58,13 @@ function useRelated(kind: InfoKind, rows: InfoRow[]) {
     add(ORGS, r.orgId);
     add(POSITIONS, r.positionId);
     add(POSITIONS, r.targetPositionId);
+    if (kind === 'careers') {
+      add(INFO_SOURCES.professionalLine, r.targetProfessionalLineId);
+      add(INFO_SOURCES.level, r.targetLevelId);
+      add(INFO_SOURCES.post, r.targetPostId);
+      add(INFO_SOURCES.level, r.currentLevelId);
+      add(POSITIONS, r.currentPositionId);
+    }
   });
   ids.forEach((id) => {
     const fields = current(id);
@@ -175,6 +195,7 @@ function InfoList({ kind }: { kind: InfoKind }) {
         create={() => setEditing({})}
         remove={() => setDeleting((list.items ?? []).filter((r) => selected.includes(r.id)))}
       />
+      {kind === 'careers' && <DecisionNote id="idp-careers" />}
       <div className="list-card">
         <ReferenceError refs={refs} />
         <InfoFilters
@@ -268,21 +289,18 @@ function infoColumns(
         value: (r) => refs.people.get(`${PEOPLE}/${r.mentorEmployeeId}`)?.name,
       },
     ];
-  const current = (key: string, title: string, base: string): Column => ({
-    key,
-    title,
-    field: 'employeeId',
-    value: (r) => ref(base, refs.current(r.employeeId)?.[key]),
-  });
+
   return [
     person('employeeId', '发展员工'),
     ...dates,
     raw('strengths', '优势项'),
     raw('developmentItems', '待发展项'),
-    current('levelId', '当前职级', '/api/tenant/job/levels'),
-    current('positionId', '当前职位', POSITIONS),
-    named('targetPositionId', '拟晋升职位', POSITIONS),
-    current('postId', '当前职务', '/api/tenant/job/posts'),
+    named('currentLevelId', m.currentLevel, INFO_SOURCES.level),
+    named('currentPositionId', m.currentPosition, POSITIONS),
+    { ...raw('currentPostName', m.currentPost), field: 'currentPostId' },
+    ...INFO.careers.fields
+      .filter((field) => field.name.startsWith('target'))
+      .map((field) => named(field.name, field.label, INFO_SOURCES[field.type as keyof typeof INFO_SOURCES])),
   ];
 }
 
@@ -411,7 +429,7 @@ function InfoTable({
             dataSource={paging.shown}
             columns={columns}
             pagination={false}
-            scroll={{ x: kind === 'careers' ? 1600 : kind === 'tutorships' ? 1250 : undefined }}
+            scroll={{ x: kind === 'careers' ? 2150 : kind === 'tutorships' ? 1250 : undefined }}
             locale={{ emptyText: <Empty /> }}
             rowSelection={{ selectedRowKeys: selected, onChange: select }}
           />

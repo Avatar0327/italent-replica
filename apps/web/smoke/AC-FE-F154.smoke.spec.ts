@@ -3,9 +3,7 @@ import { test, expect, employee, user } from './fixtures.js';
 import { orgId, otherEmployee } from './r3d2-fixtures.js';
 import { mockInfo, infoId, type InfoKind } from './f154-fixtures.js';
 
-// F-154 首批行为红测。夹具仅含现有 key-info-routes 的真实投影字段，
-// 不伪造尚未落库的职业发展条线 / 拟晋升职级 / 拟晋升职务。
-// DEC-543：三项缺后端契约字段后补 F-185（取证 #355），本片不渲染。
+// F-154 原有行为回归；职业发展夹具已同步 #417 / F-185 的真实可空字段。
 const span = { startDate: '2026-10-01', endDate: '2026-12-31', revision: 1, createdBy: user };
 const cases = [
   {
@@ -268,7 +266,10 @@ for (const spec of cases)
     expect(calls.map((c) => c.method)).toEqual(['POST', 'PATCH']);
     expect(calls.map((c) => c.revision)).toEqual(['0', '1']);
     expect(calls[1]!.body).toEqual({ startDate: '2026-09-01' });
-    for (const key of ['careerLineId', 'targetLevelId', 'targetPostId']) expect(calls[0]!.body).not.toHaveProperty(key);
+    for (const key of ['careerLineId', 'currentLevelId', 'currentPositionId', 'currentPostId', 'currentPostName'])
+      expect(calls[0]!.body).not.toHaveProperty(key);
+    if (spec.path === 'careers')
+      expect(calls[0]!.body).toMatchObject({ targetProfessionalLineId: null, targetLevelId: null, targetPostId: null });
   });
 
 test('AC-FE-F154-12 人员只读仍回显姓名，只提交可编辑字段', async ({ page }) => {
