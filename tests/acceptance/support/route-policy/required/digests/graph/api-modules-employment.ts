@@ -111,7 +111,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/assessment.ts#parseAssessmentPatch',
   ],
   'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentWrite': [
-    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
@@ -178,7 +177,6 @@ export const GRAPH: Graph = {
     '#listQuery',
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#listAssessments',
-    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
@@ -219,12 +217,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/assessment-store.ts#assertAssessmentRevision': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
   ],
+  'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+  ],
   'apps/api/src/modules/employment/assessment-store.ts#auditAssessment': [
     '#ASSESSMENT_AUDIT_TYPE',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#listAssessments': [
     '#COLUMNS',
+    '#assessmentScopeSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#loadAssessment': [
@@ -232,7 +235,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': [
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    '#assessmentScopeSql',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#saveAssessment': [
     '#CAST',

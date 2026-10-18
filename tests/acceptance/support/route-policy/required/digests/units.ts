@@ -173,13 +173,13 @@ export const DIGESTS: Digests = {
     ownTransferPreview: '1251dd2e1f1e',
   },
   'apps/api/src/modules/employment/assessment-routes.ts': {
-    'route:GET /probation-assessments': 'd9e98244425c',
+    'route:GET /probation-assessments': 'd24b133b7efe',
     'route:GET /probation-assessments/:id': 'f0c0e22ffac3',
     'route:PATCH /probation-assessments/:id': 'f805edcc68ba',
     'route:POST /probation-assessments': '17037f156e66',
   },
   'apps/api/src/modules/employment/assessment-store.ts': {
-    requireAssessmentInScope: 'bf990313c28c',
+    requireAssessmentInScope: 'fc69d77a95e1',
   },
   'apps/api/src/modules/employment/assessment.ts': {
     createOne: '5d899f5fa8df',
@@ -1592,11 +1592,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': '008aa7f3f314',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '35edc1a79cc9',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': 'eb9b47eeb2ab',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '14600fb1aacb',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
-  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '1883f0f7ecdd',
+  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '2da0cb093da1',
   'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
   'apps/api/src/modules/employment/assessment.ts#updateAssessment': '05e674ff9ddd',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
