@@ -243,22 +243,45 @@ describe('AC-PB-11 单条启停（DEC-533②）与规则变更（PB-R22）', () 
     expect((await w.ran()).launched).toHaveLength(1);
   });
 
-  it('同一人命中多条规则时取优先级数字最小者；删除规则不影响已发起的考核与台账', async () => {
+  it('同日多条规则到期（P2-2）：按优先级逐条办理——优先级最小者发起，其余经 PB-R20 记失败与台账，重试次数累计', async () => {
     const w = await autoAssessmentWorld(testDb().db, 'priority');
-    await w.created(w.body({ name: '低优先', priority: 9, assessmentType: 'regularization' }));
+    const low = await w.created(w.body({ name: '低优先', priority: 9, assessmentType: 'regularization' }));
     const high = await w.created(w.body({ name: '高优先', priority: 2, assessmentType: 'probation' }));
     const person = await w.probationer('优先级员工');
     await w.enableSwitch();
     const receipt = await w.ran();
     expect(receipt.launched.map((item) => item.ruleId)).toEqual([high.id]);
-    expect((await w.assessmentsOf(person.employeeId))[0]).toMatchObject({
-      assessment_name: '高优先',
-      assessment_type: 'probation',
-    });
-    const removed = await w.emp('DELETE', `/auto-assessment-rules/${high.id}`, { ifMatch: high.revision });
+    expect(receipt.failed).toEqual([
+      { employeeId: person.employeeId, ruleId: low.id, reason: 'AUTO_ASSESSMENT_CYCLE_CONFLICT' },
+    ]);
+    expect((await w.assessmentsOf(person.employeeId)).map((row) => row.assessment_name)).toEqual(['高优先']);
+    const ledger = () =>
+      w.launchesOf(person.employeeId).then((rows) => rows.sort((a, b) => a.state.localeCompare(b.state)));
+    expect(await ledger()).toEqual([
+      expect.objectContaining({ rule_id: low.id, state: 'failed', assessment_id: null, attempts: 1 }),
+      expect.objectContaining({ rule_id: high.id, state: 'launched', attempts: 1 }),
+    ]);
+    // 同日再执行：已发起的只跳过它自己，失败的那条重试、次数累计，不重复发起
+    const again = await w.ran();
+    expect(again.launched).toEqual([]);
+    expect(again.failed.map((item) => item.ruleId)).toEqual([low.id]);
+    expect(await ledger()).toEqual([
+      expect.objectContaining({ rule_id: low.id, state: 'failed', attempts: 2 }),
+      expect.objectContaining({ rule_id: high.id, state: 'launched', attempts: 1 }),
+    ]);
+    expect(await w.assessmentsOf(person.employeeId)).toHaveLength(1);
+  });
+
+  it('删除规则不影响已发起的考核与台账（PB-R22）', async () => {
+    const w = await autoAssessmentWorld(testDb().db, 'delete-keeps');
+    const rule = await w.created(w.body());
+    const person = await w.probationer('删除规则员工');
+    await w.enableSwitch();
+    expect((await w.ran()).launched).toHaveLength(1);
+    const removed = await w.emp('DELETE', `/auto-assessment-rules/${rule.id}`, { ifMatch: rule.revision });
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect(await w.assessmentsOf(person.employeeId)).toHaveLength(1);
-    expect((await w.launchesOf(person.employeeId))[0]).toMatchObject({ state: 'launched', rule_id: high.id });
+    expect((await w.launchesOf(person.employeeId))[0]).toMatchObject({ state: 'launched', rule_id: rule.id });
   });
 
   it('适用组织：规则只命中所选组织（含下级）里的试用员工；已转正（非试用）的员工不是适用对象', async () => {
