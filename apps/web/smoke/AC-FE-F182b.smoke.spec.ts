@@ -1,13 +1,40 @@
 import { test, expect, employee, user } from './fixtures.js';
 import { mockIdp, otherEmployee, plan, thirdEmployee } from './r3d2-fixtures.js';
 
-// F-182a 真实 my-plans 形状：分页信封、员工 ID / null，不带显示名、tutorRole、processId。
+// DEC-611 真实 my-plans 形状：分页信封、指导人 ID 与姓名 / null，不带 tutorRole、processId。
 const { tutorRole: _role, processId: _process, ...summary } = plan;
+const tutorNames: Record<string, string> = {
+  [employee]: '合成员工甲',
+  [otherEmployee]: '合成员工乙',
+  [thirdEmployee]: '合成员工丙',
+};
 const row = (suffix: string, name: string, tutorEmployeeId: string | null) => ({
   ...summary,
   id: `b0000000-0000-4000-8000-0000000003${suffix}`,
   name,
   tutorEmployeeId,
+  tutorName: tutorEmployeeId ? tutorNames[tutorEmployeeId] : null,
+});
+
+test('AC-FE-F182b-03 姓名接口 403 时列仍显示姓名，按指导人姓名搜索并筛选命中', async ({ page }) => {
+  const denied: string[] = [];
+  await page.route(/\/api\/tenant\/employment\/employees\/[^/?]+(?:\?.*)?$/, (route) => {
+    denied.push(route.request().url());
+    return route.fulfill({ status: 403, json: { code: 'FORBIDDEN' } });
+  });
+  await page.reload();
+  await expect(page.getByText('共4条')).toBeVisible();
+  await expect.poll(() => denied.length).toBeGreaterThan(0);
+  const ownRow = page.getByRole('row').filter({ hasText: '合成乙指导计划一' });
+  await expect(ownRow.getByRole('cell').nth(2)).toHaveText('合成员工乙');
+  const tutor = page.getByRole('combobox', { name: '指导人', exact: true });
+  await page.locator('.ant-select').filter({ has: tutor }).locator('.ant-select-selector').click();
+  await tutor.fill('合成员工乙');
+  const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option');
+  await expect(options).toHaveText(['合成员工乙']);
+  await options.click();
+  await expect(page.locator('tbody .idp-link')).toHaveText(['合成乙指导计划一', '合成乙指导计划二']);
+  await expect(page.getByText('共2条')).toBeVisible();
 });
 const items = [
   row('01', '合成乙指导计划一', otherEmployee),
