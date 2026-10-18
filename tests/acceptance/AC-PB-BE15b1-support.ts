@@ -82,7 +82,10 @@ export async function assessmentWorld(db: Db, label: string) {
   ]);
 
   /** 试用员工：入职 2026-09-01，试用到 endDate（预计结束日），账号已绑定，直线经理 = manager。 */
-  async function probationer(name: string, options: { endDate?: string; manager?: Person | null } = {}) {
+  async function probationer(
+    name: string,
+    options: { endDate?: string; manager?: Person | null; department?: string } = {},
+  ) {
     const userId = await w.member(name);
     const created = await w.employee(name);
     await withTenant(db, w.tenant.id, (tx) =>
@@ -96,7 +99,7 @@ export async function assessmentWorld(db: Db, label: string) {
       effectiveDate: '2026-09-01',
       fields: {
         employType: 'internal',
-        departmentId: department,
+        departmentId: options.department ?? department,
         ...(directManager ? { directManagerId: directManager.employeeId } : {}),
       },
       probation: true,
@@ -135,7 +138,12 @@ export async function assessmentWorld(db: Db, label: string) {
     w.json<AssessmentView>(await w.request(w.hr.id, 'GET', `${EMPLOYMENT}/probation-assessments/${id}`));
   const patchRaw = (id: string, ifMatch: number, body: Record<string, unknown>) =>
     w.request(w.hr.id, 'PATCH', `${EMPLOYMENT}/probation-assessments/${id}`, { ifMatch, body });
-  const instance = (assessmentId: string): Promise<InstanceView> => w.instanceOf(assessmentId, w.hr.id);
+  // 审批实例按发起人视角取；默认发起人是 HR，真实授权器用例里发起人是被授权的操作人
+  let initiator = w.hr.id;
+  const instance = (assessmentId: string): Promise<InstanceView> => w.instanceOf(assessmentId, initiator);
+  const asInitiator = (userId: string) => {
+    initiator = userId;
+  };
 
   async function decide(
     assessmentId: string,
@@ -213,6 +221,7 @@ export async function assessmentWorld(db: Db, label: string) {
     get,
     patchRaw,
     instance,
+    asInitiator,
     decide,
     complete,
     probationDetail,
