@@ -30,6 +30,7 @@ export * from './employment/intern.js';
 export * from './employment/exit.js';
 export * from './employment/part-time-constants.js';
 export * from './employment/part-time.js';
+export * from './employment/part-time-request.js';
 export * from './employment/entry.js';
 export * from './employment/entry-email.js';
 export * from './employment/probation.js';

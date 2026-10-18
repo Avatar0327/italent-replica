@@ -114,6 +114,8 @@ export interface NewPartTimeRecord {
   readonly customFields: Readonly<Record<string, unknown>>;
   /** 本次明确给出的预置字段编码（preset:xxx），随载荷保存。 */
   readonly explicitFieldCodes: readonly string[];
+  /** 新增申请落地时的申请 ID，记在第 1 期的 source_id 上（§4.4）。 */
+  readonly sourceId?: string;
 }
 
 /**
@@ -191,6 +193,7 @@ export async function insertPartTimeRecord(
     termNo: 1,
     endDate: input.endDate,
     source: 'create',
+    sourceId: input.sourceId ?? null,
   });
   return { id, payloadVersionId };
 }
