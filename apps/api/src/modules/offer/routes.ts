@@ -1,7 +1,8 @@
 /**
  * Offer 管理路由（R2 BE-14a C1，DEC-581），子应用挂在 /api/tenant/offers，策略登记在 offer/policy.ts（F-039）。
  * 读：Offer 对象查看权 + 当前数据范围；写：对象数据操作 + 实际写入字段的编辑权（新建 / 复制含继承来的字段，删除只判开关）。
- * 转移状态、失效、转移表单与 OF-R3 发送判定（C2，BE-14a2）在 transitions.ts；列表 / 详情按权限带出可用的行操作。
+ * 转移状态、失效、转移表单与 OF-R3 发送判定（C2，BE-14a2）在 transitions.ts；单个 / 批量发起审批随 BE-14a3（registerApprovals）；
+ * 列表 / 详情按权限带出可用的行操作。
  */
 import { withTenant } from '@italent/db';
 import { OFFER_OBJECT, OFFER_VIEWS, offerView } from '@italent/domain';
@@ -31,13 +32,15 @@ import {
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
-import { parseOfferCreate, parseOfferUpdate } from './input.js';
+import { offerApprovalFields, submitOfferApproval, submitOfferBatch } from './approval.js';
+import { parseOfferBatch, parseOfferCreate, parseOfferSubmit, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
 import {
   copyOffer,
   createOffer,
   deleteOffer,
   listOffers,
+  loadOffer,
   lockOffer,
   offerCreateWrites,
   offerDetail,
@@ -96,6 +99,46 @@ function registerDictionaries(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       status: 200,
       body: await saveOfferDictionaryEntry(tx, ctx, kind, input, id),
     }));
+  });
+}
+
+/** 批量发起的结果是一组 Offer：重放时逐个复核仍在当前范围。 */
+const batchVisible = async (tx: Parameters<typeof loadOffer>[0], ctx: OfferContext, body: unknown) => {
+  for (const item of (body as { items?: { id: string }[] } | null)?.items ?? []) await loadOffer(tx, ctx, item.id);
+};
+
+/** 发起审批（BE-14a3）：按 Offer 对象编辑开关 + 当前范围判定；审批流转交给审批中心（同事务）。 */
+function registerApprovals(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  module.post('/batch-approvals', async (c) => {
+    const input = parseOfferBatch(await jsonBody(c));
+    return runOfferWrite(
+      c,
+      deps,
+      input,
+      'update',
+      offerOperationCheck('update'),
+      async (tx, ctx) => ({
+        status: 201,
+        body: await submitOfferBatch(tx, ctx, input, offerApprovalFields(deps, ctx)),
+      }),
+      { isNew: true, replayed: batchVisible },
+    );
+  });
+  module.post('/:id/approval', async (c) => {
+    const id = uuidParam(c);
+    parseOfferSubmit(await jsonBody(c));
+    return runOfferWrite(
+      c,
+      deps,
+      { id },
+      'update',
+      offerOperationCheck('update'),
+      async (tx, ctx) => ({
+        status: 200,
+        body: await submitOfferApproval(tx, ctx, id, offerApprovalFields(deps, ctx)),
+      }),
+      { replayed: offerStillVisible },
+    );
   });
 }
 
@@ -181,5 +224,6 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   });
   registerCommands(module, deps);
   registerOfferTransitions(module, deps);
+  registerApprovals(module, deps);
   router.route('/api/tenant/offers', module);
 };

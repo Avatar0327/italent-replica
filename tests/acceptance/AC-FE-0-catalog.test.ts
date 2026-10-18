@@ -25,7 +25,15 @@ import { loadSnapshot } from '../../apps/web/src/foundation/permission-snapshot.
 const expected = {
   org: [M.organization.code, M.establishment.code],
   job: Object.values(JOB_OBJECT_CODES),
-  staff: [M.employee, M.contract, M.contractType, M.contractCompany, M.offer, ...PERSONNEL_OBJECTS]
+  staff: [
+    M.employee,
+    M.contract,
+    M.contractType,
+    M.contractCompany,
+    M.offer,
+    M.offerBatchApproval,
+    ...PERSONNEL_OBJECTS,
+  ]
     .map((object) => object.code)
     .filter((code) => code !== PERSONNEL_REQUEST_OBJECT),
   transfer: [M.employmentRecord.code],
