@@ -97,6 +97,7 @@ import {
   splitProbationResult,
 } from './probation-routes.js';
 import { installPartTime } from './part-time/install.js';
+import { registerPartTimeRequestRoutes } from './part-time/request-routes.js';
 import { registerPartTimeRoutes } from './part-time/routes.js';
 import { isRegularizationEntryKind } from './regularization.js';
 
@@ -131,6 +132,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
   registerPartTimeRoutes(module, deps);
+  registerPartTimeRequestRoutes(module, deps);
   router.route('/api/tenant/employment', module);
 };
 
