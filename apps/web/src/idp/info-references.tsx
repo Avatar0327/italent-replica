@@ -21,18 +21,23 @@ const LEVEL_TYPES = '/api/tenant/job/level-types';
 const careerSources: readonly string[] = [INFO_SOURCES.professionalLine, INFO_SOURCES.level, INFO_SOURCES.post];
 /** #355：类别沿主数据顺序，同类别按数值级别升序；裁剪字段不参与排序。 */
 export function sortLevels(rows: InfoRow[], categories: InfoRow[]) {
-  const rank = new Map(categories.map((row, index) => [row.id, index]));
-  return rows.sort((a, b) => {
-    if (a.levelTypeId !== null && typeof a.levelTypeId !== 'string') return 0;
-    if (b.levelTypeId !== null && typeof b.levelTypeId !== 'string') return 0;
-    if (a.levelTypeId !== b.levelTypeId) {
-      if (a.levelTypeId === null || b.levelTypeId === null) return 0;
-      const left = rank.get(a.levelTypeId);
-      const right = rank.get(b.levelTypeId);
-      return left === undefined || right === undefined ? 0 : left - right;
-    }
-    return typeof a.level === 'number' && typeof b.level === 'number' ? a.level - b.level : 0;
+  const rank = new Map<string | null, number>(categories.map((row, index) => [row.id, index]));
+  // 空类别固定在已知类别之后；不能用跨组返回 0 表示跳过，否则比较关系不传递。
+  rank.set(null, categories.length);
+  const comparable = rows.flatMap((row, index) => {
+    if (row.levelTypeId !== null && typeof row.levelTypeId !== 'string') return [];
+    const group = rank.get(row.levelTypeId);
+    if (group === undefined || typeof row.level !== 'number' || !Number.isFinite(row.level)) return [];
+    return [{ row, index, group, level: row.level }];
   });
+  // 仅回填可比较项的槽位；裁剪字段或类别不在授权结果中的项留在原位置。
+  const slots = comparable.map(({ index }) => index);
+  // 接口已按 displayOrder 返回；相同类别 / 级别用原下标兜底，保持该顺序。
+  comparable.sort((a, b) => a.group - b.group || a.level - b.level || a.index - b.index);
+  slots.forEach((slot, index) => {
+    rows[slot] = comparable[index]!.row;
+  });
+  return rows;
 }
 type Result = { row?: InfoRow; error?: unknown };
 /** 按真实接口读引用，失败保留局部错误；无权字段缺席时不拿 ID / 默认值顶替。 */
