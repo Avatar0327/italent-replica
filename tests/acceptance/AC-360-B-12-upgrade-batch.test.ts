@@ -15,6 +15,7 @@ import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.j
 import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
 import type { QuestionnaireView } from './AC-360-support.js';
 import { DATA_CHANGED, errorOf, key, outbox, reportLink, sceneB, type SceneB } from './AC-360-B-support.js';
+import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
 import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
 
@@ -196,11 +197,13 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
   // （support/pre-blacklist-schema.ts、support/pre-part-time-schema.ts）
   const scenes = await withPrBSchema(handle.db, () =>
     withPreBlacklistSchema(handle.db, () =>
-      withPrePartTimeSchema(handle.db, async () => {
-        const list: Legacy[] = [];
-        for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
-        return list;
-      }),
+      withPrePartTimeSchema(handle.db, () =>
+        withPreAssessmentSchema(handle.db, async () => {
+          const list: Legacy[] = [];
+          for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
+          return list;
+        }),
+      ),
     ),
   );
   await handle.migrate();
