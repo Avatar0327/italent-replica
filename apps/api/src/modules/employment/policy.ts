@@ -927,17 +927,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b 兼职新增与读取入口（R2-T05 §4.1 / §7.2；编辑 / 批量结束 / 视图 / 申请未注册）----
-  // 预览（只读 POST）：readContext(object.create, resource=id) 人员范围 404「任职数据不存在」；body 严格（400）；实际写入字段的创建权
-  // （requireEmploymentWrite，不带按钮）；Employment.PartTime / Employment.PartTimeApproval 任一（两项都无 403）；兼职部门
-  // requireEmploymentScope（404）；与新增同一套校验后带出默认值（直线经理 = 兼职部门负责人、职务序列 DEC-107，不带出职位）
+  // 预览（只读 POST）：readContext(object.create, resource=id) 人员范围 404；body 严格（400）；实际写入字段的创建权；
+  // Employment.PartTime / PartTimeApproval 任一（都无 403）；兼职部门 requireEmploymentScope（404）；与新增同一套校验后带出默认值
   'POST /employees/:id/part-times/preview': any(
     [partTimePreview(PART_TIME_BUTTONS.direct), partTimePreview(PART_TIME_BUTTONS.application)],
     byId,
   ),
-  // 直接新增：不要求 If-Match（新建对象，并发由员工行锁内的校验保证）；body 严格 { partTimeType, startDate, endDate?, fields, customFields? }；
-  // requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；requireEmploymentScope（人员 + 兼职部门）；命令内
-  // partTimeCreateGuard 在三个出口按当前授权重过；createPartTime 内员工锁 → 周期边界 → 外派 / 借调唯一 → 部门可用性与引用；
-  // isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不进向后更新（AC-FWD-11）
+  // 直接新增：不要求 If-Match（新建对象）；body 严格；requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；人员 + 兼职
+  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead = true / 非空 addedSubordinateIds
+  // → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
   'POST /employees/:id/part-times': object({
     object: EMPLOYMENT,
     operation: 'create',
@@ -957,8 +955,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
-  // 员工页签：readPageContext(detail) + tenant.employment.read（resource=id）；listEmployeePartTimes 按 DEC-177 可见谓词分页，
-  // 一条都不可见且员工不在范围内 → 404「员工不存在」；字段按任职记录可见字段裁剪
+  // 员工页签：readPageContext(detail) + tenant.employment.read；按 DEC-177 可见谓词分页，一条都不可见且员工不在范围内 → 404「员工不存在」
   'GET /employees/:id/part-times': object({
     object: EMPLOYMENT,
     operation: 'view',
@@ -967,7 +964,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
     ...byId,
   }),
-  // 兼职详情：loadPartTime（DEC-177 可见）→ 404「兼职记录不存在」（PART_TIME_RECORD_NOT_FOUND）→ tenant.employment.read（resource=员工）
+  // 兼职详情：loadPartTime（DEC-177 可见）→ 404「兼职记录不存在」→ tenant.employment.read（resource=员工）
   'GET /part-times/:recordId': object({
     object: EMPLOYMENT,
     operation: 'view',

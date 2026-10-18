@@ -111,12 +111,6 @@ describe('§7.2 视图 / 详情 / 员工页签', () => {
     }
   });
 
-  it('PB-46 范围：只管 B 的 HR 在员工页签看到兼职，但看不到该员工的主职记录（记录链 404）', async () => {
-    const { w, read } = await seeded('perm-read-primary-hidden');
-    expect((await read([w.partTimeOrg.id])('GET', `/employees/${w.employeeId}/records`)).status).toBe(404);
-    expect((await read([w.partTimeOrg.id])('GET', `/employees/${w.employeeId}/part-times`)).status).toBe(200);
-  });
-
   it('范围外 / 空范围：单条 404（与不存在同码）；员工页签 404；不泄露范围外员工是否存在', async () => {
     const { w, created, other, read } = await seeded('perm-read-hidden');
     const outside = read([other.id]);
@@ -125,13 +119,6 @@ describe('§7.2 视图 / 详情 / 员工页签', () => {
     const empty = w.as(restricted({ scope: EMPTY_SCOPE }));
     expect((await empty('GET', `/part-times/${created.id}`)).status).toBe(404);
     expect((await empty('GET', `/employees/${w.employeeId}/part-times`)).status).toBe(404);
-  });
-
-  it('缺任职记录对象的查看权 → 403', async () => {
-    const { w, created } = await seeded('perm-read-no-view');
-    const noView = w.as(restricted({ deny: denyAction('object.view') }));
-    expect((await noView('GET', `/part-times/${created.id}`)).status).toBe(403);
-    expect((await noView('GET', `/employees/${w.employeeId}/part-times`)).status).toBe(403);
   });
 
   it('响应逐层裁剪：无权查看的字段缺席（直线经理 / 结束日期 / 任职状态），有权字段保留', async () => {

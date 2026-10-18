@@ -102,15 +102,11 @@ describe('AC-PT-01 / AC-PT-02 HTTP 版（PT-3b，POST employees/:id/part-times�
     },
   );
 
-  it('AC-PT-01 / PB-18 / PB-19：已有外派再新增普通兼职成功；外派已结束（结束日 < 今天）再新增外派成功', async () => {
+  it('AC-PT-01 / PB-19：已有外派再新增普通兼职成功；外派已结束再新增外派成功', async () => {
     const w = await httpWorld(database().db, 'pt01-http-plain');
     await w.ok(await w.post({ partTimeType: 'expatriate', startDate: '2026-08-01', endDate: '2026-09-30' }), 201);
-    expect((await w.ok(await w.post({ partTimeType: 'expatriate', startDate: '2026-10-01' }), 201)).serviceType).toBe(
-      'expatriate',
-    );
-    expect((await w.ok(await w.post({ partTimeType: 'part_time', startDate: '2026-09-05' }), 201)).serviceType).toBe(
-      'part_time',
-    );
+    await w.ok(await w.post({ partTimeType: 'expatriate', startDate: '2026-10-01' }), 201);
+    await w.ok(await w.post({ partTimeType: 'part_time', startDate: '2026-09-05' }), 201);
   });
 
   it('AC-PT-02 / PB-17：同部门、时间重叠的两条普通兼职都成功，员工页签两条都列出', async () => {

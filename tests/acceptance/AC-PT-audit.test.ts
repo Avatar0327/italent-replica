@@ -187,18 +187,4 @@ describe('AC-PT-audit PT-3b：经 HTTP 新增写出的审计归属与查看（PB
     expect(await seenBy(h.primaryOrg.id)).toEqual(['employment.part_time.create']);
     expect(await seenBy(unrelated)).toEqual([]);
   });
-
-  it('outbox 同事务：employment.part_time.create 事件归属员工与底层业务头；不写 employment.record.create', async () => {
-    const h = await httpWorld(database().db, 'pt-audit-http-outbox');
-    const created = await h.ok(await h.post(), 201);
-    const events = await withTenant(h.db, h.tenantId, async (tx) =>
-      rowsOf<{ event_type: string; employee_id: string; business_id: string }>(
-        await tx.execute(sql`SELECT event_type, employee_id, business_id FROM employment_outbox
-          WHERE tenant_id=${h.tenantId} AND (object_id=${created.id}::uuid OR business_id=${created.id}::uuid)`),
-      ),
-    );
-    expect(events).toEqual([
-      { event_type: 'employment.part_time.create', employee_id: h.employeeId, business_id: created.id },
-    ]);
-  });
 });

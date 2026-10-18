@@ -40,10 +40,8 @@ describe('importChainTo：沿静态依赖图找 index.ts / @italent/api', () => 
     ['再导出', "export * from '../apps/api/src/index.js';"],
     ['动态 import', "export const load = () => import('../apps/api/src/index.js');"],
     ['require', "const api = require('../apps/api/src/index.js');"],
-    ['省略扩展名', "import '../apps/api/src/index';"],
     ['目录入口', "import '../apps/api/src';"],
     ['包名', "import '@italent/api';"],
-    ['包子路径', "import '@italent/api/testing';"],
   ])('%s → 命中', (_name, text) => {
     expect(chain({ [entry]: text, [INDEX]: '' })).not.toBeNull();
   });

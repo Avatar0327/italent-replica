@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
-import { serviceWorld, type ServiceWorld } from './AC-PT-service-support.js';
+import { serviceWorld } from './AC-PT-service-support.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { orgScope, type Request } from './support/revocable-rights.js';
@@ -50,7 +50,7 @@ export const denyAction = (action: string) => (request: Request) => request.acti
 export const denyFieldWrite = (field: string) => (request: Request) =>
   (request.action === 'object.create' || request.action === 'object.update') && (request.fields ?? []).includes(field);
 
-/** 兼职接口响应体（读形状 + 列表分页 + 预览 / 新增的附加键）；字段是否出现取决于查看权，所以多数键可选。 */
+/** 兼职接口响应体（读形状 + 列表分页 + 预览 / 新增的附加键）；字段是否出现取决于查看权。 */
 export interface PartTimeBody {
   id: string;
   employeeId: string;
@@ -59,15 +59,10 @@ export interface PartTimeBody {
   serviceType: string;
   serviceStatus: string;
   partTimeView: string[];
-  partTimeType: string;
-  effectiveDate: string;
   fields: Record<string, unknown>;
   customFields: Record<string, unknown>;
   warnings: { reason: string }[];
   items: PartTimeBody[];
-  page: number;
-  pageSize: number;
-  hasDataPermission: boolean;
 }
 
 export async function httpWorld(db: Parameters<typeof serviceWorld>[0], label: string) {
@@ -150,4 +145,3 @@ export async function httpWorld(db: Parameters<typeof serviceWorld>[0], label: s
 }
 
 export type HttpWorld = Awaited<ReturnType<typeof httpWorld>>;
-export type { ServiceWorld };

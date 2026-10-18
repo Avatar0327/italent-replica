@@ -1,10 +1,8 @@
 /**
- * 兼职写入口的命令内权限复核（docs/08_设计/R2-T05_兼职设计.md §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览）。
- * 照 employment/replay-guard.ts 的 scopedGuard 写法（先例 internRegularizationGuard）：runCommand 的三个出口（首次执行、
- * 同键直接重放、失败后回查）都先过 before，按**当前**授权在命令事务内重跑 §7.2 该入口整行——员工按主职在范围、
- * 兼职部门在范围、新增权与 Employment.PartTime 按钮、实际写入字段的创建权——所以撤权后重放拿不到台账里的原响应。
- * 重放命中台账后原响应里的兼职记录还要过统一结果复核（permission/employment-replay.ts，兼职部门取记录当前值，PB-69）。
- * 入口（事务外）与命令内共用同一个 requirePartTimeCreateAccess，预览（不开命令事务）只用其中的按钮判定。
+ * 兼职写入口的命令内权限复核（设计 §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览），照 employment/replay-guard.ts 的 scopedGuard 写法：
+ * runCommand 的三个出口（首次、同键重放、失败回查）都先在命令事务内按**当前**授权重跑 §7.2 该入口整行——员工主职在范围、兼职部门
+ * 在范围、新增权 + Employment.PartTime 按钮 + 字段创建权——撤权后重放拿不到台账原响应；原响应里的兼职记录另过统一结果复核
+ * （permission/employment-replay.ts，兼职部门取记录当前值，PB-69）。入口与命令内共用 requirePartTimeCreateAccess。
  */
 import { buttonResource, PART_TIME_BUTTONS } from '@italent/domain';
 import type { Tx } from '@italent/db';

@@ -134,11 +134,9 @@ async function departmentHeadOn(tx: Tx, tenantId: string, departmentId: string, 
 }
 
 /**
- * 新增兼职预览（§4.1 / §4.2，PT-3b）：与 createPartTime 同一套范围与校验（外派唯一、周期边界、引用、自定义字段），
- * 通过后带出默认值，不写库、不取员工行锁（预览只读，一致性由事务快照保证）。
- * 带出规则：直线经理 = 兼职部门在开始日的负责人；职务序列按 DEC-107（sequenceForNewPost）；**不带出职位**
- * （“自动带出职位”的取值规则未验证，B-6 / U-7，取最保守做法）。请求里显式给出的字段（含显式 null）优先，不被覆盖。
- * 默认值只作建议：保存时 HR 提交的值仍走 createPartTime 的引用校验。
+ * 新增兼职预览（§4.1 / §4.2，PT-3b）：与 createPartTime 同一套范围与校验，通过后带出默认值；不写库、不取员工行锁。
+ * 带出：直线经理 = 兼职部门在开始日的负责人；职务序列按 DEC-107；**不带出职位**（取值规则未验证，B-6 / U-7）。
+ * 请求里显式给出的字段（含显式 null）优先。默认值只作建议，保存时仍走 createPartTime 的引用校验。
  */
 export async function previewPartTime(
   tx: Tx,

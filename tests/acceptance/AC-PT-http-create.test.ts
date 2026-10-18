@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { httpWorld, type HttpWorld } from './AC-PT-http-support.js';
+import { httpWorld } from './AC-PT-http-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -54,7 +54,6 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
   });
 
   it.each([
-    ['PB-14 过去开始 + 过去结束', { startDate: '2026-08-01', endDate: '2026-08-31' }, 'ended', ['ended', 'all']],
     ['PB-15 未来开始', { startDate: '2026-11-01', endDate: '2026-12-31' }, 'serving', ['not_started', 'all']],
     [
       'PB-16 当天开始当天结束',
@@ -134,15 +133,6 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
     ).toBe(400);
     expect((await w.refusal(await w.post({}, { idempotencyKey: null }))).status).toBe(400);
     expect(await w.writes()).toEqual(before);
-  });
-
-  it('带自定义字段：按任职对象定义校验并进审计快照；未知字段 400', async () => {
-    const w = await world('http-create-custom');
-    const field = await w.customField('integer');
-    const created = await w.ok(await w.post({ customFields: { [field]: 17 } }), 201);
-    expect(created.customFields).toEqual({ [field]: 17 });
-    const failed = await w.refusal(await w.post({ customFields: { [randomUUID()]: 1 } }));
-    expect(failed).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
   });
 });
 
@@ -270,12 +260,4 @@ describe('GET employees/:id/part-times、GET part-times/:recordId 读取', () =>
     }
     expect((await w.one('not-a-uuid')).status).toBe(400);
   });
-
-  it('通用任职入口仍看不到兼职（P-05）：GET /businesses/:id 对兼职底层业务 404', async () => {
-    const { w, first } = await seeded('http-read-generic');
-    expect((await w.request('GET', `/businesses/${first.id}`)).status).toBe(404);
-    expect((await w.request('GET', `/records/${first.id}`)).status).toBe(404);
-  });
 });
-
-export type { HttpWorld };

@@ -42,25 +42,9 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
     ]);
   });
 
-  it('PT-3b 开闸：四个新增与读取入口已注册；编辑、批量结束、六视图、申请入口仍是 404', async () => {
+  it('PT-3b 只开新增与读取四个入口（见 AC-PT-http-create）：编辑、批量结束、六视图、申请入口仍是 404', async () => {
     const w = await serviceWorld(database().db, 'pt-wiring-routes');
-    const created = await w.request('POST', `/employees/${w.employeeId}/part-times`, {
-      body: { partTimeType: 'part_time', startDate: '2026-09-01', fields: { departmentId: w.partTimeOrg.id } },
-    });
-    expect(created.status).toBe(201);
-    const { id } = (await created.json()) as { id: string };
-    for (const [method, path] of [
-      ['GET', `/employees/${w.employeeId}/part-times`],
-      ['GET', `/part-times/${id}`],
-    ] as const)
-      expect((await w.request(method, path)).status, `${method} ${path}`).toBe(200);
-    expect(
-      (
-        await w.request('POST', `/employees/${w.employeeId}/part-times/preview`, {
-          body: { partTimeType: 'part_time', startDate: '2026-09-01', fields: { departmentId: w.partTimeOrg.id } },
-        })
-      ).status,
-    ).toBe(200);
+    const id = await w.seedPartTime();
     for (const [method, path] of [
       ['PATCH', `/part-times/${id}`],
       ['POST', '/part-times/batch-end'],

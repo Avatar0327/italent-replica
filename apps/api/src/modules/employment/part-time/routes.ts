@@ -1,10 +1,8 @@
 /**
- * 兼职路由（R2-T05 BE-7 PT-3b，docs/08_设计/R2-T05_兼职设计.md §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、
- * 员工兼职列表、单条详情四个入口；编辑、批量结束、六视图、申请入口由后续批次开放，此处不注册（404）。
- * 新增写入只调内部服务 createPartTime，路由层不另写校验或写库逻辑；策略登记在 employment/policy.ts。
- * 请求体：{ partTimeType, startDate, endDate?, fields: { departmentId, … }, customFields? }；回执 = 兼职记录读形状
- * （开始日期沿用任职记录的 effectiveDate 编码，字段权限同任职记录对象）。新建对象没有 revision，不要求 If-Match
- * （并发由员工行锁内的外派 / 借调唯一校验等保证，结果未知时以同一 Idempotency-Key 重放）。
+ * 兼职路由（R2-T05 BE-7 PT-3b，设计 §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、员工兼职列表、单条详情；
+ * 编辑、批量结束、六视图、申请入口由后续批次开放（此处不注册，404）。新增只调内部服务 createPartTime，路由层不另写校验或写库逻辑。
+ * 请求体 { partTimeType, startDate, endDate?, fields, customFields? }；回执 = 兼职记录读形状（开始日期沿用 effectiveDate 编码）。
+ * 新建对象没有 revision，不要求 If-Match；结果未知时以同一 Idempotency-Key 重放。
  */
 import { withTenant } from '@italent/db';
 import { PART_TIME_BUTTONS, PART_TIME_SERVICE_TYPES, tenantLocalDate } from '@italent/domain';
