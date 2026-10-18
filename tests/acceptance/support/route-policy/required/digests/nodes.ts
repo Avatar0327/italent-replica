@@ -2528,7 +2528,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/offer/routes.ts#batchVisible': ['bf03bc3873a7', '012fa161ed34'],
   'apps/api/src/modules/offer/routes.ts#enabledQuery': ['a746010b1b19', 'fa363758b0fe'],
   'apps/api/src/modules/offer/routes.ts#listFilters': ['42b1c3365896', '04fc9285a9ff'],
-  'apps/api/src/modules/offer/send.ts#sendOffer': ['03aa8ac6a15e', '566781a022bd'],
+  'apps/api/src/modules/offer/send.ts#sendOffer': ['938fb9b88827', '703e95000a34'],
   'apps/api/src/modules/offer/service.ts#CAMPUS_CARRIED': ['6db00d292655', 'e3b0c44298fc'],
   'apps/api/src/modules/offer/service.ts#IDENTITY_FIELDS': ['32f5dfc29160', 'e3b0c44298fc'],
   'apps/api/src/modules/offer/service.ts#JOB_REFS': ['3c7a92a39710', 'e3b0c44298fc'],

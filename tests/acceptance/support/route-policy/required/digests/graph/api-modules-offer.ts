@@ -373,8 +373,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/service.ts#facts',
     'apps/api/src/modules/offer/service.ts#failPlan',
     'apps/api/src/modules/offer/service.ts#lockOffer',
+    'apps/api/src/modules/offer/service.ts#offerDto',
     'apps/api/src/modules/offer/service.ts#readOfferApprovalSettings',
     'apps/api/src/modules/offer/service.ts#save',
+    'apps/api/src/modules/offer/sync.ts#syncOfferWhenDue',
     'packages/domain/src/offer/rules.ts#planOfferDispatch',
   ],
   'apps/api/src/modules/offer/service.ts#audit': [

@@ -201,12 +201,12 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
  * 谁能触发同步由 Offer 对象编辑开关与 Offer 自己的数据范围判定（上面的 obj:update 义务），不是人员范围；这里登记的是
  * 链路上存在这道复核、而不是它拦得住谁。守卫来自任职落地内核本身，不是误复用调动联动的检查。
  */
-const syncLinkage = (path: string, anchor: string): Obligation => ({
+const syncLinkage = (path: string, anchor: string, file = TRANSITIONS): Obligation => ({
   perm: 'guard:employment.linkage',
   facts: ['guard:employment.linkage'],
   note: 'DEC-178：任职落地内核联动复核；Offer 同步以显式系统全量范围调用，对同步恒放行（F-201②）',
   at: [
-    at('POST', path, anchor, TRANSITIONS),
+    at('POST', path, anchor, file),
     {
       role: 'impl',
       unit: 'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
@@ -308,5 +308,9 @@ export const OFFERS: RequiredTable = {
     syncLinkage('/:id/sync', 'body: await syncOfferNow(tx, ctx, id)'),
   ],
   [`POST ${BASE}/:id/link-employee`]: offerWrite('POST', '/:id/link-employee', 'update', undefined, TRANSITIONS),
-  [`POST ${BASE}/:id/send`]: offerWrite('POST', '/:id/send', 'update', undefined, SEND),
+  [`POST ${BASE}/:id/send`]: [
+    ...offerWrite('POST', '/:id/send', 'update', undefined, SEND),
+    // 时机 = 发送时：发送事务里同步待入职（BE-14b2），链路同样经任职落地内核的联动复核
+    syncLinkage('/:id/send', 'body: await sendOffer(tx, ctx, id, input)', SEND),
+  ],
 };

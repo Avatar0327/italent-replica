@@ -89,7 +89,8 @@ describe('发送时同步（OF-R8 时机 = 发送时）', () => {
     expect(await w.read(offer.id)).toMatchObject({ status: 'pending', revision: offer.revision, syncAttempts: 0 });
     const [counts] = rows<{ records: number; people: number }>(
       await withTenant(w.db, w.tenant.id, (tx) =>
-        tx.execute(sql`SELECT (SELECT count(*) FROM offer_send_records WHERE offer_id = ${offer.id}::uuid)::int AS records,
+        tx.execute(sql`SELECT
+          (SELECT count(*) FROM offer_send_records WHERE offer_id = ${offer.id}::uuid)::int AS records,
           (SELECT count(*) FROM employment_employees WHERE code LIKE 'OFR-%')::int AS people`),
       ),
     );
