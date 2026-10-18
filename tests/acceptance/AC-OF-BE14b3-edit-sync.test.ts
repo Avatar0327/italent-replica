@@ -142,7 +142,7 @@ describe('OF-R4 审批通过后改必审字段：再次发起的两条分支', (
     expect((await overrideSetting(w, 'offer.review_fields', review)).status).toBe(200);
     return w;
   }
-  const approve = async (w: SyncWorld, offer: SyncOffer) => {
+  const approve = async (w: SyncWorld, offer: Pick<OfferBody, 'id'>) => {
     await w.force(offer.id, 'approval_status', 'approved');
     return w.read(offer.id);
   };
