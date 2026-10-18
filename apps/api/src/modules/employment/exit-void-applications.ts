@@ -29,6 +29,8 @@ export const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave');
 export const OPEN_STATES = ['draft', 'in_review', 'approved', 'rejected'];
 /** 候选查询（inFlightApplications）至多返回 1001 条；超过这里的上限即整单拒绝，不消费截断清单。 */
 export const VOID_LIMIT = 1000;
+/** 超限判定的单一入口：预览提示（exit-preview.ts）与生效时整单拒绝共用，不各写一套（DEC-431①）。 */
+export const exceedsVoidLimit = (candidates: readonly unknown[]) => candidates.length > VOID_LIMIT;
 
 export interface VoidedApplication {
   readonly id: string;
@@ -131,7 +133,7 @@ export async function voidInFlightApplications(
     .filter((row) => !row.landed && row.id !== exit.id)
     .sort((a, b) => a.id.localeCompare(b.id));
   // 候选查询被截断时不能只作废一部分：在任何写入之前整单拒绝，HR 处理掉多余的申请后重试
-  if (open.length > VOID_LIMIT)
+  if (exceedsVoidLimit(open))
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
     });

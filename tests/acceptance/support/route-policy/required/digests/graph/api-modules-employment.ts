@@ -1567,6 +1567,8 @@ export const GRAPH: Graph = {
     '#asRows',
     'apps/api/src/modules/employment/exit-void-applications.ts#OPEN_STATES',
     'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS',
+    'apps/api/src/modules/employment/exit-void-applications.ts#VOID_LIMIT',
+    'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#CONTAINER': ['#independent'],
@@ -1771,6 +1773,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#resolveDerivation': [
