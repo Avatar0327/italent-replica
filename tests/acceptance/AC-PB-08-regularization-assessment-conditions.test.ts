@@ -16,7 +16,7 @@ const testDb = useTestDb();
 
 async function regularizationWorld(label: string) {
   const w = await autoAssessmentWorld(testDb().db, label);
-  const response = await w.hr('POST', '/auto-regularization-rules', {
+  const response = await w.emp('POST', '/auto-regularization-rules', {
     ifMatch: 0,
     body: {
       name: '到期当天自动转正',
@@ -32,7 +32,7 @@ async function regularizationWorld(label: string) {
   // 预计试用结束日 09-30 ≤ 今天 10-01，自动转正到期
   const dueEmployee = (name: string) => w.probationer(name, { endDate: '2026-09-30' });
   const run = async () => {
-    const result = await w.hr('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
+    const result = await w.emp('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
     expect(result.status, await result.clone().text()).toBe(200);
     return (await result.json()) as {
       launched: { employeeId: string }[];
@@ -95,7 +95,7 @@ describe('AC-PB-08 考核类失败条件阻断自动转正（PB-R21）', () => {
     const w = await regularizationWorld('cycle');
     const person = await w.dueEmployee('周期员工');
     const other = await w.dueEmployee('另一员工');
-    const blocking = await w.seedAssessment(person.employeeId, { type: 'regularization', status: 'in_review' });
+    const blocking = await w.seedAssessment(person.employeeId, { type: 'probation', status: 'in_review' });
     const first = await w.run();
     expect(first.failed.map((item) => item.employeeId)).toEqual([person.employeeId]);
     expect(first.launched.map((item) => item.employeeId)).toEqual([other.employeeId]);

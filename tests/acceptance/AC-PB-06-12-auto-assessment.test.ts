@@ -71,15 +71,15 @@ describe('PB-R16 / R17 规则字段与行操作（DEC-533②）', () => {
       revision: 1,
     });
     expect((await w.list()).map((rule) => rule.name)).toEqual(['入职满 30 天试用中考核', '转正考核']);
-    const edited = await w.hr('PUT', `/auto-assessment-rules/${later.id}`, {
+    const edited = await w.emp('PUT', `/auto-assessment-rules/${later.id}`, {
       ifMatch: 1,
       body: w.body({ name: '转正考核（改）', priority: 0, assessmentType: 'regularization', daysAfterEntry: 80 }),
     });
     expect(edited.status, await edited.clone().text()).toBe(200);
     expect(await edited.json()).toMatchObject({ name: '转正考核（改）', daysAfterEntry: 80, revision: 2 });
-    expect((await w.hr('PUT', `/auto-assessment-rules/${later.id}`, { ifMatch: 1, body: w.body() })).status).toBe(409);
+    expect((await w.emp('PUT', `/auto-assessment-rules/${later.id}`, { ifMatch: 1, body: w.body() })).status).toBe(409);
 
-    const copied = await w.hr('POST', `/auto-assessment-rules/${first.id}/copy`, { ifMatch: 0 });
+    const copied = await w.emp('POST', `/auto-assessment-rules/${first.id}/copy`, { ifMatch: 0 });
     expect(copied.status, await copied.clone().text()).toBe(201);
     const copy = (await copied.json()) as AutoAssessmentRule;
     expect(copy).toMatchObject({ name: '入职满 30 天试用中考核（复制）', enabled: false, revision: 1, priority: 1 });
@@ -87,11 +87,12 @@ describe('PB-R16 / R17 规则字段与行操作（DEC-533②）', () => {
 
     expect((await w.setEnabled(first.id, 1, false)).enabled).toBe(false);
     expect(
-      (await w.hr('PUT', `/auto-assessment-rules/${first.id}/enabled`, { ifMatch: 1, body: { enabled: true } })).status,
+      (await w.emp('PUT', `/auto-assessment-rules/${first.id}/enabled`, { ifMatch: 1, body: { enabled: true } }))
+        .status,
     ).toBe(409);
-    expect((await w.hr('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 9 })).status).toBe(409);
-    expect((await w.hr('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 1 })).status).toBe(200);
-    expect((await w.hr('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 1 })).status).toBe(404);
+    expect((await w.emp('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 9 })).status).toBe(409);
+    expect((await w.emp('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 1 })).status).toBe(200);
+    expect((await w.emp('DELETE', `/auto-assessment-rules/${copy.id}`, { ifMatch: 1 })).status).toBe(404);
     expect((await w.list()).map((rule) => rule.id)).toEqual([later.id, first.id]);
     const audits = await w.asTenant(async (tx) =>
       rowsOf<{ action: string }>(
@@ -254,7 +255,7 @@ describe('AC-PB-11 单条启停（DEC-533②）与规则变更（PB-R22）', () 
       assessment_name: '高优先',
       assessment_type: 'probation',
     });
-    const removed = await w.hr('DELETE', `/auto-assessment-rules/${high.id}`, { ifMatch: high.revision });
+    const removed = await w.emp('DELETE', `/auto-assessment-rules/${high.id}`, { ifMatch: high.revision });
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect(await w.assessmentsOf(person.employeeId)).toHaveLength(1);
     expect((await w.launchesOf(person.employeeId))[0]).toMatchObject({ state: 'launched', rule_id: high.id });

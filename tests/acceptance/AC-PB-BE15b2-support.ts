@@ -47,7 +47,7 @@ export interface AutoAssessmentScheduler {
 
 export async function autoAssessmentWorld(db: Db, label: string) {
   const w = await assessmentWorld(db, `auto-${label}`);
-  const hr = (method: string, path: string, options: Parameters<AssessmentWorld['request']>[3] = {}) =>
+  const emp = (method: string, path: string, options: Parameters<AssessmentWorld['request']>[3] = {}) =>
     w.request(w.hr.id, method, `${EMPLOYMENT}${path}`, options);
   const body = (extra: Record<string, unknown> = {}) => ({
     name: '入职满 30 天试用中考核',
@@ -59,19 +59,19 @@ export async function autoAssessmentWorld(db: Db, label: string) {
     initiatorType: 'rule_operator',
     ...extra,
   });
-  const create = (value: unknown, ifMatch = 0) => hr('POST', '/auto-assessment-rules', { ifMatch, body: value });
+  const create = (value: unknown, ifMatch = 0) => emp('POST', '/auto-assessment-rules', { ifMatch, body: value });
   async function created(value: unknown): Promise<AutoAssessmentRule> {
     const response = await create(value);
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as AutoAssessmentRule;
   }
   async function list(): Promise<AutoAssessmentRule[]> {
-    const response = await hr('GET', '/auto-assessment-rules');
+    const response = await emp('GET', '/auto-assessment-rules');
     expect(response.status, await response.clone().text()).toBe(200);
     return ((await response.json()) as { items: AutoAssessmentRule[] }).items;
   }
   async function setEnabled(id: string, revision: number, enabled: boolean) {
-    const response = await hr('PUT', `/auto-assessment-rules/${id}/enabled`, { ifMatch: revision, body: { enabled } });
+    const response = await emp('PUT', `/auto-assessment-rules/${id}/enabled`, { ifMatch: revision, body: { enabled } });
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as AutoAssessmentRule;
   }
@@ -82,7 +82,7 @@ export async function autoAssessmentWorld(db: Db, label: string) {
     expect(put.status, await put.clone().text()).toBe(200);
   }
   const runNow = (key?: string, body: unknown = {}) =>
-    hr('POST', '/auto-assessment/run', { ifMatch: 0, body, idempotencyKey: key });
+    emp('POST', '/auto-assessment/run', { ifMatch: 0, body, idempotencyKey: key });
   async function ran(key?: string): Promise<AutoAssessmentReceipt> {
     const response = await runNow(key);
     expect(response.status, await response.clone().text()).toBe(200);
@@ -167,14 +167,15 @@ export async function autoAssessmentWorld(db: Db, label: string) {
           department_id, assessment_type, assessment_name, assessment_date, regularization_opinion, regularization_date,
           status, initiation, initiator_user_id, revision, command_id)
         VALUES (${id}::uuid, ${w.tenant.id}, ${employeeId}::uuid, ${anchorId}::uuid, ${w.department}::uuid,
-          ${row.type}, '夹具考核', '2026-09-20'::date, ${row.opinion ?? null}, NULL, ${row.status}, 'manual',
+          ${row.type}, '夹具考核', '2026-09-20'::date, ${row.opinion ?? null},
+          ${row.opinion === 'early' || row.opinion === 'delayed' ? '2026-12-01' : null}::date, ${row.status}, 'manual',
           ${w.hr.id}::uuid, 1, ${randomUUID()})`),
     );
     return id;
   }
   return {
     ...w,
-    hr,
+    emp,
     body,
     create,
     created,

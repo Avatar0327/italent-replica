@@ -18,7 +18,7 @@ type Tx = Parameters<Parameters<typeof withTenant>[2]>[0];
 afterEach(() => vi.restoreAllMocks());
 
 async function regularizationRule(w: Awaited<ReturnType<typeof autoAssessmentWorld>>) {
-  const response = await w.hr('POST', '/auto-regularization-rules', {
+  const response = await w.emp('POST', '/auto-regularization-rules', {
     ifMatch: 0,
     body: {
       name: '到期当天自动发起转正申请',
@@ -67,7 +67,7 @@ describe('F-223 自动转正：锁内复核读最新规则状态', () => {
     await regularizationRule(w);
     const person = await w.probationer('预筛后停用员工', { endDate: '2026-09-30' });
     disableAfterLock('employment_auto_regularization_rules');
-    const response = await w.hr('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
+    const response = await w.emp('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.json()).toMatchObject({ launched: [], failed: [] });
     expect(await regularizationCount(w)).toBe(0);
@@ -140,9 +140,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-223 两连接强制交
       await released;
       return locked;
     });
-    const running = w.hr('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
+    const running = w.emp('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
     await reachedLock;
-    const stopped = await w.hr('PUT', `/auto-regularization-rules/${rule.id}/enabled`, {
+    const stopped = await w.emp('PUT', `/auto-regularization-rules/${rule.id}/enabled`, {
       ifMatch: rule.revision,
       body: { enabled: false },
     });

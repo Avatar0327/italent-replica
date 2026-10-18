@@ -48,7 +48,7 @@ registerSettingValidator(AUTO_REGULARIZATION_SETTING_KEY, isAutoRegularizationSe
 const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 
 /** 规则写入与立即执行的命令内复核：配置写别名（other_settings）与配置对象字段编辑权，同入口。 */
-function ruleGuard(
+export function ruleGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   payload: Readonly<Record<string, unknown>>,
@@ -68,7 +68,7 @@ function ruleGuard(
 }
 
 /** 规则写入与立即执行的入口上下文：配置写别名 + If-Match（同自动加黑规则）。 */
-function writeContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+export function writeContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return readContext(
     c,
     deps,
@@ -185,13 +185,16 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { action: 'auto-regularization-run', cursor },
       async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) }),
       // 首次与同键重放都经这里按操作人当前的任职范围裁剪（第 2 轮审查 P1）
-      { guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) },
+      {
+        guard: ruleGuard(deps, ctx, {}),
+        project: (body) => visibleRunReceipt(deps, ctx, body as AutoRegularizationRun),
+      },
     );
   });
 }
 
 /** body 严格 { cursor? }：cursor 为上一次回执的 nextCursor（续跑句柄，随机 UUID），从它记下的位置之后接着扫描。 */
-function parseRunBody(raw: unknown): { readonly cursor: string | null } {
+export function parseRunBody(raw: unknown): { readonly cursor: string | null } {
   const parsed = z.strictObject({ cursor: z.string().refine(isUuid, '续跑游标须为 UUID').optional() }).safeParse(raw);
   if (!parsed.success)
     throw new AppError('VALIDATION_FAILED', '立即执行的请求体须为 {} 或 { cursor }', parsed.error.issues);
@@ -203,8 +206,12 @@ function parseRunBody(raw: unknown): { readonly cursor: string | null } {
  * 发起人只列操作人有任职记录查看权且在其数据范围内的员工；没有查看权或范围为空时两列都为空。重放同样在这里按当前权限
  * 重新裁剪，撤权后拿不到原回执里的人。续跑句柄（nextCursor）不含员工信息，原样返回。
  */
-async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
-  const receipt = body as AutoRegularizationRun & { readonly nextCursor: string | null };
+export async function visibleRunReceipt<
+  T extends {
+    readonly launched: readonly { readonly employeeId: string }[];
+    readonly failed: readonly { readonly employeeId: string }[];
+  },
+>(deps: TenantRouteDeps, ctx: EmploymentContext, receipt: T): Promise<T> {
   const ids = [...new Set([...receipt.launched, ...receipt.failed].map((item) => item.employeeId))];
   const visible = await visibleEmployees(deps, ctx, ids);
   return {
