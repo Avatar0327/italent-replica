@@ -1702,6 +1702,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#cancelConditions': ['#conflict', '#loadExitRequest'],
   'apps/api/src/modules/employment/exit-gate.ts#checkPendingTransferAck': [
+    '#VOID_LIMIT',
     '#assessmentNoticeItems',
     '#conflict',
     '#disclose',
@@ -1725,6 +1726,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
@@ -1740,6 +1742,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet': [
     'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments',
     '#ackToken',
+    '#exceedsVoidLimit',
     '#inFlightApplications',
     '#plannedRows',
   ],
@@ -1799,17 +1802,17 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
+    'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
     'apps/api/src/modules/employment/exit-gate.ts#assessmentNoticeItems',
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
+    'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     'apps/api/src/modules/employment/exit-gate.ts#leavesInProgress',
     'apps/api/src/modules/employment/exit-gate.ts#overdueTransferBlocker',
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
     '#asRows',
-    'apps/api/src/modules/employment/exit-void-applications.ts#VOID_LIMIT',
-    'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
@@ -2015,7 +2018,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
-  'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
