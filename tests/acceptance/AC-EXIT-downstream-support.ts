@@ -41,12 +41,17 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
   }
 
   /** 审批人（夹具异常管理员）在审批中心驳回，业务回到 rejected、实例 returned。 */
-  async function rejectInReview(businessId: string) {
+  const rejectInReview = (businessId: string) => decideInReview(businessId, 'reject');
+
+  /** 经审批中心真实接口办结审批：同意后实例 approved（已完成，不再有活动实例）。 */
+  const approveInReview = (businessId: string) => decideInReview(businessId, 'approve');
+
+  async function decideInReview(businessId: string, action: 'approve' | 'reject') {
     const [task] = await rows<{ id: string; userId: string; revision: number }>(sql`
       SELECT t.id, t.assignee_user_id AS "userId", i.revision FROM approval_tasks t
       JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
       WHERE t.tenant_id=${tenantId} AND i.business_id=${businessId}::uuid AND t.status='pending'`);
-    const response = await api.request('POST', `/api/tenant/approval/tasks/${task!.id}/reject`, {
+    const response = await api.request('POST', `/api/tenant/approval/tasks/${task!.id}/${action}`, {
       tenant: tenantId,
       user: task!.userId,
       ifMatch: task!.revision,
@@ -86,6 +91,33 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     );
     return account.id;
   }
+
+  /** 批量造 count 条该员工名下的合成草稿申请（复制首个载荷版本的必填列；一条语句，避免逐条往返）。 */
+  const bulkDrafts = (count: number, employeeId = x.employee.id) =>
+    rows(sql`
+      WITH ids AS (
+        SELECT gen_random_uuid() AS bid, gen_random_uuid() AS vid FROM generate_series(1, ${count}::int)
+      ), base AS (
+        SELECT tenant_id, employee_id, form_id, employ_type FROM employment_payload_versions
+        WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid ORDER BY created_at, version_no LIMIT 1
+      ), objects AS (
+        INSERT INTO employment_business_objects(id,tenant_id,employee_id)
+        SELECT bid, ${tenantId}, ${employeeId}::uuid FROM ids RETURNING id
+      ), versions AS (
+        INSERT INTO employment_payload_versions(id,tenant_id,employee_id,business_id,version_no,command_id,kind,mode,
+          effective_date,form_id,employ_type,created_at)
+        SELECT vid, base.tenant_id, base.employee_id, bid, 1, NULL, 'regularization', 'application',
+          '2026-12-01'::date, base.form_id, base.employ_type, '2026-10-01T01:00:00Z'::timestamptz FROM ids, base
+        RETURNING id
+      )
+      INSERT INTO employment_state_events(tenant_id,employee_id,business_id,payload_version_id,state,event_no,command_id)
+      SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, 'draft', 1, 'bulk-draft' FROM ids`);
+  const stateCounts = () =>
+    rows<{ state: string; n: number }>(sql`
+      SELECT s.state, count(*) AS n FROM employment_business_objects b
+      JOIN LATERAL (SELECT state FROM employment_state_events e WHERE e.tenant_id=b.tenant_id AND e.business_id=b.id
+        ORDER BY event_no DESC LIMIT 1) s ON true
+      WHERE b.tenant_id=${tenantId} AND b.employee_id=${x.employee.id}::uuid GROUP BY s.state ORDER BY s.state`);
 
   // ---- 职责转交 ----
   /** 在调出部门入职的下属，直线经理 = managerId。 */
@@ -232,6 +264,7 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     api,
     transferIn,
     rejectInReview,
+    approveInReview,
     instanceOf,
     pendingTasks,
     notices,
@@ -249,6 +282,8 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     createContract,
     contractRows,
     requestRows,
+    bulkDrafts,
+    stateCounts,
     ids: (list: readonly { id: string }[]) => list.map((row) => row.id),
     rowsOf,
   };
