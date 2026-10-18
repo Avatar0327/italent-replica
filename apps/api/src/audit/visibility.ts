@@ -46,6 +46,7 @@ import {
   TALENT_REVIEW_ORG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
   PART_TIME_AUDIT_OBJECTS,
+  PROBATION_ASSESSMENT_OBJECT,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -536,6 +537,13 @@ const RULES: readonly Rule[] = [
   transferLinkageRule(),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.record, partTimeRecordCreator),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.request, partTimeRequestCreator),
+  {
+    // R2 BE-15b1 试用期考核：写入时显式归属考核对象与其创建时的主职部门，按人员 / 部门维度判断（与考核列表同一口径，
+    // 没有“使用用户”维度）；自评、评价、转正意见等字段按考核对象的字段权限裁剪
+    types: ['probation-assessment'],
+    objectCode: PROBATION_ASSESSMENT_OBJECT,
+    visible: (scope, row) => anchored(scope, row.employee, scopeSql(scope, { person: row.employee, org: row.org })),
+  },
   personRule(['employment_employee'], 'TenantBase.Employee', (row, viewer) =>
     employmentCreator(viewer.tenantId, row.employee),
   ),

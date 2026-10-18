@@ -4,6 +4,7 @@
  */
 import { permissionOutbox, type Tx } from '@italent/db';
 import { permissionSnapshot } from './sets.js';
+import { auditActor } from '../../system-actor.js';
 import { recordAudit } from '../../audit/record.js';
 
 export interface WriteContext {
@@ -22,7 +23,8 @@ export interface AuditInput {
 }
 
 export async function audit(tx: Tx, write: WriteContext, entry: AuditInput): Promise<void> {
-  await auditAs(tx, { ...write, actorUserId: write.userId }, entry);
+  // 系统任务（Offer 夜间补同步等）以全零用户标识表示，审计操作人记为空（system-actor.ts）
+  await auditAs(tx, { ...write, actorUserId: auditActor(write.userId) }, entry);
 }
 
 /** 平台命令在租户内的写入（R1-T17 开通预置）：操作人是平台运营身份，系统任务为空，不必是租户成员。 */

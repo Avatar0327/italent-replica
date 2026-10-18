@@ -40,7 +40,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/http.ts#revisionConflict',
   ],
   'apps/api/src/modules/permission/admins.ts#viewOf': ['packages/domain/src/permission/admin-roles.ts#isAdminRole'],
-  'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs'],
+  'apps/api/src/modules/permission/audit.ts#audit': ['#auditAs', 'apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/permission/audit.ts#auditAs': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#revisionOf',
@@ -239,6 +239,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator',
     '#businessDepartment',
     '#rows',
+    'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/permission/employment-replay.ts#footprints': ['#FOOTPRINT_TYPES', '#MAX_EVENTS', '#rows'],
@@ -585,6 +586,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/object-permission.ts#BUTTON_LEVELS',
   ],
   'apps/api/src/modules/permission/schemas.ts#profileBody': ['#APP_CODE', '#LICENSE_TYPE', '#PROFILE_CODE', '#code'],
+  'apps/api/src/modules/permission/scope-audit.ts#creatorSql': ['#firstCreatorSql'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['#MAX_SCOPE_IDS', '#scopeRows'],
   'apps/api/src/modules/permission/scope-persons.ts#managedPersonsSql': ['#currentPersons'],
   'apps/api/src/modules/permission/scope-persons.ts#reportingPersonsSql': ['#currentPersons'],
@@ -754,6 +756,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/tenant-users.ts#listTenantUsers': ['#memberQuery', '#typeFilter', '#viewsOf'],
   'apps/api/src/modules/permission/tenant-users.ts#provisionAccount': [
     'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+    'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/permission/tenant-users.ts#registerExternalUser': [
     'apps/api/src/modules/permission/audit.ts#audit',

@@ -5,6 +5,7 @@
  * - 外部用户：没有人员档案，必须带业务身份（猎头、实施顾问等）；
  * - 停用 / 移出租户：调用平台流程（user-routes.ts → platform-ops，PR #35），这里不改账号与成员状态。
  */
+import { auditActor } from '../../system-actor.js';
 import {
   and,
   asc,
@@ -60,7 +61,7 @@ export async function provisionAccount(
 ): Promise<{ userId: string; created: boolean }> {
   const [row] = scopeRows<{ account_id: string; created: boolean }>(
     await tx.execute(sql`SELECT account_id, created
-      FROM tenant_provision_account(${email}, ${displayName}, ${write.userId}::uuid, ${write.commandId})`),
+      FROM tenant_provision_account(${email}, ${displayName}, ${auditActor(write.userId)}::uuid, ${write.commandId})`),
   );
   return { userId: row!.account_id, created: row!.created };
 }

@@ -24,8 +24,8 @@ export function actualProbationEndDate(regularizationDate: string): string {
   return addDays(regularizationDate, -1);
 }
 
-/** 试用期管理视图（PB-R1）：即将试用到期、转正审批中、全部试用员工、已转正；“考核中”归 BE-15。 */
-export const PROBATION_VIEWS = ['expiring', 'in_review', 'all', 'regularized'] as const;
+/** 试用期管理视图（PB-R1）：即将试用到期、考核中（BE-15b1）、转正审批中、全部试用员工、已转正。 */
+export const PROBATION_VIEWS = ['expiring', 'assessing', 'in_review', 'all', 'regularized'] as const;
 export type ProbationView = (typeof PROBATION_VIEWS)[number];
 /** PB-R1：即将试用到期 = 30 天内到期，默认范围今天到今天 + 30 天。 */
 export const PROBATION_EXPIRING_DAYS = 30;

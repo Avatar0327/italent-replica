@@ -34,6 +34,9 @@ export interface EntryViewItem {
   /** 待入职合同起止日（F-194，entry-pending-contract.ts）；存量待入职、已办理入职没有合同为 null。前端用于“合同生效日期”列与办理入职预填。 */
   readonly contractStartDate: string | null;
   readonly contractEndDate: string | null;
+  /** Offer 同步带来的合同公司与试用期月数（BE-14b2）；手工添加 / 存量为 null。 */
+  readonly contractCompanyId: string | null;
+  readonly probationMonths: number | null;
   /**
    * 取消说明（F-206，DEC-560）：本条记录最近一次 cancel 动作日志的 remark；没取消过 / 没填说明为 null。
    * 改期恢复会换新记录 ID，新记录不继承旧说明；恢复后再取消读到的是新记录上的那次。行可见即可见，不另做字段权限。
@@ -77,6 +80,7 @@ export async function listEntryView(
       r.kind, t.start_date::text AS "effectiveDate",
       s.employee_status::integer AS "employeeStatus", s.entry_status::integer AS "entryStatus",
       ${department} AS "departmentId", b.revision, pp.probation,
+      pp.months AS "probationMonths", pc.contract_company_id::text AS "contractCompanyId",
       pc.start_date::text AS "contractStartDate", pc.end_date::text AS "contractEndDate",
       cancel.remark AS "cancelRemark"
     FROM employment_records r

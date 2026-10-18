@@ -13,12 +13,18 @@ export interface EmploymentApprovalHooks {
   withdrawn(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void>;
   /** 删除被驳回的申请、HR 撤销未审批完成的申请（R1-T11）：作废在途或退回中的实例。 */
   deleted(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void>;
+  /**
+   * 试用期考核（BE-15b1）发起审批：业务单是考核记录（employment_probation_assessments），不是任职业务。
+   * 失败（没有匹配的流程、首节点审批人为空）则整笔回滚，考核不创建（DEC-017 / DEC-054）。
+   */
+  assessmentSubmitted(tx: Tx, ctx: EmploymentContext, assessmentId: string): Promise<void>;
 }
 
 const unavailable: EmploymentApprovalHooks = {
   submitted: () => Promise.reject(new AppError('SERVICE_UNAVAILABLE', '审批中心未接入，不能提交审批')),
   withdrawn: async () => undefined,
   deleted: async () => undefined,
+  assessmentSubmitted: () => Promise.reject(new AppError('SERVICE_UNAVAILABLE', '审批中心未接入，不能提交审批')),
 };
 let hooks = unavailable;
 
@@ -30,4 +36,5 @@ export const employmentApprovalHooks: EmploymentApprovalHooks = {
   submitted: (...args) => hooks.submitted(...args),
   withdrawn: (...args) => hooks.withdrawn(...args),
   deleted: (...args) => hooks.deleted(...args),
+  assessmentSubmitted: (...args) => hooks.assessmentSubmitted(...args),
 };

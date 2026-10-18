@@ -270,6 +270,27 @@ export async function offerRealWorld(
     denyEdit: (fields: readonly string[]) => permit(MODULE_OBJECTS.offer, fields),
     /** 改身份上 Offer 的按钮权限（BE-14a2：转移状态两项按钮各自独立）。 */
     denyButtons: (buttons: readonly string[]) => permit(MODULE_OBJECTS.offer, deniedEdit, buttons),
+    /** 普通成员走真实授权器访问任意租户接口（第 3 轮：待入职列表按查看权裁剪）。 */
+    realApi: (method: string, path: string, options: RequestOptions = {}) =>
+      api.request(method, path, { ...options, user: member.id, tenant: w.tenant.id }),
+    /** 给身份授任意对象：全部字段可看，deniedView 里的字段不可看；数据操作与按钮全开。 */
+    permitObject: async (definition: ObjectDefinition, deniedView: readonly string[] = []) => {
+      const response = await setObjectPermission(
+        seed,
+        profile,
+        {
+          dataOperations: { create: true, update: true, delete: true },
+          fields: definition.fields.map((f) => ({
+            fieldCode: f.code,
+            view: !deniedView.includes(f.code),
+            edit: !f.system && !deniedView.includes(f.code),
+          })),
+          buttons: definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+        },
+        definition.code,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+    },
     /** 去掉 Offer 对象的编辑开关（按钮依赖编辑开关，一并失效）。 */
     dropUpdate: () => permit(MODULE_OBJECTS.offer, deniedEdit, deniedButtons, { update: false }),
     /** 改 Offer 对象的数据操作开关（第 2 轮：行操作按真实授权器裁剪的正反例）。 */
@@ -296,4 +317,18 @@ export async function offerRealWorld(
     },
     outsidePosition: ((await position.json()) as { id: string }).id,
   };
+}
+
+/**
+ * 关闭 Offer 同步待入职（BE-14b2：接受时默认同步）：BE-14a 的状态机用例只验证转移规则，不要待入职副作用。
+ * 同步本身由 AC-OF-BE14b2-* 覆盖。
+ */
+export async function syncOff(w: OfferWorld) {
+  const response = await w.seeder.request('PUT', '/api/tenant/settings/offer.sync_timing', {
+    user: w.user.id,
+    tenant: w.tenant.id,
+    ifMatch: 0,
+    body: { value: { enabled: false, mode: 'on_accept', days: 30, internConversion: true } },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
 }
