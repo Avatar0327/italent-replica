@@ -1770,6 +1770,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#batchDisclose': ['#DISCLOSE_LIMIT', '#disclose'],
   'apps/api/src/modules/employment/exit-gate.ts#businessKind': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -1796,6 +1797,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#disclose': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
+    '#DISCLOSE_LIMIT',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
@@ -1896,6 +1898,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
     'apps/api/src/modules/employment/exit-gate.ts#assessmentNoticeItems',
+    'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     'apps/api/src/modules/employment/exit-gate.ts#leavesInProgress',
@@ -1903,8 +1906,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
     '#asRows',
-    'apps/api/src/modules/employment/exit-void-applications.ts#OPEN_STATES',
-    'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS',
+    'apps/api/src/modules/employment/exit-void-applications.ts#VOID_LIMIT',
+    'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit',
+    'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
   'apps/api/src/modules/employment/exit-projection.ts#assertExtendedEmploymentAvailable': [
@@ -2127,6 +2131,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
@@ -2138,12 +2143,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
     '#VOIDABLE_KINDS',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
     '#VOID_LIMIT',
+    '#exceedsVoidLimit',
     '#lockInstances',
+    '#voidCandidates',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
   ],
@@ -3030,6 +3039,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
     'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time.ts#isPartTimeEndShortened',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#insertCheckedPartTime': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -4103,16 +4113,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/org/write-service.ts#requireTransferOrganizationScope',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#acquire': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#SETTING',
+    '#array',
+    '#employeeExists',
+    '#participants',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#lockTransferParticipants',
   ],
-  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#SETTING',
-    '#array',
-    '#participants',
-  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',

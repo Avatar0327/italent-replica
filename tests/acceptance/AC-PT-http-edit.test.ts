@@ -300,6 +300,62 @@ describe('PB-60 / PB-61 离职边界（§4.3A）：编辑改结束日同样不�
   });
 });
 
+describe('F-236 / DEC-624：只提前结束日时不做 B-3（§4.3A 调用点）；延长仍走完整校验', () => {
+  const PENDING_EXIT_LAST_DAY = '2026-09-15';
+  const spans = { reason: 'PART_TIME_SPANS_PENDING_EXIT' };
+
+  it('未落地离职（Lp = 09-15）下兼职 09-20 起：缩短 → 200（B-4 仍提示），延长 / 改回更晚 → 409 PART_TIME_AFTER_EXIT', async () => {
+    const { w, record } = await editWorld('edit-shorten-pending', { startDate: '2026-09-20', endDate: '2026-12-31' });
+    await w.pendingExit(PENDING_EXIT_LAST_DAY);
+    const shortened = await w.ok(await w.edit(record.id, { endDate: '2026-11-30' }, record.revision));
+    expect(shortened).toMatchObject({ endDate: '2026-11-30', revision: 2, warnings: [spans] });
+    const before = await w.writes();
+    for (const endDate of ['2026-12-31', '2027-03-31']) {
+      const refused = await w.refusal(await w.edit(record.id, { endDate }, 2));
+      expect(refused).toMatchObject({ status: 409, code: 'CONFLICT', reason: 'PART_TIME_AFTER_EXIT' });
+    }
+    expect(await w.writes()).toEqual(before);
+    expect((await w.terms(record.id)).map((term) => [term.end_date, term.source])).toEqual([
+      ['2026-12-31', 'create'],
+      ['2026-11-30', 'edit'],
+    ]);
+  });
+
+  it('原结束日为空改为有限日期也算提前 → 200；之后再延长 → 409 PART_TIME_AFTER_EXIT', async () => {
+    const { w, record } = await editWorld('edit-shorten-from-open', { startDate: '2026-09-20' });
+    await w.pendingExit(PENDING_EXIT_LAST_DAY);
+    expect(await w.ok(await w.edit(record.id, { endDate: '2026-10-31' }, record.revision))).toMatchObject({
+      endDate: '2026-10-31',
+      warnings: [spans],
+    });
+    expect(await w.refusal(await w.edit(record.id, { endDate: '2026-11-30' }, 2))).toMatchObject({
+      status: 409,
+      reason: 'PART_TIME_AFTER_EXIT',
+    });
+  });
+
+  it('已生效离职（L = 09-15）下缩短但结束日仍晚于 L → 409 PART_TIME_BEYOND_EXIT（B-2 不放松），缩到 L 成功', async () => {
+    const { w, record } = await editWorld('edit-shorten-beyond', { startDate: '2026-09-01', endDate: '2026-12-31' });
+    await w.leave('2026-09-15');
+    // 离职钩子已把结束日截到 09-15；造数一期更晚的结束日（等价于钩子之后未经校验的存量），再验证缩短仍受 B-2 约束
+    await withTenant(w.db, w.tenantId, async (tx) => {
+      await tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
+          source, command_id)
+        VALUES (${w.tenantId}, ${w.employeeId}, ${record.id}, 3, '2026-12-31', 'edit', ${`f236-${record.id}`})`);
+      await tx.execute(sql`UPDATE employment_business_objects SET revision = revision + 1
+        WHERE tenant_id=${w.tenantId} AND id=${record.id}`);
+    });
+    const revision = (await w.ok(await w.one(record.id))).revision;
+    expect(await w.refusal(await w.edit(record.id, { endDate: '2026-10-31' }, revision))).toMatchObject({
+      status: 409,
+      reason: 'PART_TIME_BEYOND_EXIT',
+    });
+    expect(await w.ok(await w.edit(record.id, { endDate: '2026-09-15' }, revision))).toMatchObject({
+      endDate: '2026-09-15',
+    });
+  });
+});
+
 describe('§7.2 编辑兼职：功能操作权 → 按钮权 → 范围 → 字段权', () => {
   const send = (
     w: Awaited<ReturnType<typeof editWorld>>['w'],

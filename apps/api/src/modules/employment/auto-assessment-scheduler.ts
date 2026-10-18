@@ -189,7 +189,10 @@ async function sweepTenant(
 const candidatePage = (db: Db, tenantId: string, businessDate: string, cursor: string | null) =>
   withTenant(db, tenantId, (tx) => autoRegularizationCandidates(tx, tenantId, businessDate, cursor, PAGE));
 
-/** 一名员工：持锁办理成功（含业务失败记台账、不再适用）→ 清掉待续跑；被锁 / 存储出错 → 记入待续跑，同日后续调度重试。 */
+/**
+ * 一名员工：持锁办理成功（含业务失败记台账、不再适用）→ 清掉待续跑；被锁 / 存储出错 → 记入待续跑，同日后续调度重试；
+ * 主档不存在 → 没有可重试的对象，清掉待续跑收口（不计被锁，F-238）。
+ */
 async function sweepEmployee(
   db: Db,
   ctx: EmploymentContext,
@@ -200,8 +203,9 @@ async function sweepEmployee(
   const businessDate = tenantLocalDate(ctx.now, ctx.timezone);
   try {
     const outcomes = await withTenant(db, ctx.tenantId, async (tx) => {
-      if (!(await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true }))) return 'locked' as const;
-      const done = await autoAssessEmployee(tx, ctx, employeeId, rules);
+      const lock = await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true });
+      if (lock === 'busy') return 'locked' as const;
+      const done = lock === 'missing' ? null : await autoAssessEmployee(tx, ctx, employeeId, rules);
       await tx.execute(sql`DELETE FROM employment_auto_assessment_daily_pending
         WHERE tenant_id=${ctx.tenantId} AND business_date=${businessDate}::date AND employee_id=${employeeId}::uuid`);
       return done;
@@ -209,7 +213,7 @@ async function sweepEmployee(
     if (outcomes === 'locked') {
       result.skippedLocked += 1;
       await markPending(db, ctx.tenantId, businessDate, employeeId, 'locked');
-    } else collectAutoAssessmentOutcomes(result, outcomes);
+    } else if (outcomes) collectAutoAssessmentOutcomes(result, outcomes);
   } catch (error) {
     const code = error instanceof AppError || error instanceof EmploymentError ? error.code : 'INTERNAL_ERROR';
     result.errors.push({ employeeId, code });
