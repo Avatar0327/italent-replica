@@ -281,7 +281,7 @@ export const OFFERS: RequiredTable = {
   // BE-14b3：编辑并同步 / OF-R4 关分支删除待入职 → 经任职落地内核的联动复核（同 send / sync，系统全量范围对其恒放行）
   [`PUT ${BASE}/:id`]: [
     ...offerWrite('PUT', '/:id', 'update'),
-    syncLinkage('/:id', 'body: await updateOffer(tx, ctx, id, input, syncPendingEntry === true)', ROUTES, 'PUT'),
+    syncLinkage('/:id', 'body: await updateOffer(tx, ctx, id, input, {', ROUTES, 'PUT'),
   ],
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
   // BE-14a3：单个 / 批量发起审批，与编辑同一判定（object.update + 范围），审批流转在同一事务内交审批中心

@@ -427,7 +427,10 @@ export async function updateOffer(
   const push: OfferPush = pushable ? await pushEditToEntry(tx, ctx, { ...before, ...next } as OfferRow) : 'skipped';
   const saved = await save(tx, ctx, before, 'update', { ...next, ...pushColumns(push, ctx, before) });
   // OF-R4 开：原单回到待发 / 未发起审批后，同一事务里实际发起审批（新 running 实例 + 待办）
-  if (restart) return (await import('./approval.js')).restartOfferApproval(tx, ctx, id, approvalFields);
+  if (restart) {
+    const { restartOfferApproval } = await import('./approval.js');
+    return restartOfferApproval(tx, ctx, id, approvalFields);
+  }
   return pushable ? { ...saved, entrySync: typeof push === 'string' ? push : 'failed' } : saved;
 }
 
@@ -453,9 +456,8 @@ async function replaceOffer(
   };
   const copy = await insertCopy(tx, ctx, before, fields);
   // 复制的新单同事务发起审批（AC-OF-02）；首节点为空等拒绝时整笔回滚，原单不失效
-  const started = await (
-    await import('./approval.js')
-  ).restartOfferApproval(tx, ctx, copy.id as string, approvalFields);
+  const { restartOfferApproval } = await import('./approval.js');
+  const started = await restartOfferApproval(tx, ctx, copy.id as string, approvalFields);
   return { ...started, replacedOfferId: before.id };
 }
 

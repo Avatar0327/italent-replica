@@ -127,6 +127,11 @@ describe('P2-4 OF-R4 开关开：原单重新发起审批', () => {
       salaryAfterRegular: 12000,
     });
     await w.expectNewRunningInstance(offer.id, 1);
+    // 审批中不能发送（旧的审批通过已不可复用）
+    const check = await w.json<{ allowed: boolean; reason: string | null }>(
+      await w.request(w.applicant.userId, 'GET', `${OFFERS}/${offer.id}/send-check`),
+    );
+    expect(check).toMatchObject({ allowed: false, reason: 'OFFER_APPROVAL_IN_PROGRESS' });
   });
 
   it('已发 + 审批通过，改必审字段 → 回待发并重新发起审批（新实例 + 待办）', async () => {
