@@ -1,0 +1,26 @@
+{
+  "root": "../../..",
+  "vitestConfig": "vitest.config.ts",
+  "filters": [
+    "tests/acceptance"
+  ],
+  "definitions": [
+    "docs/05_验收/01_验收场景与追溯表.md",
+    "docs/02_业务建模"
+  ],
+  "ignore": {
+    "AC-SMOKE-01": "M0 骨架冒烟用例（tests/acceptance/AC-SMOKE-01.test.ts），非业务 AC（DEC-271）"
+  },
+  "profiles": {
+    "pglite": {
+      "unset": [
+        "TEST_DATABASE_URL"
+      ]
+    },
+    "pg": {
+      "set": {
+        "TEST_DATABASE_URL": "postgres://ac-coverage-collect-only@127.0.0.1:1/never-connected"
+      }
+    }
+  }
+}

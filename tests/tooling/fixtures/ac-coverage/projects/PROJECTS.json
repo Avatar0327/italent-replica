@@ -1,0 +1,1 @@
+{ "title": "夹具：多个 Vitest project", "groups": [{ "name": "project", "include": ["AC-PJ-*"] }] }

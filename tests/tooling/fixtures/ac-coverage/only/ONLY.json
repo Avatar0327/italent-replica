@@ -1,0 +1,7 @@
+{
+  "title": "夹具：only 门禁",
+  "groups": [{ "name": "only", "include": ["AC-ONLY-*"] }],
+  "notes": {
+    "AC-ONLY-01": { "status": "未覆盖", "category": "已有 DEC", "note": "夹具：人工改判不能放行 only" }
+  }
+}
