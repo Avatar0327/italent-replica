@@ -529,7 +529,10 @@ test('AC-FE-F181b-10 清除被替换时重读新单，核对后才能再次清�
     route.fulfill({ json: { ...linkage, businessId: nextId, revision: 7 } }),
   );
   await page.route('**/transfers/employees/*/draft/' + draftId, (route) =>
-    route.fulfill({ status: 409, json: { error: { code: 'DRAFT_REPLACED', message: '暂存已替换' } } }),
+    route.fulfill({
+      status: 409,
+      json: { error: { code: 'CONFLICT', details: { reason: 'DRAFT_REPLACED' }, message: '暂存已替换' } },
+    }),
   );
   await page.getByRole('button', { name: '点击清除', exact: true }).click();
   await expect(page.locator('input[name="place"]')).toHaveValue('新暂存工作地');
@@ -550,7 +553,7 @@ test('AC-FE-F181b-11 清除结果未知：关闭、换视图、重开保持只�
   await page.getByRole('button', { name: '点击清除', exact: true }).click();
   await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
   await back(page);
-  await page.getByRole('button', { name: button('已完成调动') }).click();
+  await page.getByRole('button', { name: button('已完成的调动') }).click();
   await page.getByRole('button', { name: button('他人调动申请') }).click();
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();

@@ -4,7 +4,7 @@
  * 他人改动任职后核对的正是这份值；表单字段是用户在其上的改动（model.fields / customFields）。
  */
 import type { Latest, Values } from '../foundation/forms/store.js';
-import { presetLabels } from './messages.js';
+import { presetLabels, text } from './messages.js';
 import type { FieldValues, TransferFormModel, TransferPreview } from './types.js';
 
 const prefixed = (source: 'preset' | 'custom', values: FieldValues) =>
@@ -31,6 +31,8 @@ export function draftValues(model: TransferFormModel, record: Latest): Values {
 export function fieldLabels(preview: TransferPreview | null): Record<string, string> {
   const custom = preview?.form.customFields ?? [];
   return {
+    id: text.draftId,
+    revision: text.draftRevision,
     ...Object.fromEntries(Object.entries(presetLabels).map(([code, label]) => [`preset:${code}`, label])),
     ...Object.fromEntries(custom.map((field) => [`custom:${field.id}`, field.name])),
   };

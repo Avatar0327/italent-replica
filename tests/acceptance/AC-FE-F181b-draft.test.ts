@@ -48,7 +48,17 @@ function server(draft: Record<string, unknown> | null = meta, deletion = 200, co
     vi.fn(async (url: string, init: RequestInit) => {
       if (init.method === 'DELETE') {
         state.deletes.push(init);
-        if (deletion !== 200) return Response.json({ error: { code, message: '合成拒绝' } }, { status: deletion });
+        if (deletion !== 200)
+          return Response.json(
+            {
+              error: {
+                code: code === 'DRAFT_REPLACED' ? 'CONFLICT' : code,
+                details: { reason: code },
+                message: '合成拒绝',
+              },
+            },
+            { status: deletion },
+          );
         state.draft = null;
         return Response.json({ ...business, status: 'deleted', revision: 4 });
       }
@@ -136,4 +146,63 @@ it('AC-FE-F181b-07 未知结果关闭重开仍锁定，不发送第二个 DELETE
   expect(reopened.get().draft.command.locked).toBe(true);
   await act(() => reopened.get().draft.clear());
   expect(state.deletes).toHaveLength(1);
+});
+
+it('AC-FE-F181b-12 删除已成功但后续读取失败：保持未知锁，不出现重提窗口', async () => {
+  const state = server();
+  const probe = await mount();
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (state.deletes.length && init.method !== 'DELETE') throw new Error('read disconnected');
+      return original(url, init);
+    }),
+  );
+  await act(() => probe.get().draft.clear());
+  expect(probe.get().draft.command.status).toBe('unknown');
+  await act(() => probe.get().draft.clear());
+  expect(state.deletes).toHaveLength(1);
+});
+it('AC-FE-F181b-13 陈旧删除回执不能报成功，版本按实际发出的 command.revision 核对', async () => {
+  const state = server();
+  const probe = await mount();
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'DELETE') return Response.json({ ...business, status: 'deleted' });
+      return original(url, init);
+    }),
+  );
+  await act(() => probe.get().draft.clear());
+  expect(probe.get().draft.command.status).toBe('unknown');
+  expect(state.reads).toBe(1);
+});
+it('AC-FE-F181b-14 内容被裁剪仍带出，缺 employeeId/status/fields 不丢记录', async () => {
+  server({ id, revision: 3 });
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) =>
+      url.includes('/businesses/') ? Response.json({ id, revision: 3 }) : original(url, init),
+    ),
+  );
+  const probe = await mount();
+  expect(probe.get().draft.status).toBe('restored');
+  expect(probe.get().model).toMatchObject({ transferTypeCode: '', typeConfirmation: true });
+});
+it('AC-FE-F181b-15 读链版本不一致时整链重读；不能把旧元数据配新内容', async () => {
+  const state = server();
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (url.includes('/businesses/') && state.reads === 1) return Response.json({ ...business, revision: 4 });
+      return original(url, init);
+    }),
+  );
+  const probe = await mount();
+  expect(state.reads).toBe(2);
+  expect(probe.get().draft.status).toBe('restored');
 });
