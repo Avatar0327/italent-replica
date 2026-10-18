@@ -31,6 +31,7 @@ import { loadPendingProbation, loadPendingProbationState, savePendingProbation }
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentRecord } from './types.js';
+import { appendEmployee, employeeSnapshot } from '../personnel/employee-write.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
 
 interface EntryActionLog {
@@ -141,6 +142,12 @@ interface ReplaceInput {
   readonly remark?: string;
   /** 改期入职（原站验证）把待入职合同起始日改成新日期；编辑换日期不联动，合同原样搬到新记录（F-194）。 */
   readonly syncContract: boolean;
+  /** Offer 编辑并同步（OF-R14）：整份替换任职字段 / 试用期月数 / 待入职合同（缺省沿用原记录上的值）。 */
+  readonly offer?: {
+    readonly fields: EmploymentRecord['fields'];
+    readonly probationMonths: number | null;
+    readonly contract: PendingContract;
+  };
 }
 
 interface ReplacedEntry {
@@ -168,10 +175,13 @@ async function replacePendingEntry(
   const previousProbation = previousState?.probation ?? null;
   const probation = input.probation ?? previousProbation;
   // Offer 同步带来的月数随记录搬运（试用期改为无时月数自然清空）
-  const probationMonths = probation ? (previousState?.months ?? undefined) : undefined;
+  const probationMonths = probation ? (input.offer?.probationMonths ?? previousState?.months ?? undefined) : undefined;
   const previousContract = await loadPendingContract(tx, ctx, record.id);
   const contract =
-    previousContract && input.syncContract ? { ...previousContract, startDate: input.effectiveDate } : previousContract;
+    input.offer?.contract ??
+    (previousContract && input.syncContract
+      ? { ...previousContract, startDate: input.effectiveDate }
+      : previousContract);
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
   await clearPendingContract(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
@@ -185,7 +195,10 @@ async function replacePendingEntry(
       mode: 'direct',
       formId: business.payload.formId,
       effectiveDate: input.effectiveDate,
-      fields: input.employType ? { ...record.fields, employType: input.employType } : record.fields,
+      fields:
+        (input.offer ?? input.employType)
+          ? { ...(input.offer?.fields ?? record.fields), ...(input.employType ? { employType: input.employType } : {}) }
+          : record.fields,
       customFields: record.customFields,
     },
     {
@@ -329,4 +342,79 @@ export async function deletePendingEntry(
   const deleted = await transitionEmployment(tx, ctx, { id: recordId, action: 'delete' });
   await releasePendingContract(tx, ctx, recordId, 'delete');
   return deleted;
+}
+
+export interface OfferEntryChange {
+  readonly effectiveDate: string;
+  /** Offer 有值的任职字段（OF-R1 映射）；没填的项不覆盖目标上已有的值。 */
+  readonly fields: Readonly<Record<string, string>>;
+  readonly probation: boolean | null;
+  readonly probationMonths: number | null;
+  readonly contract: PendingContract;
+  /** Offer 有值的员工信息（姓名 / 邮箱 / 手机 / 证件等，OF-R1 映射）。 */
+  readonly profile: Readonly<Record<string, string>>;
+  /** 业务预校验：目标核验和差异计算之后、任何写入之前调用，抛业务错误即整笔不写。 */
+  readonly validate?: () => void;
+}
+
+export type OfferEntryPush = 'cancelled' | 'unchanged' | 'pushed';
+
+const sameValue = (a: unknown, b: unknown) =>
+  (a instanceof Date ? a.toISOString().slice(0, 10) : String(a ?? '')) ===
+  (b instanceof Date ? b.toISOString().slice(0, 10) : String(b ?? ''));
+
+/**
+ * 入站端口（Offer 编辑并同步，OF-R14）：Offer 往待入职推送的**唯一**入口（DEC-431①）。固定顺序——
+ * 1. 锁内核验目标确为未取消的待入职（员工 / 业务头锁在 lockPendingEntry），已取消返回 'cancelled'，整笔不写；
+ * 2. 以目标当前快照（员工资料版本 / 任职记录 / 试用期 / 待入职合同）和 Offer 当前值算差异，不拿 Offer 上一版当“已同步快照”，
+ *    所以失败重试、先“否”后“是”都不会遗漏；没有任何差异返回 'unchanged'（不白追加版本、不白换记录 ID）；
+ * 3. 调用方给的业务预校验（合同日期等）；
+ * 4. 写入：员工资料有差异追加一个员工版本；任职 / 试用期 / 合同有差异走替换内核（任职记录不可原地改日期和字段，同事务删旧建新，
+ *    ID 随之变，动作日志串起新旧，Offer 沿链找最新；入职状态保持原值，与行内编辑同口径）。
+ * Offer 行锁由调用方先取（锁序 Offer → 员工 → 业务）。
+ */
+export async function pushOfferToPendingEntry(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  change: OfferEntryChange,
+): Promise<OfferEntryPush> {
+  const locked = await lockPendingEntry(tx, ctx, recordId);
+  const { record } = locked;
+  if (record.entryStatus === ENTRY_STATUS.cancelled) return 'cancelled';
+  const person = await employeeSnapshot(tx, { ...ctx, expectedRevision: 0 }, record.employeeId);
+  const profile = Object.fromEntries(
+    Object.entries(change.profile).filter(([key, value]) => !sameValue(person?.[key], value)),
+  );
+  const state = await loadPendingProbationState(tx, ctx, record.id);
+  const contract = await loadPendingContract(tx, ctx, record.id);
+  const recordSame =
+    sameValue(record.effectiveDate, change.effectiveDate) &&
+    Object.entries(change.fields).every(([key, value]) =>
+      sameValue(record.fields[key as keyof typeof record.fields], value),
+    ) &&
+    (change.probation === null || (state?.probation ?? null) === change.probation) &&
+    (!change.probation || (state?.months ?? null) === change.probationMonths) &&
+    sameValue(contract?.startDate, change.contract.startDate) &&
+    sameValue(contract?.endDate, change.contract.endDate) &&
+    sameValue(contract?.companyId, change.contract.companyId);
+  if (!Object.keys(profile).length && recordSame) return 'unchanged';
+  change.validate?.();
+  if (Object.keys(profile).length)
+    await appendEmployee(tx, { ...ctx, expectedRevision: 0 }, record.employeeId, profile, false);
+  if (!recordSame)
+    await replacePendingEntry(tx, ctx, locked, {
+      action: 'edit',
+      effectiveDate: change.effectiveDate,
+      entryStatus: record.entryStatus ?? ENTRY_STATUS.normal,
+      ...(change.probation === null ? {} : { probation: change.probation }),
+      remark: 'Offer 编辑并同步',
+      syncContract: false,
+      offer: {
+        fields: { ...record.fields, ...change.fields },
+        probationMonths: change.probationMonths,
+        contract: change.contract,
+      },
+    });
+  return 'pushed';
 }

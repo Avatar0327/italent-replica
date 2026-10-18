@@ -52,7 +52,8 @@ const createSchema = z.strictObject({
   campusOfferId: z.uuid().optional(),
   ...OFFER_FIELD_SCHEMA,
 });
-const updateSchema = z.strictObject(OFFER_FIELD_SCHEMA);
+/** 编辑；syncPendingEntry（默认 false）= 编辑并同步（OF-R14）：true 时把改动推送到已同步且未取消入职的待入职。 */
+const updateSchema = z.strictObject({ ...OFFER_FIELD_SCHEMA, syncPendingEntry: z.boolean().optional() });
 /** 转移状态表单（34 §2.1）：目标状态 + 接受时间 / 拒绝时间、原因、备注；必填按目标在领域规则里判。 */
 const transferSchema = z.strictObject({
   target: z.enum(OFFER_STATUSES),
