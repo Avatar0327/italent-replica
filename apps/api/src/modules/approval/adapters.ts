@@ -15,13 +15,12 @@ import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
+import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
-  ageOn,
   APPROVAL_TYPES,
   EXIT_FORM_FIELDS,
   approvalTypeOfBusiness,
-  PART_TIME_ERRORS,
   PROFILE_FORM_FIELDS,
   SUBSETS,
   subsetProcessCode,
@@ -51,7 +50,9 @@ import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
-import { OPEN_STATUSES } from './store.js';
+import { employeeHeader, mayMergeSeat, profileValues } from './adapter-support.js';
+
+export { mayMergeSeat };
 
 /** 办理决定：同意、不同意（出口动作）、驳回（beforeApprove 区分用）。 */
 export type TaskDecision = 'approve' | 'disagree' | 'reject';
@@ -151,30 +152,6 @@ export interface BusinessAdapter {
 }
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-
-/**
- * DEC-122：调动审批详情带出员工档案的性别与年龄（年龄按租户业务日期由出生日期计算，与员工档案一致）。
- * 只读带出，不进入变化字段与盲审；可见性按员工信息对象的字段查看权另行裁剪（routes.detailViewable）。
- */
-async function profileValues(tx: Tx, ctx: ApprovalContext, employeeId: string): Promise<Row> {
-  const [profile] = rowsOf<{ gender: string | null; birthday: string | null }>(
-    await tx.execute(sql`SELECT gender,birthday::text FROM personnel_employee_versions
-      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid ORDER BY revision DESC LIMIT 1`),
-  );
-  return {
-    gender: profile?.gender ?? null,
-    age: ageOn(profile?.birthday ?? null, tenantLocalDate(ctx.now, ctx.timezone)),
-  };
-}
-
-async function employeeHeader(tx: Tx, tenantId: string, employeeId: string) {
-  const [row] = rowsOf<{ code: string; name: string }>(
-    await tx.execute(sql`SELECT code,name FROM employment_employees
-      WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid`),
-  );
-  if (!row) throw new AppError('NOT_FOUND', '人员不存在');
-  return row;
-}
 
 async function businessRevision(tx: Tx, tenantId: string, id: string): Promise<number> {
   const [row] = rowsOf<{ revision: number }>(
@@ -338,30 +315,6 @@ async function completedTransferDates(
   const planned = plannedEffectiveDate(ctx.tenantId, sql`${business.id}::uuid`, sql`${business.effectiveDate}::date`);
   const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
   return { ...dates, actualEffectiveDate: business.effectiveDate };
-}
-
-/**
- * F-070：手动交接的这批任职业务里，是否有待转任务可能触发会签合席（合席结算才可能推进业务、落地时取组织锁）。
- * 合席要求替代人（或回避后的直线经理）已在本激活占着一席，所以本激活里除待转任务外没有别的占席任务就不可能合席。
- * 这是合席条件的超集（只会多取、不会漏取）；此时已持员工锁，任职业务实例的任务集合不会再被别的命令改写。
- * 实例没有异动员工（取不到员工锁）时无法保证，保守按可能合席处理。
- */
-/** 占着会签席位的任务状态：与 countersign.ts 的 HELD 相同（在办 + 已投票），那里不导出。 */
-const HELD_STATUSES = [...OPEN_STATUSES, 'approved', 'disagreed'].map((status) => sql`${status}`);
-
-async function mayMergeSeat(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[], from: string) {
-  const [row] = rowsOf<{ found: boolean }>(
-    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM approval_instances i
-      JOIN approval_tasks t ON t.tenant_id=i.tenant_id AND t.instance_id=i.id
-      WHERE i.tenant_id=${ctx.tenantId} AND i.status='running'
-        AND i.business_id = ANY(${`{${businessIds.join(',')}}`}::uuid[])
-        AND t.status='pending' AND t.is_exception_admin AND t.assignee_user_id=${from}::uuid
-        AND (i.subject_employee_id IS NULL OR EXISTS (SELECT 1 FROM approval_tasks s
-          WHERE s.tenant_id=t.tenant_id AND s.instance_id=t.instance_id AND s.id<>t.id
-            AND s.activation_id IS NOT DISTINCT FROM t.activation_id
-            AND s.status IN (${sql.join(HELD_STATUSES, sql`,`)})))) AS found`),
-  );
-  return Boolean(row?.found);
 }
 
 const employmentAdapter: BusinessAdapter = {
@@ -620,25 +573,6 @@ const personnelAdapter: BusinessAdapter = {
   },
 };
 
-/**
- * 兼职申请（BE-7，R2-T05 §13.1）：PT-1 只占业务类型 part_time 的位置，没有创建申请的入口、不会产生实例；
- * PT-4a 换成 employment/part-time/approval-adapter.ts 的真适配器。在此之前任何回调都拒绝（409），不静默放行。
- */
-const partTimeUnavailable = (): never => {
-  throw new AppError('CONFLICT', '兼职审批尚未开放', { reason: PART_TIME_ERRORS.notAvailable });
-};
-const partTimeAdapter: BusinessAdapter = {
-  lock: async () => partTimeUnavailable(),
-  lockMany: async () => partTimeUnavailable(),
-  snapshot: async () => partTimeUnavailable(),
-  approved: async () => partTimeUnavailable(),
-  rejected: async () => partTimeUnavailable(),
-  disapproved: async () => partTimeUnavailable(),
-  withdrawn: async () => partTimeUnavailable(),
-  resubmit: async () => partTimeUnavailable(),
-  edit: async () => partTimeUnavailable(),
-};
-
 export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   contract: contractAdapter,
   employment: employmentAdapter,
@@ -646,7 +580,7 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   idp: idpAdapter,
   // R3-T04 C-08：PR-A 占位（无发起入口），PR-D 接入盘点结果审批（集合审批）
   talent_review: talentReviewAdapter,
-  // BE-7 PT-1：占位（无发起入口），PT-4a 接入兼职申请
+  // BE-7 PT-4a：兼职申请（业务单 = 兼职申请，PT-4a 只有内部申请服务，公开入口随 PT-4b）
   part_time: partTimeAdapter,
   // R2 BE-14a3：Offer 审批（业务单 = Offer）与 Offer 批量审批（业务单 = 批量审批单，一单多份 Offer）
   offer: offerAdapter,

@@ -24,6 +24,7 @@ import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activateDueBusinesses } from './activation-service.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
+import { runAutoAssessmentSlot } from './auto-assessment-scheduler.js';
 import { runAutoRegularizationSlot } from './auto-regularization-scheduler.js';
 import { EmploymentError } from './errors.js';
 import { rowsOf } from './record-store.js';
@@ -256,4 +257,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
   }
   // BE-15a（DEC-539①）：自动转正的每日批次挂在同一定时器上，落地之后再发起；各租户按本地时点自行判断当天是否已跑
   await runAutoRegularizationSlot(db, slot, clock, onError);
+  // BE-15b2（DEC-539①）：自动发起考核的每日批次接在自动转正之后（先转正，再按入职天数发起考核）
+  await runAutoAssessmentSlot(db, slot, clock, onError);
 }

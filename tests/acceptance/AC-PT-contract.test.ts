@@ -12,6 +12,7 @@ import {
   auditObjectMeta,
   definitionViolations,
   MODULE_OBJECTS,
+  PART_TIME_ERRORS,
   PRESET_PROCESSES,
   STANDARD_PROFILES,
   type ApprovalTypeCode,
@@ -170,29 +171,13 @@ describe('AC-PT-contract BE-7 PT-1 预置流程（§4.5）', () => {
   });
 });
 
-describe('AC-PT-contract BE-7 PT-1 业务类型 part_time 占位（§13.1：PT-4a 前不开放）', () => {
-  it('业务类型进实例 CHECK；适配器任何回调都 409 PART_TIME_NOT_AVAILABLE，不静默放行', async () => {
+describe('AC-PT-contract BE-7 业务类型 part_time（PT-4a 起是真适配器，行为见 AC-PT-request-approval）', () => {
+  it('业务类型进实例 CHECK；适配器已登记且不再是占位（占位的 PART_TIME_NOT_AVAILABLE 不存在）', async () => {
     expect(await constraint('approval_instances_business_type')).toContain("'part_time'");
     const adapter = (ADAPTERS as Record<string, (typeof ADAPTERS)['employment']>).part_time;
     expect(adapter).toBeDefined();
-    const ctx = {} as Parameters<(typeof ADAPTERS)['employment']['snapshot']>[1];
-    const calls = [
-      () => adapter!.lock({} as never, ctx, 'x'),
-      () => adapter!.snapshot({} as never, ctx, 'x'),
-      () => adapter!.approved({} as never, ctx, 'x'),
-      () => adapter!.rejected({} as never, ctx, 'x'),
-      () => adapter!.disapproved({} as never, ctx, 'x'),
-      () => adapter!.withdrawn({} as never, ctx, 'x'),
-      () => adapter!.resubmit({} as never, ctx, 'x', {}),
-      () => adapter!.edit({} as never, ctx, 'x', {}),
-      () => adapter!.lockMany!({} as never, ctx, ['x'], { organization: true }),
-    ];
-    for (const call of calls) {
-      await expect(call()).rejects.toMatchObject({
-        code: 'CONFLICT',
-        details: { reason: 'PART_TIME_NOT_AVAILABLE' },
-      });
-    }
+    expect(typeof adapter!.lockMany).toBe('function');
+    expect(Object.hasOwn(PART_TIME_ERRORS, 'notAvailable')).toBe(false);
   });
 });
 

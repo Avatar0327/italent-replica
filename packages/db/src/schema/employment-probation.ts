@@ -306,3 +306,145 @@ export const employmentProbationAssessments = pgTable(
     check('employment_probation_assessments_revision_positive', sql`${t.revision} > 0`),
   ],
 );
+
+/**
+ * R2 BE-15b2 自动发起试用期考核规则（docs/02_业务建模/29 PB-R16 / R17，DEC-533② 单条启停；差距表 B58）：
+ * 形态同自动转正规则（优先级 + 登记顺序号、整份保存、硬删除）；name 即发起时的考核名称，days_after_entry 取 1～999。
+ * operator_user_id = 最后保存的管理员，发起人类型为“当前管理员”时取它。
+ */
+export const employmentAutoAssessmentRules = pgTable(
+  'employment_auto_assessment_rules',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenant(),
+    name: text('name').notNull(),
+    priority: integer('priority').notNull(),
+    sequenceNo: integer('sequence_no').notNull(),
+    orgIds: uuid('org_ids').array().notNull(),
+    includeSubordinates: boolean('include_subordinates').notNull().default(true),
+    assessmentType: text('assessment_type').notNull(),
+    daysAfterEntry: integer('days_after_entry').notNull(),
+    initiatorType: text('initiator_type').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    operatorUserId: uuid('operator_user_id').notNull(),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    unique('employment_auto_assessment_rules_tenant_id').on(t.tenantId, t.id),
+    unique('employment_auto_assessment_rules_sequence').on(t.tenantId, t.sequenceNo),
+    check('employment_auto_assessment_rules_name', sql`btrim(${t.name}) <> '' AND char_length(${t.name}) <= 100`),
+    check('employment_auto_assessment_rules_priority', sql`${t.priority} BETWEEN 0 AND 9999`),
+    check('employment_auto_assessment_rules_sequence_positive', sql`${t.sequenceNo} > 0`),
+    check('employment_auto_assessment_rules_orgs', sql`cardinality(${t.orgIds}) BETWEEN 1 AND 50`),
+    check('employment_auto_assessment_rules_type', sql`${t.assessmentType} IN ('probation', 'regularization')`),
+    check('employment_auto_assessment_rules_days', sql`${t.daysAfterEntry} BETWEEN 1 AND 999`),
+    check(
+      'employment_auto_assessment_rules_initiator',
+      sql`${t.initiatorType} IN ('rule_operator', 'department_hrbp', 'department_head')`,
+    ),
+    check('employment_auto_assessment_rules_revision_positive', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * 自动考核发起台账：键 = 规则 × 本任职周期的开启记录（同一任职同一规则只发起一次）。
+ * launched 只写一次（带考核 ID、系统代发标记与发起人）；failed 可在同一天后续执行重试（次数、原因，DEC-052）——
+ * 自动考核只在“入职日 + N 天 = 当天”发起，过了当天不再命中，所以失败不会跨天补发（AC-PB-06）。
+ * 删除规则不影响已发起的（PB-R22，台账不挂规则外键）。
+ */
+export const employmentAutoAssessmentLaunches = pgTable(
+  'employment_auto_assessment_launches',
+  {
+    tenantId: tenant(),
+    ruleId: uuid('rule_id').notNull(),
+    anchorId: uuid('anchor_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    state: text('state').notNull(),
+    assessmentId: uuid('assessment_id'),
+    initiatorUserId: uuid('initiator_user_id'),
+    systemProxy: boolean('system_proxy').notNull().default(true),
+    attempts: integer('attempts').notNull().default(1),
+    lastReason: text('last_reason'),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'employment_auto_assessment_launches_pk', columns: [t.tenantId, t.ruleId, t.anchorId] }),
+    foreignKey({
+      name: 'employment_auto_assessment_launches_anchor_fk',
+      columns: [t.tenantId, t.employeeId, t.anchorId],
+      foreignColumns: [...business],
+    }),
+    foreignKey({
+      name: 'employment_auto_assessment_launches_assessment_fk',
+      columns: [t.tenantId, t.assessmentId],
+      foreignColumns: [employmentProbationAssessments.tenantId, employmentProbationAssessments.id],
+    }),
+    check('employment_auto_assessment_launches_state', sql`${t.state} IN ('launched', 'failed')`),
+    check(
+      'employment_auto_assessment_launches_outcome',
+      sql`(${t.state} = 'launched') = (${t.assessmentId} IS NOT NULL)`,
+    ),
+    check('employment_auto_assessment_launches_attempts', sql`${t.attempts} > 0`),
+  ],
+);
+
+/**
+ * 每日批次登记（DEC-539①）：每租户每个业务日一行，记录批次的推进进度而不是“占位”（第 1 轮 P2-1）——
+ * swept = 当天候选已全部扫过一遍；completed_at = 扫完且没有待续跑的员工。未完成的日子，同日后续调度继续推进；
+ * “立即执行”不占用。
+ */
+export const employmentAutoAssessmentDailyRuns = pgTable(
+  'employment_auto_assessment_daily_runs',
+  {
+    tenantId: tenant(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    commandId: text('command_id').notNull(),
+    swept: boolean('swept').notNull().default(false),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: utc(),
+  },
+  (t) => [primaryKey({ name: 'employment_auto_assessment_daily_runs_pk', columns: [t.tenantId, t.businessDate] })],
+);
+
+/**
+ * 当天批次待续跑的员工：被他人持锁而跳过（locked）或处理时存储临时出错（error）的人；同日后续调度只重试这些人，
+ * 处理完（发起、业务失败记台账、或不再适用）即删除。次日的批次另起（自动考核只在第 N 天命中，不补发昨天的）。
+ */
+export const employmentAutoAssessmentDailyPending = pgTable(
+  'employment_auto_assessment_daily_pending',
+  {
+    tenantId: tenant(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    reason: text('reason').notNull(),
+    attempts: integer('attempts').notNull().default(1),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'employment_auto_assessment_daily_pending_pk',
+      columns: [t.tenantId, t.businessDate, t.employeeId],
+    }),
+    check('employment_auto_assessment_daily_pending_reason', sql`${t.reason} IN ('locked', 'error')`),
+    check('employment_auto_assessment_daily_pending_attempts', sql`${t.attempts} > 0`),
+  ],
+);
+
+/** 自动考核“立即执行”的续跑句柄：同自动转正，回执只给随机句柄，位置不出库；绑定租户 × 操作人 × 业务日，只增不改。 */
+export const employmentAutoAssessmentRunCursors = pgTable(
+  'employment_auto_assessment_run_cursors',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenant(),
+    userId: uuid('user_id').notNull(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    positionEmployeeId: uuid('position_employee_id').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+  },
+  (t) => [unique('employment_auto_assessment_run_cursors_tenant_id').on(t.tenantId, t.id)],
+);

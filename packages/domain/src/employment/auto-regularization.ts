@@ -70,7 +70,7 @@ export function matchAutoRegularizationRule<T extends AutoRegularizationRuleFact
 
 /**
  * PB-R21 自动转正失败条件里的转正记录状态：本任职周期存在已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务即失败。
- * 草稿与已删除不算（原站条件未列）。考核类条件随 BE-15b 的考核对象登记。
+ * 草稿与已删除不算（原站条件未列）。考核类条件见 auto-assessment.ts 的 assessmentBlocksAutoRegularization（BE-15b2）。
  */
 export const AUTO_REGULARIZATION_BLOCKING_STATES = [
   'rejected',

@@ -1,6 +1,6 @@
 /**
  * 升级测试夹具（R2 BE-7 PT-2）：任职写入口提交前的结果复核（permission/employment-replay.ts）与审计查看规则会查兼职
- * 期限链与兼职申请表，它们在迁移 part_time 才建。在更早的结构上用当前接口造数时，临时建同名空表（只含这些查询读到的列），
+ * 期限链与兼职申请表，它们在迁移 part_time 才建。在更早的结构上用当前接口造数时，临时建同名空表（只含这些查询读到的列；PT-4a 起另含状态事件表，离职钩子按它找未办结申请），
  * 前置步骤跑完即撤掉，再由测试执行升级迁移按正式结构重建——同 pre-audit-schema 的审计列、BE-8a 黑名单表先例。
  * 生产总是先迁移再服务，生产代码不判断表是否存在（DEC-402）。已有这些表（已升级）的库不动。
  */
@@ -21,13 +21,20 @@ export async function addPrePartTimeTables(db: Db): Promise<() => Promise<void>>
       employee_id uuid NOT NULL, record_id uuid, initiator_user_id uuid NOT NULL)`);
     await tx.execute(sql`CREATE TABLE part_time_request_versions (tenant_id uuid NOT NULL, request_id uuid NOT NULL,
       version_no int NOT NULL, department_id uuid)`);
+    // PT-4a：离职钩子作废在途兼职申请，按最新状态事件找未办结的申请
+    await tx.execute(sql`CREATE TABLE part_time_request_events (tenant_id uuid NOT NULL, request_id uuid NOT NULL,
+      event_no int NOT NULL, state text NOT NULL)`);
     await tx.execute(
-      sql`GRANT SELECT ON employment_part_time_terms, part_time_requests, part_time_request_versions TO app_user`,
+      sql`GRANT SELECT ON employment_part_time_terms, part_time_requests, part_time_request_versions,
+        part_time_request_events TO app_user`,
     );
+    // 申请头按 ID 升序 FOR UPDATE（§4.6 锁序）需要 UPDATE 权限
+    await tx.execute(sql`GRANT UPDATE ON part_time_requests TO app_user`);
   });
   return async () => {
     await db.execute(
-      sql`DROP TABLE IF EXISTS employment_part_time_terms, part_time_requests, part_time_request_versions`,
+      sql`DROP TABLE IF EXISTS employment_part_time_terms, part_time_requests, part_time_request_versions,
+        part_time_request_events`,
     );
   };
 }
