@@ -100,6 +100,8 @@ export async function runOfferWrite(
     readonly isNew?: boolean;
     /** 重放命中台账后复核结果对象仍在当前范围内（撤范围后同键重放不再交出原响应）。 */
     readonly replayed?: (tx: Tx, ctx: OfferContext, body: unknown) => Promise<void>;
+    /** 响应出口：首次执行与同键重放共用，台账里只存命令结果本身，附加内容在这里按当前权限重新生成（如重聘提示）。 */
+    readonly respond?: (ctx: OfferContext, body: unknown) => Promise<unknown>;
   } = {},
 ) {
   const expectedRevision = revision(c);
@@ -126,7 +128,8 @@ export async function runOfferWrite(
   }).catch(lockConflict);
   const body = result.body as { revision?: number } | null;
   if (body?.revision !== undefined) c.header('ETag', `"${body.revision}"`);
-  return c.json(await trimOffer(deps, ctx, result.body), result.status);
+  const response = options.respond ? await options.respond(ctx, result.body) : result.body;
+  return c.json(await trimOffer(deps, ctx, response), result.status);
 }
 
 /**
@@ -175,7 +178,7 @@ export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: 
 }
 
 /** 行操作、转移表单的可选目标、发送判定结果是接口协议数据，不是对象字段，不按字段查看权裁剪（BE-14a2）。 */
-const PROTOCOL_KEYS = ['rowActions', 'targets', 'allowed', 'reason'] as const;
+const PROTOCOL_KEYS = ['rowActions', 'targets', 'allowed', 'reason', 'sendRecord', 'rehireHint'] as const;
 const protocolKeys = (row: Record<string, unknown>) =>
   Object.fromEntries(PROTOCOL_KEYS.filter((key) => key in row).map((key) => [key, row[key]]));
 
