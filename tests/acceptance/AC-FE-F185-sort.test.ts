@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InfoRow } from '../../apps/web/src/idp/info-model.js';
-import { sortLevels } from '../../apps/web/src/idp/info-references.js';
+import { sortLevels } from '../../apps/web/src/idp/info-reference-sort.js';
 
 const categories: InfoRow[] = ['A', 'B', 'C'].map((id) => ({ id, enabled: id !== 'B' }));
 const row = (id: string, levelTypeId: string | null, level: number): InfoRow => ({ id, levelTypeId, level });
