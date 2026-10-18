@@ -16,8 +16,6 @@ export interface HrWriteOutcome {
   readonly employeeId: string;
   /** 实际发出的员工版本（If-Match）；回执的 employeeRevision 须已推进过它（#350 第 2 轮 P2-2）。 */
   readonly revision: number;
-  /** 暂存时记入按人索引，带出时还原类型（P2-1）。 */
-  readonly transferTypeCode?: string;
 }
 /**
  * 新建业务单会推进员工版本（write-service createEmploymentBusiness → bumpEmploymentEmployee），
@@ -29,7 +27,7 @@ function validReceipt(receipt: TransferBusiness, sent: number) {
   return Number.isInteger(receipt.employeeRevision) && receipt.employeeRevision > sent;
 }
 const notSent = () => new TransferApiError('NOT_SENT', text.recoveryUnavailable, 400);
-/** HR 调动的唯一写入口；未知结果只读，卸载后的响应没有会话写权限。有回执时按人更新暂存索引（DEC-511）。 */
+/** HR 调动的唯一写入口；未知结果只读，卸载后的响应没有会话写权限。有回执时释放处理标记（DEC-464）。 */
 export function useHrWrite(scope?: string) {
   const [processing, setProcessing] = useState(() => isProcessing(scope));
   const [error, setError] = useState('');
@@ -65,9 +63,7 @@ export function useHrWrite(scope?: string) {
       const receipt = await send(crypto.randomUUID());
       if (!mounted.current) throw new Error(text.unknown);
       if (!validReceipt(receipt, outcome.revision)) throw new Error(text.unknown);
-      const { employeeId, transferTypeCode } = outcome;
-      const draft = { id: receipt.id, ...(transferTypeCode ? { transferTypeCode } : {}) };
-      finishHrWrite(scope, { employeeId, ...(receipt.status === 'draft' ? { draft } : {}) });
+      finishHrWrite(scope);
       setResult(receipt);
       return receipt;
     } catch (cause) {
