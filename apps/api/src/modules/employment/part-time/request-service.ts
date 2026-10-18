@@ -356,26 +356,6 @@ export async function settleRequestFromApproval(
   await auditRequest(tx, ctx, `part_time.request.${audited}`, next, ...stateChange(request, next));
 }
 
-/** 审批中心的动态导入口（见文件头）；一次取齐本文件用到的入口。 */
-async function approvalPort() {
-  const [engine, actions, store, notifications, resolver] = await Promise.all([
-    import('../../approval/engine.js'),
-    import('../../approval/actions.js'),
-    import('../../approval/store.js'),
-    import('../../approval/notifications.js'),
-    import('../../approval/resolver.js'),
-  ]);
-  return {
-    startOrResume: engine.startOrResume,
-    withdraw: actions.withdraw,
-    cancel: actions.cancel,
-    activeInstanceOf: store.activeInstanceOf,
-    latestInstanceOf: store.latestInstanceOf,
-    notifyMessage: notifications.notifyMessage,
-    userOfPerson: resolver.userOfPerson,
-  };
-}
-
 const approvalContext = (ctx: EmploymentContext, fields?: FieldAccess): ApprovalContext =>
   ({ ...ctx, expectedRevision: 0, ...(fields ? { fields } : {}) }) as ApprovalContext;
 
@@ -398,8 +378,8 @@ export async function submitRequest(
   const checked = await checkNewPartTime(tx, ctx, employee, normalizeNewPartTime(inputOf(request)), request.id);
   const submitted = await appendRequestState(tx, ctx, request, 'in_review');
   await auditRequest(tx, ctx, 'part_time.request.submit', submitted, ...stateChange(request, submitted));
-  const port = await approvalPort();
-  await port.startOrResume(tx, approvalContext(ctx, fields), { businessType: 'part_time', businessId: request.id });
+  const { startOrResume } = await import('../../approval/engine.js');
+  await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'part_time', businessId: request.id });
   const settled = (await loadPartTimeRequest(tx, ctx.tenantId, request.id))!;
   return requestView(settled, { warnings: checked.warnings });
 }
@@ -413,9 +393,10 @@ export async function withdrawRequest(tx: Tx, ctx: EmploymentContext, requestId:
   await requireRequestScope(tx, ctx, request);
   const withdrawn = await appendRequestState(tx, ctx, request, next);
   await auditRequest(tx, ctx, 'part_time.request.withdraw', withdrawn, ...stateChange(request, withdrawn));
-  const port = await approvalPort();
-  const active = await port.activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
-  if (active) await port.withdraw(tx, approvalContext(ctx), active.id, true);
+  const { activeInstanceOf } = await import('../../approval/store.js');
+  const { withdraw } = await import('../../approval/actions.js');
+  const active = await activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
+  if (active) await withdraw(tx, approvalContext(ctx), active.id, true);
   return requestView(withdrawn);
 }
 
@@ -437,9 +418,10 @@ export async function deleteRequest(tx: Tx, ctx: EmploymentContext, requestId: s
   await requireRequestScope(tx, ctx, request);
   const deleted = await appendRequestState(tx, ctx, request, next);
   await auditRequest(tx, ctx, 'part_time.request.delete', deleted, snapshotOf(request), null);
-  const port = await approvalPort();
-  const active = await port.activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
-  if (active) await port.cancel(tx, approvalContext(ctx), active.id);
+  const { activeInstanceOf } = await import('../../approval/store.js');
+  const { cancel } = await import('../../approval/actions.js');
+  const active = await activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
+  if (active) await cancel(tx, approvalContext(ctx), active.id);
   return requestView(deleted);
 }
 
@@ -465,16 +447,20 @@ export async function voidPartTimeRequest(
   options: VoidOptions,
 ): Promise<PartTimeRequestRow> {
   const next = assertAction(request, 'void');
-  const port = await approvalPort();
-  const active = options.keepInstance ? null : await port.activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
-  const instance = active ?? (await port.latestInstanceOf(tx, ctx.tenantId, 'part_time', request.id));
+  const { activeInstanceOf, latestInstanceOf } = await import('../../approval/store.js');
+  const { cancel } = await import('../../approval/actions.js');
+  const approvalCtx = schedulerAwareContext(approvalContext(ctx));
+  const active = options.keepInstance ? null : await activeInstanceOf(tx, ctx.tenantId, 'part_time', request.id);
+  const instance = active ?? (await latestInstanceOf(tx, ctx.tenantId, 'part_time', request.id));
   const voided = await appendRequestState(tx, ctx, request, next, { reason: options.reason });
-  if (active) await port.cancel(tx, schedulerAwareContext(approvalContext(ctx)), active.id);
+  if (active) await cancel(tx, approvalCtx, active.id);
   await auditRequest(tx, ctx, options.action, voided, ...stateChange(request, voided, { reason: options.reason }));
   if (options.template && instance) {
-    const applicant = options.reason === 'exit' ? await port.userOfPerson(tx, ctx.tenantId, request.employeeId) : null;
+    const { notifyMessage } = await import('../../approval/notifications.js');
+    const { userOfPerson } = await import('../../approval/resolver.js');
+    const applicant = options.reason === 'exit' ? await userOfPerson(tx, ctx.tenantId, request.employeeId) : null;
     for (const recipientUserId of new Set([request.initiatorUserId, applicant].filter((id): id is string => !!id)))
-      await port.notifyMessage(tx, schedulerAwareContext(approvalContext(ctx)), instance, {
+      await notifyMessage(tx, approvalCtx, instance, {
         recipientUserId,
         templateCode: options.template,
       });
