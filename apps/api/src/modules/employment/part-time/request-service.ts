@@ -67,7 +67,7 @@ export interface PartTimeRequestView {
   readonly warnings: readonly string[];
 }
 
-const notFound = () => new AppError('NOT_FOUND', '兼职申请不存在');
+export const notFound = () => new AppError('NOT_FOUND', '兼职申请不存在');
 const typeNotAvailable = () =>
   new AppError('CONFLICT', '该类兼职申请暂未开放', { reason: PART_TIME_ERRORS.requestTypeNotAvailable });
 
@@ -209,7 +209,7 @@ export async function lockPartTimeRequest(tx: Tx, ctx: EmploymentContext, reques
 }
 
 /** 数据范围（§7.2）：员工按主职在范围，申请部门在范围；“使用用户”维度的创建人是申请发起人。范围外与不存在同一个 404。 */
-async function requireRequestScope(tx: Tx, ctx: EmploymentContext, request: PartTimeRequestRow) {
+export async function requireRequestScope(tx: Tx, ctx: EmploymentContext, request: PartTimeRequestRow) {
   await requireEmployeeInScope(tx, ctx, request.employeeId);
   await requireScopedEmploymentObject(
     tx,

@@ -112,6 +112,7 @@ const NF_BUSINESS = denied(404, 'NOT_FOUND', '任职业务不存在');
 const NF_RECORD = denied(404, 'NOT_FOUND', '任职记录不存在');
 const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
 const NF_PART_TIME = denied(404, 'NOT_FOUND', '兼职记录不存在');
+const NF_PART_TIME_REQUEST = denied(404, 'NOT_FOUND', '兼职申请不存在');
 const NF_LINKAGE_ITEM = denied(404, 'NOT_FOUND', '联动子项不存在');
 const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
@@ -170,6 +171,34 @@ const INITIATOR_BUTTON: ButtonPolicy = {
   mapper: 'transfer.initiatorButton',
   domain: TRANSFER_INITIATORS,
 };
+
+/**
+ * 兼职申请的提交 / 撤回（PT-4b）：两项缺一不可 —— 与创建同一按钮 Employment.PartTimeApproval（承载对象权、范围、字段）+ 动作按钮；
+ * 请求体不读，If-Match 必填。
+ */
+function partTimeRequestAction(actionButton: string, preconditions: readonly string[]) {
+  return all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'update',
+        button: button(PART_TIME_BUTTONS.application, 'detail'),
+        guards: [DIRECT_OPERATION],
+        scope: guardScope('employment.scope', NF_PART_TIME_REQUEST),
+        fields: RESPONSE,
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'button',
+        button: button(actionButton, 'detail'),
+        scope: noScope('只判按钮：申请范围已由创建按钮那一项判过'),
+        fields: noFields('只决定能否执行该动作'),
+      }),
+    ],
+    RESPONSE,
+    { write: employmentCommand(preconditions), ...byId },
+  );
+}
 
 // ---- 写策略 ----------------------------------------------------------------------------------------------------
 /** 任职对象的写入口：字段经 requireEmploymentWrite 提取，事务内 / 返回后各一次 authorizeEmploymentResult。 */
@@ -1031,6 +1060,107 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireScopedEmploymentObject'], {
       ledger: 'single',
     }),
+  }),
+  // ---- employment/part-time/request-routes.ts：R2 BE-7 PT-4b 兼职新增申请入口（R2-T05 §4.1 / §7.2；延长 / 结束申请随 PT-4c，409）----
+  // 新建（草稿，或 submit = true 建完直接提交）：readContext(object.create)；requestType 先于其余字段判（extend / end → 409
+  // PART_TIME_REQUEST_TYPE_NOT_AVAILABLE，无写入）；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
+  // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
+  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
+  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）
+  'POST /part-time-requests': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(PART_TIME_BUTTONS.application, 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'lockEmploymentEmployee',
+        'assertPartTimeWithinCycle',
+        'assertExclusiveTypeFree',
+        'requireScopedEmploymentObject',
+      ],
+      { controls: ['requestType', 'employeeId', 'partTimeType', 'startDate', 'endDate', 'submit'] },
+    ),
+  }),
+  // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
+  // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
+  // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
+  // D-1～D-10 与周期边界由 updateAddRequest 判，越界当次拒绝不留版本；linkage 两字段同新建
+  'PATCH /part-time-requests/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(PART_TIME_BUTTONS.application, 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_PART_TIME_REQUEST),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      ['lockPartTimeRequest', 'assertRevision', 'assertPartTimeWithinCycle', 'requireScopedEmploymentObject'],
+      { controls: ['partTimeType', 'startDate', 'endDate'] },
+    ),
+    ...byId,
+  }),
+  // 提交 / 撤回：If-Match 必填，不读请求体；与创建同一按钮 + Employment.Submit / Withdraw；只允许原发起人（锁内 403
+  // PART_TIME_NOT_INITIATOR）；提交含驳回后重提，按最新版本重跑 D-1～D-10 与周期边界，并交审批中心匹配流程（DEC-017）
+  'POST /part-time-requests/:id/submit': partTimeRequestAction('Employment.Submit', [
+    'lockPartTimeRequest',
+    'assertRevision',
+    'assertInitiator',
+    'assertPartTimeWithinCycle',
+  ]),
+  'POST /part-time-requests/:id/withdraw': partTimeRequestAction('Employment.Withdraw', [
+    'lockPartTimeRequest',
+    'assertRevision',
+    'assertInitiator',
+  ]),
+  // HR 撤销：只要 Employment.Revoke（不要求创建按钮），不限发起人；作废未办结的申请，在途实例一并取消
+  'POST /part-time-requests/:id/revoke': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.Revoke', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_PART_TIME_REQUEST),
+    fields: RESPONSE,
+    write: employmentCommand(['lockPartTimeRequest', 'assertRevision', 'assertAction']),
+    ...byId,
+  }),
+  // 删除草稿 / 驳回中的申请（保留快照）：object.delete + 创建按钮 + Employment.Delete
+  'DELETE /part-time-requests/:id': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'delete',
+        button: button(PART_TIME_BUTTONS.application, 'detail'),
+        guards: [DIRECT_OPERATION],
+        scope: guardScope('employment.scope', NF_PART_TIME_REQUEST),
+        fields: RESPONSE,
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'button',
+        button: button('Employment.Delete', 'detail'),
+        scope: noScope('只判按钮：申请范围已由创建按钮那一项判过'),
+        fields: noFields('只决定能否删除申请'),
+      }),
+    ],
+    RESPONSE,
+    {
+      write: employmentCommand(['lockPartTimeRequest', 'assertRevision', 'assertAction']),
+      ...byId,
+    },
+  ),
+  // 申请详情（含主职信息 / 员工信息分组）：loadPartTimeRequestDetail（DEC-177 可见：申请部门 ∪ 员工当前主职部门）→ 404「兼职申请不存在」→
+  // tenant.employment.read（resource=员工）；主职分组只在操作人看得到该主职记录时给出，三组各按所属对象的字段查看权裁剪
+  'GET /part-time-requests/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('申请详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.partTimeRequest', NF_PART_TIME_REQUEST),
+    fields: projector('employment.response', 'employment.partTimeRequest'),
+    ...byId,
   }),
   // 员工页签：readPageContext(detail) + tenant.employment.read；按 DEC-177 可见谓词分页，一条都不可见且员工不在范围内 → 404「员工不存在」
   'GET /employees/:id/part-times': object({

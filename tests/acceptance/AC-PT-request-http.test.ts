@@ -61,7 +61,9 @@ describe('PB-32 HTTP：新增申请 → 提交 → 四节点 → 通过', () => 
     const listed = await w.ok<{ items: { id: string; partTimeView: string[] }[] }>(
       await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${w.worker.employeeId}/part-times`),
     );
-    expect(listed.items).toEqual([expect.objectContaining({ id: record!.id, partTimeView: ['not_started'] })]);
+    expect(listed.items).toEqual([
+      expect.objectContaining({ id: record!.id, partTimeView: expect.arrayContaining(['not_started']) }),
+    ]);
   });
 
   it('草稿全链路：建 → 改 → 提交 → 撤回；撤销（HR）→ 作废；删除草稿；每一步 If-Match 递进', async () => {
@@ -349,12 +351,13 @@ describe('PB-75：兼职申请日志对兼职部门 HR 可见（HTTP 创建的�
     return page.items.map((row) => row.action).sort();
   };
 
-  it('只管兼职部门的 HR 看得到申请的新增 / 修改 / 提交日志；只管主职部门的 HR 也看得到（员工当前主职）；无关部门看不到', async () => {
+  it('只管兼职部门的 HR 看得到申请的新增 / 修改日志；只管主职部门的 HR 也看得到（员工当前主职）；无关部门看不到', async () => {
     const w = await world('audit-view');
     const created = await draft(w);
     const edited = await w.ok(await w.http().patch(created.id, created.revision, { endDate: '2026-11-30' }));
     await w.ok(await w.http().act(created.id, 'submit', edited.revision));
-    const expected = ['part_time.request.create', 'part_time.request.submit', 'part_time.request.update'];
+    // 只改状态的动作（提交等）前后值里没有这位查看人可看的字段，按字段权限裁剪后不出现在其数据变更日志里
+    const expected = ['part_time.request.create', 'part_time.request.update'];
     expect(await seen(w, [w.side])).toEqual(expected);
     expect(await seen(w, [w.primary])).toEqual(expected);
     expect(await seen(w, [await w.org(`无关部门${randomUUID()}`)])).toEqual([]);

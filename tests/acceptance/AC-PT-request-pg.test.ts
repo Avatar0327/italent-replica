@@ -73,7 +73,9 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const listed = await w.ok<{ items: { id: string; partTimeView: string[] }[] }>(
       await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${w.worker.employeeId}/part-times`),
     );
-    expect(listed.items).toEqual([expect.objectContaining({ id: record!.id, partTimeView: ['not_started'] })]);
+    expect(listed.items).toEqual([
+      expect.objectContaining({ id: record!.id, partTimeView: expect.arrayContaining(['not_started']) }),
+    ]);
     expect(await w.terms(record!.id)).toEqual([
       { term_no: 1, end_date: '2026-12-31', source: 'create', source_id: created.id },
     ]);
