@@ -61,6 +61,19 @@ export const PART_TIME_BUTTONS = {
   batchEnd: 'Employment.PartTimeBatchEnd',
   edit: 'Employment.PartTimeEdit',
 } as const;
+/**
+ * 兼职业务字段名 → 任职记录权限目录里的字段编码（只有开始日期不同：startDate 不是任职记录字段，按 effectiveDate 判，§7.2）。
+ * 路由的写权限载荷、审批适配器的快照（values / changedFields）与审批编辑的字段都经这一份映射，不各写一份。
+ */
+const PERMISSION_CODE: Readonly<Record<string, string>> = { startDate: 'effectiveDate' };
+export const partTimePermissionCode = (field: string): string => PERMISSION_CODE[field] ?? field;
+/** 权限编码 → 兼职业务字段名（审批编辑的入参反查）。 */
+export const partTimeBusinessField = (code: string): string =>
+  Object.entries(PERMISSION_CODE).find(([, mapped]) => mapped === code)?.[0] ?? code;
+export function partTimePermissionFields<T>(values: Readonly<Record<string, T>>): Record<string, T> {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [partTimePermissionCode(key), value]));
+}
+
 /** 可授编辑的兼职字段（申请字段编码 = 任职记录字段编码，PT-R4）。 */
 export const PART_TIME_FIELDS = ['partTimeType', 'endDate', 'requestRemark'] as const;
 /** 系统字段，只可授查看：原定结束日期（申请版本）、任职状态与视图归属（按期限链派生）。 */

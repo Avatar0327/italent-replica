@@ -6,6 +6,7 @@
  */
 import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
+import { createProfile } from './AC-PRM-support.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { ADAPTERS, mayMergeSeat } from '../../apps/api/src/modules/approval/adapters.js';
@@ -339,6 +340,8 @@ describe('真实授权器下的正常审批（P2-1：快照字段编码须是任
 
   it('有全部字段查看权 → 同意 200、节点推进；缺 effectiveDate 查看权 → 403 APPROVAL_BLIND_REVIEW 并转异常管理员', async () => {
     const { w, world, act } = await realWorld('real-approve');
+    // DEC-205：显式替代自动经理后备字段（部门负责人默认可见的字段），确保被测审批人确实没有 effectiveDate 查看权
+    await createProfile(world, 'department_manager_self_service');
     await grantVisibleFields(world, w.approvers.pHrbp.userId, ALL);
     await grantVisibleFields(
       world,

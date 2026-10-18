@@ -14,6 +14,8 @@ import {
   MODULE_OBJECTS,
   PROFILE_FORM_FIELDS,
   PART_TIME_ERRORS,
+  partTimeBusinessField,
+  partTimePermissionFields,
   tenantLocalDate,
 } from '@italent/domain';
 import type { ApprovalTypeCode } from '@italent/domain';
@@ -118,6 +120,8 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
     requestRemark: version.remark,
     ...custom,
   };
+  // 快照的表单值与变化字段都用任职记录权限目录里的编码（startDate → effectiveDate），否则盲审永远判不过
+  const permissionFields = partTimePermissionFields(content);
   const processCode = request.processCode ?? type.defaultProcessCode;
   return {
     approvalType,
@@ -129,7 +133,7 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
     // 标题不含个人数据（DEC-057，适配器清单 8），待办与列表原样展示也不泄露被隐藏的姓名
     title: `${type.name}申请`,
     values: {
-      ...content,
+      ...permissionFields,
       kind: request.requestType,
       // 主职信息分组：读员工当前主职，不存快照（R2d）
       primaryDepartmentId: primary?.fields.departmentId ?? null,
@@ -138,7 +142,7 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
       ...(await profileValues(tx, ctx, request.employeeId)),
     },
     originals: null,
-    changedFields: filledFields(content, Object.keys(content)),
+    changedFields: filledFields(permissionFields, Object.keys(permissionFields)),
     conditionValues: {
       processCode,
       'business.kind': request.requestType,
@@ -177,13 +181,14 @@ function patchOf(request: PartTimeRequestRow, fields: Readonly<Row>): AddRequest
     else if (key === 'partTimeType') patch.serviceType = value;
     else if (key === 'requestRemark') patch.remark = value;
     else if (key.startsWith('custom:')) customFields[key.slice('custom:'.length)] = value;
-    else if (key === 'startDate' && value === request.version.startDate) continue;
-    else if (key === 'startDate')
+    // 审批表单用权限编码（effectiveDate），业务字段名 startDate 本身不是表单字段
+    else if (key !== 'startDate' && partTimeBusinessField(key) === 'startDate') {
+      if (value === request.version.startDate) continue;
       throw new AppError('VALIDATION_FAILED', '兼职开始日期不能在审批中修改', {
         reason: PART_TIME_ERRORS.dateImmutable,
-        field: 'startDate',
+        field: key,
       });
-    else
+    } else
       throw new AppError('VALIDATION_FAILED', '该字段不能在兼职审批中编辑', {
         reason: PART_TIME_ERRORS.fieldNotEditable,
         field: key,
