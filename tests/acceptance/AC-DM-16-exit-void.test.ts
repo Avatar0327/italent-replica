@@ -7,6 +7,8 @@ import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
+import { withTenant } from '@italent/db';
+import { readCapacity } from '../../apps/api/src/modules/establishment/capacity-read.js';
 import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
@@ -31,9 +33,12 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
     expect(await x.stateOfBusiness(review.id)).toBe('voided');
     expect(await x.instanceOf(review.id)).toMatchObject({ id: instance.id, status: 'cancelled' });
     expect(await x.pendingTasks(instance.id)).toEqual([]);
-    expect(await x.notices(instance.id)).toEqual([
-      { recipient: x.session.user.id, template: 'application_voided_by_exit', kind: 'message' },
-    ]);
+    const applicant = await x.applicantAccount(x.employee.id);
+    expect(await x.notices(instance.id)).toEqual(
+      [x.session.user.id, applicant]
+        .sort()
+        .map((recipient) => ({ recipient, template: 'application_voided_by_exit', kind: 'message' })),
+    );
     expect(await x.instanceOf(leave.id)).toEqual(own);
     const [effect] = (await x.effects(leave.id)).filter((row) => row.kind === 'application_voided');
     expect(effect).toMatchObject({
@@ -75,7 +80,7 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
       });
     }
     const voided = (await x.effects(leave.id)).filter((row) => row.kind === 'application_voided');
-    expect(voided.map((row) => row.target_id)).toEqual([...ids].sort());
+    expect(voided.map((row) => row.target_id).sort()).toEqual([...ids].sort());
     // 没有审批实例的单据不挂站内消息，只写 outbox（A-7）
     expect(await x.outboxCount(ids[0]!, 'employment.business.voided_by_exit')).toBe(1);
   });
@@ -94,11 +99,12 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
       expect(await x.outboxCount(business.id, 'employment.transfer.voided_by_exit')).toBe(1);
     }
     expect(await x.instanceOf(rejected.id)).toMatchObject({ status: 'cancelled' });
-    expect(await x.notices(returned.id)).toHaveLength(1);
+    expect((await x.notices(returned.id)).map((row) => row.template)).toContain('application_voided_by_exit');
     expect(await x.instanceOf(draft.id)).toBeUndefined();
     const stateBefore = (await x.effects(leave.id))
       .filter((row) => row.kind === 'application_voided')
-      .map((row) => [row.target_id, (row.detail as { stateBefore: string }).stateBefore]);
+      .map((row) => [row.target_id, (row.detail as { stateBefore: string }).stateBefore])
+      .sort(([a], [b]) => String(a).localeCompare(String(b)));
     expect(stateBefore).toEqual(
       [
         [approved.id, 'approved'],
@@ -110,9 +116,9 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
 
   it('B-08 已批准且计划日 ≤ L 的调动先于离职落地（§5.0 队列），不被作废；晚于 L 的作废', async () => {
     const x = await world('b08', '2026-10-01');
+    const leave = await x.directLeave('2026-10-12');
     const earlier = await x.transferIn('approved', '2026-10-10');
     const later = await x.transferIn('approved', '2026-10-20');
-    const leave = await x.directLeave('2026-10-12');
     await expect(x.activate(leave.id, '2026-10-13')).rejects.toMatchObject({
       details: { reason: 'ACTIVATION_PREDECESSOR_PENDING' },
     });
@@ -134,8 +140,8 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
     const before = await x.stateOf(x.employee.id);
     const approve = await x.api.request('POST', `/api/tenant/approval/tasks/${task!.id}/approve`, {
       tenant: x.session.tenant.id,
-      user: x.session.user.id,
-      ifMatch: 1,
+      user: task!.userId,
+      ifMatch: (await x.instanceOf(review.id))!.revision,
       body: {},
     });
     expect(approve.status, await approve.clone().text()).toBe(409);
@@ -157,7 +163,7 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
         },
         { id: review.id, action: 'approve' },
       ),
-    ).resolves.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ code: 'CONFLICT', details: { state: 'voided' } });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 
@@ -187,6 +193,16 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
   });
 });
 
+/** 回退在执行日产生新的容量版本，所以按执行日读额度与细分（同 AC-TRF-48 的比较口径）。 */
+const amountsAt = (w: Awaited<ReturnType<typeof carriedWorld>>, date: string) =>
+  withTenant(database().db, w.session.tenant.id, async (tx) =>
+    (
+      await Promise.all(
+        [w.sourceCapacity, w.targetCapacity].map((id) => readCapacity(tx, w.session.tenant.id, id, date)),
+      )
+    ).map(({ localCapacity, reservedLocal, subdivisions }) => ({ localCapacity, reservedLocal, subdivisions })),
+  );
+
 /** 创建直接离职：有在途调动时第一次得到确认令牌（§8），带令牌再提交。 */
 async function acked(session: Awaited<ReturnType<typeof carriedWorld>>['session'], employeeId: string) {
   const create = async (exit?: object) =>
@@ -208,16 +224,16 @@ describe('AC-DM-14 B-12 带编调动被离职作废', () => {
     const w = await carriedWorld(database().db, 'b12');
     await installExitSeeds(database().db, w.session.tenant.id);
     const person = await w.hired();
-    const before = await w.capacities();
+    const before = await amountsAt(w, '2026-10-03');
     const saved = await w.save(person, { mode: 'application', submit: true, effectiveDate: '2026-10-20' });
     expect(saved.status, await saved.clone().text()).toBe(201);
     const transfer = (await saved.json()) as { id: string };
-    expect(await w.capacities()).not.toEqual(before);
+    expect(await amountsAt(w, '2026-10-03')).not.toEqual(before);
     const leave = await acked(w.session, person.employee.id);
     const activate = exitActivator(database().db, w.session);
     expect(await activate(leave.id, '2026-10-03')).toMatchObject({ outcome: 'effective' });
     expect((await w.business(transfer.id)).status).toBe('voided');
-    expect(await w.capacities()).toEqual(before);
+    expect(await amountsAt(w, '2026-10-03')).toEqual(before);
 
     // 超编分支：另一个员工占满调入部门后，回退带编分配会让调入部门超出严格编制
     const strict = await carriedWorld(database().db, 'b12-strict');
@@ -237,12 +253,12 @@ describe('AC-DM-14 B-12 带编调动被离职作废', () => {
       occupant.revision,
     );
     const strictLeave = await acked(strict.session, second.employee.id);
-    const snapshot = await strict.capacities();
+    const snapshot = await amountsAt(strict, '2026-10-03');
     expect(await exitActivator(database().db, strict.session)(strictLeave.id, '2026-10-03')).toMatchObject({
       outcome: 'failed',
       reason: 'ESTABLISHMENT_EXCEEDED',
     });
-    expect(await strict.capacities()).toEqual(snapshot);
+    expect(await amountsAt(strict, '2026-10-03')).toEqual(snapshot);
     expect(((await carried.json()) as { status?: string }).status ?? 'in_review').toBe('in_review');
   });
 });

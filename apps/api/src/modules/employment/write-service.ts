@@ -554,6 +554,8 @@ export async function appendEmploymentState(
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   state: EmploymentBusiness['status'],
+  /** 状态事件的附加说明（如被离职作废：{ reason: 'exit', exitBusinessId }），随审计与 outbox 记录。 */
+  meta?: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const before = business.eventNo ? business.state : null;
   await insertEmploymentRow(tx, 'employment_state_events', {
@@ -577,6 +579,8 @@ export async function appendEmploymentState(
     business.id,
     { state: before },
     { state },
+    undefined,
+    meta,
   );
 }
 

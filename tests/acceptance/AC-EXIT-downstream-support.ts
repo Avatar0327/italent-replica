@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { permissionUserPersonLinks, sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
+import { findCurrentRecord } from '../../apps/api/src/modules/employment/read-model.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { confirmExit } from '../../apps/api/src/modules/employment/exit-confirmation.js';
 import { appendLinkageVersion } from '../../apps/api/src/modules/transfer/linkage/store.js';
@@ -56,13 +57,13 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
 
   const instanceOf = async (businessId: string) =>
     (
-      await rows<{ id: string; status: string; initiator: string }>(sql`
-        SELECT id, status, initiator_user_id AS initiator FROM approval_instances
+      await rows<{ id: string; status: string; initiator: string; revision: number }>(sql`
+        SELECT id, status, initiator_user_id AS initiator, revision FROM approval_instances
         WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY created_at DESC LIMIT 1`)
     )[0];
   const pendingTasks = (instanceId: string) =>
-    rows<{ id: string }>(sql`SELECT id FROM approval_tasks WHERE tenant_id=${tenantId}
-      AND instance_id=${instanceId}::uuid AND status='pending'`);
+    rows<{ id: string; userId: string }>(sql`SELECT id, assignee_user_id AS "userId" FROM approval_tasks
+      WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND status='pending'`);
   const notices = (instanceId: string) =>
     rows<{ recipient: string; template: string; kind: string }>(sql`
       SELECT recipient_user_id AS recipient, template_code AS template, kind FROM approval_notifications
@@ -111,14 +112,13 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     );
     return employee;
   }
-  const managerOf = async (employeeId: string) =>
-    (
-      await rows<{ manager: string | null }>(sql`
-        SELECT r.direct_manager_id AS manager FROM employment_timeline t
-        JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-        WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}::uuid
-        ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1`)
-    )[0]!.manager;
+  /** 员工在 at 日的现行直线经理（读任职读模型，记录编辑不一定改 employment_records 原行）。 */
+  const managerOf = (employeeId: string, at = today) =>
+    withTenant(
+      db,
+      tenantId,
+      async (tx) => (await findCurrentRecord(tx, tenantId, employeeId, at))?.fields.directManagerId ?? null,
+    );
   /** 离职的职责转交计划（B3-3 前请求体不能带转交区块，造数直接写联动版本）。 */
   const planDuties = (leaveId: string, subordinates: { employeeId: string; receiverId: string }[]) =>
     withTenant(db, tenantId, (tx) =>
@@ -173,9 +173,16 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
       ),
     );
   const items = (leaveId: string) =>
-    rows<{ status: string; subordinate: string; receiver: string; effective: string; failure: string | null }>(sql`
+    rows<{
+      status: string;
+      subordinate: string;
+      receiver: string;
+      effective: string;
+      failure: string | null;
+      rule: string | null;
+    }>(sql`
       SELECT status, subordinate_id::text AS subordinate, receiver_id::text AS receiver,
-        effective_date::text AS effective, failure_code AS failure
+        effective_date::text AS effective, failure_code AS failure, failure_rule AS rule
       FROM transfer_linkage_items WHERE tenant_id=${tenantId} AND business_id=${leaveId}::uuid ORDER BY line_no`);
 
   // ---- 合同 ----

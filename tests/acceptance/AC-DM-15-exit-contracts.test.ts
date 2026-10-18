@@ -42,10 +42,11 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
     ];
     await setPostExitTypes(x, [kept]);
     const valid = await x.createContract(labor);
-    const future = await x.createContract(nda, { effectiveDate: '2026-12-01', endDate: '2027-11-30' });
+    const future = await x.createContract(nda, { effectiveDate: TODAY, endDate: '2027-10-05' });
     const old = await x.createContract(ended, { effectiveDate: '2025-01-01', endDate: '2026-09-30' });
     const retained = await x.createContract(kept);
     const leave = await x.directLeave('2026-10-05');
+    const untouched = (await x.contractRows()).filter((row) => [old.id, retained.id].includes(row.id));
 
     // B-8：生效前不动合同（Q-M0-100 取“生效时终止”）
     expect((await x.contractRows()).filter((row) => [valid.id, future.id, retained.id].includes(row.id))).toEqual(
@@ -56,8 +57,7 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
     const rows = new Map((await x.contractRows()).map((row) => [row.id, row]));
     expect(rows.get(valid.id)).toMatchObject({ status: 'terminated', actual: '2026-10-05', reason: 'exit' });
     expect(rows.get(future.id)).toMatchObject({ deleted: true });
-    expect(rows.get(old.id)).toMatchObject({ deleted: false, actual: null });
-    expect(rows.get(retained.id)).toMatchObject({ status: 'valid', actual: null });
+    expect([rows.get(old.id), rows.get(retained.id)].sort((a, b) => a!.id.localeCompare(b!.id))).toEqual(untouched);
     const effects = (await x.effects(leave.id)).filter((row) => row.kind.startsWith('contract_'));
     expect(effects.map((row) => [row.phase, row.kind, row.target_id])).toEqual(
       [
@@ -107,7 +107,8 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
     expect(
       (await x.effects(leave.id))
         .filter((row) => row.kind === 'contract_request_withdrawn')
-        .map((row) => row.target_id),
+        .map((row) => row.target_id)
+        .sort(),
     ).toEqual([later, earlier, approved].sort());
     for (const instance of instances.slice(0, 3))
       expect(await x.notices(instance!.id)).toEqual([
@@ -181,7 +182,9 @@ describe('B-74 F-014③：未生效离职与合同延期恢复（AC-CT-11 补例
     };
     const blocked = await edit();
     expect(blocked.status, await blocked.clone().text()).toBe(409);
-    expect(await blocked.json()).toMatchObject({ error: { details: { reason: 'CONTRACT_EMPLOYEE_DEPARTED' } } });
+    expect(await blocked.json()).toMatchObject({
+      error: { details: { errors: [{ details: { reason: 'CONTRACT_EMPLOYEE_DEPARTED' } }] } },
+    });
 
     // 撤销（作废）该离职后可以恢复
     await withTenant(database().db, x.session.tenant.id, (tx) =>

@@ -65,7 +65,7 @@ describe('AC-DM-17 business_effective：生效时（步骤 6）', () => {
     expect(await x.stateOfBusiness(leave.id)).toBe('effective');
     expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
     expect(await x.items(leave.id)).toEqual([
-      expect.objectContaining({ status: 'failed', failure: 'TRANSFER_PERSON_NOT_ELIGIBLE' }),
+      expect.objectContaining({ status: 'failed', rule: 'TRANSFER_PERSON_NOT_ELIGIBLE' }),
     ]);
     expect((await dutyEffects(x, leave.id)).map((row) => row.kind)).toEqual(['duty_failed']);
   });
