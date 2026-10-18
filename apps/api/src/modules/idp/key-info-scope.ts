@@ -15,6 +15,8 @@ export interface KeyInfoSpec {
   readonly table: string;
   /** 字段 → 列。 */
   readonly columns: Readonly<Record<string, string>>;
+  /** 只读的派生字段 → 查询表达式（不写库、不进审计快照）。 */
+  readonly derived?: Readonly<Record<string, string>>;
   /** 须在范围内的员工字段（第一个是审计归属）。 */
   readonly persons: readonly string[];
   /** 须在范围内的组织字段。 */
@@ -44,10 +46,23 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
     columns: {
       employeeId: 'employee_id',
       targetPositionId: 'target_position_id',
+      targetProfessionalLineId: 'target_professional_line_id',
+      targetLevelId: 'target_level_id',
+      targetPostId: 'target_post_id',
       strengths: 'strengths',
       developmentItems: 'development_items',
       intendedCity: 'intended_city',
       ...dated,
+      // 系统写入的快照列：只在新建时由 career-fields.ts 填，不在 plan-input 里出现
+      currentLevelId: 'current_level_id',
+      currentPositionId: 'current_position_id',
+      currentPostId: 'current_post_id',
+    },
+    // 职务显示名称（DEC-615 复刻取舍：原站列表显示编码，复刻显示名称）：取职务最新版本的名称
+    derived: {
+      currentPostName: `(SELECT v.name FROM job_post_versions v
+        WHERE v.tenant_id = idp_careers.tenant_id AND v.object_id = idp_careers.current_post_id
+        ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1)`,
     },
     persons: ['employeeId'],
     orgs: [],
@@ -100,8 +115,15 @@ const positionOrg = (position: SQL) => sql`(SELECT v.org_id FROM job_position_ve
   WHERE v.tenant_id = current_setting('app.tenant_id')::uuid AND v.object_id = ${position}
   ORDER BY v.version_no DESC LIMIT 1)`;
 
-/** 表列（无别名）。 */
-export const keyInfoColumn = (spec: KeyInfoSpec) => (field: string) => sql.raw(spec.columns[field]!);
+/**
+ * 表列，一律限定表名（FROM 子句不起别名）。范围子查询里有同名列（如人员范围的 managed.employee_id），裸列会被绑定成
+ * 内层列，谓词变成“内层列 = 内层列”而失去与外层记录的关联，范围外的记录就从列表漏出（F-185 第 1 轮 P2-1）。
+ */
+export const keyInfoColumn = (spec: KeyInfoSpec) => (field: string) => sql.raw(`${spec.table}.${spec.columns[field]!}`);
+
+/** 列表的范围谓词：IDP 模块内所有按表列做范围判断的读口都从这里取，不要在调用处自己拼裸列。 */
+export const keyInfoListScope = (scope: ModuleScope, spec: KeyInfoSpec): SQL =>
+  keyInfoScopeSql(scope, spec, keyInfoColumn(spec));
 
 /** 审计快照（jsonb）里的字段值。 */
 export const keyInfoSnapshot = (snapshot: SQL) => (field: string) => sql`NULLIF(${snapshot}->>${field}, '')::uuid`;

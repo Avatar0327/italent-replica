@@ -1,19 +1,21 @@
 {
-  "reason": "F-222：按 codex-F185b B1/B2 将 Offer 批量审批单 create@list、withdraw@detail 替换为 PartDisAgree@detail、AllDisAgree@detail；保持原三个 HR 标准身份，其他授权不变（DEC-404、DEC-439④）",
+  "reason": "F-185：职业发展新增发展条线 / 拟晋升职级 / 拟晋升职务（可编辑）与当前职级 / 职位 / 职务（系统只读）字段授权项，IDP 管理员得 view / edit，IDP 经理只得 view（DEC-543、DEC-615、DEC-404、DEC-439④）",
   "add": [
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail"
+    "standard_idp_admin/IDP.Career/field:currentLevelId:view",
+    "standard_idp_admin/IDP.Career/field:currentPositionId:view",
+    "standard_idp_admin/IDP.Career/field:currentPostId:view",
+    "standard_idp_admin/IDP.Career/field:targetLevelId:edit",
+    "standard_idp_admin/IDP.Career/field:targetLevelId:view",
+    "standard_idp_admin/IDP.Career/field:targetPostId:edit",
+    "standard_idp_admin/IDP.Career/field:targetPostId:view",
+    "standard_idp_admin/IDP.Career/field:targetProfessionalLineId:edit",
+    "standard_idp_admin/IDP.Career/field:targetProfessionalLineId:view",
+    "standard_idp_manager/IDP.Career/field:currentLevelId:view",
+    "standard_idp_manager/IDP.Career/field:currentPositionId:view",
+    "standard_idp_manager/IDP.Career/field:currentPostId:view",
+    "standard_idp_manager/IDP.Career/field:targetLevelId:view",
+    "standard_idp_manager/IDP.Career/field:targetPostId:view",
+    "standard_idp_manager/IDP.Career/field:targetProfessionalLineId:view"
   ],
-  "remove": [
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:withdraw@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:withdraw@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:withdraw@detail"
-  ]
+  "remove": []
 }

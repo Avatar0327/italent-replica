@@ -201,6 +201,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       24: '0c846449a622c96a',
       // F-222：Offer 批量审批单按 codex-F185b B1/B2 替换为两个详情页不同意按钮（版本占位，合并时按 main + 1 定号）
       25: '53f228cbbebfe6a7',
+      // F-185（DEC-543 / DEC-615）：职业发展新增发展条线 / 拟晋升职级 / 拟晋升职务与当前职级 / 职位 / 职务字段授权项（版本占位，合并时按 main + 1 定号）
+      26: '60e4577cfd28309e',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
