@@ -1367,6 +1367,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
   ],
   'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit': [
+    '#registerPreRelease',
+    'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-confirmation.ts#registerPreRelease': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#confirmedHooks',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -1413,6 +1419,11 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#TIMING_OF',
+    'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#BUTTON': ['packages/domain/src/employment/exit.ts#EXIT_BUTTONS'],
   'apps/api/src/modules/employment/exit-gate.ts#assertDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
@@ -1530,9 +1541,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit.ts#EXIT_MANAGER_INITIATION_KEY',
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
-  'apps/api/src/modules/employment/exit-preview.ts#VOIDABLE_KINDS': [
-    'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
-  ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
@@ -1540,9 +1548,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#overdueTransferBlocker',
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
-    '#OPEN_STATES',
-    '#VOIDABLE_KINDS',
     '#asRows',
+    'apps/api/src/modules/employment/exit-void-applications.ts#OPEN_STATES',
+    'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#CONTAINER': ['#independent'],
@@ -1743,6 +1751,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
+    'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
