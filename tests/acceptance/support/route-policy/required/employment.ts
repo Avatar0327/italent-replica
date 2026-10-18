@@ -1441,8 +1441,14 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.scope',
       [],
       [
-        at(PART_TIME, 'POST', '/employees/:id/part-times', 'requireEmploymentScope(ctx, id, body.fields.departmentId)'),
-        EMPLOYMENT_SCOPE,
+        at(
+          PART_TIME,
+          'POST',
+          '/employees/:id/part-times',
+          "const ctx = await readContext(c, deps, 'object.create', 0, id)",
+        ),
+        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
+        EMPLOYEE_IN_SCOPE,
       ],
     ),
     directOperation(
