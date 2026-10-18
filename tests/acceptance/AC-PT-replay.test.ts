@@ -183,15 +183,27 @@ describe('AC-PT-replay PT-3b：直接新增兼职的命令重放（PB-64～69）
   });
 
   it.each([
-    ['PB-67 撤掉兼职部门范围（只剩主职部门）', 404, (x: Awaited<ReturnType<typeof replayWorld>>) => {
-      x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id);
-    }],
-    ['PB-67 数据范围收为空', 404, (x: Awaited<ReturnType<typeof replayWorld>>) => {
-      x.rights.emptyScope = true;
-    }],
-    ['PB-68 撤掉 Employment.PartTime 按钮', 403, (x: Awaited<ReturnType<typeof replayWorld>>) => {
-      x.rights.deny = denyButton('Employment.PartTime');
-    }],
+    [
+      'PB-67 撤掉兼职部门范围（只剩主职部门）',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id);
+      },
+    ],
+    [
+      'PB-67 数据范围收为空',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.emptyScope = true;
+      },
+    ],
+    [
+      'PB-68 撤掉 Employment.PartTime 按钮',
+      403,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.deny = denyButton('Employment.PartTime');
+      },
+    ],
   ] as const)('%s：同键重放被拒（%s），不返回台账里的原响应，业务与审计不变', async (_name, status, revoke) => {
     const x = await replayWorld(`replay-http-revoked-${status}`);
     const key = randomUUID();

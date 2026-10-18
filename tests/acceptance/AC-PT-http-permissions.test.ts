@@ -24,12 +24,12 @@ describe('§7.2 预览 / 直接新增', () => {
     expect(await w.writes()).toEqual(before);
     // 只有申请按钮（Employment.PartTimeApproval）不能直接新增
     const onlyApplication = restricted({ deny: denyButton('Employment.PartTime') });
-    expect((await w.as(onlyApplication)('POST', `/employees/${w.employeeId}/part-times`, { body: w.body() })).status).toBe(
-      403,
-    );
+    expect(
+      (await w.as(onlyApplication)('POST', `/employees/${w.employeeId}/part-times`, { body: w.body() })).status,
+    ).toBe(403);
   });
 
-  it('预览：Employment.PartTime 或 Employment.PartTimeApproval 任一即可，两项都无 → 403；缺对象查看权 → 403', async () => {
+  it('预览：Employment.PartTime 或 Employment.PartTimeApproval 任一即可，两项都无 → 403；缺对象新增权 → 403', async () => {
     const w = await world('perm-preview-buttons');
     const preview = (deny: (request: Request) => boolean) =>
       w.as(restricted({ deny }))('POST', `/employees/${w.employeeId}/part-times/preview`, {
@@ -40,7 +40,7 @@ describe('§7.2 预览 / 直接新增', () => {
     expect((await preview(noDirect)).status).toBe(200);
     expect((await preview(noApplication)).status).toBe(200);
     expect((await preview((r) => noDirect(r) || noApplication(r))).status).toBe(403);
-    expect((await preview(denyAction('object.view'))).status).toBe(403);
+    expect((await preview(denyAction('object.create'))).status).toBe(403);
   });
 
   it('员工不在数据范围（按主职）→ 404；兼职部门不在范围 → 404；两处都在范围才放行', async () => {
@@ -54,7 +54,13 @@ describe('§7.2 预览 / 直接新增', () => {
     expect((await attempt(w.partTimeOrg.id)).status).toBe(404);
     // 员工在范围内，但兼职部门 B 不在范围（PT-R3 默认开，A-6）
     expect((await attempt(w.primaryOrg.id)).status).toBe(404);
-    expect((await w.as(restricted({ scope: EMPTY_SCOPE }))('POST', `/employees/${w.employeeId}/part-times`, { body: w.body() })).status).toBe(404);
+    expect(
+      (
+        await w.as(restricted({ scope: EMPTY_SCOPE }))('POST', `/employees/${w.employeeId}/part-times`, {
+          body: w.body(),
+        })
+      ).status,
+    ).toBe(404);
     expect(await w.writes()).toEqual(before);
     expect((await attempt(w.primaryOrg.id, w.partTimeOrg.id)).status).toBe(201);
   });
@@ -87,11 +93,12 @@ describe('§7.2 预览 / 直接新增', () => {
 describe('§7.2 视图 / 详情 / 员工页签', () => {
   async function seeded(label: string) {
     const w = await world(label);
-    const created = await w.ok(await w.post({ endDate: '2026-12-31', fields: { directManagerId: w.employeeId } }), 201);
+    const manager = await w.colleague('直线经理');
+    const created = await w.ok(await w.post({ endDate: '2026-12-31', fields: { directManagerId: manager.id } }), 201);
     const other = await w.org(`无关部门${label}`, { establishedOn: '2024-01-01' });
     const read = (orgIds: string[], fields?: string[]) =>
       w.as(restricted({ scope: w.scopeOf(...orgIds), ...(fields ? { fields } : {}) }));
-    return { w, created, other, read };
+    return { w, created, other, read, manager };
   }
 
   it('DEC-177：只管兼职部门 B 的 HR（主职在 A）能看到该兼职；只管主职部门 A 的 HR 也能看到', async () => {
@@ -128,17 +135,18 @@ describe('§7.2 视图 / 详情 / 员工页签', () => {
   });
 
   it('响应逐层裁剪：无权查看的字段缺席（直线经理 / 结束日期 / 任职状态），有权字段保留', async () => {
-    const { w, created, read } = await seeded('perm-read-trim');
+    const { w, created, read, manager } = await seeded('perm-read-trim');
     const visible = ['employeeId', 'kind', 'serviceType', 'effectiveDate', 'departmentId'];
     const trimmed = await w.ok(await read([w.partTimeOrg.id], visible)('GET', `/part-times/${created.id}`));
     expect(trimmed).toMatchObject({ employeeId: w.employeeId, effectiveDate: '2026-09-01' });
     expect(trimmed.fields).toEqual({ departmentId: w.partTimeOrg.id });
-    for (const hidden of ['endDate', 'serviceStatus', 'partTimeView'] as const) expect(trimmed).not.toHaveProperty(hidden);
+    for (const hidden of ['endDate', 'serviceStatus', 'partTimeView'] as const)
+      expect(trimmed).not.toHaveProperty(hidden);
     const list = await w.ok(await read([w.partTimeOrg.id], visible)('GET', `/employees/${w.employeeId}/part-times`));
-    expect(list.items[0].fields).toEqual({ departmentId: w.partTimeOrg.id });
+    expect(list.items[0]!.fields).toEqual({ departmentId: w.partTimeOrg.id });
     expect(list.items[0]).not.toHaveProperty('endDate');
     const everything = await w.ok(await w.one(created.id));
-    expect(everything.fields.directManagerId).toBe(w.employeeId);
+    expect(everything.fields.directManagerId).toBe(manager.id);
     expect(everything.endDate).toBe('2026-12-31');
   });
 });

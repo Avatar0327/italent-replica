@@ -56,7 +56,12 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
   it.each([
     ['PB-14 过去开始 + 过去结束', { startDate: '2026-08-01', endDate: '2026-08-31' }, 'ended', ['ended', 'all']],
     ['PB-15 未来开始', { startDate: '2026-11-01', endDate: '2026-12-31' }, 'serving', ['not_started', 'all']],
-    ['PB-16 当天开始当天结束', { startDate: '2026-10-01', endDate: '2026-10-01' }, 'serving', ['ongoing', 'expiring', 'all']],
+    [
+      'PB-16 当天开始当天结束',
+      { startDate: '2026-10-01', endDate: '2026-10-01' },
+      'serving',
+      ['ongoing', 'expiring', 'all'],
+    ],
   ] as const)('%s：保存即按租户今天派生任职状态与视图归属', async (_name, patch, status, views) => {
     const w = await world('http-create-derived');
     const created = await w.ok(await w.post(patch), 201);
@@ -91,7 +96,11 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
     const before = await w.writes();
     for (const fields of [{ isDepartmentHead: true }, { addedSubordinateIds: [randomUUID()] }]) {
       const failed = await w.refusal(await w.post({ fields }));
-      expect(failed).toMatchObject({ status: 400, code: 'VALIDATION_FAILED', reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE' });
+      expect(failed).toMatchObject({
+        status: 400,
+        code: 'VALIDATION_FAILED',
+        reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
+      });
     }
     const preview = await w.refusal(await w.preview({ fields: { isDepartmentHead: true } }));
     expect(preview.reason).toBe('PART_TIME_LINKAGE_NOT_AVAILABLE');
@@ -117,9 +126,9 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
       const failed = await w.refusal(await w.post(patch));
       expect(failed, name).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
     }
-    expect((await w.refusal(await w.request('POST', `/employees/${randomUUID()}/part-times`, { body: w.body() }))).status).toBe(
-      404,
-    );
+    expect(
+      (await w.refusal(await w.request('POST', `/employees/${randomUUID()}/part-times`, { body: w.body() }))).status,
+    ).toBe(404);
     expect(
       (await w.refusal(await w.request('POST', '/employees/not-a-uuid/part-times', { body: w.body() }))).status,
     ).toBe(400);
@@ -159,21 +168,15 @@ describe('未开放的入口仍是 404（开闸表 PT-3b，§13.1）', () => {
 describe('POST employees/:id/part-times/preview 预览（不写）', () => {
   async function headedWorld(label: string) {
     const w = await world(label);
-    const head = await w.employee('兼职部门负责人');
-    await w.business(
-      head.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { departmentId: w.primaryOrg.id } },
-      head.revision,
-    );
-    const headed = await w.org(`有负责人的兼职部门${uniqueSuffix()}`, {
-      establishedOn: '2024-01-01',
-      personInChargeId: head.id,
-    });
+    const head = await w.colleague('兼职部门负责人');
+    const headed = await w.org(`有负责人的兼职部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    await w.setOrgHead(headed.id, head.id);
     return { w, head, headed };
   }
 
   it('带出默认值：直线经理 = 兼职部门负责人；显式给的值不被覆盖；不带出职位（B-6）；预览前后无写入', async () => {
     const { w, head, headed } = await headedWorld('http-preview-defaults');
+    const other = await w.colleague('显式指定的经理');
     const before = await w.writes();
     const preview = await w.ok(await w.preview({ fields: { departmentId: headed.id } }));
     expect(preview).toMatchObject({
@@ -182,8 +185,8 @@ describe('POST employees/:id/part-times/preview 预览（不写）', () => {
       endDate: null,
       fields: { departmentId: headed.id, directManagerId: head.id, positionId: null, jobNumber: expect.any(String) },
     });
-    const explicit = await w.ok(await w.preview({ fields: { departmentId: headed.id, directManagerId: w.employeeId } }));
-    expect(explicit.fields.directManagerId).toBe(w.employeeId);
+    const explicit = await w.ok(await w.preview({ fields: { departmentId: headed.id, directManagerId: other.id } }));
+    expect(explicit.fields.directManagerId).toBe(other.id);
     // 部门没有负责人：不沿行政上级找，直线经理留空（只带出“该部门”的负责人）
     const none = await w.ok(await w.preview());
     expect(none.fields.directManagerId).toBeNull();
@@ -209,7 +212,9 @@ describe('POST employees/:id/part-times/preview 预览（不写）', () => {
       postId: post.id,
       sequenceId: sequence.id,
     });
-    expect((await w.ok(await w.preview({ fields: { postId: post.id, sequenceId: null } }))).fields.sequenceId).toBeNull();
+    expect(
+      (await w.ok(await w.preview({ fields: { postId: post.id, sequenceId: null } }))).fields.sequenceId,
+    ).toBeNull();
     expect((await w.ok(await w.preview({ fields: { postId: bare.id } }))).fields.sequenceId).toBeNull();
   });
 

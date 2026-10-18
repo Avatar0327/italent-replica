@@ -65,7 +65,7 @@ describe('importChainTo：沿静态依赖图找 index.ts / @italent/api', () => 
           "import { createApp } from '../apps/api/src/app.js';",
           "import type { Api } from '../apps/api/src/index.js';",
           "// import '../apps/api/src/index.js'",
-          "const note = \"from '../apps/api/src/index.js'\";",
+          'const note = "from \'../apps/api/src/index.js\'";',
         ].join('\n'),
         [`${ROOT}/app.ts`]: "import './app.js'; import './loop.js';",
         [`${ROOT}/loop.ts`]: "import './app.js';",

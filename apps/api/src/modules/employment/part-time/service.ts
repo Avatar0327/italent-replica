@@ -14,8 +14,10 @@ import {
   type PartTimeServiceType,
 } from '@italent/domain';
 import { auditEmployment, requireEmployeeInScope, requireScopedEmploymentObject } from '../context.js';
-import { lockEmploymentEmployee } from '../record-store.js';
-import type { EmploymentContext } from '../types.js';
+import { sequenceForNewPost } from '../field-derivations.js';
+import { lockEmploymentEmployee, readEmploymentEmployee } from '../record-store.js';
+import { loadOrgSnapshot } from '../../org/read-model.js';
+import type { EmploymentContext, PresetFields } from '../types.js';
 import { assertPartTimeWithinCycle } from './boundary.js';
 import { insertPartTimeRecord } from './store.js';
 import {
@@ -112,6 +114,71 @@ export async function createPartTime(
     revision: 1,
     serviceStatus: partTimeServiceStatus(span, today),
     views: partTimeViews(span, today),
+    warnings,
+  };
+}
+
+export interface PartTimePreview {
+  readonly partTimeType: PartTimeServiceType;
+  readonly effectiveDate: string;
+  readonly endDate: string | null;
+  /** 带出默认值后的预置字段整组（含系统派生的 jobNumber / employType）。 */
+  readonly fields: PresetFields;
+  readonly warnings: readonly string[];
+}
+
+/** 兼职部门在开始日的负责人（Q-M0-121④“自动带出直线经理（该部门负责人）”）：只取该部门自己的，不沿行政上级找。 */
+async function departmentHeadOn(tx: Tx, tenantId: string, departmentId: string, date: string) {
+  const [org] = await loadOrgSnapshot(tx, tenantId, date, undefined, { id: departmentId, includeDisabled: false });
+  return org?.personInChargeId ?? null;
+}
+
+/**
+ * 新增兼职预览（§4.1 / §4.2，PT-3b）：与 createPartTime 同一套范围与校验（外派唯一、周期边界、引用、自定义字段），
+ * 通过后带出默认值，不写库、不取员工行锁（预览只读，一致性由事务快照保证）。
+ * 带出规则：直线经理 = 兼职部门在开始日的负责人；职务序列按 DEC-107（sequenceForNewPost）；**不带出职位**
+ * （“自动带出职位”的取值规则未验证，B-6 / U-7，取最保守做法）。请求里显式给出的字段（含显式 null）优先，不被覆盖。
+ * 默认值只作建议：保存时 HR 提交的值仍走 createPartTime 的引用校验。
+ */
+export async function previewPartTime(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: CreatePartTimeInput,
+): Promise<PartTimePreview> {
+  const normalized = normalizeNewPartTime(input);
+  const employee = await readEmploymentEmployee(tx, ctx, normalized.employeeId);
+  await requireEmployeeInScope(tx, ctx, employee.id);
+  await requireScopedEmploymentObject(tx, ctx, employee.id, normalized.departmentId);
+  const { cycle, warnings } = await assertPartTimeWithinCycle(tx, ctx, {
+    employeeId: employee.id,
+    startDate: normalized.startDate,
+    endDate: normalized.endDate,
+  });
+  await assertExclusiveTypeFree(tx, ctx, normalized);
+  const derived = { jobNumber: employee.code, employType: cycle.employType as never };
+  await validatePartTimeReferences(tx, ctx, normalized, partTimePresetFields(normalized, derived));
+  await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
+  const given = (key: 'directManagerId' | 'sequenceId') => Object.hasOwn(input, key);
+  const defaults = {
+    ...(given('directManagerId')
+      ? {}
+      : { directManagerId: await departmentHeadOn(tx, ctx.tenantId, normalized.departmentId, normalized.startDate) }),
+    ...(given('sequenceId') || !normalized.fields.postId
+      ? {}
+      : {
+          sequenceId: await sequenceForNewPost(
+            tx,
+            ctx.tenantId,
+            { postId: normalized.fields.postId },
+            normalized.startDate,
+          ),
+        }),
+  };
+  return {
+    partTimeType: normalized.serviceType,
+    effectiveDate: normalized.startDate,
+    endDate: normalized.endDate,
+    fields: partTimePresetFields({ ...normalized, fields: { ...normalized.fields, ...defaults } }, derived),
     warnings,
   };
 }

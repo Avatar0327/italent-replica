@@ -82,6 +82,8 @@ export function importChainTo(entry: string, target: ImportTarget, host: SourceH
 /** 目录下哪些文件直接引用了 target（解析后等于 target）；用于“只被某个文件引用”的守卫。 */
 export function directImporters(files: readonly string[], target: string, host: SourceHost = fileSystemHost): string[] {
   return files.filter((file) =>
-    runtimeSpecifiers(file, host.read(file) ?? '').some((specifier) => resolveRelative(file, specifier, host) === target),
+    runtimeSpecifiers(file, host.read(file) ?? '').some(
+      (specifier) => resolveRelative(file, specifier, host) === target,
+    ),
   );
 }

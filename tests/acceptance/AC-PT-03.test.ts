@@ -54,7 +54,10 @@ describe('AC-PT-03 HTTP 版（PT-3b，GET part-times/:recordId 读取时派生�
     });
     const before = await w.writes();
     w.setNow(at('2026-11-01'));
-    expect(await w.ok(await w.one(created.id))).toMatchObject({ serviceStatus: 'ended', partTimeView: ['ended', 'all'] });
+    expect(await w.ok(await w.one(created.id))).toMatchObject({
+      serviceStatus: 'ended',
+      partTimeView: ['ended', 'all'],
+    });
     expect((await w.ok(await w.list())).items[0]).toMatchObject({ id: created.id, serviceStatus: 'ended' });
     expect(await w.writes()).toEqual(before);
     expect(await w.terms(created.id)).toHaveLength(1);

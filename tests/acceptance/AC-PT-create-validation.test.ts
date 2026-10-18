@@ -252,7 +252,7 @@ describe('writes() 写入指纹覆盖载荷 / 状态事件 / 申请表（PT-3a �
     });
     expect(await w.writes()).toEqual(after);
     // 只写载荷表（不动记录 / 期限 / 审计）也必须被指纹发现：旧指纹看不到这类写入
-    await w.moveSnapshot((await w.seedPartTime({ endDate: null })), w.primaryOrg.id);
+    await w.moveSnapshot(await w.seedPartTime({ endDate: null }), w.primaryOrg.id);
     expect((await w.writes())!.payloads).toBe(Number(after!.payloads) + 2);
   });
 });
