@@ -6,10 +6,14 @@
  * - AC-PB-02：审批通过后 HR 把意见改为提前转正 → 不补生成（PB-R6）；审批中不能走 HR 修改入口；
  * - 不同意 / 驳回 / 撤回回写考核状态；生成被拒（如试用结果字典项被停用）时整次审批回滚，考核仍在审批中。
  */
+import { randomUUID } from 'node:crypto';
+import { withTenant } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
 import { assessmentWorld, reasonOf } from './AC-PB-BE15b1-support.js';
+import type { RegularizationReceipt } from './AC-PB-support.js';
 
 const testDb = useTestDb();
 const presetOf = (type: string) => PRESET_PROCESSES.find((p) => p.approvalType === type)!;
@@ -186,7 +190,7 @@ describe('AC-PB-02 审批后改意见不补生成（PB-R6）', () => {
 });
 
 describe('审批结果回写考核状态', () => {
-  it('经理不同意 → 不通过，不生成转正记录；经理驳回 → 已驳回；发起人撤回 → 已作废', async () => {
+  it('经理不同意 → 不通过，不生成转正记录；经理驳回 → 已驳回；预置不开放发起人撤回（PB-R15），作废由适配器回写', async () => {
     const w = await assessmentWorld(testDb().db, 'pb-status');
     const refused = await w.probationer('不同意');
     const refusedId = await w.launch('regularization', refused);
@@ -200,12 +204,62 @@ describe('审批结果回写考核状态', () => {
     await w.decide(rejectedId, w.manager, 'reject');
     expect((await w.get(rejectedId)).status).toBe('rejected');
 
+    // PB-R15：撤销只对转正申请、不对考核流程——预置节点关闭发起人撤回，发起人调撤回被拒
     const withdrawn = await w.probationer('撤回');
     const withdrawnId = await w.launch('probation', withdrawn);
     const view = await w.instance(withdrawnId);
-    const response = await w.instanceAction(w.hr.id, view.id, 'withdraw', view.revision, {});
-    expect(response.status, await response.clone().text()).toBe(200);
+    const denied = await w.instanceAction(w.hr.id, view.id, 'withdraw', view.revision, {});
+    expect(denied.status).toBeGreaterThanOrEqual(400);
+    expect((await w.get(withdrawnId)).status).toBe('in_review');
+    // 审批中心以其他方式结束实例（管理员撤回 / 作废）时回写“已作废”：直接走适配器回调
+    await withTenant(testDb().db, w.tenant.id, async (tx) => {
+      await ADAPTERS.probation_assessment.withdrawn(
+        tx,
+        {
+          tenantId: w.tenant.id,
+          userId: w.hr.id,
+          timezone: 'Asia/Shanghai',
+          now: w.clock(),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
+        withdrawnId,
+      );
+    });
     expect((await w.get(withdrawnId)).status).toBe('cancelled');
+  });
+
+  it('被驳回的考核可由发起人沿原审批实例同单重提（回到审批中，重判 PB-R9）；其他状态不能重提', async () => {
+    const w = await assessmentWorld(testDb().db, 'pb-resubmit');
+    const person = await w.probationer('驳回后重提');
+    const id = await w.launch('probation', person);
+    await w.decide(id, person, 'approve', { selfEvaluation: '自评' });
+    await w.decide(id, w.manager, 'reject');
+    expect((await w.get(id)).status).toBe('rejected');
+    // 驳回期间别的流程已在审批中：重提像首次发起一样被互斥拦下，考核仍是已驳回
+    const apply = await w.json<RegularizationReceipt>(await w.regularizeRaw(person, 'application'));
+    expect(apply.items[0], JSON.stringify(apply)).toMatchObject({ status: 'succeeded' });
+    const view = await w.instance(id);
+    const blocked = await w.instanceAction(w.hr.id, view.id, 'resubmit', view.revision);
+    expect(await reasonOf(blocked)).toMatchObject({ status: 409, reason: 'PROBATION_PROCESS_IN_REVIEW' });
+    expect((await w.get(id)).status).toBe('rejected');
+  });
+
+  it('驳回后没有别的在途流程：重提回到审批中，重新走员工自评 → 经理评价', async () => {
+    const w = await assessmentWorld(testDb().db, 'pb-resubmit-ok');
+    const person = await w.probationer('重提成功');
+    const id = await w.launch('regularization', person);
+    await w.decide(id, person, 'approve', { selfEvaluation: '自评' });
+    await w.decide(id, w.manager, 'reject');
+    const view = await w.instance(id);
+    const response = await w.instanceAction(w.hr.id, view.id, 'resubmit', view.revision);
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await w.get(id)).status).toBe('in_review');
+    await w.complete(id, person, { managerRating: 'meets', regularizationOpinion: 'normal' });
+    expect(await w.get(id)).toMatchObject({ status: 'approved' });
+    // 已通过的考核不能重提
+    const done = await w.instance(id);
+    expect((await w.instanceAction(w.hr.id, done.id, 'resubmit', done.revision)).status).toBeGreaterThanOrEqual(400);
   });
 
   it('生成转正记录被拒（试用结果“提前转正”被停用）：整次审批回滚，考核仍在审批中，处理后可重新审批', async () => {

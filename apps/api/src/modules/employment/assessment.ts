@@ -165,7 +165,7 @@ export async function createAssessments(tx: Tx, ctx: EmploymentContext, input: A
 }
 
 /** 合并后的跨字段校验：提前 / 延期转正须有转正日期（PB-R4 / R5）。 */
-function mergedPatch(row: AssessmentRow, patch: AssessmentPatch) {
+export function mergedPatch(row: AssessmentRow, patch: AssessmentPatch) {
   const merged = {
     type: row.assessmentType as AssessmentType,
     opinion: patch.regularizationOpinion === undefined ? row.regularizationOpinion : patch.regularizationOpinion,

@@ -252,9 +252,9 @@ const OFFER_PRESETS: readonly PresetProcess[] = [
  * 两个节点都开 “编辑并同意”（审批中可编辑，同意按钮关联编辑）：员工节点只开放自评，经理节点开放评价、转正意见与
  * 转正日期。考核结论决定转正与否，属敏感信息且有重大影响（DEC-332①），经理评价节点显式 avoidSelf = true；员工自评节点
  * 的审批人就是考核对象本人，本就由本人处理，avoidSelf = false（同 IDP 预置的填写节点，K-37）。员工节点不提供驳回
- * （填写节点），经理节点有驳回与“不同意”（不通过，流程结束）。
+ * （填写节点），经理节点有驳回与“不同意”（不通过，流程结束）。发起人撤回关闭：撤销只对转正申请、不对考核流程（PB-R15）。
  */
-const ASSESSMENT_ACTIONS = { ...PRESET_ACTIONS, avoidSubjects: false } as const;
+const ASSESSMENT_ACTIONS = { ...PRESET_ACTIONS, avoidSubjects: false, revoke: false } as const;
 const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   ['probation_assessment', 'regularization_assessment'] as const
 ).map((approvalType): PresetProcess => ({

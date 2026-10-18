@@ -4,7 +4,7 @@
  * - 快照：流程主体 = 考核对象本人（员工自评节点取 assessment_employee，经理评价节点取其直接上级 direct_manager），
  *   路由部门 = 创建时的主职部门；标题不含个人数据；表单即考核字段，审批中编辑按节点可编辑字段放行；
  * - 结果回写考核状态：通过 → 审批通过（并按审批时的转正意见生成转正任职记录，PB-R4 / R5）、不同意 → 不通过、
- *   驳回 → 已驳回、撤回 → 已作废；审批侧同单重提不开放（驳回后请重新发起，PR 假设）；
+ *   驳回 → 已驳回、撤回 → 已作废；被驳回的考核可由发起人沿原审批实例同单重提（DEC-103），回到审批中并重判 PB-R9；
  * - PB-R6：生成只发生在 approved 回调里，且只读该时刻考核记录上的意见；之后改意见不补生成（updateAssessment）。
  * 取锁顺序：员工 → 考核记录（与发起入口“员工 → 新考核”一致）→ 审批实例。
  */
@@ -20,16 +20,13 @@ import {
 import { AppError } from '../../errors.js';
 import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js';
 import { rowsOf, type ApprovalContext } from '../approval/context.js';
-import { applyApprovalEdit } from './assessment.js';
+import { applyApprovalEdit, mergedPatch, parseAssessmentPatch } from './assessment.js';
 import { loadAssessment, saveAssessment, type AssessmentRow } from './assessment-store.js';
+import { assertProbationProcessesIdle } from './probation-guard.js';
 import { createRegularizationBusiness } from './regularization.js';
 import { findCurrentRecord } from './read-model.js';
 import { lockEmploymentEmployee } from './record-store.js';
 import type { EmploymentContext } from './types.js';
-
-const RESUBMIT = () => {
-  throw new AppError('CONFLICT', '考核被驳回后请重新发起', { reason: 'APPROVAL_RESUBMIT_VIA_BUSINESS' });
-};
 
 const approvalTypeOf = (row: AssessmentRow): ApprovalTypeCode =>
   row.assessmentType === 'probation' ? 'probation_assessment' : 'regularization_assessment';
@@ -135,6 +132,22 @@ const settle =
     if (row.status === 'in_review') await saveAssessment(tx, ctx as EmploymentContext, row, { status }, status);
   };
 
+/**
+ * 审批侧同单重提（DEC-099 / DEC-103）：只有被驳回的考核可重提；修正（审批节点可编辑的字段）追加到考核记录；
+ * 重提像首次发起一样重判 PB-R9——驳回期间可能已发起了别的转正 / 考核流程。
+ */
+async function resubmit(tx: Tx, ctx: ApprovalContext, id: string, corrections: Readonly<Record<string, unknown>>) {
+  const row = await lockBoth(tx, ctx, id);
+  if (row.status !== 'rejected')
+    throw new AppError('CONFLICT', '只有被驳回的考核可以重新提交', { reason: 'ASSESSMENT_NOT_REJECTED' });
+  await assertProbationProcessesIdle(tx, ctx as EmploymentContext, {
+    employeeId: row.employeeId,
+    action: row.assessmentType === 'probation' ? 'assess_probation' : 'assess_regularization',
+  });
+  const patch = Object.keys(corrections).length ? mergedPatch(row, parseAssessmentPatch(corrections)) : {};
+  await saveAssessment(tx, ctx as EmploymentContext, row, { ...patch, status: 'in_review' }, 'resubmit');
+}
+
 export const assessmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, id) {
     await lockBoth(tx, ctx, id);
@@ -144,7 +157,7 @@ export const assessmentAdapter: BusinessAdapter = {
   rejected: settle('rejected'),
   disapproved: settle('disapproved'),
   withdrawn: settle('cancelled'),
-  resubmit: RESUBMIT,
+  resubmit,
   async edit(tx, ctx, id, fields) {
     await applyApprovalEdit(tx, ctx as EmploymentContext, id, fields);
   },
