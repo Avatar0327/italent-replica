@@ -215,6 +215,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/org-hierarchy.ts#ORG_DIMENSIONS',
   ],
   'apps/api/src/modules/permission/employment-replay.ts#FOOTPRINT_TYPES': [
+    'apps/api/src/modules/employment/assessment-store.ts#ASSESSMENT_AUDIT_TYPE',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/permission/employment-replay.ts#assertScope': [

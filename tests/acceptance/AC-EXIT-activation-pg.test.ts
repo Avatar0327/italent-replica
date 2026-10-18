@@ -120,8 +120,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
       expect(await x.pendingTasks(instance.id)).toEqual([]);
       // 调动先同意：调动已批准，随后被离职作废（approved 候选）；离职先生效：调动审批已取消，同意被拒（409），不能把已作废的单批准
       const transferResponse = (settled[order === '离职先' ? 1 : 0] as PromiseFulfilledResult<unknown>).value;
-      if (order === '离职先') expect((transferResponse as Response).status).toBe(409);
-      else expect((transferResponse as Response).status).toBe(200);
+      if (order === '离职先') {
+        // 具体业务拒绝：审批实例已被离职取消并推进了 revision，调动审批带的是旧 revision → 409 REVISION_CONFLICT；
+        // 必须排除审批路由把 40P01 死锁转成的 APPROVAL_CONCURRENT_CONFLICT（那表示锁序成环，不是业务拒绝）
+        const rejected = transferResponse as Response;
+        const text = await rejected.clone().text();
+        expect(rejected.status, text).toBe(409);
+        expect(text).not.toContain('APPROVAL_CONCURRENT_CONFLICT');
+        expect(JSON.parse(text)).toMatchObject({
+          error: { code: 'REVISION_CONFLICT', details: { expected: expect.any(Number), actual: expect.any(Number) } },
+        });
+      } else expect((transferResponse as Response).status).toBe(200);
       expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave']);
     },
   );

@@ -1397,15 +1397,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-initiation.ts#applyInitiationSubset',
     'apps/api/src/modules/employment/exit-initiation.ts#assertBusinessInputSubset',
     'apps/api/src/modules/employment/exit-initiation.ts#assertInitiatorRelation',
+    'apps/api/src/modules/employment/exit-lock-plan.ts#lockExitParticipants',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
-    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
   ],
   'apps/api/src/modules/employment/exit-application.ts#dutyTransferTiming': [
@@ -1435,7 +1434,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-batch.ts#createExitBatch': [
     'apps/api/src/modules/employment/exit-application.ts#createExitApplication',
     '#submitExit',
+    'apps/api/src/modules/employment/exit-lock-plan.ts#lockExitParticipants',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure',
     'apps/api/src/modules/employment/replay-guard.ts#exitBatchRejected',
   ],
@@ -1631,6 +1632,19 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit.ts#EXIT_MANAGER_INITIATION_KEY',
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
+  'apps/api/src/modules/employment/exit-lock-plan.ts#exitDutySubordinates': [
+    'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
+    'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
+  ],
+  'apps/api/src/modules/employment/exit-lock-plan.ts#lockExitParticipants': [
+    '#exitDutySubordinates',
+    '#idArray',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+  ],
+  'apps/api/src/modules/employment/exit-occupancy-store.ts#cycleOn': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/exit-occupancy-store.ts#loadCycleStarts': [
     '#uuidArray',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
