@@ -264,11 +264,18 @@ describe('F-185：字段权限与审计', () => {
 
   it('“当前”三字段在权限目录里是系统只读字段', () => {
     const fields = IDP_OBJECTS.career.fields;
-    for (const code of SNAPSHOT) expect(fields.find((f) => f.code === code), code).toMatchObject({ system: true });
+    for (const code of SNAPSHOT)
+      expect(
+        fields.find((f) => f.code === code),
+        code,
+      ).toMatchObject({ system: true });
     // 职务名称随 currentPostId 的查看权输出，不单独登记字段
     expect(fields.find((f) => f.code === 'currentPostName')).toBeUndefined();
     for (const code of ['targetProfessionalLineId', 'targetLevelId', 'targetPostId']) {
-      expect(fields.find((f) => f.code === code), code).toMatchObject({ system: false });
+      expect(
+        fields.find((f) => f.code === code),
+        code,
+      ).toMatchObject({ system: false });
     }
   });
 

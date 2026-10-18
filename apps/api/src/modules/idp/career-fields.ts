@@ -5,7 +5,7 @@
  *   有效任职存空；任何编辑都不重取（改日期、改人员也不重取，复刻取舍），所以这里只在新建时调用。
  */
 import { type Tx } from '@italent/db';
-import { CAREER_SNAPSHOT_FIELDS, tenantLocalDate } from '@italent/domain';
+import { type CAREER_SNAPSHOT_FIELDS, tenantLocalDate } from '@italent/domain';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { requiredJob } from '../job/validation.js';
 import type { WriteContext } from './write-support.js';

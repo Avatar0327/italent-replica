@@ -444,7 +444,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
-    registerReads: '00026b023481',
+    registerReads: 'c19dc912da8b',
     registerWrites: '09dc326ef21c',
   },
   'apps/api/src/modules/idp/plan-access.ts': {
@@ -1370,7 +1370,7 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/idp/catalog.ts': {
     'IDP_OBJECTS>analysis': 'dc4daddf088d',
-    'IDP_OBJECTS>career': 'e75f632f6944',
+    'IDP_OBJECTS>career': '8c2a38cbeca5',
     'IDP_OBJECTS>commonGoal': 'a8b05ad05934',
     'IDP_OBJECTS>goal': 'cb7168f1392d',
     'IDP_OBJECTS>goalReview': '4b2c08cb9936',
@@ -1768,7 +1768,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/intervention-service.ts#targetHidden': '583ee92c250c',
   'apps/api/src/modules/idp/intervention-service.ts#transferPlan': '4b87291799c2',
   'apps/api/src/modules/idp/key-info-routes.ts#ROUTES': '76988c7e4f7d',
-  'apps/api/src/modules/idp/key-info-routes.ts#registerReads': 'b10c771b2bfd',
+  'apps/api/src/modules/idp/key-info-routes.ts#registerReads': '6b318ae78ef6',
   'apps/api/src/modules/idp/key-info-routes.ts#registerWrites': '08693da1058e',
   'apps/api/src/modules/idp/plan-access.ts#employeeInScope': '79adc1cb1430',
   'apps/api/src/modules/idp/plan-access.ts#participation': 'f1c9854fb556',
@@ -2450,7 +2450,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': 'df0c34def8ab',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': 'aa3bf6d1c73d',
-  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'e0850818a071',
+  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'f61a329bd6fd',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>commonGoal': 'aa3bf6d1c73d',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goal': '44f8667d37a2',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goalReview': 'aa3bf6d1c73d',
