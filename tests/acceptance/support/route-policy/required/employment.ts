@@ -2448,7 +2448,8 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.assessmentScope',
       [],
       [
-        fn(ASSESS_SERVICE, 'updateAssessment', 'await requireEmployeeInScope(tx, ctx, row.employeeId)'),
+        fn(ASSESS_SERVICE, 'updateAssessment', 'await requireAssessmentInScope(tx, ctx, row)'),
+        ASSESSMENT_IN_SCOPE,
         EMPLOYEE_IN_SCOPE,
       ],
       '考核对象不在范围内 404',
