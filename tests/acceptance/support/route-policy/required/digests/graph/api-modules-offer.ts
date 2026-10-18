@@ -92,6 +92,11 @@ export const GRAPH: Graph = {
     '#notApprovable',
     'packages/domain/src/offer/approval.ts#offerApprovable',
   ],
+  'apps/api/src/modules/offer/approval.ts#restartOfferApproval': [
+    '#beginOfferApproval',
+    '#submitted',
+    'apps/api/src/modules/offer/service.ts#lockOffer',
+  ],
   'apps/api/src/modules/offer/approval.ts#subjectOrg': [
     '#applicantDepartment',
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
@@ -521,6 +526,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting',
   ],
   'apps/api/src/modules/offer/service.ts#replaceOffer': [
+    'apps/api/src/modules/offer/approval.ts#restartOfferApproval',
     'apps/api/src/modules/offer/linkage.ts#deleteLinkedEntry',
     '#facts',
     '#insertCopy',
@@ -568,6 +574,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#planOfferTransition',
   ],
   'apps/api/src/modules/offer/service.ts#updateOffer': [
+    'apps/api/src/modules/offer/approval.ts#restartOfferApproval',
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted',
     'apps/api/src/modules/offer/linkage.ts#cancelLinkedEntry',
