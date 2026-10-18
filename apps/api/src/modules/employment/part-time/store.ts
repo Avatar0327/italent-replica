@@ -34,46 +34,73 @@ export const latestSnapshot = sql`LEFT JOIN LATERAL (
   ) latest ON true`;
 export const currentDepartment = sql`CASE WHEN latest.id IS NULL THEN r.department_id ELSE latest.department_id END`;
 
-/**
- * 锁住员工某任职周期（省略则全部）的兼职记录底层业务头（FOR UPDATE，按 ID 升序），并读出当前期。
- * 调用方已持有该员工行锁（lockEmploymentEmployee / 离职落地事务）。分两步查询：没有兼职时不触及期限链表。
- */
-export async function lockPartTimeRecords(
+interface PartTimeFilter {
+  readonly employeeId?: string;
+  /** 只取该任职周期的兼职（离职钩子）。 */
+  readonly staffId?: string;
+  readonly ids?: readonly string[];
+}
+
+/** 一次取兼职记录当前状态（分两步查询：没有兼职时不触及期限链表）；lock 时对底层业务头 FOR UPDATE，按 ID 升序（§7.1）。 */
+async function partTimeRows(
   tx: Tx,
   ctx: Pick<EmploymentContext, 'tenantId'>,
-  employeeId: string,
-  staffId?: string,
+  filter: PartTimeFilter,
+  lock: boolean,
 ): Promise<PartTimeRecordRow[]> {
-  const locked = rowsOf<Omit<PartTimeRecordRow, 'endDate' | 'termNo'>>(
+  const rows = rowsOf<Omit<PartTimeRecordRow, 'endDate' | 'termNo'>>(
     await tx.execute(sql`
       SELECT r.id, r.employee_id AS "employeeId", r.staff_id AS "staffId", r.service_type AS "serviceType",
         r.start_date::text AS "startDate", ${currentDepartment} AS "departmentId", b.revision
       FROM employment_records r
       JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.employee_id=r.employee_id AND b.id=r.id
       ${latestSnapshot}
-      WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${employeeId}::uuid AND r.service_type <> 'primary'
-        ${staffId === undefined ? sql`` : sql`AND r.staff_id=${staffId}::uuid`}
-      ORDER BY r.id FOR UPDATE OF b
+      WHERE r.tenant_id=${ctx.tenantId} AND r.service_type <> 'primary'
+        ${filter.employeeId === undefined ? sql`` : sql`AND r.employee_id=${filter.employeeId}::uuid`}
+        ${filter.staffId === undefined ? sql`` : sql`AND r.staff_id=${filter.staffId}::uuid`}
+        ${filter.ids === undefined ? sql`` : sql`AND r.id = ANY(${uuidArray(filter.ids)})`}
+      ORDER BY r.id ${lock ? sql`FOR UPDATE OF b` : sql``}
     `),
   );
-  if (!locked.length) return [];
+  if (!rows.length) return [];
   const terms = rowsOf<{ recordId: string; endDate: string | null; termNo: number }>(
     await tx.execute(sql`
       SELECT DISTINCT ON (t.record_id) t.record_id AS "recordId", t.end_date::text AS "endDate", t.term_no AS "termNo"
       FROM employment_part_time_terms t
-      WHERE t.tenant_id=${ctx.tenantId} AND t.record_id = ANY(${uuidArray(locked.map((row) => row.id))})
+      WHERE t.tenant_id=${ctx.tenantId} AND t.record_id = ANY(${uuidArray(rows.map((row) => row.id))})
       ORDER BY t.record_id, t.term_no DESC
     `),
   );
   const current = new Map(terms.map((term) => [term.recordId, term]));
-  return locked.map((row) => ({
+  return rows.map((row) => ({
     ...row,
     endDate: current.get(row.id)?.endDate ?? null,
     termNo: current.get(row.id)?.termNo ?? 0,
   }));
 }
 
-const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
+/**
+ * 锁住员工的兼职记录底层业务头（FOR UPDATE，按 ID 升序）并读出当前期；filter 可限定任职周期或记录 ID。
+ * 调用方已持有该员工行锁（lockEmploymentEmployee / 离职落地事务）。
+ */
+export function lockPartTimeRecords(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  employeeId: string,
+  filter: Omit<PartTimeFilter, 'employeeId'> = {},
+): Promise<PartTimeRecordRow[]> {
+  return partTimeRows(tx, ctx, { ...filter, employeeId }, true);
+}
+
+/** 跨员工按 ID 加锁（批量结束，调用方已按员工 UUID 升序取过员工行锁，§7.1）。 */
+export const lockPartTimeRecordsById = (tx: Tx, ctx: Pick<EmploymentContext, 'tenantId'>, ids: readonly string[]) =>
+  partTimeRows(tx, ctx, { ids }, true);
+
+/** 不加锁地读（入口复核范围与目标，命令内再锁一次后以锁内值为准）。 */
+export const readPartTimeRecords = (tx: Tx, ctx: Pick<EmploymentContext, 'tenantId'>, ids: readonly string[]) =>
+  partTimeRows(tx, ctx, { ids }, false);
+
+export const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 export interface NewPartTimeRecord {
   readonly employeeId: string;
@@ -187,6 +214,19 @@ async function insertTerm(tx: Tx, ctx: EmploymentContext, term: NewTerm): Promis
   `);
 }
 
+/** 只 +1 底层业务头 revision（编辑非日期字段时没有新期限可追加）。 */
+export async function bumpPartTimeRevision(
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  record: Pick<PartTimeRecordRow, 'id' | 'employeeId' | 'revision'>,
+): Promise<number> {
+  await tx.execute(sql`
+    UPDATE employment_business_objects SET revision = revision + 1
+    WHERE tenant_id=${ctx.tenantId} AND employee_id=${record.employeeId}::uuid AND id=${record.id}::uuid
+  `);
+  return record.revision + 1;
+}
+
 /**
  * 在兼职记录上追加一期（延长 / 结束 / 批量结束 / 调动 / 离职 / 编辑结束日），并把底层业务头 revision +1（§1.3）。
  * 调用方已持有该记录的业务头锁（lockPartTimeRecords）；“原结束日期”从上一期取，不建列（硬规则 3）。
@@ -200,11 +240,7 @@ export async function appendPartTimeTerm(
 ): Promise<{ readonly termNo: number; readonly revision: number }> {
   const termNo = record.termNo + 1;
   await insertTerm(tx, ctx, { recordId: record.id, employeeId: record.employeeId, termNo, ...term });
-  await tx.execute(sql`
-    UPDATE employment_business_objects SET revision = revision + 1
-    WHERE tenant_id=${ctx.tenantId} AND employee_id=${record.employeeId}::uuid AND id=${record.id}::uuid
-  `);
-  return { termNo, revision: record.revision + 1 };
+  return { termNo, revision: await bumpPartTimeRevision(tx, ctx, record) };
 }
 
 /**

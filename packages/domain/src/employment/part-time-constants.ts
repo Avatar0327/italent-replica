@@ -76,6 +76,11 @@ export const PART_TIME_ERRORS = {
   requestInProgress: 'PART_TIME_REQUEST_IN_PROGRESS',
   alreadyEnded: 'PART_TIME_ALREADY_ENDED',
   recordNotFound: 'PART_TIME_RECORD_NOT_FOUND',
+  /** 编辑兼职：开始日期、任职类型创建后不可改（§5.1，A-9；日期沿用主职记录编辑同码）。 */
+  dateImmutable: 'RECORD_DATE_IMMUTABLE',
+  typeImmutable: 'PART_TIME_TYPE_IMMUTABLE',
+  /** 批量结束：同一 recordId 重复（§4.4）。 */
+  duplicateRecord: 'DUPLICATE_RECORD',
   linkageNotAvailable: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
   requestTypeNotAvailable: 'PART_TIME_REQUEST_TYPE_NOT_AVAILABLE',
 } as const;

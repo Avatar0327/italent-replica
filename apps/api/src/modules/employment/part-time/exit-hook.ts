@@ -26,7 +26,7 @@ async function endPartTimesByExit(tx: Tx, hook: EmployeeStatusHookContext, event
   if (!exit) return;
   const ctx: EmploymentContext = { ...hook, expectedRevision: 0 };
   const lastDay = partTimeExitEndDate(event.effectiveDate);
-  for (const record of await lockPartTimeRecords(tx, ctx, event.employeeId, exit.staffId)) {
+  for (const record of await lockPartTimeRecords(tx, ctx, event.employeeId, { staffId: exit.staffId })) {
     const endDate = partTimeCutoffEnd(record, lastDay);
     if (endDate === null) continue;
     const next = await appendPartTimeTerm(tx, ctx, record, { endDate, source: 'exit', sourceId: event.recordId });
