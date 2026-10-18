@@ -61,6 +61,7 @@ describe('F-241 确认清单先过滤再截断（真 PG）', () => {
 
     await landPriors(x, '2026-10-08');
     const after = await previewOf(x);
+    // 真实前序落地 + 真实迟到执行见 AC-EXIT-F241-ack-filter；这里只钉同一 L 下重算的集合与令牌不变
     expect(after.ack!.ackToken, '前序落地后重算的集合必须与最初确认的相同（迟到生效不产生集合差异）').toBe(stored.hash);
     expect(after.ack!.items.length + after.ack!.hiddenCount).toBe(VOID_LIMIT);
   }, 600_000);
