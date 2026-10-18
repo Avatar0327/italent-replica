@@ -3,7 +3,7 @@
  * 列表按范围过滤，批量发起时范围外的人只在他自己的回执里失败。范围用空范围（EMPTY_SCOPE）在命令事务内直接判定。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { createAssessments, parseAssessmentBatch } from '../../apps/api/src/modules/employment/assessment.js';
@@ -12,7 +12,6 @@ import {
   loadAssessment,
   requireAssessmentInScope,
 } from '../../apps/api/src/modules/employment/assessment-store.js';
-import { employmentScopePredicate } from '../../apps/api/src/modules/employment/context.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { assessmentWorld } from './AC-PB-BE15b1-support.js';
 
@@ -41,13 +40,7 @@ describe('AC-PB-01 考核的数据范围（DEC-177）', () => {
       expect(outOfScope).toMatchObject({ code: 'NOT_FOUND', message: '考核记录不存在' });
       expect(missing).toMatchObject({ code: 'NOT_FOUND', message: (outOfScope as Error).message });
 
-      const listed = await listAssessments(
-        tx,
-        w.tenant.id,
-        {},
-        employmentScopePredicate(EMPTY_SCOPE, sql`a.employee_id`, sql`a.department_id`),
-        { limit: 50, offset: 0 },
-      );
+      const listed = await listAssessments(tx, w.tenant.id, {}, EMPTY_SCOPE, { limit: 50, offset: 0 });
       expect(listed).toEqual([]);
 
       const receipt = await createAssessments(

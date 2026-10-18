@@ -13,7 +13,8 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
-import { assertRevision, auditEmployment, requireEmployeeInScope } from './context.js';
+import { assertRevision, auditEmployment, employmentCreator, employmentScopePredicate } from './context.js';
+import type { SQL } from 'drizzle-orm';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -72,17 +73,30 @@ export interface AssessmentFilter {
   readonly assessmentType?: AssessmentType;
 }
 
-/** 列表：按创建先后倒序；范围裁剪由调用方给出（员工维度谓词），上限由 limit / offset 控制。 */
+/**
+ * 考核的人员范围谓词（对别名 a）：以考核对象“当前”任职为准（人员 + 创建人维度，同 requireEmployeeInScope），不看创建时保存的
+ * 部门快照。列表、详情、修改、重提共用这一个谓词（DEC-431①，BE-15b1 第 2 轮 P2-1：员工调动后列表与详情不能各判各的）。
+ */
+export function assessmentScopeSql(scope: EmploymentContext['scope'], tenantId: string): SQL {
+  return employmentScopePredicate(
+    scope,
+    sql`a.employee_id`,
+    undefined,
+    employmentCreator(tenantId, sql`a.employee_id`),
+  );
+}
+
+/** 列表：按创建先后倒序；先按范围谓词裁剪再分页（limit / offset）。 */
 export async function listAssessments(
   tx: Tx,
   tenantId: string,
   filter: AssessmentFilter,
-  visible: ReturnType<typeof sql>,
+  scope: EmploymentContext['scope'],
   page: { readonly limit: number; readonly offset: number },
 ): Promise<AssessmentRow[]> {
   return rowsOf<AssessmentRow>(
     await tx.execute(sql`SELECT ${COLUMNS} FROM employment_probation_assessments a
-      WHERE a.tenant_id=${tenantId} AND ${visible}
+      WHERE a.tenant_id=${tenantId} AND ${assessmentScopeSql(scope, tenantId)}
         AND (${filter.employeeId ?? null}::uuid IS NULL OR a.employee_id=${filter.employeeId ?? null}::uuid)
         AND (${filter.status ?? null}::text IS NULL OR a.status=${filter.status ?? null})
         AND (${filter.assessmentType ?? null}::text IS NULL OR a.assessment_type=${filter.assessmentType ?? null})
@@ -172,18 +186,18 @@ export function assertAssessmentRevision(ctx: EmploymentContext, row: Assessment
 }
 
 /**
- * 考核对象在 ctx 的数据范围内；范围外与考核不存在同一个 404「考核记录不存在」（不泄露存在性，
- * 不能让“任职数据不存在”与“考核记录不存在”两种文案区分出考核对象存在）。
+ * 考核在 ctx 的数据范围内（与列表同一个谓词 assessmentScopeSql）；范围外与考核不存在同一个 404「考核记录不存在」
+ * （不泄露存在性，不能让“任职数据不存在”与“考核记录不存在”两种文案区分出考核存在）。
  */
 export async function requireAssessmentInScope(
   tx: Tx,
   ctx: EmploymentContext,
-  row: Pick<AssessmentRow, 'employeeId'>,
+  row: Pick<AssessmentRow, 'id'>,
 ): Promise<void> {
-  try {
-    await requireEmployeeInScope(tx, ctx, row.employeeId);
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('NOT_FOUND', '考核记录不存在');
-    throw error;
-  }
+  if (!ctx.scope) return;
+  const [hit] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT a.id FROM employment_probation_assessments a
+      WHERE a.tenant_id=${ctx.tenantId} AND a.id=${row.id}::uuid AND ${assessmentScopeSql(ctx.scope, ctx.tenantId)}`),
+  );
+  if (!hit) throw new AppError('NOT_FOUND', '考核记录不存在');
 }

@@ -26,7 +26,7 @@ export async function requireAssessmentWrite(
 ): Promise<void> {
   const button = operation === 'create' ? 'Assessment.Create' : 'Assessment.Edit';
   await requireEmploymentWrite(ctx, operation, payload, button, PROBATION_ASSESSMENT_OBJECT);
-  if (assessmentId) await requireAssessmentInScope(tx, ctx, await loadAssessment(tx, ctx.tenantId, assessmentId));
+  if (assessmentId) await requireAssessmentInScope(tx, ctx, { id: assessmentId });
 }
 
 /** 审批中心命令里的考核上下文：授权器绑定本事务，数据范围按当前授权在本事务内解析（不沿用请求前的快照）。 */
@@ -44,7 +44,8 @@ async function assessmentCommandContext(tx: Tx, deps: TenantRouteDeps, ctx: Tena
 
 /**
  * 被驳回的考核由发起人在审批中心重提：与重新发起同一权限（创建权限 + 按钮 + 基础字段 + 修正字段的写权限）和同一数据范围。
- * 修正内容（审批节点可编辑的字段）先按考核字段解析，非法取值 400。
+ * 修正内容（审批节点可编辑的字段）先按考核字段解析，非法取值 400。这里先读考核只为取基础字段拼权限载荷：重提的实例属于
+ * 发起人本人（路由已验发起人），考核必然存在，不构成“无权者探测存在性”；权限复核仍在范围判定之前（requireAssessmentWrite）。
  */
 export async function requireAssessmentResubmitRight(
   tx: Tx,

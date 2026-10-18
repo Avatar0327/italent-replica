@@ -4,7 +4,7 @@
  * 数据操作 + 按钮（create@list / update@detail），数据范围按考核对象所在应用（与任职记录同应用）裁剪到考核对象员工；
  * 命令内经 CommandGuard.before 按当前授权再过一遍（#199）。审批流转（自评 / 评价 / 通过）走审批中心，不在这里。
  */
-import { sql, withTenant } from '@italent/db';
+import { withTenant } from '@italent/db';
 import {
   ASSESSMENT_STATUSES,
   ASSESSMENT_TYPE_CODES,
@@ -29,7 +29,6 @@ import { requireAssessmentWrite } from './assessment-access.js';
 import { assessmentView, listAssessments, loadAssessment, requireAssessmentInScope } from './assessment-store.js';
 import {
   commandContext,
-  employmentScopePredicate,
   jsonBody,
   pageQuery,
   readContext,
@@ -74,9 +73,9 @@ function assessmentGuard(
     // 同键重放：回执里的每一人按当前范围复核，撤权后拿不到原回执
     replayed: async (tx, replay) => {
       const scoped = await commandContext(tx, deps, ctx);
-      const body = replay.body as { items?: readonly { employeeId: string }[]; employeeId?: string } | null;
+      const body = replay.body as { items?: readonly { employeeId: string }[]; id?: string } | null;
       for (const item of body?.items ?? []) await requireEmployeeInScope(tx, scoped, item.employeeId);
-      if (body?.employeeId) await requireAssessmentInScope(tx, scoped, { employeeId: body.employeeId });
+      if (body?.id) await requireAssessmentInScope(tx, scoped, { id: body.id });
     },
   });
 }
@@ -107,13 +106,7 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const filter = parse(listQuery, Object.fromEntries(query));
     const page = pageQuery(c);
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listAssessments(
-        tx,
-        ctx.tenantId,
-        filter,
-        employmentScopePredicate(ctx.scope, sql`a.employee_id`, sql`a.department_id`),
-        page,
-      ),
+      listAssessments(tx, ctx.tenantId, filter, ctx.scope, page),
     );
     const items = await trimEmploymentResponse(deps, ctx, rows.map(assessmentView));
     return c.json({ items, page: page.page, pageSize: page.pageSize });
