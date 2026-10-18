@@ -84,10 +84,11 @@ export async function assessmentWorld(db: Db, label: string) {
   /** 试用员工：入职 2026-09-01，试用到 endDate（预计结束日），账号已绑定，直线经理 = manager。 */
   async function probationer(
     name: string,
-    options: { endDate?: string; manager?: Person | null; department?: string } = {},
+    options: { endDate?: string; manager?: Person | null; department?: string; createdBy?: string } = {},
   ) {
     const userId = await w.member(name);
-    const created = await w.employee(name);
+    // createdBy：由该账号建员工主档，成为员工的创建人（数据范围“使用用户”维度取这个创建人）
+    const created = options.createdBy ? await createdByUser(options.createdBy, name) : await w.employee(name);
     await withTenant(db, w.tenant.id, (tx) =>
       tx.execute(sql`INSERT INTO permission_user_person_links(tenant_id, user_id, employee_id)
         VALUES (${w.tenant.id}, ${userId}::uuid, ${created.id}::uuid)`),
@@ -111,6 +112,15 @@ export async function assessmentWorld(db: Db, label: string) {
     });
     expect(hired.status, await hired.clone().text()).toBe(201);
     return { userId, employeeId: created.id, name } satisfies Person;
+  }
+
+  async function createdByUser(userId: string, name: string) {
+    const response = await w.request(userId, 'POST', `${EMPLOYMENT}/employees`, {
+      ifMatch: 0,
+      body: { name, code: `PB_${randomUUID().replaceAll('-', '')}` },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return (await response.json()) as { id: string; revision: number };
   }
 
   const employeeRevision = async (employeeId: string) =>

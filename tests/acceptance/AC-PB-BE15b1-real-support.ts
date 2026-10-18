@@ -20,11 +20,34 @@ const permission = (on: boolean) => ({
   buttons: on ? object.buttons.map((b) => ({ buttonCode: b.code, level: b.level })) : [],
 });
 
-export async function realOperator(w: AssessmentWorld, options: { orgIds?: string[] } = {}) {
+async function makeSeed(w: AssessmentWorld) {
   const adminRecord = await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.hr.id }, cmd());
   const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
   const asAdmin = { user: w.hr.id, tenant: w.tenant.id };
-  const seed = { db: w.db, tenant: w.tenant, admin: w.hr, adminRecord, api, asAdmin } as never;
+  return { db: w.db, tenant: w.tenant, admin: w.hr, adminRecord, api, asAdmin };
+}
+// 一个租户只开通一次租户管理员；同一世界里要多个操作人（创建人 / 旁观经办人）时共用
+const seeds = new WeakMap<AssessmentWorld, ReturnType<typeof makeSeed>>();
+function seedOf(w: AssessmentWorld) {
+  if (!seeds.has(w)) seeds.set(w, makeSeed(w));
+  return seeds.get(w)!;
+}
+
+/** 考核对象的实体数据范围规则（管理单元 / 使用用户等）；配置前考核对象按管理单元 fail-closed 解析。 */
+export async function setAssessmentScopeRules(w: AssessmentWorld, dimensions: readonly string[]) {
+  const { api, asAdmin } = await seedOf(w);
+  const response = await api.request(
+    'PUT',
+    `/api/tenant/permission/scope-policies/TenantBase/${object.code}/entity/${object.code}`,
+    { ...asAdmin, ifMatch: 0, body: { rules: dimensions.map((dimension) => ({ dimension })) } },
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+}
+
+export async function realOperator(w: AssessmentWorld, options: { orgIds?: string[] } = {}) {
+  const realSeed = await seedOf(w);
+  const { api, asAdmin } = realSeed;
+  const seed = realSeed as never;
   const userId = await w.member('考核操作人');
   const profile: ProfileBody = await createProfile(seed, `assess-op-${randomUUID()}`);
   expect((await setObjectPermission(seed, profile, permission(true), object.code)).status).toBe(200);
