@@ -4,12 +4,22 @@ import { useApiClient, useSession } from '../foundation/Session.js';
 import { PersonAvatar } from '../shared/PersonAvatar.js';
 import type { AvatarReference } from '../account/avatar-api.js';
 import { loadAll, useCollection } from './api.js';
+import { sortLevels } from './info-reference-sort.js';
 import { infoText as m, textValue, type InfoRow } from './info-model.js';
 
 export const PEOPLE = '/api/tenant/employment/employees';
 export const PROFILE = '/api/tenant/personnel/employees';
 export const ORGS = '/api/tenant/org/organizations';
 export const POSITIONS = '/api/tenant/job/positions';
+export const INFO_SOURCES = {
+  org: ORGS,
+  position: POSITIONS,
+  professionalLine: '/api/tenant/job/professional-lines',
+  level: '/api/tenant/job/levels',
+  post: '/api/tenant/job/posts',
+} as const;
+const LEVEL_TYPES = '/api/tenant/job/level-types';
+const careerSources: readonly string[] = [INFO_SOURCES.professionalLine, INFO_SOURCES.level, INFO_SOURCES.post];
 type Result = { row?: InfoRow; error?: unknown };
 /** 按真实接口读引用，失败保留局部错误；无权字段缺席时不拿 ID / 默认值顶替。 */
 export function useInfoReferences(paths: readonly string[]) {
@@ -86,11 +96,18 @@ export function InfoSelect({
   disabled?: boolean;
 }) {
   const [opened, setOpened] = useState(false);
-  const list = useCollection<InfoRow>(opened ? source : undefined);
+  const career = careerSources.includes(source);
+  const list = useCollection<InfoRow>(opened ? `${source}${career ? '?enabled=true' : ''}` : undefined);
+  // 停用类别下仍可能有启用职级；类别只用于排序，不作为候选过滤条件。
+  const categories = useCollection<InfoRow>(
+    opened && source === INFO_SOURCES.level ? `${LEVEL_TYPES}?includeDisabled=true` : undefined,
+  );
   const refs = useInfoReferences(value ? [`${source}/${value}`, ...(person ? [`${PROFILE}/${value}`] : [])] : []);
   const selected = value ? refs.get(`${source}/${value}`) : undefined;
-  const rows = [...(list.items ?? [])];
-  if (selected && !rows.some((r) => r.id === selected.id)) rows.push(selected);
+  const rows = [...(list.items ?? [])].filter((row) => !career || typeof row.name === 'string');
+  if (source === INFO_SOURCES.level) sortLevels(rows, categories.items ?? []);
+  // 旧目标停用后仍回显名称，但不能把它补回启用候选。
+  if (!career && selected && !rows.some((r) => r.id === selected.id)) rows.push(selected);
   const options = rows.map((row) => ({
     value: row.id,
     search: textValue(row.name),
@@ -103,25 +120,27 @@ export function InfoSelect({
         {...labelled}
         value={value ?? undefined}
         allowClear
+        placeholder={m.choose}
         showSearch
         optionFilterProp="search"
         options={options}
         onOpenChange={(open) => open && setOpened(true)}
-        loading={list.loading || refs.loading}
+        loading={list.loading || categories.loading || refs.loading}
         onChange={(v: string | undefined) => onChange?.(v ?? null)}
         labelRender={(option) => (
           <Space size={4}>
-            {options.find((o) => o.value === option.value)?.label ?? m.none}
+            {options.find((o) => o.value === option.value)?.label ?? textValue(selected?.name)}
             {typeof email === 'string' && email ? `(${email})` : ''}
           </Space>
         )}
       />
       <ReferenceError
         refs={{
-          error: refs.error || !!list.error,
+          error: refs.error || !!list.error || !!categories.error,
           reload: () => {
             refs.reload();
             list.reload();
+            categories.reload();
           },
         }}
       />
