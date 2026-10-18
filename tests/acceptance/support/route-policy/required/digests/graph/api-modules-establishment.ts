@@ -218,6 +218,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/employment-check.ts#establishmentPeriodStartsWithin': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
+  'apps/api/src/modules/establishment/employment-check.ts#groupOccupancy': ['#camelFields'],
   'apps/api/src/modules/establishment/employment-check.ts#nextReservedTransfer': [
     'apps/api/src/modules/employment/activation-store.ts#pendingActivationState',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
@@ -256,7 +257,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
     'apps/api/src/modules/employment/reporting-cycle.ts#insertedWindow',
     '#adjustmentProjection',
-    '#camelFields',
+    '#cutInterval',
+    '#groupOccupancy',
     '#maximumMembers',
     '#occupancyRows',
     '#pendingTransfers',

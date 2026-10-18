@@ -54,14 +54,28 @@ async function activeInstances(tx: Tx, tenantId: string, businessType: string, i
   );
 }
 
+/** 在已加锁的 Offer 上发起审批：置“审批中”，交审批引擎匹配流程、派首节点（首节点为空等拒绝时调用方整笔回滚，DEC-054）。 */
+async function beginOfferApproval(tx: Tx, ctx: OfferContext, before: OfferRow, fields: FieldAccess) {
+  requireApprovable(before);
+  await saveApprovalStatus(tx, ctx, before, 'approving');
+  const { startOrResume } = await import('../approval/engine.js');
+  await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'offer', businessId: before.id });
+}
+
 /** 单个 Offer 发起审批：驳回 / 撤回后再发起沿用原实例与原流程版本（DEC-103），由引擎判断。 */
 export async function submitOfferApproval(tx: Tx, ctx: OfferContext, id: string, fields: FieldAccess) {
   const before = await lockOffer(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
-  requireApprovable(before);
-  await saveApprovalStatus(tx, ctx, before, 'approving');
-  const { startOrResume } = await import('../approval/engine.js');
-  await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'offer', businessId: id });
+  await beginOfferApproval(tx, ctx, before, fields);
+  return submitted(tx, ctx, id);
+}
+
+/**
+ * OF-R4 再次发起审批（BE-14b3）：审批通过后改了必审字段，在编辑所在的事务里对原单（开关开）/ 新复制单（开关关）实际发起审批。
+ * 调用方已锁该 Offer 并把它置为待发 / 未发起审批；版本由调用方的编辑命令负责，这里不再核对 If-Match。
+ */
+export async function restartOfferApproval(tx: Tx, ctx: OfferContext, id: string, fields: FieldAccess) {
+  await beginOfferApproval(tx, ctx, await lockOffer(tx, ctx, id), fields);
   return submitted(tx, ctx, id);
 }
 

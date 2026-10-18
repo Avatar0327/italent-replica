@@ -29,7 +29,6 @@ import {
 import { AppError } from '../../errors.js';
 import { createEmployee } from '../employment/employees.js';
 import { ruleRejection } from '../employment/activation-checks.js';
-import type { EntryOfferHooks } from '../employment/entry-offer-hooks.js';
 import { findPredecessor } from '../employment/read-model.js';
 import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
@@ -67,11 +66,11 @@ async function linkedPerson(tx: Tx, tenantId: string, employeeId: string): Promi
   return { employeeId, active: !['leave', 'retirement'].includes(latest.kind) };
 }
 
-const present = (values: Readonly<Record<string, unknown>>) =>
+export const present = (values: Readonly<Record<string, unknown>>) =>
   Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null && value !== undefined));
 
 /** 人员信息（34 文末映射：姓名 / 邮箱 / 手机 / 性别 / 证件 / 出生日期）；Offer 没填的项不覆盖已有档案。 */
-function profilePatch(offer: OfferRow) {
+export function profilePatch(offer: OfferRow) {
   return present({
     name: offer.name,
     email: offer.personalEmail,
@@ -114,14 +113,19 @@ function regularizationProbation(offer: OfferRow) {
   return probation ? { probation, probationMonths: months! } : { probation };
 }
 
+/** 合同终止日不得早于计划入职日（同步待入职与编辑并同步共用的业务校验；待入职合同表另有同口径的 CHECK 作兜底）。 */
+export function assertContractDates(offer: Pick<OfferRow, 'contractEndDate' | 'plannedEntryDate'>) {
+  if (offer.contractEndDate && offer.plannedEntryDate && offer.contractEndDate < offer.plannedEntryDate)
+    throw new AppError('VALIDATION_FAILED', '合同终止日期不能早于计划入职日期', {
+      reason: 'OFFER_CONTRACT_DATE_INVALID',
+    });
+}
+
 /** 创建 / 复用人员、绑定用户、生成同步产物；返回记录 ID 与产物类型。整个过程在调用方给的保存点里。 */
 async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, linked: LinkedPerson | null) {
   const base = inboundEmploymentContext(ctx, 0);
   const kind = offerSyncKind(offer.offerType as OfferType | null);
-  if (offer.contractEndDate && offer.contractEndDate < offer.plannedEntryDate!)
-    throw new AppError('VALIDATION_FAILED', '合同终止日期不能早于计划入职日期', {
-      reason: 'OFFER_CONTRACT_DATE_INVALID',
-    });
+  assertContractDates(offer);
   // 工号由 Offer ID 派生（同一 Offer 重试不会再造人）；入职准备里的“分配工号”之后再改
   const employeeId =
     linked?.employeeId ?? (await createEmployee(tx, base, { code: `OFR-${offer.id}`, name: offer.name! })).id;
@@ -194,7 +198,13 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
   return { id: business.id, target: 'pending_entry' as const };
 }
 
-async function saveSync(tx: Tx, ctx: OfferSyncContext, before: OfferRow, patch: Partial<OfferRow>, action: string) {
+export async function saveSync(
+  tx: Tx,
+  ctx: OfferSyncContext,
+  before: OfferRow,
+  patch: Partial<OfferRow>,
+  action: string,
+) {
   const [after] = await tx
     .update(offers)
     .set({
@@ -320,28 +330,3 @@ export async function linkEmployee(tx: Tx, ctx: OfferContext, id: string, employ
   await audit(tx, ctx, 'link_employee', id, before, after!);
   return offerDto(after!);
 }
-
-/**
- * 待入职 ↔ Offer 联动端口的 Offer 侧实现（entry-offer-hooks.ts，F-201①），由 offer/routes.ts 在装配时登记。
- * - onEntryRestored：已取消的待入职经改期恢复会换新记录 ID，这里把 Offer 的关联从旧 ID 换到新 ID（同事务，抛错整笔回滚）；
- *   Offer 状态回到已接受是 b3（AC-OF-03 / OF-R9）；
- * - onEntryCancelled：取消不换 ID，关联不变；取消后把 Offer 改为已拒绝（OF-R9 开关、AC-OF-03）是 b3，本单保持空实现。
- */
-export const offerEntryHooks: EntryOfferHooks = {
-  // 动作开始、任何员工 / 业务 / 组织锁之前先锁住关联的 Offer（锁序 Offer → 员工 → 业务 → 组织，与 Offer 重发同序，避免 40P01）
-  beforeEntryAction: async (tx, ctx, event) => {
-    await findOfferByPendingEntry(tx, ctx.tenantId, event.businessId, { lock: true });
-  },
-  onEntryCancelled: async () => undefined,
-  onEntryRestored: async (tx, ctx, event) => {
-    // 同步记录 A → 普通改期 B（不调端口）→ 取消 B → 改期恢复 C：Offer 存的仍是 A，沿记录链从 B 找回关联的 Offer，加锁后换成 C
-    const before = await findOfferByPendingEntry(tx, ctx.tenantId, event.previousBusinessId, { lock: true });
-    if (!before || before.pendingEntryBusinessId === event.businessId) return;
-    const [after] = await tx
-      .update(offers)
-      .set({ pendingEntryBusinessId: event.businessId, revision: before.revision + 1, updatedAt: ctx.now })
-      .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, before.id)))
-      .returning();
-    await audit(tx, ctx, 'entry_relink', before.id, before, after!);
-  },
-};

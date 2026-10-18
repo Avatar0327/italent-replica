@@ -14,6 +14,7 @@ import {
 import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-scheduler.js';
 import { findOfferByPendingEntry } from '../../apps/api/src/modules/offer/sync.js';
 import { errorOf, offerRealWorld } from './AC-OF-BE14a-support.js';
+import { overrideSetting } from './AC-OF-BE14b1-support.js';
 import { fullSocial, syncWorld } from './AC-OF-BE14b2-support.js';
 
 const testDb = useTestDb();
@@ -281,11 +282,13 @@ describe('OF-R8 关联在职实习生', () => {
 describe('F-201 ① Offer 与待入职的关联', () => {
   it('取消不换 ID；改期恢复换新 ID 时端口更新关联；普通改期靠记录链找到最新记录；按待入职反查 Offer', async () => {
     const w = await syncWorld(testDb().db, 'sync-link');
+    // 本用例验证关联与记录链；OF-R9 联动（取消入职 → 已拒绝 / 恢复 → 已接受）见 AC-OF-BE14b3-linkage，这里关掉
+    await overrideSetting(w, 'offer.linkage', { entryCancelRejects: false, reapprovalAllowed: true });
     const synced = await w.accepted(await w.social());
     const first = synced.pendingEntryBusinessId!;
     const cancelled = await w.entryAction(first, 'cancel', {});
     expect(cancelled.status, await cancelled.clone().text()).toBe(200);
-    // 取消入职的联动（改 Offer 状态）归 b3：本单 Offer 仍是已接受，关联不变
+    // 开关关：取消入职不改 Offer，仍是已接受，关联不变
     expect(await w.read(synced.id)).toMatchObject({ status: 'accepted', pendingEntryBusinessId: first });
 
     const restored = await w.entryAction(first, 'postpone', { effectiveDate: '2026-11-15' });

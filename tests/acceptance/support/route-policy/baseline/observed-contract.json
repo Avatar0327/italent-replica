@@ -19043,18 +19043,26 @@
       "module": "offers",
       "primitives": {
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
           "creator scope",
+          "employment scope",
           "requestScope"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -24115,6 +24123,7 @@
       "module": "offers",
       "primitives": {
         "command": [
+          "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
         ],
@@ -24124,11 +24133,15 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
           "creator scope",
+          "employment scope",
           "employment visibility",
           "requestScope",
           "scope.all",
@@ -24136,6 +24149,7 @@
           "visibleJob"
         ],
         "scopePoint": [
+          "employment point",
           "visibleJob"
         ]
       }

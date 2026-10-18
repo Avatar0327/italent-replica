@@ -6,6 +6,7 @@
  * - onEntryCancelled：待入职取消之后，BE-14 把该人员已接受的 Offer 改为已拒绝；
  * - onEntryRestored：已取消的待入职经“改期入职”恢复之后，BE-14 把 Offer 回到已接受。**不传新日期**：
  *   Offer 的拟入职日期保持原值，不跟着改期变（R2e9 / DEC-546）。
+ * - onEntryCompleted（BE-14b3）：待入职办理入职之后，Offer 联动为已入职（办理入职与 Offer 的锁序同取消 / 改期：先 Offer 后员工）。
  * 普通改期（未取消 → 延期）、编辑、手动删除待入职都不调用这两个端口；失效 Offer 删除待入职走
  * entry-actions.ts 的 deletePendingEntry（F-171 / DEC-529），不进“已取消入职”，也不回调本端口。
  *
@@ -32,6 +33,12 @@ export interface EntryRestoredEvent {
   readonly previousBusinessId: string;
 }
 
+export interface EntryCompletedEvent {
+  readonly employeeId: string;
+  /** 办理入职的待入职记录（办理入职不换 ID）。 */
+  readonly businessId: string;
+}
+
 export interface EntryActionStartEvent {
   /** 即将被取消 / 改期的待入职记录。 */
   readonly businessId: string;
@@ -46,6 +53,8 @@ export interface EntryOfferHooks {
   beforeEntryAction?(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryActionStartEvent): Promise<void>;
   onEntryCancelled(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryCancelledEvent): Promise<void>;
   onEntryRestored(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryRestoredEvent): Promise<void>;
+  /** 办理入职之后调用（可选，F-192a 的桩不受影响）；`beforeEntryAction` 已在办理入职开始时先锁 Offer。 */
+  onEntryCompleted?(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryCompletedEvent): Promise<void>;
 }
 
 const noop: EntryOfferHooks = {
@@ -81,4 +90,6 @@ export const entryOfferHooks = {
     hooks.onEntryCancelled(tx, narrow(ctx), event),
   entryRestored: (tx: Tx, ctx: EmployeeStatusHookContext, event: EntryRestoredEvent) =>
     hooks.onEntryRestored(tx, narrow(ctx), event),
+  entryCompleted: (tx: Tx, ctx: EmployeeStatusHookContext, event: EntryCompletedEvent) =>
+    hooks.onEntryCompleted?.(tx, narrow(ctx), event) ?? Promise.resolve(),
 };

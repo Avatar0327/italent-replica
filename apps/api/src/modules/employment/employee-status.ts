@@ -16,6 +16,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
+import { entryOfferHooks } from './entry-offer-hooks.js';
 import { releasePendingContract, type PendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation, saveEntryProbation } from './entry-probation.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
@@ -145,6 +146,8 @@ export async function completePendingEntry(
   recordId: string,
   options: Pick<EntryOptions, 'probationMonths' | 'probationEndDate'> & { readonly probation: boolean },
 ): Promise<EmploymentRecord> {
+  // Offer 联动端口：先锁关联的 Offer，使锁序为 Offer → 员工 → 业务（与取消 / 改期、Offer 编辑并同步同序）
+  await entryOfferHooks.beforeAction(tx, ctx, { businessId: recordId });
   const { business, record } = await lockPendingEntry(tx, ctx, recordId);
   if (record.entryStatus === ENTRY_STATUS.cancelled)
     throw new AppError('CONFLICT', '已取消入职，请先改期恢复', { reason: 'ENTRY_CANCELLED' });
@@ -163,6 +166,7 @@ export async function completePendingEntry(
   );
   // F-194：待入职合同到此为止；正式合同由办理入职请求里的合同信息另行生成（entry-contract.ts），不在这里沿用或复制
   await releasePendingContract(tx, ctx, recordId, 'complete');
+  await entryOfferHooks.entryCompleted(tx, ctx, { employeeId: record.employeeId, businessId: recordId });
   return reloadRecord(tx, ctx, recordId);
 }
 
