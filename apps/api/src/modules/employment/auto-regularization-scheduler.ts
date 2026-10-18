@@ -143,11 +143,13 @@ async function sweepEmployee(
 ) {
   try {
     const outcome = await withTenant(db, ctx.tenantId, async (tx) => {
-      if (!(await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true }))) return 'locked' as const;
-      return autoRegularizeEmployee(tx, ctx, employeeId, rules);
+      const lock = await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true });
+      if (lock === 'busy') return 'locked' as const;
+      // 主档不存在没有可办理的对象：不当作被锁（F-238）；本批次没有待续跑表，无需收口
+      return lock === 'missing' ? null : autoRegularizeEmployee(tx, ctx, employeeId, rules);
     });
     if (outcome === 'locked') result.skippedLocked += 1;
-    else collectOutcome(result, outcome);
+    else if (outcome) collectOutcome(result, outcome);
   } catch (error) {
     const code = error instanceof AppError || error instanceof EmploymentError ? error.code : 'INTERNAL_ERROR';
     result.errors.push({ employeeId, code });

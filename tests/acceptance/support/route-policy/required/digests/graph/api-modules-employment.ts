@@ -3960,16 +3960,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/org/write-service.ts#requireTransferOrganizationScope',
   ],
+  'apps/api/src/modules/employment/transfer-locks.ts#acquire': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#SETTING',
+    '#array',
+    '#employeeExists',
+    '#participants',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#lockTransferParticipants',
   ],
-  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#SETTING',
-    '#array',
-    '#participants',
-  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',

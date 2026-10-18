@@ -131,15 +131,14 @@ async function sweepTenant(
   for (const employeeId of batch) {
     try {
       const outcome = await withTenant(db, tenant.id, async (tx) => {
-        if (!(await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true }))) return null;
+        const lock = await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true });
+        if (lock !== 'acquired') return lock;
         const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
         await remindCompletion(tx, ctx, employeeId);
         return outcome;
       });
-      if (!outcome) {
-        run.skippedLocked += 1;
-        continue;
-      }
+      if (outcome === 'busy') run.skippedLocked += 1;
+      if (typeof outcome === 'string') continue; // busy 已计数；missing 没有可办理的对象，不当作被锁（F-238）
       run.activated.push(...outcome.activated);
       run.failed.push(...outcome.failed);
       run.suspended.push(...outcome.suspended);
