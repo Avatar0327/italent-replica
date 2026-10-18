@@ -7,6 +7,7 @@ import {
   exclusivePartTimeConflict,
   inPartTimeView,
   isEmptyPartTimeSpan,
+  isPartTimeEndShortened,
   isPartTimeCurrent,
   PART_TIME_EXPIRING_DAYS,
   PART_TIME_RECORD_VIEWS,
@@ -162,6 +163,31 @@ describe('AC-PT-13 §4.3A 主职周期边界 partTimeBoundaryViolation', () => {
     expect(check({ ...pending, startDate: '2026-10-07', endDate: '2026-10-16' })).toEqual(spans);
     expect(check({ ...pending, startDate: '2026-10-07', endDate: '2026-10-15' })).toEqual(ok);
     expect(check({ ...pending, startDate: '2026-10-15', endDate: '2026-10-15' })).toEqual(ok);
+  });
+
+  it('DEC-624：仅缩短（shortenOnly）跳过 B-3，B-4 提示与 B-1 / B-2 照常', () => {
+    const pending = { pendingExitPlannedDate: '2026-10-16', startDate: '2026-10-20', endDate: '2026-11-30' };
+    expect(check({ ...pending, shortenOnly: true })).toEqual({
+      violation: null,
+      warnings: ['PART_TIME_SPANS_PENDING_EXIT'],
+    });
+    expect(check({ ...pending, shortenOnly: false }).violation?.reason).toBe('PART_TIME_AFTER_EXIT');
+    expect(check({ ...pending }).violation?.reason).toBe('PART_TIME_AFTER_EXIT');
+    expect(check({ ...pending, shortenOnly: true, primary: null }).violation?.reason).toBe(
+      'PART_TIME_PRIMARY_NOT_ACTIVE',
+    );
+    expect(check({ shortenOnly: true, exitEffectiveDate: '2026-10-16', endDate: '2026-10-20' }).violation?.reason).toBe(
+      'PART_TIME_BEYOND_EXIT',
+    );
+  });
+
+  it('isPartTimeEndShortened：空改有限日期、新结束日更早才算提前；相等 / 延长 / 置空都不算', () => {
+    expect(isPartTimeEndShortened(null, '2026-12-31')).toBe(true);
+    expect(isPartTimeEndShortened('2026-12-31', '2026-11-30')).toBe(true);
+    expect(isPartTimeEndShortened('2026-11-30', '2026-12-31')).toBe(false);
+    expect(isPartTimeEndShortened('2026-11-30', '2026-11-30')).toBe(false);
+    expect(isPartTimeEndShortened('2026-11-30', null)).toBe(false);
+    expect(isPartTimeEndShortened(null, null)).toBe(false);
   });
 
   it('规则次序：主职不在职先于离职边界；已生效边界先于未落地提示', () => {

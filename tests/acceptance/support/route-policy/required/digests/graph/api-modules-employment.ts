@@ -2889,6 +2889,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
     'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time.ts#isPartTimeEndShortened',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#insertCheckedPartTime': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',

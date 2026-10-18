@@ -8,6 +8,7 @@ import type { Tx } from '@italent/db';
 import {
   PART_TIME_AUDIT_OBJECTS,
   addDays,
+  isPartTimeEndShortened,
   partTimeViews,
   partTimeServiceStatus,
   tenantLocalDate,
@@ -383,6 +384,7 @@ export async function editPartTime(
         startDate: row.startDate,
         endDate: plan.endDate,
         recordStaffId: row.staffId,
+        shortenOnly: isPartTimeEndShortened(row.endDate, plan.endDate),
       })
     ).warnings;
   }

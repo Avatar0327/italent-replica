@@ -122,6 +122,8 @@ export interface PartTimeBoundaryInput extends PartTimeSpan {
   readonly exitEffectiveDate: string | null;
   /** F3：该周期审批中 / 已批准未落地的离职 / 退休中最早的计划生效日（R2-T03 §5.0A 唯一来源）。 */
   readonly pendingExitPlannedDate: string | null;
+  /** 编辑兼职时仅提前结束日（isPartTimeEndShortened）：跳过 B-3，B-1 / B-2 / B-4 照常（DEC-624）。 */
+  readonly shortenOnly?: boolean;
 }
 
 export type PartTimeBoundaryReason =
@@ -154,12 +156,21 @@ export function partTimeBoundaryViolation(input: PartTimeBoundaryInput): PartTim
   }
   if (input.pendingExitPlannedDate !== null) {
     const lastWorkDate = addDays(input.pendingExitPlannedDate, -1);
-    if (input.startDate > lastWorkDate)
+    if (!input.shortenOnly && input.startDate > lastWorkDate)
       return { violation: { reason: PART_TIME_ERRORS.afterExit, lastWorkDate }, warnings: [] };
     if (input.endDate === null || input.endDate > lastWorkDate)
       return { violation: null, warnings: [PART_TIME_ERRORS.spansPendingExit] };
   }
   return { violation: null, warnings: [] };
+}
+
+/**
+ * 编辑兼职是否只把结束日提前：原结束日为空改为有限日期，或新结束日早于原结束日（DEC-624，F-236）。
+ * 相等（未改）与延长 / 改回更晚都不算，仍走完整 §4.3A 校验。
+ */
+export function isPartTimeEndShortened(currentEnd: string | null, nextEnd: string | null): boolean {
+  if (nextEnd === null) return false;
+  return currentEnd === null || nextEnd < currentEnd;
 }
 
 /** 调动勾选结束兼职：失效日 = 调动实际生效日 − 1（#71、R2d、R2f 三次实测一致，AC-LNK-06）。 */
