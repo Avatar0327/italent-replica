@@ -23,7 +23,13 @@ import { runExitDutyTransfer } from './exit-duty-transfer.js';
 import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
-import { loadExitRequest, pendingTransferAckSet, regularizationBlocker, type AckRecord } from './exit-gate.js';
+import {
+  loadExitRequest,
+  pendingTransferAckSet,
+  regularizationBlocker,
+  VOID_LIMIT,
+  type AckRecord,
+} from './exit-gate.js';
 import {
   assertExtendedEmploymentAvailable,
   assertNoNewEstablishmentOccupancy,
@@ -129,6 +135,11 @@ async function revalidateAfterPostponement(
     });
   const stored = (exit.pendingTransferAck ?? null) as AckRecord | null;
   const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate);
+  // 超上限与步骤 1 同口径整单拒绝（S 是待作废候选的子集），不拿截断的集合算差异（F-241）
+  if (recomputed?.tooMany)
+    throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
+      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
+    });
   if ((recomputed?.hash ?? null) !== (stored?.hash ?? null))
     await auditEmployment(
       tx,

@@ -186,6 +186,10 @@ export interface InFlight {
   readonly landed: boolean;
 }
 
+/** 候选查询（inFlightApplications）至多返回 1001 条；超过这里的上限即整单拒绝，不消费截断清单。 */
+export const VOID_LIMIT = 1000;
+export const exceedsVoidLimit = (candidates: readonly unknown[]) => candidates.length > VOID_LIMIT;
+
 /** 候选条件推进 SQL（过滤后再取上限），避免“先截断再剔除”漏掉真实超限（F-237）。 */
 export interface InFlightFilter {
   /** 只要还没落地成任职记录的。 */
@@ -393,15 +397,26 @@ export async function assessmentNoticeItems(
  * ∪ 在途考核（F-229，DEC-617：审批中 / 已驳回待重提，离职生效时终止作废）。
  * 集合为空无需确认（返回 null）；非空时令牌与已存哈希 / 请求带的令牌之一一致才算确认，否则 409 并给出新令牌。
  * 没有在途考核时集合与令牌与 F-229 之前逐位相同。
+ * 调动部分的条件整个推进 SQL 后再取上限（F-241，与 voidCandidates 同一机制）：先截断再在 JS 里剔除前序会让前序占去名额，
+ * 初次确认少覆盖、前序落地后重算又多出来。超过 VOID_LIMIT 条（查询取 1001 条，无法区分恰好 1001 与被截断）时不生成令牌，
+ * 返回 tooMany；离职生效本来也会按同一上限整单拒绝（S 是 voidCandidates 的子集）。
  */
 export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
-  const rows = (await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'])).filter(
-    (row) => row.state === 'in_review' || (!row.landed && row.planned > lastWorkDate),
-  );
+  const rows = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'], 'application', {
+    unlanded: true,
+    approvedAfter: lastWorkDate,
+  });
   const assessments = await inFlightAssessments(tx, ctx.tenantId, employeeId);
+  if (exceedsVoidLimit(rows)) return { tooMany: true as const, assessments };
   if (!rows.length && !assessments.length) return null;
   const ids = [...rows.map((row) => row.id), ...assessments.map((row) => row.id)].sort();
-  return { ids, hash: ackToken(ctx, employeeId, lastWorkDate, ids), rows: plannedRows(rows), assessments };
+  return {
+    tooMany: false as const,
+    ids,
+    hash: ackToken(ctx, employeeId, lastWorkDate, ids),
+    rows: plannedRows(rows),
+    assessments,
+  };
 }
 
 async function checkPendingTransferAck(
@@ -414,6 +429,8 @@ async function checkPendingTransferAck(
 ): Promise<AckRecord | null> {
   const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
   if (!set) return null;
+  if (set.tooMany)
+    throw conflict('EXIT_APPLICATIONS_TOO_MANY', '在途调动申请过多，请先处理后再办理离职', { limit: VOID_LIMIT });
   const { ids, hash } = set;
   if (provided === hash || stored?.hash === hash) return { ids, hash };
   const withAssessments = set.assessments.length > 0;

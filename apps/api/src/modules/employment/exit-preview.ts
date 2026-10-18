@@ -40,6 +40,8 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
   // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列；条件在 SQL 里过滤（与生效时同一入口）
   const voided = await voidCandidates(tx, ctx, employeeId, lastWorkDate);
   const assessments = set?.assessments ?? [];
+  // 确认清单超上限时不给令牌（不能确认被截断的集合）；上方 warnings 已提示 EXIT_APPLICATIONS_TOO_MANY（F-241）
+  const ack = set && !set.tooMany ? set : null;
   const landed = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['effective'], null, {
     landedEffectiveAfter: lastWorkDate,
   });
@@ -47,10 +49,10 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
     blockers,
-    ack: set
+    ack: ack
       ? {
-          ackToken: set.hash,
-          ...(await batchDisclose(tx, ctx, employeeId, set.rows)),
+          ackToken: ack.hash,
+          ...(await batchDisclose(tx, ctx, employeeId, ack.rows)),
           ...(assessments.length ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, assessments) } : {}),
         }
       : null,

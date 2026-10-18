@@ -30,7 +30,8 @@ async function previewOf(x: DownstreamWorld): Promise<Preview> {
 /** 前序“落地”：状态推进到 effective（不再是审批中 / 已批准未落地），模拟 §5.0 队列在离职之前执行了它们。 */
 async function landPriors(x: DownstreamWorld, effectiveDate: string) {
   await x.sqlRows(sql`
-    INSERT INTO employment_state_events(tenant_id, employee_id, business_id, payload_version_id, state, event_no, command_id)
+    INSERT INTO employment_state_events(tenant_id, employee_id, business_id, payload_version_id, state, event_no,
+      command_id)
     SELECT s.tenant_id, s.employee_id, s.business_id, s.payload_version_id, 'effective', s.event_no + 1, 'f241-land'
     FROM employment_state_events s
     JOIN employment_payload_versions p ON p.tenant_id=s.tenant_id AND p.id=s.payload_version_id
