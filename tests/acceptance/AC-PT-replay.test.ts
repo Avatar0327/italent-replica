@@ -228,3 +228,113 @@ describe('AC-PT-replay PT-3b：直接新增兼职的命令重放（PB-64～69）
     expect(replay.status).toBe(404);
   });
 });
+
+describe('AC-PT-replay PT-3c：编辑兼职与批量结束的命令重放（PB-56 / PB-64～69 同口径）', () => {
+  async function replayWorld(label: string) {
+    const w = await httpWorld(database().db, label);
+    const record = await w.make({ endDate: '2026-10-31' });
+    const { authorize, rights } = revocable();
+    const send = w.as(authorize);
+    const edit = (key: string, endDate = '2026-10-15') =>
+      send('PATCH', `/part-times/${record.id}`, { ifMatch: 1, idempotencyKey: key, body: { endDate } });
+    const batch = (key: string, endDate = '2026-10-15') =>
+      send('POST', '/part-times/batch-end', {
+        idempotencyKey: key,
+        body: { items: [{ recordId: record.id, revision: 1 }], endDate },
+      });
+    return { w, record, rights, calls: { edit, batch } };
+  }
+  const entries = ['edit', 'batch'] as const;
+  const button = { edit: 'Employment.PartTimeEdit', batch: 'Employment.PartTimeBatchEnd' };
+
+  it.each(entries)('%s：首次 200 且足迹含 employment-part-time；同键同内容重放返回原响应，不再写入', async (entry) => {
+    const { w, record, calls } = await replayWorld(`replay-${entry}-first`);
+    const key = randomUUID();
+    const first = await calls[entry](key);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const created = await first.json();
+    const footprint = await withTenant(w.db, w.tenantId, async (tx) =>
+      rowsOf<{ object_type: string }>(
+        await tx.execute(sql`SELECT DISTINCT object_type FROM audit_events WHERE tenant_id=${w.tenantId}
+          AND object_id=${record.id} AND action LIKE 'employment.part_time.%' AND action <> 'employment.part_time.create'`),
+      ),
+    );
+    expect(footprint).toEqual([{ object_type: PART_TIME_AUDIT_OBJECTS.record }]);
+    const before = await w.writes();
+    const again = await calls[entry](key);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual(created);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it('编辑：首次业务失败（部门自结束日后停用）后同键回查返回同一失败，不写入', async () => {
+    const { w, calls } = await replayWorld('replay-edit-failed');
+    expect((await w.disableOrg(w.partTimeOrg, '2026-11-10')).status).toBe(200);
+    const key = randomUUID();
+    const before = await w.writes();
+    const first = await w.refusal(await calls.edit(key, '2026-11-30'));
+    expect(first).toMatchObject({ status: 400, reason: 'EMPLOYMENT_DEPARTMENT_DISABLED' });
+    expect(await w.refusal(await calls.edit(key, '2026-11-30'))).toEqual(first);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it('批量结束：首次业务失败（新结束日晚于当前）后同键回查返回同一失败，不写入', async () => {
+    const { w, calls } = await replayWorld('replay-batch-failed');
+    const key = randomUUID();
+    const before = await w.writes();
+    const first = await w.refusal(await calls.batch(key, '2027-01-31'));
+    expect(first).toMatchObject({ status: 409, reason: 'PART_TIME_END_AFTER_CURRENT' });
+    expect(await w.refusal(await calls.batch(key, '2027-01-31'))).toEqual(first);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it.each(entries)(
+    '%s：撤掉兼职部门范围 / 范围收为空 → 同键重放 404；撤按钮 → 403；不返回原响应，业务与审计不变',
+    async (entry) => {
+      for (const [name, status, revoke] of [
+        [
+          '范围只剩主职部门',
+          404,
+          (x: Awaited<ReturnType<typeof replayWorld>>) => {
+            x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id);
+          },
+        ],
+        [
+          '范围收为空',
+          404,
+          (x: Awaited<ReturnType<typeof replayWorld>>) => {
+            x.rights.emptyScope = true;
+          },
+        ],
+        [
+          '撤按钮',
+          403,
+          (x: Awaited<ReturnType<typeof replayWorld>>) => {
+            x.rights.deny = denyButton(button[entry]);
+          },
+        ],
+      ] as const) {
+        const x = await replayWorld(`replay-${entry}-revoked-${status}-${name}`);
+        const key = randomUUID();
+        const done = await x.calls[entry](key);
+        expect(done.status, name).toBe(200);
+        const before = await x.w.writes();
+        revoke(x);
+        const replay = await x.calls[entry](key);
+        expect(replay.status, name).toBe(status);
+        expect(JSON.stringify(await replay.json()), name).not.toContain(x.record.id);
+        expect(await x.w.writes(), name).toEqual(before);
+      }
+    },
+  );
+
+  it.each(entries)('%s：首次成功后他人把该兼职改到操作人范围外的部门，同键重放按当前部门判 → 404', async (entry) => {
+    const x = await replayWorld(`replay-${entry}-moved`);
+    const key = randomUUID();
+    expect((await x.calls[entry](key)).status).toBe(200);
+    const elsewhere = await x.w.org(`被改去的部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    await x.w.moveSnapshot(x.record.id, elsewhere.id);
+    x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id, x.w.partTimeOrg.id);
+    expect((await x.calls[entry](key)).status).toBe(404);
+  });
+});
