@@ -535,6 +535,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/blacklist.ts#BLACKLIST_REASON_CODES',
   ],
   'apps/api/src/modules/employment/blacklist.ts#deleteBlacklistEntries': ['#audit', '#lockBatch'],
+  'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistByIdentity': [
+    '#blankToNull',
+    '#identityKey',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistEntry': [
     '#identityKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2437,9 +2442,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
-  'apps/api/src/modules/employment/rehire-match.ts#matchRehire': [
+  'apps/api/src/modules/employment/rehire-match.ts#endedPeople': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
+  'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates': ['#endedPeople'],
+  'apps/api/src/modules/employment/rehire-match.ts#matchRehire': ['#endedPeople'],
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure': [
     'apps/api/src/modules/employment/errors.ts#EmploymentError',
   ],

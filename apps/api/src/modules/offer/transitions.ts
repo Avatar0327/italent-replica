@@ -8,7 +8,9 @@ import {
   buttonResource,
   OFFER_BUTTONS,
   OFFER_OBJECT,
+  OFFER_REVIEW_FIELDS_KEY,
   OFFER_SEND_APPROVAL_KEY,
+  validOfferReviewFieldsSetting,
   validOfferSendApprovalSetting,
   type OfferRowAction,
 } from '@italent/domain';
@@ -31,6 +33,7 @@ import {
 } from './service.js';
 
 registerSettingValidator(OFFER_SEND_APPROVAL_KEY, validOfferSendApprovalSetting);
+registerSettingValidator(OFFER_REVIEW_FIELDS_KEY, validOfferReviewFieldsSetting);
 
 /**
  * 行操作的权限裁剪：转移状态按行级按钮，编辑 / 失效按编辑开关，删除按删除开关，复制按新增开关；查看已由读权限保证。
@@ -52,6 +55,8 @@ export async function offerActionAccess(deps: TenantRouteDeps, ctx: OfferContext
     submitApproval: update,
     transfer,
     edit: update,
+    send: update,
+    resend: update,
     invalidate: update,
     delete: remove,
     copy: create,
