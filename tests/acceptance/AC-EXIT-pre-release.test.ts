@@ -78,11 +78,11 @@ async function capacityWorld(label: string) {
 }
 
 /** 11-01 重聘进入调入部门：新 staff_id 的新任职周期。 */
-async function rehired(x: Awaited<ReturnType<typeof capacityWorld>>) {
+async function rehired(x: Awaited<ReturnType<typeof capacityWorld>>, department = x.to) {
   const employee = await x.session.getEmployee(x.employee.id);
   await x.session.business(
     employee.id,
-    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', fields: { departmentId: x.to.id } },
+    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', fields: { departmentId: department.id } },
     employee.revision,
   );
 }
@@ -143,6 +143,36 @@ describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）
     expect((await x.transferInto(newcomer.id, x.from.id, '2026-10-25')).status).toBe(201);
     const second = await x.newcomer('第二个调入者');
     await x.exceeded(await x.transferInto(second.id, x.to.id, '2026-11-10'));
+  });
+
+  it('P2-1 成员区间保留来源周期：旧周期的调动申请投影到新周期日期，不被新周期离职的预减误扣', async () => {
+    const x = await capacityWorld('pre-cycle-source');
+    const newcomer = await x.newcomer('调入者');
+    const first = await x.directLeave('2026-10-20');
+    expect(await x.runScheduler('2026-10-21T01:00:00Z')).toMatchObject({ activated: [first.id] });
+    // 10-21 当天保存 11-01 的未来重聘（新周期，进调出部门）；仍在 10-21 创建并提交生效日 10-15 的调动申请 T 调入 B（严格编制 1）
+    x.setNow('2026-10-21T02:00:00Z');
+    await rehired(x, x.from);
+    const review = await x.transferInto(x.employee.id, x.to.id, '2026-10-15', 'application');
+    expect(review.status, await review.clone().text()).toBe(201);
+    const transferId = ((await review.json()) as { id: string }).id;
+    // 11-02 批准新周期离职（要先确认“将作废”审批中的 T），最后工作日 11-20
+    x.setNow('2026-11-02T02:00:00Z');
+    const unconfirmed = await x.reason(await x.createLeave(x.employee.id, leaveBody('2026-11-20', 'direct')));
+    expect(unconfirmed).toMatchObject({ status: 409, reason: 'EXIT_PENDING_TRANSFER_ACK_REQUIRED' });
+    const second = await x.createdLeave(
+      x.employee.id,
+      leaveBody('2026-11-20', 'direct', { pendingTransferAck: unconfirmed.ackToken }),
+    );
+    expect(await x.preReleaseDate(second.id)).toBe('2026-11-02');
+    // T 仍绑定旧周期：新周期的离职预减不扣它，它从 Y 的调入窗口起在 B 占编 → Y 11-10 调入 B 超编
+    const cycles = await x.sqlRows<{ id: string }>(sql`SELECT id FROM employment_cycles
+      WHERE tenant_id=${x.session.tenant.id} AND employee_id=${x.employee.id}::uuid ORDER BY entry_date`);
+    const [selected] = await x.sqlRows<{ staff: string }>(sql`SELECT selected_staff_id AS staff
+      FROM employment_payload_versions WHERE tenant_id=${x.session.tenant.id} AND business_id=${transferId}::uuid
+      ORDER BY version_no DESC LIMIT 1`);
+    expect(selected!.staff).toBe(cycles[0]!.id);
+    await x.exceeded(await x.transferInto(newcomer.id, x.to.id, '2026-11-10', 'application'));
   });
 
   it('B-62a 第二次离职只释放第二周期：staff_id 为第二周期，R₂ 起新周期释放', async () => {
