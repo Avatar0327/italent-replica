@@ -104,9 +104,11 @@ describe('BE-14a 编辑、删除、复制', () => {
     }[];
     expect(rows.map((a) => a.action).sort()).toEqual(['offer.create', 'offer.delete']);
     expect(rows.find((a) => a.action === 'offer.delete')!.before).toMatchObject({ id: removable.id });
-    for (const [column, value] of [
-      ['approval_status', 'approving'],
-      ['status', 'sent'],
+    // 已发 / 已接受可“编辑并同步”（BE-14b3，编辑见 AC-OF-BE14b3-edit-sync），但仍不可删除
+    for (const [column, value, methods] of [
+      ['approval_status', 'approving', ['PUT', 'DELETE']],
+      ['status', 'sent', ['DELETE']],
+      ['status', 'onboarded', ['PUT', 'DELETE']],
     ] as const) {
       const locked = await w.social();
       await w.force(locked.id, column, value);
@@ -114,6 +116,7 @@ describe('BE-14a 编辑、删除、复制', () => {
         ['PUT', { name: '改名' }],
         ['DELETE', undefined],
       ] as const) {
+        if (!(methods as readonly string[]).includes(method)) continue;
         const response = await w.request(method, `/${locked.id}`, { ifMatch: 1, body });
         expect(response.status).toBe(409);
         expect((await errorOf(response)).details).toMatchObject({ reason: 'OFFER_NOT_EDITABLE' });
