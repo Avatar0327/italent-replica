@@ -8,7 +8,7 @@ import * as domain from '@italent/domain';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { errorOf, offerWorld, type OfferBody } from './AC-OF-BE14a-support.js';
+import { errorOf, offerWorld, syncOff, type OfferBody } from './AC-OF-BE14a-support.js';
 
 const testDb = useTestDb();
 const reject = { target: 'rejected', refusalTime: '2026-10-16', refusalReasonCode: 'personal' };
@@ -18,6 +18,7 @@ const actionsOf = (offer: OfferBody) => offer.rowActions as Actions | undefined;
 describe('AC-OF-09 / 17 转移表单必填', () => {
   it('转已接受不填接受 offer 时间 → 400 且状态不变；填了即已接受，写审计', async () => {
     const w = await offerWorld(testDb().db, 'accept');
+    await syncOff(w);
     const offer = await w.social();
     const response = await w.transfer(offer, { target: 'accepted' });
     expect(response.status, await response.clone().text()).toBe(400);
@@ -110,6 +111,7 @@ describe('AC-OF-08 已拒绝退回待发', () => {
 
   it('已接受不能直接回待发（须先经已拒绝）；已接受 → 已入职给机读拒绝；终态不能转移；revision 冲突 409', async () => {
     const w = await offerWorld(testDb().db, 'guards');
+    await syncOff(w);
     const accepted = await w.moved(await w.social(), { target: 'accepted', acceptTime: '2026-10-16' });
     const back = await w.transfer(accepted, { target: 'pending' });
     expect(back.status).toBe(409);
@@ -142,6 +144,7 @@ describe('AC-OF-08 已拒绝退回待发', () => {
 
   it('顶部工具栏入口与行主按钮入口同一转移规则；多余字段 400', async () => {
     const w = await offerWorld(testDb().db, 'toolbar');
+    await syncOff(w);
     const offer = await w.social();
     const extra = await w.transfer(offer, { target: 'accepted', acceptTime: '2026-10-16', status: 'invalid' });
     expect(extra.status).toBe(400);

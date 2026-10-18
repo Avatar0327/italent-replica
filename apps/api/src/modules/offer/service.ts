@@ -19,6 +19,7 @@ import {
   effectiveOfferType,
   offerEditable,
   offerRowActions,
+  offerSyncKind,
   offerTransferTargets,
   planOfferInvalidation,
   planOfferSend,
@@ -48,7 +49,9 @@ import { withApprovalProgress } from './approval-progress.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import { requireEnabledOfferReason } from './dictionaries.js';
+import { currentEntryIds } from './entry-link.js';
 import { requireQuotaConfirmed } from './establishment.js';
+import { lockOfferSyncScope } from './sync-lock.js';
 import { requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
 
@@ -93,9 +96,15 @@ export const facts = (row: OfferRow): OfferStateFacts => ({
 });
 
 /** 接口形状：金额转数字；拒绝时间 / 原因 / 备注只在“已拒绝”时出现（DEC-532①：退回待发后保留但详情不显示）。 */
-export function offerDto(row: OfferRow) {
-  const { tenantId: _tenant, pendingEntryBusinessId, ...rest } = row;
-  const dto: Record<string, unknown> = { ...rest, hasPendingEntry: pendingEntryBusinessId !== null };
+export function offerDto(row: OfferRow, currentEntryId?: string) {
+  const { tenantId: _tenant, ...rest } = row;
+  const dto: Record<string, unknown> = {
+    ...rest,
+    hasPendingEntry: row.pendingEntryBusinessId !== null,
+    // 待入职记录经改期 / 编辑换日期会换新 ID：读路径传入沿记录链解析出的最新 ID（sync.ts currentEntryIds）
+    pendingEntryBusinessId: currentEntryId ?? row.pendingEntryBusinessId,
+    syncedContractKind: row.syncStatus === 'success' ? offerSyncKind(typeOf(row)).contractKind : null,
+  };
   for (const field of MONEY) {
     const value = row[field as keyof OfferRow];
     dto[field] = value === null ? null : Number(value);
@@ -105,9 +114,9 @@ export function offerDto(row: OfferRow) {
 }
 
 /** 审计归属录用部门（按当前组织范围查看审计），删除 / 失效后仍按快照里的部门判断。 */
-async function audit(
+export async function audit(
   tx: Tx,
-  ctx: OfferContext,
+  ctx: Pick<OfferContext, 'tenantId' | 'userId' | 'commandId' | 'now'>,
   action: string,
   id: string,
   before: (OfferRow & { readonly sendRecords?: readonly object[] }) | null,
@@ -434,17 +443,19 @@ export const offerStillVisible = async (tx: Tx, ctx: OfferContext, body: unknown
 export type OfferActionFilter = (action: OfferRowAction) => boolean;
 
 /** 行操作（AC-OF-16 / 19 / 20）：原站矩阵只保留已接线、且当前用户有权的动作（OFFER_WIRED_ROW_ACTIONS）。 */
-function withActions(row: OfferRow, allowed: OfferActionFilter) {
+function withActions(row: OfferRow, allowed: OfferActionFilter, current?: ReadonlyMap<string, string>) {
   const usable = (action: OfferRowAction) => OFFER_WIRED_ROW_ACTIONS.includes(action) && allowed(action);
   const actions = offerRowActions(facts(row));
   return {
-    ...offerDto(row),
+    ...offerDto(row, current?.get(row.id)),
     rowActions: { primary: actions.primary.filter(usable), menu: actions.menu.filter(usable) },
   };
 }
 
 export async function offerDetail(tx: Tx, ctx: OfferContext, id: string, allowed: OfferActionFilter) {
-  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [withActions(await loadOffer(tx, ctx, id), allowed)]);
+  const row = await loadOffer(tx, ctx, id);
+  const current = await currentEntryIds(tx, ctx.tenantId, [row]);
+  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [withActions(row, allowed, current)]);
   return dto!;
 }
 
@@ -485,7 +496,8 @@ export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuer
     .orderBy(desc(offers.createdAt), desc(offers.id))
     .limit(query.limit)
     .offset(query.offset);
-  const items = rows.map((row) => withActions(row, allowed));
+  const current = await currentEntryIds(tx, ctx.tenantId, rows);
+  const items = rows.map((row) => withActions(row, allowed, current));
   return { total: count!.total, items: await withApprovalProgress(tx, ctx.tenantId, items) };
 }
 
@@ -513,7 +525,10 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
   const plan = planOfferTransition(facts(before), input.target, input);
   if (!plan.ok) failPlan(plan);
   // 管理员转为已接受：超编弱控二次确认（OF-R10，候选人答复不校验）
-  if (input.target === 'accepted') await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
+  if (input.target === 'accepted') {
+    await lockOfferSyncScope(tx, ctx, before); // 先于弱控确认取齐关联人员锁（sync-lock.ts 锁序）
+    await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
+  }
   const patch = plan.patch.refusalReasonCode
     ? {
         ...plan.patch,
