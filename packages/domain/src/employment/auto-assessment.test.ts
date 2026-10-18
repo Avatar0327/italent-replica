@@ -3,7 +3,7 @@ import { ASSESSMENT_OPINION_CODES, ASSESSMENT_STATUSES, type AssessmentStatus } 
 import {
   assessmentBlocksAutoRegularization,
   autoAssessmentTargetDate,
-  matchAutoAssessmentRule,
+  matchAutoAssessmentRules,
   isAutoAssessmentDays,
 } from './auto-assessment.js';
 
@@ -29,15 +29,17 @@ describe('命中规则（AC-PB-06、AC-PB-11）', () => {
   });
   const rules = [rule('a', 29), rule('b', 30, false), rule('c', 30), rule('d', 31)];
 
-  it('只命中“今天是第 N 天”的启用规则，已过 / 未到的不命中，停用的跳过', () => {
-    expect(matchAutoAssessmentRule(rules, 'dept', '2026-09-01', '2026-10-01')?.id).toBe('c');
-    expect(matchAutoAssessmentRule(rules, 'dept', '2026-09-01', '2026-10-02')?.id).toBe('d');
-    expect(matchAutoAssessmentRule(rules, 'dept', '2026-09-01', '2026-10-05')).toBeNull();
+  it('命中“今天是第 N 天”的全部启用规则并保持顺序，已过 / 未到的不命中，停用的跳过', () => {
+    const both = [rule('a', 29), rule('b', 30, false), rule('c', 30), rule('d', 31), rule('e', 30)];
+    const ids = (today: string) => matchAutoAssessmentRules(both, 'dept', '2026-09-01', today).map((item) => item.id);
+    expect(ids('2026-10-01')).toEqual(['c', 'e']);
+    expect(ids('2026-10-02')).toEqual(['d']);
+    expect(ids('2026-10-05')).toEqual([]);
   });
 
   it('不在适用组织或没有主职部门不命中', () => {
-    expect(matchAutoAssessmentRule(rules, 'other', '2026-09-01', '2026-10-01')).toBeNull();
-    expect(matchAutoAssessmentRule(rules, null, '2026-09-01', '2026-10-01')).toBeNull();
+    expect(matchAutoAssessmentRules(rules, 'other', '2026-09-01', '2026-10-01')).toEqual([]);
+    expect(matchAutoAssessmentRules(rules, null, '2026-09-01', '2026-10-01')).toEqual([]);
   });
 });
 

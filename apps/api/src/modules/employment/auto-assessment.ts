@@ -14,7 +14,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   AUTO_ASSESSMENT_BLOCKING_REGULARIZATION_STATES,
   EMPLOYEE_STATUS,
-  matchAutoAssessmentRule,
+  matchAutoAssessmentRules,
   tenantLocalDate,
 } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
@@ -135,44 +135,33 @@ function reasonOf(error: AppError | EmploymentError): string {
 }
 
 /**
- * 是否今天待发起（不取锁，可用于预筛；办理前须在员工锁内再判一次）：适用对象、命中规则（今天是它的第 N 天）、
- * 该规则尚未对本任职发起。
+ * 今天待发起的规则（不取锁，可用于预筛；办理前须在员工锁内再判一次）：适用对象、命中规则（今天是它的第 N 天）、
+ * 该规则尚未对本任职发起。已发起的只跳过这一条，不影响同天到期的其他规则（第 1 轮 P2-2）。
  */
-async function dueRuleOf(
+async function dueRulesOf(
   tx: Tx,
   tenantId: string,
   employeeId: string,
   rules: readonly ExpandedAutoAssessmentRule[],
   today: string,
-): Promise<{ readonly subject: Subject; readonly rule: ExpandedAutoAssessmentRule } | null> {
+): Promise<{ readonly subject: Subject; readonly rules: ExpandedAutoAssessmentRule[] } | null> {
   const subject = await subjectOf(tx, tenantId, employeeId, today);
   if (!subject) return null;
-  const rule = matchAutoAssessmentRule(rules, subject.departmentId, subject.cycle.anchor.entryDate, today);
-  if (!rule || (await launchedBefore(tx, tenantId, rule.id, subject.cycle.anchor.id))) return null;
-  return { subject, rule };
+  const pending: ExpandedAutoAssessmentRule[] = [];
+  for (const rule of matchAutoAssessmentRules(rules, subject.departmentId, subject.cycle.anchor.entryDate, today))
+    if (!(await launchedBefore(tx, tenantId, rule.id, subject.cycle.anchor.id))) pending.push(rule);
+  return pending.length ? { subject, rules: pending } : null;
 }
 
-/**
- * 一名员工：调用方已持该员工锁（立即执行等待、每日批次 SKIP LOCKED）。不适用 / 今天不是第 N 天 / 已由该规则发起返回 null。
- * ctx 为系统上下文（userId 不用于发起）；发起时换成规则配置的发起人。
- */
-export async function autoAssessEmployee(
+/** 一条规则 × 一名员工：保存点内发起；业务拒绝记台账 failed（原因、次数），其余错误向上抛由整人回滚。 */
+async function launchByRule(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
-  rules: readonly ExpandedAutoAssessmentRule[],
+  subject: Subject,
+  rule: ExpandedAutoAssessmentRule,
+  today: string,
 ): Promise<AutoAssessmentOutcome> {
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
-  // F-223：规则快照只是提示，员工锁内按最新规则状态复核
-  const due = await dueRuleOf(
-    tx,
-    ctx.tenantId,
-    employeeId,
-    await currentAutoAssessmentRules(tx, ctx.tenantId, rules, today),
-    today,
-  );
-  if (!due) return null;
-  const { subject, rule } = due;
   const key = { ruleId: rule.id, anchorId: subject.cycle.anchor.id, employeeId };
   try {
     const launched = await tx.transaction(async (savepoint) => {
@@ -228,12 +217,43 @@ export async function autoAssessEmployee(
   }
 }
 
+/**
+ * 一名员工：调用方已持该员工锁（立即执行等待、每日批次 SKIP LOCKED）。不适用 / 今天没有到期规则 / 到期规则都已发起返回空。
+ * 同天到期的多条规则按优先级逐条办理、各自一条台账：先办的发起后，后面的经 PB-R20（本周期已有审批中的考核）记失败。
+ * ctx 为系统上下文（userId 不用于发起）；发起时换成规则配置的发起人。
+ */
+export async function autoAssessEmployee(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  rules: readonly ExpandedAutoAssessmentRule[],
+): Promise<AutoAssessmentOutcome[]> {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  // F-223：规则快照只是提示，员工锁内按最新规则状态复核
+  const due = await dueRulesOf(
+    tx,
+    ctx.tenantId,
+    employeeId,
+    await currentAutoAssessmentRules(tx, ctx.tenantId, rules, today),
+    today,
+  );
+  if (!due) return [];
+  const outcomes: AutoAssessmentOutcome[] = [];
+  for (const rule of due.rules) outcomes.push(await launchByRule(tx, ctx, employeeId, due.subject, rule, today));
+  return outcomes;
+}
+
 /** 把逐人结果收进回执（launched / failed 两列，按员工 ID 顺序）。 */
-export function collectAutoAssessmentOutcome(run: AutoAssessmentRun, outcome: AutoAssessmentOutcome): void {
-  if (!outcome) return;
-  const { kind, ...item } = outcome;
-  if (kind === 'launched') run.launched.push(item as AutoAssessmentLaunched);
-  else run.failed.push(item as AutoAssessmentFailed);
+export function collectAutoAssessmentOutcomes(
+  run: AutoAssessmentRun,
+  outcomes: readonly AutoAssessmentOutcome[],
+): void {
+  for (const outcome of outcomes) {
+    if (!outcome) continue;
+    const { kind, ...item } = outcome;
+    if (kind === 'launched') run.launched.push(item as AutoAssessmentLaunched);
+    else run.failed.push(item as AutoAssessmentFailed);
+  }
 }
 
 const RUN_PAGE = 200;
@@ -258,7 +278,7 @@ async function scanDue(
     for (const employeeId of page) {
       scanned += 1;
       last = employeeId;
-      if (!(await dueRuleOf(tx, tenantId, employeeId, rules, today))) continue;
+      if (!(await dueRulesOf(tx, tenantId, employeeId, rules, today))) continue;
       due.push(employeeId);
       if (due.length >= chunk) return { due, nextCursor: employeeId };
     }
@@ -296,7 +316,7 @@ export async function runAutoAssessmentNow(
   const { due, nextCursor } = await scanDue(tx, ctx.tenantId, rules, businessDate, cursor);
   if (due.length) await lockTransferParticipants(tx, system, due[0]!, due.slice(1));
   for (const employeeId of due)
-    collectAutoAssessmentOutcome(run, await autoAssessEmployee(tx, system, employeeId, rules));
+    collectAutoAssessmentOutcomes(run, await autoAssessEmployee(tx, system, employeeId, rules));
   return { ...run, nextCursor: nextCursor ? await issueCursor(tx, ctx, businessDate, nextCursor) : null };
 }
 

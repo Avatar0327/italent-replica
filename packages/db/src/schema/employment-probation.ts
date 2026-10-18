@@ -392,16 +392,46 @@ export const employmentAutoAssessmentLaunches = pgTable(
   ],
 );
 
-/** 每日批次登记（DEC-539①）：每租户每个业务日只跑一次自动考核定时批次；“立即执行”不占用。 */
+/**
+ * 每日批次登记（DEC-539①）：每租户每个业务日一行，记录批次的推进进度而不是“占位”（第 1 轮 P2-1）——
+ * swept = 当天候选已全部扫过一遍；completed_at = 扫完且没有待续跑的员工。未完成的日子，同日后续调度继续推进；
+ * “立即执行”不占用。
+ */
 export const employmentAutoAssessmentDailyRuns = pgTable(
   'employment_auto_assessment_daily_runs',
   {
     tenantId: tenant(),
     businessDate: date('business_date', { mode: 'string' }).notNull(),
     commandId: text('command_id').notNull(),
+    swept: boolean('swept').notNull().default(false),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: utc(),
   },
   (t) => [primaryKey({ name: 'employment_auto_assessment_daily_runs_pk', columns: [t.tenantId, t.businessDate] })],
+);
+
+/**
+ * 当天批次待续跑的员工：被他人持锁而跳过（locked）或处理时存储临时出错（error）的人；同日后续调度只重试这些人，
+ * 处理完（发起、业务失败记台账、或不再适用）即删除。次日的批次另起（自动考核只在第 N 天命中，不补发昨天的）。
+ */
+export const employmentAutoAssessmentDailyPending = pgTable(
+  'employment_auto_assessment_daily_pending',
+  {
+    tenantId: tenant(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    reason: text('reason').notNull(),
+    attempts: integer('attempts').notNull().default(1),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'employment_auto_assessment_daily_pending_pk',
+      columns: [t.tenantId, t.businessDate, t.employeeId],
+    }),
+    check('employment_auto_assessment_daily_pending_reason', sql`${t.reason} IN ('locked', 'error')`),
+    check('employment_auto_assessment_daily_pending_attempts', sql`${t.attempts} > 0`),
+  ],
 );
 
 /** 自动考核“立即执行”的续跑句柄：同自动转正，回执只给随机句柄，位置不出库；绑定租户 × 操作人 × 业务日，只增不改。 */

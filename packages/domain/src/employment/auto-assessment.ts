@@ -32,23 +32,22 @@ export function autoAssessmentTargetDate(entryDate: string, daysAfterEntry: numb
 }
 
 /**
- * 命中规则：适用组织包含主职部门、且目标日 = 当天的启用规则里取排在最前的一条（规则须已按优先级、登记顺序排好）。
- * 与自动转正不同，一人可同时落在多条规则的范围里（如入职第 30 天试用中考核、第 80 天转正考核），按“今天是不是它的第 N 天”分别触发。
+ * 命中规则：适用组织包含主职部门、且目标日 = 当天的全部启用规则，保持传入顺序（规则须已按优先级、登记顺序排好）。
+ * 与自动转正不同，一人同天可有多条规则到期（如入职第 30 天的两条考核规则，或类型不同的规则）：每条都要办理并留台账，
+ * 先办的发起后，其余由 PB-R20 / PB-R9 给出明确失败，不在这里另造互斥（DEC-431①）。
  */
-export function matchAutoAssessmentRule<T extends AutoRegularizationRuleFacts & { readonly daysAfterEntry: number }>(
+export function matchAutoAssessmentRules<T extends AutoRegularizationRuleFacts & { readonly daysAfterEntry: number }>(
   rules: readonly T[],
   departmentId: string | null,
   entryDate: string,
   today: string,
-): T | null {
-  if (!departmentId) return null;
-  return (
-    rules.find(
-      (rule) =>
-        rule.enabled &&
-        rule.scopeOrgIds.includes(departmentId) &&
-        autoAssessmentTargetDate(entryDate, rule.daysAfterEntry) === today,
-    ) ?? null
+): T[] {
+  if (!departmentId) return [];
+  return rules.filter(
+    (rule) =>
+      rule.enabled &&
+      rule.scopeOrgIds.includes(departmentId) &&
+      autoAssessmentTargetDate(entryDate, rule.daysAfterEntry) === today,
   );
 }
 

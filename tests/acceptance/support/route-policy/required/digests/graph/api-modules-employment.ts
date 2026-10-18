@@ -451,24 +451,27 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_BLOCKING_REGULARIZATION_STATES',
   ],
   'apps/api/src/modules/employment/auto-assessment.ts#autoAssessEmployee': [
-    'apps/api/src/audit/record.ts#recordAudit',
-    'apps/api/src/modules/employment/assessment.ts#launchAssessment',
     'apps/api/src/modules/employment/auto-assessment-rules.ts#currentAutoAssessmentRules',
-    '#assertNoCycleConflict',
-    '#dueRuleOf',
-    '#reasonOf',
-    '#recordOutcome',
-    'apps/api/src/modules/employment/auto-regularization.ts#resolveInitiator',
-    'apps/api/src/modules/employment/errors.ts#EmploymentError',
+    '#dueRulesOf',
+    '#launchByRule',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/auto-assessment.ts#cursorPosition': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/auto-assessment.ts#dueRuleOf': [
+  'apps/api/src/modules/employment/auto-assessment.ts#dueRulesOf': [
     '#launchedBefore',
     '#subjectOf',
-    'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRule',
+    'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRules',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#launchByRule': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/employment/assessment.ts#launchAssessment',
+    '#assertNoCycleConflict',
+    '#reasonOf',
+    '#recordOutcome',
+    'apps/api/src/modules/employment/auto-regularization.ts#resolveInitiator',
+    'apps/api/src/modules/employment/errors.ts#EmploymentError',
   ],
   'apps/api/src/modules/employment/auto-assessment.ts#launchedBefore': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -477,7 +480,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/auto-assessment-rules.ts#loadEnabledAutoAssessmentRules',
     'apps/api/src/modules/employment/auto-assessment-rules.ts#readAutoAssessmentEnabled',
     '#autoAssessEmployee',
-    '#collectAutoAssessmentOutcome',
+    '#collectAutoAssessmentOutcomes',
     '#cursorPosition',
     '#issueCursor',
     '#scanDue',
@@ -487,7 +490,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/auto-assessment.ts#scanDue': [
     '#AUTO_ASSESSMENT_RUN_LIMITS',
     '#RUN_PAGE',
-    '#dueRuleOf',
+    '#dueRulesOf',
     'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizationCandidates',
   ],
   'apps/api/src/modules/employment/auto-assessment.ts#subjectOf': [

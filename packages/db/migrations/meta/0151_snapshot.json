@@ -1,5 +1,5 @@
 {
-  "id": "756a735a-3099-4814-8381-01627caeebc6",
+  "id": "a887e90e-4f5c-4994-86be-70a7d0c6b115",
   "prevId": "fb5041e7-60bd-4e53-8f6d-07103c5532f8",
   "version": "7",
   "dialect": "postgresql",
@@ -55955,6 +55955,89 @@
       },
       "isRLSEnabled": false
     },
+    "public.employment_auto_assessment_daily_pending": {
+      "name": "employment_auto_assessment_daily_pending",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_auto_assessment_daily_pending_tenant_id_tenants_id_fk": {
+          "name": "employment_auto_assessment_daily_pending_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_auto_assessment_daily_pending",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "employment_auto_assessment_daily_pending_pk": {
+          "name": "employment_auto_assessment_daily_pending_pk",
+          "columns": [
+            "tenant_id",
+            "business_date",
+            "employee_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "employment_auto_assessment_daily_pending_reason": {
+          "name": "employment_auto_assessment_daily_pending_reason",
+          "value": "\"employment_auto_assessment_daily_pending\".\"reason\" IN ('locked', 'error')"
+        },
+        "employment_auto_assessment_daily_pending_attempts": {
+          "name": "employment_auto_assessment_daily_pending_attempts",
+          "value": "\"employment_auto_assessment_daily_pending\".\"attempts\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.employment_auto_assessment_daily_runs": {
       "name": "employment_auto_assessment_daily_runs",
       "schema": "",
@@ -55976,6 +56059,19 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "swept": {
+          "name": "swept",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

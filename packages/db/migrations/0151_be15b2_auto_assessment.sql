@@ -1,7 +1,21 @@
+CREATE TABLE "employment_auto_assessment_daily_pending" (
+	"tenant_id" uuid NOT NULL,
+	"business_date" date NOT NULL,
+	"employee_id" uuid NOT NULL,
+	"reason" text NOT NULL,
+	"attempts" integer DEFAULT 1 NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "employment_auto_assessment_daily_pending_pk" PRIMARY KEY("tenant_id","business_date","employee_id"),
+	CONSTRAINT "employment_auto_assessment_daily_pending_reason" CHECK ("employment_auto_assessment_daily_pending"."reason" IN ('locked', 'error')),
+	CONSTRAINT "employment_auto_assessment_daily_pending_attempts" CHECK ("employment_auto_assessment_daily_pending"."attempts" > 0)
+);
+--> statement-breakpoint
 CREATE TABLE "employment_auto_assessment_daily_runs" (
 	"tenant_id" uuid NOT NULL,
 	"business_date" date NOT NULL,
 	"command_id" text NOT NULL,
+	"swept" boolean DEFAULT false NOT NULL,
+	"completed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "employment_auto_assessment_daily_runs_pk" PRIMARY KEY("tenant_id","business_date")
 );
@@ -65,12 +79,14 @@ CREATE TABLE "employment_auto_assessment_run_cursors" (
 	CONSTRAINT "employment_auto_assessment_run_cursors_tenant_id" UNIQUE("tenant_id","id")
 );
 --> statement-breakpoint
+ALTER TABLE "employment_auto_assessment_daily_pending" ADD CONSTRAINT "employment_auto_assessment_daily_pending_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_auto_assessment_daily_runs" ADD CONSTRAINT "employment_auto_assessment_daily_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_auto_assessment_launches" ADD CONSTRAINT "employment_auto_assessment_launches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_auto_assessment_launches" ADD CONSTRAINT "employment_auto_assessment_launches_anchor_fk" FOREIGN KEY ("tenant_id","employee_id","anchor_id") REFERENCES "public"."employment_business_objects"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_auto_assessment_launches" ADD CONSTRAINT "employment_auto_assessment_launches_assessment_fk" FOREIGN KEY ("tenant_id","assessment_id") REFERENCES "public"."employment_probation_assessments"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_auto_assessment_rules" ADD CONSTRAINT "employment_auto_assessment_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employment_auto_assessment_run_cursors" ADD CONSTRAINT "employment_auto_assessment_run_cursors_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employment_auto_assessment_run_cursors" ADD CONSTRAINT "employment_auto_assessment_run_cursors_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
+--> statement-breakpoint
 -- R2 BE-15b2 手写部分：自动考核规则 / 台账 / 批次登记 / 续跑句柄的租户隔离与应用角色权限（同 0141 / 0143）。
 -- 规则可改的列逐列授权，删除保留审计快照；发起台账只更新 failed 行（launched 后不再改，代码里带条件）
 SELECT enable_tenant_isolation('employment_auto_assessment_rules');
@@ -90,6 +106,14 @@ GRANT UPDATE (state, assessment_id, initiator_user_id, system_proxy, attempts, l
 SELECT enable_tenant_isolation('employment_auto_assessment_daily_runs');
 --> statement-breakpoint
 GRANT SELECT, INSERT ON employment_auto_assessment_daily_runs TO app_user;
+--> statement-breakpoint
+GRANT UPDATE (swept, completed_at) ON employment_auto_assessment_daily_runs TO app_user;
+--> statement-breakpoint
+SELECT enable_tenant_isolation('employment_auto_assessment_daily_pending');
+--> statement-breakpoint
+GRANT SELECT, INSERT, DELETE ON employment_auto_assessment_daily_pending TO app_user;
+--> statement-breakpoint
+GRANT UPDATE (reason, attempts, updated_at) ON employment_auto_assessment_daily_pending TO app_user;
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_auto_assessment_run_cursors');
 --> statement-breakpoint

@@ -18,7 +18,7 @@ export const GRAPH: Graph = {
     '#AUTO_ASSESSMENT_DAYS_MAX',
     '#AUTO_ASSESSMENT_DAYS_MIN',
   ],
-  'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRule': ['#autoAssessmentTargetDate'],
+  'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRules': ['#autoAssessmentTargetDate'],
   'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_MODE_CODES': [
     '#AUTO_REGULARIZATION_MODES',
   ],
