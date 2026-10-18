@@ -15,6 +15,7 @@ const LAST_WORK_DATE = '2026-10-20';
 const world = (label: string) => downstreamWorld(database().db, label, TODAY);
 
 interface Preview {
+  ack: { ackToken: string; items: unknown[]; hiddenCount: number } | null;
   warnings: { reason: string; limit?: number; items?: unknown[]; hiddenCount?: number }[];
 }
 async function previewOf(x: DownstreamWorld): Promise<Preview> {
@@ -63,4 +64,45 @@ describe('F-237 离职预览：在途申请超上限提示', () => {
     const toVoid = preview.warnings.find((item) => item.reason === 'EXIT_APPLICATIONS_TO_VOID')!;
     expect(toVoid.items).toEqual([expect.objectContaining({ businessId: draft.id })]);
   });
+
+  // 前序申请（已批准、计划生效日 ≤ 最后工作日）会先于离职落地，不算待作废；候选条件在 SQL 里过滤后再取上限 + 1
+  it('1 条前序 + 1001 条待作废：带超限提示（前序不挤占查询名额）', async () => {
+    const x = await world('f237-prior-over');
+    await x.bulkDrafts(1, x.employee.id, { kind: 'transfer', state: 'approved', effectiveDate: '2026-10-10' });
+    await x.bulkDrafts(VOID_LIMIT + 1);
+    const preview = await previewOf(x);
+    expect(preview.warnings.find((item) => item.reason === 'EXIT_APPLICATIONS_TOO_MANY')).toEqual({
+      reason: 'EXIT_APPLICATIONS_TOO_MANY',
+      limit: VOID_LIMIT,
+    });
+    expect(reasons(preview)).not.toContain('EXIT_APPLICATIONS_TO_VOID');
+  }, 600_000);
+
+  it('1 条前序 + 1000 条待作废：不带提示，照常列出 1000 条', async () => {
+    const x = await world('f237-prior-at-limit');
+    await x.bulkDrafts(1, x.employee.id, { kind: 'transfer', state: 'approved', effectiveDate: '2026-10-10' });
+    await x.bulkDrafts(VOID_LIMIT);
+    const preview = await previewOf(x);
+    expect(reasons(preview)).not.toContain('EXIT_APPLICATIONS_TOO_MANY');
+    const toVoid = preview.warnings.find((item) => item.reason === 'EXIT_APPLICATIONS_TO_VOID')!;
+    expect(toVoid).toMatchObject({ hiddenCount: 0 });
+    expect(toVoid.items).toHaveLength(VOID_LIMIT);
+  }, 600_000);
+
+  // 确认清单（审批中调动 ∪ 晚于最后工作日的已批准调动）也超长时，预览仍 200，确认令牌与清单照常给出
+  it.each([
+    ['审批中调动', 'in_review', '2026-10-10'],
+    ['晚于最后工作日的已批准调动', 'approved', '2026-12-01'],
+  ])(
+    '确认清单超长（%s × 上限 + 1）：预览 200 + 超限提示，ack 令牌与清单保留',
+    async (_label, state, effectiveDate) => {
+      const x = await world(`f237-ack-${state}`);
+      await x.bulkDrafts(VOID_LIMIT + 1, x.employee.id, { kind: 'transfer', state, effectiveDate });
+      const preview = await previewOf(x);
+      expect(reasons(preview)).toContain('EXIT_APPLICATIONS_TOO_MANY');
+      expect(preview.ack?.ackToken).toEqual(expect.any(String));
+      expect(preview.ack!.items.length + preview.ack!.hiddenCount).toBe(VOID_LIMIT + 1);
+    },
+    600_000,
+  );
 });
