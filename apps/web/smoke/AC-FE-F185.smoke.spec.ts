@@ -106,12 +106,12 @@ test('AC-FE-F185-03 新建选择跨页三目标，只提交目标字段', async 
     await input.press('Enter');
   }
   for (const label of labels) {
-    await choose(page, label, `${label}201`);
-    await expect(dialog.getByText(`${label}201`, { exact: true })).toBeVisible();
+    await choose(page, label, `${label}232`);
+    await expect(dialog.getByText(`${label}232`, { exact: true })).toBeVisible();
   }
   await save(page);
   await expect(dialog).toBeHidden();
-  expect(calls[0]!.body).toMatchObject(Object.fromEntries(targets.map((key) => [key, jobId(201)])));
+  expect(calls[0]!.body).toMatchObject(Object.fromEntries(targets.map((key) => [key, jobId(232)])));
   expect(Object.keys(calls[0]!.body).filter((key) => key.startsWith('current'))).toEqual([]);
   for (const kind of kinds) {
     const pages = queries.filter((url) => url.pathname.endsWith(kind) && url.searchParams.has('page'));
