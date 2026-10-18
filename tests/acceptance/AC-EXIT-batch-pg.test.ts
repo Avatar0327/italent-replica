@@ -5,12 +5,20 @@
  * 交错时机靠多轮覆盖：锁齐之前的实现 12 轮里稳定出现 40P01 死锁。PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行。
  */
 import './support/exit-gate-enforced.js';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { batchItems, dutyPlan, orderedPeople } from './AC-EXIT-batch-support.js';
 import { gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
+import { waitForBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const LATER = '2026-10-20';
+const signal = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => (resolve = done));
+  return { promise, resolve };
+};
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-batch-pg 批量 vs 单人直接离职', () => {
   it('恰一方成功，另一方 409 EXIT_IN_PROGRESS（批量时整批回滚）', async () => {
@@ -41,4 +49,52 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-batch-pg 批量 
       expect((await w.stateOf(peer)).exits).toHaveLength(batch.status === 201 ? 1 : 0);
     }
   });
+});
+
+/**
+ * P2-2 返工：批量入口与单人入口争用同一参与员工闭包（UUID 顺序 S < A < B，B 携带转交下属 S 的计划）。
+ * 持锁会话先占住 S，两个请求按固定先后排队（pg_stat_activity 屏障），放锁后无死锁、无并发冲突码，两个请求都成功。
+ */
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-batch-pg 批量 vs 单人争用同一闭包', () => {
+  it.each(['批量先', '单人先'] as const)(
+    '两连接强制交错（%s）：都成功，无 40P01 / TRANSFER_LOCK_PLAN_CHANGED',
+    async (order) => {
+      const w = await gateWorld(database().db, `batch-closure-pg-${order}`);
+      const p = await orderedPeople(w);
+      const batch = async () =>
+        w.session.request('POST', '/exits/batch', {
+          body: { items: await batchItems(w, [{ id: p.a }, { id: p.b, exit: dutyPlan(p.s, p.receiver) }]) },
+        });
+      const single = async () =>
+        w.session.request('POST', `/employees/${p.s}/businesses`, {
+          ifMatch: (await w.session.getEmployee(p.s)).revision,
+          body: leaveBody(LATER, 'direct'),
+        });
+      const held = signal();
+      const release = signal();
+      const holder = withTenant(w.db, w.session.tenant.id, async (tx) => {
+        await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${w.session.tenant.id}
+        AND id=${p.s}::uuid FOR NO KEY UPDATE`);
+        held.resolve();
+        await release.promise;
+      });
+      await held.promise;
+      const requests = order === '批量先' ? [batch, single] : [single, batch];
+      const running: Promise<Response>[] = [];
+      // 请求体（含 revision 查询）先备好再排队，避免等待期间占满连接池
+      for (const [index, request] of requests.entries()) {
+        running.push(request());
+        await waitForBlocked(w.db, index + 1);
+      }
+      release.resolve();
+      await holder;
+      const responses = await Promise.all(running);
+      const texts = await Promise.all(responses.map((response) => response.clone().text()));
+      expect(
+        responses.map((response) => response.status),
+        texts.join('\n'),
+      ).toEqual([201, 201]);
+      expect(texts.join('\n')).not.toMatch(/DEADLOCK|TRANSFER_LOCK_PLAN_CHANGED|40P01/);
+    },
+  );
 });
