@@ -336,3 +336,78 @@ describe('§7.2 编辑兼职：功能操作权 → 按钮权 → 范围 → 字�
     expect((await send(w, record.id, only(w.partTimeOrg.id), { endDate: '2026-10-15' })).status).toBe(200);
   });
 });
+
+describe('AC-PT-01 / 第 1 轮 P2-1：编辑把已结束的外派 / 借调改回进行中，仍受 D-5 唯一约束', () => {
+  const exclusive = (type: string, startDate: string, endDate: string | null) => ({
+    partTimeType: type,
+    startDate,
+    endDate,
+  });
+
+  it('复现：外派 A 09-01～09-20 已结束，借调 B 09-21～12-31 任职中；把 A 结束日改成 12-31 → 409 PART_TIME_EXCLUSIVE_TYPE_EXISTS，A 不变', async () => {
+    const w = await httpWorld(database().db, 'edit-exclusive-repro');
+    const a = await w.make(exclusive('expatriate', '2026-09-01', '2026-09-20'));
+    await w.make(exclusive('secondment', '2026-09-21', '2026-12-31'));
+    const before = await w.writes();
+    expect(await w.refusal(await w.edit(a.id, { endDate: '2026-12-31' }, a.revision))).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      reason: 'PART_TIME_EXCLUSIVE_TYPE_EXISTS',
+    });
+    expect(await w.writes()).toEqual(before);
+    expect(await w.ok(await w.one(a.id))).toMatchObject({ endDate: '2026-09-20', revision: 1, serviceStatus: 'ended' });
+  });
+
+  it('草稿 / 审批中 / 驳回的外派 / 借调新增申请同样占位（A-7）：恢复被拒；申请办结（作废）后可恢复', async () => {
+    const w = await httpWorld(database().db, 'edit-exclusive-pending');
+    const a = await w.make(exclusive('secondment', '2026-09-01', '2026-09-20'));
+    await w.seedRequest({ requestType: 'add', serviceType: 'expatriate', state: 'in_review' });
+    expect(await w.refusal(await w.edit(a.id, { endDate: '2026-12-31' }, a.revision))).toMatchObject({
+      status: 409,
+      reason: 'PART_TIME_EXCLUSIVE_TYPE_EXISTS',
+    });
+    const free = await httpWorld(database().db, 'edit-exclusive-pending-voided');
+    const b = await free.make(exclusive('secondment', '2026-09-01', '2026-09-20'));
+    await free.seedRequest({ requestType: 'add', serviceType: 'expatriate', state: 'voided' });
+    expect(await free.ok(await free.edit(b.id, { endDate: '2026-12-31' }, b.revision))).toMatchObject({
+      endDate: '2026-12-31',
+      serviceStatus: 'serving',
+    });
+  });
+
+  it('无冲突时仍可恢复（PB-61）：只有这一条外派 / 借调，或其他外派 / 借调都已结束 → 200；恢复后另一条就恢复不了', async () => {
+    const w = await httpWorld(database().db, 'edit-exclusive-recover');
+    const a = await w.make(exclusive('expatriate', '2026-08-01', '2026-08-20'));
+    const b = await w.make(exclusive('secondment', '2026-09-01', '2026-09-20'));
+    expect(await w.ok(await w.edit(a.id, { endDate: '2026-12-31' }, a.revision))).toMatchObject({ revision: 2 });
+    expect(await w.refusal(await w.edit(b.id, { endDate: '2026-12-31' }, b.revision))).toMatchObject({
+      status: 409,
+      reason: 'PART_TIME_EXCLUSIVE_TYPE_EXISTS',
+    });
+  });
+
+  it('普通兼职可以并行（D-6）；外派 / 借调在进行中时改非日期字段、缩短结束日、同在进行中改晚都不受影响', async () => {
+    const w = await httpWorld(database().db, 'edit-exclusive-unaffected');
+    const ordinary = await w.make(exclusive('part_time', '2026-09-01', '2026-09-20'));
+    await w.make(exclusive('part_time', '2026-09-21', '2026-12-31'));
+    expect(await w.ok(await w.edit(ordinary.id, { endDate: '2026-12-31' }, ordinary.revision))).toMatchObject({
+      serviceStatus: 'serving',
+    });
+    const mine = await w.make(exclusive('expatriate', '2026-09-10', '2026-12-31'));
+    const manager = await w.colleague('经理');
+    const edited = await w.ok(await w.edit(mine.id, { fields: { directManagerId: manager.id } }, mine.revision));
+    const later = await w.ok(await w.edit(mine.id, { endDate: '2027-01-31' }, edited.revision));
+    const shorter = await w.ok(await w.edit(mine.id, { endDate: '2026-11-30' }, later.revision));
+    expect(shorter).toMatchObject({ endDate: '2026-11-30', serviceStatus: 'serving' });
+  });
+
+  it('批量结束只缩短结束日，不受 D-5 影响：同时存在一条已结束的外派时，批量结束进行中的借调成功', async () => {
+    const w = await httpWorld(database().db, 'edit-exclusive-batch');
+    await w.make(exclusive('expatriate', '2026-08-01', '2026-08-20'));
+    const b = await w.make(exclusive('secondment', '2026-09-01', '2026-12-31'));
+    const done = await w.ok<{ succeeded: number }>(
+      await w.batchEnd([{ recordId: b.id, revision: b.revision }], '2026-10-15'),
+    );
+    expect(done.succeeded).toBe(1);
+  });
+});
