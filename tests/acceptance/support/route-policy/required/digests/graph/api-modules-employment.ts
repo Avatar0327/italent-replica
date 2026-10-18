@@ -848,6 +848,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
+  'apps/api/src/modules/employment/context.ts#employmentCreator': [
+    'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
+  ],
   'apps/api/src/modules/employment/context.ts#employmentCreatorId': ['#employmentCreator'],
   'apps/api/src/modules/employment/context.ts#employmentRecordVisibleTo': [
     '#employmentCreatorId',
@@ -2187,6 +2190,9 @@ export const GRAPH: Graph = {
     '#likePattern',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator': [
+    'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes': [
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
