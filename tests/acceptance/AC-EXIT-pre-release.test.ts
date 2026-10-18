@@ -77,12 +77,12 @@ async function capacityWorld(label: string) {
   return { ...x, newcomer, transferInto, exceeded, other, preReleaseDate };
 }
 
-/** 11-01 重聘进入调出部门：新 staff_id 的新任职周期。 */
+/** 11-01 重聘进入调入部门：新 staff_id 的新任职周期。 */
 async function rehired(x: Awaited<ReturnType<typeof capacityWorld>>) {
   const employee = await x.session.getEmployee(x.employee.id);
   await x.session.business(
     employee.id,
-    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', fields: { departmentId: x.from.id } },
+    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', fields: { departmentId: x.to.id } },
     employee.revision,
   );
 }
@@ -132,17 +132,17 @@ describe('AC-DM-24 B-21a / B-21c 批准即预减：从 R 起员工不再占编�
 });
 
 describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）', () => {
-  it('B-62 第一周期预减不影响重聘后的新周期：新周期照常占编，旧离职不误放行；中间段已释放', async () => {
+  it('B-62 第一周期预减不影响重聘后的新周期：新周期照常占编，旧离职不误放行；旧周期占用已释放', async () => {
     const x = await capacityWorld('pre-b62');
     const newcomer = await x.newcomer('调入者');
     const leave = await x.directLeave('2026-10-20');
     expect(await x.runScheduler('2026-10-21T01:00:00Z')).toMatchObject({ activated: [leave.id] });
-    // 11-01 重聘进入同一部门（新周期、新 staff_id）
+    // 11-01 重聘进入调入部门（新周期、新 staff_id）
     await rehired(x);
-    // 10-25（离职后、重聘前）部门已空：调入放行；11-10（重聘后）新周期占编：超编
+    // 调出部门（旧周期）自 R 起已释放：10-25 调入放行；调入部门里是重聘后的新周期记录，旧离职的预减不能误放行：11-10 调入超编
     expect((await x.transferInto(newcomer.id, x.from.id, '2026-10-25')).status).toBe(201);
     const second = await x.newcomer('第二个调入者');
-    await x.exceeded(await x.transferInto(second.id, x.from.id, '2026-11-10'));
+    await x.exceeded(await x.transferInto(second.id, x.to.id, '2026-11-10'));
   });
 
   it('B-62a 第二次离职只释放第二周期：staff_id 为第二周期，R₂ 起新周期释放', async () => {
@@ -162,9 +162,9 @@ describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）
     expect(cycles).toHaveLength(2);
     expect([await staff(first.id), await staff(secondLeave.id)]).toEqual([cycles[0]!.id, cycles[1]!.id]);
     expect(await x.preReleaseDate(secondLeave.id)).toBe('2026-12-01');
-    // 12-10：新周期已从 R₂ = 12-01 起释放，调入放行
+    // 12-10：新周期（调入部门）已从 R₂ = 12-01 起释放，调入放行
     const newcomer = await x.newcomer('调入者');
-    expect((await x.transferInto(newcomer.id, x.from.id, '2026-12-10')).status).toBe(201);
+    expect((await x.transferInto(newcomer.id, x.to.id, '2026-12-10')).status).toBe(201);
   });
 });
 

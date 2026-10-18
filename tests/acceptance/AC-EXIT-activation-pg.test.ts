@@ -12,7 +12,8 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../apps/api/src/errors.js';
 import { exitPostEffectHooks } from '../../apps/api/src/modules/employment/exit-confirmation.js';
-import { retryActivation } from '../../apps/api/src/modules/employment/activation-service.js';
+import { activateDueBusinesses, retryActivation } from '../../apps/api/src/modules/employment/activation-service.js';
+import { lockTransferParticipants } from '../../apps/api/src/modules/employment/transfer-locks.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
@@ -101,7 +102,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
       const draft = await x.submittedLeave('2026-10-05');
       const review = await x.transferIn('in_review', '2026-10-30');
       // 离职申请两个节点：先同意第一个，最后一个节点与调动 T 的审批并发
-      await x.approveInReview(draft.id);
       const leaveApproval = () => x.approveInReview(draft.id);
       const transferApproval = () => approveTransfer(x, review.id);
       const requests = order === '离职先' ? [leaveApproval, transferApproval] : [transferApproval, leaveApproval];
@@ -127,16 +127,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
   );
 });
 
-describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg ④ 调度 / HR 重试交错', () => {
-  async function sceneS(label: string) {
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg ④ 调度 / 重试 / 审批落地交错', () => {
+  /** 场景 S（§10.1）：T 计划 10-10 已批准，离职 E = 10-16；10-18 两笔都已到期、都迟到。 */
+  async function sceneS(label: string, application = false) {
     const x = await world(label);
     const transfer = await x.transferIn('approved', '2026-10-10');
-    const leave = await x.directLeave('2026-10-15');
-    // 10-18 调度：T REBUILD_REQUIRED、离职 PREDECESSOR_FAILED（B-11 / §10.1）
-    expect(await x.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({
-      failed: [transfer.id],
-      suspended: [leave.id],
-    });
+    const leave = application ? await x.submittedLeave('2026-10-15') : await x.directLeave('2026-10-15');
     return { x, transfer, leave };
   }
   const contextAt = (x: World, revision: number): EmploymentContext => ({
@@ -147,49 +143,101 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
     commandId: randomUUID(),
     expectedRevision: revision,
   });
-  const attemptCounts = async (x: World, ids: readonly string[]) =>
-    Promise.all(ids.map(async (id) => (await x.attempts(id)).map((row) => row.outcome)));
-
-  it('调度 vs HR 重试：重试持锁时调度跳过该员工（SKIP LOCKED），放锁后再跑调度不重复记录，终态同顺序执行', async () => {
-    const { x, transfer, leave } = await sceneS('pg-scheduler-retry');
-    const held = signal();
-    const release = signal();
-    const revision = (await x.business(transfer.id)).revision;
-    // HR 重试 T 的事务做完全部工作（重判区间、再记 REBUILD_REQUIRED）后不提交，持有员工行锁
-    const retrying = withTenant(x.db, x.session.tenant.id, async (tx) => {
-      await retryActivation(tx, contextAt(x, revision), transfer.id, x.employee.id);
-      held.resolve();
-      await release.promise;
+  /** 调度器对一名员工做的全部事（锁员工闭包 + 按队列逐条生效），做完不提交，持有员工行锁。 */
+  const schedulerHolder = (x: World) =>
+    holder(x, async (tx) => {
+      const ctx = contextAt(x, 0);
+      await lockTransferParticipants(tx, ctx, x.employee.id);
+      await activateDueBusinesses(tx, ctx, x.employee.id, 'scheduler');
     });
-    await held.promise;
-    const run = await x.runScheduler('2026-10-18T03:00:00Z');
-    expect(run).toMatchObject({ activated: [], failed: [], suspended: [], skippedLocked: 1 });
-    release.resolve();
-    await retrying;
-    expect(await x.runScheduler('2026-10-18T04:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
-    expect(await attemptCounts(x, [transfer.id, leave.id])).toEqual([['failed', 'failed'], ['suspended']]);
+  const outcomes = async (x: World, ids: readonly string[]) =>
+    Promise.all(ids.map(async (id) => (await x.attempts(id)).map((row) => `${row.outcome}:${row.reason ?? ''}`)));
+
+  it('调度先、HR 重试排在其后：重试带调度前的 revision，放锁后 409 REVISION_CONFLICT，不盲重试；终态 = 只有调度', async () => {
+    const { x, transfer, leave } = await sceneS('pg-scheduler-then-retry');
+    const stale = (await x.business(transfer.id)).revision;
+    const session = schedulerHolder(x);
+    await session.held;
+    x.session.setNow('2026-10-18T03:00:00Z');
+    const retrying = x.session.request('POST', `/businesses/${transfer.id}/activation/retry`, {
+      ifMatch: stale,
+      body: {},
+    });
+    await waitForBlocked(x.db, 1);
+    session.release();
+    await session.done;
+    expect(await x.reason(await retrying)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+    expect(await outcomes(x, [transfer.id, leave.id])).toEqual([
+      ['failed:REBUILD_REQUIRED'],
+      ['suspended:PREDECESSOR_FAILED'],
+    ]);
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
-    expect([await x.stateOfBusiness(transfer.id), await x.stateOfBusiness(leave.id)]).toEqual(['approved', 'approved']);
+  });
+
+  it('调度先、离职审批落地排在其后：审批动作成功，落地因前序失败记 suspended（trigger = approval），不越过 T', async () => {
+    const { x, transfer, leave } = await sceneS('pg-scheduler-then-approval', true);
+    const session = schedulerHolder(x);
+    await session.held;
+    const approving = x.approve(leave, '2026-10-18T03:00:00Z');
+    await waitForBlocked(x.db, 1);
+    session.release();
+    await session.done;
+    expect((await approving).status).toBe('approved');
+    expect((await x.attempts(transfer.id)).map((row) => row.reason)).toEqual(['REBUILD_REQUIRED']);
+    expect((await x.attempts(leave.id)).map((row) => [row.outcome, row.blocked_by_business_id])).toEqual([
+      ['suspended', transfer.id],
+    ]);
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
+  });
+
+  it('HR 重试先、调度后：重试事务持锁期间调度无事可做；放锁后终态同顺序执行（不重复记尝试）', async () => {
+    const { x, transfer, leave } = await sceneS('pg-retry-then-scheduler');
+    expect(await x.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({
+      failed: [transfer.id],
+      suspended: [leave.id],
+    });
+    const revision = (await x.business(transfer.id)).revision;
+    const session = holder(x, async (tx) => {
+      await retryActivation(tx, contextAt(x, revision), transfer.id, x.employee.id);
+    });
+    await session.held;
+    expect(await x.runScheduler('2026-10-18T04:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
+    session.release();
+    await session.done;
+    expect(await x.runScheduler('2026-10-18T05:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
+    expect(await outcomes(x, [transfer.id, leave.id])).toEqual([
+      ['failed:REBUILD_REQUIRED', 'failed:REBUILD_REQUIRED'],
+      ['suspended:PREDECESSOR_FAILED'],
+    ]);
   });
 
   it.each(['T 先', '离职先'] as const)(
     'B-85a 共同迟到：T 与离职的两条 HR 重试并发（%s）：结果同顺序执行，离职重试 409 PREDECESSOR_FAILED',
     async (order) => {
       const { x, transfer, leave } = await sceneS(`pg-b85a-${order}`);
-      const retry = (target: { id: string }) => () => x.retry(target, '2026-10-18T02:00:00Z');
-      const requests = order === 'T 先' ? [retry(transfer), retry(leave)] : [retry(leave), retry(transfer)];
-      const settled = await queueBehind(x, lockEmployee(x), requests);
-      const responses = settled.map((result) => (result as PromiseFulfilledResult<Response>).value);
-      const byTarget = new Map(
-        (order === 'T 先' ? [transfer, leave] : [leave, transfer]).map((target, index) => [
-          target.id,
-          responses[index]!,
-        ]),
+      expect(await x.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({
+        failed: [transfer.id],
+        suspended: [leave.id],
+      });
+      const revisions = new Map([
+        [transfer.id, (await x.business(transfer.id)).revision],
+        [leave.id, (await x.business(leave.id)).revision],
+      ]);
+      x.session.setNow('2026-10-18T02:00:00Z');
+      const retry = (id: string) => () =>
+        x.session.request('POST', `/businesses/${id}/activation/retry`, { ifMatch: revisions.get(id)!, body: {} });
+      const [first, second] = order === 'T 先' ? [transfer.id, leave.id] : [leave.id, transfer.id];
+      const settled = await queueBehind(x, lockEmployee(x), [retry(first), retry(second)]);
+      const responses = new Map(
+        [first, second].map((id, index) => [id, (settled[index] as PromiseFulfilledResult<Response>).value]),
       );
-      expect(byTarget.get(transfer.id)!.status).toBe(200);
-      expect(byTarget.get(leave.id)!.status).toBe(409);
-      expect(await byTarget.get(leave.id)!.text()).toContain('PREDECESSOR_FAILED');
-      expect(await attemptCounts(x, [transfer.id, leave.id])).toEqual([['failed', 'failed'], ['suspended']]);
+      // 离职无论先后都因前序 T 失败被拒；T 重试再次判定区间（离职申请仍在区间内）→ REBUILD_REQUIRED，请求本身 200
+      expect(await x.reason(responses.get(leave.id)!)).toMatchObject({ status: 409, reason: 'PREDECESSOR_FAILED' });
+      expect(responses.get(transfer.id)!.status).toBe(200);
+      expect(await outcomes(x, [transfer.id, leave.id])).toEqual([
+        ['failed:REBUILD_REQUIRED', 'failed:REBUILD_REQUIRED'],
+        ['suspended:PREDECESSOR_FAILED'],
+      ]);
       expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
     },
   );
@@ -236,7 +284,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
 
     it('审批落地（审批中心最后节点）：适配器在取审批实例锁之前先取组织锁', async () => {
       const { x, leave: draft, review, reviewInstance } = await scene('pg-prelock-approval', 'application');
-      await x.approveInReview(draft.id);
       const leaveInstance = (await x.instanceOf(draft.id))!;
       const done = await expectOrderedBehindOrgLock(x, [reviewInstance.id, leaveInstance.id], () =>
         x.approveInReview(draft.id),
@@ -261,7 +308,6 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
 
     it('HR 重试：生效失败后重试同样先取组织锁', async () => {
       const { x, leave, review, reviewInstance } = await scene('pg-prelock-retry', 'failed');
-      await x.approve(leave, `${TODAY}T02:00:00Z`);
       let fail = true;
       exitPostEffectHooks.onEffective(async (_tx, _ctx, event) => {
         if (fail && event.businessId === leave.id)

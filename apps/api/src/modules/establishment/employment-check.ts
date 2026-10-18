@@ -2,13 +2,14 @@ import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { projectOrgAdjustmentRecords } from '../employment/org-adjustment-projection.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
+import { loadCycleStarts, loadExitStates } from '../employment/exit-occupancy-store.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
 import { resolveEffectiveInheritance } from '../employment/inheritance.js';
 import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from '../employment/timeline.js';
 /** DEC-145 / 18 §11：真实任职投影，条件内且、条件间或；外部人员计数但不拦其调入。 */
 import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
-import { addDays, tenantLocalDate } from '@italent/domain';
+import { addDays, exitOccupancy, tenantLocalDate, type TimelineSegment } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import type { ActivationTarget } from '../employment/activation-checks.js';
 import type { EmploymentContext, EmploymentRecord, PresetFields } from '../employment/types.js';
@@ -279,8 +280,54 @@ async function projectedMembers(
   }
   if (!target.occupancyOnly)
     await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut, projectedAdjustments);
+  await subtractPendingExits(tx, ctx, members, timings);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
+}
+
+/**
+ * 批准即预减（离职设计 §6-1 / §6B.1，R-P1）：审批通过 / 直接离职确认当天 R 起，离职人同一任职周期内的占用区间扣掉
+ * [R, 下一周期入职日)——时间轴记录段与申请预占段（上面已并入同一成员区间）一并扣，不用最后工作日过滤。区间归属的周期按区间起点所在周期取
+ * （记录段与申请预占段都落在自己的周期内）；扣减由 domain exitOccupancy 判定，与组织停用计数同一实现。
+ */
+async function subtractPendingExits(
+  tx: Tx,
+  ctx: EmploymentContext,
+  members: Map<string, MemberInterval[]>,
+  timings: { transferIn: 'submitted' | 'approved'; transferOut: 'submitted' | 'approved' },
+) {
+  const exits = await loadExitStates(tx, ctx.tenantId, [...members.keys()]);
+  if (!exits.length) return;
+  const affected = [...new Set(exits.map((exit) => exit.employeeId))];
+  const staffOf = await loadCycleStarts(tx, ctx.tenantId, affected);
+  for (const employeeId of affected) {
+    const intervals = members.get(employeeId) ?? [];
+    const records: TimelineSegment[] = intervals.map((interval, index) => ({
+      recordId: String(index),
+      employeeId,
+      staffId: staffOf(employeeId, interval.from),
+      kind: 'member',
+      departmentId: String(interval.fields.departmentId ?? ''),
+      positionId: null,
+      capacityId: null,
+      from: interval.from,
+      to: interval.until,
+    }));
+    const { p } = exitOccupancy({
+      records,
+      applications: [],
+      exits: exits.filter((exit) => exit.employeeId === employeeId),
+      detachedTransfers: [],
+      timings,
+    });
+    members.set(
+      employeeId,
+      p.flatMap((segment) => {
+        const source = intervals[Number(segment.sourceId)]!;
+        return [{ ...source, from: segment.from, until: segment.to ?? source.until }];
+      }),
+    );
+  }
 }
 
 async function adjustmentProjection(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {

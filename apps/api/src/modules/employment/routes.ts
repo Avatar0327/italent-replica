@@ -540,7 +540,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, action: 'retry-activation' },
       async (tx, context) => {
-        // §18.1 关口④：B3-3 前离职的生效重试一律 409（权限为 RetryActivation 且 Dimission 的交集）
+        // 离职的生效重试权限为 RetryActivation 且 Dimission 的交集（§4A）
         if (exit)
           await requireExitGate(tx, context, 'retry', {
             employeeId: current.employeeId,

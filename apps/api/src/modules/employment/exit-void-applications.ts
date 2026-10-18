@@ -13,6 +13,9 @@ import { schedulerAwareContext } from '../approval/context.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { userOfPerson } from '../approval/resolver.js';
 import { assertReleasedEstablishment, reverseCarriedEstablishment } from '../establishment/carried-transfer.js';
+import { lockEstablishment } from '../establishment/store.js';
+import { lockOrganizationSettings } from '../org/locks.js';
+import { auditActor } from '../../system-actor.js';
 import { auditEmployment } from './context.js';
 import { inFlightApplications } from './exit-gate.js';
 import {
@@ -48,6 +51,24 @@ export async function lockOtherBusinessHeads(tx: Tx, ctx: EmploymentContext, emp
       ORDER BY id FOR UPDATE`),
   );
   return new Map(heads.map((head) => [head.id, Number(head.revision)]));
+}
+
+/**
+ * §5.2 ④ ⑤ 组织资源预锁（B3-3）：org/locks.ts 全局序是 员工 → 业务头 → 组织设置 → 编制 → 审批实例。生效链的各步（顺延后的部门复核、
+ * 带编调动回退、组织角色转交）会在中途首次取组织 / 编制锁，而步骤 1 的 lockInstances 先于它们执行，会与“组织锁 → 审批实例”的其他路径成环。
+ * 所以调度、审批落地、直接保存、activate / retry 进入生效链后统一先在这里取齐：组织设置锁一律取；有未落地的调动申请
+ * （步骤 1 要回退其带编分配）时再取编制锁。之后各步只是重入已持有的锁。
+ */
+export async function lockExitOrganizationResources(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  exitId: string,
+) {
+  await lockOrganizationSettings(tx, ctx.tenantId);
+  const transfers = await inFlightApplications(tx, ctx, employeeId, ['transfer'], OPEN_STATES);
+  if (transfers.some((row) => !row.landed && row.id !== exitId))
+    await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
 }
 
 /** §5.2 ⑥：其他审批实例按 id 升序 FOR UPDATE，之后逐个 cancel。 */

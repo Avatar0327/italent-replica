@@ -1,13 +1,13 @@
 /**
  * R2-T03 B3-1 / AC-DM-14（共存）、26：离职与调动的先后——前序 0a、终止依赖、单一队列、§5.8 摘下已落地未来调动。
- * 覆盖 B-10、B-11 / B-11a / B-11b（编排器层）、B-85a / B-85b（不含撤销入口）、B-87 ①′ / ②。
+ * 覆盖 B-10、B-11 / B-11a / B-11b（编排器层）、B-85a / B-85b（不含撤销入口）、B-87 ①′ / ②（对照例；公开入口版见 AC-EXIT-open-order）。
  * 入口只用内部编排器（activateExit）；调动一侧走公开的调度 / 审批端口（关口只拦离职）。
  */
 import './support/exit-gate-enforced.js';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { pendingActivations, pendingExitQueue } from '../../apps/api/src/modules/employment/activation-store.js';
+import { pendingActivations } from '../../apps/api/src/modules/employment/activation-store.js';
 import { loadPlannedEffectiveDate } from '../../apps/api/src/modules/employment/timeline.js';
 import { queueContext } from './AC-EXIT-queue-support.js';
 import { exitActivationWorld, type ExitActivationWorld } from './AC-EXIT-activation-support.js';
@@ -22,11 +22,9 @@ async function approvedTransfer(x: ExitActivationWorld, effectiveDate: string, a
   return x.approve(applied, `${approveAt}T02:00:00Z`);
 }
 
-const queueOf = (x: ExitActivationWorld, today: string, withExits = false) =>
+const queueOf = (x: ExitActivationWorld, today: string) =>
   withTenant(x.db, x.session.tenant.id, (tx) =>
-    (withExits ? pendingExitQueue : pendingActivations)(tx, queueContext(x, today), x.employee.id).then((rows) =>
-      rows.map((row) => row.id),
-    ),
+    pendingActivations(tx, queueContext(x, today), x.employee.id).then((rows) => rows.map((row) => row.id)),
   );
 
 describe('AC-DM-26 B-11 迟到调动与离职交错（§10.1，场景 S：T 计划 10-10、离职 E = 10-16、10-18 执行）', () => {
@@ -39,8 +37,7 @@ describe('AC-DM-26 B-11 迟到调动与离职交错（§10.1，场景 S：T 计�
 
   it('① 调度到期：T REBUILD_REQUIRED（blockers 含离职），离职 PREDECESSOR_FAILED 挂起，队列 [T, 离职]', async () => {
     const { x, transfer, leave } = await scenario('b11-1');
-    expect(await queueOf(x, '2026-10-18', true)).toEqual([transfer.id, leave.id]);
-    expect(await queueOf(x, '2026-10-18')).toEqual([transfer.id]);
+    expect(await queueOf(x, '2026-10-18')).toEqual([transfer.id, leave.id]);
     expect(await x.runScheduler('2026-10-18T01:00:00Z')).toMatchObject({ failed: [transfer.id] });
     expect((await x.attempts(transfer.id))[0]).toMatchObject({ outcome: 'failed', reason: 'REBUILD_REQUIRED' });
     expect(((await x.attempts(transfer.id))[0]!.detail as { blockers: { id: string }[] }).blockers[0]!.id).toBe(
@@ -130,7 +127,7 @@ describe('AC-DM-26 B-85a / B-85b 共同迟到后删除 T 再重试离职（不�
     const x = await world('b85');
     const transfer = await approvedTransfer(x, '2026-10-20');
     const leave = await x.directLeave('2026-10-29');
-    expect(await queueOf(x, '2026-11-01', true)).toEqual([transfer.id, leave.id]);
+    expect(await queueOf(x, '2026-11-01')).toEqual([transfer.id, leave.id]);
     await x.runScheduler('2026-11-01T01:00:00Z');
     expect(await x.activate(leave.id, '2026-11-01')).toMatchObject({ outcome: 'suspended' });
     x.setNow('2026-11-02T01:00:00Z');
@@ -161,21 +158,6 @@ describe('AC-DM-26 B-87 计划日取首次顺延前的日期，同日已落地�
       effectiveDate: '2026-11-01',
     });
     expect((await x.versions(leave.id)).map((v) => v.planned)).toEqual(['2026-10-20', '2026-10-20']);
-  });
-
-  it('② T 计划 10-25 于 11-01 迟到落地、离职计划 10-20：离职插在 T 之前、前驱 = A，T 按 §5.8 摘下', async () => {
-    const x = await world('b87-2');
-    const leave = await x.directLeave('2026-10-19');
-    const transfer = await approvedTransfer(x, '2026-10-25');
-    expect(await x.runScheduler('2026-11-01T01:00:00Z')).toMatchObject({ activated: [transfer.id] });
-    expect(await x.activate(leave.id, '2026-11-01')).toMatchObject({ outcome: 'effective', postponed: true });
-    expect((await x.timeline()).map((row) => [row.kind, row.start_date])).toEqual([
-      ['hire', '2026-09-01'],
-      ['leave', '2026-11-01'],
-    ]);
-    expect(await x.effects(leave.id)).toContainEqual(
-      expect.objectContaining({ phase: 'effective', kind: 'future_transfer_detached', target_id: transfer.id }),
-    );
   });
 
   it('② 对照：T 计划 10-15 先于离职计划日 → 离职插在 T 之后、前驱 = T，不摘下', async () => {

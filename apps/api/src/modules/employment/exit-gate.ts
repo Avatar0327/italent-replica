@@ -389,8 +389,6 @@ async function assertNoLeaveInProgress(tx: Tx, ctx: EmploymentContext, employeeI
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
   const exit = target.exit ?? {};
   const lastWorkDate = target.lastWorkDate!;
-  if (exit.dutyTransfer !== undefined)
-    throw new AppError('VALIDATION_FAILED', '职责转交暂不可用', { reason: 'EXIT_DUTY_TRANSFER_NOT_AVAILABLE' });
   assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
   await assertDictionaries(tx, ctx, exit);
   const cycle = await currentEmploymentCycle(tx, ctx, target.employeeId);
@@ -464,10 +462,6 @@ export async function requireExitGate(
       return { ack: await submitConditions(tx, ctx, target, provided) };
     case 'cancel':
       await cancelConditions(tx, ctx, target.business!);
-      return { ack: null };
-    case 'retry':
-      if (target.business && (await loadExitRequest(tx, ctx.tenantId, target.business.id)))
-        throw conflict('EXIT_ACTIVATION_NOT_AVAILABLE', '离职生效暂不可用');
       return { ack: null };
     default:
       return { ack: null };
