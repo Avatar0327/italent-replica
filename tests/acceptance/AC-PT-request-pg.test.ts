@@ -4,12 +4,15 @@
  * - 全链路：新增申请 → 提交 → 四节点通过 → 落地进“未开始”，全部经公开入口与审批中心接口；
  * - 并发提交 / 撤回同一申请：A 的事务停在提交之前（已持员工行锁），B 的 HTTP 请求在员工行锁上真实等待；A 提交后 B 带着旧
  *   revision 复核失败 —— 恰一方成功，失败方是明确的业务错误码 REVISION_CONFLICT，不是死锁（40P01）转出来的并发冲突码；
+ * - 申请头锁（#431 第 1 轮 P2-1）：上面几组竞争都先被员工行锁串行化，区分不出申请头 FOR UPDATE 是否存在；所以另让提交停在组织校验阶段
+ *   （已过员工锁、未写状态），用观察连接对申请头 NOWAIT 取锁，必须 55P03；
  * - 同 revision 的两个提交（不同命令 ID）：同理恰一个成功；撤回 vs 撤销（HR）：先到者生效，后到者 REVISION_CONFLICT。
  */
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { submitRequest, withdrawRequest } from '../../apps/api/src/modules/employment/part-time/request-service.js';
 import { ALL_VISIBLE, requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
@@ -151,5 +154,38 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     expect(await a.done).toBeUndefined();
     expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     expect((await w.load(created.id)).state).toBe('draft');
+  });
+
+  it('提交在组织校验之前已持申请头锁：组织锁被占时 HTTP 提交停在组织校验，观察连接对申请头 NOWAIT 取锁得 55P03；释放后提交 200', async () => {
+    const w = await requestWorld(database().db, 'pt4b-pg-request-head-lock');
+    const api = w.http();
+    const created = await w.ok(await api.create(), 201);
+    const held = signal();
+    const release = signal();
+    const holder = w.run(async (tx) => {
+      await lockOrganizationSettings(tx, w.tenant.id);
+      held.resolve();
+      await release.promise;
+    });
+    await held.promise;
+    const submit = api.act(created.id, 'submit', created.revision);
+    let locked = false;
+    try {
+      await waitForBlocked(w.db, 1);
+      try {
+        await w.run(async (tx) => {
+          await tx.execute(sql`SELECT id FROM part_time_requests
+            WHERE tenant_id=${w.tenant.id} AND id=${created.id}::uuid FOR UPDATE NOWAIT`);
+        });
+      } catch (error) {
+        const failure = error as { code?: string; cause?: { code?: string } };
+        locked = (failure.code ?? failure.cause?.code) === '55P03';
+      }
+    } finally {
+      release.resolve();
+      await holder;
+    }
+    expect((await submit).status).toBe(200);
+    expect(locked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
   });
 });
