@@ -45,8 +45,8 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
   const [filters, setFilters] = useState<PlanFilters>({});
   const mine = useMemo(() => ownPlans(list.items ?? [], employeeId), [list.items, employeeId]);
   const rows = useMemo(() => mine.filter((row) => matchesFilters(row, filters)), [mine, filters]);
-  const tutors = [...new Set(mine.map((row) => row.tutorEmployeeId).filter((id): id is string => !!id))];
-  const names = useNames('employee', tutors);
+  const names = usePlanNames(mine);
+  const tutors = new Map(mine.filter((row) => row.tutorEmployeeId).map((row) => [row.tutorEmployeeId!, row]));
   const tutorFilter = (
     <Select
       id="idp-my-tutor"
@@ -55,7 +55,7 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
       optionFilterProp="label"
       placeholder={t.choose}
       value={filters.tutorEmployeeId}
-      options={tutors.map((id) => ({ value: id, label: names(id) }))}
+      options={[...tutors].map(([id, row]) => ({ value: id, label: names.tutor(row) }))}
       onChange={(tutorEmployeeId) => setFilters({ ...filters, tutorEmployeeId })}
     />
   );
@@ -66,6 +66,7 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
       others="own"
       list={list}
       rows={rows}
+      names={names}
       filters={<InlineFilters value={filters} change={setFilters} tutorFilter={tutorFilter} />}
     />
   );
@@ -75,10 +76,7 @@ function TutorPlans() {
   const list = useCollection<PlanSummary>(`${IDP_API}/tutor-plans`);
   const [filters, setFilters] = useState<PlanFilters>({});
   const rows = useMemo(() => (list.items ?? []).filter((row) => matchesFilters(row, filters)), [list.items, filters]);
-  const employees = useNames(
-    'employee',
-    (list.items ?? []).map((row) => row.employeeId),
-  );
+  const names = usePlanNames(list.items ?? []);
   const people = [...new Set((list.items ?? []).map((row) => row.employeeId).filter((id): id is string => !!id))];
   return (
     <PlanListPage
@@ -87,15 +85,29 @@ function TutorPlans() {
       others="tutoring"
       list={list}
       rows={rows}
+      names={names}
       filters={
         <InlineFilters
           value={filters}
           change={setFilters}
-          people={people.map((id) => ({ value: id, label: employees(id) }))}
+          people={people.map((id) => ({ value: id, label: names.employee(id) }))}
         />
       }
     />
   );
+}
+
+/** 列与筛选共用取名入口；服务端显式 null 不回查，只有缺字段才使用原姓名接口。 */
+function usePlanNames(rows: PlanSummary[]) {
+  const employee = useNames(
+    'employee',
+    rows.flatMap((row) => [row.employeeId, row.tutorName === undefined ? row.tutorEmployeeId : null]),
+  );
+  const tutor = (row: PlanSummary) => {
+    if (!row.tutorEmployeeId) return t.noValue;
+    return row.tutorName === undefined ? employee(row.tutorEmployeeId) : display(row.tutorName);
+  };
+  return { employee, tutor };
 }
 
 function PlanListPage(props: {
@@ -104,16 +116,13 @@ function PlanListPage(props: {
   others: 'own' | 'tutoring';
   list: ReturnType<typeof useCollection<PlanSummary>>;
   rows: PlanSummary[];
+  names: ReturnType<typeof usePlanNames>;
   filters: ReactNode;
 }) {
-  const { title, note, others, list, rows, filters } = props;
+  const { title, note, others, list, rows, names, filters } = props;
   const [params, setParams] = useSearchParams();
   const openId = params.get(DETAIL);
   const open = (id?: string) => setParams(id ? { [DETAIL]: id } : {});
-  const names = useNames(
-    'employee',
-    rows.flatMap((row) => [row.employeeId, row.tutorEmployeeId]),
-  );
   if (openId)
     return (
       <div className="idp-page idp-my-plans">
@@ -152,7 +161,7 @@ function PlanListPage(props: {
   );
 }
 
-function columns(names: (id?: string | null) => string, open: (id: string) => void): TableColumnsType<PlanSummary> {
+function columns(names: ReturnType<typeof usePlanNames>, open: (id: string) => void): TableColumnsType<PlanSummary> {
   return [
     {
       key: 'name',
@@ -163,11 +172,11 @@ function columns(names: (id?: string | null) => string, open: (id: string) => vo
         </Button>
       ),
     },
-    { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names(row.employeeId) },
+    { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names.employee(row.employeeId) },
     {
       key: 'tutorEmployeeId',
       title: t.fields.tutorEmployeeId,
-      render: (_, row) => (row.tutorEmployeeId ? names(row.tutorEmployeeId) : t.noValue),
+      render: (_, row) => names.tutor(row),
     },
     { key: 'status', title: t.fields.status, render: (_, row) => statusText(t.status, row.status) },
     // 原站“当前步骤”列显示阶段名（如“制定计划”）；列表接口只返回当前阶段，按阶段名展示
