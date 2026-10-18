@@ -28,6 +28,19 @@ async function managerTask(
   return { task, revision: view.revision };
 }
 
+/**
+ * 迟到的审批通过必须以明确的业务错误被拒绝：不能是死锁 / 锁冲突转成的 409 APPROVAL_CONCURRENT_CONFLICT（40P01 / 40001 /
+ * 55P03）或 5xx——那样即使锁序反转了断言也仍然通过（#424 第 1 轮 P2-1）。
+ */
+async function expectBusinessRejection(response: Response, expected: { code: string; reason?: string }) {
+  const text = await response.clone().text();
+  const body = JSON.parse(text) as { error?: { code?: string; details?: { reason?: string } } };
+  expect(response.status, text).toBe(409);
+  expect(body.error?.details?.reason, text).not.toBe('APPROVAL_CONCURRENT_CONFLICT');
+  expect(body.error?.code, text).toBe(expected.code);
+  if (expected.reason) expect(body.error?.details?.reason, text).toBe(expected.reason);
+}
+
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-229 离职生效与考核审批并发（真 PG，app_owner）', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -90,12 +103,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-229 离职生效与考
     resume();
     const [activated, approved] = await Promise.all([activating, approving]);
     expect(activated).toMatchObject({ outcome: 'effective' });
-    expect(approved.status).toBeGreaterThanOrEqual(400);
+    // 审批请求带的是生效前读到的实例 revision；拿到员工锁后实例已被取消、revision 已变：版本冲突，不是死锁转换
+    await expectBusinessRejection(approved, { code: 'REVISION_CONFLICT' });
     expect((await x.get(assessmentId)).status).toBe('cancelled');
     expect((await x.instanceRows(assessmentId)).map((row) => row.status)).toEqual(['cancelled']);
     expect(await x.pendingTaskCount(assessmentId)).toBe(0);
     expect(await x.audits(assessmentId, 'employment.assessment.voided_by_exit')).toHaveLength(1);
     expect(await x.audits(assessmentId, 'employment.assessment.approve')).toEqual([]);
+    // 用生效后的最新 revision 再审批：实例已结束，明确的终态拒绝
+    const latest = await x.instance(assessmentId);
+    const retried = await x.taskAction(task.assigneeUserId, task.id, 'approve', latest.revision, {});
+    await expectBusinessRejection(retried, { code: 'CONFLICT', reason: 'APPROVAL_TASK_CLOSED' });
   });
 
   it('不加屏障的同时发起：每名员工的考核要么通过要么作废，考核状态与审批实例状态一致、审计只有一方', async () => {
@@ -118,13 +136,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-229 离职生效与考
       if (status === 'approved') {
         expect([approved.status, instance, voided.length, approvedAudit.length]).toEqual([200, 'approved', 0, 1]);
       } else {
-        expect([status, approved.status >= 400, instance, voided.length, approvedAudit.length]).toEqual([
-          'cancelled',
-          true,
-          'cancelled',
-          1,
-          0,
-        ]);
+        await expectBusinessRejection(approved, { code: 'REVISION_CONFLICT' });
+        expect([status, instance, voided.length, approvedAudit.length]).toEqual(['cancelled', 'cancelled', 1, 0]);
       }
       outcomes.push(status);
     }
