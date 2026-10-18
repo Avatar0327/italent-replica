@@ -15,12 +15,18 @@ const CHILDREN = [
 export const pages: ModulePages = {
   entries: [
     {
-      id: 'tutorship-information',
+      id: 'tutorship-information-group',
       app: 'idp',
       label: '带教信息',
       group: 'talent',
-      objectCode: 'IDP.TutorShip',
-      page: lazyPage('TutorshipPage', () => import('./TutorshipPage.js')),
+      children: [
+        {
+          id: 'tutorship-information',
+          label: '带教信息',
+          objectCode: 'IDP.TutorShip',
+          page: lazyPage('TutorshipPage', () => import('./TutorshipPage.js')),
+        },
+      ],
     },
   ],
   apps: [

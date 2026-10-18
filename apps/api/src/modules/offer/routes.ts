@@ -31,10 +31,12 @@ import {
   parseOfferDictionaryInput,
   saveOfferDictionaryEntry,
 } from './dictionaries.js';
+import { withRehireHint } from './identity.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { offerApprovalFields, submitOfferApproval, submitOfferBatch } from './approval.js';
 import { parseOfferBatch, parseOfferCreate, parseOfferSubmit, parseOfferUpdate } from './input.js';
 import { OFFER_POLICIES } from './policy.js';
+import { registerOfferSend } from './send.js';
 import {
   copyOffer,
   createOffer,
@@ -153,7 +155,11 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       'create',
       offerCreateCheck(input, writes),
       async (tx, ctx) => ({ status: 201, body: await createOffer(tx, ctx, await writes(tx, ctx)) }),
-      { isNew: true, replayed: offerStillVisible },
+      {
+        isNew: true,
+        replayed: offerStillVisible,
+        respond: (ctx, body) => withRehireHint(deps, ctx, body),
+      },
     );
   });
   module.put('/:id', async (c) => {
@@ -224,6 +230,7 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   });
   registerCommands(module, deps);
   registerOfferTransitions(module, deps);
+  registerOfferSend(module, deps);
   registerApprovals(module, deps);
   router.route('/api/tenant/offers', module);
 };

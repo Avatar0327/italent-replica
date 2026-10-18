@@ -3,9 +3,13 @@
  * 未验证，保守口径：只按“证件类型 + 证件号码”在租户内精确匹配已离职 / 退休人员，多人命中拒绝、不自动挑选；只判定不入职。
  */
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
+import type { ModuleScope } from '../permission/module-access.js';
+import { employmentCreator } from './context.js';
 import { rowsOf } from './read-model.js';
+import { employmentVisibilitySql } from './visibility.js';
 
 export const rehireMatchInput = z.strictObject({
   idType: z.string().trim().min(1).max(100),
@@ -28,23 +32,24 @@ export interface RehireCandidate {
 }
 
 /**
- * 当前人员信息（personnel 版本链最新一版）证件匹配、且租户今天有效的任职（今天及以前最后一条）是离职 / 退休。
+ * 当前人员信息（personnel 版本链最新一版）匹配、且租户今天有效的任职（今天及以前最后一条）是离职 / 退休。
  * 先限定今天再取最后一条：未来的重聘待入职不挡当前已离职（PR #386 第 1 轮 P2-2）；在职、未来才离职的人不算。
- * 取两条判断是否唯一。
+ * where 是对 e（人员）与 v（人员信息最新版）的匹配条件，由两个入口各自给出。
+ * scope 给了就把任职记录可见性（DEC-177，含“使用用户”按创建人）下推到本查询：先按范围过滤、再限量，范围外的人不占名额。
  */
-export async function matchRehire(
-  tx: Tx,
-  tenantId: string,
-  input: RehireMatchInput,
-  today: string,
-): Promise<RehireCandidate | null> {
-  const rows = rowsOf<Omit<RehireCandidate, 'rehire'>>(
+async function endedPeople(tx: Tx, tenantId: string, where: SQL, today: string, limit: number, scope?: ModuleScope) {
+  const visible = employmentVisibilitySql(scope, {
+    employee: sql`e.id`,
+    department: sql`COALESCE(snap.department_id, r.department_id)`,
+    creator: employmentCreator(tenantId, sql`r.id`, true),
+  });
+  return rowsOf<Omit<RehireCandidate, 'rehire'>>(
     await tx.execute(sql`
     SELECT e.id AS "employeeId", COALESCE(v.name, e.name) AS name, e.code, v.email,
       r.kind AS "endKind", r.last_work_date::text AS "lastWorkDate",
       COALESCE(snap.department_id, r.department_id) AS "departmentId"
     FROM employment_employees e
-    JOIN LATERAL (SELECT v.name, v.email, v.id_type, v.id_number FROM personnel_employee_versions v
+    JOIN LATERAL (SELECT v.name, v.email, v.id_type, v.id_number, v.mobile_phone FROM personnel_employee_versions v
       WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY v.revision DESC LIMIT 1) v ON true
     JOIN LATERAL (SELECT t.record_id FROM employment_timeline t
       WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.start_date<=${today}::date
@@ -53,12 +58,54 @@ export async function matchRehire(
     LEFT JOIN LATERAL (SELECT p.department_id FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) snap ON true
-    WHERE e.tenant_id=${tenantId} AND v.id_type=${input.idType} AND btrim(v.id_number)=${input.idNumber}
-      AND r.kind IN ('leave','retirement')
-    ORDER BY e.id LIMIT 2
+    WHERE e.tenant_id=${tenantId} AND (${where}) AND r.kind IN ('leave','retirement') AND ${visible}
+    ORDER BY e.id LIMIT ${limit}
   `),
+  );
+}
+
+export async function matchRehire(
+  tx: Tx,
+  tenantId: string,
+  input: RehireMatchInput,
+  today: string,
+): Promise<RehireCandidate | null> {
+  const rows = await endedPeople(
+    tx,
+    tenantId,
+    sql`v.id_type=${input.idType} AND btrim(v.id_number)=${input.idNumber}`,
+    today,
+    2,
   );
   if (rows.length > 1)
     throw new AppError('CONFLICT', '该证件号码匹配到多名离职人员，请核对后处理', { reason: 'REHIRE_MATCH_AMBIGUOUS' });
   return rows[0] ? { ...rows[0], rehire: false } : null;
+}
+
+export interface RehireKeys {
+  readonly idType?: string | null | undefined;
+  readonly idNumber?: string | null | undefined;
+  readonly mobilePhone?: string | null | undefined;
+  readonly email?: string | null | undefined;
+}
+
+/**
+ * Offer 新建时的重聘提示（34 OF-R2）：证件（类型 + 号码）、手机号、邮箱任一命中，邮箱不分大小写。
+ * 只返回 scope 内看得见的人，且最多 2 人（调用方只需分辨 0 / 1 / 多人）：范围过滤在 SQL 里先于限量。
+ */
+export async function findRehireCandidates(
+  tx: Tx,
+  tenantId: string,
+  keys: RehireKeys,
+  today: string,
+  scope: ModuleScope,
+) {
+  const blank = (value: string | null | undefined) => value?.trim() || null;
+  const [idType, idNumber, mobile, email] = [keys.idType, keys.idNumber, keys.mobilePhone, keys.email].map(blank);
+  const conditions: SQL[] = [];
+  if (idType && idNumber) conditions.push(sql`(v.id_type=${idType} AND btrim(v.id_number)=${idNumber})`);
+  if (mobile) conditions.push(sql`btrim(v.mobile_phone)=${mobile}`);
+  if (email) conditions.push(sql`lower(btrim(v.email))=${email.toLowerCase()}`);
+  if (!conditions.length) return [];
+  return endedPeople(tx, tenantId, sql.join(conditions, sql` OR `), today, 2, scope);
 }
