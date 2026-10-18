@@ -49,7 +49,8 @@ pg('F-219 被驳回批量单：并发删除 B × 失效 A', () => {
     const batch = await w.json<{ id: string }>(await w.batchRaw({ offerIds: [a.id, b.id] }), 201);
     await w.decide(await w.instance(batch.id), w.manager, 'reject'); // 上级驳回：批量单待发起人处理
     const [ra, rb] = [await w.get(a.id), await w.get(b.id)];
-    expect([ra.approvalStatus, rb.approvalStatus]).toEqual(['disapproved', 'disapproved']);
+    expect((await w.instance(batch.id)).status).toBe('returned'); // 在途（驳回待处理）批量单仍管着两份 Offer
+    expect([ra.status, rb.status]).toEqual(['pending', 'pending']);
 
     const before = await deadlocks(w.db);
     const release = await holdLock(w.db, w.tenant.id, (tx) =>
