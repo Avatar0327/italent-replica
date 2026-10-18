@@ -44,6 +44,7 @@ import {
 import type { AnyColumn, SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
+import type { FieldAccess } from '../approval/context.js';
 import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -395,8 +396,9 @@ export async function updateOffer(
   ctx: OfferContext,
   id: string,
   input: OfferUpdateInput,
-  syncPendingEntry = false,
+  options: { readonly syncPendingEntry?: boolean; readonly approvalFields: FieldAccess },
 ) {
+  const { syncPendingEntry = false, approvalFields } = options;
   const before = await lockOfferWithBatches(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
@@ -412,7 +414,7 @@ export async function updateOffer(
   const settings = await readOfferApprovalSettings(tx, ctx.tenantId);
   const linkage = await readOfferLinkageSetting(tx, ctx.tenantId);
   const reapproval = reapprovalAfterEdit(facts(before), changed, settings.send, settings.review, linkage);
-  if (reapproval === 'replace') return replaceOffer(tx, ctx, before, patch);
+  if (reapproval === 'replace') return replaceOffer(tx, ctx, before, patch, approvalFields);
   const restart = reapproval === 'restart';
   // 已发 / 已接受重新审批：回待发，已有待入职取消入职（Offer 自己不因此变已拒绝）
   if (restart && before.status !== 'pending') await cancelLinkedEntry(tx, ctx, before);
@@ -424,11 +426,19 @@ export async function updateOffer(
   const pushable = syncPendingEntry && !restart && before.status !== 'pending';
   const push: OfferPush = pushable ? await pushEditToEntry(tx, ctx, { ...before, ...next } as OfferRow) : 'skipped';
   const saved = await save(tx, ctx, before, 'update', { ...next, ...pushColumns(push, ctx, before) });
+  // OF-R4 开：原单回到待发 / 未发起审批后，同一事务里实际发起审批（新 running 实例 + 待办）
+  if (restart) return (await import('./approval.js')).restartOfferApproval(tx, ctx, id, approvalFields);
   return pushable ? { ...saved, entrySync: typeof push === 'string' ? push : 'failed' } : saved;
 }
 
 /** OF-R4 关分支：原 Offer 系统失效（有待入职则一并删除），按编辑后的字段值复制一份待发 / 未发起审批的新 Offer。 */
-async function replaceOffer(tx: Tx, ctx: OfferContext, before: OfferRow, patch: Partial<typeof offers.$inferInsert>) {
+async function replaceOffer(
+  tx: Tx,
+  ctx: OfferContext,
+  before: OfferRow,
+  patch: Partial<typeof offers.$inferInsert>,
+  approvalFields: FieldAccess,
+) {
   if (facts(before).hasPendingEntry) await deleteLinkedEntry(tx, ctx, before);
   await save(tx, ctx, before, 'invalidate', {
     status: 'invalid',
@@ -441,7 +451,12 @@ async function replaceOffer(tx: Tx, ctx: OfferContext, before: OfferRow, patch: 
     ...Object.fromEntries(OFFER_FIELDS.map((field) => [field, before[field as keyof OfferRow]])),
     ...patch,
   };
-  return { ...(await insertCopy(tx, ctx, before, fields)), replacedOfferId: before.id };
+  const copy = await insertCopy(tx, ctx, before, fields);
+  // 复制的新单同事务发起审批（AC-OF-02）；首节点为空等拒绝时整笔回滚，原单不失效
+  const started = await (
+    await import('./approval.js')
+  ).restartOfferApproval(tx, ctx, copy.id as string, approvalFields);
+  return { ...started, replacedOfferId: before.id };
 }
 
 /**

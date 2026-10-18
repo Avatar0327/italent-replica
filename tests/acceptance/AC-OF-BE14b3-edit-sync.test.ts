@@ -1,18 +1,16 @@
 /**
  * BE-14b3 编辑并同步（OF-R14、AC-OF-11、F-171⑤）与再次发起审批两分支（OF-R4）。
  * 编辑接口带 syncPendingEntry（默认 false）：true 仅在已同步且未取消入职时把改动推送到待入职；推送遇业务规则拒绝，Offer 编辑保留、
- * 同步状态记失败。OF-R4：审批通过后改必审字段，“允许再次发起”开 = 回待发（取消入职），关 = 失效原 Offer 并复制新 Offer。
+ * 同步状态记失败。OF-R4 两分支（真实审批流）见 AC-OF-BE14b3-p2-4-reapproval。
  */
-import { sql, withTenant } from '@italent/db';
 import * as domain from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { errorOf, type OfferBody } from './AC-OF-BE14a-support.js';
-import { overrideSetting, requireApproval } from './AC-OF-BE14b1-support.js';
+import { overrideSetting } from './AC-OF-BE14b1-support.js';
 import { fullSocial, syncWorld, type SyncOffer, type SyncWorld } from './AC-OF-BE14b2-support.js';
 
 const testDb = useTestDb();
-const rows = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
 type Edited = SyncOffer & { entrySync?: string; replacedOfferId?: string; copiedFromOfferId?: string };
 
 const edit = (w: SyncWorld, offer: Pick<OfferBody, 'id' | 'revision'>, body: Record<string, unknown>) =>
@@ -131,88 +129,5 @@ describe('AC-OF-11 编辑并同步（计划入职日）', () => {
     });
     const denied = await edit(w, rejected, { costCenter: 'X' });
     expect((await errorOf(denied)).details).toMatchObject({ reason: 'OFFER_NOT_EDITABLE' });
-  });
-});
-
-describe('OF-R4 审批通过后改必审字段：再次发起的两条分支', () => {
-  async function approvedWorld(label: string) {
-    const w = await syncWorld(testDb().db, label);
-    expect((await requireApproval(w)).status).toBe(200);
-    const review = { social: ['salaryAfterRegular', 'workPlace'], campus: [], intern: [] };
-    expect((await overrideSetting(w, 'offer.review_fields', review)).status).toBe(200);
-    return w;
-  }
-  const approve = async (w: SyncWorld, offer: Pick<OfferBody, 'id'>) => {
-    await w.force(offer.id, 'approval_status', 'approved');
-    return w.read(offer.id);
-  };
-  const stateOf = async (w: SyncWorld, id: string) =>
-    rows<{ status: string; approvalStatus: string; reason: string | null }>(
-      await withTenant(w.db, w.tenant.id, (tx) =>
-        tx.execute(sql`SELECT status, approval_status AS "approvalStatus", invalid_reason_code AS reason
-          FROM offers WHERE id = ${id}::uuid`),
-      ),
-    )[0]!;
-
-  it('开关开（出厂）· 已接受 + 待入职：回待发 / 未发起审批，待入职取消，Offer 不因此变已拒绝', async () => {
-    const w = await approvedWorld('r4-on-accepted');
-    const offer = await approve(w, await w.accepted(await w.social({ salaryAfterRegular: 10000 })));
-    const response = await edited(w, offer, { salaryAfterRegular: 12000, syncPendingEntry: true });
-    expect(response).toMatchObject({ status: 'pending', approvalStatus: 'unsubmitted', salaryAfterRegular: 12000 });
-    expect(response.entrySync).toBeUndefined(); // 重新审批的编辑不推送，待入职已取消
-    expect(await w.entries('cancelled')).toHaveLength(1);
-    expect(await w.entries()).toHaveLength(0);
-  });
-
-  it('开关开 · 已发（无待入职）：回待发；待发 + 审批通过：只清审批通过（b1 行为不变）', async () => {
-    const w = await approvedWorld('r4-on-sent');
-    const sent = await approve(w, await w.read((await (await w.send(await approve(w, await w.social()))).json()).id));
-    expect(await edited(w, sent, { workPlace: '北京' })).toMatchObject({
-      status: 'pending',
-      approvalStatus: 'unsubmitted',
-    });
-    const pending = await approve(w, await w.social());
-    expect(await edited(w, pending, { workPlace: '北京' })).toMatchObject({
-      status: 'pending',
-      approvalStatus: 'unsubmitted',
-    });
-  });
-
-  it('开关关 · 已接受 + 待入职：原 Offer 失效（待入职删除），复制一份新 Offer（待发 / 未发起审批，带编辑后的值）', async () => {
-    const w = await approvedWorld('r4-off-accepted');
-    expect(
-      (await overrideSetting(w, domain.OFFER_LINKAGE_KEY, { entryCancelRejects: true, reapprovalAllowed: false }))
-        .status,
-    ).toBe(200);
-    const offer = await approve(w, await w.accepted(await w.social({ salaryAfterRegular: 10000 })));
-    const copy = await edited(w, offer, { salaryAfterRegular: 12000, syncPendingEntry: true });
-    expect(copy).toMatchObject({
-      status: 'pending',
-      approvalStatus: 'unsubmitted',
-      salaryAfterRegular: 12000,
-      copiedFromOfferId: offer.id,
-      replacedOfferId: offer.id,
-      hasPendingEntry: false,
-    });
-    expect(copy.id).not.toBe(offer.id);
-    expect(await stateOf(w, offer.id)).toMatchObject({
-      status: 'invalid',
-      reason: domain.OFFER_REAPPROVAL_INVALID_REASON,
-    });
-    expect(await w.entries()).toHaveLength(0);
-  });
-
-  it('开关关 · 待发 + 审批通过：失效并复制；改非必审字段：不触发', async () => {
-    const w = await approvedWorld('r4-off-pending');
-    expect(
-      (await overrideSetting(w, domain.OFFER_LINKAGE_KEY, { entryCancelRejects: true, reapprovalAllowed: false }))
-        .status,
-    ).toBe(200);
-    const offer = await approve(w, await w.social({ salaryAfterRegular: 10000 }));
-    const kept = await edited(w, offer, { costCenter: 'CC-002' });
-    expect(kept).toMatchObject({ id: offer.id, approvalStatus: 'approved' });
-    const copy = await edited(w, kept, { workPlace: '深圳' });
-    expect(copy).toMatchObject({ replacedOfferId: offer.id, workPlace: '深圳', approvalStatus: 'unsubmitted' });
-    expect((await stateOf(w, offer.id)).status).toBe('invalid');
   });
 });

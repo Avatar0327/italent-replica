@@ -171,7 +171,13 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { id, input, syncPendingEntry: syncPendingEntry ?? false },
       'update',
       offerFieldsCheck('update', input),
-      async (tx, ctx) => ({ status: 200, body: await updateOffer(tx, ctx, id, input, syncPendingEntry === true) }),
+      async (tx, ctx) => ({
+        status: 200,
+        body: await updateOffer(tx, ctx, id, input, {
+          syncPendingEntry: syncPendingEntry === true,
+          approvalFields: offerApprovalFields(deps, ctx),
+        }),
+      }),
       { replayed: offerStillVisible },
     );
   });
