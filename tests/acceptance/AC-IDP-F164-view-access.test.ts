@@ -155,3 +155,45 @@ describe('F-164 指导人「我辅导的发展计划」', () => {
     expect(none.items).toEqual([]);
   });
 });
+
+describe('F-182a my-plans 返回指导人（供个人发展计划的指导人列与筛选）', () => {
+  it('本人、指导人的行带 tutorEmployeeId（与 tutor-plans 同名同形）；不带指导人角色与流程', async () => {
+    const w = await planWorld(testDb().db, 'idp-f182a-mine');
+    const running = await w.startedPlan({ name: '直线经理指导' });
+    const other = await w.startedPlan({ name: '他人指导', tutorRole: 'other', tutorEmployeeId: w.outsider.employeeId });
+
+    const mine = await w.ok<{ items: Summary[] }>(await w.realHttp(w.employee.userId, 'GET', `${IDP}/my-plans`));
+    const byId = new Map(mine.items.map((p) => [p.id, p]));
+    expect(byId.get(running.id)).toMatchObject({
+      employeeId: w.employee.employeeId,
+      tutorEmployeeId: w.manager.employeeId,
+    });
+    expect(byId.get(other.id)).toMatchObject({ tutorEmployeeId: w.outsider.employeeId });
+    for (const row of mine.items) {
+      expect(row).not.toHaveProperty('tutorRole');
+      expect(row).not.toHaveProperty('processId');
+    }
+
+    // 指导人一支：本人就是指导人，字段与 tutor-plans 一致
+    const tutored = await w.ok<{ items: Summary[] }>(await w.realHttp(w.manager.userId, 'GET', `${IDP}/my-plans`));
+    expect(tutored.items.find((p) => p.id === running.id)).toMatchObject({ tutorEmployeeId: w.manager.employeeId });
+  });
+
+  it('既不是本人也不是指导人的行（只因在办待办入列）不带指导人，随计划详情的参与人口径不扩大', async () => {
+    const w = await planWorld(testDb().db, 'idp-f182a-approver');
+    const plan = await w.startedPlan({ name: '待办人视角' });
+    // 指导人无账号时第二个节点转异常管理员（待办人既非本人也非指导人）
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`DELETE FROM permission_user_person_links WHERE employee_id=${w.manager.employeeId}::uuid`),
+    );
+    await w.ok(await w.submitRaw(plan, 1, w.employee.userId));
+
+    const rows = await w.ok<{ items: Summary[] }>(await w.realHttp(w.exceptionAdmin, 'GET', `${IDP}/my-plans`));
+    const row = rows.items.find((p) => p.id === plan.id);
+    expect(row).toBeDefined();
+    expect(row!.tutorEmployeeId ?? null).toBeNull();
+    // 本人一支不受影响
+    const mine = await w.ok<{ items: Summary[] }>(await w.realHttp(w.employee.userId, 'GET', `${IDP}/my-plans`));
+    expect(mine.items.find((p) => p.id === plan.id)).toMatchObject({ tutorEmployeeId: w.manager.employeeId });
+  });
+});

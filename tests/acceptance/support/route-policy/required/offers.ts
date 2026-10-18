@@ -2,6 +2,7 @@
  * 必需项表：Offer 管理（modules/offer，R2 BE-14a C1，DEC-581）。子应用挂在 /api/tenant/offers。
  * 读：offerReadContext / objectContext → module-route-access.objectContext（object.view）；写：runOfferWrite →
  * objectContext（object.<op>），新建 / 编辑另经 offerFieldsCheck → writeFields，删除 / 复制经 offerOperationCheck。
+ * 发起审批（BE-14a3）：runOfferWrite（object.update）+ offerOperationCheck('update')，范围逐份 Offer 复核。
  * 字典写入：runDictionaryWrite → tenant.employment.configuration.write（admin other_settings）+ 任职设置对象字段编辑权。
  * C2（BE-14a2，transitions.ts）：转移两个入口各经 offerTransferCheck → button()（行级 / 列表级各一项）；失效经
  * offerOperationCheck(update)；转移表单与 OF-R3 发送判定只读，经 offerReadContext。
@@ -260,6 +261,9 @@ export const OFFERS: RequiredTable = {
   ],
   [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
+  // BE-14a3：单个 / 批量发起审批，与编辑同一判定（object.update + 范围），审批流转在同一事务内交审批中心
+  [`POST ${BASE}/:id/approval`]: offerWrite('POST', '/:id/approval', 'update'),
+  [`POST ${BASE}/batch-approvals`]: offerWrite('POST', '/batch-approvals', 'update'),
   [`POST ${BASE}/:id/copy`]: offerWrite(
     'POST',
     '/:id/copy',

@@ -3,7 +3,7 @@
  * 数据范围按录用部门（组织维度）与创建人（使用用户维度）裁剪，默认空（fail-closed）；system_admin 不越过对象权限
  * （DEC-503）。写命令一律经 runCommand 的 ledgerExit + CommandGuard.before：首次、重放、失败回查都按当前权限复核（#199）。
  */
-import { type Tx } from '@italent/db';
+import { pgErrorCode, type Tx } from '@italent/db';
 import { OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission, type Authorizer } from '../../authorization.js';
@@ -78,6 +78,16 @@ export const offerTransferCheck =
     return button(deps, ctx, OFFER_OBJECT, ref.code, ref.level);
   };
 
+/**
+ * 死锁 / 序列化 / 锁等待失败（BE-14a3 未决 14：失效与审批动作并发）给 409 并发冲突，不当 500；事务已整体回滚，
+ * 客户端刷新后显式重提（AGENTS §10「并发」，同审批中心 LOCK_CONFLICTS）。
+ */
+const LOCK_CONFLICTS = new Set(['40P01', '40001', '55P03']);
+function lockConflict(error: unknown): never {
+  if (!LOCK_CONFLICTS.has(pgErrorCode(error) ?? '')) throw error;
+  throw new AppError('CONFLICT', 'Offer 正被并发处理，请刷新后重试', { reason: 'OFFER_CONCURRENT_CONFLICT' });
+}
+
 /** Offer 写入口：execute 拿到的上下文带本事务重新解析的数据范围；响应按字段查看权裁剪。 */
 export async function runOfferWrite(
   c: Context<TenantEnv>,
@@ -115,7 +125,7 @@ export async function runOfferWrite(
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
     guard,
     execute: async (tx, commandId) => execute(tx, { ...(await inTransaction(tx)), commandId }),
-  });
+  }).catch(lockConflict);
   const body = result.body as { revision?: number } | null;
   if (body?.revision !== undefined) c.header('ETag', `"${body.revision}"`);
   const response = options.respond ? await options.respond(ctx, result.body) : result.body;

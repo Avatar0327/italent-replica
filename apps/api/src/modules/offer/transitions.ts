@@ -51,6 +51,8 @@ export async function offerActionAccess(deps: TenantRouteDeps, ctx: OfferContext
     can('object.create', OFFER_OBJECT),
   ]);
   const gated: Partial<Record<OfferRowAction, boolean>> = {
+    // BE-14a3：发起审批与发起入口同口径（Offer 编辑开关；行本身已按范围裁剪）
+    submitApproval: update,
     transfer,
     edit: update,
     send: update,

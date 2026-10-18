@@ -12,6 +12,7 @@ import { lockOrganizationSettings } from '../org/locks.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
+import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -53,7 +54,8 @@ import { OPEN_STATUSES } from './store.js';
 /** 办理决定：同意、不同意（出口动作）、驳回（beforeApprove 区分用）。 */
 export type TaskDecision = 'approve' | 'disagree' | 'reject';
 
-export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review' | 'part_time';
+export type BusinessType =
+  'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review' | 'part_time' | 'offer' | 'offer_batch';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -634,4 +636,7 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   talent_review: talentReviewAdapter,
   // BE-7 PT-1：占位（无发起入口），PT-4a 接入兼职申请
   part_time: partTimeAdapter,
+  // R2 BE-14a3：Offer 审批（业务单 = Offer）与 Offer 批量审批（业务单 = 批量审批单，一单多份 Offer）
+  offer: offerAdapter,
+  offer_batch: offerBatchAdapter,
 };

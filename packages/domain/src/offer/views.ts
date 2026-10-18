@@ -1,6 +1,7 @@
 /**
  * Offer 管理的 10 个视图（R2 BE-14a C1）与行操作矩阵（BE-14a2；34 §2.1，A19）。列序列宽与前端 apps/web/src/offers/messages.ts
  * （派发附录 B2）一致；field 为空的列是本段还没有数据来源的字段（简历、附件、签署、同步状态等），接口照样返回列定义、值为空。
+ * 当前审批人 / 当前审批节点随 BE-14a3 取在途审批实例。
  */
 import type { OfferApprovalStatus, OfferField, OfferStatus } from './rules.js';
 import { offerEditable, offerInvalidatable, type OfferStateFacts } from './rules.js';
@@ -15,7 +16,9 @@ export type OfferListField =
   | 'refusalRemark'
   | 'invalidAt'
   | 'sentBy'
-  | 'sentAt';
+  | 'sentAt'
+  | 'currentApprovers'
+  | 'currentApprovalNode';
 
 /** 原站显示名 → 字段；不在表里的列（简历信息、Offer附件、签署状态等）没有数据来源。 */
 const LABEL_FIELDS: Readonly<Record<string, OfferListField>> = {
@@ -48,6 +51,8 @@ const LABEL_FIELDS: Readonly<Record<string, OfferListField>> = {
   失效时间: 'invalidAt',
   Offer发送人: 'sentBy',
   Offer发送日期: 'sentAt',
+  当前审批人: 'currentApprovers',
+  当前审批节点: 'currentApprovalNode',
 };
 
 type ColumnSpec = readonly [label: string, width: number];
@@ -294,10 +299,12 @@ export interface OfferRowActions {
 }
 
 /**
- * 已接线的行操作：接口只返回这些（再按当前用户权限裁剪）。发送 / 重发已由 BE-14b1 接线；编辑并同步 / 查看邮件 / 电子签署 /
- * 关联在职实习生归 BE-14b，发起审批 / 催办 / 转交 / 撤销归 BE-14a3，接线前不出现，不给可点但无效的入口。
+ * 已接线的行操作：接口只返回这些（再按当前用户权限裁剪）。发送 / 重发已由 BE-14b1 接线；编辑并同步 / 查看邮件 /
+ * 电子签署 / 关联在职实习生归 BE-14b；发起审批随 BE-14a3 接线，审批中的催办 / 转交 / 撤销走审批中心实例动作、未接进行操作。
+ * 未接线的动作不出现，不给可点但无效的入口。
  */
 export const OFFER_WIRED_ROW_ACTIONS: readonly OfferRowAction[] = [
+  'submitApproval',
   'edit',
   'send',
   'resend',
