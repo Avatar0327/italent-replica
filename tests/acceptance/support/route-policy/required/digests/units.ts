@@ -172,6 +172,17 @@ export const DIGESTS: Digests = {
     ownTransferInput: '39cbe940fbc7',
     ownTransferPreview: '1251dd2e1f1e',
   },
+  'apps/api/src/modules/employment/auto-regularization-routes.ts': {
+    'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
+    'route:GET /auto-regularization-rules': '30bcdcc9d33c',
+    'route:POST /auto-regularization-rules': '9921e0316fd2',
+    'route:POST /auto-regularization-rules/:id/copy': '82b510f08ee1',
+    'route:POST /auto-regularization/run': 'b99798a886bf',
+    'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
+    'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
+    visibleEmployees: '311254d756ec',
+    writeContext: '0f98695a8fa8',
+  },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
     registerBlacklistRuleRoutes: '3f07cde05455',
     requireBlacklistWrite: '6941bcb6cd89',
@@ -225,6 +236,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-routes.ts': {
     registerExitChanges: '16711630aa98',
     requirePreviewButton: '4e4efd3f6659',
+    requireViewableExitFilters: 'd9eaf946ef06',
+    'route:GET /exits': '6ec815503d59',
+    'route:GET /exits/:id': '89a1e0b41dc6',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
     'route:PATCH /exits/:id': '4680d83c58be',
     'route:POST /exits/batch': 'da91eb4a0406',
@@ -259,7 +273,7 @@ export const DIGESTS: Digests = {
     rescheduleRegularization: '2020cec359d9',
   },
   'apps/api/src/modules/employment/regularization.ts': {
-    regularizeOne: '874facddf810',
+    regularizeOne: '783a0d02bf5e',
   },
   'apps/api/src/modules/employment/replay-guard.ts': {
     exitBatchGuard: 'de614384aa2a',
@@ -1559,6 +1573,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': '008aa7f3f314',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
+    'fb47f7d5a451',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:GET /auto-regularization-rules': '14250731bdc5',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization-rules': 'f24b1fff600f',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization-rules/:id/copy':
+    '9eba85d53a35',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:POST /auto-regularization/run': 'ae59d385818b',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:PUT /auto-regularization-rules/:id':
+    '9d6fe976bb88',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#route:PUT /auto-regularization-rules/:id/enabled':
+    'c0874a5a5e86',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#visibleEmployees': 'dbfa9076c8e2',
+  'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext': '87163d4c2bf1',
   'apps/api/src/modules/employment/blacklist-routes.ts#registerBlacklistRuleRoutes': '5a4be0735eda',
   'apps/api/src/modules/employment/blacklist-routes.ts#requireBlacklistWrite': '7283f2d3910d',
   'apps/api/src/modules/employment/blacklist-routes.ts#route:DELETE /blacklist-rules/:id': '60ba1f0b416f',
@@ -1595,6 +1622,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '86fbd7cd8761',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd8613363bdae',
+  'apps/api/src/modules/employment/exit-routes.ts#requireViewableExitFilters': 'e90182a03729',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': '50739a69f5d6',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': '98d718056344',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': 'f2d7229ace36',
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/:id': 'c5d0ade5ff6c',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/batch': '38a4d8c342c3',
@@ -1617,7 +1647,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/probation': '98ec4c8d2cb9',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /probation-results/:id': '598aaee12ea9',
   'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': 'cdda3cbdeba6',
-  'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'c8e2526025e2',
+  'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'e7d39c809936',
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchGuard': 'e5ccbdc81aaf',
   'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard': '10b1b89eaa6c',
   'apps/api/src/modules/employment/replay-guard.ts#exitEditGuard': '69054aacd7ec',
