@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { mountPath, pageRoutes, type ModulePage } from './page-registry.js';
-import { MENU_ROUTES, PAGES, SUB_ROUTES, appRoute, legacyTarget } from './routes.js';
+import { MENU_ROUTES, PAGES, SUB_ROUTES, appRoute, legacyTarget, routePath } from './routes.js';
 import { PageErrorBoundary, PageState } from './PageState.js';
 import { usePermissions } from './Permissions.js';
 import { useSession } from './Session.js';
@@ -42,7 +42,7 @@ export function AppPages() {
   if (permission.error) return <PageState kind="error" error={permission.error} retry={permission.refresh} />;
   const active = appRoute(location.pathname);
   const visible = permission.menus.flatMap((menu) => (menu.directory ? (menu.children ?? []) : [menu]));
-  if (active && !PAGES.ungated.has(location.pathname) && !visible.some((menu) => menu.key === active.id))
+  if (active && !PAGES.ungated.has(routePath(location.pathname)) && !visible.some((menu) => menu.key === active.id))
     return <PageState kind="forbidden" refresh={permission.refresh} />;
   return (
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>

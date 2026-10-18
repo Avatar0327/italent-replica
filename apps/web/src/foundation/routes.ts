@@ -11,9 +11,11 @@ export const APP_ROUTES: readonly AppRoute[] = PAGES.apps;
 export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
+// F-220 / DEC-431①：页面归属与权限豁免共用 React Router 的大小写无关匹配口径。
+export const routePath = (path: string) => path.toLowerCase();
+
 export function appRoute(path: string) {
-  // F-220 / DEC-431①：与 React Router 的大小写无关匹配一致，统一页面与应用权限归属。
-  path = path.toLowerCase();
+  path = routePath(path);
   // 新子项及被拒路径按 AppPages 的实际挂载匹配；其他旧入口仍沿用原判定。
   const matched = matchRoutes(
     [
