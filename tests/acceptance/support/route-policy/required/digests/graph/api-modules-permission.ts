@@ -214,10 +214,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/permission/data-scope-schemas.ts#scopeOrgRefBody': [
     'packages/domain/src/contracts/org-hierarchy.ts#ORG_DIMENSIONS',
   ],
-  'apps/api/src/modules/permission/employment-replay.ts#FOOTPRINT_TYPES': [
-    'apps/api/src/modules/employment/assessment-store.ts#ASSESSMENT_AUDIT_TYPE',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
-  ],
   'apps/api/src/modules/permission/employment-replay.ts#assertScope': [
     'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible',
     'apps/api/src/modules/permission/module-access.ts#scopeAllowsInTransaction',
@@ -243,7 +239,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
-  'apps/api/src/modules/permission/employment-replay.ts#footprints': ['#FOOTPRINT_TYPES', '#MAX_EVENTS', '#rows'],
+  'apps/api/src/modules/permission/employment-replay.ts#footprintTypes': [
+    'apps/api/src/modules/employment/assessment-store.ts#ASSESSMENT_AUDIT_TYPE',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
+  ],
+  'apps/api/src/modules/permission/employment-replay.ts#footprints': ['#MAX_EVENTS', '#footprintTypes', '#rows'],
   'apps/api/src/modules/permission/employment-replay.ts#linkedOnly': ['#LINKED_ACTIONS'],
   'apps/api/src/modules/permission/employment-replay.ts#responseSnapshots': ['#responseSnapshots'],
   'apps/api/src/modules/permission/employment-replay.ts#transferException': ['#rows'],

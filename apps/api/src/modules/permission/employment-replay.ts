@@ -106,16 +106,18 @@ const LINKED_ACTIONS = new Set([
   'employment.assessment.voided_by_exit',
 ]);
 /** 任职足迹的审计 / outbox 对象类型：任职记录、任职业务，兼职记录与兼职申请（R2-T05 §7.3A），以及试用期考核（F-229）。 */
-const FOOTPRINT_TYPES = sql.join(
-  [
-    'employment-record',
-    'employment-business',
-    PART_TIME_AUDIT_OBJECTS.record,
-    PART_TIME_AUDIT_OBJECTS.request,
-    ASSESSMENT_AUDIT_TYPE,
-  ].map((type) => sql`${type}`),
-  sql`,`,
-);
+// 函数而非模块常量：assessment-store 与本文件有循环依赖，模块求值时取到的 ASSESSMENT_AUDIT_TYPE 可能还是 undefined
+const footprintTypes = () =>
+  sql.join(
+    [
+      'employment-record',
+      'employment-business',
+      PART_TIME_AUDIT_OBJECTS.record,
+      PART_TIME_AUDIT_OBJECTS.request,
+      ASSESSMENT_AUDIT_TYPE,
+    ].map((type) => sql`${type}`),
+    sql`,`,
+  );
 
 /**
  * 本命令只经联动改写的记录：DEC-178 按 DEC-177 可见口径复查；
@@ -194,13 +196,13 @@ async function footprints(tx: Tx, tenantId: string, commandId: string) {
     SELECT a.object_id AS id,a.action,a.after,NULL::uuid AS "snapshotDepartment",false AS "hasSnapshot"
     FROM audit_events a
     WHERE a.tenant_id=${tenantId} AND a.command_id=${commandId}
-      AND a.object_type IN (${FOOTPRINT_TYPES})
+      AND a.object_type IN (${footprintTypes()})
     UNION ALL
     SELECT o.object_id::text AS id,'snapshot' AS action,NULL::jsonb AS after,p.department_id,true
     FROM employment_outbox o JOIN employment_payload_versions p
       ON p.tenant_id=o.tenant_id AND p.id=o.payload_version_id
     WHERE o.tenant_id=${tenantId} AND o.command_id=${commandId}
-      AND o.object_type IN (${FOOTPRINT_TYPES})
+      AND o.object_type IN (${footprintTypes()})
     LIMIT ${MAX_EVENTS + 1}
   `),
   );
