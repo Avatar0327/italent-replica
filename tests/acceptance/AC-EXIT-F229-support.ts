@@ -47,6 +47,14 @@ export async function assessmentExitWorld(db: Db, label: string) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string; revision: number; status: string };
   }
+  /** 先预览取确认令牌，再带令牌保存（有在途考核 / 调动时必须确认）。 */
+  async function confirmedLeave(employeeId: string, mode: 'application' | 'direct', exit: object = {}) {
+    const preview = (await (await previewCall(employeeId)).json()) as { ack: { ackToken: string } | null };
+    return createdLeave(employeeId, mode, {
+      ...exit,
+      ...(preview.ack ? { pendingTransferAck: preview.ack.ackToken } : {}),
+    });
+  }
   const previewCall = (employeeId: string, lastWorkDate = LAST_WORK_DATE, actor = a.hr.id) =>
     a.request(actor, 'POST', `${EMPLOYMENT}/exits/employees/${employeeId}/preview`, { body: { lastWorkDate } });
   const submitCall = (leave: { id: string; revision: number }, body: object = {}) =>
@@ -87,9 +95,7 @@ export async function assessmentExitWorld(db: Db, label: string) {
         AND object_id=${assessmentId} AND action=${action}`);
   /** 离职单状态（approved / effective …）。 */
   const leaveStatus = async (leaveId: string) =>
-    (
-      await a.json<{ status: string }>(await a.request(a.hr.id, 'GET', `${EMPLOYMENT}/businesses/${leaveId}`))
-    ).status;
+    (await a.json<{ status: string }>(await a.request(a.hr.id, 'GET', `${EMPLOYMENT}/businesses/${leaveId}`))).status;
 
   return {
     ...a,
@@ -100,6 +106,7 @@ export async function assessmentExitWorld(db: Db, label: string) {
     leaveCall,
     reasonOf,
     createdLeave,
+    confirmedLeave,
     previewCall,
     submitCall,
     approvedApplication,

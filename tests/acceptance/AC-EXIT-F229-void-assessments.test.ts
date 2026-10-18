@@ -9,8 +9,16 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { assessmentExitWorld, EFFECTIVE_DAY, LAST_WORK_DATE, type AssessmentExitWorld } from './AC-EXIT-F229-support.js';
+import {
+  assessmentExitWorld,
+  EFFECTIVE_DAY,
+  LAST_WORK_DATE,
+  type AssessmentExitWorld,
+} from './AC-EXIT-F229-support.js';
 import { reasonOf as plainReason } from './AC-PB-BE15b1-support.js';
+import { exitActivator } from './AC-EXIT-activation-support.js';
+import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
+import { sql } from '@italent/db';
 
 const database = useTestDb();
 const world = (label: string) => assessmentExitWorld(database().db, label);
@@ -69,7 +77,10 @@ describe('F-229 保存离职时的提示与确认（DEC-617）', () => {
     await x.complete(finished, done);
     expect((await x.get(finished)).status).toBe('approved');
     const preview = await previewOf(x, done.employeeId);
-    expect(preview.warnings.map((item) => item.reason)).toEqual(['EXIT_APPLICATIONS_TO_VOID', 'EXIT_FUTURE_TRANSFER_LANDED']);
+    expect(preview.warnings.map((item) => item.reason)).toEqual([
+      'EXIT_APPLICATIONS_TO_VOID',
+      'EXIT_FUTURE_TRANSFER_LANDED',
+    ]);
     expect(preview.ack).toBeNull();
   });
 
@@ -77,7 +88,9 @@ describe('F-229 保存离职时的提示与确认（DEC-617）', () => {
     const x = await world('direct-ack');
     const person = await x.probationer('直接离职员工');
     const assessmentId = await x.launch('regularization', person);
-    const missing = await x.reasonOf(await x.leaveCall(person.employeeId, { kind: 'leave', mode: 'direct', lastWorkDate: LAST_WORK_DATE, fields: {} }));
+    const missing = await x.reasonOf(
+      await x.leaveCall(person.employeeId, { kind: 'leave', mode: 'direct', lastWorkDate: LAST_WORK_DATE, fields: {} }),
+    );
     expect(missing).toMatchObject({ status: 409, reason: 'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED' });
     expect(missing.assessments).toMatchObject({ items: [{ assessmentId, message: NOTICE }], hiddenCount: 0 });
     expect(missing.ackToken).toEqual(expect.any(String));
@@ -155,13 +168,19 @@ describe('F-229 生效前不动', () => {
     const view = await x.instanceOf(draft.id);
     const task = x.pending(view)[0]!;
     expect((await x.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {})).status).toBe(200);
-    await expect(x.activate(draft.id, '2026-10-02')).rejects.toMatchObject({ details: { reason: 'EFFECTIVE_DATE_NOT_REACHED' } });
+    await expect(x.activate(draft.id, '2026-10-02')).rejects.toMatchObject({
+      details: { reason: 'EFFECTIVE_DATE_NOT_REACHED' },
+    });
     expect((await x.get(assessmentId)).status).toBe('approved');
   });
 });
 
 describe('F-229 生效时作废在途考核', () => {
-  async function inFlight(x: AssessmentExitWorld, name: string, type: 'probation' | 'regularization' = 'regularization') {
+  async function inFlight(
+    x: AssessmentExitWorld,
+    name: string,
+    type: 'probation' | 'regularization' = 'regularization',
+  ) {
     const person = await x.probationer(name);
     const assessmentId = await x.launch(type, person);
     return { person, assessmentId, instance: (await x.instanceRows(assessmentId))[0]! };
@@ -194,7 +213,12 @@ describe('F-229 生效时作废在途考核', () => {
     const x = await world('void-approval');
     const { person, assessmentId, instance } = await inFlight(x, '申请生效员工', 'probation');
     const { ackToken } = await x.reasonOf(
-      await x.leaveCall(person.employeeId, { kind: 'leave', mode: 'application', lastWorkDate: LAST_WORK_DATE, fields: {} }),
+      await x.leaveCall(person.employeeId, {
+        kind: 'leave',
+        mode: 'application',
+        lastWorkDate: LAST_WORK_DATE,
+        fields: {},
+      }),
     );
     const draft = await x.createdLeave(person.employeeId, 'application', {
       exitTypeCode: 'voluntary',
@@ -236,7 +260,9 @@ describe('F-229 生效时作废在途考核', () => {
     const current = await x.get(assessmentId);
     const edited = await plainReason(await x.patchRaw(assessmentId, current.revision, { assessmentName: '改名' }));
     expect(edited).toMatchObject({ status: 409, reason: 'ASSESSMENT_NOT_EDITABLE' });
-    const approved = await x.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, { comment: '迟到的同意' });
+    const approved = await x.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {
+      comment: '迟到的同意',
+    });
     expect(approved.status).toBeGreaterThanOrEqual(400);
     const todos = await x.todos(task.assigneeUserId);
     expect(todos.items.map((item) => item.taskId)).not.toContain(task.id);
@@ -285,7 +311,12 @@ describe('F-229 生效时作废在途考核', () => {
     const leaver = await inFlight(x, '离职员工');
     const colleague = await inFlight(x, '同部门同事', 'probation');
     const { ackToken } = await x.reasonOf(
-      await x.leaveCall(leaver.person.employeeId, { kind: 'leave', mode: 'direct', lastWorkDate: LAST_WORK_DATE, fields: {} }),
+      await x.leaveCall(leaver.person.employeeId, {
+        kind: 'leave',
+        mode: 'direct',
+        lastWorkDate: LAST_WORK_DATE,
+        fields: {},
+      }),
     );
     const leave = await x.createdLeave(leaver.person.employeeId, 'direct', { pendingTransferAck: ackToken });
     await x.activate(leave.id, EFFECTIVE_DAY);
@@ -293,6 +324,19 @@ describe('F-229 生效时作废在途考核', () => {
     expect((await x.get(colleague.assessmentId)).status).toBe('in_review');
     expect(await x.instanceRows(colleague.assessmentId)).toEqual([{ id: colleague.instance.id, status: 'running' }]);
     expect(await x.pendingTaskCount(colleague.assessmentId)).toBe(1);
+  });
+
+  it('生产调度（SYSTEM_USER_ID，不是租户成员）生效：同样作废，审计与审批日志的操作人为空', async () => {
+    const x = await world('void-scheduler');
+    const { person, assessmentId, instance } = await inFlight(x, '调度员工');
+    const leave = await x.confirmedLeave(person.employeeId, 'direct');
+    const asScheduler = exitActivator(x.db, { tenant: x.tenant, user: { id: SYSTEM_USER_ID } });
+    expect(await asScheduler(leave.id, EFFECTIVE_DAY)).toMatchObject({ outcome: 'effective' });
+    await expectVoided(x, assessmentId, instance.id, leave.id);
+    expect((await x.audits(assessmentId, 'employment.assessment.voided_by_exit'))[0]!.actor).toBeNull();
+    const [log] = await x.rows<{ actor: string | null }>(sql`SELECT actor_user_id AS actor FROM approval_instance_logs
+      WHERE tenant_id=${x.tenantId} AND instance_id=${instance.id}::uuid AND event='cancel'`);
+    expect(log).toEqual({ actor: null });
   });
 
   it('作废失败整单回滚：后续订阅方失败时离职不生效、考核与审批原样，修复后重试成功', async () => {
