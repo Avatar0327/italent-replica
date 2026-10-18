@@ -2,6 +2,7 @@
 import { pgErrorCode, and, eq, contractRecords, contractRequests, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { settings } from './configuration.js';
+import { schedulerAwareContext } from '../approval/context.js';
 import { audit, checkScope, lockEmployee, type ContractContext } from './context.js';
 import { assertNoInFlight, createCommand, deleteContract, setContractState } from './service.js';
 import type { ContractFields } from './input.js';
@@ -98,14 +99,17 @@ async function cancelExitRequests(
     .from(contractRequests)
     .where(and(eq(contractRequests.tenantId, ctx.tenantId), eq(contractRequests.employeeId, input.employeeId)))
     .orderBy(contractRequests.id);
-  const { activeInstanceOf } = await import('../approval/store.js');
+  const { activeInstanceOf, latestInstanceOf } = await import('../approval/store.js');
   const { cancel } = await import('../approval/actions.js');
+  const approvalCtx = schedulerAwareContext(ctx);
   const withdrawn: ExitContractOutcome['withdrawnRequests'][number][] = [];
   for (const request of requests) {
     if (allowedTypes.includes(request.typeId) || !['approved', 'in_review', 'returned'].includes(request.status))
       continue;
+    // 只取消活动实例；通知挂在最近相关的实例上（审批已通过的申请没有活动实例，发起人仍应收到消息）
     const active = await activeInstanceOf(tx, ctx.tenantId, 'contract', request.id);
-    if (active) await cancel(tx, ctx, active.id);
+    if (active) await cancel(tx, approvalCtx, active.id);
+    const related = active ?? (await latestInstanceOf(tx, ctx.tenantId, 'contract', request.id));
     await tx
       .update(contractRequests)
       .set({ status: 'withdrawn', revision: request.revision + 1 })
@@ -117,8 +121,8 @@ async function cancelExitRequests(
       operation: request.operation,
       effectiveDate: request.effectiveDate,
       stateBefore: request.status,
-      instanceId: active?.id ?? null,
-      initiatorUserId: active?.initiatorUserId ?? null,
+      instanceId: related?.id ?? null,
+      initiatorUserId: related?.initiatorUserId ?? null,
     });
   }
   return withdrawn;

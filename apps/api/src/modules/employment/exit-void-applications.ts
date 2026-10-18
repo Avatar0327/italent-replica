@@ -7,8 +7,9 @@
  */
 import { exitEffects, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { activeInstanceOf } from '../approval/store.js';
+import { activeInstanceOf, latestInstanceOf } from '../approval/store.js';
 import { cancel } from '../approval/actions.js';
+import { schedulerAwareContext } from '../approval/context.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { userOfPerson } from '../approval/resolver.js';
 import { assertReleasedEstablishment, reverseCarriedEstablishment } from '../establishment/carried-transfer.js';
@@ -23,9 +24,11 @@ import {
 import { BUSINESS_KINDS, type EmploymentContext } from './types.js';
 import { appendEmploymentState } from './write-service.js';
 
-/** 离职 / 退休本身不在被作废之列（退休归 R2-T04）。 */
-export const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave' && kind !== 'retirement');
+/** 除离职本身外所有 kind（含退休）的在途申请都在作废之列（§5.1-1、A-10 “不论 kind”）；预览与执行共用。 */
+export const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave');
 export const OPEN_STATES = ['draft', 'in_review', 'approved', 'rejected'];
+/** 候选查询（inFlightApplications）至多返回 1001 条；超过这里的上限即整单拒绝，不消费截断清单。 */
+export const VOID_LIMIT = 1000;
 
 export interface VoidedApplication {
   readonly id: string;
@@ -65,9 +68,12 @@ async function voidOne(
 ): Promise<VoidedApplication> {
   const { kind, effectiveDate } = business.payload;
   const stateBefore = business.state;
-  const instance = await activeInstanceOf(tx, ctx.tenantId, 'employment', business.id);
+  const approvalCtx = schedulerAwareContext(ctx);
+  // 活动实例（running / returned）才要取消；通知挂在最近相关的实例上，审批已通过的申请没有活动实例但发起人仍应收到消息
+  const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', business.id);
+  const instance = active ?? (await latestInstanceOf(tx, ctx.tenantId, 'employment', business.id));
   await appendEmploymentState(tx, ctx, business, 'voided', { reason: 'exit', exitBusinessId: exit.id });
-  if (instance) await cancel(tx, ctx, instance.id);
+  if (active) await cancel(tx, approvalCtx, active.id);
   const released = kind === 'transfer' ? await reverseCarriedEstablishment(tx, ctx, business.id) : [];
   try {
     await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
@@ -108,7 +114,7 @@ async function voidOne(
   if (instance) {
     const applicant = await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId);
     for (const recipientUserId of new Set([instance.initiatorUserId, applicant].filter((id): id is string => !!id)))
-      await notifyMessage(tx, ctx, instance, { recipientUserId, templateCode: 'application_voided_by_exit' });
+      await notifyMessage(tx, approvalCtx, instance, { recipientUserId, templateCode: 'application_voided_by_exit' });
   }
   await bumpEmploymentBusiness(tx, ctx, business);
   return { id: business.id, ...detail };
@@ -124,6 +130,11 @@ export async function voidInFlightApplications(
   const open = (await inFlightApplications(tx, ctx, exit.employeeId, VOIDABLE_KINDS, OPEN_STATES))
     .filter((row) => !row.landed && row.id !== exit.id)
     .sort((a, b) => a.id.localeCompare(b.id));
+  // 候选查询被截断时不能只作废一部分：在任何写入之前整单拒绝，HR 处理掉多余的申请后重试
+  if (open.length > VOID_LIMIT)
+    throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
+      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
+    });
   await lockInstances(
     tx,
     ctx,
