@@ -164,14 +164,14 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   module.put('/:id', async (c) => {
     const id = uuidParam(c);
-    const input = parseOfferUpdate(await jsonBody(c));
+    const { syncPendingEntry, ...input } = parseOfferUpdate(await jsonBody(c));
     return runOfferWrite(
       c,
       deps,
-      { id, input },
+      { id, input, syncPendingEntry: syncPendingEntry ?? false },
       'update',
       offerFieldsCheck('update', input),
-      async (tx, ctx) => ({ status: 200, body: await updateOffer(tx, ctx, id, input) }),
+      async (tx, ctx) => ({ status: 200, body: await updateOffer(tx, ctx, id, input, syncPendingEntry === true) }),
       { replayed: offerStillVisible },
     );
   });

@@ -1,7 +1,7 @@
 /**
  * BE-14a2 Offer 状态转移、失效与行操作矩阵（34 §2.1、OF-R7；AC-OF-08 / 09 / 16～20，DEC-529 / 532 / 533 / 537）。
- * 已发 / 已入职 / 审批中等要 BE-14a3 / BE-14b 入口才能到达的状态用可信 SQL 造数；需要联动待入职的分支断言机读拒绝
- * OFFER_SYNC_NOT_READY。行操作只返回本段已接线的动作（发送、重发、编辑并同步、审批、邮件、签署等归 BE-14a3 / BE-14b），
+ * 已发 / 已入职 / 审批中等要 BE-14a3 / BE-14b 入口才能到达的状态用可信 SQL 造数；联动待入职的转移 / 失效见 AC-OF-BE14b3-linkage（BE-14b3 已放开
+ * OFFER_SYNC_NOT_READY）。行操作只返回已接线的动作（发送、重发、编辑并同步、审批；邮件、签署等未接线），
  * 原站完整矩阵由纯函数给出、另行断言。
  */
 import * as domain from '@italent/domain';
@@ -109,19 +109,17 @@ describe('AC-OF-08 已拒绝退回待发', () => {
     });
   });
 
-  it('已接受不能直接回待发（须先经已拒绝）；已接受 → 已入职给机读拒绝；终态不能转移；revision 冲突 409', async () => {
+  it('已接受不能直接回待发（须先经已拒绝）；已接受不能直接回待发；终态不能转移；revision 冲突 409', async () => {
     const w = await offerWorld(testDb().db, 'guards');
     await syncOff(w);
     const accepted = await w.moved(await w.social(), { target: 'accepted', acceptTime: '2026-10-16' });
     const back = await w.transfer(accepted, { target: 'pending' });
     expect(back.status).toBe(409);
     expect((await errorOf(back)).details).toMatchObject({ reason: 'OFFER_TRANSITION_INVALID' });
-    const onboard = await w.transfer(accepted, { target: 'onboarded' });
-    expect(onboard.status).toBe(409);
-    expect((await errorOf(onboard)).details).toMatchObject({ reason: 'OFFER_SYNC_NOT_READY' });
+    // BE-14b3 新口径：未同步待入职（同步已关闭）的已接受 Offer 可手动转已入职；有待入职的转移见 AC-OF-BE14b3-linkage
     expect(await w.get(accepted.id)).toMatchObject({ status: 'accepted', revision: 2 });
     const form = (await (await w.request('GET', `/${accepted.id}/transfer-form`)).json()) as { targets: string[] };
-    expect(form.targets).toEqual(['rejected']);
+    expect(form.targets).toEqual(['rejected', 'onboarded']);
     const stale = await w.transfer({ ...accepted, revision: 1 }, reject);
     expect(stale.status).toBe(409);
     expect((await errorOf(stale)).code).toBe('REVISION_CONFLICT');
@@ -235,7 +233,7 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
   });
 
   // BE-14a3 接线后“发起审批”出现在待发主按钮；审批中的催办 / 转交 / 撤销仍未接线；BE-14b1 接线发送 / 重发
-  it('接口只返回已接线的动作：编辑并同步 / 审批中动作 / 邮件 / 签署 / 关联实习生不出现', async () => {
+  it('接口只返回已接线的动作：审批中动作 / 邮件 / 签署 / 关联实习生不出现（编辑并同步随 BE-14b3 接线）', async () => {
     const w = await offerWorld(testDb().db, 'matrix');
     const pending = await w.social();
     expect(actionsOf(await w.get(pending.id))).toEqual({
@@ -246,8 +244,8 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     await w.force(approved.id, 'approval_status', 'approved');
     expect(actionsOf(await w.get(approved.id))).toEqual({ primary: ['edit'], menu: ['invalidate'] });
     const cases: [string, Actions][] = [
-      ['sent', { primary: ['resend'], menu: ['transfer', 'invalidate', 'view'] }],
-      ['accepted', { primary: [], menu: ['transfer', 'invalidate', 'view'] }],
+      ['sent', { primary: ['resend'], menu: ['editSync', 'transfer', 'invalidate', 'view'] }],
+      ['accepted', { primary: ['editSync'], menu: ['transfer', 'invalidate', 'view'] }],
       ['onboarded', { primary: [], menu: ['view'] }],
     ];
     for (const [status, actions] of cases) {
@@ -261,24 +259,5 @@ describe('AC-OF-16 / 19 / 20 行操作矩阵', () => {
     const listed = await w.list('view=rejected');
     expect(listed.items.map((item) => actionsOf(item))).toEqual([{ primary: ['transfer'], menu: ['view'] }]);
     expect((listed as unknown as { toolbarActions: string[] }).toolbarActions).toEqual(['transfer']);
-  });
-
-  it('有待入职记录时（BE-14b 同步后才有）转移与失效一律机读拒绝 OFFER_SYNC_NOT_READY（纯函数）', () => {
-    const fns = domain as unknown as Record<string, (...args: unknown[]) => { ok: boolean; reason?: string }>;
-    expect(typeof fns.planOfferTransition).toBe('function');
-    const facts = { status: 'accepted', approvalStatus: 'unsubmitted', offerType: 'social', hasPendingEntry: true };
-    expect(fns.planOfferTransition!(facts, 'rejected', reject)).toMatchObject({
-      ok: false,
-      reason: 'OFFER_SYNC_NOT_READY',
-    });
-    expect(fns.planOfferInvalidation!(facts, { reasonCode: 'candidate_gave_up' })).toMatchObject({
-      ok: false,
-      reason: 'OFFER_SYNC_NOT_READY',
-    });
-    const sent = { ...facts, status: 'sent' };
-    expect(fns.planOfferTransition!(sent, 'pending', {})).toMatchObject({ ok: false, reason: 'OFFER_SYNC_NOT_READY' });
-    expect(fns.planOfferTransition!({ ...facts, hasPendingEntry: false }, 'rejected', reject)).toMatchObject({
-      ok: true,
-    });
   });
 });

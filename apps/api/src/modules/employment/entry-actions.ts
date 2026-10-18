@@ -141,6 +141,12 @@ interface ReplaceInput {
   readonly remark?: string;
   /** 改期入职（原站验证）把待入职合同起始日改成新日期；编辑换日期不联动，合同原样搬到新记录（F-194）。 */
   readonly syncContract: boolean;
+  /** Offer 编辑并同步（OF-R14）：整份替换任职字段 / 试用期月数 / 待入职合同（缺省沿用原记录上的值）。 */
+  readonly offer?: {
+    readonly fields: EmploymentRecord['fields'];
+    readonly probationMonths: number | null;
+    readonly contract: PendingContract;
+  };
 }
 
 interface ReplacedEntry {
@@ -168,10 +174,13 @@ async function replacePendingEntry(
   const previousProbation = previousState?.probation ?? null;
   const probation = input.probation ?? previousProbation;
   // Offer 同步带来的月数随记录搬运（试用期改为无时月数自然清空）
-  const probationMonths = probation ? (previousState?.months ?? undefined) : undefined;
+  const probationMonths = probation ? (input.offer?.probationMonths ?? previousState?.months ?? undefined) : undefined;
   const previousContract = await loadPendingContract(tx, ctx, record.id);
   const contract =
-    previousContract && input.syncContract ? { ...previousContract, startDate: input.effectiveDate } : previousContract;
+    input.offer?.contract ??
+    (previousContract && input.syncContract
+      ? { ...previousContract, startDate: input.effectiveDate }
+      : previousContract);
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
   await clearPendingContract(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
@@ -185,7 +194,10 @@ async function replacePendingEntry(
       mode: 'direct',
       formId: business.payload.formId,
       effectiveDate: input.effectiveDate,
-      fields: input.employType ? { ...record.fields, employType: input.employType } : record.fields,
+      fields:
+        (input.offer ?? input.employType)
+          ? { ...(input.offer?.fields ?? record.fields), ...(input.employType ? { employType: input.employType } : {}) }
+          : record.fields,
       customFields: record.customFields,
     },
     {
@@ -329,4 +341,50 @@ export async function deletePendingEntry(
   const deleted = await transitionEmployment(tx, ctx, { id: recordId, action: 'delete' });
   await releasePendingContract(tx, ctx, recordId, 'delete');
   return deleted;
+}
+
+export interface OfferEntryChange {
+  readonly effectiveDate: string;
+  readonly fields: Readonly<Record<string, string>>;
+  readonly probation: boolean | null;
+  readonly probationMonths: number | null;
+  readonly contract: PendingContract;
+}
+
+/**
+ * 入站端口（Offer 编辑并同步，OF-R14）：把 Offer 的任职字段 / 计划入职日 / 试用期 / 合同推送到未取消的待入职，已取消返回 'cancelled'；
+ * 没有任何差异返回 'unchanged'（不白换记录 ID）。任职记录不可原地改日期和字段，所以走替换内核（同事务删旧建新，ID 随之变，
+ * 动作日志串起新旧，Offer 沿链找最新）；入职状态保持原值（与行内编辑同口径，不变“延期”）。Offer 行锁由调用方先取。
+ */
+export async function pushOfferToPendingEntry(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  change: OfferEntryChange,
+): Promise<EmploymentBusiness | 'cancelled' | 'unchanged'> {
+  const locked = await lockPendingEntry(tx, ctx, recordId);
+  const { record } = locked;
+  if (record.entryStatus === ENTRY_STATUS.cancelled) return 'cancelled';
+  const state = await loadPendingProbationState(tx, ctx, record.id);
+  const contract = await loadPendingContract(tx, ctx, record.id);
+  const fields = { ...record.fields, ...change.fields };
+  const same =
+    change.effectiveDate === record.effectiveDate &&
+    JSON.stringify(fields) === JSON.stringify(record.fields) &&
+    (change.probation === null || (state?.probation ?? null) === change.probation) &&
+    (change.probation ? (state?.months ?? null) === change.probationMonths : true) &&
+    contract?.startDate === change.contract.startDate &&
+    (contract?.endDate ?? null) === (change.contract.endDate ?? null) &&
+    (contract?.companyId ?? null) === (change.contract.companyId ?? null);
+  if (same) return 'unchanged';
+  const replaced = await replacePendingEntry(tx, ctx, locked, {
+    action: 'edit',
+    effectiveDate: change.effectiveDate,
+    entryStatus: record.entryStatus ?? ENTRY_STATUS.normal,
+    ...(change.probation === null ? {} : { probation: change.probation }),
+    remark: 'Offer 编辑并同步',
+    syncContract: false,
+    offer: { fields, probationMonths: change.probationMonths, contract: change.contract },
+  });
+  return replaced.business;
 }
