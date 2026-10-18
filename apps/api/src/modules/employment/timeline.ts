@@ -232,3 +232,73 @@ export async function removeEmploymentTimeline(
   // 前一条新增的有效段：从被删记录的生效日到后一条的生效日（后一条同日时为空段）。
   return { recordId: previous.recordId, window: { from: point.startDate, to: until } };
 }
+
+/** 业务的任职记录当前是否在时间轴上（被离职摘下的未来调动不在，离职设计 §5.8）。 */
+export async function isOnTimeline(tx: Tx, tenantId: string, recordId: string): Promise<boolean> {
+  const [row] = rowsOf<{ present: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM employment_timeline
+      WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid) AS present`),
+  );
+  return !!row?.present;
+}
+
+/**
+ * 被离职摘下的任职记录：与覆盖校验触发器共用数据库函数 employment_record_detached（迁移 0143）——同员工、同周期、
+ * 真实离职之后的调动，且有 future_transfer_detached 台账（台账只追加，挂回在 B4），当前不在时间轴上。
+ */
+export async function isDetachedRecord(tx: Tx, tenantId: string, recordId: string): Promise<boolean> {
+  const [row] = rowsOf<{ detached: boolean }>(
+    await tx.execute(sql`SELECT employment_record_detached(${tenantId}::uuid, ${recordId}::uuid) AS detached`),
+  );
+  return !!row?.detached;
+}
+
+export interface DetachedTransferWindow {
+  readonly recordId: string;
+  /** 被摘下前的时间轴窗口 [from, to)，to 为空表示开放。 */
+  readonly from: string;
+  readonly to: string | null;
+}
+
+/**
+ * 离职设计 §5.8：离职落地后，同周期里排在它之后的已落地调动（未来直接调动，或同日迟到落地、按 C-3 排在离职之后的调动）
+ * 的时间轴行摘下（“排在其后”只用数据库函数 employment_follows 判定，与覆盖校验触发器同一口径，同日按 C-3），员工自离职生效日起即为离职；记录、载荷版本、状态事件全部保留。离职区间开放到下一条剩余记录（下一周期
+ * 的入职）或无穷。返回被摘下的窗口，供调用方写台账（撤销时按窗口挂回，B4）。调用方已持员工锁。
+ */
+export async function detachFutureTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  leaveRecordId: string,
+): Promise<DetachedTransferWindow[]> {
+  const [leave] = rowsOf<TimelinePoint>(
+    await tx.execute(sql`
+    SELECT record_id AS "recordId", staff_id AS "staffId", start_date::text AS "startDate", sort_order AS "sortOrder"
+    FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND record_id=${leaveRecordId}::uuid`),
+  );
+  if (!leave) throw new AppError('SERVICE_UNAVAILABLE', '离职记录缺少日期投影');
+  const detached = rowsOf<DetachedTransferWindow>(
+    await tx.execute(sql`
+    SELECT t.record_id AS "recordId", t.start_date::text AS "from", upper(t.valid_during)::text AS "to"
+    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.staff_id=${leave.staffId}::uuid
+      AND r.kind='transfer' AND employment_follows(${ctx.tenantId}::uuid, ${leaveRecordId}::uuid, r.id)
+    ORDER BY t.start_date,t.sort_order`),
+  );
+  if (!detached.length) return [];
+  const ids = sql.join(
+    detached.map((item) => sql`${item.recordId}::uuid`),
+    sql`, `,
+  );
+  await tx.execute(sql`DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND record_id IN (${ids})`);
+  const [next] = rowsOf<{ date: string }>(
+    await tx.execute(sql`
+    SELECT start_date::text AS date FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
+      AND employee_id=${employeeId}::uuid AND (start_date,sort_order)>(${leave.startDate}::date,${leave.sortOrder})
+    ORDER BY start_date,sort_order LIMIT 1`),
+  );
+  await tx.execute(sql`UPDATE employment_timeline
+    SET valid_during=daterange(start_date,${next?.date ?? null}::date,'[)')
+    WHERE tenant_id=${ctx.tenantId} AND record_id=${leaveRecordId}::uuid`);
+  return detached.map((item) => ({ ...item, to: item.to ?? null }));
+}

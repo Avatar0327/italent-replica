@@ -11,7 +11,7 @@ export interface DraftSnapshot {
   readonly employeeId: string;
   readonly effectiveDate?: string;
   readonly formId?: string;
-  /** 读接口目前不返回，取暂存时记入会话索引的类型；读接口返回时以它为准。 */
+  /** 以服务端暂存元数据为准，缺键时交用户重新确认。 */
   readonly transferTypeCode?: string;
   readonly fields: FieldValues;
   readonly customFields: FieldValues;
@@ -32,23 +32,27 @@ export function parseDraft(
   employeeId: string,
   business: unknown,
   linkage: unknown,
-  storedType?: string,
+  transferTypeCode?: string,
 ): DraftSnapshot | null {
-  if (!isObject(business) || business.id !== id || business.employeeId !== employeeId) invalid();
-  if (business.status !== 'draft') return null;
-  if (!Number.isInteger(business.revision) || !isObject(business.fields)) invalid();
+  if (
+    !isObject(business) ||
+    business.id !== id ||
+    (business.employeeId !== undefined && business.employeeId !== employeeId)
+  )
+    invalid();
+  if (business.status !== undefined && business.status !== 'draft') return null;
+  if (!Number.isInteger(business.revision) || (business.fields !== undefined && !isObject(business.fields))) invalid();
   if (!isAbsent(business.customFields) && !isObject(business.customFields)) invalid();
   if (!isObject(linkage) || linkage.businessId !== id || linkage.revision !== business.revision) invalid();
   const effectiveDate = optionalText(business.effectiveDate);
   const formId = optionalText(business.formId);
-  const transferTypeCode = optionalText(business.transferTypeCode) ?? optionalText(storedType);
   return {
     id,
     employeeId,
     ...(effectiveDate ? { effectiveDate } : {}),
     ...(formId ? { formId } : {}),
     ...(transferTypeCode ? { transferTypeCode } : {}),
-    fields: business.fields as FieldValues,
+    fields: (business.fields ?? {}) as FieldValues,
     customFields: (business.customFields ?? {}) as FieldValues,
     linkage: linkageFromOptions(linkage.options),
   };
@@ -93,20 +97,14 @@ export function linkageFromOptions(options: unknown): LinkageDraft {
   };
 }
 
-/**
- * 还原暂存的异动类型（#350 第 1 轮 P2-1）：多个类型可共用一个表单，只看表单定不了类型。
- * - 记下的类型仍在目录里、且与单据表单一致：用它；
- * - 没记下类型时，表单只对应一个类型才用它（DEC-467，不用 changeType 推断）；
- * - 其余（记下的类型与表单不符、目录里没有、表单对应多个类型）返回 undefined：不默认，交用户重新选择。
- */
+/** 服务端未返回类型时不从表单反推，交用户确认（F-181b / 附录 A(d)）。 */
 export function draftTransferType(catalog: TransferCatalog, draft: DraftSnapshot): string | undefined {
   const matches = (type: TransferCatalog['types'][number]) => !draft.formId || type.formId === draft.formId;
   if (draft.transferTypeCode) {
     const stored = catalog.types.find((type) => type.code === draft.transferTypeCode);
     return stored && matches(stored) ? stored.code : undefined;
   }
-  const candidates = draft.formId ? catalog.types.filter(matches) : [];
-  return candidates.length === 1 ? candidates[0]!.code : undefined;
+  return undefined;
 }
 
 // 与 LinkageAccess 同一组权限编码：一组全部可编辑才带出暂存值，否则保持默认。

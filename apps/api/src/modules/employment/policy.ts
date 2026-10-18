@@ -52,7 +52,13 @@
  *    直接返回（employment-replay.ts:43）；footprint / result 仍按附录登记 §10.3 的 employment.employeeCreate / generic（待设计守卫名），
  *    现状事务内 / 返回后都没有复核。
  */
-import { APPROVAL_INSTANCE_OBJECT, CONTRACT_OBJECT, EXIT_BUTTONS, MODULE_OBJECTS } from '@italent/domain';
+import {
+  APPROVAL_INSTANCE_OBJECT,
+  CONTRACT_OBJECT,
+  EXIT_BUTTONS,
+  MODULE_OBJECTS,
+  PART_TIME_BUTTONS,
+} from '@italent/domain';
 import {
   type ButtonPolicy,
   defineTable,
@@ -104,6 +110,7 @@ const NF_DATA = denied(404, 'NOT_FOUND', '任职数据不存在');
 const NF_BUSINESS = denied(404, 'NOT_FOUND', '任职业务不存在');
 const NF_RECORD = denied(404, 'NOT_FOUND', '任职记录不存在');
 const NF_TRANSFER = denied(404, 'NOT_FOUND', '调动不存在');
+const NF_PART_TIME = denied(404, 'NOT_FOUND', '兼职记录不存在');
 const NF_LINKAGE_ITEM = denied(404, 'NOT_FOUND', '联动子项不存在');
 const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
@@ -321,6 +328,17 @@ const exitPreview = (code: string) =>
       none('只读预览：没有命令事务，没有提交前足迹'),
       none('只读预览：清单已按可见性与字段查看权披露'),
     ),
+    ...byId,
+  });
+/** 兼职新增预览：功能权是 object.create（§7.2），新增兼职 / 新增兼职申请两个按钮任一（requirePartTimePreviewButton）。 */
+const partTimePreview = (code: string) =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(code, 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
+    fields: RESPONSE,
+    write: previewWrite,
     ...byId,
   });
 const exitTransition = () =>
@@ -943,6 +961,53 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       { controls: ['probation', 'probationMonths', 'probationEndDate', 'confirmed'] },
     ),
     ...byId,
+  }),
+  // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b 兼职新增与读取入口（R2-T05 §4.1 / §7.2；编辑 / 批量结束 / 视图 / 申请未注册）----
+  // 预览（只读 POST）：readContext(object.create, resource=id) 人员范围 404；body 严格（400）；实际写入字段的创建权；
+  // Employment.PartTime / PartTimeApproval 任一（都无 403）；兼职部门 requireEmploymentScope（404）；与新增同一套校验后带出默认值
+  'POST /employees/:id/part-times/preview': any(
+    [partTimePreview(PART_TIME_BUTTONS.direct), partTimePreview(PART_TIME_BUTTONS.application)],
+    byId,
+  ),
+  // 直接新增：不要求 If-Match（新建对象）；body 严格；requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；人员 + 兼职
+  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead = true / 非空 addedSubordinateIds
+  // → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  'POST /employees/:id/part-times': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(PART_TIME_BUTTONS.direct, 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'lockEmploymentEmployee',
+        'assertPartTimeWithinCycle',
+        'assertExclusiveTypeFree',
+        'requireScopedEmploymentObject',
+      ],
+      { controls: ['partTimeType', 'startDate', 'endDate'] },
+    ),
+    ...byId,
+  }),
+  // 员工页签：readPageContext(detail) + tenant.employment.read；按 DEC-177 可见谓词分页，一条都不可见且员工不在范围内 → 404「员工不存在」
+  'GET /employees/:id/part-times': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('员工页签无按钮'),
+    scope: listScope('employment.visibility'),
+    fields: RESPONSE,
+    ...byId,
+  }),
+  // 兼职详情：loadPartTime（DEC-177 可见）→ 404「兼职记录不存在」→ tenant.employment.read（resource=员工）
+  'GET /part-times/:recordId': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('兼职详情无按钮'),
+    scope: pointScope({ param: 'recordId' }, 'employment.partTime', NF_PART_TIME),
+    fields: RESPONSE,
+    invalidId: BAD_REQUEST,
   }),
   // 重聘判定（只读；POST 以免证件号进 URL）：body 严格 { idType, idNumber }（400）；Employee 新增权 + Employee.Create@list；
   // requireEmploymentScope(ctx) 只认看全部（DEC-121，否则 404）；多人命中 409 REHIRE_MATCH_AMBIGUOUS；带出项按三个对象的可见字段裁剪

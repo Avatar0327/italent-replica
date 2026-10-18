@@ -1,5 +1,5 @@
 {
-  "id": "317eb65f-4942-4dbf-abc2-d7d04f89554d",
+  "id": "1eef43ae-2349-4b63-a77e-aeed2734f44a",
   "prevId": "9a42c9e4-1f9d-406c-8758-13f8f3d1af3e",
   "version": "7",
   "dialect": "postgresql",
@@ -55339,12 +55339,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "contract_company_id": {
-          "name": "contract_company_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -55380,21 +55374,6 @@
           "columnsTo": [
             "tenant_id",
             "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_pending_entry_contract_company_fk": {
-          "name": "employment_pending_entry_contract_company_fk",
-          "tableFrom": "employment_pending_entry_contract",
-          "tableTo": "contract_companies",
-          "columnsFrom": [
-            "tenant_id",
-            "contract_company_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -55447,12 +55426,6 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
-        },
-        "months": {
-          "name": "months",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -57690,55 +57663,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_target": {
-          "name": "sync_target",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_reason": {
-          "name": "sync_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_message": {
-          "name": "sync_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_attempts": {
-          "name": "sync_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "synced_at": {
-          "name": "synced_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_sync_at": {
-          "name": "last_sync_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_employee_id": {
-          "name": "linked_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -57980,21 +57904,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "offers_linkedEmployeeId_fk": {
-          "name": "offers_linkedEmployeeId_fk",
-          "tableFrom": "offers",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "linked_employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -58010,14 +57919,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "offers_sync_target": {
-          "name": "offers_sync_target",
-          "value": "\"offers\".\"sync_target\" IS NULL OR \"offers\".\"sync_target\" IN ('pending_entry', 'intern_regularization')"
-        },
-        "offers_sync_status": {
-          "name": "offers_sync_status",
-          "value": "\"offers\".\"sync_status\" IS NULL OR \"offers\".\"sync_status\" IN ('success', 'failed')"
-        },
         "offers_entry": {
           "name": "offers_entry",
           "value": "\"offers\".\"entry\" IN ('offer', 'intern', 'campus_early_intern')"
@@ -58142,41 +58043,41 @@
             },
             {
               "expression": "lower(\"code\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "employment_probation_results_tenant_id_tenants_id_fk": {
           "name": "employment_probation_results_tenant_id_tenants_id_fk",
           "tableFrom": "employment_probation_results",
-          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "employment_probation_results_tenant_id": {
           "name": "employment_probation_results_tenant_id",
-          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -58289,44 +58190,44 @@
         "employment_probation_versions_tenant_id_tenants_id_fk": {
           "name": "employment_probation_versions_tenant_id_tenants_id_fk",
           "tableFrom": "employment_probation_versions",
-          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "employment_probation_versions_business_fk": {
           "name": "employment_probation_versions_business_fk",
           "tableFrom": "employment_probation_versions",
-          "tableTo": "employment_business_objects",
           "columnsFrom": [
             "tenant_id",
             "employee_id",
             "business_id"
           ],
+          "tableTo": "employment_business_objects",
           "columnsTo": [
             "tenant_id",
             "employee_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "employment_probation_versions_no": {
           "name": "employment_probation_versions_no",
-          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "business_id",
             "version_no"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -58397,32 +58298,32 @@
         "employment_regularization_results_tenant_id_tenants_id_fk": {
           "name": "employment_regularization_results_tenant_id_tenants_id_fk",
           "tableFrom": "employment_regularization_results",
-          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "employment_regularization_results_business_fk": {
           "name": "employment_regularization_results_business_fk",
           "tableFrom": "employment_regularization_results",
-          "tableTo": "employment_business_objects",
           "columnsFrom": [
             "tenant_id",
             "employee_id",
             "business_id"
           ],
+          "tableTo": "employment_business_objects",
           "columnsTo": [
             "tenant_id",
             "employee_id",
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {

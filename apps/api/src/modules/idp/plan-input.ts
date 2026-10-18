@@ -135,10 +135,18 @@ export const tutorshipCreate = z
     path: ['tuteeEmployeeId'],
   });
 
+// 候选：专业条线 / 全部启用职级 / 全部启用职务（F-185，原站未见按部门、条线过滤）；“当前”任职快照由系统写，不接受传入
+const careerTargets = {
+  targetPositionId: uuid.nullable().optional(),
+  targetProfessionalLineId: uuid.nullable().optional(),
+  targetLevelId: uuid.nullable().optional(),
+  targetPostId: uuid.nullable().optional(),
+};
+
 export const careerCreate = z
   .strictObject({
     employeeId: uuid,
-    targetPositionId: uuid.nullable().optional(),
+    ...careerTargets,
     strengths: text(2000).optional(),
     developmentItems: text(2000).optional(),
     intendedCity: text(200).optional(),
@@ -168,7 +176,7 @@ export const tutorshipPatch = z.strictObject({
 
 export const careerPatch = z.strictObject({
   employeeId: uuid.optional(),
-  targetPositionId: uuid.nullable().optional(),
+  ...careerTargets,
   strengths: text(2000).optional(),
   developmentItems: text(2000).optional(),
   intendedCity: text(200).optional(),

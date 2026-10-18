@@ -259,6 +259,15 @@ export const DIGESTS: Digests = {
     'route:POST /interns/:id/regularize': '30a7f759a110',
     'route:POST /rehire-matches': '0f65f77ec626',
   },
+  'apps/api/src/modules/employment/part-time/replay-guard.ts': {
+    requirePartTimePreviewButton: 'b6599d36ef99',
+  },
+  'apps/api/src/modules/employment/part-time/routes.ts': {
+    'route:GET /employees/:id/part-times': '1860c61a0326',
+    'route:GET /part-times/:recordId': '041dcc51a28a',
+    'route:POST /employees/:id/part-times': '0fcf18d33b42',
+    'route:POST /employees/:id/part-times/preview': 'aa7b3af73c4f',
+  },
   'apps/api/src/modules/employment/probation-routes.ts': {
     'route:GET /employees/:id/probation': '3c6095c242e8',
     'route:GET /probation-results': '140957a8db47',
@@ -317,7 +326,7 @@ export const DIGESTS: Digests = {
     'route:PUT /settings': '7a84582006c4',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '3d1cbc5d3778',
+    materializeEmploymentRecord: '8463977b98fd',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -444,7 +453,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
-    registerReads: '00026b023481',
+    registerReads: 'db7239dc3491',
     registerWrites: '09dc326ef21c',
   },
   'apps/api/src/modules/idp/plan-access.ts': {
@@ -1382,7 +1391,7 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/idp/catalog.ts': {
     'IDP_OBJECTS>analysis': 'dc4daddf088d',
-    'IDP_OBJECTS>career': 'e75f632f6944',
+    'IDP_OBJECTS>career': '8c2a38cbeca5',
     'IDP_OBJECTS>commonGoal': 'a8b05ad05934',
     'IDP_OBJECTS>goal': 'cb7168f1392d',
     'IDP_OBJECTS>goalReview': '4b2c08cb9936',
@@ -1650,6 +1659,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': 'cadd59bac3be',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:GET /part-times/:recordId': '334ced904d73',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times': '52c5bf83f487',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times/preview': '13d1205192b7',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/probation': 'e6e23223f716',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-results': 'f82f37db2db0',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-views': 'e76cb7aa6f74',
@@ -1697,7 +1711,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:POST /records/batch-edit': 'dcae97fe5fea',
   'apps/api/src/modules/employment/routes.ts#route:PUT /custom-fields/:id/inheritance': '300d9b910bf6',
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
-  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'f3260af586d0',
+  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': '3be2cb31f90c',
   'apps/api/src/modules/establishment/copy-service.ts#listNotifications': '5cecb2b72dfa',
   'apps/api/src/modules/establishment/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',
@@ -1780,7 +1794,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/intervention-service.ts#targetHidden': '583ee92c250c',
   'apps/api/src/modules/idp/intervention-service.ts#transferPlan': '4b87291799c2',
   'apps/api/src/modules/idp/key-info-routes.ts#ROUTES': '76988c7e4f7d',
-  'apps/api/src/modules/idp/key-info-routes.ts#registerReads': 'b10c771b2bfd',
+  'apps/api/src/modules/idp/key-info-routes.ts#registerReads': '4faf080d6ec8',
   'apps/api/src/modules/idp/key-info-routes.ts#registerWrites': '08693da1058e',
   'apps/api/src/modules/idp/plan-access.ts#employeeInScope': '79adc1cb1430',
   'apps/api/src/modules/idp/plan-access.ts#participation': 'f1c9854fb556',
@@ -2470,7 +2484,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': 'df0c34def8ab',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': 'aa3bf6d1c73d',
-  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'e0850818a071',
+  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'f61a329bd6fd',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>commonGoal': 'aa3bf6d1c73d',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goal': '44f8667d37a2',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goalReview': 'aa3bf6d1c73d',

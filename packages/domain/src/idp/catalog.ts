@@ -216,12 +216,21 @@ export const TASK_FIELDS = ['goalId', 'name', 'description', 'ownerEmployeeId', 
 export const CAREER_FIELDS = [
   'employeeId',
   'targetPositionId',
+  'targetProfessionalLineId',
+  'targetLevelId',
+  'targetPostId',
   'strengths',
   'developmentItems',
   'intendedCity',
   'startDate',
   'endDate',
 ] as const;
+
+/**
+ * 职业发展的“当前”任职快照（F-185，DEC-615；原站 OIdJobLevel / OIdJobPosition / OIdJobPost）：新建保存时按员工当天有效任职
+ * 由系统写入，任何编辑都不重取，是系统只读字段（不可编辑，也不接受客户端传入）。
+ */
+export const CAREER_SNAPSHOT_FIELDS = ['currentLevelId', 'currentPositionId', 'currentPostId'] as const;
 
 /** 计划状态（Q-M0-115① IdpStatus）：未开始 0 / 进行中 1 / 已结束 100 / 已终止 200。 */
 export const PLAN_STATUSES = ['not_started', 'running', 'ended', 'terminated'] as const;
@@ -333,8 +342,8 @@ export const IDP_OBJECTS = {
   review: object('Review', ['moduleId', 'stageId', 'summary', 'improvement'], [], []),
   /** 带教信息 TutorShip（IDP-R19）。 */
   tutorship: object('TutorShip', ['tutorEmployeeId', 'tuteeEmployeeId', 'startDate', 'endDate', 'remark']),
-  /** 职业发展信息 Career（IDP-R20；职务 / 职级等其余字段首版不做）。 */
-  career: object('Career', CAREER_FIELDS),
+  /** 职业发展信息 Career（IDP-R20；F-185 补发展条线 / 拟晋升职级 / 拟晋升职务与“当前”任职快照）。 */
+  career: object('Career', CAREER_FIELDS, CAREER_SNAPSHOT_FIELDS),
   /** 轮岗信息 WorkShift（IDP-R21；职务 postId 随 DEC-318 K-35 补回，参与判重）。 */
   workShift: object('WorkShift', [
     'employeeId',

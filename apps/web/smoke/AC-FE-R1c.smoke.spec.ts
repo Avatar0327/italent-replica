@@ -498,6 +498,7 @@ test('AC-FE-R1c-08 撤权隐藏发起按钮，审批字段与记录按返回值�
 });
 
 async function transferFixtures(page: Page) {
+  await page.route('**/transfers/employees/*/draft', (route) => route.fulfill({ json: { draft: null } }));
   await page.route('**/employment/transfers/catalog**', (route) =>
     route.fulfill({
       json: {
@@ -614,6 +615,10 @@ const draftBusiness = {
   activation: null,
 };
 async function hrRecoveryFixture(page: Page) {
+  const state = { saved: false };
+  await page.route('**/transfers/employees/' + employee + '/draft', (route) =>
+    route.fulfill({ json: { draft: state.saved ? { id: draftId, revision: 1, transferTypeCode: 'transfer' } : null } }),
+  );
   await page.route('**/employment/businesses/' + draftId, (route) => route.fulfill({ json: draftBusiness }));
   await page.route('**/transfers/*/linkage', (route) =>
     route.fulfill({
@@ -628,6 +633,7 @@ async function hrRecoveryFixture(page: Page) {
       },
     }),
   );
+  return state;
 }
 async function openHr(page: Page) {
   await page.getByRole('button', { name: '他人调动申请', exact: true }).click();
@@ -673,13 +679,14 @@ async function expectReadonly(page: Page) {
 }
 
 test('AC-FE-R1c-11 DEC-511 刷新后重选同一人带出暂存，提交走新建提交（不经我的申请）', async ({ page }) => {
-  await hrRecoveryFixture(page);
+  const stored = await hrRecoveryFixture(page);
   const bodies: Record<string, unknown>[] = [];
   await page.route('**/transfers/employees/' + employee, (route) => {
     bodies.push(route.request().postDataJSON());
     return route.fulfill({ json: bodies.length === 1 ? draftResult : { ...draftResult, status: 'in_review' } });
   });
   await saveDraft(page);
+  stored.saved = true;
   await page.reload();
   await reopenDraft(page);
   await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
@@ -765,7 +772,7 @@ test('AC-FE-R1c-15 DEC-464 在途关闭后迟到成功回执不能解除只读�
 });
 
 test('AC-FE-R1c-16 DEC-464 带出暂存后提交未知，重开只读不能再次发命令', async ({ page }) => {
-  await hrRecoveryFixture(page);
+  const stored = await hrRecoveryFixture(page);
   let submits = 0;
   await page.route('**/transfers/employees/' + employee, (route) => {
     if (!route.request().postDataJSON().submit) return route.fulfill({ json: draftResult });
@@ -773,6 +780,7 @@ test('AC-FE-R1c-16 DEC-464 带出暂存后提交未知，重开只读不能再�
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await saveDraft(page);
+  stored.saved = true;
   await reopenDraft(page);
   await page.getByRole('button', { name: '提交', exact: true }).click();
   await expectReadonly(page);
