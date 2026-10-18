@@ -8,6 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { VOID_LIMIT } from '../../apps/api/src/modules/employment/exit-void-applications.js';
 import { downstreamWorld, type DownstreamWorld } from './AC-EXIT-downstream-support.js';
+import { leaveBody } from './AC-EXIT-gate-support.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -89,9 +90,10 @@ describe('F-237 离职预览：在途申请超上限提示', () => {
     expect(toVoid.items).toHaveLength(VOID_LIMIT);
   }, 600_000);
 
-  // 确认清单（审批中调动）超长时，预览仍 200，确认令牌与清单照常给出。
+  // 确认清单（审批中调动）超过上限时（F-241）：不能拿截断的 ID 集合生成令牌——预览仍 200，只给超限提示、不给令牌；
+  // 创建 / 提交的确认校验同口径整单拒绝 409 EXIT_APPLICATIONS_TOO_MANY（与生效时的整单拒绝一致）。
   // 已批准未落地的调动另受“待生效队列 200 条”的既有守卫约束（activation-store QUEUE_LIMIT），到不了披露上限，这里不测。
-  it('确认清单超长（审批中调动 × 上限 + 1）：预览 200 + 超限提示，ack 令牌与清单保留', async () => {
+  it('确认清单超长（审批中调动 × 上限 + 1）：预览 200 + 超限提示、不给令牌；创建 409 EXIT_APPLICATIONS_TOO_MANY', async () => {
     const x = await world('f237-ack-in-review');
     await x.bulkDrafts(VOID_LIMIT + 1, x.employee.id, {
       kind: 'transfer',
@@ -100,7 +102,27 @@ describe('F-237 离职预览：在途申请超上限提示', () => {
     });
     const preview = await previewOf(x);
     expect(reasons(preview)).toContain('EXIT_APPLICATIONS_TOO_MANY');
-    expect(preview.ack?.ackToken).toEqual(expect.any(String));
-    expect(preview.ack!.items.length + preview.ack!.hiddenCount).toBe(VOID_LIMIT + 1);
+    expect(preview.ack).toBeNull();
+    const rejected = await x.createLeave(
+      x.employee.id,
+      leaveBody(LAST_WORK_DATE, 'direct', { pendingTransferAck: 'x' }),
+    );
+    expect(await x.reason(rejected)).toMatchObject({
+      status: 409,
+      reason: 'EXIT_APPLICATIONS_TOO_MANY',
+      limit: VOID_LIMIT,
+    });
+  }, 600_000);
+
+  it('确认清单恰为上限（审批中调动 × 上限）：预览给令牌与完整清单', async () => {
+    const x = await world('f237-ack-at-limit');
+    await x.bulkDrafts(VOID_LIMIT, x.employee.id, {
+      kind: 'transfer',
+      state: 'in_review',
+      effectiveDate: '2026-10-10',
+    });
+    const preview = await previewOf(x);
+    expect(reasons(preview)).not.toContain('EXIT_APPLICATIONS_TOO_MANY');
+    expect(preview.ack!.items.length + preview.ack!.hiddenCount).toBe(VOID_LIMIT);
   }, 600_000);
 });
