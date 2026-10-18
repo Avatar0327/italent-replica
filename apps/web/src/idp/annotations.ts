@@ -1,5 +1,14 @@
 import type { DecisionAnnotation } from '../annotations/index.js';
 export const notes: Record<string, DecisionAnnotation> = {
+  'idp-careers': {
+    original: '职业发展可新建、编辑发展条线、拟晋升职级、拟晋升职务，均可留空；当前职级、职位、职务仅在列表显示。',
+    decision:
+      '三目标接专业条线、职级、职务主数据的启用项，不做部门或条线联动，逐页读取全部候选。' +
+      '当前三字段显示新建保存当天的任职快照，编辑不重取；职级、职位解析主数据名称，职务使用接口返回名称。' +
+      '当前职位快照口径、改日期或人员不重取、职务显示名称为复刻取舍。目标列顺序未取证，沿用字段声明顺序。',
+    decisions: ['DEC-543', 'DEC-615'],
+    level: 'L2',
+  },
   'idp-plans': {
     original:
       '发展计划列表分“未开始&进行中 / 已结束的计划 / 已终止的计划”三个视图，勾选后可开始、流程干预（催办 / 跳转 / 开启下个阶段 / 终止计划）。',
