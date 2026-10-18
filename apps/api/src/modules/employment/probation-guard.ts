@@ -1,16 +1,18 @@
 /**
  * 试用期流程互斥（docs/02_业务建模/29 PB-R9，§8 AC-PB-03）：同一员工有转正流程在审批中时，不能再提交转正申请、
  * 直接转正或调整试用期。拦截在提交 / 保存时，不在打开表单时（草稿照常保存）。
- * 单一入口 + 可登记检查点：BE-15 把“试用中考核 / 转正考核”在审批中的判定与“试用期考核并行规则”（出厂都关）
- * 以检查点登记进来；本单只有转正申请一项内置检查，不读并行配置。
+ * 单一入口 + 可登记检查点：转正申请审批中是内置检查；BE-15b1 把“试用中考核 / 转正考核在审批中”与“试用期考核
+ * 并行规则”（出厂都关，assessment-guard.ts）按名称登记成检查点，对同一批入口统一生效。
  */
 import { sql, type Tx } from '@italent/db';
+import type { ProbationProcessAction } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { assessmentInReview } from './assessment-guard.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-/** regularize = 直接转正；apply = 提交转正申请；adjust = 调整试用信息。 */
-export type ProbationProcessAction = 'regularize' | 'apply' | 'adjust';
+/** regularize = 直接转正；apply = 提交转正申请；adjust = 调整试用信息；assess_* = 发起试用中考核 / 转正考核。 */
+export type { ProbationProcessAction };
 
 export interface ProbationProcessTarget {
   readonly employeeId: string;
@@ -61,3 +63,6 @@ export async function assertProbationProcessesIdle(
   await regularizationInReview(tx, ctx, target);
   for (const [, check] of [...checks.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) await check(tx, ctx, target);
 }
+
+// 检查点在本模块加载时登记：任何经 assertProbationProcessesIdle 的入口（含不挂路由的定时任务进程）都带上考核判定
+registerProbationProcessCheck('assessment', assessmentInReview);

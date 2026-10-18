@@ -13,6 +13,7 @@ import {
   IDP_OBJECTS,
   OFFER_BATCH_OBJECT,
   OFFER_OBJECT,
+  PROBATION_ASSESSMENT_OBJECT,
   QUALIFICATION_OBJECTS,
   QUALIFICATION_OWNED_OBJECTS,
   SUBSETS,
@@ -52,6 +53,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   // offer/approval-adapter.ts（R2 BE-14a3）：单个 Offer 审批 / Offer 批量审批
   OFFER_OBJECT: { adapter: 'offer', codes: [OFFER_OBJECT] },
   OFFER_BATCH_OBJECT: { adapter: 'offer_batch', codes: [OFFER_BATCH_OBJECT] },
+  // employment/assessment-approval-adapter.ts（R2 BE-15b1）：试用中考核 / 转正考核
+  PROBATION_ASSESSMENT_OBJECT: { adapter: 'probation_assessment', codes: [PROBATION_ASSESSMENT_OBJECT] },
 };
 
 /**

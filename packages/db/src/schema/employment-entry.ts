@@ -10,6 +10,7 @@ import {
   date,
   foreignKey,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -17,6 +18,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { contractCompanies } from './contracts.js';
 import { employmentBusinessObjects } from './employment.js';
 import { tenants } from './tenancy.js';
 
@@ -77,6 +79,8 @@ export const employmentPendingEntryProbation = pgTable(
     employeeId: uuid('employee_id').notNull(),
     businessId: uuid('business_id').notNull(),
     probation: boolean('probation').notNull(),
+    // Offer 同步带来的试用期（月）；手工添加待入职不填（月数在办理入职时填，BE-14b2）
+    months: integer('months'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -109,6 +113,8 @@ export const employmentPendingEntryContract = pgTable(
     businessId: uuid('business_id').notNull(),
     startDate: date('start_date', { mode: 'string' }).notNull(),
     endDate: date('end_date', { mode: 'string' }),
+    // 合同公司（甲方）：Offer 同步带来（34 文末映射“Offer 的公司对应待入职的合同公司”），手工添加不填（BE-14b2）
+    contractCompanyId: uuid('contract_company_id'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -121,6 +127,11 @@ export const employmentPendingEntryContract = pgTable(
         employmentBusinessObjects.employeeId,
         employmentBusinessObjects.id,
       ],
+    }),
+    foreignKey({
+      name: 'employment_pending_entry_contract_company_fk',
+      columns: [t.tenantId, t.contractCompanyId],
+      foreignColumns: [contractCompanies.tenantId, contractCompanies.id],
     }),
     check('employment_pending_entry_contract_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
   ],

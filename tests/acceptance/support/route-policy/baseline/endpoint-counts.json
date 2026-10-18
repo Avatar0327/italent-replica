@@ -5,12 +5,12 @@
     "avatar": 5,
     "command-result": 1,
     "contracts": 25,
-    "employment": 99,
+    "employment": 103,
     "establishment": 16,
     "evaluation": 34,
     "idp": 58,
     "job": 14,
-    "offers": 18,
+    "offers": 20,
     "org": 14,
     "permission": 44,
     "personnel": 18,
@@ -29,5 +29,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 726
+  "total": 732
 }

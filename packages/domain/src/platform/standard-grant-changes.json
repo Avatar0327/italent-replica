@@ -1,19 +1,11 @@
 {
-  "reason": "F-222：按 codex-F185b B1/B2 将 Offer 批量审批单 create@list、withdraw@detail 替换为 PartDisAgree@detail、AllDisAgree@detail；保持原三个 HR 标准身份，其他授权不变（DEC-404、DEC-439④）",
+  "reason": "R2 BE-15b1：新增试用期考核对象（TenantBase.ProbationAssessment）的字段、数据操作与 Assessment.Create / Assessment.Edit 按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415 同 Offer 批量审批单）；数据范围按考核对象员工，不预置看全部；第 1 轮审查 P2-2（DEC-415）：标准版系统管理员 / 人事管理员预置考核对象的看全部（人事专员不预置）",
   "add": [
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail"
+    "standard_hr_admin/TenantBase.ProbationAssessment/*",
+    "standard_hr_specialist/TenantBase.ProbationAssessment/*",
+    "standard_org_system_admin/TenantBase.ProbationAssessment/*",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ProbationAssessment",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.ProbationAssessment"
   ],
-  "remove": [
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/button:withdraw@detail",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:withdraw@detail",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:create@list",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:withdraw@detail"
-  ]
+  "remove": []
 }

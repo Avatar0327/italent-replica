@@ -65,6 +65,9 @@ const transferSchema = z.strictObject({
 });
 /** 失效表单（OF-R7）：原因走字典、备注选填。 */
 const invalidateSchema = z.strictObject({ reasonCode: text(100), remark: text(500) });
+/** 立即同步无请求体字段；关联在职实习生传 employeeId（null = 解除）。 */
+const syncSchema = z.strictObject({});
+const linkSchema = z.strictObject({ employeeId: z.uuid().nullable() });
 /** 发送 / 重发（OF-R5）：抄送、密送各最多 10 个邮箱；超编确认标记同转移。模板与附件首版没有，不收。 */
 const emails = z.array(z.email().max(200)).max(10).optional();
 const sendSchema = z.strictObject({ cc: emails, bcc: emails, confirmed: z.boolean().optional() });
@@ -103,3 +106,5 @@ export const parseOfferSubmit = (raw: unknown) => parse(z.strictObject({}), raw)
 export const parseOfferTransfer = (raw: unknown) => parse(transferSchema, raw);
 export const parseOfferSend = (raw: unknown) => parse(sendSchema, raw);
 export const parseOfferInvalidate = (raw: unknown) => parse(invalidateSchema, raw);
+export const parseOfferSync = (raw: unknown) => parse(syncSchema, raw);
+export const parseOfferLink = (raw: unknown) => parse(linkSchema, raw);

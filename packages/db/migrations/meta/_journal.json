@@ -1037,6 +1037,27 @@
       "when": 1792259157661,
       "tag": "0147_exit_detached_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1792293235940,
+      "tag": "0148_idp_career_target_current",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1792293235941,
+      "tag": "0149_be14b2_offer_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1792293235942,
+      "tag": "0150_be15b1_probation_assessment",
+      "breakpoints": true
     }
   ]
 }

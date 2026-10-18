@@ -27,7 +27,7 @@ import {
   type PendingContract,
   type PendingContractNotice,
 } from './entry-pending-contract.js';
-import { loadPendingProbation, savePendingProbation } from './entry-probation.js';
+import { loadPendingProbation, loadPendingProbationState, savePendingProbation } from './entry-probation.js';
 import { bumpEmploymentBusiness, lockEmploymentEmployee, type LockedEmploymentBusiness } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentRecord } from './types.js';
@@ -110,6 +110,7 @@ export async function cancelPendingEntry(
   recordId: string,
   input: CancelInput,
 ): Promise<EmploymentBusiness> {
+  await entryOfferHooks.beforeAction(tx, ctx, { businessId: recordId });
   const { record } = await cancelEntryCore(tx, ctx, recordId, input, { rejectUnchanged: true });
   await entryOfferHooks.entryCancelled(tx, ctx, { employeeId: record.employeeId, businessId: recordId });
   return requireSavedBusiness(tx, ctx, recordId);
@@ -163,13 +164,14 @@ async function replacePendingEntry(
   input: ReplaceInput,
 ): Promise<ReplacedEntry> {
   const { business, record } = locked;
-  const previousProbation = await loadPendingProbation(tx, ctx, record.id);
+  const previousState = await loadPendingProbationState(tx, ctx, record.id);
+  const previousProbation = previousState?.probation ?? null;
   const probation = input.probation ?? previousProbation;
+  // Offer 同步带来的月数随记录搬运（试用期改为无时月数自然清空）
+  const probationMonths = probation ? (previousState?.months ?? undefined) : undefined;
   const previousContract = await loadPendingContract(tx, ctx, record.id);
   const contract =
-    previousContract && input.syncContract
-      ? { startDate: input.effectiveDate, endDate: previousContract.endDate }
-      : previousContract;
+    previousContract && input.syncContract ? { ...previousContract, startDate: input.effectiveDate } : previousContract;
   await transitionEmployment(tx, ctx, { id: record.id, action: 'delete' });
   await clearPendingContract(tx, ctx, record.id);
   const employee = await lockEmploymentEmployee(tx, ctx, record.employeeId);
@@ -191,6 +193,7 @@ async function replacePendingEntry(
         pendingEntry: true,
         entryStatus: input.entryStatus,
         ...(probation === null ? {} : { probation }),
+        ...(probationMonths === undefined ? {} : { probationMonths }),
         pendingContract: contract,
       },
     },
@@ -242,6 +245,7 @@ export async function postponePendingEntry(
 ): Promise<EmploymentBusiness & { readonly contractNotice: PendingContractNotice | null }> {
   assertRemark(input.remark);
   const effectiveDate = businessDate(input.effectiveDate);
+  await entryOfferHooks.beforeAction(tx, ctx, { businessId: recordId });
   const locked = await lockPendingEntry(tx, ctx, recordId);
   if (effectiveDate === locked.record.effectiveDate && locked.record.entryStatus !== ENTRY_STATUS.cancelled)
     throw new AppError('VALIDATION_FAILED', '改期后的入职日期不能与原入职日期相同', { reason: 'ENTRY_DATE_UNCHANGED' });
@@ -261,7 +265,7 @@ export async function postponePendingEntry(
       previousBusinessId: recordId,
     });
   // 前端据此提示“待入职记录中劳动合同起止日期改为YYYY/MM/DD-”；存量待入职没有合同则不提示
-  return { ...business, contractNotice: contract };
+  return { ...business, contractNotice: contract && { startDate: contract.startDate, endDate: contract.endDate } };
 }
 
 /**

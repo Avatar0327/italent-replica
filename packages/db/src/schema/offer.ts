@@ -94,6 +94,17 @@ export const offers = pgTable(
     campusOfferId: uuid('campus_offer_id'),
     copiedFromOfferId: uuid('copied_from_offer_id'),
     pendingEntryBusinessId: uuid('pending_entry_business_id'),
+    // 同步待入职（BE-14b2，34 文末映射 SyncStatus / SyncMsg）：未同步为空；失败记机读原因、说明与次数
+    syncStatus: text('sync_status'),
+    // 同步产物：待入职记录，或在职实习生走的“实习转正”任职记录（OF-R8）
+    syncTarget: text('sync_target'),
+    syncReason: text('sync_reason'),
+    syncMessage: text('sync_message'),
+    syncAttempts: integer('sync_attempts').notNull().default(0),
+    syncedAt: timestamp('synced_at', { withTimezone: true }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    // 关联的在职 / 离职实习生（OF-R8：在职实习生的正式 Offer 是否同步可单独关）
+    linkedEmployeeId: uuid('linked_employee_id'),
     revision: integer('revision').notNull().default(1),
     createdBy: uuid('created_by').notNull(),
     createdAt: utc('created_at'),
@@ -122,7 +133,7 @@ export const offers = pgTable(
       columns: [t.tenantId, t.levelId],
       foreignColumns: [jobLevelObjects.tenantId, jobLevelObjects.id],
     }),
-    ...(['directManagerId', 'dottedManagerId', 'hrbpId'] as const).map((column) =>
+    ...(['directManagerId', 'dottedManagerId', 'hrbpId', 'linkedEmployeeId'] as const).map((column) =>
       foreignKey({
         name: `offers_${column}_fk`,
         columns: [t.tenantId, t[column]],
@@ -149,6 +160,11 @@ export const offers = pgTable(
       columns: [t.tenantId, t.pendingEntryBusinessId],
       foreignColumns: [employmentBusinessObjects.tenantId, employmentBusinessObjects.id],
     }),
+    check(
+      'offers_sync_target',
+      sql`${t.syncTarget} IS NULL OR ${t.syncTarget} IN ('pending_entry', 'intern_regularization')`,
+    ),
+    check('offers_sync_status', sql`${t.syncStatus} IS NULL OR ${t.syncStatus} IN ('success', 'failed')`),
     check('offers_entry', sql`${t.entry} IN ('offer', 'intern', 'campus_early_intern')`),
     check('offers_type', sql`${t.offerType} IS NULL OR ${t.offerType} IN ('social', 'campus', 'intern')`),
     check('offers_source', sql`${t.source} IN ('new_hire', 'intern_conversion')`),

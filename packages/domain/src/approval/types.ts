@@ -1,6 +1,7 @@
 import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
 import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from '../offer/approval.js';
 import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
+import { ASSESSMENT_FORM_FIELDS, PROBATION_ASSESSMENT_OBJECT } from '../employment/assessment.js';
 /**
  * 审批中心领域模型（R1-T07；docs/02_业务建模/14、REQ-APV-001~004）。
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
@@ -28,6 +29,8 @@ export const APPROVER_EXPRESSIONS = [
   'offer_department_head', // Offer 审批 - 录用部门负责人
   'initiator_direct_manager', // 申请人直接上级：发起人 → 最新生效主职任职 → 直线经理（区别于取流程主体的 direct_manager）
   'approval_subject_first_level_org_head', // Offer 批量审批 - 审批主体组织 → 一级组织 → 负责人
+  // R2 BE-15b1（29 PB-R3）：只有试用期考核两类审批可选（ASSESSMENT_ONLY_APPROVERS）
+  'assessment_employee', // 考核 - 考核对象本人（员工自评节点，不按自审处理，同 idp_employee）
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
@@ -42,6 +45,8 @@ export const OFFER_APPROVERS: Readonly<Record<'offer' | 'offer_batch', ReadonlyS
   offer: new Set(['owner', 'initiator_direct_manager', 'offer_department_head']),
   offer_batch: new Set(['owner', 'initiator_direct_manager', 'approval_subject_first_level_org_head']),
 };
+/** 只在试用期考核两类审批上可用的审批人表达式：取考核对象本人（员工自评）。 */
+export const ASSESSMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['assessment_employee']);
 export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
@@ -375,6 +380,7 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * idp：个人发展计划的子流程（R3-T07）：PR-A 登记类型供子流程引用与节点配置，PR-B 接入运行时适配器（一个阶段一条实例）。
  * talent_review：盘点结果审批（R3-T04 C-08）：PR-A 登记类型与预置流程，发起入口与运行时适配器随 PR-D 接入（集合审批）。
  * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
+ * probation_assessment：试用中考核 / 转正考核（R2 BE-15b1，29 PB-R3）：业务单 = 考核记录，审批流 员工自评 → 经理评价。
  */
 export type ApprovalAdapterKind =
   | 'employment'
@@ -385,7 +391,8 @@ export type ApprovalAdapterKind =
   | 'talent_review'
   | 'part_time'
   | 'offer'
-  | 'offer_batch';
+  | 'offer_batch'
+  | 'probation_assessment';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -499,6 +506,28 @@ const OFFER_BATCH_TYPE = {
   approvalEdit: false,
 } as const satisfies ApprovalTypeDefinition;
 
+/**
+ * 试用期考核两类审批（BE-15b1，29 PB-R3）：业务单 = 考核记录，字段权限按考核对象判断；表单即考核字段。原站标准流程编码
+ * 未取证，不带标准编码（预置为本类型兜底流程，DEC-018）。审批中编辑开放（员工自评 / 经理评价节点“同意按钮关联编辑”）。
+ */
+const assessmentType = (code: 'probation_assessment' | 'regularization_assessment', name: string) =>
+  ({
+    code,
+    name,
+    objectCode: PROBATION_ASSESSMENT_OBJECT,
+    adapter: 'probation_assessment',
+    defaultProcessCode: null,
+    conditionFields: [
+      { path: 'processCode', label: '流程编码', kind: 'text' },
+      { path: 'employee.code', label: '考核对象 - 工号', kind: 'text' },
+      { path: 'employee.name', label: '考核对象 - 姓名', kind: 'text' },
+      { path: 'employee.departmentId', label: '考核对象 - 主职部门', kind: 'org' },
+    ],
+    formFields: ASSESSMENT_FORM_FIELDS,
+    readonlyFields: [],
+    approvalEdit: true,
+  }) as const satisfies ApprovalTypeDefinition;
+
 const contractType = (code: string, name: string, defaultProcessCode: string) =>
   ({
     code,
@@ -575,6 +604,8 @@ export const APPROVAL_TYPES = {
   },
   offer: OFFER_TYPE,
   offer_batch: OFFER_BATCH_TYPE,
+  probation_assessment: assessmentType('probation_assessment', '试用中考核'),
+  regularization_assessment: assessmentType('regularization_assessment', '转正考核'),
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',

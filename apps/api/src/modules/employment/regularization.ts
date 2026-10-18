@@ -38,6 +38,8 @@ export interface RegularizationRequest {
   readonly formId?: string;
   readonly fields?: Partial<PresetFields>;
   readonly customFields?: CustomFields;
+  /** 试用期考核审批完成时生成转正记录（BE-15b1）：不再判 PB-R9 互斥，见 CreateEmploymentOptions。 */
+  readonly generatedByAssessment?: true;
 }
 
 /** 试用结果必填且须为字典启用项（B7）；返回库里的编码写法。 */
@@ -58,14 +60,20 @@ export async function createRegularizationBusiness(
 ): Promise<EmploymentBusiness> {
   const resultCode = await requireRegularizationResult(tx, ctx.tenantId, request.probationResult);
   const effectiveDate = await regularizationDate(tx, ctx, employeeId, request.effectiveDate);
-  const created = await createEmploymentBusiness(tx, ctx, employeeId, {
-    kind: request.kind,
-    mode: request.mode,
-    effectiveDate,
-    ...(request.formId ? { formId: request.formId } : {}),
-    ...(request.fields ? { fields: request.fields } : {}),
-    ...(request.customFields ? { customFields: request.customFields } : {}),
-  });
+  const created = await createEmploymentBusiness(
+    tx,
+    ctx,
+    employeeId,
+    {
+      kind: request.kind,
+      mode: request.mode,
+      effectiveDate,
+      ...(request.formId ? { formId: request.formId } : {}),
+      ...(request.fields ? { fields: request.fields } : {}),
+      ...(request.customFields ? { customFields: request.customFields } : {}),
+    },
+    request.generatedByAssessment ? { generatedByAssessment: true } : {},
+  );
   await tx.execute(sql`INSERT INTO employment_regularization_results(tenant_id, employee_id, business_id, result_code,
       command_id, created_at)
     VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${created.id}::uuid, ${resultCode}, ${ctx.commandId},

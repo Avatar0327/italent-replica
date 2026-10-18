@@ -483,6 +483,29 @@ function blacklistRoute(
   ];
 }
 
+/** R2 BE-15b1 试用期考核：考核对象 TenantBase.ProbationAssessment，写入口复用 readContext / requireEmploymentWrite（带对象编码）。 */
+const ASSESSMENT = 'TenantBase.ProbationAssessment';
+const ASSESS = `${SRC}/employment/assessment-routes.ts`;
+const ASSESS_SERVICE = `${SRC}/employment/assessment.ts`;
+const ASSESSMENT_CONST: Evidence = {
+  role: 'const',
+  unit: 'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+  anchor: "'TenantBase.ProbationAssessment'",
+};
+// 单条判定与列表共用同一个人员范围谓词 assessmentScopeSql（员工当前任职，不看创建时的部门快照）
+const ASSESSMENT_IN_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/assessment-store.ts#requireAssessmentInScope`,
+  anchor: 'const visible = assessmentScopeSql(ctx.scope, ctx.tenantId)',
+};
+const ASSESSMENT_SCOPE_SQL: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/assessment-store.ts#assessmentScopeSql`,
+  anchor: 'employmentScopePredicate(scope, sql`a.employee_id`, undefined,',
+};
+const assessmentView = (call: Evidence) =>
+  ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
+
 export const EMPLOYMENT: RequiredTable = {
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
   'GET /api/tenant/employment/transfers/self': [
@@ -2519,6 +2542,123 @@ export const EMPLOYMENT: RequiredTable = {
         '/auto-regularization/run',
         'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
       ),
+    ),
+  ],
+  // ---- employment/assessment-routes.ts：R2 BE-15b1 试用中考核 / 转正考核（B2，29 PB-R3～R6）-------------------------------
+  'GET /api/tenant/employment/probation-assessments': [
+    assessmentView(
+      at(
+        ASSESS,
+        'GET',
+        '/probation-assessments',
+        "const ctx = await readPageContext(c, deps, 'list', undefined, PROBATION_ASSESSMENT_OBJECT)",
+      ),
+    ),
+  ],
+  'GET /api/tenant/employment/probation-assessments/:id': [
+    assessmentView(
+      at(
+        ASSESS,
+        'GET',
+        '/probation-assessments/:id',
+        "const ctx = await readPageContext(c, deps, 'detail', undefined, PROBATION_ASSESSMENT_OBJECT)",
+      ),
+    ),
+    ob(
+      'guard:employment.assessmentScope',
+      [],
+      [
+        at(ASSESS, 'GET', '/probation-assessments/:id', 'await requireAssessmentInScope(tx, ctx, found)'),
+        ASSESSMENT_IN_SCOPE,
+        ASSESSMENT_SCOPE_SQL,
+      ],
+      '考核不存在与考核对象在范围外同一个 404',
+    ),
+  ],
+  'POST /api/tenant/employment/probation-assessments': [
+    ob(
+      `obj:${ASSESSMENT}:create`,
+      ['object:readContext(object.*)', `objectOp:${ASSESSMENT}:create`, 'object:object.* 动作'],
+      [
+        at(
+          ASSESS,
+          'POST',
+          '/probation-assessments',
+          "const ctx = await readContext(c, deps, 'object.create', 0, undefined, PROBATION_ASSESSMENT_OBJECT)",
+        ),
+        READ,
+        WRITE_OBJECT,
+        ASSESSMENT_CONST,
+      ],
+    ),
+    ob(
+      `btn:${ASSESSMENT}#Assessment.Create@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          ASSESS,
+          'POST',
+          '/probation-assessments',
+          "await requireEmploymentWrite(ctx, 'create', payload, 'Assessment.Create', PROBATION_ASSESSMENT_OBJECT)",
+        ),
+        WRITE_BUTTON,
+        ASSESSMENT_CONST,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [fn(ASSESS_SERVICE, 'createOne', 'await requireEmployeeInScope(tx, ctx, item.employeeId)'), EMPLOYEE_IN_SCOPE],
+      '逐人在保存点内判定，只让那一人失败（回执 404）',
+    ),
+    directOperation(
+      fn(
+        `${SRC}/employment/write-service.ts`,
+        'materializeEmploymentRecord',
+        'await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId)',
+      ),
+    ),
+  ],
+  'PATCH /api/tenant/employment/probation-assessments/:id': [
+    ob(
+      `obj:${ASSESSMENT}:update`,
+      ['object:readContext(object.*)', `objectOp:${ASSESSMENT}:update`, 'object:object.* 动作'],
+      [
+        at(
+          ASSESS,
+          'PATCH',
+          '/probation-assessments/:id',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c), " +
+            'undefined, PROBATION_ASSESSMENT_OBJECT)',
+        ),
+        READ,
+        WRITE_OBJECT,
+        ASSESSMENT_CONST,
+      ],
+    ),
+    ob(
+      `btn:${ASSESSMENT}#Assessment.Edit@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          ASSESS,
+          'PATCH',
+          '/probation-assessments/:id',
+          "await requireEmploymentWrite(ctx, 'update', patch, 'Assessment.Edit', PROBATION_ASSESSMENT_OBJECT)",
+        ),
+        WRITE_BUTTON,
+        ASSESSMENT_CONST,
+      ],
+    ),
+    ob(
+      'guard:employment.assessmentScope',
+      [],
+      [
+        fn(ASSESS_SERVICE, 'updateAssessment', 'await requireAssessmentInScope(tx, ctx, row)'),
+        ASSESSMENT_IN_SCOPE,
+        ASSESSMENT_SCOPE_SQL,
+      ],
+      '考核对象不在范围内 404',
     ),
   ],
 };

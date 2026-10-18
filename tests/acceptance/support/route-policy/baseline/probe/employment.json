@@ -421,6 +421,41 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/probation-assessments": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ProbationAssessment"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ProbationAssessment/TenantBase.ProbationAssessment.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.ProbationAssessment:view"
+    ]
+  },
+  "GET /api/tenant/employment/probation-assessments/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "30e647bf4c0b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ProbationAssessment/TenantBase.ProbationAssessment.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.ProbationAssessment:view"
+    ]
+  },
   "GET /api/tenant/employment/probation-results": {
     "all": {
       "status": 200
@@ -437,7 +472,7 @@
   "GET /api/tenant/employment/probation-views": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "e24c52d4604e",
+      "error": "d332af48b6ae",
       "status": 400
     },
     "fieldQueries": [],
@@ -777,6 +812,26 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PATCH /api/tenant/employment/probation-assessments/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ea7f7311731d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ProbationAssessment/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.ProbationAssessment:update"
     ]
   },
   "PATCH /api/tenant/employment/records/:id": {
@@ -1392,6 +1447,21 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/probation-assessments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "110dae4565a4",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ProbationAssessment/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.ProbationAssessment:create"
     ]
   },
   "POST /api/tenant/employment/probation-results": {
