@@ -17,7 +17,7 @@ import {
 import { contractRecords } from './contracts.js';
 import { employmentBusinessObjects, employmentEmployees } from './employment.js';
 import { orgObjects } from './org.js';
-import { tenants } from './tenancy.js';
+import { tenants, users } from './tenancy.js';
 import { establishmentObjects } from './establishment.js';
 
 const tenant = () =>
@@ -177,6 +177,37 @@ export const transferRequests = pgTable(
     check('transfer_requests_initiator', sql`${t.initiator} IN ('hr', 'manager', 'employee')`),
     check('transfer_requests_type_nonempty', sql`btrim(${t.transferTypeCode}) <> ''`),
     check('transfer_requests_process_nonempty', sql`btrim(${t.processCode}) <> ''`),
+  ],
+);
+
+/**
+ * F-181a（DEC-511 / DEC-596）：他人调动申请的暂存单按（经办人 × 员工）一份。槽位只指向暂存单，不复制单据内容；
+ * 主键保证并发暂存时恰好留一份。只有仍处于“草稿”且是暂存产生的单据才占槽（撤回回到草稿的申请不入槽）。
+ */
+export const transferDraftSlots = pgTable(
+  'transfer_draft_slots',
+  {
+    tenantId: tenant(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    createdAt: utc(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.userId, t.employeeId] }),
+    unique('transfer_draft_slots_business').on(t.tenantId, t.businessId),
+    foreignKey({
+      name: 'transfer_draft_slots_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
   ],
 );
 

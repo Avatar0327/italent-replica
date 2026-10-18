@@ -45,6 +45,7 @@ export async function offerWorld(db: Db, label: string, authorize?: Authorizer) 
   const department = await created('/api/tenant/org/organizations', {
     name: `录用部门${uniqueSuffix()}`,
     parents: { admin: { parentId: member.tenant.id } },
+    establishedOn: '2026-01-01',
   });
   const employee = () =>
     created('/api/tenant/employment/employees', { name: '合成员工', code: `OF_${uniqueSuffix()}` });
@@ -161,6 +162,8 @@ export const errorOf = async (response: Response) =>
  * 第 2 轮（审查 P2-01 / P2-02）：真实权限授权器下的普通成员。Offer 对象有增删改，字段全可看，deniedEdit 里的字段不可编辑；
  * 职位对象可看；数据范围只有录用部门（部门 A）。另建部门 B 及其下的职位（范围外），供引用校验用例使用。
  */
+export type OfferRealWorld = Awaited<ReturnType<typeof offerRealWorld>>;
+
 export async function offerRealWorld(
   db: Db,
   label: string,
@@ -258,6 +261,7 @@ export async function offerRealWorld(
     )[0]!.n;
   return {
     ...w,
+    seed,
     member,
     real,
     count,

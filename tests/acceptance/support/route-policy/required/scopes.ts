@@ -18,6 +18,17 @@ const scope = (unit: string, anchor: string): Evidence => ({ role: 'scope', unit
 
 /** 范围名字 → 强制判定处证据。 */
 export const SCOPE_AT = {
+  // BE-15a 第 2 轮审查 P1：立即执行回执的人员披露，按操作人当前的任职记录范围逐人判定，范围外的人不列入回执
+  'employment.runReceipt': [
+    scope(
+      `${M}/employment/auto-regularization-routes.ts#visibleEmployees`,
+      'const scope = await resolveModuleScope(deps, tenant, tenantLocalDate(now, ctx.timezone), EMPLOYMENT_OBJECT);',
+    ),
+    scope(
+      `${M}/employment/auto-regularization-routes.ts#visibleEmployees`,
+      'await requireEmployeeInScope(tx, reader, id);',
+    ),
+  ],
   // F-082 字段改名失败时的定位披露：规则逐项按操作人的计算规则范围（看全部或创建人）判定，范围外只计入匿名计数
   'talentReview.configScope(talent_review_calc_rules)': [
     scope(

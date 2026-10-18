@@ -140,12 +140,12 @@ export const MODULE_OBJECTS = {
       ...OFFER_APPROVAL_PROGRESS_FIELDS,
     ],
   ),
-  // R2 BE-14a3（OF-R15）：批量审批单经 Offer 列表“批量发起审批”生成、在审批中心撤回；按钮照同类集合审批单
-  // TalentReview.ResultApproval 登记（DEC-080：批量发起 create@list、撤回 withdraw@detail）。字段权限供审批中心披露
+  // F-222（codex-F185b B1/B2）：对象功能与功能权限仅两个详情页“不同意”按钮；通用工作流操作不在该取证结论内。
+  // 不同意改变已有单据状态，沿用本文件审批提交 / 撤回 / 撤销的 update 数据操作；字段权限供审批中心披露。
   offerBatchApproval: object(
     'OfferBatchApproval',
     OFFER_BATCH_FIELDS,
-    [button('create', 'list', 'create'), button('withdraw', 'detail', 'update')],
+    [button('PartDisAgree', 'detail', 'update'), button('AllDisAgree', 'detail', 'update')],
     ['status'],
   ),
   organization: object(
@@ -265,26 +265,38 @@ export const MODULE_OBJECTS = {
       'attempt',
     ],
   ),
-  employmentSettings: object('EmploymentSettings', [
-    'allowDirectTransfer',
-    'unrestrictTargetDepartment',
-    'autoPopulate',
-    // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
-    'entryEmailRules',
-    // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
-    'code',
-    'name',
-    'enabled',
-    'displayOrder',
-    // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
-    'priority',
-    'orgIds',
-    'description',
-    'conditions',
-    'term',
-    'reason',
-    'note',
-  ]),
+  employmentSettings: object(
+    'EmploymentSettings',
+    [
+      'allowDirectTransfer',
+      'unrestrictTargetDepartment',
+      'autoPopulate',
+      // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
+      'entryEmailRules',
+      // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
+      'code',
+      'name',
+      'enabled',
+      'displayOrder',
+      // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
+      'priority',
+      'orgIds',
+      'description',
+      'conditions',
+      'term',
+      'reason',
+      'note',
+      // R2 BE-15a 自动转正规则（B57）也挂在任职设置配置对象上：适用范围、业务处理规则、发起人类型、试用结果
+      //（name / priority / orgIds / enabled 已在上面）；operatorUserId 是最后保存人，系统写入、只可查看
+      'includeSubordinates',
+      'mode',
+      'daysBefore',
+      'initiatorType',
+      'probationResult',
+    ],
+    crud,
+    ['operatorUserId'],
+  ),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),

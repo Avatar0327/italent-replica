@@ -2,7 +2,7 @@
  * Offer（R2 BE-14a；docs/02_业务建模/34 §2、OF-R1，字段见 01_证据/导出/R2_对象字段_配置证据.md）。
  * Offer 不是任职记录：头行原地更新、带 revision，字段级前后快照写统一审计（DEC-019），删除保留快照。
  * 引用列都用（租户, ID）复合外键，跨租户或不存在的引用由数据库拒绝。待入职关联（pending_entry_business_id）
- * 和同步状态由 BE-14b2 写入；发送人 / 发送时间由 BE-14b1 写入。
+ * 由 BE-14b2 写入；发送人 / 发送时间与发送记录（offer_send_records）由 BE-14b1 写入。
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -214,6 +214,45 @@ export const offerDictionaryItems = pgTable(
     check('offer_dictionary_items_name', sql`btrim(${t.name}) <> ''`),
     check('offer_dictionary_items_order', sql`${t.displayOrder} >= 0`),
     check('offer_dictionary_items_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * Offer 发送记录（BE-14b1，OF-R5）：每次发送 / 重发写一行，兼作邮件 outbox（状态 pending / sent / failed / unknown，
+ * AGENTS §10 事件）。随 Offer 删除（只有待发可删）一并删除，删除前的发送历史写进删除审计的快照（AGENTS §5）。
+ * 首版没有投递通道，只记 pending，界面不显示投递状态；答复链接令牌归候选人答复页（F-183），不在这里存。
+ */
+export const offerSendRecords = pgTable(
+  'offer_send_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    offerId: uuid('offer_id').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull().default('pending'),
+    recipient: text('recipient').notNull(),
+    cc: text('cc')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    bcc: text('bcc')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    sentBy: uuid('sent_by').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: utc('created_at'),
+  },
+  (t) => [
+    unique('offer_send_records_tenant_id').on(t.tenantId, t.id),
+    index('offer_send_records_offer').on(t.tenantId, t.offerId, t.createdAt),
+    foreignKey({
+      name: 'offer_send_records_offer_fk',
+      columns: [t.tenantId, t.offerId],
+      foreignColumns: [offers.tenantId, offers.id],
+    }).onDelete('cascade'),
+    check('offer_send_records_kind', sql`${t.kind} IN ('send', 'resend')`),
+    check('offer_send_records_status', sql`${t.status} IN ('pending', 'sent', 'failed', 'unknown')`),
   ],
 );
 

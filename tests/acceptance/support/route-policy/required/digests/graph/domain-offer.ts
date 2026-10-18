@@ -5,7 +5,9 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/offer/identity.ts#birthDateFromIdCard': ['#CHECK_CODES', '#WEIGHTS'],
   'packages/domain/src/offer/rules.ts#OFFER_FIELDS': ['#OFFER_FIELD_SECTIONS'],
+  'packages/domain/src/offer/rules.ts#approvalAfterEdit': ['#effectiveOfferType'],
   'packages/domain/src/offer/rules.ts#missingOfferFields': ['#blank', '#offerRequiredFields'],
   'packages/domain/src/offer/rules.ts#offerInvalidatable': ['#effectiveOfferType'],
   'packages/domain/src/offer/rules.ts#offerRequiredFields': [
@@ -14,10 +16,16 @@ export const GRAPH: Graph = {
     '#effectiveOfferType',
   ],
   'packages/domain/src/offer/rules.ts#offerTransferTargets': ['#OFFER_TRANSITIONS', '#transitionGuard'],
+  'packages/domain/src/offer/rules.ts#planOfferDispatch': ['#planOfferSend'],
   'packages/domain/src/offer/rules.ts#planOfferInvalidation': ['#blank', '#offerInvalidatable', '#reject'],
   'packages/domain/src/offer/rules.ts#planOfferSend': ['#effectiveOfferType', '#reject'],
   'packages/domain/src/offer/rules.ts#planOfferTransition': ['#blank', '#reject', '#transitionGuard'],
   'packages/domain/src/offer/rules.ts#transitionGuard': ['#OFFER_TRANSITIONS'],
+  'packages/domain/src/offer/rules.ts#validOfferReviewFieldsSetting': [
+    '#OFFER_FIELDS',
+    '#OFFER_TYPES',
+    '#offerRequiredFields',
+  ],
   'packages/domain/src/offer/rules.ts#validOfferSendApprovalSetting': ['#OFFER_TYPES'],
   'packages/domain/src/offer/sync.ts#offerSyncDue': ['#daysUntil'],
   'packages/domain/src/offer/sync.ts#offerSyncKind': ['packages/domain/src/offer/rules.ts#effectiveOfferType'],

@@ -1013,8 +1013,29 @@
     {
       "idx": 144,
       "version": "7",
+      "when": 1792244541917,
+      "tag": "0144_be15a_auto_regularization",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1792251202323,
+      "tag": "0145_f181a_transfer_draft_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1792255725294,
+      "tag": "0146_offer_send_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
       "when": 1792261852616,
-      "tag": "0144_be14b2_offer_sync",
+      "tag": "0147_be14b2_offer_sync",
       "breakpoints": true
     }
   ]

@@ -39,6 +39,8 @@ export interface ApprovalContext extends TenantContext {
   readonly exitEditAuthorize?: Authorizer;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
+  /** 系统代发（BE-15a 自动转正）：发起人由规则配置，发起日志 detail 带 systemProxy（R2e7“提交（系统代发）”）。 */
+  readonly systemProxy?: boolean;
 }
 
 export function actorOf(ctx: ApprovalContext): string | null {
