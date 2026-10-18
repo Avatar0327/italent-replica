@@ -2109,6 +2109,21 @@ export const EMPLOYMENT: RequiredTable = {
     'Employment.DimissionApproval',
     'registerExitChanges',
   ),
+  // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
+  'GET /api/tenant/employment/exits': [
+    recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(EXIT, 'GET', '/exits', 'requireViewableExitFilters(filter, show)'),
+        fn(EXIT, 'requireViewableExitFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
+  'GET /api/tenant/employment/exits/:id': [
+    recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+  ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
       `obj:${RECORD}:view`,
