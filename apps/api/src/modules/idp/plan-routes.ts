@@ -5,7 +5,7 @@
  * - 干预：催办 / 开启下个阶段 / 终止（批量逐条回执）、跳转、统一下发任务。
  * 写入走命令台账（幂等、revision 409）；首次执行与幂等重放都按当前功能权限、按钮、范围与执行人复核，响应按查看人呈现。
  */
-import { and, asc, eq, idpPlans, inArray, isUuid, sql, type Tx, withTenant } from '@italent/db';
+import { and, asc, employmentEmployees, eq, idpPlans, inArray, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import { currentStageName, type NodeButton, PLAN_STATUSES, type PlanStatus, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { AppError } from '../../errors.js';
@@ -165,6 +165,16 @@ async function participantSummaries(tx: Tx, ctx: IdpContext, ids: readonly strin
   return summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone), null);
 }
 
+/** DEC-611 的最小姓名查询；调用方只传本次已披露的指导人 ID。 */
+async function tutorNames(tx: Tx, tenantId: string, ids: readonly string[]) {
+  if (!ids.length) return new Map<string, string>();
+  const tutors = await tx
+    .select({ id: employmentEmployees.id, name: employmentEmployees.name })
+    .from(employmentEmployees)
+    .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, [...ids])));
+  return new Map(tutors.map((tutor) => [tutor.id, tutor.name]));
+}
+
 function statusQuery(c: Context) {
   const value = c.req.query('status');
   if (value === undefined || value === '') return undefined;
@@ -221,10 +231,17 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const shown = await participantSummaries(tx, ctx, ids);
       // 指导人只对本人（计划员工）与指导人本人返回（F-182a，同 tutor-plans 的 tutorEmployeeId）；只因在办待办入列的
       // 待办人不是计划的关系人，置 null，不扩大参与人对计划的可见范围（DEC-296④）。
-      return shown.map(({ tutorRole: _r, processId: _p, ...rest }) => ({
+      const visible = shown.map(({ tutorRole: _r, processId: _p, ...rest }) => ({
         ...rest,
         tutorEmployeeId:
           me !== null && (me === rest.employeeId || me === rest.tutorEmployeeId) ? rest.tutorEmployeeId : null,
+      }));
+      // DEC-611：只对已披露指导人 ID 的关系人行补姓名，不要求人事查看权，也不披露其他人事字段。
+      const tutorIds = [...new Set(visible.map((row) => row.tutorEmployeeId).filter((id) => id !== null))];
+      const names = await tutorNames(tx, ctx.tenantId, tutorIds);
+      return visible.map((row) => ({
+        ...row,
+        tutorName: row.tutorEmployeeId === null ? null : (names.get(row.tutorEmployeeId) ?? null),
       }));
     });
     return c.json({ page: page.page, pageSize: page.pageSize, items });

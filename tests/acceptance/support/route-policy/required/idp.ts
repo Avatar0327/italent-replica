@@ -665,6 +665,29 @@ const PLAN_ROUTES: RequiredTable = {
       note: '本人的进行中 / 已结束计划、指导人的非未开始计划 + 当前有待办的计划（SQL 谓词按当前用户）',
       at: [planRoute('GET', '/my-plans', 'const me = await personOfUser(tx, ctx.tenantId, ctx.userId)')],
     },
+    {
+      perm: 'own:idp.planEmployeeOrTutor',
+      purpose: 'disclosure:tutorName',
+      need: NONE,
+      note: 'DEC-611：仅已可见行中的本人或指导人披露指导人姓名；待办人 ID / 姓名均为 null，不开放人事权限',
+      at: [
+        planRoute(
+          'GET',
+          '/my-plans',
+          'me !== null && (me === rest.employeeId || me === rest.tutorEmployeeId) ? rest.tutorEmployeeId : null',
+        ),
+        planRoute(
+          'GET',
+          '/my-plans',
+          'tutorName: row.tutorEmployeeId === null ? null : (names.get(row.tutorEmployeeId) ?? null)',
+        ),
+        {
+          role: 'impl',
+          unit: `${PLANS}#tutorNames`,
+          anchor: '.select({ id: employmentEmployees.id, name: employmentEmployees.name })',
+        },
+      ],
+    },
   ],
   [`GET ${BASE}/tutor-plans`]: [
     {

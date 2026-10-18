@@ -2131,6 +2131,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/idp/plan-routes.ts#summaries': ['902e0fc3df6f', 'e379f972d342'],
   'apps/api/src/modules/idp/plan-routes.ts#templateCheck': ['4bcd7934ada4', '41b60e98bd6f'],
   'apps/api/src/modules/idp/plan-routes.ts#transferScope': ['fb5bc893e85c', 'bccfaf210fbb'],
+  'apps/api/src/modules/idp/plan-routes.ts#tutorNames': ['c8ddfb1dc798', '3734b1f5f0ec'],
   'apps/api/src/modules/idp/plan-service.ts#actorOf': ['b16d0bd69a9c', 'e3b0c44298fc'],
   'apps/api/src/modules/idp/plan-service.ts#carryCommonGoals': ['951ea270caee', 'f03a3e5c09d6'],
   'apps/api/src/modules/idp/plan-service.ts#carrySources': ['07e104a57b08', 'eb6f7500cc11'],
