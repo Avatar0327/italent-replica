@@ -179,7 +179,8 @@ export const DIGESTS: Digests = {
     'route:POST /probation-assessments': '17037f156e66',
   },
   'apps/api/src/modules/employment/assessment-store.ts': {
-    requireAssessmentInScope: 'fc69d77a95e1',
+    assessmentScopeSql: 'ad3a3870123d',
+    requireAssessmentInScope: '2d14aac2c570',
   },
   'apps/api/src/modules/employment/assessment.ts': {
     createOne: '5d899f5fa8df',
@@ -1596,7 +1597,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '14600fb1aacb',
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
-  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '2da0cb093da1',
+  'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': '0602b4cb55a7',
+  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '00f0fb27175e',
   'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
   'apps/api/src/modules/employment/assessment.ts#updateAssessment': '05e674ff9ddd',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':

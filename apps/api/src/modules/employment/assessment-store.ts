@@ -195,9 +195,10 @@ export async function requireAssessmentInScope(
   row: Pick<AssessmentRow, 'id'>,
 ): Promise<void> {
   if (!ctx.scope) return;
+  const visible = assessmentScopeSql(ctx.scope, ctx.tenantId);
   const [hit] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT a.id FROM employment_probation_assessments a
-      WHERE a.tenant_id=${ctx.tenantId} AND a.id=${row.id}::uuid AND ${assessmentScopeSql(ctx.scope, ctx.tenantId)}`),
+      WHERE a.tenant_id=${ctx.tenantId} AND a.id=${row.id}::uuid AND ${visible}`),
   );
   if (!hit) throw new AppError('NOT_FOUND', '考核记录不存在');
 }

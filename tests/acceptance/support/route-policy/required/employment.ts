@@ -454,10 +454,16 @@ const ASSESSMENT_CONST: Evidence = {
   unit: 'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   anchor: "'TenantBase.ProbationAssessment'",
 };
+// 单条判定与列表共用同一个人员范围谓词 assessmentScopeSql（员工当前任职，不看创建时的部门快照）
 const ASSESSMENT_IN_SCOPE: Evidence = {
   role: 'impl',
   unit: `${SRC}/employment/assessment-store.ts#requireAssessmentInScope`,
-  anchor: 'await requireEmployeeInScope(tx, ctx, row.employeeId)',
+  anchor: 'const visible = assessmentScopeSql(ctx.scope, ctx.tenantId)',
+};
+const ASSESSMENT_SCOPE_SQL: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/assessment-store.ts#assessmentScopeSql`,
+  anchor: 'employmentScopePredicate(scope, sql`a.employee_id`, undefined,',
 };
 const assessmentView = (call: Evidence) =>
   ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
@@ -2462,7 +2468,7 @@ export const EMPLOYMENT: RequiredTable = {
       [
         at(ASSESS, 'GET', '/probation-assessments/:id', 'await requireAssessmentInScope(tx, ctx, found)'),
         ASSESSMENT_IN_SCOPE,
-        EMPLOYEE_IN_SCOPE,
+        ASSESSMENT_SCOPE_SQL,
       ],
       '考核不存在与考核对象在范围外同一个 404',
     ),
@@ -2548,7 +2554,7 @@ export const EMPLOYMENT: RequiredTable = {
       [
         fn(ASSESS_SERVICE, 'updateAssessment', 'await requireAssessmentInScope(tx, ctx, row)'),
         ASSESSMENT_IN_SCOPE,
-        EMPLOYEE_IN_SCOPE,
+        ASSESSMENT_SCOPE_SQL,
       ],
       '考核对象不在范围内 404',
     ),

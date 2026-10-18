@@ -811,7 +811,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/assessment-store.ts#auditAssessment': ['c2e386011149', '1a0ee15cc6e9'],
   'apps/api/src/modules/employment/assessment-store.ts#listAssessments': ['1601854b4cd1', '655b323b6abe'],
   'apps/api/src/modules/employment/assessment-store.ts#loadAssessment': ['f8e23fc4f7e4', 'fbfd71e56c48'],
-  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': ['fc69d77a95e1', '2da0cb093da1'],
+  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': ['2d14aac2c570', '00f0fb27175e'],
   'apps/api/src/modules/employment/assessment-store.ts#saveAssessment': ['533c5fe3d7c8', '87086130c8ea'],
   'apps/api/src/modules/employment/assessment.ts#applyApprovalEdit': ['eef9c5a7da8e', '8f9278bc9227'],
   'apps/api/src/modules/employment/assessment.ts#assertEditable': ['de6b11307c93', '583ee92c250c'],
