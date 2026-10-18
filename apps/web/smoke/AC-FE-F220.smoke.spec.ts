@@ -52,3 +52,24 @@ test('AC-FE-F220-03 有权限时大小写入口进入真实列表；缺带教对
     await expect(page.locator('.shell-workspace')).toContainText(ui.denied);
   }
 });
+
+test('AC-FE-F220-04 个人设置大小写变体仍仅要求会话，不误用企业设置权限', async ({ page }) => {
+  await page.route(/\/src\/account\/AccountPage\.tsx?(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: "export const AccountPage = () => '合成个人设置已挂载';",
+    }),
+  );
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) => (app.app === 'settings' ? { ...app, visible: false } : app)),
+      },
+    }),
+  );
+  for (const path of ['/settings/account', '/SETTINGS/account', '/Settings/Account']) {
+    await page.goto(path);
+    await expect(page.locator('.shell-workspace')).toHaveText('合成个人设置已挂载');
+  }
+});
