@@ -22,7 +22,12 @@ import { auditEmployment, requireEmployeeInScope, requireScopedEmploymentObject 
 import { sequenceForNewPost } from '../field-derivations.js';
 import type { ForwardFieldChange } from '../forward-rules.js';
 import { appendForwardPayload } from '../forward-store.js';
-import { lockEmploymentBusiness, lockEmploymentEmployee, readEmploymentEmployee } from '../record-store.js';
+import {
+  lockEmploymentBusiness,
+  lockEmploymentEmployee,
+  readEmploymentEmployee,
+  type EmploymentPayloadRow,
+} from '../record-store.js';
 import { assertEmploymentDepartmentAvailableWithin } from '../references.js';
 import { loadOrgSnapshot } from '../../org/read-model.js';
 import type { CustomFields, EmploymentContext, PresetFields } from '../types.js';
@@ -34,6 +39,7 @@ import {
   insertPartTimeRecord,
   lockPartTimeRecords,
   lockPartTimeRecordsById,
+  type PartTimeRecordRow,
   readPartTimeRecords,
 } from './store.js';
 import {
@@ -49,6 +55,7 @@ import {
   validatePartTimeReferences,
   type BatchEndInput,
   type EditPartTimeInput,
+  type PartTimeEditPlan,
   type NewPartTimeInput,
 } from './validation.js';
 
@@ -204,6 +211,67 @@ export async function previewPartTime(
   };
 }
 
+interface PartTimeEditWrite {
+  readonly plan: PartTimeEditPlan;
+  readonly changes: readonly ForwardFieldChange[];
+  readonly customFields: CustomFields;
+}
+
+/** 编辑的写入阶段：结束日变化追加期限，字段变化追加快照载荷，一次命令 revision 只 +1；返回新的 revision。 */
+async function writePartTimeEdit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  row: PartTimeRecordRow,
+  payload: EmploymentPayloadRow,
+  { plan, changes, customFields }: PartTimeEditWrite,
+): Promise<number> {
+  const { endDate } = plan;
+  const scope = { employeeId: row.employeeId, orgId: plan.fields.departmentId };
+  let revision = row.revision;
+  if (plan.endChanged) {
+    const next = await appendPartTimeTerm(tx, ctx, row, { endDate, source: 'edit' });
+    revision = next.revision;
+    // 直接改结束日期的审计动作是 end（§7.4）；before 取上一期，不建“变更前”列（硬规则 3）
+    await auditEmployment(
+      tx,
+      ctx,
+      'employment.part_time.end',
+      PART_TIME_AUDIT_OBJECTS.record,
+      row.id,
+      { endDate: row.endDate },
+      { endDate, termNo: next.termNo },
+      undefined,
+      undefined,
+      scope,
+    );
+  }
+  if (changes.length) {
+    const next = await appendForwardPayload(
+      tx,
+      ctx,
+      payload,
+      { fields: plan.fields, customFields },
+      row.id,
+      true,
+      changes,
+    );
+    if (!plan.endChanged) revision = await bumpPartTimeRevision(tx, ctx, row);
+    await auditEmployment(
+      tx,
+      ctx,
+      'employment.part_time.edit',
+      PART_TIME_AUDIT_OBJECTS.record,
+      row.id,
+      Object.fromEntries(changes.map((change) => [change.field, change.before])),
+      Object.fromEntries(changes.map((change) => [change.field, change.after])),
+      next.id,
+      undefined,
+      scope,
+    );
+  }
+  return revision;
+}
+
 export interface EditedPartTime {
   readonly id: string;
   readonly employeeId: string;
@@ -275,50 +343,8 @@ export async function editPartTime(
       addDays(row.endDate, 1),
       addDays(endDate, 1),
     );
-  const scope = { employeeId: row.employeeId, orgId: departmentId };
-  let revision = row.revision;
-  if (plan.endChanged) {
-    const next = await appendPartTimeTerm(tx, ctx, row, { endDate, source: 'edit' });
-    revision = next.revision;
-    // 直接改结束日期的审计动作是 end（§7.4）；before 取上一期，不建“变更前”列（硬规则 3）
-    await auditEmployment(
-      tx,
-      ctx,
-      'employment.part_time.end',
-      PART_TIME_AUDIT_OBJECTS.record,
-      row.id,
-      { endDate: row.endDate },
-      { endDate, termNo: next.termNo },
-      undefined,
-      undefined,
-      scope,
-    );
-  }
-  if (changes.length) {
-    const customFields = { ...business.payload.customFields, ...custom.customFields };
-    const next = await appendForwardPayload(
-      tx,
-      ctx,
-      business.payload,
-      { fields: plan.fields, customFields },
-      row.id,
-      true,
-      changes,
-    );
-    if (!plan.endChanged) revision = await bumpPartTimeRevision(tx, ctx, row);
-    await auditEmployment(
-      tx,
-      ctx,
-      'employment.part_time.edit',
-      PART_TIME_AUDIT_OBJECTS.record,
-      row.id,
-      Object.fromEntries(changes.map((change) => [change.field, change.before])),
-      Object.fromEntries(changes.map((change) => [change.field, change.after])),
-      next.id,
-      undefined,
-      scope,
-    );
-  }
+  const customFields = { ...business.payload.customFields, ...custom.customFields };
+  const revision = await writePartTimeEdit(tx, ctx, row, business.payload, { plan, changes, customFields });
   return { ...unchanged, revision, changed: true, warnings };
 }
 

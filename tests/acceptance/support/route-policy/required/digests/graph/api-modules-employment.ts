@@ -2227,14 +2227,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
-    'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
     '#customChanges',
-    'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
-    'apps/api/src/modules/employment/part-time/store.ts#bumpPartTimeRevision',
+    '#writePartTimeEdit',
     'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords',
     'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
     'apps/api/src/modules/employment/part-time/validation.ts#planPartTimeEdit',
@@ -2245,7 +2242,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
     'packages/domain/src/contracts/rules.ts#addDays',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#previewPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
@@ -2259,6 +2255,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeCustomFields',
     'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeReferences',
     'apps/api/src/modules/employment/record-store.ts#readEmploymentEmployee',
+  ],
+  'apps/api/src/modules/employment/part-time/service.ts#writePartTimeEdit': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
+    'apps/api/src/modules/employment/part-time/store.ts#bumpPartTimeRevision',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm': ['#bumpPartTimeRevision', '#insertTerm'],
   'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes': [

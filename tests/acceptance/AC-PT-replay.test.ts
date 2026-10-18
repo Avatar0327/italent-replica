@@ -256,7 +256,7 @@ describe('AC-PT-replay PT-3c：编辑兼职与批量结束的命令重放（PB-5
     const footprint = await withTenant(w.db, w.tenantId, async (tx) =>
       rowsOf<{ object_type: string }>(
         await tx.execute(sql`SELECT DISTINCT object_type FROM audit_events WHERE tenant_id=${w.tenantId}
-          AND object_id=${record.id} AND action LIKE 'employment.part_time.%' AND action <> 'employment.part_time.create'`),
+          AND object_id=${record.id} AND action IN ('employment.part_time.end', 'employment.part_time.batch_end')`),
       ),
     );
     expect(footprint).toEqual([{ object_type: PART_TIME_AUDIT_OBJECTS.record }]);

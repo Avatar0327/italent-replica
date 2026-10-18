@@ -206,7 +206,7 @@ describe('A-9 / PB-57 / 请求体与并发', () => {
     expect(await w.writes()).toEqual(before);
   });
 
-  it('PB-57：isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE；false / [] 是无操作', async () => {
+  it('PB-57：联动字段 true / 非空 → 400 PART_TIME_LINKAGE_NOT_AVAILABLE；false / [] 是无操作', async () => {
     const { w, patch } = await editWorld('edit-linkage');
     const before = await w.writes();
     for (const fields of [
