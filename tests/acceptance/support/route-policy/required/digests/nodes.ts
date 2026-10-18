@@ -1497,8 +1497,8 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
     'a6aa688e31db',
   ],
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess': [
-    'e348baa02314',
-    'ad0879b5a436',
+    '2f167a6f032f',
+    '23040aa8a9e0',
   ],
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeScope': ['a778e2cc229f', '6356a7d75be9'],
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess': [

@@ -181,9 +181,15 @@ export async function requirePartTimeRequestAccess(
       action: 'tenant.employment.write',
       resource: request.employeeId,
     });
-  await requireRequestScope(tx, scoped, request);
-  if (target.departmentId && target.departmentId !== request.version.departmentId)
-    await requireScopedEmploymentObject(tx, scoped, request.employeeId, target.departmentId);
+  try {
+    await requireRequestScope(tx, scoped, request);
+    if (target.departmentId && target.departmentId !== request.version.departmentId)
+      await requireScopedEmploymentObject(tx, scoped, request.employeeId, target.departmentId);
+  } catch (error) {
+    // 范围外与不存在同一个 404、同一文案，不泄露申请是否存在
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw requestNotFound();
+    throw error;
+  }
   await requireWriteButtons(scoped, target.operation, target.business, target.buttons);
   return request;
 }

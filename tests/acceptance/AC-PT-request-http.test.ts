@@ -318,6 +318,16 @@ describe('权限（§7.2）：对象权 → 按钮 → 范围 → 字段权', ()
     expect(
       (await scoped(w.primary, w.side).patch(created.id, created.revision, { endDate: '2026-11-30' })).status,
     ).toBe(200);
+    // 范围外与不存在同一个 404、同一文案
+    const message = async (response: Response) =>
+      ((await response.json()) as { error: { message: string } }).error.message;
+    const gone = await message(await scoped(w.primary, w.side).patch(randomUUID(), 1, { endDate: '2026-11-30' }));
+    expect(await message(await scoped(elsewhere).patch(created.id, created.revision, { endDate: '2026-11-30' }))).toBe(
+      gone,
+    );
+    expect(await message(await scoped(w.primary).patch(created.id, created.revision, { endDate: '2026-11-30' }))).toBe(
+      gone,
+    );
     // 读：员工主职部门或申请部门任一在范围内可见；都不在 → 404
     expect((await scoped(w.primary).one(created.id)).status).toBe(200);
     expect((await scoped(w.side).one(created.id)).status).toBe(200);
