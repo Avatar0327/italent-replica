@@ -8,10 +8,18 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { batchEndPartTimes, editPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
+import { readPartTimeRecords } from '../../apps/api/src/modules/employment/part-time/store.js';
 import { httpWorld } from './AC-PT-http-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
+
+interface CreatedRecord {
+  readonly id: string;
+  readonly employeeId: string;
+  readonly revision: number;
+}
+const endDate = '2026-12-31';
 
 function signal() {
   let resolve!: () => void;
@@ -102,23 +110,42 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
 
   /**
    * F-235②：员工锁序只有跨员工才有区分力 —— 同一员工的两条记录只有一把员工锁，排序改坏也不会死锁。
-   * 第一个连接先锁住 UUID 较小的员工 A，第二个批量结束按“较大员工的记录在前”的相反顺序到达：
+   * 第一个连接先锁住 UUID 较小的员工 A，第二个批量结束按“较大员工的记录在前”的相反顺序到达（夹具保证读取顺序也是员工降序）：
    * 按序加锁时它在 A 上空手等待；若改成按请求顺序加锁，它会先持较大员工的锁再等 A，第一个连接随后要锁较大员工 → 死锁（40P01）。
    */
   it('两个批量结束跨两名员工、相反顺序交错：首个员工锁后交错，无 40P01，后到者 409 REVISION_CONFLICT', async () => {
     const w = await httpWorld(database().db, 'batch-pg-cross-employee');
-    const mine = await w.make({ endDate: '2026-12-31' });
     const colleague = await w.colleague('跨员工兼职');
-    const theirs = await w.create({ employeeId: colleague.id, endDate: '2026-12-31' });
-    const [low, high] = [mine, theirs].sort((x, y) => x.employeeId.localeCompare(y.employeeId));
+    const [lowEmployee, highEmployee] = [w.employeeId, colleague.id].sort();
+    // 读取顺序 = 记录 ID 升序（store.ts partTimeRows），与员工 UUID 无关：夹具补建记录，直到
+    // 较大员工的某条记录 ID 小于较小员工的某条记录 ID —— 这样不排序时读到的员工顺序恰是降序，与锁序相反
+    const created = { low: [] as CreatedRecord[], high: [] as CreatedRecord[] };
+    const make = async (side: 'low' | 'high') =>
+      created[side].push(await w.create({ employeeId: side === 'low' ? lowEmployee! : highEmployee!, endDate }));
+    const pick = () => ({
+      low: created.low.reduce((a, b) => (a.id > b.id ? a : b)),
+      high: created.high.reduce((a, b) => (a.id < b.id ? a : b)),
+    });
+    await make('low');
+    await make('high');
+    for (let round = 0; round < 40 && pick().high.id > pick().low.id; round++) {
+      await make('low');
+      await make('high');
+    }
+    const { low, high } = pick();
+    // 前提：本请求的真实读取结果按员工 UUID 降序（读取顺序 ≠ 锁序），“仅删 .sort()”才会改变加锁顺序
+    const readOrder = await withTenant(w.db, w.tenantId, async (tx) =>
+      (await readPartTimeRecords(tx, w.context(), [low.id, high.id])).map((row) => row.employeeId),
+    );
+    expect(readOrder).toEqual([highEmployee, lowEmployee]);
     const item = (record: { id: string; revision: number }) => ({ recordId: record.id, revision: record.revision });
     const locked = signal();
     const proceed = signal();
     const first = withTenant(w.db, w.tenantId, async (tx) => {
-      await lockEmploymentEmployee(tx, w.context(), low!.employeeId);
+      await lockEmploymentEmployee(tx, w.context(), low.employeeId);
       locked.resolve();
       await proceed.promise;
-      await batchEndPartTimes(tx, w.context(), { items: [item(low!), item(high!)], endDate: '2026-10-15' });
+      await batchEndPartTimes(tx, w.context(), { items: [item(low), item(high)], endDate: '2026-10-15' });
     }).then(
       () => undefined,
       (error: unknown) => {
@@ -127,7 +154,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
       },
     );
     await locked.promise;
-    const second = w.batchEnd([item(high!), item(low!)], '2026-10-10');
+    const second = w.batchEnd([item(high), item(low)], '2026-10-10');
     await waitForBlocked(w.db, 1);
     proceed.resolve();
     expect(await first, '首个连接不得被死锁（40P01）').toBeUndefined();
@@ -138,13 +165,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
         code: 'REVISION_CONFLICT',
         details: {
           items: expect.arrayContaining([
-            { recordId: low!.id, expected: 1, actual: 2 },
-            { recordId: high!.id, expected: 1, actual: 2 },
+            { recordId: low.id, expected: 1, actual: 2 },
+            { recordId: high.id, expected: 1, actual: 2 },
           ]),
         },
       },
     });
-    for (const record of [low!, high!])
+    for (const record of [low, high])
       expect((await w.terms(record.id)).map((term) => [term.end_date, term.source])).toEqual([
         ['2026-12-31', 'create'],
         ['2026-10-15', 'batch_end'],
