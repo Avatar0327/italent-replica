@@ -211,6 +211,28 @@ export async function previewPartTime(
   };
 }
 
+/**
+ * D-5 在编辑上的延伸（第 1 轮 P2-1）：外派 / 借调同时只能有一条未结束。已结束的外派 / 借调被编辑改回进行中（结束日改晚）
+ * 等于重新“新增”一条未结束的记录，要在员工锁内按新增同一规则复核（排除它自己，也计在途新增申请）。
+ * 只在“已结束 → 未结束”时复核：本来就未结束的记录，缩短 / 改晚结束日都不改变占位；普通兼职不受限（D-6）。
+ */
+async function assertRecoveryKeepsExclusive(
+  tx: Tx,
+  ctx: EmploymentContext,
+  row: PartTimeRecordRow,
+  endDate: string | null,
+): Promise<void> {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const wasEnded = partTimeServiceStatus(row, today) === 'ended';
+  if (wasEnded && partTimeServiceStatus({ startDate: row.startDate, endDate }, today) !== 'ended')
+    await assertExclusiveTypeFree(
+      tx,
+      ctx,
+      { employeeId: row.employeeId, serviceType: row.serviceType as PartTimeServiceType },
+      row.id,
+    );
+}
+
 interface PartTimeEditWrite {
   readonly plan: PartTimeEditPlan;
   readonly changes: readonly ForwardFieldChange[];
@@ -323,6 +345,7 @@ export async function editPartTime(
   let warnings: readonly string[] = [];
   if (plan.endChanged) {
     if ((await openDateRequestRecords(tx, ctx, [row.id])).size) throw requestInProgress();
+    await assertRecoveryKeepsExclusive(tx, ctx, row, plan.endDate);
     warnings = (
       await assertPartTimeWithinCycle(tx, ctx, {
         employeeId: row.employeeId,

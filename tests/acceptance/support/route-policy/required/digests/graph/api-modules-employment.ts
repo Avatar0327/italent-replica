@@ -2190,6 +2190,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/routes.ts#serviceInput': [
     'apps/api/src/modules/employment/part-time/validation.ts#PART_TIME_FIELD_KEYS',
   ],
+  'apps/api/src/modules/employment/part-time/service.ts#assertRecoveryKeepsExclusive': [
+    'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree',
+    'packages/domain/src/employment/part-time.ts#partTimeServiceStatus',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/part-time/service.ts#batchEndPartTimes': [
     'apps/api/src/audit/record.ts#recordOperationLog',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -2230,6 +2235,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    '#assertRecoveryKeepsExclusive',
     '#customChanges',
     '#writePartTimeEdit',
     'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords',

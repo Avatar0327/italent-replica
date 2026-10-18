@@ -117,6 +117,8 @@ export async function assertExclusiveTypeFree(
   tx: Tx,
   ctx: EmploymentContext,
   normalized: Pick<NormalizedPartTime, 'employeeId' | 'serviceType'>,
+  /** 编辑把已结束的记录改回进行中时排除它自己（它正是被复核的那一条）。 */
+  excludeRecordId?: string,
 ): Promise<void> {
   const { employeeId, serviceType } = normalized;
   const records = rowsOf<{ serviceType: string; startDate: string; endDate: string | null }>(
@@ -128,6 +130,7 @@ export async function assertExclusiveTypeFree(
       FROM employment_records r
       WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${employeeId}::uuid
         AND r.service_type IN ('secondment', 'expatriate')
+        ${excludeRecordId === undefined ? sql`` : sql`AND r.id <> ${excludeRecordId}::uuid`}
     `),
   );
   const pending = rowsOf<{ serviceType: string }>(
