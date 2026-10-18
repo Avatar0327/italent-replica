@@ -205,6 +205,9 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       26: '60e4577cfd28309e',
       // R2 BE-14b2：Offer 新增 10 个同步待入职只读系统字段、任职记录新增 2 个（merge:main 定号，DEC-439④）
       27: '7fe93cf66e1b6cb1',
+      // R2 BE-15b1：新增试用期考核对象（TenantBase.ProbationAssessment，字段 + Assessment.Create / Assessment.Edit 两个按钮），进标准身份
+      // R2 BE-15b1 第 1 轮 P2-2（DEC-415）：试用期考核对象的看全部预置给标准版系统管理员 / 人事管理员（版本占位，合并时按 main + 1 定号）
+      28: 'dbfe9141fe60b633',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

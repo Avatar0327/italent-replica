@@ -184,6 +184,23 @@ export async function resumableInstanceOf(
   return row ? instanceOf(row) : null;
 }
 
+/**
+ * 业务单最近一次相关的实例（任何状态，含已办结）：只读不加锁。离职作废 / 撤回申请时通知要挂在它上面——
+ * 审批已通过的申请没有活动实例，但发起人仍应收到消息。
+ */
+export async function latestInstanceOf(
+  tx: Tx,
+  tenantId: string,
+  businessType: BusinessType,
+  businessId: string,
+): Promise<InstanceRow | null> {
+  const [row] = rowsOf(
+    await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
+      AND business_type=${businessType} AND business_id=${businessId}::uuid ORDER BY created_at DESC,id DESC LIMIT 1`),
+  );
+  return row ? instanceOf(row) : null;
+}
+
 export async function instanceOfTask(tx: Tx, tenantId: string, taskId: string): Promise<string> {
   const [row] = rowsOf<{ instance_id: string }>(
     await tx.execute(sql`SELECT instance_id FROM approval_tasks WHERE tenant_id=${tenantId} AND id=${taskId}::uuid`),

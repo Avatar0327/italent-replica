@@ -41,6 +41,7 @@ import {
   requireProcessView,
   requireResubmitRight,
   requireWithdrawRight,
+  resubmitGuard,
   withdrawGuard,
 } from './access.js';
 import {
@@ -277,6 +278,9 @@ function registerHooks(deps: TenantRouteDeps) {
     deleted: async (tx, ctx, businessId) => {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);
       if (active) await cancel(tx, withFields(ctx), active.id);
+    },
+    assessmentSubmitted: async (tx, ctx, assessmentId) => {
+      await startOrResume(tx, withFields(ctx), { businessType: 'probation_assessment', businessId: assessmentId });
     },
   });
   registerPersonnelApprovalHooks({
@@ -582,17 +586,24 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const input = c.req.header('content-type') ? await parseBody(c, z.strictObject({ fields: fields.optional() })) : {};
     // DEC-113 / F3：只有原发起人能重提，并按首次提交复核其当前的自助权限与本人绑定。
     await requireResubmitRight(deps, ctx, id, input.fields);
-    const result = await command(c, deps, ctx, { id, input }, (tx, context) =>
-      resubmit(
-        tx,
-        {
-          ...context,
-          recheckContractResubmit: (tx, instanceId, corrections) =>
-            requireResubmitRight(deps, ctx, instanceId, corrections, tx),
-        },
-        id,
-        input.fields,
-      ),
+    const result = await command(
+      c,
+      deps,
+      ctx,
+      { id, input },
+      (tx, context) =>
+        resubmit(
+          tx,
+          {
+            ...context,
+            recheckContractResubmit: (tx, instanceId, corrections) =>
+              requireResubmitRight(deps, ctx, instanceId, corrections, tx),
+          },
+          id,
+          input.fields,
+        ),
+      // 试用期考核重提：事务内（首次与同键重放）按当前权限与范围复核，与发起 / 修改共用一个入口
+      resubmitGuard(deps, ctx, id, input.fields),
     );
     return respondOutcome(c, deps, result);
   });

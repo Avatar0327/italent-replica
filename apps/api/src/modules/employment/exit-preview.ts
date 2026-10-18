@@ -17,10 +17,8 @@ import {
   regularizationBlocker,
   type InFlight,
 } from './exit-gate.js';
-import { BUSINESS_KINDS, type EmploymentContext } from './types.js';
-
-const OPEN_STATES = ['draft', 'in_review', 'approved', 'rejected'];
-const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave' && kind !== 'retirement');
+import { OPEN_STATES, VOIDABLE_KINDS } from './exit-void-applications.js';
+import type { EmploymentContext } from './types.js';
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));

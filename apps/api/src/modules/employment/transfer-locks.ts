@@ -1,4 +1,4 @@
-/** F-008：一次生效涉及的员工（含新增下属与 R1-T10 职责转交的下属）先按 UUID 取锁，再锁业务头，最后由审批入口锁实例。
+/** F-008：一次生效涉及的员工（含新增下属与 R1-T10 职责转交的下属；离职的转交下属同理，R2-T03 §5.2 ①）先按 UUID 取锁，再锁业务头，最后由审批入口锁实例。
  * 锁内重读参与者；等待期间载荷新增了参与者时返回 409，由调用方刷新后显式重提。
  * 事务本地设置跟随保存点回滚，不能用进程缓存替代数据库持锁事实。
  */
@@ -25,9 +25,11 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=ANY(${array([...ids])})
-        AND p.kind='transfer' AND s.state NOT IN ('deleted','disapproved','voided')
+        AND p.kind IN ('transfer','leave') AND s.state NOT IN ('deleted','disapproved','voided')
         AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id
           AND o.business_id=b.id AND o.event_type='employment.transfer.linked')
+        AND NOT EXISTS (SELECT 1 FROM transfer_linkage_runs r WHERE r.tenant_id=b.tenant_id
+          AND r.business_id=b.id AND p.kind='leave')
     `),
     );
     const size = ids.size;
@@ -95,5 +97,5 @@ export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, busin
     WHERE b.tenant_id=${ctx.tenantId} AND b.id=${businessId}::uuid
   `),
   );
-  if (row?.kind === 'transfer') await lockTransferParticipants(tx, ctx, row.employeeId);
+  if (row?.kind === 'transfer' || row?.kind === 'leave') await lockTransferParticipants(tx, ctx, row.employeeId);
 }

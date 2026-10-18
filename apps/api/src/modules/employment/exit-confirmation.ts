@@ -1,13 +1,15 @@
 /**
  * 离职 confirmed 阶段（R2-T03 设计 §3.1）：申请最后节点同意、直接离职保存时调用，与该动作同事务。
  * 写编制预减时点 R（exit_requests.pre_release_date，DEC-266①）与预减台账（establishment/exit-release.ts），
- * 再通知 confirmed 端口的订阅方（交接自动发起属 BE-8b，DM-R14：只对申请；本批没有订阅方）。不落地（§18.1）。
- * approval_passed 时机的职责转交在 B3-2 接入（关口⑤期间请求不能带转交区块）。
+ * 再通知 confirmed 端口的订阅方（交接自动发起属 BE-8b，DM-R14：只对申请）。不落地（§18.1）。
+ * approval_passed 时机的职责转交也在这里执行（B3-2，§5.7）；关口⑤关闭期间请求不能带转交区块，B3-3 起才会有计划。
  */
 import { and, eq, exitRequests, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { registerEstablishmentPreRelease } from '../establishment/exit-release.js';
 import { auditEmployment } from './context.js';
+import { runExitDutyTransfer } from './exit-duty-transfer.js';
+import { loadExitRequest } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { EmploymentContext } from './types.js';
 
@@ -60,11 +62,17 @@ export interface ConfirmedExit {
 }
 
 export async function confirmExit(tx: Tx, ctx: EmploymentContext, business: ConfirmedExit) {
+  const exit = await loadExitRequest(tx, ctx.tenantId, business.id);
+  if (!exit) return;
+  // R 一经写入不再改变（迟到顺延、重试都不改），已有 R 说明预减与端口订阅已执行过
+  if (!exit.preReleaseDate) await registerPreRelease(tx, ctx, business);
+  // approval_passed 时机的职责转交（§5.7）：生效日 = 批准 / 保存当天；联动执行行保证至多执行一次
+  await runExitDutyTransfer(tx, ctx, exit, 'confirmed', tenantLocalDate(ctx.now, ctx.timezone));
+}
+
+async function registerPreRelease(tx: Tx, ctx: EmploymentContext, business: ConfirmedExit) {
   const releasedFrom = tenantLocalDate(ctx.now, ctx.timezone);
   const where = and(eq(exitRequests.tenantId, ctx.tenantId), eq(exitRequests.businessId, business.id));
-  const [row] = await tx.select({ preReleaseDate: exitRequests.preReleaseDate }).from(exitRequests).where(where);
-  // R 一经写入不再改变（迟到顺延、重试都不改），已有 R 说明本阶段已执行过
-  if (!row || row.preReleaseDate) return;
   await tx.update(exitRequests).set({ preReleaseDate: releasedFrom }).where(where);
   // 部门 / 职位取按继承解析后的值（与审批快照同一读模型），载荷里未填的字段从前一条任职带出
   const resolved = await loadEmploymentBusiness(tx, ctx.tenantId, business.id, releasedFrom);
@@ -88,6 +96,8 @@ export async function confirmExit(tx: Tx, ctx: EmploymentContext, business: Conf
     undefined,
     { employeeId: business.employeeId },
   );
+  // DM-R14：交接自动发起只对离职申请审批通过调用，直接离职的 confirmed 阶段不调用，交接只能手工发起
+  if (business.mode !== 'application') return;
   const event = { businessId: business.id, employeeId: business.employeeId, mode: business.mode };
   for (const hook of confirmedHooks) await hook(tx, ctx, event);
 }

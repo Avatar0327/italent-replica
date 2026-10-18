@@ -2,6 +2,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
 import { OFFER_APPROVAL_PROGRESS_FIELDS, OFFER_BATCH_FIELDS } from '../offer/approval.js';
+import { ASSESSMENT_BUTTONS, ASSESSMENT_FIELDS, ASSESSMENT_SYSTEM_FIELDS } from '../employment/assessment.js';
 import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
@@ -296,6 +297,14 @@ export const MODULE_OBJECTS = {
     ],
     crud,
     ['operatorUserId'],
+  ),
+  // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
+  // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
+  probationAssessment: object(
+    'ProbationAssessment',
+    ASSESSMENT_FIELDS,
+    [button(ASSESSMENT_BUTTONS.create, 'detail', 'create'), button(ASSESSMENT_BUTTONS.update, 'detail', 'update')],
+    ASSESSMENT_SYSTEM_FIELDS,
   ),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',

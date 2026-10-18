@@ -61,7 +61,10 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
     MODULE_OBJECTS.offer,
     MODULE_OBJECTS.offerBatchApproval,
   ]),
-  transfer: withPrimary('TenantBase.EmploymentRecord', [MODULE_OBJECTS.employmentRecord]),
+  transfer: withPrimary('TenantBase.EmploymentRecord', [
+    MODULE_OBJECTS.employmentRecord,
+    MODULE_OBJECTS.probationAssessment,
+  ]),
   approval: codes(APPROVAL_OBJECTS),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],

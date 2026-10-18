@@ -137,13 +137,11 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
 });
 
 describe('未开放的入口仍是 404（开闸表 PT-3b，§13.1）', () => {
-  it('编辑、批量结束、六视图、申请入口未注册', async () => {
+  it('删除、六视图、申请入口未注册（编辑与批量结束随 PT-3c 开放）', async () => {
     const w = await world('http-closed-doors');
     const created = await w.ok(await w.post(), 201);
     for (const [method, path] of [
-      ['PATCH', `/part-times/${created.id}`],
       ['DELETE', `/part-times/${created.id}`],
-      ['POST', '/part-times/batch-end'],
       ['GET', '/part-times'],
       ['GET', '/part-times?view=ongoing'],
       ['POST', '/part-time-requests'],
