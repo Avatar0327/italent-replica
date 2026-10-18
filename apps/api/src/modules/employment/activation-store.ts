@@ -348,8 +348,9 @@ export interface ActivationTodo {
 }
 
 /**
- * HR “生效失败”待办（DEC-052）：仍为审批通过、最近一次尝试失败的申请。待办随状态派生，重试成功或删除申请即关闭；
- * 可见范围按当前操作人的数据范围重新裁剪（AGENTS.md §10「权限」），不预先固化接收人。
+ * HR “生效失败 / 挂起”待办（DEC-052 / DEC-112，离职设计 §10.1：共同迟到后两笔各一条）：仍为审批通过、最近一次尝试
+ * 失败或因前序失败挂起的申请。待办随状态派生，重试成功或删除申请即关闭；返回真实状态、原因和前序标识（挂起项的 blockedBy）；
+ * 失败次数只统计 failed 尝试；可见范围按当前操作人的数据范围重新裁剪（AGENTS.md §10「权限」），不预先固化接收人。
  */
 export async function listActivationTodos(
   tx: Tx,
@@ -370,13 +371,15 @@ export async function listActivationTodos(
     employeeId: string;
     kind: BusinessKind;
     effectiveDate: string;
+    outcome: 'failed' | 'suspended';
     reason: string;
+    blockedBy: string | null;
     failures: number;
     failedAt: string | Date;
   }>(
     await tx.execute(sql`
     SELECT b.id, b.employee_id AS "employeeId", p.kind, p.effective_date::text AS "effectiveDate",
-      a.reason, a.created_at AS "failedAt",
+      a.outcome, a.reason, a.blocked_by_business_id AS "blockedBy", a.created_at AS "failedAt",
       (SELECT count(*)::int FROM employment_activation_attempts f
         WHERE f.tenant_id=b.tenant_id AND f.business_id=b.id AND f.outcome='failed') AS failures
     FROM employment_business_objects b
@@ -390,7 +393,7 @@ export async function listActivationTodos(
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)} AND a.outcome='failed' AND ${scopeFilter}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)} AND a.outcome IN ('failed','suspended') AND ${scopeFilter}
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );
@@ -400,10 +403,10 @@ export async function listActivationTodos(
     kind: row.kind,
     effectiveDate: row.effectiveDate,
     activation: {
-      status: 'failed',
+      status: row.outcome,
       failureCount: Number(row.failures),
       failureReason: row.reason,
-      blockedByBusinessId: null,
+      blockedByBusinessId: row.outcome === 'suspended' ? row.blockedBy : null,
       lastAttemptAt: new Date(row.failedAt).toISOString(),
     },
   }));
