@@ -89,20 +89,18 @@ describe('F-237 离职预览：在途申请超上限提示', () => {
     expect(toVoid.items).toHaveLength(VOID_LIMIT);
   }, 600_000);
 
-  // 确认清单（审批中调动 ∪ 晚于最后工作日的已批准调动）也超长时，预览仍 200，确认令牌与清单照常给出
-  it.each([
-    ['审批中调动', 'in_review', '2026-10-10'],
-    ['晚于最后工作日的已批准调动', 'approved', '2026-12-01'],
-  ])(
-    '确认清单超长（%s × 上限 + 1）：预览 200 + 超限提示，ack 令牌与清单保留',
-    async (_label, state, effectiveDate) => {
-      const x = await world(`f237-ack-${state}`);
-      await x.bulkDrafts(VOID_LIMIT + 1, x.employee.id, { kind: 'transfer', state, effectiveDate });
-      const preview = await previewOf(x);
-      expect(reasons(preview)).toContain('EXIT_APPLICATIONS_TOO_MANY');
-      expect(preview.ack?.ackToken).toEqual(expect.any(String));
-      expect(preview.ack!.items.length + preview.ack!.hiddenCount).toBe(VOID_LIMIT + 1);
-    },
-    600_000,
-  );
+  // 确认清单（审批中调动）超长时，预览仍 200，确认令牌与清单照常给出。
+  // 已批准未落地的调动另受“待生效队列 200 条”的既有守卫约束（activation-store QUEUE_LIMIT），到不了披露上限，这里不测。
+  it('确认清单超长（审批中调动 × 上限 + 1）：预览 200 + 超限提示，ack 令牌与清单保留', async () => {
+    const x = await world('f237-ack-in-review');
+    await x.bulkDrafts(VOID_LIMIT + 1, x.employee.id, {
+      kind: 'transfer',
+      state: 'in_review',
+      effectiveDate: '2026-10-10',
+    });
+    const preview = await previewOf(x);
+    expect(reasons(preview)).toContain('EXIT_APPLICATIONS_TOO_MANY');
+    expect(preview.ack?.ackToken).toEqual(expect.any(String));
+    expect(preview.ack!.items.length + preview.ack!.hiddenCount).toBe(VOID_LIMIT + 1);
+  }, 600_000);
 });

@@ -186,6 +186,17 @@ export interface InFlight {
   readonly landed: boolean;
 }
 
+/** 候选条件推进 SQL（过滤后再取上限），避免“先截断再剔除”漏掉真实超限（F-237）。 */
+export interface InFlightFilter {
+  /** 只要还没落地成任职记录的。 */
+  readonly unlanded?: boolean;
+  readonly excludeId?: string;
+  /** 已批准的只保留计划生效日晚于该日的（早于等于该日的会先于离职落地，§5.0 队列）。 */
+  readonly approvedAfter?: string;
+  /** 只要已落地且最新载荷生效日晚于该日的（已落地的未来生效调动）。 */
+  readonly landedEffectiveAfter?: string;
+}
+
 /** 员工名下指定类型的未办结申请（最新载荷 + 最新状态；计划生效日只取 §5.0A）。 */
 export async function inFlightApplications(
   tx: Tx,
@@ -194,13 +205,15 @@ export async function inFlightApplications(
   kinds: readonly string[],
   states: readonly string[],
   mode: 'application' | null = 'application',
+  filter: InFlightFilter = {},
 ): Promise<InFlight[]> {
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
+  const landedAfter = filter.landedEffectiveAfter;
+  const landed = sql`EXISTS (SELECT 1 FROM employment_records r WHERE r.tenant_id=b.tenant_id AND r.id=b.id)`;
   return rowsOf<InFlight>(
     await tx.execute(sql`
       SELECT b.id, p.kind, s.state, ${planned}::text AS planned, p.effective_date::text AS "effectiveDate",
-        p.department_id AS "departmentId",
-        EXISTS (SELECT 1 FROM employment_records r WHERE r.tenant_id=b.tenant_id AND r.id=b.id) AS landed
+        p.department_id AS "departmentId", ${landed} AS landed
       FROM employment_business_objects b
       JOIN LATERAL (SELECT * FROM employment_payload_versions p
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
@@ -209,6 +222,10 @@ export async function inFlightApplications(
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
         AND (${mode}::text IS NULL OR p.mode=${mode}::text)
         AND p.kind = ANY(${`{${kinds.join(',')}}`}::text[]) AND s.state = ANY(${`{${states.join(',')}}`}::text[])
+        ${filter.unlanded ? sql`AND NOT ${landed}` : sql``}
+        ${filter.landedEffectiveAfter ? sql`AND ${landed} AND p.effective_date > ${landedAfter}::date` : sql``}
+        ${filter.excludeId ? sql`AND b.id<>${filter.excludeId}::uuid` : sql``}
+        ${filter.approvedAfter ? sql`AND (s.state<>'approved' OR ${planned} > ${filter.approvedAfter}::date)` : sql``}
       ORDER BY planned, b.id LIMIT 1001`),
   );
 }
@@ -220,12 +237,33 @@ export interface Disclosable {
   readonly extra?: object;
 }
 
+const DISCLOSE_LIMIT = 1000;
+
+/**
+ * 预览用披露（F-237）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与 disclose 完全一致；
+ * 只给只读预览用（候选查询至多 1001 条，故至多两批），保存 / 门禁路径仍走 disclose，不全局放宽。
+ */
+export async function discloseInBatches(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  rows: readonly Disclosable[],
+) {
+  const parts = [];
+  for (let from = 0; from === 0 || from < rows.length; from += DISCLOSE_LIMIT)
+    parts.push(await disclose(tx, ctx, employeeId, rows.slice(from, from + DISCLOSE_LIMIT)));
+  return {
+    items: parts.flatMap((part) => part.items),
+    hiddenCount: parts.reduce((sum, part) => sum + part.hiddenCount, 0),
+  };
+}
+
 /**
  * 披露：逐项按 DEC-177 可见性 + 字段查看权裁剪，不可见的只计件数 hiddenCount（响应的每一层都按字段权限裁剪）。
  * 返回形态固定为 { items, hiddenCount }，items 只含 businessId / effectiveDate（及调用方附加的 extra）。
  */
 export async function disclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
-  if (rows.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '在途申请过多，请先处理');
+  if (rows.length > DISCLOSE_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '在途申请过多，请先处理');
   const creators = new Map<string, string | null>();
   if (ctx.scope?.terms?.some((term) => term.dimension === 'using_user') && rows.length) {
     const list = `{${rows.map((row) => row.id).join(',')}}`;

@@ -12,6 +12,7 @@ import type { Tx } from '@italent/db';
 import { dayAfter } from './fields.js';
 import {
   disclose,
+  discloseInBatches,
   assessmentNoticeItems,
   inFlightApplications,
   leavesInProgress,
@@ -20,7 +21,7 @@ import {
   regularizationBlocker,
   type InFlight,
 } from './exit-gate.js';
-import { exceedsVoidLimit, OPEN_STATES, VOID_LIMIT, VOIDABLE_KINDS } from './exit-void-applications.js';
+import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
@@ -36,13 +37,12 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
   const regularization = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate);
   if (regularization) blockers.push({ reason: 'EXIT_REGULARIZATION_IN_FLIGHT', ...regularization });
   const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
-  const open = await inFlightApplications(tx, ctx, employeeId, VOIDABLE_KINDS, OPEN_STATES);
-  // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列
-  const voided = open.filter((row) => !row.landed && (row.state !== 'approved' || row.planned > lastWorkDate));
+  // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列；条件在 SQL 里过滤（与生效时同一入口）
+  const voided = await voidCandidates(tx, ctx, employeeId, lastWorkDate);
   const assessments = set?.assessments ?? [];
-  const landed = (await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['effective'], null)).filter(
-    (row) => row.landed && row.effectiveDate > lastWorkDate,
-  );
+  const landed = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['effective'], null, {
+    landedEffectiveAfter: lastWorkDate,
+  });
   return {
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
@@ -50,7 +50,7 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
     ack: set
       ? {
           ackToken: set.hash,
-          ...(await disclose(tx, ctx, employeeId, set.rows)),
+          ...(await discloseInBatches(tx, ctx, employeeId, set.rows)),
           ...(assessments.length ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, assessments) } : {}),
         }
       : null,
@@ -61,7 +61,7 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
         : { reason: 'EXIT_APPLICATIONS_TO_VOID', ...(await disclose(tx, ctx, employeeId, asRows(voided))) },
       {
         reason: 'EXIT_FUTURE_TRANSFER_LANDED',
-        ...(await disclose(
+        ...(await discloseInBatches(
           tx,
           ctx,
           employeeId,
