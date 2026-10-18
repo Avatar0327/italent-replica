@@ -6459,7 +6459,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/permission/effective.ts#mergeObjectPermissions': ['573d06b58fe3', 'a8214270e2bb'],
   'packages/domain/src/permission/effective.ts#resolveObjectPermission': ['a5a4005e65af', '96da85cb620f'],
   'packages/domain/src/permission/module-actions.ts#MODULE_ACTIONS': ['75e751904abd', '8f7d4c4273fe'],
-  'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS': ['dcd4f7209ca7', '3a7420ad8588'],
+  'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS': ['d0757b38df2f', '3a7420ad8588'],
   'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP': ['cea1a68852d2', 'e3b0c44298fc'],
   'packages/domain/src/permission/module-actions.ts#actions': ['276b20c96915', 'b1e627792f33'],
   'packages/domain/src/permission/module-actions.ts#assignment': ['c2f89f40172e', '230f5f4d1323'],

@@ -294,6 +294,9 @@ export const MODULE_OBJECTS = {
       'daysBefore',
       'initiatorType',
       'probationResult',
+      // R2 BE-15b2 自动发起试用期考核规则（B58）也挂在这里：考核类型、入职后天数（考核名称 = name，其余沿用上面的）
+      'assessmentType',
+      'daysAfterEntry',
     ],
     crud,
     ['operatorUserId'],
