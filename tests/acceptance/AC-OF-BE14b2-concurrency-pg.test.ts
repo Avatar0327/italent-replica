@@ -6,7 +6,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-scheduler.js';
-import { syncWorld } from './AC-OF-BE14b2-support.js';
+import { syncWorld, type SyncOffer } from './AC-OF-BE14b2-support.js';
 import { settledOrBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
@@ -87,3 +87,67 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     });
   },
 );
+
+/** 在另一个会话里持有 Offer 行锁，直到调用 release()。 */
+async function holdOfferLock(w: Awaited<ReturnType<typeof syncWorld>>, offerId: string) {
+  let release!: () => void;
+  let held!: () => void;
+  const heldPromise = new Promise<void>((resolve) => (held = resolve));
+  const holder = withTenant(w.db, w.tenant.id, async (tx) => {
+    await tx.execute(sql`SELECT id FROM offers WHERE id = ${offerId}::uuid FOR UPDATE`);
+    held();
+    await new Promise<void>((resolve) => (release = resolve));
+  });
+  await heldPromise;
+  return async () => {
+    release();
+    await holder;
+  };
+}
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送 × 同步、重发 × 恢复交错（真 PG）', () => {
+  it('发送 × 同步：Offer 行被占时，发送与立即同步都在等 Offer 锁；释放后发送成功并同步，立即同步只会 409，全程无 40P01 / 55P03', async () => {
+    const w = await syncWorld(testDb().db, 'sync-send-race');
+    await w.timing({ mode: 'on_send' });
+    const target = await w.social();
+    const other = await w.social();
+    const releaseLock = await holdOfferLock(w, target.id);
+    const send = w.send(target);
+    const manual = w.sync(target);
+    const peer = await w.send(other); // 另一份 Offer 的发送不受影响
+    expect(peer.status, await peer.clone().text()).toBe(200);
+    const both = Promise.all([send, manual]);
+    expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
+    await releaseLock();
+    const [sent, synced] = await both;
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    expect(await sent.json()).toMatchObject({ status: 'sent', syncStatus: 'success', hasPendingEntry: true });
+    expect(synced.status).toBe(409);
+    expect((await w.entries()).length).toBe(2);
+  });
+
+  it('重发 × 恢复：Offer 行被占时，重发与改期恢复都在等 Offer 锁且不持有员工 / 业务锁；释放后恢复成功，重发成功或 409，无 40P01 / 55P03', async () => {
+    const w = await syncWorld(testDb().db, 'resend-restore-race');
+    await w.timing({ mode: 'on_send' });
+    const sent = (await (await w.send(await w.social())).json()) as SyncOffer;
+    const entryId = sent.pendingEntryBusinessId!;
+    expect((await w.entryAction(entryId, 'cancel', {})).status).toBe(200);
+    const employeeId = (await w.record(entryId)).employeeId;
+    const current = await w.read(sent.id);
+    const releaseLock = await holdOfferLock(w, sent.id);
+    const resend = w.send(current);
+    const restore = w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' });
+    const both = Promise.all([resend, restore]);
+    expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      await tx.execute(
+        sql`SELECT id FROM employment_employees WHERE id = ${employeeId}::uuid FOR NO KEY UPDATE NOWAIT`,
+      );
+      await tx.execute(sql`SELECT id FROM employment_business_objects WHERE id = ${entryId}::uuid FOR UPDATE NOWAIT`);
+    });
+    await releaseLock();
+    const [resent, restored] = await both;
+    expect(restored.status, await restored.clone().text()).toBe(200);
+    expect([200, 409]).toContain(resent.status);
+  });
+});

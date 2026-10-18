@@ -58,6 +58,12 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
   const read = async (id: string) => (await w.get(id)) as SyncOffer;
   const sync = (offer: Pick<OfferBody, 'id' | 'revision'>, ifMatch = offer.revision) =>
     w.request('POST', `/${offer.id}/sync`, { ifMatch, body: {} });
+  /** 发送 / 重发（b1，OF-R5）：body 可带 confirmed。 */
+  const send = (
+    offer: Pick<OfferBody, 'id' | 'revision'>,
+    body: Record<string, unknown> = {},
+    ifMatch = offer.revision,
+  ) => w.request('POST', `/${offer.id}/send`, { ifMatch, body });
   async function synced(offer: Pick<OfferBody, 'id' | 'revision'>): Promise<SyncOffer> {
     const response = await sync(offer);
     expect(response.status, await response.clone().text()).toBe(200);
@@ -202,6 +208,7 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     timing,
     read,
     sync,
+    send,
     synced,
     accepted,
     employment,
