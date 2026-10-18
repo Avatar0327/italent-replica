@@ -14,6 +14,13 @@ export const infoRows = {
     strengths: '合成优势',
     developmentItems: null,
     intendedCity: null,
+    targetProfessionalLineId: null,
+    targetLevelId: null,
+    targetPostId: null,
+    currentLevelId: null,
+    currentPositionId: null,
+    currentPostId: null,
+    currentPostName: null,
   },
   'work-shifts': {
     ...baseInfo,
@@ -27,7 +34,12 @@ export const infoRows = {
 export type InfoKind = keyof typeof infoRows;
 export async function mockInfo(
   page: Page,
-  options: IdpMockOptions & { invalidReceipt?: boolean; personError?: boolean } = {},
+  options: IdpMockOptions & {
+    invalidReceipt?: boolean;
+    personError?: boolean;
+    careerValues?: Record<string, unknown>;
+    conflictValues?: Record<string, unknown>;
+  } = {},
 ) {
   await mockIdp(page, options);
   const calls: { method: string; path: string; body: Record<string, unknown>; revision: string | undefined }[] = [];
@@ -36,6 +48,7 @@ export async function mockInfo(
       key,
       Array.from({ length: key === 'tutorships' ? 5 : key === 'careers' ? 4 : 7 }, (_, i) => ({
         ...row,
+        ...(key === 'careers' ? options.careerValues : {}),
         id: `c1540000-0000-4000-8000-00000000000${i + 1}`,
         startDate: `2026-10-0${i + 1}`,
       })),
@@ -50,7 +63,12 @@ export async function mockInfo(
     const fields = options.fields?.[codes[kind]!]?.viewable;
     return fields
       ? Object.fromEntries(
-          Object.entries(row).filter(([key]) => ['id', 'revision', 'createdBy'].includes(key) || fields.includes(key)),
+          Object.entries(row).filter(
+            ([key]) =>
+              ['id', 'revision', 'createdBy'].includes(key) ||
+              fields.includes(key) ||
+              (key === 'currentPostName' && fields.includes('currentPostId')),
+          ),
         )
       : row;
   };
@@ -75,7 +93,8 @@ export async function mockInfo(
     calls.push(call);
     const status = calls.length <= (options.conflictTimes ?? 0) ? 409 : options.writeStatus;
     if (status) {
-      if (status === 409 && row) Object.assign(row, { revision: Number(row.revision) + 1, endDate: '2027-06-30' });
+      if (status === 409 && row)
+        Object.assign(row, { revision: Number(row.revision) + 1, endDate: '2027-06-30', ...options.conflictValues });
       return route.fulfill({ status, json: { error: { code: status === 409 ? 'REVISION_CONFLICT' : 'INTERNAL' } } });
     }
     if (options.invalidReceipt) return route.fulfill({ json: { id, revision: 1 } });
@@ -84,7 +103,7 @@ export async function mockInfo(
       return route.fulfill({ json: row }); // 真实 DELETE 返回删除前快照，revision 不增加。
     }
     const result = {
-      ...(row ?? baseInfo),
+      ...(row ?? infoRows[kind as InfoKind]),
       ...call.body,
       id: id ?? 'c1540000-0000-4000-8000-000000000010',
       revision: row ? Number(row.revision) + 1 : 1,
