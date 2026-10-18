@@ -15,7 +15,6 @@ import {
 } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import type { CommandGuard } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
@@ -26,7 +25,7 @@ import {
   updateAssessment,
   type AssessmentBatchInput,
 } from './assessment.js';
-import { assessmentView, listAssessments, loadAssessment } from './assessment-store.js';
+import { assessmentView, listAssessments, loadAssessment, requireAssessmentInScope } from './assessment-store.js';
 import {
   commandContext,
   employmentScopePredicate,
@@ -55,27 +54,31 @@ const listQuery = z.strictObject({
   assessmentType: z.enum(ASSESSMENT_TYPE_CODES).optional(),
 });
 
-/** 命令事务内的当前权限复核；employeeIds 为本次涉及的员工（批量发起逐人在保存点里判范围，这里只复核重放）。 */
+/**
+ * 命令事务内的当前权限复核。批量发起逐人在保存点里判范围（只让那一人失败），这里只复核重放；单条修改（assessmentId）
+ * 在这里整单判范围，范围外与不存在同一个 404「考核记录不存在」。
+ */
 function assessmentGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   operation: 'create' | 'update',
   payload: Readonly<Record<string, unknown>>,
-  employeeOf?: (tx: Parameters<NonNullable<CommandGuard['before']>>[0]) => Promise<readonly string[]>,
+  assessmentId?: string,
 ) {
   return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
       const button = operation === 'create' ? 'Assessment.Create' : 'Assessment.Edit';
       await requireEmploymentWrite(scoped, operation, payload, button, PROBATION_ASSESSMENT_OBJECT);
-      for (const employeeId of (await employeeOf?.(tx)) ?? []) await requireEmployeeInScope(tx, scoped, employeeId);
+      if (assessmentId)
+        await requireAssessmentInScope(tx, scoped, await loadAssessment(tx, ctx.tenantId, assessmentId));
     },
     // 同键重放：回执里的每一人按当前范围复核，撤权后拿不到原回执
     replayed: async (tx, replay) => {
       const scoped = await commandContext(tx, deps, ctx);
       const body = replay.body as { items?: readonly { employeeId: string }[]; employeeId?: string } | null;
       for (const item of body?.items ?? []) await requireEmployeeInScope(tx, scoped, item.employeeId);
-      if (body?.employeeId) await requireEmployeeInScope(tx, scoped, body.employeeId);
+      if (body?.employeeId) await requireAssessmentInScope(tx, scoped, { employeeId: body.employeeId });
     },
   });
 }
@@ -123,7 +126,7 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const row = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const found = await loadAssessment(tx, ctx.tenantId, id);
       // 范围外与不存在同一个 404
-      await requireEmployeeInScope(tx, ctx, found.employeeId);
+      await requireAssessmentInScope(tx, ctx, found);
       return found;
     });
     return c.json(await trimEmploymentResponse(deps, ctx, assessmentView(row)));
@@ -140,9 +143,7 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
       { id, patch },
       async (tx, context) => ({ status: 200, body: await updateAssessment(tx, context, id, patch) }),
       {
-        guard: assessmentGuard(deps, ctx, 'update', patch, async (tx) => [
-          (await loadAssessment(tx, ctx.tenantId, id)).employeeId,
-        ]),
+        guard: assessmentGuard(deps, ctx, 'update', patch, id),
       },
     );
   });

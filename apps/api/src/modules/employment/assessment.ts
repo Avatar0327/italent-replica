@@ -26,6 +26,7 @@ import {
   assertAssessmentRevision,
   auditAssessment,
   loadAssessment,
+  requireAssessmentInScope,
   saveAssessment,
   type AssessmentRow,
 } from './assessment-store.js';
@@ -192,7 +193,7 @@ function assertEditable(row: AssessmentRow, status: AssessmentRow['status']) {
 export async function updateAssessment(tx: Tx, ctx: EmploymentContext, id: string, raw: unknown) {
   const patch = parseAssessmentPatch(raw);
   const row = await loadAssessment(tx, ctx.tenantId, id, true);
-  await requireEmployeeInScope(tx, ctx, row.employeeId);
+  await requireAssessmentInScope(tx, ctx, row);
   assertAssessmentRevision(ctx, row);
   assertEditable(row, 'approved');
   return saveAssessment(tx, ctx, row, mergedPatch(row, patch), 'update');

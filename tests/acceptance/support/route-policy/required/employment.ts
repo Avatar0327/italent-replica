@@ -454,6 +454,11 @@ const ASSESSMENT_CONST: Evidence = {
   unit: 'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   anchor: "'TenantBase.ProbationAssessment'",
 };
+const ASSESSMENT_IN_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${SRC}/employment/assessment-store.ts#requireAssessmentInScope`,
+  anchor: 'await requireEmployeeInScope(tx, ctx, row.employeeId)',
+};
 const assessmentView = (call: Evidence) =>
   ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
 
@@ -2357,7 +2362,8 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.assessmentScope',
       [],
       [
-        at(ASSESS, 'GET', '/probation-assessments/:id', 'await requireEmployeeInScope(tx, ctx, found.employeeId)'),
+        at(ASSESS, 'GET', '/probation-assessments/:id', 'await requireAssessmentInScope(tx, ctx, found)'),
+        ASSESSMENT_IN_SCOPE,
         EMPLOYEE_IN_SCOPE,
       ],
       '考核不存在与考核对象在范围外同一个 404',

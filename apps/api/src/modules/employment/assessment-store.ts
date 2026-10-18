@@ -6,7 +6,7 @@
 import { sql, type Tx } from '@italent/db';
 import type { AssessmentOpinion, AssessmentRating, AssessmentStatus, AssessmentType } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { assertRevision, auditEmployment } from './context.js';
+import { assertRevision, auditEmployment, requireEmployeeInScope } from './context.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -158,4 +158,21 @@ export function auditAssessment(
 /** If-Match 比对（路由编辑用）。 */
 export function assertAssessmentRevision(ctx: EmploymentContext, row: AssessmentRow) {
   assertRevision(ctx.expectedRevision, row.revision);
+}
+
+/**
+ * 考核对象在 ctx 的数据范围内；范围外与考核不存在同一个 404「考核记录不存在」（不泄露存在性，
+ * 不能让“任职数据不存在”与“考核记录不存在”两种文案区分出考核对象存在）。
+ */
+export async function requireAssessmentInScope(
+  tx: Tx,
+  ctx: EmploymentContext,
+  row: Pick<AssessmentRow, 'employeeId'>,
+): Promise<void> {
+  try {
+    await requireEmployeeInScope(tx, ctx, row.employeeId);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('NOT_FOUND', '考核记录不存在');
+    throw error;
+  }
 }
