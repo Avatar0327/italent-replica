@@ -82,8 +82,8 @@ export function useHrTransferCommand(
           // 回执按实际发出的 If-Match 核对（#350 第 2 轮 P2-2）。
           const revision = sent.revision ?? record.revision;
           const save = (id: string) => saveTransfer(tenantId, model, action, id, revision);
-          const { employeeId, transferTypeCode } = model;
-          await write.run(save, { employeeId, transferTypeCode, revision });
+          const { employeeId } = model;
+          await write.run(save, { employeeId, revision });
           // 内核按员工记录核对回执；业务单回执已由 useHrWrite 校验并保存。
           return { id: model.employeeId };
         },

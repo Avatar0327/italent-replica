@@ -100,8 +100,7 @@ export function useTransferForm(
     notice,
     ...commands,
     processing: !!hrScope && hr.processing,
-    conflict: hrScope ? hr.conflict : undefined,
-    commandError: hrScope ? hr.commandError : '',
+    ...draftCommandState(draft, hr, commands, hrScope),
     commandNotice: hrScope ? hr.commandNotice : '',
     loadingPreview,
     draft,
@@ -430,5 +429,20 @@ function editField(setModel: SetModel) {
         delete values.directManagerId;
       return { ...current, [key]: values };
     });
+  };
+}
+
+function draftCommandState(
+  draft: ReturnType<typeof useDraftRestore>,
+  hr: ReturnType<typeof useHrTransferCommand>,
+  commands: ReturnType<typeof useHrTransferCommand> | ReturnType<typeof useTransferCommand>,
+  scope?: string,
+) {
+  const locked = !!scope && (draft.command.locked || draft.status === 'loading');
+  return {
+    busy: commands.busy || locked,
+    conflict: scope ? (draft.command.locked ? draft.command : hr.conflict) : undefined,
+    commandError: scope ? draft.error || hr.commandError : '',
+    submit: (action: TransferAction) => (locked ? Promise.resolve() : commands.submit(action)),
   };
 }

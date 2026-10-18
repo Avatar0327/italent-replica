@@ -4,6 +4,7 @@ import { maybeStartLeaveConsumerScheduler } from './modules/evaluation/leave-con
 import { startReviewGroupExitScheduler } from './modules/evaluation/review-group-exit-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
+import { startOfferSyncScheduler } from './modules/offer/sync-scheduler.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { databaseFromEnv, localPgliteDir } from './database.js';
@@ -52,6 +53,11 @@ if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {
 }
 
 if (handle && process.env.CONTRACT_SCHEDULER !== 'off') startContractScheduler(handle.db);
+
+// R2 BE-14b2：Offer 夜间补同步待入职（OF-R8）；按租户时区业务日判定，扫描幂等、多实例靠 Offer 行锁去重。
+if (handle && process.env.OFFER_SYNC_SCHEDULER !== 'off') {
+  startOfferSyncScheduler(handle.db, { intervalMs: Number(process.env.OFFER_SYNC_INTERVAL_MS || 3_600_000) });
+}
 
 // F-010 / DEC-170 / 15 §12：默认每 3 小时重算，所有实例通过租户 + 周期命令去重。
 if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {

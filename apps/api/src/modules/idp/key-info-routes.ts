@@ -20,6 +20,7 @@ import {
   type ModuleScope,
   listEnvelope,
   project,
+  type Projection,
   projectionOf,
 } from './access.js';
 import {
@@ -34,10 +35,20 @@ import {
   updateKeyInfo,
 } from './key-info-service.js';
 import { runIdpCommand } from './executor.js';
-import { keyInfoColumn, keyInfoScopeSql } from './key-info-scope.js';
+import { keyInfoListScope } from './key-info-scope.js';
 import * as input from './plan-input.js';
 
 const BASE = '/api/tenant/idp';
+
+/**
+ * 按字段权限裁剪一行。派生的职务名称（currentPostName）不是独立权限字段，随 currentPostId 的查看权输出：
+ * 看不到职务就不输出名称。
+ */
+function projectRow(row: KeyInfoRow, fields: Projection, kind: KeyInfoKind) {
+  const { currentPostName, ...rest } = row;
+  const shown = project(rest, fields);
+  return kind === 'career' && 'currentPostId' in shown ? { ...shown, currentPostName } : shown;
+}
 
 const ROUTES: readonly {
   readonly path: string;
@@ -68,17 +79,10 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: str
       throw new AppError('VALIDATION_FAILED', 'employeeId 必须为 UUID');
     }
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listKeyInfo(
-        tx,
-        ctx.tenantId,
-        spec,
-        keyInfoScopeSql(scope, spec, keyInfoColumn(spec)),
-        page,
-        employeeId?.toLowerCase(),
-      ),
+      listKeyInfo(tx, ctx.tenantId, spec, keyInfoListScope(scope, spec), page, employeeId?.toLowerCase()),
     );
     const fields = await projectionOf(deps, ctx, kind);
-    return c.json({ ...listEnvelope(page, scope), items: rows.map((row) => project(row, fields)) });
+    return c.json({ ...listEnvelope(page, scope), items: rows.map((row) => projectRow(row, fields, kind)) });
   });
 
   router.get(`${BASE}/${path}/:id`, async (c) => {
@@ -91,7 +95,7 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: str
       return found;
     });
     c.header('ETag', `"${row.revision}"`);
-    return c.json(project(row, await projectionOf(deps, ctx, kind)));
+    return c.json(projectRow(row, await projectionOf(deps, ctx, kind), kind));
   });
 }
 
@@ -115,7 +119,7 @@ async function respondKeyInfo(
   result: { view: KeyInfoRow; status: number },
 ) {
   if (c.req.method !== 'DELETE') c.header('ETag', `"${result.view.revision}"`);
-  return c.json(project(result.view, await projectionOf(deps, ctx, kind)), result.status as 200 | 201);
+  return c.json(projectRow(result.view, await projectionOf(deps, ctx, kind), kind), result.status as 200 | 201);
 }
 
 function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps, route: (typeof ROUTES)[number]) {

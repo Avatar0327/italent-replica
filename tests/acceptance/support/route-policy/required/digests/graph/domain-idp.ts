@@ -7,6 +7,7 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS': [
     '#CAREER_FIELDS',
+    '#CAREER_SNAPSHOT_FIELDS',
     '#GOAL_FIELDS',
     '#PLAN_FIELDS',
     '#SUB_PROCESS_FIELDS',
@@ -16,7 +17,7 @@ export const GRAPH: Graph = {
     '#object',
   ],
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': ['#object'],
-  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': ['#CAREER_FIELDS', '#object'],
+  'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': ['#CAREER_FIELDS', '#CAREER_SNAPSHOT_FIELDS', '#object'],
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>commonGoal': ['#object'],
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goal': ['#GOAL_FIELDS', '#object'],
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>goalReview': ['#object'],

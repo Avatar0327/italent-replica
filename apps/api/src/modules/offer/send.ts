@@ -3,8 +3,8 @@
  * 发送时间、进已发，并在同一事务写一行发送记录（邮件 outbox，状态 pending，首版不显示投递状态）。没有撤回。
  * 超编弱控先要二次确认（establishment.ts）。答复链接令牌、通知模板与附件归候选人答复页（F-183），本单不生成。
  *
- * 供 BE-14b2 / b3 接线的点：offer_send_records（发送记录，查看邮件用）；sendOffer 的 sent_at 可作为“发送时同步待入职”
- * （OF-R8）的触发点——同步在 sendOffer 的事务里追加调用即可。
+ * 供 BE-14b3 接线的点：offer_send_records（发送记录，查看邮件用）。“发送时同步待入职”（OF-R8，BE-14b2）已在发送路由
+ * 的事务里接入（syncOfferWhenDue）。
  */
 import { offerSendRecords, type Tx } from '@italent/db';
 import { planOfferDispatch } from '@italent/domain';
@@ -18,7 +18,9 @@ import { offerOperationCheck, runOfferWrite, assertOfferRevision, type OfferCont
 import { requireQuotaConfirmed } from './establishment.js';
 import type { OfferSendInput } from './input.js';
 import { parseOfferSend } from './input.js';
-import { facts, failPlan, lockOffer, offerStillVisible, readOfferApprovalSettings, save } from './service.js';
+import { facts, failPlan, lockOffer, offerDto, offerStillVisible, readOfferApprovalSettings, save } from './service.js';
+import { syncOfferWhenDue } from './sync.js';
+import { lockOfferSyncScope } from './sync-lock.js';
 
 export async function sendOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferSendInput) {
   const before = await lockOffer(tx, ctx, id);
@@ -30,6 +32,8 @@ export async function sendOffer(tx: Tx, ctx: OfferContext, id: string, input: Of
       reason: 'OFFER_FORM_INCOMPLETE',
       fields: ['personalEmail'],
     });
+  // 取锁单一入口（sync-lock.ts）：关联了已有人员时，先于弱控确认（组织 / 编制锁）取齐员工与业务头，锁序 Offer → 员工 → 组织 / 编制
+  await lockOfferSyncScope(tx, ctx, before);
   await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
   const kind = plan.patch.kind;
   const [record] = await tx
@@ -59,7 +63,16 @@ export function registerOfferSend(module: Hono<TenantEnv>, deps: TenantRouteDeps
       { id, input },
       'update',
       offerOperationCheck('update'),
-      async (tx, ctx) => ({ status: 200, body: await sendOffer(tx, ctx, id, input) }),
+      async (tx, ctx) => {
+        const sent = await sendOffer(tx, ctx, id, input);
+        // OF-R8 时机 = 发送时：同事务按设置当场同步待入职（放在路由事务回调层，F-039 探测深度可达）。锁序不变——sendOffer 已先锁
+        // Offer 并取齐关联人员锁；业务规则拒绝（含强控超编，确认标记只管弱控）记为同步失败、发送保留，非业务错误整个发送事务回滚
+        const synced = await syncOfferWhenDue(tx, ctx, id);
+        return {
+          status: 200,
+          body: synced.attempted ? { ...offerDto(synced.row!), sendRecord: sent.sendRecord } : sent,
+        };
+      },
       { replayed: offerStillVisible },
     );
   });

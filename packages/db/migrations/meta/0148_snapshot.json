@@ -1,5 +1,5 @@
 {
-  "id": "fb5041e7-60bd-4e53-8f6d-07103c5532f8",
+  "id": "e6b4c0ca-fdb0-403a-8b2c-55a1f941caee",
   "prevId": "1eef43ae-2349-4b63-a77e-aeed2734f44a",
   "version": "7",
   "dialect": "postgresql",
@@ -23278,7 +23278,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -24133,7 +24133,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24165,7 +24165,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -41266,6 +41266,42 @@
           "primaryKey": false,
           "notNull": false
         },
+        "target_professional_line_id": {
+          "name": "target_professional_line_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_level_id": {
+          "name": "target_level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_post_id": {
+          "name": "target_post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_level_id": {
+          "name": "current_level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_position_id": {
+          "name": "current_position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_post_id": {
+          "name": "current_post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "strengths": {
           "name": "strengths",
           "type": "text",
@@ -41361,6 +41397,96 @@
           "columnsFrom": [
             "tenant_id",
             "target_position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_target_line_fk": {
+          "name": "idp_careers_target_line_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_professional_line_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_professional_line_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_target_level_fk": {
+          "name": "idp_careers_target_level_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_level_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_target_post_fk": {
+          "name": "idp_careers_target_post_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_current_level_fk": {
+          "name": "idp_careers_current_level_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_level_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "current_level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_current_position_fk": {
+          "name": "idp_careers_current_position_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "current_position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_current_post_fk": {
+          "name": "idp_careers_current_post_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "current_post_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -59336,272 +59462,6 @@
         "offer_send_records_status": {
           "name": "offer_send_records_status",
           "value": "\"offer_send_records\".\"status\" IN ('pending', 'sent', 'failed', 'unknown')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.employment_probation_assessments": {
-      "name": "employment_probation_assessments",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "anchor_id": {
-          "name": "anchor_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "department_id": {
-          "name": "department_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "assessment_type": {
-          "name": "assessment_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "assessment_name": {
-          "name": "assessment_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "assessment_date": {
-          "name": "assessment_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "self_evaluation": {
-          "name": "self_evaluation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "manager_rating": {
-          "name": "manager_rating",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "regularization_opinion": {
-          "name": "regularization_opinion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "regularization_date": {
-          "name": "regularization_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "initiation": {
-          "name": "initiation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "initiator_user_id": {
-          "name": "initiator_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "system_proxy": {
-          "name": "system_proxy",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "regularization_business_id": {
-          "name": "regularization_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "employment_probation_assessments_employee": {
-          "name": "employment_probation_assessments_employee",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "employment_probation_assessments_tenant_id_tenants_id_fk": {
-          "name": "employment_probation_assessments_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_probation_assessments",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_probation_assessments_anchor_fk": {
-          "name": "employment_probation_assessments_anchor_fk",
-          "tableFrom": "employment_probation_assessments",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "anchor_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_probation_assessments_regularization_fk": {
-          "name": "employment_probation_assessments_regularization_fk",
-          "tableFrom": "employment_probation_assessments",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "regularization_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "employment_probation_assessments_tenant_id": {
-          "name": "employment_probation_assessments_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "employment_probation_assessments_type": {
-          "name": "employment_probation_assessments_type",
-          "value": "\"employment_probation_assessments\".\"assessment_type\" IN ('probation', 'regularization')"
-        },
-        "employment_probation_assessments_status": {
-          "name": "employment_probation_assessments_status",
-          "value": "\"employment_probation_assessments\".\"status\" IN ('in_review', 'approved', 'rejected', 'disapproved', 'cancelled')"
-        },
-        "employment_probation_assessments_initiation": {
-          "name": "employment_probation_assessments_initiation",
-          "value": "\"employment_probation_assessments\".\"initiation\" IN ('manual', 'auto')"
-        },
-        "employment_probation_assessments_name": {
-          "name": "employment_probation_assessments_name",
-          "value": "btrim(\"employment_probation_assessments\".\"assessment_name\") <> '' AND char_length(\"employment_probation_assessments\".\"assessment_name\") <= 100"
-        },
-        "employment_probation_assessments_rating": {
-          "name": "employment_probation_assessments_rating",
-          "value": "\"employment_probation_assessments\".\"manager_rating\" IS NULL OR \"employment_probation_assessments\".\"manager_rating\" IN ('average', 'meets', 'exceeds', 'below')"
-        },
-        "employment_probation_assessments_opinion": {
-          "name": "employment_probation_assessments_opinion",
-          "value": "\"employment_probation_assessments\".\"regularization_opinion\" IS NULL\n        OR \"employment_probation_assessments\".\"regularization_opinion\" IN ('normal', 'early', 'delayed', 'failed', 'extended')"
-        },
-        "employment_probation_assessments_date": {
-          "name": "employment_probation_assessments_date",
-          "value": "\"employment_probation_assessments\".\"regularization_opinion\" IS NULL OR \"employment_probation_assessments\".\"regularization_opinion\" NOT IN ('early', 'delayed')\n        OR \"employment_probation_assessments\".\"regularization_date\" IS NOT NULL"
-        },
-        "employment_probation_assessments_text": {
-          "name": "employment_probation_assessments_text",
-          "value": "char_length(COALESCE(\"employment_probation_assessments\".\"self_evaluation\", '')) <= 2000"
-        },
-        "employment_probation_assessments_revision_positive": {
-          "name": "employment_probation_assessments_revision_positive",
-          "value": "\"employment_probation_assessments\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false
