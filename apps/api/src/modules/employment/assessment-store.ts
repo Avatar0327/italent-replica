@@ -4,13 +4,24 @@
  * 审计按字段级变更日志写（DEC-019），归属考核对象与其主职部门（audit/visibility 按员工 / 组织裁剪）。
  */
 import { sql, type Tx } from '@italent/db';
-import type { AssessmentOpinion, AssessmentRating, AssessmentStatus, AssessmentType } from '@italent/domain';
+import {
+  PROBATION_ASSESSMENT_OBJECT,
+  type AssessmentOpinion,
+  type AssessmentRating,
+  type AssessmentStatus,
+  type AssessmentType,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { assertRevision, auditEmployment, requireEmployeeInScope } from './context.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
 export const ASSESSMENT_AUDIT_TYPE = 'probation-assessment';
+
+// 考核按考核对象员工归属：组织类维度（管理单元 / 组织）的范围要带出“按人员”的关联谓词，否则人员集合为空、
+// 正常的部门授权也办不了（BE-15b1 第 1 轮 P2-1）。在业务公共入口登记，路由、审批适配器与重提复核都经过本文件。
+registerPersonScopedObject(PROBATION_ASSESSMENT_OBJECT);
 
 export interface AssessmentRow {
   readonly id: string;

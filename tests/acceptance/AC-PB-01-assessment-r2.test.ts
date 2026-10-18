@@ -86,7 +86,14 @@ describe('P1-1 撤权后重提考核（DEC-455）', () => {
     expect(before).toMatchObject({ status: 'rejected', instance: 'returned' });
     await op.revokePermission();
     // 普通发起已被拒；审批中心重提同样必须被拒
-    const again = await op.call('POST', '/probation-assessments', { body: await launchBody(w, [MISSING]) });
+    const again = await op.call('POST', '/probation-assessments', {
+      body: {
+        assessmentType: 'probation',
+        assessmentName: '撤权后发起',
+        assessmentDate: '2026-10-01',
+        items: [{ employeeId: MISSING, revision: 1 }],
+      },
+    });
     expect(again.status).toBe(403);
     const denied = await resubmit();
     expect(denied.status, await denied.clone().text()).toBe(403);
@@ -321,9 +328,15 @@ describe('P2-2 DEC-415 模块预置管理员的“看全部”', () => {
         [...ids].sort(),
       );
     }
-    // 人事专员有对象功能授权，但没有预置看全部、也没配数据范围：看不到、发起不了
+    // 人事专员有对象功能授权，但没有预置看全部、也没配数据范围：列表为空、发起只在本人回执里 404
     const specialist = await api.request('GET', '/api/tenant/employment/probation-assessments', asSpecialist);
-    expect(specialist.status).toBe(403);
-    expect((await launch(asSpecialist, employees[0]!)).status).toBe(403);
+    expect(specialist.status, await specialist.clone().text()).toBe(200);
+    expect(((await specialist.json()) as { items: unknown[] }).items).toEqual([]);
+    const denied = await launch(asSpecialist, employees[0]!);
+    expect(denied.status, await denied.clone().text()).toBe(200);
+    expect(((await denied.json()) as LaunchReceipt).items[0]).toMatchObject({
+      status: 'failed',
+      error: { code: 'NOT_FOUND' },
+    });
   });
 });

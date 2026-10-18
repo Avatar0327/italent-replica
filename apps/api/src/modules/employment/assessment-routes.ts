@@ -25,6 +25,7 @@ import {
   updateAssessment,
   type AssessmentBatchInput,
 } from './assessment.js';
+import { requireAssessmentWrite } from './assessment-access.js';
 import { assessmentView, listAssessments, loadAssessment, requireAssessmentInScope } from './assessment-store.js';
 import {
   commandContext,
@@ -67,11 +68,8 @@ function assessmentGuard(
 ) {
   return scopedGuard({
     before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      const button = operation === 'create' ? 'Assessment.Create' : 'Assessment.Edit';
-      await requireEmploymentWrite(scoped, operation, payload, button, PROBATION_ASSESSMENT_OBJECT);
-      if (assessmentId)
-        await requireAssessmentInScope(tx, scoped, await loadAssessment(tx, ctx.tenantId, assessmentId));
+      // 与审批中心重提共用同一个检查入口（assessment-access.ts，DEC-431①）
+      await requireAssessmentWrite(tx, await commandContext(tx, deps, ctx), operation, payload, assessmentId);
     },
     // 同键重放：回执里的每一人按当前范围复核，撤权后拿不到原回执
     replayed: async (tx, replay) => {
