@@ -127,6 +127,7 @@ export async function offerApprovalWorld(db: Db, label: string) {
     manager,
     head,
     applicant,
+    company,
     offer,
     social,
     invalidateRaw,
