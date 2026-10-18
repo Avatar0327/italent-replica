@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
-import { mountPath, type ModulePage } from './page-registry.js';
+import { mountPath, pageRoutes, type ModulePage } from './page-registry.js';
 import { MENU_ROUTES, PAGES, SUB_ROUTES, appRoute, legacyTarget } from './routes.js';
 import { PageErrorBoundary, PageState } from './PageState.js';
 import { usePermissions } from './Permissions.js';
@@ -41,13 +41,14 @@ export function AppPages() {
   if (permission.loading) return <PageState kind="loading" />;
   if (permission.error) return <PageState kind="error" error={permission.error} retry={permission.refresh} />;
   const active = appRoute(location.pathname);
-  if (active && !PAGES.ungated.has(location.pathname) && !permission.menus.some((menu) => menu.key === active.id))
+  const visible = permission.menus.flatMap((menu) => (menu.directory ? (menu.children ?? []) : [menu]));
+  if (active && !PAGES.ungated.has(location.pathname) && !visible.some((menu) => menu.key === active.id))
     return <PageState kind="forbidden" refresh={permission.refresh} />;
   return (
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>
       <Suspense fallback={<PageState kind="loading" />}>
         <Routes>
-          {MENU_ROUTES.map((route) => (
+          {pageRoutes(MENU_ROUTES).map((route) => (
             <Route
               key={route.id}
               path={mountPath(route)}

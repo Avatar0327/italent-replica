@@ -226,6 +226,22 @@ function configurationView(objectCode: string, fields: FieldsPolicy): RoutePolic
   });
 }
 
+/**
+ * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支，只决定回执列出哪些员工、不参与准入、不拒绝请求——
+ * visibleEmployees 先判任职记录查看权（object.view），没有时 launched / failed 两列为空；有时再按数据范围逐人过滤
+ * （employment.runReceipt，与准入节点上的范围同一裁剪）。逐人条目是固定键，不含任职字段值。
+ */
+const RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(
+    ['employeeId', 'ruleId', 'businessId', 'businessStatus', 'initiatorUserId', 'reason'],
+    'BE-15a 第 2 轮审查 P1：立即执行回执的逐人固定键',
+  ),
+});
+
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
 /** tab=pending（默认）：approval/queries.ts listTodos（本人为待办人 assignee_user_id）。 */
 const TODO_PENDING_KEYS = [
@@ -1325,6 +1341,30 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Withdraw）；提交只接受 { pendingTransferAck }、只允许原发起人（403 EXIT_SUBMIT_INITIATOR_ONLY）；命令内状态迁移 + 审批钩子
   'POST /exits/:id/submit': exitTransition(),
   'POST /exits/:id/withdraw': exitTransition(),
+  // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------
+  // 视图：view ∈ in_progress / completed / all / cancellations（缺失或不合法 400）；筛选 departmentId（含下级，可 includeChildren=false）/
+  // keyword / lastWorkDateFrom / lastWorkDateTo / exitTypeCode / reasonCode / whereaboutsCode / status（仅离职中 / 全部）/
+  // initiation 严格校验 400；readPageContext(list)，筛选用到的字段不可查看 403「筛选字段不可查看」；分页前 employmentVisibilitySql
+  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号按人员对象可见字段裁剪（无权缺席），activation /
+  // cancellation 是控制项，行可见即可见
+  'GET /exits': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.exitViews'),
+  }),
+  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」；
+  // requirePermission(tenant.employment.read, resource=employeeId)；效果台账只给汇总件数（无目标 ID）
+  'GET /exits/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.exitDetail'),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({
@@ -1521,5 +1561,80 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       preconditions: ['assertRevision'],
     }),
     byId,
+  ),
+  // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（B57，DEC-533② / DEC-539）--------------
+  // 同自动加黑规则：任职设置配置对象；body 严格（到期前天数 0～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置0至999的整数”；
+  // 名称 / 适用组织 / 业务处理规则 / 发起人类型必填，试用结果须为字典启用项）；审计 auto_regularization_rule.*
+  'GET /auto-regularization-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /auto-regularization-rules': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+  ),
+  'PUT /auto-regularization-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+    byId,
+  ),
+  // 复制：If-Match 0，另建一条（名称加“（复制）”、默认停用）；源规则不存在 404
+  'POST /auto-regularization-rules/:id/copy': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_regularization_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 单条启停（DEC-533②，复刻增加）：body 严格 { enabled }；审计 auto_regularization_rule.enable / disable
+  'PUT /auto-regularization-rules/:id/enabled': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_regularization_rule'),
+    byId,
+  ),
+  'DELETE /auto-regularization-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_regularization_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 立即执行（DEC-539①）：body 严格 { cursor? }（上次回执的 nextCursor，非 UUID 400）；
+  // 总开关关闭 409 AUTO_REGULARIZATION_DISABLED；按规则适用组织扫描（系统批次提前执行，
+  // 不叠加操作人数据范围），逐人保存点经 BE-3 转正入口发起，审计 employment.auto_regularization.launch；回执固定形状
+  'POST /auto-regularization/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 逐人经 BE-3 转正入口发起：联动校验在 createEmploymentBusiness 里照常调用（系统批次不带数据范围）
+        guards: [LINKAGE],
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织（系统批次，DEC-539①）；
+        // 这里的范围是回执的人员披露：按操作人当前任职范围逐人过滤（visibleEmployees，首次与重放同一出口，第 2 轮审查 P1）
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RUN_RECEIPT_DISCLOSURE },
+      write: write(
+        'body',
+        'config.audited:auto_regularization_run',
+        none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'),
+        { commandOnly: true, preconditions: ['assertRevision'] },
+      ),
+    },
   ),
 });
