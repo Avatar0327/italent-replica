@@ -16,6 +16,7 @@ import {
   type ModuleScope,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
+import { firstCreatorSql } from '../permission/scope-audit.js';
 import { rows, type PersonnelContext, type Row } from './store.js';
 
 for (const object of PERSONNEL_OBJECTS) registerObjectDefinition(object);
@@ -94,9 +95,7 @@ export function personScope(ctx: AccessContext, alias = 'e', creator?: SQL) {
       creator ??
       subsetCreator ??
       // DEC-198：创建人取最小元数据表（不随审计保留期清理）
-      sql`(SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=${ctx.tenantId}
-      AND a.object_id=${sql.identifier(alias)}.id::text AND a.action='employment.employee.create'
-      ORDER BY a.created_at LIMIT 1)`,
+      firstCreatorSql(ctx.tenantId, sql`${sql.identifier(alias)}.id`, 'employment.employee.create'),
   });
 }
 export async function requirePerson(tx: Tx, ctx: AccessContext, id: string) {

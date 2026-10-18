@@ -21,6 +21,7 @@ import {
   scopeAllowsInTransaction,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
+import { firstCreatorSql } from '../permission/scope-audit.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
 import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
 import { recordAudit } from '../../audit/record.js';
@@ -121,10 +122,7 @@ export function requireEmploymentScope(
 
 export function employmentCreator(tenantId: string, objectId: SQL, business = false): SQL {
   // DEC-198：创建人取最小元数据表（不随审计保留期清理）
-  return sql`(SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=${tenantId}
-    AND a.object_id=${objectId}::text
-    AND a.action=${business ? 'employment.business.create' : 'employment.employee.create'}
-    ORDER BY a.created_at LIMIT 1)`;
+  return firstCreatorSql(tenantId, objectId, business ? 'employment.business.create' : 'employment.employee.create');
 }
 
 async function employmentCreatorId(tx: Tx, ctx: EmploymentContext, id: string, business = false) {
