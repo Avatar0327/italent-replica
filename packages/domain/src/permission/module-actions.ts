@@ -255,26 +255,38 @@ export const MODULE_OBJECTS = {
       'attempt',
     ],
   ),
-  employmentSettings: object('EmploymentSettings', [
-    'allowDirectTransfer',
-    'unrestrictTargetDepartment',
-    'autoPopulate',
-    // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
-    'entryEmailRules',
-    // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
-    'code',
-    'name',
-    'enabled',
-    'displayOrder',
-    // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
-    'priority',
-    'orgIds',
-    'description',
-    'conditions',
-    'term',
-    'reason',
-    'note',
-  ]),
+  employmentSettings: object(
+    'EmploymentSettings',
+    [
+      'allowDirectTransfer',
+      'unrestrictTargetDepartment',
+      'autoPopulate',
+      // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
+      'entryEmailRules',
+      // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
+      'code',
+      'name',
+      'enabled',
+      'displayOrder',
+      // R2 BE-8a 离职自动加黑规则（B68）也挂在任职设置配置对象上：规则信息、加黑条件、加黑信息（name 已在上面）
+      'priority',
+      'orgIds',
+      'description',
+      'conditions',
+      'term',
+      'reason',
+      'note',
+      // R2 BE-15a 自动转正规则（B57）也挂在任职设置配置对象上：适用范围、业务处理规则、发起人类型、试用结果
+      //（name / priority / orgIds / enabled 已在上面）；operatorUserId 是最后保存人，系统写入、只可查看
+      'includeSubordinates',
+      'mode',
+      'daysBefore',
+      'initiatorType',
+      'probationResult',
+    ],
+    crud,
+    ['operatorUserId'],
+  ),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),

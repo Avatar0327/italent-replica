@@ -17,6 +17,12 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'DELETE /api/tenant/employment/blacklist-rules/:id',
     'POST /api/tenant/employment/blacklist-rules',
     'PUT /api/tenant/employment/blacklist-rules/:id',
+    'DELETE /api/tenant/employment/auto-regularization-rules/:id',
+    'POST /api/tenant/employment/auto-regularization-rules',
+    'POST /api/tenant/employment/auto-regularization-rules/:id/copy',
+    'POST /api/tenant/employment/auto-regularization/run',
+    'PUT /api/tenant/employment/auto-regularization-rules/:id',
+    'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
@@ -39,6 +45,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/records/:id/forward-update-preview',
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
+    'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
     'PUT /api/tenant/employment/blacklist-rules/:id',
     'PUT /api/tenant/employment/blacklist/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
