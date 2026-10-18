@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { lockTransferParticipants } from '../../apps/api/src/modules/employment/transfer-locks.js';
+import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { autoAssessmentWorld, rowsOf, type AutoAssessmentWorld } from './AC-PB-BE15b2-support.js';
 
 const testDb = useTestDb();
@@ -16,18 +18,20 @@ const BUSINESS_DATE = '2026-10-01';
 /** 夹具：当天已扫描过一遍（swept）但未完成，并为 employeeId 写一条待续跑——等价于“扫描后该员工的主档被清掉”。 */
 async function seedSweptDay(w: AutoAssessmentWorld, pending: { employeeId: string; reason: 'locked' | 'error' }[]) {
   await w.asTenant(async (tx) => {
-    await tx.execute(sql`INSERT INTO employment_auto_assessment_daily_runs(tenant_id, business_date, command_id, swept)
-      VALUES (${w.tenant.id}, ${BUSINESS_DATE}::date, ${randomUUID()}, true)`);
+    await tx.execute(sql`INSERT INTO employment_auto_assessment_daily_runs(tenant_id, business_date, command_id,
+        swept) VALUES (${w.tenant.id}, ${BUSINESS_DATE}::date, ${randomUUID()}, true)`);
     for (const item of pending)
-      await tx.execute(sql`INSERT INTO employment_auto_assessment_daily_pending(tenant_id, business_date, employee_id,
-          reason, attempts) VALUES (${w.tenant.id}, ${BUSINESS_DATE}::date, ${item.employeeId}::uuid, ${item.reason}, 1)`);
+      await tx.execute(sql`INSERT INTO employment_auto_assessment_daily_pending(tenant_id, business_date,
+          employee_id, reason, attempts)
+        VALUES (${w.tenant.id}, ${BUSINESS_DATE}::date, ${item.employeeId}::uuid, ${item.reason}, 1)`);
   });
 }
 
 const pendingOf = (w: AutoAssessmentWorld) =>
   w.asTenant(async (tx) =>
     rowsOf<{ employeeId: string; attempts: number }>(
-      await tx.execute(sql`SELECT employee_id::text AS "employeeId", attempts FROM employment_auto_assessment_daily_pending
+      await tx.execute(sql`SELECT employee_id::text AS "employeeId", attempts
+        FROM employment_auto_assessment_daily_pending
         WHERE tenant_id=${w.tenant.id} AND business_date=${BUSINESS_DATE}::date ORDER BY employee_id`),
     ),
   );
@@ -98,4 +102,47 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('孤儿与真锁并存（
     expect(await completedOf(w)).toBe(true);
     expect(await w.assessmentsOf(person.employeeId)).toHaveLength(1);
   });
+});
+
+/** 三处定时批次（自动考核、自动转正、定时生效）共用的非阻塞取锁入口：把“主档不存在”和“被锁”分开。 */
+describe('共用取锁入口 lockTransferParticipants（skipLocked）', () => {
+  const ctxOf = (w: AutoAssessmentWorld) =>
+    ({ tenantId: w.tenant.id, timezone: 'Asia/Shanghai', now: new Date(DAY) }) as EmploymentContext;
+
+  const sweepLock = (w: AutoAssessmentWorld, employeeId: string) =>
+    w.asTenant((tx) => lockTransferParticipants(tx, ctxOf(w), employeeId, [], { skipLocked: true }));
+
+  it('员工存在 → acquired；主档不存在 → missing', async () => {
+    const w = await autoAssessmentWorld(testDb().db, 'sweep-lock');
+    await w.created(w.body());
+    const person = await w.probationer('存在员工');
+    expect(await sweepLock(w, person.employeeId)).toBe('acquired');
+    expect(await sweepLock(w, randomUUID())).toBe('missing');
+  });
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    '真 PG 两连接：另一连接持员工行锁 → busy（不是 missing）',
+    async () => {
+      const w = await autoAssessmentWorld(testDb().db, 'sweep-lock-busy');
+      await w.created(w.body());
+      const person = await w.probationer('被锁员工');
+      let locked!: () => void;
+      let release!: () => void;
+      const holding = new Promise<void>((done) => (locked = done));
+      const gate = new Promise<void>((done) => (release = done));
+      const holder = withTenant(w.db, w.tenant.id, async (tx) => {
+        await tx.execute(sql`SELECT id FROM employment_employees
+        WHERE tenant_id=${w.tenant.id} AND id=${person.employeeId}::uuid FOR UPDATE`);
+        locked();
+        await gate;
+      });
+      await holding;
+      try {
+        expect(await sweepLock(w, person.employeeId)).toBe('busy');
+      } finally {
+        release();
+        await holder;
+      }
+    },
+  );
 });
