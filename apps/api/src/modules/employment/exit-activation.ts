@@ -120,6 +120,9 @@ export async function postponeLateExit(
   return { postponed: true, lastWorkDate: resolved.lastWorkDate, effectiveDate: resolved.effectiveDate };
 }
 
+const sameIds = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && [...a].sort().every((id, i) => id === [...b].sort()[i]);
+
 /** 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；§8 确认集合按 L′ 重算，差异只写审计。 */
 async function revalidateAfterPostponement(
   tx: Tx,
@@ -135,12 +138,13 @@ async function revalidateAfterPostponement(
     });
   const stored = (exit.pendingTransferAck ?? null) as AckRecord | null;
   const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate);
-  // 超上限与步骤 1 同口径整单拒绝（S 是待作废候选的子集），不拿截断的集合算差异（F-241）
+  // 超上限与步骤 1 同口径整单拒绝，不拿截断的集合算差异（F-241）
   if (recomputed?.tooMany)
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
     });
-  if ((recomputed?.hash ?? null) !== (stored?.hash ?? null))
+  // 令牌哈希含最后工作日，顺延成 L′ 后哈希必变；这里只看规范化（已排序）后的完整 ID 集合是否真有差异（F-241）
+  if (!sameIds(stored?.ids ?? [], recomputed?.ids ?? []))
     await auditEmployment(
       tx,
       ctx,

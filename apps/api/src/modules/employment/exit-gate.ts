@@ -399,7 +399,8 @@ export async function assessmentNoticeItems(
  * 没有在途考核时集合与令牌与 F-229 之前逐位相同。
  * 调动部分的条件整个推进 SQL 后再取上限（F-241，与 voidCandidates 同一机制）：先截断再在 JS 里剔除前序会让前序占去名额，
  * 初次确认少覆盖、前序落地后重算又多出来。超过 VOID_LIMIT 条（查询取 1001 条，无法区分恰好 1001 与被截断）时不生成令牌，
- * 返回 tooMany；离职生效本来也会按同一上限整单拒绝（S 是 voidCandidates 的子集）。
+ * 返回 tooMany。同一时刻下 S 的调动部分是 voidCandidates 的子集，但这只是上限口径一致，不能据此推出生效时必然超限
+ * （申请可在确认后被处理或落地）。
  */
 export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
   const rows = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'], 'application', {
