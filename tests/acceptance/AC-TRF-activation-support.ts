@@ -49,12 +49,17 @@ export async function activationWorld(
 export type ActivationWorld = Awaited<ReturnType<typeof activationWorld>>;
 
 /** DEC-196 后正常停用入口会拒绝在途调入；仅造历史遗留数据，保留 DEC-052 / 161 兜底失败分支覆盖。 */
-export async function seedLegacyOrgDeactivation(w: ActivationWorld, effectiveDate: string) {
+export async function seedLegacyOrgDeactivation(
+  w: ActivationWorld,
+  effectiveDate: string,
+  org: { readonly id: string } = w.to,
+  enabled = false,
+) {
   return withTenant(w.db, w.session.tenant.id, async (tx) => {
     const [latest] = await tx
       .select()
       .from(orgVersions)
-      .where(and(eq(orgVersions.tenantId, w.session.tenant.id), eq(orgVersions.orgId, w.to.id)))
+      .where(and(eq(orgVersions.tenantId, w.session.tenant.id), eq(orgVersions.orgId, org.id)))
       .orderBy(desc(orgVersions.versionNo))
       .limit(1);
     const revision = latest!.versionNo + 1;
@@ -65,7 +70,7 @@ export async function seedLegacyOrgDeactivation(w: ActivationWorld, effectiveDat
       previousVersionId: latest!.id,
       versionNo: revision,
       startDate: effectiveDate,
-      enabled: false,
+      enabled,
     });
     const links = await tx
       .select()
@@ -75,7 +80,7 @@ export async function seedLegacyOrgDeactivation(w: ActivationWorld, effectiveDat
     await tx
       .update(orgObjects)
       .set({ revision })
-      .where(and(eq(orgObjects.tenantId, w.session.tenant.id), eq(orgObjects.id, w.to.id)));
+      .where(and(eq(orgObjects.tenantId, w.session.tenant.id), eq(orgObjects.id, org.id)));
     return { revision };
   });
 }

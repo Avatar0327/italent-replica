@@ -374,10 +374,16 @@ export const IDP_POLICIES = defineTable('idp', {
   // ---- 计划（HR）----------------------------------------------------------------------------------------------------
   [`GET ${BASE}/plans`]: reader('plan', PLAN_LIST),
   // 参与人列表（K-30～K-32）：本人的进行中 / 已结束计划（F-164）、指导人的非未开始计划 + 当前有待办的计划；
-  // 固定字段（去掉 tutorRole 等；tutorEmployeeId 只对本人与指导人返回，F-182a）
+  // 固定字段（去掉 tutorRole 等；tutorEmployeeId / tutorName 只对本人与指导人返回，DEC-611）
   [`GET ${BASE}/my-plans`]: own({
     predicate: 'idp.participant',
     fields: projector('idp.participantSummary', 'idp.plan'),
+    optional: {
+      tutorName: own({
+        predicate: 'idp.planEmployeeOrTutor',
+        fields: fixed(['tutorName'], 'DEC-611：已披露指导人 ID 的行只补姓名，不开放人事档案'),
+      }),
+    },
   }),
   // 我辅导的发展计划（F-164）：本人任指导人的进行中计划；固定字段（指导人即本人，随行返回）
   [`GET ${BASE}/tutor-plans`]: own({

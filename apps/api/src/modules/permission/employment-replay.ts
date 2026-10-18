@@ -53,26 +53,26 @@ export async function authorizeEmploymentResult(
   const snapshots = responseSnapshots(body);
   const ids = [...new Set([...events.map((event) => event.id), ...snapshots.map((snapshot) => snapshot.id)])];
   if (!ids.length) return;
-  const transferId = await transferException(tx, ctx, commandId);
+  const exception = await transferException(tx, ctx, commandId);
   const targets = await currentTargets(tx, ctx.tenantId, ids);
   const byId = new Map(targets.map((target) => [target.id, target]));
   const linked = linkedOnly(events, snapshots);
   for (const id of ids) {
     const target = byId.get(id);
     if (!target) throw new AppError('NOT_FOUND', '任职数据不存在');
-    await assertScope(tx, ctx, target, target.departmentId, transferId, linked.has(id));
+    await assertScope(tx, ctx, target, target.departmentId, exception, linked.has(id));
   }
   for (const event of events) {
     const target = byId.get(event.id)!;
     const isLinked = linked.has(event.id);
     if (event.after && Object.hasOwn(event.after, 'departmentId'))
-      await assertScope(tx, ctx, target, event.after.departmentId as string | null, transferId, isLinked);
-    if (event.hasSnapshot) await assertScope(tx, ctx, target, event.snapshotDepartment, transferId, isLinked);
+      await assertScope(tx, ctx, target, event.after.departmentId as string | null, exception, isLinked);
+    if (event.hasSnapshot) await assertScope(tx, ctx, target, event.snapshotDepartment, exception, isLinked);
   }
   for (const snapshot of snapshots) {
     const target = byId.get(snapshot.id)!;
     if (target.employeeId !== snapshot.employeeId) throw new AppError('NOT_FOUND', '任职数据不存在');
-    await assertScope(tx, ctx, target, snapshot.departmentId, transferId);
+    await assertScope(tx, ctx, target, snapshot.departmentId, exception);
   }
   const fields = [
     ...new Set(
@@ -126,11 +126,13 @@ async function assertScope(
   ctx: EmploymentContext,
   target: Target,
   departmentId: string | null,
-  transferId: string | undefined,
+  exception: TransferException,
   linked = false,
 ) {
+  // F-181a：覆盖暂存时被本命令换掉的同一员工的旧暂存单，随新建的调动同享目标部门例外（来源范围已在命令前复核）
+  if (exception.replaced.has(target.id) && ctx.transferTarget?.employeeId === target.employeeId) return;
   if (
-    transferId === target.id &&
+    exception.created === target.id &&
     ctx.transferTarget?.employeeId === target.employeeId &&
     ctx.transferTarget.departmentId === departmentId
   )
@@ -147,9 +149,15 @@ async function assertScope(
   if (!allowed) throw new AppError('NOT_FOUND', '任职数据不存在');
 }
 
-async function transferException(tx: Tx, ctx: EmploymentContext, commandId: string): Promise<string | undefined> {
-  if (!ctx.transferTarget) return undefined;
-  if (ctx.transferTarget.businessId) return ctx.transferTarget.businessId;
+interface TransferException {
+  readonly created?: string;
+  readonly replaced: ReadonlySet<string>;
+}
+
+async function transferException(tx: Tx, ctx: EmploymentContext, commandId: string): Promise<TransferException> {
+  const none = { replaced: new Set<string>() };
+  if (!ctx.transferTarget) return none;
+  if (ctx.transferTarget.businessId) return { created: ctx.transferTarget.businessId, replaced: none.replaced };
   // 新建例外只能绑定本命令新建且有可信调动元数据的业务，不能覆盖本命令联动的后续记录。
   const [created] = rows<{ id: string }>(
     await tx.execute(sql`
@@ -159,7 +167,17 @@ async function transferException(tx: Tx, ctx: EmploymentContext, commandId: stri
       AND a.command_id=${commandId} AND a.action='employment.business.create' LIMIT 1
   `),
   );
-  return created?.id;
+  if (!created) return none;
+  // 覆盖暂存：同一命令里被换掉（删除）的、同一员工的旧调动单
+  const replaced = rows<{ id: string }>(
+    await tx.execute(sql`
+    SELECT r.business_id AS id FROM transfer_requests r JOIN audit_events a
+      ON a.tenant_id=r.tenant_id AND a.object_id=r.business_id::text
+    WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${ctx.transferTarget.employeeId}::uuid
+      AND a.command_id=${commandId} AND a.action='employment.business.delete'
+  `),
+  );
+  return { created: created.id, replaced: new Set(replaced.map((row) => row.id)) };
 }
 
 async function footprints(tx: Tx, tenantId: string, commandId: string) {

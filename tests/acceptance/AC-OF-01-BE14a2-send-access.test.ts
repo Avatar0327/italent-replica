@@ -155,8 +155,11 @@ describe('P2-1 行操作在真实授权器下按数据操作开关裁剪', () =>
     await w.force(approved.id, 'approval_status', 'approved');
     const invalid = await w.social();
     await w.invalidated(invalid.id);
-    // BE-14a3：发起审批与编辑同一开关，接线后在待发主按钮出现
-    const full = { primary: ['submitApproval'], menu: ['edit', 'transfer', 'invalidate', 'view', 'delete'] };
+    // BE-14a3：发起审批与编辑同一开关，接线后在待发主按钮出现；BE-14b1：发送在下拉
+    const full = {
+      primary: ['submitApproval'],
+      menu: ['edit', 'send', 'transfer', 'invalidate', 'view', 'delete'],
+    };
     expect(await detailActions(w, pending.id)).toEqual(full);
     expect(await listActions(w, 'pending', pending.id)).toEqual(full);
     expect(await detailActions(w, approved.id)).toEqual({ primary: ['edit'], menu: ['invalidate'] });
@@ -175,7 +178,7 @@ describe('P2-1 行操作在真实授权器下按数据操作开关裁剪', () =>
     await w.setOps({ create: false, delete: false });
     expect(await detailActions(w, pending.id)).toEqual({
       primary: ['submitApproval'],
-      menu: ['edit', 'transfer', 'invalidate', 'view'],
+      menu: ['edit', 'send', 'transfer', 'invalidate', 'view'],
     });
     expect(await detailActions(w, invalid.id)).toEqual({ primary: [], menu: ['view'] });
     expect(await listActions(w, 'invalid', invalid.id)).toEqual({ primary: [], menu: ['view'] });

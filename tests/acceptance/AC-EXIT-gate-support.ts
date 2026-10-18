@@ -262,7 +262,15 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
    */
   async function synthetic(
     employeeId: string,
-    input: { kind: string; state: string; effectiveDate: string; linked?: boolean; reminderOnly?: boolean },
+    input: {
+      kind: string;
+      state: string;
+      effectiveDate: string;
+      linked?: boolean;
+      reminderOnly?: boolean;
+      /** 操作序号（DEC-108）的事件序号起点；缺省 1000，小于离职的序号即排在离职之前。 */
+      eventSeq?: number;
+    },
   ) {
     const businessId = randomUUID();
     const versionId = randomUUID();
@@ -283,7 +291,7 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
         await tx.execute(sql`INSERT INTO employment_state_events
             (tenant_id,employee_id,business_id,payload_version_id,state,event_no,command_id,event_seq)
           VALUES (${t},${employeeId}::uuid,${businessId}::uuid,${versionId}::uuid,${state},${index + 1},
-            ${`synthetic-${index}`},${1000 + index})`);
+            ${`synthetic-${index}`},${(input.eventSeq ?? 1000) + index})`);
       if (input.linked)
         await tx.execute(sql`INSERT INTO employment_outbox(tenant_id,employee_id,business_id,event_type,object_type,
             object_id,command_id,payload,created_at)

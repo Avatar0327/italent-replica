@@ -78,8 +78,21 @@ function matchesWildcard(key: string, other: ReadonlySet<string>): boolean {
   return false;
 }
 
+/** 终止业务（离职 / 退休）：任一方是它时两笔恒视为有先后依赖（离职设计 §5.0 终止依赖）。 */
+const TERMINATING_KINDS: readonly string[] = ['leave', 'retirement'];
+
+async function isTerminating(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<boolean> {
+  const [row] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`SELECT kind FROM employment_payload_versions WHERE tenant_id=${ctx.tenantId}
+      AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  return !!row && TERMINATING_KINDS.includes(row.kind);
+}
+
 /** 两笔调动的联动足迹是否相交（有先后依赖，不能倒序执行）；通配角色键与任何同名角色相交。 */
 export async function linkageDependent(tx: Tx, ctx: EmploymentContext, a: string, b: string): Promise<boolean> {
+  // F-007 §2.5 豁免以“后一笔先落地后，HR 重试前一笔即可补插在前”为前提；终止业务两个方向都破坏它，一律不豁免（§5.0）
+  if ((await isTerminating(tx, ctx, a)) || (await isTerminating(tx, ctx, b))) return true;
   const [first, second] = await Promise.all([linkageFootprint(tx, ctx, a), linkageFootprint(tx, ctx, b)]);
   for (const key of first) if (second.has(key) || matchesWildcard(key, second)) return true;
   for (const key of second) if (matchesWildcard(key, first)) return true;
