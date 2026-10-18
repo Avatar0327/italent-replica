@@ -344,7 +344,7 @@ describe('AC-PT-01 / 第 1 轮 P2-1：编辑把已结束的外派 / 借调改回
     endDate,
   });
 
-  it('复现：外派 A 09-01～09-20 已结束，借调 B 09-21～12-31 任职中；把 A 结束日改成 12-31 → 409 PART_TIME_EXCLUSIVE_TYPE_EXISTS，A 不变', async () => {
+  it('复现：外派 A 已结束、借调 B 任职中，把 A 结束日改成 12-31 → 409 PART_TIME_EXCLUSIVE_TYPE_EXISTS，A 不变', async () => {
     const w = await httpWorld(database().db, 'edit-exclusive-repro');
     const a = await w.make(exclusive('expatriate', '2026-09-01', '2026-09-20'));
     await w.make(exclusive('secondment', '2026-09-21', '2026-12-31'));
