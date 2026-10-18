@@ -105,9 +105,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/assessment-store.ts#saveAssessment',
   ],
   'apps/api/src/modules/employment/assessment-approval-adapter.ts#assessmentAdapter': [
-    '#RESUBMIT',
     '#approved',
     '#lockBoth',
+    '#resubmit',
     '#settle',
     '#snapshot',
     'apps/api/src/modules/employment/assessment.ts#applyApprovalEdit',
@@ -125,6 +125,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
   ],
+  'apps/api/src/modules/employment/assessment-approval-adapter.ts#resubmit': [
+    '#lockBoth',
+    'apps/api/src/modules/employment/assessment-store.ts#saveAssessment',
+    'apps/api/src/modules/employment/assessment.ts#mergedPatch',
+    'apps/api/src/modules/employment/assessment.ts#parseAssessmentPatch',
+    'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
+  ],
   'apps/api/src/modules/employment/assessment-approval-adapter.ts#settle': [
     '#lockBoth',
     'apps/api/src/modules/employment/assessment-store.ts#saveAssessment',
@@ -140,6 +147,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#assessmentGuard': [
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
@@ -164,15 +173,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': [
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/context.ts#readPageContext',
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': [
     '#assessmentGuard',
-    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
     'apps/api/src/modules/employment/assessment.ts#parseAssessmentPatch',
     'apps/api/src/modules/employment/assessment.ts#updateAssessment',
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -207,6 +215,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/assessment-store.ts#loadAssessment': [
     '#COLUMNS',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': [
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#saveAssessment': [
     '#CAST',
@@ -266,11 +277,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/assessment.ts#updateAssessment': [
     'apps/api/src/modules/employment/assessment-store.ts#assertAssessmentRevision',
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/assessment-store.ts#saveAssessment',
     '#assertEditable',
     '#mergedPatch',
     '#parseAssessmentPatch',
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
   ],
   'apps/api/src/modules/employment/auto-regularization-routes.ts#SETTINGS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',

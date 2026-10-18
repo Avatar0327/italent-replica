@@ -174,13 +174,16 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': 'd9e98244425c',
-    'route:GET /probation-assessments/:id': '62ac7052ecad',
-    'route:PATCH /probation-assessments/:id': '0c608089e360',
+    'route:GET /probation-assessments/:id': 'f0c0e22ffac3',
+    'route:PATCH /probation-assessments/:id': 'f805edcc68ba',
     'route:POST /probation-assessments': '17037f156e66',
+  },
+  'apps/api/src/modules/employment/assessment-store.ts': {
+    requireAssessmentInScope: 'bf990313c28c',
   },
   'apps/api/src/modules/employment/assessment.ts': {
     createOne: '5d899f5fa8df',
-    updateAssessment: '50745c2d0bac',
+    updateAssessment: '7e811f55d6f9',
   },
   'apps/api/src/modules/employment/auto-regularization-routes.ts': {
     'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
@@ -1587,11 +1590,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '35edc1a79cc9',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '5f88fb994a58',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '9f8485b3c331',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '14600fb1aacb',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '1856c700e55a',
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
+  'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '1883f0f7ecdd',
   'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
-  'apps/api/src/modules/employment/assessment.ts#updateAssessment': '71db1a0671f7',
+  'apps/api/src/modules/employment/assessment.ts#updateAssessment': '05e674ff9ddd',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
     'fb47f7d5a451',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:GET /auto-regularization-rules': '14250731bdc5',
