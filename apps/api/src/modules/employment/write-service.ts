@@ -95,6 +95,11 @@ export interface CreateEmploymentOptions {
   readonly entry?: EntryOptions;
   /** 离职创建须经 exit-application.ts 的门禁（R2-T03 §4A）；只有它持有这个凭证。 */
   readonly exitPass?: typeof EXIT_GATE_PASS;
+  /**
+   * 试用期考核审批完成时按转正意见生成转正记录（BE-15b1，PB-R4 / R5）：这是审批结果的落地、不是新发起，
+   * 不再判 PB-R9 互斥（考核自己正是在审批中的那一个）。只由考核审批回调传入，不开放给请求体。
+   */
+  readonly generatedByAssessment?: true;
 }
 
 export async function createEmploymentBusiness(
@@ -118,7 +123,7 @@ export async function createEmploymentBusiness(
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
   // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
-  if (normalized.kind === 'regularization' && normalized.mode === 'direct')
+  if (normalized.kind === 'regularization' && normalized.mode === 'direct' && !options.generatedByAssessment)
     await assertProbationProcessesIdle(tx, ctx, { employeeId: employee.id, action: 'regularize' });
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined

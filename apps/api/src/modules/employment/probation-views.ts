@@ -2,7 +2,8 @@
  * 试用期管理视图（R2 BE-3；docs/02_业务建模/29 PB-R1，差距表 B1 / B3 / B4 / B5、R2f B5）：
  * - expiring 即将试用到期：试用中、预计结束日在范围内（默认今天～今天 + 30 天）、未发起转正申请（审批中 / 已通过 / 已生效）；
  * - in_review 转正审批中；all 全部试用员工（当前人员状态 = 试用）；regularized 已转正（本周期有生效的转正记录，含通过未到期）。
- * “考核中”（B2）与“未发起转正考核”的判定归 BE-15。行以员工为单位，取租户今天的当前主职；只看在职（试用 / 正式）的人。
+ * assessing 考核中（BE-15b1）：本周期有审批中的试用中考核 / 转正考核；即将到期里“未发起转正考核”= 本周期没有审批中或已通过的
+ * 转正考核。行以员工为单位，取租户今天的当前主职；只看在职（试用 / 正式）的人。
  * 筛选（R2f B5）：人员（employeeId / keyword 姓名或工号）、预计试用结束日期、部门、职务。列表按任职记录的数据范围裁剪。
  */
 import { sql, type Tx } from '@italent/db';
@@ -52,6 +53,9 @@ export interface ProbationViewItem {
   readonly regularizationState: string | null;
   readonly regularizationMode: string | null;
   readonly probationResult: string | null;
+  /** 本周期审批中的考核（BE-15b1，“考核中”视图）：考核 ID 与类型，没有为空；考核内容走考核接口的字段权限。 */
+  readonly assessmentId: string | null;
+  readonly assessmentType: string | null;
 }
 
 /** 视图里不属于任职字段目录的控制键：裁剪前摘下、裁剪后放回（同入职视图的做法）。 */
@@ -65,6 +69,8 @@ export const PROBATION_VIEW_CONTROLS = [
   'regularizationState',
   'regularizationMode',
   'probationResult',
+  'assessmentId',
+  'assessmentType',
 ] as const;
 
 function viewPredicate(view: ProbationView, filter: ProbationViewFilter, today: string): SQL {
@@ -74,8 +80,10 @@ function viewPredicate(view: ProbationView, filter: ProbationViewFilter, today: 
       AND ${to ? sql`pi.end_date<=${to}::date` : sql`true`}`;
   switch (view) {
     case 'expiring':
-      return sql`${probation} AND pick.id IS NULL AND pi.end_date IS NOT NULL
+      return sql`${probation} AND pick.id IS NULL AND regasm.id IS NULL AND pi.end_date IS NOT NULL
         AND ${end(filter.expectedEndFrom ?? today, filter.expectedEndTo ?? addDays(today, PROBATION_EXPIRING_DAYS))}`;
+    case 'assessing':
+      return sql`asm.id IS NOT NULL AND ${end(filter.expectedEndFrom, filter.expectedEndTo)}`;
     case 'in_review':
       return sql`pick.state='in_review' AND ${end(filter.expectedEndFrom, filter.expectedEndTo)}`;
     case 'all':
@@ -146,7 +154,8 @@ export async function listProbationView(
       pi.has_probation AS "hasProbation", pi.start_date::text AS "startDate", pv.months::integer AS months,
       pi.end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
       pick.id AS "regularizationBusinessId", pick.state AS "regularizationState",
-      pick.mode AS "regularizationMode", pick.result_code AS "probationResult"
+      pick.mode AS "regularizationMode", pick.result_code AS "probationResult",
+      asm.id AS "assessmentId", asm.assessment_type AS "assessmentType"
     FROM employment_timeline cur
     JOIN employment_records cr ON cr.tenant_id=cur.tenant_id AND cr.id=cur.record_id
     JOIN employment_employees e ON e.tenant_id=cr.tenant_id AND e.id=cr.employee_id
@@ -163,6 +172,12 @@ export async function listProbationView(
     LEFT JOIN LATERAL (SELECT v.* FROM employment_probation_versions v
       WHERE v.tenant_id=cr.tenant_id AND v.business_id=anchor.id ORDER BY v.version_no DESC LIMIT 1) pv ON true
     LEFT JOIN LATERAL (${probationInfo}) pi ON true
+    LEFT JOIN LATERAL (SELECT a.id::text AS id, a.assessment_type FROM employment_probation_assessments a
+      WHERE a.tenant_id=cr.tenant_id AND a.employee_id=cr.employee_id AND a.anchor_id=anchor.id
+        AND a.status='in_review' ORDER BY a.assessment_date, a.id LIMIT 1) asm ON true
+    LEFT JOIN LATERAL (SELECT a.id FROM employment_probation_assessments a
+      WHERE a.tenant_id=cr.tenant_id AND a.employee_id=cr.employee_id AND a.anchor_id=anchor.id
+        AND a.assessment_type='regularization' AND a.status IN ('in_review', 'approved') LIMIT 1) regasm ON true
     LEFT JOIN LATERAL (${cycleRegularization(tenantId, sql`cr.employee_id`, sql`cr.staff_id`, false)}) pick ON true
     LEFT JOIN LATERAL (${cycleRegularization(tenantId, sql`cr.employee_id`, sql`cr.staff_id`, true)}) reg ON true
     WHERE cur.tenant_id=${tenantId} AND cur.valid_during @> ${input.today}::date

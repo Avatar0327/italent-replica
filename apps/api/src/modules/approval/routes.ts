@@ -278,6 +278,9 @@ function registerHooks(deps: TenantRouteDeps) {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);
       if (active) await cancel(tx, withFields(ctx), active.id);
     },
+    assessmentSubmitted: async (tx, ctx, assessmentId) => {
+      await startOrResume(tx, withFields(ctx), { businessType: 'probation_assessment', businessId: assessmentId });
+    },
   });
   registerPersonnelApprovalHooks({
     submitted: async (tx, ctx, requestId) => {

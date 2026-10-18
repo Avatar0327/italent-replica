@@ -72,6 +72,9 @@ export async function assessmentWorld(db: Db, label: string) {
   );
   const department = await w.org(`考核部门${uniqueSuffix()}`);
   const manager = await w.person('直接上级', department);
+  // 转正申请预置流程第一节点是部门负责人：没有负责人提交即报错（DEC-054）
+  const head = await w.person('部门负责人', department);
+  await w.setOrgRoles(department, { head: head.employeeId });
   await publishPresets(db, w.tenant.id, w.hr.id, w.exceptionAdmin, [
     'probation_assessment',
     'regularization_assessment',
@@ -186,12 +189,12 @@ export async function assessmentWorld(db: Db, label: string) {
       body: { hasProbation: true, startDate: '2026-09-01', months: 3, expectedEndDate: '2026-11-30' },
     });
   }
-  async function regularizeRaw(person: Person, mode: 'direct' | 'application') {
+  async function regularizeRaw(person: Person, mode: 'direct' | 'application', effectiveDate = '2026-12-01') {
     return w.request(w.hr.id, 'POST', `${EMPLOYMENT}/regularizations`, {
       body: {
         mode,
         probationResult: 'normal',
-        effectiveDate: '2026-12-01',
+        effectiveDate,
         items: [{ employeeId: person.employeeId, revision: await employeeRevision(person.employeeId) }],
       },
     });
@@ -201,6 +204,7 @@ export async function assessmentWorld(db: Db, label: string) {
     ...w,
     department,
     manager,
+    head,
     probationer,
     employeeRevision,
     launchRaw,

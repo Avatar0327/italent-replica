@@ -178,10 +178,9 @@ describe('发起入口', () => {
     const stale = await w.probationer('过期 revision');
     const staleRevision = await w.employeeRevision(stale.employeeId);
     const regularized = await w.probationer('已转正');
-    const direct = await w.json<RegularizationReceipt>(await w.regularizeRaw(regularized, 'direct'));
+    // 转正日期已过：今天起是正式员工，不能再考核
+    const direct = await w.json<RegularizationReceipt>(await w.regularizeRaw(regularized, 'direct', '2026-09-30'));
     expect(direct.items[0]).toMatchObject({ status: 'succeeded' });
-    await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${stale.employeeId}`);
-    await w.setParallel('probation', { enabled: false, allowed: [] });
     const key = `launch-${stale.employeeId}`;
     const body = {
       assessmentType: 'probation',

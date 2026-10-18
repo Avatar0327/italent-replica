@@ -13,6 +13,7 @@ import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
+import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -55,7 +56,15 @@ import { OPEN_STATUSES } from './store.js';
 export type TaskDecision = 'approve' | 'disagree' | 'reject';
 
 export type BusinessType =
-  'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review' | 'part_time' | 'offer' | 'offer_batch';
+  | 'employment'
+  | 'personnel_change'
+  | 'contract'
+  | 'idp'
+  | 'talent_review'
+  | 'part_time'
+  | 'offer'
+  | 'offer_batch'
+  | 'probation_assessment';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -639,4 +648,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   // R2 BE-14a3：Offer 审批（业务单 = Offer）与 Offer 批量审批（业务单 = 批量审批单，一单多份 Offer）
   offer: offerAdapter,
   offer_batch: offerBatchAdapter,
+  // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
+  probation_assessment: assessmentAdapter,
 };

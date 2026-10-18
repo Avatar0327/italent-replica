@@ -5,6 +5,7 @@ import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
 import {
   approverExpressionsOf,
+  ASSESSMENT_ONLY_APPROVERS,
   avoidsSubjects,
   ENABLED_AVOID_SUBJECTS_RESULTS,
   hasExit,
@@ -58,6 +59,10 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     const idpOnly = approverExpressionsOf(node).filter((expression) => IDP_ONLY_APPROVERS.has(expression));
     if (type.adapter !== 'idp' && idpOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
+    }
+    const assessmentOnly = approverExpressionsOf(node).filter((expression) => ASSESSMENT_ONLY_APPROVERS.has(expression));
+    if (type.adapter !== 'probation_assessment' && assessmentOnly.length) {
+      violations.push(`节点 ${node.key} 的审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核审批`);
     }
     const offerViolation = offerApproverViolation(node, type);
     if (offerViolation) violations.push(offerViolation);
