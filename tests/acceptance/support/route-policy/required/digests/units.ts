@@ -283,8 +283,24 @@ export const DIGESTS: Digests = {
     'route:POST /rehire-matches': '0f65f77ec626',
   },
   'apps/api/src/modules/employment/part-time/replay-guard.ts': {
+    requirePartTimeCreateAccess: 'c4e7c604b097',
     requirePartTimePreviewButton: 'b6599d36ef99',
+    requirePartTimeRequestAccess: 'e348baa02314',
+    requirePartTimeScope: 'a778e2cc229f',
     requirePartTimeWriteAccess: 'cb2a5fd8301f',
+    requireWriteButtons: 'f89bda8ce1db',
+  },
+  'apps/api/src/modules/employment/part-time/request-routes.ts': {
+    'route:DELETE /part-time-requests/:id': 'f7a2ecc81194',
+    'route:GET /part-time-requests/:id': 'df06d383632a',
+    'route:PATCH /part-time-requests/:id': '43c66526caf2',
+    'route:POST /part-time-requests': '5b793c3cdbad',
+    'route:POST /part-time-requests/:id/revoke': 'be944e87ad7c',
+    'route:POST /part-time-requests/:id/submit': 'be944e87ad7c',
+    'route:POST /part-time-requests/:id/withdraw': 'be944e87ad7c',
+  },
+  'apps/api/src/modules/employment/part-time/request-service.ts': {
+    requireRequestScope: '15da0573cc55',
   },
   'apps/api/src/modules/employment/part-time/routes.ts': {
     'route:GET /employees/:id/part-times': '1860c61a0326',
@@ -1708,8 +1724,23 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess': '8d0660b89133',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess': 'ad0879b5a436',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeScope': '6356a7d75be9',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess': '3ea601a7647c',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requireWriteButtons': '3f9a791d22ff',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:DELETE /part-time-requests/:id': '3d8d79922e89',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': 'a6852936daf3',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:PATCH /part-time-requests/:id': 'b5e58afac081',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests': 'c5133add0138',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/revoke':
+    '2db2af7a2a3c',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/submit':
+    '2db2af7a2a3c',
+  'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/withdraw':
+    '2db2af7a2a3c',
+  'apps/api/src/modules/employment/part-time/request-service.ts#requireRequestScope': '6356a7d75be9',
   'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': 'cadd59bac3be',
   'apps/api/src/modules/employment/part-time/routes.ts#route:GET /part-times/:recordId': '334ced904d73',
   'apps/api/src/modules/employment/part-time/routes.ts#route:PATCH /part-times/:recordId': 'e244464b544b',

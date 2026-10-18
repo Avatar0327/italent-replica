@@ -1,5 +1,6 @@
 /**
- * 兼职写入口的命令内权限复核（设计 §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览；PT-3c：编辑 / 批量结束；PT-4b：申请入口），照 employment/replay-guard.ts 的 scopedGuard 写法：
+ * 兼职写入口的命令内权限复核（设计 §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览；PT-3c：编辑 / 批量结束；PT-4b：申请入口），
+ * 照 employment/replay-guard.ts 的 scopedGuard 写法：
  * runCommand 的三个出口（首次、同键重放、失败回查）都先在命令事务内按**当前**授权重跑 §7.2 该入口整行——员工主职在范围、兼职部门
  * 在范围、新增权 + Employment.PartTime 按钮 + 字段创建权——撤权后重放拿不到台账原响应；原响应里的兼职记录另过统一结果复核
  * （permission/employment-replay.ts，兼职部门取记录当前值，PB-69）。入口与命令内共用 requirePartTimeCreateAccess。

@@ -6,7 +6,7 @@
  *   revision 复核失败 —— 恰一方成功，失败方是明确的业务错误码 REVISION_CONFLICT，不是死锁（40P01）转出来的并发冲突码；
  * - 同 revision 的两个提交（不同命令 ID）：同理恰一个成功；撤回 vs 撤销（HR）：先到者生效，后到者 REVISION_CONFLICT。
  */
-import { sql, withTenant } from '@italent/db';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';

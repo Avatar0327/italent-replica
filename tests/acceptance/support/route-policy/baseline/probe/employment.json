@@ -80,6 +80,26 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
+  "DELETE /api/tenant/employment/part-time-requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:delete"
+    ]
+  },
   "DELETE /api/tenant/employment/pending-entries/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -413,6 +433,26 @@
     "fieldQueries": [],
     "scopeQueries": [
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/part-time-requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
       "scope:data.scope.all:"
     ],
     "trace": [
@@ -812,6 +852,26 @@
     "all": {
       "code": "NOT_FOUND",
       "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PATCH /api/tenant/employment/part-time-requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
       "status": 404
     },
     "fieldQueries": [],
@@ -1471,6 +1531,81 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "POST /api/tenant/employment/part-time-requests": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "2d5ec07d0cbc",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "POST /api/tenant/employment/part-time-requests/:id/revoke": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/part-time-requests/:id/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/part-time-requests/:id/withdraw": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "a0c87943ad08",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/part-times/batch-end": {

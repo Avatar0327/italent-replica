@@ -105,7 +105,7 @@ describe('PB-32 HTTP：新增申请 → 提交 → 四节点 → 通过', () => 
 });
 
 describe('开闸边界：仍关闭的行为必须真关', () => {
-  it('requestType = extend / end → 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE，申请三表 / 记录 / 审计 / outbox / 幂等台账均无写入', async () => {
+  it('requestType = extend / end → 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE，各表与幂等台账均无写入', async () => {
     const w = await world('closed-types');
     const before = await w.writes();
     for (const requestType of ['extend', 'end']) {
@@ -130,7 +130,7 @@ describe('开闸边界：仍关闭的行为必须真关', () => {
     expect(response.status).toBe(400);
   });
 
-  it('PB-57：isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE，创建与修改都无写入', async () => {
+  it('PB-57：isDepartmentHead = true / 非空 addedSubordinateIds → 400 LINKAGE_NOT_AVAILABLE，创建与修改都无写入', async () => {
     const w = await world('linkage');
     const api = w.http();
     const before = await w.writes();
@@ -242,6 +242,10 @@ describe('请求校验与业务拒绝（单一入口：同一套 D-1～D-10 / �
     ])
       expect((await w.refusal(response)).status).toBe(404);
     expect((await api.one('not-a-uuid')).status).toBe(400);
+    // 员工不存在：建申请同样 404，不留任何写入
+    const before = await w.writes();
+    expect((await w.refusal(await api.create({ employeeId: randomUUID() }))).status).toBe(404);
+    expect(await w.writes()).toEqual(before);
   });
 });
 

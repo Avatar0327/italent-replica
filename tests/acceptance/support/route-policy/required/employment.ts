@@ -22,6 +22,8 @@ const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
 const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
+const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
+const PART_TIME_REQUEST_SERVICE = `${SRC}/employment/part-time/request-service.ts`;
 const PART_TIME_VALIDATION = `${SRC}/employment/part-time/validation.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
@@ -442,6 +444,75 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
         DIRECT_OPERATION,
       ],
     ),
+  ];
+}
+
+// ---- R2 BE-7 PT-4b 兼职新增申请入口（part-time/request-routes.ts；判定与命令内复核在 replay-guard.ts，写入口径范围在 request-service.ts）----
+// 入口与命令内共用 requirePartTimeCreateAccess（新建）/ requirePartTimeRequestAccess（改 / 动作 / 删除）：范围（员工主职 + 申请部门）→
+// requireWriteButtons（对象权 + 字段写权 + 第 1 个按钮，其余按钮只判按钮）
+const ACCESS_CHAIN = (access: string): Evidence[] => [
+  fn(PART_TIME_GUARD, access, 'await requireWriteButtons('),
+  fn(
+    PART_TIME_GUARD,
+    'requireWriteButtons',
+    'await requireEmploymentWrite(scoped, operation, business, first, undefined, {',
+  ),
+  fn(
+    PART_TIME_GUARD,
+    'requireWriteButtons',
+    'await requireEmploymentWrite(scoped, operation, {}, button, undefined, {',
+  ),
+];
+function partTimeRequestWrite(
+  method: string,
+  path: string,
+  readCall: string,
+  operation: 'create' | 'update' | 'delete',
+  buttons: readonly string[],
+): Obligation[] {
+  const create = path === '/part-time-requests' && method === 'POST';
+  const accessFn = create ? 'requirePartTimeCreateAccess' : 'requirePartTimeRequestAccess';
+  const access = at(
+    PART_TIME_REQUEST,
+    method,
+    path,
+    `await withTenant(deps.db, ctx.tenantId, (tx) => ${accessFn}(tx, ctx, target))`,
+  );
+  const chain = ACCESS_CHAIN(accessFn);
+  const scope = create
+    ? [
+        fn(PART_TIME_GUARD, 'requirePartTimeCreateAccess', 'await requirePartTimeScope(tx, scoped, target.employeeId'),
+        fn(
+          PART_TIME_GUARD,
+          'requirePartTimeScope',
+          'await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId)',
+        ),
+      ]
+    : [
+        fn(PART_TIME_GUARD, 'requirePartTimeRequestAccess', 'await requireRequestScope(tx, scoped, request)'),
+        fn(
+          PART_TIME_REQUEST_SERVICE,
+          'requireRequestScope',
+          'await requireScopedEmploymentObject( tx, { ...ctx, userId: request.initiatorUserId },',
+        ),
+      ];
+  return [
+    ob(
+      `obj:${RECORD}:${operation}`,
+      ['object:readContext(object.*)', `objectOp:TenantBase.EmploymentRecord:${operation}`, 'object:object.* 动作'],
+      [
+        at(PART_TIME_REQUEST, method, path, readCall),
+        READ,
+        access,
+        ...chain,
+        operation === 'delete' ? WRITE_DELETE : WRITE_OBJECT,
+      ],
+    ),
+    ...buttons.map((button) =>
+      ob(`btn:${RECORD}#${button}@detail`, [], [access, ...chain, WRITE_BUTTON, RECORD_CONST]),
+    ),
+    ob('guard:employment.scope', [], [access, ...scope, DIRECT_OPERATION]),
+    directOperation(access),
   ];
 }
 function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
@@ -1653,6 +1724,54 @@ export const EMPLOYMENT: RequiredTable = {
     "const ctx = await readContext(c, deps, 'object.update')",
     'Employment.PartTimeBatchEnd',
   ),
+  // ---- R2 BE-7 PT-4b 兼职新增申请入口（request-routes.ts）---------------------------------------------------------------------
+  'POST /api/tenant/employment/part-time-requests': partTimeRequestWrite(
+    'POST',
+    '/part-time-requests',
+    "const ctx = await readContext(c, deps, 'object.create')",
+    'create',
+    ['Employment.PartTimeApproval'],
+  ),
+  'PATCH /api/tenant/employment/part-time-requests/:id': partTimeRequestWrite(
+    'PATCH',
+    '/part-time-requests/:id',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+    'update',
+    ['Employment.PartTimeApproval'],
+  ),
+  'POST /api/tenant/employment/part-time-requests/:id/submit': partTimeRequestWrite(
+    'POST',
+    '/part-time-requests/:id/submit',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+    'update',
+    ['Employment.PartTimeApproval', 'Employment.Submit'],
+  ),
+  'POST /api/tenant/employment/part-time-requests/:id/withdraw': partTimeRequestWrite(
+    'POST',
+    '/part-time-requests/:id/withdraw',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+    'update',
+    ['Employment.PartTimeApproval', 'Employment.Withdraw'],
+  ),
+  'POST /api/tenant/employment/part-time-requests/:id/revoke': partTimeRequestWrite(
+    'POST',
+    '/part-time-requests/:id/revoke',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+    'update',
+    ['Employment.Revoke'],
+  ),
+  'DELETE /api/tenant/employment/part-time-requests/:id': partTimeRequestWrite(
+    'DELETE',
+    '/part-time-requests/:id',
+    "const ctx = await readContext(c, deps, 'object.delete', revision(c))",
+    'delete',
+    ['Employment.PartTimeApproval', 'Employment.Delete'],
+  ),
+  'GET /api/tenant/employment/part-time-requests/:id': [
+    recordView(
+      at(PART_TIME_REQUEST, 'GET', '/part-time-requests/:id', "const ctx = await readPageContext(c, deps, 'detail')"),
+    ),
+  ],
   'GET /api/tenant/employment/employees/:id/part-times': [
     recordView(
       at(PART_TIME, 'GET', '/employees/:id/part-times', "const ctx = await readPageContext(c, deps, 'detail')"),
