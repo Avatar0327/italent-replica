@@ -172,9 +172,10 @@ jobs:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
-    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），40 分钟约为 2.75 倍；
+    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍；
     # 10-11 main 上第 1 片已到 21m44s（测试持续增长 + 第 1 片兼跑 lint/typecheck/build），改 4 片；
     # 10-12 4 片最慢 20～22 分钟、是整次 CI 的关键路径（DEC-454①），改 5 片并把 lint/typecheck/build 移到 light job
+    # 10-18 PGlite 第 2 片实测 24～25 分钟，#408 / #404 多次跑满 25 分钟被取消，三组测试分片统一放宽到 40 分钟
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -257,7 +258,8 @@ jobs:
     runs-on: ubuntu-24.04
     # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），原 18 分钟约为 1.88 倍
     # 10-11 测试量增长后第 2 片在 #255 / #262 / #268 上连续跑满 18 分钟被取消（其余三片 14～15 分钟），
-    # 先与 PGlite 分片对齐到 40 分钟止血；10-12 4 片最慢 16～18 分钟，随 PGlite 一起改 5 片（DEC-454①）
+    # 先与 PGlite 分片对齐到 25 分钟止血；10-12 4 片最慢 16～18 分钟，随 PGlite 一起改 5 片（DEC-454①）
+    # 10-18 PGlite 第 2 片实测 24～25 分钟，#408 / #404 多次跑满 25 分钟被取消，三组测试分片统一放宽到 40 分钟
     timeout-minutes: 40
     # packages: read 用于拉本仓库 ghcr 上的 PostgreSQL 镜像（DEC-431④）；job 级权限会覆盖顶层，故补写 contents
     permissions:
