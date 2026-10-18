@@ -76,7 +76,10 @@ BEGIN
         SELECT 1 FROM public.employment_record_tombstones d
         WHERE d.tenant_id = r.tenant_id AND d.record_id = r.id
       )
-      AND NOT public.employment_record_detached(r.tenant_id, r.id);
+      -- CASE 保证顺序：绝大多数记录有投影，直接计入，不进入摘下判定（万人量级首算 / 批量写入的热路径）
+      AND CASE WHEN EXISTS (SELECT 1 FROM public.employment_timeline own
+          WHERE own.tenant_id = r.tenant_id AND own.record_id = r.id)
+        THEN true ELSE NOT public.employment_record_detached(r.tenant_id, r.id) END;
 
   SELECT count(*), range_agg(p.valid_during) INTO projection_count, actual_coverage
     FROM public.employment_timeline p
