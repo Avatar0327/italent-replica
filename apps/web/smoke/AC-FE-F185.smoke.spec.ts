@@ -189,6 +189,7 @@ test('AC-FE-F185-06 空快照显示空值，不从实时任职回填', async ({ 
   });
   await enter(page);
   const row = page.locator(`tr[data-row-key="${infoId}"]`);
+  await expect(page.getByRole('columnheader', { name: '当前职务', exact: true })).toBeVisible();
   const headers = await page.getByRole('columnheader').allTextContents();
   for (const label of ['当前职级', '当前职位', '当前职务']) {
     await expect(row.locator('td').nth(headers.indexOf(label))).toHaveText('--');
@@ -231,10 +232,10 @@ test('AC-FE-F185-08 新字段结果未知换页重开仍锁定原单', async ({ 
 });
 
 test('AC-FE-F185-09 职级按类别与级别排序，停用项不进入候选', async ({ page }) => {
-  await setup(page);
+  await setup(page, { careerValues: { targetLevelId: null } });
   await enter(page);
   await edit(page);
-  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).click();
+  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('拟晋升职级');
   const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option-content');
   await expect(options.first()).toHaveText('拟晋升职级1');
   await expect(options.nth(1)).toHaveText('拟晋升职级3');
