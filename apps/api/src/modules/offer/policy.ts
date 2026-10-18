@@ -187,6 +187,8 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('编辑按对象编辑开关与字段编辑权'),
     scope: point,
     fields: record,
+    // BE-14b3：编辑并同步 / OF-R4 关分支在事务里联动待入职，任职内核的联动复核（DEC-178）对系统全量范围恒放行
+    guards: ['employment.linkage'],
     write: bodyWrite(['offer.editable', 'revision', 'offer.requiredFields']),
   }),
   'DELETE /:id': object({
@@ -244,7 +246,7 @@ export const OFFER_POLICIES = defineTable('offers', {
     guards: ['employment.linkage'],
     write: commandOnly(['revision', 'offer.dispatch', 'offer.quotaConfirmation']),
   }),
-  // 失效：已发、已接受、非实习类待发可失效（OF-R7）；原因须为启用字典项；有待入职 → 409 OFFER_SYNC_NOT_READY
+  // 失效：已发、已接受、非实习类待发可失效（OF-R7）；原因须为启用字典项；有待入职 → 同事务删除待入职
   'POST /:id/invalidate': object({
     ...byId,
     object: OFFER,
@@ -252,7 +254,8 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('失效按对象编辑开关'),
     scope: point,
     fields: record,
-    // BE-14a3：同一事务内作废本 Offer 的在途审批（单个实例 / 所在批量单，cancelOfferApprovals）
+    // BE-14a3：同一事务内作废本 Offer 的在途审批（单个实例 / 所在批量单，cancelOfferApprovals）；BE-14b3：并删除待入职
+    guards: ['employment.linkage'],
     write: commandOnly(['revision', 'offer.invalidation', 'offer.invalidReasonEnabled', 'offer.cancelApprovals']),
   }),
   // BE-14a3：body 只接受 {}；非待发 / 审批中 / 已通过 → 409 OFFER_APPROVAL_NOT_ALLOWED；首节点为空 → 409（DEC-054）

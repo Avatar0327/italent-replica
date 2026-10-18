@@ -201,12 +201,12 @@ const actionDisclosure = (path: string, anchor: string): Obligation[] => {
  * 谁能触发同步由 Offer 对象编辑开关与 Offer 自己的数据范围判定（上面的 obj:update 义务），不是人员范围；这里登记的是
  * 链路上存在这道复核、而不是它拦得住谁。守卫来自任职落地内核本身，不是误复用调动联动的检查。
  */
-const syncLinkage = (path: string, anchor: string, file = TRANSITIONS): Obligation => ({
+const syncLinkage = (path: string, anchor: string, file = TRANSITIONS, method = 'POST'): Obligation => ({
   perm: 'guard:employment.linkage',
   facts: ['guard:employment.linkage'],
   note: 'DEC-178：任职落地内核联动复核；Offer 同步以显式系统全量范围调用，对同步恒放行（F-201②）',
   at: [
-    at('POST', path, anchor, file),
+    at(method, path, anchor, file),
     {
       role: 'impl',
       unit: 'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
@@ -278,7 +278,11 @@ export const OFFERS: RequiredTable = {
     ),
     ...rehireDisclosure(),
   ],
-  [`PUT ${BASE}/:id`]: offerWrite('PUT', '/:id', 'update'),
+  // BE-14b3：编辑并同步 / OF-R4 关分支删除待入职 → 经任职落地内核的联动复核（同 send / sync，系统全量范围对其恒放行）
+  [`PUT ${BASE}/:id`]: [
+    ...offerWrite('PUT', '/:id', 'update'),
+    syncLinkage('/:id', 'body: await updateOffer(tx, ctx, id, input, syncPendingEntry === true)', ROUTES, 'PUT'),
+  ],
   [`DELETE ${BASE}/:id`]: offerWrite('DELETE', '/:id', 'delete'),
   // BE-14a3：单个 / 批量发起审批，与编辑同一判定（object.update + 范围），审批流转在同一事务内交审批中心
   [`POST ${BASE}/:id/approval`]: offerWrite('POST', '/:id/approval', 'update'),
@@ -301,7 +305,11 @@ export const OFFERS: RequiredTable = {
     { code: 'Offer.StatusTransfer', level: 'list' },
     'statusTransfer',
   ),
-  [`POST ${BASE}/:id/invalidate`]: offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
+  // BE-14b3：失效时同事务删除待入职，经任职内核的联动复核
+  [`POST ${BASE}/:id/invalidate`]: [
+    ...offerWrite('POST', '/:id/invalidate', 'update', undefined, TRANSITIONS),
+    syncLinkage('/:id/invalidate', 'body: await invalidateOffer(tx, ctx, id, input)'),
+  ],
   // BE-14b2：立即同步 / 关联在职实习生，都按对象编辑开关（runOfferWrite → objectContext），Offer 自己的数据范围裁剪
   [`POST ${BASE}/:id/sync`]: [
     ...offerWrite('POST', '/:id/sync', 'update', undefined, TRANSITIONS),
