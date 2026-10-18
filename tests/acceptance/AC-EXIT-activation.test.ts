@@ -59,7 +59,12 @@ describe('AC-DM-13 主链：直接离职与申请离职原子生效', () => {
       ['confirmed', 'establishment_pre_released'],
       ['effective', 'establishment_pre_released'],
     ]);
-    expect(effects[1]!.detail).toMatchObject({ lastWorkDate: '2026-10-05', effectiveDate: TODAY, releasedFrom: TODAY });
+    // E ≤ 今天的直接离职夹具把保存拨到 L 当天（开闸后当场不落地），R = L
+    expect(effects[1]!.detail).toMatchObject({
+      lastWorkDate: '2026-10-05',
+      effectiveDate: TODAY,
+      releasedFrom: '2026-10-05',
+    });
     expect((await x.audits(leave.id, 'employment.exit.effective'))[0]!.after).toMatchObject({ source: 'direct' });
   });
 
