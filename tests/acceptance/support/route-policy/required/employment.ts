@@ -20,6 +20,8 @@ const EXIT = `${SRC}/employment/exit-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
+const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
+const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
 // readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
@@ -341,6 +343,42 @@ function exitPreview(button: string): Obligation[] {
         [
           at(EXIT, 'POST', '/exits/employees/:id/preview', 'await requirePreviewButton(deps, ctx)'),
           exitCall('requirePreviewButton', "resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail')"),
+        ],
+      ),
+      or: group,
+    },
+  ];
+}
+
+// ---- R2 BE-7 PT-3b 兼职新增预览 / 直接新增 / 员工页签 / 详情（part-time/routes.ts）-------------------------------------------
+const PT_PREVIEW = '/employees/:id/part-times/preview';
+function partTimePreview(button: string): Obligation[] {
+  const group = `partTimePreview:${button}`;
+  return [
+    {
+      ...ob(
+        `obj:${RECORD}:create`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [
+          at(PART_TIME, 'POST', PT_PREVIEW, "const ctx = await readContext(c, deps, 'object.create', 0, id)"),
+          at(PART_TIME, 'POST', PT_PREVIEW, "await requireEmploymentWrite(ctx, 'create', writeBusiness(body))"),
+          READ,
+          WRITE_OBJECT,
+        ],
+      ),
+      or: group,
+    },
+    {
+      ...ob(
+        `btn:${RECORD}#${button}@detail`,
+        ['button:object.button', 'button:buttonResource'],
+        [
+          at(PART_TIME, 'POST', PT_PREVIEW, 'await requirePartTimePreviewButton(deps, ctx)'),
+          fn(
+            PART_TIME_GUARD,
+            'requirePartTimePreviewButton',
+            "resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail')",
+          ),
         ],
       ),
       or: group,
@@ -1463,6 +1501,70 @@ export const EMPLOYMENT: RequiredTable = {
         WRITE_BUTTON,
       ],
     ),
+  ],
+  // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b 兼职新增与读取入口 -------------------------------------------------------
+  'POST /api/tenant/employment/employees/:id/part-times/preview': [
+    ...partTimePreview('Employment.PartTime'),
+    ...partTimePreview('Employment.PartTimeApproval'),
+  ],
+  'POST /api/tenant/employment/employees/:id/part-times': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          PART_TIME,
+          'POST',
+          '/employees/:id/part-times',
+          "const ctx = await readContext(c, deps, 'object.create', 0, id)",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.PartTime@detail`,
+      [],
+      [
+        at(
+          PART_TIME,
+          'POST',
+          '/employees/:id/part-times',
+          "await requireEmploymentWrite(ctx, 'create', business, PART_TIME_BUTTONS.direct)",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(
+          PART_TIME,
+          'POST',
+          '/employees/:id/part-times',
+          "const ctx = await readContext(c, deps, 'object.create', 0, id)",
+        ),
+        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+    directOperation(
+      at(
+        PART_TIME,
+        'POST',
+        '/employees/:id/part-times',
+        'const created = await createPartTime(tx, context, serviceInput(id, body))',
+      ),
+    ),
+  ],
+  'GET /api/tenant/employment/employees/:id/part-times': [
+    recordView(
+      at(PART_TIME, 'GET', '/employees/:id/part-times', "const ctx = await readPageContext(c, deps, 'detail')"),
+    ),
+  ],
+  'GET /api/tenant/employment/part-times/:recordId': [
+    recordView(at(PART_TIME, 'GET', '/part-times/:recordId', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   'POST /api/tenant/employment/businesses/:id/activation/retry': [
     ob(

@@ -27,12 +27,12 @@ export interface PartTimeRecordRow {
 }
 
 /** 记录的当前部门：被编辑改过的以最新快照载荷为准（同 employment/org-people.ts 的口径）。 */
-const latestSnapshot = sql`LEFT JOIN LATERAL (
+export const latestSnapshot = sql`LEFT JOIN LATERAL (
     SELECT p.id, p.department_id FROM employment_payload_versions p
     WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id AND p.is_record_snapshot
     ORDER BY p.version_no DESC LIMIT 1
   ) latest ON true`;
-const currentDepartment = sql`CASE WHEN latest.id IS NULL THEN r.department_id ELSE latest.department_id END`;
+export const currentDepartment = sql`CASE WHEN latest.id IS NULL THEN r.department_id ELSE latest.department_id END`;
 
 /**
  * 锁住员工某任职周期（省略则全部）的兼职记录底层业务头（FOR UPDATE，按 ID 升序），并读出当前期。

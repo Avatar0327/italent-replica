@@ -259,6 +259,15 @@ export const DIGESTS: Digests = {
     'route:POST /interns/:id/regularize': '30a7f759a110',
     'route:POST /rehire-matches': '0f65f77ec626',
   },
+  'apps/api/src/modules/employment/part-time/replay-guard.ts': {
+    requirePartTimePreviewButton: 'b6599d36ef99',
+  },
+  'apps/api/src/modules/employment/part-time/routes.ts': {
+    'route:GET /employees/:id/part-times': '1860c61a0326',
+    'route:GET /part-times/:recordId': '041dcc51a28a',
+    'route:POST /employees/:id/part-times': '0fcf18d33b42',
+    'route:POST /employees/:id/part-times/preview': 'aa7b3af73c4f',
+  },
   'apps/api/src/modules/employment/probation-routes.ts': {
     'route:GET /employees/:id/probation': '3c6095c242e8',
     'route:GET /probation-results': '140957a8db47',
@@ -1648,6 +1657,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': 'cadd59bac3be',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:GET /part-times/:recordId': '334ced904d73',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times': '52c5bf83f487',
+  'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times/preview': '13d1205192b7',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/probation': 'e6e23223f716',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-results': 'f82f37db2db0',
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /probation-views': 'e76cb7aa6f74',
