@@ -17,13 +17,14 @@ import {
   type Db,
   type PlatformCommandMeta,
   type Tx,
-  withPlatform,
   withTenant,
 } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activateDueBusinesses } from './activation-service.js';
+import { activeTenants, type TenantRow } from './active-tenants.js';
+import { runAutoRegularizationSlot } from './auto-regularization-scheduler.js';
 import { EmploymentError } from './errors.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
@@ -31,7 +32,6 @@ import type { EmploymentContext } from './types.js';
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
-const TENANT_PAGE = 100;
 
 export interface EmploymentActivationRunInput {
   /** 只跑一个租户；缺省遍历全部启用中的租户。 */
@@ -103,28 +103,6 @@ export async function runEmploymentActivations(
     });
     return result;
   });
-}
-
-interface TenantRow {
-  readonly id: string;
-  readonly timezone: string;
-}
-
-/** 只运行启用中的租户：停用、恢复隔离中的租户（DEC-061）不落地任何业务。 */
-async function* activeTenants(db: Db, tenantId: string | null): AsyncGenerator<TenantRow> {
-  let after: string | null = null;
-  for (;;) {
-    const page: TenantRow[] = await withPlatform(db, async (tx) =>
-      rowsOf<TenantRow>(
-        await tx.execute(sql`SELECT id::text, timezone FROM tenants WHERE status='active'
-          AND (${tenantId}::uuid IS NULL OR id=${tenantId}::uuid)
-          AND (${after}::uuid IS NULL OR id>${after}::uuid) ORDER BY id LIMIT ${TENANT_PAGE}`),
-      ),
-    );
-    yield* page;
-    if (page.length < TENANT_PAGE) return;
-    after = page.at(-1)!.id;
-  }
 }
 
 async function sweepTenant(
@@ -276,4 +254,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
       cursor = next.runs[0]?.nextCursor ?? null;
     }
   }
+  // BE-15a（DEC-539①）：自动转正的每日批次挂在同一定时器上，落地之后再发起；各租户按本地时点自行判断当天是否已跑
+  await runAutoRegularizationSlot(db, slot, clock, onError);
 }

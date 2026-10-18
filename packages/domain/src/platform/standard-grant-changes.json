@@ -1,12 +1,19 @@
 {
-  "reason": "R2 BE-14a3：新增 Offer 批量审批单对象（TenantBase.OfferBatchApproval）的字段、数据操作与 create / withdraw 按钮授权项，Offer 对象新增“当前审批人 / 当前审批节点”两个只读字段，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
+  "reason": "F-222：按 codex-F185b B1/B2 将 Offer 批量审批单 create@list、withdraw@detail 替换为 PartDisAgree@detail、AllDisAgree@detail；保持原三个 HR 标准身份，其他授权不变（DEC-404、DEC-439④）",
   "add": [
-    "standard_hr_admin/TenantBase.Offer/field:currentApprov*",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/*",
-    "standard_hr_specialist/TenantBase.Offer/field:currentApprov*",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/*",
-    "standard_org_system_admin/TenantBase.Offer/field:currentApprov*",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/*"
+    "standard_hr_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
+    "standard_hr_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
+    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
+    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:PartDisAgree@detail",
+    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:AllDisAgree@detail",
+    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:PartDisAgree@detail"
   ],
-  "remove": []
+  "remove": [
+    "standard_hr_admin/TenantBase.OfferBatchApproval/button:create@list",
+    "standard_hr_admin/TenantBase.OfferBatchApproval/button:withdraw@detail",
+    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:create@list",
+    "standard_hr_specialist/TenantBase.OfferBatchApproval/button:withdraw@detail",
+    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:create@list",
+    "standard_org_system_admin/TenantBase.OfferBatchApproval/button:withdraw@detail"
+  ]
 }

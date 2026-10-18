@@ -1009,6 +1009,27 @@
       "when": 1792244541916,
       "tag": "0143_offer_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1792244541917,
+      "tag": "0144_be15a_auto_regularization",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1792251202323,
+      "tag": "0145_f181a_transfer_draft_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1792255725294,
+      "tag": "0146_offer_send_records",
+      "breakpoints": true
     }
   ]
 }
