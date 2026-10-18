@@ -87,6 +87,30 @@ async function save(page: Page) {
     .click();
 }
 
+async function mockLevelSorting(
+  page: Page,
+  levels: Record<string, unknown>[],
+  categories: Record<string, unknown>[] = [],
+) {
+  const queries: URL[] = [];
+  await page.route(/\/api\/tenant\/job\/(levels|level-types)\?/, (route) => {
+    const url = new URL(route.request().url());
+    queries.push(url);
+    const rows = url.pathname.endsWith('/levels') ? levels : categories;
+    // 职务主数据接口默认只返回启用项；includeDisabled=true 才包含授权范围内的停用项。
+    const enabled = url.searchParams.get('enabled');
+    const items = rows.filter((row) =>
+      enabled === null && url.searchParams.get('includeDisabled') === 'true'
+        ? true
+        : row.enabled === (enabled !== 'false'),
+    );
+    return route.fulfill({
+      json: { items, page: 1, pageSize: 200, today: '2026-10-18', hasDataPermission: true },
+    });
+  });
+  return queries;
+}
+
 test('AC-FE-F185-03 新建选择跨页三目标，只提交目标字段', async ({ page }) => {
   const { calls, queries } = await setup(page);
   await enter(page);
@@ -273,3 +297,87 @@ test('AC-FE-F185-11 当前快照查看权独立于员工字段，裁剪员工不
   for (const value of ['拟晋升职级1', '合成轮岗职位', '合成快照职务'])
     await expect(page.getByRole('table')).toContainText(value);
 });
+
+test('AC-FE-F185-12 停用类别下仍启用的职级按类别顺序展示且可选择', async ({ page }) => {
+  const { calls } = await setup(page, { careerValues: { targetLevelId: null } });
+  const categories = ['A', 'B', 'C'].map((name, i) => ({
+    id: jobId(i + 1),
+    name,
+    revision: 1,
+    enabled: name !== 'B',
+    displayOrder: i + 1,
+  }));
+  const levels = [...categories].reverse().map((category, i) => ({
+    id: jobId(i + 10),
+    name: `合成职级${category.name}`,
+    revision: 1,
+    enabled: true,
+    levelTypeId: category.id,
+    level: 1,
+  }));
+  const queries = await mockLevelSorting(page, levels, categories);
+  await enter(page);
+  await edit(page);
+  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('合成职级');
+  const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option-content');
+  await expect(options).toHaveText(['合成职级A', '合成职级B', '合成职级C']);
+  await options.getByText('合成职级B', { exact: true }).click();
+  await save(page);
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(calls[0]!.body).toEqual({ targetLevelId: jobId(11) });
+  expect(
+    queries
+      .filter((url) => url.pathname.endsWith('/levels'))
+      .every((url) => url.searchParams.get('enabled') === 'true'),
+  ).toBe(true);
+});
+
+test('AC-FE-F185-13 显式空类别的职级仍按数值级别升序展示', async ({ page }) => {
+  await setup(page, { careerValues: { targetLevelId: null } });
+  await mockLevelSorting(
+    page,
+    [10, 1].map((level) => ({
+      id: jobId(level + 10),
+      name: `合成空类别职级${level}`,
+      revision: 1,
+      enabled: true,
+      levelTypeId: null,
+      level,
+    })),
+  );
+  await enter(page);
+  await edit(page);
+  await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('合成空类别');
+  await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')).toHaveText([
+    '合成空类别职级1',
+    '合成空类别职级10',
+  ]);
+});
+
+for (const trimmed of ['levelTypeId', 'level']) {
+  test(`AC-FE-F185-14 裁剪 ${trimmed} 时不使用该字段排序`, async ({ page }) => {
+    await setup(page, { careerValues: { targetLevelId: null } });
+    await mockLevelSorting(
+      page,
+      [10, 1].map((level) =>
+        Object.fromEntries(
+          Object.entries({
+            id: jobId(level + 10),
+            name: `合成裁剪职级${level}`,
+            revision: 1,
+            enabled: true,
+            levelTypeId: null,
+            level,
+          }).filter(([key]) => key !== trimmed),
+        ),
+      ),
+    );
+    await enter(page);
+    await edit(page);
+    await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('合成裁剪');
+    await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option-content')).toHaveText([
+      '合成裁剪职级10',
+      '合成裁剪职级1',
+    ]);
+  });
+}
