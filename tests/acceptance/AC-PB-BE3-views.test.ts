@@ -98,7 +98,7 @@ describe('试用期管理视图（PB-R1）', () => {
     expect(names(await probationView(w, 'all'))).not.toContain('已发起申请');
   });
 
-  it.each(['', '?view=', '?view=assessing', '?view=all&expectedEndFrom=2026-13-01', '?view=all&departmentId=x'])(
+  it.each(['', '?view=', '?view=unknown', '?view=all&expectedEndFrom=2026-13-01', '?view=all&departmentId=x'])(
     '参数不合法：%s → 400',
     async (query) => {
       const w = await pbWorld(testDb().db, `pb-views-bad-${query.length}`);
