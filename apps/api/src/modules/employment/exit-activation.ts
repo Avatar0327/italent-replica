@@ -21,6 +21,8 @@ import { auditEmployment } from './context.js';
 import { handleContractsOnExitEffective } from './exit-contract-effects.js';
 import { runExitDutyTransfer } from './exit-duty-transfer.js';
 import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
+// 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
+import './exit-void-assessments.js';
 import { loadExitRequest, pendingTransferAckSet, regularizationBlocker, type AckRecord } from './exit-gate.js';
 import {
   assertExtendedEmploymentAvailable,

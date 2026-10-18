@@ -165,6 +165,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice': [
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPES',
+  ],
+  'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments': [
+    '#IN_FLIGHT_ASSESSMENT_STATUSES',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/assessment-routes.ts#assessmentGuard': [
     'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentWrite',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
@@ -1516,6 +1523,12 @@ export const GRAPH: Graph = {
     '#conflict',
     '#regularizationBlocker',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#assessmentNoticeItems': [
+    'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice',
+    '#disclose',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#businessKind': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -1524,6 +1537,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#cancelConditions': ['#conflict', '#loadExitRequest'],
   'apps/api/src/modules/employment/exit-gate.ts#checkPendingTransferAck': [
+    '#assessmentNoticeItems',
     '#conflict',
     '#disclose',
     '#pendingTransferAckSet',
@@ -1558,6 +1572,7 @@ export const GRAPH: Graph = {
     '#disclose',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet': [
+    'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments',
     '#ackToken',
     '#inFlightApplications',
     '#plannedRows',
@@ -1626,6 +1641,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
+    'apps/api/src/modules/employment/exit-gate.ts#assessmentNoticeItems',
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     'apps/api/src/modules/employment/exit-gate.ts#leavesInProgress',
