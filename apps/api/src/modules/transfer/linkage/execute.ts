@@ -99,6 +99,35 @@ export async function applyTransferCrossLinkage(tx: Tx, ctx: EmploymentContext, 
   for (const item of await createItems(tx, ctx, transfer, stored)) await attemptLinkageItem(tx, ctx, item);
 }
 
+/**
+ * 离职的职责转交（R2-T03 §5.7，DEC-296② 后归 R2-T09）：只建并执行职责子项（下属 / 组织角色），不做合同、兼职、试岗、交接，
+ * 每个子项自己的保存点。与 applyTransferCrossLinkage 共用联动执行行幂等：已有执行结果即返回空；
+ * 没有职责转交计划也不建执行行。返回本次执行过的子项（含失败的），由调用方写自己的台账。
+ */
+export async function applyDutyTransfer(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: { readonly businessId: string; readonly employeeId: string; readonly effectiveDate: string },
+): Promise<LinkageItemRow[]> {
+  if (await linkageExecuted(tx, ctx.tenantId, target.businessId)) return [];
+  const stored = await latestLinkage(tx, ctx.tenantId, target.businessId);
+  if (!stored?.options.dutyTransfer) return [];
+  await tx.insert(transferLinkageRuns).values({
+    tenantId: ctx.tenantId,
+    businessId: target.businessId,
+    employeeId: target.employeeId,
+    versionId: stored.versionId,
+    effectiveDate: target.effectiveDate,
+    commandId: ctx.commandId,
+    executedAt: ctx.now,
+  });
+  const transfer = { id: target.businessId, employeeId: target.employeeId, effectiveDate: target.effectiveDate };
+  const items = await createItems(tx, ctx, transfer, { ...stored, options: { ...stored.options, partTimes: [] } });
+  const results: LinkageItemRow[] = [];
+  for (const item of items) results.push(await attemptLinkageItem(tx, ctx, item));
+  return results;
+}
+
 async function recordTrialAndHandover(
   tx: Tx,
   ctx: EmploymentContext,

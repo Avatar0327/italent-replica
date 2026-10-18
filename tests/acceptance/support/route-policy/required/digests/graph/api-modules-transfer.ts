@@ -220,6 +220,12 @@ export const GRAPH: Graph = {
     '#assertNoInFlightContract',
     '#loadTarget',
   ],
+  'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer': [
+    '#createItems',
+    '#linkageExecuted',
+    'apps/api/src/modules/transfer/linkage/items.ts#attemptLinkageItem',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+  ],
   'apps/api/src/modules/transfer/linkage/execute.ts#applyTransferCrossLinkage': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/transfer/linkage/contract.ts#changeContractOnActivation',

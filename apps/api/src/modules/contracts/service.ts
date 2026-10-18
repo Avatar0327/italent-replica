@@ -68,18 +68,13 @@ async function correctedState(
       terminationReason: before.terminationReason ?? 'unknown',
     });
   }
-  if (restore) await assertRestorationAllowed(tx, ctx, before, data.endDate!, today);
+  if (restore) await assertRestorationAllowed(tx, ctx, before, data.endDate!);
   return restore ? { status: 'valid', actualTerminationDate: null, terminationReason: null } : preserved;
 }
 /** DEC-167④⑤：调用方已持员工锁；提交与延迟生效都重新检查，避免两份有效合同。 */
-async function assertRestorationAllowed(
-  tx: Tx,
-  ctx: ContractContext,
-  before: Contract,
-  endDate: string,
-  today: string,
-) {
+async function assertRestorationAllowed(tx: Tx, ctx: ContractContext, before: Contract, endDate: string) {
   // DEC-167④ / F-014：有效历史（含重聘前离职）与已保存的未来离职都不可跨越；撤销/删除的不算。
+  // 未生效离职不论载荷生效日（R2-T03 §10.2：生效失败仍为 approved、日期已过的离职也要拦住）。
   const [exit] = rowsOf<{ lastWorkDate: string }>(
     await tx.execute(sql`
     SELECT last_work_date::text AS "lastWorkDate" FROM (
@@ -94,7 +89,7 @@ async function assertRestorationAllowed(
       JOIN LATERAL (SELECT s.state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${before.employeeId}::uuid
-        AND p.kind IN ('leave','retirement') AND p.effective_date>${today}::date AND s.state='approved'
+        AND p.kind IN ('leave','retirement') AND s.state='approved'
     ) exits WHERE last_work_date>=${before.effectiveDate}::date AND last_work_date<${endDate}::date
     ORDER BY last_work_date LIMIT 1`),
   );
