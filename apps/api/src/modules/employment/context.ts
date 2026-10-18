@@ -442,9 +442,10 @@ export async function runWrite(
    * 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；
    * 带 `scopedGuard` 标记的 guard 还让执行与结果校验改用事务内重新解析的数据范围（commandContext），重放命中台账后
    * 同一事务内再校验原响应，这类出口不再跑事务外、用入口旧范围的那次结果复核；
-   * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪；缺省两项与之前完全相同。
+   * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪，可异步（按当前权限再裁剪，首次与重放同一出口）；
+   * 缺省两项与之前完全相同。
    */
-  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown } = {},
+  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown | Promise<unknown> } = {},
 ) {
   const key = c.req.header('idempotency-key');
   const scoped = isScopedGuard(options.guard) ? options.guard : undefined;
@@ -470,7 +471,9 @@ export async function runWrite(
     );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const body = options.project ? options.project(result.body) : await trimEmploymentResponse(deps, ctx, result.body);
+  const body = options.project
+    ? await options.project(result.body)
+    : await trimEmploymentResponse(deps, ctx, result.body);
   return c.json(body, result.status);
 }
 

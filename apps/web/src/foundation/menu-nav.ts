@@ -28,7 +28,9 @@ export function searchMenus(menus: MenuNode[], keyword: string, groups: Record<s
 
 /** 原站顶栏显示当前所在应用，左侧只列该应用的菜单；当前页不属于任何有权菜单时没有当前应用。 */
 export function currentApp(menus: MenuNode[], activePath: string | undefined, groups: Record<string, string>) {
-  const active = menus.find((menu) => menu.path === activePath);
+  const active = menus.find(
+    (menu) => menu.path === activePath || (menu.directory && menu.children?.some((child) => child.path === activePath)),
+  );
   if (!active) return undefined;
   return {
     key: active.group,

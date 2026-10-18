@@ -82,6 +82,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes } from './exit-routes.js';
+import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
@@ -92,6 +93,7 @@ import {
   registerProbationRoutes,
   splitProbationResult,
 } from './probation-routes.js';
+import { installPartTime } from './part-time/install.js';
 import { isRegularizationEntryKind } from './regularization.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
@@ -103,6 +105,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
     }
     return handleError(error, c);
   });
+  // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
+  installPartTime();
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
@@ -119,6 +123,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   registerInternRoutes(module, deps);
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
+  registerAutoRegularizationRoutes(module, deps);
   router.route('/api/tenant/employment', module);
 };
 
