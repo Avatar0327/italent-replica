@@ -11,7 +11,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { type ModuleScope, rowsOf } from './access.js';
 import { careerSnapshot, validateCareerTargets } from './career-fields.js';
-import { keyInfoScopeSql, type KeyInfoSpec } from './key-info-scope.js';
+import { keyInfoColumn, keyInfoScopeSql, type KeyInfoSpec } from './key-info-scope.js';
 import { audit, conflict, created, requireRevision, type WriteContext } from './write-support.js';
 
 export { KEY_INFO, type KeyInfoKind, type KeyInfoSpec } from './key-info-scope.js';
@@ -63,7 +63,7 @@ export async function listKeyInfo(
   page: { limit: number; offset: number },
   employeeId?: string,
 ) {
-  const anchor = sql.raw(spec.columns[spec.persons[0]!]!);
+  const anchor = keyInfoColumn(spec)(spec.persons[0]!);
   return rowsOf<KeyInfoRow>(
     await tx.execute(sql`SELECT ${selectList(spec)} FROM ${sql.raw(spec.table)}
       WHERE tenant_id = ${tenantId} AND ${visible}

@@ -35,7 +35,7 @@ import {
   updateKeyInfo,
 } from './key-info-service.js';
 import { runIdpCommand } from './executor.js';
-import { keyInfoColumn, keyInfoScopeSql } from './key-info-scope.js';
+import { keyInfoListScope } from './key-info-scope.js';
 import * as input from './plan-input.js';
 
 const BASE = '/api/tenant/idp';
@@ -79,14 +79,7 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: str
       throw new AppError('VALIDATION_FAILED', 'employeeId 必须为 UUID');
     }
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listKeyInfo(
-        tx,
-        ctx.tenantId,
-        spec,
-        keyInfoScopeSql(scope, spec, keyInfoColumn(spec)),
-        page,
-        employeeId?.toLowerCase(),
-      ),
+      listKeyInfo(tx, ctx.tenantId, spec, keyInfoListScope(scope, spec), page, employeeId?.toLowerCase()),
     );
     const fields = await projectionOf(deps, ctx, kind);
     return c.json({ ...listEnvelope(page, scope), items: rows.map((row) => projectRow(row, fields, kind)) });

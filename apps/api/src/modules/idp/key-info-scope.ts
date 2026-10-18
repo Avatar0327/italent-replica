@@ -115,8 +115,15 @@ const positionOrg = (position: SQL) => sql`(SELECT v.org_id FROM job_position_ve
   WHERE v.tenant_id = current_setting('app.tenant_id')::uuid AND v.object_id = ${position}
   ORDER BY v.version_no DESC LIMIT 1)`;
 
-/** 表列（无别名）。 */
-export const keyInfoColumn = (spec: KeyInfoSpec) => (field: string) => sql.raw(spec.columns[field]!);
+/**
+ * 表列，一律限定表名（FROM 子句不起别名）。范围子查询里有同名列（如人员范围的 managed.employee_id），裸列会被绑定成
+ * 内层列，谓词变成“内层列 = 内层列”而失去与外层记录的关联，范围外的记录就从列表漏出（F-185 第 1 轮 P2-1）。
+ */
+export const keyInfoColumn = (spec: KeyInfoSpec) => (field: string) => sql.raw(`${spec.table}.${spec.columns[field]!}`);
+
+/** 列表的范围谓词：IDP 模块内所有按表列做范围判断的读口都从这里取，不要在调用处自己拼裸列。 */
+export const keyInfoListScope = (scope: ModuleScope, spec: KeyInfoSpec): SQL =>
+  keyInfoScopeSql(scope, spec, keyInfoColumn(spec));
 
 /** 审计快照（jsonb）里的字段值。 */
 export const keyInfoSnapshot = (snapshot: SQL) => (field: string) => sql`NULLIF(${snapshot}->>${field}, '')::uuid`;
