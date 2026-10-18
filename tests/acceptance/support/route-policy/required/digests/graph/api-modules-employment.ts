@@ -278,11 +278,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/assessment.ts#createAssessments': ['#createOne'],
   'apps/api/src/modules/employment/assessment.ts#createOne': [
+    '#launchAssessment',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+  ],
+  'apps/api/src/modules/employment/assessment.ts#launchAssessment': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
     'apps/api/src/modules/employment/assessment-store.ts#auditAssessment',
     'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
     '#assessmentSubject',
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
@@ -313,6 +316,194 @@ export const GRAPH: Graph = {
     '#assertEditable',
     '#mergedPatch',
     '#parseAssessmentPatch',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#SETTINGS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:DELETE /auto-assessment-rules/:id': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#deleteAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:GET /auto-assessment-rules': [
+    '#SETTINGS',
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#listAutoAssessmentRules',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment-rules': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#parseAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#saveAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment-rules/:id/copy': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#copyAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment/run': [
+    'apps/api/src/modules/employment/auto-assessment.ts#runAutoAssessmentNow',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#parseRunBody',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#visibleRunReceipt',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:PUT /auto-assessment-rules/:id': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#parseAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#saveAutoAssessmentRule',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:PUT /auto-assessment-rules/:id/enabled': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#setAutoAssessmentRuleEnabled',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/auto-regularization-rules.ts#parseRuleEnabled',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#audit': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    '#AUTO_ASSESSMENT_RULE_AUDIT_TYPE',
+    'apps/api/src/system-actor.ts#auditActor',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#copyAutoAssessmentRule': [
+    '#COPY_SUFFIX',
+    '#audit',
+    '#insertRule',
+    '#listAutoAssessmentRules',
+    '#lockRules',
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_NAME_MAX',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#currentAutoAssessmentRules': [
+    '#loadEnabledAutoAssessmentRules',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#deleteAutoAssessmentRule': [
+    '#audit',
+    '#lockRules',
+    '#lockedRule',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#insertRule': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_RULE_LIMIT',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#listAutoAssessmentRules': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_RULE_LIMIT',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#loadEnabledAutoAssessmentRules': [
+    '#listAutoAssessmentRules',
+    'apps/api/src/modules/employment/auto-regularization-rules.ts#expandRuleScopes',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#lockRules': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#lockedRule': [
+    '#listAutoAssessmentRules',
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#parseAutoAssessmentRule': [
+    '#ruleInput',
+    'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_DAYS_MESSAGE',
+    'packages/domain/src/employment/auto-assessment.ts#isAutoAssessmentDays',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#readAutoAssessmentEnabled': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_SETTING_KEY',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#ruleInput': [
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_NAME_MAX',
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPE_CODES',
+    'packages/domain/src/employment/auto-regularization.ts#AUTO_RULE_INITIATOR_CODES',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#saveAutoAssessmentRule': [
+    '#audit',
+    '#insertRule',
+    '#listAutoAssessmentRules',
+    '#lockRules',
+    '#lockedRule',
+    'apps/api/src/modules/employment/auto-regularization-rules.ts#assertOrgsExist',
+  ],
+  'apps/api/src/modules/employment/auto-assessment-rules.ts#setAutoAssessmentRuleEnabled': [
+    '#audit',
+    '#listAutoAssessmentRules',
+    '#lockRules',
+    '#lockedRule',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#assertNoCycleConflict': [
+    'apps/api/src/modules/employment/auto-regularization.ts#findCycleRegularization',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/auto-assessment.ts#AUTO_ASSESSMENT_BLOCKING_REGULARIZATION_STATES',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#autoAssessEmployee': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#currentAutoAssessmentRules',
+    '#dueRulesOf',
+    '#launchByRule',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#cursorPosition': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#dueRulesOf': [
+    '#launchedBefore',
+    '#subjectOf',
+    'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRules',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#launchByRule': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/employment/assessment.ts#launchAssessment',
+    '#assertNoCycleConflict',
+    '#reasonOf',
+    '#recordOutcome',
+    'apps/api/src/modules/employment/auto-regularization.ts#resolveInitiator',
+    'apps/api/src/modules/employment/errors.ts#EmploymentError',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#launchedBefore': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#runAutoAssessmentNow': [
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#loadEnabledAutoAssessmentRules',
+    'apps/api/src/modules/employment/auto-assessment-rules.ts#readAutoAssessmentEnabled',
+    '#autoAssessEmployee',
+    '#collectAutoAssessmentOutcomes',
+    '#cursorPosition',
+    '#issueCursor',
+    '#scanDue',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#scanDue': [
+    '#AUTO_ASSESSMENT_RUN_LIMITS',
+    '#RUN_PAGE',
+    '#dueRulesOf',
+    'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizationCandidates',
+  ],
+  'apps/api/src/modules/employment/auto-assessment.ts#subjectOf': [
+    'apps/api/src/modules/employment/probation.ts#loadProbationCycle',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/auto-regularization-routes.ts#SETTINGS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -411,10 +602,17 @@ export const GRAPH: Graph = {
     '#listAutoRegularizationRules',
     '#lockRules',
   ],
+  'apps/api/src/modules/employment/auto-regularization-rules.ts#currentAutoRegularizationRules': [
+    '#loadEnabledAutoRegularizationRules',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/auto-regularization-rules.ts#deleteAutoRegularizationRule': [
     '#audit',
     '#lockRules',
     '#lockedRule',
+  ],
+  'apps/api/src/modules/employment/auto-regularization-rules.ts#expandRuleScopes': [
+    'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
   ],
   'apps/api/src/modules/employment/auto-regularization-rules.ts#insertRule': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
@@ -426,8 +624,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_RULE_LIMIT',
   ],
   'apps/api/src/modules/employment/auto-regularization-rules.ts#loadEnabledAutoRegularizationRules': [
+    '#expandRuleScopes',
     '#listAutoRegularizationRules',
-    'apps/api/src/modules/org/hierarchy-reader.ts#listOrgDescendantsInTransaction',
   ],
   'apps/api/src/modules/employment/auto-regularization-rules.ts#lockRules': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
@@ -469,9 +667,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/auto-regularization.ts#activeUser': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleRegularization': [
-    '#kinds',
+  'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleAssessments': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/auto-assessment.ts#assessmentBlocksAutoRegularization',
+  ],
+  'apps/api/src/modules/employment/auto-regularization.ts#assertNoCycleRegularization': [
+    '#findCycleRegularization',
     'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_BLOCKING_STATES',
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizationCandidates': [
@@ -480,6 +681,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#autoRegularizeEmployee': [
     'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/employment/auto-regularization-rules.ts#currentAutoRegularizationRules',
+    '#assertNoCycleAssessments',
     '#assertNoCycleRegularization',
     '#dueRuleOf',
     '#reasonOf',
@@ -498,6 +701,10 @@ export const GRAPH: Graph = {
     '#subjectOf',
     'packages/domain/src/employment/auto-regularization.ts#autoRegularizationTargetDate',
     'packages/domain/src/employment/auto-regularization.ts#matchAutoRegularizationRule',
+  ],
+  'apps/api/src/modules/employment/auto-regularization.ts#findCycleRegularization': [
+    '#kinds',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/auto-regularization.ts#launchedBefore': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',

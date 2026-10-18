@@ -42,7 +42,7 @@ export interface AutoRegularizationTenantRun extends AutoRegularizationRun {
   readonly errors: { readonly employeeId: string; readonly code: string }[];
 }
 
-function localHour(now: Date, timezone: string): number {
+export function localHour(now: Date, timezone: string): number {
   return Number(
     new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: '2-digit', hourCycle: 'h23' }).format(now),
   );

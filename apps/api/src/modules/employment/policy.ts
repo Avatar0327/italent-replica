@@ -1744,6 +1744,80 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ),
     },
   ),
+  // ---- employment/auto-assessment-routes.ts：R2 BE-15b2 自动发起试用期考核规则与立即执行（B58，DEC-533② / DEC-539）--------------
+  // 同自动转正规则：任职设置配置对象；body 严格（入职后天数 1～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置1至999的整数”；
+  // 考核名称 / 类型 / 适用组织 / 发起人类型必填，附加人员条件与失败通知按未知字段 400）；审计 auto_assessment_rule.*
+  'GET /auto-assessment-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /auto-assessment-rules': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_assessment_rule'),
+  ),
+  'PUT /auto-assessment-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_assessment_rule'),
+    byId,
+  ),
+  // 复制：If-Match 0，另建一条（名称加“（复制）”、默认停用）；源规则不存在 404
+  'POST /auto-assessment-rules/:id/copy': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_assessment_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 单条启停（DEC-533②，复刻增加）：body 严格 { enabled }；审计 auto_assessment_rule.enable / disable
+  'PUT /auto-assessment-rules/:id/enabled': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('auto_assessment_rule'),
+    byId,
+  ),
+  'DELETE /auto-assessment-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:auto_assessment_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 立即执行（DEC-539①）：body 严格 { cursor? }（上次回执的 nextCursor，非 UUID 400）；
+  // 总开关关闭 409 AUTO_ASSESSMENT_DISABLED；按规则适用组织扫描（系统批次提前执行，
+  // 不叠加操作人数据范围），逐人保存点经 BE-15b1 考核发起入口发起，审计 employment.auto_assessment.launch；回执固定形状
+  'POST /auto-assessment/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 逐人经 BE-15b1 考核发起入口发起：PB-R9 互斥在 launchAssessment 里照常判定（系统批次不带数据范围）
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织（系统批次，DEC-539①）；
+        // 这里的范围是回执的人员披露：按操作人当前任职范围逐人过滤（visibleEmployees，首次与重放同一出口，第 2 轮审查 P1）
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RUN_RECEIPT_DISCLOSURE },
+      write: write(
+        'body',
+        'config.audited:auto_assessment_run',
+        none('配置对象无范围，回执只含员工 / 规则 / 考核 ID'),
+        { commandOnly: true, preconditions: ['assertRevision'] },
+      ),
+    },
+  ),
   // ---- employment/assessment-routes.ts：R2 BE-15b1 试用中考核 / 转正考核（B2，29 PB-R3～R6）------------------------------
   // 考核对象 TenantBase.ProbationAssessment：数据操作 + 详情级按钮 Assessment.Create / Assessment.Edit，范围按考核对象员工
   // （人员 / 部门维度，部门取创建时的主职部门快照）。列表按 scopeSql 过滤，筛选参数严格校验（未知参数 / 非法取值 400）
