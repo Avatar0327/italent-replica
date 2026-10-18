@@ -6,12 +6,14 @@
  * - 会签合席（替代人已在本节点占着一席，非调动任职业务）：仍持组织锁，守住 F-065 / F-017 的保护。
  * 全局取锁顺序不变：员工闭包 / 多员工业务头 → 组织 / 编制 → 账号 / 成员 → 剩余业务头 → 实例。
  */
+import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { createUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
 import { cmd } from './support/tenant-api.js';
 import { NODES, pendingOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
@@ -31,6 +33,7 @@ const COUNTERSIGN = {
 async function leaveScene(label: string, countersign: boolean, withTransfer = false) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
+  await installExitSeeds(w.db, w.tenant.id);
   const source = await createUser(
     w.db,
     { email: `${label}-${randomUUID()}@example.com`, displayName: '外部异常管理员' },
@@ -58,6 +61,7 @@ async function leaveScene(label: string, countersign: boolean, withTransfer = fa
         mode: 'application',
         lastWorkDate: '2026-10-20',
         fields: {},
+        exit: { exitTypeCode: 'voluntary' },
       },
     }),
     201,
@@ -78,6 +82,9 @@ async function leaveScene(label: string, countersign: boolean, withTransfer = fa
   return {
     w,
     view,
+    source,
+    s,
+    created,
     handover: () =>
       w.request(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
         ifMatch: 0,
@@ -147,5 +154,52 @@ describe.runIf(realPostgres)('AC-APV F-070 手动交接的组织锁范围（DEC-
     expect(await lockFreeWhileHandoverQueued(withTransfer, 'tryEstablishmentLock')).toBe(false);
     const without = await leaveScene('f070-merge-no-transfer', true);
     expect(await lockFreeWhileHandoverQueued(without, 'tryEstablishmentLock')).toBe(true);
+  });
+
+  it('成员撤销接管合席结算并让离职生效：等组织锁期间尚未持有实例锁（锁序 组织 → 实例），放行后离职生效', async () => {
+    const f = await leaveScene('f070-revoke-settle', true);
+    const { w } = f;
+    // 会签节点 all：先由异常管理员以外的席位同意，异常管理员 U 仍待办
+    const outHeadTask = pendingOf(f.view).find((task) => task.assigneeUserId === f.s.outHead.userId)!;
+    const view = await w.json<{ id: string }>(
+      await w.taskAction(f.s.outHead.userId, outHeadTask.id, 'approve', f.view.revision),
+    );
+    // 发起人 HR 交接 U 的任务给已同意的席位：实例因本人发起被跳过，但替代人已登记，成员撤销时接管会合席结算
+    const handover = await w.json<{ skipped: { instanceId: string }[] }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: f.source.id, toUserId: f.s.outHead.userId },
+      }),
+    );
+    expect(handover.skipped.map((item) => item.instanceId)).toContain(view.id);
+    w.setNow('2026-10-21T02:00:00Z');
+    const [membership] = await withTenant(w.db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT revision::int AS revision FROM tenant_memberships
+        WHERE tenant_id=${w.tenant.id} AND user_id=${f.source.id}::uuid`);
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { revision: number }[];
+    });
+    let removed: Promise<Response> = Promise.resolve(new Response());
+    let instanceFree: boolean | undefined;
+    await withTenant(w.db, w.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE`);
+      removed = w.request(w.hr.id, 'POST', `/api/tenant/permission/users/${f.source.id}/remove`, {
+        ifMatch: membership!.revision,
+      });
+      await waitForBlocked(w.db, 1);
+      instanceFree = await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT id FROM approval_instances WHERE tenant_id=${w.tenant.id}
+          AND id=${view.id}::uuid FOR UPDATE NOWAIT`),
+      ).then(
+        () => true,
+        (error: unknown) => {
+          if (!isLockNotAvailable(error)) throw error;
+          return false;
+        },
+      );
+    });
+    const response = await removed;
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(instanceFree, '等组织锁期间不应已持有实例锁').toBe(true);
+    expect((await w.business(f.created.id)).status).toBe('effective');
   });
 });
