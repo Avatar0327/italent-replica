@@ -175,7 +175,8 @@ it('S3-P2-01 三笔队列：T2 是最近一次失败且与 T3 无关，但 T3 �
   expect(await managerOf(w, s.hire.id)).toBe(m.employee.id);
   expect(await managerOf(w, u.hire.id)).toBeNull();
   expect(await snapshot(w, m.employee.id)).toEqual(before);
-  expect((await w.todos()).map((item) => item.id)).toEqual([t1.id, t2.id]);
+  // t1 / t2 失败，t3 因 t1 挂起，三条都在待办里
+  expect((await w.todos()).map((item) => item.id)).toEqual([t1.id, t2.id, t3.id]);
 });
 
 it('S3-P2-01 已落地直接调动的生效入口与申请 activate 端口同一套前序复核：前序失败未修正时拒绝执行、不动下属经理', async () => {
@@ -303,6 +304,6 @@ it.each(ROLE_CASES)(
     await expectRebuildRequired(w, t1, [t2.id], { planned: '2026-10-05', execution: '2026-10-10' }, 2);
     await expectSuspended(w, t2, t1);
     expect((await orgRoles(w, w.from.id))[c.role.column]).toBe(m.employee.id);
-    expect((await w.todos()).map((item) => item.id)).toEqual([t1.id]);
+    expect((await w.todos()).map((item) => item.id)).toEqual([t1.id, t2.id]);
   },
 );

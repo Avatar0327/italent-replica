@@ -201,6 +201,32 @@ interface MemberInterval {
   readonly staffId?: string;
 }
 
+/** 按员工归组的真实主职区间（含来源周期）。 */
+function groupOccupancy(rows: Awaited<ReturnType<typeof occupancyRows>>) {
+  const members = new Map<string, MemberInterval[]>();
+  for (const row of rows) {
+    const intervals = members.get(row.employeeId) ?? [];
+    intervals.push({
+      employeeId: row.employeeId,
+      fields: camelFields(row.fields),
+      from: row.from,
+      until: row.until,
+      staffId: row.staffId,
+    });
+    members.set(row.employeeId, intervals);
+  }
+  return members;
+}
+
+/** 在 [from, until) 内挖掉原区间，留下两侧残段。 */
+function cutInterval(interval: MemberInterval, from: string, until: string): MemberInterval[] {
+  if (interval.until <= from || interval.from >= until) return [interval];
+  return [
+    ...(interval.from < from ? [{ ...interval, until: from }] : []),
+    ...(interval.until > until ? [{ ...interval, from: until }] : []),
+  ];
+}
+
 async function projectedMembers(
   tx: Tx,
   ctx: EmploymentContext,
@@ -219,18 +245,7 @@ async function projectedMembers(
   // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
   const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
-  const members = new Map<string, MemberInterval[]>();
-  for (const row of rows) {
-    const intervals = members.get(row.employeeId) ?? [];
-    intervals.push({
-      employeeId: row.employeeId,
-      fields: camelFields(row.fields),
-      from: row.from,
-      until: row.until,
-      staffId: row.staffId,
-    });
-    members.set(row.employeeId, intervals);
-  }
+  const members = groupOccupancy(rows);
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
   const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
   const projectedAdjustments = await adjustmentProjection(tx, ctx, target);
@@ -279,13 +294,7 @@ async function projectedMembers(
     const previous = members.get(row.employeeId) ?? [];
     const intervals =
       timings.transferOut === 'submitted' || row.state !== 'in_review'
-        ? previous.flatMap((interval) => {
-            if (interval.until <= from || interval.from >= until) return [interval];
-            return [
-              ...(interval.from < from ? [{ ...interval, until: from }] : []),
-              ...(interval.until > until ? [{ ...interval, from: until }] : []),
-            ];
-          })
+        ? previous.flatMap((interval) => cutInterval(interval, from, until))
         : previous;
     if (timings.transferIn === 'submitted' || row.state !== 'in_review')
       intervals.push({ employeeId: row.employeeId, fields, from, until, ...staffOf(applicationStaff) });

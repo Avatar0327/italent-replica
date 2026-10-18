@@ -36,12 +36,26 @@ describe('AC-TRF-161 生效时按 DEC-150 再校验整个时段', () => {
       });
       expect(await w.session.records(employee.id, '2026-10-05')).toEqual(chainBefore);
       expect(chainBefore.map((record) => record.id)).toEqual([hire.id]);
+      // 待办：失败的 first；同日到期而被前序失败挂起的 later 也在列（挂起项，失败次数不计）
       expect(await w.todos()).toEqual([
         expect.objectContaining({
           id: first.id,
           effectiveDate: '2026-10-05',
           activation: expect.objectContaining({ status: 'failed', failureCount: 1 }),
         }),
+        ...(laterDate === '2026-10-05'
+          ? [
+              expect.objectContaining({
+                id: later.id,
+                activation: expect.objectContaining({
+                  status: 'suspended',
+                  failureCount: 0,
+                  failureReason: 'PREDECESSOR_FAILED',
+                  blockedByBusinessId: first.id,
+                }),
+              }),
+            ]
+          : []),
       ]);
       expect(
         (await w.auditEvents(first.id)).find((event) => event.action === 'employment.activation.failed'),

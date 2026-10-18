@@ -393,7 +393,8 @@ export async function listActivationTodos(
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)} AND a.outcome IN ('failed','suspended') AND ${scopeFilter}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
+      AND a.outcome IN ('failed','suspended') AND ${scopeFilter}
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );
