@@ -88,9 +88,19 @@ test.beforeEach(async ({ page }) => {
 interface Backend {
   reads: number;
   creates: Record<string, unknown>[];
+  draft: Record<string, unknown> | null;
+  deletes: { method: string; headers: Record<string, string> }[];
 }
 async function backend(page: Page, read: (route: Parameters<Parameters<Page['route']>[1]>[0]) => Promise<void>) {
-  const state: Backend = { reads: 0, creates: [] };
+  const state: Backend = { reads: 0, creates: [], draft: null, deletes: [] };
+  await page.route('**/transfers/employees/' + employee + '/draft', (route) =>
+    route.fulfill({ json: { draft: state.draft } }),
+  );
+  await page.route('**/transfers/employees/' + employee + '/draft/*', (route) => {
+    state.deletes.push({ method: route.request().method(), headers: route.request().headers() });
+    state.draft = null;
+    return route.fulfill({ json: { ...business, revision: 2, status: 'deleted' } });
+  });
   await page.route('**/employment/businesses/' + draftId, (route) => {
     state.reads++;
     return read(route);
@@ -99,6 +109,7 @@ async function backend(page: Page, read: (route: Parameters<Parameters<Page['rou
   await page.route('**/transfers/employees/' + employee, (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     state.creates.push(body);
+    state.draft = body.submit ? null : { id: draftId, revision: 1, transferTypeCode: body.transferTypeCode };
     return route.fulfill({ json: body.submit ? submittedReceipt : receipt });
   });
   return state;
@@ -189,17 +200,18 @@ test('AC-FE-F153-09 我的申请不再列出本会话暂存单', async ({ page }
   await expect(page.getByRole('button', { name: /查看暂存申请/ })).toHaveCount(0);
 });
 
-test('AC-FE-F153-10 暂存已不是草稿（他处已提交）时不带出，也不再回查', async ({ page }) => {
+test('AC-FE-F153-10 暂存已不是草稿（他处已提交），元数据返回 null 时不带出', async ({ page }) => {
   const state = await backend(page, (route) => route.fulfill({ json: { ...business, status: 'in_review' } }));
   await stash(page);
+  state.draft = null;
   await pick(page);
-  await expect.poll(() => state.reads).toBe(1);
+  await expect.poll(() => state.reads).toBe(0);
   await expect(banner(page)).toHaveCount(0);
   await expect(page.locator('input[name="place"]')).toHaveValue('合成工作地');
   await back(page);
   await pick(page);
   await expect(page.locator('input[name="place"]')).toHaveValue('合成工作地');
-  expect(state.reads).toBe(1);
+  expect(state.reads).toBe(0);
 });
 
 test('AC-FE-F153-11 读取暂存失败（403）提示未带出，表单为空白且仍可暂存', async ({ page }) => {
@@ -272,12 +284,7 @@ test('AC-FE-F153-14 #350 P2-1 取不到暂存类型时不默认第一项：留�
   await sharedCatalog(page);
   const state = await backend(page, (route) => route.fulfill({ json: business }));
   await stashAs(page, 'inner');
-  // 只记单号的会话条目（F-153 第 1 版写入的形状）：没有类型可还原。
-  await page.evaluate((id) => {
-    const key = Object.keys(sessionStorage).find((item) => item.startsWith('italent.transfer.l2:'))!;
-    const value = JSON.parse(sessionStorage.getItem(key)!) as { drafts: Record<string, unknown> };
-    sessionStorage.setItem(key, JSON.stringify({ ...value, drafts: { [Object.keys(value.drafts)[0]!]: id } }));
-  }, draftId);
+  state.draft = { id: draftId, revision: 1 };
   await page.getByRole('button', { name: button('他人调动申请') }).click();
   await page.locator('select[name="employeeId"]').selectOption(employee);
   await expect(page.getByText('无法确定上次暂存的异动类型，请重新选择异动类型后再暂存或提交')).toBeVisible();
@@ -456,7 +463,9 @@ test('AC-FE-F153-18 #350 第 2 轮 P2-1 已确认冲突后换人再换回：按�
   await expect(page.getByText('调动申请已提交审批。')).toBeVisible();
 });
 
-test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果未知锁定，不报成功、不清暂存索引', async ({ page }) => {
+test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果未知锁定，不报成功、保留 processing 标记', async ({
+  page,
+}) => {
   await backend(page, (route) => route.fulfill({ json: business }));
   await stash(page);
   const sent: (string | undefined)[] = [];
@@ -470,9 +479,81 @@ test('AC-FE-F153-19 #350 第 2 轮 P2-2 回执员工版本未推进：按结果�
   await expect.poll(() => sent).toEqual(['4']);
   await expect(page.getByRole('status').filter({ hasText: '处理中，请在我的申请中查看' })).toBeVisible();
   await expect(page.getByText('调动申请已提交审批。')).toHaveCount(0);
-  const drafts = await page.evaluate(() => {
+  const session = await page.evaluate(() => {
     const key = Object.keys(sessionStorage).find((item) => item.startsWith('italent.transfer.l2:'))!;
-    return (JSON.parse(sessionStorage.getItem(key)!) as { drafts: Record<string, unknown> }).drafts;
+    return JSON.parse(sessionStorage.getItem(key)!);
   });
-  expect(Object.values(drafts)).toEqual([expect.objectContaining({ id: draftId })]);
+  expect(session).toEqual({ processing: true });
+});
+
+test('AC-FE-F181b-08 清空会话并刷新，按服务端带出；清除发 DELETE 后再选不带出', async ({ page }) => {
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+  await pick(page);
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect.poll(() => state.deletes.length).toBe(1);
+  expect(state.deletes[0]).toMatchObject({ method: 'DELETE', headers: { 'if-match': '1' } });
+  expect(state.deletes[0]!.headers['idempotency-key']).toBeTruthy();
+  await back(page);
+  await pick(page);
+  await expect(banner(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '暂存', exact: true })).toBeEnabled();
+});
+
+test('AC-FE-F181b-09 清除无权时明确提示并保留内容', async ({ page }) => {
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  await page.route('**/transfers/employees/*/draft/*', (route) =>
+    route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '无权删除' } } }),
+  );
+  await pick(page);
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(page.getByText('没有删除权限，无法清除暂存', { exact: true })).toBeVisible();
+  await expect(banner(page)).toBeVisible();
+  await expect(page.locator('input[name="place"]')).toHaveValue('暂存工作地');
+});
+
+test('AC-FE-F181b-10 清除被替换时重读新单，核对后才能再次清除', async ({ page }) => {
+  const state = await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  await pick(page);
+  const nextId = '60000000-0000-4000-8000-000000000002';
+  state.draft = { id: nextId, revision: 7, transferTypeCode: 'transfer' };
+  await page.route('**/employment/businesses/' + nextId, (route) =>
+    route.fulfill({ json: { ...business, id: nextId, revision: 7, fields: { place: '新暂存工作地' } } }),
+  );
+  await page.route('**/transfers/' + nextId + '/linkage', (route) =>
+    route.fulfill({ json: { ...linkage, businessId: nextId, revision: 7 } }),
+  );
+  await page.route('**/transfers/employees/*/draft/' + draftId, (route) =>
+    route.fulfill({ status: 409, json: { error: { code: 'DRAFT_REPLACED', message: '暂存已替换' } } }),
+  );
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(page.locator('input[name="place"]')).toHaveValue('新暂存工作地');
+  await expect(page.getByRole('button', { name: '点击清除', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(page.getByRole('button', { name: '点击清除', exact: true })).toBeEnabled();
+});
+
+test('AC-FE-F181b-11 清除结果未知：关闭、换视图、重开保持只读，不发第二条命令', async ({ page }) => {
+  await backend(page, (route) => route.fulfill({ json: business }));
+  await stash(page);
+  let deletes = 0;
+  await page.route('**/transfers/employees/*/draft/*', (route) => {
+    deletes++;
+    return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '结果未知' } } });
+  });
+  await pick(page);
+  await page.getByRole('button', { name: '点击清除', exact: true }).click();
+  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
+  await back(page);
+  await page.getByRole('button', { name: button('已完成调动') }).click();
+  await page.getByRole('button', { name: button('他人调动申请') }).click();
+  await page.locator('select[name="employeeId"]').selectOption(employee);
+  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '点击清除', exact: true })).toBeDisabled();
+  expect(deletes).toBe(1);
 });
