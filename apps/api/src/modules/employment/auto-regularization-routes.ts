@@ -21,7 +21,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScope, trimModuleResponse } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
-import { runAutoRegularizationNow, type AutoRegularizationRun } from './auto-regularization.js';
+import { runAutoRegularizationNow } from './auto-regularization.js';
 import {
   copyAutoRegularizationRule,
   deleteAutoRegularizationRule,
@@ -48,7 +48,7 @@ registerSettingValidator(AUTO_REGULARIZATION_SETTING_KEY, isAutoRegularizationSe
 const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 
 /** 规则写入与立即执行的命令内复核：配置写别名（other_settings）与配置对象字段编辑权，同入口。 */
-function ruleGuard(
+export function ruleGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   payload: Readonly<Record<string, unknown>>,
@@ -68,7 +68,7 @@ function ruleGuard(
 }
 
 /** 规则写入与立即执行的入口上下文：配置写别名 + If-Match（同自动加黑规则）。 */
-function writeContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+export function writeContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return readContext(
     c,
     deps,
@@ -191,7 +191,7 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 /** body 严格 { cursor? }：cursor 为上一次回执的 nextCursor（续跑句柄，随机 UUID），从它记下的位置之后接着扫描。 */
-function parseRunBody(raw: unknown): { readonly cursor: string | null } {
+export function parseRunBody(raw: unknown): { readonly cursor: string | null } {
   const parsed = z.strictObject({ cursor: z.string().refine(isUuid, '续跑游标须为 UUID').optional() }).safeParse(raw);
   if (!parsed.success)
     throw new AppError('VALIDATION_FAILED', '立即执行的请求体须为 {} 或 { cursor }', parsed.error.issues);
@@ -203,8 +203,12 @@ function parseRunBody(raw: unknown): { readonly cursor: string | null } {
  * 发起人只列操作人有任职记录查看权且在其数据范围内的员工；没有查看权或范围为空时两列都为空。重放同样在这里按当前权限
  * 重新裁剪，撤权后拿不到原回执里的人。续跑句柄（nextCursor）不含员工信息，原样返回。
  */
-async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
-  const receipt = body as AutoRegularizationRun & { readonly nextCursor: string | null };
+export async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
+  // 自动转正与自动考核（BE-15b2）的立即执行回执同形：launched / failed 都按 employeeId 逐人过滤
+  const receipt = body as {
+    readonly launched: readonly { readonly employeeId: string }[];
+    readonly failed: readonly { readonly employeeId: string }[];
+  };
   const ids = [...new Set([...receipt.launched, ...receipt.failed].map((item) => item.employeeId))];
   const visible = await visibleEmployees(deps, ctx, ids);
   return {

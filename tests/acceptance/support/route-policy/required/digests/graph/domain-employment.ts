@@ -11,6 +11,14 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPE_CODES': ['#ASSESSMENT_TYPES'],
   'packages/domain/src/employment/assessment.ts#assessmentOpinionViolation': ['#OPINIONS_REQUIRING_DATE'],
   'packages/domain/src/employment/assessment.ts#assessmentRegularization': ['#NONE'],
+  'packages/domain/src/employment/auto-assessment.ts#autoAssessmentTargetDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/auto-assessment.ts#isAutoAssessmentDays': [
+    '#AUTO_ASSESSMENT_DAYS_MAX',
+    '#AUTO_ASSESSMENT_DAYS_MIN',
+  ],
+  'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRules': ['#autoAssessmentTargetDate'],
   'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_MODE_CODES': [
     '#AUTO_REGULARIZATION_MODES',
   ],
@@ -35,6 +43,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimeBusinessField': ['#PERMISSION_CODE'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimePermissionCode': ['#PERMISSION_CODE'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimePermissionFields': ['#partTimePermissionCode'],
+  'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState': ['#TRANSITIONS'],
   'packages/domain/src/employment/part-time.ts#ACTIVE_STATUSES': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],

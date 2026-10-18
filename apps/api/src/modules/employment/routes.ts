@@ -83,6 +83,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes } from './exit-routes.js';
+import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
@@ -127,6 +128,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerInternRoutes(module, deps);
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
+  registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
   registerPartTimeRoutes(module, deps);
   router.route('/api/tenant/employment', module);

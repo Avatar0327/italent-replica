@@ -36,8 +36,16 @@ export const PART_TIME_REQUEST_STATES = [
   'effective',
   'deleted',
 ] as const;
+export type PartTimeRequestState = (typeof PART_TIME_REQUEST_STATES)[number];
+export type PartTimeInitiator = (typeof PART_TIME_INITIATORS)[number];
 /** 作废原因（voided 事件必填）：HR 撤销 / 离职 / 调动 / 提交后目标被改 / 落地复核不通过。 */
 export const PART_TIME_VOID_REASONS = ['hr', 'exit', 'transfer', 'changed_since_submit', 'landing_rejected'] as const;
+export type PartTimeVoidReason = (typeof PART_TIME_VOID_REASONS)[number];
+/** 站内消息模板（approval_notifications.template_code）：申请被离职作废 / 落地复核不通过而作废，通知发起人。 */
+export const PART_TIME_NOTICE_TEMPLATES = {
+  voidedByExit: 'part_time_request_voided_by_exit',
+  voided: 'part_time_request_voided',
+} as const;
 /** 延长 / 结束备注上限（原站计数器 0/32766）。 */
 export const PART_TIME_REMARK_MAX = 32766;
 
@@ -53,6 +61,19 @@ export const PART_TIME_BUTTONS = {
   batchEnd: 'Employment.PartTimeBatchEnd',
   edit: 'Employment.PartTimeEdit',
 } as const;
+/**
+ * 兼职业务字段名 → 任职记录权限目录里的字段编码（只有开始日期不同：startDate 不是任职记录字段，按 effectiveDate 判，§7.2）。
+ * 路由的写权限载荷、审批适配器的快照（values / changedFields）与审批编辑的字段都经这一份映射，不各写一份。
+ */
+const PERMISSION_CODE: Readonly<Record<string, string>> = { startDate: 'effectiveDate' };
+export const partTimePermissionCode = (field: string): string => PERMISSION_CODE[field] ?? field;
+/** 权限编码 → 兼职业务字段名（审批编辑的入参反查）。 */
+export const partTimeBusinessField = (code: string): string =>
+  Object.entries(PERMISSION_CODE).find(([, mapped]) => mapped === code)?.[0] ?? code;
+export function partTimePermissionFields<T>(values: Readonly<Record<string, T>>): Record<string, T> {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [partTimePermissionCode(key), value]));
+}
+
 /** 可授编辑的兼职字段（申请字段编码 = 任职记录字段编码，PT-R4）。 */
 export const PART_TIME_FIELDS = ['partTimeType', 'endDate', 'requestRemark'] as const;
 /** 系统字段，只可授查看：原定结束日期（申请版本）、任职状态与视图归属（按期限链派生）。 */
@@ -60,8 +81,6 @@ export const PART_TIME_SYSTEM_FIELDS = ['originalEndDate', 'serviceStatus', 'par
 
 /** 机器可读的业务拒绝原因（`details.reason`）；各批次入口按 §4 使用。 */
 export const PART_TIME_ERRORS = {
-  /** PT-1 ～ PT-4a：part_time 审批适配器为占位，任何调用 409（§13.1）。 */
-  notAvailable: 'PART_TIME_NOT_AVAILABLE',
   endBeforeStart: 'PART_TIME_END_BEFORE_START',
   endDateRequired: 'PART_TIME_END_DATE_REQUIRED',
   beforeEntry: 'PART_TIME_BEFORE_ENTRY',
@@ -83,4 +102,10 @@ export const PART_TIME_ERRORS = {
   duplicateRecord: 'DUPLICATE_RECORD',
   linkageNotAvailable: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
   requestTypeNotAvailable: 'PART_TIME_REQUEST_TYPE_NOT_AVAILABLE',
+  /** 申请当前状态不允许该动作（如审批中不能直接修改）。 */
+  requestStateInvalid: 'PART_TIME_REQUEST_STATE_INVALID',
+  /** 审批编辑带了适配器不接的字段。 */
+  fieldNotEditable: 'PART_TIME_FIELD_NOT_EDITABLE',
+  /** 提交 / 撤回只允许原发起人。 */
+  notInitiator: 'PART_TIME_NOT_INITIATOR',
 } as const;

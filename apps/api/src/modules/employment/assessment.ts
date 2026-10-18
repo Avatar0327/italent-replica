@@ -104,6 +104,46 @@ async function assessmentSubject(tx: Tx, ctx: EmploymentContext, employeeId: str
   return { anchorId: cycle.anchor.id, departmentId: current.fields.departmentId ?? null };
 }
 
+export interface AssessmentLaunch {
+  readonly employeeId: string;
+  readonly assessmentType: AssessmentType;
+  readonly assessmentName: string;
+  readonly assessmentDate: string;
+  /** manual = 选人手动发起（带员工 revision 做 If-Match）；auto = BE-15b2 自动发起（系统代发，ctx.userId 是规则发起人）。 */
+  readonly initiation: 'manual' | 'auto';
+  readonly revision?: number;
+}
+
+/**
+ * 发起一条考核（手动批量与 BE-15b2 自动发起共用的单一入口）：调用方在保存点内调用，已按需判过范围。
+ * 锁员工 → 试用中判定 → PB-R9 互斥 → 建考核 → 与审批中心同事务提交审批；任一步失败整条回滚由调用方保存点承担。
+ */
+export async function launchAssessment(tx: Tx, ctx: EmploymentContext, launch: AssessmentLaunch) {
+  const employee = await lockEmploymentEmployee(tx, ctx, launch.employeeId, launch.revision);
+  const subject = await assessmentSubject(tx, ctx, employee.id);
+  // PB-R9：发起也受互斥与并行规则约束（和直接转正、转正申请同一检查点）
+  await assertProbationProcessesIdle(tx, ctx, {
+    employeeId: employee.id,
+    action: launch.assessmentType === 'probation' ? 'assess_probation' : 'assess_regularization',
+  });
+  const id = randomUUID();
+  const auto = launch.initiation === 'auto';
+  await tx.execute(sql`INSERT INTO employment_probation_assessments(id, tenant_id, employee_id, anchor_id,
+      department_id, assessment_type, assessment_name, assessment_date, status, initiation, initiator_user_id,
+      system_proxy, revision, command_id, created_at, updated_at)
+    VALUES (${id}::uuid, ${ctx.tenantId}, ${employee.id}::uuid, ${subject.anchorId}::uuid,
+      ${subject.departmentId}::uuid, ${launch.assessmentType}, ${launch.assessmentName},
+      ${launch.assessmentDate}::date, 'in_review', ${launch.initiation}, ${ctx.userId}::uuid, ${auto}, 1,
+      ${ctx.commandId}, ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
+  const created = await loadAssessment(tx, ctx.tenantId, id);
+  await auditAssessment(tx, ctx, 'create', id, null, created, created);
+  await bumpEmploymentEmployee(tx, ctx, employee);
+  // 与审批中心同事务：没有匹配的流程、首节点审批人为空时整人回滚，考核不创建（DEC-017 / DEC-054）；
+  // 自动发起的审批发起日志带“系统代发”标记（R2e7）
+  await employmentApprovalHooks.assessmentSubmitted(tx, auto ? { ...ctx, systemProxy: true } : ctx, id);
+  return created;
+}
+
 async function createOne(
   tx: Tx,
   ctx: EmploymentContext,
@@ -112,27 +152,14 @@ async function createOne(
 ) {
   // 范围外与不存在同一个 404（DEC-177 写入口径），在本人保存点内判定
   await requireEmployeeInScope(tx, ctx, item.employeeId);
-  const employee = await lockEmploymentEmployee(tx, ctx, item.employeeId, item.revision);
-  const subject = await assessmentSubject(tx, ctx, employee.id);
-  // PB-R9：发起也受互斥与并行规则约束（和直接转正、转正申请同一检查点）
-  await assertProbationProcessesIdle(tx, ctx, {
-    employeeId: employee.id,
-    action: input.assessmentType === 'probation' ? 'assess_probation' : 'assess_regularization',
+  return launchAssessment(tx, ctx, {
+    employeeId: item.employeeId,
+    assessmentType: input.assessmentType,
+    assessmentName: input.assessmentName,
+    assessmentDate: input.assessmentDate,
+    initiation: 'manual',
+    revision: item.revision,
   });
-  const id = randomUUID();
-  await tx.execute(sql`INSERT INTO employment_probation_assessments(id, tenant_id, employee_id, anchor_id,
-      department_id, assessment_type, assessment_name, assessment_date, status, initiation, initiator_user_id,
-      revision, command_id, created_at, updated_at)
-    VALUES (${id}::uuid, ${ctx.tenantId}, ${employee.id}::uuid, ${subject.anchorId}::uuid,
-      ${subject.departmentId}::uuid, ${input.assessmentType}, ${input.assessmentName}, ${input.assessmentDate}::date,
-      'in_review', 'manual', ${ctx.userId}::uuid, 1, ${ctx.commandId}, ${ctx.now.toISOString()}::timestamptz,
-      ${ctx.now.toISOString()}::timestamptz)`);
-  const created = await loadAssessment(tx, ctx.tenantId, id);
-  await auditAssessment(tx, ctx, 'create', id, null, created, created);
-  await bumpEmploymentEmployee(tx, ctx, employee);
-  // 与审批中心同事务：没有匹配的流程、首节点审批人为空时整人回滚，考核不创建（DEC-017 / DEC-054）
-  await employmentApprovalHooks.assessmentSubmitted(tx, ctx, id);
-  return created;
 }
 
 /** 选人批量发起（PB-R3）：每人一条独立考核与审批流程，回执逐人。 */
