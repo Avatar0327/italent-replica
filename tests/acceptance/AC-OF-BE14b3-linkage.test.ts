@@ -111,6 +111,15 @@ describe('AC-OF-03 转已拒绝联动取消待入职', () => {
     expect(await w.entries('cancelled')).toHaveLength(1);
   });
 
+  it('AC-OF-17：不填拒绝时间 / 原因 → 400，状态不变，待入职原样保留', async () => {
+    const w = await syncWorld(testDb().db, 'link-reject-invalid');
+    const offer = await w.accepted(await w.social());
+    const denied = await w.transfer(offer, { target: 'rejected', refusalRemark: '只有备注' });
+    expect(denied.status).toBe(400);
+    expect(await w.read(offer.id)).toMatchObject({ status: 'accepted', hasPendingEntry: true });
+    expect(await entryState(w, offer.id)).toBe('live');
+  });
+
   it('顶部工具栏入口同样联动；取消原因取拒绝原因', async () => {
     const w = await syncWorld(testDb().db, 'link-reject-toolbar');
     const offer = await w.accepted(await w.social());
