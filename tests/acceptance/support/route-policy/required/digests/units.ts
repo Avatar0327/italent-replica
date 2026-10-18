@@ -453,7 +453,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /api/tenant/idp/plans/:id': '0a0e902b23d8',
     'route:DELETE /api/tenant/idp/plans/:id/goals/:goalId': '3f6d6eb9ff64',
     'route:DELETE /api/tenant/idp/plans/:id/goals/:goalId/tasks/:taskId': '8f9b56b10c9e',
-    'route:GET /api/tenant/idp/my-plans': '29a6b1502491',
+    'route:GET /api/tenant/idp/my-plans': 'd08af096b653',
     'route:GET /api/tenant/idp/plans': '01979ec5be96',
     'route:GET /api/tenant/idp/plans/:id': '212e850f3bcd',
     'route:GET /api/tenant/idp/plans/:id/competency-candidates': '38b337f0003f',
@@ -473,6 +473,7 @@ export const DIGESTS: Digests = {
     runExecutorWrite: '43da5c6d94ee',
     showPlan: '20664ecbf909',
     templateCheck: '4bcd7934ada4',
+    tutorNames: 'c8ddfb1dc798',
   },
   'apps/api/src/modules/idp/plan-service.ts': {
     deletePlan: '2ec47c2dab32',
@@ -1756,7 +1757,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/plan-routes.ts#route:DELETE /api/tenant/idp/plans/:id/goals/:goalId': 'aa283c5262a7',
   'apps/api/src/modules/idp/plan-routes.ts#route:DELETE /api/tenant/idp/plans/:id/goals/:goalId/tasks/:taskId':
     '032c9d9f0e92',
-  'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/my-plans': 'bcdc5f644d49',
+  'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/my-plans': 'a2a0c07f97eb',
   'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/plans': 'edc75a10c605',
   'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/plans/:id': '641b335ae333',
   'apps/api/src/modules/idp/plan-routes.ts#route:GET /api/tenant/idp/plans/:id/competency-candidates': 'e2a5ba0bc653',
@@ -1778,6 +1779,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/idp/plan-routes.ts#runExecutorWrite': '2ecc578d0b1e',
   'apps/api/src/modules/idp/plan-routes.ts#showPlan': '23e47d7d7d58',
   'apps/api/src/modules/idp/plan-routes.ts#templateCheck': '41b60e98bd6f',
+  'apps/api/src/modules/idp/plan-routes.ts#tutorNames': '3734b1f5f0ec',
   'apps/api/src/modules/idp/plan-service.ts#deletePlan': 'ad3599809d93',
   'apps/api/src/modules/idp/plan-service.ts#lockPlanForHr': '67d5b32dd5b0',
   'apps/api/src/modules/idp/process-service.ts#checkSubProcessChanges': '611f2a1bf167',
