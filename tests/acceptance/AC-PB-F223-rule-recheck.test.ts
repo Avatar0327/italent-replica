@@ -5,7 +5,7 @@
  * 真 PG 另有两连接强制交错的版本。自动转正（立即执行、每日批次）与 BE-15b2 的自动考核（立即执行、每日批次）都覆盖。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, type Db } from '@italent/db';
+import { sql, type Db, type withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as locks from '../../apps/api/src/modules/employment/transfer-locks.js';

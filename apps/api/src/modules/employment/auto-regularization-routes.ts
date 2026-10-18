@@ -21,7 +21,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScope, trimModuleResponse } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
-import { runAutoRegularizationNow, type AutoRegularizationRun } from './auto-regularization.js';
+import { runAutoRegularizationNow } from './auto-regularization.js';
 import {
   copyAutoRegularizationRule,
   deleteAutoRegularizationRule,
@@ -185,10 +185,7 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { action: 'auto-regularization-run', cursor },
       async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) }),
       // 首次与同键重放都经这里按操作人当前的任职范围裁剪（第 2 轮审查 P1）
-      {
-        guard: ruleGuard(deps, ctx, {}),
-        project: (body) => visibleRunReceipt(deps, ctx, body as AutoRegularizationRun),
-      },
+      { guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) },
     );
   });
 }
@@ -206,12 +203,12 @@ export function parseRunBody(raw: unknown): { readonly cursor: string | null } {
  * 发起人只列操作人有任职记录查看权且在其数据范围内的员工；没有查看权或范围为空时两列都为空。重放同样在这里按当前权限
  * 重新裁剪，撤权后拿不到原回执里的人。续跑句柄（nextCursor）不含员工信息，原样返回。
  */
-export async function visibleRunReceipt<
-  T extends {
+export async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
+  // 自动转正与自动考核（BE-15b2）的立即执行回执同形：launched / failed 都按 employeeId 逐人过滤
+  const receipt = body as {
     readonly launched: readonly { readonly employeeId: string }[];
     readonly failed: readonly { readonly employeeId: string }[];
-  },
->(deps: TenantRouteDeps, ctx: EmploymentContext, receipt: T): Promise<T> {
+  };
   const ids = [...new Set([...receipt.launched, ...receipt.failed].map((item) => item.employeeId))];
   const visible = await visibleEmployees(deps, ctx, ids);
   return {

@@ -1,4 +1,24 @@
 {
+  "DELETE /api/tenant/employment/auto-assessment-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "6ed2ba90a314",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/employment/auto-regularization-rules/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -115,6 +135,20 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/auto-assessment-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
     ]
   },
   "GET /api/tenant/employment/auto-regularization-rules": {
@@ -852,6 +886,57 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/auto-assessment-rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4484644dac9f",
+      "reason": "AUTO_RULE_DAYS_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "POST /api/tenant/employment/auto-assessment-rules/:id/copy": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "6ed2ba90a314",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:create"
+    ]
+  },
+  "POST /api/tenant/employment/auto-assessment/run": {
+    "all": {
+      "code": "CONFLICT",
+      "error": "6b8cc51a5bbc",
+      "reason": "AUTO_ASSESSMENT_DISABLED",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
     ]
   },
   "POST /api/tenant/employment/auto-regularization-rules": {
@@ -1602,6 +1687,45 @@
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.RetryActivation@detail",
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PUT /api/tenant/employment/auto-assessment-rules/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4484644dac9f",
+      "reason": "AUTO_RULE_DAYS_INVALID",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/auto-assessment-rules/:id/enabled": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "81651f3c624c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
     ]
   },
   "PUT /api/tenant/employment/auto-regularization-rules/:id": {

@@ -183,8 +183,17 @@ export const DIGESTS: Digests = {
     requireAssessmentInScope: '2d14aac2c570',
   },
   'apps/api/src/modules/employment/assessment.ts': {
-    createOne: '5d899f5fa8df',
+    createOne: '4b398518b624',
     updateAssessment: '7e811f55d6f9',
+  },
+  'apps/api/src/modules/employment/auto-assessment-routes.ts': {
+    'route:DELETE /auto-assessment-rules/:id': '64ded345b3b3',
+    'route:GET /auto-assessment-rules': '4bda0f7da488',
+    'route:POST /auto-assessment-rules': '285f4b8e505a',
+    'route:POST /auto-assessment-rules/:id/copy': '5e7869e282e1',
+    'route:POST /auto-assessment/run': 'aaff6aba6446',
+    'route:PUT /auto-assessment-rules/:id': '8fb6f2f6a057',
+    'route:PUT /auto-assessment-rules/:id/enabled': '44f2b204a7de',
   },
   'apps/api/src/modules/employment/auto-regularization-routes.ts': {
     'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
@@ -195,7 +204,7 @@ export const DIGESTS: Digests = {
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
     visibleEmployees: '311254d756ec',
-    writeContext: '0f98695a8fa8',
+    writeContext: 'a154208ec77b',
   },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
     registerBlacklistRuleRoutes: '3f07cde05455',
@@ -1617,8 +1626,17 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
   'apps/api/src/modules/employment/assessment-store.ts#assessmentScopeSql': '0602b4cb55a7',
   'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': '00f0fb27175e',
-  'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
+  'apps/api/src/modules/employment/assessment.ts#createOne': '8343c5b28c80',
   'apps/api/src/modules/employment/assessment.ts#updateAssessment': '05e674ff9ddd',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:DELETE /auto-assessment-rules/:id': 'e69b1f4e8fd8',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:GET /auto-assessment-rules': '4a36b9fcad1a',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment-rules': 'caefd28f7213',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment-rules/:id/copy':
+    '0eacdc0562b4',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:POST /auto-assessment/run': '9cdbca501830',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:PUT /auto-assessment-rules/:id': 'f3a37ebfcfec',
+  'apps/api/src/modules/employment/auto-assessment-routes.ts#route:PUT /auto-assessment-rules/:id/enabled':
+    'a3f747d12c3c',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
     'fb47f7d5a451',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:GET /auto-regularization-rules': '14250731bdc5',

@@ -27,18 +27,17 @@ import { jsonBody, readContext, requireEmploymentWrite, runWrite, uuidParam } fr
 registerSettingValidator(AUTO_ASSESSMENT_SETTING_KEY, isAutoAssessmentSettingValue);
 
 const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
-const OBJECT = 'TenantBase.EmploymentSettings';
 
 export function registerAutoAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/auto-assessment-rules', async (c) => {
-    const ctx = await readContext(c, deps, 'object.view', 0, undefined, OBJECT);
+    const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     const rules = await withTenant(deps.db, ctx.tenantId, (tx) => listAutoAssessmentRules(tx, ctx.tenantId));
     return c.json({ items: await trimModuleResponse(deps, ctx, SETTINGS, rules) });
   });
   router.post('/auto-assessment-rules', async (c) => {
     const ctx = await writeContext(c, deps);
     const input = parseAutoAssessmentRule(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'create', input, undefined, OBJECT);
+    await requireEmploymentWrite(ctx, 'create', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
       c,
       deps,
@@ -52,7 +51,7 @@ export function registerAutoAssessmentRoutes(router: Hono<TenantEnv>, deps: Tena
     const id = uuidParam(c);
     const ctx = await writeContext(c, deps);
     const input = parseAutoAssessmentRule(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', input, undefined, OBJECT);
+    await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
       c,
       deps,
@@ -71,7 +70,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   router.post('/auto-assessment-rules/:id/copy', async (c) => {
     const id = uuidParam(c);
     const ctx = await writeContext(c, deps);
-    await requireEmploymentWrite(ctx, 'create', {}, undefined, OBJECT, { commandOnly: true });
+    await requireEmploymentWrite(ctx, 'create', {}, undefined, 'TenantBase.EmploymentSettings', { commandOnly: true });
     return runWrite(
       c,
       deps,
@@ -85,7 +84,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const id = uuidParam(c);
     const ctx = await writeContext(c, deps);
     const enabled = parseRuleEnabled(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', { enabled }, undefined, OBJECT);
+    await requireEmploymentWrite(ctx, 'update', { enabled }, undefined, 'TenantBase.EmploymentSettings');
     return runWrite(
       c,
       deps,
@@ -98,7 +97,7 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   router.delete('/auto-assessment-rules/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await writeContext(c, deps);
-    await requireEmploymentWrite(ctx, 'update', {}, undefined, OBJECT, { commandOnly: true });
+    await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', { commandOnly: true });
     return runWrite(
       c,
       deps,
@@ -118,17 +117,14 @@ function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/auto-assessment/run', async (c) => {
     const ctx = await writeContext(c, deps);
     const { cursor } = parseRunBody(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', {}, undefined, OBJECT, { commandOnly: true });
+    await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', { commandOnly: true });
     return runWrite(
       c,
       deps,
       ctx,
       { action: 'auto-assessment-run', cursor },
       async (tx, context) => ({ status: 200, body: await runAutoAssessmentNow(tx, context, cursor) }),
-      {
-        guard: ruleGuard(deps, ctx, {}),
-        project: (body) => visibleRunReceipt(deps, ctx, body as Awaited<ReturnType<typeof runAutoAssessmentNow>>),
-      },
+      { guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) },
     );
   });
 }
