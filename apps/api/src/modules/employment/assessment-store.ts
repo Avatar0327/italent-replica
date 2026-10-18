@@ -4,12 +4,7 @@
  * 审计按字段级变更日志写（DEC-019），归属考核对象与其主职部门（audit/visibility 按员工 / 组织裁剪）。
  */
 import { sql, type Tx } from '@italent/db';
-import type {
-  AssessmentOpinion,
-  AssessmentRating,
-  AssessmentStatus,
-  AssessmentType,
-} from '@italent/domain';
+import type { AssessmentOpinion, AssessmentRating, AssessmentStatus, AssessmentType } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assertRevision, auditEmployment } from './context.js';
 import { rowsOf } from './record-store.js';

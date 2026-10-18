@@ -5,6 +5,12 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/employment/assessment.ts#ASSESSMENT_FIELDS': ['#ASSESSMENT_FORM_FIELDS'],
+  'packages/domain/src/employment/assessment.ts#ASSESSMENT_OPINION_CODES': ['#ASSESSMENT_OPINIONS'],
+  'packages/domain/src/employment/assessment.ts#ASSESSMENT_RATING_CODES': ['#ASSESSMENT_RATINGS'],
+  'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPE_CODES': ['#ASSESSMENT_TYPES'],
+  'packages/domain/src/employment/assessment.ts#assessmentOpinionViolation': ['#OPINIONS_REQUIRING_DATE'],
+  'packages/domain/src/employment/assessment.ts#assessmentRegularization': ['#NONE'],
   'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_MODE_CODES': [
     '#AUTO_REGULARIZATION_MODES',
   ],

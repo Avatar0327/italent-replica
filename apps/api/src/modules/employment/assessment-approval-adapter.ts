@@ -129,10 +129,11 @@ async function approved(tx: Tx, ctx: ApprovalContext, id: string) {
   );
 }
 
-const settle = (status: 'rejected' | 'disapproved' | 'cancelled') => async (tx: Tx, ctx: ApprovalContext, id: string) => {
-  const row = await lockBoth(tx, ctx, id);
-  if (row.status === 'in_review') await saveAssessment(tx, ctx as EmploymentContext, row, { status }, status);
-};
+const settle =
+  (status: 'rejected' | 'disapproved' | 'cancelled') => async (tx: Tx, ctx: ApprovalContext, id: string) => {
+    const row = await lockBoth(tx, ctx, id);
+    if (row.status === 'in_review') await saveAssessment(tx, ctx as EmploymentContext, row, { status }, status);
+  };
 
 export const assessmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, id) {

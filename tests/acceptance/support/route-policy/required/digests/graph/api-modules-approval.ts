@@ -448,6 +448,7 @@ export const GRAPH: Graph = {
     '#partTimeAdapter',
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
+    'apps/api/src/modules/employment/assessment-approval-adapter.ts#assessmentAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',

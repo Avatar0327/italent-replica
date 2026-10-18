@@ -1,12 +1,9 @@
 {
-  "reason": "R2 BE-14a3：新增 Offer 批量审批单对象（TenantBase.OfferBatchApproval）的字段、数据操作与 create / withdraw 按钮授权项，Offer 对象新增“当前审批人 / 当前审批节点”两个只读字段，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415）",
+  "reason": "R2 BE-15b1：新增试用期考核对象（TenantBase.ProbationAssessment）的字段、数据操作与 Assessment.Create / Assessment.Edit 按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415 同 Offer 批量审批单）；数据范围按考核对象员工，不预置看全部",
   "add": [
-    "standard_hr_admin/TenantBase.Offer/field:currentApprov*",
-    "standard_hr_admin/TenantBase.OfferBatchApproval/*",
-    "standard_hr_specialist/TenantBase.Offer/field:currentApprov*",
-    "standard_hr_specialist/TenantBase.OfferBatchApproval/*",
-    "standard_org_system_admin/TenantBase.Offer/field:currentApprov*",
-    "standard_org_system_admin/TenantBase.OfferBatchApproval/*"
+    "standard_hr_admin/TenantBase.ProbationAssessment/*",
+    "standard_hr_specialist/TenantBase.ProbationAssessment/*",
+    "standard_org_system_admin/TenantBase.ProbationAssessment/*"
   ],
   "remove": []
 }

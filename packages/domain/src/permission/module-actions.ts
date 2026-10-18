@@ -293,10 +293,7 @@ export const MODULE_OBJECTS = {
   probationAssessment: object(
     'ProbationAssessment',
     ASSESSMENT_FIELDS,
-    [
-      button(ASSESSMENT_BUTTONS.create, 'detail', 'create'),
-      button(ASSESSMENT_BUTTONS.update, 'detail', 'update'),
-    ],
+    [button(ASSESSMENT_BUTTONS.create, 'detail', 'create'), button(ASSESSMENT_BUTTONS.update, 'detail', 'update')],
     ASSESSMENT_SYSTEM_FIELDS,
   ),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [

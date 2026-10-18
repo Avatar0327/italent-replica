@@ -179,11 +179,10 @@ function mergedPatch(row: AssessmentRow, patch: AssessmentPatch) {
 function assertEditable(row: AssessmentRow, status: AssessmentRow['status']) {
   if (row.status === status) return;
   const inReview = row.status === 'in_review';
-  throw new AppError(
-    'CONFLICT',
-    inReview ? '考核审批中，请在审批节点编辑' : '只有审批通过的考核可以修改',
-    { reason: inReview ? 'ASSESSMENT_IN_APPROVAL' : 'ASSESSMENT_NOT_EDITABLE', status: row.status },
-  );
+  throw new AppError('CONFLICT', inReview ? '考核审批中，请在审批节点编辑' : '只有审批通过的考核可以修改', {
+    reason: inReview ? 'ASSESSMENT_IN_APPROVAL' : 'ASSESSMENT_NOT_EDITABLE',
+    status: row.status,
+  });
 }
 
 /**

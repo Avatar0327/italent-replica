@@ -302,10 +302,7 @@ export const employmentProbationAssessments = pgTable(
       sql`${t.regularizationOpinion} IS NULL OR ${t.regularizationOpinion} NOT IN ('early', 'delayed')
         OR ${t.regularizationDate} IS NOT NULL`,
     ),
-    check(
-      'employment_probation_assessments_text',
-      sql`char_length(COALESCE(${t.selfEvaluation}, '')) <= 2000`,
-    ),
+    check('employment_probation_assessments_text', sql`char_length(COALESCE(${t.selfEvaluation}, '')) <= 2000`),
     check('employment_probation_assessments_revision_positive', sql`${t.revision} > 0`),
   ],
 );

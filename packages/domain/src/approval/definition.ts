@@ -60,7 +60,9 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if (type.adapter !== 'idp' && idpOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
     }
-    const assessmentOnly = approverExpressionsOf(node).filter((expression) => ASSESSMENT_ONLY_APPROVERS.has(expression));
+    const assessmentOnly = approverExpressionsOf(node).filter((expression) =>
+      ASSESSMENT_ONLY_APPROVERS.has(expression),
+    );
     if (type.adapter !== 'probation_assessment' && assessmentOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核审批`);
     }

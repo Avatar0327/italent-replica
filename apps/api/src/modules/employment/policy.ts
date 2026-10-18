@@ -52,13 +52,7 @@
  *    直接返回（employment-replay.ts:43）；footprint / result 仍按附录登记 §10.3 的 employment.employeeCreate / generic（待设计守卫名），
  *    现状事务内 / 返回后都没有复核。
  */
-import {
-  APPROVAL_INSTANCE_OBJECT,
-  ASSESSMENT_BUTTONS,
-  CONTRACT_OBJECT,
-  EXIT_BUTTONS,
-  MODULE_OBJECTS,
-} from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, CONTRACT_OBJECT, EXIT_BUTTONS, MODULE_OBJECTS } from '@italent/domain';
 import {
   type ButtonPolicy,
   defineTable,
@@ -1611,10 +1605,10 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'POST /probation-assessments': object({
     object: ASSESSMENT,
     operation: 'create',
-    button: button(ASSESSMENT_BUTTONS.create, 'detail'),
+    button: button('Assessment.Create', 'detail'),
     guards: [DIRECT_OPERATION],
     scope: guardScope('employment.scope', NF_DATA),
-    fields: noFields('回执是固定形状（逐人状态 / 考核 ID / 错误），不含考核字段值'),
+    fields: projector('employment.assessmentReceipt', 'employment.assessmentReceipt'),
     rows: {
       path: 'items[*]',
       fields: none('字段取自共享的 { assessmentType, assessmentName, assessmentDate }，不逐行提取'),
@@ -1632,7 +1626,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'PATCH /probation-assessments/:id': object({
     object: ASSESSMENT,
     operation: 'update',
-    button: button(ASSESSMENT_BUTTONS.update, 'detail'),
+    button: button('Assessment.Edit', 'detail'),
     scope: guardScope('employment.assessmentScope', NF_ASSESSMENT),
     fields: projector('employment.response', 'employment.assessment'),
     write: write('body', 'assessment.update', none('返回后按考核对象字段查看权投影'), {

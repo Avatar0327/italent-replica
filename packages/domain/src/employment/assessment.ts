@@ -52,7 +52,12 @@ export const ASSESSMENT_FORM_FIELDS = [
 ] as const;
 export const ASSESSMENT_FIELDS = ['employeeId', 'assessmentType', ...ASSESSMENT_FORM_FIELDS] as const;
 /** 只经命令写入的系统字段（只可查看）。 */
-export const ASSESSMENT_SYSTEM_FIELDS = ['status', 'initiation', 'initiatorUserId', 'regularizationBusinessId'] as const;
+export const ASSESSMENT_SYSTEM_FIELDS = [
+  'status',
+  'initiation',
+  'initiatorUserId',
+  'regularizationBusinessId',
+] as const;
 /** 按钮（详情级，同 Employment.Create / Employment.Edit 的写入口形态）：发起考核、审批通过后修改。 */
 export const ASSESSMENT_BUTTONS = { create: 'Assessment.Create', update: 'Assessment.Edit' } as const;
 
@@ -152,12 +157,7 @@ export function isParallelRuleValue(blocker: ParallelRuleBlocker, value: unknown
  * PB-R9 互斥校验的入口动作：regularize = 直接转正；apply = 提交转正申请；adjust = 调整试用信息；
  * assess_probation / assess_regularization = 发起试用中考核 / 转正考核。
  */
-export type ProbationProcessAction =
-  | 'regularize'
-  | 'apply'
-  | 'adjust'
-  | 'assess_probation'
-  | 'assess_regularization';
+export type ProbationProcessAction = 'regularize' | 'apply' | 'adjust' | 'assess_probation' | 'assess_regularization';
 
 /** 以 action 发起的流程：直接转正、转正申请都算“转正”；调整试用期不是流程发起，没有并行例外。 */
 export function processOfAction(action: ProbationProcessAction): ParallelProcess | null {

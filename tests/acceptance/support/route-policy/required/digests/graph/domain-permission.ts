@@ -46,6 +46,9 @@ export const GRAPH: Graph = {
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS': [
     'packages/domain/src/approval/transfer-view.ts#TRANSFER_LINKAGE_FIELDS',
     'packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS',
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_BUTTONS',
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_FIELDS',
+    'packages/domain/src/employment/assessment.ts#ASSESSMENT_SYSTEM_FIELDS',
     'packages/domain/src/employment/exit.ts#EXIT_BUTTONS',
     'packages/domain/src/employment/exit.ts#EXIT_REQUEST_FIELDS',
     'packages/domain/src/employment/exit.ts#EXIT_REQUEST_SYSTEM_FIELDS',

@@ -8,6 +8,7 @@
       "offer_batch",
       "part_time",
       "personnel_change",
+      "probation_assessment",
       "talent_review"
     ],
     "approval.taskObject": [
@@ -22,6 +23,7 @@
       "TenantBase.Languageability",
       "TenantBase.Offer",
       "TenantBase.OfferBatchApproval",
+      "TenantBase.ProbationAssessment",
       "TenantBase.ProfessionalTechnicalPostInfo",
       "TenantBase.ProjectExperience",
       "TenantBase.Punish",
@@ -3970,6 +3972,62 @@
       }
     },
     "GET /api/tenant/employment/pending-entries": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/probation-assessments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "readPageContext"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/probation-assessments/:id": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -11015,6 +11073,46 @@
         ]
       }
     },
+    "PATCH /api/tenant/employment/probation-assessments/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.ProbationAssessment:update"
+        ],
+        "scope": [
+          "readContext（非配置对象）"
+        ]
+      }
+    },
     "PATCH /api/tenant/employment/records/:id": {
       "edge": {
         "anonymous": {
@@ -16459,6 +16557,45 @@
         ],
         "scopePoint": [
           "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/probation-assessments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.ProbationAssessment:create"
+        ],
+        "scope": [
+          "readContext（非配置对象）"
         ]
       }
     },

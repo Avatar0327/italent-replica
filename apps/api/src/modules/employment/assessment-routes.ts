@@ -6,7 +6,6 @@
  */
 import { sql, withTenant } from '@italent/db';
 import {
-  ASSESSMENT_BUTTONS,
   ASSESSMENT_STATUSES,
   ASSESSMENT_TYPE_CODES,
   isParallelRuleValue,
@@ -67,7 +66,8 @@ function assessmentGuard(
   return scopedGuard({
     before: async (tx) => {
       const scoped = await commandContext(tx, deps, ctx);
-      await requireEmploymentWrite(scoped, operation, payload, ASSESSMENT_BUTTONS[operation], PROBATION_ASSESSMENT_OBJECT);
+      const button = operation === 'create' ? 'Assessment.Create' : 'Assessment.Edit';
+      await requireEmploymentWrite(scoped, operation, payload, button, PROBATION_ASSESSMENT_OBJECT);
       for (const employeeId of (await employeeOf?.(tx)) ?? []) await requireEmployeeInScope(tx, scoped, employeeId);
     },
     // 同键重放：回执里的每一人按当前范围复核，撤权后拿不到原回执
@@ -89,7 +89,7 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
       assessmentName: input.assessmentName,
       assessmentDate: input.assessmentDate,
     };
-    await requireEmploymentWrite(ctx, 'create', payload, ASSESSMENT_BUTTONS.create, PROBATION_ASSESSMENT_OBJECT);
+    await requireEmploymentWrite(ctx, 'create', payload, 'Assessment.Create', PROBATION_ASSESSMENT_OBJECT);
     return runWrite(
       c,
       deps,
@@ -132,7 +132,7 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c), undefined, PROBATION_ASSESSMENT_OBJECT);
     const patch = parseAssessmentPatch(await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'update', patch, ASSESSMENT_BUTTONS.update, PROBATION_ASSESSMENT_OBJECT);
+    await requireEmploymentWrite(ctx, 'update', patch, 'Assessment.Edit', PROBATION_ASSESSMENT_OBJECT);
     return runWrite(
       c,
       deps,

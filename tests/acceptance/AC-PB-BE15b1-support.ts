@@ -120,7 +120,8 @@ export async function assessmentWorld(db: Db, label: string) {
     extra: Record<string, unknown> = {},
   ) {
     const items = [];
-    for (const person of people) items.push({ employeeId: person.employeeId, revision: await employeeRevision(person.employeeId) });
+    for (const person of people)
+      items.push({ employeeId: person.employeeId, revision: await employeeRevision(person.employeeId) });
     return w.request(w.hr.id, 'POST', `${EMPLOYMENT}/probation-assessments`, {
       body: { assessmentType: type, assessmentName: `${type}-考核`, assessmentDate: '2026-10-01', items, ...extra },
     });

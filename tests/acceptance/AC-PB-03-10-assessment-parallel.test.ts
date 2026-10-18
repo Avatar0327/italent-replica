@@ -23,15 +23,17 @@ describe('并行规则出厂值（PB-R9）', () => {
     }
     expect((await w.setParallel('regularization', { enabled: true, allowed: ['regularization'] })).status).toBe(200);
     // 转正考核这一项的候选只有转正考核、转正；开关取值必须是严格对象
-    expect((await w.setParallel('regularization', { enabled: true, allowed: ['probation_assessment'] })).status).toBe(400);
-    expect((await w.setParallel('regularization', { enabled: true })).status).toBe(400);
-    expect((await w.setParallel('regularization', { enabled: 'yes', allowed: [] })).status).toBe(400);
-    expect((await w.setParallel('regularization', { enabled: true, allowed: ['regularization', 'regularization'] })).status).toBe(
+    expect((await w.setParallel('regularization', { enabled: true, allowed: ['probation_assessment'] })).status).toBe(
       400,
     );
-    expect((await w.setParallel('probation', { enabled: true, allowed: ['probation_assessment', 'regularization'] })).status).toBe(
-      200,
-    );
+    expect((await w.setParallel('regularization', { enabled: true })).status).toBe(400);
+    expect((await w.setParallel('regularization', { enabled: 'yes', allowed: [] })).status).toBe(400);
+    expect(
+      (await w.setParallel('regularization', { enabled: true, allowed: ['regularization', 'regularization'] })).status,
+    ).toBe(400);
+    expect(
+      (await w.setParallel('probation', { enabled: true, allowed: ['probation_assessment', 'regularization'] })).status,
+    ).toBe(200);
   });
 });
 
@@ -113,9 +115,9 @@ describe('AC-PB-10 考核并行规则', () => {
     expect((await w.json<RegularizationReceipt>(await w.regularizeRaw(person, 'application'))).items[0]).toMatchObject({
       status: 'failed',
     });
-    expect((await w.setParallel('regularization', { enabled: true, allowed: ['regularization_assessment'] })).status).toBe(
-      200,
-    );
+    expect(
+      (await w.setParallel('regularization', { enabled: true, allowed: ['regularization_assessment'] })).status,
+    ).toBe(200);
     expect((await w.json<RegularizationReceipt>(await w.regularizeRaw(person, 'application'))).items[0]).toMatchObject({
       status: 'failed',
     });
@@ -129,7 +131,9 @@ describe('AC-PB-10 考核并行规则', () => {
     const w = await assessmentWorld(testDb().db, 'pb10-generate');
     const person = await w.probationer('并行生成');
     const probationId = await w.launch('probation', person);
-    expect((await w.setParallel('probation', { enabled: true, allowed: ['regularization_assessment'] })).status).toBe(200);
+    expect((await w.setParallel('probation', { enabled: true, allowed: ['regularization_assessment'] })).status).toBe(
+      200,
+    );
     const regularizationId = await w.launch('regularization', person);
     expect((await w.get(regularizationId)).status).toBe('in_review');
 
@@ -229,9 +233,7 @@ describe('发起入口', () => {
     expect((await post({ ...base, items: [item, item] })).status).toBe(400);
     expect((await post({ ...base, assessmentType: 'other' })).status).toBe(400);
     expect((await post({ ...base, items: [] })).status).toBe(400);
-    expect(
-      (await w.request(w.hr.id, 'GET', '/api/tenant/employment/probation-assessments?bogus=1')).status,
-    ).toBe(400);
+    expect((await w.request(w.hr.id, 'GET', '/api/tenant/employment/probation-assessments?bogus=1')).status).toBe(400);
     const listed = await w.json<{ items: unknown[] }>(
       await w.request(w.hr.id, 'GET', '/api/tenant/employment/probation-assessments'),
     );

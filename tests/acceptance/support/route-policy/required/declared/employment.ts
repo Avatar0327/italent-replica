@@ -43,6 +43,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/records/:id/forward-update-preview',
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
+    'PATCH /api/tenant/employment/probation-assessments/:id',
     'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
     'PUT /api/tenant/employment/blacklist-rules/:id',
     'PUT /api/tenant/employment/blacklist/:id',

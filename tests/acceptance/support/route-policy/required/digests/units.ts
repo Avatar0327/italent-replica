@@ -35,7 +35,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: '4f0e6651e390',
+    ADAPTERS: '8b82e8d642bc',
     personnelAdapter: '5e08297e79d8',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -171,6 +171,16 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employee-self-service/transfer.ts': {
     ownTransferInput: '39cbe940fbc7',
     ownTransferPreview: '1251dd2e1f1e',
+  },
+  'apps/api/src/modules/employment/assessment-routes.ts': {
+    'route:GET /probation-assessments': 'd9e98244425c',
+    'route:GET /probation-assessments/:id': '62ac7052ecad',
+    'route:PATCH /probation-assessments/:id': 'f3ea0ac14d6b',
+    'route:POST /probation-assessments': 'cadf987a981d',
+  },
+  'apps/api/src/modules/employment/assessment.ts': {
+    createOne: '5d899f5fa8df',
+    updateAssessment: '50745c2d0bac',
   },
   'apps/api/src/modules/employment/auto-regularization-routes.ts': {
     'route:DELETE /auto-regularization-rules/:id': '633164e68c0d',
@@ -1362,6 +1372,9 @@ export const DIGESTS: Digests = {
     CONTRACT_OBJECT: 'e22987935f65',
     contractAction: '213e0434171f',
   },
+  'packages/domain/src/employment/assessment.ts': {
+    PROBATION_ASSESSMENT_OBJECT: 'a7ea04177ed2',
+  },
   'packages/domain/src/evaluation/catalog.ts': {
     EVALUATION_OBJECTS: '457be8d0f949',
   },
@@ -1473,7 +1486,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': 'd866bfe3e5b8',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '29e8f7d8da90',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '5a2fbd0e4076',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
@@ -1570,6 +1583,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/routes.ts#selfTransferGuard': '008aa7f3f314',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferInput': 'e6d695e50de9',
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '35edc1a79cc9',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '5f88fb994a58',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': 'd26313a40c8c',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '440795093832',
+  'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
+  'apps/api/src/modules/employment/assessment.ts#updateAssessment': '71db1a0671f7',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
     'fb47f7d5a451',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:GET /auto-regularization-rules': '14250731bdc5',
@@ -2442,6 +2461,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': '1f7f71f7d487',
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
+  'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': 'df0c34def8ab',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': 'aa3bf6d1c73d',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'e0850818a071',

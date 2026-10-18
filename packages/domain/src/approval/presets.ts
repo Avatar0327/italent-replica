@@ -250,40 +250,39 @@ const OFFER_PRESETS: readonly PresetProcess[] = [
 /**
  * 试用期考核两类审批（BE-15b1，29 PB-R3，DEC-094 草稿）：员工自评 → 经理评价（节点结构取 PB-R3 “一般为”）。
  * 两个节点都开 “编辑并同意”（审批中可编辑，同意按钮关联编辑）：员工节点只开放自评，经理节点开放评价、转正意见与
- * 转正日期。考核对象本人自评、发起人（HR）与经理评价都是流程本意，回避开关显式关闭（同 IDP 预置的填写节点，K-37）；
- * 员工节点不提供驳回（填写节点），经理节点有驳回与“不同意”（不通过，流程结束）。
+ * 转正日期。考核结论决定转正与否，属敏感信息且有重大影响（DEC-332①），经理评价节点显式 avoidSelf = true；员工自评节点
+ * 的审批人就是考核对象本人，本就由本人处理，avoidSelf = false（同 IDP 预置的填写节点，K-37）。员工节点不提供驳回
+ * （填写节点），经理节点有驳回与“不同意”（不通过，流程结束）。
  */
-const ASSESSMENT_ACTIONS = { ...PRESET_ACTIONS, avoidSelf: false, avoidSubjects: false } as const;
+const ASSESSMENT_ACTIONS = { ...PRESET_ACTIONS, avoidSubjects: false } as const;
 const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   ['probation_assessment', 'regularization_assessment'] as const
-).map(
-  (approvalType): PresetProcess => ({
-    presetKey: `standard_${approvalType}`,
-    code: `Standard_${approvalType}`,
-    approvalType,
-    definition: draft({
-      name: `标准${APPROVAL_TYPES[approvalType].name}流程`,
-      description: '出厂预置：员工自评 → 经理评价，发布前须配置异常管理员',
-      priority: 0,
-      ...standardCondition(approvalType),
-      nodes: [
-        node('self_evaluation', '员工自评', 'assessment_employee', {
-          formFields: ASSESSMENT_FORM_FIELDS,
-          editableFields: ['selfEvaluation'],
-          editMode: 'with_approve',
-          actions: { ...ASSESSMENT_ACTIONS, reject: false },
-        }),
-        node('manager_review', '经理评价', 'direct_manager', {
-          formFields: ASSESSMENT_FORM_FIELDS,
-          editableFields: ['managerRating', 'regularizationOpinion', 'regularizationDate'],
-          editMode: 'with_approve',
-          exits: AGREE_OR_NOT,
-          actions: ASSESSMENT_ACTIONS,
-        }),
-      ],
-    }),
+).map((approvalType): PresetProcess => ({
+  presetKey: `standard_${approvalType}`,
+  code: `Standard_${approvalType}`,
+  approvalType,
+  definition: draft({
+    name: `标准${APPROVAL_TYPES[approvalType].name}流程`,
+    description: '出厂预置：员工自评 → 经理评价，发布前须配置异常管理员',
+    priority: 0,
+    ...standardCondition(approvalType),
+    nodes: [
+      node('self_evaluation', '员工自评', 'assessment_employee', {
+        formFields: ASSESSMENT_FORM_FIELDS,
+        editableFields: ['selfEvaluation'],
+        editMode: 'with_approve',
+        actions: { ...ASSESSMENT_ACTIONS, avoidSelf: false, reject: false },
+      }),
+      node('manager_review', '经理评价', 'direct_manager', {
+        formFields: ASSESSMENT_FORM_FIELDS,
+        editableFields: ['managerRating', 'regularizationOpinion', 'regularizationDate'],
+        editMode: 'with_approve',
+        exits: AGREE_OR_NOT,
+        actions: ASSESSMENT_ACTIONS,
+      }),
+    ],
   }),
-);
+}));
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {

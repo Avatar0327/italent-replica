@@ -39,6 +39,7 @@ import {
   MODULE_OBJECTS,
   OFFER_BATCH_OBJECT,
   OFFER_OBJECT,
+  PROBATION_ASSESSMENT_OBJECT,
   SUBSETS,
 } from '@italent/domain';
 import {
@@ -142,6 +143,7 @@ const TASK_OBJECT_DOMAIN = [
   IDP_OBJECTS.plan.code,
   OFFER_OBJECT,
   OFFER_BATCH_OBJECT,
+  PROBATION_ASSESSMENT_OBJECT,
 ];
 const TASK_OBJECT: ObjectSelector = {
   from: 'record',

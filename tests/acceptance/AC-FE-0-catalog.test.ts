@@ -36,7 +36,7 @@ const expected = {
   ]
     .map((object) => object.code)
     .filter((code) => code !== PERSONNEL_REQUEST_OBJECT),
-  transfer: [M.employmentRecord.code],
+  transfer: [M.employmentRecord.code, M.probationAssessment.code],
   approval: APPROVAL_OBJECTS.map((object) => object.code),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],

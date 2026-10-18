@@ -26,7 +26,7 @@ describe('预置草稿（DEC-094，PB-R3）', () => {
         'direct_manager',
         'with_approve',
         ['managerRating', 'regularizationOpinion', 'regularizationDate'],
-        false,
+        true,
       ],
     ]);
   });
@@ -105,7 +105,7 @@ describe('PB-R5 转正考核', () => {
       });
       const done = await w.get(id);
       expect(done.status, opinion).toBe('approved');
-      expect((await w.probationDetail(person.employeeId, expected)), opinion).toMatchObject({
+      expect(await w.probationDetail(person.employeeId, expected), opinion).toMatchObject({
         regularizationDate: expected,
         regularizationBusinessId: done.regularizationBusinessId,
         probationResult: opinion,
