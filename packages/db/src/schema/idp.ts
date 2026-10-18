@@ -25,7 +25,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { approvalProcesses } from './approval.js';
 import { employmentEmployees } from './employment.js';
-import { jobPositionObjects, jobPostObjects } from './job.js';
+import { jobLevelObjects, jobPositionObjects, jobPostObjects, jobProfessionalLineObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
@@ -573,6 +573,30 @@ export const idpTutorships = pgTable(
   ],
 );
 
+/** 职业发展信息的 6 个职务体系引用：外键 (tenant_id, x) 指向主数据对象表，ON DELETE RESTRICT（与拟晋升职位一致）。 */
+function careerJobReferences(t: {
+  tenantId: AnyPgColumn;
+  targetProfessionalLineId: AnyPgColumn;
+  targetLevelId: AnyPgColumn;
+  targetPostId: AnyPgColumn;
+  currentLevelId: AnyPgColumn;
+  currentPositionId: AnyPgColumn;
+  currentPostId: AnyPgColumn;
+}) {
+  const reference = (name: string, column: AnyPgColumn, target: { tenantId: AnyPgColumn; id: AnyPgColumn }) =>
+    foreignKey({ columns: [t.tenantId, column], foreignColumns: [target.tenantId, target.id], name }).onDelete(
+      'restrict',
+    );
+  return [
+    reference('idp_careers_target_line_fk', t.targetProfessionalLineId, jobProfessionalLineObjects),
+    reference('idp_careers_target_level_fk', t.targetLevelId, jobLevelObjects),
+    reference('idp_careers_target_post_fk', t.targetPostId, jobPostObjects),
+    reference('idp_careers_current_level_fk', t.currentLevelId, jobLevelObjects),
+    reference('idp_careers_current_position_fk', t.currentPositionId, jobPositionObjects),
+    reference('idp_careers_current_post_fk', t.currentPostId, jobPostObjects),
+  ];
+}
+
 /** 职业发展信息 Career（IDP-R20）：判重键 = 员工 + 起止。 */
 export const idpCareers = pgTable(
   'idp_careers',
@@ -581,6 +605,14 @@ export const idpCareers = pgTable(
     tenantId: tenantId(),
     employeeId: uuid('employee_id').notNull(),
     targetPositionId: uuid('target_position_id'),
+    /** 发展条线 / 拟晋升职级 / 拟晋升职务（F-185，DEC-543）：候选为专业条线 / 全部启用职级 / 全部启用职务。 */
+    targetProfessionalLineId: uuid('target_professional_line_id'),
+    targetLevelId: uuid('target_level_id'),
+    targetPostId: uuid('target_post_id'),
+    /** 当前职级 / 职位 / 职务：新建保存时按员工当天有效任职存的快照，系统写入，编辑不重取（DEC-615）。 */
+    currentLevelId: uuid('current_level_id'),
+    currentPositionId: uuid('current_position_id'),
+    currentPostId: uuid('current_post_id'),
     strengths: text('strengths'),
     developmentItems: text('development_items'),
     intendedCity: text('intended_city'),
@@ -597,6 +629,7 @@ export const idpCareers = pgTable(
       foreignColumns: [jobPositionObjects.tenantId, jobPositionObjects.id],
       name: 'idp_careers_position_fk',
     }).onDelete('restrict'),
+    ...careerJobReferences(t),
     check('idp_careers_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
   ],
 );

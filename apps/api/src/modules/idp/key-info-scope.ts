@@ -15,6 +15,8 @@ export interface KeyInfoSpec {
   readonly table: string;
   /** 字段 → 列。 */
   readonly columns: Readonly<Record<string, string>>;
+  /** 只读的派生字段 → 查询表达式（不写库、不进审计快照）。 */
+  readonly derived?: Readonly<Record<string, string>>;
   /** 须在范围内的员工字段（第一个是审计归属）。 */
   readonly persons: readonly string[];
   /** 须在范围内的组织字段。 */
@@ -44,10 +46,23 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
     columns: {
       employeeId: 'employee_id',
       targetPositionId: 'target_position_id',
+      targetProfessionalLineId: 'target_professional_line_id',
+      targetLevelId: 'target_level_id',
+      targetPostId: 'target_post_id',
       strengths: 'strengths',
       developmentItems: 'development_items',
       intendedCity: 'intended_city',
       ...dated,
+      // 系统写入的快照列：只在新建时由 career-fields.ts 填，不在 plan-input 里出现
+      currentLevelId: 'current_level_id',
+      currentPositionId: 'current_position_id',
+      currentPostId: 'current_post_id',
+    },
+    // 职务显示名称（DEC-615 复刻取舍：原站列表显示编码，复刻显示名称）：取职务最新版本的名称
+    derived: {
+      currentPostName: `(SELECT v.name FROM job_post_versions v
+        WHERE v.tenant_id = idp_careers.tenant_id AND v.object_id = idp_careers.current_post_id
+        ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1)`,
     },
     persons: ['employeeId'],
     orgs: [],

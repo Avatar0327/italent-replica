@@ -10,6 +10,7 @@ import { pgErrorCode, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { type ModuleScope, rowsOf } from './access.js';
+import { careerSnapshot, validateCareerTargets } from './career-fields.js';
 import { keyInfoScopeSql, type KeyInfoSpec } from './key-info-scope.js';
 import { audit, conflict, created, requireRevision, type WriteContext } from './write-support.js';
 
@@ -23,7 +24,15 @@ function selectList(spec: KeyInfoSpec) {
   const fields = Object.entries(spec.columns).map(([field, column]) =>
     column.endsWith('_date') ? sql.raw(`${column}::text AS "${field}"`) : sql.raw(`${column} AS "${field}"`),
   );
-  return sql.join([sql.raw('id, revision, created_by AS "createdBy"'), ...fields], sql`, `);
+  const derived = Object.entries(spec.derived ?? {}).map(([field, expression]) =>
+    sql.raw(`${expression} AS "${field}"`),
+  );
+  return sql.join([sql.raw('id, revision, created_by AS "createdBy"'), ...fields, ...derived], sql`, `);
+}
+
+/** 审计快照不含派生字段（只读展示用，不是业务数据）。 */
+function persisted(spec: KeyInfoSpec, row: KeyInfoRow): KeyInfoRow {
+  return Object.fromEntries(Object.entries(row).filter(([field]) => !(field in (spec.derived ?? {})))) as KeyInfoRow;
 }
 
 export type KeyInfoRow = Record<string, unknown> & { id: string; revision: number; createdBy: string };
@@ -82,8 +91,16 @@ async function guarded<T>(spec: KeyInfoSpec, write: () => Promise<T>): Promise<T
 
 const auditAnchor = (spec: KeyInfoSpec, row: Record<string, unknown>) => row[spec.persons[0]!] as string;
 
-export async function createKeyInfo(tx: Tx, ctx: WriteContext, spec: KeyInfoSpec, input: Record<string, unknown>) {
-  await requireInScope(tx, ctx, spec, input);
+/** 职业发展：目标字段引用校验，并带上“当前”任职快照（只在新建写，之后任何编辑都不重取，DEC-615）。 */
+async function withCareerFields(tx: Tx, ctx: WriteContext, spec: KeyInfoSpec, input: Record<string, unknown>) {
+  if (spec.object !== 'career') return input;
+  await validateCareerTargets(tx, ctx, input);
+  return { ...input, ...(await careerSnapshot(tx, ctx, input.employeeId as string)) };
+}
+
+export async function createKeyInfo(tx: Tx, ctx: WriteContext, spec: KeyInfoSpec, request: Record<string, unknown>) {
+  await requireInScope(tx, ctx, spec, request);
+  const input = await withCareerFields(tx, ctx, spec, request);
   const entries = Object.entries(spec.columns).filter(([field]) => input[field] !== undefined);
   const columns = sql.join(
     entries.map(([, column]) => sql.raw(column)),
@@ -103,7 +120,11 @@ export async function createKeyInfo(tx: Tx, ctx: WriteContext, spec: KeyInfoSpec
     ),
   );
   const after = (await loadKeyInfo(tx, ctx.tenantId, spec, row!.id))!;
-  await audit(tx, ctx, spec.object, 'create', after.id, { before: null, after, employeeId: auditAnchor(spec, after) });
+  await audit(tx, ctx, spec.object, 'create', after.id, {
+    before: null,
+    after: persisted(spec, after),
+    employeeId: auditAnchor(spec, after),
+  });
   return after;
 }
 
@@ -120,6 +141,7 @@ export async function updateKeyInfo(
   requireRevision(ctx, before.revision, spec.label);
   const merged: Record<string, unknown> = { ...before, ...patch };
   await requireInScope(tx, ctx, spec, merged);
+  if (spec.object === 'career') await validateCareerTargets(tx, ctx, patch);
   if (merged.endDate && (merged.endDate as string) < (merged.startDate as string)) {
     throw new AppError('VALIDATION_FAILED', '结束时间不能早于开始时间');
   }
@@ -135,7 +157,11 @@ export async function updateKeyInfo(
     ),
   );
   const after = (await loadKeyInfo(tx, ctx.tenantId, spec, id))!;
-  await audit(tx, ctx, spec.object, 'update', id, { before, after, employeeId: auditAnchor(spec, after) });
+  await audit(tx, ctx, spec.object, 'update', id, {
+    before: persisted(spec, before),
+    after: persisted(spec, after),
+    employeeId: auditAnchor(spec, after),
+  });
   return after;
 }
 
@@ -145,6 +171,10 @@ export async function deleteKeyInfo(tx: Tx, ctx: WriteContext, spec: KeyInfoSpec
   await requireInScope(tx, ctx, spec, before);
   requireRevision(ctx, before.revision, spec.label);
   await tx.execute(sql`DELETE FROM ${sql.raw(spec.table)} WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
-  await audit(tx, ctx, spec.object, 'delete', id, { before, after: null, employeeId: auditAnchor(spec, before) });
+  await audit(tx, ctx, spec.object, 'delete', id, {
+    before: persisted(spec, before),
+    after: null,
+    employeeId: auditAnchor(spec, before),
+  });
   return before;
 }
