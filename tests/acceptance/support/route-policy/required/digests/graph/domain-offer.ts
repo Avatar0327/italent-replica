@@ -9,6 +9,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/offer/rules.ts#OFFER_FIELDS': ['#OFFER_FIELD_SECTIONS'],
   'packages/domain/src/offer/rules.ts#approvalAfterEdit': ['#effectiveOfferType'],
   'packages/domain/src/offer/rules.ts#missingOfferFields': ['#blank', '#offerRequiredFields'],
+  'packages/domain/src/offer/rules.ts#offerEditableWithSync': ['#offerEditable'],
   'packages/domain/src/offer/rules.ts#offerInvalidatable': ['#effectiveOfferType'],
   'packages/domain/src/offer/rules.ts#offerRequiredFields': [
     '#INTERN_REQUIRED',
@@ -20,6 +21,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/offer/rules.ts#planOfferInvalidation': ['#blank', '#offerInvalidatable', '#reject'],
   'packages/domain/src/offer/rules.ts#planOfferSend': ['#effectiveOfferType', '#reject'],
   'packages/domain/src/offer/rules.ts#planOfferTransition': ['#blank', '#reject', '#transitionGuard'],
+  'packages/domain/src/offer/rules.ts#reapprovalAfterEdit': ['#approvalAfterEdit'],
   'packages/domain/src/offer/rules.ts#transitionGuard': ['#OFFER_TRANSITIONS'],
   'packages/domain/src/offer/rules.ts#validOfferReviewFieldsSetting': [
     '#OFFER_FIELDS',

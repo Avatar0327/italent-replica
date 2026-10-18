@@ -8,22 +8,25 @@ import {
   MODULE_OBJECTS,
   missingOfferFields,
   OFFER_FIELDS,
+  OFFER_REAPPROVAL_INVALID_REASON,
   OFFER_REFUSAL_FIELDS,
   OFFER_REVIEW_FIELDS_DEFAULT,
   OFFER_REVIEW_FIELDS_KEY,
   OFFER_SEND_APPROVAL_DEFAULT,
   OFFER_SEND_APPROVAL_KEY,
   OFFER_WIRED_ROW_ACTIONS,
-  approvalAfterEdit,
   birthDateFromIdCard,
   effectiveOfferType,
   offerEditable,
+  offerEditableWithSync,
   offerRowActions,
   offerSyncKind,
   offerTransferTargets,
+  offerTransitionCancelsEntry,
   planOfferInvalidation,
   planOfferSend,
   planOfferTransition,
+  reapprovalAfterEdit,
   validOfferReviewFieldsSetting,
   validOfferSendApprovalSetting,
   type OfferApprovalStatus,
@@ -41,6 +44,7 @@ import {
 import type { AnyColumn, SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
+import type { FieldAccess } from '../approval/context.js';
 import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -51,6 +55,8 @@ import { assertOfferRevision, requireOfferInScope, type OfferContext } from './c
 import { requireEnabledOfferReason } from './dictionaries.js';
 import { currentEntryIds } from './entry-link.js';
 import { requireQuotaConfirmed } from './establishment.js';
+import { cancelLinkedEntry, deleteLinkedEntry, pushEditToEntry, readOfferLinkageSetting } from './linkage.js';
+import type { OfferPush } from './linkage.js';
 import { lockOfferSyncScope } from './sync-lock.js';
 import { requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
@@ -92,7 +98,8 @@ export const facts = (row: OfferRow): OfferStateFacts => ({
   status: row.status as OfferStatus,
   approvalStatus: row.approvalStatus as OfferApprovalStatus,
   offerType: typeOf(row),
-  hasPendingEntry: row.pendingEntryBusinessId !== null,
+  // 联动只认待入职；实习转正产物（sync_target = intern_regularization）没有可取消 / 删除的待入职
+  hasPendingEntry: row.pendingEntryBusinessId !== null && row.syncTarget !== 'intern_regularization',
 });
 
 /** 接口形状：金额转数字；拒绝时间 / 原因 / 备注只在“已拒绝”时出现（DEC-532①：退回待发后保留但详情不显示）。 */
@@ -160,6 +167,19 @@ export async function loadOffer(tx: Tx, ctx: OfferContext, id: string): Promise<
     .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, id)));
   if (!row) throw new AppError('NOT_FOUND', 'Offer 不存在');
   requireOfferInScope(ctx, row);
+  return row;
+}
+
+/**
+ * 删除 / 失效 / 编辑改写 Offer 的取锁单一入口（F-219，DEC-431①）：先按 ID 升序锁本 Offer 所在的在途批量单，再锁 Offer，
+ * 取到 Offer 锁后复核关联未变（变了即 409）。与审批动作（批量单 → 子表 Offer 升序 → 实例）同序，
+ * 删除 B × 失效 A 都先排在批量单上，不会一个先锁 Offer、一个先锁批量单而成环（40P01）。
+ */
+export async function lockOfferWithBatches(tx: Tx, ctx: OfferContext, id: string): Promise<OfferRow> {
+  const { lockOfferBatches } = await import('./approval.js');
+  const recheck = await lockOfferBatches(tx, ctx.tenantId, id);
+  const row = await lockOffer(tx, ctx, id);
+  await recheck();
   return row;
 }
 
@@ -332,7 +352,8 @@ export async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: 
       .returning(),
   );
   await audit(tx, ctx, action, before.id, before, after!);
-  return offerDto(after!);
+  // 写响应同样给沿记录链解析后的最新待入职 ID（编辑并同步会替换记录换 ID）
+  return offerDto(after!, (await currentEntryIds(tx, ctx.tenantId, [after!])).get(after!.id));
 }
 
 /**
@@ -348,13 +369,37 @@ export function saveApprovalStatus(
 }
 
 function requireEditable(row: OfferRow) {
-  if (!offerEditable(facts(row)))
-    throw new AppError('CONFLICT', '只有待发且不在审批中的 Offer 可以编辑或删除', { reason: 'OFFER_NOT_EDITABLE' });
+  if (!offerEditableWithSync(facts(row)))
+    throw new AppError('CONFLICT', '只有待发（非审批中）、已发或已接受的 Offer 可以编辑', {
+      reason: 'OFFER_NOT_EDITABLE',
+    });
 }
 
-/** Offer 编辑（待发、非审批中）：类型、入口、来源新建后不改；保存后的整份字段按类型重新校验必填。 */
-export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferUpdateInput) {
-  const before = await lockOffer(tx, ctx, id);
+/** 编辑并同步推送结果落在 Offer 的同步列上（同 #407 的同步成功 / 失败口径）；没有推送则不动。 */
+function pushColumns(push: OfferPush, ctx: OfferContext, before: OfferRow): Partial<OfferRow> {
+  if (push === 'skipped' || push === 'unchanged') return {};
+  const base = { syncAttempts: before.syncAttempts + 1, lastSyncAt: ctx.now };
+  if (push === 'pushed')
+    return { ...base, syncStatus: 'success', syncReason: null, syncMessage: null, syncedAt: ctx.now };
+  return { ...base, syncStatus: 'failed', syncReason: push.failed.reason, syncMessage: push.failed.message };
+}
+
+/**
+ * Offer 编辑（待发非审批中），及已发 / 已接受的“编辑并同步”（OF-R14）：类型、入口、来源新建后不改；保存后的整份字段按类型
+ * 重新校验必填。syncPendingEntry（默认 false）为 true 时，仅已同步且未取消入职的待入职被推送；推送遇业务规则拒绝，Offer 编辑保留、
+ * 原因记在同步列（同步状态“失败”），响应 entrySync 给出结果。
+ * OF-R4：审批通过后改了必审字段（该类型开了“发送前须审批”）→ 按“允许再次发起”开关分流：开 = 回待发 / 未发起审批（已发 / 已接受
+ * 同时取消待入职）；关 = 失效原 Offer（有待入职则删除）并按编辑后的值复制一份新 Offer，响应是新 Offer（replacedOfferId = 原 ID）。
+ */
+export async function updateOffer(
+  tx: Tx,
+  ctx: OfferContext,
+  id: string,
+  input: OfferUpdateInput,
+  options: { readonly syncPendingEntry?: boolean; readonly approvalFields: FieldAccess },
+) {
+  const { syncPendingEntry = false, approvalFields } = options;
+  const before = await lockOfferWithBatches(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   requireEditable(before);
   const patch = toColumns(input);
@@ -363,13 +408,57 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
   await requireReferences(tx, ctx, input);
   if (IDENTITY_FIELDS.some((field) => field in input))
     await requireNotBlacklisted(tx, ctx, { ...offerDto(before), ...input } as OfferIdentity);
-  // OF-R4 前半：审批通过后改了必审字段，旧的审批通过作废（含已发退回待发后再改）
   const changed = OFFER_FIELDS.filter(
     (field) => field in patch && patch[field as keyof typeof patch] !== before[field as keyof OfferRow],
   );
   const settings = await readOfferApprovalSettings(tx, ctx.tenantId);
-  const approvalStatus = approvalAfterEdit(facts(before), changed, settings.send, settings.review);
-  return save(tx, ctx, before, 'update', approvalStatus ? { ...patch, approvalStatus } : patch);
+  const linkage = await readOfferLinkageSetting(tx, ctx.tenantId);
+  const reapproval = reapprovalAfterEdit(facts(before), changed, settings.send, settings.review, linkage);
+  if (reapproval === 'replace') return replaceOffer(tx, ctx, before, patch, approvalFields);
+  const restart = reapproval === 'restart';
+  // 已发 / 已接受重新审批：回待发，已有待入职取消入职（Offer 自己不因此变已拒绝）
+  if (restart && before.status !== 'pending') await cancelLinkedEntry(tx, ctx, before);
+  const next: Partial<OfferRow> = {
+    ...patch,
+    ...(restart ? { approvalStatus: 'unsubmitted' as const } : {}),
+    ...(restart && before.status !== 'pending' ? { status: 'pending' as const } : {}),
+  } as Partial<OfferRow>;
+  const pushable = syncPendingEntry && !restart && before.status !== 'pending';
+  const push: OfferPush = pushable ? await pushEditToEntry(tx, ctx, { ...before, ...next } as OfferRow) : 'skipped';
+  const saved = await save(tx, ctx, before, 'update', { ...next, ...pushColumns(push, ctx, before) });
+  // OF-R4 开：原单回到待发 / 未发起审批后，同一事务里实际发起审批（新 running 实例 + 待办）
+  if (restart) {
+    const { restartOfferApproval } = await import('./approval.js');
+    return restartOfferApproval(tx, ctx, id, approvalFields);
+  }
+  return pushable ? { ...saved, entrySync: typeof push === 'string' ? push : 'failed' } : saved;
+}
+
+/** OF-R4 关分支：原 Offer 系统失效（有待入职则一并删除），按编辑后的字段值复制一份待发 / 未发起审批的新 Offer。 */
+async function replaceOffer(
+  tx: Tx,
+  ctx: OfferContext,
+  before: OfferRow,
+  patch: Partial<typeof offers.$inferInsert>,
+  approvalFields: FieldAccess,
+) {
+  if (facts(before).hasPendingEntry) await deleteLinkedEntry(tx, ctx, before);
+  await save(tx, ctx, before, 'invalidate', {
+    status: 'invalid',
+    invalidReasonCode: OFFER_REAPPROVAL_INVALID_REASON,
+    invalidRemark: '审批通过后修改必审字段且不允许再次发起审批：失效原 Offer 并复制新 Offer',
+    invalidAt: ctx.now,
+    pendingEntryBusinessId: null,
+  });
+  const fields = {
+    ...Object.fromEntries(OFFER_FIELDS.map((field) => [field, before[field as keyof OfferRow]])),
+    ...patch,
+  };
+  const copy = await insertCopy(tx, ctx, before, fields);
+  // 复制的新单同事务发起审批（AC-OF-02）；首节点为空等拒绝时整笔回滚，原单不失效
+  const { restartOfferApproval } = await import('./approval.js');
+  const started = await restartOfferApproval(tx, ctx, copy.id as string, approvalFields);
+  return { ...started, replacedOfferId: before.id };
 }
 
 /**
@@ -377,9 +466,10 @@ export async function updateOffer(tx: Tx, ctx: OfferContext, id: string, input: 
  * 随 Offer 级联删除，删除前的发送历史（先后、类型、收件人、抄送 / 密送、投递状态）一并写进审计快照（审查 #406 P2-03）。
  */
 export async function deleteOffer(tx: Tx, ctx: OfferContext, id: string) {
-  const before = await lockOffer(tx, ctx, id);
+  const before = await lockOfferWithBatches(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
-  requireEditable(before);
+  if (!offerEditable(facts(before)))
+    throw new AppError('CONFLICT', '只有待发且不在审批中的 Offer 可以删除', { reason: 'OFFER_NOT_EDITABLE' });
   // 被驳回 / 撤回后待重新发起的单个 Offer 审批随删除作废（同任职申请删除，DEC-103）
   const { cancelOfferApprovals } = await import('./approval.js');
   await cancelOfferApprovals(tx, ctx, id);
@@ -412,6 +502,11 @@ export async function copyOffer(tx: Tx, ctx: OfferContext, source: OfferRow) {
   const fields = Object.fromEntries(OFFER_FIELDS.map((field) => [field, source[field as keyof OfferRow]]));
   requireDepartment(ctx, source.departmentId, ctx.userId);
   await requireReferences(tx, ctx, fields);
+  return insertCopy(tx, ctx, source, fields);
+}
+
+/** 复制落库（失效后的复制与 OF-R4 关分支共用）：新 Offer 待发 / 未发起审批，记下被复制的 Offer。 */
+async function insertCopy(tx: Tx, ctx: OfferContext, source: OfferRow, fields: Record<string, unknown>) {
   const [row] = await guarded(() =>
     tx
       .insert(offers)
@@ -504,7 +599,7 @@ export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuer
 const PLAN_MESSAGES: Readonly<Record<string, string>> = {
   OFFER_TRANSITION_INVALID: '当前状态不能转移到目标状态',
   OFFER_APPROVAL_IN_PROGRESS: 'Offer 审批中，不能执行该操作',
-  OFFER_SYNC_NOT_READY: '该操作需要联动待入职，暂未开放',
+  OFFER_ENTRY_LINKED: '已有待入职记录，请在入职管理办理入职，Offer 会随之变为已入职',
   OFFER_FORM_INCOMPLETE: '必填项未填写',
   OFFER_INVALIDATION_NOT_ALLOWED: '当前 Offer 不能失效',
   OFFER_NOT_PENDING: '只有待发或已发的 Offer 可以发送',
@@ -540,16 +635,17 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
         ),
       }
     : plan.patch;
+  // 转已拒绝 / 已发退回待发：已有待入职联动取消入职（34 §2.1、AC-OF-03），与 Offer 状态同一事务
+  if (offerTransitionCancelsEntry(facts(before), input.target))
+    await cancelLinkedEntry(tx, ctx, before, { code: input.refusalReasonCode, remark: input.refusalRemark });
   return save(tx, ctx, before, 'transfer', patch);
 }
 
 /** 失效（OF-R7）：确定即失效，记失效时间；不可恢复（转移候选为空、只能复制）。 */
 export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, input: OfferInvalidateInput) {
   // BE-14a3：先锁在途批量单再锁 Offer（与审批动作同序），取锁后复核关联未变；随后在同一事务里作废在途审批
-  const { cancelOfferApprovals, lockOfferBatches } = await import('./approval.js');
-  const recheck = await lockOfferBatches(tx, ctx.tenantId, id);
-  const before = await lockOffer(tx, ctx, id);
-  await recheck();
+  const { cancelOfferApprovals } = await import('./approval.js');
+  const before = await lockOfferWithBatches(tx, ctx, id);
   assertOfferRevision(ctx.expectedRevision, before.revision);
   const plan = planOfferInvalidation(facts(before), input);
   if (!plan.ok) failPlan(plan);
@@ -559,7 +655,15 @@ export async function invalidateOffer(tx: Tx, ctx: OfferContext, id: string, inp
     'invalid-reasons',
     plan.patch.invalidReasonCode,
   );
-  const after = await save(tx, ctx, before, 'invalidate', { ...plan.patch, invalidReasonCode, invalidAt: ctx.now });
+  // 已有待入职：同事务删除待入职（OF-R7，不可恢复），Offer 上的关联随之解除
+  const hadEntry = facts(before).hasPendingEntry;
+  if (hadEntry) await deleteLinkedEntry(tx, ctx, before);
+  const after = await save(tx, ctx, before, 'invalidate', {
+    ...plan.patch,
+    invalidReasonCode,
+    invalidAt: ctx.now,
+    ...(hadEntry ? { pendingEntryBusinessId: null } : {}),
+  });
   // 同一事务里作废在途审批（单个实例 / 所在批量单），否则 revision 变了的审批再也办不结（#398 衔接）
   return (await cancelOfferApprovals(tx, ctx, id)) ? offerDto(await loadOffer(tx, ctx, id)) : after;
 }

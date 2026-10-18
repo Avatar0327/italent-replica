@@ -1,16 +1,18 @@
 /**
  * Offer 状态转移、失效、转移表单与 OF-R3 发送判定的路由（R2 BE-14a2，DEC-581 C2；34 §2.1、OF-R3 / R7）。
  * 转移有两个入口：行主按钮（OfferLineOpStatusTransfer@list_row）与顶部工具栏（Offer.StatusTransfer@list），各查各的按钮，
- * 规则相同（DEC-533④ / 537③）。失效按对象编辑开关。需要联动待入职的分支给机读拒绝 OFFER_SYNC_NOT_READY（BE-14b 接线）。
+ * 规则相同（DEC-533④ / 537③）。失效按对象编辑开关。转已拒绝 / 已发退回待发 / 失效按 OF-R4 / R7 同事务联动待入职（linkage.ts，BE-14b3）。
  */
 import { withTenant } from '@italent/db';
 import {
   buttonResource,
   OFFER_BUTTONS,
+  OFFER_LINKAGE_KEY,
   OFFER_OBJECT,
   OFFER_REVIEW_FIELDS_KEY,
   OFFER_SEND_APPROVAL_KEY,
   OFFER_SYNC_TIMING_KEY,
+  validOfferLinkageSetting,
   validOfferReviewFieldsSetting,
   validOfferSendApprovalSetting,
   validOfferSyncSetting,
@@ -26,7 +28,8 @@ import { registerSettingValidator } from '../tenant-settings/service.js';
 import { offerOperationCheck, offerReadContext, offerTransferCheck, runOfferWrite, trimOffer } from './context.js';
 import type { OfferContext } from './context.js';
 import { parseOfferInvalidate, parseOfferLink, parseOfferSync, parseOfferTransfer } from './input.js';
-import { linkEmployee, offerEntryHooks, syncOfferNow, syncOfferWhenDue } from './sync.js';
+import { offerEntryHooks } from './linkage.js';
+import { linkEmployee, syncOfferNow, syncOfferWhenDue } from './sync.js';
 import {
   invalidateOffer,
   offerDto,
@@ -39,6 +42,7 @@ import {
 
 registerSettingValidator(OFFER_SEND_APPROVAL_KEY, validOfferSendApprovalSetting);
 registerSettingValidator(OFFER_SYNC_TIMING_KEY, validOfferSyncSetting);
+registerSettingValidator(OFFER_LINKAGE_KEY, validOfferLinkageSetting);
 // F-201①：待入职取消 / 改期恢复的联动端口由 Offer 在模块加载时登记实现（employment 不 import Offer；测试可再登记桩覆盖）
 registerEntryOfferHooks(offerEntryHooks);
 registerSettingValidator(OFFER_REVIEW_FIELDS_KEY, validOfferReviewFieldsSetting);
@@ -66,6 +70,7 @@ export async function offerActionAccess(deps: TenantRouteDeps, ctx: OfferContext
     send: update,
     resend: update,
     invalidate: update,
+    editSync: update,
     delete: remove,
     copy: create,
   };

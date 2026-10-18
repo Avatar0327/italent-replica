@@ -136,7 +136,7 @@ const CAST: Readonly<Partial<Record<keyof Patch, string>>> = {
 
 /**
  * 保存一次修改（行已锁）：revision + 1，写字段级审计；If-Match 由调用方先比对（路由编辑）或不比对（审批回写是可信
- * 回调，按行锁串行）。返回保存后的行。
+ * 回调，按行锁串行）。context 给出时并入审计的“后”值（说明原因与关联单据，如离职作废的离职单号）。返回保存后的行。
  */
 export async function saveAssessment(
   tx: Tx,
@@ -144,6 +144,7 @@ export async function saveAssessment(
   before: AssessmentRow,
   patch: Patch,
   action: string,
+  context?: Readonly<Record<string, unknown>>,
 ): Promise<AssessmentRow> {
   const entries = Object.entries(patch) as [keyof Patch, Patch[keyof Patch]][];
   const sets = entries.map(
@@ -153,7 +154,8 @@ export async function saveAssessment(
       revision = revision + 1, command_id = ${ctx.commandId}, updated_at = ${ctx.now.toISOString()}::timestamptz
     WHERE tenant_id=${ctx.tenantId} AND id=${before.id}::uuid`);
   const after = await loadAssessment(tx, ctx.tenantId, before.id);
-  await auditAssessment(tx, ctx, action, before.id, assessmentView(before), assessmentView(after), before);
+  const audited = context ? { ...assessmentView(after), ...context } : assessmentView(after);
+  await auditAssessment(tx, ctx, action, before.id, assessmentView(before), audited, before);
   return after;
 }
 

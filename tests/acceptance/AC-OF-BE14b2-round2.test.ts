@@ -14,6 +14,7 @@ import {
 } from '../../apps/api/src/modules/employment/activation-checks.js';
 import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-scheduler.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import { overrideSetting } from './AC-OF-BE14b1-support.js';
 import { fullSocial, syncWorld, type SyncWorld } from './AC-OF-BE14b2-support.js';
 
 const testDb = useTestDb();
@@ -156,6 +157,8 @@ describe('P2-3 夜间任务限量前先筛出可处理项并分页扫完', () =>
 describe('P2-4 混合改期路径：关联随恢复更新并写审计（F-201①）', () => {
   it('同步 A → 普通改期 B → 取消 B → 改期恢复 C：库里的关联是 C，offer.entry_relink 审计 1 条，revision +1', async () => {
     const w = await syncWorld(testDb().db, 'r2-relink');
+    // OF-R9 联动另见 AC-OF-BE14b3-linkage；这里关掉，只验证换 ID 时的关联更新
+    await overrideSetting(w, 'offer.linkage', { entryCancelRejects: false, reapprovalAllowed: true });
     const synced = await w.accepted(await w.social());
     const a = synced.pendingEntryBusinessId!;
     const b = await idOf(await w.entryAction(a, 'postpone', { effectiveDate: '2026-11-05' }));
