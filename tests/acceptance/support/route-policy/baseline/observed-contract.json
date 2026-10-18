@@ -3917,6 +3917,68 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exits": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/exits/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/exits/dictionaries/:dict": {
       "edge": {
         "anonymous": {
@@ -11090,6 +11152,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -16577,6 +16642,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "runCommand / runWrite"

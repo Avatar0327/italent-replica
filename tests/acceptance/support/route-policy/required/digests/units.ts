@@ -175,8 +175,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/assessment-routes.ts': {
     'route:GET /probation-assessments': 'd9e98244425c',
     'route:GET /probation-assessments/:id': '62ac7052ecad',
-    'route:PATCH /probation-assessments/:id': 'f3ea0ac14d6b',
-    'route:POST /probation-assessments': 'cadf987a981d',
+    'route:PATCH /probation-assessments/:id': '0c608089e360',
+    'route:POST /probation-assessments': '17037f156e66',
   },
   'apps/api/src/modules/employment/assessment.ts': {
     createOne: '5d899f5fa8df',
@@ -246,6 +246,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-routes.ts': {
     registerExitChanges: '16711630aa98',
     requirePreviewButton: '4e4efd3f6659',
+    requireViewableExitFilters: 'd9eaf946ef06',
+    'route:GET /exits': '6ec815503d59',
+    'route:GET /exits/:id': '89a1e0b41dc6',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
     'route:PATCH /exits/:id': '4680d83c58be',
     'route:POST /exits/batch': 'da91eb4a0406',
@@ -1585,8 +1588,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': '78398667795d',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments': '35edc1a79cc9',
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': '5f88fb994a58',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': 'd26313a40c8c',
-  'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '440795093832',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:PATCH /probation-assessments/:id': '9f8485b3c331',
+  'apps/api/src/modules/employment/assessment-routes.ts#route:POST /probation-assessments': '5dd78b722ceb',
   'apps/api/src/modules/employment/assessment.ts#createOne': '5bb6707a45f4',
   'apps/api/src/modules/employment/assessment.ts#updateAssessment': '71db1a0671f7',
   'apps/api/src/modules/employment/auto-regularization-routes.ts#route:DELETE /auto-regularization-rules/:id':
@@ -1638,6 +1641,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '86fbd7cd8761',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd8613363bdae',
+  'apps/api/src/modules/employment/exit-routes.ts#requireViewableExitFilters': 'e90182a03729',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': '50739a69f5d6',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': '98d718056344',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': 'f2d7229ace36',
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/:id': 'c5d0ade5ff6c',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/batch': '38a4d8c342c3',
