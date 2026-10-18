@@ -2062,6 +2062,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#scopedGuard',
     '#requirePartTimeCreateAccess',
   ],
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeWriteGuard': [
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+    '#requirePartTimeWriteAccess',
+  ],
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
@@ -2077,6 +2082,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
   ],
+  'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope',
+  ],
   'apps/api/src/modules/employment/part-time/routes.ts#createSchema': [
     'apps/api/src/modules/employment/fields.ts#customFields',
     '#date',
@@ -2084,6 +2096,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
+  'apps/api/src/modules/employment/part-time/routes.ts#editInput': [
+    'apps/api/src/modules/employment/part-time/validation.ts#PART_TIME_FIELD_KEYS',
+  ],
+  'apps/api/src/modules/employment/part-time/routes.ts#editSchema': [
+    'apps/api/src/modules/employment/fields.ts#customFields',
+    '#date',
+    '#partTimeFields',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
+  ],
   'apps/api/src/modules/employment/part-time/routes.ts#partTimeFields': [
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
     'apps/api/src/modules/employment/fields.ts#presetFieldsSchema',
@@ -2108,6 +2129,22 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/read.ts#loadPartTime',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/part-time/routes.ts#route:PATCH /part-times/:recordId': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeWriteGuard',
+    'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess',
+    '#editBusiness',
+    '#editInput',
+    '#editSchema',
+    '#receipt',
+    'apps/api/src/modules/employment/part-time/service.ts#editPartTime',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#route:POST /employees/:id/part-times': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -2139,8 +2176,35 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/service.ts#previewPartTime',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
+  'apps/api/src/modules/employment/part-time/routes.ts#route:POST /part-times/batch-end': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeWriteGuard',
+    'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeWriteAccess',
+    '#receipt',
+    'apps/api/src/modules/employment/part-time/service.ts#batchEndPartTimes',
+    'apps/api/src/modules/employment/part-time/validation.ts#normalizeBatchEnd',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
+  ],
   'apps/api/src/modules/employment/part-time/routes.ts#serviceInput': [
     'apps/api/src/modules/employment/part-time/validation.ts#PART_TIME_FIELD_KEYS',
+  ],
+  'apps/api/src/modules/employment/part-time/service.ts#batchEndPartTimes': [
+    'apps/api/src/audit/record.ts#recordOperationLog',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    '#batchRejected',
+    'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
+    'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecordsById',
+    'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#batchEndViolation',
+    'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#createPartTime': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -2162,6 +2226,27 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#departmentHeadOn': [
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
+  'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
+    'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
+    'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    '#customChanges',
+    'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
+    'apps/api/src/modules/employment/part-time/store.ts#bumpPartTimeRevision',
+    'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#planPartTimeEdit',
+    'apps/api/src/modules/employment/part-time/validation.ts#requestInProgress',
+    'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope',
+    'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeCustomFields',
+    'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeReferences',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
+    'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
+  ],
   'apps/api/src/modules/employment/part-time/service.ts#previewPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
@@ -2175,6 +2260,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeReferences',
     'apps/api/src/modules/employment/record-store.ts#readEmploymentEmployee',
   ],
+  'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm': ['#bumpPartTimeRevision', '#insertTerm'],
   'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes': [
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeEmptySql',
@@ -2188,6 +2274,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
+  'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecordsById': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/store.ts#partTimeRows': [
+    '#currentDepartment',
+    '#latestSnapshot',
+    '#uuidArray',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/validation.ts#EDITABLE_FIELD_KEYS': ['#PART_TIME_FIELD_KEYS'],
   'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree': [
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2201,7 +2297,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/validation.ts#assertNotBeforeFounded': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#batchEndSchema': ['#MAX_BATCH_END'],
+  'apps/api/src/modules/employment/part-time/validation.ts#batchEndViolation': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+    'packages/domain/src/employment/part-time.ts#partTimeServiceStatus',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStart': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
+  'apps/api/src/modules/employment/part-time/validation.ts#normalizeBatchEnd': [
+    'apps/api/src/modules/employment/fields.ts#businessDate',
+    '#MAX_BATCH_END',
+    '#batchEndSchema',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime': [
@@ -2212,8 +2319,30 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/validation.ts#invalid',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords': [
+    'apps/api/src/modules/employment/part-time/store.ts#uuidArray',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#partTimePresetFields': [
     'apps/api/src/modules/employment/types.ts#emptyPresetFields',
+  ],
+  'apps/api/src/modules/employment/part-time/validation.ts#planPartTimeEdit': [
+    'apps/api/src/modules/employment/fields.ts#businessDate',
+    '#EDITABLE_FIELD_KEYS',
+    '#assertNoLinkage',
+    '#endBeforeStart',
+    'apps/api/src/modules/job/validation.ts#invalid',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
+  'apps/api/src/modules/employment/part-time/validation.ts#requestInProgress': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
+  'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope': [
+    'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator',
+    'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    '#NO_CREATOR',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeCustomFields': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',

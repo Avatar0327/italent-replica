@@ -408,7 +408,7 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
     ),
     ob(
       `btn:${RECORD}#${button}@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      [],
       [
         access,
         fn(
@@ -420,6 +420,20 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
       ],
     ),
     directOperation(access),
+    // 两个入口的准入都观测到 guard:employment.scope（readContext 内的员工范围判定）
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        route(readCall),
+        {
+          role: 'impl',
+          unit: `${CTX}#readContext`,
+          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+        },
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
   ];
 }
 function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
