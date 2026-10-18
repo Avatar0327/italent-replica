@@ -43,7 +43,7 @@ test('AC-FE-F220-03 有权限时大小写入口进入真实列表；缺带教对
   await mockInfo(page);
   for (const path of ['/idp', '/IDP', '/Idp', '/tutorship-information', '/TUTORSHIP-INFORMATION']) {
     await page.goto(path);
-    const title = path.toLowerCase() === '/idp' ? '发展计划' : '带教信息';
+    const title = path.toLowerCase() === '/idp' ? '未开始&进行中' : '带教信息';
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
   await page.route('**/permission/me/snapshot', (route) => route.fulfill({ json: snapshotFixture }));
