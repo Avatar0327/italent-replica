@@ -408,6 +408,14 @@ export function commandContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentCon
   return scoped;
 }
 
+/**
+ * guard.before 在事务内重算了比 commandContext 更细的上下文（如同单来源 / 目标部门例外）时，把它登记为本事务的命令上下文：
+ * 首次执行、直接重放、失败回查和结果复核都改用这一份，不再带着入口的旧例外。
+ */
+export function adoptCommandContext(tx: Tx, ctx: EmploymentContext, scoped: EmploymentContext): void {
+  commandContexts.set(tx, { ctx, scoped: Promise.resolve(scoped) });
+}
+
 /** 带事务内范围标记的 CommandGuard：runWrite 对它改用 commandContext 执行与校验结果，见 runWrite。 */
 export interface ScopedCommandGuard extends CommandGuard {
   readonly scoped: true;
@@ -442,9 +450,10 @@ export async function runWrite(
    * 可选：命令事务内的当前权限复核（CommandGuard，经 ledgerExit 覆盖首次 / 重放 / 回查）；
    * 带 `scopedGuard` 标记的 guard 还让执行与结果校验改用事务内重新解析的数据范围（commandContext），重放命中台账后
    * 同一事务内再校验原响应，这类出口不再跑事务外、用入口旧范围的那次结果复核；
-   * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪；缺省两项与之前完全相同。
+   * project：固定形状回执（不是任职对象）的显式投影，替代通用任职字段裁剪，可异步（按当前权限再裁剪，首次与重放同一出口）；
+   * 缺省两项与之前完全相同。
    */
-  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown } = {},
+  options: { readonly guard?: CommandGuard; readonly project?: (body: unknown) => unknown | Promise<unknown> } = {},
 ) {
   const key = c.req.header('idempotency-key');
   const scoped = isScopedGuard(options.guard) ? options.guard : undefined;
@@ -470,7 +479,9 @@ export async function runWrite(
     );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const body = options.project ? options.project(result.body) : await trimEmploymentResponse(deps, ctx, result.body);
+  const body = options.project
+    ? await options.project(result.body)
+    : await trimEmploymentResponse(deps, ctx, result.body);
   return c.json(body, result.status);
 }
 

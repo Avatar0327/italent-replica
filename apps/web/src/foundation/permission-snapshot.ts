@@ -14,6 +14,7 @@ export interface MenuNode {
   group: string;
   editable?: boolean;
   children?: MenuNode[];
+  directory?: boolean;
 }
 export interface PermissionSnapshot {
   objects: Record<string, ObjectPermission>;
@@ -33,15 +34,37 @@ export const menuObjects = (route: AppRoute) => APP_OBJECT_DIRECTORY[route.id];
 export function menuNodes(routes: readonly MenuRoute[], response: ServerSnapshot): MenuNode[] {
   const visible = (route: MenuRoute) =>
     response.apps.some(
-      (app) => app.app === route.app && app.visible && (!isEntry(route) || app.entryObjects.includes(route.objectCode)),
+      (app) =>
+        app.app === route.app && app.visible && (!isEntry(route) || app.entryObjects.includes(route.objectCode ?? '')),
     );
-  return routes.filter(visible).map((route) => ({
-    key: route.id,
-    label: route.label,
-    path: route.path,
-    group: route.group,
-    ...(!isEntry(route) && route.children ? { children: route.children(response, route) } : {}),
-  }));
+  return routes.flatMap((route): MenuNode[] => {
+    if (isEntry(route) && route.children) {
+      const children = menuNodes(route.children, response);
+      return children.length
+        ? [
+            {
+              key: route.id,
+              label: route.label,
+              path: children[0]!.path,
+              group: route.group,
+              directory: true,
+              children,
+            },
+          ]
+        : [];
+    }
+    return visible(route)
+      ? [
+          {
+            key: route.id,
+            label: route.label,
+            path: route.path,
+            group: route.group,
+            ...(!isEntry(route) && route.children ? { children: route.children(response, route) } : {}),
+          },
+        ]
+      : [];
+  });
 }
 
 export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
