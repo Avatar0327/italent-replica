@@ -5,7 +5,9 @@
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as employmentContext from '../../apps/api/src/modules/employment/context.js';
+import { OFFERS } from './support/route-policy/required/offers.js';
 import {
   DEFAULT_ESTABLISHMENT_CHECKS,
   registerEmploymentActivationChecks,
@@ -96,5 +98,58 @@ describe('发送时同步（OF-R8 时机 = 发送时）', () => {
     );
     expect(counts).toEqual({ records: 0, people: 0 });
     expect(await w.entries()).toHaveLength(0);
+  });
+});
+
+describe('第 4 轮 P2-1：真实强控（不注入检查器），确认标记绕不过', () => {
+  it('on_send：严格控编、容量 0，发送带 confirmed: true → 发送成功、同步失败 ESTABLISHMENT_EXCEEDED，无人员 / 待入职', async () => {
+    const w = await syncWorld(testDb().db, 'send-real-strict');
+    await w.timing({ mode: 'on_send' });
+    const { departmentId } = await w.realCapacity();
+    const offer = await w.social({ departmentId });
+    const response = await w.send(offer, { confirmed: true });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await body(response)).toMatchObject({
+      status: 'sent',
+      syncStatus: 'failed',
+      syncReason: 'ESTABLISHMENT_EXCEEDED',
+      hasPendingEntry: false,
+    });
+    expect(await w.entries()).toHaveLength(0);
+    const [created] = rows<{ n: number }>(
+      await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT count(*)::int AS n FROM employment_employees WHERE code LIKE 'OFR-%'`),
+      ),
+    );
+    expect(created!.n).toBe(0);
+  });
+
+  it('同一份真实编制：非严格控制不拦（弱控确认后同步成功）；容量足够不拦', async () => {
+    const w = await syncWorld(testDb().db, 'send-real-weak');
+    await w.timing({ mode: 'on_send' });
+    const weak = await w.realCapacity({ strictControl: false });
+    const first = await w.send(await w.social({ departmentId: weak.departmentId }), { confirmed: true });
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(await body(first)).toMatchObject({ syncStatus: 'success', hasPendingEntry: true });
+    const roomy = await w.realCapacity({ localCapacity: 5 });
+    const second = await w.send(await w.social({ departmentId: roomy.departmentId }));
+    expect(await body(second)).toMatchObject({ syncStatus: 'success', hasPendingEntry: true });
+  });
+});
+
+describe('第 4 轮 P2-3：send 的 F-039 登记与真实运行时一致', () => {
+  it('on_send 的发送确实调用任职落地内核的联动复核，且必需义务表为 send 路由登记了 guard:employment.linkage', async () => {
+    const spy = vi.spyOn(employmentContext, 'requireLinkedEmploymentRecord');
+    try {
+      const w = await syncWorld(testDb().db, 'send-linkage');
+      await w.timing({ mode: 'on_send' });
+      const response = await w.send(await w.social());
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(spy.mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const obligations = OFFERS['POST /api/tenant/offers/:id/send'] ?? [];
+    expect(obligations.some((item) => item.perm === 'guard:employment.linkage')).toBe(true);
   });
 });

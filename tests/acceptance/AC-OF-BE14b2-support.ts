@@ -174,6 +174,42 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
   function strictCapacity() {
     registerEmploymentActivationChecks({ establishmentExceeded: async () => true });
   }
+  /**
+   * 真实编制：新建一个设立日早于年初的部门，建年度方案与该部门的编制（默认严格控制、容量 0）。不注入检查器——
+   * 生产的编制入口对 hire 不判容量，Offer 同步靠自己的强控检查（第 4 轮审查 P2-1）。Offer 须录用到返回的部门。
+   */
+  async function realCapacity(options: { localCapacity?: number; strictControl?: boolean } = {}) {
+    const created = await w.seeder.request('POST', '/api/tenant/org/organizations', {
+      ...as,
+      ifMatch: 0,
+      body: {
+        name: `真实控编部门${uniqueSuffix()}`,
+        parents: { admin: { parentId: w.tenant.id } },
+        establishedOn: '2026-01-01',
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const { id: departmentId } = (await created.json()) as { id: string };
+    const post = (path: string, body: object) =>
+      w.seeder.request('POST', `/api/tenant/establishment${path}`, { ...as, ifMatch: 0, body });
+    const scheme = await post('/schemes', {
+      name: `真实同步控编方案${uniqueSuffix()}`,
+      periodType: 'annual',
+      maintenanceMode: 'local',
+      startDate: '2026-01-01',
+      occupancyRanges: [{ employmentType: 'internal' }],
+    });
+    expect(scheme.status, await scheme.clone().text()).toBe(201);
+    const capacity = await post('/capacities', {
+      orgId: departmentId,
+      schemeId: ((await scheme.json()) as { id: string }).id,
+      periodStart: '2026-01-01',
+      localCapacity: options.localCapacity ?? 0,
+      strictControl: options.strictControl ?? true,
+    });
+    expect(capacity.status, await capacity.clone().text()).toBe(201);
+    return { departmentId };
+  }
   function relaxCapacity() {
     registerEmploymentActivationChecks(DEFAULT_ESTABLISHMENT_CHECKS);
   }
@@ -221,6 +257,7 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     departedIntern,
     recordsOf,
     strictCapacity,
+    realCapacity,
     relaxCapacity,
   };
 }
