@@ -7,7 +7,7 @@
  * 结果未知时以同一 Idempotency-Key 重放。
  */
 import { withTenant } from '@italent/db';
-import { PART_TIME_BUTTONS, PART_TIME_SERVICE_TYPES, tenantLocalDate } from '@italent/domain';
+import { PART_TIME_BUTTONS, PART_TIME_SERVICE_TYPES, partTimePermissionFields, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../../authorization.js';
@@ -98,9 +98,11 @@ function serviceInput(employeeId: string, body: CreateBody): CreatePartTimeInput
 /** 字段权限判定的载荷：实际写入的字段，开始日期按任职记录的 effectiveDate 编码判（startDate 不是任职记录字段）。 */
 function writeBusiness(body: CreateBody) {
   return {
-    partTimeType: body.partTimeType,
-    effectiveDate: body.startDate,
-    ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    ...partTimePermissionFields({
+      partTimeType: body.partTimeType,
+      startDate: body.startDate,
+      ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    }),
     fields: body.fields,
     customFields: body.customFields,
   };
@@ -133,9 +135,11 @@ function editInput(body: EditBody): EditPartTimeInput {
 /** 字段权限判定的载荷：实际给出的键（开始日期按任职记录的 effectiveDate 编码判）。 */
 function editBusiness(body: EditBody) {
   return {
-    ...(body.partTimeType !== undefined ? { partTimeType: body.partTimeType } : {}),
-    ...(body.startDate !== undefined ? { effectiveDate: body.startDate } : {}),
-    ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    ...partTimePermissionFields({
+      ...(body.partTimeType !== undefined ? { partTimeType: body.partTimeType } : {}),
+      ...(body.startDate !== undefined ? { startDate: body.startDate } : {}),
+      ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    }),
     ...(body.fields ? { fields: body.fields } : {}),
     ...(body.customFields ? { customFields: body.customFields } : {}),
   };

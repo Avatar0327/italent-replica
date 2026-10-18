@@ -119,6 +119,8 @@ export async function assertExclusiveTypeFree(
   normalized: Pick<NormalizedPartTime, 'employeeId' | 'serviceType'>,
   /** 编辑把已结束的记录改回进行中时排除它自己（它正是被复核的那一条）。 */
   excludeRecordId?: string,
+  /** 新增申请的创建 / 修改 / 提交 / 落地复核自己：它自己的草稿或审批中版本不算另一张在途申请。 */
+  excludeRequestId?: string,
 ): Promise<void> {
   const { employeeId, serviceType } = normalized;
   const records = rowsOf<{ serviceType: string; startDate: string; endDate: string | null }>(
@@ -142,6 +144,7 @@ export async function assertExclusiveTypeFree(
         WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY version_no DESC LIMIT 1) v ON true
       WHERE q.tenant_id=${ctx.tenantId} AND q.employee_id=${employeeId}::uuid AND q.request_type='add'
         AND s.state IN ('draft', 'in_review', 'rejected')
+        ${excludeRequestId === undefined ? sql`` : sql`AND q.id <> ${excludeRequestId}::uuid`}
     `),
   ).map((row) => row.serviceType);
   if (

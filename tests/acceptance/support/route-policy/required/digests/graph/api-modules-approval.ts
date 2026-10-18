@@ -447,29 +447,44 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
     'packages/domain/src/approval/types.ts#revokeAllowed',
   ],
+  'apps/api/src/modules/approval/adapter-support.ts#HELD_STATUSES': [
+    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+  ],
+  'apps/api/src/modules/approval/adapter-support.ts#employeeHeader': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/approval/adapter-support.ts#mayMergeSeat': [
+    '#HELD_STATUSES',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/approval/adapter-support.ts#profileValues': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/personnel/tenure.ts#ageOn',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/approval/adapters.ts#ADAPTERS': [
     '#employmentAdapter',
-    '#partTimeAdapter',
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/employment/assessment-approval-adapter.ts#assessmentAdapter',
+    'apps/api/src/modules/employment/part-time/approval-adapter.ts#partTimeAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
-  'apps/api/src/modules/approval/adapters.ts#HELD_STATUSES': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/adapters.ts#businessRevision': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#completedTransferDates': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
-  'apps/api/src/modules/approval/adapters.ts#employeeHeader': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/adapters.ts#employmentAdapter': [
+    'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
+    'apps/api/src/modules/approval/adapter-support.ts#mayMergeSeat',
+    'apps/api/src/modules/approval/adapter-support.ts#profileValues',
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
-    '#employeeHeader',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
@@ -477,9 +492,7 @@ export const GRAPH: Graph = {
     '#exitVersion',
     '#filledExitFields',
     '#latestPayload',
-    '#mayMergeSeat',
     '#originalsOf',
-    '#profileValues',
     '#ref',
     '#requireExitApprovalEdit',
     '#same',
@@ -517,17 +530,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS',
   ],
   'apps/api/src/modules/approval/adapters.ts#latestPayload': ['apps/api/src/modules/approval/context.ts#rowsOf'],
-  'apps/api/src/modules/approval/adapters.ts#mayMergeSeat': [
-    '#HELD_STATUSES',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-  ],
   'apps/api/src/modules/approval/adapters.ts#originalsOf': ['#customValues'],
-  'apps/api/src/modules/approval/adapters.ts#partTimeAdapter': ['#partTimeUnavailable'],
-  'apps/api/src/modules/approval/adapters.ts#partTimeUnavailable': [
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
-  ],
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': [
-    '#employeeHeader',
+    'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
     '#personnelChange',
     '#same',
     '#subsetVersion',
@@ -548,11 +553,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapters.ts#personnelChange': [
     'apps/api/src/modules/personnel/change-requests.ts#loadChange',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
-  ],
-  'apps/api/src/modules/approval/adapters.ts#profileValues': [
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    'packages/domain/src/personnel/tenure.ts#ageOn',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/approval/adapters.ts#requireExitApprovalEdit': [
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
@@ -632,6 +632,7 @@ export const GRAPH: Graph = {
     '#actorOf',
     '#changed',
   ],
+  'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
   'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
     '#votingTasks',
@@ -1276,6 +1277,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
   ],
   'apps/api/src/modules/approval/notifications.ts#notifyCc': ['#insertNotice'],
+  'apps/api/src/modules/approval/notifications.ts#notifyMessage': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyTodo': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyUrge': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#recipientOf': [
@@ -1811,6 +1813,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/store.ts#instanceOf': ['#iso'],
   'apps/api/src/modules/approval/store.ts#instanceOfTask': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/store.ts#latestInstanceOf': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#instanceOf',
+  ],
   'apps/api/src/modules/approval/store.ts#loadInstance': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#instanceOf',

@@ -35,6 +35,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimeBusinessField': ['#PERMISSION_CODE'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimePermissionCode': ['#PERMISSION_CODE'],
+  'packages/domain/src/employment/part-time-constants.ts#partTimePermissionFields': ['#partTimePermissionCode'],
+  'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState': ['#TRANSITIONS'],
   'packages/domain/src/employment/part-time.ts#ACTIVE_STATUSES': [
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],

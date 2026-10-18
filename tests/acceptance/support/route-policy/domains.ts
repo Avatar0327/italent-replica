@@ -11,6 +11,7 @@ import {
   CONTRACT_OBJECT,
   contractAction,
   IDP_OBJECTS,
+  MODULE_OBJECTS,
   OFFER_BATCH_OBJECT,
   OFFER_OBJECT,
   PROBATION_ASSESSMENT_OBJECT,
@@ -53,6 +54,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   // offer/approval-adapter.ts（R2 BE-14a3）：单个 Offer 审批 / Offer 批量审批
   OFFER_OBJECT: { adapter: 'offer', codes: [OFFER_OBJECT] },
   OFFER_BATCH_OBJECT: { adapter: 'offer_batch', codes: [OFFER_BATCH_OBJECT] },
+  // employment/part-time/approval-adapter.ts（R2 BE-7 PT-4a）：兼职三类申请，字段权限沿用任职记录对象（PT-R4）
+  'MODULE_OBJECTS.employmentRecord.code': { adapter: 'part_time', codes: [MODULE_OBJECTS.employmentRecord.code] },
   // employment/assessment-approval-adapter.ts（R2 BE-15b1）：试用中考核 / 转正考核
   PROBATION_ASSESSMENT_OBJECT: { adapter: 'probation_assessment', codes: [PROBATION_ASSESSMENT_OBJECT] },
 };
@@ -64,8 +67,6 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
-  // approval/adapters.ts：BE-7 PT-1 只占兼职业务类型位置，PT-4a 接入兼职申请适配器前任何回调 409
-  part_time: 'PART_TIME_NOT_AVAILABLE',
 };
 
 function sourceFiles(dir: string): string[] {

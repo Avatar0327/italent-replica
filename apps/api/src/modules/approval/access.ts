@@ -87,7 +87,7 @@ async function hasButton(deps: TenantRouteDeps, ctx: TenantContext, button: stri
 
 /**
  * 实例的数据范围谓词（对 approval_instances 别名 i）：人员维度取异动员工；“使用用户”维度取任职业务的真实创建人
- * （与任职模块的范围判断一致，F10）。员工子集变更没有任职创建人，“使用用户”维度对其不成立（默认拒绝）。
+ * （与任职模块的范围判断一致，F10）；兼职申请取发起人（R2-T05 P-47）。员工子集变更没有任职创建人，“使用用户”维度对其不成立（默认拒绝）。
  */
 export function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
   return scopeSql(scope, {
@@ -95,7 +95,9 @@ export function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
     creator: sql`CASE WHEN i.business_type='employment'
       THEN ${employmentCreator(ctx.tenantId, sql`i.business_id`, true)}
       WHEN i.business_type='contract' THEN (SELECT created_by FROM contract_requests c
-        WHERE c.tenant_id=i.tenant_id AND c.id=i.business_id) END`,
+        WHERE c.tenant_id=i.tenant_id AND c.id=i.business_id)
+      WHEN i.business_type='part_time' THEN (SELECT q.initiator_user_id FROM part_time_requests q
+        WHERE q.tenant_id=i.tenant_id AND q.id=i.business_id) END`,
   });
 }
 
