@@ -12,7 +12,7 @@ import type { Tx } from '@italent/db';
 import { dayAfter } from './fields.js';
 import {
   disclose,
-  discloseInBatches,
+  batchDisclose,
   assessmentNoticeItems,
   inFlightApplications,
   leavesInProgress,
@@ -50,7 +50,7 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
     ack: set
       ? {
           ackToken: set.hash,
-          ...(await discloseInBatches(tx, ctx, employeeId, set.rows)),
+          ...(await batchDisclose(tx, ctx, employeeId, set.rows)),
           ...(assessments.length ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, assessments) } : {}),
         }
       : null,
@@ -61,7 +61,7 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
         : { reason: 'EXIT_APPLICATIONS_TO_VOID', ...(await disclose(tx, ctx, employeeId, asRows(voided))) },
       {
         reason: 'EXIT_FUTURE_TRANSFER_LANDED',
-        ...(await discloseInBatches(
+        ...(await batchDisclose(
           tx,
           ctx,
           employeeId,

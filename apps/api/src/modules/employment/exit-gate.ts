@@ -243,12 +243,7 @@ const DISCLOSE_LIMIT = 1000;
  * 预览用披露（F-237）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与 disclose 完全一致；
  * 只给只读预览用（候选查询至多 1001 条，故至多两批），保存 / 门禁路径仍走 disclose，不全局放宽。
  */
-export async function discloseInBatches(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  rows: readonly Disclosable[],
-) {
+export async function batchDisclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
   const parts = [];
   for (let from = 0; from === 0 || from < rows.length; from += DISCLOSE_LIMIT)
     parts.push(await disclose(tx, ctx, employeeId, rows.slice(from, from + DISCLOSE_LIMIT)));
