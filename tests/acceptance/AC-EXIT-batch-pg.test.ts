@@ -78,16 +78,20 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-batch-pg 批量 
         held.resolve();
         await release.promise;
       });
-      await held.promise;
-      const requests = order === '批量先' ? [batch, single] : [single, batch];
       const running: Promise<Response>[] = [];
-      // 请求体（含 revision 查询）先备好再排队，避免等待期间占满连接池
-      for (const [index, request] of requests.entries()) {
-        running.push(request());
-        await waitForBlocked(w.db, index + 1);
+      try {
+        await held.promise;
+        const requests = order === '批量先' ? [batch, single] : [single, batch];
+        // 请求体（含 revision 查询）先备好再排队，避免等待期间占满连接池
+        for (const [index, request] of requests.entries()) {
+          running.push(request());
+          await waitForBlocked(w.db, index + 1);
+        }
+      } finally {
+        // 任一步抛错也要放开持锁会话，否则测试库连接被占住
+        release.resolve();
+        await holder;
       }
-      release.resolve();
-      await holder;
       const responses = await Promise.all(running);
       const texts = await Promise.all(responses.map((response) => response.clone().text()));
       expect(

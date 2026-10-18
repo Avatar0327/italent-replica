@@ -28,7 +28,7 @@ const COUNTERSIGN = {
 } as const;
 
 /** 外部账号 U 持有离职申请（非调动任职业务）的异常待办；countersign 时 U 占会签节点里无人可办的那一席。 */
-async function leaveScene(label: string, countersign: boolean) {
+async function leaveScene(label: string, countersign: boolean, withTransfer = false) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
   const source = await createUser(
@@ -44,13 +44,21 @@ async function leaveScene(label: string, countersign: boolean) {
     nodes: [NODES.outHead, countersign ? COUNTERSIGN : { key: 'hrbp', approver: 'record_department_hrbp' }],
     exceptionAdminUserId: source.id,
   });
-  const employee = await w.json<{ revision: number }>(
-    await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
-  );
+  // 同员工有一张未落地的调动申请：离职生效会回退它的带编分配，所以合席结算前要把编制锁也取齐（R2-T03 B3-3）
+  if (withTransfer) await w.application(s.subject.employeeId, { departmentId: s.to });
   const created = await w.json<{ id: string; revision: number }>(
     await w.request(w.hr.id, 'POST', `/api/tenant/employment/employees/${s.subject.employeeId}/businesses`, {
-      ifMatch: employee.revision,
-      body: { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-20', fields: {} },
+      ifMatch: (
+        await w.json<{ revision: number }>(
+          await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
+        )
+      ).revision,
+      body: {
+        kind: 'leave',
+        mode: 'application',
+        lastWorkDate: '2026-10-20',
+        fields: {},
+      },
     }),
     201,
   );
@@ -80,6 +88,11 @@ async function leaveScene(label: string, countersign: boolean) {
       withTenant(w.db, w.tenant.id, (tx) =>
         tx.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE NOWAIT`),
       ),
+    /** 编制锁（establishment_settings）：NOWAIT，被挡住即抛 55P03。 */
+    tryEstablishmentLock: () =>
+      withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT tenant_id FROM establishment_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE NOWAIT`),
+      ),
     successor,
   };
 }
@@ -93,7 +106,10 @@ function isLockNotAvailable(error: unknown): boolean {
 }
 
 /** 交接停在实例锁上（已完成全部预锁）时，另一事务能否取到租户组织锁。 */
-async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typeof leaveScene>>) {
+async function lockFreeWhileHandoverQueued(
+  f: Awaited<ReturnType<typeof leaveScene>>,
+  probe: 'tryOrganizationLock' | 'tryEstablishmentLock' = 'tryOrganizationLock',
+) {
   let handedOver: Promise<Response> = Promise.resolve(new Response());
   let free: boolean | undefined;
   await withTenant(f.w.db, f.w.tenant.id, async (barrier) => {
@@ -101,7 +117,7 @@ async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typ
       WHERE tenant_id=${f.w.tenant.id} AND id=${f.view.id}::uuid FOR UPDATE`);
     handedOver = f.handover();
     await waitForBlocked(f.w.db, 1);
-    free = await f.tryOrganizationLock().then(
+    free = await f[probe]().then(
       () => true,
       (error: unknown) => {
         if (!isLockNotAvailable(error)) throw error;
@@ -117,12 +133,19 @@ async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typ
 describe.runIf(realPostgres)('AC-APV F-070 手动交接的组织锁范围（DEC-196 全局锁序不变）', () => {
   it('仅改派（不会合席）：交接排队等实例锁时不持组织锁，普通组织写入不被挡住；交接结果不变', async () => {
     const f = await leaveScene('f070-reassign-only', false);
-    expect(await organizationLockFreeWhileHandoverQueued(f)).toBe(true);
+    expect(await lockFreeWhileHandoverQueued(f)).toBe(true);
     expect(pendingOf(await f.w.detail(f.view.id))).toEqual([expect.objectContaining({ assigneeUserId: f.successor })]);
   });
 
   it('会签合席（替代人已占本节点一席，非调动任职业务）：仍持组织锁，守住合席结算 / 落地的保护', async () => {
     const f = await leaveScene('f070-countersign-merge', true);
-    expect(await organizationLockFreeWhileHandoverQueued(f)).toBe(false);
+    expect(await lockFreeWhileHandoverQueued(f)).toBe(false);
+  });
+
+  it('会签合席 + 同员工有未落地调动申请：除组织锁外还持编制锁（离职生效会回退其带编分配）；无调动申请时不持编制锁', async () => {
+    const withTransfer = await leaveScene('f070-merge-with-transfer', true, true);
+    expect(await lockFreeWhileHandoverQueued(withTransfer, 'tryEstablishmentLock')).toBe(false);
+    const without = await leaveScene('f070-merge-no-transfer', true);
+    expect(await lockFreeWhileHandoverQueued(without, 'tryEstablishmentLock')).toBe(true);
   });
 });

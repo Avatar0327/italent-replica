@@ -318,7 +318,7 @@ async function completedTransferDates(
 }
 
 const employmentAdapter: BusinessAdapter = {
-  async lock(tx, ctx, businessId) {
+  async lock(tx, ctx, businessId, sourceOnly) {
     const [owner] = rowsOf<{ employee_id: string; kind: string }>(
       await tx.execute(sql`SELECT employee_id, (SELECT kind FROM employment_payload_versions p
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
@@ -331,8 +331,11 @@ const employmentAdapter: BusinessAdapter = {
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
     // org/locks.ts：员工 / 业务 → 组织 → 编制 → 实例；审批推进时只重入资源锁。
     if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
-    // 离职最后节点同意会当场进入生效链（R2-T03 §5.2）：组织 / 编制资源在审批实例锁之前取齐
-    else if (owner.kind === 'leave') await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
+    // 离职最后节点同意会当场进入生效链（R2-T03 §5.2）：组织 / 编制资源在审批实例锁之前取齐。
+    // 手动交接（sourceOnly）的取锁由 lockMany 按“可能合席”统一判断，这里不再无条件取（F-070，DEC-431①）。
+    else if (owner.kind === 'leave' && !sourceOnly) {
+      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
+    }
   },
   /**
    * F-065：批量交接在登记替代人（对成员行取 KEY SHARE）之前取齐组织锁，顺序与 lock 一致（员工 / 业务 → 组织 → 编制）。
@@ -341,18 +344,23 @@ const employmentAdapter: BusinessAdapter = {
    */
   async lockMany(tx, ctx, businessIds, options) {
     if (!options.organization) return;
-    const kinds = rowsOf<{ kind: string | null }>(
-      await tx.execute(sql`SELECT (SELECT kind FROM employment_payload_versions p
-        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
+    const rows = rowsOf<{ id: string; employee_id: string; kind: string | null }>(
+      await tx.execute(sql`SELECT b.id::text AS id, b.employee_id::text AS employee_id,
+        (SELECT kind FROM employment_payload_versions p
+          WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
         FROM employment_business_objects b
-        WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[])`),
+        WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[]) ORDER BY b.id`),
     );
-    if (kinds.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
+    if (rows.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
     else if (
-      kinds.length &&
+      rows.length &&
       (!options.reassignFrom || (await mayMergeSeat(tx, ctx, businessIds, options.reassignFrom)))
-    )
+    ) {
       await lockOrganizationSettings(tx, ctx.tenantId);
+      // 离职合席结算会当场进入生效链：有未落地调动申请时还要取编制锁（与 lock 的离职分支同一个取锁函数）
+      for (const row of rows.filter((item) => item.kind === 'leave'))
+        await lockExitOrganizationResources(tx, ctx, row.employee_id, row.id);
+    }
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
