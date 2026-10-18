@@ -1030,6 +1030,13 @@
       "when": 1792255725294,
       "tag": "0146_offer_send_records",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1792259157661,
+      "tag": "0147_exit_detached_coverage",
+      "breakpoints": true
     }
   ]
 }

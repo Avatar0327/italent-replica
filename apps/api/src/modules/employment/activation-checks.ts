@@ -5,6 +5,7 @@ import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { applyTransferLinkage } from './transfer-linkage.js';
+import { isDetachedRecord } from './timeline.js';
 /**
  * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位，再经编制单一判定入口（DEC-145：
  * 保存与到期使用真实任职占编投影），然后在保存点内经 activate 端口落地；
@@ -31,7 +32,11 @@ export interface ActivationFailure {
     | 'ESTABLISHMENT_EXCEEDED'
     | 'RULE_REJECTED'
     /** DEC-278③：迟到执行区间内另有记录，需重建、待 HR 处理（late-transfer.ts）。 */
-    | 'REBUILD_REQUIRED';
+    | 'REBUILD_REQUIRED'
+    /** 离职生效主链（exit-activation.ts）：顺延后在职段跨过部门停用日、顺延后重验转正在途；已落地未来调动被离职摘下（§5.8）。 */
+    | 'EMPLOYMENT_DEPARTMENT_DISABLED'
+    | 'EXIT_REGULARIZATION_IN_FLIGHT'
+    | 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER';
   readonly detail: Record<string, unknown>;
 }
 
@@ -114,6 +119,8 @@ export function ruleRejection(error: unknown): ActivationFailure | null {
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
   const { id: businessId, employeeId, kind } = item;
+  // 离职 / 退休记录不占用部门与编制：跳过部门 / 职位可用性与控编检查（离职设计 R-O5；在职段延长由 §6B 在 0c 校验）
+  if (kind === 'leave' || kind === 'retirement') return null;
   // DEC-186 / DEC-272：调动按实际执行日对齐（共用判定函数，起点是 §5.0A 计划生效日，D-8）；其他业务按原生效日。
   const effectiveDate =
     kind === 'transfer'
@@ -159,6 +166,11 @@ export async function activateWithJudgement(
       // 已落地直接调动与申请的 activate 端口同一套前序复核（S3-P2-01）；只提醒的复查不受前序约束（DEC-173）。
       if (item.materialized && !item.reminderOnly)
         await assertPredecessorsSettled(savepoint, ctx, item.employeeId, item.id);
+      // §5.8：已落地未来调动被离职摘下（不在时间轴上）后到期，不执行联动、不复查编制，记失败交 HR（DEC-052）
+      if (item.materialized && item.kind === 'transfer' && (await isDetachedRecord(savepoint, ctx.tenantId, item.id)))
+        throw new AppError('CONFLICT', '员工已在调动生效日前离职', {
+          activationFailure: { reason: 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER', detail: { businessId: item.id } },
+        });
       if (item.materialized && item.kind === 'transfer') {
         await postponeLateTransfer(savepoint, ctx, business);
         if (item.reminderOnly && item.effectiveDate < tenantLocalDate(ctx.now, ctx.timezone))

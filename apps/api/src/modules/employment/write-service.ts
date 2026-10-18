@@ -46,7 +46,7 @@ import {
   type EmploymentPayloadRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { newRecordReporting, validateNewEmploymentReferences } from './references.js';
+import { newRecordReporting, validateNewEmploymentReferences, type ReportingCheck } from './references.js';
 import { windowBefore } from './reporting-cycle.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
@@ -427,6 +427,9 @@ async function assertSuccessorSequence(
       AND t.start_date=${position.date}::date AND t.sort_order=${position.order}
   `),
   );
+  // 离职设计 §5.8：离职之后紧跟已落地的调动（未来直接调动 / 同日迟到落地、按 C-3 排在离职之后）放行，
+  // 落地后由 detachFutureTransfers 摘下该调动的时间轴行，离职照常生效
+  if (kind === 'leave' && successor?.kind === 'transfer') return;
   const reason = successor && sequenceViolation(kind, successor.kind);
   if (reason) {
     throw new AppError('CONFLICT', '任职业务前后顺序不合法', {
@@ -616,11 +619,34 @@ export async function validateTransferReposition(
   });
 }
 
+interface MaterializeOptions {
+  forwardUpdate?: boolean;
+  establishmentWarnings?: EstablishmentWarning[];
+  /** 离职落地（exit-activation.ts）：不作为状态传播的来源（设计 §5.6）。 */
+  skipStatusPropagation?: boolean;
+}
+
+/**
+ * DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段；拒绝后由生效端口记失败与 HR 待办、按 DEC-112
+ * 挂起后序，不能截断任职或改期绕过。离职 / 退休记录不占用部门（离职设计 R-O6）：跳过部门可用性，只校验引用对象存在。
+ */
+function validateMaterializedReferences(
+  tx: Tx,
+  ctx: EmploymentContext,
+  payload: EmploymentPayloadRow,
+  fields: PresetFields,
+  reporting: ReportingCheck | undefined,
+  newCycle: boolean,
+) {
+  const terminating = ['leave', 'retirement'].includes(payload.kind);
+  return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, terminating);
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] } = {},
+  options: MaterializeOptions = {},
 ): Promise<void> {
   const payload = business.payload;
   // DEC-108：按操作先后定插入点；先提交、后落地的申请可能插在当日已有记录之前，前驱与顺序校验都以插入点为准。
@@ -646,9 +672,7 @@ export async function materializeEmploymentRecord(
     fields.directManagerId !== null
       ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
       : undefined;
-  // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
-  // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
-  await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle);
+  await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle);
   assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
@@ -671,7 +695,7 @@ export async function materializeEmploymentRecord(
     createdAt: ctx.now.toISOString(),
   });
   await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, staffId, payload.effectiveDate);
-  const status = await propagateMaterializedStatus(tx, ctx, business, staffId, selected?.predecessor ?? null);
+  const status = await propagateMaterializedStatus(tx, ctx, business, staffId, selected?.predecessor ?? null, options);
   await auditMaterialization(
     tx,
     ctx,
@@ -734,13 +758,14 @@ async function propagateMaterializedStatus(
   business: LockedEmploymentBusiness,
   staffId: string,
   predecessor: EmploymentRecord | null,
+  options: Pick<MaterializeOptions, 'skipStatusPropagation'>,
 ): Promise<VersionStatus> {
   const [row] = rowsOf<VersionStatus>(
     await tx.execute(sql`SELECT employee_status AS "employeeStatus", entry_status AS "entryStatus"
       FROM employment_records WHERE tenant_id=${ctx.tenantId} AND id=${business.id}::uuid`),
   );
   if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职记录保存结果不可用');
-  if (predecessor && predecessor.staffId === staffId)
+  if (predecessor && predecessor.staffId === staffId && !options.skipStatusPropagation)
     await propagateEmployeeStatus(
       tx,
       ctx,
