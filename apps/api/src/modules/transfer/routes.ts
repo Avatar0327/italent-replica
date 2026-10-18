@@ -7,6 +7,7 @@ import { sql, withTenant } from '@italent/db';
 import { tenantLocalDate, buttonResource } from '@italent/domain';
 import type { Hono, Context } from 'hono';
 import { z } from 'zod';
+import { requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -22,6 +23,8 @@ import {
   pageQuery,
 } from '../employment/context.js';
 import { businessDate } from '../employment/fields.js';
+import type { EmploymentContext } from '../employment/types.js';
+import { requireBusinessWriteScope } from '../employment/replay-guard.js';
 import { getModuleViewableFields, editableModuleFields, authorizeInTransaction } from '../permission/module-access.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import {
@@ -34,7 +37,15 @@ import {
 } from './configuration.js';
 import { previewTransfer } from './preview.js';
 import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
-import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDirectTransfer } from './service.js';
+import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
+import { sameOrderCreateGuard, sameOrderWriteGuard } from './same-order-guard.js';
+import {
+  createTransfer,
+  normalizeTransferInput,
+  requireTransferWrite,
+  requireDirectTransfer,
+  transferBusinessContext,
+} from './service.js';
 
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerPersonalEntry(router, deps);
@@ -64,6 +75,14 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
           (viewable !== undefined && !viewable.has('departmentId'))),
     });
   });
+  registerTransferCreate(router, deps);
+  registerDraftRoutes(router, deps);
+  registerTransferLinkageRoutes(router, deps);
+  registerTransferConfiguration(router, deps);
+}
+
+/** 发起 / 暂存调动：入口复核 + 命令事务内由统一 guard 重算来源与目标部门例外（same-order-guard.ts）。 */
+function registerTransferCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/transfers/employees/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c));
@@ -74,7 +93,11 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       await requireTransferWrite({ ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, input);
       const preview = await previewTransfer(tx, ctx, id, input);
       if (input.employment.mode === 'direct') await requireDirectTransfer(tx, preview.context);
-      return { input, context: preview.context };
+      return {
+        input,
+        context: preview.context,
+        targetDepartmentId: preview.value.fields.departmentId ?? null,
+      };
     });
     await requireTransferWrite(prepared.context, prepared.input);
     const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {
@@ -82,14 +105,93 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       operation: 'create',
       options: prepared.input.linkage,
     });
-    return runWrite(c, deps, prepared.context, raw, async (tx, context) => ({
-      status: 201,
-      body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
-    }));
+    return runWrite(
+      c,
+      deps,
+      prepared.context,
+      raw,
+      async (tx, context) => ({
+        status: 201,
+        body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
+      }),
+      {
+        // 命令事务内按当前授权重过对象 / 来源 / 字段写权限，来源与目标部门例外按当前范围重算（统一 guard）
+        guard: sameOrderCreateGuard(deps, prepared.context, {
+          employeeId: id,
+          input: prepared.input,
+          targetDepartmentId: prepared.targetDepartmentId,
+          authorize: async (tx, scoped) => {
+            await requirePermission(scoped.authorize!, {
+              ...scoped,
+              action: 'object.create',
+              resource: scoped.objectCode!,
+              fields: [],
+            });
+            await requireTransferSource(tx, scoped, id, prepared.input.initiator);
+            await requireTransferWrite(scoped, prepared.input);
+            if (prepared.input.employment.mode === 'direct') await requireDirectTransfer(tx, scoped);
+          },
+        }),
+      },
+    );
   });
-  registerTransferLinkageRoutes(router, deps);
-  registerTransferConfiguration(router, deps);
 }
+
+/**
+ * F-181a：他人调动申请的暂存单按（经办人 × 员工）一份。读口只返回元数据（按任职记录字段查看权投影），单据内容仍读
+ * GET /businesses/:id；清除 = 删暂存单，走与 DELETE /businesses/:id 同一条删除授权链（对象删除权 + Employment.Delete +
+ * 同单来源 transferBusinessContext + 写入口径范围），并绑定读口给的单号与 revision，被新暂存替换后的旧页面清除得 409。
+ */
+function registerDraftRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/employees/:id/draft', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readPageContext(c, deps, 'detail');
+    const draft = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await requireTransferSource(tx, ctx, id, 'hr');
+      return readTransferDraft(tx, ctx, id);
+    });
+    return c.json({ draft: draft ? await trimEmploymentResponse(deps, ctx, draft) : null });
+  });
+  router.delete('/transfers/employees/:id/draft/:businessId', async (c) => {
+    const id = uuidParam(c);
+    const businessId = uuidParam(c, 'businessId');
+    const base = await readContext(c, deps, 'object.delete', revision(c));
+    const ctx = await withTenant(deps.db, base.tenantId, (tx) =>
+      transferBusinessContext(tx, base, businessId, 'before-command'),
+    );
+    await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete');
+    await authorizeBusinessWrite(deps, ctx, businessId, id);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { employeeId: id, businessId },
+      async (tx, context) => {
+        const checked = await transferBusinessContext(
+          tx,
+          { ...context, transferTarget: undefined },
+          businessId,
+          'command',
+        );
+        const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision });
+        if (!deleted) throw new AppError('NOT_FOUND', '没有可清除的暂存单');
+        return { status: 200, body: deleted };
+      },
+      {
+        // 命令事务内按当前授权重过删除授权链（调动同单写统一 guard：来源 / 范围 / 目标例外都在命令内重算）
+        guard: sameOrderWriteGuard(deps, ctx, {
+          businessId,
+          employeeId: id,
+          authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'delete', {}, 'Employment.Delete'),
+        }),
+      },
+    );
+  });
+}
+
+/** 同 employment/routes.ts 的入口复核：写入口径范围（与 DELETE /businesses/:id 同一判定 requireBusinessWriteScope）。 */
+const authorizeBusinessWrite = (deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId: string) =>
+  withTenant(deps.db, ctx.tenantId, (tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId));
 
 function registerDepartmentChoices(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/transfers/departments', async (c) => {

@@ -385,8 +385,7 @@ export const GRAPH: Graph = {
     '#BASE',
     '#projectRow',
     'apps/api/src/modules/idp/key-info-scope.ts#KEY_INFO',
-    'apps/api/src/modules/idp/key-info-scope.ts#keyInfoColumn',
-    'apps/api/src/modules/idp/key-info-scope.ts#keyInfoScopeSql',
+    'apps/api/src/modules/idp/key-info-scope.ts#keyInfoListScope',
     'apps/api/src/modules/idp/key-info-service.ts#inScope',
     'apps/api/src/modules/idp/key-info-service.ts#listKeyInfo',
     'apps/api/src/modules/idp/key-info-service.ts#loadKeyInfo',
@@ -421,6 +420,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/key-info-scope.ts#KEY_INFO': ['#dated'],
   'apps/api/src/modules/idp/key-info-scope.ts#KEY_INFO_KINDS': ['#KEY_INFO'],
+  'apps/api/src/modules/idp/key-info-scope.ts#keyInfoListScope': ['#keyInfoColumn', '#keyInfoScopeSql'],
   'apps/api/src/modules/idp/key-info-scope.ts#keyInfoScopeSql': [
     '#positionOrg',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
@@ -453,6 +453,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/idp/key-info-service.ts#listKeyInfo': [
     'apps/api/src/modules/idp/access.ts#rowsOf',
+    'apps/api/src/modules/idp/key-info-scope.ts#keyInfoColumn',
     '#selectList',
   ],
   'apps/api/src/modules/idp/key-info-service.ts#loadKeyInfo': [

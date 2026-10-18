@@ -408,6 +408,14 @@ export function commandContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentCon
   return scoped;
 }
 
+/**
+ * guard.before 在事务内重算了比 commandContext 更细的上下文（如同单来源 / 目标部门例外）时，把它登记为本事务的命令上下文：
+ * 首次执行、直接重放、失败回查和结果复核都改用这一份，不再带着入口的旧例外。
+ */
+export function adoptCommandContext(tx: Tx, ctx: EmploymentContext, scoped: EmploymentContext): void {
+  commandContexts.set(tx, { ctx, scoped: Promise.resolve(scoped) });
+}
+
 /** 带事务内范围标记的 CommandGuard：runWrite 对它改用 commandContext 执行与校验结果，见 runWrite。 */
 export interface ScopedCommandGuard extends CommandGuard {
   readonly scoped: true;
