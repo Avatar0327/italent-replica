@@ -20,12 +20,36 @@ export interface ExitConfirmedEvent {
 type ConfirmedHook = (tx: Tx, ctx: EmploymentContext, event: ExitConfirmedEvent) => Promise<void>;
 const confirmedHooks: ConfirmedHook[] = [];
 
-/** confirmed 端口（设计 §0 / DM-R14 exitPostEffectHooks.confirmed）：订阅方在同一事务内处理，失败即整单回滚。 */
+/** 离职生效来源：审批通过 / 直接离职保存 / 免审批直接生效（DEC-593，BE-6b 结束实习）。 */
+export type ExitActivationSource = 'approval' | 'direct' | 'free_direct';
+
+export interface ExitEffectiveEvent {
+  readonly businessId: string;
+  readonly employeeId: string;
+  readonly source: ExitActivationSource;
+  readonly lastWorkDate: string;
+  readonly effectiveDate: string;
+}
+
+type EffectiveHook = (tx: Tx, ctx: EmploymentContext, event: ExitEffectiveEvent) => Promise<void>;
+const effectiveHooks: EffectiveHook[] = [];
+
+/**
+ * 离职后续任务端口（设计 §0 / §5.1 步骤 8）：confirmed 在审批通过 / 直接离职保存时调用（DM-R14 交接自动发起，BE-8）；
+ * effective 在离职落地后调用（自动加黑 BE-8、账号停用另行任务）。订阅方在同一事务内处理，失败即整单回滚；默认没有订阅方。
+ */
 export const exitPostEffectHooks = {
   onConfirmed(hook: ConfirmedHook): void {
     confirmedHooks.push(hook);
   },
+  onEffective(hook: EffectiveHook): void {
+    effectiveHooks.push(hook);
+  },
 };
+
+export async function runExitEffectiveHooks(tx: Tx, ctx: EmploymentContext, event: ExitEffectiveEvent) {
+  for (const hook of effectiveHooks) await hook(tx, ctx, event);
+}
 
 /** 进入 confirmed 阶段的离职单：业务 ID、员工、计划生效日 E、办理方式。 */
 export interface ConfirmedExit {

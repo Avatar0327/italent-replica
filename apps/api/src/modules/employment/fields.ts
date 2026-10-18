@@ -53,7 +53,7 @@ export const presetFieldsSchema = z.strictObject({
   employType: z.enum(['internal', 'intern', 'external']).nullable().optional(),
 });
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
-const customFields = z
+export const customFields = z
   .record(z.uuid(), z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.null()]))
   .refine((value) => Object.keys(value).length <= 200, '自定义字段最多 200 项');
 const formId = z.string().trim().min(1).max(100);

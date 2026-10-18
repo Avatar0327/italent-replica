@@ -1,6 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { assertOrg } from '../establishment/org-reader.js';
-import type { JobRecord } from '../job/read-model.js';
+import { latestJobObject, type JobRecord } from '../job/read-model.js';
 import { invalid, requiredJob, validateJobAssignment } from '../job/validation.js';
 import { rowsOf } from './read-model.js';
 import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './reporting-cycle.js';
@@ -20,9 +20,47 @@ export async function validateNewEmploymentReferences(
   effectiveDate: string,
   reporting?: ReportingCheck,
   entry = false,
+  /** 离职 / 退休落地（R2-T03 §5.1 步骤 2，R-O6）：记录不占用部门、不在某一天“在职”，只校验稳定对象存在且同租户。 */
+  terminating = false,
 ): Promise<void> {
+  if (terminating) return validateTerminatingReferences(tx, ctx, fields);
   await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate, entry);
   await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+}
+
+const JOB_REFERENCES = [
+  ['positionId', 'positions'],
+  ['postId', 'posts'],
+  ['levelId', 'levels'],
+  ['gradeId', 'grades'],
+  ['sequenceId', 'sequences'],
+  ['professionalLineId', 'professional-lines'],
+] as const;
+
+/**
+ * 离职 / 退休记录的引用校验（离职设计 §5.1 步骤 2）：字段已按实际插入点从前驱继承，这里只证明引用的稳定对象仍存在于本租户
+ * （组织、职务体系对象、经理的员工身份），不判可用性、不按某一天解析——调动当天新设的部门、同日离职的经理都是合法引用；
+ * 部门可用性对离职不适用（B-69），在职段延长由 §6B 在步骤 0c 校验，循环汇报只在显式设置经理时校验（离职不设置）。
+ */
+async function validateTerminatingReferences(tx: Tx, ctx: EmploymentContext, fields: PresetFields): Promise<void> {
+  const tenantId = ctx.tenantId;
+  if (fields.departmentId) {
+    const [org] = rowsOf(
+      await tx.execute(sql`SELECT 1 FROM org_objects WHERE tenant_id=${tenantId} AND id=${fields.departmentId}::uuid`),
+    );
+    if (!org) throw invalid('departmentId', '任职部门不存在或不在当前租户');
+  }
+  for (const [field, kind] of JOB_REFERENCES) {
+    const id = fields[field];
+    if (id && !(await latestJobObject(tx, tenantId, kind, id))) throw invalid(field, '引用对象不存在或不在当前租户');
+  }
+  for (const id of [fields.directManagerId, fields.dottedManagerId]) {
+    if (!id) continue;
+    const [employee] = rowsOf(
+      await tx.execute(sql`SELECT 1 FROM employment_employees WHERE tenant_id=${tenantId} AND id=${id}::uuid`),
+    );
+    if (!employee) throw invalid('managerId', '经理不存在或不在当前租户');
+  }
 }
 
 /**
