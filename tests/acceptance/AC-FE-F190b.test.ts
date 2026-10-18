@@ -3,8 +3,20 @@ import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/pe
 import { mountPath, pageRoutes } from '../../apps/web/src/foundation/page-registry.js';
 import { MENU_ROUTES, PAGES, appRoute } from '../../apps/web/src/foundation/routes.js';
 
-const snapshot = (entryObjects: string[], visible = true) =>
-  ({ apps: [{ app: 'idp', visible, entryObjects }] }) as ServerSnapshot;
+const snapshot = (entryObjects: string[], visible = true, app: 'idp' | 'self' = 'idp'): ServerSnapshot => ({
+  apps: [{ app, visible, entryObjects }],
+  session: {
+    tenantId: 'tenant',
+    tenantName: '合成租户',
+    timezone: 'Asia/Shanghai',
+    today: '2026-10-17',
+    userId: 'user',
+    displayName: '合成用户',
+    employeeId: null,
+  },
+  scope: [],
+  adminMenus: [],
+});
 const tutor = { key: 'tutorship-information', label: '带教信息', path: '/tutorship-information', group: 'talent' };
 
 describe('AC-FE-F190b 带教入口层级', () => {
@@ -41,7 +53,7 @@ describe('AC-FE-F190b 带教入口层级', () => {
         ].map(([key, label]) => ({ key: `idp-${key}`, label, path: `/idp/${key}`, group: 'talent' })),
       },
     ]);
-    const self = menuNodes(MENU_ROUTES, { apps: [{ app: 'self', visible: true, entryObjects: [] }] } as ServerSnapshot);
+    const self = menuNodes(MENU_ROUTES, snapshot([], true, 'self'));
     expect(self[0]?.children?.find((item) => item.key === 'self-idp')).toEqual({
       key: 'self-idp',
       label: '我的发展计划',
