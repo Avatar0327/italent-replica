@@ -18713,12 +18713,14 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
           "creator scope",
-          "employment visibility",
           "requestScope"
         ]
       }

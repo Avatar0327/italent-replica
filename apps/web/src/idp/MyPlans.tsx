@@ -43,9 +43,21 @@ export function TutorPlansPage() {
 function MyPlans({ employeeId }: { employeeId?: string }) {
   const list = useCollection<PlanSummary>(`${IDP_API}/my-plans`);
   const [filters, setFilters] = useState<PlanFilters>({});
-  const rows = useMemo(
-    () => ownPlans(list.items ?? [], employeeId).filter((row) => matchesFilters(row, filters)),
-    [list.items, employeeId, filters],
+  const mine = useMemo(() => ownPlans(list.items ?? [], employeeId), [list.items, employeeId]);
+  const rows = useMemo(() => mine.filter((row) => matchesFilters(row, filters)), [mine, filters]);
+  const names = usePlanNames(mine);
+  const tutors = new Map(mine.filter((row) => row.tutorEmployeeId).map((row) => [row.tutorEmployeeId!, row]));
+  const tutorFilter = (
+    <Select
+      id="idp-my-tutor"
+      allowClear
+      showSearch
+      optionFilterProp="label"
+      placeholder={t.choose}
+      value={filters.tutorEmployeeId}
+      options={[...tutors].map(([id, row]) => ({ value: id, label: names.tutor(row) }))}
+      onChange={(tutorEmployeeId) => setFilters({ ...filters, tutorEmployeeId })}
+    />
   );
   return (
     <PlanListPage
@@ -54,7 +66,8 @@ function MyPlans({ employeeId }: { employeeId?: string }) {
       others="own"
       list={list}
       rows={rows}
-      filters={<InlineFilters value={filters} change={setFilters} />}
+      names={names}
+      filters={<InlineFilters value={filters} change={setFilters} tutorFilter={tutorFilter} />}
     />
   );
 }
@@ -63,10 +76,7 @@ function TutorPlans() {
   const list = useCollection<PlanSummary>(`${IDP_API}/tutor-plans`);
   const [filters, setFilters] = useState<PlanFilters>({});
   const rows = useMemo(() => (list.items ?? []).filter((row) => matchesFilters(row, filters)), [list.items, filters]);
-  const employees = useNames(
-    'employee',
-    (list.items ?? []).map((row) => row.employeeId),
-  );
+  const names = usePlanNames(list.items ?? []);
   const people = [...new Set((list.items ?? []).map((row) => row.employeeId).filter((id): id is string => !!id))];
   return (
     <PlanListPage
@@ -75,15 +85,29 @@ function TutorPlans() {
       others="tutoring"
       list={list}
       rows={rows}
+      names={names}
       filters={
         <InlineFilters
           value={filters}
           change={setFilters}
-          people={people.map((id) => ({ value: id, label: employees(id) }))}
+          people={people.map((id) => ({ value: id, label: names.employee(id) }))}
         />
       }
     />
   );
+}
+
+/** 列与筛选共用取名入口；服务端显式 null 不回查，只有缺字段才使用原姓名接口。 */
+function usePlanNames(rows: PlanSummary[]) {
+  const employee = useNames(
+    'employee',
+    rows.flatMap((row) => [row.employeeId, row.tutorName === undefined ? row.tutorEmployeeId : null]),
+  );
+  const tutor = (row: PlanSummary) => {
+    if (!row.tutorEmployeeId) return t.noValue;
+    return row.tutorName === undefined ? employee(row.tutorEmployeeId) : display(row.tutorName);
+  };
+  return { employee, tutor };
 }
 
 function PlanListPage(props: {
@@ -92,16 +116,13 @@ function PlanListPage(props: {
   others: 'own' | 'tutoring';
   list: ReturnType<typeof useCollection<PlanSummary>>;
   rows: PlanSummary[];
+  names: ReturnType<typeof usePlanNames>;
   filters: ReactNode;
 }) {
-  const { title, note, others, list, rows, filters } = props;
+  const { title, note, others, list, rows, names, filters } = props;
   const [params, setParams] = useSearchParams();
   const openId = params.get(DETAIL);
   const open = (id?: string) => setParams(id ? { [DETAIL]: id } : {});
-  const names = useNames(
-    'employee',
-    rows.flatMap((row) => [row.employeeId, row.tutorEmployeeId]),
-  );
   if (openId)
     return (
       <div className="idp-page idp-my-plans">
@@ -140,7 +161,7 @@ function PlanListPage(props: {
   );
 }
 
-function columns(names: (id?: string | null) => string, open: (id: string) => void): TableColumnsType<PlanSummary> {
+function columns(names: ReturnType<typeof usePlanNames>, open: (id: string) => void): TableColumnsType<PlanSummary> {
   return [
     {
       key: 'name',
@@ -151,12 +172,11 @@ function columns(names: (id?: string | null) => string, open: (id: string) => vo
         </Button>
       ),
     },
-    { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names(row.employeeId) },
-    // 个人发展计划接口不返回指导人（plan-routes my-plans 固定字段），如实显示 --（后端缺口）；我辅导的发展计划返回本人
+    { key: 'employeeId', title: t.fields.employeeId, render: (_, row) => names.employee(row.employeeId) },
     {
       key: 'tutorEmployeeId',
       title: t.fields.tutorEmployeeId,
-      render: (_, row) => (row.tutorEmployeeId ? names(row.tutorEmployeeId) : t.noValue),
+      render: (_, row) => names.tutor(row),
     },
     { key: 'status', title: t.fields.status, render: (_, row) => statusText(t.status, row.status) },
     // 原站“当前步骤”列显示阶段名（如“制定计划”）；列表接口只返回当前阶段，按阶段名展示
@@ -168,16 +188,17 @@ const statusOptions = ['running', 'ended', 'terminated'].map((value) => ({ value
 
 const TARGET = 'target';
 /**
- * 原站 04 的行内筛选：状态、指导人、开始时间、结束时间；指导人因接口未返回暂不可选（后端缺口）。
+ * 原站 04 的行内筛选：状态、指导人、开始时间、结束时间。
  * 我辅导的发展计划（B5_26）另有姓名（列表里出现的员工）与“辅导员工分类”；分类只有“辅导对象”一项，列表全是辅导对象。
  * 状态照原站保留全部选项：本页只列进行中，个人发展计划不列已终止，选了为空。
  */
 function InlineFilters(props: {
   value: PlanFilters;
   change(value: PlanFilters): void;
+  tutorFilter?: ReactNode;
   people?: { value: string; label: string }[];
 }) {
-  const { value, change, people } = props;
+  const { value, change, people, tutorFilter } = props;
   return (
     <div className="idp-inline-filters">
       {people && (
@@ -205,9 +226,11 @@ function InlineFilters(props: {
         onChange={(status) => change({ ...value, status })}
       />
       <label htmlFor="idp-my-tutor">{t.fields.tutorEmployeeId}</label>
-      <Tooltip title={t.gaps.tutor}>
-        <Select id="idp-my-tutor" disabled placeholder={t.choose} />
-      </Tooltip>
+      {tutorFilter ?? (
+        <Tooltip title={t.gaps.tutor}>
+          <Select id="idp-my-tutor" disabled placeholder={t.choose} />
+        </Tooltip>
+      )}
       <label>{t.fields.startDate}</label>
       <TenantDatePicker
         value={value.startFrom}
