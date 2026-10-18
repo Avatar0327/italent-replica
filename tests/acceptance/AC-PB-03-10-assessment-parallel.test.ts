@@ -14,7 +14,7 @@ import type { RegularizationReceipt } from './AC-PB-support.js';
 
 const testDb = useTestDb();
 
-describe('并行规则出厂值（PB-R9）', () => {
+describe('AC-PB-10 并行规则出厂值（PB-R9）', () => {
   it('两个开关都关、可发起流程为空；不合法的取值 400', async () => {
     const w = await assessmentWorld(testDb().db, 'parallel-default');
     for (const key of Object.values(PARALLEL_KEYS)) {
@@ -149,7 +149,7 @@ describe('AC-PB-10 考核并行规则', () => {
   });
 });
 
-describe('“考核中”与即将到期视图（PB-R1）', () => {
+describe('AC-PB-03 “考核中”与即将到期视图（PB-R1）', () => {
   it('考核中列出本周期审批中的考核人；审批结束后移出；即将到期不再列出已发起转正考核的人', async () => {
     const w = await assessmentWorld(testDb().db, 'pb-views');
     const assessed = await w.probationer('考核中员工', { endDate: '2026-10-20' });
@@ -175,7 +175,7 @@ describe('“考核中”与即将到期视图（PB-R1）', () => {
   });
 });
 
-describe('发起入口', () => {
+describe('AC-PB-03 发起入口', () => {
   it('批量发起逐人回执：不在试用中、不存在、revision 过期各自失败，不影响其他人；同键重放不重复创建', async () => {
     const w = await assessmentWorld(testDb().db, 'launch-batch');
     const ok = await w.probationer('可考核');

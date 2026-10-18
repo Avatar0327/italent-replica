@@ -91,7 +91,7 @@ describe('AC-PB-01 试用中考核按审批时的意见生成转正记录（PB-R
   });
 });
 
-describe('PB-R5 转正考核', () => {
+describe('AC-PB-01 PB-R5 转正考核', () => {
   it('正常转正没填日期：取预计试用结束日次日；提前 / 延期转正取填写的日期；试用结果随意见', async () => {
     const w = await assessmentWorld(testDb().db, 'pb-r5');
     const cases = [
@@ -189,7 +189,7 @@ describe('AC-PB-02 审批后改意见不补生成（PB-R6）', () => {
   });
 });
 
-describe('审批结果回写考核状态', () => {
+describe('AC-PB-01 审批结果回写考核状态（PB-R15）', () => {
   it('经理不同意 → 不通过，不生成转正记录；经理驳回 → 已驳回；预置不开放发起人撤回（PB-R15），作废由适配器回写', async () => {
     const w = await assessmentWorld(testDb().db, 'pb-status');
     const refused = await w.probationer('不同意');

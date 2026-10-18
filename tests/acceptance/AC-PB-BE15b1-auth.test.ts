@@ -13,7 +13,7 @@ import { tenantApi } from './support/tenant-api.js';
 const testDb = useTestDb();
 const ASSESSMENTS = '/api/tenant/employment/probation-assessments';
 
-describe('考核对象权限', () => {
+describe('AC-PB-01 考核对象权限（DEC-080）', () => {
   it('缺少数据操作或按钮：发起 / 修改 403，不写入；允许时可发起', async () => {
     const w = await assessmentWorld(testDb().db, 'auth');
     const person = await w.probationer('权限员工');
@@ -57,7 +57,7 @@ describe('考核对象权限', () => {
   });
 });
 
-describe('审批人取值的类型限制', () => {
+describe('AC-PB-01 审批人取值的类型限制（DEC-094）', () => {
   const process = (approvalType: string, approver: string) => ({
     code: `PB15_${approvalType}_${approver}`.slice(0, 60),
     name: '合成流程',

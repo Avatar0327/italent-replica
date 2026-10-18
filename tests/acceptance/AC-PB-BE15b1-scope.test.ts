@@ -18,7 +18,7 @@ import { assessmentWorld } from './AC-PB-BE15b1-support.js';
 
 const testDb = useTestDb();
 
-describe('考核的数据范围', () => {
+describe('AC-PB-01 考核的数据范围（DEC-177）', () => {
   it('空范围：详情 / 修改前置判范围与不存在同一个 404；列表为空；批量发起逐人失败', async () => {
     const w = await assessmentWorld(testDb().db, 'scope');
     const person = await w.probationer('范围员工');
