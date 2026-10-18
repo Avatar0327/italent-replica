@@ -212,9 +212,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/dictionaries.ts#updateInput': ['#name', '#order'],
   'apps/api/src/modules/offer/dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/offer/entry-link.ts#currentEntryIds': ['#rows'],
-  'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed': [
+  'apps/api/src/modules/offer/establishment.ts#assertNoStrictQuota': ['#assessOfferQuota'],
+  'apps/api/src/modules/offer/establishment.ts#assessOfferQuota': [
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
   ],
+  'apps/api/src/modules/offer/establishment.ts#requireQuotaConfirmed': ['#assessOfferQuota'],
   'apps/api/src/modules/offer/identity.ts#requireNotBlacklisted': [
     'apps/api/src/modules/employment/blacklist.ts#findEffectiveBlacklistByIdentity',
     'packages/domain/src/employment/blacklist.ts#blacklistBlockedMessage',
@@ -365,7 +367,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     'apps/api/src/modules/offer/input.ts#parseOfferSend',
     '#sendOffer',
+    'apps/api/src/modules/offer/service.ts#offerDto',
     'apps/api/src/modules/offer/service.ts#offerStillVisible',
+    'apps/api/src/modules/offer/sync.ts#syncOfferWhenDue',
   ],
   'apps/api/src/modules/offer/send.ts#sendOffer': [
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
@@ -373,10 +377,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/service.ts#facts',
     'apps/api/src/modules/offer/service.ts#failPlan',
     'apps/api/src/modules/offer/service.ts#lockOffer',
-    'apps/api/src/modules/offer/service.ts#offerDto',
     'apps/api/src/modules/offer/service.ts#readOfferApprovalSettings',
     'apps/api/src/modules/offer/service.ts#save',
-    'apps/api/src/modules/offer/sync.ts#syncOfferWhenDue',
+    'apps/api/src/modules/offer/sync-lock.ts#lockOfferSyncScope',
     'packages/domain/src/offer/rules.ts#planOfferDispatch',
   ],
   'apps/api/src/modules/offer/service.ts#audit': [
@@ -509,6 +512,7 @@ export const GRAPH: Graph = {
     '#failPlan',
     '#lockOffer',
     '#save',
+    'apps/api/src/modules/offer/sync-lock.ts#lockOfferSyncScope',
     'packages/domain/src/offer/rules.ts#planOfferTransition',
   ],
   'apps/api/src/modules/offer/service.ts#updateOffer': [
@@ -535,12 +539,17 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/views.ts#OFFER_WIRED_ROW_ACTIONS',
     'packages/domain/src/offer/views.ts#offerRowActions',
   ],
+  'apps/api/src/modules/offer/sync-lock.ts#lockOfferSyncScope': [
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    '#inboundEmploymentContext',
+  ],
   'apps/api/src/modules/offer/sync.ts#createSyncTarget': [
     'apps/api/src/modules/employment/employees.ts#createEmployee',
     'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
-    '#inboundEmploymentContext',
+    'apps/api/src/modules/offer/establishment.ts#assertNoStrictQuota',
+    'apps/api/src/modules/offer/sync-lock.ts#inboundEmploymentContext',
     '#present',
     '#profilePatch',
     '#regularizationProbation',
@@ -579,6 +588,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/sync.ts#saveSync': ['apps/api/src/modules/offer/service.ts#audit'],
   'apps/api/src/modules/offer/sync.ts#syncOffer': [
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
+    'apps/api/src/modules/offer/sync-lock.ts#lockOfferSyncScope',
     '#createSyncTarget',
     '#linkedPerson',
     '#saveSync',

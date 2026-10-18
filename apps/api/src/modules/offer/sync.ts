@@ -32,7 +32,6 @@ import { ruleRejection } from '../employment/activation-checks.js';
 import type { EntryOfferHooks } from '../employment/entry-offer-hooks.js';
 import { findPredecessor } from '../employment/read-model.js';
 import { lockEmploymentEmployee } from '../employment/record-store.js';
-import type { EmploymentContext } from '../employment/types.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { createEmploymentBusiness } from '../employment/write-service.js';
 import { regularizeIntern } from '../employment/intern-regularization.js';
@@ -42,31 +41,16 @@ import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, type OfferContext } from './context.js';
 import { findOfferByPendingEntry } from './entry-link.js';
 import { audit, lockOffer, offerDto, type OfferRow } from './service.js';
+import { assertNoStrictQuota } from './establishment.js';
+import { inboundEmploymentContext, lockOfferSyncScope, type OfferSyncContext } from './sync-lock.js';
+
+export type { OfferSyncContext };
 
 export { findOfferByPendingEntry };
-
-/** 同步需要的上下文子集：立即同步取自请求，夜间任务由系统构造。 */
-export type OfferSyncContext = Pick<OfferContext, 'tenantId' | 'userId' | 'timezone' | 'now' | 'commandId'>;
 
 export async function readOfferSyncSetting(tx: Tx, tenantId: string): Promise<OfferSyncSetting> {
   const value = (await readEffectiveSetting(tx, tenantId, OFFER_SYNC_TIMING_KEY)).value;
   return validOfferSyncSetting(value) ? value : OFFER_SYNC_DEFAULT;
-}
-
-/**
- * 对 employment 的入站上下文（F-201②）。范围显式给“系统全量”：同步是 Offer 的系统联动，人员 / 任职对象的范围不是
- * 调用方（招聘专员）自己的权限；谁能触发同步由 Offer 对象权限与 Offer 数据范围在入口判定。
- */
-function inboundEmploymentContext(ctx: OfferSyncContext, expectedRevision: number): EmploymentContext {
-  return {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    timezone: ctx.timezone,
-    now: ctx.now,
-    commandId: ctx.commandId,
-    expectedRevision,
-    scope: { orgIds: [], personIds: [], all: true, hasDataPermission: true },
-  };
 }
 
 interface LinkedPerson {
@@ -152,6 +136,9 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
   const employee = await lockEmploymentEmployee(tx, base, employeeId);
   const employment = inboundEmploymentContext(ctx, employee.revision);
   const plan = await syncPlan(tx, ctx, employeeId, offer.plannedEntryDate!);
+  // 生产的编制入口对 hire / rehire 不判容量，确认标记（弱控）也只在发送 / 接受时管弱控：同步在锁内自己做真实强控检查，
+  // 超编按严格控制拒绝（记同步失败 ESTABLISHMENT_EXCEEDED）；实习转正走编制入口自己的强控，不重复判
+  if (plan !== 'intern_regularization') await assertNoStrictQuota(tx, employment, offer, employeeId);
   const references = present({
     positionId: offer.positionId,
     directManagerId: offer.directManagerId,
@@ -229,6 +216,8 @@ async function saveSync(tx: Tx, ctx: OfferSyncContext, before: OfferRow, patch: 
  */
 export async function syncOffer(tx: Tx, ctx: OfferSyncContext, offer: OfferRow): Promise<OfferRow> {
   if (offer.pendingEntryBusinessId !== null) return offer;
+  // 取锁单一入口（sync-lock.ts）：Offer → 员工 → 业务头 → 组织 / 编制；关联已有人员时先于任何编制判定取齐
+  await lockOfferSyncScope(tx, ctx, offer);
   const linked = offer.linkedEmployeeId ? await linkedPerson(tx, ctx.tenantId, offer.linkedEmployeeId) : null;
   try {
     const created = await tx.transaction((savepoint) => createSyncTarget(savepoint, ctx, offer, linked));

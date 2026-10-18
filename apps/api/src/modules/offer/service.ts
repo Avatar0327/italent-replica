@@ -51,6 +51,7 @@ import { assertOfferRevision, requireOfferInScope, type OfferContext } from './c
 import { requireEnabledOfferReason } from './dictionaries.js';
 import { currentEntryIds } from './entry-link.js';
 import { requireQuotaConfirmed } from './establishment.js';
+import { lockOfferSyncScope } from './sync-lock.js';
 import { requireNotBlacklisted, type OfferIdentity } from './identity.js';
 import type { OfferCreateInput, OfferInvalidateInput, OfferTransferInput, OfferUpdateInput } from './input.js';
 
@@ -524,7 +525,10 @@ export async function transferOffer(tx: Tx, ctx: OfferContext, id: string, input
   const plan = planOfferTransition(facts(before), input.target, input);
   if (!plan.ok) failPlan(plan);
   // 管理员转为已接受：超编弱控二次确认（OF-R10，候选人答复不校验）
-  if (input.target === 'accepted') await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
+  if (input.target === 'accepted') {
+    await lockOfferSyncScope(tx, ctx, before); // 先于弱控确认取齐关联人员锁（sync-lock.ts 锁序）
+    await requireQuotaConfirmed(tx, ctx, before, input.confirmed === true);
+  }
   const patch = plan.patch.refusalReasonCode
     ? {
         ...plan.patch,

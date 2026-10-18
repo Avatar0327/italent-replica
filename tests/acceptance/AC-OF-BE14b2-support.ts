@@ -129,6 +129,16 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
       (await response.json()) as { items: { kind: string; effectiveDate: string; fields: Record<string, unknown> }[] }
     ).items;
   }
+  /** 给员工追加一条之后生效的直接调动（改工作地点），让后续同步有“后续记录”可联动。 */
+  async function laterTransfer(employeeId: string, effectiveDate: string) {
+    const employee = await employment('GET', `/employees/${employeeId}`);
+    const { revision } = (await employee.json()) as { revision: number };
+    const response = await employment('POST', `/employees/${employeeId}/businesses`, {
+      ifMatch: revision,
+      body: { kind: 'transfer', mode: 'direct', effectiveDate, fields: { place: '调动地点' } },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+  }
   /** 已离职实习生：入职 2025-01-01（实习生）、最后工作日 2026-03-31；部门设立日早于入职日。 */
   async function departedIntern(name: string) {
     const org = await w.seeder.request('POST', '/api/tenant/org/organizations', {
@@ -255,6 +265,7 @@ export async function syncWorld<W extends OfferWorld = OfferWorld>(db: Db, label
     businessRevision,
     internEmployee,
     departedIntern,
+    laterTransfer,
     recordsOf,
     strictCapacity,
     realCapacity,

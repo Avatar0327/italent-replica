@@ -7,6 +7,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as employmentContext from '../../apps/api/src/modules/employment/context.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 import { OFFERS } from './support/route-policy/required/offers.js';
 import {
   DEFAULT_ESTABLISHMENT_CHECKS,
@@ -143,8 +144,18 @@ describe('第 4 轮 P2-3：send 的 F-039 登记与真实运行时一致', () =>
     try {
       const w = await syncWorld(testDb().db, 'send-linkage');
       await w.timing({ mode: 'on_send' });
-      const response = await w.send(await w.social());
+      // 关联在职实习生：同步落成“实习转正”任职记录，会走联动复核（全新人员没有后续记录，不经此守卫）
+      const intern = await w.internEmployee('在职实习生');
+      await w.laterTransfer(intern.id, '2026-12-01'); // 转正日之后还有一条任职记录：联动改写后续记录前才会过联动复核
+      const offer = await w.social({ personalEmail: loginEmailOf(intern.id), source: 'intern_conversion' });
+      const linked = await w.request('POST', `/${offer.id}/link-employee`, {
+        ifMatch: 1,
+        body: { employeeId: intern.id },
+      });
+      expect(linked.status).toBe(200);
+      const response = await w.send({ id: offer.id, revision: 2 });
       expect(response.status, await response.clone().text()).toBe(200);
+      expect(await body(response)).toMatchObject({ syncStatus: 'success', syncTarget: 'intern_regularization' });
       expect(spy.mock.calls.length).toBeGreaterThan(0);
     } finally {
       spy.mockRestore();
