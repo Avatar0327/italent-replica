@@ -215,7 +215,8 @@ describe('createPartTime：自定义字段按定义校验并进审计（§1.1，
     expect(facts.payload[0]!.explicit).toContain(`custom:${id}`);
     expect(facts.audit).toHaveLength(1);
     expect(facts.audit[0]!.after[`custom:${id}`]).toBe(17);
-    expect(JSON.stringify(facts.audit[0]!.changes)).toContain(`custom:${id}`);
+    // 精确的一条变更：自定义字段从 null 变为 17（不是“字符串里包含字段编码”）
+    expect(facts.audit[0]!.changes).toContainEqual({ field: `custom:${id}`, from: null, to: 17 });
     expect(facts.outbox).toHaveLength(1);
     expect(facts.outbox[0]!.payload.after[`custom:${id}`]).toBe(17);
   });
@@ -235,4 +236,23 @@ describe('createPartTime：自定义字段按定义校验并进审计（§1.1，
       expect(await w.writes()).toEqual(before);
     },
   );
+});
+
+describe('writes() 写入指纹覆盖载荷 / 状态事件 / 申请表（PT-3a 审查 P3②）', () => {
+  it('创建一条兼职后，载荷版本与状态事件的计数变化被指纹捕获；纯读取不改变指纹', async () => {
+    const w = await serviceWorld(database().db, 'pt-writes-payload');
+    const before = await w.writes();
+    await w.create();
+    const after = await w.writes();
+    expect(after).toMatchObject({
+      payloads: Number(before!.payloads) + 1,
+      events: Number(before!.events) + 1,
+      heads: Number(before!.heads) + 1,
+      requests: before!.requests,
+    });
+    expect(await w.writes()).toEqual(after);
+    // 只写载荷表（不动记录 / 期限 / 审计）也必须被指纹发现：旧指纹看不到这类写入
+    await w.moveSnapshot((await w.seedPartTime({ endDate: null })), w.primaryOrg.id);
+    expect((await w.writes())!.payloads).toBe(Number(after!.payloads) + 2);
+  });
 });

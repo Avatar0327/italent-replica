@@ -14,6 +14,7 @@ import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { auditEmployment } from '../../apps/api/src/modules/employment/context.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { auditApi } from './AC-AUD-support.js';
+import { httpWorld, restricted } from './AC-PT-http-support.js';
 import { partTimeWorld, type PartTimeWorld } from './AC-PT-support.js';
 import { orgScope } from './support/revocable-rights.js';
 
@@ -159,5 +160,45 @@ describe('AC-PT-audit §7.4 兼职审计按员工 + 兼职部门归属', () => {
     const requests = await audit.dataChanges(as(), { objectType: REQUEST });
     expect(requests.items.map((row) => row.objectId)).toEqual([requestId]);
     expect(requests.items[0]).toMatchObject({ objectLabel: '兼职申请' });
+  });
+});
+
+describe('AC-PT-audit PT-3b：经 HTTP 新增写出的审计归属与查看（PB-71 / PB-72 / PB-74 新增动作）', () => {
+  it('新增写 employment.part_time.create：scope = 员工 + 兼职部门；B / A 的 HR 可见，无关部门 D 的什么都看不到', async () => {
+    const h = await httpWorld(database().db, 'pt-audit-http');
+    const created = await h.ok(await h.post(), 201);
+    const rows = await withTenant(h.db, h.tenantId, async (tx) =>
+      rowsOf<{ action: string; employee: string; org: string; object_type: string }>(
+        await tx.execute(sql`SELECT action, object_type, scope_employee_id AS employee, scope_org_id AS org
+          FROM audit_events WHERE tenant_id=${h.tenantId} AND object_id=${created.id}`),
+      ),
+    );
+    expect(rows).toEqual([
+      { action: 'employment.part_time.create', object_type: RECORD, employee: h.employeeId, org: h.partTimeOrg.id },
+    ]);
+    const unrelated = (await h.org(`无关部门${randomUUID()}`, { establishedOn: '2024-01-01' })).id;
+    const as = { tenant: h.tenantId, user: h.user.id };
+    const seenBy = async (...orgIds: string[]) => {
+      const authorize = restricted({ scope: h.scopeOf(...orgIds), fields: ['departmentId', 'endDate'] });
+      const page = await auditApi(h.db, AT, { authorize }).dataChanges(as, { objectType: RECORD });
+      return page.items.map((row) => row.action);
+    };
+    expect(await seenBy(h.partTimeOrg.id)).toEqual(['employment.part_time.create']);
+    expect(await seenBy(h.primaryOrg.id)).toEqual(['employment.part_time.create']);
+    expect(await seenBy(unrelated)).toEqual([]);
+  });
+
+  it('outbox 同事务：employment.part_time.create 事件归属员工与底层业务头；不写 employment.record.create', async () => {
+    const h = await httpWorld(database().db, 'pt-audit-http-outbox');
+    const created = await h.ok(await h.post(), 201);
+    const events = await withTenant(h.db, h.tenantId, async (tx) =>
+      rowsOf<{ event_type: string; employee_id: string; business_id: string }>(
+        await tx.execute(sql`SELECT event_type, employee_id, business_id FROM employment_outbox
+          WHERE tenant_id=${h.tenantId} AND (object_id=${created.id}::uuid OR business_id=${created.id}::uuid)`),
+      ),
+    );
+    expect(events).toEqual([
+      { event_type: 'employment.part_time.create', employee_id: h.employeeId, business_id: created.id },
+    ]);
   });
 });

@@ -4,6 +4,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { httpWorld } from './AC-PT-http-support.js';
 import { serviceWorld } from './AC-PT-service-support.js';
 
 const database = useTestDb();
@@ -80,5 +81,44 @@ describe('AC-PT-02 普通兼职不做重叠 / 重复校验（D-6，W-614）', ()
     expect(await w.terms(second.id)).toEqual([
       { term_no: 1, end_date: '2026-11-30', source: 'create', source_id: null },
     ]);
+  });
+});
+
+describe('AC-PT-01 / AC-PT-02 HTTP 版（PT-3b，POST employees/:id/part-times）', () => {
+  it.each(['expatriate', 'secondment'] as const)(
+    'AC-PT-01 / PB-18：已有未结束外派再新增 %s → 409 CONFLICT + PART_TIME_EXCLUSIVE_TYPE_EXISTS（原文提示），无写入',
+    async (second) => {
+      const w = await httpWorld(database().db, `pt01-http-${second}`);
+      await w.ok(await w.post({ partTimeType: 'expatriate' }), 201);
+      const before = await w.writes();
+      const failed = await w.refusal(await w.post({ partTimeType: second, startDate: '2026-09-10' }));
+      expect(failed).toEqual({
+        status: 409,
+        code: 'CONFLICT',
+        reason: 'PART_TIME_EXCLUSIVE_TYPE_EXISTS',
+        message: MESSAGE,
+      });
+      expect(await w.writes()).toEqual(before);
+    },
+  );
+
+  it('AC-PT-01 / PB-18 / PB-19：已有外派再新增普通兼职成功；外派已结束（结束日 < 今天）再新增外派成功', async () => {
+    const w = await httpWorld(database().db, 'pt01-http-plain');
+    await w.ok(await w.post({ partTimeType: 'expatriate', startDate: '2026-08-01', endDate: '2026-09-30' }), 201);
+    expect((await w.ok(await w.post({ partTimeType: 'expatriate', startDate: '2026-10-01' }), 201)).serviceType).toBe(
+      'expatriate',
+    );
+    expect((await w.ok(await w.post({ partTimeType: 'part_time', startDate: '2026-09-05' }), 201)).serviceType).toBe(
+      'part_time',
+    );
+  });
+
+  it('AC-PT-02 / PB-17：同部门、时间重叠的两条普通兼职都成功，员工页签两条都列出', async () => {
+    const w = await httpWorld(database().db, 'pt02-http-overlap');
+    const first = await w.ok(await w.post({ startDate: '2026-09-01', endDate: '2026-12-31' }), 201);
+    const second = await w.ok(await w.post({ startDate: '2026-09-15', endDate: '2026-11-30' }), 201);
+    expect(first.id).not.toBe(second.id);
+    const listed = await w.ok(await w.list());
+    expect(listed.items.map((item: { id: string }) => item.id).sort()).toEqual([first.id, second.id].sort());
   });
 });

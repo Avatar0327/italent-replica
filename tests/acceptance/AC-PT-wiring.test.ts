@@ -4,11 +4,12 @@
  * （任职会话夹具的 tenantApi），**不导入 index.ts**，也不在测试里手工调任何兼职登记函数：离职落地后兼职被结束
  * （钩子已装），删除含兼职周期的入职记录被拒（探针已装）。另有守卫：install.ts 只被 employment/routes.ts 引用。
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { serviceWorld } from './AC-PT-service-support.js';
+import { directImporters, importChainTo } from './support/import-graph.js';
 
 const database = useTestDb();
 const MODULES = resolve(import.meta.dirname, '../../apps/api/src');
@@ -22,29 +23,6 @@ function sources(dir: string): string[] {
 }
 
 const INDEX = resolve(MODULES, 'index.ts');
-
-/** 从本测试出发沿相对 import 走静态依赖图，返回会加载 index.ts / @italent/api 的第一条链（没有则 null）。 */
-function indexImportChain(entry: string): string[] | null {
-  const seen = new Set<string>();
-  const visit = (file: string, chain: string[]): string[] | null => {
-    if (seen.has(file)) return null;
-    seen.add(file);
-    const text = readFileSync(file, 'utf8');
-    for (const match of text.matchAll(/(?:from|import\()\s*['"]([^'"]+)['"]/g)) {
-      const spec = match[1]!;
-      if (spec === '@italent/api' || spec.startsWith('@italent/api/')) return [...chain, file, spec];
-      if (!spec.startsWith('.')) continue;
-      const target = resolve(dirname(file), spec.replace(/\.js$/, '.ts'));
-      if (target === INDEX) return [...chain, file, 'index.ts'];
-      if (existsSync(target)) {
-        const found = visit(target, [...chain, file]);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-  return visit(entry, []);
-}
 
 describe('AC-PT-wiring 兼职装配（PB-79）', () => {
   it('只从 createApp 建应用：离职落地结束兼职；删除含兼职周期的入职记录被拒', async () => {
@@ -64,13 +42,27 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
     ]);
   });
 
-  it('兼职路由在 PT-3a 未注册：404（内部服务 / 钩子 / 探针 / 停用计数，不开放新入口）', async () => {
+  it('PT-3b 开闸：四个新增与读取入口已注册；编辑、批量结束、六视图、申请入口仍是 404', async () => {
     const w = await serviceWorld(database().db, 'pt-wiring-routes');
+    const created = await w.request('POST', `/employees/${w.employeeId}/part-times`, {
+      body: { partTimeType: 'part_time', startDate: '2026-09-01', fields: { departmentId: w.partTimeOrg.id } },
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
     for (const [method, path] of [
       ['GET', `/employees/${w.employeeId}/part-times`],
-      ['POST', `/employees/${w.employeeId}/part-times`],
-      ['POST', `/employees/${w.employeeId}/part-times/preview`],
-      ['PATCH', `/part-times/${w.employeeId}`],
+      ['GET', `/part-times/${id}`],
+    ] as const)
+      expect((await w.request(method, path)).status, `${method} ${path}`).toBe(200);
+    expect(
+      (
+        await w.request('POST', `/employees/${w.employeeId}/part-times/preview`, {
+          body: { partTimeType: 'part_time', startDate: '2026-09-01', fields: { departmentId: w.partTimeOrg.id } },
+        })
+      ).status,
+    ).toBe(200);
+    for (const [method, path] of [
+      ['PATCH', `/part-times/${id}`],
       ['POST', '/part-times/batch-end'],
       ['GET', '/part-times'],
       ['POST', '/part-time-requests'],
@@ -81,14 +73,15 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
   });
 
   it('守卫：本用例的静态依赖图不含 index.ts / @italent/api（只经 app.ts createApp 建应用）', () => {
-    expect(indexImportChain(import.meta.filename)).toBeNull();
+    // TS AST 解析（support/import-graph.ts），裸 import / 再导出 / 动态 import / require / 目录入口都算引用
+    expect(importChainTo(import.meta.filename, { files: [INDEX], packages: ['@italent/api'] })).toBeNull();
   });
 
   it('守卫：installPartTime 只在 employment/routes.ts 里被引用（生产必经点，不在 index.ts 或别处）', () => {
-    const users = sources(MODULES)
-      .filter((file) => /part-time\/install(\.js)?['"]/.test(readFileSync(file, 'utf8')))
-      .map((file) => relative(MODULES, file));
+    const install = join(MODULES, 'modules/employment/part-time/install.ts');
+    const users = directImporters(sources(MODULES), install).map((file) => relative(MODULES, file));
     expect(users).toEqual(['modules/employment/routes.ts']);
-    expect(readFileSync(join(MODULES, 'index.ts'), 'utf8')).not.toContain('part-time/install');
+    // index.ts 的依赖图也不得绕路引用它（只能经 employment/routes.ts → createApp）
+    expect(directImporters([INDEX], install)).toEqual([]);
   });
 });

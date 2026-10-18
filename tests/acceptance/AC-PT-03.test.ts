@@ -4,6 +4,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { httpWorld } from './AC-PT-http-support.js';
 import { serviceWorld } from './AC-PT-service-support.js';
 
 const database = useTestDb();
@@ -39,5 +40,23 @@ describe('AC-PT-03 结束日次日起任职结束', () => {
     const w = await serviceWorld(database().db, 'pt03-same-day');
     const created = await w.create({ startDate: '2026-10-01', endDate: '2026-10-01' });
     expect(created).toMatchObject({ serviceStatus: 'serving', views: ['ongoing', 'expiring', 'all'] });
+  });
+});
+
+describe('AC-PT-03 HTTP 版（PT-3b，GET part-times/:recordId 读取时派生）', () => {
+  it('PB-27：结束日 10-31，今天 10-31 任职中、11-01 起任职结束；两次读取之间没有任何写入', async () => {
+    const w = await httpWorld(database().db, 'pt03-http-boundary');
+    const created = await w.ok(await w.post({ startDate: '2026-10-01', endDate: '2026-10-31' }), 201);
+    w.setNow(at('2026-10-31'));
+    expect(await w.ok(await w.one(created.id))).toMatchObject({
+      serviceStatus: 'serving',
+      partTimeView: ['ongoing', 'expiring', 'all'],
+    });
+    const before = await w.writes();
+    w.setNow(at('2026-11-01'));
+    expect(await w.ok(await w.one(created.id))).toMatchObject({ serviceStatus: 'ended', partTimeView: ['ended', 'all'] });
+    expect((await w.ok(await w.list())).items[0]).toMatchObject({ id: created.id, serviceStatus: 'ended' });
+    expect(await w.writes()).toEqual(before);
+    expect(await w.terms(created.id)).toHaveLength(1);
   });
 });
