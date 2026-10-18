@@ -359,6 +359,34 @@ export async function findEffectiveBlacklistEntry(tx: Tx, tenantId: string, empl
   return hit;
 }
 
+/**
+ * 按姓名 + 联系标识匹配有效黑名单（Offer 新建 / 编辑时还没有人员，34 OF-R2）：姓名相同且证件号 / 手机 / 邮箱任一相同，
+ * 标识口径同 identityKey。姓名为空不匹配。
+ */
+export async function findEffectiveBlacklistByIdentity(
+  tx: Tx,
+  tenantId: string,
+  person: { name?: string | null; idNumber?: string | null; mobilePhone?: string | null; email?: string | null },
+  today: string,
+) {
+  const name = person.name?.trim();
+  if (!name) return undefined;
+  const given = (field: IdentityField, value: string | null | undefined) =>
+    identityKey(field, sql`${blankToNull(value)}::text`);
+  const [hit] = rowsOf<{ name: string; reason: string }>(
+    await tx.execute(sql`
+      SELECT b.name, b.reason FROM employment_blacklist b
+      WHERE b.tenant_id = ${tenantId} AND b.status = 'active'
+        AND (b.expiry_date IS NULL OR b.expiry_date >= ${today}::date)
+        AND btrim(b.name) = ${name} AND (
+          ${identityKey('idNumber', sql`b.id_number`)} = ${given('idNumber', person.idNumber)}
+          OR ${identityKey('mobilePhone', sql`b.mobile_phone`)} = ${given('mobilePhone', person.mobilePhone)}
+          OR ${identityKey('email', sql`b.email`)} = ${given('email', person.email)})
+      ORDER BY b.blacklist_date DESC, b.id LIMIT 1`),
+  );
+  return hit;
+}
+
 /** 再入职拦截（DEC-569）：新周期入职类保存时调用；不受自动加黑开关影响。 */
 export async function assertNotBlacklisted(tx: Tx, ctx: EmploymentContext, employeeId: string): Promise<void> {
   const hit = await findEffectiveBlacklistEntry(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
