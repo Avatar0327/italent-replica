@@ -2643,7 +2643,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#lockMany': [
-    'apps/api/src/modules/approval/adapter-support.ts#mayMergeSeat',
+    'apps/api/src/modules/approval/adapter-support.ts#mayAdvanceBusiness',
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#idArray',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
