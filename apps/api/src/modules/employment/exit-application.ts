@@ -24,10 +24,10 @@ import {
 import { normalizeEmploymentInput } from './fields.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
 import type { CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
-import { lockTransferParticipants } from './transfer-locks.js';
+import { lockExitParticipants } from './exit-lock-plan.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
 import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
-import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
+import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
 import { appendLinkageVersion } from '../transfer/linkage/store.js';
 import { validateLinkage } from '../transfer/linkage/validation.js';
 
@@ -80,9 +80,9 @@ export async function createExitApplication(
     fields: input.fields ?? {},
     customFields: input.customFields ?? {},
   });
-  // 职责转交计划（DEC-213）：结构校验在锁之前；下属按 F-008 与离职人一起先取员工锁，再锁离职人（§5.2 ①）
+  // 职责转交计划（DEC-213）：结构校验在锁之前；参与员工闭包（离职人 + 转交下属）先于任何其他锁取齐（§5.2 ①，与批量共用）
   const duty = exit.dutyTransfer === undefined ? null : normalizeLinkage({ dutyTransfer: exit.dutyTransfer });
-  await lockTransferParticipants(tx, ctx, employeeId, dutySubordinateIds(duty));
+  await lockExitParticipants(tx, ctx, [{ employeeId, dutyTransfer: exit.dutyTransfer }]);
   // 先持员工行锁（不比 revision）：并发的两笔申请在锁后重读未办结离职，败者得到 EXIT_IN_PROGRESS 而不是 revision 冲突
   await lockEmploymentEmployee(tx, ctx, employeeId);
   await assertInitiatorRelation(tx, ctx, input.initiation, employeeId);
