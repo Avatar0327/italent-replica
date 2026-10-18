@@ -32,7 +32,18 @@ export interface EntryRestoredEvent {
   readonly previousBusinessId: string;
 }
 
+export interface EntryActionStartEvent {
+  /** 即将被取消 / 改期的待入职记录。 */
+  readonly businessId: string;
+}
+
 export interface EntryOfferHooks {
+  /**
+   * 取消 / 改期动作开始时、取任何员工 / 业务 / 组织锁之前调用（可选）：Offer 侧在这里先锁住关联的 Offer 行，使全系统的锁序
+   * 统一为“Offer → 员工 → 业务 → 组织”（Offer 重发等先持 Offer 锁的路径不会与恢复路径成环，F-201 / BE-14b2 第 2 轮审查）。
+   * 没有关联 Offer 时什么也不做。
+   */
+  beforeEntryAction?(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryActionStartEvent): Promise<void>;
   onEntryCancelled(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryCancelledEvent): Promise<void>;
   onEntryRestored(tx: Tx, ctx: EmployeeStatusHookContext, event: EntryRestoredEvent): Promise<void>;
 }
@@ -64,6 +75,8 @@ const narrow = (ctx: EmployeeStatusHookContext): EmployeeStatusHookContext => ({
 
 /** employment 内部的调用入口：只给订阅方租户 / 操作人 / 时间，不传范围放行等内部开关。 */
 export const entryOfferHooks = {
+  beforeAction: (tx: Tx, ctx: EmployeeStatusHookContext, event: EntryActionStartEvent) =>
+    hooks.beforeEntryAction?.(tx, narrow(ctx), event) ?? Promise.resolve(),
   entryCancelled: (tx: Tx, ctx: EmployeeStatusHookContext, event: EntryCancelledEvent) =>
     hooks.onEntryCancelled(tx, narrow(ctx), event),
   entryRestored: (tx: Tx, ctx: EmployeeStatusHookContext, event: EntryRestoredEvent) =>

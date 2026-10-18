@@ -909,7 +909,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-pending-contract.ts#clearPendingContract',
     'apps/api/src/modules/employment/entry-pending-contract.ts#loadPendingContract',
     'apps/api/src/modules/employment/entry-pending-contract.ts#pendingContractAudit',
-    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation',
+    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbationState',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
@@ -1014,7 +1014,8 @@ export const GRAPH: Graph = {
     '#loadProbationVersion',
     'packages/domain/src/employment/probation.ts#normalizeProbationInfo',
   ],
-  'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation': [
+  'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbation': ['#loadPendingProbationState'],
+  'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbationState': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersion': [

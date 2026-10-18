@@ -240,6 +240,8 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('发送按对象编辑开关'),
     scope: point,
     fields: record,
+    // 时机 = 发送时会在发送事务里同步待入职（BE-14b2）：任职落地内核的联动复核（DEC-178）对同步恒放行
+    guards: ['employment.linkage'],
     write: commandOnly(['revision', 'offer.dispatch', 'offer.quotaConfirmation']),
   }),
   // 失效：已发、已接受、非实习类待发可失效（OF-R7）；原因须为启用字典项；有待入职 → 409 OFFER_SYNC_NOT_READY
@@ -272,5 +274,27 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: pointScope({ body: 'offerIds[*]' }, 'offer.byId', NOT_FOUND),
     fields: record,
     write: commandOnly(['offer.batchSubject', ...APPROVAL_PRECONDITIONS], BATCH_RESULT),
+  }),
+  // 立即同步待入职（BE-14b2，OF-R8）：已接受（或时机为发送时的已发）才可；已同步重复点击幂等；同步失败也是 200（记在 Offer 上）
+  'POST /:id/sync': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('立即同步按对象编辑开关；对人员 / 任职的写入是受控的系统联动，不要求操作人有人员范围（F-201②）'),
+    scope: point,
+    fields: record,
+    // 任职落地内核的联动复核（DEC-178）；Offer 同步以显式系统全量范围调用，对同步恒放行
+    guards: ['employment.linkage'],
+    write: commandOnly(['revision', 'offer.syncState', 'offer.syncInternConversion']),
+  }),
+  // 关联 / 解除关联在职实习生：待发 / 已发可改；对象须是实习生且在操作人当前人员范围内
+  'POST /:id/link-employee': object({
+    ...byId,
+    object: OFFER,
+    operation: 'update',
+    button: noButton('关联按对象编辑开关'),
+    scope: point,
+    fields: record,
+    write: commandOnly(['revision', 'offer.linkable', 'offer.linkedInternScope']),
   }),
 });
