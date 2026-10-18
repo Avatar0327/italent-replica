@@ -11,12 +11,27 @@ export const APP_ROUTES: readonly AppRoute[] = PAGES.apps;
 export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
-// F-220 / DEC-431①：页面归属与权限豁免共用 React Router 的大小写无关匹配口径。
-export const routePath = (path: string) => path.toLowerCase();
+// F-220 / DEC-431①：与 React Router decodePath 一样逐段解码，编码斜杠不能变成路径分隔符。
+export function routePath(path: string) {
+  try {
+    const pathname = path
+      .split('/')
+      .map((part) => decodeURIComponent(part).replace(/\//g, '%2F'))
+      .join('/')
+      .toLowerCase();
+    // 仅会话豁免保留既有精确边界；编码、尾斜杠兼容项由 03 另行后补，本轮不扩展。
+    return { pathname, ungated: pathname === path.toLowerCase() && PAGES.ungated.has(pathname) };
+  } catch {
+    return undefined;
+  }
+}
 
 export function appRoute(path: string) {
-  path = routePath(path);
+  const normalized = routePath(path);
+  if (!normalized) return undefined;
+  let ownerPath = normalized.pathname;
   // 新子项及被拒路径按 AppPages 的实际挂载匹配；其他旧入口仍沿用原判定。
+  // matchRoutes 内部解码一次，必须传原始路径，避免 %25 被二次解码后误认入口。
   const matched = matchRoutes(
     [
       ...pageRoutes(MENU_ROUTES).map((item) => ({ path: mountPath(item), handle: item })),
@@ -32,8 +47,8 @@ export function appRoute(path: string) {
       path,
     )
   )
-    path = matched?.path ?? path;
-  return pageRoutes(MENU_ROUTES).find((item) => path === item.path || path.startsWith(`${item.path}/`));
+    ownerPath = routePath(matched?.path ?? path)?.pathname ?? '';
+  return pageRoutes(MENU_ROUTES).find((item) => ownerPath === item.path || ownerPath.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {
   const target = ({ '/': '/transfer', '/jobs': '/job', '/account': '/settings/account' } as Record<string, string>)[
