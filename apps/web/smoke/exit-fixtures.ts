@@ -4,7 +4,7 @@ const system = [
   'createdAt',
   'createdBy',
   'id',
-  // R2 BE-15a：自动转正规则的最后保存人，系统写入、只可查看
+  // R2 BE-15a / BE-15b2：自动转正、自动考核规则的最后保存人，系统写入、只可查看
   'operatorUserId',
   'previousVersionId',
   'revision',
@@ -14,12 +14,15 @@ const system = [
   'versionNo',
 ];
 // R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）；
-// R2 BE-15a：自动转正规则同样挂在这里（includeSubordinates / mode / daysBefore / initiatorType / probationResult）
+// R2 BE-15a：自动转正规则同样挂在这里（includeSubordinates / mode / daysBefore / initiatorType / probationResult）；
+// R2 BE-15b2：自动发起考核规则同样（assessmentType / daysAfterEntry）
 const settingsFields = [
   'allowDirectTransfer',
+  'assessmentType',
   'autoPopulate',
   'code',
   'conditions',
+  'daysAfterEntry',
   'daysBefore',
   'description',
   'displayOrder',

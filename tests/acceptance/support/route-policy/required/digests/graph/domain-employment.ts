@@ -11,6 +11,14 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPE_CODES': ['#ASSESSMENT_TYPES'],
   'packages/domain/src/employment/assessment.ts#assessmentOpinionViolation': ['#OPINIONS_REQUIRING_DATE'],
   'packages/domain/src/employment/assessment.ts#assessmentRegularization': ['#NONE'],
+  'packages/domain/src/employment/auto-assessment.ts#autoAssessmentTargetDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/auto-assessment.ts#isAutoAssessmentDays': [
+    '#AUTO_ASSESSMENT_DAYS_MAX',
+    '#AUTO_ASSESSMENT_DAYS_MIN',
+  ],
+  'packages/domain/src/employment/auto-assessment.ts#matchAutoAssessmentRules': ['#autoAssessmentTargetDate'],
   'packages/domain/src/employment/auto-regularization.ts#AUTO_REGULARIZATION_MODE_CODES': [
     '#AUTO_REGULARIZATION_MODES',
   ],

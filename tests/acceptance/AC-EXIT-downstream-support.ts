@@ -92,8 +92,15 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
     return account.id;
   }
 
-  /** 批量造 count 条该员工名下的合成草稿申请（复制首个载荷版本的必填列；一条语句，避免逐条往返）。 */
-  const bulkDrafts = (count: number, employeeId = x.employee.id) =>
+  /**
+   * 批量造 count 条该员工名下的合成申请（复制首个载荷版本的必填列；一条语句，避免逐条往返）。
+   * 默认是 12-01 生效的转正草稿；kind / state / effectiveDate 可改（F-237 造审批中 / 已批准调动）。
+   */
+  const bulkDrafts = (
+    count: number,
+    employeeId = x.employee.id,
+    { kind = 'regularization', state = 'draft', effectiveDate = '2026-12-01' } = {},
+  ) =>
     rows(sql`
       WITH ids AS (
         SELECT gen_random_uuid() AS bid, gen_random_uuid() AS vid FROM generate_series(1, ${count}::int)
@@ -106,13 +113,13 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
       ), versions AS (
         INSERT INTO employment_payload_versions(id,tenant_id,employee_id,business_id,version_no,command_id,kind,mode,
           effective_date,form_id,employ_type,created_at)
-        SELECT vid, base.tenant_id, base.employee_id, bid, 1, NULL, 'regularization', 'application',
-          '2026-12-01'::date, base.form_id, base.employ_type, '2026-10-01T01:00:00Z'::timestamptz FROM ids, base
+        SELECT vid, base.tenant_id, base.employee_id, bid, 1, NULL, ${kind}, 'application',
+          ${effectiveDate}::date, base.form_id, base.employ_type, '2026-10-01T01:00:00Z'::timestamptz FROM ids, base
         RETURNING id
       )
       INSERT INTO employment_state_events(tenant_id,employee_id,business_id,payload_version_id,state,event_no,
         command_id)
-      SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, 'draft', 1, 'bulk-draft' FROM ids`);
+      SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, ${state}, 1, 'bulk-draft' FROM ids`);
   const stateCounts = () =>
     rows<{ state: string; n: number }>(sql`
       SELECT s.state, count(*)::int AS n FROM employment_business_objects b

@@ -1065,6 +1065,13 @@
       "when": 1792324382044,
       "tag": "0151_be14b3_offer_linkage",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1792334084080,
+      "tag": "0152_be15b2_auto_assessment",
+      "breakpoints": true
     }
   ]
 }

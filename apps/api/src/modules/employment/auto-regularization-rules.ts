@@ -110,15 +110,18 @@ export interface ExpandedAutoRegularizationRule extends AutoRegularizationRuleVi
   readonly scopeOrgIds: readonly string[];
 }
 
-/** 执行用：启用的规则按优先级排好并展开适用组织。 */
-export async function loadEnabledAutoRegularizationRules(
+/**
+ * 把“包含下级”的规则展开成适用组织集合（行政维度、按执行当天的组织版本，含停用组织，同合同续签规则）；
+ * 自动转正与自动考核（BE-15b2）共用。
+ */
+export async function expandRuleScopes<T extends { readonly orgIds: string[]; readonly includeSubordinates: boolean }>(
   tx: Tx,
   tenantId: string,
+  rules: readonly T[],
   today: string,
-): Promise<ExpandedAutoRegularizationRule[]> {
-  const rules = (await listAutoRegularizationRules(tx, tenantId)).filter((rule) => rule.enabled);
+): Promise<(T & { readonly scopeOrgIds: readonly string[] })[]> {
   const descendants = new Map<string, readonly string[]>();
-  const expanded: ExpandedAutoRegularizationRule[] = [];
+  const expanded: (T & { readonly scopeOrgIds: readonly string[] })[] = [];
   for (const rule of rules) {
     const orgIds = new Set(rule.orgIds);
     if (rule.includeSubordinates)
@@ -139,6 +142,36 @@ export async function loadEnabledAutoRegularizationRules(
   return expanded;
 }
 
+/** 执行用：启用的规则按优先级排好并展开适用组织。 */
+export async function loadEnabledAutoRegularizationRules(
+  tx: Tx,
+  tenantId: string,
+  today: string,
+): Promise<ExpandedAutoRegularizationRule[]> {
+  const rules = (await listAutoRegularizationRules(tx, tenantId)).filter((rule) => rule.enabled);
+  return expandRuleScopes(tx, tenantId, rules, today);
+}
+
+/**
+ * F-223：锁内复核读最新规则状态。预筛 / 批次开始时读到的快照可能已过期（管理员在这之间停用或改动了规则），
+ * 员工锁内按 id + revision 比对当前启用的规则；有出入才整体重读，没有出入沿用快照（省掉逐人展开下级的开销）。
+ */
+export async function currentAutoRegularizationRules(
+  tx: Tx,
+  tenantId: string,
+  snapshot: readonly ExpandedAutoRegularizationRule[],
+  today: string,
+): Promise<readonly ExpandedAutoRegularizationRule[]> {
+  const now = rowsOf<{ id: string; revision: number }>(
+    await tx.execute(sql`SELECT id::text, revision FROM employment_auto_regularization_rules
+      WHERE tenant_id = ${tenantId} AND enabled`),
+  );
+  const same =
+    now.length === snapshot.length &&
+    snapshot.every((rule) => now.some((row) => row.id === rule.id && row.revision === rule.revision));
+  return same ? snapshot : loadEnabledAutoRegularizationRules(tx, tenantId, today);
+}
+
 /** 总开关有效值（两层配置；系统值 false）。 */
 export async function readAutoRegularizationEnabled(tx: Tx, tenantId: string): Promise<boolean> {
   return (await readEffectiveSetting(tx, tenantId, AUTO_REGULARIZATION_SETTING_KEY)).value === true;
@@ -148,7 +181,7 @@ async function lockRules(tx: Tx, tenantId: string) {
   await advisoryLock(tx, asUuid(tenantId), ':employment-auto-regularization-rules');
 }
 
-async function assertOrgsExist(tx: Tx, tenantId: string, orgIds: readonly string[]): Promise<void> {
+export async function assertOrgsExist(tx: Tx, tenantId: string, orgIds: readonly string[]): Promise<void> {
   const [row] = rowsOf<{ found: number }>(
     await tx.execute(sql`SELECT count(DISTINCT org_id)::int AS found FROM org_versions
       WHERE tenant_id = ${tenantId} AND org_id = ANY(${`{${orgIds.join(',')}}`}::uuid[])`),

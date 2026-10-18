@@ -36,6 +36,7 @@ export * from './employment/entry-email.js';
 export * from './employment/probation.js';
 export * from './employment/auto-regularization.js';
 export * from './employment/assessment.js';
+export * from './employment/auto-assessment.js';
 export * from './employment/blacklist.js';
 export * from './transfer/catalog.js';
 export * from './transfer/required.js';

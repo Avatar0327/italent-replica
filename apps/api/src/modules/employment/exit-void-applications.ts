@@ -14,7 +14,7 @@ import { notifyMessage } from '../approval/notifications.js';
 import { userOfPerson } from '../approval/resolver.js';
 import { assertReleasedEstablishment, reverseCarriedEstablishment } from '../establishment/carried-transfer.js';
 import { auditEmployment } from './context.js';
-import { inFlightApplications } from './exit-gate.js';
+import { inFlightApplications, type InFlight } from './exit-gate.js';
 import {
   bumpEmploymentBusiness,
   lockEmploymentBusiness,
@@ -29,6 +29,26 @@ export const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave');
 export const OPEN_STATES = ['draft', 'in_review', 'approved', 'rejected'];
 /** 候选查询（inFlightApplications）至多返回 1001 条；超过这里的上限即整单拒绝，不消费截断清单。 */
 export const VOID_LIMIT = 1000;
+
+/**
+ * 待作废候选与超限判定的单一入口：预览提示（exit-preview.ts）与生效时整单拒绝共用，不各写一套（DEC-431①）。
+ * 条件全部在 SQL 里过滤后再取 VOID_LIMIT + 1，所以返回超过上限即真实超限，不会被前序申请挤占名额（F-237）。
+ * lastWorkDate：预览传最后工作日，已批准且计划生效日 ≤ 它的会先于离职落地，不算；生效时传 null——这些已由步骤 0a 落地，
+ * 剩下的未落地申请全部作废。
+ */
+export const voidCandidates = (
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string | null,
+  excludeId?: string,
+) =>
+  inFlightApplications(tx, ctx, employeeId, VOIDABLE_KINDS, OPEN_STATES, 'application', {
+    unlanded: true,
+    ...(excludeId ? { excludeId } : {}),
+    ...(lastWorkDate ? { approvedAfter: lastWorkDate } : {}),
+  });
+export const exceedsVoidLimit = (candidates: readonly InFlight[]) => candidates.length > VOID_LIMIT;
 
 export interface VoidedApplication {
   readonly id: string;
@@ -127,11 +147,9 @@ export async function voidInFlightApplications(
   lastWorkDate: string,
   heads: ReadonlyMap<string, number>,
 ): Promise<VoidedApplication[]> {
-  const open = (await inFlightApplications(tx, ctx, exit.employeeId, VOIDABLE_KINDS, OPEN_STATES))
-    .filter((row) => !row.landed && row.id !== exit.id)
-    .sort((a, b) => a.id.localeCompare(b.id));
+  const open = (await voidCandidates(tx, ctx, exit.employeeId, null, exit.id)).sort((a, b) => a.id.localeCompare(b.id));
   // 候选查询被截断时不能只作废一部分：在任何写入之前整单拒绝，HR 处理掉多余的申请后重试
-  if (open.length > VOID_LIMIT)
+  if (exceedsVoidLimit(open))
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
     });

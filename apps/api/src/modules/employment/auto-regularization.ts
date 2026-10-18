@@ -3,7 +3,8 @@
  * - 适用对象（PB-R19）：当前生效主职为试用、内部员工，本任职周期有预计试用结束日，命中启用中的规则（优先级最小者）；
  * - 触发（R2e7，03 口径）：目标日 = 预计结束日 − N 天，目标日 ≤ 当天即发起（补发）；同一任职同一规则只发起一次——
  *   发起台账（规则 × 本任职周期的开启记录）在员工锁内复核，主键兜底；
- * - 失败（PB-R21）：本周期已有已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务，发起人找不到，或转正入口拒绝
+ * - 失败（PB-R21）：本周期已有已驳回 / 不通过 / 作废 / 审批中 / 通过 / 生效的转正业务，或考核类条件（BE-15b2：转正考核
+ *   草稿 / 驳回 / 审批中 / 不通过 / 作废或通过但意见 ≠ 正常转正，试用中考核审批中或通过且提前转正），发起人找不到，或转正入口拒绝
  *   （PB-R9 互斥、试用结果已停用等）——整人回滚到保存点，台账记 failed、次数与原因，下一次执行重试（DEC-052）；
  * - 发起：经 BE-3 的单一入口 launchRegularization（默认转正日期 = 预计结束日次日，F-205；申请走同一提交与审批发起），
  *   发起人取规则配置，审批日志与台账带“系统代发”标记（R2e7 第 4 条）。
@@ -11,16 +12,22 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
+  assessmentBlocksAutoRegularization,
   AUTO_REGULARIZATION_BLOCKING_STATES,
   autoRegularizationTargetDate,
   EMPLOYEE_STATUS,
   matchAutoRegularizationRule,
   tenantLocalDate,
+  type AssessmentOpinion,
+  type AssessmentStatus,
+  type AssessmentType,
+  type AutoRuleInitiator,
 } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { EmploymentError } from './errors.js';
 import {
+  currentAutoRegularizationRules,
   loadEnabledAutoRegularizationRules,
   readAutoRegularizationEnabled,
   type ExpandedAutoRegularizationRule,
@@ -111,9 +118,16 @@ async function launchedBefore(tx: Tx, tenantId: string, ruleId: string, anchorId
   return row?.state === 'launched';
 }
 
-/** PB-R21（转正记录部分）：本任职周期里处于阻断状态的转正业务。 */
-async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Subject) {
-  const { employeeId, staffId } = subject.cycle.anchor;
+/**
+ * 本任职周期里处于给定状态的转正业务（取一条）。PB-R21（自动转正）与 PB-R20（BE-15b2 自动考核）共用，
+ * 只是状态集合不同——周期口径（同一员工 × 同一任职关系）只在这里写一份。
+ */
+export async function findCycleRegularization(
+  tx: Tx,
+  tenantId: string,
+  anchor: { readonly employeeId: string; readonly staffId: string },
+  states: readonly string[],
+): Promise<string | null> {
   const [row] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT b.id FROM employment_business_objects b
       JOIN LATERAL (SELECT p.kind, p.selected_staff_id FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id
@@ -121,15 +135,51 @@ async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Su
       JOIN LATERAL (SELECT s.state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id
         AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
       LEFT JOIN employment_records rg ON rg.tenant_id=b.tenant_id AND rg.id=b.id
-      WHERE b.tenant_id=${tenantId} AND b.employee_id=${employeeId}::uuid AND p.kind='regularization'
-        AND s.state IN (${kinds(AUTO_REGULARIZATION_BLOCKING_STATES)})
-        AND COALESCE(rg.staff_id, p.selected_staff_id)=${staffId}::uuid
+      WHERE b.tenant_id=${tenantId} AND b.employee_id=${anchor.employeeId}::uuid AND p.kind='regularization'
+        AND s.state IN (${kinds(states)})
+        AND COALESCE(rg.staff_id, p.selected_staff_id)=${anchor.staffId}::uuid
       LIMIT 1`),
   );
-  if (row)
+  return row?.id ?? null;
+}
+
+/** PB-R21（转正记录部分）：本任职周期里处于阻断状态的转正业务。 */
+async function assertNoCycleRegularization(tx: Tx, tenantId: string, subject: Subject) {
+  const businessId = await findCycleRegularization(
+    tx,
+    tenantId,
+    subject.cycle.anchor,
+    AUTO_REGULARIZATION_BLOCKING_STATES,
+  );
+  if (businessId)
     throw new AppError('CONFLICT', '本任职周期已有转正记录，不能自动转正', {
       reason: 'REGULARIZATION_EXISTS',
-      businessId: row.id,
+      businessId,
+    });
+}
+
+/**
+ * PB-R21（考核部分，BE-15b2）：本任职周期（anchor_id）里的考核按（类型、状态、意见）判断；
+ * 取本周期全部考核再交领域函数判，单一来源（assessmentBlocksAutoRegularization）。
+ */
+async function assertNoCycleAssessments(tx: Tx, tenantId: string, subject: Subject) {
+  const { employeeId, id: anchorId } = subject.cycle.anchor;
+  const rows = rowsOf<{
+    id: string;
+    type: AssessmentType;
+    status: AssessmentStatus;
+    opinion: AssessmentOpinion | null;
+  }>(
+    await tx.execute(sql`SELECT id::text AS id, assessment_type AS type, status, regularization_opinion AS opinion
+      FROM employment_probation_assessments
+      WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND anchor_id=${anchorId}::uuid
+      ORDER BY created_at, id`),
+  );
+  const blocking = rows.find((row) => assessmentBlocksAutoRegularization(row));
+  if (blocking)
+    throw new AppError('CONFLICT', '本任职周期的考核未满足自动转正条件，不能自动转正', {
+      reason: 'ASSESSMENT_BLOCKS_REGULARIZATION',
+      assessmentId: blocking.id,
     });
 }
 
@@ -143,11 +193,11 @@ async function activeUser(tx: Tx, tenantId: string, condition: ReturnType<typeof
   return row?.userId ?? null;
 }
 
-/** 发起人（R2e6 / R2e7）：当前管理员 = 规则保存人；按身份取主职部门当天组织版本上的 HRBP / 负责人的账号。 */
-async function resolveInitiator(
+/** 发起人（R2e6 / R2e7；自动转正与 BE-15b2 自动考核共用）：当前管理员 = 规则保存人；按身份取主职部门当天组织版本上的 HRBP / 负责人的账号。 */
+export async function resolveInitiator(
   tx: Tx,
   tenantId: string,
-  rule: ExpandedAutoRegularizationRule,
+  rule: { readonly initiatorType: AutoRuleInitiator; readonly operatorUserId: string },
   departmentId: string | null,
   today: string,
 ): Promise<string> {
@@ -237,13 +287,21 @@ export async function autoRegularizeEmployee(
   rules: readonly ExpandedAutoRegularizationRule[],
 ): Promise<AutoRegularizationOutcome> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const due = await dueRuleOf(tx, ctx.tenantId, employeeId, rules, today);
+  // F-223：预筛 / 批次开始时的规则快照只是提示，员工锁内按最新规则状态复核（预筛后被停用 / 改动的规则不再发起）
+  const due = await dueRuleOf(
+    tx,
+    ctx.tenantId,
+    employeeId,
+    await currentAutoRegularizationRules(tx, ctx.tenantId, rules, today),
+    today,
+  );
   if (!due) return null;
   const { subject, rule } = due;
   const key = { ruleId: rule.id, anchorId: subject.cycle.anchor.id, employeeId };
   try {
     const launched = await tx.transaction(async (savepoint) => {
       await assertNoCycleRegularization(savepoint, ctx.tenantId, subject);
+      await assertNoCycleAssessments(savepoint, ctx.tenantId, subject);
       const initiatorUserId = await resolveInitiator(savepoint, ctx.tenantId, rule, subject.departmentId, today);
       const [employee] = rowsOf<{ revision: number }>(
         await savepoint.execute(sql`SELECT revision FROM employment_employees
