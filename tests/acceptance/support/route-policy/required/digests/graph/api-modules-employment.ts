@@ -768,6 +768,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/reporting-cycle.ts#findReportingCycle',
   ],
   'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS': ['#ENTRY_KINDS'],
+  'apps/api/src/modules/employment/employee-status.ts#ENTRY_TARGETS': [
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
   'apps/api/src/modules/employment/employee-status.ts#STATUS_SETTING_KINDS': ['#ENTRY_LIKE_KINDS'],
   'apps/api/src/modules/employment/employee-status.ts#appendStatusSnapshot': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -781,11 +784,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
+  'apps/api/src/modules/employment/employee-status.ts#changePendingEntryStatus': [
+    '#ENTRY_TARGETS',
+    '#appendStatusSnapshot',
+    '#lockPendingEntry',
+    '#reloadRecord',
+  ],
   'apps/api/src/modules/employment/employee-status.ts#completePendingEntry': [
     '#appendStatusSnapshot',
     '#lockPendingEntry',
     '#propagateEmployeeStatus',
     '#reloadRecord',
+    'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#saveEntryProbation',
@@ -879,6 +889,19 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-actions.ts#assertRemark': [
     'packages/domain/src/employment/entry.ts#ENTRY_REMARK_MAX',
   ],
+  'apps/api/src/modules/employment/entry-actions.ts#cancelEntryCore': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/employee-status.ts#changePendingEntryStatus',
+    'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
+    '#DEFAULT_CANCEL_REASON',
+    '#assertRemark',
+    '#logEntryAction',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
+  'apps/api/src/modules/employment/entry-actions.ts#cancelPendingEntryForOfferRefusal': [
+    '#cancelEntryCore',
+    'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
+  ],
   'apps/api/src/modules/employment/entry-actions.ts#deletePendingEntry': [
     'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
@@ -901,6 +924,13 @@ export const GRAPH: Graph = {
     '#replacePendingEntry',
     'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks',
     'apps/api/src/modules/employment/fields.ts#businessDate',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
+  'apps/api/src/modules/employment/entry-actions.ts#pushOfferToPendingEntry': [
+    'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry',
+    '#replacePendingEntry',
+    'apps/api/src/modules/employment/entry-pending-contract.ts#loadPendingContract',
+    'apps/api/src/modules/employment/entry-probation.ts#loadPendingProbationState',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/entry-actions.ts#replacePendingEntry': [

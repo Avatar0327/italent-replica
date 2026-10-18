@@ -599,14 +599,14 @@ export const DIGESTS: Digests = {
     'route:POST /:id/copy': '0ace673483a2',
     'route:POST /batch-approvals': 'd04e53413008',
     'route:POST /dictionaries/:kind': 'c95961ca3f03',
-    'route:PUT /:id': '1cc65d410c0e',
+    'route:PUT /:id': 'dc1b262f6841',
     'route:PUT /dictionaries/:kind/:id': 'cc37191c8e4d',
   },
   'apps/api/src/modules/offer/send.ts': {
     'route:POST /:id/send': '1f96a9eaa4a6',
   },
   'apps/api/src/modules/offer/transitions.ts': {
-    offerActionAccess: '9b6289d16810',
+    offerActionAccess: '72485fe1ee16',
     'route:GET /:id/send-check': 'b27b1aee9a46',
     'route:GET /:id/transfer-form': 'b27cdbe16757',
     'route:POST /:id/invalidate': '3ec1206461fa',
