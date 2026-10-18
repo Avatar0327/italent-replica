@@ -116,6 +116,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/decide.ts#buttonResource',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'apps/api/src/modules/approval/access.ts#resubmitGuard': [
+    'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentResubmitRight',
+  ],
   'apps/api/src/modules/approval/access.ts#withdrawGuard': [
     '#isOfferBusiness',
     '#requireOfferOwnerRight',
@@ -1390,6 +1394,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/access.ts#adminTargetScope',
     'apps/api/src/modules/approval/access.ts#requireResubmitRight',
     'apps/api/src/modules/approval/access.ts#requireWithdrawRight',
+    'apps/api/src/modules/approval/access.ts#resubmitGuard',
     'apps/api/src/modules/approval/access.ts#withdrawGuard',
     'apps/api/src/modules/approval/actions.ts#adminAct',
     'apps/api/src/modules/approval/actions.ts#resubmit',
@@ -1527,6 +1532,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/routes.ts#route:POST /instances/:id/resubmit': [
     'apps/api/src/modules/approval/access.ts#requireResubmitRight',
+    'apps/api/src/modules/approval/access.ts#resubmitGuard',
     'apps/api/src/modules/approval/actions.ts#resubmit',
     '#command',
     '#fields',

@@ -99,6 +99,23 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks': ['#hooks'],
   'apps/api/src/modules/employment/approval-hooks.ts#hooks': ['#unavailable'],
+  'apps/api/src/modules/employment/assessment-access.ts#assessmentCommandContext': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+  ],
+  'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentResubmitRight': [
+    '#assessmentCommandContext',
+    '#requireAssessmentWrite',
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment.ts#parseAssessmentPatch',
+  ],
+  'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentWrite': [
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+  ],
   'apps/api/src/modules/employment/assessment-approval-adapter.ts#approved': [
     '#generateRegularization',
     '#lockBoth',
@@ -147,13 +164,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#assessmentGuard': [
-    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentWrite',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
-    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#listQuery': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_STATUSES',

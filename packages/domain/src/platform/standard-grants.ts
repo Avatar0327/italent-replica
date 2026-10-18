@@ -42,7 +42,7 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 按合并结果统一定为 main + 1 并重算指纹、改写 AC-PLAT-F061-grants 的 HISTORY。这两行请保持单行字面量写法（脚本按行改写）。
  * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
-export const STANDARD_GRANT_VERSION = 27;
+export const STANDARD_GRANT_VERSION = 26;
 export const STANDARD_GRANT_DIGEST = '0066379d67ff1626';
 
 /**
