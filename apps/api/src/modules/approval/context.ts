@@ -4,6 +4,7 @@ import type { Authorizer } from '../../authorization.js';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { recordAudit } from '../../audit/record.js';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { ForeignField } from './foreign-fields.js';
 
 /**
@@ -45,6 +46,14 @@ export interface ApprovalContext extends TenantContext {
 
 export function actorOf(ctx: ApprovalContext): string | null {
   return ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
+}
+
+/**
+ * 系统调度（SYSTEM_USER_ID，不是任何租户的成员）代表业务动作调用审批动作时的受信上下文：按系统接管口径跳过操作人账号
+ * 有效性检查，审计 / 日志的操作人记为空；其他身份原样返回，仍做账号检查。离职生效取消在途任职 / 合同申请共用。
+ */
+export function schedulerAwareContext<C extends ApprovalContext>(ctx: C): C {
+  return ctx.userId === SYSTEM_USER_ID && ctx.actorUserId === undefined ? { ...ctx, actorUserId: null } : ctx;
 }
 
 export type Row = Record<string, unknown>;

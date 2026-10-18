@@ -136,6 +136,7 @@ export async function serviceWorld(db: Db, label: string) {
           (SELECT count(*)::int FROM part_time_request_versions WHERE tenant_id=${w.tenantId}) AS request_versions,
           (SELECT count(*)::int FROM part_time_request_events WHERE tenant_id=${w.tenantId}) AS request_events,
           (SELECT count(*)::int FROM audit_events WHERE tenant_id=${w.tenantId}) AS audits,
+          (SELECT count(*)::int FROM audit_operation_logs WHERE tenant_id=${w.tenantId}) AS op_logs,
           (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${w.tenantId}) AS outbox`),
       );
       return row;

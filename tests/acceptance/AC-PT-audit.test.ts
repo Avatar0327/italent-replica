@@ -188,3 +188,27 @@ describe('AC-PT-audit PT-3b：经 HTTP 新增写出的审计归属与查看（PB
     expect(await seenBy(unrelated)).toEqual([]);
   });
 });
+
+describe('AC-PT-audit PT-3c：编辑 / 批量结束写出的审计归属与查看（PB-73 HTTP 版）', () => {
+  it('兼职部门 B → C 后：只管 B 的 HR 看到新增与“改部门”那条，看不到之后只在 C 的改结束日；只管 C 的看到改部门及之后', async () => {
+    const h = await httpWorld(database().db, 'pt-audit-edit');
+    const target = await h.org(`兼职新部门${randomUUID()}`, { establishedOn: '2024-01-01' });
+    const created = await h.ok(await h.post(), 201);
+    const moved = await h.ok(await h.edit(created.id, { fields: { departmentId: target.id } }, created.revision));
+    const ended = await h.ok(await h.edit(created.id, { endDate: '2026-12-31' }, moved.revision));
+    await h.ok(await h.batchEnd([{ recordId: created.id, revision: ended.revision }], '2026-12-01'));
+    const as = { tenant: h.tenantId, user: h.user.id };
+    const seenBy = async (...orgIds: string[]) => {
+      const authorize = restricted({ scope: h.scopeOf(...orgIds), fields: ['departmentId', 'endDate'] });
+      const page = await auditApi(h.db, AT, { authorize }).dataChanges(as, { objectType: RECORD });
+      return page.items.map((row) => row.action).sort();
+    };
+    expect(await seenBy(h.partTimeOrg.id)).toEqual(['employment.part_time.create', 'employment.part_time.edit']);
+    expect(await seenBy(target.id)).toEqual([
+      'employment.part_time.batch_end',
+      'employment.part_time.edit',
+      'employment.part_time.end',
+    ]);
+    expect(await seenBy(h.primaryOrg.id)).toHaveLength(4);
+  });
+});

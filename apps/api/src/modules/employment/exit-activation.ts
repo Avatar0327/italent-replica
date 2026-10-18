@@ -1,7 +1,7 @@
 /**
  * 离职生效单一编排器（R2-T03 设计 §5.1，批 B3-1）：approved → effective 的唯一路径。
- * 顺序 0a 前序 → 0 最终日期 → 0b 顺延后重验 → 0c 在职段延长校验 →（1 作废在途申请：B3-2）→ 2 版本链落地 →
- * 3 编制 →（4 合同、6 职责转交：B3-2）→ 7 状态 / 审计 → 8 后续任务端口。步骤 0a 以外全部在一个保存点内：
+ * 顺序 0a 前序 → 0 最终日期 → 0b 顺延后重验 → 0c 在职段延长校验 → 1 作废在途申请 → 2 版本链落地 → 3 编制 →
+ * 4 合同 → 6 职责转交 → 7 状态 / 审计 → 8 后续任务端口。步骤 0a 以外全部在一个保存点内：
  * 任一步业务规则拒绝即整体回滚，只留一条 failed 尝试（DEC-052）；存储不可用原样抛出、不记失败。
  * B3-3 之前这里是内部入口——§18.1 的五个关口仍关着，审批通过 / 直接保存 / 调度 / 重试都不会调用它。
  */
@@ -18,13 +18,18 @@ import {
   type ActivationTrigger,
 } from './activation-store.js';
 import { auditEmployment } from './context.js';
+import { handleContractsOnExitEffective } from './exit-contract-effects.js';
+import { runExitDutyTransfer } from './exit-duty-transfer.js';
 import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
+// 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
+import './exit-void-assessments.js';
 import { loadExitRequest, pendingTransferAckSet, regularizationBlocker, type AckRecord } from './exit-gate.js';
 import {
   assertExtendedEmploymentAvailable,
   assertNoNewEstablishmentOccupancy,
   loadTimelineSegments,
 } from './exit-projection.js';
+import { lockOtherBusinessHeads, voidInFlightApplications } from './exit-void-applications.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import {
@@ -226,6 +231,7 @@ async function runSteps(
   exit: ExitRow,
   source: ExitActivationSource,
   trigger: ActivationTrigger,
+  heads: ReadonlyMap<string, number>,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, business.id, business.payload.effectiveDate);
@@ -241,6 +247,8 @@ async function runSteps(
     await revalidateAfterPostponement(tx, ctx, business, exit, late.lastWorkDate);
     await assertExtendedEmploymentAvailable(tx, ctx, ref, before, planned, late.effectiveDate);
   }
+  // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
+  const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   const detached = await detachAndRecord(tx, ctx, business);
@@ -255,6 +263,9 @@ async function runSteps(
     late.effectiveDate,
   );
   await recordEffectiveCorrection(tx, ctx, business, detail);
+  // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
+  await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
+  await runExitDutyTransfer(tx, ctx, exit, 'effective', late.effectiveDate);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(
     tx,
@@ -263,7 +274,14 @@ async function runSteps(
     'exit-request',
     business.id,
     { state: 'approved' },
-    { state: 'effective', source, plannedEffectiveDate: planned, detachedTransfers: detached, ...detail },
+    {
+      state: 'effective',
+      source,
+      plannedEffectiveDate: planned,
+      detachedTransfers: detached,
+      voidedApplications: voided.length,
+      ...detail,
+    },
     undefined,
     undefined,
     { employeeId: business.employeeId },
@@ -298,6 +316,8 @@ export async function activateExit(
   if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
   await lockTransferParticipants(tx, ctx, owner.employeeId);
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
+  // §5.2 ③：该员工其他任职业务头按 id 升序预锁（步骤 1 作废其中未办结的申请），先于 ④ 组织设置锁与 ⑥ 审批实例
+  const heads = await lockOtherBusinessHeads(tx, ctx, owner.employeeId, businessId);
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
   if (business.payload.kind !== 'leave' || !exit || business.state !== 'approved')
     throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职可以生效', { reason: 'NOT_PENDING' });
@@ -337,7 +357,9 @@ export async function activateExit(
   const saved = { state: business.state, eventNo: business.eventNo, payload: business.payload };
   let late: Awaited<ReturnType<typeof runSteps>>;
   try {
-    late = await tx.transaction((savepoint) => runSteps(savepoint, ctx, business, exit, source, options.trigger));
+    late = await tx.transaction((savepoint) =>
+      runSteps(savepoint, ctx, business, exit, source, options.trigger, heads),
+    );
   } catch (error) {
     const failure = activationFailureOf(error) ?? ruleRejection(error);
     if (!failure) throw error;
