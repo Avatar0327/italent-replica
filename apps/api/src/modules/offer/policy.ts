@@ -240,8 +240,6 @@ export const OFFER_POLICIES = defineTable('offers', {
     button: noButton('发送按对象编辑开关'),
     scope: point,
     fields: record,
-    // 时机 = 发送时会在发送事务里同步待入职（BE-14b2）：任职落地内核的联动复核（DEC-178）对同步恒放行
-    guards: ['employment.linkage'],
     write: commandOnly(['revision', 'offer.dispatch', 'offer.quotaConfirmation']),
   }),
   // 失效：已发、已接受、非实习类待发可失效（OF-R7）；原因须为启用字典项；有待入职 → 409 OFFER_SYNC_NOT_READY
