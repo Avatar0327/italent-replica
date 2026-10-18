@@ -23,8 +23,10 @@ const careerSources: readonly string[] = [INFO_SOURCES.professionalLine, INFO_SO
 function sortLevels(rows: InfoRow[], categories: InfoRow[]) {
   const rank = new Map(categories.map((row, index) => [row.id, index]));
   return rows.sort((a, b) => {
-    if (typeof a.levelTypeId !== 'string' || typeof b.levelTypeId !== 'string') return 0;
+    if (a.levelTypeId !== null && typeof a.levelTypeId !== 'string') return 0;
+    if (b.levelTypeId !== null && typeof b.levelTypeId !== 'string') return 0;
     if (a.levelTypeId !== b.levelTypeId) {
+      if (a.levelTypeId === null || b.levelTypeId === null) return 0;
       const left = rank.get(a.levelTypeId);
       const right = rank.get(b.levelTypeId);
       return left === undefined || right === undefined ? 0 : left - right;
@@ -110,7 +112,10 @@ export function InfoSelect({
   const [opened, setOpened] = useState(false);
   const career = careerSources.includes(source);
   const list = useCollection<InfoRow>(opened ? `${source}${career ? '?enabled=true' : ''}` : undefined);
-  const categories = useCollection<InfoRow>(opened && source === INFO_SOURCES.level ? LEVEL_TYPES : undefined);
+  // 停用类别下仍可能有启用职级；类别只用于排序，不作为候选过滤条件。
+  const categories = useCollection<InfoRow>(
+    opened && source === INFO_SOURCES.level ? `${LEVEL_TYPES}?includeDisabled=true` : undefined,
+  );
   const refs = useInfoReferences(value ? [`${source}/${value}`, ...(person ? [`${PROFILE}/${value}`] : [])] : []);
   const selected = value ? refs.get(`${source}/${value}`) : undefined;
   const rows = [...(list.items ?? [])].filter((row) => !career || typeof row.name === 'string');
