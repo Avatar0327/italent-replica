@@ -4,6 +4,8 @@ const system = [
   'createdAt',
   'createdBy',
   'id',
+  // R2 BE-15a：自动转正规则的最后保存人，系统写入、只可查看
+  'operatorUserId',
   'previousVersionId',
   'revision',
   'tenantId',
@@ -11,20 +13,26 @@ const system = [
   'versionId',
   'versionNo',
 ];
-// R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）
+// R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）；
+// R2 BE-15a：自动转正规则同样挂在这里（includeSubordinates / mode / daysBefore / initiatorType / probationResult）
 const settingsFields = [
   'allowDirectTransfer',
   'autoPopulate',
   'code',
   'conditions',
+  'daysBefore',
   'description',
   'displayOrder',
   'enabled',
   'entryEmailRules',
+  'includeSubordinates',
+  'initiatorType',
+  'mode',
   'name',
   'note',
   'orgIds',
   'priority',
+  'probationResult',
   'reason',
   'term',
   'unrestrictTargetDepartment',

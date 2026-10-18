@@ -7,6 +7,7 @@
 import { and, asc, eq, inArray, orgVersions, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { countDepartmentStaff } from '../employment/org-people.js';
+import { countDepartmentPartTimes } from '../employment/part-time/store.js';
 import { rowsOf } from '../employment/read-model.js';
 import { countEnabledPositions } from '../job/read-model.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
@@ -162,6 +163,8 @@ async function assertSubtreeVacant(
   // 调入提交 / 审批 / 落地的 assertEmploymentDepartmentAvailable 持同一锁，两个统计间不能迁移状态。
   const staff = await countDepartmentStaff(tx, ctx.tenantId, ids, from);
   const pending = await countPendingTransfers(tx, ctx.tenantId, ids);
+  // R2-T05 §6.4 / P-13：兼职记录也计入（不占编，但不能挂在停用组织上）；函数在兼职模块，countDepartmentStaff 不改
+  const partTimes = await countDepartmentPartTimes(tx, ctx.tenantId, ids, from);
   const positions = await countEnabledPositions(tx, ctx.tenantId, ids, from);
   const byId = new Map(atFrom.map((node) => [node.id, node]));
   const occupied: SubtreeOccupancy[] = ids
@@ -171,7 +174,7 @@ async function assertSubtreeVacant(
         orgId: id,
         code: node?.code ?? '',
         name: node?.name ?? '',
-        employeeCount: (staff.get(id) ?? 0) + (pending.get(id) ?? 0),
+        employeeCount: (staff.get(id) ?? 0) + (pending.get(id) ?? 0) + (partTimes.get(id) ?? 0),
         positionCount: positions.get(id) ?? 0,
       };
     })

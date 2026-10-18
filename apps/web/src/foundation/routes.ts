@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { APP_IDS } from '@italent/domain';
-import { collectPages, type AppRoute, type MenuRoute } from './page-registry.js';
+import { matchRoutes } from 'react-router';
+import { collectPages, mountPath, pageRoutes, type AppRoute, type MenuRoute } from './page-registry.js';
 
 export type { AppRoute, EntryRoute, MenuRoute, SubRoute } from './page-registry.js';
 
@@ -11,7 +12,24 @@ export const MENU_ROUTES: readonly MenuRoute[] = PAGES.menus;
 export const SUB_ROUTES = PAGES.routes;
 
 export function appRoute(path: string) {
-  return MENU_ROUTES.find((item) => path === item.path || path.startsWith(`${item.path}/`));
+  // 新子项及被拒路径按 AppPages 的实际挂载匹配；其他旧入口仍沿用原判定。
+  const matched = matchRoutes(
+    [
+      ...pageRoutes(MENU_ROUTES).map((item) => ({ path: mountPath(item), handle: item })),
+      ...SUB_ROUTES.map((item) => ({ path: item.path, handle: undefined })),
+    ],
+    path,
+  )?.[0]?.route;
+  const child = matched?.handle;
+  if (child && PAGES.entries.some((entry) => entry.children?.some((item) => item === child))) return child;
+  if (
+    matchRoutes(
+      PAGES.rejectedPaths.map((path) => ({ path })),
+      path,
+    )
+  )
+    path = matched?.path ?? path;
+  return pageRoutes(MENU_ROUTES).find((item) => path === item.path || path.startsWith(`${item.path}/`));
 }
 export function legacyTarget(path: string, search = '', hash = ''): string | null {
   const target = ({ '/': '/transfer', '/jobs': '/job', '/account': '/settings/account' } as Record<string, string>)[

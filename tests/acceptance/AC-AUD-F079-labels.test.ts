@@ -9,6 +9,8 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['displayOrder', '显示顺序'],
     ['syncQualification', '同步任职资格子集'],
     ['createdBy', '创建人'],
+    ['PartDisAgree', '部分不同意'],
+    ['AllDisAgree', '全部不同意'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });
