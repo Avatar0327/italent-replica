@@ -11237,6 +11237,53 @@
         ]
       }
     },
+    "PATCH /api/tenant/employment/part-times/:recordId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
     "PATCH /api/tenant/employment/pending-entries/:id": {
       "edge": {
         "anonymous": {
@@ -15972,6 +16019,8 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "buttonResource",
+          "object.button",
           "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
@@ -15985,7 +16034,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
@@ -15997,12 +16049,14 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
           "employment visibility",
           "scope.all",
@@ -16451,7 +16505,9 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
+          "linkage write",
           "requireEmploymentWrite",
+          "requireObjectWrite",
           "transfer write"
         ],
         "fieldsOut": [
@@ -16462,7 +16518,8 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
@@ -16529,6 +16586,10 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -16539,7 +16600,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
@@ -16549,14 +16613,18 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
         ],
         "scopePoint": [
           "employment point"
@@ -16643,6 +16711,52 @@
         "scope": [
           "employment scope",
           "employment visibility"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/part-times/batch-end": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
         ],
         "scopePoint": [
           "employment point"

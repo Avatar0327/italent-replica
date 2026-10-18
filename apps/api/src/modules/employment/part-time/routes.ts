@@ -1,8 +1,10 @@
 /**
- * 兼职路由（R2-T05 BE-7 PT-3b，设计 §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、员工兼职列表、单条详情；
- * 编辑、批量结束、六视图、申请入口由后续批次开放（此处不注册，404）。新增只调内部服务 createPartTime，路由层不另写校验或写库逻辑。
- * 请求体 { partTimeType, startDate, endDate?, fields, customFields? }；回执 = 兼职记录读形状（开始日期沿用 effectiveDate 编码）。
- * 新建对象没有 revision，不要求 If-Match；结果未知时以同一 Idempotency-Key 重放。
+ * 兼职路由（R2-T05 BE-7 PT-3b / PT-3c，设计 §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、员工兼职列表、单条详情，
+ * 以及编辑兼职（PATCH）与批量结束；六视图、申请入口由后续批次开放（此处不注册，404）。写入只调内部服务
+ * createPartTime / editPartTime / batchEndPartTimes，路由层不另写校验或写库逻辑。
+ * 新增请求体 { partTimeType, startDate, endDate?, fields, customFields? }；回执 = 兼职记录读形状（开始日期沿用 effectiveDate 编码）。
+ * 新建对象没有 revision，不要求 If-Match；编辑带 If-Match（底层业务头 revision）；批量结束不带 If-Match，逐条 revision。
+ * 结果未知时以同一 Idempotency-Key 重放。
  */
 import { withTenant } from '@italent/db';
 import { PART_TIME_BUTTONS, PART_TIME_SERVICE_TYPES, tenantLocalDate } from '@italent/domain';
@@ -19,17 +21,32 @@ import {
   readContext,
   readPageContext,
   requireEmploymentWrite,
+  revision,
   runWrite,
   trimEmploymentResponse,
   uuidParam,
 } from '../context.js';
+import type { EmploymentContext } from '../types.js';
 import { getEmployee } from '../employees.js';
 import { customFields, normalizedUuid, presetFieldsSchema } from '../fields.js';
 import { parse } from '../entry-routes.js';
 import { listEmployeePartTimes, loadPartTime, partTimeNotFound } from './read.js';
-import { partTimeCreateGuard, requirePartTimePreviewButton, requirePartTimeScope } from './replay-guard.js';
-import { createPartTime, previewPartTime, type CreatePartTimeInput } from './service.js';
-import { PART_TIME_FIELD_KEYS } from './validation.js';
+import {
+  partTimeCreateGuard,
+  partTimeWriteGuard,
+  requirePartTimePreviewButton,
+  requirePartTimeScope,
+  requirePartTimeWriteAccess,
+  type PartTimeWriteTarget,
+} from './replay-guard.js';
+import {
+  batchEndPartTimes,
+  createPartTime,
+  editPartTime,
+  previewPartTime,
+  type CreatePartTimeInput,
+} from './service.js';
+import { PART_TIME_FIELD_KEYS, normalizeBatchEnd, type EditPartTimeInput } from './validation.js';
 
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 /**
@@ -89,9 +106,52 @@ function writeBusiness(body: CreateBody) {
   };
 }
 
+/** 编辑（PATCH）入参：只给要改的键；开始日期 / 兼职类型只为拒绝改动而接收（§5.1，A-9）。 */
+const editSchema = z.strictObject({
+  endDate: date.nullable().optional(),
+  startDate: date.optional(),
+  partTimeType: z.enum(PART_TIME_SERVICE_TYPES).optional(),
+  fields: partTimeFields.partial().optional(),
+  customFields: customFields.optional(),
+});
+type EditBody = z.infer<typeof editSchema>;
+
+function editInput(body: EditBody): EditPartTimeInput {
+  const fields = (body.fields ?? {}) as Record<string, unknown>;
+  const given = [...PART_TIME_FIELD_KEYS, 'departmentId', 'isDepartmentHead', 'addedSubordinateIds']
+    .filter((key) => Object.hasOwn(fields, key))
+    .map((key) => [key, fields[key]]);
+  return {
+    ...Object.fromEntries(given),
+    ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    ...(body.startDate !== undefined ? { startDate: body.startDate } : {}),
+    ...(body.partTimeType !== undefined ? { serviceType: body.partTimeType } : {}),
+    ...(body.customFields !== undefined ? { customFields: body.customFields } : {}),
+  };
+}
+
+/** 字段权限判定的载荷：实际给出的键（开始日期按任职记录的 effectiveDate 编码判）。 */
+function editBusiness(body: EditBody) {
+  return {
+    ...(body.partTimeType !== undefined ? { partTimeType: body.partTimeType } : {}),
+    ...(body.startDate !== undefined ? { effectiveDate: body.startDate } : {}),
+    ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+    ...(body.fields ? { fields: body.fields } : {}),
+    ...(body.customFields ? { customFields: body.customFields } : {}),
+  };
+}
+
 export function registerPartTimeRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerCreate(router, deps);
+  registerEdit(router, deps);
   registerReads(router, deps);
+}
+
+/** 写回执 = 兼职记录读形状 + warnings；写入后读不到只可能是存储异常。 */
+async function receipt(tx: Parameters<typeof loadPartTime>[0], context: EmploymentContext, id: string) {
+  const record = await loadPartTime(tx, context, id);
+  if (!record) throw new AppError('SERVICE_UNAVAILABLE', '兼职记录写入后不可读');
+  return record;
 }
 
 function registerCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -125,11 +185,68 @@ function registerCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { id, action: 'part-time-create', input: body },
       async (tx, context) => {
         const created = await createPartTime(tx, context, serviceInput(id, body));
-        const record = await loadPartTime(tx, context, created.id);
-        if (!record) throw new AppError('SERVICE_UNAVAILABLE', '兼职记录写入后不可读');
+        const record = await receipt(tx, context, created.id);
         return { status: 201, body: { ...record, warnings: created.warnings.map((reason) => ({ reason })) } };
       },
       { guard: partTimeCreateGuard(deps, ctx, { employeeId: id, business, departmentId: body.fields.departmentId }) },
+    );
+  });
+}
+
+function registerEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // 编辑兼职（§5.1 + 直接修改结束日期）：If-Match = 底层业务头 revision；入口先校验目标存在与范围（404）再判字段 / 按钮权（403），
+  // 命令内 partTimeWriteGuard 在三个出口按当前授权重过；不触发向后更新（AC-FWD-11）
+  router.patch('/part-times/:recordId', async (c) => {
+    const id = uuidParam(c, 'recordId');
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    const body = parse(editSchema, await jsonBody(c));
+    const target: PartTimeWriteTarget = {
+      recordIds: [id],
+      business: editBusiness(body),
+      button: PART_TIME_BUTTONS.edit,
+      ...(body.fields?.departmentId ? { departmentId: body.fields.departmentId } : {}),
+    };
+    await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'part-time-edit', input: body },
+      async (tx, context) => {
+        const edited = await editPartTime(tx, context, id, editInput(body));
+        const record = await receipt(tx, context, id);
+        return { status: 200, body: { ...record, warnings: edited.warnings.map((reason) => ({ reason })) } };
+      },
+      { guard: partTimeWriteGuard(deps, ctx, target) },
+    );
+  });
+  // 批量结束（R2d）：不使用 If-Match（单个版本号无法对应多条记录），逐条 revision 在锁内比对；整批成功或整批失败
+  router.post('/part-times/batch-end', async (c) => {
+    const ctx = await readContext(c, deps, 'object.update');
+    if (c.req.header('if-match') !== undefined)
+      throw new AppError('VALIDATION_FAILED', '批量结束不使用 If-Match，请在每条里带 revision');
+    const input = normalizeBatchEnd(await jsonBody(c));
+    const target: PartTimeWriteTarget = {
+      recordIds: input.items.map((item) => item.recordId),
+      business: { endDate: input.endDate },
+      button: PART_TIME_BUTTONS.batchEnd,
+    };
+    await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { action: 'part-time-batch-end', input },
+      async (tx, context) => {
+        const done = await batchEndPartTimes(tx, context, input);
+        const items = [];
+        for (const recordId of done.recordIds) items.push(await receipt(tx, context, recordId));
+        return {
+          status: 200,
+          body: { total: done.total, succeeded: done.total, failed: 0, batchId: done.batchId, items },
+        };
+      },
+      { guard: partTimeWriteGuard(deps, ctx, target) },
     );
   });
 }

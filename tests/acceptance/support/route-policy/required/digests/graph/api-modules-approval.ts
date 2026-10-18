@@ -490,6 +490,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
+    'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -632,6 +633,7 @@ export const GRAPH: Graph = {
     '#actorOf',
     '#changed',
   ],
+  'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
   'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
     '#votingTasks',
@@ -1276,6 +1278,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/resolver.ts#isActiveAccount',
   ],
   'apps/api/src/modules/approval/notifications.ts#notifyCc': ['#insertNotice'],
+  'apps/api/src/modules/approval/notifications.ts#notifyMessage': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyTodo': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#notifyUrge': ['#insertNotice'],
   'apps/api/src/modules/approval/notifications.ts#recipientOf': [
@@ -1811,6 +1814,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/store.ts#instanceOf': ['#iso'],
   'apps/api/src/modules/approval/store.ts#instanceOfTask': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/store.ts#latestInstanceOf': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#instanceOf',
+  ],
   'apps/api/src/modules/approval/store.ts#loadInstance': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#instanceOf',

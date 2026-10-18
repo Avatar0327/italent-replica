@@ -385,6 +385,57 @@ function partTimePreview(button: string): Obligation[] {
     },
   ];
 }
+// ---- R2 BE-7 PT-3c 兼职编辑 / 批量结束（part-time/routes.ts）------------------------------------------------------------
+// 入口与命令内共用 requirePartTimeWriteAccess（replay-guard.ts）：目标存在 → 兼职部门写入口径范围（requireScopedEmploymentObject）→
+// requireEmploymentWrite（对象更新权 + 字段写权 + 按钮）
+function partTimeWrite(method: string, path: string, readCall: string, button: string): Obligation[] {
+  const route = (anchor: string) => at(PART_TIME, method, path, anchor);
+  const access = route('await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target))');
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        route(readCall),
+        READ,
+        fn(
+          PART_TIME_GUARD,
+          'requirePartTimeWriteAccess',
+          "await requireEmploymentWrite(scoped, 'update', target.business, target.button)",
+        ),
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#${button}@detail`,
+      [],
+      [
+        access,
+        fn(
+          PART_TIME_GUARD,
+          'requirePartTimeWriteAccess',
+          "await requireEmploymentWrite(scoped, 'update', target.business, target.button)",
+        ),
+        WRITE_BUTTON,
+      ],
+    ),
+    directOperation(access),
+    // 两个入口的准入都观测到 guard:employment.scope（readContext 内的员工范围判定）
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        route(readCall),
+        {
+          role: 'impl',
+          unit: `${CTX}#readContext`,
+          anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+        },
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+  ];
+}
 function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
   const call = (text: string) =>
     unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
@@ -1581,6 +1632,19 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  // ---- R2 BE-7 PT-3c 编辑兼职 / 批量结束（part-time/routes.ts；写入口径判定与命令内复核在 replay-guard.ts）-----------------------------
+  'PATCH /api/tenant/employment/part-times/:recordId': partTimeWrite(
+    'PATCH',
+    '/part-times/:recordId',
+    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+    'Employment.PartTimeEdit',
+  ),
+  'POST /api/tenant/employment/part-times/batch-end': partTimeWrite(
+    'POST',
+    '/part-times/batch-end',
+    "const ctx = await readContext(c, deps, 'object.update')",
+    'Employment.PartTimeBatchEnd',
+  ),
   'GET /api/tenant/employment/employees/:id/part-times': [
     recordView(
       at(PART_TIME, 'GET', '/employees/:id/part-times', "const ctx = await readPageContext(c, deps, 'detail')"),

@@ -260,6 +260,7 @@ export const GRAPH: Graph = {
     '#projectAdjustments',
     '#projectTarget',
     '#resolveProjectedTransfer',
+    '#subtractPendingExits',
     'apps/api/src/modules/establishment/membership-windows.ts#clipMembership',
     'apps/api/src/modules/establishment/settings.ts#readSettings',
   ],
@@ -267,6 +268,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
+  ],
+  'apps/api/src/modules/establishment/employment-check.ts#subtractPendingExits': [
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#loadCycleStarts',
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#loadExitStates',
+    'packages/domain/src/employment/exit-occupancy.ts#exitOccupancy',
   ],
   'apps/api/src/modules/establishment/exit-release.ts#capacitiesOn': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',

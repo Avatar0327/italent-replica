@@ -993,6 +993,45 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
+  // 编辑兼职（PT-3c，§5.1 + 直接修改结束日期）：readContext(object.update, If-Match 必填)；body 严格（400）；requirePartTimeWriteAccess：
+  // 目标存在与兼职部门（改部门时含新部门）requireScopedEmploymentObject（写入口径 404「兼职记录不存在」）→ 对象更新权 + 实际改动字段
+  // 的写权 + Employment.PartTimeEdit（403）；命令内 partTimeWriteGuard 三个出口重过；命令内 editPartTime 锁 + 版本 + 周期边界 + E-4 +
+  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead = true / 非空 addedSubordinateIds → 400
+  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  'PATCH /part-times/:recordId': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(PART_TIME_BUTTONS.edit, 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_PART_TIME),
+    fields: RESPONSE,
+    write: employmentWrite(
+      'body.fields+customFields',
+      ['lockEmploymentBusiness', 'assertRevision', 'assertPartTimeWithinCycle', 'requireScopedEmploymentObject'],
+      { controls: ['partTimeType', 'startDate', 'endDate'] },
+    ),
+    ...byId,
+  }),
+  // 批量结束兼职（PT-3c，§4.4）：不要求 If-Match（带了 400，逐条 revision 锁内比对）；normalizeBatchEnd 400（1～200 条、不重复）；
+  // requirePartTimeWriteAccess 一次（逐条范围 404 整批、对象更新权 + endDate 字段写权 + Employment.PartTimeBatchEnd 403）；
+  // 命令内 batchEndPartTimes 按员工 → 记录取锁，整批同事务，一条对象操作日志；响应 { total, succeeded, failed, items }
+  'POST /part-times/batch-end': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(PART_TIME_BUTTONS.batchEnd, 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_PART_TIME),
+    fields: RESPONSE,
+    rows: {
+      path: 'items[*]',
+      fields: none('字段取自共享的 body.endDate，不逐行提取'),
+      target: { body: 'items[*].recordId' },
+      batch: 'atomic',
+    },
+    write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireScopedEmploymentObject'], {
+      ledger: 'single',
+    }),
+  }),
   // 员工页签：readPageContext(detail) + tenant.employment.read；按 DEC-177 可见谓词分页，一条都不可见且员工不在范围内 → 404「员工不存在」
   'GET /employees/:id/part-times': object({
     object: EMPLOYMENT,

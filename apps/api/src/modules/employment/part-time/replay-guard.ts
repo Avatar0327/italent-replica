@@ -1,5 +1,5 @@
 /**
- * 兼职写入口的命令内权限复核（设计 §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览），照 employment/replay-guard.ts 的 scopedGuard 写法：
+ * 兼职写入口的命令内权限复核（设计 §7.2 / §7.3A 第 1 层，PT-3b：新增 / 预览；PT-3c：编辑 / 批量结束），照 employment/replay-guard.ts 的 scopedGuard 写法：
  * runCommand 的三个出口（首次、同键重放、失败回查）都先在命令事务内按**当前**授权重跑 §7.2 该入口整行——员工主职在范围、兼职部门
  * 在范围、新增权 + Employment.PartTime 按钮 + 字段创建权——撤权后重放拿不到台账原响应；原响应里的兼职记录另过统一结果复核
  * （permission/employment-replay.ts，兼职部门取记录当前值，PB-69）。入口与命令内共用 requirePartTimeCreateAccess。
@@ -19,6 +19,9 @@ import {
   type ScopedCommandGuard,
 } from '../context.js';
 import type { EmploymentContext } from '../types.js';
+import { partTimeNotFound } from './read.js';
+import { readPartTimeRecords, type PartTimeRecordRow } from './store.js';
+import { requirePartTimeRecordScope } from './validation.js';
 
 export interface PartTimeCreateTarget {
   readonly employeeId: string;
@@ -74,4 +77,54 @@ export async function requirePartTimePreviewButton(deps: TenantRouteDeps, ctx: E
     deps.authorize({ ...ctx, action: 'object.button', resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail') });
   if (!(await held(PART_TIME_BUTTONS.direct)) && !(await held(PART_TIME_BUTTONS.application)))
     throw new AppError('FORBIDDEN', '没有新增兼职的权限');
+}
+
+export interface PartTimeWriteTarget {
+  /** 目标兼职记录（编辑 1 条，批量结束 1～200 条，已去重小写）。 */
+  readonly recordIds: readonly string[];
+  /** requireEmploymentWrite 的载荷：实际写入的字段。 */
+  readonly business: object;
+  /** 按钮编码：Employment.PartTimeEdit / Employment.PartTimeBatchEnd。 */
+  readonly button: string;
+  /** 编辑改部门时的新部门：新旧部门都要在范围内。 */
+  readonly departmentId?: string;
+}
+
+/**
+ * §7.2 编辑 / 批量结束行的入口与命令内共用判定：目标都存在（否则整体 404）→ 看全部别名另要任职写权 → 每条的兼职部门（及新部门）
+ * 在写入口径范围内（范围外与不存在同一个 404，批量任一条被拒整批 404）→ 对象更新权 + 字段写权 + 按钮。返回入口读到的行。
+ */
+export async function requirePartTimeWriteAccess(
+  tx: Tx,
+  scoped: EmploymentContext,
+  target: PartTimeWriteTarget,
+): Promise<PartTimeRecordRow[]> {
+  const rows = await readPartTimeRecords(tx, scoped, target.recordIds);
+  if (rows.length !== target.recordIds.length) throw partTimeNotFound();
+  if (scoped.trustedScopeBypass)
+    for (const employeeId of new Set(rows.map((row) => row.employeeId)))
+      await requirePermission(scoped.authorize!, {
+        ...scoped,
+        action: 'tenant.employment.write',
+        resource: employeeId,
+      });
+  for (const row of rows) {
+    await requirePartTimeRecordScope(tx, scoped, row, row.departmentId);
+    if (target.departmentId) await requirePartTimeRecordScope(tx, scoped, row, target.departmentId);
+  }
+  await requireEmploymentWrite(scoped, 'update', target.business, target.button);
+  return rows;
+}
+
+/** 编辑 / 批量结束的命令内复核：按当前授权在命令事务内重过 requirePartTimeWriteAccess（重放、失败回查三个出口，兼职部门取当前值）。 */
+export function partTimeWriteGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  target: PartTimeWriteTarget,
+): ScopedCommandGuard {
+  return scopedGuard({
+    before: async (tx) => {
+      await requirePartTimeWriteAccess(tx, await commandContext(tx, deps, ctx), target);
+    },
+  });
 }
