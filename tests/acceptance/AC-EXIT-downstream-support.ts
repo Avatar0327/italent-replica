@@ -110,7 +110,8 @@ export async function downstreamWorld(db: Db, label: string, today = '2026-10-06
           '2026-12-01'::date, base.form_id, base.employ_type, '2026-10-01T01:00:00Z'::timestamptz FROM ids, base
         RETURNING id
       )
-      INSERT INTO employment_state_events(tenant_id,employee_id,business_id,payload_version_id,state,event_no,command_id)
+      INSERT INTO employment_state_events(tenant_id,employee_id,business_id,payload_version_id,state,event_no,
+        command_id)
       SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, 'draft', 1, 'bulk-draft' FROM ids`);
   const stateCounts = () =>
     rows<{ state: string; n: number }>(sql`
