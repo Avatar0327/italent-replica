@@ -209,7 +209,8 @@ describe('AC-DM-20 失败待办与重试端到端（B-02a、B-09、EXIT_APPLICAT
       blocked_by_business_id: transfer.id,
     });
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
-    expect((await x.todos()).map((todo) => todo.id)).toEqual([transfer.id]);
+    // 待办两条：T 生效失败，离职因前序失败挂起（§10.1）
+    expect((await x.todos()).map((todo) => todo.id)).toEqual([transfer.id, draft.id]);
 
     await seedLegacyOrgDeactivation(x, '2026-10-08', x.to, true);
     const retried = await x.retry(transfer, '2026-10-16T03:00:00Z');

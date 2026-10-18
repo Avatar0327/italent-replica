@@ -51,6 +51,31 @@ describe('AC-DM-26 公开队列纳入离职，离职与调动同按最终执行�
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
     expect([await x.stateOfBusiness(transfer.id), await x.stateOfBusiness(leave.id)]).toEqual(['approved', 'approved']);
 
+    // §10.1：两笔在 /activation-todos 各一条——T 生效失败、离职因前序挂起（真实状态 / 原因 / 前序标识）
+    const expectedTodos = [
+      [transfer.id, 'failed', 'REBUILD_REQUIRED', null],
+      [leave.id, 'suspended', 'PREDECESSOR_FAILED', transfer.id],
+    ];
+    const todoRows = (items: Awaited<ReturnType<typeof x.todos>>) =>
+      items.map((item) => [
+        item.id,
+        item.activation.status,
+        item.activation.failureReason,
+        item.activation.blockedByBusinessId ?? null,
+      ]);
+    expect(todoRows(await x.todos())).toEqual(expectedTodos);
+    // 失败次数只统计 failed 尝试：离职的挂起记录不算失败
+    expect((await x.todos()).map((item) => item.activation.failureCount)).toEqual([1, 0]);
+    // 范围内 HR 看得到两条，范围外 HR 一条也看不到（分页前按当前范围裁剪）
+    const inScope = x.restricted(() => true, x.session.user.id);
+    const outsider = x.restricted(() => true, (await x.otherUser()).id);
+    const listed = async (request: typeof inScope) =>
+      ((await (await request('GET', '/activation-todos')).json()) as { items: { id: string }[] }).items.map(
+        (item) => item.id,
+      );
+    expect(await listed(inScope)).toEqual([transfer.id, leave.id]);
+    expect(await listed(outsider)).toEqual([]);
+
     // ② HR 先重试离职 → 409 PREDECESSOR_FAILED，无写入；HR 重试 T 仍 REBUILD_REQUIRED，离职仍挂起
     const before = await x.stateOf(x.employee.id);
     const retryLeave = await x.retry(leave, '2026-10-18T02:00:00Z');
