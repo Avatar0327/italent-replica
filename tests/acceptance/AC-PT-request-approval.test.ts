@@ -21,13 +21,20 @@ describe('PB-32 / PB-38：新增申请 → 四节点 → 通过', () => {
   it('节点顺序 主职HRBP → 主职负责人 → 兼职HRBP → 兼职负责人；通过前不生成记录，通过后落地（开始日在未来）', async () => {
     const w = await requestWorld(database().db, 'happy');
     const created = await w.create({ startDate: '2026-11-01', endDate: '2026-12-31' });
-    const submitted = await w.submit(created.id, 1);
+    const submitted = await w.send(created.id, 1);
     expect(submitted.state).toBe('in_review');
     let view = await w.instance(created.id);
-    expect(view).toMatchObject({ approvalType: 'part_time_add', title: '兼职申请', processCode: 'AddParttimeJobProcess' });
+    expect(view).toMatchObject({
+      approvalType: 'part_time_add',
+      title: '兼职申请',
+      processCode: 'AddParttimeJobProcess',
+    });
     const { pHrbp, pHead, sHrbp, sHead } = w.approvers;
     for (const [index, actor] of [pHrbp, pHead, sHrbp, sHead].entries()) {
-      expect(w.pending(view).map((task) => task.assigneeUserId), `第 ${index + 1} 个节点`).toEqual([actor.userId]);
+      expect(
+        w.pending(view).map((task) => task.assigneeUserId),
+        `第 ${index + 1} 个节点`,
+      ).toEqual([actor.userId]);
       // 通过前不生成兼职记录
       expect(await w.partTimeRecords()).toEqual([]);
       await w.decide(created.id, actor, 'approve');
@@ -59,8 +66,9 @@ describe('PB-32 / PB-38：新增申请 → 四节点 → 通过', () => {
     const w = await requestWorld(database().db, 'avoid-self');
     await w.setOrgRoles(w.side, { head: w.worker.employeeId });
     const created = await w.create({ endDate: '2026-12-31' });
-    await w.submit(created.id, 1);
-    for (const actor of [w.approvers.pHrbp, w.approvers.pHead, w.approvers.sHrbp]) await w.decide(created.id, actor, 'approve');
+    await w.send(created.id, 1);
+    for (const actor of [w.approvers.pHrbp, w.approvers.pHead, w.approvers.sHrbp])
+      await w.decide(created.id, actor, 'approve');
     const pending = w.pending(await w.instance(created.id));
     expect(pending).toHaveLength(1);
     expect(pending[0]!.assigneeUserId).not.toBe(w.worker.userId);
@@ -72,7 +80,7 @@ describe('PB-32 / PB-38：新增申请 → 四节点 → 通过', () => {
     const world = await permissionAdmin(w);
     await grantVisibleFields(world, w.approvers.pHrbp.userId, ['id', 'departmentId']);
     const created = await w.create({ endDate: '2026-12-31', remark: '合成备注' });
-    await w.submit(created.id, 1);
+    await w.send(created.id, 1);
     const view = await w.instance(created.id);
     expect(view.title).not.toContain('兼职员工');
     expect(JSON.stringify(view.form)).not.toContain('兼职员工');
@@ -91,9 +99,9 @@ describe('PB-32 / PB-38：新增申请 → 四节点 → 通过', () => {
 
 describe('审批结论回写', () => {
   it('驳回 → rejected，修改后重提沿用原实例；不同意 → disapproved 办结不可重提；审批侧撤回 → 草稿', async () => {
-    const w = await requestWorld(database().db, 'settle');
+    const w = await requestWorld(database().db, 'settle', { disagree: true });
     const a = await w.create({ endDate: '2026-12-31' });
-    const submitted = await w.submit(a.id, 1);
+    const submitted = await w.send(a.id, 1);
     await w.decide(a.id, w.approvers.pHrbp, 'reject');
     const rejected = await w.load(a.id);
     expect(rejected.state).toBe('rejected');
@@ -101,22 +109,23 @@ describe('审批结论回写', () => {
     expect(first.status).toBe('returned');
     const edited = await w.update(a.id, rejected.revision, { endDate: '2026-11-30' });
     expect(edited).toMatchObject({ state: 'rejected', versionNo: 2 });
-    const again = await w.submit(a.id, edited.revision);
+    const again = await w.send(a.id, edited.revision);
     expect(again.state).toBe('in_review');
     expect((await w.instance(a.id)).id).toBe(first.id);
     expect(submitted.revision).toBeLessThan(again.revision);
 
     const b = await w.create({ startDate: '2026-09-02', endDate: '2026-12-31' });
-    await w.submit(b.id, 1);
+    await w.send(b.id, 1);
     await w.decide(b.id, w.approvers.pHrbp, 'disagree');
     expect((await w.load(b.id)).state).toBe('disapproved');
-    expect(await w.rejected(() => w.submit(b.id, (await w.load(b.id)).revision))).toMatchObject({
+    const closed = await w.load(b.id);
+    expect(await w.rejected(() => w.send(b.id, closed.revision))).toMatchObject({
       reason: 'PART_TIME_REQUEST_STATE_INVALID',
     });
     expect(await w.partTimeRecords()).toEqual([]);
 
     const c = await w.create({ startDate: '2026-09-03', endDate: '2026-12-31' });
-    await w.submit(c.id, 1);
+    await w.send(c.id, 1);
     const view = await w.instance(c.id);
     const response = await w.instanceAction(w.hr.id, view.id, 'withdraw', view.revision);
     expect(response.status, await response.clone().text()).toBe(200);
@@ -126,8 +135,9 @@ describe('审批结论回写', () => {
   it('落地复核失败（审批期间员工新增了一条外派，D-5）：申请作废 landing_rejected，审批结论保留，通知发起人，不落地', async () => {
     const w = await requestWorld(database().db, 'landing');
     const created = await w.create({ serviceType: 'secondment', endDate: '2026-12-31' });
-    await w.submit(created.id, 1);
-    for (const actor of [w.approvers.pHrbp, w.approvers.pHead, w.approvers.sHrbp]) await w.decide(created.id, actor, 'approve');
+    await w.send(created.id, 1);
+    for (const actor of [w.approvers.pHrbp, w.approvers.pHead, w.approvers.sHrbp])
+      await w.decide(created.id, actor, 'approve');
     await w.run((tx) =>
       insertPartTimeRecord(tx, {
         tenantId: w.tenant.id,
@@ -160,7 +170,7 @@ describe('PB-63 / PB-82 / PB-83：审批编辑越过最后工作日（L = 09-15 
     const w = await requestWorld(database().db, `edit-${editMode}`, { editMode });
     await w.leave('2026-09-15');
     const created = await w.create({ endDate: '2026-09-15' });
-    await w.submit(created.id, 1);
+    await w.send(created.id, 1);
     const view = await w.instance(created.id);
     return { w, created, view };
   }
@@ -230,8 +240,8 @@ describe('PB-42：离职落地作废全部在途兼职申请（AC-PT-09 作废�
     const draft = await w.create({ startDate: '2026-09-01' });
     const reviewing = await w.create({ startDate: '2026-09-02' });
     const returned = await w.create({ startDate: '2026-09-03' });
-    await w.submit(reviewing.id, 1);
-    await w.submit(returned.id, 1);
+    await w.send(reviewing.id, 1);
+    await w.send(returned.id, 1);
     await w.decide(returned.id, w.approvers.pHrbp, 'reject');
     const reviewingView = await w.instance(reviewing.id);
     const returnedView = await w.instance(returned.id);
@@ -245,7 +255,10 @@ describe('PB-42：离职落地作废全部在途兼职申请（AC-PT-09 作废�
       expect(closed.status).toBe('cancelled');
       expect(w.pending(closed)).toEqual([]);
       const messages = await w.notices(view.id);
-      expect(messages.map((row) => row.template)).toEqual(['part_time_request_voided_by_exit', 'part_time_request_voided_by_exit']);
+      expect(messages.map((row) => row.template)).toEqual([
+        'part_time_request_voided_by_exit',
+        'part_time_request_voided_by_exit',
+      ]);
       expect(new Set(messages.map((row) => row.recipient))).toEqual(new Set([w.hr.id, w.worker.userId]));
     }
     // 审批人待办里没有这些单
@@ -255,7 +268,8 @@ describe('PB-42：离职落地作废全部在途兼职申请（AC-PT-09 作废�
     const queued = await w.run(async (tx) =>
       rowsOf<{ n: number }>(
         await tx.execute(sql`SELECT count(*)::int AS n FROM employment_outbox
-          WHERE tenant_id=${w.tenant.id} AND event_type='part_time.request.voided_by_exit' AND object_id=${draft.id}::uuid`),
+          WHERE tenant_id=${w.tenant.id} AND event_type='part_time.request.voided_by_exit'
+            AND object_id=${draft.id}::uuid`),
       ),
     );
     expect(queued[0]!.n).toBe(1);
@@ -265,22 +279,26 @@ describe('PB-42：离职落地作废全部在途兼职申请（AC-PT-09 作废�
 describe('P-14：组织停用计入在途新增兼职申请（无日期过滤）', () => {
   it('审批中 → 409 ORG_SUBTREE_NOT_EMPTY（计 1 条）；撤回成草稿后停用成功', async () => {
     const w = await requestWorld(database().db, 'deactivate');
-    const created = await w.create({ startDate: '2027-01-01', endDate: '2027-03-31' });
-    const submitted = await w.submit(created.id, 1);
+    // 专用兼职部门：没有负责人 / HRBP 版本，组织写入按普通组织停用
+    const lone = await w.org('停用兼职部门');
+    const created = await w.create({ departmentId: lone, startDate: '2027-01-01', endDate: '2027-03-31' });
+    const submitted = await w.send(created.id, 1);
     const disable = async () => {
       const org = await w.json<{ revision: number }>(
-        await w.request(w.hr.id, 'GET', `/api/tenant/org/organizations/${w.side}`),
+        await w.request(w.hr.id, 'GET', `/api/tenant/org/organizations/${lone}`),
       );
-      return w.request(w.hr.id, 'PATCH', `/api/tenant/org/organizations/${w.side}`, {
+      return w.request(w.hr.id, 'PATCH', `/api/tenant/org/organizations/${lone}`, {
         ifMatch: org.revision,
         body: { enabled: false, effectiveDate: '2026-10-01' },
       });
     };
     const refused = await disable();
     expect(refused.status).toBe(409);
-    const body = (await refused.json()) as { error: { details: { reason: string; organizations: { orgId: string; employeeCount: number }[] } } };
+    const body = (await refused.json()) as {
+      error: { details: { reason: string; organizations: { orgId: string; employeeCount: number }[] } };
+    };
     expect(body.error.details.reason).toBe('ORG_SUBTREE_NOT_EMPTY');
-    expect(body.error.details.organizations).toEqual([expect.objectContaining({ orgId: w.side, employeeCount: 1 })]);
+    expect(body.error.details.organizations).toEqual([expect.objectContaining({ orgId: lone, employeeCount: 1 })]);
     await w.withdraw(created.id, submitted.revision);
     const ok = await disable();
     expect(ok.status, await ok.clone().text()).toBe(200);
@@ -292,10 +310,9 @@ describe('适配器契约与 P-47', () => {
     const adapter = ADAPTERS.part_time;
     expect(typeof adapter.lockMany).toBe('function');
     expect(typeof mayMergeSeat).toBe('function');
-    await expect(adapter.resubmit({} as never, {} as never, 'x', {})).rejects.toMatchObject({
-      code: 'CONFLICT',
-      details: { reason: 'APPROVAL_RESUBMIT_VIA_BUSINESS' },
-    });
+    expect(() => adapter.resubmit({} as never, {} as never, 'x', {})).toThrowError(
+      expect.objectContaining({ code: 'CONFLICT', details: { reason: 'APPROVAL_RESUBMIT_VIA_BUSINESS' } }),
+    );
   });
 
   it('延长 / 结束申请的审批回调 PT-4a 前一律 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE', async () => {
@@ -332,16 +349,16 @@ describe('适配器契约与 P-47', () => {
   it('P-47：“使用用户”维度对兼职申请取发起人，其他用户不命中', async () => {
     const w = await requestWorld(database().db, 'scope');
     const created = await w.create({ endDate: '2026-12-31' });
-    await w.submit(created.id, 1);
+    await w.send(created.id, 1);
     const hits = (creatorId: string) =>
       withTenant(w.db, w.tenant.id, async (tx) =>
         rowsOf<{ id: string }>(
           await tx.execute(sql`SELECT i.id FROM approval_instances i
             WHERE i.tenant_id=${w.tenant.id} AND i.business_id=${created.id}::uuid
-              AND ${instanceScopeSql(
-                { tenantId: w.tenant.id } as never,
-                { ...EMPTY_SCOPE, terms: [{ dimension: 'using_user', orgIds: [], personIds: [], creatorId }] },
-              )}`),
+              AND ${instanceScopeSql({ tenantId: w.tenant.id } as never, {
+                ...EMPTY_SCOPE,
+                terms: [{ dimension: 'using_user', orgIds: [], personIds: [], creatorId }],
+              })}`),
         ),
       );
     expect(await hits(w.hr.id)).toHaveLength(1);

@@ -39,7 +39,7 @@ describe('草稿的创建与修改（D-1～D-10、周期边界）', () => {
     const updated = await w.update(created.id, 1, { endDate: '2026-11-30', remark: null });
     expect(updated).toMatchObject({ versionNo: 2, revision: 2, endDate: '2026-11-30', state: 'draft' });
     expect(await w.auditActions(created.id)).toEqual(['part_time.request.create', 'part_time.request.update']);
-    const submitted = await w.submit(created.id, 2);
+    const submitted = await w.send(created.id, 2);
     expect(submitted.state).toBe('in_review');
     const direct = await w.rejected(() => w.update(created.id, submitted.revision, { endDate: '2026-10-31' }));
     expect(direct).toMatchObject({ code: 'CONFLICT', reason: 'PART_TIME_REQUEST_STATE_INVALID' });
@@ -90,30 +90,30 @@ describe('PB-63 / A-16：周期内已有已生效离职（L = 09-15）时申请�
 });
 
 describe('提交 / 撤回 / 撤销 / 删除', () => {
-  it('提交只允许原发起人；提交时按最新版本复核（撤销后补的离职使草稿越界 → 提交 409，状态不变）', async () => {
+  it('提交只允许原发起人；提交时按最新版本复核（草稿之后冒出的未落地离职使开始日越界 → 提交 409，状态不变）', async () => {
     const w = await requestWorld(database().db, 'submit');
-    const created = await w.create({ endDate: null });
+    const created = await w.create({ startDate: '2026-09-20', endDate: null });
     const stranger = await w.member('别的操作人');
-    expect(await w.rejected(() => w.submit(created.id, 1, stranger))).toMatchObject({
+    expect(await w.rejected(() => w.send(created.id, 1, stranger))).toMatchObject({
       code: 'FORBIDDEN',
       reason: 'PART_TIME_NOT_INITIATOR',
     });
-    await w.leave('2026-09-15');
-    const error = await w.rejected(() => w.submit(created.id, 1));
-    expect(error).toMatchObject({ code: 'CONFLICT', reason: 'PART_TIME_BEYOND_EXIT' });
+    await w.pendingExit('2026-09-15');
+    const error = await w.rejected(() => w.send(created.id, 1));
+    expect(error).toMatchObject({ code: 'CONFLICT', reason: 'PART_TIME_AFTER_EXIT' });
     expect((await w.load(created.id)).state).toBe('draft');
   });
 
   it('提交 → 撤回回到草稿（实例撤回）→ 再提交沿用原实例；HR 撤销作废并取消实例，作废是终态', async () => {
     const w = await requestWorld(database().db, 'withdraw');
     const created = await w.create({ endDate: '2026-12-31' });
-    const submitted = await w.submit(created.id, 1);
+    const submitted = await w.send(created.id, 1);
     const first = await w.instance(created.id);
     expect(first.status).toBe('running');
     const withdrawn = await w.withdraw(created.id, submitted.revision);
     expect(withdrawn.state).toBe('draft');
     expect((await w.instance(created.id)).status).toBe('withdrawn');
-    const again = await w.submit(created.id, withdrawn.revision);
+    const again = await w.send(created.id, withdrawn.revision);
     expect(again.state).toBe('in_review');
     expect((await w.instance(created.id)).id).toBe(first.id);
     const voided = await w.revoke(created.id, again.revision);
@@ -132,7 +132,7 @@ describe('提交 / 撤回 / 撤销 / 删除', () => {
     expect(gone.state).toBe('deleted');
     expect((await w.load(draft.id)).version.versionNo).toBe(1);
     const other = await w.create({ startDate: '2026-09-02' });
-    const submitted = await w.submit(other.id, 1);
+    const submitted = await w.send(other.id, 1);
     expect(await w.rejected(() => w.remove(other.id, submitted.revision))).toMatchObject({
       reason: 'PART_TIME_REQUEST_STATE_INVALID',
     });

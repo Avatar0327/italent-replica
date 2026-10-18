@@ -9,16 +9,7 @@
  * 若把适配器 lock / lockMany 的加锁顺序改错（实例或账号行先于组织锁），③ 的 NOWAIT 取锁失败，测试必红。
  */
 import { randomUUID } from 'node:crypto';
-import {
-  createUser,
-  getUser,
-  grantMembership,
-  setUserStatus,
-  sql,
-  withPlatform,
-  withTenant,
-  type Db,
-} from '@italent/db';
+import { getUser, setUserStatus, sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
@@ -37,22 +28,23 @@ async function probe(db: Db, statement: ReturnType<typeof sql>, platform = false
     await (platform ? withPlatform(db, run) : withTenant(db, TENANT.value, run));
     return 'free';
   } catch (error) {
-    const code = (error as { code?: string; cause?: { code?: string } }).code ?? (error as any).cause?.code;
+    const failure = error as { code?: string; cause?: { code?: string } };
+    const code = failure.code ?? failure.cause?.code;
     if (code === '55P03') return 'held';
     throw error;
   }
 }
 const TENANT = { value: '' };
 
-/** 外部异常管理员 U 名下有一张兼职新增申请的异常待办（主职 HRBP 为空，首节点转异常管理员，F-165③）。 */
+/** 外部异常管理员 U 名下有一张兼职新增申请的异常待办（主职负责人为空，第二节点转异常管理员，F-165③）。 */
 async function scene(label: string) {
   const db = database().db;
-  const source = await createUser(db, { email: `${label}-${randomUUID()}@example.com`, displayName: '外部异常管理员' }, cmd());
-  const w = await requestWorld(db, label, { noPrimaryHrbp: true, exceptionAdmin: source.id });
+  const w = await requestWorld(db, label, { noPrimaryHead: true, externalExceptionAdmin: true });
+  const source = w.external!;
   TENANT.value = w.tenant.id;
-  await grantMembership(db, { tenantId: w.tenant.id, userId: source.id, expectedRevision: 0 }, cmd());
   const created = await w.create({ endDate: '2026-12-31' });
-  await w.submit(created.id, 1);
+  await w.send(created.id, 1);
+  await w.decide(created.id, w.approvers.pHrbp, 'approve');
   const view = await w.instance(created.id);
   expect(pendingOf(view)).toEqual([expect.objectContaining({ assigneeUserId: source.id })]);
   return { db, w, source, created, view };
@@ -89,9 +81,9 @@ describe.runIf(realPostgres)('AC-PT-approval-lock-pg PB-80 适配器资源预锁
       disabled = disable();
       await waitForBlocked(db, 1);
       // A 已在等待，且还没锁账号行：另一个事务能 NOWAIT 取到 users 行。若把组织锁挪到账号行之后，这里必为 'held'
-      expect(await probe(db, sql`SELECT id FROM users WHERE id=${source.id}::uuid FOR NO KEY UPDATE NOWAIT`, true)).toBe(
-        'free',
-      );
+      expect(
+        await probe(db, sql`SELECT id FROM users WHERE id=${source.id}::uuid FOR NO KEY UPDATE NOWAIT`, true),
+      ).toBe('free');
     });
     expect(await disabled, '停用接管不得被映射成并发冲突（40P01）').toBe('ok');
     expect(pendingOf(await w.detail(view.id))).toEqual([expect.objectContaining({ assigneeUserId: successor })]);
@@ -101,7 +93,7 @@ describe.runIf(realPostgres)('AC-PT-approval-lock-pg PB-80 适配器资源预锁
     const w = await requestWorld(database().db, 'pt-lock-single');
     TENANT.value = w.tenant.id;
     const created = await w.create({ endDate: '2026-12-31' });
-    await w.submit(created.id, 1);
+    await w.send(created.id, 1);
     const view = await w.instance(created.id);
     const task = pendingOf(view)[0]!;
     let approving: Promise<Response> = Promise.resolve(new Response());

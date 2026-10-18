@@ -46,6 +46,7 @@ import {
   assertExclusiveTypeFree,
   batchEndViolation,
   normalizeNewPartTime,
+  type NormalizedPartTime,
   openDateRequestRecords,
   partTimePresetFields,
   planPartTimeEdit,
@@ -78,30 +79,45 @@ export interface CreatedPartTime {
   readonly warnings: readonly string[];
 }
 
-export async function createPartTime(
+/**
+ * D-1～D-10 与 D-5 的统一校验（员工行锁内，直接新增、新增申请的创建 / 修改 / 提交 / 审批编辑 / 落地共用，§4.3A 调用表）：
+ * 主职周期边界 → 外派 / 借调唯一 → 部门可用性与引用 → 自定义字段。不含数据范围（入口各自判）。
+ * excludeRequestId：申请自己的草稿 / 审批中版本不算“另一张在途新增申请”。
+ */
+export async function checkNewPartTime(
   tx: Tx,
   ctx: EmploymentContext,
-  input: CreatePartTimeInput,
-): Promise<CreatedPartTime> {
-  const normalized = normalizeNewPartTime(input);
-  const employee = await lockEmploymentEmployee(tx, ctx, normalized.employeeId);
-  // PT-R2 / PT-R3：员工按主职在范围，且兼职部门在范围（默认开，A-6）；可信端口（无 scope）不设限
-  await requireEmployeeInScope(tx, ctx, employee.id);
-  await requireScopedEmploymentObject(tx, ctx, employee.id, normalized.departmentId);
+  employee: { readonly id: string; readonly code: string },
+  normalized: NormalizedPartTime,
+  excludeRequestId?: string,
+) {
   const { cycle, warnings } = await assertPartTimeWithinCycle(tx, ctx, {
     employeeId: employee.id,
     startDate: normalized.startDate,
     endDate: normalized.endDate,
   });
-  await assertExclusiveTypeFree(tx, ctx, normalized);
-  const fields = partTimePresetFields(normalized, {
-    jobNumber: employee.code,
-    employType: cycle.employType as never,
-  });
+  await assertExclusiveTypeFree(tx, ctx, normalized, undefined, excludeRequestId);
+  const fields = partTimePresetFields(normalized, { jobNumber: employee.code, employType: cycle.employType as never });
   await validatePartTimeReferences(tx, ctx, normalized, fields);
   const custom = await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
+  return { cycle, warnings, fields, custom };
+}
+
+/**
+ * 写一条通过校验的兼职记录并记审计（直接新增与新增申请落地共用）：审计 + outbox 与业务同事务，归属 = 员工 + 兼职部门
+ * （0058 推不出这类对象的部门，§7.4）。不写 employment.record.create（P-04）。sourceId = 申请 ID 时记在第 1 期上。
+ */
+export async function insertCheckedPartTime(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  normalized: NormalizedPartTime,
+  checked: Awaited<ReturnType<typeof checkNewPartTime>>,
+  options: { readonly sourceId?: string } = {},
+) {
+  const { cycle, fields, custom } = checked;
   const { id, payloadVersionId } = await insertPartTimeRecord(tx, ctx, {
-    employeeId: employee.id,
+    employeeId,
     staffId: cycle.staffId,
     entryDate: cycle.entryDate,
     serviceType: normalized.serviceType,
@@ -110,8 +126,8 @@ export async function createPartTime(
     fields,
     customFields: custom.customFields,
     explicitFieldCodes: [...normalized.explicitFieldCodes, ...custom.codes],
+    ...(options.sourceId ? { sourceId: options.sourceId } : {}),
   });
-  // 审计 + outbox 与业务同事务；归属 = 员工 + 兼职部门（0058 推不出这类对象的部门，§7.4）。不写 employment.record.create（P-04）
   await auditEmployment(
     tx,
     ctx,
@@ -129,22 +145,37 @@ export async function createPartTime(
       staffId: cycle.staffId,
     },
     payloadVersionId,
-    undefined,
-    { employeeId: employee.id, orgId: normalized.departmentId },
+    options.sourceId ? { requestId: options.sourceId } : undefined,
+    { employeeId, orgId: normalized.departmentId },
   );
+  return { id, staffId: cycle.staffId };
+}
+
+export async function createPartTime(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: CreatePartTimeInput,
+): Promise<CreatedPartTime> {
+  const normalized = normalizeNewPartTime(input);
+  const employee = await lockEmploymentEmployee(tx, ctx, normalized.employeeId);
+  // PT-R2 / PT-R3：员工按主职在范围，且兼职部门在范围（默认开，A-6）；可信端口（无 scope）不设限
+  await requireEmployeeInScope(tx, ctx, employee.id);
+  await requireScopedEmploymentObject(tx, ctx, employee.id, normalized.departmentId);
+  const checked = await checkNewPartTime(tx, ctx, employee, normalized);
+  const { id, staffId } = await insertCheckedPartTime(tx, ctx, employee.id, normalized, checked);
   const span = { startDate: normalized.startDate, endDate: normalized.endDate };
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   return {
     id,
     employeeId: employee.id,
-    staffId: cycle.staffId,
+    staffId,
     serviceType: normalized.serviceType,
     departmentId: normalized.departmentId,
     ...span,
     revision: 1,
     serviceStatus: partTimeServiceStatus(span, today),
     views: partTimeViews(span, today),
-    warnings,
+    warnings: checked.warnings,
   };
 }
 

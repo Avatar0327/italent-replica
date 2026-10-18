@@ -4,7 +4,7 @@
  * 以可信方式安装并发布“兼职”预置流程（与开通时同一路径）。申请经内部服务调用（PT-4a 没有公开路由），审批走真实审批中心接口。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, type Db, type Tx } from '@italent/db';
+import { createUser, grantMembership, sql, withTenant, type Db, type Tx } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
 import { expect } from 'vitest';
 import type { FieldAccess } from '../../apps/api/src/modules/approval/context.js';
@@ -26,6 +26,7 @@ import {
 } from '../../apps/api/src/modules/employment/part-time/request-service.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { approvalWorld, APV_TODAY, type InstanceView, type Person } from './AC-APV-support.js';
+import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const EMPLOYMENT = '/api/tenant/employment';
@@ -33,10 +34,12 @@ const EMPLOYMENT = '/api/tenant/employment';
 export const ALL_VISIBLE: FieldAccess = { viewable: async () => undefined };
 
 export interface WorldOptions {
-  /** 主职部门 HRBP 为空：首节点无人，转异常管理员（F-165③）。 */
-  readonly noPrimaryHrbp?: boolean;
-  /** 流程的异常管理员（缺省夹具的默认异常管理员）。 */
-  readonly exceptionAdmin?: string;
+  /** 主职部门负责人为空：第二节点无人，转异常管理员（首节点无人提交即报错，DEC-054，所以不能清 HRBP）。 */
+  readonly noPrimaryHead?: boolean;
+  /** 流程的异常管理员是一个外部账号（真 PG 锁序用例：入职按其邮箱首次绑定、全局停用接管）；缺省为夹具的默认异常管理员。 */
+  readonly externalExceptionAdmin?: boolean;
+  /** 节点增加“不同意”出口（沿不同意连线办结，DEC-144）；预置流程只有同意出口。 */
+  readonly disagree?: boolean;
   /** 把四个节点改成审批中可编辑结束日 / 备注（PB-82 / 83）。 */
   readonly editMode?: 'separate' | 'with_approve';
 }
@@ -52,10 +55,14 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     await w.person('兼职HRBP', staff),
     await w.person('兼职负责人', staff),
   ];
-  await w.setOrgRoles(primary, { head: pHead.employeeId, hrbp: options.noPrimaryHrbp ? null : pHrbp.employeeId });
+  await w.setOrgRoles(primary, { head: options.noPrimaryHead ? null : pHead.employeeId, hrbp: pHrbp.employeeId });
   await w.setOrgRoles(side, { head: sHead.employeeId, hrbp: sHrbp.employeeId });
   const worker = await w.person('兼职员工', primary);
   const tenantId = w.tenant.id;
+  const external = options.externalExceptionAdmin
+    ? await createUser(db, { email: `pt4a-${label}-${randomUUID()}@example.com`, displayName: '外部异常管理员' }, cmd())
+    : null;
+  if (external) await grantMembership(db, { tenantId, userId: external.id, expectedRevision: 0 }, cmd());
 
   await withTenant(db, tenantId, async (tx) => {
     const ctx = { tenantId, userId: w.hr.id, timezone: 'Asia/Shanghai', now: new Date(), commandId: randomUUID() };
@@ -64,12 +71,12 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
       const preset = PRESET_PROCESSES.find((p) => p.presetKey === installed.presetKey)!;
       const definition = {
         ...preset.definition,
-        exceptionAdminUserId: options.exceptionAdmin ?? w.exceptionAdmin,
-        nodes: preset.definition.nodes.map((node) =>
-          options.editMode
-            ? { ...node, editMode: options.editMode, editableFields: ['endDate', 'requestRemark'] }
-            : node,
-        ),
+        exceptionAdminUserId: external?.id ?? w.exceptionAdmin,
+        nodes: preset.definition.nodes.map((node) => ({
+          ...node,
+          ...(options.editMode ? { editMode: options.editMode, editableFields: ['endDate', 'requestRemark'] } : {}),
+          ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
+        })),
       };
       const draft = await replaceDraft(tx, { ...ctx, expectedRevision: installed.revision }, installed.id, definition);
       await publishProcess(tx, { ...ctx, expectedRevision: draft.revision }, installed.id);
@@ -99,7 +106,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     run((tx) => createAddRequest(tx, ctx, input(patch)));
   const update = (id: string, revision: number, patch: AddRequestPatch) =>
     run((tx) => updateAddRequest(tx, context(revision), id, patch));
-  const submit = (id: string, revision: number, userId = w.hr.id) =>
+  const send = (id: string, revision: number, userId = w.hr.id) =>
     run((tx) => submitRequest(tx, context(revision, userId), id, ALL_VISIBLE));
   const withdraw = (id: string, revision: number) => run((tx) => withdrawRequest(tx, context(revision), id));
   const revoke = (id: string, revision: number) => run((tx) => revokeRequest(tx, context(revision), id));
@@ -132,7 +139,8 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
           (SELECT count(*)::int FROM part_time_requests WHERE tenant_id=${tenantId}) AS requests,
           (SELECT count(*)::int FROM part_time_request_versions WHERE tenant_id=${tenantId}) AS versions,
           (SELECT count(*)::int FROM part_time_request_events WHERE tenant_id=${tenantId}) AS events,
-          (SELECT count(*)::int FROM employment_records WHERE tenant_id=${tenantId} AND service_type<>'primary') AS parts,
+          (SELECT count(*)::int FROM employment_records
+            WHERE tenant_id=${tenantId} AND service_type<>'primary') AS parts,
           (SELECT count(*)::int FROM employment_part_time_terms WHERE tenant_id=${tenantId}) AS terms,
           (SELECT count(*)::int FROM audit_events WHERE tenant_id=${tenantId}) AS audits,
           (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${tenantId}) AS outbox`),
@@ -143,7 +151,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     run(async (tx) =>
       rowsOf<{ action: string }>(
         await tx.execute(sql`SELECT action FROM audit_events
-          WHERE tenant_id=${tenantId} AND object_id=${id}::uuid ORDER BY occurred_at, id`),
+          WHERE tenant_id=${tenantId} AND object_id=${id} ORDER BY action`),
       ).map((row) => row.action),
     );
   const partTimeRecords = () =>
@@ -182,6 +190,34 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     );
   }
 
+  /** 可信造数一条审批中的离职（R2-T03 门禁入口 B3-3 之前不落地，§4.3A F3）；生效日 = 最后工作日次日。 */
+  async function pendingExit(lastWorkDate: string) {
+    const id = randomUUID();
+    const payload = randomUUID();
+    const next = new Date(`${lastWorkDate}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const cycle = await run(async (tx) =>
+      rowsOf<{ id: string }>(
+        await tx.execute(sql`SELECT id FROM employment_cycles
+          WHERE tenant_id=${tenantId} AND employee_id=${worker.employeeId}::uuid`),
+      ),
+    );
+    await run(async (tx) => {
+      await tx.execute(sql`INSERT INTO employment_business_objects(id, tenant_id, employee_id)
+        VALUES (${id}, ${tenantId}, ${worker.employeeId})`);
+      await tx.execute(sql`INSERT INTO employment_payload_versions(id, tenant_id, employee_id, business_id, version_no,
+          kind, mode, effective_date, last_work_date, form_id, selected_staff_id)
+        VALUES (${payload}, ${tenantId}, ${worker.employeeId}, ${id}, 1, 'leave', 'application',
+          ${next.toISOString().slice(0, 10)}, ${lastWorkDate}, 'leave', ${cycle[0]!.id})`);
+      for (const [index, state] of ['draft', 'in_review'].entries())
+        await tx.execute(sql`INSERT INTO employment_state_events(tenant_id, employee_id, business_id,
+            payload_version_id, state, event_no, command_id)
+          VALUES (${tenantId}, ${worker.employeeId}, ${id}, ${payload}, ${state}, ${index + 1},
+            ${`pt-exit-${id}-${index}`})`);
+    });
+    return id;
+  }
+
   const instance = (requestId: string): Promise<InstanceView> => w.instanceOf(requestId);
   /** 当前待办人做决定（approve / reject / disagree / edit），返回最新实例。 */
   async function decide(
@@ -208,6 +244,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
 
   return {
     ...w,
+    external,
     primary,
     side,
     staff,
@@ -218,7 +255,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     input,
     create,
     update,
-    submit,
+    send,
     withdraw,
     revoke,
     remove,
@@ -231,6 +268,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     terms,
     notices,
     leave,
+    pendingExit,
     instance,
     decide,
     approveAll,
