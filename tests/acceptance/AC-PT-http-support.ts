@@ -80,6 +80,16 @@ export async function httpWorld(db: Parameters<typeof serviceWorld>[0], label: s
     w.request('POST', `${employeeBase}/preview`, { body: body(patch), ...options });
   const list = (query = '') => w.request('GET', `${employeeBase}${query}`);
   const one = (id: string) => w.request('GET', `/part-times/${id}`);
+  /** PT-3c 编辑兼职（If-Match = 底层业务头 revision）与批量结束（逐条 revision，不带 If-Match）。 */
+  const edit = (id: string, body: Record<string, unknown>, revision: number, options: RequestOptions = {}) =>
+    w.request('PATCH', `/part-times/${id}`, { ifMatch: revision, body, ...options });
+  const batchEnd = (
+    items: readonly { recordId: string; revision: number }[],
+    endDate: string,
+    options: RequestOptions = {},
+  ) => w.request('POST', '/part-times/batch-end', { body: { items, endDate }, ...options });
+  /** 经公开入口新增一条兼职，返回读形状。 */
+  const make = async (patch: Record<string, unknown> = {}) => ok(await post(patch), 201);
 
   /** 受限操作人的请求（同一租户 / 用户，换授权器；时钟与会话一致）。 */
   function as(authorize: Authorizer, clock: () => Date = () => new Date(`${HTTP_TODAY}T01:00:00.000Z`)) {
@@ -141,7 +151,23 @@ export async function httpWorld(db: Parameters<typeof serviceWorld>[0], label: s
     return created;
   }
 
-  return { ...w, colleague, setOrgHead, body, post, preview, list, one, as, scopeOf, ok, refusal };
+  return {
+    ...w,
+    colleague,
+    setOrgHead,
+    body,
+    post,
+    preview,
+    list,
+    one,
+    edit,
+    batchEnd,
+    make,
+    as,
+    scopeOf,
+    ok,
+    refusal,
+  };
 }
 
 export type HttpWorld = Awaited<ReturnType<typeof httpWorld>>;
