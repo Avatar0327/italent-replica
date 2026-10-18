@@ -52,6 +52,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_FIELDS',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SYSTEM_FIELDS',
+    'packages/domain/src/offer/approval.ts#OFFER_APPROVAL_PROGRESS_FIELDS',
+    'packages/domain/src/offer/approval.ts#OFFER_BATCH_FIELDS',
     'packages/domain/src/offer/rules.ts#OFFER_BUTTONS',
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
     'packages/domain/src/offer/rules.ts#OFFER_STATUS_FIELDS',
