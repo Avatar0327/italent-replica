@@ -602,14 +602,20 @@ export async function grantVisibleFields(
  * 为每个审批类型安装一条已发布的兜底流程（DEC-018 显式兜底），首节点为“流程所有者”——发起人自审跳过后
  * 落到异常管理员（DEC-068），保证提交成功且不改变被测模块自身的语义。
  */
-export async function installApprovalFallbacks(db: Db, tenantId: string, userId: string): Promise<void> {
+export async function installApprovalFallbacks(
+  db: Db,
+  tenantId: string,
+  userId: string,
+  /** 只给这些审批类型装兜底（缺省全部）；已装了预置流程的类型不应再叠兜底。 */
+  types: readonly ApprovalTypeCode[] = Object.keys(APPROVAL_TYPES) as ApprovalTypeCode[],
+): Promise<void> {
   const ctx = { tenantId, userId, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
   // 异常管理员用独立成员：被测模块的操作人兼任时按 DEC-091 回避，没有直线经理会拒绝提交。
   const suffix = randomUUID();
   const admin = await createUser(db, { email: `fallback-${suffix}@example.com`, displayName: '夹具异常管理员' }, cmd());
   await grantMembership(db, { tenantId, userId: admin.id, expectedRevision: 0 }, cmd());
   await withTenant(db, tenantId, async (tx) => {
-    for (const approvalType of Object.keys(APPROVAL_TYPES) as ApprovalTypeCode[]) {
+    for (const approvalType of types) {
       const created = await createProcess(
         tx,
         { ...ctx, commandId: randomUUID() },
