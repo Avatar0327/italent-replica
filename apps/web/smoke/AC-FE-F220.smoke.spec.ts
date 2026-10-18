@@ -40,7 +40,13 @@ test('AC-FE-F220-06 编码入口无权限时不挂载，有权限时按一次解
     await expect(page.locator('.shell-workspace')).toHaveText('编码入口已挂载');
   }
   for (const path of ['/idp/%', '/idp/%GG', '/idp/%E0%A4', '/%2569dp', '/%2574utorship-information', '/idp%2Fplans']) {
-    await page.goto(path);
+    // 畸形编码直达会被 Vite 开发服务器先拒绝；从已加载的外壳导航，实测客户端守卫。
+    await page.goto('/idp');
+    await expect(page.locator('.shell-workspace')).toHaveText('编码入口已挂载');
+    await page.evaluate((target) => {
+      history.pushState(null, '', target);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, path);
     await expect(page.locator('.shell-workspace')).toContainText(ui.missing);
     await expect(page.getByText('编码入口已挂载', { exact: true })).toHaveCount(0);
   }
