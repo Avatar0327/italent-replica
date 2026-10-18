@@ -15,8 +15,10 @@ import { auditEmployment } from '../../apps/api/src/modules/employment/context.j
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { authorizeEmploymentResult } from '../../apps/api/src/modules/permission/employment-replay.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
+import { denyButton, httpWorld } from './AC-PT-http-support.js';
 import { partTimeWorld, type PartTimeWorld } from './AC-PT-support.js';
 import { orgScope, revocable } from './support/revocable-rights.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-01';
@@ -134,5 +136,95 @@ describe('AC-PT-replay §7.3A 统一结果复核链认得兼职足迹', () => {
       { object_id: recordId, employee_id: w.employeeId, business_id: recordId, org: w.partTimeOrg.id },
       { object_id: add, employee_id: w.employeeId, business_id: null, org: w.partTimeOrg.id },
     ]);
+  });
+});
+
+describe('AC-PT-replay PT-3b：直接新增兼职的命令重放（PB-64～69）', () => {
+  async function replayWorld(label: string) {
+    const w = await httpWorld(database().db, label);
+    const { authorize, rights } = revocable();
+    const send = w.as(authorize);
+    const call = (key: string, patch: Record<string, unknown> = {}) =>
+      send('POST', `/employees/${w.employeeId}/part-times`, { idempotencyKey: key, body: w.body(patch) });
+    return { w, rights, call };
+  }
+  const refused = (status: number) => status === 403 || status === 404;
+
+  it('PB-64 / PB-65：首次执行 201 且足迹含 employment-part-time；同键同内容重放返回原响应，不再写入', async () => {
+    const { w, call } = await replayWorld('replay-http-first');
+    const key = randomUUID();
+    const first = await call(key);
+    const created = await w.ok(first, 201);
+    const footprint = await withTenant(w.db, w.tenantId, async (tx) =>
+      rowsOf<{ object_type: string }>(
+        await tx.execute(sql`SELECT object_type FROM audit_events WHERE tenant_id=${w.tenantId}
+          AND object_id=${created.id} AND action='employment.part_time.create'`),
+      ),
+    );
+    expect(footprint).toEqual([{ object_type: PART_TIME_AUDIT_OBJECTS.record }]);
+    const before = await w.writes();
+    const again = await call(key);
+    expect(again.status).toBe(201);
+    expect(await again.json()).toEqual(created);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it('PB-66：首次业务失败（兼职部门自开始日后停用）后同键回查返回同一失败，不写入', async () => {
+    const { w, call } = await replayWorld('replay-http-failed');
+    const disabled = await w.disableOrg(w.partTimeOrg, '2026-09-10');
+    expect(disabled.status).toBe(200);
+    const key = randomUUID();
+    const before = await w.writes();
+    const first = await w.refusal(await call(key));
+    expect(first).toMatchObject({ status: 400, reason: 'EMPLOYMENT_DEPARTMENT_DISABLED' });
+    const again = await w.refusal(await call(key));
+    expect(again).toEqual(first);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it.each([
+    [
+      'PB-67 撤掉兼职部门范围（只剩主职部门）',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id);
+      },
+    ],
+    [
+      'PB-67 数据范围收为空',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.emptyScope = true;
+      },
+    ],
+    [
+      'PB-68 撤掉 Employment.PartTime 按钮',
+      403,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.deny = denyButton('Employment.PartTime');
+      },
+    ],
+  ] as const)('%s：同键重放被拒（%s），不返回台账里的原响应，业务与审计不变', async (_name, status, revoke) => {
+    const x = await replayWorld(`replay-http-revoked-${status}`);
+    const key = randomUUID();
+    const created = await x.w.ok(await x.call(key), 201);
+    const before = await x.w.writes();
+    revoke(x);
+    const replay = await x.call(key);
+    expect(replay.status).toBe(status);
+    expect(JSON.stringify(await replay.json())).not.toContain(created.id);
+    expect(await x.w.writes()).toEqual(before);
+  });
+
+  it('PB-69：首次成功后他人把该兼职改到操作人范围外的部门，同键重放按当前部门判 → 404', async () => {
+    const x = await replayWorld('replay-http-moved');
+    const key = randomUUID();
+    const created = await x.w.ok(await x.call(key), 201);
+    const elsewhere = await x.w.org(`被改去的部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    await x.w.moveSnapshot(created.id, elsewhere.id);
+    x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id, x.w.partTimeOrg.id);
+    const replay = await x.call(key);
+    expect(refused(replay.status)).toBe(true);
+    expect(replay.status).toBe(404);
   });
 });

@@ -29,6 +29,30 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/part-time.ts#ACTIVE_STATUSES': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'packages/domain/src/employment/part-time.ts#exclusivePartTimeConflict': ['#isExclusive', '#partTimeServiceStatus'],
+  'packages/domain/src/employment/part-time.ts#inPartTimeView': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+    '#PART_TIME_EXPIRING_DAYS',
+    '#isEmptyPartTimeSpan',
+    '#isPartTimeCurrent',
+    '#partTimeServiceStatus',
+  ],
+  'packages/domain/src/employment/part-time.ts#isExclusive': ['#PART_TIME_EXCLUSIVE_TYPES'],
+  'packages/domain/src/employment/part-time.ts#partTimeBoundaryViolation': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+    '#ACTIVE_STATUSES',
+    '#PART_TIME_TERMINATION_KINDS',
+  ],
+  'packages/domain/src/employment/part-time.ts#partTimeServiceStatus': ['#isEmptyPartTimeSpan'],
+  'packages/domain/src/employment/part-time.ts#partTimeViews': [
+    '#PART_TIME_EXPIRING_DAYS',
+    '#PART_TIME_RECORD_VIEWS',
+    '#inPartTimeView',
+  ],
   'packages/domain/src/employment/probation.ts#actualProbationEndDate': [
     'packages/domain/src/contracts/rules.ts#addDays',
   ],
