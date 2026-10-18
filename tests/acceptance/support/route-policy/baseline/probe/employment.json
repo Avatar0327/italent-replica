@@ -81,6 +81,27 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
+  "DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.Delete@detail",
+      "obj:TenantBase.EmploymentRecord:delete"
+    ]
+  },
   "GET /api/tenant/employment/activation-todos": {
     "all": {
       "status": 200
@@ -533,6 +554,27 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentContract:view",
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/transfers/employees/:id/draft": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Transfer.Hr@detail",
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },

@@ -813,6 +813,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/context.ts#adoptCommandContext': ['#commandContexts'],
   'apps/api/src/modules/employment/context.ts#auditEmployment': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
@@ -2780,6 +2781,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/employment/routes.ts#requireImportTransferAccess': [
@@ -2877,6 +2879,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderWriteGuard',
     'apps/api/src/modules/transfer/service.ts#transferBusinessContext',
   ],
   'apps/api/src/modules/employment/routes.ts#route:PATCH /records/:id': [
@@ -2906,6 +2909,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/transfer/same-order-guard.ts#sameOrderScopeGuard',
   ],
   'apps/api/src/modules/employment/routes.ts#route:POST /custom-fields': [
     'apps/api/src/modules/employment/configuration.ts#createCustomField',

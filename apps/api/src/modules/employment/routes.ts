@@ -74,6 +74,7 @@ import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
+import { sameOrderScopeGuard, sameOrderWriteGuard } from '../transfer/same-order-guard.js';
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
@@ -375,17 +376,22 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
         return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
       },
-      isExitKind(current.kind)
-        ? {
-            guard: exitCommandGuard(
-              deps,
-              ctx,
-              'update',
-              { employeeId: current.employeeId, patch: input },
-              { businessId: id },
-            ),
-          }
-        : {},
+      {
+        guard: isExitKind(current.kind)
+          ? exitCommandGuard(deps, ctx, 'update', { employeeId: current.employeeId, patch: input }, { businessId: id })
+          : sameOrderWriteGuard(deps, ctx, {
+              businessId: id,
+              employeeId: current.employeeId,
+              targetDepartmentId: departmentId,
+              referenceChange: input,
+              authorize: async (tx, scoped) => {
+                await requireEmployeeTransferBusiness(tx, scoped, id, input);
+                await requireEmploymentWrite(scoped, 'update', input, 'Employment.Edit');
+                if (departmentId !== undefined)
+                  await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
+              },
+            }),
+      },
     );
   });
   registerBusinessTransitions(router, deps);
@@ -404,29 +410,33 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const ack = action === 'submit' ? await submitBody(c) : undefined;
-        await requireEmploymentWrite(
-          ctx,
-          action === 'delete' ? 'delete' : 'update',
-          {},
-          `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
-        );
+        const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
+        await requireEmploymentWrite(ctx, action === 'delete' ? 'delete' : 'update', {}, button);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
         if (action === 'submit')
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
         const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
-        const guard = isExitKind(current.kind)
-          ? {
-              guard: exitCommandGuard(
+        const guard = {
+          guard: isExitKind(current.kind)
+            ? exitCommandGuard(
                 deps,
                 ctx,
                 operation,
                 { employeeId: current.employeeId, deleting: action === 'delete' },
                 { businessId: id },
-              ),
-            }
-          : {};
+              )
+            : sameOrderWriteGuard(deps, ctx, {
+                businessId: id,
+                employeeId: current.employeeId,
+                ...(action === 'submit' ? { referenceChange: {} } : {}),
+                authorize: async (tx, scoped) => {
+                  if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
+                  await requireEmploymentWrite(scoped, action === 'delete' ? 'delete' : 'update', {}, button);
+                },
+              }),
+        };
         const write = runWrite(
           c,
           deps,
@@ -537,9 +547,14 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await retryActivation(tx, context, id, current.employeeId);
         return { status: 200, body: await requireSavedBusiness(tx, context, id) };
       },
-      exit
-        ? { guard: exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id }) }
-        : {},
+      {
+        guard: exit
+          ? exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id })
+          : sameOrderScopeGuard(deps, ctx, {
+              writeScope: { businessId: id, employeeId: current.employeeId },
+              authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
+            }),
+      },
     );
   });
 }

@@ -853,6 +853,104 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  // F-181a：他人调动申请暂存的元数据读口与清除（槽位按用户 × 员工，draft-slot.ts）
+  'GET /api/tenant/employment/transfers/employees/:id/draft': [
+    recordView(
+      at(TRF, 'GET', '/transfers/employees/:id/draft', "const ctx = await readPageContext(c, deps, 'detail')"),
+    ),
+    ob(
+      `btn:${RECORD}#Transfer.Hr@detail`,
+      ['button:requireTransferButton'],
+      [
+        at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"),
+        ...TRANSFER_BUTTON,
+      ],
+      '读口与暂存同一发起权限：他人调动入口 Transfer.Hr',
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source'],
+      [at(TRF, 'GET', '/transfers/employees/:id/draft', "await requireTransferSource(tx, ctx, id, 'hr')"), ...SOURCE],
+    ),
+  ],
+  'DELETE /api/tenant/employment/transfers/employees/:id/draft/:businessId': [
+    ob(
+      `obj:${RECORD}:delete`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:delete', 'object:object.* 动作'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "const base = await readContext(c, deps, 'object.delete', revision(c))",
+        ),
+        READ,
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_DELETE,
+        RECORD_CONST,
+      ],
+      '清除走与 DELETE /businesses/:id 同一条删除授权链',
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Delete@detail`,
+      ['button:requireEmploymentWrite(按钮)'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "await requireEmploymentWrite(ctx, 'delete', {}, 'Employment.Delete')",
+        ),
+        WRITE_BUTTON,
+        RECORD_CONST,
+      ],
+    ),
+    ob(
+      'guard:employment.businessWrite',
+      ['guard:employment.businessWrite'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          'await authorizeBusinessWrite(deps, ctx, businessId, id)',
+        ),
+        {
+          role: 'impl',
+          unit: `${TRF}#authorizeBusinessWrite`,
+          anchor: '(tx) => requireBusinessWriteScope(tx, deps.authorize, ctx, id, employeeId)',
+        },
+        BUSINESS_WRITE,
+      ],
+    ),
+    ob(
+      'guard:transfer.source',
+      ['guard:transfer.source', 'button:requireTransferButton'],
+      [
+        at(
+          TRF,
+          'DELETE',
+          '/transfers/employees/:id/draft/:businessId',
+          "transferBusinessContext(tx, base, businessId, 'before-command')",
+        ),
+        ...BUSINESS_SOURCE,
+      ],
+    ),
+    linkage(
+      at(
+        TRF,
+        'DELETE',
+        '/transfers/employees/:id/draft/:businessId',
+        'const deleted = await releaseTransferDraft(tx, checked, id, { businessId, revision: ctx.expectedRevision })',
+      ),
+      '删暂存单走 transitionEmployment delete 内核，同 DELETE /businesses/:id',
+    ),
+  ],
   // ---- transfer/linkage/routes.ts --------------------------------------------------------------------------------
   'GET /api/tenant/employment/transfers/:id/linkage': [
     ob(
