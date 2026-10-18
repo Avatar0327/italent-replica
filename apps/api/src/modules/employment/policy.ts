@@ -527,6 +527,40 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ]),
     ...byId,
   }),
+  // 他人调动申请暂存元数据读口（F-181a，DEC-511 / DEC-596）：只读调用人自己对该员工的那份暂存单（槽位按用户 × 员工），
+  // 返回 { draft: 元数据 | null }，元数据（单号 / 版本 / 异动类型 / 原因 / 编制 / 表单 / 生效日）经 trimEmploymentResponse 按任职记录
+  // 字段查看权投影，不含单据字段值——内容仍读 GET /businesses/:id；发起权限同暂存：requireTransferSource(hr)（Transfer.Hr
+  // 按钮 + 源员工范围 404「员工不存在」）
+  'GET /transfers/employees/:id/draft': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: button('Transfer.Hr', 'detail'),
+    scope: guardScope(TRANSFER_SOURCE, NF_EMPLOYEE),
+    fields: RESPONSE,
+    ...byId,
+  }),
+  // 清除暂存（F-181a）：与 DELETE /businesses/:id 同一条删除授权链——object.delete + Employment.Delete + 写入口径范围（
+  // requireBusinessWriteScope，404「任职业务不存在」）+ 同单来源 transferBusinessContext；If-Match = 暂存单 revision，路径
+  // 带暂存单号（槽位已指向别的单 409 DRAFT_REPLACED，版本不符 409 REVISION_CONFLICT，没有暂存 404）；命令内 CommandGuard.before
+  // 按当前授权重验；锁员工 → 锁暂存单 → 草稿删除内核（transitionEmployment delete）
+  'DELETE /transfers/employees/:id/draft/:businessId': object({
+    object: EMPLOYMENT,
+    operation: 'delete',
+    button: button('Employment.Delete', 'detail'),
+    guards: [TRANSFER_SOURCE, LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: RESPONSE,
+    write: employmentCommand([
+      'transferBusinessContext',
+      'requireManagerBusinessSource',
+      'lockEmploymentBusiness',
+      'assertRevision',
+      'assertTransition',
+      'assertNoPendingApplication',
+      'requireLinkedEmploymentRecord',
+    ]),
+    ...byId,
+  }),
   // ---- transfer/linkage/routes.ts：联动 -----------------------------------------------------------------------------
   // 联动详情：loadEmploymentBusiness（DEC-177 可见）且 kind=transfer，否则 404「调动不存在」；合同部分按 EmploymentContract
   // 查看权 + 合同范围（contractVisible）决定显示 / 隐藏，归投影器，不是准入 AND（§2.4）
@@ -550,7 +584,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   }),
   // 修改联动：If-Match 必填；normalizeLinkage 400；调动可见且 kind=transfer，否则 404「调动不存在」；requireLinkageSource
   // （DEC-194：employee 单据 400，其余按单据 initiator 重走 requireTransferSource）；preauthorizeLinkage 按新旧差异授权任职字段 /
-  // 下属经理字段 / 组织角色 / 合同变更（options 为 null 时不提取字段）；命令内 updateTransferLinkage 再判一次
+  // 下属经理字段 / 组织角色 / 合同变更（options 为 null 时不提取字段）；命令内 updateTransferLinkage 再判一次；
+  // 命令事务内由调动同单写统一 guard（same-order-guard.ts，CommandGuard.before）按当前范围重验可见与 requireLinkageSource，重放 / 回查同走
   'PUT /transfers/:id/linkage': object({
     object: EMPLOYMENT,
     operation: 'update',

@@ -28,6 +28,7 @@ import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './lin
 import { saveNewTransferLinkage } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
+import { holdTransferDraft, occupiesDraftSlot, releaseTransferDraft } from './draft-slot.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -150,6 +151,11 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   await requireTransferWrite(ctx, input);
   if (input.employment.mode === 'direct') await requireDirectTransfer(tx, ctx);
   const form = await resolveTransferForm(tx, ctx.tenantId, input.employment.formId);
+  // F-181a：暂存按（经办人 × 员工）一份——暂存 / 提交先换掉自己旧的暂存单（同事务，失败整体回滚）。
+  // 删旧单会推进员工版本；入口的 If-Match 已在上面的员工锁内核对过，这里改用推进后的版本继续创建。
+  const slot = occupiesDraftSlot({ initiator: input.initiator, mode: input.employment.mode });
+  if (slot && (await releaseTransferDraft(tx, ctx, employeeId)))
+    ctx = { ...ctx, expectedRevision: (await lockEmploymentEmployee(tx, ctx, employeeId)).revision };
   const created = await createEmploymentBusiness(tx, ctx, employeeId, input.employment, {
     withEstablishment: input.writable.withEstablishment === true,
   });
@@ -167,6 +173,7 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
       ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode},${metadata.withEstablishment})
   `);
   await auditEmployment(tx, ctx, 'transfer.request.create', 'transfer-request', created.id, null, metadata);
+  if (slot && !input.submit) await holdTransferDraft(tx, ctx, employeeId, created.id);
   await saveNewTransferLinkage(
     tx,
     ctx,
