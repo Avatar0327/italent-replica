@@ -15,6 +15,10 @@ export const GRAPH: Graph = {
     '#objectGrantCode',
     '#opGrantCode',
   ],
+  'packages/domain/src/platform/standard-presets.ts#ASSESSMENT_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#BLACKLIST_SEE_ALL': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
@@ -68,6 +72,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES': [
     'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    '#ASSESSMENT_SEE_ALL',
     '#BLACKLIST_SEE_ALL',
     '#BUSINESS_OBJECTS',
     '#CORE_HR',

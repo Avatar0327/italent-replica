@@ -103,6 +103,7 @@ const EMPLOYEE = MODULE_OBJECTS.employee.code;
 const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
 const CUSTOM_FIELD = MODULE_OBJECTS.employmentCustomField.code;
 const BLACKLIST = MODULE_OBJECTS.blacklist.code;
+const ASSESSMENT = MODULE_OBJECTS.probationAssessment.code;
 
 // ---- 拒绝码（reason = 现状文案）---------------------------------------------------------------------------------
 const NF_EMPLOYEE = denied(404, 'NOT_FOUND', '员工不存在');
@@ -115,6 +116,7 @@ const NF_LINKAGE_ITEM = denied(404, 'NOT_FOUND', '联动子项不存在');
 const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
 const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
+const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -1703,4 +1705,58 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ),
     },
   ),
+  // ---- employment/assessment-routes.ts：R2 BE-15b1 试用中考核 / 转正考核（B2，29 PB-R3～R6）------------------------------
+  // 考核对象 TenantBase.ProbationAssessment：数据操作 + 详情级按钮 Assessment.Create / Assessment.Edit，范围按考核对象员工
+  // （人员 / 部门维度，部门取创建时的主职部门快照）。列表按 scopeSql 过滤，筛选参数严格校验（未知参数 / 非法取值 400）
+  'GET /probation-assessments': object({
+    object: ASSESSMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: projector('employment.response', 'employment.assessment'),
+  }),
+  // 详情：考核不存在或考核对象不在范围内同一个 404「考核记录不存在」（范围外不暴露存在性）
+  'GET /probation-assessments/:id': object({
+    object: ASSESSMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: guardScope('employment.assessmentScope', NF_ASSESSMENT),
+    fields: projector('employment.response', 'employment.assessment'),
+    ...byId,
+  }),
+  // 选人批量发起（PB-R3）：body 严格 { assessmentType, assessmentName, assessmentDate, items[1～100]: { employeeId, revision } }；
+  // 逐人保存点：员工范围 404 → 员工锁与 revision 比对 409 → 试用中校验 409 ASSESSMENT_NOT_PROBATION → PB-R9 互斥 409 →
+  // 建考核并发起审批（没有匹配的流程 / 首节点审批人为空整人回滚）；回执固定形状，单人失败只记在他的回执里
+  'POST /probation-assessments': object({
+    object: ASSESSMENT,
+    operation: 'create',
+    button: button('Assessment.Create', 'detail'),
+    guards: [DIRECT_OPERATION],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: projector('employment.assessmentReceipt', 'employment.assessmentReceipt'),
+    rows: {
+      path: 'items[*]',
+      fields: none('字段取自共享的 { assessmentType, assessmentName, assessmentDate }，不逐行提取'),
+      target: { body: 'items[*].employeeId' },
+      batch: 'receipt',
+    },
+    write: write('body', 'assessment.create', none('回执只含逐人状态与考核 ID，创建与审批发起同事务'), {
+      preconditions: ['requireEmployeeInScope', 'lockEmploymentEmployee', 'assertProbationProcessesIdle'],
+      controls: ['items'],
+    }),
+  }),
+  // 审批通过后修改（PB-R6）：If-Match = 考核 revision；body 严格 { assessmentName?, assessmentDate?, selfEvaluation?,
+  // managerRating?, regularizationOpinion?, regularizationDate? } 至少一项（400）；只有审批通过的考核可改（审批中 409
+  // ASSESSMENT_IN_APPROVAL，其他状态 409 ASSESSMENT_NOT_EDITABLE）；提前 / 延期转正缺转正日期 400；只改考核记录，不补生成
+  'PATCH /probation-assessments/:id': object({
+    object: ASSESSMENT,
+    operation: 'update',
+    button: button('Assessment.Edit', 'detail'),
+    scope: guardScope('employment.assessmentScope', NF_ASSESSMENT),
+    fields: projector('employment.response', 'employment.assessment'),
+    write: write('body', 'assessment.update', none('返回后按考核对象字段查看权投影'), {
+      preconditions: ['requireEmployeeInScope', 'assertAssessmentRevision'],
+    }),
+    ...byId,
+  }),
 });

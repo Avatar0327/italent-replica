@@ -11,6 +11,7 @@ import {
   check,
   date,
   foreignKey,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -229,4 +230,79 @@ export const employmentAutoRegularizationRunCursors = pgTable(
     createdAt: utc(),
   },
   (t) => [unique('employment_auto_regularization_run_cursors_tenant_id').on(t.tenantId, t.id)],
+);
+
+/**
+ * R2 BE-15b1 试用期考核记录（docs/02_业务建模/29 §1、PB-R3～R6）：试用中考核 / 转正考核各一条审批流，业务单 = 本表一行。
+ * - 键 anchor_id = 本任职周期开启试用的入职 / 实习转正业务，PB-R20 / R21 按它判“本任职周期”；
+ * - department_id 是创建时的主职部门快照，用于数据范围与审批路由；employee_id 是考核对象；
+ * - regularization_business_id 是审批完成时按意见生成的转正任职业务（PB-R4 / R5），只在审批回调里写一次，
+ *   审批通过后再改意见不补生成、不改它（PB-R6）；
+ * - initiation / system_proxy 为 BE-15b2 自动发起考核预留：手动发起恒为 manual、非系统代发。
+ */
+export const employmentProbationAssessments = pgTable(
+  'employment_probation_assessments',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenant(),
+    employeeId: uuid('employee_id').notNull(),
+    anchorId: uuid('anchor_id').notNull(),
+    departmentId: uuid('department_id'),
+    assessmentType: text('assessment_type').notNull(),
+    assessmentName: text('assessment_name').notNull(),
+    assessmentDate: date('assessment_date', { mode: 'string' }).notNull(),
+    selfEvaluation: text('self_evaluation'),
+    managerRating: text('manager_rating'),
+    regularizationOpinion: text('regularization_opinion'),
+    regularizationDate: date('regularization_date', { mode: 'string' }),
+    status: text('status').notNull(),
+    initiation: text('initiation').notNull().default('manual'),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    systemProxy: boolean('system_proxy').notNull().default(false),
+    regularizationBusinessId: uuid('regularization_business_id'),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    unique('employment_probation_assessments_tenant_id').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'employment_probation_assessments_anchor_fk',
+      columns: [t.tenantId, t.employeeId, t.anchorId],
+      foreignColumns: [...business],
+    }),
+    foreignKey({
+      name: 'employment_probation_assessments_regularization_fk',
+      columns: [t.tenantId, t.employeeId, t.regularizationBusinessId],
+      foreignColumns: [...business],
+    }),
+    index('employment_probation_assessments_employee').on(t.tenantId, t.employeeId, t.status),
+    check('employment_probation_assessments_type', sql`${t.assessmentType} IN ('probation', 'regularization')`),
+    check(
+      'employment_probation_assessments_status',
+      sql`${t.status} IN ('in_review', 'approved', 'rejected', 'disapproved', 'cancelled')`,
+    ),
+    check('employment_probation_assessments_initiation', sql`${t.initiation} IN ('manual', 'auto')`),
+    check(
+      'employment_probation_assessments_name',
+      sql`btrim(${t.assessmentName}) <> '' AND char_length(${t.assessmentName}) <= 100`,
+    ),
+    check(
+      'employment_probation_assessments_rating',
+      sql`${t.managerRating} IS NULL OR ${t.managerRating} IN ('average', 'meets', 'exceeds', 'below')`,
+    ),
+    check(
+      'employment_probation_assessments_opinion',
+      sql`${t.regularizationOpinion} IS NULL
+        OR ${t.regularizationOpinion} IN ('normal', 'early', 'delayed', 'failed', 'extended')`,
+    ),
+    check(
+      'employment_probation_assessments_date',
+      sql`${t.regularizationOpinion} IS NULL OR ${t.regularizationOpinion} NOT IN ('early', 'delayed')
+        OR ${t.regularizationDate} IS NOT NULL`,
+    ),
+    check('employment_probation_assessments_text', sql`char_length(COALESCE(${t.selfEvaluation}, '')) <= 2000`),
+    check('employment_probation_assessments_revision_positive', sql`${t.revision} > 0`),
+  ],
 );

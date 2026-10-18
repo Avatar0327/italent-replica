@@ -24,6 +24,7 @@ import { requirePermission } from '../../authorization.js';
 import type { CommandGuard } from '../../commands.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { requireAssessmentResubmitRight } from '../employment/assessment-access.js';
 import { employmentCreator } from '../employment/context.js';
 import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
@@ -148,6 +149,25 @@ export function withdrawGuard(deps: TenantRouteDeps, ctx: TenantContext, instanc
     before: async (tx) => {
       const instance = await loadInstance(tx, ctx.tenantId, instanceId);
       if (isOfferBusiness(instance.businessType)) await requireOfferOwnerRight(deps, ctx, tx, instanceId);
+    },
+  };
+}
+
+/**
+ * 重提命令的事务内复核（DEC-455，BE-15b1 第 1 轮 P1-1）：试用期考核的重提在命令事务内、首次执行与同键重放都按当前权限
+ * 再判一次，与考核发起 / 修改共用同一个检查入口（创建权限、按钮、字段权限、考核数据范围）；其他业务类型的重提行为不变。
+ */
+export function resubmitGuard(
+  deps: TenantRouteDeps,
+  ctx: TenantContext,
+  instanceId: string,
+  corrections: Readonly<Record<string, unknown>> = {},
+): CommandGuard {
+  return {
+    before: async (tx) => {
+      const instance = await loadInstance(tx, ctx.tenantId, instanceId);
+      if (instance.businessType === 'probation_assessment')
+        await requireAssessmentResubmitRight(tx, deps, ctx, instance.businessId, corrections);
     },
   };
 }

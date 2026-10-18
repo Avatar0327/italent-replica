@@ -9,6 +9,7 @@ import type { EmploymentContext } from '../employment/types.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { authorizeInTransaction, scopeAllowsInTransaction, resolveModuleScopeInTransaction } from './module-access.js';
 import { requireObjectWrite } from './object-write.js';
+import { firstCreatorSql } from './scope-audit.js';
 
 const OBJECT = 'TenantBase.EmploymentRecord';
 // 每批最多 100 条源、每源最多 1000 个 forward 目标，并留出状态/生效审计的空间。
@@ -219,8 +220,7 @@ async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
       CASE WHEN (SELECT p.kind FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
           ORDER BY version_no DESC LIMIT 1)=${PART_TIME_KIND}
         THEN ${partTimeRecordCreator(tenantId, sql`b.id`)}
-        ELSE (SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=b.tenant_id
-          AND a.object_id=b.id::text AND a.action='employment.business.create' ORDER BY a.created_at LIMIT 1)
+        ELSE ${firstCreatorSql(sql`b.tenant_id`, sql`b.id`, 'employment.business.create')}
       END AS "creatorId"
     FROM employment_business_objects b
     WHERE b.tenant_id=${tenantId} AND b.id::text IN ${wanted}

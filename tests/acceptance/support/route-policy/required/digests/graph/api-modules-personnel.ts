@@ -24,6 +24,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/personnel/access.ts#personScope': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
+    'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
   ],
   'apps/api/src/modules/personnel/access.ts#preflight': ['#requirePerson'],

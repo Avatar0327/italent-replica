@@ -62,6 +62,16 @@ const BLACKLIST_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.blacklist.code,
 };
 
+/**
+ * DEC-415：试用期考核（R2 BE-15b1）是组织员工模块的新对象，看全部同样默认给本模块的预置管理员（标准版系统管理员、
+ * 人事管理员）；人事专员不是管理员，不预置。考核有按员工 / 部门的数据范围，看全部只让管理员无需另配范围即可办理。
+ */
+const ASSESSMENT_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.probationAssessment.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -355,7 +365,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(full),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
   },
   {
     code: 'standard_hr_admin',
@@ -365,7 +375,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(full),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象

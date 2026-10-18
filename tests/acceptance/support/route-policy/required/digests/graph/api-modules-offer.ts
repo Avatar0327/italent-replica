@@ -70,6 +70,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/offer/approval.ts#beginOfferApproval': [
+    'apps/api/src/modules/approval/engine.ts#startOrResume',
+    '#approvalContext',
+    '#requireApprovable',
+    'apps/api/src/modules/offer/service.ts#saveApprovalStatus',
+  ],
   'apps/api/src/modules/offer/approval.ts#cancelOfferApprovals': [
     'apps/api/src/modules/approval/actions.ts#cancel',
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -91,13 +97,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/offer/approval.ts#submitOfferApproval': [
-    'apps/api/src/modules/approval/engine.ts#startOrResume',
-    '#approvalContext',
-    '#requireApprovable',
+    '#beginOfferApproval',
     '#submitted',
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     'apps/api/src/modules/offer/service.ts#lockOffer',
-    'apps/api/src/modules/offer/service.ts#saveApprovalStatus',
   ],
   'apps/api/src/modules/offer/approval.ts#submitOfferBatch': [
     'apps/api/src/modules/approval/engine.ts#startOrResume',
@@ -277,8 +280,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-actions.ts#pushOfferToPendingEntry',
     '#entryChange',
     '#liveEntry',
+    'apps/api/src/modules/offer/sync.ts#assertContractDates',
     'apps/api/src/modules/offer/sync.ts#profilePatch',
-    'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
   ],
   'apps/api/src/modules/offer/linkage.ts#readOfferLinkageSetting': [
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
@@ -375,6 +378,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/routes.ts#route:PUT /:id': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/offer/approval.ts#offerApprovalFields',
     'apps/api/src/modules/offer/context.ts#offerFieldsCheck',
     'apps/api/src/modules/offer/context.ts#runOfferWrite',
     'apps/api/src/modules/offer/input.ts#parseOfferUpdate',
@@ -603,6 +607,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/offer/establishment.ts#assertNoStrictQuota',
     'apps/api/src/modules/offer/sync-lock.ts#inboundEmploymentContext',
+    '#assertContractDates',
     '#present',
     '#profilePatch',
     '#regularizationProbation',
