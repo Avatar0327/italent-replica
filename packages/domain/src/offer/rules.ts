@@ -262,6 +262,54 @@ export function planOfferSend(
   return { ok: true, patch: null };
 }
 
+/** 发送 / 重发（OF-R5）：待发按 OF-R3 判定后发送，已发直接重发（发送时已过审批判定）；其他状态不能发送。 */
+export function planOfferDispatch(
+  offer: Pick<OfferStateFacts, 'status' | 'approvalStatus' | 'offerType'>,
+  setting: OfferSendApprovalSetting,
+): OfferPlan<{ readonly kind: 'send' | 'resend' }> {
+  if (offer.status === 'sent') return { ok: true, patch: { kind: 'resend' } };
+  const plan = planOfferSend(offer, setting);
+  return plan.ok ? { ok: true, patch: { kind: 'send' } } : plan;
+}
+
+/**
+ * OF-R3 / OF-R4 必审字段：按 Offer 类型设置，只能是非必填字段（OF-R3）；出厂都为空。必审字段只在该类型开了
+ * “发送前须审批”时起作用（开启后才能设置，OF-R3；两项配置分属两个键，消费方一并判断）。
+ */
+export const OFFER_REVIEW_FIELDS_KEY = 'offer.review_fields';
+export type OfferReviewFieldsSetting = Readonly<Record<OfferType, readonly OfferField[]>>;
+export const OFFER_REVIEW_FIELDS_DEFAULT: OfferReviewFieldsSetting = { social: [], campus: [], intern: [] };
+
+export function validOfferReviewFieldsSetting(value: unknown): value is OfferReviewFieldsSetting {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  if (entries.length !== OFFER_TYPES.length) return false;
+  return entries.every(([type, fields]) => {
+    if (!(OFFER_TYPES as readonly string[]).includes(type) || !Array.isArray(fields)) return false;
+    const required = offerRequiredFields(type as OfferType);
+    return (
+      new Set(fields).size === fields.length &&
+      fields.every((field) => (OFFER_FIELDS as string[]).includes(field) && !required.includes(field))
+    );
+  });
+}
+
+/**
+ * OF-R4 前半：审批通过后修改了必审字段，旧的“审批通过”作废、回到未发起审批，须重新审批（发送判定因此不会复用旧结果）。
+ * 返回要写回的审批子状态；不需要改返回 null。“审批通过允许再次发起”开关的两条分支归 BE-14b3。
+ */
+export function approvalAfterEdit(
+  offer: Pick<OfferStateFacts, 'approvalStatus' | 'offerType'>,
+  changed: readonly OfferField[],
+  sendApproval: OfferSendApprovalSetting,
+  reviewFields: OfferReviewFieldsSetting,
+): OfferApprovalStatus | null {
+  if (offer.approvalStatus !== 'approved') return null;
+  const type = effectiveOfferType(offer.offerType);
+  if (!sendApproval[type]) return null;
+  return changed.some((field) => reviewFields[type].includes(field)) ? 'unsubmitted' : null;
+}
+
 /** 拒绝原因（A37，R2e4 5 项）与失效原因（R2e6 2 项）两个字典的预置项。 */
 export const OFFER_DICTIONARY_KINDS = ['refusal-reasons', 'invalid-reasons'] as const;
 export type OfferDictionaryKind = (typeof OFFER_DICTIONARY_KINDS)[number];

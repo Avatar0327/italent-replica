@@ -16836,7 +16836,10 @@
         ],
         "scope": [
           "employment scope",
-          "readContext（非配置对象）"
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all",
+          "scopeSql"
         ],
         "scopePoint": [
           "employment point"
@@ -18516,15 +18519,18 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.Offer:create"
         ],
         "scope": [
           "creator scope",
           "employment visibility",
           "requestScope",
+          "resolveModuleScope",
           "scope.all",
           "scopeSql",
           "visibleJob"
@@ -18642,6 +18648,41 @@
         ],
         "scope": [
           "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "POST /api/tenant/offers/:id/send": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
           "requestScope"
         ]
       }
