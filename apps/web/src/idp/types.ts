@@ -25,6 +25,8 @@ export interface PlanSummary {
   endDate?: string;
   tutorRole?: string;
   tutorEmployeeId?: string | null;
+  /** my-plans 按参与关系随行披露；null 不再回查姓名（DEC-611）。 */
+  tutorName?: string | null;
   status?: PlanStatus;
   currentStageName?: string | null;
   currentNodeName?: string | null;

@@ -245,6 +245,26 @@
       "obj:TenantBase.Employee:view"
     ]
   },
+  "GET /api/tenant/employment/employees/:id/part-times": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/employees/:id/probation": {
     "all": {
       "code": "NOT_FOUND",
@@ -359,6 +379,27 @@
     "fieldQueries": [],
     "scopeQueries": [
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/part-times/:recordId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "07d833590cef",
+      "reason": "PART_TIME_RECORD_NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
       "scope:data.scope.all:"
     ],
     "trace": [
@@ -1079,6 +1120,46 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "POST /api/tenant/employment/employees/:id/part-times": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "1ae7d407a043",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "POST /api/tenant/employment/employees/:id/part-times/preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "1ae7d407a043",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
     ]
   },
   "POST /api/tenant/employment/employees/:id/preview": {

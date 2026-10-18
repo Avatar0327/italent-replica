@@ -191,7 +191,7 @@ describe('F-182a my-plans 返回指导人（供个人发展计划的指导人列
     const rows = await w.ok<{ items: Summary[] }>(await w.realHttp(w.exceptionAdmin, 'GET', `${IDP}/my-plans`));
     const row = rows.items.find((p) => p.id === plan.id);
     expect(row).toBeDefined();
-    expect(row!.tutorEmployeeId ?? null).toBeNull();
+    expect(row).toHaveProperty('tutorEmployeeId', null);
     // 本人一支不受影响
     const mine = await w.ok<{ items: Summary[] }>(await w.realHttp(w.employee.userId, 'GET', `${IDP}/my-plans`));
     expect(mine.items.find((p) => p.id === plan.id)).toMatchObject({ tutorEmployeeId: w.manager.employeeId });
