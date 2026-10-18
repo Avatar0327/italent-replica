@@ -422,7 +422,7 @@ export async function updateOffer(
     ...(restart && before.status !== 'pending' ? { status: 'pending' as const } : {}),
   } as Partial<OfferRow>;
   const pushable = syncPendingEntry && !restart && before.status !== 'pending';
-  const push: OfferPush = pushable ? await pushEditToEntry(tx, ctx, before, { ...before, ...next }) : 'skipped';
+  const push: OfferPush = pushable ? await pushEditToEntry(tx, ctx, { ...before, ...next } as OfferRow) : 'skipped';
   const saved = await save(tx, ctx, before, 'update', { ...next, ...pushColumns(push, ctx, before) });
   return pushable ? { ...saved, entrySync: typeof push === 'string' ? push : 'failed' } : saved;
 }

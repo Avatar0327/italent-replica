@@ -113,14 +113,19 @@ function regularizationProbation(offer: OfferRow) {
   return probation ? { probation, probationMonths: months! } : { probation };
 }
 
+/** 合同终止日不得早于计划入职日（同步待入职与编辑并同步共用的业务校验；待入职合同表另有同口径的 CHECK 作兜底）。 */
+export function assertContractDates(offer: Pick<OfferRow, 'contractEndDate' | 'plannedEntryDate'>) {
+  if (offer.contractEndDate && offer.plannedEntryDate && offer.contractEndDate < offer.plannedEntryDate)
+    throw new AppError('VALIDATION_FAILED', '合同终止日期不能早于计划入职日期', {
+      reason: 'OFFER_CONTRACT_DATE_INVALID',
+    });
+}
+
 /** 创建 / 复用人员、绑定用户、生成同步产物；返回记录 ID 与产物类型。整个过程在调用方给的保存点里。 */
 async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, linked: LinkedPerson | null) {
   const base = inboundEmploymentContext(ctx, 0);
   const kind = offerSyncKind(offer.offerType as OfferType | null);
-  if (offer.contractEndDate && offer.contractEndDate < offer.plannedEntryDate!)
-    throw new AppError('VALIDATION_FAILED', '合同终止日期不能早于计划入职日期', {
-      reason: 'OFFER_CONTRACT_DATE_INVALID',
-    });
+  assertContractDates(offer);
   // 工号由 Offer ID 派生（同一 Offer 重试不会再造人）；入职准备里的“分配工号”之后再改
   const employeeId =
     linked?.employeeId ?? (await createEmployee(tx, base, { code: `OFR-${offer.id}`, name: offer.name! })).id;

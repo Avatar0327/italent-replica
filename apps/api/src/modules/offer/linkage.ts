@@ -26,13 +26,12 @@ import {
 import type { EntryOfferHooks } from '../employment/entry-offer-hooks.js';
 import { lockEmploymentEmployee, rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
-import { appendEmployee } from '../personnel/employee-write.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import type { OfferContext } from './context.js';
 import { currentEntryIds, findOfferByPendingEntry } from './entry-link.js';
 import { audit, facts, save, type OfferRow } from './service.js';
 import { inboundEmploymentContext, type OfferSyncContext } from './sync-lock.js';
-import { present, profilePatch } from './sync.js';
+import { assertContractDates, present, profilePatch } from './sync.js';
 
 export async function readOfferLinkageSetting(tx: Tx, tenantId: string): Promise<OfferLinkageSetting> {
   const value = (await readEffectiveSetting(tx, tenantId, OFFER_LINKAGE_KEY)).value;
@@ -120,29 +119,23 @@ function entryChange(offer: OfferRow) {
 }
 
 /**
- * 编辑并同步（OF-R14，F-171⑤）：已同步且未取消入职的待入职，把 after（编辑后的整行）推送过去——员工信息（姓名 / 邮箱 /
- * 手机 / 证件等变化项）、任职记录字段、计划入职日、试用期、合同。没有关联 / 已取消 / 已手工删除 → skipped；没有差异 → unchanged。
- * 推送在保存点里：业务规则拒绝回滚推送、给出原因（同 #407 的同步失败口径，Offer 本身的编辑保留），其他错误原样抛出整笔回滚。
+ * 编辑并同步（OF-R14，F-171⑤）：after（编辑后的整行）经 employment 的唯一推送端口推送到关联的待入职（核验未取消 → 以目标
+ * 当前快照算差异 → 合同日期预校验 → 写入，见 entry-actions.ts pushOfferToPendingEntry）。没有关联 / 已手工删除 / 已取消入职 →
+ * skipped（一概不写）；没有差异 → unchanged。推送在保存点里：业务规则拒绝（含合同日期冲突）回滚推送、给出原因（同 #407 的同步
+ * 失败口径，Offer 本身的编辑保留），其他错误原样抛出整笔回滚。
  */
-export async function pushEditToEntry(
-  tx: Tx,
-  ctx: OfferContext,
-  before: OfferRow,
-  after: OfferRow,
-): Promise<OfferPush> {
+export async function pushEditToEntry(tx: Tx, ctx: OfferContext, after: OfferRow): Promise<OfferPush> {
   const live = await liveEntry(tx, ctx, after);
   if (!live || !after.plannedEntryDate) return 'skipped';
   try {
-    return await tx.transaction(async (savepoint) => {
-      const changed = Object.fromEntries(
-        Object.entries(profilePatch(after)).filter(([key, value]) => profilePatch(before)[key] !== value),
-      );
-      if (Object.keys(changed).length)
-        await appendEmployee(savepoint, { ...ctx, expectedRevision: 0 }, live.employeeId, changed, false);
-      const pushed = await pushOfferToPendingEntry(savepoint, live.context, live.id, entryChange(after));
-      if (pushed === 'cancelled') return 'skipped';
-      return pushed !== 'unchanged' || Object.keys(changed).length ? 'pushed' : 'unchanged';
-    });
+    const pushed = await tx.transaction((savepoint) =>
+      pushOfferToPendingEntry(savepoint, live.context, live.id, {
+        ...entryChange(after),
+        profile: profilePatch(after) as Record<string, string>,
+        validate: () => assertContractDates(after),
+      }),
+    );
+    return pushed === 'cancelled' ? 'skipped' : pushed;
   } catch (error) {
     const failure = ruleRejection(error);
     if (!failure) throw error;
