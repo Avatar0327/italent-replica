@@ -32,15 +32,13 @@ export const infoRows = {
   },
 };
 export type InfoKind = keyof typeof infoRows;
-export async function mockInfo(
-  page: Page,
-  options: IdpMockOptions & {
-    invalidReceipt?: boolean;
-    personError?: boolean;
-    careerValues?: Record<string, unknown>;
-    conflictValues?: Record<string, unknown>;
-  } = {},
-) {
+type InfoMockOptions = IdpMockOptions & {
+  invalidReceipt?: boolean;
+  personError?: boolean;
+  careerValues?: Record<string, unknown>;
+  conflictValues?: Record<string, unknown>;
+};
+export async function mockInfo(page: Page, options: InfoMockOptions = {}) {
   await mockIdp(page, options);
   const calls: { method: string; path: string; body: Record<string, unknown>; revision: string | undefined }[] = [];
   const rows: Record<string, Record<string, unknown>[]> = Object.fromEntries(

@@ -39,7 +39,7 @@ async function setup(page: Page, options: Parameters<typeof mockInfo>[1] = {}) {
     const prefix = index < 0 ? '合成类别' : labels[index];
     const rows = Array.from({ length: kind === 'level-types' ? 2 : 232 }, (_, i) => ({
       id: jobId(i + 1),
-      name: `${prefix}${i + 1}`,
+      name: kind === 'posts' && i === 1 ? '合成停用职务' : `${prefix}${i + 1}`,
       revision: 1,
       enabled: i !== 1,
       displayOrder: i + 1,
@@ -174,12 +174,26 @@ test('AC-FE-F185-06 空快照显示空值，不从实时任职回填', async ({ 
   await setup(page, {
     careerValues: { currentLevelId: null, currentPositionId: null, currentPostId: null, currentPostName: null },
   });
+  let currentReads = 0;
+  await page.route('**/api/tenant/employment/employees/*/records**', (route) => {
+    currentReads++;
+    return route.fulfill({
+      json: {
+        items: [
+          { id: infoId, revision: 1, isCurrent: true, fields: { levelId: jobId(1), positionId, postId: jobId(2) } },
+        ],
+        page: 1,
+        pageSize: 200,
+      },
+    });
+  });
   await enter(page);
-  const row = page.locator('tbody tr').first();
+  const row = page.locator(`tr[data-row-key="${infoId}"]`);
   const headers = await page.getByRole('columnheader').allTextContents();
   for (const label of ['当前职级', '当前职位', '当前职务']) {
     await expect(row.locator('td').nth(headers.indexOf(label))).toHaveText('--');
   }
+  expect(currentReads).toBe(0);
 });
 
 test('AC-FE-F185-07 409 重读保留已改目标、回填未改目标并用新 revision 重提', async ({ page }) => {
@@ -227,4 +241,34 @@ test('AC-FE-F185-09 职级按类别与级别排序，停用项不进入候选', 
   await expect(options.nth(2)).toHaveText('拟晋升职级5');
   await page.getByRole('dialog').getByLabel('拟晋升职级', { exact: true }).fill('拟晋升职级2');
   await expect(options.getByText('拟晋升职级2', { exact: true })).toHaveCount(0);
+});
+
+test('AC-FE-F185-10 已保存的停用目标可回显，但不重新加入启用候选', async ({ page }) => {
+  const { queries } = await setup(page, { careerValues: { targetPostId: jobId(2) } });
+  await enter(page);
+  await edit(page);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.info-field-targetPostId')).toContainText('合成停用职务');
+  await dialog.getByLabel('拟晋升职务', { exact: true }).fill('合成停用职务');
+  const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option-content');
+  await expect
+    .poll(() => queries.some((url) => url.pathname.endsWith('/posts') && url.searchParams.get('page') === '2'))
+    .toBe(true);
+  await expect(options.getByText('合成停用职务', { exact: true })).toHaveCount(0);
+});
+
+test('AC-FE-F185-11 当前快照查看权独立于员工字段，裁剪员工不吞记录', async ({ page }) => {
+  await setup(page, {
+    fields: {
+      'IDP.Career': {
+        viewable: ['startDate', 'endDate', 'currentLevelId', 'currentPositionId', 'currentPostId'],
+        editable: [],
+      },
+    },
+  });
+  await enter(page);
+  await expect(page.getByText('共4条', { exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '发展员工', exact: true })).toHaveCount(0);
+  for (const value of ['拟晋升职级1', '合成轮岗职位', '合成快照职务'])
+    await expect(page.getByRole('table')).toContainText(value);
 });
