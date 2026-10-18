@@ -18,7 +18,6 @@ import {
   pageQuery,
   readContext,
   readPageContext,
-  requireEmploymentScope,
   requireEmploymentWrite,
   runWrite,
   trimEmploymentResponse,
@@ -28,7 +27,7 @@ import { getEmployee } from '../employees.js';
 import { customFields, normalizedUuid, presetFieldsSchema } from '../fields.js';
 import { parse } from '../entry-routes.js';
 import { listEmployeePartTimes, loadPartTime, partTimeNotFound } from './read.js';
-import { partTimeCreateGuard, requirePartTimePreviewButton } from './replay-guard.js';
+import { partTimeCreateGuard, requirePartTimePreviewButton, requirePartTimeScope } from './replay-guard.js';
 import { createPartTime, previewPartTime, type CreatePartTimeInput } from './service.js';
 import { PART_TIME_FIELD_KEYS } from './validation.js';
 
@@ -104,7 +103,7 @@ function registerCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = parse(createSchema, await jsonBody(c));
     await requireEmploymentWrite(ctx, 'create', writeBusiness(body));
     await requirePartTimePreviewButton(deps, ctx);
-    requireEmploymentScope(ctx, id, body.fields.departmentId);
+    await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeScope(tx, ctx, id, body.fields.departmentId));
     const preview = await withTenant(deps.db, ctx.tenantId, (tx) => previewPartTime(tx, ctx, serviceInput(id, body)));
     const { warnings, ...rest } = preview;
     return c.json(
@@ -118,7 +117,7 @@ function registerCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = parse(createSchema, await jsonBody(c));
     const business = writeBusiness(body);
     await requireEmploymentWrite(ctx, 'create', business, PART_TIME_BUTTONS.direct);
-    requireEmploymentScope(ctx, id, body.fields.departmentId);
+    await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeScope(tx, ctx, id, body.fields.departmentId));
     return runWrite(
       c,
       deps,

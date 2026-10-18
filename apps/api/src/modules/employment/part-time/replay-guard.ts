@@ -13,7 +13,7 @@ import {
   EMPLOYMENT_OBJECT,
   commandContext,
   requireEmployeeInScope,
-  requireEmploymentScope,
+  requireScopedEmploymentObject,
   requireEmploymentWrite,
   scopedGuard,
   type ScopedCommandGuard,
@@ -27,7 +27,21 @@ export interface PartTimeCreateTarget {
   readonly departmentId: string;
 }
 
-/** §7.2 预览 / 直接新增行：看全部别名写权 → 员工主职在范围 → 新增权 + 按钮 + 字段创建权 → 兼职部门在范围。 */
+/**
+ * §7.2 的范围两项（PT-R2 员工按主职在范围、PT-R3 兼职部门在范围）的**唯一入口**：入口（事务内查）、命令 guard、预览共用。
+ * 必须是事务内的异步判定：同步的 requireEmploymentScope 遇到带 personQuery 的“直线汇报关系”范围会一律拒绝（第 2 轮 P2-1）。
+ */
+export async function requirePartTimeScope(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  departmentId: string,
+): Promise<void> {
+  await requireEmployeeInScope(tx, ctx, employeeId);
+  await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId);
+}
+
+/** §7.2 预览 / 直接新增行：看全部别名写权 → 员工主职与兼职部门在范围 → 新增权 + 按钮 + 字段创建权。 */
 export async function requirePartTimeCreateAccess(
   tx: Tx,
   scoped: EmploymentContext,
@@ -39,9 +53,8 @@ export async function requirePartTimeCreateAccess(
       action: 'tenant.employment.write',
       resource: target.employeeId,
     });
-  await requireEmployeeInScope(tx, scoped, target.employeeId);
+  await requirePartTimeScope(tx, scoped, target.employeeId, target.departmentId);
   await requireEmploymentWrite(scoped, 'create', target.business, PART_TIME_BUTTONS.direct);
-  requireEmploymentScope(scoped, target.employeeId, target.departmentId);
 }
 
 /** 直接新增的命令内复核：按当前授权在命令事务内重过 requirePartTimeCreateAccess。 */
