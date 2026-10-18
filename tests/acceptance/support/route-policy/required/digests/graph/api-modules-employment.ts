@@ -2263,6 +2263,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#patchOf': [
     '#PRESET_EDITS',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+    'packages/domain/src/employment/part-time-constants.ts#partTimeBusinessField',
   ],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#snapshot': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
@@ -2273,6 +2274,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/approval/types.ts#PROFILE_FORM_FIELDS',
+    'packages/domain/src/employment/part-time-constants.ts#partTimePermissionFields',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -2478,6 +2480,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
+  'apps/api/src/modules/employment/part-time/routes.ts#editBusiness': [
+    'packages/domain/src/employment/part-time-constants.ts#partTimePermissionFields',
+  ],
   'apps/api/src/modules/employment/part-time/routes.ts#editInput': [
     'apps/api/src/modules/employment/part-time/validation.ts#PART_TIME_FIELD_KEYS',
   ],
@@ -2571,6 +2576,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#serviceInput': [
     'apps/api/src/modules/employment/part-time/validation.ts#PART_TIME_FIELD_KEYS',
+  ],
+  'apps/api/src/modules/employment/part-time/routes.ts#writeBusiness': [
+    'packages/domain/src/employment/part-time-constants.ts#partTimePermissionFields',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#assertRecoveryKeepsExclusive': [
     'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree',
