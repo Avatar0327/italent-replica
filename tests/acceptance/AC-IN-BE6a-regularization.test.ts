@@ -150,15 +150,7 @@ describe('AC-IN-BE6a-02 直接实习转正：校验', () => {
         return id;
       },
     ],
-    [
-      '有审批中的实习转正申请',
-      'INTERN_REGULARIZATION_IN_PROGRESS',
-      async (w) => {
-        const id = await intern(w);
-        await w.applyRegularization(id);
-        return id;
-      },
-    ],
+    // 有审批中的实习转正申请：BE-6b 起直接转正改为自动作废在途申请（DEC-593③），见 AC-INTERN-end-regularization
   ])('%s → 409 %s', async (_label, reason, setup) => {
     const w = await internWorld(testDb().db, `be6a-reg-reject-${uniqueSuffix()}`);
     const response = await w.regularize(await setup(w), withProbation(w.org.id));
