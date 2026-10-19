@@ -433,9 +433,9 @@ async function assertSuccessorSequence(
       AND t.start_date=${position.date}::date AND t.sort_order=${position.order}
   `),
   );
-  // 离职设计 §5.8：离职之后紧跟已落地的调动（未来直接调动 / 同日迟到落地、按 C-3 排在离职之后）放行，
-  // 落地后由 detachFutureTransfers 摘下该调动的时间轴行，离职照常生效
-  if (kind === 'leave' && successor?.kind === 'transfer') return;
+  // 离职设计 §5.8（退休同，R2-T04 §4.1）：离职 / 退休之后紧跟已落地的调动（未来直接调动 / 同日迟到落地、
+  // 按 C-3 排在其后）放行，落地后由 detachFutureTransfers 摘下该调动的时间轴行，离职 / 退休照常生效
+  if (isExitKind(kind) && successor?.kind === 'transfer') return;
   const reason = successor && sequenceViolation(kind, successor.kind);
   if (reason) {
     throw new AppError('CONFLICT', '任职业务前后顺序不合法', {

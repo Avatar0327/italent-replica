@@ -58,7 +58,7 @@ import { detachFutureTransfers, loadPlannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import type { EmploymentContext } from './types.js';
 import { appendEmploymentState, materializeEmploymentRecord } from './write-service.js';
-import { appendEmployee } from '../personnel/employee-write.js';
+import { appendEmployee, employeeSnapshot } from '../personnel/employee-write.js';
 
 export interface ExitActivationOptions {
   readonly trigger: ActivationTrigger;
@@ -301,6 +301,9 @@ async function syncActualRetirementDate(
   late: { lastWorkDate: string; effectiveDate: string },
 ) {
   const retired = await rederiveRetireType(tx, ctx, business.id, late.lastWorkDate);
+  // 审计旧值取写入前的真实人事快照（同事务、员工锁内）：再次退休（退休 → 返聘 → 再退休）时是上一次的实际退休日期
+  const previous = await employeeSnapshot(tx, ctx, business.employeeId);
+  const before = (previous?.actualRetirementDate as string | null | undefined) ?? null;
   await appendEmployee(tx, ctx, business.employeeId, { actualRetirementDate: late.effectiveDate }, false);
   await auditEmployment(
     tx,
@@ -308,7 +311,7 @@ async function syncActualRetirementDate(
     'retirement.actual_date.synced',
     'exit-request',
     business.id,
-    { actualRetirementDate: null, ...(retired ? { retireType: retired.before } : {}) },
+    { actualRetirementDate: before, ...(retired ? { retireType: retired.before } : {}) },
     {
       actualRetirementDate: late.effectiveDate,
       lastWorkDate: late.lastWorkDate,

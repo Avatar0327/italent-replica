@@ -1,6 +1,6 @@
 /** §5.4 / DEC-343：任职已持员工锁；目标锁 → 记录行。台账与继任变更均复用上游事务。 */
 import { and, eq, sql, successionExitApplications as applications, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS, tenantLocalDate } from '@italent/domain';
+import { isTerminatingRecord, TERMINATING_KIND_LABELS, tenantLocalDate } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
 import { scopeAllows, type ModuleScope } from '../permission/module-access.js';
@@ -76,6 +76,13 @@ export async function applyExit(
   if (scope && active.some((r) => !scopeAllows(scope, { orgId: r.anchor_org, creatorId: r.created_by })))
     throw new CalcObjectFailure('PRINCIPAL_SCOPE_MISSING', true);
   const ended: string[] = [];
+  // 结束原因按终止业务取名（离职 / 退休）；终止判定与名称都来自 domain 的同一份登记
+  const [exitRecord] = rowsOf<{ kind: string }>(
+    await tx.execute(sql`SELECT kind FROM employment_records WHERE tenant_id=${ctx.tenantId}::uuid
+      AND id=${application.employmentRecordId}::uuid`),
+  );
+  const endReason =
+    TERMINATING_KIND_LABELS[exitRecord?.kind as keyof typeof TERMINATING_KIND_LABELS] ?? TERMINATING_KIND_LABELS.leave;
   for (const row of active) {
     const endDate = leaveDate < row.start_date ? row.start_date : leaveDate;
     const before = {
@@ -88,12 +95,12 @@ export async function applyExit(
     const after = {
       endDate,
       endSource: 'exit',
-      endReason: '离职',
+      endReason,
       exitRecordId: application.employmentRecordId,
       revision: row.revision + 1,
     };
     await tx.execute(sql`UPDATE succession_records SET end_date=${endDate}::date, end_source='exit',
-      end_reason='离职', exit_record_id=${application.employmentRecordId}::uuid,
+      end_reason=${endReason}, exit_record_id=${application.employmentRecordId}::uuid,
       ended_at=${ctx.now.toISOString()}::timestamptz, ended_by=${ctx.userId}::uuid,
       revision=revision+1, updated_at=${ctx.now.toISOString()}::timestamptz, updated_by=${ctx.userId}::uuid
       WHERE tenant_id=${ctx.tenantId}::uuid AND id=${row.id}::uuid`);
@@ -127,7 +134,7 @@ export async function applyExit(
 
 export const successionExitHooks: EmployeeStatusHooks = {
   async onRecordMaterialized(tx, ctx, event) {
-    if (event.kind !== 'leave' || event.employeeStatus !== EMPLOYEE_STATUS.left) return;
+    if (!isTerminatingRecord(event.kind, event.employeeStatus)) return;
     const [existing] = await tx.select().from(applications).where(key(ctx.tenantId, event.recordId));
     if (existing) return;
     const today = tenantLocalDate(ctx.now, ctx.timezone);

@@ -1648,6 +1648,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/retirement-application.ts#rederiveRetireType',
     'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
+    'apps/api/src/modules/personnel/employee-write.ts#employeeSnapshot',
   ],
   'apps/api/src/modules/employment/exit-application.ts#createExitApplication': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -4872,6 +4873,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#assertEmployTypeUsage': ['#NEW_CYCLE_KINDS'],
   'apps/api/src/modules/employment/write-service.ts#assertSuccessorSequence': [
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#sequenceViolation',
   ],
