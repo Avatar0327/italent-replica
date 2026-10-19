@@ -34,6 +34,19 @@ const BUTTON = { ...EXIT_BUTTONS, retry: 'Employment.RetryActivation' } as const
 export interface AckRecord {
   readonly ids: readonly string[];
   readonly hash: string;
+  /** DEC-626：确认清单超过 VOID_LIMIT 时创建 / 提交不拦截，但不发完整令牌，以此标记“超限、未完整确认”（ids 为空、hash 为空）。 */
+  readonly overLimit?: true;
+}
+
+/** DEC-626：超限单的确认记录；生效日重算以它为准，不能冒充完整集合。 */
+const OVER_LIMIT_ACK: AckRecord = Object.freeze({ ids: [], hash: '', overLimit: true });
+export const isOverLimitAck = (ack: AckRecord | null | undefined) => ack?.overLimit === true;
+
+/** 创建 / 提交响应里的超限提示（DEC-626）；只带上限，不带实际数量（查询只取到上限 + 1，也不暴露看不到的申请数量）。 */
+export async function withAckWarnings<T extends { readonly id: string }>(tx: Tx, ctx: EmploymentContext, business: T) {
+  const row = await loadExitRequest(tx, ctx.tenantId, business.id);
+  if (!isOverLimitAck((row?.pendingTransferAck ?? null) as AckRecord | null)) return business;
+  return { ...business, warnings: [{ reason: 'EXIT_APPLICATIONS_TOO_MANY', limit: VOID_LIMIT }] };
 }
 
 export interface ExitGateTarget {
@@ -430,8 +443,8 @@ async function checkPendingTransferAck(
 ): Promise<AckRecord | null> {
   const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
   if (!set) return null;
-  if (set.tooMany)
-    throw conflict('EXIT_APPLICATIONS_TOO_MANY', '在途调动申请过多，请先处理后再办理离职', { limit: VOID_LIMIT });
+  // DEC-626：超限不拦截，也不发（部分覆盖的）令牌；标记随离职单保存，生效日按当时状态重算
+  if (set.tooMany) return OVER_LIMIT_ACK;
   const { ids, hash } = set;
   if (provided === hash || stored?.hash === hash) return { ids, hash };
   const withAssessments = set.assessments.length > 0;

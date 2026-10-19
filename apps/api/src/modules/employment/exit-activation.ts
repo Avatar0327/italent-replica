@@ -25,6 +25,7 @@ import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEve
 import './exit-void-assessments.js';
 import {
   loadExitRequest,
+  isOverLimitAck,
   pendingTransferAckSet,
   regularizationBlocker,
   VOID_LIMIT,
@@ -124,10 +125,48 @@ export async function postponeLateExit(
   return { postponed: true, lastWorkDate: resolved.lastWorkDate, effectiveDate: resolved.effectiveDate };
 }
 
-const sameIds = (a: readonly string[], b: readonly string[]) =>
-  a.length === b.length && [...a].sort().every((id, i) => id === [...b].sort()[i]);
+const sorted = (ids: readonly string[]) => [...ids].sort();
+const sameIds = (a: readonly string[], b: readonly string[]) => {
+  const left = sorted(a);
+  const right = sorted(b);
+  return left.length === right.length && left.every((id, i) => id === right[i]);
+};
 
-/** 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；§8 确认集合按 L′ 重算，差异只写审计。 */
+/**
+ * §8 确认集合按生效用的最后工作日重算，差异只写审计（顺延 L′ 后，或创建 / 提交时超限未完整确认——DEC-626）。
+ * 令牌哈希含最后工作日，顺延后必变，所以只比规范化后的完整 ID 集合；超限单没有完整确认集合，按“未完整确认”记全部实际 ID。
+ * 重算时仍超限与步骤 1 同口径整单拒绝，不拿截断的集合算差异（F-241）。
+ */
+async function reconcileConfirmedSet(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  exit: ExitRow,
+  lastWorkDate: string,
+) {
+  const stored = (exit.pendingTransferAck ?? null) as AckRecord | null;
+  const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate);
+  if (recomputed?.tooMany)
+    throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
+      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
+    });
+  const incomplete = isOverLimitAck(stored);
+  if (!incomplete && sameIds(stored?.ids ?? [], recomputed?.ids ?? [])) return;
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.exit.ack_set_changed',
+    'exit-request',
+    business.id,
+    incomplete ? { ids: [], incomplete: true } : { ids: stored?.ids ?? [] },
+    { ids: recomputed?.ids ?? [], lastWorkDate },
+    undefined,
+    undefined,
+    { employeeId: business.employeeId },
+  );
+}
+
+/** 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；再重算 §8 确认集合。 */
 async function revalidateAfterPostponement(
   tx: Tx,
   ctx: EmploymentContext,
@@ -140,27 +179,7 @@ async function revalidateAfterPostponement(
     throw new AppError('CONFLICT', '存在审批中的转正流程，请先处理', {
       activationFailure: { reason: 'EXIT_REGULARIZATION_IN_FLIGHT', detail: { ...blocker } },
     });
-  const stored = (exit.pendingTransferAck ?? null) as AckRecord | null;
-  const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate);
-  // 超上限与步骤 1 同口径整单拒绝，不拿截断的集合算差异（F-241）
-  if (recomputed?.tooMany)
-    throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
-      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
-    });
-  // 令牌哈希含最后工作日，顺延成 L′ 后哈希必变；这里只看规范化（已排序）后的完整 ID 集合是否真有差异（F-241）
-  if (!sameIds(stored?.ids ?? [], recomputed?.ids ?? []))
-    await auditEmployment(
-      tx,
-      ctx,
-      'employment.exit.ack_set_changed',
-      'exit-request',
-      business.id,
-      { ids: stored?.ids ?? [] },
-      { ids: recomputed?.ids ?? [], lastWorkDate },
-      undefined,
-      undefined,
-      { employeeId: business.employeeId },
-    );
+  await reconcileConfirmedSet(tx, ctx, business, exit, lastWorkDate);
 }
 
 /** 步骤 3：预减时点 R 与 staff_id 不变，只追加 effective 阶段修正行记 E′（幂等：同业务 + phase + kind + target 已有则跳过）。 */
@@ -265,6 +284,9 @@ async function runSteps(
   if (late.postponed) {
     await revalidateAfterPostponement(tx, ctx, business, exit, late.lastWorkDate);
     await assertExtendedEmploymentAvailable(tx, ctx, ref, before, planned, late.effectiveDate);
+  } else if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null)) {
+    // DEC-626：创建 / 提交时超限未完整确认，不论是否迟到都在作废前按当时状态重算
+    await reconcileConfirmedSet(tx, ctx, business, exit, late.lastWorkDate);
   }
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
