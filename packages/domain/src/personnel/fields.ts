@@ -44,7 +44,8 @@ export const EMPLOYEE_EDITABLE_FIELDS: readonly PersonnelField[] = [
   { code: 'rehireType', kind: 'text' },
   { code: 'confirmRehireUserId', kind: 'uuid' },
   { code: 'expectedRetirementDate', kind: 'date' },
-  { code: 'actualRetirementDate', kind: 'date' },
+  // R2-T04 §2.3：实际退休日期是系统字段，只由退休生效 / 撤销写，人事 PATCH 不可改
+  { code: 'actualRetirementDate', kind: 'date', system: true },
   { code: 'allowToLoginIn', kind: 'boolean' },
   { code: 'namePinyin', kind: 'text' },
   { code: 'pinyinInitials', kind: 'text' },

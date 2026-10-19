@@ -96,3 +96,15 @@ export const EXIT_BUTTONS = {
   edit: 'Employment.DimissionEdit',
   cancel: 'Employment.DimissionCancel',
 } as const;
+
+/** 退休四个按钮（R2-T04 §3.1，DEC-637 A-2）：退休 / 退休申请 / 编辑退休 / 撤销退休；独立授权，不复用 Dimission*。 */
+export const RETIREMENT_BUTTONS = {
+  direct: 'Employment.Retire',
+  application: 'Employment.RetireApproval',
+  edit: 'Employment.RetireEdit',
+  cancel: 'Employment.RetireCancel',
+} as const;
+
+/** 离职 / 退休共用一个门禁，按业务类型取按钮（门禁、撤销、预览都经这一个入口）。 */
+export const buttonsOf = (kind: 'leave' | 'retirement' | string) =>
+  kind === 'retirement' ? RETIREMENT_BUTTONS : EXIT_BUTTONS;

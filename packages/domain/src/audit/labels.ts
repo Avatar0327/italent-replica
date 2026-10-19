@@ -204,6 +204,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   startDate: '开始日期',
   effectiveDate: '生效日期',
   lastWorkDate: '最后工作日',
+  // R2-T04 退休（审计动作 retirement.* / employment.retirement.*）
+  retireType: '退休类型',
+  reEmployed: '是否同时返聘',
+  expectedRetirementDate: '预计退休日期',
+  actualRetirementDate: '实际退休日期',
   stopDate: '结束日期',
   entryDate: '入职日期',
   kind: '业务类型',

@@ -6,7 +6,14 @@
  * 按钮权 → 范围（范围外 404）→ 字段权 → §4A 前置条件；写入口的按钮、范围、字段在命令事务内按当前授权复核
  * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。E ≤ 今天的直接离职在保存事务内生效（§5.3）。
  */
-import { buttonResource, EXIT_BUTTONS, EXIT_SETTING_KEYS, EXIT_SETTINGS, tenantLocalDate } from '@italent/domain';
+import {
+  buttonResource,
+  buttonsOf,
+  EXIT_BUTTONS,
+  EXIT_SETTING_KEYS,
+  EXIT_SETTINGS,
+  tenantLocalDate,
+} from '@italent/domain';
 import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -130,7 +137,7 @@ function registerExitDictionaries(router: Hono<TenantEnv>, deps: TenantRouteDeps
 }
 
 /** 业务日期（YYYY-MM-DD 且为真实日期）。 */
-const day = z.string().refine((value) => {
+export const day = z.string().refine((value) => {
   try {
     return businessDate(value) === value;
   } catch {
@@ -138,27 +145,32 @@ const day = z.string().refine((value) => {
   }
 }, '日期不合法');
 
-const parse = <T>(schema: z.ZodType<T>, value: unknown): T => {
+export const parse = <T>(schema: z.ZodType<T>, value: unknown): T => {
   const result = schema.safeParse(value);
   if (!result.success) throw new AppError('VALIDATION_FAILED', '请求字段不合法', result.error.issues);
   return result.data;
 };
 
-/** 预览：直接离职 / 离职申请两个按钮任一即可（§4A preview 行，功能权是 object.view）；两项都无 → 403。 */
-async function requirePreviewButton(deps: TenantRouteDeps, ctx: EmploymentContext) {
+/** 预览：直接 / 申请两个按钮任一即可（§4A preview 行，功能权是 object.view）；两项都无 → 403。退休取 Retire* 两个按钮。 */
+export async function requirePreviewButton(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  kind: 'leave' | 'retirement' = 'leave',
+) {
+  const buttons = buttonsOf(kind);
   const held = async (code: string) =>
     deps.authorize({ ...ctx, action: 'object.button', resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail') });
-  if (!(await held(EXIT_BUTTONS.direct)) && !(await held(EXIT_BUTTONS.application)))
-    throw new AppError('FORBIDDEN', '没有离职办理权限');
+  if (!(await held(buttons.direct)) && !(await held(buttons.application)))
+    throw new AppError('FORBIDDEN', kind === 'retirement' ? '没有退休办理权限' : '没有离职办理权限');
 }
 
-/** 专用新建入口的请求体：任职业务输入（kind 固定为 leave，不接受 kind）+ exit 区块（§4B 字段）。 */
-function parseExitCreate(ctx: EmploymentContext, body: unknown) {
+/** 专用新建入口的请求体：任职业务输入（kind 由入口固定，不接受 kind）+ exit 区块（§4B 字段）。 */
+export function parseExitCreate(ctx: EmploymentContext, body: unknown, kind: 'leave' | 'retirement' = 'leave') {
   const { rawInput, exit } = splitExitOptions(body);
   if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput) || 'kind' in rawInput)
-    throw new AppError('VALIDATION_FAILED', '离职入口不接受业务类型参数');
+    throw new AppError('VALIDATION_FAILED', '离职 / 退休入口不接受业务类型参数');
   const raw = rawInput as Record<string, unknown>;
-  const input = normalizeEmploymentInput(ctx, { fields: {}, ...raw, kind: 'leave' });
+  const input = normalizeEmploymentInput(ctx, { fields: {}, ...raw, kind });
   return {
     mode: input.mode,
     lastWorkDate: input.lastWorkDate!,
@@ -235,17 +247,22 @@ const batchSchema = z.strictObject({
     .max(EXIT_BATCH_LIMIT),
 });
 
-/** 离职单（有扩展行的 kind=leave）才走离职入口，调动等其他单 404；范围由 authorizeBusinessWrite 先判（写入口径 404）。 */
-async function requireExitBusiness(deps: TenantRouteDeps, ctx: EmploymentContext, id: string) {
+/** 离职单（有扩展行的 kind=leave）才走离职入口，调动等其他单 404（退休入口同理，kind=retirement）；范围由 authorizeBusinessWrite 先判（写入口径 404）。 */
+export async function requireExitBusiness(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  kind: 'leave' | 'retirement' = 'leave',
+) {
   await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const exit = await loadExitRequest(tx, ctx.tenantId, id);
-    if (!exit || (await businessKind(tx, ctx.tenantId, id)) !== 'leave')
-      throw new AppError('NOT_FOUND', '离职单不存在');
+    if (!exit || (await businessKind(tx, ctx.tenantId, id)) !== kind)
+      throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   });
 }
 
 /** 撤回不接受参数；提交只接受在途调动确认令牌（§8）。 */
-async function transitionBody(c: Context<TenantEnv>, action: 'submit' | 'withdraw') {
+export async function transitionBody(c: Context<TenantEnv>, action: 'submit' | 'withdraw') {
   if (!c.req.header('content-type')) return undefined;
   const body = await jsonBody(c);
   if (action === 'withdraw') return void parse(z.strictObject({}), body);

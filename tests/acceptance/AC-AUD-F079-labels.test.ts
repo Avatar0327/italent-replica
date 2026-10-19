@@ -11,6 +11,11 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['createdBy', '创建人'],
     ['PartDisAgree', '部分不同意'],
     ['AllDisAgree', '全部不同意'],
+    // R2-T04 退休审计动作的变更内容
+    ['retireType', '退休类型'],
+    ['reEmployed', '是否同时返聘'],
+    ['expectedRetirementDate', '预计退休日期'],
+    ['actualRetirementDate', '实际退休日期'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });

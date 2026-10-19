@@ -1,6 +1,6 @@
 /** F-092 / DEC-416⑦：所有退组和新增成员判断共用锁后的时刻、业务日期与任职状态口径。 */
 import { sql, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS, tenantLocalDate } from '@italent/domain';
+import { isTerminatingRecord, tenantLocalDate } from '@italent/domain';
 import { currentAuditRequest } from '../../audit/request-context.js';
 import { getEmployee } from '../employment/employees.js';
 import type { EmployeeStatusHookContext } from '../employment/status-hooks.js';
@@ -64,8 +64,7 @@ export async function lockReviewGroupState<C extends EmployeeStatusHookContext>(
 /** 记录是否已触发退出与员工当前是否已重聘分别判断，旧周期不能因当前在职而漏结清。 */
 export function isDueReviewGroupLeave(state: ReviewGroupState, record: LeavePoint): boolean {
   return (
-    record.kind === 'leave' &&
-    record.employeeStatus === EMPLOYEE_STATUS.left &&
+    isTerminatingRecord(record.kind, record.employeeStatus) &&
     record.effectiveDate !== null &&
     record.effectiveDate <= state.today
   );

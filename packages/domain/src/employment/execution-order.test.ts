@@ -52,8 +52,23 @@ describe('finalExecutionDate（§5.0）', () => {
       );
   });
 
-  it.each(EXECUTION_KINDS.filter((kind) => kind !== 'transfer' && kind !== 'leave'))(
-    '%s 按原生效日落地，不随执行日顺延（含 retirement，契约 C-5 末句）',
+  it('退休沿用离职的迟到顺延（R2-T04 §4.2，DEC-638 A-15）：与 leave 逐日等价', () => {
+    for (const lastWorkDate of ['2026-09-30', '2026-10-17', '2026-10-18', '2026-12-31'])
+      for (const executionDate of ['2026-10-01', '2026-10-18', '2027-01-01']) {
+        const input = { plannedEffectiveDate: '1900-01-01', lastWorkDate, executionDate };
+        expect(finalExecutionDate({ ...input, kind: 'retirement' })).toBe(
+          finalExecutionDate({ ...input, kind: 'leave' }),
+        );
+      }
+    const retire = { ...base, kind: 'retirement' } as const;
+    expect(finalExecutionDate({ ...retire, plannedEffectiveDate: '2026-10-10', lastWorkDate: '2026-10-09' })).toBe(
+      '2026-10-18',
+    );
+    expect(finalExecutionDate({ ...retire, plannedEffectiveDate: '2026-10-25' })).toBe('2026-10-25');
+  });
+
+  it.each(EXECUTION_KINDS.filter((kind) => !['transfer', 'leave', 'retirement'].includes(kind)))(
+    '%s 按原生效日落地，不随执行日顺延（契约 C-5 末句）',
     (kind) => {
       expect(finalExecutionDate({ ...base, kind, plannedEffectiveDate: '2026-10-10' })).toBe('2026-10-10');
       expect(finalExecutionDate({ ...base, kind, plannedEffectiveDate: '2026-10-25' })).toBe('2026-10-25');

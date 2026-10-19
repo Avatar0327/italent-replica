@@ -17,6 +17,7 @@ const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
+const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
@@ -324,14 +325,9 @@ const EXIT_PERMISSION: Evidence = {
 };
 const EXIT_GUARD = fn(REPLAY, 'exitCommandGuard', 'await requireExitPermission(scoped, operation, target)');
 const exitCall = (name: string, anchor: string) => fn(EXIT, name, anchor);
-function exitPreview(button: string): Obligation[] {
+function exitPreview(button: string, file = EXIT, path = '/exits/employees/:id/preview', pass = ''): Obligation[] {
   const group = `exitPreview:${button}`;
-  const call = at(
-    EXIT,
-    'POST',
-    '/exits/employees/:id/preview',
-    "const ctx = await readContext(c, deps, 'object.view', 0, id)",
-  );
+  const call = at(file, 'POST', path, "const ctx = await readContext(c, deps, 'object.view', 0, id)");
   return [
     {
       ...ob(
@@ -346,7 +342,7 @@ function exitPreview(button: string): Obligation[] {
         `btn:${RECORD}#${button}@detail`,
         ['button:object.button', 'button:buttonResource'],
         [
-          at(EXIT, 'POST', '/exits/employees/:id/preview', 'await requirePreviewButton(deps, ctx)'),
+          at(file, 'POST', path, `await requirePreviewButton(deps, ctx${pass})`),
           exitCall('requirePreviewButton', "resource: buttonResource(EMPLOYMENT_OBJECT, code, 'detail')"),
         ],
       ),
@@ -588,9 +584,17 @@ function partTimeRequestCreate(): Obligation[] {
     ...shared,
   ];
 }
-function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
-  const call = (text: string) =>
-    unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
+const GUARD_ANCHOR = {
+  registerExitChanges: '{ guard: exitCommandGuard(deps, ctx,',
+  registerRetirementChanges: 'guard: exitCommandGuard(deps, ctx, action, target, { businessId: id })',
+} as const;
+function exitBusinessCommand(
+  path: string,
+  anchor: string,
+  unit: 'route' | 'registerExitChanges' | 'registerRetirementChanges',
+  file = EXIT,
+): Obligation[] {
+  const call = (text: string) => (unit === 'route' ? at(file, 'PATCH', path, text) : fn(file, unit, text));
   const guard =
     unit === 'route'
       ? fn(REPLAY, 'requireExitEditRights', "await requireExitPermission(ctx, 'update', target)")
@@ -611,16 +615,14 @@ function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'regi
       `btn:${RECORD}#${anchor}@detail`,
       [],
       [
-        call(
-          unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : '{ guard: exitCommandGuard(deps, ctx,',
-        ),
+        call(unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : GUARD_ANCHOR[unit]),
         guard,
         EXIT_PERMISSION,
         WRITE_BUTTON,
       ],
     ),
     businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
-    ...(unit === 'registerExitChanges'
+    ...(unit !== 'route'
       ? [linkage(call('const business = await transitionEmployment(tx, context, { id, action })'))]
       : []),
   ];
@@ -2618,6 +2620,93 @@ export const EMPLOYMENT: RequiredTable = {
     '/exits/:id/withdraw',
     'Employment.DimissionApproval',
     'registerExitChanges',
+  ),
+  // ---- R2-T04 BE-5a 退休办理入口（retirement-routes.ts；与离职同一门禁，按钮取 Retire*）-----------------------------------
+  'POST /api/tenant/employment/retirements/employees/:id/preview': [
+    ...exitPreview('Employment.Retire', RETIRE, '/retirements/employees/:id/preview', ', KIND'),
+    ...exitPreview('Employment.RetireApproval', RETIRE, '/retirements/employees/:id/preview', ', KIND'),
+  ],
+  'POST /api/tenant/employment/retirements/employees/:id': [
+    ob(
+      `obj:${RECORD}:create`,
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+        ),
+        READ,
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#{mapper:employment.retirementButton}`,
+      ['button:buttonResource', 'button:object.button'],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          "{ guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) }",
+        ),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+      '按钮 = 办理方式：direct → Employment.Retire、application → Employment.RetireApproval（buttonsOf(kind)）',
+    ),
+    ob(
+      'guard:employment.scope',
+      [],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          'if (departmentId !== undefined) requireEmploymentScope(ctx, id, departmentId)',
+        ),
+        EMPLOYMENT_SCOPE,
+      ],
+    ),
+    linkage(at(RETIRE, 'POST', '/retirements/employees/:id', 'body: await createExitApplication(tx, context,')),
+  ],
+  'PATCH /api/tenant/employment/retirements/:id': [
+    ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),
+    ob(
+      'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
+      ['button:object.button', 'button:buttonResource'],
+      [
+        at(RETIRE, 'PATCH', '/retirements/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
+        fn(
+          REPLAY,
+          'requireExitEditRights',
+          "resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail')",
+        ),
+      ],
+      '只在单据处于 in_review 时要求（与审批编辑同约束，B-65a）',
+    ),
+  ],
+  'POST /api/tenant/employment/retirements/:id/submit': exitBusinessCommand(
+    '/retirements/:id/submit',
+    'Employment.RetireApproval',
+    'registerRetirementChanges',
+    RETIRE,
+  ),
+  'POST /api/tenant/employment/retirements/:id/withdraw': exitBusinessCommand(
+    '/retirements/:id/withdraw',
+    'Employment.RetireApproval',
+    'registerRetirementChanges',
+    RETIRE,
   ),
   // ---- R2-T03 B4 撤销离职 ----
   'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),

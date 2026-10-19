@@ -74,6 +74,33 @@ function detail(revision = 4, status = 'running') {
   };
 }
 const button = (label: string) => new RegExp(`^${label.split('').join('\\s*')}$`);
+test('AC-FE-F248 系统撤销详情显示操作人和理由，空 actions 仅可查看', async ({ page }) => {
+  const cancelled = {
+    ...detail(5, 'cancelled'),
+    tasks: [{ id: task, nodeName: '部门负责人审批', status: 'cancelled' }],
+    logs: [
+      {
+        event: 'system_revoke',
+        actorUserId: null,
+        detail: { comment: '离职业务终止在途审批流程' },
+        createdAt: '2026-10-19T10:00:00Z',
+      },
+    ],
+  };
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: cancelled }));
+  await page.route('**/api/tenant/approval/instances?**', (route) => route.fulfill({ json: { items: [cancelled] } }));
+  await switchIdentity(page, '/approval/applications');
+  await openTodo(page);
+  const entry = page.locator('.approval-log');
+  await expect(entry.getByText('系统', { exact: true })).toBeVisible();
+  await expect(entry.getByText('撤销', { exact: true })).toBeVisible();
+  await expect(entry.getByText('离职业务终止在途审批流程', { exact: true })).toBeVisible();
+  const header = page.locator('.approval-detail-head');
+  for (const label of ['同意', '不同意', '驳回', '催办', '撤回', '撤销', '编辑', '转交'])
+    await expect(header.getByRole('button', { name: button(label) })).toHaveCount(0);
+  await expect(header).toContainText('当前没有可办理操作');
+});
+
 async function openTodo(page: Page) {
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByRole('heading', { name: '合成员工的调动申请', exact: true })).toBeVisible();

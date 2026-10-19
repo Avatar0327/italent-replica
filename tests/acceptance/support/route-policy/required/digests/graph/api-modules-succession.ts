@@ -248,7 +248,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
     '#key',
     '#records',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/employment/employee-status.ts#TERMINATING_KIND_LABELS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/exit-store.ts#installSuccessionExitHooks': [
@@ -270,7 +272,7 @@ export const GRAPH: Graph = {
     '#lockExitTargets',
     '#records',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#isTerminatingRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/health-compute-run.ts#runProjectHealthCompute': [
@@ -818,6 +820,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/expression/rules/failures.ts#renderRuleFailureText',
   ],
   'apps/api/src/modules/succession/ports.ts#SUCCESSION_PORTS': [
+    'apps/api/src/modules/employment/part-time/succession-port.ts#riskPartTimeIncumbents',
     'apps/api/src/modules/succession/health-compute.ts#healthComputePort',
   ],
   'apps/api/src/modules/succession/ports.ts#getSuccessionSync': ['#syncProviders'],

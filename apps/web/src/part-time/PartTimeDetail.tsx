@@ -3,6 +3,7 @@ import { ReadPanel } from '../personnel/ReadPanel.js';
 import { useSession } from '../foundation/Session.js';
 import { apiRoot, value, type Row, type Term, type View } from './model.js';
 import { Cell } from './references.js';
+import { RequestActions } from './RequestEntries.js';
 import { m } from './messages.js';
 import { useRead } from './useRead.js';
 export interface Selection {
@@ -76,6 +77,7 @@ export function PartTimeDetail({
       <ReadPanel {...result}>
         {row && (
           <>
+            {selected.request && <RequestActions row={row} refresh={result.reload} />}
             <h3>{m.current}</h3>
             <Fields
               row={row}

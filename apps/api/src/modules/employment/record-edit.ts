@@ -66,7 +66,8 @@ export async function editEmploymentRecord(
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
   if (business.state !== 'effective' || !record) throw new AppError('CONFLICT', '只能编辑有效任职记录');
   // R2-T03 §4A：编辑离职 / 退休记录需 DimissionEdit（页面、批量、导入编辑行同一端口）；日期键仍由 editedValues 以 RECORD_DATE_IMMUTABLE 拒绝
-  if (isExitKind(record.kind)) await requireExitPermission(ctx, 'update', { employeeId: record.employeeId, patch });
+  if (isExitKind(record.kind))
+    await requireExitPermission(ctx, 'update', { employeeId: record.employeeId, kind: record.kind, patch });
   const after = await editedValues(tx, ctx, record, patch);
   if (record.kind === 'transfer' && patch.fields && Object.hasOwn(patch.fields, 'addedSubordinateIds'))
     await validateTransferSubordinates(tx, ctx, record.employeeId, after.fields, record.effectiveDate);

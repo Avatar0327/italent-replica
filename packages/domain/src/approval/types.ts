@@ -2,6 +2,7 @@ import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
 import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from '../offer/approval.js';
 import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
 import { ASSESSMENT_FORM_FIELDS, PROBATION_ASSESSMENT_OBJECT } from '../employment/assessment.js';
+import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 /**
  * 审批中心领域模型（R1-T07；docs/02_业务建模/14、REQ-APV-001~004）。
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
@@ -568,7 +569,11 @@ export const APPROVAL_TYPES = {
   regularization: employmentType('regularization', '转正', 'ProbationProcessNew'),
   intern_regularization: employmentType('intern_regularization', '实习转正', 'TraineeEntryProcess'),
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
-  retirement: employmentType('retirement', '退休', 'RetireProcess'),
+  // R2-T04 §3.4：退休与离职同条件字段（含发起方式）；表单多带退休类型 / 是否返聘 / 预计退休日期（只读带出）
+  retirement: {
+    ...employmentType('retirement', '退休', 'RetireProcess', LEAVE_CONDITION_FIELDS),
+    formFields: [...employmentFormFields, ...RETIREMENT_REQUEST_FIELDS],
+  },
   org_adjustment: employmentType('org_adjustment', '组织调整'),
   // BE-7 兼职（R2-T05 §1.5）：PT-1 只登记类型与预置，申请对象与发起入口随 PT-4a / PT-4b 接入
   part_time_add: partTimeType('part_time_add', '兼职', 'AddParttimeJobProcess'),

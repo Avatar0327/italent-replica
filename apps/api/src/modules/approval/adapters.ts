@@ -31,7 +31,8 @@ import {
 import { findCurrentRecord, findPredecessor, loadEmploymentBusiness } from '../employment/read-model.js';
 import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { parseExitPatch, updateExitFields } from '../employment/exit-application.js';
-import { loadExitRequest } from '../employment/exit-gate.js';
+import { businessKind, loadExitRequest } from '../employment/exit-gate.js';
+import { assertRetirementFields, loadRetirementRequest } from '../employment/retirement-application.js';
 import { requireExitEditRights } from '../employment/replay-guard.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { transitionEmployment } from '../employment/transitions.js';
@@ -204,10 +205,22 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
   return row?.initiator ?? 'hr';
 }
 
-/** R2-T03 §9 exitMetadata：离职扩展行上的表单字段（离职类型 / 原因 / 去向等）；不是离职单返回空。 */
-async function exitMetadata(tx: Tx, tenantId: string, businessId: string): Promise<Row> {
+/**
+ * R2-T03 §9 exitMetadata：离职扩展行上的表单字段（离职类型 / 原因 / 去向等）；不是离职单返回空。
+ * 退休（R2-T04 §3.4）只带交接人 / 加黑，另返回退休类型、是否同时返聘与创建时快照的预计退休日期（审批人只看本单字段，DEC-057）。
+ */
+async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: string): Promise<Row> {
   const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
-  return row ? Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null])) : {};
+  if (!row) return {};
+  if (kind !== 'retirement') return Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null]));
+  const retirement = await loadRetirementRequest(tx, tenantId, businessId);
+  return {
+    handoverEmployeeId: row.handoverEmployeeId ?? null,
+    addToBlacklist: row.addToBlacklist ?? null,
+    retireType: retirement?.retireType ?? null,
+    reEmployed: retirement?.reEmployed ?? null,
+    expectedRetirementDate: retirement?.expectedRetirementDate ?? null,
+  };
 }
 
 /** 变更前原值：前一条任职的字段、自定义字段与业务日期；离职扩展字段没有前一版（为空）。 */
@@ -236,7 +249,8 @@ async function requireExitApprovalEdit(tx: Tx, ctx: ApprovalContext, businessId:
   if (!exit) return;
   if (!ctx.exitEditAuthorize) throw new AppError('FORBIDDEN', '没有编辑离职单的权限');
   const scoped = { ...ctx, authorize: authorizeInTransaction(ctx.exitEditAuthorize, tx) };
-  await requireExitEditRights(tx, scoped, { employeeId: exit.employeeId, payload: input }, businessId);
+  const kind = (await businessKind(tx, ctx.tenantId, businessId)) === 'retirement' ? 'retirement' : 'leave';
+  await requireExitEditRights(tx, scoped, { employeeId: exit.employeeId, kind, payload: input }, businessId);
 }
 
 /** 离职扩展字段的“有值”口径：没有前一版可比，填了（非空、非 false）即本单内容，进变化字段与盲审。 */
@@ -315,7 +329,7 @@ async function completedTransferDates(
   ctx: ApprovalContext,
   business: NonNullable<Awaited<ReturnType<typeof loadEmploymentBusiness>>>,
 ): Promise<Row> {
-  if (!['transfer', 'leave'].includes(business.kind) || business.status !== 'effective') return {};
+  if (!['transfer', 'leave', 'retirement'].includes(business.kind) || business.status !== 'effective') return {};
   const planned = plannedEffectiveDate(ctx.tenantId, sql`${business.id}::uuid`, sql`${business.effectiveDate}::date`);
   const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
   return { ...dates, actualEffectiveDate: business.effectiveDate };
@@ -337,7 +351,10 @@ const employmentAdapter: BusinessAdapter = {
     if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
     // 离职最后节点同意 / 会签合席结算会当场进入生效链（R2-T03 §5.2）：组织 / 编制资源在审批实例锁之前取齐。
     // 是否可能推进业务由 mayAdvanceBusiness 统一判断（手动交接 / 成员撤销接管只在可能合席时取，F-070）。
-    else if (owner.kind === 'leave' && (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom))) {
+    else if (
+      (owner.kind === 'leave' || owner.kind === 'retirement') &&
+      (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom))
+    ) {
       await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
     }
   },
@@ -359,7 +376,7 @@ const employmentAdapter: BusinessAdapter = {
     else if (rows.length && (await mayAdvanceBusiness(tx, ctx, businessIds, options.reassignFrom))) {
       await lockOrganizationSettings(tx, ctx.tenantId);
       // 离职合席结算会当场进入生效链：有未落地调动申请时还要取编制锁（与 lock 的离职分支同一个取锁函数）
-      for (const row of rows.filter((item) => item.kind === 'leave'))
+      for (const row of rows.filter((item) => item.kind === 'leave' || item.kind === 'retirement'))
         await lockExitOrganizationResources(tx, ctx, row.employee_id, row.id);
     }
   },
@@ -382,7 +399,10 @@ const employmentAdapter: BusinessAdapter = {
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
     const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
-    const exit = business.kind === 'leave' ? await exitMetadata(tx, ctx.tenantId, businessId) : {};
+    const exit =
+      business.kind === 'leave' || business.kind === 'retirement'
+        ? await exitMetadata(tx, ctx.tenantId, businessId, business.kind)
+        : {};
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
     const originals = originalsOf(before, exit);
     const values: Row = {
@@ -431,7 +451,7 @@ const employmentAdapter: BusinessAdapter = {
         'employee.name': employee.name,
         'record.effectiveDate': business.effectiveDate,
         // R2-T03 §4B：离职流程匹配多一个输入——发起方式（hr / self / manager）
-        ...(business.kind === 'leave'
+        ...(business.kind === 'leave' || business.kind === 'retirement'
           ? { 'business.initiation': await exitInitiation(tx, ctx.tenantId, businessId) }
           : {}),
         ...ref('before', before?.fields),
@@ -465,7 +485,9 @@ const employmentAdapter: BusinessAdapter = {
     if (Object.keys(exit).length) {
       const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
       const patch = parseExitPatch(datesOnly ? { ...employment, ...exit } : exit);
-      await updateExitFields(tx, { ...ctx, expectedRevision }, id, patch, { approvalEdit: true });
+      const kind = (await businessKind(tx, ctx.tenantId, id)) === 'retirement' ? 'retirement' : 'leave';
+      if (kind === 'retirement') assertRetirementFields(patch.fields);
+      await updateExitFields(tx, { ...ctx, expectedRevision }, id, patch, { approvalEdit: true, kind });
     }
   },
 };

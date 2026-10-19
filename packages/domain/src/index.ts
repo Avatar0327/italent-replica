@@ -28,6 +28,7 @@ export * from './employment/exit-occupancy.js';
 export * from './employment/planned-date.js';
 export * from './employment/intern.js';
 export * from './employment/exit.js';
+export * from './employment/retirement.js';
 export * from './employment/part-time-constants.js';
 export * from './employment/part-time.js';
 export * from './employment/part-time-request.js';

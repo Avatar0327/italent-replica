@@ -68,6 +68,9 @@ export const PART_TIME_END = sql`cur.end_date`;
 /** 记录当前部门：被编辑改过的以最新快照载荷为准。 */
 export const PART_TIME_DEPARTMENT = sql`(CASE WHEN current_payload.body IS NULL THEN r.department_id::text
   ELSE current_payload.body->>'department_id' END)::uuid`;
+/** 记录当前职位，口径同 PART_TIME_DEPARTMENT（调动兼职调整区、继任兼职现任共用）。 */
+export const PART_TIME_POSITION = sql`(CASE WHEN current_payload.body IS NULL THEN r.position_id::text
+  ELSE current_payload.body->>'position_id' END)::uuid`;
 /** 当前直线经理，口径同 PART_TIME_DEPARTMENT。 */
 export const PART_TIME_DIRECT_MANAGER = sql`(CASE WHEN current_payload.body IS NULL THEN r.direct_manager_id::text
   ELSE current_payload.body->>'direct_manager_id' END)::uuid`;

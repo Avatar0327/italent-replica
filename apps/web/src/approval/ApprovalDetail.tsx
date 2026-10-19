@@ -200,6 +200,7 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
             children: (
               <div className="approval-log">
                 <strong>{logEvents[log.event] ?? log.event}</strong>
+                {log.actorUserId === null && <Tag>{d.systemActor}</Tag>}
                 {task && <Tag>{task.nodeName}</Tag>}
                 {comment && <p>{comment}</p>}
                 <small>{formatInstant(log.createdAt, timezone)}</small>

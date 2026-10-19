@@ -24,7 +24,7 @@ export async function riskPeople(
   const access = await loadRiskSources(tx, input, fields);
   const primary =
     (await loadIncumbentIds(tx, input.tenantId, [input.positionId], input.asOf)).get(input.positionId) ?? [];
-  // R2-T05 前兼职端口为空；开关仅控制计算，不复用卡片 showIncumbents。
+  // 兼职现任来自 R2-T05 端口（asOf 当日进行中）；开关仅控制计算，不复用卡片 showIncumbents。
   const part = input.partTime
     ? ((await (partTimeReader ?? SUCCESSION_PORTS.riskPartTimeIncumbents)?.(ctx, input.positionId)) ?? [])
     : [];
