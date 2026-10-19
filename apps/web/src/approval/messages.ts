@@ -212,6 +212,7 @@ export const detailText = {
   gapTool: '接口待补齐，暂不可用',
   logDialogGap: '完整流程日志弹窗暂未实现；最近的操作记录见右侧“操作记录”。',
   records: (count: number) => `操作记录(${count})`,
+  systemActor: '系统',
   communicate: '沟通',
   communicateGap: '沟通接口待补齐。',
   progressGap: '仅显示已产生的节点；后续节点需流程预测接口。',
