@@ -187,6 +187,7 @@ export const GRAPH: Graph = {
     '#listQuery',
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#listAssessments',
+    'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
@@ -195,8 +196,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': [
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
-    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
+    'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -224,6 +226,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
+  'apps/api/src/modules/employment/assessment-store.ts#READ_COLUMNS': ['#COLUMNS'],
   'apps/api/src/modules/employment/assessment-store.ts#assertAssessmentRevision': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
   ],
@@ -236,12 +239,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#listAssessments': [
-    '#COLUMNS',
+    '#READ_COLUMNS',
     '#assessmentScopeSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#loadAssessment': [
     '#COLUMNS',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead': [
+    '#READ_COLUMNS',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': [
