@@ -1,10 +1,10 @@
 /**
  * 审批中心的兼职申请适配器（docs/08_设计/R2-T05_兼职设计.md §4.5 / §4.5A，BE-7 PT-4a）：业务单 = 兼职申请（part_time_requests），
- * 三个审批类型（兼职 / 延长兼职 / 结束兼职）共用，类型取申请头的 request_type；PT-4a 只接 add，延长 / 结束的回调 409
- * PART_TIME_REQUEST_TYPE_NOT_AVAILABLE（随 PT-4c）。审批中心以可信身份回调，不带数据范围（DEC-057）。
+ * 三个审批类型（兼职 / 延长兼职 / 结束兼职）共用，类型取申请头的 request_type（PT-4a 新增，PT-4c 延长 / 结束）。审批中心以可信身份回调，不带数据范围（DEC-057）。
  * - 快照：流程主体 = 兼职人员，路由部门：主职部门 = 员工当前主职、兼职部门 = 申请的部门；标题不含个人数据；
+ * - 延长 / 结束的快照：表单值沿用目标兼职记录的字段，原结束日期放 originals，变化字段只有结束日期与备注（盲审只看它们）；
  * - 同意 → 落地（request-service landApprovedRequest），驳回 / 不同意 / 撤回 → 对应状态事件；resubmit 拒绝（请在申请单上修改重提）；
- * - 审批编辑：合入改动后整体重校验，通过才追加版本（edit）；
+ * - 审批编辑：合入改动后整体重校验，通过才追加版本（edit）；延长 / 结束只接结束日期与备注（A-14）；
  * - 资源锁计划（§4.5A，全局锁序 员工 → 业务头 → 组织 → 实例）：lock / lockMany 先取组织锁再锁实例，与批量交接的
  *   “入职绑定账号：组织锁 → 成员行”同序（F-065），落地内的组织锁只重入。
  */
@@ -38,9 +38,6 @@ import {
 const asEmployment = (ctx: ApprovalContext): EmploymentContext =>
   ({ ...ctx, expectedRevision: 0 }) as EmploymentContext;
 const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
-
-const typeNotAvailable = () =>
-  new AppError('CONFLICT', '该类兼职申请暂未开放', { reason: PART_TIME_ERRORS.requestTypeNotAvailable });
 
 /** 单实例命令（同意 / 驳回 / 不同意 / 撤回 / 审批编辑 / 加签激活）：员工 → 申请头 → 目标兼职记录头 →（add / extend）组织锁。 */
 async function lock(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<void> {
@@ -81,24 +78,40 @@ async function lockMany(
     await lockOrganizationSettings(tx, ctx.tenantId);
 }
 
-async function loadAdd(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<PartTimeRequestRow> {
+async function loadRequest(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<PartTimeRequestRow> {
   const request = await loadPartTimeRequest(tx, ctx.tenantId, requestId);
   if (!request) throw new AppError('NOT_FOUND', '兼职申请不存在');
-  if (request.requestType !== 'add') throw typeNotAvailable();
   return request;
 }
 
-const approvalTypeOf = (): ApprovalTypeCode => 'part_time_add';
+const approvalTypeOf = (request: PartTimeRequestRow): ApprovalTypeCode => `part_time_${request.requestType}`;
 
 /** 本单有值的字段都是本单内容（新单据没有原值）：审批人看不到即盲审（DEC-058）。 */
 function filledFields(values: Row, codes: readonly string[]): string[] {
   return codes.filter((code) => values[code] !== null && values[code] !== undefined);
 }
 
-async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<BusinessSnapshot> {
-  const request = await loadAdd(tx, ctx, requestId);
+/**
+ * 变更前与变化字段：新增申请没有原值，有值的字段都是本单内容；延长 / 结束只改结束日期（原值 = 原定结束日期）与备注，
+ * 其余字段是目标兼职记录的现状，不算本单改动（审批人看不到它们不构成盲审）。
+ */
+function changes(request: PartTimeRequestRow, values: Row): Pick<BusinessSnapshot, 'originals' | 'changedFields'> {
+  if (request.requestType === 'add')
+    return { originals: null, changedFields: filledFields(values, Object.keys(values)) };
   const { version } = request;
-  const approvalType = approvalTypeOf();
+  return {
+    originals: { endDate: version.originalEndDate },
+    changedFields: [
+      ...(version.endDate === version.originalEndDate ? [] : ['endDate']),
+      ...filledFields(values, ['requestRemark']),
+    ],
+  };
+}
+
+async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<BusinessSnapshot> {
+  const request = await loadRequest(tx, ctx, requestId);
+  const { version } = request;
+  const approvalType = approvalTypeOf(request);
   const type = APPROVAL_TYPES[approvalType];
   const employee = await employeeHeader(tx, ctx.tenantId, request.employeeId);
   const primary = await findCurrentRecord(tx, ctx.tenantId, request.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
@@ -141,8 +154,7 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
       primaryLevelId: primary?.fields.levelId ?? null,
       ...(await profileValues(tx, ctx, request.employeeId)),
     },
-    originals: null,
-    changedFields: filledFields(permissionFields, Object.keys(permissionFields)),
+    ...changes(request, permissionFields),
     conditionValues: {
       processCode,
       'business.kind': request.requestType,
@@ -173,10 +185,20 @@ const PRESET_EDITS = [
   'endDate',
 ] as const;
 
+/** 延长 / 结束申请的审批编辑只接结束日期与备注（A-14）；新增申请接整张表单。 */
+const DATE_REQUEST_EDITS: readonly string[] = ['endDate', 'requestRemark'];
+
 function patchOf(request: PartTimeRequestRow, fields: Readonly<Row>): AddRequestPatch {
   const patch: Record<string, unknown> = {};
   const customFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
+    // 开始日期（effectiveDate）不论类型都走下面的“同值放行 / 异值拒绝”
+    const outsideDateEdits = !DATE_REQUEST_EDITS.includes(key) && partTimeBusinessField(key) !== 'startDate';
+    if (request.requestType !== 'add' && outsideDateEdits)
+      throw new AppError('VALIDATION_FAILED', '延长 / 结束兼职审批只能编辑结束日期与备注', {
+        reason: PART_TIME_ERRORS.fieldNotEditable,
+        field: key,
+      });
     if ((PRESET_EDITS as readonly string[]).includes(key)) patch[key] = value;
     else if (key === 'partTimeType') patch.serviceType = value;
     else if (key === 'requestRemark') patch.remark = value;
@@ -202,7 +224,7 @@ export const partTimeAdapter: BusinessAdapter = {
   lockMany,
   snapshot,
   async approved(tx, ctx, id) {
-    await loadAdd(tx, ctx, id);
+    await loadRequest(tx, ctx, id);
     await landApprovedRequest(tx, asEmployment(ctx), id);
   },
   rejected: (tx, ctx, id) => settleRequestFromApproval(tx, asEmployment(ctx), id, 'reject'),
@@ -212,7 +234,7 @@ export const partTimeAdapter: BusinessAdapter = {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '兼职申请请在申请单上修改后重新提交');
   },
   async edit(tx, ctx, id, fields) {
-    const request = await loadAdd(tx, ctx, id);
+    const request = await loadRequest(tx, ctx, id);
     await editRequestInApproval(tx, asEmployment(ctx), id, patchOf(request, fields));
   },
 };

@@ -48,7 +48,7 @@ import {
 } from './service.js';
 import { PART_TIME_FIELD_KEYS, normalizeBatchEnd, type EditPartTimeInput } from './validation.js';
 
-const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
+export const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 /**
  * 兼职表单可填的预置字段（§4.2）：沿用任职预置字段的校验，部门必填；isDepartmentHead / addedSubordinateIds 先接收，
  * PT-7 之前由服务层拒绝 true / 非空（§4.8，400 PART_TIME_LINKAGE_NOT_AVAILABLE），不静默丢弃。

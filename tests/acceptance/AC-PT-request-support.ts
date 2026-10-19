@@ -147,6 +147,14 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
           ${recordId}, 'part_time', 'direct', ${last!.effective_date}, 'part_time', ${last!.selected_staff_id}, true,
           ${departmentId})`);
     });
+  /** 可信造数：给兼职记录追加一期（模拟别的入口——编辑 / 调动 / 批量结束——改过它的期限）。 */
+  const appendTerm = (recordId: string, termNo: number, endDate: string | null, source: string) =>
+    run((tx) =>
+      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
+          source, command_id)
+        VALUES (${tenantId}, ${worker.employeeId}, ${recordId}, ${termNo}, ${endDate}, ${source},
+          ${`pt-test-${randomUUID()}`})`),
+    );
   /** 延长 / 结束申请（PT-4c）：经内部服务建草稿。 */
   const createDate = (input: DateRequestInput, ctx = context()) => run((tx) => createDateRequest(tx, ctx, input));
   const extend = (recordId: string, endDate: string, remark?: string) =>
@@ -367,6 +375,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     update,
     seedRecord,
     moveSnapshot,
+    appendTerm,
     createDate,
     extend,
     end,

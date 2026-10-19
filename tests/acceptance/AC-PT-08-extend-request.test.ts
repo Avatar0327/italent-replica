@@ -5,7 +5,6 @@
  * 日期框架：今天 2026-10-01，主职 2020-01-01 入职；目标兼职默认 09-01～10-31（兼职部门）。
  */
 import { MODULE_OBJECTS } from '@italent/domain';
-import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { grantFieldAccess, grantVisibleFields, permissionAdmin } from './AC-APV-support.js';
@@ -218,10 +217,7 @@ describe('PB-33 / E-1～E-6：创建时的拒绝（当次无任何写入）', ()
     const record = await w.seedRecord({ endDate: '2026-10-31' });
     const created = await w.extend(record, '2026-12-31');
     // 模拟草稿期间目标记录被其他入口改成已结束（直接写期限链）
-    await w.run((tx) =>
-      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date, source,
-          command_id) VALUES (${w.tenant.id}, ${w.worker.employeeId}, ${record}, 2, '2026-09-20', 'edit', 'pt-test-edit')`),
-    );
+    await w.appendTerm(record, 2, '2026-09-20', 'edit');
     expect(await w.rejected(() => w.send(created.id, created.revision))).toMatchObject(
       conflict('PART_TIME_ALREADY_ENDED'),
     );
@@ -316,10 +312,7 @@ describe('落地复核：按落地时数据，失败作废（审批结论保留�
     const created = await w.extend(record, '2026-12-31');
     await w.send(created.id, created.revision);
     await w.approveInOrder(created.id, w.order.extend, 3);
-    await w.run((tx) =>
-      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date, source,
-          command_id) VALUES (${w.tenant.id}, ${w.worker.employeeId}, ${record}, 2, '2026-11-15', 'edit', 'pt-test-edit')`),
-    );
+    await w.appendTerm(record, 2, '2026-11-15', 'edit');
     await w.approveInOrder(created.id, w.order.extend.slice(3));
     const view = await w.instance(created.id);
     expect(view.status).toBe('approved');
@@ -338,13 +331,16 @@ describe('落地复核：按落地时数据，失败作废（审批结论保留�
 
   it('E-3 落地时部门在延长段内已停用 → 作废 landing_rejected，审批结论保留，通知发起人', async () => {
     const w = await world('landing-org');
+    // 专用兼职部门没有负责人 / HRBP 版本（组织入口按普通组织停用），兼职两个节点转异常管理员审批
     const lone = await w.org('落地停用部门');
     const record = await w.seedRecord({ departmentId: lone, endDate: '2026-10-31' });
     const created = await w.extend(record, '2026-12-31');
     await w.send(created.id, created.revision);
-    await w.approveInOrder(created.id, w.order.extend, 3);
+    await w.approveInOrder(created.id, w.order.extend, 2);
     await disableOrg(w, lone, '2026-11-20');
-    await w.approveInOrder(created.id, w.order.extend.slice(3));
+    const admin = { userId: w.exceptionAdmin };
+    await w.decide(created.id, admin, 'approve');
+    await w.decide(created.id, admin, 'approve');
     const view = await w.instance(created.id);
     expect(view.status).toBe('approved');
     expect((await w.states(created.id)).at(-1)).toMatchObject({ state: 'voided', reason: 'landing_rejected' });

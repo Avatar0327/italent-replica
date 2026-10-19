@@ -50,12 +50,13 @@ function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
 }
 
 const requestCount = (w: RequestWorld, recordId: string) =>
-  w.run(async (tx) =>
-    rowsOf<{ n: number }>(
+  w.run(async (tx) => {
+    const [row] = rowsOf<{ n: number }>(
       await tx.execute(sql`SELECT count(*)::int AS n FROM part_time_requests
         WHERE tenant_id=${w.tenant.id} AND record_id=${recordId}::uuid`),
-    ).then((rows) => rows[0]!.n),
-  );
+    );
+    return row!.n;
+  });
 
 /** 观察连接对一行 NOWAIT 取锁：被他人持有返回 true（55P03）。 */
 async function lockedBySomeone(w: RequestWorld, query: ReturnType<typeof sql>) {

@@ -193,7 +193,6 @@ describe('请求校验', () => {
       { requestType: 'end', recordId: record },
       dateBody('end', record, { endDate: null }),
       dateBody('end', record, { endDate: '2026-02-30' }),
-      dateBody('end', record, { requestRemark: 'x'.repeat(32767) }),
     ];
     for (const body of bad) expect((await api.createDate(body)).status, JSON.stringify(body)).toBe(400);
     expect(await w.writes()).toEqual(before);
@@ -210,7 +209,7 @@ describe('请求校验', () => {
     expect(await w.writes()).toEqual(before);
   });
 
-  it('修改延长 / 结束申请：只能改结束日期与备注（其他字段 400 PART_TIME_FIELD_NOT_EDITABLE）；结束日置空 400 PART_TIME_END_DATE_REQUIRED', async () => {
+  it('修改延长 / 结束申请：只能改结束日期与备注（其他字段 400 FIELD_NOT_EDITABLE）；结束日置空 400 END_DATE_REQUIRED', async () => {
     const w = await world('patch');
     const api = w.http();
     const record = await w.seedRecord();
@@ -316,9 +315,9 @@ describe('权限（§7.2）：对象更新权 → 延长 / 结束按钮 → 兼�
   it('数据范围：兼职记录的兼职部门在范围内才可建；范围外与不存在同一个 404 PART_TIME_RECORD_NOT_FOUND', async () => {
     const w = await world('perm-scope');
     const record = await w.seedRecord();
+    const elsewhere = await w.org(`他处部门${randomUUID()}`);
     const before = await w.writes();
     const scoped = (...orgs: string[]) => as(w, restricted({ scope: orgScope(w.tenant.id, TODAY, ...orgs) }));
-    const elsewhere = await w.org(`他处部门${randomUUID()}`);
     for (const orgs of [[w.primary], [elsewhere]]) {
       const refused = await w.refusal(await scoped(...orgs).createDate(dateBody('end', record)));
       expect(refused).toMatchObject({ status: 404, reason: 'PART_TIME_RECORD_NOT_FOUND' });

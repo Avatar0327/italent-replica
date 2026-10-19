@@ -5,7 +5,6 @@
  * 原定结束日期不回写、落地复核失败作废、离职作废。日期框架：今天 2026-10-01，主职 2020-01-01 入职；目标兼职默认 09-01～10-31。
  */
 import { MODULE_OBJECTS } from '@italent/domain';
-import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { grantFieldAccess, grantVisibleFields, permissionAdmin } from './AC-APV-support.js';
@@ -252,10 +251,7 @@ describe('PB-40 / PB-42：落地复核与作废', () => {
     const created = await w.end(record, '2026-09-20');
     await w.send(created.id, created.revision);
     await w.approveInOrder(created.id, w.order.end, 3);
-    await w.run((tx) =>
-      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date, source,
-          command_id) VALUES (${w.tenant.id}, ${w.worker.employeeId}, ${record}, 2, '2026-09-10', 'transfer', 'pt-test-transfer')`),
-    );
+    await w.appendTerm(record, 2, '2026-09-10', 'transfer');
     await w.approveInOrder(created.id, w.order.end.slice(3));
     const view = await w.instance(created.id);
     expect(view.status).toBe('approved');
