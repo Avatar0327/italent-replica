@@ -80,6 +80,9 @@ describe('AC-FE-R2d2a 直接维护契约', () => {
       'record-a：版本 3 → 4',
       '另有 2 条记录不可见',
     ]);
+    expect(errorLines({ items: [{ recordId: row.id, reason: 'PART_TIME_END_AFTER_CURRENT' }] })).toEqual([
+      'record-a：批量结束日期不能晚于当前结束日期',
+    ]);
     expect(errorLines({ items: [{ recordId: row.id, reason: 'PART_TIME_END_BEFORE_START' }] })[0]).toContain(
       '结束日期不能早于开始日期',
     );
