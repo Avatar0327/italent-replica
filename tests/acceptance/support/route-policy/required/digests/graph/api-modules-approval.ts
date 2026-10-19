@@ -453,6 +453,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/adapter-support.ts#employeeHeader': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
+  'apps/api/src/modules/approval/adapter-support.ts#mayAdvanceBusiness': ['#mayMergeSeat'],
   'apps/api/src/modules/approval/adapter-support.ts#mayMergeSeat': [
     '#HELD_STATUSES',
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -480,7 +481,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/adapters.ts#employmentAdapter': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
-    'apps/api/src/modules/approval/adapter-support.ts#mayMergeSeat',
+    'apps/api/src/modules/approval/adapter-support.ts#mayAdvanceBusiness',
     'apps/api/src/modules/approval/adapter-support.ts#profileValues',
     '#businessRevision',
     '#completedTransferDates',
@@ -503,6 +504,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
+    'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',

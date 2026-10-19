@@ -206,8 +206,8 @@ describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () =
     expect(await w.session.records(employee.id, '2026-10-10')).toHaveLength(1);
     // 挂起不重复记：再跑一次没有新的挂起。
     expect((await w.runScheduler('2026-10-09T17:30:00Z')).suspended).toEqual([]);
-    // 待办只针对失败的那一条；被挂起的业务随前序修正后自动续上。
-    expect((await w.todos()).map((todo) => todo.id)).toEqual([a.id]);
+    // 待办含失败的 A 与因前序失败挂起的 B（挂起项带前序标识）；B 随前序修正后自动续上。
+    expect((await w.todos()).map((todo) => todo.id)).toEqual([a.id, b.id]);
 
     fullDepartments.delete(w.to.id);
     const retried = await w.retry(a, '2026-10-11T02:00:00Z');
@@ -282,8 +282,10 @@ describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () =
     const failed = await w.business(a.id);
     const removed = await w.session.request('DELETE', `/businesses/${a.id}`, { ifMatch: failed.revision });
     expect(removed.status).toBe(200);
-    expect(await w.todos()).toEqual([]);
+    // 失败的 A 已删除不再出现；B 仍是挂起（最近一次尝试），下一次运行生效后才从待办消失
+    expect((await w.todos()).map((todo) => todo.id)).toEqual([b.id]);
     expect((await w.runScheduler('2026-10-09T18:00:00Z')).activated).toEqual([b.id]);
+    expect(await w.todos()).toEqual([]);
     expect(await w.business(b.id)).toMatchObject({
       status: 'effective',
       record: { fields: { departmentId: w.from.id } },

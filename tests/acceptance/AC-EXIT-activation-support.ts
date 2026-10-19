@@ -4,6 +4,7 @@
  * 复用 gateWorld（受限授权、合成申请、前后读取快照），再加：编排器调用、时间轴 / 台账读取。
  */
 import { sql, withTenant, type Db } from '@italent/db';
+import { addDays } from '@italent/domain';
 import { activateExit, type ExitActivationOptions } from '../../apps/api/src/modules/employment/exit-activation.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
@@ -41,13 +42,27 @@ export async function exitActivationWorld(db: Db, label: string, today = '2026-1
 
   const rows = <T>(statement: ReturnType<typeof sql>) => w.sqlRows<T>(statement);
 
-  /** 直接离职（最后工作日 L，保存即 approved + confirmed 阶段预减，不落地）。 */
+  /** 把时钟拨到 date 再执行 run（租户日 = date），结束后回到 today。 */
+  async function atDay<T>(date: string, run: () => Promise<T>): Promise<T> {
+    w.setNow(`${date}T01:00:00.000Z`);
+    try {
+      return await run();
+    } finally {
+      w.setNow(`${today}T01:00:00.000Z`);
+    }
+  }
+  /** 生效日 E = L + 1 已到（≤ 今天）时，保存 / 审批会当场生效（B3-3 开闸）；“已确认待生效”的夹具把时钟拨到 L 当天造，E > 当天。 */
+  const parkedDay = (lastWorkDate: string, day: string) => (addDays(lastWorkDate, 1) <= day ? lastWorkDate : day);
+
+  /** 直接离职（最后工作日 L，保存即 approved + confirmed 阶段预减；E ≤ 今天时按 L 当天保存，不当场落地，供编排器入口验证）。 */
   async function directLeave(lastWorkDate: string, exit?: object, employeeId = employee.id) {
-    return w.createdLeave(employeeId, leaveBody(lastWorkDate, 'direct', exit));
+    return atDay(parkedDay(lastWorkDate, today), () =>
+      w.createdLeave(employeeId, leaveBody(lastWorkDate, 'direct', exit)),
+    );
   }
 
-  /** 申请离职：提交并在 at 审批通过（关口 ② 只停在 approved）。 */
-  async function approvedLeave(lastWorkDate: string, at: string, employeeId = employee.id) {
+  /** 提交（审批中）的离职申请：HR 发起，离职类型已填；还没审批。 */
+  async function submittedLeave(lastWorkDate: string, employeeId = employee.id) {
     const draft = await w.createdLeave(
       employeeId,
       leaveBody(lastWorkDate, 'application', { exitTypeCode: 'voluntary' }),
@@ -57,7 +72,13 @@ export async function exitActivationWorld(db: Db, label: string, today = '2026-1
       body: {},
     });
     if (sent.status !== 200) throw new Error(`提交失败 ${await sent.text()}`);
-    return w.approve(draft, `${at}T02:00:00Z`);
+    return draft;
+  }
+
+  /** 申请离职：提交并在 at 审批通过（E ≤ at 时改在 L 当天审批，停在 approved，不当场落地）。 */
+  async function approvedLeave(lastWorkDate: string, at: string, employeeId = employee.id) {
+    const draft = await submittedLeave(lastWorkDate, employeeId);
+    return w.approve(draft, `${parkedDay(lastWorkDate, at)}T02:00:00Z`);
   }
 
   const activate = exitActivator(db, w.session);
@@ -94,7 +115,9 @@ export async function exitActivationWorld(db: Db, label: string, today = '2026-1
   return {
     ...w,
     employee,
+    atDay,
     directLeave,
+    submittedLeave,
     approvedLeave,
     activate,
     timeline,

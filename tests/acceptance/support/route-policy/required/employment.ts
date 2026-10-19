@@ -1407,7 +1407,12 @@ export const EMPLOYMENT: RequiredTable = {
   'POST /api/tenant/employment/employees/:id/businesses': [
     ob(
       `obj:${RECORD}:create`,
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
       [
         at(
           EMP,
@@ -1421,7 +1426,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Create@detail`,
-      ['button:requireEmploymentWrite(按钮)'],
+      ['button:requireEmploymentWrite(按钮)', 'button:buttonResource', 'button:object.button'],
       [
         at(
           EMP,
@@ -2427,7 +2432,12 @@ export const EMPLOYMENT: RequiredTable = {
   'POST /api/tenant/employment/exits/employees/:id': [
     ob(
       `obj:${RECORD}:create`,
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
       [
         at(
           EXIT,
@@ -2443,7 +2453,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#{mapper:employment.exitButton}`,
-      [],
+      ['button:buttonResource', 'button:object.button'],
       [
         at(
           EXIT,
@@ -2475,7 +2485,12 @@ export const EMPLOYMENT: RequiredTable = {
   'POST /api/tenant/employment/exits/batch': [
     ob(
       `obj:${RECORD}:create`,
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
       [at(EXIT, 'POST', '/exits/batch', "const ctx = await readContext(c, deps, 'object.create')"), READ, WRITE_OBJECT],
     ),
     ob(

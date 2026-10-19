@@ -4,7 +4,7 @@
  * （tenant.employment.configuration.write，管理员 other_settings；字段按任职设置配置对象校验）。
  * 办理入口（B2b）：预览 / 新建 / 批量 / 编辑离职 / 提交 / 撤回。权限链按 §9.1 固定顺序：功能操作权（readContext）→
  * 按钮权 → 范围（范围外 404）→ 字段权 → §4A 前置条件；写入口的按钮、范围、字段在命令事务内按当前授权复核
- * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。B3-3 前任何入口都不让离职落地（§18.1）。
+ * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。E ≤ 今天的直接离职在保存事务内生效（§5.3）。
  */
 import { buttonResource, EXIT_BUTTONS, EXIT_SETTING_KEYS, EXIT_SETTINGS, tenantLocalDate } from '@italent/domain';
 import { withTenant } from '@italent/db';

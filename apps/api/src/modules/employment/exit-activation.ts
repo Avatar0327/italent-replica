@@ -3,7 +3,7 @@
  * 顺序 0a 前序 → 0 最终日期 → 0b 顺延后重验 → 0c 在职段延长校验 → 1 作废在途申请 → 2 版本链落地 → 3 编制 →
  * 4 合同 → 6 职责转交 → 7 状态 / 审计 → 8 后续任务端口。步骤 0a 以外全部在一个保存点内：
  * 任一步业务规则拒绝即整体回滚，只留一条 failed 尝试（DEC-052）；存储不可用原样抛出、不记失败。
- * B3-3 之前这里是内部入口——§18.1 的五个关口仍关着，审批通过 / 直接保存 / 调度 / 重试都不会调用它。
+ * 入口：审批通过 / 直接保存（activateIfDue）、调度与 HR 重试（activation-service 按队列逐条调用）、activate 端口（transitions.ts）。
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, exitEffects, sql, type Tx } from '@italent/db';
@@ -29,7 +29,11 @@ import {
   assertNoNewEstablishmentOccupancy,
   loadTimelineSegments,
 } from './exit-projection.js';
-import { lockOtherBusinessHeads, voidInFlightApplications } from './exit-void-applications.js';
+import {
+  lockExitOrganizationResources,
+  lockOtherBusinessHeads,
+  voidInFlightApplications,
+} from './exit-void-applications.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import {
@@ -300,6 +304,29 @@ async function runSteps(
 }
 
 /**
+ * 审批通过 / 直接保存后：生效日（§5.0A 计划生效日）已到则当场进入生效链，未到则什么也不做（交调度）。
+ * 以 trigger = approval 记账：成功不记尝试，前序未执行返回 pending，失败 / 挂起记一次尝试；调用命令随后统一递增一次业务 revision。
+ * 调用方已持员工 / 业务锁；ctx.expectedRevision 在这里改为业务当前 revision（直接保存时它是员工 revision）。
+ */
+export async function activateIfDue(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+): Promise<ExitActivationResult | null> {
+  const [head] = rowsOf<{ revision: number; effectiveDate: string }>(
+    await tx.execute(sql`SELECT b.revision, p.effective_date::text AS "effectiveDate"
+      FROM employment_business_objects b
+      JOIN LATERAL (SELECT effective_date FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
+      WHERE b.tenant_id=${ctx.tenantId} AND b.id=${businessId}::uuid`),
+  );
+  if (!head) throw new AppError('NOT_FOUND', '任职业务不存在');
+  const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, head.effectiveDate);
+  if (tenantLocalDate(ctx.now, ctx.timezone) < planned) return null;
+  return activateExit(tx, { ...ctx, expectedRevision: Number(head.revision) }, businessId, { trigger: 'approval' });
+}
+
+/**
  * 内部编排器入口：按 §5.2 锁序取锁后执行。0a 在保存点之外判定：前序失败 / 挂起 → 记 suspended 返回；前序只是尚未执行 →
  * 审批落地返回 pending（不记尝试），调度 / 重试 / activate 端口 409 ACTIVATION_PREDECESSOR_PENDING。
  */
@@ -318,6 +345,8 @@ export async function activateExit(
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
   // §5.2 ③：该员工其他任职业务头按 id 升序预锁（步骤 1 作废其中未办结的申请），先于 ④ 组织设置锁与 ⑥ 审批实例
   const heads = await lockOtherBusinessHeads(tx, ctx, owner.employeeId, businessId);
+  // §5.2 ④ ⑤：组织 / 编制资源先于任何审批实例锁取齐，所有生效路径锁序一致
+  await lockExitOrganizationResources(tx, ctx, owner.employeeId, businessId);
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
   if (business.payload.kind !== 'leave' || !exit || business.state !== 'approved')
     throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职可以生效', { reason: 'NOT_PENDING' });
@@ -328,7 +357,7 @@ export async function activateExit(
   if (tenantLocalDate(ctx.now, ctx.timezone) < planned)
     throw new AppError('CONFLICT', '尚未到离职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
 
-  const { item, before } = await activationPredecessors(tx, ctx, business.employeeId, businessId, true);
+  const { item, before } = await activationPredecessors(tx, ctx, business.employeeId, businessId);
   if (!item) throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职可以生效', { reason: 'NOT_PENDING' });
   const bumpRevision = options.trigger !== 'approval';
   const blocking = await blockingPredecessors(tx, ctx, before, businessId);

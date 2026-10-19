@@ -108,9 +108,9 @@ describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延�
   });
 });
 
-describe('离职顺延排序的启用关口（QUEUE_SHIFTED_KINDS）', () => {
-  it('公开路径默认只顺延调动：离职仍按计划日排序，与实际落地日一致（B3-1 随顺延关口加入 leave）', async () => {
-    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer']);
+describe('离职与调动同按最终执行日期顺延（QUEUE_SHIFTED_KINDS，B3-3 起公开路径默认）', () => {
+  it('公开路径默认顺延调动与离职：计划日在前的迟到调动与离职同日（最终 10-18），再按计划日排序', async () => {
+    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer', 'leave']);
     const w = await activationWorld(database().db, 'exit-gate-default');
     const person = await w.hired();
     const [exit, transfer] = await seedQueue(w, person.employee.id, [
@@ -120,10 +120,10 @@ describe('离职顺延排序的启用关口（QUEUE_SHIFTED_KINDS）', () => {
     const queue = await withTenant(w.db, w.session.tenant.id, (tx) =>
       pendingActivations(tx, queueContext(w), person.employee.id),
     );
-    // 与 main 相同：离职 10-16 在迟到调动（最终 10-18）之前
+    // 两笔最终执行日期都是 10-18，同日先看计划日：调动 10-10 在离职 10-16 之前（§10.1 场景 S）
     expect(queue.map((item) => [item.id, item.finalDate])).toEqual([
-      [exit, '2026-10-16'],
       [transfer, '2026-10-18'],
+      [exit, '2026-10-18'],
     ]);
   });
 });

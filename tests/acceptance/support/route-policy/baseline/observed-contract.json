@@ -16341,6 +16341,8 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "buttonResource",
+          "object.button",
           "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
@@ -16354,7 +16356,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
@@ -16366,12 +16371,14 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
           "employment visibility",
           "scope.all",
@@ -16820,7 +16827,9 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
+          "linkage write",
           "requireEmploymentWrite",
+          "requireObjectWrite",
           "transfer write"
         ],
         "fieldsOut": [
@@ -16831,7 +16840,8 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
@@ -16898,6 +16908,10 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -16908,7 +16922,10 @@
           "transfer.initiator"
         ],
         "fieldsIn": [
-          "requireEmploymentWrite"
+          "checkFields",
+          "linkage write",
+          "requireEmploymentWrite",
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
@@ -16918,14 +16935,18 @@
         ],
         "object": [
           "object.* 动作",
-          "readContext(object.*)"
+          "readContext(object.*)",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentRecord:create"
         ],
         "scope": [
+          "checkScope",
           "employment scope",
-          "employment visibility"
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
         ],
         "scopePoint": [
           "employment point"

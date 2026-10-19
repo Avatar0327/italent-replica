@@ -23,6 +23,7 @@ import {
 import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
 import { confirmExit } from './exit-confirmation.js';
+import { activateExit, activateIfDue } from './exit-activation.js';
 import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
 import { findPredecessor, loadEmploymentRecord, snapshotFields } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
@@ -82,6 +83,25 @@ export async function runEmploymentTransition(
       body: await transitionEmployment(tx, { ...ctx, commandId }, input),
     }),
   });
+}
+
+/**
+ * 审批中心最后节点通过后同事务调用（R1-T07）：审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
+ * 离职：先过 HR 字段复核，写 approved 事件与 confirmed 阶段（最后节点通过当日写编制预减时点 R 与预减台账），
+ * 生效日已到则在审批事务内进入生效链（R2-T03 §5.3，审批结论不受落地失败影响）；其余业务 DEC-195② 迟到审批同样按实际执行日对齐联动。
+ */
+async function approveBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  exitRow: Awaited<ReturnType<typeof loadExitRequest>>,
+) {
+  if (exitRow) assertExitHrFields(exitRow);
+  await appendEmploymentState(tx, ctx, business, 'approved');
+  if (!exitRow) return approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
+  const { effectiveDate, mode } = business.payload;
+  await confirmExit(tx, ctx, { id: business.id, employeeId: business.employeeId, effectiveDate, mode });
+  await activateIfDue(tx, ctx, business.id);
 }
 
 /** 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己。 */
@@ -155,17 +175,9 @@ export async function transitionEmployment(
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
     if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
   } else if (input.action === 'approve') {
-    // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
-    if (gatedExit?.row) assertExitHrFields(gatedExit.row);
-    await appendEmploymentState(tx, ctx, business, 'approved');
-    // 离职 confirmed 阶段（§3.1）：最后节点通过当日写编制预减时点 R 与预减台账
-    if (gatedExit?.row) {
-      const { effectiveDate, mode } = business.payload;
-      await confirmExit(tx, ctx, { id: business.id, employeeId: business.employeeId, effectiveDate, mode });
-    }
-    // §18.1 关口②：经门禁的离职只存 approved，不落地、不记生效尝试（B3-3 起调 activateExit）；
-    // DEC-195②：其余业务迟到审批同样按实际执行日对齐联动。
-    if (!gatedExit?.row) await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
+    await approveBusiness(tx, ctx, business, gatedExit?.row);
+  } else if (input.action === 'activate' && gatedExit?.row) {
+    await activateExitPort(tx, ctx, business.id);
   } else if (input.action === 'activate') {
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
@@ -230,6 +242,28 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
   }
 }
 
+/**
+ * activate 端口对离职：经 activateExit 单一编排器落地。端口语义同其他业务——不能越过前序、失败即拒绝（整个命令回滚，
+ * 调度与 HR 重试走 activation-service 的队列循环，由它记生效尝试）。
+ */
+async function activateExitPort(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const result = await activateExit(tx, ctx, businessId, { trigger: 'retry' });
+  if (result.outcome === 'effective') return;
+  if (result.outcome === 'suspended')
+    throw new AppError('CONFLICT', '前序业务生效失败，请先处理前序业务', {
+      reason: PREDECESSOR_FAILED,
+      blockedByBusinessId: result.blockedByBusinessId,
+    });
+  if (result.outcome === 'pending')
+    throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
+      reason: 'ACTIVATION_PREDECESSOR_PENDING',
+      blockedByBusinessId: result.blockedByBusinessId,
+    });
+  throw new AppError('CONFLICT', '离职生效条件不满足', {
+    activationFailure: { reason: result.reason, detail: result.detail },
+  });
+}
+
 /** 离职的门禁前置：提交 / 撤回 / 撤销 / 删除 / 生效端口各自的权限与前置条件；返回扩展行（没有行的可信造数保持 main 行为）。 */
 async function exitGateFor(
   tx: Tx,
@@ -269,7 +303,9 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     withdraw: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
     // `08` §6：流程尚未审批完成才能撤销；审批通过（含未生效）与直接业务只能删除任职。
     revoke: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
-    activate: business.payload.mode === 'application' && business.state === 'approved',
+    // 离职的直接办理（保存即 approved）同样经 activate 端口到期落地（R2-T03 §3.2）
+    activate:
+      (business.payload.mode === 'application' || isExitKind(business.payload.kind)) && business.state === 'approved',
     delete: ['draft', 'rejected', 'disapproved', 'voided', 'approved', 'effective'].includes(business.state),
   };
   if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });

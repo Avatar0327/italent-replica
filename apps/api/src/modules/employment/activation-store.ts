@@ -31,7 +31,7 @@ export interface PendingActivation {
   readonly effectiveDate: string;
   /** §5.0A 计划生效日（timeline.ts plannedEffectiveDate）：到期截取、同日先后与迟到判定的起点。 */
   readonly plannedDate: string;
-  /** §5.0 最终执行日期：若在租户今天落地，实际写入的生效日（队列第一排序键；离职在 B3-1 前不顺延，见 QUEUE_SHIFTED_KINDS）。 */
+  /** §5.0 最终执行日期：若在租户今天落地，实际写入的生效日（队列第一排序键）。 */
   readonly finalDate: string;
   /** 申请单上显式填写的调入部门 / 职位（含向后更新同步过来的值）；未填时为空，继承值由生效时解析。 */
   readonly departmentId: string | null;
@@ -51,12 +51,10 @@ const QUEUE_LIMIT = 200;
 
 /**
  * 已落地的未来调动统一复查；成功尝试退出队列，失败保留 HR 待办。兼容旧版联动事件及 PR-A 未写排队事件、保存时为未来生效的记录（租户日期）。
- * R2-T03 §18.1 关口①：走过离职门禁（有 exit_requests 行）的离职不进队列，B3-3 开闸前调度与 HR 待办都看不到它们；
- * 没有扩展行的离职（可信造数）保持 main 行为。includeExits 只给内部编排器（exit-activation.ts 步骤 0a，B3-1）：
- * 离职（含 approved 直接离职）参与排序与前序，公开队列仍排除，B3-3 开闸时把它改成默认。
+ * 离职（含 approved 直接离职）与申请一样参与排序、前序与 HR 待办（R2-T03 §18.1 关口①，B3-3 起）。
  */
-export const pendingActivationState = (timezone: string, includeExits = false) => sql`((s.state='approved' AND
-    (p.mode='application' OR ${includeExits} AND p.kind='leave') OR
+export const pendingActivationState = (timezone: string) => sql`((s.state='approved' AND
+    (p.mode='application' OR p.kind='leave') OR
   s.state='effective' AND p.kind='transfer' AND (EXISTS (
     SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type IN ('employment.transfer.recheck.pending','employment.transfer.linkage.pending'))
@@ -66,9 +64,7 @@ export const pendingActivationState = (timezone: string, includeExits = false) =
     AND NOT EXISTS (SELECT 1 FROM employment_activation_attempts done
       WHERE done.tenant_id=b.tenant_id AND done.business_id=b.id AND done.outcome='effective')
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
-      AND o.event_type='employment.transfer.linked'))
-  AND (${includeExits} OR NOT EXISTS (SELECT 1 FROM exit_requests gated
-    WHERE gated.tenant_id=b.tenant_id AND gated.business_id=b.id)))`;
+      AND o.event_type='employment.transfer.linked')))`;
 
 export type ShiftedKind = 'transfer' | 'leave';
 
@@ -90,12 +86,8 @@ export function finalExecutionDateSql(
   return sql`(CASE WHEN ${kind}::text IN (${kinds}) THEN greatest(${planned}, ${today}::date) ELSE ${planned} END)`;
 }
 
-/**
- * 公开路径（待生效队列排序、向后更新候选）当前按“最终执行日期”顺延的 kind。离职不在其中：实际顺延与落地（设计 §5.1 步骤 0，
- * `activateExit` / `postponeLateExit`）在 B3-1 才实现，现在只排序会出现“队列说 10-18、落地仍写 10-16”的两套日期。
- * B3-1 与顺延关口同一个 PR 把 'leave' 加进来；SQL ≡ 纯函数对离职的等价性已由 finalExecutionDateSql 默认参数的验收测试锁住。
- */
-export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer'];
+/** 待生效队列按“最终执行日期”顺延的 kind：调动与离职同式（设计 §5.0，DEC-272）。 */
+export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer', 'leave'];
 
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
 export async function pendingActivations(
@@ -103,7 +95,6 @@ export async function pendingActivations(
   ctx: EmploymentContext,
   employeeId: string,
   shifted: readonly ShiftedKind[] = QUEUE_SHIFTED_KINDS,
-  includeExits = false,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
@@ -135,7 +126,7 @@ export async function pendingActivations(
       FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-      AND ${pendingActivationState(ctx.timezone, includeExits)}
+      AND ${pendingActivationState(ctx.timezone)}
     ORDER BY ${finalDate}, ${planned},
       p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
@@ -182,21 +173,9 @@ export async function findOverdueTransfers(tx: Tx, ctx: EmploymentContext, emplo
   };
 }
 
-/** 内部编排器看到的队列：离职参与排序与前序，离职与调动都按最终执行日期顺延（设计 §5.0）。 */
-export const pendingExitQueue = (tx: Tx, ctx: EmploymentContext, employeeId: string) =>
-  pendingActivations(tx, ctx, employeeId, ['transfer', 'leave'], true);
-
 /** 排在该业务之前的待生效业务（DEC-108 / DEC-112：前序未落地时不得越过它生效）。 */
-export async function activationPredecessors(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  businessId: string,
-  includeExits = false,
-) {
-  const queue = includeExits
-    ? await pendingExitQueue(tx, ctx, employeeId)
-    : await pendingActivations(tx, ctx, employeeId);
+export async function activationPredecessors(tx: Tx, ctx: EmploymentContext, employeeId: string, businessId: string) {
+  const queue = await pendingActivations(tx, ctx, employeeId);
   const index = queue.findIndex((item) => item.id === businessId);
   return { item: index < 0 ? undefined : queue[index], before: index < 0 ? [] : queue.slice(0, index) };
 }
@@ -369,8 +348,9 @@ export interface ActivationTodo {
 }
 
 /**
- * HR “生效失败”待办（DEC-052）：仍为审批通过、最近一次尝试失败的申请。待办随状态派生，重试成功或删除申请即关闭；
- * 可见范围按当前操作人的数据范围重新裁剪（AGENTS.md §10「权限」），不预先固化接收人。
+ * HR “生效失败 / 挂起”待办（DEC-052 / DEC-112，离职设计 §10.1：共同迟到后两笔各一条）：仍为审批通过、最近一次尝试
+ * 失败或因前序失败挂起的申请。待办随状态派生，重试成功或删除申请即关闭；返回真实状态、原因和前序标识（挂起项的 blockedBy）；
+ * 失败次数只统计 failed 尝试；可见范围按当前操作人的数据范围重新裁剪（AGENTS.md §10「权限」），不预先固化接收人。
  */
 export async function listActivationTodos(
   tx: Tx,
@@ -391,13 +371,15 @@ export async function listActivationTodos(
     employeeId: string;
     kind: BusinessKind;
     effectiveDate: string;
+    outcome: 'failed' | 'suspended';
     reason: string;
+    blockedBy: string | null;
     failures: number;
     failedAt: string | Date;
   }>(
     await tx.execute(sql`
     SELECT b.id, b.employee_id AS "employeeId", p.kind, p.effective_date::text AS "effectiveDate",
-      a.reason, a.created_at AS "failedAt",
+      a.outcome, a.reason, a.blocked_by_business_id AS "blockedBy", a.created_at AS "failedAt",
       (SELECT count(*)::int FROM employment_activation_attempts f
         WHERE f.tenant_id=b.tenant_id AND f.business_id=b.id AND f.outcome='failed') AS failures
     FROM employment_business_objects b
@@ -411,7 +393,8 @@ export async function listActivationTodos(
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)} AND a.outcome='failed' AND ${scopeFilter}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
+      AND a.outcome IN ('failed','suspended') AND ${scopeFilter}
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );
@@ -421,10 +404,10 @@ export async function listActivationTodos(
     kind: row.kind,
     effectiveDate: row.effectiveDate,
     activation: {
-      status: 'failed',
+      status: row.outcome,
       failureCount: Number(row.failures),
       failureReason: row.reason,
-      blockedByBusinessId: null,
+      blockedByBusinessId: row.outcome === 'suspended' ? row.blockedBy : null,
       lastAttemptAt: new Date(row.failedAt).toISOString(),
     },
   }));

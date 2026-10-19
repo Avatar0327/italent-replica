@@ -1,8 +1,8 @@
 /**
  * 离职 confirmed 阶段（R2-T03 设计 §3.1）：申请最后节点同意、直接离职保存时调用，与该动作同事务。
  * 写编制预减时点 R（exit_requests.pre_release_date，DEC-266①）与预减台账（establishment/exit-release.ts），
- * 再通知 confirmed 端口的订阅方（交接自动发起属 BE-8b，DM-R14：只对申请）。不落地（§18.1）。
- * approval_passed 时机的职责转交也在这里执行（B3-2，§5.7）；关口⑤关闭期间请求不能带转交区块，B3-3 起才会有计划。
+ * 再通知 confirmed 端口的订阅方（交接自动发起属 BE-8b，DM-R14：只对申请）。本函数不落地（调用方随后 activateIfDue）。
+ * approval_passed 时机的职责转交也在这里执行（§5.7）；计划须在调用本函数之前已写入联动版本。
  */
 import { and, eq, exitRequests, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
