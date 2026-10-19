@@ -75,6 +75,42 @@ describe('离职表单加黑字段（DM-R2；R2f B68）', () => {
     expect(same.status, await same.clone().text()).toBe(201);
   });
 
+  it('编辑离职（PATCH）与创建同一校验：“是”改“否”清掉三项；未勾选时单独改原因 400；“否”改“是”须带原因', async () => {
+    const x = await world('fields-patch');
+    const leave = await x.createdExit(x.employee.id, FUTURE_LAST_WORK_DATE, 'direct', {
+      ...MANUAL,
+      blacklistExpiryDate: '2026-12-31',
+    });
+    const patch = async (body: object) =>
+      x.session.request('PATCH', `/exits/${leave.id}`, {
+        ifMatch: (await x.business(leave.id)).revision,
+        body,
+      });
+    const cleared = await patch({ addToBlacklist: false });
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+    expect(await x.exitColumns(leave.id)).toEqual([{ add: false, reason: null, expiry: null, note: null }]);
+    const alone = await patch({ blacklistReason: 'resignation' });
+    expect(await x.reasonOf(alone)).toMatchObject({ status: 400, reason: 'EXIT_BLACKLIST_FIELDS_NOT_ALLOWED' });
+    const noReason = await patch({ addToBlacklist: true });
+    expect(await x.reasonOf(noReason)).toMatchObject({ status: 400, reason: 'EXIT_BLACKLIST_REASON_REQUIRED' });
+    const early = await patch({
+      addToBlacklist: true,
+      blacklistReason: 'resignation',
+      blacklistExpiryDate: '2026-10-10',
+    });
+    expect(await x.reasonOf(early)).toMatchObject({ status: 400, reason: 'BLACKLIST_EXPIRY_BEFORE_DATE' });
+    const set = await patch({ addToBlacklist: true, blacklistReason: 'resignation', blacklistNote: '改后说明' });
+    expect(set.status, await set.clone().text()).toBe(200);
+    expect(await x.exitColumns(leave.id)).toEqual([
+      { add: true, reason: 'resignation', expiry: null, note: '改后说明' },
+    ]);
+    // 编辑后的内容就是生效时写入的内容
+    await x.activate(leave.id, FUTURE_EFFECTIVE_DATE);
+    expect(await x.activeRows(x.employee.id)).toEqual([
+      expect.objectContaining({ reason: 'resignation', note: '改后说明', expiryDate: null }),
+    ]);
+  });
+
   it('员工自助离职 / 经理代发不出现加黑字段（规格 30 第 22 行）', () => {
     const exits: ExitOptions[] = [
       { whereaboutsCode: 'startup', blacklistReason: 'integrity' },
