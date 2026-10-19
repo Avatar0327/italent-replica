@@ -12,6 +12,7 @@ import { DirectForm, DirectEdit } from './DirectForm.js';
 import { DirectBatch } from './DirectBatch.js';
 import { d } from './direct-messages.js';
 import type { Row } from './model.js';
+import { RequestEntries, NewRequestButton } from './RequestEntries.js';
 import { m } from './messages.js';
 function useList() {
   const access = useDirectAccess();
@@ -80,7 +81,7 @@ export function PartTimeList() {
     switchView,
   } = state;
   return (
-    <>
+    <RequestEntries refresh={result.reload} saved={(id) => select({ id, request: true })}>
       <h1>{m.title}</h1>
       <nav className="part-time-views" aria-label={m.title}>
         {views.map((item) => (
@@ -120,7 +121,7 @@ export function PartTimeList() {
           onClose={() => select(undefined)}
         />
       )}
-    </>
+    </RequestEntries>
   );
 }
 
@@ -144,6 +145,7 @@ function ListCard({ state }: { state: State }) {
             {d.batch}
           </Button>
         )}
+        <NewRequestButton />
         <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
         <Button
           type="text"

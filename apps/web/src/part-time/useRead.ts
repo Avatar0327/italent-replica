@@ -34,10 +34,17 @@ export function useRead<T>(path: string | null) {
       if (!path) throw new Error('Missing read path');
       // 初次读取和写后重读共用序号；过期重读不能让提交方解除锁定。
       const request = ++sequence.current;
-      const data = await api.request<T>(path);
-      if (latestKey.current !== key) throw new DOMException('Context changed', 'AbortError');
-      if (sequence.current !== request) throw new DOMException('Read superseded', 'AbortError');
-      setState({ key, data });
+      try {
+        const data = await api.request<T>(path);
+        if (latestKey.current !== key) throw new DOMException('Context changed', 'AbortError');
+        if (sequence.current !== request) throw new DOMException('Read superseded', 'AbortError');
+        setState({ key, data });
+        return data;
+      } catch (error) {
+        // 写后重读失败交给命令内核锁定；保留原界面，避免卸载正在显示的 unknown 表单。
+        if (latestKey.current === key && sequence.current === request && !current?.data) setState({ key, error });
+        throw error;
+      }
     },
   };
 }
