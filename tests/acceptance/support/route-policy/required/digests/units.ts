@@ -286,6 +286,9 @@ export const DIGESTS: Digests = {
     'route:POST /interns/:id/regularize': '30a7f759a110',
     'route:POST /rehire-matches': '0f65f77ec626',
   },
+  'apps/api/src/modules/employment/part-time/linkage.ts': {
+    validatePartTimeLinkage: '470d781276f9',
+  },
   'apps/api/src/modules/employment/part-time/replay-guard.ts': {
     requirePartTimeCreateAccess: 'c4e7c604b097',
     requirePartTimePreviewButton: 'b6599d36ef99',
@@ -701,6 +704,9 @@ export const DIGESTS: Digests = {
     'route:PUT /api/tenant/org/settings': '1d14b609c0b6',
     visibleParents: '0b74f18d06b3',
     write: 'ff1b399350c1',
+  },
+  'apps/api/src/modules/org/write-service.ts': {
+    requireTransferOrganizationScope: 'aaf12f781a3b',
   },
   'apps/api/src/modules/permission/admin-http.ts': {
     adminGuard: '0752b9788c1e',
@@ -1744,6 +1750,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
+  'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage': '1193d874b58f',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess': '8d0660b89133',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess': '6931fb8099e3',
@@ -2054,6 +2061,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org/routes.ts#route:PUT /api/tenant/org/settings': 'afec69d1b639',
   'apps/api/src/modules/org/routes.ts#visibleParents': 'c980b0d216a7',
   'apps/api/src/modules/org/routes.ts#write': '67dcca9db848',
+  'apps/api/src/modules/org/write-service.ts#requireTransferOrganizationScope': '72e05c3b04df',
   'apps/api/src/modules/permission/admin-http.ts#adminGuard': '9d063f8ea5e6',
   'apps/api/src/modules/permission/data-scope-routes.ts#mouViewGuard': '9d063f8ea5e6',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:DELETE /api/tenant/permission/mous/:id': 'aa3bf5263329',

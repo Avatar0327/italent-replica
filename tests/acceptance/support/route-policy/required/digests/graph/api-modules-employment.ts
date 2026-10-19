@@ -2837,6 +2837,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#lock': [
     'apps/api/src/modules/approval/adapter-support.ts#mayAdvanceBusiness',
     '#asEmployment',
+    '#requestSubordinates',
+    'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants',
     'apps/api/src/modules/employment/part-time/request-store.ts#partTimeRequestOwner',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
@@ -2864,6 +2866,9 @@ export const GRAPH: Graph = {
     '#PRESET_EDITS',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/employment/part-time-constants.ts#partTimeBusinessField',
+  ],
+  'apps/api/src/modules/employment/part-time/approval-adapter.ts#requestSubordinates': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#snapshot': [
     'apps/api/src/modules/approval/adapter-support.ts#employeeHeader',
@@ -2928,6 +2933,48 @@ export const GRAPH: Graph = {
     '#reject',
     'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#applyLinkage': [
+    '#validatePartTimeLinkage',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord',
+    'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#audit': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#scopeOf',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#eventExists': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#executeLinkage': [
+    '#applyLinkage',
+    '#audit',
+    '#hasLinkage',
+    '#skipReason',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_EVENTS',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_SKIPS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants': [
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#queuePartTimeLinkage': [
+    '#audit',
+    '#eventExists',
+    '#executeLinkage',
+    '#hasLinkage',
+    'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_EVENTS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage': [
+    '#hasLinkage',
+    'apps/api/src/modules/employment/transfer-linkage.ts#validateTransferSubordinates',
+    'apps/api/src/modules/employment/types.ts#emptyPresetFields',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_DEPARTMENT': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
@@ -3276,6 +3323,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/request-service.ts#assertInitiator': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/request-service.ts#assertNoDateLinkage': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
   'apps/api/src/modules/employment/part-time/request-service.ts#assertRemark': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REMARK_MAX',
   ],
@@ -3301,6 +3351,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#businessDate',
     'apps/api/src/modules/employment/part-time/date-request.ts#checkDateRequest',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
+    '#assertNoDateLinkage',
     '#assertRemark',
     '#auditRequest',
     '#datePayload',
@@ -3309,13 +3360,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-store.ts#insertPartTimeRequest',
     'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords',
     'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords',
-    'apps/api/src/modules/employment/part-time/validation.ts#assertNoLinkage',
     'apps/api/src/modules/employment/part-time/validation.ts#requirePartTimeRecordScope',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#datePatch': [
-    'apps/api/src/modules/employment/part-time/validation.ts#assertNoLinkage',
+    '#assertNoDateLinkage',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#datePayload': [
@@ -3349,6 +3399,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#landApprovedRequest': [
+    'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants',
     '#assertAction',
     '#auditRequest',
     '#dateTarget',
@@ -3681,6 +3732,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/service.ts#checkNewPartTime': [
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
+    'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
+    'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage',
     'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree',
     'apps/api/src/modules/employment/part-time/validation.ts#partTimePresetFields',
     'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeCustomFields',
@@ -3689,6 +3742,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#createPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
+    'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants',
     '#checkNewPartTime',
     '#insertCheckedPartTime',
     'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime',
@@ -3703,11 +3758,17 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
+    'apps/api/src/modules/employment/part-time/linkage.ts#linkageDelta',
+    'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants',
+    'apps/api/src/modules/employment/part-time/linkage.ts#queuePartTimeLinkage',
+    'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeNotFound',
     '#assertRecoveryKeepsExclusive',
     '#customChanges',
     '#writePartTimeEdit',
     'apps/api/src/modules/employment/part-time/store.ts#lockPartTimeRecords',
+    'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords',
+    'apps/api/src/modules/employment/part-time/validation.ts#normalizeSubordinates',
     'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
     'apps/api/src/modules/employment/part-time/validation.ts#planPartTimeEdit',
     'apps/api/src/modules/employment/part-time/validation.ts#requestInProgress',
@@ -3721,6 +3782,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/service.ts#insertCheckedPartTime': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
+    'apps/api/src/modules/employment/part-time/linkage.ts#queuePartTimeLinkage',
     'apps/api/src/modules/employment/part-time/store.ts#insertPartTimeRecord',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
@@ -3729,6 +3792,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
+    'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
+    'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage',
     '#departmentHeadOn',
     'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree',
     'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime',
@@ -3782,16 +3847,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/part-time/validation.ts#EDITABLE_FIELD_KEYS': ['#PART_TIME_FIELD_KEYS'],
+  'apps/api/src/modules/employment/part-time/validation.ts#EDITABLE_FIELD_KEYS': [
+    '#PART_TIME_FIELD_KEYS',
+    '#PART_TIME_LINKAGE_KEYS',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree': [
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/employment/part-time.ts#exclusivePartTimeConflict',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
-  'apps/api/src/modules/employment/part-time/validation.ts#assertNoLinkage': [
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#assertNotBeforeFounded': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3805,6 +3870,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/employment/part-time.ts#partTimeServiceStatus',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#editedValue': ['#normalizeSubordinates'],
   'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStart': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
@@ -3824,8 +3890,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime': [
     'apps/api/src/modules/employment/fields.ts#businessDate',
     '#PART_TIME_FIELD_KEYS',
-    '#assertNoLinkage',
     '#endBeforeStart',
+    '#normalizeSubordinates',
     'apps/api/src/modules/job/validation.ts#invalid',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
@@ -3839,8 +3905,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/validation.ts#planPartTimeEdit': [
     'apps/api/src/modules/employment/fields.ts#businessDate',
     '#EDITABLE_FIELD_KEYS',
-    '#assertNoLinkage',
+    '#editedValue',
     '#endBeforeStart',
+    '#sameValue',
     'apps/api/src/modules/job/validation.ts#invalid',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
@@ -3854,6 +3921,7 @@ export const GRAPH: Graph = {
     '#NO_CREATOR',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#sameValue': ['#editedValue'],
   'apps/api/src/modules/employment/part-time/validation.ts#validatePartTimeCustomFields': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
@@ -4929,6 +4997,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_EVENTS',
   ],
   'apps/api/src/modules/employment/transitions.ts#activateExitPort': [
     'apps/api/src/modules/employment/activation-store.ts#PREDECESSOR_FAILED',

@@ -16,7 +16,19 @@ import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
-const world = (label: string) => requestWorld(database().db, `lk-${label}`);
+/**
+ * 夹具的 setOrgRoles 直接插组织版本、不动对象 revision；联动走真实组织写入（版本号 = revision + 1），
+ * 所以这里把兼职部门的对象 revision 对齐到已有最大版本号（可信夹具，只为让两种写法能共存）。
+ */
+async function world(label: string) {
+  const w = await requestWorld(database().db, `lk-${label}`);
+  await w.run((tx) =>
+    tx.execute(sql`UPDATE org_objects SET revision=(SELECT max(version_no) FROM org_versions
+      WHERE tenant_id=${w.tenant.id} AND org_id=${w.side}::uuid)
+      WHERE tenant_id=${w.tenant.id} AND id=${w.side}::uuid`),
+  );
+  return w;
+}
 
 const headOf = (w: RequestWorld, orgId: string) =>
   w.run(async (tx) => {
@@ -28,6 +40,9 @@ const headOf = (w: RequestWorld, orgId: string) =>
   });
 const managerOf = (w: RequestWorld, employeeId: string, asOf = '2026-10-01') =>
   w.run(async (tx) => (await findCurrentRecord(tx, w.tenant.id, employeeId, asOf))!.fields.directManagerId);
+/** 申请落地后的兼职记录 ID（add 申请头不带记录，落在 effective 状态事件上）。 */
+const landedRecord = async (w: RequestWorld, requestId: string) =>
+  (await w.states(requestId)).find((event) => event.state === 'effective')!.record_id!;
 const linkEvents = (w: RequestWorld, recordId: string) =>
   w.run(async (tx) => {
     const rows = rowsOf<{ eventType: string; n: number }>(
@@ -77,7 +92,7 @@ describe('审批通过落地：与直接新增同一分支', () => {
     expect(landed.state).toBe('effective');
     expect(await headOf(w, w.side)).toBe(w.worker.employeeId);
     expect(await managerOf(w, sub.employeeId)).toBe(w.worker.employeeId);
-    expect(await linkEvents(w, landed.recordId!)).toEqual({ 'employment.part_time.linked': 1 });
+    expect(await linkEvents(w, await landedRecord(w, created.id))).toEqual({ 'employment.part_time.linked': 1 });
   });
 
   it('开始日 > 今天：落地只写待执行事件；开始日由定时生效执行，之后重复触发不再改', async () => {
@@ -85,15 +100,15 @@ describe('审批通过落地：与直接新增同一分支', () => {
     const created = await w.create({ startDate: '2026-10-20', isDepartmentHead: true });
     await w.send(created.id, created.revision);
     await w.approveInOrder(created.id, w.order.add);
-    const { recordId } = await w.load(created.id);
-    expect(await linkEvents(w, recordId!)).toEqual({ 'employment.part_time.linkage.pending': 1 });
+    const recordId = await landedRecord(w, created.id);
+    expect(await linkEvents(w, recordId)).toEqual({ 'employment.part_time.linkage.pending': 1 });
     expect(await headOf(w, w.side)).toBe(w.approvers.sHead.employeeId);
     expect((await sweep(w, '2026-10-19')).runs[0]!.errors).toEqual([]);
     expect(await headOf(w, w.side)).toBe(w.approvers.sHead.employeeId);
     expect((await sweep(w, '2026-10-20')).runs[0]!.errors).toEqual([]);
     expect(await headOf(w, w.side)).toBe(w.worker.employeeId);
     await sweep(w, '2026-10-21');
-    expect(await linkEvents(w, recordId!)).toMatchObject({ 'employment.part_time.linked': 1 });
+    expect(await linkEvents(w, recordId)).toMatchObject({ 'employment.part_time.linked': 1 });
   });
 
   it('落地复核联动人员已不合格（审批期间下属离职）→ 申请作废 landing_rejected，不建兼职、不改负责人', async () => {
@@ -150,7 +165,7 @@ describe('新增节点审批编辑：开放“是否部门负责人”，不开�
   it('改后按 §4.3A 重跑校验：同一申请版本里已有不合格的下属时，审批编辑当次拒绝，版本与审批状态不变', async () => {
     const w = await world('edit-recheck');
     const sub = await w.person('下属', w.primary);
-    const created = await w.create({ addedSubordinateIds: [sub.employeeId] });
+    const created = await w.create({ startDate: '2026-10-01', addedSubordinateIds: [sub.employeeId] });
     await w.send(created.id, created.revision);
     const current = await w.json<{ revision: number }>(
       await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${sub.employeeId}`),
@@ -185,14 +200,19 @@ describe('延长 / 结束申请不带联动：只改结束日期与备注', () =
       for (const extra of [{ isDepartmentHead: true }, { addedSubordinateIds: [w.worker.employeeId] }])
         expect(
           await w.rejected(() =>
-            w.createDate({ requestType: type, recordId: record, endDate: '2026-12-31', ...extra }),
+            w.createDate({
+              requestType: type,
+              recordId: record,
+              endDate: type === 'extend' ? '2026-12-31' : '2026-10-15',
+              ...extra,
+            }),
           ),
         ).toMatchObject({ code: 'VALIDATION_FAILED', reason: 'PART_TIME_FIELD_NOT_EDITABLE' });
       expect(await w.writes()).toEqual(before);
       const saved = await w.createDate({
         requestType: type,
         recordId: record,
-        endDate: '2026-12-31',
+        endDate: type === 'extend' ? '2026-12-31' : '2026-10-15',
         isDepartmentHead: false,
         addedSubordinateIds: [],
       });

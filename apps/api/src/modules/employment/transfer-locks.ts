@@ -3,6 +3,7 @@
  * 事务本地设置跟随保存点回滚，不能用进程缓存替代数据库持锁事实。
  */
 import { isUuid, sql, type Tx } from '@italent/db';
+import { PART_TIME_LINKAGE_EVENTS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
@@ -32,8 +33,20 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
           AND r.business_id=b.id AND p.kind IN ('leave','retirement'))
     `),
     );
+    // PT-7：待执行的兼职联动（负责人 / 新增下属）同样在闭包里，定时生效与立即执行都按同一 UUID 升序取锁（兼职设计 §4.8 / §7.1）
+    const linkage = rowsOf<{ ids: string[] | null }>(
+      await tx.execute(sql`
+      SELECT p.added_subordinate_ids AS ids FROM employment_outbox o
+      JOIN LATERAL (SELECT added_subordinate_ids FROM employment_payload_versions p
+        WHERE p.tenant_id=o.tenant_id AND p.business_id=o.business_id ORDER BY version_no DESC LIMIT 1) p ON true
+      WHERE o.tenant_id=${ctx.tenantId} AND o.employee_id=ANY(${array([...ids])})
+        AND o.event_type=${PART_TIME_LINKAGE_EVENTS.pending} AND p.added_subordinate_ids IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM employment_outbox d WHERE d.tenant_id=o.tenant_id AND d.business_id=o.business_id
+          AND d.event_type IN (${PART_TIME_LINKAGE_EVENTS.linked}, ${PART_TIME_LINKAGE_EVENTS.skipped}))
+    `),
+    );
     const size = ids.size;
-    rows.forEach((row) => row.ids?.forEach((id) => ids.add(id)));
+    [...rows, ...linkage].forEach((row) => row.ids?.forEach((id) => ids.add(id)));
     if (ids.size > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '调动联动参与人员超过处理上限');
     if (ids.size === size) return [...ids].sort();
   }

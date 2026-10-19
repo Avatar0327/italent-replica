@@ -27,6 +27,7 @@ import { lockOrganizationSettings } from '../../org/locks.js';
 import { findCurrentRecord } from '../read-model.js';
 import { lockEmploymentEmployee } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
+import { lockLinkageParticipants } from './linkage.js';
 import { loadPartTimeRequest, partTimeRequestOwner, type PartTimeRequestRow } from './request-store.js';
 import {
   editRequestInApproval,
@@ -49,7 +50,10 @@ const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`
 async function lock(tx: Tx, ctx: ApprovalContext, requestId: string, reassignFrom?: string): Promise<void> {
   const owner = await partTimeRequestOwner(tx, ctx.tenantId, requestId);
   if (!owner) throw new AppError('NOT_FOUND', '兼职申请不存在');
-  await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
+  // 新增申请带“新增下属”时，落地会改这些人的直线经理：先按 UUID 升序取整个联动闭包（§7.1），其余仍只锁本人
+  const subordinates = owner.requestType === 'add' ? await requestSubordinates(tx, ctx.tenantId, requestId) : [];
+  if (subordinates.length) await lockLinkageParticipants(tx, asEmployment(ctx), owner.employeeId, subordinates);
+  else await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
   await tx.execute(sql`SELECT 1 FROM part_time_requests
     WHERE tenant_id=${ctx.tenantId} AND id=${requestId}::uuid FOR UPDATE`);
   if (owner.recordId)
@@ -82,6 +86,15 @@ async function lockMany(
   if (!options.organization || !heads.some((head) => head.requestType !== 'end')) return;
   if (await mayAdvanceBusiness(tx, ctx, requestIds, options.reassignFrom))
     await lockOrganizationSettings(tx, ctx.tenantId);
+}
+
+/** 申请最新版本上的新增下属（不加锁读；审批中不可再改它，草稿期的改动在申请头锁内由落地重读）。 */
+async function requestSubordinates(tx: Tx, tenantId: string, requestId: string): Promise<string[]> {
+  const [row] = rowsOf<{ ids: string[] | null }>(
+    await tx.execute(sql`SELECT added_subordinate_ids AS ids FROM part_time_request_versions
+      WHERE tenant_id=${tenantId} AND request_id=${requestId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  return row?.ids ?? [];
 }
 
 async function loadRequest(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<PartTimeRequestRow> {
@@ -133,6 +146,8 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
     dottedManagerId: version.dottedManagerId,
     employmentType: version.employmentType,
     employmentForm: version.employmentForm,
+    // 只有“是”才是本单内容（false 与未填等价，不算审批人要看的变化字段，免得无权看该字段的审批人被盲审拦住）
+    isDepartmentHead: version.isDepartmentHead === true ? true : null,
     startDate: version.startDate,
     endDate: version.endDate,
     originalEndDate: version.originalEndDate,
@@ -189,6 +204,8 @@ const PRESET_EDITS = [
   'employmentForm',
   'employmentType',
   'endDate',
+  // DEC-634：新增节点开放“是否部门负责人”；新增下属不在审批编辑集合（F234A C9），节点没开放时被审批引擎先拦
+  'isDepartmentHead',
 ] as const;
 
 /** 延长 / 结束申请的审批编辑只接结束日期与备注（A-14）；新增申请接整张表单。 */
