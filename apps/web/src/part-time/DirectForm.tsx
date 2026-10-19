@@ -13,6 +13,7 @@ import { collection, useDirectAccess, useDirectCommand, useRecordRead } from './
 import { DirectError, useDirectApi } from './direct-api.js';
 import { directBody, directValues, formFields, recordReceipt, validateDirect, errorLines } from './direct-model.js';
 import { DirectField, ReadonlyPerson, useDirectPreview } from './DirectFields.js';
+import { DirectCustomField, useDirectCustomFields } from './DirectCustomFields.js';
 import { d } from './direct-messages.js';
 export interface DirectProps {
   onClose(): void;
@@ -31,6 +32,8 @@ export function DirectEdit({ id, ...props }: DirectProps & { id: string }) {
 function useDirectForm({ row, onClose, refresh }: DirectProps & { row?: Row }) {
   const create = !row;
   const access = useDirectAccess();
+  const custom = useDirectCustomFields(access);
+  const fields = [...formFields, ...custom.keys];
   const api = useApiClient();
   const send = useDirectApi();
   const read = useRecordRead();
@@ -40,7 +43,7 @@ function useDirectForm({ row, onClose, refresh }: DirectProps & { row?: Row }) {
   const employeeId = String(values.employeeId ?? row?.employeeId ?? '');
   const manual = useRef(new Set<string>());
   const [error, setError] = useState<unknown>();
-  const editable = formFields.filter((key) => access.field(key, create).editable);
+  const editable = fields.filter((key) => access.field(key, create).editable);
   const cmd = useDirectCommand(
     { id: create ? employeeId : row.id, revision: create ? 0 : Number(row.revision), values: baseline },
     create ? 'create' : 'edit',
@@ -50,7 +53,7 @@ function useDirectForm({ row, onClose, refresh }: DirectProps & { row?: Row }) {
         : read(row.id),
   );
   useDraftRefill(cmd.form, editable, form);
-  const locked = cmd.form.locked || !access.operation(create);
+  const locked = cmd.form.locked || !access.operation(create) || custom.blocked;
   const preview = useDirectPreview(form, values, create && !locked, editable, manual);
   const submitting = useRef(false);
   const submit = async () => {
@@ -91,7 +94,7 @@ function useDirectForm({ row, onClose, refresh }: DirectProps & { row?: Row }) {
       submitting.current = false;
     }
   };
-  return { form, create, access, baseline, employeeId, manual, error, cmd, locked, preview, submit };
+  return { form, create, access, custom, baseline, employeeId, manual, error, cmd, locked, preview, submit };
 }
 export function DirectForm(props: DirectProps & { row?: Row }) {
   const state = useDirectForm(props);
@@ -143,14 +146,15 @@ export function DirectForm(props: DirectProps & { row?: Row }) {
 }
 
 function DirectContent({ state }: { state: ReturnType<typeof useDirectForm> }) {
-  const { form, create, access, baseline, employeeId, manual, error, cmd, locked, preview } = state;
+  const { form, create, access, custom, baseline, employeeId, manual, error, cmd, locked, preview } = state;
   return (
     <>
-      <CommandStatus submission={cmd.form} labels={d.labels} />
+      <CommandStatus submission={cmd.form} labels={{ ...d.labels, ...custom.labels }} />
       {!!error && !cmd.form.state?.error && <Alert type="error" message={rejectionMessage(error)} />}
       {cmd.form.state?.error instanceof DirectError &&
         errorLines(cmd.form.state.error.details).map((line) => <Alert key={line} type="error" message={line} />)}
       {preview.node}
+      {custom.node}
       <FormLock locked={locked}>
         <Form
           form={form}
@@ -173,6 +177,9 @@ function DirectContent({ state }: { state: ReturnType<typeof useDirectForm> }) {
               />
             ))}
           </div>
+          {custom.definitions.map((field) => (
+            <DirectCustomField key={field.id} field={field} access={access} create={create} baseline={cmd.full} />
+          ))}
           <p>{d.linkage}</p>
           {create && employeeId && <ReadonlyPerson id={employeeId} />}
         </Form>

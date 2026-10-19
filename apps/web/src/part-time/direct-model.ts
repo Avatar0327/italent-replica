@@ -18,11 +18,21 @@ export const recordFields = [
 export const formFields = ['employeeId', 'serviceType', 'effectiveDate', 'endDate', ...recordFields];
 export function directValues(row: Values): Values {
   // 缺键保持缺键；控件的空值由共享 projectFields 提供，不能给被裁剪字段造出业务值。
-  return { ...row, ...(row.fields as Values | undefined) };
+  return {
+    ...row,
+    ...(row.fields as Values | undefined),
+    ...Object.fromEntries(
+      Object.entries((row.customFields ?? {}) as Values).map(([id, value]) => [`custom:${id}`, value]),
+    ),
+  };
 }
 export function directBody(values: Values, create: boolean) {
+  const custom = Object.entries(values).filter(([key]) => key.startsWith('custom:'));
   const keys = recordFields.filter((key) => Object.hasOwn(values, key));
   return {
+    ...(custom.length
+      ? { customFields: Object.fromEntries(custom.map(([key, value]) => [key.slice(7), value ?? null])) }
+      : {}),
     ...(create ? { partTimeType: values.serviceType, startDate: values.effectiveDate } : {}),
     ...(Object.hasOwn(values, 'endDate') ? { endDate: values.endDate ?? null } : {}),
     ...(keys.length ? { fields: projectFields(values, keys) } : {}),

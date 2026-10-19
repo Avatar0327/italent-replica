@@ -54,6 +54,7 @@ function directControl(name: string, label: string) {
   if (['effectiveDate', 'endDate'].includes(name)) return <TenantDatePicker />;
   return <Input aria-label={label} />;
 }
+const previewFields = ['employeeId', 'serviceType', 'effectiveDate', 'departmentId', 'postId', 'endDate'];
 export function useDirectPreview(
   form: FormInstance,
   values: Values,
@@ -64,7 +65,7 @@ export function useDirectPreview(
   const send = useDirectApi();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{ key: string; error?: unknown; warnings?: Values[] }>();
-  const previewKeys = ['employeeId', 'serviceType', 'effectiveDate', 'departmentId', 'postId', 'endDate'];
+  const previewKeys = [...previewFields, ...editable.filter((key) => key.startsWith('custom:'))];
   const key = JSON.stringify([...previewKeys.map((key) => values[key]), editable, retry]);
   const valid = enabled && ['employeeId', 'serviceType', 'effectiveDate', 'departmentId'].every((key) => values[key]);
   useEffect(() => {

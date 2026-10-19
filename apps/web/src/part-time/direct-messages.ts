@@ -1,4 +1,6 @@
 export const d = {
+  yes: '是',
+  no: '否',
   add: '新增兼职',
   edit: '编辑兼职',
   batch: '批量结束兼职',
