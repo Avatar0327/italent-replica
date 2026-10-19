@@ -12,6 +12,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { cancelWorld, type CancelWorld } from './AC-EXIT-cancel-support.js';
+import { VOID_LIMIT } from '../../apps/api/src/modules/employment/exit-void-applications.js';
 import { probeDownstream, trimDownstream } from '../../apps/api/src/modules/employment/exit-downstream.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
@@ -242,4 +243,31 @@ describe('PT-6b 清单按查看人裁剪（DEC-177，失败即关）', () => {
     expect(item.targets.map((target) => target.id).sort()).toEqual([record.id, requestId].sort());
     for (const target of item.targets) expect(Object.keys(target).sort()).toEqual(['detail', 'id', 'type']);
   });
+});
+
+describe('PT-6b 第 1 轮 P2-1：撤销已提交后响应投影不得因目标过多返回 413', () => {
+  // 恰为作废上限的待作废任职申请（1000）+ 1 条兼职：清单聚合出 1001 个任职范围目标，超过 disclose 的单次上限；
+  // 响应投影发生在撤销提交之后，413 会让“已撤销”的请求失败。首次撤销与同键重放都必须成功，清单完整。
+  it('1000 条被作废的任职申请 + 1 条兼职：首次撤销与同键重放都 200，清单完整（1000 + 1）', async () => {
+    const x = await partTimeExitWorld('pt6b-many-targets');
+    const part = await x.makePartTime('2026-10-31');
+    await x.bulkDrafts(VOID_LIMIT);
+    const exit = await x.effectiveExit();
+    const body = { reason: '录入有误' };
+    const key = 'pt6b-many-targets-cancel';
+
+    const ifMatch = (await x.business(exit.id)).revision;
+    const first = await x.cancel(exit.id, body, { idempotencyKey: key, ifMatch });
+    expect(first.status, await first.clone().text()).toBe(200);
+    const result = (await first.json()) as Awaited<ReturnType<CancelWorld['cancelled']>>;
+    const voided = result.downstream.additional.find((entry) => entry.kind === 'application_voided')!;
+    expect(voided.targets).toHaveLength(VOID_LIMIT);
+    expect(voided.hiddenCount).toBe(0);
+    expect(partTimeItem(result).targets.map((target) => target.id)).toEqual([part.id]);
+    expect(await x.stateOfBusiness(exit.id)).toBe('deleted');
+
+    const replay = await x.cancel(exit.id, body, { idempotencyKey: key, ifMatch });
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toEqual(result);
+  }, 600_000);
 });

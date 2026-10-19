@@ -84,7 +84,9 @@ describe.skipIf(!realPostgres)('AC-PT-transfer-pg 结束申请落地 vs 调动�
     const { created, view, task, last } = await endRequestAtLastNode(w, record, '2026-09-20');
 
     // F-270：先停在“只持员工行锁”（兼职记录头、申请头都还没被任何人持有），此时审批方被阻塞 = 等的就是员工锁；
-    // 删掉审批适配器 lock 里的员工锁语句，审批方会直接越过这里去等后面才取的记录头，本屏障超时判红。
+    // 再放行到持有记录头的完整联动，审批方仍须阻塞。删掉审批适配器 lock 里的员工锁语句后，落地层会再次取员工锁，
+    // 所以第一个屏障仍通过，整例在第二次 waitForBlocked 超时判红（#451 第 1 轮 P3）。
+    // 失败时 finally 也放行屏障并等联动事务结束，避免挂起的事务拖垮清理钩子。
     const itemId = randomUUID();
     const employeeLocked = signal();
     const proceed = signal();
@@ -95,16 +97,21 @@ describe.skipIf(!realPostgres)('AC-PT-transfer-pg 结束申请落地 vs 调动�
         await proceed.promise;
       }),
     );
-    await employeeLocked.promise;
-    const approve = w.taskAction(last.userId, task.id, 'approve', view.revision, { comment: '合成意见' });
-    await waitForBlocked(w.db, 1);
-    proceed.resolve();
-    await transfer.held;
-    await waitForBlocked(w.db, 1);
-    transfer.release();
+    let approve: ReturnType<typeof w.taskAction> | undefined;
+    try {
+      await employeeLocked.promise;
+      approve = w.taskAction(last.userId, task.id, 'approve', view.revision, { comment: '合成意见' });
+      await waitForBlocked(w.db, 1);
+      proceed.resolve();
+      await transfer.held;
+      await waitForBlocked(w.db, 1);
+    } finally {
+      proceed.resolve();
+      transfer.release();
+    }
     expect(await transfer.done).toBeUndefined();
 
-    const response = await approve;
+    const response = await approve!;
     expect(response.status, '申请已被联动作废，末节点同意不得再成功').toBeGreaterThanOrEqual(400);
     const failure = JSON.stringify(await response.json());
     expect(failure).not.toMatch(CONCURRENT_CODES);
