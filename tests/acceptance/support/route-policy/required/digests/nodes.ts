@@ -1063,7 +1063,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/context.ts#readPageContext': ['bad4a26d1b61', '0fcfc83d09c6'],
   'apps/api/src/modules/employment/context.ts#requireEmployeeInScope': ['62afe48cf87e', 'd82ab8243e69'],
   'apps/api/src/modules/employment/context.ts#requireEmploymentScope': ['46a4f7645c0f', '90d0af0bc51c'],
-  'apps/api/src/modules/employment/context.ts#requireEmploymentWrite': ['b0a8ec0430e5', 'f57d748709aa'],
+  'apps/api/src/modules/employment/context.ts#requireEmploymentWrite': ['2d1fa0dc1ac9', '75216aa975eb'],
   'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord': ['64e920b2e04d', 'd276a41f4fc8'],
   'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject': ['699e68b222c1', '074eba4f3f59'],
   'apps/api/src/modules/employment/context.ts#runWrite': ['695468db0590', 'cff34edea663'],

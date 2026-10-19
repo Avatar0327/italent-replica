@@ -1111,6 +1111,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#requireEmploymentWrite': [
     'apps/api/src/authorization.ts#requirePermission',
     '#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/permission/catalog.ts#objectCatalog',
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
     'packages/domain/src/permission/decide.ts#buttonResource',
   ],
