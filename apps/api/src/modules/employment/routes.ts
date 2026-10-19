@@ -45,6 +45,7 @@ import {
   isExitKind,
   loadExitRequest,
   requireExitGate,
+  withAckWarnings,
   type ExitOperation,
   type ExitGateTarget,
 } from './exit-gate.js';
@@ -490,7 +491,13 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
             else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
             else await employmentApprovalHooks.deleted(tx, context, id);
-            return { status: 200, body: business };
+            return {
+              status: 200,
+              body:
+                action === 'submit' && isExitKind(business.kind)
+                  ? await withAckWarnings(tx, context, business)
+                  : business,
+            };
           },
           guard,
         );

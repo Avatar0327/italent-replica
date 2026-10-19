@@ -281,7 +281,9 @@ async function exitGateFor(
   const row = await loadExitRequest(tx, ctx.tenantId, business.id);
   if (input.action === 'submit') {
     const { ack } = await requireExitGate(tx, ctx, 'submit', target, input.ack);
-    if (ack) await saveAck(tx, ctx, business.id, ack);
+    // 提交时按本次计算结果刷新（含集合已降为空 → 清除旧的超限标记 / 旧确认记录，DEC-626）；warning 随后按存下的记录给出
+    // 没有扩展行的可信造数 / 升级前结构（loadExitRequest 返回 undefined）保持 main 行为：不写
+    if (row) await saveAck(tx, ctx, business.id, ack);
   } else if (input.action === 'withdraw') await requireExitGate(tx, ctx, 'withdraw', target);
   else if (input.action === 'delete' || input.action === 'revoke')
     await requireExitGate(tx, ctx, 'cancel', {
