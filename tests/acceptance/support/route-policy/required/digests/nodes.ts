@@ -1901,7 +1901,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/transitions.ts#deleteEmploymentBusiness': ['7cf898d68e68', 'f4edbace98d1'],
   'apps/api/src/modules/employment/transitions.ts#deletionSnapshot': ['e28b279e0663', 'd0a6fe87af33'],
   'apps/api/src/modules/employment/transitions.ts#detachedSnapshot': ['c3f162593a34', 'f3b71127b550'],
-  'apps/api/src/modules/employment/transitions.ts#exitGateFor': ['915afb65f51c', '0efe6d71b49e'],
+  'apps/api/src/modules/employment/transitions.ts#exitGateFor': ['bfad04e9017e', '0efe6d71b49e'],
   'apps/api/src/modules/employment/transitions.ts#snapshotRecord': ['2d8f36ae1c23', '9c575965ef83'],
   'apps/api/src/modules/employment/transitions.ts#transitionEmployment': ['42d1b260a3f5', 'bde8ea90d034'],
   'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS': ['4f7d8db36ad6', 'e3b0c44298fc'],
