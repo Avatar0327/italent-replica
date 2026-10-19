@@ -489,7 +489,7 @@ describe('AC-PT-replay PT-4c：延长 / 结束申请的命令重放（PB-70 同�
     const body = {
       requestType: 'extend',
       recordId: await w.seedRecord({ startDate: '2026-09-02' }),
-      endDate: '2026-10-15',
+      endDate: '2026-10-31',
     };
     const failed = await w.refusal(await w.http().createDate(body, { idempotencyKey: failKey }));
     expect(failed).toMatchObject({ status: 409, reason: 'PART_TIME_NOT_EXTENDED' });

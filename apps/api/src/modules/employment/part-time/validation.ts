@@ -83,6 +83,8 @@ export function assertNoLinkage(input: Pick<NewPartTimeInput, 'isDepartmentHead'
 export function normalizeNewPartTime(input: NewPartTimeInput): NormalizedPartTime {
   if (!(PART_TIME_SERVICE_TYPES as readonly string[]).includes(input.serviceType))
     throw invalid('partTimeType', '兼职类型必须是兼职、借调或外派');
+  // 审批编辑可把兼职部门置空（F-249）：路由层 schema 之外，服务层的唯一入口也要拦
+  if (!input.departmentId) throw invalid('departmentId', '兼职部门不能为空');
   const startDate = businessDate(input.startDate);
   const endDate = input.endDate == null ? null : businessDate(input.endDate);
   if (endDate !== null && endDate < startDate) throw endBeforeStart();
@@ -374,17 +376,26 @@ export interface BatchEndViolation {
   readonly message: string;
 }
 
+/** T-1：结束日期不得早于开始日期（结束 / 批量结束 / 延长缩短共用）。纯判断。 */
+export function endBeforeStartViolation(
+  row: Pick<PartTimeRecordRow, 'startDate'>,
+  endDate: string,
+): BatchEndViolation | null {
+  if (endDate >= row.startDate) return null;
+  return {
+    code: 'VALIDATION_FAILED',
+    reason: PART_TIME_ERRORS.endBeforeStart,
+    message: `结束日期不可早于开始日期（${row.startDate}）`,
+  };
+}
+
 /** 结束日期规则（批量结束与结束申请共用）：T-1 → T-2；通过返回 null。纯判断。 */
 export function endDateViolation(
   row: Pick<PartTimeRecordRow, 'startDate' | 'endDate'>,
   endDate: string,
 ): BatchEndViolation | null {
-  if (endDate < row.startDate)
-    return {
-      code: 'VALIDATION_FAILED',
-      reason: PART_TIME_ERRORS.endBeforeStart,
-      message: `结束日期不可早于开始日期（${row.startDate}）`,
-    };
+  const early = endBeforeStartViolation(row, endDate);
+  if (early) return early;
   if (row.endDate !== null && endDate > row.endDate)
     return {
       code: 'CONFLICT',
