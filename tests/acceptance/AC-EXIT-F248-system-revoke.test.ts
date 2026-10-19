@@ -9,10 +9,11 @@
  */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { assessmentExitWorld, type AssessmentExitWorld } from './AC-EXIT-F229-support.js';
+import { revokeBySystem } from '../../apps/api/src/modules/approval/actions.js';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
 import { reasonOf as plainReason } from './AC-PB-BE15b1-support.js';
 
@@ -128,5 +129,82 @@ describe('F-248 离职生效收口在途考核：系统撤销', () => {
     expect(await x.get(running)).toMatchObject({ status: 'cancelled', terminatedByExit: true });
     expect(await x.get(other)).toMatchObject({ status: 'cancelled', terminatedByExit: false });
     expect(await x.audits(other, 'employment.assessment.voided_by_exit')).toEqual([]);
+  });
+
+  describe('revokeBySystem 终态幂等', () => {
+    /** 实例当前状态 + 全部写足迹：日志、审计、outbox、revision。 */
+    const footprint = async (x: AssessmentExitWorld, instanceId: string) => ({
+      instance: (
+        await x.rows<{ status: string; revision: number }>(sql`SELECT status, revision::int AS revision
+          FROM approval_instances WHERE tenant_id=${x.tenantId} AND id=${instanceId}::uuid`)
+      )[0],
+      logs: (
+        await x.rows<{ event: string }>(sql`SELECT event FROM approval_instance_logs
+          WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid ORDER BY seq`)
+      ).map((row) => row.event),
+      audits: Number(
+        (
+          await x.rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM audit_events
+            WHERE tenant_id=${x.tenantId} AND object_id=${instanceId}`)
+        )[0]!.n,
+      ),
+      outbox: Number(
+        (
+          await x.rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM approval_outbox
+            WHERE tenant_id=${x.tenantId} AND object_id=${instanceId}`)
+        )[0]!.n,
+      ),
+    });
+    /** 再次调用系统撤销入口（新命令 ID，防止命令台账 / outbox 唯一键掩盖重复写）。 */
+    const revokeAgain = (x: AssessmentExitWorld, instanceId: string) =>
+      withTenant(x.db, x.tenantId, (tx) =>
+        revokeBySystem(
+          tx,
+          {
+            tenantId: x.tenantId,
+            userId: x.hr.id,
+            timezone: x.timezone,
+            now: x.clock(),
+            commandId: randomUUID(),
+            expectedRevision: 0,
+          },
+          instanceId,
+          REASON,
+        ),
+      );
+
+    it('已被系统撤销的实例再调一次：日志、审计、outbox、revision 都不增加', async () => {
+      const x = await world('f248-idem-cancelled');
+      const { person, assessmentId, instance } = await inFlight(x, '幂等员工', 'regularization');
+      await takeEffect(x, person.employeeId, 'direct');
+      const before = await footprint(x, instance.id);
+      expect(before.instance?.status).toBe('cancelled');
+      expect(before.logs.filter((event) => event === 'system_revoke')).toHaveLength(1);
+      await revokeAgain(x, instance.id);
+      expect(await footprint(x, instance.id)).toEqual(before);
+      expect((await x.get(assessmentId)).status).toBe('cancelled');
+    });
+
+    it('已通过 / 不通过的实例不被改写：状态保持，什么都不写', async () => {
+      const x = await world('f248-idem-finished');
+      const passed = await x.probationer('已通过员工');
+      const approvedId = await x.launch('probation', passed);
+      await x.complete(approvedId, passed);
+      const refused = await x.probationer('不通过员工');
+      const refusedId = await x.launch('regularization', refused);
+      await x.decide(refusedId, refused, 'approve', { selfEvaluation: '自评' });
+      await x.decide(refusedId, x.manager, 'disagree');
+      for (const [assessmentId, status] of [
+        [approvedId, 'approved'],
+        [refusedId, 'disapproved'],
+      ] as const) {
+        const [{ id }] = await x.instanceRows(assessmentId);
+        const before = await footprint(x, id);
+        expect(before.instance?.status).toBe(status);
+        await revokeAgain(x, id);
+        expect(await footprint(x, id)).toEqual(before);
+        expect((await x.get(assessmentId)).status).toBe(status);
+      }
+    });
   });
 });

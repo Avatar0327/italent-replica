@@ -802,10 +802,12 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 /**
  * 系统撤销（F-248，原站“离职业务终止在途审批流程”）：业务收口时由系统终止在途实例，与业务单据删除的 cancel 分开。
  * 实例置 cancelled（界面“已终止”）、待办关闭；日志只写一条 system_revoke（界面“撤销”），操作人强制为空（= 系统，
- * 不论触发生效的是 HR、审批人还是调度），理由进 detail.comment。不回调业务适配器：业务侧状态由调用方自己落库。
+ * 不论触发生效的是 HR、审批人还是调度），理由进 detail.comment。不回调业务适配器：业务侧状态由调用方自己落库。对已结束的实例是空操作（幂等）。
  */
 export async function revokeBySystem(tx: Tx, ctx: ApprovalContext, instanceId: string, reason: string): Promise<void> {
   const run = await openRun(tx, ctx, instanceId);
+  // 终态幂等：openRun 已锁实例，只有未结束的实例才撤销；已终止 / 已通过 / 已驳回等直接成功返回，不写日志、审计，不推进版本
+  if (!['running', 'returned'].includes(run.instance.status)) return;
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
   await appendLog(tx, ctx, run.instance, { event: 'system_revoke', actorUserId: null, detail: { comment: reason } });
