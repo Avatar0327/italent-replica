@@ -5,7 +5,7 @@
  * 不动并写审计 exit.blacklist.revoke_skipped，撤销照常完成。
  */
 import './support/exit-gate-enforced.js';
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { findEffectiveBlacklistEntry } from '../../apps/api/src/modules/employment/blacklist.js';
@@ -18,6 +18,20 @@ type World = Awaited<ReturnType<typeof world>>;
 const blockedByBlacklist = async (x: World, employeeId: string) =>
   (await withTenant(x.db, x.tenantId, (tx) => findEffectiveBlacklistEntry(tx, x.tenantId, employeeId, TODAY))) !==
   undefined;
+/** 名单行的移出操作人：行上的 removed_by 与 blacklist.remove 审计的 actor_user_id（系统记为空，AGENTS §10 不得冒用真实用户）。 */
+const removal = async (x: World, entryId: string) => {
+  const [row] = await x.sqlRows<{ removedBy: string | null; actor: string | null }>(sql`
+    SELECT b.removed_by::text AS "removedBy",
+      (SELECT a.actor_user_id::text FROM audit_events a WHERE a.tenant_id = b.tenant_id AND a.object_id = b.id::text
+        AND a.action = 'blacklist.remove' ORDER BY a.occurred_at DESC, a.id DESC LIMIT 1) AS actor
+    FROM employment_blacklist b WHERE b.tenant_id = ${x.tenantId} AND b.id = ${entryId}::uuid`);
+  return row!;
+};
+const actorOf = async (x: World, objectId: string, action: string) =>
+  (
+    await x.sqlRows<{ actor: string | null }>(sql`SELECT actor_user_id::text AS actor FROM audit_events
+      WHERE tenant_id = ${x.tenantId} AND object_id = ${objectId} AND action = ${action} ORDER BY occurred_at, id`)
+  ).map((row) => row.actor);
 const MANUAL = { addToBlacklist: true, blacklistReason: 'integrity' };
 
 describe('DEC-631 撤销离职回收黑名单', () => {
@@ -36,6 +50,10 @@ describe('DEC-631 撤销离职回收黑名单', () => {
     const removed = (await x.page.list('?status=removed')).items;
     expect(removed).toHaveLength(1);
     expect(await x.auditActions(leave.id, 'exit.blacklist.revoked')).toHaveLength(1);
+    // 自动回收记系统操作人（行上 removed_by 与移出 / 回收审计的操作人都为空 = 系统）；撤销记录本身仍是发起撤销的 HR
+    expect(await removal(x, removed[0]!.id)).toEqual({ removedBy: null, actor: null });
+    expect(await actorOf(x, leave.id, 'exit.blacklist.revoked')).toEqual([null]);
+    expect(await actorOf(x, leave.id, 'exit.request.cancel')).toEqual([x.session.user.id]);
     expect(await blockedByBlacklist(x, x.employee.id)).toBe(false);
   });
 
@@ -101,15 +119,21 @@ describe('DEC-631 撤销离职回收黑名单', () => {
     });
   });
 
-  it('撤销未生效的离职（approved）：没写过名单，名单与审计不受影响', async () => {
+  it('撤销未生效的离职（approved）：不进入回收，本人另有的手动新增行不变，也没有回收 / 跳过审计', async () => {
     const x = await world('cancel-approved');
-    const other = (await x.colleague('另一人')).id;
-    const pageRow = await x.page.added({ employeeId: other, reason: 'resignation' });
+    const page = await x.page.added({ employeeId: x.employee.id, reason: 'resignation' });
     const leave = await x.directLeave('2026-10-10', MANUAL);
-    await x.cancelExit(leave.id);
-    expect(await x.rows(x.employee.id)).toEqual([]);
-    expect(await x.activeRows(other)).toEqual([expect.objectContaining({ id: pageRow.id })]);
+    const cancelled = await x.cancelExit(leave.id);
+    expect(cancelled.cancellation.case).toBe('approved_voided');
+    expect(await x.rows(x.employee.id)).toEqual([expect.objectContaining({ id: page.id, status: 'active' })]);
     expect(await x.auditActions(leave.id, 'exit.blacklist.revoked')).toEqual([]);
     expect(await x.auditActions(leave.id, 'exit.blacklist.revoke_skipped')).toEqual([]);
+  });
+
+  it('黑名单页手动移出仍记实际操作的 HR（行 removed_by 与 blacklist.remove 审计）', async () => {
+    const x = await world('manual-remove-actor');
+    const entry = await x.page.added({ employeeId: x.employee.id, reason: 'resignation' });
+    expect((await x.page.remove([{ id: entry.id, revision: entry.revision }])).status).toBe(200);
+    expect(await removal(x, entry.id)).toEqual({ removedBy: x.session.user.id, actor: x.session.user.id });
   });
 });
