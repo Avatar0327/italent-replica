@@ -373,3 +373,145 @@ test('AC-FE-R2d2a-09 租户自定义字段按元数据与字段权显示、编�
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body).toEqual({ customFields: { [id]: '新说明' } });
 });
+
+async function fillNew(page: Page) {
+  await page.route('**/employment/employees/*/part-times/preview', (route) =>
+    route.fulfill({
+      json: {
+        partTimeType: 'part_time',
+        effectiveDate: '2026-10-01',
+        endDate: null,
+        fields: { departmentId: department, directManagerId: manager, sequenceId: null },
+        warnings: [],
+      },
+    }),
+  );
+  await page.getByRole('button', { name: '新增兼职', exact: true }).click();
+  await choose(page, '员工', '合成员工');
+  await choose(page, '任职类型', '兼职');
+  await date(page, '开始日期', '2026-10-01');
+  await choose(page, '部门', '合成部门甲');
+  await expect(save(page)).toBeEnabled();
+}
+
+function barrier() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const stale of ['success', 'error'] as const) {
+  test(`AC-FE-R2d2a-10 旧列表 ${stale} 响应不得覆盖写后新列表`, async ({ page }) => {
+    await ready(page);
+    const started = barrier();
+    const release = barrier();
+    let reads = 0;
+    let written = false;
+    await page.route('**/employment/part-times?*', async (route) => {
+      if (!written) {
+        started.resolve();
+        await release.promise;
+        await route.fulfill(
+          stale === 'success'
+            ? { json: { items: [], total: 0, page: 1, pageSize: 30 } }
+            : { status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE' } } },
+        );
+      } else {
+        reads++;
+        await route.fulfill({ json: { items: [listRecord], total: 1, page: 1, pageSize: 30 } });
+      }
+    });
+    await page.route('**/employment/employees/*/part-times', (route) => {
+      written = true;
+      return route.fulfill({ status: 201, json: { ...record, warnings: [] } });
+    });
+    await page.reload();
+    await started.promise;
+    await fillNew(page);
+    await save(page).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const rows = page.getByRole('button', { name: '查看详情', exact: true });
+    await expect(rows).toHaveCount(1);
+    const completed = page.waitForResponse((response) => response.url().includes('/employment/part-times?'));
+    release.resolve();
+    await (await completed).finished();
+    // 等待已释放响应的 React 更新跨过绘制帧，不以 sleep 猜测请求先后。
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByText('合成兼职员工', { exact: true })).toBeVisible();
+    expect(reads).toBe(1);
+  });
+}
+
+for (const action of ['create', 'edit', 'batch'] as const) {
+  test(`AC-FE-R2d2a-11 ${action} 写成功后读取失败，关闭换视图重开仍锁定`, async ({ page }) => {
+    await ready(page);
+    let writes = 0;
+    let failedRead = false;
+    await page.route('**/employment/part-times?*', (route) => {
+      if (writes && !failedRead) {
+        failedRead = true;
+        return route.fulfill({ status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE' } } });
+      }
+      return route.fulfill({
+        json: { items: [listRecord, { ...listRecord, id: second }], total: 2, page: 1, pageSize: 30 },
+      });
+    });
+    const path =
+      action === 'create'
+        ? '**/employment/employees/*/part-times'
+        : action === 'edit'
+          ? `**/employment/part-times/${recordId}`
+          : '**/employment/part-times/batch-end';
+    await page.route(path, (route) => {
+      if (route.request().method() === 'GET') return route.fulfill({ json: record });
+      writes++;
+      const json =
+        action === 'batch'
+          ? {
+              total: 2,
+              succeeded: 2,
+              failed: 0,
+              batchId: 'batch-read-failure',
+              items: [recordId, second].map((id) => ({ ...record, id, revision: 2 })),
+            }
+          : { ...record, revision: action === 'create' ? 1 : 2, warnings: [] };
+      return route.fulfill({ status: action === 'create' ? 201 : 200, json });
+    });
+    if (action === 'create') await fillNew(page);
+    else if (action === 'edit') {
+      await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+      await choose(page, '部门', '合成部门乙');
+    } else {
+      await page.getByRole('checkbox', { name: 'Select all' }).check();
+      await page.getByRole('button', { name: '批量结束兼职', exact: true }).click();
+      await date(page, '结束日期', '2026-10-20');
+    }
+    await save(page).click();
+    await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
+    expect(failedRead).toBe(true);
+    await expect(save(page)).toBeDisabled();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^取\s*消$/ })
+      .click();
+    await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
+    await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+    // 新增回执的新 ID / 批量中的单条也必须沿用未确认命令。
+    await expect(save(page)).toBeDisabled();
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+    if (action === 'create') {
+      await page.getByRole('button', { name: '新增兼职', exact: true }).click();
+      await choose(page, '员工', '合成员工');
+    } else if (action === 'batch') {
+      await page.getByRole('checkbox', { name: 'Select all' }).check();
+      await page.getByRole('button', { name: '批量结束兼职', exact: true }).click();
+    } else await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+    await expect(save(page)).toBeDisabled();
+    expect(writes).toBe(1);
+  });
+}

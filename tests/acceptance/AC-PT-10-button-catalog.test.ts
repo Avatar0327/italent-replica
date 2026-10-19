@@ -3,6 +3,7 @@ import { buttonResource, decide, MODULE_OBJECTS, type ButtonLevel, type Permissi
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
+import { requireEmploymentWrite } from '../../apps/api/src/modules/employment/context.js';
 import { httpWorld, restricted } from './AC-PT-http-support.js';
 
 const database = useTestDb();
@@ -59,4 +60,24 @@ describe('AC-PT-10 DEC-642 批量结束列表级授权', () => {
     expect((await revoked('POST', '/part-times/batch-end', options)).status).toBe(403);
     expect(await w.headRevision(record.id)).toBe(2);
   });
+});
+
+it('AC-PT-10 未登记按钮即使授权器允许也必须拒绝', async () => {
+  const w = await httpWorld(database().db, 'catalog-unknown');
+  const asked: string[] = [];
+  const authorize = restricted({
+    deny: (query) => {
+      asked.push(query.action);
+      return false;
+    },
+  });
+  const context = { ...w.context(), authorize };
+  const payload = { endDate: '2026-10-15' };
+  await expect(
+    requireEmploymentWrite(context, 'update', payload, 'Employment.UnregisteredPartTime'),
+  ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  expect(asked).toContain('object.update');
+  expect(asked).not.toContain('object.button');
+  await expect(requireEmploymentWrite(context, 'update', payload, code)).resolves.toBeUndefined();
+  expect(asked).toContain('object.button');
 });
