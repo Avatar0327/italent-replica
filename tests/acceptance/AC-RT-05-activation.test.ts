@@ -32,7 +32,8 @@ describe('AC-RT-05 三个入口都经 activateExit', () => {
     expect(approved.status).toBe('effective');
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'retirement']);
     expect(await x.employeeStatusOf(draft.id)).toBe(6);
-    expect((await x.audits(draft.id, 'employment.retirement.effective'))[0]!.after).toMatchObject({ source: 'approval' });
+    const [effectiveAudit] = await x.audits(draft.id, 'employment.retirement.effective');
+    expect(effectiveAudit!.after).toMatchObject({ source: 'approval' });
     expect(await x.audits(draft.id, 'employment.exit.effective')).toEqual([]);
     expect(await x.audits(draft.id, 'retirement.actual_date.synced')).toHaveLength(1);
     expect((await x.retirementDates()).actual).toBe(TODAY);

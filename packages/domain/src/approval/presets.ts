@@ -9,6 +9,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  */
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
+import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
   APPROVAL_TYPES,
@@ -145,6 +146,8 @@ function genericPreset(type: GenericType): PresetProcess {
 
 // R2-T03 §9：离职表单带出离职类型 / 原因 / 去向等扩展字段，审批人按字段权限看到（盲审照常）
 const LEAVE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', ...EXIT_FORM_FIELDS];
+// R2-T04 §3.4：退休表单带出退休类型 / 是否同时返聘 / 预计退休日期（只读），审批人只看本单字段（DEC-057）
+const RETIRE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', ...RETIREMENT_REQUEST_FIELDS];
 
 /**
  * 兼职三类申请（R2-T05 §4.5）：节点名照原站角色。新增 / 延长按 R2d 取证的“主职部门 HRBP → 主职部门负责人 → 兼职部门 HRBP
@@ -340,12 +343,30 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       ],
     }),
   },
+  {
+    presetKey: 'standard_retirement',
+    code: 'StandardRetire',
+    approvalType: 'retirement',
+    definition: draft({
+      name: '标准退休流程',
+      description: '出厂预置：直接上级（最新生效主职任职的直线经理） → HR访谈，发布前须配置异常管理员',
+      priority: 0,
+      isFallback: false,
+      conditions: {
+        items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'RetireProcess' }],
+        expression: '1',
+      },
+      nodes: [
+        node('direct_head', '直接上级', 'direct_manager', { formFields: RETIRE_FORM }),
+        node('hr_interview', 'HR访谈', 'record_department_hrbp', { formFields: RETIRE_FORM }),
+      ],
+    }),
+  },
   ...(
     [
       'regularization',
       'intern_regularization',
       'hire',
-      'retirement',
       'org_adjustment',
       'add_employee',
       'contract_create',

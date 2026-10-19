@@ -7,12 +7,13 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
+import type * as RetirementApplication from '../../apps/api/src/modules/employment/retirement-application.js';
 import { denyButtons, leaveBody } from './AC-EXIT-gate-support.js';
 import { dedicatedBody, retireBody, retirementWorld } from './AC-RT-support.js';
 
 const injected = vi.hoisted(() => ({ failExtension: false }));
 vi.mock('../../apps/api/src/modules/employment/retirement-application.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../apps/api/src/modules/employment/retirement-application.js')>();
+  const actual = await importOriginal<typeof RetirementApplication>();
   return {
     ...actual,
     writeRetirementExtension: (...args: Parameters<typeof actual.writeRetirementExtension>) => {
@@ -50,7 +51,8 @@ describe('AC-RT-04 通用入口 kind=retirement：经门禁与申请服务', () 
     const before = await x.stateOf(x.employee.id);
     const create = async (api: ReturnType<typeof x.restricted>, mode: 'application' | 'direct') => {
       const { revision } = await x.session.getEmployee(x.employee.id);
-      return api('POST', `/employees/${x.employee.id}/businesses`, { ifMatch: revision, body: retireBody(LATER, mode) });
+      const body = retireBody(LATER, mode);
+      return api('POST', `/employees/${x.employee.id}/businesses`, { ifMatch: revision, body });
     };
     expect((await create(x.restricted(denyButtons('Employment.RetireApproval')), 'application')).status).toBe(403);
     expect((await create(x.restricted(denyButtons('Employment.Retire')), 'direct')).status).toBe(403);
@@ -76,7 +78,8 @@ describe('AC-RT-04 通用入口 kind=retirement：经门禁与申请服务', () 
       { compensationAmount: 100 },
       { actualLeaveDate: '2026-10-01' },
     ]) {
-      expect(await x.reason(await x.createRetire(x.employee.id, retireBody(LATER, 'application', exit)))).toMatchObject({
+      const response = await x.createRetire(x.employee.id, retireBody(LATER, 'application', exit));
+      expect(await x.reason(response)).toMatchObject({
         status: 400,
         reason: 'RETIREMENT_FIELD_NOT_ALLOWED',
       });
@@ -168,7 +171,10 @@ describe('AC-RT-22 创建时序与原子性（设计 §3.2）', () => {
     await x.setExpectedRetirement('2026-10-05');
     const created = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
     expect(created.status).toBe('effective');
-    expect(await x.retirementRow(created.id)).toMatchObject({ expected_retirement_date: '2026-10-05', retire_type: 'normal' });
+    expect(await x.retirementRow(created.id)).toMatchObject({
+      expected_retirement_date: '2026-10-05',
+      retire_type: 'normal',
+    });
     expect(await x.employeeStatusOf(created.id)).toBe(6);
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'retirement']);
     expect((await x.retirementDates()).actual).toBe(TODAY);

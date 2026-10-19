@@ -60,10 +60,11 @@ describe('finalExecutionDate（§5.0）', () => {
           finalExecutionDate({ ...input, kind: 'leave' }),
         );
       }
-    expect(
-      finalExecutionDate({ ...base, kind: 'retirement', plannedEffectiveDate: '2026-10-10', lastWorkDate: '2026-10-09' }),
-    ).toBe('2026-10-18');
-    expect(finalExecutionDate({ ...base, kind: 'retirement', plannedEffectiveDate: '2026-10-25' })).toBe('2026-10-25');
+    const retire = { ...base, kind: 'retirement' } as const;
+    expect(finalExecutionDate({ ...retire, plannedEffectiveDate: '2026-10-10', lastWorkDate: '2026-10-09' })).toBe(
+      '2026-10-18',
+    );
+    expect(finalExecutionDate({ ...retire, plannedEffectiveDate: '2026-10-25' })).toBe('2026-10-25');
   });
 
   it.each(EXECUTION_KINDS.filter((kind) => !['transfer', 'leave', 'retirement'].includes(kind)))(

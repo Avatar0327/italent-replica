@@ -110,8 +110,9 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
-  if (normalized.kind === 'leave' && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
-    throw new AppError('FORBIDDEN', '离职业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
+  // 离职与退休同门禁（R2-T04 §1.2）：不再有不带下游（预减 / 作废 / 合同 / 转交）的当场落地退休
+  if (isExitKind(normalized.kind) && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
+    throw new AppError('FORBIDDEN', '离职 / 退休业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
   // 经门禁的直接离职先存 approved；生效由 createExitApplication 在写完扩展行与 confirmed 阶段后调用 activateIfDue（§5.3）
   const gatedDirect = options.exitPass === EXIT_GATE_PASS && normalized.mode === 'direct';
   if (normalized.kind === 'transfer')

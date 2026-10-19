@@ -21,13 +21,20 @@ import {
   regularizationBlocker,
   type InFlight,
 } from './exit-gate.js';
+import { previewRetirement as retirementPreview } from './retirement-application.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));
 
-export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
+export async function previewExit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  kind: 'leave' | 'retirement' = 'leave',
+) {
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
   if (leaves.length)
@@ -48,6 +55,8 @@ export async function previewExit(tx: Tx, ctx: EmploymentContext, employeeId: st
   return {
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
+    // 退休另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行）
+    ...(kind === 'retirement' ? await retirementPreview(tx, ctx, employeeId, lastWorkDate) : {}),
     blockers,
     ack: ack
       ? {

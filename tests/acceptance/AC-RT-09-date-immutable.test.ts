@@ -155,7 +155,9 @@ describe('AC-RT-09 审批编辑与编辑并同意', () => {
     expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
     expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
     expect(await w.business(draft.id)).toMatchObject({ status: 'in_review', effectiveDate: '2026-10-21' });
-    const ok = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, { fields: { place: '改地点' } });
+    const ok = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, {
+      fields: { place: '改地点' },
+    });
     expect(ok.status, await ok.clone().text()).toBe(200);
     expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21', fields: { place: '改地点' } });
   });
