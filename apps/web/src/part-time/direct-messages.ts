@@ -43,6 +43,7 @@ export const d = {
   hidden: (count: number) => `另有 ${count} 条记录不可见`,
   version: (id: string, expected: unknown, actual: unknown) => `${id}：版本 ${expected} → ${actual}`,
   reasons: {
+    PART_TIME_END_AFTER_CURRENT: '批量结束日期不能晚于当前结束日期',
     PART_TIME_END_BEFORE_START: '结束日期不能早于开始日期',
     PART_TIME_END_DATE_REQUIRED: '已有结束日期不可清空',
     PART_TIME_REQUEST_IN_PROGRESS: '存在未办结的延长或结束申请，不能修改结束日期',
