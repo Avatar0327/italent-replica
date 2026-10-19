@@ -53,7 +53,12 @@ const conditionInput = z.strictObject({
   fieldCode: z.enum(RETIREMENT_CONDITION_FIELDS),
   operator: z.literal('in'),
   values: z
-    .array(z.string().trim().min(1).max(100))
+    .array(
+      z
+        .string()
+        .max(100)
+        .refine((value) => value.trim() !== '', '条件取值不能为空'),
+    )
     .min(1)
     .max(RETIREMENT_CONDITION_VALUES_MAX)
     .refine((values) => new Set(values).size === values.length, '条件取值不能重复'),
@@ -133,7 +138,10 @@ export async function listRetirementRules(
   const conditions = rowsOf<RetirementCondition & { ruleId: string }>(
     await tx.execute(sql`SELECT rule_id::text AS "ruleId", field_code AS "fieldCode", operator, "values"
       FROM retirement_rule_conditions WHERE tenant_id = ${tenantId}
-        AND rule_id = ANY(${`{${rules.map((rule) => rule.id).join(',')}}`}::uuid[]) ORDER BY seq`),
+        AND rule_id = ANY(${arrayOf(
+          rules.map((rule) => rule.id),
+          'uuid',
+        )}) ORDER BY seq`),
   );
   return rules.map((rule) => ({
     ...rule,
@@ -143,8 +151,12 @@ export async function listRetirementRules(
   }));
 }
 
-/** text[] 字面量：每个值整体加引号并转义。 */
-const textArray = (values: readonly string[]) => `{${values.map((value) => JSON.stringify(value)).join(',')}}`;
+/** 数组一律逐项参数绑定（ARRAY[$1, $2]）：不手拼 PostgreSQL 数组字面量，取值里的制表符、换行、引号、反斜杠原样入库。 */
+const arrayOf = (values: readonly string[], type: 'text' | 'uuid') =>
+  sql`ARRAY[${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )}]::${sql.raw(type)}[]`;
 
 async function lockRules(tx: Tx, tenantId: string) {
   await advisoryLock(tx, asUuid(tenantId), ':retirement-rules');
@@ -182,7 +194,7 @@ async function replaceConditions(
   for (const condition of conditions)
     await tx.execute(sql`INSERT INTO retirement_rule_conditions(tenant_id, rule_id, seq, field_code, operator, "values")
       VALUES (${ctx.tenantId}, ${ruleId}::uuid, ${RETIREMENT_CONDITION_FIELDS.indexOf(condition.fieldCode) + 1},
-        ${condition.fieldCode}, ${condition.operator}, ${textArray(condition.values)}::text[])`);
+        ${condition.fieldCode}, ${condition.operator}, ${arrayOf(condition.values, 'text')})`);
 }
 
 /** 引用校验：适用组织存在；个人身份条件只能取字典启用编码（A-9）。 */
@@ -209,7 +221,7 @@ async function insertRule(tx: Tx, ctx: EmploymentContext, input: RetirementRuleI
   await tx.execute(sql`INSERT INTO retirement_rules(id, tenant_id, purpose, rule_type, name, priority, sequence_no,
       org_ids, include_subordinates, retirement_age_years, retirement_age_months, enabled, created_at, updated_at)
     VALUES (${id}::uuid, ${ctx.tenantId}, ${input.purpose}, ${input.ruleType}, ${input.name}, ${input.priority},
-      ${count!.next}, ${`{${input.orgIds.join(',')}}`}::uuid[], ${input.includeSubordinates},
+      ${count!.next}, ${arrayOf(input.orgIds, 'uuid')}, ${input.includeSubordinates},
       ${input.retirementAgeYears}, ${input.retirementAgeMonths}, ${input.enabled}, ${now}::timestamptz,
       ${now}::timestamptz)`);
   await replaceConditions(tx, ctx, id, input.conditions);
@@ -229,7 +241,7 @@ export async function saveRetirementRule(
   const ruleId = before ? before.id : await insertRule(tx, ctx, input);
   if (before) {
     await tx.execute(sql`UPDATE retirement_rules SET name = ${input.name}, priority = ${input.priority},
-        org_ids = ${`{${input.orgIds.join(',')}}`}::uuid[], include_subordinates = ${input.includeSubordinates},
+        org_ids = ${arrayOf(input.orgIds, 'uuid')}, include_subordinates = ${input.includeSubordinates},
         retirement_age_years = ${input.retirementAgeYears}, retirement_age_months = ${input.retirementAgeMonths},
         enabled = ${input.enabled}, revision = revision + 1, updated_at = ${ctx.now.toISOString()}::timestamptz
       WHERE tenant_id = ${ctx.tenantId} AND id = ${ruleId}::uuid`);
