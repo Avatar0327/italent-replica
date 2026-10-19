@@ -73,3 +73,28 @@ export function validateDates(row: Row) {
       throw new AppError('VALIDATION_FAILED', '结束日期不能早于开始日期');
   }
 }
+
+/**
+ * A-20（R2-T04 §2.3）：弹性退休范围与预计退休日期 P 的一致性，appendEmployee 一处调用，所有写入入口同一函数。
+ * P 为空 → 上下限一律清空（清空优先于“弹性范围已核准”，核准标志本身不动）；此时请求显式给了非空上下限 → 400。
+ * 上下限都非空只校验次序 earliest ≤ latest，不校验 P 是否落在范围内（P 重算后移出已核准的旧范围是允许的状态）。
+ */
+export function normalizeRetirementRange(after: Row, patch: Row): void {
+  if (!after.expectedRetirementDate) {
+    if (patch.earliestRetirementDate || patch.latestRetirementDate)
+      throw new AppError('VALIDATION_FAILED', '预计退休日期为空时不能设置最早 / 最晚退休日期', {
+        reason: 'RETIREMENT_RANGE_WITHOUT_EXPECTED_DATE',
+      });
+    after.earliestRetirementDate = null;
+    after.latestRetirementDate = null;
+    return;
+  }
+  if (
+    after.earliestRetirementDate &&
+    after.latestRetirementDate &&
+    String(after.earliestRetirementDate) > String(after.latestRetirementDate)
+  )
+    throw new AppError('VALIDATION_FAILED', '最早退休日期不能晚于最晚退休日期', {
+      reason: 'RETIREMENT_RANGE_INVALID',
+    });
+}

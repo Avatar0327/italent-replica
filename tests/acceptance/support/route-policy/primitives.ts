@@ -151,7 +151,11 @@ export const PRIMITIVES: readonly Primitive[] = [
     [
       'readContext（非配置对象）',
       /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/,
-      { unless: new RegExp(`${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults`) },
+      {
+        unless: new RegExp(
+          `${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults|listRetirementIdentityTypes`,
+        ),
+      },
     ],
     // 目录路由只用上下文、不按范围过滤（readTransferCatalog）
     ['readPageContext', call('readPageContext'), { unless: /readTransferCatalog/ }],

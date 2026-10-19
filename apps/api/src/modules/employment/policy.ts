@@ -142,6 +142,7 @@ const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
+const RETIREMENT_IDENTITY_TYPE_KEYS = EXIT_DICTIONARY_KEYS;
 /** 黑名单记录 / 列表 / 回执按黑名单对象的字段查看权平铺裁剪（blacklist-routes.ts trimBlacklist）。 */
 const BLACKLIST_FIELDS = projector('employment.blacklist', 'employment.blacklist');
 /** 选人员加黑：该员工须在操作人的任职数据范围内（requireEmployeeInScope，范围外与不存在同一个 404「员工不存在」）。 */
@@ -1987,6 +1988,56 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ),
     },
   ),
+  // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（R2-T04 §9.1，DEC-640）-------------
+  // 同自动转正规则：任职设置配置对象；GET ?purpose= 缺省 expected_date，其他取值 400；body 严格（purpose / ruleType 只收
+  // expected_date / fixed_age；退休年龄 30～80 岁、月数 0～11；条件为性别 / 国籍 / 雇佣关系（必填）/ 个人身份固定槽位，
+  // 每槽至多一条、操作符只有 in，个人身份取值须为字典启用编码）；审计 retirement_rule.save / delete / enabled
+  'GET /retirement-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /retirement-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('retirement_rule')),
+  'PUT /retirement-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('retirement_rule'),
+    byId,
+  ),
+  // 复制：If-Match 0，另建一条（名称加“（复制）”、默认停用）；源规则不存在 404
+  'POST /retirement-rules/:id/copy': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:retirement_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 单条启停：body 严格 { enabled }；审计 retirement_rule.enabled
+  'PUT /retirement-rules/:id/enabled': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('retirement_rule'),
+    byId,
+  ),
+  'DELETE /retirement-rules/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:retirement_rule', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
+  // 个人身份字典（DEC-640③）只读：读取对持任职记录查看权者开放（人事表单下拉）；无 POST / PUT；无组织字段，不按范围裁剪
+  'GET /retirement-identity-types': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('字典读取无按钮（表单下拉、显示名称）'),
+    scope: noScope('个人身份字典是租户配置，无组织 / 人员字段'),
+    fields: fixed(RETIREMENT_IDENTITY_TYPE_KEYS, 'R2-T04 §2.4：字典项固定键，配置对象不做字段裁剪'),
+  }),
   // ---- employment/auto-assessment-routes.ts：R2 BE-15b2 自动发起试用期考核规则与立即执行（B58，DEC-533② / DEC-539）--------------
   // 同自动转正规则：任职设置配置对象；body 严格（入职后天数 1～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置1至999的整数”；
   // 考核名称 / 类型 / 适用组织 / 发起人类型必填，附加人员条件与失败通知按未知字段 400）；审计 auto_assessment_rule.*

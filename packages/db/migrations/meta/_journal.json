@@ -1079,6 +1079,13 @@
       "when": 1792400812733,
       "tag": "0153_be5a_retirement",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1792403051308,
+      "tag": "0154_be5c1a_retirement_rules",
+      "breakpoints": true
     }
   ]
 }
