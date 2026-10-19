@@ -117,19 +117,105 @@ describe('PB-34 / PB-38：延长申请 → 四节点 → 同一条记录结束�
   });
 });
 
+describe('F-247：延长填更早结束日 = 可确认警告，审批通过后按缩短后的结束日保存（DEC-635）', () => {
+  const NOT_EXTENDED = { reason: 'PART_TIME_NOT_EXTENDED' };
+
+  it('创建 / 提交回执都带警告；四个节点逐一同意（节点顺序不变）；落地追加期限 source = extend，原定结束日期记原值', async () => {
+    const w = await world('shorten-happy');
+    const record = await w.seedRecord({ endDate: '2026-10-31' });
+    const created = await w.extend(record, '2026-10-15');
+    expect(created).toMatchObject({ state: 'draft', endDate: '2026-10-15', warnings: [NOT_EXTENDED.reason] });
+    const submitted = await w.send(created.id, created.revision);
+    expect(submitted).toMatchObject({ state: 'in_review', warnings: [NOT_EXTENDED.reason] });
+    await w.approveInOrder(created.id, w.order.extend);
+    expect((await w.load(created.id)).state).toBe('effective');
+    expect(await w.terms(record)).toEqual([
+      { term_no: 1, end_date: '2026-10-31', source: 'create', source_id: null },
+      { term_no: 2, end_date: '2026-10-15', source: 'extend', source_id: created.id },
+    ]);
+    expect((await w.load(created.id)).version).toMatchObject({ endDate: '2026-10-15', originalEndDate: '2026-10-31' });
+    expect(await w.auditActions(record)).toContain('employment.part_time.extended');
+  });
+
+  it('缩短到今天之前：落地结果与结束申请一致（同一条记录追加期限，结束日为缩短值）', async () => {
+    const w = await world('shorten-past');
+    const record = await w.seedRecord({ endDate: '2026-10-31' });
+    const ended = await w.seedRecord({ startDate: '2026-09-02', endDate: '2026-10-31' });
+    const extend = await w.extend(record, '2026-09-20');
+    const end = await w.end(ended, '2026-09-20');
+    for (const request of [extend, end]) {
+      await w.send(request.id, request.revision);
+      await w.approveInOrder(request.id, request.id === extend.id ? w.order.extend : w.order.end);
+    }
+    const shape = async (id: string) => (await w.terms(id)).map((term) => [term.term_no, term.end_date]);
+    expect(await shape(record)).toEqual(await shape(ended));
+    expect(await shape(record)).toEqual([
+      [1, '2026-10-31'],
+      [2, '2026-09-20'],
+    ]);
+  });
+
+  it('修改草稿：改成更早结束日同样放行并带警告；改成等于原结束日 409，不追加版本', async () => {
+    const w = await world('shorten-update');
+    const record = await w.seedRecord({ endDate: '2026-10-31' });
+    const created = await w.extend(record, '2026-12-31');
+    const saved = await w.update(created.id, created.revision, { endDate: '2026-10-20' });
+    expect(saved).toMatchObject({ versionNo: 2, endDate: '2026-10-20', warnings: [NOT_EXTENDED.reason] });
+    const before = await w.writes();
+    expect(await w.rejected(() => w.update(created.id, saved.revision, { endDate: '2026-10-31' }))).toMatchObject(
+      conflict('PART_TIME_NOT_EXTENDED'),
+    );
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it('E-3 只在真正延长时校验：兼职部门自 10-10 起已停用（造数），缩短到 10-15 放行，延长到 11-20 仍拒绝', async () => {
+    const w = await world('shorten-org');
+    const lone = await w.org('缩短停用部门');
+    await disableOrg(w, lone, '2026-10-10');
+    const record = await w.seedRecord({ departmentId: lone, endDate: '2026-10-31' });
+    expect(await w.rejected(() => w.extend(record, '2026-11-20'))).toMatchObject({
+      reason: 'EMPLOYMENT_DEPARTMENT_DISABLED',
+    });
+    expect((await w.extend(record, '2026-10-15')).warnings).toEqual([NOT_EXTENDED.reason]);
+  });
+
+  it('DEC-624 shortenOnly：主职审批中离职且计划日早于开始日（B-3），缩短放行（落地也不被作废）、延长仍拒绝', async () => {
+    const w = await world('shorten-pending-exit');
+    const record = await w.seedRecord({ startDate: '2026-10-20', endDate: '2026-10-31' });
+    await w.pendingExit('2026-10-10');
+    const rejected = await w.rejected(() => w.extend(record, '2026-12-31'));
+    expect(rejected).toMatchObject(conflict('PART_TIME_AFTER_EXIT'));
+    const shortened = await w.extend(record, '2026-10-25');
+    expect(shortened.warnings).toContain(NOT_EXTENDED.reason);
+    await w.send(shortened.id, shortened.revision);
+    await w.approveInOrder(shortened.id, w.order.extend);
+    expect((await w.load(shortened.id)).state).toBe('effective');
+    expect((await w.terms(record)).at(-1)).toMatchObject({ end_date: '2026-10-25', source: 'extend' });
+  });
+});
+
 describe('PB-33 / E-1～E-6：创建时的拒绝（当次无任何写入）', () => {
-  it('E-1 无结束日 → PART_TIME_OPEN_ENDED；PB-33 新结束日早于 / 等于原结束日 → PART_TIME_NOT_EXTENDED（A-5）', async () => {
+  it('E-1 无结束日 → PART_TIME_OPEN_ENDED；F-247 E-2 新结束日等于原结束日 → PART_TIME_NOT_EXTENDED（原站未取证，保守拦截）', async () => {
     const w = await world('rules-dates');
     const open = await w.seedRecord({ endDate: null });
     const record = await w.seedRecord({ startDate: '2026-09-02', endDate: '2026-10-31' });
     const before = await w.writes();
     expect(await w.rejected(() => w.extend(open, '2026-12-31'))).toMatchObject(conflict('PART_TIME_OPEN_ENDED'));
-    for (const endDate of ['2026-10-15', '2026-10-31'])
-      expect(await w.rejected(() => w.extend(record, endDate)), endDate).toMatchObject(
-        conflict('PART_TIME_NOT_EXTENDED'),
-      );
+    expect(await w.rejected(() => w.extend(record, '2026-10-31'))).toMatchObject(conflict('PART_TIME_NOT_EXTENDED'));
     expect(await w.writes()).toEqual(before);
-    expect((await w.extend(record, '2026-11-01')).state).toBe('draft');
+    const extended = await w.extend(record, '2026-11-01');
+    expect(extended).toMatchObject({ state: 'draft', warnings: [] });
+  });
+
+  it('F-247 T-1：缩短到早于开始日期仍是 400 PART_TIME_END_BEFORE_START，不留申请头', async () => {
+    const w = await world('rules-before-start');
+    const record = await w.seedRecord({ startDate: '2026-09-02', endDate: '2026-10-31' });
+    const before = await w.writes();
+    expect(await w.rejected(() => w.extend(record, '2026-09-01'))).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      reason: 'PART_TIME_END_BEFORE_START',
+    });
+    expect(await w.writes()).toEqual(before);
   });
 
   it('E-5 已结束的兼职（结束日已过）不能延长 → PART_TIME_ALREADY_ENDED', async () => {
@@ -225,7 +311,7 @@ describe('PB-33 / E-1～E-6：创建时的拒绝（当次无任何写入）', ()
   });
 });
 
-describe('审批编辑（延长申请预置不可编辑，租户改成可编辑后同样受校验；拒绝形态同 §4.3A 末）', () => {
+describe('审批编辑（夹具把四个节点统一改成指定编辑模式；预置本身的开放见 AC-PT-F249；拒绝形态同 §4.3A 末）', () => {
   async function scene(editMode: 'separate' | 'with_approve', options: Parameters<typeof requestWorld>[2] = {}) {
     const w = await world(`edit-${editMode}`, { editMode, ...options });
     const record = await w.seedRecord({ endDate: '2026-10-31' });
@@ -273,7 +359,7 @@ describe('审批编辑（延长申请预置不可编辑，租户改成可编辑�
     const before = await fingerprint(w, created.id);
     const denied = await w.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {
       comment: '合成意见',
-      fields: { endDate: '2026-10-15' },
+      fields: { endDate: '2026-10-31' },
     });
     expect(denied.status).toBe(409);
     expect(await denied.json()).toMatchObject({ error: { details: { reason: 'PART_TIME_NOT_EXTENDED' } } });
@@ -290,6 +376,18 @@ describe('审批编辑（延长申请预置不可编辑，租户改成可编辑�
     await w.approveInOrder(created.id, w.order.extend.slice(1));
     expect((await w.terms(record)).at(-1)).toMatchObject({ end_date: '2026-11-30', source: 'extend' });
     expect((await w.load(created.id)).version).toMatchObject({ endDate: '2026-11-30', originalEndDate: '2026-10-31' });
+  });
+
+  it('F-247 编辑并同意把结束日改成更早：放行（原站可确认警告），节点推进，落地按缩短后的结束日', async () => {
+    const { w, record, created, view, task } = await scene('with_approve');
+    const ok = await w.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {
+      comment: '合成意见',
+      fields: { endDate: '2026-10-15' },
+    });
+    expect(ok.status, await ok.clone().text()).toBe(200);
+    await w.approveInOrder(created.id, w.order.extend.slice(1));
+    expect((await w.terms(record)).at(-1)).toMatchObject({ end_date: '2026-10-15', source: 'extend' });
+    expect((await w.load(created.id)).version).toMatchObject({ endDate: '2026-10-15', originalEndDate: '2026-10-31' });
   });
 
   it('A-14 适配器第二层：节点开放了别的字段也不接（延长申请只能改结束日期与备注）→ 400 PART_TIME_FIELD_NOT_EDITABLE', async () => {
