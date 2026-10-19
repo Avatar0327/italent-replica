@@ -56,7 +56,10 @@ describe('AC-DM-22 离职申请经门禁创建（B-26 / B-30 补充）', () => {
       expect(await w.reason(rejected)).toMatchObject({ status: 409, reason: 'EXIT_IN_PROGRESS' });
     }
     expect(await w.stateOf(employee.id)).toEqual(before);
-    const removed = await w.session.request('DELETE', `/businesses/${first.id}`, { ifMatch: first.revision });
+    const removed = await w.session.request('DELETE', `/businesses/${first.id}`, {
+      ifMatch: first.revision,
+      body: { reason: '删除草稿' },
+    });
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect((await w.createLeave(employee.id, leaveBody(LATER))).status).toBe(201);
   });

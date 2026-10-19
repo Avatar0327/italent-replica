@@ -134,6 +134,11 @@ export async function assertRestoredPredecessor(
   ctx: EmploymentContext,
   deleted: EmploymentRecord,
   restored: { readonly previousId: string; readonly window: ReportingWindow },
+  /**
+   * 离职撤销路径（R2-T03 §5.8 末、§6B）传 delegateIntervalChecks：部门在恢复区间内停用与严格编制两项交给 §6B 统一校验
+   * （exit-cancel-intervals.ts，ΔO 拒绝 / ΔP 确认），这里不再按临时窗口重复判；范围复核、引用与循环汇报照旧。
+   */
+  options: { readonly delegateIntervalChecks?: boolean } = {},
 ): Promise<void> {
   const { window } = restored;
   // 后一条与被删记录同日：前一条的区间不变（DEC-108 同日空段），没有联动改写，不检查也不记恢复。
@@ -152,7 +157,7 @@ export async function assertRestoredPredecessor(
   );
   if (['leave', 'retirement'].includes(previous.kind)) return;
   const { fields } = previous;
-  if (fields.departmentId) {
+  if (fields.departmentId && !options.delegateIntervalChecks) {
     const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, window.from);
     if (disabled && (window.to === null || disabled.disabledOn < window.to))
       throw new AppError(
@@ -163,7 +168,8 @@ export async function assertRestoredPredecessor(
   }
   await validateRestoredReferences(tx, ctx, previous, window);
   const moved = fields.departmentId !== deleted.fields.departmentId || fields.positionId !== deleted.fields.positionId;
-  if (fields.departmentId && moved) await assertRestoredEstablishment(tx, ctx, previous, window);
+  if (fields.departmentId && moved && !options.delegateIntervalChecks)
+    await assertRestoredEstablishment(tx, ctx, previous, window);
 }
 
 /**
