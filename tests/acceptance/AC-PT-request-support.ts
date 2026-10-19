@@ -79,7 +79,9 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
       const preset = PRESET_PROCESSES.find((p) => p.presetKey === installed.presetKey)!;
       const definition = {
         ...preset.definition,
-        exceptionAdminUserId: external?.id ?? w.exceptionAdmin,
+        // 外部异常管理员只给新增流程（真 PG 锁序用例的接管对象）；延长 / 结束流程仍用夹具默认异常管理员
+        exceptionAdminUserId:
+          installed.approvalType === 'part_time_add' ? (external?.id ?? w.exceptionAdmin) : w.exceptionAdmin,
         nodes: preset.definition.nodes.map((node) => ({
           ...node,
           ...(options.editMode
