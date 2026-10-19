@@ -800,6 +800,20 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 }
 
 /**
+ * 系统撤销（F-248，原站“离职业务终止在途审批流程”）：业务收口时由系统终止在途实例，与业务单据删除的 cancel 分开。
+ * 实例置 cancelled（界面“已终止”）、待办关闭；日志只写一条 system_revoke（界面“撤销”），操作人强制为空（= 系统，
+ * 不论触发生效的是 HR、审批人还是调度），理由进 detail.comment。不回调业务适配器：业务侧状态由调用方自己落库。
+ */
+export async function revokeBySystem(tx: Tx, ctx: ApprovalContext, instanceId: string, reason: string): Promise<void> {
+  const run = await openRun(tx, ctx, instanceId);
+  await cancelPending(tx, ctx, instanceId);
+  run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
+  await appendLog(tx, ctx, run.instance, { event: 'system_revoke', actorUserId: null, detail: { comment: reason } });
+  run.events.push('approval.instance.cancelled');
+  await persistRun(tx, run, 'approval.instance.cancel');
+}
+
+/**
  * 审批侧重提（DEC-103 / DEC-113）：只由原发起人进行（当前权限在路由层按首次提交复核）。驳回后重提；员工子集变更
  * 撤回后没有业务侧入口，也在这里沿原实例重提（F9）。任职申请一律经任职模块的“提交”重提。
  */

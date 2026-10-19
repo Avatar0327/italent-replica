@@ -110,7 +110,14 @@ describe('F-248 离职生效收口在途考核：系统撤销', () => {
     await withTenant(x.db, x.tenantId, (tx) =>
       ADAPTERS.probation_assessment.withdrawn(
         tx,
-        { tenantId: x.tenantId, userId: x.hr.id, timezone: x.timezone, now: x.clock(), commandId: randomUUID() },
+        {
+          tenantId: x.tenantId,
+          userId: x.hr.id,
+          timezone: x.timezone,
+          now: x.clock(),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
         other,
       ),
     );
