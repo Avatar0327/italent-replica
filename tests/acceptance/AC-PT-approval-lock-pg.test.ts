@@ -157,7 +157,8 @@ describe.runIf(realPostgres)('AC-PT-approval-lock-pg #433 P2-1 手动交接 × �
         // 交接要么已经结束（没有等组织锁），要么正等别的锁；给它足够时间走到登记替代人（成员行 KEY SHARE）
         await new Promise((resolve) => setTimeout(resolve, 1500));
         await tx.execute(
-          sql`SELECT user_id FROM tenant_memberships WHERE tenant_id=${w.tenant.id} AND user_id=${source}::uuid FOR UPDATE`,
+          sql`SELECT user_id FROM tenant_memberships
+            WHERE tenant_id=${w.tenant.id} AND user_id=${source}::uuid FOR UPDATE`,
         );
         return 'ok';
       }).catch((error: { code?: string; cause?: { code?: string } }) => error.code ?? error.cause?.code ?? 'error');
