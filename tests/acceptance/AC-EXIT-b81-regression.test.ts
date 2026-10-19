@@ -43,7 +43,8 @@ function legacyOrder(applications: readonly SyntheticApplication[], ids: readonl
       return {
         id: ids[index]!,
         key: [
-          (application.kind === 'transfer' || application.kind === 'leave') && effective < today ? today : effective,
+          // R2-T04 §4.2（DEC-638 A-15）：退休与离职同按最终执行日期顺延；其余 kind 的排序口径不变
+          ['transfer', 'leave', 'retirement'].includes(application.kind) && effective < today ? today : effective,
           plannedOf(application.versions),
           CYCLE_OPENING_KINDS.includes(application.kind) ? '1' : '0',
           String(application.submitSeq).padStart(12, '0'),

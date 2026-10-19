@@ -56,6 +56,7 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
+  RETIREMENT_BUTTONS,
   MODULE_OBJECTS,
   PART_TIME_BUTTONS,
 } from '@italent/domain';
@@ -372,11 +373,17 @@ const partTimePreview = (code: string) =>
     write: previewWrite,
     ...byId,
   });
-const exitTransition = () =>
+/** 新建退休的按钮按办理方式：direct → Retire、application → RetireApproval（exit-gate.ts permissionSpec，buttonsOf(kind)）。 */
+const RETIREMENT_CREATE_BUTTON: ButtonPolicy = {
+  from: 'mapper',
+  mapper: 'employment.retirementButton',
+  domain: ['application', 'direct'],
+};
+const exitTransition = (code: string = EXIT_BUTTONS.application) =>
   object({
     object: EMPLOYMENT,
     operation: 'update',
-    button: button(EXIT_BUTTONS.application, 'detail'),
+    button: button(code, 'detail'),
     // 状态迁移改写后续记录前按 DEC-178 复核（同通用 submit / withdraw）
     guards: [LINKAGE],
     scope: BUSINESS_WRITE,
@@ -1605,6 +1612,49 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Withdraw）；提交只接受 { pendingTransferAck }、只允许原发起人（403 EXIT_SUBMIT_INITIATOR_ONLY）；命令内状态迁移 + 审批钩子
   'POST /exits/:id/submit': exitTransition(),
   'POST /exits/:id/withdraw': exitTransition(),
+  // ---- employment/retirement-routes.ts：R2-T04 BE-5a 退休办理入口（设计 §12.1；与离职同一门禁，按钮取 Retire*）------------
+  // 预览 / 新建 / 编辑 / 提交 / 撤回：权限链、范围、命令内复核（exitCommandGuard / exitEditGuard）与 exits 对应入口一致，
+  // 差异只有按钮（Employment.Retire / RetireApproval / RetireEdit）与退休专有字段（离职专用字段 400 RETIREMENT_FIELD_NOT_ALLOWED）；
+  // 预览另返回创建时将冻结的预计退休日期与派生的退休类型
+  'POST /retirements/employees/:id/preview': any(
+    [exitPreview(RETIREMENT_BUTTONS.direct), exitPreview(RETIREMENT_BUTTONS.application)],
+    byId,
+  ),
+  'POST /retirements/employees/:id': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: RETIREMENT_CREATE_BUTTON,
+    guards: [LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),
+    ...byId,
+  }),
+  'PATCH /retirements/:id': all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'update',
+        button: button(RETIREMENT_BUTTONS.edit, 'detail'),
+        scope: BUSINESS_WRITE,
+        fields: RESPONSE,
+      }),
+      object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与审批编辑同约束）'),
+        fields: noFields('只决定能否编辑审批中的退休单'),
+      }),
+    ],
+    RESPONSE,
+    {
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      ...byId,
+    },
+  ),
+  'POST /retirements/:id/submit': exitTransition(RETIREMENT_BUTTONS.application),
+  'POST /retirements/:id/withdraw': exitTransition(RETIREMENT_BUTTONS.application),
   // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
   // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
   // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective
