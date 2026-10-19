@@ -90,7 +90,7 @@ export async function lockExitOrganizationResources(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
-  exitId: string,
+  exitId: string | null,
 ) {
   await lockOrganizationSettings(tx, ctx.tenantId);
   const transfers = await inFlightApplications(tx, ctx, employeeId, ['transfer'], OPEN_STATES);
@@ -194,14 +194,37 @@ async function voidOne(
   return { id: business.id, ...detail };
 }
 
-/** 逐条作废（业务 ID 升序）：先锁审批实例，再逐条锁业务头、作废。heads 是调用方已预锁的各业务头 revision。 */
+/** 超限整单拒绝：离职生效记 activationFailure（交 HR 重试），直接转正是明确的 409。 */
+function tooManyToVoid(cause: VoidCause) {
+  if (cause.kind === 'exit')
+    return new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
+      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
+    });
+  return new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理实习转正', {
+    reason: 'EXIT_APPLICATIONS_TOO_MANY',
+    limit: VOID_LIMIT,
+  });
+}
+
+/**
+ * 作废在途申请的单一入口（DEC-431①）：离职生效步骤 1 与直接实习转正共用，下面两件事只在这里做一份——
+ * ① 候选被截断（至多取 VOID_LIMIT + 1 条）时在任何写入之前整单拒绝，不会作废一部分就返回成功；
+ * ② 锁序：调用方已持员工锁与全部业务头（heads），先取齐组织 / 编制资源，再锁审批实例并发站内消息
+ *   （全局序 员工 → 业务头 → 组织 → 编制 → 实例；通知插入会取成员行的外键锁，晚于组织锁才不会与先持组织锁、再锁成员行的路径成环）。
+ * 逐条按业务 ID 升序：先锁审批实例，再逐条锁业务头、作废。heads 是调用方已预锁的各业务头 revision。
+ */
 async function voidApplications(
   tx: Tx,
   ctx: EmploymentContext,
   cause: VoidCause,
-  open: readonly InFlight[],
+  candidates: readonly InFlight[],
   heads: ReadonlyMap<string, number>,
 ): Promise<VoidedApplication[]> {
+  if (exceedsVoidLimit(candidates)) throw tooManyToVoid(cause);
+  const open = [...candidates].sort((a, b) => a.id.localeCompare(b.id));
+  if (!open.length) return [];
+  const { employee } = describeCause(cause, '');
+  await lockExitOrganizationResources(tx, ctx, employee.id, cause.kind === 'exit' ? cause.exit.id : null);
   await lockInstances(
     tx,
     ctx,
@@ -211,7 +234,7 @@ async function voidApplications(
   for (const row of open) {
     const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: heads.get(row.id)! }, row.id);
     // 员工行已由调用方持有；共用同一个员工对象，避免多次递增后员工 revision 回退
-    business.employee = describeCause(cause, business.payload.kind).employee;
+    business.employee = employee;
     voided.push(await voidOne(tx, ctx, cause, business));
   }
   return voided;
@@ -224,13 +247,8 @@ export async function voidInFlightApplications(
   lastWorkDate: string,
   heads: ReadonlyMap<string, number>,
 ): Promise<VoidedApplication[]> {
-  const open = (await voidCandidates(tx, ctx, exit.employeeId, null, exit.id)).sort((a, b) => a.id.localeCompare(b.id));
-  // 候选查询被截断时不能只作废一部分：在任何写入之前整单拒绝，HR 处理掉多余的申请后重试
-  if (exceedsVoidLimit(open))
-    throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
-      activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
-    });
-  return voidApplications(tx, ctx, { kind: 'exit', exit, lastWorkDate }, open, heads);
+  const candidates = await voidCandidates(tx, ctx, exit.employeeId, null, exit.id);
+  return voidApplications(tx, ctx, { kind: 'exit', exit, lastWorkDate }, candidates, heads);
 }
 
 /**
@@ -244,20 +262,16 @@ export async function voidSupersededRegularizations(
   ctx: EmploymentContext,
   employee: EmploymentEmployeeRow,
 ): Promise<VoidedApplication[]> {
-  const open = (
-    await inFlightApplications(
-      tx,
-      ctx,
-      employee.id,
-      ['intern_regularization'],
-      ['in_review', 'approved'],
-      'application',
-      {
-        unlanded: true,
-      },
-    )
-  ).sort((a, b) => a.id.localeCompare(b.id));
-  if (!open.length) return [];
+  const candidates = await inFlightApplications(
+    tx,
+    ctx,
+    employee.id,
+    ['intern_regularization'],
+    ['in_review', 'approved'],
+    'application',
+    { unlanded: true },
+  );
+  if (!candidates.length) return [];
   const heads = await lockOtherBusinessHeads(tx, ctx, employee.id, null);
-  return voidApplications(tx, ctx, { kind: 'direct_regularization', employee }, open, heads);
+  return voidApplications(tx, ctx, { kind: 'direct_regularization', employee }, candidates, heads);
 }

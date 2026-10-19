@@ -11,7 +11,8 @@ import { runEmploymentTransition } from '../../apps/api/src/modules/employment/t
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { internWorld, type InternWorld } from './AC-IN-BE6a-support.js';
-import { cmd, tenantApi } from './support/tenant-api.js';
+import { runContractJobs } from '../../apps/api/src/modules/contracts/scheduler.js';
+import { allowAll, cmd, tenantApi } from './support/tenant-api.js';
 
 export async function endWorld(db: InternWorld['db'], label: string) {
   const w = await internWorld(db, label);
@@ -87,6 +88,9 @@ export async function endWorld(db: InternWorld['db'], label: string) {
     rows<{ recipient: string; template: string }>(sql`
       SELECT recipient_user_id AS recipient, template_code AS template FROM approval_notifications
       WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND kind='message' ORDER BY recipient_user_id`);
+  const attempts = (businessId: string) =>
+    rows<{ outcome: string; reason: string | null }>(sql`SELECT outcome, reason FROM employment_activation_attempts
+      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY attempt_no`);
   const leaves = async (employeeId: string) =>
     Number(
       (
@@ -122,10 +126,94 @@ export async function endWorld(db: InternWorld['db'], label: string) {
     return result.runs[0] as EmploymentActivationRun;
   }
 
+  /** 批量造该员工名下的合成实习转正申请（一条语句；复制首个载荷版本的必填列，没有审批实例）。 */
+  const bulkRegularizations = (employeeId: string, count: number, state = 'in_review') =>
+    rows(sql`
+      WITH ids AS (
+        SELECT gen_random_uuid() AS bid, gen_random_uuid() AS vid FROM generate_series(1, ${count}::int)
+      ), base AS (
+        SELECT tenant_id, employee_id, form_id, employ_type FROM employment_payload_versions
+        WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid ORDER BY created_at, version_no LIMIT 1
+      ), objects AS (
+        INSERT INTO employment_business_objects(id,tenant_id,employee_id)
+        SELECT bid, ${tenantId}, ${employeeId}::uuid FROM ids RETURNING id
+      ), versions AS (
+        INSERT INTO employment_payload_versions(id,tenant_id,employee_id,business_id,version_no,command_id,kind,mode,
+          effective_date,form_id,employ_type,created_at)
+        SELECT vid, base.tenant_id, base.employee_id, bid, 1, NULL, 'intern_regularization', 'application',
+          '2026-12-01'::date, base.form_id, base.employ_type, '2026-10-01T01:00:00Z'::timestamptz FROM ids, base
+        RETURNING id
+      )
+      INSERT INTO employment_state_events(tenant_id,employee_id,business_id,payload_version_id,state,event_no,
+        command_id)
+      SELECT ${tenantId}, ${employeeId}::uuid, bid, vid, ${state}, 1, 'bulk-regularization' FROM ids`);
+  const stateCounts = (employeeId: string) =>
+    rows<{ state: string; n: number }>(sql`
+      SELECT s.state, count(*)::int AS n FROM employment_business_objects b
+      JOIN LATERAL (SELECT state FROM employment_state_events e WHERE e.tenant_id=b.tenant_id AND e.business_id=b.id
+        ORDER BY event_no DESC LIMIT 1) s ON true
+      WHERE b.tenant_id=${tenantId} AND b.employee_id=${employeeId}::uuid GROUP BY s.state ORDER BY s.state`);
+
+  /** 合同模块（HR 会话）：建一份带终止日期的实习协议，并按给定日期跑合同到期任务（开启到期自动终止）。 */
+  const contractApi = tenantApi(db, { clock: () => new Date('2026-10-01T01:00:00Z') });
+  const contracts = (method: string, path: string, init: { body?: object; ifMatch?: number } = {}) =>
+    contractApi.request(method, `/api/tenant/contracts${path}`, {
+      ...init,
+      user: w.session.user.id,
+      tenant: tenantId,
+    });
+  async function internAgreement(employeeId: string, endDate: string) {
+    const master = async (kind: string, name: string) => {
+      const response = await contracts('POST', `/master-data/${kind}`, {
+        ifMatch: 0,
+        body: { code: randomUUID(), name },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return (await response.json()) as { id: string };
+    };
+    const type = await master('types', '实习协议');
+    const company = await master('companies', '合成法人公司');
+    const settings = (await (await contracts('GET', '/settings')).json()) as { revision: number };
+    expect(
+      (await contracts('PUT', '/settings', { ifMatch: settings.revision, body: { autoTerminate: true } })).status,
+    ).toBe(200);
+    const created = await contracts('POST', '/commands', {
+      ifMatch: 0,
+      body: {
+        operation: 'create',
+        mode: 'direct',
+        employeeId,
+        fields: {
+          typeId: type.id,
+          companyId: company.id,
+          effectiveDate: '2026-09-01',
+          endDate,
+          termType: 'fixed',
+          termMonths: 2,
+          signingDate: '2026-08-25',
+        },
+      },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    return (await created.json()) as { id: string };
+  }
+  const contractStatus = async (contractId: string) =>
+    (
+      await rows<{ status: string; end_date: string }>(sql`SELECT status, end_date::text FROM contract_records
+        WHERE tenant_id=${tenantId} AND id=${contractId}::uuid`)
+    )[0];
+  const sweepContracts = (at: string) =>
+    runContractJobs(db, { tenantId }, { clock: () => new Date(at), authorize: allowAll });
+
   return {
     ...w,
     tenantId,
     rows,
+    bulkRegularizations,
+    stateCounts,
+    internAgreement,
+    contractStatus,
+    sweepContracts,
     terminate,
     terminateOk,
     statusOf,
@@ -137,6 +225,7 @@ export async function endWorld(db: InternWorld['db'], label: string) {
     pendingTasks,
     notices,
     leaves,
+    attempts,
     approveAt,
     runScheduler,
   };

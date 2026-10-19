@@ -2172,9 +2172,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#tooManyToVoid': [
+    'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidApplications': [
+    'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit',
     '#describeCause',
+    '#lockExitOrganizationResources',
     '#lockInstances',
+    '#tooManyToVoid',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
   ],
@@ -2184,8 +2190,6 @@ export const GRAPH: Graph = {
     '#VOIDABLE_KINDS',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
-    'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
-    'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit',
     '#voidApplications',
     '#voidCandidates',
   ],

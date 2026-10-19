@@ -161,13 +161,20 @@ describe('AC-INTERN-end-11 DEC-593② 离职同步取消待入职', () => {
 });
 
 describe('AC-INTERN-end-12 DEC-593③① 实习期到期不自动结束实习', () => {
-  it('到期后跑调度：不产生任何离职，人员仍在实习中，转正申请继续审批', async () => {
+  it('带终止日期的实习协议到期：合同到期任务照常终止协议，但不产生任何离职，人员仍在实习中，转正申请继续审批', async () => {
     const w = await endWorld(testDb().db, 'end-no-auto');
     const { intern, applicationId } = await reviewing(w, '到期合成实习生');
-    const run = await w.runScheduler('2027-06-01T01:00:00Z');
+    const agreement = await w.internAgreement(intern.employee.id, '2026-10-31');
+    expect(await w.contractStatus(agreement.id)).toMatchObject({ status: 'valid', end_date: '2026-10-31' });
+    // 协议终止日期已过：合同到期任务把协议终止（证明到期事件确实发生），任职调度也照常运行
+    await w.sweepContracts('2026-11-15T01:00:00Z');
+    expect((await w.contractStatus(agreement.id))!.status).not.toBe('valid');
+    const run = await w.runScheduler('2026-11-15T01:00:00Z');
     expect(run.activated).toEqual([]);
     expect(await w.leaves(intern.employee.id)).toBe(0);
+    expect(await w.timeline(intern.employee.id)).toHaveLength(1);
     expect(names(await w.view('interning'))).toEqual([intern.name]);
+    expect(await w.view('left')).toEqual([]);
     expect(await w.statusOf(applicationId)).toBe('in_review');
   });
 });
@@ -266,5 +273,49 @@ describe('AC-INTERN-end-14 DEC-593③③ 直接实习转正自动作废在途转
       error: { details: { reason: 'INTERN_REGULARIZATION_IN_PROGRESS' } },
     });
     expect(await w.statusOf(applicationId)).toBe('in_review');
+  });
+});
+
+describe('AC-INTERN-end-15 第 1 轮返工 P2-3① 生效时复核：保存之后转正先落地，结束实习生效失败', () => {
+  it('先保存未来日期的结束实习（确认），转正申请再审批落地，到结束日调度：结束实习被拒，不变 effective', async () => {
+    const w = await endWorld(testDb().db, 'end-landed-before-effective');
+    const intern = await w.hire('先落地合成实习生', 'intern');
+    // 计划转正日 10-10 的申请在审批中：保存结束实习（结束日 10-20）时需确认，确认后申请仍在审批，生效时才作废
+    const applicationId = await w.applyRegularization(intern.employee.id, '2026-10-10');
+    const business = await w.terminateOk(intern.employee.id, { endDate: '2026-10-20', confirmed: true });
+    expect(business.status).toBe('approved');
+    expect(await w.approveAt(applicationId, '2026-10-12T01:00:00Z')).toBe('effective');
+    const run = await w.runScheduler('2026-10-21T01:00:00Z');
+    expect(run.activated).toEqual([]);
+    expect(run.failed).toEqual([business.id]);
+    expect(await w.statusOf(business.id)).toBe('approved');
+    expect(await w.leaves(intern.employee.id)).toBe(0);
+    expect((await w.attempts(business.id)).at(-1)).toMatchObject({ outcome: 'failed' });
+  });
+});
+
+describe('AC-INTERN-end-16 第 1 轮返工 P2-2 直接转正作废超限：整单拒绝，不部分作废', () => {
+  it('在途转正申请 1003 条（> VOID_LIMIT）：直接转正 409，申请 / 实例 / 待办 / 审计全部不变，不落地', async () => {
+    const w = await endWorld(testDb().db, 'end-direct-too-many');
+    const { intern, applicationId, instance } = await reviewing(w, '超限合成实习生');
+    await w.bulkRegularizations(intern.employee.id, 1002);
+    const before = await w.stateCounts(intern.employee.id);
+    const revision = await w.revision(intern.employee.id);
+    const response = await w.regularize(intern.employee.id, {
+      effectiveDate: '2026-10-16',
+      departmentId: w.org.id,
+      probation: false,
+    });
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { details: { reason: 'EXIT_APPLICATIONS_TOO_MANY', limit: 1000 } },
+    });
+    expect(await w.stateCounts(intern.employee.id)).toEqual(before);
+    expect(await w.statusOf(applicationId)).toBe('in_review');
+    expect(await w.instanceOf(applicationId)).toMatchObject({ id: instance.id, status: 'running' });
+    expect(await w.pendingTasks(instance.id)).toHaveLength(1);
+    expect(await w.audits(applicationId, 'employment.business.voided_by_regularization')).toEqual([]);
+    expect(await w.timeline(intern.employee.id)).toHaveLength(1);
+    expect(await w.revision(intern.employee.id)).toBe(revision);
   });
 });

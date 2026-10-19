@@ -9,6 +9,8 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { endWorld, type EndWorld } from './AC-INTERN-end-support.js';
+import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
+import { tenantApi } from './support/tenant-api.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
@@ -111,5 +113,103 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-INTERN-end-pg 结束�
 
   it('② 直接转正先得锁：恰一方成功（转正），结束实习得到 409', async () => {
     expect(await directVsEnd('pg-direct-reg-first', false)).toEqual({ regularized: 1, leaves: 0 });
+  });
+
+  /**
+   * 锁序（第 1 轮返工 P2-1）：测试会话先持住组织设置锁，发出作废在途转正的请求（它必须先停在组织锁上，此时不能已持有成员行的外键锁），
+   * 再由测试会话对发起人的成员行 FOR UPDATE——这是“先持组织锁、再锁成员行”的路径（入职等）的锁序。
+   * 作废请求若在取组织锁之前就发了站内消息（成员行 KEY SHARE），两边成环，PG 判死锁（40P01）。
+   */
+  async function orgLockedThenMemberLocked<T>(w: EndWorld, request: () => Promise<T>) {
+    let release!: () => void;
+    let held!: () => void;
+    const hold = new Promise<void>((done) => (release = done));
+    const locked = new Promise<void>((done) => (held = done));
+    let memberLocked: unknown;
+    const holder = withTenant(w.db, w.tenantId, async (tx) => {
+      await lockOrganizationSettings(tx, w.tenantId);
+      held();
+      await hold;
+      try {
+        await tx.execute(sql`SELECT 1 FROM tenant_memberships WHERE tenant_id=${w.tenantId}
+          AND user_id=${w.session.user.id}::uuid FOR UPDATE`);
+      } catch (error) {
+        memberLocked = error;
+      }
+    });
+    await locked;
+    const running = request().then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await waitForBlocked(w.db, 1);
+    release();
+    await holder;
+    return { result: await running, memberLocked };
+  }
+
+  it('锁序：直接转正作废在途申请时先取组织锁再发消息——与“组织锁 → 成员行”路径交错不死锁，两边都成功', async () => {
+    const w = await endWorld(testDb().db, 'pg-lock-order-direct');
+    const intern = await w.hire('锁序直接转正合成实习生', 'intern');
+    const applicationId = await w.applyRegularization(intern.employee.id, '2026-10-20');
+    const { result, memberLocked } = await orgLockedThenMemberLocked(w, () =>
+      w.regularize(intern.employee.id, { effectiveDate: '2026-10-16', departmentId: w.org.id, probation: false }),
+    );
+    expect(memberLocked).toBeUndefined();
+    const response = (result as { value: Response }).value;
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect(await w.statusOf(applicationId)).toBe('voided');
+  });
+
+  it('锁序：结束实习（离职生效步骤 1 作废）同一交错也不死锁', async () => {
+    const w = await endWorld(testDb().db, 'pg-lock-order-end');
+    const intern = await w.hire('锁序结束实习合成实习生', 'intern');
+    const applicationId = await w.applyRegularization(intern.employee.id, '2026-10-20');
+    const { result, memberLocked } = await orgLockedThenMemberLocked(w, () =>
+      w.terminate(intern.employee.id, { endDate: '2026-09-30', confirmed: true }),
+    );
+    expect(memberLocked).toBeUndefined();
+    const response = (result as { value: Response }).value;
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect(await w.statusOf(applicationId)).toBe('voided');
+  });
+
+  it('同人重复结束（同一 revision 并发两次）：恰一次 201、另一次确定的 409；只产生一条离职', async () => {
+    const w = await endWorld(testDb().db, 'pg-duplicate-end');
+    const intern = await w.hire('重复结束合成实习生', 'intern');
+    const revision = await w.revision(intern.employee.id);
+    const end = () => w.terminate(intern.employee.id, { endDate: '2026-09-30' }, revision);
+    const result = await interleave(w, intern.employee.id, end, end);
+    const [winner, loser] = [result.first, result.second].map((outcome) => (outcome as { value: Response }).value);
+    expect(winner!.status, await winner!.clone().text()).toBe(201);
+    expect(loser!.status).toBe(409);
+    expect(await loser!.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
+    expect(await counts(w, intern.employee.id)).toEqual({ regularized: 0, leaves: 1 });
+    // 用最新 revision 再结束一次：已结束实习，确定的业务拒绝
+    const again = await w.terminate(intern.employee.id, { endDate: '2026-09-30' });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ error: { details: { reason: 'ACTIVE_EMPLOYMENT_REQUIRED' } } });
+  });
+
+  it('跨租户负例：别的租户的 HR 不能结束本租户的实习生（不论带哪个租户头），目标租户没有任何写入', async () => {
+    const mine = await endWorld(testDb().db, 'pg-tenant-a');
+    const other = await endWorld(testDb().db, 'pg-tenant-b');
+    const victim = await other.hire('跨租户合成实习生', 'intern');
+    const revision = await other.revision(victim.employee.id);
+    const api = tenantApi(testDb().db, { clock: () => new Date('2026-10-01T01:00:00.000Z') });
+    const call = (tenant: string) =>
+      api.request('POST', `/api/tenant/employment/interns/${victim.employee.id}/terminate`, {
+        user: mine.session.user.id,
+        tenant,
+        ifMatch: revision,
+        body: { endDate: '2026-09-30' },
+      });
+    const inOwnTenant = await call(mine.session.tenant.id);
+    expect(inOwnTenant.status, await inOwnTenant.clone().text()).toBe(404);
+    const inTargetTenant = await call(other.session.tenant.id);
+    expect([403, 404], await inTargetTenant.clone().text()).toContain(inTargetTenant.status);
+    expect(await counts(other, victim.employee.id)).toEqual({ regularized: 0, leaves: 0 });
+    expect(await other.timeline(victim.employee.id)).toHaveLength(1);
+    expect(await other.revision(victim.employee.id)).toBe(revision);
   });
 });
