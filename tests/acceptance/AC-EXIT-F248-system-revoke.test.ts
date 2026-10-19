@@ -198,7 +198,7 @@ describe('F-248 离职生效收口在途考核：系统撤销', () => {
         [approvedId, 'approved'],
         [refusedId, 'disapproved'],
       ] as const) {
-        const [{ id }] = await x.instanceRows(assessmentId);
+        const id = (await x.instanceRows(assessmentId))[0]!.id;
         const before = await footprint(x, id);
         expect(before.instance?.status).toBe(status);
         await revokeAgain(x, id);
