@@ -23,6 +23,7 @@ import {
 import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
 import { confirmExit } from './exit-confirmation.js';
+import { restoreAfterExitDeletion } from './exit-restore.js';
 import { activateExit, activateIfDue } from './exit-activation.js';
 import { isExitKind, loadExitRequest, requireExitGate, saveAck } from './exit-gate.js';
 import { findPredecessor, loadEmploymentRecord, snapshotFields } from './read-model.js';
@@ -67,6 +68,11 @@ export interface EmploymentTransitionInput {
   readonly action: (typeof ACTIONS)[number];
   /** 离职提交时的在途调动确认令牌（R2-T03 §8）；其他业务不接受。 */
   readonly ack?: string;
+  /**
+   * 只有离职撤销入口（exit-cancel.ts cancelExit，已按 §6B 做区间变化校验）传入：通用 revoke / delete 对离职单一律 409
+   * USE_EXIT_CANCEL，不留绕过 §6B 的删除路径（设计 §4 / §18.1 末段）。
+   */
+  readonly cancelling?: true;
 }
 
 /** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），到期生效由 R1-T08 定时任务经 activate 端口落地。 */
@@ -169,7 +175,7 @@ export async function transitionEmployment(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    const previous = await deleteEmploymentBusiness(tx, ctx, business);
+    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true);
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
@@ -280,7 +286,11 @@ async function exitGateFor(
     if (row) await saveAck(tx, ctx, business.id, ack);
   } else if (input.action === 'withdraw') await requireExitGate(tx, ctx, 'withdraw', target);
   else if (input.action === 'delete' || input.action === 'revoke')
-    await requireExitGate(tx, ctx, 'cancel', { ...target, deleting: input.action === 'delete' });
+    await requireExitGate(tx, ctx, 'cancel', {
+      ...target,
+      deleting: input.action === 'delete',
+      ...(input.cancelling ? { cancelling: true } : {}),
+    });
   else if (input.action === 'activate') await requireExitGate(tx, ctx, 'retry', target);
   return { row };
 }
@@ -304,7 +314,10 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     disapprove: business.payload.mode === 'application' && business.state === 'in_review',
     withdraw: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
     // `08` §6：流程尚未审批完成才能撤销；审批通过（含未生效）与直接业务只能删除任职。
-    revoke: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
+    // 离职的撤销可作废审批通过未生效的单（approved_voided，设计 §7.1；入口只有 cancelExit，经 §6B）
+    revoke:
+      (business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state)) ||
+      (isExitKind(business.payload.kind) && business.state === 'approved'),
     // 离职的直接办理（保存即 approved）同样经 activate 端口到期落地（R2-T03 §3.2）
     activate:
       (business.payload.mode === 'application' || isExitKind(business.payload.kind)) && business.state === 'approved',
@@ -318,6 +331,7 @@ async function deleteEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
+  exitCancel = false,
 ): Promise<{ id: string; kind: string; date: string } | null> {
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
@@ -359,7 +373,8 @@ async function deleteEmploymentBusiness(
     if (record) {
       const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
-      if (point) {
+      if (point && exitCancel) previous = await restoreAfterExitDeletion(tx, ctx, record, business, point);
+      else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
         const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);
         if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
