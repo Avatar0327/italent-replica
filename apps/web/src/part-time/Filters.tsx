@@ -41,7 +41,6 @@ export function FiltersDrawer({
   const [draft, setDraft] = useState(initial);
   const [nextDays, setDays] = useState(days);
   const [invalid, setInvalid] = useState(false);
-  const people = usePeople();
   const set = (key: keyof Filters, val: string | undefined) => {
     setInvalid(false);
     setDraft((old) => ({ ...old, [key]: val }));
@@ -61,107 +60,142 @@ export function FiltersDrawer({
     >
       {invalid && <Alert type="error" message={m.rangeInvalid} />}
       <div className="part-time-filters">
-        {view === 'expiring' && (
-          <label>
-            {m.days}
-            <InputNumber
-              aria-label={m.days}
-              min={1}
-              max={365}
-              precision={0}
-              value={nextDays}
-              onChange={(next) => {
-                if (next) setDays(next);
-              }}
-            />
-          </label>
-        )}
-        {allowed('keyword') && (
-          <label>
-            {m.keyword}
-            <Input
-              aria-label={m.keyword}
-              maxLength={100}
-              value={draft.keyword ?? ''}
-              onChange={(e) => set('keyword', e.target.value.trim() || undefined)}
-            />
-          </label>
-        )}
-        {allowed('serviceType') && (
-          <label>
-            {m.fields.serviceType}
-            <Select
-              aria-label={m.fields.serviceType}
-              allowClear
-              value={draft.serviceType}
-              onChange={(next: string | undefined) => set('serviceType', next)}
-              options={Object.entries(m.serviceTypes).map(([value, label]) => ({ value, label }))}
-            />
-          </label>
-        )}
-        {allowed('departmentId') && (
-          <div>
-            <label>
-              {m.fields.departmentId}
-              <RefSelect
-                path={refPaths.departmentId!}
-                ariaLabel={m.fields.departmentId}
-                value={draft.departmentId}
-                onChange={(next) => set('departmentId', typeof next === 'string' ? next : undefined)}
-              />
-            </label>
-            <Checkbox
-              checked={draft.includeChildren !== 'false'}
-              disabled={!draft.departmentId}
-              onChange={(e) => set('includeChildren', String(e.target.checked))}
-            >
-              {m.includeChildren}
-            </Checkbox>
-          </div>
-        )}
-        {allowed('directManagerId') && (
-          <label>
-            {m.fields.directManagerId}
-            <PersonSelect
-              load={people}
-              value={draft.directManagerId ? { value: draft.directManagerId, label: draft.directManagerId } : undefined}
-              onChange={(next) => set('directManagerId', next?.value)}
-            />
-          </label>
-        )}
-        {(
-          [
-            ['startFrom', 'startTo', 'effectiveDate'],
-            ['endFrom', 'endTo', 'endDate'],
-          ] as const
-        ).map(
-          ([from, to, field]) =>
-            allowed(from) && (
-              <div key={field} className="part-time-range">
-                <label>
-                  {m.fields[field]}
-                  {m.from}
-                  <Input
-                    type="date"
-                    aria-label={`${m.fields[field]}{m.from}`}
-                    value={draft[from] ?? ''}
-                    onChange={(e) => set(from, e.target.value || undefined)}
-                  />
-                </label>
-                <label>
-                  {m.fields[field]}
-                  {m.to}
-                  <Input
-                    type="date"
-                    aria-label={`${m.fields[field]}{m.to}`}
-                    value={draft[to] ?? ''}
-                    onChange={(e) => set(to, e.target.value || undefined)}
-                  />
-                </label>
-              </div>
-            ),
-        )}
+        <BasicFilters draft={draft} set={set} allowed={allowed} days={nextDays} setDays={setDays} view={view} />
+        <ReferenceFilters draft={draft} set={set} allowed={allowed} />
+        <DateFilters draft={draft} set={set} allowed={allowed} />
       </div>
     </FilterDrawer>
+  );
+}
+
+type DraftProps = { draft: Filters; set(key: keyof Filters, value: string | undefined): void; allowed: Allowed };
+function BasicFilters({
+  draft,
+  set,
+  allowed,
+  days,
+  setDays,
+  view,
+}: DraftProps & {
+  days: number;
+  setDays(days: number): void;
+  view: View;
+}) {
+  return (
+    <>
+      {view === 'expiring' && (
+        <label>
+          {m.days}
+          <InputNumber
+            aria-label={m.days}
+            min={1}
+            max={365}
+            precision={0}
+            value={days}
+            onChange={(next) => {
+              if (next) setDays(next);
+            }}
+          />
+        </label>
+      )}
+      {allowed('keyword') && (
+        <label>
+          {m.keyword}
+          <Input
+            aria-label={m.keyword}
+            maxLength={100}
+            value={draft.keyword ?? ''}
+            onChange={(e) => set('keyword', e.target.value.trim() || undefined)}
+          />
+        </label>
+      )}
+      {allowed('serviceType') && (
+        <label>
+          {m.fields.serviceType}
+          <Select
+            aria-label={m.fields.serviceType}
+            allowClear
+            value={draft.serviceType}
+            onChange={(next: string | undefined) => set('serviceType', next)}
+            options={Object.entries(m.serviceTypes).map(([value, label]) => ({ value, label }))}
+          />
+        </label>
+      )}
+    </>
+  );
+}
+function ReferenceFilters({ draft, set, allowed }: DraftProps) {
+  const people = usePeople();
+  return (
+    <>
+      {allowed('departmentId') && (
+        <div>
+          <label>
+            {m.fields.departmentId}
+            <RefSelect
+              path={refPaths.departmentId!}
+              ariaLabel={m.fields.departmentId}
+              value={draft.departmentId}
+              onChange={(next) => set('departmentId', typeof next === 'string' ? next : undefined)}
+            />
+          </label>
+          <Checkbox
+            checked={draft.includeChildren !== 'false'}
+            disabled={!draft.departmentId}
+            onChange={(e) => set('includeChildren', String(e.target.checked))}
+          >
+            {m.includeChildren}
+          </Checkbox>
+        </div>
+      )}
+      {allowed('directManagerId') && (
+        <label>
+          {m.fields.directManagerId}
+          <PersonSelect
+            load={people}
+            value={draft.directManagerId ? { value: draft.directManagerId, label: draft.directManagerId } : undefined}
+            onChange={(next) => set('directManagerId', next?.value)}
+          />
+        </label>
+      )}
+    </>
+  );
+}
+function DateFilters({ draft, set, allowed }: DraftProps) {
+  return (
+    <>
+      {(
+        [
+          ['startFrom', 'startTo', 'effectiveDate'],
+          ['endFrom', 'endTo', 'endDate'],
+        ] as const
+      ).map(
+        ([from, to, field]) =>
+          allowed(from) && (
+            <div key={field} className="part-time-range">
+              <label>
+                {m.fields[field]}
+                {m.from}
+                <Input
+                  type="date"
+                  aria-label={`${m.fields[field]}${m.from}`}
+                  value={draft[from] ?? ''}
+                  onChange={(e) => set(from, e.target.value || undefined)}
+                />
+              </label>
+              <label>
+                {m.fields[field]}
+                {m.to}
+                <Input
+                  type="date"
+                  aria-label={`${m.fields[field]}${m.to}`}
+                  value={draft[to] ?? ''}
+                  onChange={(e) => set(to, e.target.value || undefined)}
+                />
+              </label>
+            </div>
+          ),
+      )}
+    </>
   );
 }

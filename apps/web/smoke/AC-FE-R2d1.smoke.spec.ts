@@ -31,6 +31,7 @@ test('AC-FE-R2d1-01 默认、六视图列序、分页、申请类型和只读边
   await expect(page.getByRole('heading', { name: '兼职管理', exact: true })).toBeVisible();
   expect(queries[0]?.get('view')).toBe('ongoing');
   expect(queries[0]?.get('pageSize')).toBe('30');
+  await page.screenshot({ path: '../../.demo/fe-r2d1-list.png', fullPage: true });
   for (const [view, label, columns] of views) {
     await page.getByRole('button', { name: label, exact: true }).click();
     await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -153,7 +154,7 @@ test('AC-FE-R2d1-07 详情404和列表403明确报错，不回退旧数据', asy
   await page.getByRole('button', { name: '查看详情', exact: true }).click();
   await expect(page.getByRole('dialog').getByText('页面或记录不存在', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').getByText('2026-09-01', { exact: true })).toHaveCount(0);
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.route('**/employment/part-times?*', (route) =>
     route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } }),
   );

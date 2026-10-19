@@ -84,33 +84,14 @@ export const fields = [
   'partTimeView',
 ];
 export async function setup(page: Page, path = '/part-time') {
-  await page.route('**/permission/me/snapshot', (route) =>
-    route.fulfill({
-      json: {
-        ...snapshotFixture,
-        apps: snapshotFixture.apps.map((app) =>
-          app.app === 'transfer' ? { ...app, entryObjects: ['TenantBase.EmploymentRecord'] } : app,
-        ),
-      },
-    }),
-  );
-  await page.route('**/permission/me/objects/*', (route) =>
-    route.fulfill({
-      json: {
-        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
-        dataOperations: { read: true },
-        viewableFields: fields,
-        editableFields: [],
-        buttons: [],
-      },
-    }),
-  );
+  await permissions(page);
   await page.route('**/employment/part-times?*', (route) => {
+    const { primary: _primary, warnings: _warnings, ...approval } = request;
     const q = new URL(route.request().url()).searchParams;
     const items =
       q.get('view') === 'in_approval'
         ? ['add', 'extend', 'end'].map((kind, index) => ({
-            ...request,
+            ...approval,
             id: `${requestId.slice(0, -1)}${index + 1}`,
             kind,
             initiatorUserId: user,
@@ -163,4 +144,28 @@ export async function setup(page: Page, path = '/part-time') {
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('/staff');
   await page.goto(path);
+}
+
+async function permissions(page: Page) {
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) =>
+          app.app === 'transfer' ? { ...app, entryObjects: ['TenantBase.EmploymentRecord'] } : app,
+        ),
+      },
+    }),
+  );
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
+        dataOperations: { read: true },
+        viewableFields: fields,
+        editableFields: [],
+        buttons: [],
+      },
+    }),
+  );
 }

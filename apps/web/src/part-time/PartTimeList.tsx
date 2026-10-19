@@ -8,7 +8,7 @@ import { PartTimeTable } from './PartTimeTable.js';
 import { PartTimeDetail, type Selection } from './PartTimeDetail.js';
 import { useRead } from './useRead.js';
 import { m } from './messages.js';
-export function PartTimeList() {
+function useList() {
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'ongoing';
   const [page, setPage] = useState(1);
@@ -25,6 +25,42 @@ export function PartTimeList() {
     setFilters({});
     select(undefined);
   };
+  return {
+    view,
+    page,
+    setPage,
+    filters,
+    setFilters,
+    days,
+    setDays,
+    drawer,
+    setDrawer,
+    selected,
+    select,
+    allowed,
+    projected,
+    result,
+    switchView,
+  };
+}
+type State = ReturnType<typeof useList>;
+export function PartTimeList() {
+  const state = useList();
+  const {
+    view,
+    days,
+    setDays,
+    setPage,
+    setFilters,
+    drawer,
+    setDrawer,
+    selected,
+    select,
+    allowed,
+    projected,
+    result,
+    switchView,
+  } = state;
   return (
     <>
       <h1>{m.title}</h1>
@@ -41,46 +77,7 @@ export function PartTimeList() {
           </button>
         ))}
       </nav>
-      <section className="part-time-card">
-        <div className="part-time-toolbar">
-          <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
-          <Button
-            type="text"
-            onClick={() => {
-              setFilters({});
-              setPage(1);
-              setDays(30);
-            }}
-          >
-            {m.reset}
-          </Button>
-          <Button onClick={result.refresh}>{m.refresh}</Button>
-        </div>
-        {result.error ? (
-          <PageState kind="error" error={result.error} retry={result.refresh} />
-        ) : (
-          <>
-            <PartTimeTable
-              rows={result.data?.items ?? []}
-              view={view}
-              loading={result.loading}
-              noScope={result.data?.hasDataPermission === false}
-              onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
-            />
-            <div className="part-time-pagination">
-              <span>{m.total(result.data?.total ?? 0)}</span>
-              <Pagination
-                current={page}
-                pageSize={30}
-                showSizeChanger={false}
-                total={result.data?.total ?? 0}
-                disabled={result.loading}
-                onChange={setPage}
-              />
-            </div>
-          </>
-        )}
-      </section>
+      <ListCard state={state} />
       {drawer && (
         <FiltersDrawer
           initial={projected}
@@ -105,5 +102,51 @@ export function PartTimeList() {
         />
       )}
     </>
+  );
+}
+
+function ListCard({ state }: { state: State }) {
+  const { view, page, setPage, setFilters, setDays, setDrawer, select, result } = state;
+  return (
+    <section className="part-time-card">
+      <div className="part-time-toolbar">
+        <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
+        <Button
+          type="text"
+          onClick={() => {
+            setFilters({});
+            setPage(1);
+            setDays(30);
+          }}
+        >
+          {m.reset}
+        </Button>
+        <Button onClick={result.refresh}>{m.refresh}</Button>
+      </div>
+      {result.error ? (
+        <PageState kind="error" error={result.error} retry={result.refresh} />
+      ) : (
+        <>
+          <PartTimeTable
+            rows={result.data?.items ?? []}
+            view={view}
+            loading={result.loading}
+            noScope={result.data?.hasDataPermission === false}
+            onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
+          />
+          <div className="part-time-pagination">
+            <span>{m.total(result.data?.total ?? 0)}</span>
+            <Pagination
+              current={page}
+              pageSize={30}
+              showSizeChanger={false}
+              total={result.data?.total ?? 0}
+              disabled={result.loading}
+              onChange={setPage}
+            />
+          </div>
+        </>
+      )}
+    </section>
   );
 }

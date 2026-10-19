@@ -78,26 +78,22 @@ export function columnKeys(view: View): string[] {
 export function columnWidth(view: View, key: string): number {
   if (key === 'operation') return view === 'ended' ? 84 : 164;
   const date = ['effectiveDate', 'endDate'].includes(key);
-  if (view === 'not_started')
-    return date
-      ? 112.73
-      : key === 'directManagerId'
-        ? 137.73
-        : ['name', 'serviceStatus', 'approvalStatus'].includes(key)
-          ? 99.73
-          : 147.73;
-  if (view === 'ended')
-    return date
-      ? 135.5
-      : key === 'directManagerId'
-        ? 160.5
-        : ['name', 'serviceType', 'serviceStatus'].includes(key)
-          ? 122.5
-          : 170.5;
+  if (view === 'not_started') {
+    if (date) return 112.73;
+    if (key === 'directManagerId') return 137.73;
+    return ['name', 'serviceStatus', 'approvalStatus'].includes(key) ? 99.73 : 147.73;
+  }
+  if (view === 'ended') {
+    if (date) return 135.5;
+    if (key === 'directManagerId') return 160.5;
+    return ['name', 'serviceType', 'serviceStatus'].includes(key) ? 122.5 : 170.5;
+  }
   if (view === 'expiring' && ['name', 'serviceStatus'].includes(key)) return 92;
   if (key === 'pendingStatus') return 172;
-  return date ? 105 : key === 'directManagerId' ? 130 : 140;
+  if (date) return 105;
+  return key === 'directManagerId' ? 130 : 140;
 }
+
 export function value(input: unknown): string {
   if (input === undefined || input === null || input === '') return m.missing;
   if (typeof input === 'boolean') return input ? m.yes : m.no;
@@ -106,7 +102,10 @@ export function value(input: unknown): string {
 export function cellValue(row: Row, key: string, view: View): string {
   if (['institution', 'pendingStatus', 'pendingKind'].includes(key)) return m.missing;
   if (key === 'name' || key === 'code') return value(row.employee?.[key]);
-  if (key === 'current') return row.partTimeView ? (row.partTimeView.includes('ongoing') ? m.yes : m.no) : m.missing;
+  if (key === 'current') {
+    if (!row.partTimeView) return m.missing;
+    return row.partTimeView.includes('ongoing') ? m.yes : m.no;
+  }
   if (key === 'approvalStatus')
     return view === 'in_approval' ? (m.statuses[String(row.status)] ?? value(row.status)) : m.statuses.effective!;
   if (key === 'serviceType') return m.serviceTypes[String(row.serviceType)] ?? value(row.serviceType);

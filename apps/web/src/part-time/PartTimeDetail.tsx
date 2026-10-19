@@ -1,5 +1,5 @@
 import { Button, Descriptions, Drawer, Table } from 'antd';
-import { PageState } from '../foundation/PageState.js';
+import { ReadPanel } from '../personnel/ReadPanel.js';
 import { useSession } from '../foundation/Session.js';
 import { apiRoot, value, type Row, type Term, type View } from './model.js';
 import { Cell } from './references.js';
@@ -73,12 +73,8 @@ export function PartTimeDetail({
       className="part-time-detail"
       title={<h2>{selected.request ? m.requestDetail : m.detail}</h2>}
     >
-      {result.loading ? (
-        <PageState kind="loading" />
-      ) : result.error ? (
-        <PageState kind="error" error={result.error} retry={result.refresh} />
-      ) : (
-        row && (
+      <ReadPanel {...result}>
+        {row && (
           <>
             <h3>{m.current}</h3>
             <Fields
@@ -101,78 +97,94 @@ export function PartTimeDetail({
               </>
             ) : (
               <>
-                <h3>{m.terms}</h3>
-                {row.terms === undefined ? (
-                  <p>{m.missing}</p>
-                ) : (
-                  <Table<Term>
-                    size="small"
-                    pagination={false}
-                    rowKey="termNo"
-                    dataSource={row.terms}
-                    scroll={{ x: 'max-content' }}
-                    columns={[
-                      { title: m.fields.termNo, dataIndex: 'termNo' },
-                      { title: m.fields.endDate, dataIndex: 'endDate', render: value },
-                      {
-                        title: m.fields.source,
-                        dataIndex: 'source',
-                        render: (source: string) => m.sources[source] ?? value(source),
-                      },
-                      {
-                        title: m.fields.createdAt,
-                        dataIndex: 'createdAt',
-                        render: (time: string) => <Time value={time} />,
-                      },
-                      // PT-5 不返回操作人；不能把申请的发起方式冒充操作人。
-                      { title: m.fields.actor, render: () => m.missing },
-                      {
-                        title: m.operation,
-                        render: (_: unknown, term: Term) =>
-                          term.requestId ? (
-                            <Button type="link" onClick={() => openRequest(term.requestId!)}>
-                              {m.openRequest}
-                            </Button>
-                          ) : (
-                            m.missing
-                          ),
-                      },
-                    ]}
-                  />
-                )}
-                <h3>{m.requests}</h3>
-                <Table<Row>
-                  size="small"
-                  pagination={false}
-                  rowKey="id"
-                  dataSource={row.requests ?? []}
-                  scroll={{ x: 'max-content' }}
-                  columns={[
-                    {
-                      title: m.fields.kind,
-                      render: (_: unknown, item: Row) => <Cell row={item} field="kind" view="in_approval" />,
-                    },
-                    {
-                      title: m.fields.approvalStatus,
-                      render: (_: unknown, item: Row) => <Cell row={item} field="approvalStatus" view="in_approval" />,
-                    },
-                    { title: m.fields.originalEndDate, dataIndex: 'originalEndDate', render: value },
-                    { title: m.fields.requestEndDate, dataIndex: 'endDate', render: value },
-                    {
-                      title: m.operation,
-                      render: (_: unknown, item: Row) => (
-                        <Button type="link" onClick={() => openRequest(item.id)}>
-                          {m.openRequest}
-                        </Button>
-                      ),
-                    },
-                  ]}
-                />
+                <Terms row={row} openRequest={openRequest} />
+                <Requests row={row} openRequest={openRequest} />
               </>
             )}
           </>
-        )
-      )}
+        )}
+      </ReadPanel>
     </Drawer>
+  );
+}
+
+type HistoryProps = { row: Row; openRequest(id: string): void };
+function Terms({ row, openRequest }: HistoryProps) {
+  return (
+    <>
+      <h3>{m.terms}</h3>
+      {row.terms === undefined ? (
+        <p>{m.missing}</p>
+      ) : (
+        <Table<Term>
+          size="small"
+          pagination={false}
+          rowKey="termNo"
+          dataSource={row.terms}
+          scroll={{ x: 'max-content' }}
+          columns={[
+            { title: m.fields.termNo, dataIndex: 'termNo' },
+            { title: m.fields.endDate, dataIndex: 'endDate', render: value },
+            {
+              title: m.fields.source,
+              dataIndex: 'source',
+              render: (source: string) => m.sources[source] ?? value(source),
+            },
+            {
+              title: m.fields.createdAt,
+              dataIndex: 'createdAt',
+              render: (time: string) => <Time value={time} />,
+            },
+            // PT-5 不返回操作人；不能把申请的发起方式冒充操作人。
+            { title: m.fields.actor, render: () => m.missing },
+            {
+              title: m.operation,
+              render: (_: unknown, term: Term) =>
+                term.requestId ? (
+                  <Button type="link" onClick={() => openRequest(term.requestId!)}>
+                    {m.openRequest}
+                  </Button>
+                ) : (
+                  m.missing
+                ),
+            },
+          ]}
+        />
+      )}
+    </>
+  );
+}
+function Requests({ row, openRequest }: HistoryProps) {
+  return (
+    <>
+      <h3>{m.requests}</h3>
+      <Table<Row>
+        size="small"
+        pagination={false}
+        rowKey="id"
+        dataSource={row.requests ?? []}
+        scroll={{ x: 'max-content' }}
+        columns={[
+          {
+            title: m.fields.kind,
+            render: (_: unknown, item: Row) => <Cell row={item} field="kind" view="in_approval" />,
+          },
+          {
+            title: m.fields.approvalStatus,
+            render: (_: unknown, item: Row) => <Cell row={item} field="approvalStatus" view="in_approval" />,
+          },
+          { title: m.fields.originalEndDate, dataIndex: 'originalEndDate', render: value },
+          { title: m.fields.requestEndDate, dataIndex: 'endDate', render: value },
+          {
+            title: m.operation,
+            render: (_: unknown, item: Row) => (
+              <Button type="link" onClick={() => openRequest(item.id)}>
+                {m.openRequest}
+              </Button>
+            ),
+          },
+        ]}
+      />
+    </>
   );
 }
