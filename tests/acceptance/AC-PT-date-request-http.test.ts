@@ -117,7 +117,7 @@ describe('开闸：延长 / 结束申请的 HTTP 全链路', () => {
     const ended = await w.seedRecord({ startDate: '2026-09-12', endDate: '2026-09-20' });
     const before = await w.writes();
     const refuse = async (body: Record<string, unknown>) => w.refusal(await api.createDate(body));
-    expect(await refuse(dateBody('extend', record, { endDate: '2026-10-15' }))).toEqual({
+    expect(await refuse(dateBody('extend', record, { endDate: '2026-10-31' }))).toEqual({
       status: 409,
       code: 'CONFLICT',
       reason: 'PART_TIME_NOT_EXTENDED',
@@ -138,6 +138,31 @@ describe('开闸：延长 / 结束申请的 HTTP 全链路', () => {
       reason: 'PART_TIME_ALREADY_ENDED',
     });
     expect(await w.writes()).toEqual(before);
+  });
+});
+
+describe('F-247：延长填更早结束日 → 回执带 warnings，不再 409；落地为缩短后的结束日', () => {
+  it('创建 / 修改 / 提交回执都带 PART_TIME_NOT_EXTENDED 警告；四节点通过后结束日为缩短值；等于原结束日仍 409', async () => {
+    const w = await world('shorten');
+    const api = w.http();
+    const record = await w.seedRecord({ endDate: '2026-10-31' });
+    const warning = [{ reason: 'PART_TIME_NOT_EXTENDED' }];
+    const created = await draft(w, 'extend', record, { endDate: '2026-10-15' });
+    expect(created).toMatchObject({ endDate: '2026-10-15', originalEndDate: '2026-10-31', warnings: warning });
+    const edited = await w.ok(await api.patch(created.id, created.revision, { requestRemark: '改备注' }));
+    expect(edited.warnings).toEqual(warning);
+    // 读详情不带警告（只在写回执里提示）
+    expect((await w.ok(await api.one(created.id))).warnings).toEqual([]);
+    const submitted = await w.ok(await api.act(created.id, 'submit', edited.revision));
+    expect(submitted).toMatchObject({ status: 'in_review', warnings: warning });
+    await w.approveInOrder(created.id, w.order.extend);
+    expect(await w.ok(await api.one(created.id))).toMatchObject({ status: 'effective', endDate: '2026-10-15' });
+    expect((await w.terms(record)).at(-1)).toMatchObject({ end_date: '2026-10-15', source: 'extend' });
+    const equal = await draft(w, 'extend', await w.seedRecord({ startDate: '2026-09-02', endDate: '2026-10-31' }));
+    expect(await w.refusal(await api.patch(equal.id, equal.revision, { endDate: '2026-10-31' }))).toMatchObject({
+      status: 409,
+      reason: 'PART_TIME_NOT_EXTENDED',
+    });
   });
 });
 
