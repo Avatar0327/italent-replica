@@ -154,7 +154,8 @@ export async function intentionWorld(db: Db, label: string) {
       instances: await rows<Record<string, unknown>>(sql`SELECT i.id::text AS id, i.status, i.revision,
           (SELECT count(*)::int FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
             AND t.status='pending') AS pending
-        FROM approval_instances i WHERE i.tenant_id=${w.tenant.id} AND i.business_id=${intentionId}::uuid ORDER BY i.id`),
+        FROM approval_instances i
+        WHERE i.tenant_id=${w.tenant.id} AND i.business_id=${intentionId}::uuid ORDER BY i.id`),
       audits: (
         await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM audit_events
           WHERE tenant_id=${w.tenant.id} AND object_id=${intentionId}`)
