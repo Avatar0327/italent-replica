@@ -1009,9 +1009,9 @@ export const GRAPH: Graph = {
     '#COLUMNS',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/blacklist.ts#removeBlacklistEntries': [
+  'apps/api/src/modules/employment/blacklist.ts#removeBlacklistEntries': ['#lockBatch', '#removeEntry'],
+  'apps/api/src/modules/employment/blacklist.ts#removeEntry': [
     '#audit',
-    '#lockBatch',
     '#readEntry',
     'apps/api/src/system-actor.ts#auditActor',
   ],

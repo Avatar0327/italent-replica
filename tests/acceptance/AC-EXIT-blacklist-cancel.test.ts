@@ -5,12 +5,19 @@
  * 不动并写审计 exit.blacklist.revoke_skipped，撤销照常完成。
  */
 import './support/exit-gate-enforced.js';
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { findEffectiveBlacklistEntry } from '../../apps/api/src/modules/employment/blacklist.js';
 import { blacklistExitWorld, DUE_LAST_WORK_DATE, TODAY } from './AC-EXIT-blacklist-support.js';
 
 const database = useTestDb();
 const world = (label: string) => blacklistExitWorld(database().db, label);
+type World = Awaited<ReturnType<typeof world>>;
+/** 再入职保存时 assertNotBlacklisted 用的同一个判定：撤销后员工已回到在职，rehire 会先报“须先离职”，所以直接问拦截判定。 */
+const blockedByBlacklist = async (x: World, employeeId: string) =>
+  (await withTenant(x.db, x.tenantId, (tx) => findEffectiveBlacklistEntry(tx, x.tenantId, employeeId, TODAY))) !==
+  undefined;
 const MANUAL = { addToBlacklist: true, blacklistReason: 'integrity' };
 
 describe('DEC-631 撤销离职回收黑名单', () => {
@@ -29,8 +36,7 @@ describe('DEC-631 撤销离职回收黑名单', () => {
     const removed = (await x.page.list('?status=removed')).items;
     expect(removed).toHaveLength(1);
     expect(await x.auditActions(leave.id, 'exit.blacklist.revoked')).toHaveLength(1);
-    const rehire = await x.rehire(x.employee.id);
-    expect((await x.reasonOf(rehire)).reason).not.toBe('EMPLOYEE_BLACKLISTED');
+    expect(await blockedByBlacklist(x, x.employee.id)).toBe(false);
   });
 
   it('自动规则命中 → 生效 → 撤销：同上（名单无有效行，再入职不再被拦截）', async () => {
@@ -44,7 +50,7 @@ describe('DEC-631 撤销离职回收黑名单', () => {
     expect(await x.rows(x.employee.id)).toEqual([
       expect.objectContaining({ source: 'auto_rule', status: 'removed', exitRequestId: leave.id }),
     ]);
-    expect((await x.reasonOf(await x.rehire(x.employee.id))).reason).not.toBe('EMPLOYEE_BLACKLISTED');
+    expect(await blockedByBlacklist(x, x.employee.id)).toBe(false);
   });
 
   it('本人另有一条黑名单页手动新增的行：撤销后那条仍有效，只留审计', async () => {
@@ -58,7 +64,7 @@ describe('DEC-631 撤销离职回收黑名单', () => {
       reason: 'NOT_WRITTEN_BY_EXIT',
       blacklistId: page.id,
     });
-    expect((await x.reasonOf(await x.rehire(x.employee.id))).reason).toBe('EMPLOYEE_BLACKLISTED');
+    expect(await blockedByBlacklist(x, x.employee.id)).toBe(true);
   });
 
   it('这笔离职的行已被手动移出、之后页面又新增了一条：撤销不动任何一条，页面那条仍有效', async () => {
@@ -75,6 +81,7 @@ describe('DEC-631 撤销离职回收黑名单', () => {
       reason: 'BLACKLIST_ALREADY_REMOVED',
       blacklistId: written!.id,
     });
+    expect(await blockedByBlacklist(x, x.employee.id)).toBe(true);
   });
 
   it('这笔离职的行已过有效截止日期：不动（仍是过期的 active），审计留痕，撤销照常完成', async () => {

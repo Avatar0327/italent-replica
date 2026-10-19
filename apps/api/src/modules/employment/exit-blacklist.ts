@@ -18,10 +18,10 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { adminAncestors } from '../approval/resolver.js';
-import { addBlacklistEntry } from './blacklist.js';
+import { addBlacklistEntry, revokeExitListing } from './blacklist.js';
 import { loadBlacklistRules, readAutoBlacklistEnabled } from './blacklist-rules.js';
 import { auditEmployment } from './context.js';
-import { exitPostEffectHooks, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { exitPostEffectHooks, type ExitCancelledEvent, type ExitEffectiveEvent } from './exit-confirmation.js';
 import { loadExitRequest } from './exit-gate.js';
 import { findCurrentRecord } from './read-model.js';
 import { rowsOf } from './record-store.js';
@@ -154,4 +154,25 @@ export async function writeExitBlacklist(
   }
 }
 
+/**
+ * 撤销离职回收名单（DEC-631；订阅 onCancelled，与撤销同事务）：只移出这笔离职写入的有效名单行（exit_request_id 匹配）。
+ * 该行早已被手动移出 / 已过期：不动，审计 exit.blacklist.revoke_skipped 留痕；这笔离职没写过行，但本人另有有效名单行
+ * （黑名单页手动新增、导入、别的离职写的）：同样不动并留痕；撤销照常完成。
+ */
+export async function revokeExitBlacklist(tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent): Promise<void> {
+  const result = await revokeExitListing(tx, ctx, event.businessId);
+  const trace = (action: string, after: Record<string, unknown>) =>
+    auditEmployment(tx, ctx, action, 'exit-request', event.businessId, null, after, undefined, undefined, {
+      employeeId: event.employeeId,
+    });
+  if (result.outcome === 'removed') return trace('exit.blacklist.revoked', { blacklistId: result.entry.id });
+  if (result.outcome !== 'none') {
+    const reason = result.outcome === 'expired' ? 'BLACKLIST_EXPIRED' : 'BLACKLIST_ALREADY_REMOVED';
+    return trace('exit.blacklist.revoke_skipped', { reason, blacklistId: result.entry.id });
+  }
+  const other = await activeEntryId(tx, ctx.tenantId, event.employeeId);
+  if (other) await trace('exit.blacklist.revoke_skipped', { reason: 'NOT_WRITTEN_BY_EXIT', blacklistId: other });
+}
+
 exitPostEffectHooks.onEffective((tx, ctx, event) => writeExitBlacklist(tx, ctx, event).then(() => undefined));
+exitPostEffectHooks.onCancelled((tx, ctx, event) => revokeExitBlacklist(tx, ctx, event));
