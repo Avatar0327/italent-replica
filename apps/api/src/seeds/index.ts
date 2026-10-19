@@ -10,6 +10,7 @@ import '../modules/talent-review/form-presets.js';
 import '../modules/employment/exit-dictionaries.js';
 import '../modules/employment/probation-results.js';
 import '../modules/personnel/identity-types.js';
+import '../modules/employment/retirement-rule-presets.js';
 import '../modules/offer/dictionaries.js';
 
 export { installMissingSeeds, registeredSeeds, seedModules } from './registry.js';

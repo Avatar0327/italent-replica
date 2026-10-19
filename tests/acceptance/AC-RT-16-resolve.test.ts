@@ -56,7 +56,13 @@ const statutoryRange = (id: string, patch: Partial<RetirementRule> = {}): Retire
   ...patch,
 });
 
-const man: RetirementPerson = { orgId: ORG, gender: 'male', nationality: 'CN', employType: 'internal', identityType: null };
+const man: RetirementPerson = {
+  orgId: ORG,
+  gender: 'male',
+  nationality: 'CN',
+  employType: 'internal',
+  identityType: null,
+};
 const worker: RetirementPerson = { ...man, gender: 'female', identityType: '10' };
 
 describe('AC-RT-16 resolveExpectedDate：固定年龄与法定函数并存', () => {
@@ -74,15 +80,23 @@ describe('AC-RT-16 resolveExpectedDate：固定年龄与法定函数并存', () 
   it('命中规则但出生日期空 / 女性无个人身份 → date 为 null（规则仍算命中）；无命中 → null', () => {
     const rule = statutoryExpected('s');
     expect(resolveExpectedDate([rule], man, { birthday: null, expectedDate: null })).toMatchObject({ date: null });
-    expect(resolveExpectedDate([rule], { ...worker, identityType: null }, { birthday: '1980-01-01', expectedDate: null }))
-      .toMatchObject({ rule: { id: 's' }, date: null });
-    expect(resolveExpectedDate([rule], { ...man, employType: 'external' }, { birthday: '1980-01-01', expectedDate: null }))
-      .toBeNull();
+    expect(
+      resolveExpectedDate([rule], { ...worker, identityType: null }, { birthday: '1980-01-01', expectedDate: null }),
+    ).toMatchObject({ rule: { id: 's' }, date: null });
+    expect(
+      resolveExpectedDate([rule], { ...man, employType: 'external' }, { birthday: '1980-01-01', expectedDate: null }),
+    ).toBeNull();
   });
 
   it('命中第一条即停：自建规则先于预置法定规则，哪怕预置规则优先级数值更小', () => {
     const custom = fixedAge('custom', { priority: 9999, sequenceNo: 5 });
-    const preset = statutoryExpected('preset', { priority: 0, sequenceNo: 1, preset: true, scopeOrgIds: [], scopeAllOrgs: true });
+    const preset = statutoryExpected('preset', {
+      priority: 0,
+      sequenceNo: 1,
+      preset: true,
+      scopeOrgIds: [],
+      scopeAllOrgs: true,
+    });
     const facts = { birthday: '1990-06-15', expectedDate: null };
     expect(resolveExpectedDate([preset, custom], man, facts)?.rule.id).toBe('custom');
     expect(resolveExpectedDate([preset, { ...custom, enabled: false }], man, facts)?.rule.id).toBe('preset');
@@ -90,8 +104,9 @@ describe('AC-RT-16 resolveExpectedDate：固定年龄与法定函数并存', () 
 
   it('预置规则覆盖全公司：员工主职部门为空也命中', () => {
     const preset = statutoryExpected('preset', { preset: true, scopeOrgIds: [], scopeAllOrgs: true });
-    expect(resolveExpectedDate([preset], { ...man, orgId: null }, { birthday: '1990-06-15', expectedDate: null }))
-      .toMatchObject({ date: '2053-06-16' });
+    expect(
+      resolveExpectedDate([preset], { ...man, orgId: null }, { birthday: '1990-06-15', expectedDate: null }),
+    ).toMatchObject({ date: '2053-06-16' });
   });
 
   it('flexible_range 规则不参与 expected_date', () => {
@@ -141,7 +156,9 @@ describe('AC-RT-16 resolveFlexibleRange：法定最早 / 最晚', () => {
     });
     const anyone = statutoryRange('anyone', { priority: 2 });
     const facts = { birthday: '1990-06-15', expectedDate: '2053-06-16' };
-    expect(resolveFlexibleRange([femaleOnly, anyone, fixedAge('x', { priority: 0 })], man, facts)?.rule.id).toBe('anyone');
+    expect(resolveFlexibleRange([femaleOnly, anyone, fixedAge('x', { priority: 0 })], man, facts)?.rule.id).toBe(
+      'anyone',
+    );
     expect(resolveFlexibleRange([femaleOnly], man, facts)).toBeNull();
     expect(resolveFlexibleRange([fixedAge('x')], man, facts)).toBeNull();
   });

@@ -11,13 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import {
-  loadRetirementRulesForRun,
-} from '../../apps/api/src/modules/employment/retirement-rules.js';
-import {
-  resolveExpectedDate,
-  resolveFlexibleRange,
-} from '../../packages/domain/src/employment/retirement-rules.js';
+import { loadRetirementRulesForRun } from '../../apps/api/src/modules/employment/retirement-rules.js';
+import { resolveExpectedDate, resolveFlexibleRange } from '../../packages/domain/src/employment/retirement-rules.js';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession } from './AC-EMP-support.js';
 
@@ -269,7 +264,11 @@ describe('AC-RT-16 弹性范围规则：保存与校验（DEC-640①、DEC-641�
   it('预计退休日期规则选用内置函数：必须选 statutory_expected_date，不能带退休年龄或最早 / 最晚函数', async () => {
     const w = await world('expected-builtin');
     const ok = await w.created(w.expected());
-    expect(ok).toMatchObject({ ruleType: 'builtin', expectedFunction: 'statutory_expected_date', retirementAgeYears: null });
+    expect(ok).toMatchObject({
+      ruleType: 'builtin',
+      expectedFunction: 'statutory_expected_date',
+      retirementAgeYears: null,
+    });
     const cases: [string, Record<string, unknown>][] = [
       ['缺函数', { expectedFunction: undefined }],
       ['函数串位', { expectedFunction: 'statutory_latest' }],

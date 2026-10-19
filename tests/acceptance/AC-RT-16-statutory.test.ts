@@ -57,9 +57,11 @@ describe('AC-RT-16 法定退休年龄对照表：数据表与逐段边界', () =
     ['male', '1965-05', 2],
     ['male', '1965-08', 2],
     ['male', '1965-09', 3],
-    ['male', '1970-12', 24],
-    ['male', '1971-01', 25],
-    ['male', '1976-05', 34],
+    ['male', '1970-12', 18],
+    ['male', '1971-01', 19],
+    ['male', '1976-01', 34],
+    ['male', '1976-04', 34],
+    ['male', '1976-05', 35],
     ['male', '1976-08', 35],
     ['male', '1976-09', 36],
     ['male', '1976-12', 36],
@@ -80,19 +82,25 @@ describe('AC-RT-16 法定退休年龄对照表：数据表与逐段边界', () =
     ['female_worker', '1975-03', 2],
     ['female_worker', '1975-04', 2],
     ['female_worker', '1975-05', 3],
-    ['female_worker', '1984-09', 58],
+    ['female_worker', '1984-08', 58],
+    ['female_worker', '1984-09', 59],
     ['female_worker', '1984-10', 59],
     ['female_worker', '1984-11', 60],
     ['female_worker', '1984-12', 60],
     ['female_worker', '1985-01', 60],
   ] as const)('%s 出生 %s → 延迟 %i 个月', (group, birthMonth, delay) => {
     const row = STATUTORY_DELAY_TABLES[group].find(
-      (item) => (item.fromBirth === null || item.fromBirth <= birthMonth) && (item.toBirth === null || birthMonth <= item.toBirth),
+      (item) =>
+        (item.fromBirth === null || item.fromBirth <= birthMonth) &&
+        (item.toBirth === null || birthMonth <= item.toBirth),
     );
     expect(row?.delayMonths).toBe(delay);
     const base = { male: 60, female_cadre: 55, female_worker: 50 }[group];
     const total = base * 12 + delay;
-    expect(statutoryRetirementAge(group, `${birthMonth}-15`)).toEqual({ years: Math.floor(total / 12), months: total % 12 });
+    expect(statutoryRetirementAge(group, `${birthMonth}-15`)).toEqual({
+      years: Math.floor(total / 12),
+      months: total % 12,
+    });
   });
 
   it('改革后最高年龄：男 63 岁、女干部 58 岁、女工人 55 岁；改革前不变', () => {
