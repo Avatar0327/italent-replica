@@ -299,6 +299,13 @@ test('AC-FE-R2d2a-07 批量未知锁住单条编辑与重组批次', async ({ pa
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(page.getByText('本对象有未确认的其他操作，确认结果前不能发起新操作。')).toBeVisible();
   await expect(save(page)).toBeDisabled();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('.ant-table-tbody input[type=checkbox]').nth(1).check();
+  await page.getByRole('button', { name: '批量结束兼职', exact: true }).click();
+  await expect(save(page)).toBeDisabled();
+  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
+  await expect(save(page)).toBeDisabled();
   expect(writes).toBe(1);
 });
 
