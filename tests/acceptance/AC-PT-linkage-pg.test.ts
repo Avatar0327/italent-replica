@@ -53,7 +53,7 @@ const create = (w: LinkageWorld, tx: Tx, patch: Parameters<LinkageWorld['create'
   });
 
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动真 PG 交错', () => {
-  it('联动执行先提交 → 组织停用在组织锁后统计到兼职，409；负责人已设，两事务不成环', async () => {
+  it('联动执行先提交 → 停用在组织锁上等待，放行后 If-Match 已过期（联动改了组织）409；刷新后再停用被兼职挡住，不成环', async () => {
     const w = await linkageWorld(database().db, 'pg-org');
     const org = await w.org(`联动并发部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
     const writer = holdThen(w.db, w.tenantId, (tx) => create(w, tx, { departmentId: org.id, isDepartmentHead: true }));
@@ -62,25 +62,35 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动�
     await waitForBlocked(w.db, 1);
     writer.release();
     expect(await writer.done).toBeUndefined();
-    const response = await disable;
-    expect(response.status, await response.clone().text()).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { details: { reason: 'ORG_SUBTREE_NOT_EMPTY' } } });
+    const stale = await disable;
+    expect(stale.status, await stale.clone().text()).toBe(409);
+    const { error } = (await stale.json()) as { error: { details: { actual: number } } };
     expect(await w.headOf(org.id)).toBe(w.employeeId);
+    const refreshed = await w.disableOrg({ id: org.id, revision: error.details.actual }, '2026-10-02');
+    expect(refreshed.status, await refreshed.clone().text()).toBe(409);
+    expect(await refreshed.json()).toMatchObject({ error: { details: { reason: 'ORG_SUBTREE_NOT_EMPTY' } } });
   });
 
-  it('联动执行持下属员工行锁 → 下属离职等待，放行后落地；两方都成功，下属经理已改、负责人已设', async () => {
+  it('联动执行持下属员工行锁 → 下属离职等待，放行后 If-Match 已过期 409，刷新重提成功；不死锁，负责人 / 下属经理已改', async () => {
     const w = await linkageWorld(database().db, 'pg-leave');
     const sub = await w.subordinate();
     const writer = holdThen(w.db, w.tenantId, (tx) =>
       create(w, tx, { isDepartmentHead: true, addedSubordinateIds: [sub] }),
     );
     await writer.held;
-    const revision = (await w.getEmployee(sub)).revision;
-    const leave = w.business(sub, { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30' }, revision);
+    const leave = (revision: number) =>
+      w.request('POST', `/employees/${sub}/businesses`, {
+        ifMatch: revision,
+        body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30' },
+      });
+    const waiting = leave((await w.getEmployee(sub)).revision);
     await waitForBlocked(w.db, 1);
     writer.release();
     expect(await writer.done).toBeUndefined();
-    expect(await leave).toMatchObject({ kind: 'leave' });
+    const stale = await waiting;
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
+    expect((await leave((await w.getEmployee(sub)).revision)).status).toBe(201);
     expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
   });
 

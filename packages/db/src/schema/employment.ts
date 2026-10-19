@@ -540,6 +540,10 @@ export const employmentOutbox = pgTable(
     index('employment_outbox_tenant_created').on(t.tenantId, t.createdAt, t.id),
     index('employment_outbox_employee_created').on(t.tenantId, t.employeeId, t.createdAt),
     index('employment_outbox_business_created').on(t.tenantId, t.businessId, t.createdAt),
+    // 兼职联动待执行事件（R2-T05 §4.8，PT-7）：定时生效逐租户扫描开始日已到的未办结联动，锁规划按员工取其下属，都只走这个小索引
+    index('employment_outbox_part_time_linkage_pending')
+      .on(t.tenantId, t.employeeId, t.businessId)
+      .where(sql`${t.eventType} = 'employment.part_time.linkage.pending'`),
     check('employment_outbox_object_nonempty', sql`btrim(${t.objectType}) <> ''`),
     check('employment_outbox_event_nonempty', sql`btrim(${t.eventType}) <> ''`),
     check('employment_outbox_payload_object', sql`jsonb_typeof(${t.payload}) = 'object'`),

@@ -11,6 +11,7 @@ import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { requestDto } from '../../apps/api/src/modules/employment/part-time/request-read.js';
 import { findCurrentRecord } from '../../apps/api/src/modules/employment/read-model.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { cmd } from './support/tenant-api.js';
@@ -61,6 +62,11 @@ describe('申请草稿：只保存、只校验，不执行联动', () => {
     const sub = await w.person('下属', w.primary);
     const created = await w.create({ isDepartmentHead: true, addedSubordinateIds: [sub.employeeId] });
     expect((await w.load(created.id)).version).toMatchObject({
+      isDepartmentHead: true,
+      addedSubordinateIds: [sub.employeeId],
+    });
+    // 读形状带回两个字段（落地前只是申请上的意图）
+    expect(requestDto(await w.load(created.id)).fields).toMatchObject({
       isDepartmentHead: true,
       addedSubordinateIds: [sub.employeeId],
     });
