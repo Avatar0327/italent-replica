@@ -40,7 +40,7 @@ describe('AC-FE-R2d2b 状态与权限交集（D2B-01 澄清）', () => {
     ['draft', ['edit', 'submit', 'delete', 'revoke']],
     ['rejected', ['edit', 'submit', 'delete', 'revoke']],
     ['in_review', ['withdraw', 'revoke']],
-    ...['approved', 'effective', 'voided', 'deleted', 'disapproved', undefined].map((state) => [state, []]),
+    ...['approved', 'effective', 'voided', 'deleted', 'disapproved', undefined].map((state) => [state, []] as const),
   ])('%s 只显示约定动作', (status, expected) => {
     expect(actionsFor({ ...row, status }, permission)).toEqual(expected);
   });

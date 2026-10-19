@@ -88,9 +88,10 @@ export function acceptRequest(value: unknown, id: string | undefined, revision: 
 }
 export function requestError(error: unknown): unknown {
   if (!(error instanceof ApiError)) return error;
-  const message =
-    error.serverMessage ??
-    (error.status === 403 ? r.denied : error.code === 'PART_TIME_NOT_EXTENDED' ? r.equalDate : error.message);
+  let message = error.message;
+  if (error.code === 'PART_TIME_NOT_EXTENDED') message = r.equalDate;
+  if (error.status === 403) message = r.denied;
+  message = error.serverMessage ?? message;
   // 所有 409 都进入内核重读/差异路径；业务提示另显示，不把冲突作为未知重放。
   if (error.status === 409) return new ApiError(409, 'REVISION_CONFLICT', 'refresh', message);
   error.message = message;

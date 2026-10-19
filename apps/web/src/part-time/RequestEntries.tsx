@@ -90,13 +90,8 @@ function LoadForm(props: {
         <PageState kind={error ? 'error' : 'loading'} error={error} retry={result.refresh} />
       </Drawer>
     );
-  return (
-    <RequestForm
-      {...props}
-      selection={{
-        ...selection,
-        ...(selection.row ? { row: result.data } : selection.target ? { target: result.data } : {}),
-      }}
-    />
-  );
+  const updated = { ...selection };
+  if (selection.row) updated.row = result.data;
+  else if (selection.target) updated.target = result.data;
+  return <RequestForm {...props} selection={updated} />;
 }

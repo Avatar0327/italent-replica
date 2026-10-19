@@ -1,7 +1,8 @@
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { requestSetup } from './part-time-request-fixtures.js';
 const named = (name: string) => ({ name: new RegExp(`^${name.split('').join('\\s*')}$`) });
-async function dateForm(page: import('@playwright/test').Page, kind = '延长') {
+async function dateForm(page: Page, kind = '延长') {
   await page
     .getByRole('button', named(`${kind}兼职申请`))
     .first()

@@ -1,10 +1,10 @@
 import { Alert, Button, Descriptions, Drawer, Form, Input, Select, Space } from 'antd';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { rejectionMessage } from '../foundation/client.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
-import type { Values } from '../foundation/forms/values.js';
+import { changedFields, refillDraft, sameValue, type Values } from '../foundation/forms/values.js';
 import { RefSelect } from '../contracts/references.js';
 import { requestFields } from './request-model.js';
 import { useRequestCommand, type RequestSelection } from './request-commands.js';
@@ -14,12 +14,13 @@ import { r } from './request-messages.js';
 import { RequestInformation } from './RequestInformation.js';
 import { useRequestPreview } from './request-preview.js';
 
-export function RequestForm(props: {
+interface RequestFormProps {
   selection: RequestSelection;
   close(): void;
   refresh(): Promise<unknown>;
   saved?(id: string): void;
-}) {
+}
+function useRequestForm(props: RequestFormProps) {
   const cmd = useRequestCommand(props.selection, props.refresh);
   const { kind, action, full, permissions } = cmd;
   const create = action === 'create';
@@ -33,6 +34,21 @@ export function RequestForm(props: {
   const incomplete = create && required.some((key) => !editable.includes(key));
   const locked = cmd.command.locked || cmd.command.blocked || busy || !cmd.allowed || incomplete;
   useDraftRefill(cmd.command, editable, form);
+  const previousBaseline = useRef(cmd.baseline);
+  useEffect(() => {
+    const previous = previousBaseline.current;
+    previousBaseline.current = cmd.baseline;
+    if (cmd.command.state || sameValue(previous, cmd.baseline)) return;
+    const values = form.getFieldsValue();
+    form.setFieldsValue(
+      refillDraft({
+        values,
+        latest: cmd.baseline,
+        edited: changedFields(values, previous, editable),
+        submittable: editable,
+      }),
+    );
+  }, [cmd.baseline, cmd.command.state, editable, form]);
   const selectedEmployee = Form.useWatch('employeeId', form);
   const preview = useRequestPreview(form, create && kind === 'add' && !locked, editable);
   const label = (field: string) => {
@@ -63,6 +79,48 @@ export function RequestForm(props: {
     }
   }
   const title = create ? r.titles[kind] : r.actionTitle(r.actions[action]);
+  return {
+    cmd,
+    kind,
+    action,
+    full,
+    permissions,
+    create,
+    form,
+    busy,
+    error,
+    fields,
+    editable,
+    required,
+    locked,
+    selectedEmployee,
+    preview,
+    label,
+    send,
+    title,
+    setError,
+  };
+}
+type FormState = ReturnType<typeof useRequestForm>;
+export function RequestForm(props: RequestFormProps) {
+  const state = useRequestForm(props);
+  const {
+    cmd,
+    action,
+    full,
+    permissions,
+    create,
+    busy,
+    error,
+    fields,
+    locked,
+    selectedEmployee,
+    preview,
+    label,
+    send,
+    title,
+    setError,
+  } = state;
   return (
     <Drawer
       open
@@ -107,72 +165,88 @@ export function RequestForm(props: {
           {r.reload}
         </Button>
       )}
-      {kind !== 'add' && (
-        <Descriptions
-          size="small"
-          column={1}
-          items={[
-            {
-              key: 'originalEndDate',
-              label: kind === 'extend' ? r.fields.oldEnd : r.fields.originalEndDate,
-              children: String(full.originalEndDate ?? m.missing),
-            },
-          ]}
-        />
-      )}
-      <FormLock locked={!!locked}>
-        <Form form={form} layout="vertical" initialValues={cmd.baseline} disabled={!!locked}>
-          {fields
-            .filter((field) => field === 'employeeId' || permissions.field(field).visible)
-            .map((field) => (
-              <Form.Item
-                key={field}
-                name={editable.includes(field) ? field : undefined}
-                label={label(field)}
-                rules={
-                  editable.includes(field) && required.includes(field) ? [{ required: true, message: r.required }] : []
-                }
-              >
-                {editable.includes(field) ? (
-                  <LockedField>
-                    <Control field={field} label={label(field)} />
-                  </LockedField>
-                ) : (
-                  <span>{String(full[field] ?? m.missing)}</span>
-                )}
-              </Form.Item>
-            ))}
-        </Form>
-      </FormLock>
-      {kind !== 'add' && (
-        <>
-          <h3>{r.detail}</h3>
-          <Descriptions
-            column={2}
-            size="small"
-            items={[
-              ...[
-                'name',
-                'code',
-                'serviceType',
-                'effectiveDate',
-                'departmentId',
-                'directManagerId',
-                'postId',
-                'levelId',
-              ].map((key) => ({
-                key,
-                label: m.fields[key],
-                children: (
-                  <Cell row={{ ...full, id: String(full.id), fields: full as Values }} field={key} view="in_approval" />
-                ),
-              })),
-            ]}
-          />
-        </>
-      )}
+      <OriginalDate state={state} />
+      <RequestFields state={state} />
+      <RequestSummary state={state} />
       <RequestInformation employeeId={selectedEmployee ?? full.employeeId} request={cmd.row} />
     </Drawer>
+  );
+}
+function OriginalDate({ state }: { state: FormState }) {
+  const { kind, full } = state;
+  if (kind === 'add') return null;
+  return (
+    <Descriptions
+      size="small"
+      column={1}
+      items={[
+        {
+          key: 'originalEndDate',
+          label: kind === 'extend' ? r.fields.oldEnd : r.fields.originalEndDate,
+          children: String(full.originalEndDate ?? m.missing),
+        },
+      ]}
+    />
+  );
+}
+function RequestFields({ state }: { state: FormState }) {
+  const { cmd, form, locked, fields, permissions, editable, label, required, full } = state;
+  return (
+    <FormLock locked={!!locked}>
+      <Form form={form} layout="vertical" initialValues={cmd.baseline} disabled={!!locked}>
+        {fields
+          .filter((field) => field === 'employeeId' || permissions.field(field).visible)
+          .map((field) => (
+            <Form.Item
+              key={field}
+              name={editable.includes(field) ? field : undefined}
+              label={label(field)}
+              rules={
+                editable.includes(field) && required.includes(field) ? [{ required: true, message: r.required }] : []
+              }
+            >
+              {editable.includes(field) ? (
+                <LockedField>
+                  <Control field={field} label={label(field)} />
+                </LockedField>
+              ) : (
+                <span>{String(full[field] ?? m.missing)}</span>
+              )}
+            </Form.Item>
+          ))}
+      </Form>
+    </FormLock>
+  );
+}
+function RequestSummary({ state }: { state: FormState }) {
+  const { kind, full } = state;
+  if (kind === 'add') return null;
+  return (
+    <>
+      <h3>{r.detail}</h3>
+      <Descriptions
+        column={2}
+        size="small"
+        items={[
+          ...[
+            'name',
+            'code',
+            'serviceType',
+            'effectiveDate',
+            'departmentId',
+            'directManagerId',
+            'postId',
+            'levelId',
+          ].map((key) => ({
+            key,
+            label: m.fields[key],
+            children: (
+              <Cell row={{ ...full, id: String(full.id), fields: full as Values }} field={key} view="in_approval" />
+            ),
+          })),
+        ]}
+      />
+    </>
   );
 }
 function Control({
