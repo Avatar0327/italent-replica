@@ -19,6 +19,7 @@ export interface PartTimeInput {
   readonly startDate?: string;
   readonly endDate?: string | null;
   readonly departmentId?: string;
+  readonly positionId?: string | null;
   readonly place?: string | null;
 }
 
@@ -49,16 +50,16 @@ export async function insertPartTimeRecord(tx: Tx, seed: PartTimeSeed): Promise<
   await tx.execute(sql`INSERT INTO employment_business_objects(id, tenant_id, employee_id)
     VALUES (${id}, ${tenantId}, ${employeeId})`);
   await tx.execute(sql`INSERT INTO employment_payload_versions(id, tenant_id, employee_id, business_id, version_no,
-      kind, mode, effective_date, form_id, selected_staff_id, department_id, place)
+      kind, mode, effective_date, form_id, selected_staff_id, department_id, position_id, place)
     VALUES (${payload}, ${tenantId}, ${employeeId}, ${id}, 1, ${kind}, 'direct', ${start}, 'part_time',
-      ${cycle.id}, ${departmentId}, ${seed.place ?? null})`);
+      ${cycle.id}, ${departmentId}, ${seed.positionId ?? null}, ${seed.place ?? null})`);
   await tx.execute(sql`INSERT INTO employment_state_events(tenant_id, employee_id, business_id, payload_version_id,
       state, event_no, command_id)
     VALUES (${tenantId}, ${employeeId}, ${id}, ${payload}, 'effective', 1, ${`pt-seed-${id}`})`);
   await tx.execute(sql`INSERT INTO employment_records(id, tenant_id, employee_id, payload_version_id, staff_id,
-      entry_date, kind, start_date, service_type, department_id, employ_type, place)
+      entry_date, kind, start_date, service_type, department_id, position_id, employ_type, place)
     VALUES (${id}, ${tenantId}, ${employeeId}, ${payload}, ${cycle.id}, ${cycle.entry_date}, ${kind}, ${start},
-      ${seed.serviceType ?? 'part_time'}, ${departmentId}, 'internal', ${seed.place ?? null})`);
+      ${seed.serviceType ?? 'part_time'}, ${departmentId}, ${seed.positionId ?? null}, 'internal', ${seed.place ?? null})`);
   if (seed.endDate !== undefined)
     await tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
         source, command_id)

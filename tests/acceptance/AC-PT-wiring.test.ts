@@ -6,8 +6,12 @@
  */
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { transferPartTimePortIsDefault } from '../../apps/api/src/modules/transfer/linkage/part-time.js';
+import { linkageWorld } from './AC-LNK-support.js';
+import { insertPartTimeRecord } from './AC-PT-support.js';
 import { serviceWorld } from './AC-PT-service-support.js';
 import { directImporters, importChainTo } from './support/import-graph.js';
 
@@ -40,6 +44,37 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
       { term_no: 1, end_date: null, source: 'create', source_id: null },
       { term_no: 2, end_date: '2026-09-15', source: 'exit', source_id: exit.id },
     ]);
+  });
+
+  it('PT-6：只从 createApp 建应用，调动端口不是缺省实现、transfer-linkage:part-time 探针生效（联动结束的兼职仍停在该期 → 拒绝删除调动）', async () => {
+    const w = await linkageWorld(database().db, 'pt-wiring-transfer');
+    expect(transferPartTimePortIsDefault()).toBe(false);
+    const person = await w.hire('装配员工');
+    const tenantId = w.session.tenant.id;
+    const record = await withTenant(w.db, tenantId, (tx) =>
+      insertPartTimeRecord(tx, {
+        tenantId,
+        employeeId: person.employee.id,
+        departmentId: w.from.id,
+        startDate: '2026-09-05',
+        endDate: null,
+      }),
+    );
+    const transfer = await w.saved(
+      await w.transfer(person, {
+        mode: 'direct',
+        submit: undefined,
+        effectiveDate: '2026-09-20',
+        linkage: { partTimes: [{ recordId: record }] },
+      }),
+    );
+    expect((await w.linkage(transfer.id)).partTimes[0]).toMatchObject({ status: 'succeeded' });
+    const head = await w.business(transfer.id);
+    const refused = await w.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: head.revision });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({
+      error: { details: { reason: 'EMPLOYMENT_LINKED_CHANGES_EXIST', linkages: [{ kind: 'partTimeEnd' }] } },
+    });
   });
 
   it('PT-5 开放六视图（见 AC-PT-06-views）：有 view 即 200；没有 view 是 400，不回退到全部，也不是 404', async () => {
