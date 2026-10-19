@@ -6,6 +6,7 @@
  * - 否则总开关开启时按规则匹配：exitCount = 该员工已生效的离职次数（含本次），orgChain = 生效前（最后工作日）所在部门及行政维度全部上级；
  *   命中取优先级数字最小者，source = auto_rule；期限“离职当月”= 生效日所在自然月月底，“永久”= 空。
  * - 名单写入只走 addBlacklistEntry（BE-8a 单一入口，加黑日期 = 离职生效日），名单行记下写入它的离职请求 ID（撤销离职据此回收）。
+ * - 退休（BE-5a，R2-T04 设计 §7.2）共用手动勾选；自动规则只对离职（event.kind = leave）。
  * - 本人已在有效名单（409 BLACKLIST_DUPLICATE）：跳过并在审计留痕，不回滚离职；其他错误照常抛出，整笔生效回滚。
  */
 import { sql, type Tx } from '@italent/db';
@@ -65,6 +66,8 @@ function listingOfRule(rule: BlacklistRuleFacts, effectiveDate: string): Listing
 }
 
 async function autoListing(tx: Tx, ctx: EmploymentContext, event: ExitEffectiveEvent): Promise<Listing | null> {
+  // 自动加黑是“离职”自动加黑（DM-R3 / AC-DM-06）：退休只支持手动勾选（R2-T04 设计 §7.2），不套用离职规则
+  if (event.kind !== 'leave') return null;
   if (!(await readAutoBlacklistEnabled(tx, ctx.tenantId))) return null;
   const rules = await loadBlacklistRules(tx, ctx.tenantId);
   if (!rules.length) return null;
