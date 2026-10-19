@@ -1,7 +1,8 @@
 /**
  * BE-7 PT-3b 新增与读取入口（docs/08_设计/R2-T05_兼职设计.md §4.1 / §4.2 / §4.8 / §13.1，§9 PB-14～22 HTTP 版、PB-57）：
  * 开放 POST employees/:id/part-times/preview、POST employees/:id/part-times、GET employees/:id/part-times、
- * GET part-times/:recordId；编辑、批量结束、申请入口、六视图已随后续批次开放（PT-5 起 GET part-times?view= 见 AC-PT-06-views），新增只调内部服务 createPartTime，
+ * GET part-times/:recordId；编辑、批量结束、申请入口、六视图已随后续批次开放（PT-5 起 GET part-times?view= 见
+ * AC-PT-06-views）。新增只调内部服务 createPartTime，
  * 路由层不另写校验或写库逻辑；isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE。
  * 预览带出默认值（直线经理 = 兼职部门在开始日的负责人、职务序列按 DEC-107；不带出职位，B-6）并做与新增同一套校验，不写库。
  */

@@ -1175,10 +1175,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.partTimeRequest'),
     ...byId,
   }),
-  // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，不回退到
-  // all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType / startFrom / startTo / endFrom /
-  // endTo / directManagerId 严格校验 400；readPageContext(list)，筛选用到的字段不可查看 403「筛选字段不可查看」；分页前 employmentVisibilitySql
-  // （DEC-177 两项并集）过滤，范围为空 → 空集，total 与本页同一份结果；任职字段按任职记录、姓名 / 工号按人员对象可见字段裁剪（无权缺席）
+  // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，
+  // 不回退到 all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType /
+  // startFrom / startTo / endFrom / endTo / directManagerId 严格校验 400；readPageContext(list)，筛选用到的字段不可查看
+  // 403「筛选字段不可查看」；分页前 employmentVisibilitySql（DEC-177 两项并集）过滤，范围为空 → 空集，total 与本页同一份结果；
+  // 任职字段按任职记录、姓名 / 工号按人员对象可见字段裁剪（无权缺席）
   'GET /part-times': object({
     object: EMPLOYMENT,
     operation: 'view',
