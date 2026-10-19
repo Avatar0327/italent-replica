@@ -8,88 +8,15 @@ import './support/exit-gate-enforced.js';
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { capacityWorld, rehired } from './AC-EXIT-capacity-support.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
 
-async function capacityWorld(label: string) {
-  const x = await downstreamWorld(database().db, label, TODAY);
-  const api = tenantApi(x.db, { clock: () => new Date(`${TODAY}T01:00:00Z`) });
-  const establishment = async (path: string, body: object) => {
-    const response = await api.request('POST', `/api/tenant/establishment${path}`, {
-      user: x.session.user.id,
-      tenant: x.session.tenant.id,
-      ifMatch: 0,
-      body,
-    });
-    expect(response.status, await response.clone().text()).toBe(201);
-    return (await response.json()) as { id: string };
-  };
-  const scheme = await establishment('/schemes', {
-    name: '预减验收方案',
-    periodType: 'annual',
-    maintenanceMode: 'local',
-    startDate: '2026-01-01',
-  });
-  for (const org of [x.from, x.to])
-    await establishment('/capacities', {
-      orgId: org.id,
-      schemeId: scheme.id,
-      periodStart: '2026-01-01',
-      localCapacity: 1,
-      strictControl: true,
-    });
-  const other = await x.session.org('无编制部门', { establishedOn: '2026-01-01' });
-  /** 另一个人（在无编制部门入职），用来向有编制的部门调入。 */
-  async function newcomer(name: string) {
-    const employee = await x.session.employee(name);
-    await x.session.business(
-      employee.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: other.id } },
-      employee.revision,
-    );
-    return employee;
-  }
-  /** 直接 / 申请调入：返回响应（严格编制超编 409 ESTABLISHMENT_EXCEEDED）。 */
-  async function transferInto(employeeId: string, departmentId: string, effectiveDate: string, mode = 'direct') {
-    return x.session.request('POST', `/transfers/employees/${employeeId}`, {
-      ifMatch: (await x.session.getEmployee(employeeId)).revision,
-      body: {
-        initiator: 'hr',
-        transferTypeCode: 'cross_department',
-        mode,
-        submit: mode === 'application',
-        effectiveDate,
-        fields: { departmentId },
-      },
-    });
-  }
-  const exceeded = async (response: Response) =>
-    expect(await response.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
-  const preReleaseDate = async (businessId: string) =>
-    (
-      await x.sqlRows<{ r: string | null }>(sql`SELECT pre_release_date::text AS r FROM exit_requests
-        WHERE tenant_id=${x.session.tenant.id} AND business_id=${businessId}::uuid`)
-    )[0]!.r;
-  return { ...x, newcomer, transferInto, exceeded, other, preReleaseDate };
-}
-
-/** 11-01 重聘进入调入部门：新 staff_id 的新任职周期。 */
-async function rehired(x: Awaited<ReturnType<typeof capacityWorld>>, department = x.to) {
-  const employee = await x.session.getEmployee(x.employee.id);
-  await x.session.business(
-    employee.id,
-    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-11-01', fields: { departmentId: department.id } },
-    employee.revision,
-  );
-}
-
 describe('AC-DM-24 B-21a / B-21c 批准即预减：从 R 起员工不再占编，与 L 和生效日无关', () => {
   it('B-21a 直接离职保存当天（R）起即释放：此前被挡的调入放行；离职前仍占编', async () => {
-    const x = await capacityWorld('pre-b21a');
+    const x = await capacityWorld(database().db, 'pre-b21a');
     const newcomer = await x.newcomer('调入者');
     // 离职前：调出部门编制 1 被员工占满，另一人 10-10 调入超编
     await x.exceeded(await x.transferInto(newcomer.id, x.from.id, '2026-10-10'));
@@ -104,7 +31,7 @@ describe('AC-DM-24 B-21a / B-21c 批准即预减：从 R 起员工不再占编�
   });
 
   it('B-21a 申请离职：审批通过当天起释放，审批中（未批准）仍占编', async () => {
-    const x = await capacityWorld('pre-b21a-approval');
+    const x = await capacityWorld(database().db, 'pre-b21a-approval');
     const newcomer = await x.newcomer('调入者');
     const draft = await x.submittedLeave('2026-10-20');
     await x.exceeded(await x.transferInto(newcomer.id, x.from.id, '2026-10-10'));
@@ -114,7 +41,7 @@ describe('AC-DM-24 B-21a / B-21c 批准即预减：从 R 起员工不再占编�
   });
 
   it('B-21c 迟到顺延后 R 不变，修正行记 E′：释放时点仍是批准当天', async () => {
-    const x = await capacityWorld('pre-b21c');
+    const x = await capacityWorld(database().db, 'pre-b21c');
     const leave = await x.directLeave('2026-10-10');
     expect(await x.preReleaseDate(leave.id)).toBe(TODAY);
     expect(await x.runScheduler('2026-10-15T01:00:00Z')).toMatchObject({ activated: [leave.id] });
@@ -133,7 +60,7 @@ describe('AC-DM-24 B-21a / B-21c 批准即预减：从 R 起员工不再占编�
 
 describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）', () => {
   it('B-62 第一周期预减不影响重聘后的新周期：新周期照常占编，旧离职不误放行；旧周期占用已释放', async () => {
-    const x = await capacityWorld('pre-b62');
+    const x = await capacityWorld(database().db, 'pre-b62');
     const newcomer = await x.newcomer('调入者');
     const leave = await x.directLeave('2026-10-20');
     expect(await x.runScheduler('2026-10-21T01:00:00Z')).toMatchObject({ activated: [leave.id] });
@@ -146,7 +73,7 @@ describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）
   });
 
   it('P2-1 成员区间保留来源周期：旧周期的调动申请投影到新周期日期，不被新周期离职的预减误扣', async () => {
-    const x = await capacityWorld('pre-cycle-source');
+    const x = await capacityWorld(database().db, 'pre-cycle-source');
     const newcomer = await x.newcomer('调入者');
     const first = await x.directLeave('2026-10-20');
     expect(await x.runScheduler('2026-10-21T01:00:00Z')).toMatchObject({ activated: [first.id] });
@@ -176,7 +103,7 @@ describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）
   });
 
   it('B-62a 第二次离职只释放第二周期：staff_id 为第二周期，R₂ 起新周期释放', async () => {
-    const x = await capacityWorld('pre-b62a');
+    const x = await capacityWorld(database().db, 'pre-b62a');
     const first = await x.directLeave('2026-10-20');
     await x.runScheduler('2026-10-21T01:00:00Z');
     await rehired(x);
@@ -200,7 +127,7 @@ describe('AC-DM-24 B-62 / B-62a 预减绑定任职周期（重聘开新周期）
 
 describe('AC-DM-24 B-62b / B-77 R 之后开始的记录与申请预占段同样不占编（不用 L 过滤）', () => {
   it('B-62b 员工有 10-15 起调入 B 部门的直接调动（R 之后开始）：离职批准后 B 部门不再被他占编，另一人 10-22 调入放行', async () => {
-    const x = await capacityWorld('pre-b62b');
+    const x = await capacityWorld(database().db, 'pre-b62b');
     const newcomer = await x.newcomer('调入者');
     expect((await x.transferInto(x.employee.id, x.to.id, '2026-10-15')).status).toBe(201);
     // 员工 10-15 起占调入部门编制 1：另一人 10-22 调入超编
@@ -211,7 +138,7 @@ describe('AC-DM-24 B-62b / B-77 R 之后开始的记录与申请预占段同样�
   });
 
   it('B-77 步骤 1～2 审批中的调入申请预占段随预减扣掉：离职批准后另一人调入同岗位放行', async () => {
-    const x = await capacityWorld('pre-b77');
+    const x = await capacityWorld(database().db, 'pre-b77');
     const newcomer = await x.newcomer('调入者');
     const review = await x.transferInto(x.employee.id, x.to.id, '2026-10-25', 'application');
     expect(review.status, await review.clone().text()).toBe(201);
