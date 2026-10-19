@@ -70,6 +70,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/activation-store.ts#activationPredecessors': ['#pendingActivations'],
   'apps/api/src/modules/employment/activation-store.ts#activationSummary': [
+    '#STALE_DEPARTED_FAILURE',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/activation-store.ts#findOverdueTransfers': [
@@ -78,6 +79,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/activation-store.ts#isRebuildBlocker': ['#REBUILD_REQUIRED'],
   'apps/api/src/modules/employment/activation-store.ts#listActivationTodos': [
+    '#STALE_DEPARTED_FAILURE',
     '#pendingActivationState',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
@@ -87,6 +89,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/activation-store.ts#pendingActivations': [
     '#QUEUE_LIMIT',
     '#QUEUE_SHIFTED_KINDS',
+    '#STALE_DEPARTED_FAILURE',
     '#blockerIds',
     '#finalExecutionDateSql',
     '#pendingActivationState',
@@ -1691,7 +1694,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertCapacity': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#departmentVisible',
-    '#segmentExceeds',
+    '#segmentExcesses',
   ],
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertOccupancyChange': [
     '#assertAvailable',
@@ -1717,10 +1720,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit-occupancy.ts#exitOccupancy',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/employment/exit-cancel-intervals.ts#segmentExceeds': [
+  'apps/api/src/modules/employment/exit-cancel-intervals.ts#segmentExcesses': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
-    'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
+    'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExcesses',
     'apps/api/src/modules/establishment/employment-check.ts#establishmentPeriodStartsWithin',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
@@ -1738,6 +1741,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-cancel.ts#isCancelReplay': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState': ['#CANCELLABLE'],
   'apps/api/src/modules/employment/exit-cancel.ts#lockForCancel': [
@@ -2070,6 +2076,12 @@ export const GRAPH: Graph = {
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
+  'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion': [
+    'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
+    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/employment/timeline.ts#reattachFutureTransfers',
+  ],
   'apps/api/src/modules/employment/exit-routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/exit-routes.ts#batchSchema': [
     'apps/api/src/modules/employment/exit-batch.ts#EXIT_BATCH_LIMIT',
@@ -4165,11 +4177,6 @@ export const GRAPH: Graph = {
     '#requireImportTransferAccess',
     'apps/api/src/system-actor.ts#auditActor',
   ],
-  'apps/api/src/modules/employment/routes.ts#isCancellableExit': [
-    'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
-    'apps/api/src/modules/employment/exit-gate.ts#businessState',
-    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
-  ],
   'apps/api/src/modules/employment/routes.ts#registerBusinessTransitions': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -4180,7 +4187,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     '#authorizeBusinessWrite',
     '#discloseDeletionBlock',
-    '#isCancellableExit',
+    '#routesToCancel',
     '#submitBody',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/job/context.ts#revision',
@@ -4438,6 +4445,12 @@ export const GRAPH: Graph = {
     '#parse',
     'apps/api/src/modules/job/context.ts#revision',
   ],
+  'apps/api/src/modules/employment/routes.ts#routesToCancel': [
+    'apps/api/src/modules/employment/exit-cancel.ts#isCancelReplay',
+    'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
+    'apps/api/src/modules/employment/exit-gate.ts#businessState',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+  ],
   'apps/api/src/modules/employment/routes.ts#splitLoginEmail': ['#loginEmail', '#parse'],
   'apps/api/src/modules/employment/routes.ts#submitBody': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -4579,6 +4592,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
+    'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -4586,7 +4600,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#isDetachedRecord',
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
     '#auditDeletedRecord',
-    '#restoreAfterExitDeletion',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -4601,11 +4614,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
-  ],
-  'apps/api/src/modules/employment/transitions.ts#restoreAfterExitDeletion': [
-    'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
-    'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
-    'apps/api/src/modules/employment/timeline.ts#reattachFutureTransfers',
   ],
   'apps/api/src/modules/employment/transitions.ts#snapshotRecord': [
     'apps/api/src/modules/employment/read-model.ts#snapshotFields',

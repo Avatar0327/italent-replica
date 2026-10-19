@@ -71,7 +71,8 @@ async function effectsOf(tx: Tx, ctx: EmploymentContext, businessId: string): Pr
       (SELECT p.department_id::text FROM employment_payload_versions p
         WHERE p.tenant_id=x.tenant_id AND p.business_id=x.target_id
         ORDER BY p.version_no DESC LIMIT 1) AS "departmentId",
-      EXISTS (SELECT 1 FROM employment_timeline tl WHERE tl.tenant_id=x.tenant_id AND tl.record_id=x.target_id) AS "onTimeline"
+      EXISTS (SELECT 1 FROM employment_timeline tl
+        WHERE tl.tenant_id=x.tenant_id AND tl.record_id=x.target_id) AS "onTimeline"
     FROM exit_effects x WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${businessId}::uuid
     ORDER BY x.created_at, x.id`),
   );
