@@ -1,8 +1,8 @@
 /**
- * 兼职申请的内部服务（docs/08_设计/R2-T05_兼职设计.md §2.2 / §4.3A / §4.4 / §4.5，PT-4a 底座）：新增申请的建 / 改 / 提交 /
- * 撤回 / HR 撤销 / 删除、审批通过后的落地与复核、系统作废。本批没有公开路由（PT-4b 才开）；延长 / 结束申请随 PT-4c，
- * 在此之前创建入口只有 add，其余类型的审批回调一律 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE（见 approval-adapter）。
- * 每个人工入口都在员工行锁内重跑 D-1～D-10 与主职周期边界（A-16：草稿也不豁免，越界当次拒绝，不留越界版本）。
+ * 兼职申请的内部服务（docs/08_设计/R2-T05_兼职设计.md §2.2 / §4.3A / §4.4 / §4.5，PT-4a 底座，PT-4c 延长 / 结束）：三类申请
+ * （新增 / 延长 / 结束）的建 / 改 / 提交 / 撤回 / HR 撤销 / 删除、审批通过后的落地与复核、系统作废，状态机与锁序是同一套，
+ * 只在规则处按 requestType 分支：新增重跑 D-1～D-10 与主职周期边界，延长 / 结束重跑 E-1～E-6 / T-1～T-4（date-request.ts）。
+ * 每个人工入口都在员工行锁内重跑规则（A-16：草稿也不豁免，越界当次拒绝，不留越界版本）。
  * 审批中心（approval/）经动态导入调用：审批适配器 → 本文件 → 审批中心会成环，静态导入在模块装载期不安全（同 Offer）。
  */
 import {
@@ -12,18 +12,22 @@ import {
   PART_TIME_NOTICE_TEMPLATES,
   PART_TIME_REMARK_MAX,
   nextPartTimeRequestState,
+  type PartTimeServiceType,
   type PartTimeInitiator,
   type PartTimeRequestAction,
   type PartTimeRequestState,
   type PartTimeRequestType,
   type PartTimeVoidReason,
 } from '@italent/domain';
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { AppError, ERROR_STATUS } from '../../../errors.js';
 import { schedulerAwareContext, type ApprovalContext, type FieldAccess } from '../../approval/context.js';
 import { assertRevision, auditEmployment, requireEmployeeInScope, requireScopedEmploymentObject } from '../context.js';
-import { lockEmploymentEmployee } from '../record-store.js';
+import { businessDate } from '../fields.js';
+import { snapshotFields } from '../read-model.js';
+import { lockEmploymentEmployee, rowsOf } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
+import { checkDateRequest, type DateRequestType } from './date-request.js';
 import {
   appendRequestState,
   appendRequestVersion,
@@ -33,8 +37,15 @@ import {
   type PartTimeRequestRow,
   type RequestPayload,
 } from './request-store.js';
+import { partTimeNotFound } from './read.js';
 import { checkNewPartTime, insertCheckedPartTime, type CreatePartTimeInput } from './service.js';
-import { normalizeNewPartTime, type NormalizedPartTime } from './validation.js';
+import { appendPartTimeTerm, lockPartTimeRecords, readPartTimeRecords, type PartTimeRecordRow } from './store.js';
+import {
+  assertNoLinkage,
+  normalizeNewPartTime,
+  requirePartTimeRecordScope,
+  type NormalizedPartTime,
+} from './validation.js';
 
 export interface AddRequestInput extends CreatePartTimeInput {
   /** 发起方式：self / manager 入口由 F-020 做（DEC-200 / 283），服务层预留；缺省 hr。 */
@@ -43,8 +54,23 @@ export interface AddRequestInput extends CreatePartTimeInput {
   readonly remark?: string | null;
 }
 
-/** 修改草稿 / 驳回中的新增申请：缺省键 = 不改，显式 null 清空该字段。 */
+/**
+ * 修改草稿 / 驳回中的申请：缺省键 = 不改，显式 null 清空该字段。延长 / 结束申请只接 endDate 与 remark，
+ * 其他键 400 PART_TIME_FIELD_NOT_EDITABLE（A-14，审批编辑同口径）。
+ */
 export type AddRequestPatch = Partial<Omit<AddRequestInput, 'employeeId' | 'initiator'>>;
+
+/** 延长 / 结束申请入参：目标兼职记录 + 新结束日期（延长 = 新结束日；结束 = 结束日）+ 备注。员工取自目标记录。 */
+export interface DateRequestInput {
+  readonly requestType: DateRequestType;
+  readonly recordId: string;
+  readonly endDate: string;
+  readonly initiator?: PartTimeInitiator;
+  readonly remark?: string | null;
+  /** PT-7 前不受理：true / 非空一律拒绝（同新增），显式 false / 空数组放行。 */
+  readonly isDepartmentHead?: boolean | null;
+  readonly addedSubordinateIds?: readonly string[] | null;
+}
 
 export interface PartTimeRequestView {
   readonly id: string;
@@ -68,8 +94,6 @@ export interface PartTimeRequestView {
 }
 
 export const notFound = () => new AppError('NOT_FOUND', '兼职申请不存在');
-const typeNotAvailable = () =>
-  new AppError('CONFLICT', '该类兼职申请暂未开放', { reason: PART_TIME_ERRORS.requestTypeNotAvailable });
 
 export function requestView(
   request: PartTimeRequestRow,
@@ -91,7 +115,8 @@ export function requestView(
     startDate: version.startDate,
     endDate: version.endDate,
     remark: version.remark,
-    recordId: extra.recordId ?? null,
+    // 延长 / 结束申请：目标兼职记录；新增申请：落地后的兼职记录（落地前为空）
+    recordId: extra.recordId ?? request.recordId,
     warnings: extra.warnings ?? [],
   };
 }
@@ -198,14 +223,24 @@ function payloadOf(
   };
 }
 
-/** 先锁员工行再锁申请头（§7.1）；返回锁内读到的申请。 */
+/**
+ * 先锁员工行再锁申请头，延长 / 结束申请再锁目标兼职记录头（§4.5A 适配器同序）；返回锁内读到的申请与目标（新增申请的 target 为 null）。
+ * 调用方一律用 dateTarget 取非空的目标，避免到处断言。
+ */
 export async function lockPartTimeRequest(tx: Tx, ctx: EmploymentContext, requestId: string) {
   const owner = await partTimeRequestOwner(tx, ctx.tenantId, requestId);
   if (!owner) throw notFound();
   const employee = await lockEmploymentEmployee(tx, ctx, owner.employeeId);
   const request = await loadPartTimeRequest(tx, ctx.tenantId, requestId, true);
   if (!request) throw notFound();
-  return { employee, request };
+  const [target] = request.recordId ? await lockPartTimeRecords(tx, ctx, employee.id, { ids: [request.recordId] }) : [];
+  return { employee, request, target: target ?? null };
+}
+
+/** 延长 / 结束申请的目标兼职记录（外键保证存在；缺失只可能是存储异常）。 */
+function dateTarget(target: PartTimeRecordRow | null): PartTimeRecordRow {
+  if (!target) throw new AppError('SERVICE_UNAVAILABLE', '兼职申请的目标记录不可读');
+  return target;
 }
 
 /** 数据范围（§7.2）：员工按主职在范围，申请部门在范围；“使用用户”维度的创建人是申请发起人。范围外与不存在同一个 404。 */
@@ -228,10 +263,6 @@ function assertAction(request: PartTimeRequestRow, action: PartTimeRequestAction
       action,
     });
   return next;
-}
-
-function assertAdd(request: PartTimeRequestRow) {
-  if (request.requestType !== 'add') throw typeNotAvailable();
 }
 
 /** 提交（含驳回后重提）只允许原发起人（DEC-113）；当前权限复核在路由层（PT-4b）。 */
@@ -266,6 +297,83 @@ export async function createAddRequest(
   );
   await auditRequest(tx, ctx, 'part_time.request.create', request, null, snapshotOf(request));
   return requestView(request, { warnings: checked.warnings });
+}
+
+/**
+ * 延长 / 结束申请的版本载荷：沿用目标兼职记录当前的预置字段与自定义字段（审批表单只读展示，A-14 只有结束日与备注可改），
+ * 开始日 / 类型 / 部门取目标当前值；原定结束日期（目标当前期的结束日）与期号取自锁内读到的目标，落地时比对期号判“提交后被改过”。
+ */
+async function datePayload(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: PartTimeRecordRow,
+  endDate: string,
+  remark: string | null,
+): Promise<RequestPayload> {
+  const [row] = rowsOf<{ body: Record<string, unknown> }>(
+    await tx.execute(sql`
+      SELECT CASE WHEN latest.id IS NULL THEN to_jsonb(r) ELSE to_jsonb(latest) END AS body
+      FROM employment_records r
+      LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
+        WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id AND p.is_record_snapshot
+        ORDER BY p.version_no DESC LIMIT 1) latest ON true
+      WHERE r.tenant_id=${ctx.tenantId} AND r.id=${target.id}::uuid
+    `),
+  );
+  const fields = snapshotFields(row!.body);
+  return {
+    serviceType: target.serviceType as PartTimeServiceType,
+    departmentId: target.departmentId,
+    positionId: fields.positionId,
+    postId: fields.postId,
+    sequenceId: fields.sequenceId,
+    levelId: fields.levelId,
+    directManagerId: fields.directManagerId,
+    dottedManagerId: fields.dottedManagerId,
+    employmentType: fields.employmentType,
+    employmentForm: fields.employmentForm,
+    startDate: target.startDate,
+    endDate,
+    originalEndDate: target.endDate,
+    baseTermNo: target.termNo,
+    remark,
+    customFields: (row!.body.custom_fields as RequestPayload['customFields'] | null) ?? {},
+  };
+}
+
+/**
+ * 建延长 / 结束申请草稿：目标兼职记录必须存在且在写入口径范围内（范围外与不存在同一个 404），再按 E-1～E-6 / T-1～T-4 复核，
+ * 通过才写；越界当次拒绝，不建申请头、无审计（PB-63 同口径）。员工取自目标记录，锁序 员工 → 目标记录头（§7.1）。
+ */
+export async function createDateRequest(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: DateRequestInput,
+): Promise<PartTimeRequestView> {
+  assertNoLinkage(input);
+  const endDate = businessDate(input.endDate);
+  const remark = assertRemark(input.remark);
+  const [owner] = await readPartTimeRecords(tx, ctx, [input.recordId]);
+  if (!owner) throw partTimeNotFound();
+  const employee = await lockEmploymentEmployee(tx, ctx, owner.employeeId);
+  const [target] = await lockPartTimeRecords(tx, ctx, employee.id, { ids: [input.recordId] });
+  if (!target) throw partTimeNotFound();
+  await requirePartTimeRecordScope(tx, ctx, target, target.departmentId);
+  const warnings = await checkDateRequest(tx, ctx, input.requestType, target, endDate, { state: true });
+  const request = await insertPartTimeRequest(
+    tx,
+    ctx,
+    {
+      employeeId: employee.id,
+      requestType: input.requestType,
+      recordId: target.id,
+      initiator: input.initiator ?? 'hr',
+      processCode: APPROVAL_TYPES[`part_time_${input.requestType}`].defaultProcessCode,
+    },
+    await datePayload(tx, ctx, target, endDate, remark),
+  );
+  await auditRequest(tx, ctx, 'part_time.request.create', request, null, snapshotOf(request));
+  return requestView(request, { warnings });
 }
 
 /** 把修改合入最新版本，得到完整入参（显式给出的键覆盖，含显式 null）。 */
@@ -308,27 +416,75 @@ async function rewriteVersion(
   return requestView(updated, { warnings: checked.warnings });
 }
 
+/** 延长 / 结束申请的可改键：结束日期与备注；联动两字段先按 PT-7 前一律拒绝的口径判（显式 false / 空数组放行，不是联动请求）。 */
+function datePatch(patch: AddRequestPatch): { readonly endDate?: string | null; readonly remark?: string | null } {
+  assertNoLinkage(patch);
+  for (const key of Object.keys(patch))
+    if (!['endDate', 'remark', 'isDepartmentHead', 'addedSubordinateIds'].includes(key))
+      throw new AppError('VALIDATION_FAILED', '延长 / 结束申请只能修改结束日期与备注', {
+        reason: PART_TIME_ERRORS.fieldNotEditable,
+        field: key,
+      });
+  return patch;
+}
+
 /**
- * 修改草稿 / 驳回中的新增申请（审批中不能直接改，要改走审批编辑或先撤回）。驳回中的申请修改后仍是驳回态，
+ * 延长 / 结束申请合入改动 → 重校验 → 通过才追加版本（HR 修改与审批编辑共用，A-16 / PB-82）。HR 修改（refresh）重取目标当前的
+ * 原定结束日期与期号；审批编辑沿用上一版的（目标被动过正是落地要发现的 changed_since_submit，不能被编辑冲掉）。
+ * 调用方已持有员工 / 申请头 / 目标记录头锁，并判过状态与范围。check.state 见 date-request.ts 文件头。
+ */
+async function rewriteDateVersion(
+  tx: Tx,
+  ctx: EmploymentContext,
+  request: PartTimeRequestRow,
+  target: PartTimeRecordRow,
+  patch: AddRequestPatch,
+  options: { readonly state: boolean; readonly refresh: boolean; readonly meta?: Readonly<Record<string, unknown>> },
+): Promise<PartTimeRequestView> {
+  const given = datePatch(patch);
+  const { version } = request;
+  if (given.endDate === null)
+    throw new AppError('VALIDATION_FAILED', '结束日期不能置空', {
+      reason: PART_TIME_ERRORS.endDateRequired,
+      field: 'endDate',
+    });
+  const endDate = given.endDate === undefined ? version.endDate! : businessDate(given.endDate);
+  const remark = Object.hasOwn(given, 'remark') ? assertRemark(given.remark) : version.remark;
+  const warnings = await checkDateRequest(tx, ctx, request.requestType as DateRequestType, target, endDate, {
+    state: options.state,
+    excludeRequestId: request.id,
+  });
+  const payload = options.refresh
+    ? await datePayload(tx, ctx, target, endDate, remark)
+    : { ...version, endDate, remark };
+  const updated = await appendRequestVersion(tx, ctx, request, payload);
+  const [before, after] = [snapshotOf(request), snapshotOf(updated)];
+  await auditRequest(tx, ctx, 'part_time.request.update', updated, before, after, options.meta);
+  return requestView(updated, { warnings });
+}
+
+/**
+ * 修改草稿 / 驳回中的申请（审批中不能直接改，要改走审批编辑或先撤回）。驳回中的申请修改后仍是驳回态，
  * 重提时再按最新版本复核一次。
  */
-export async function updateAddRequest(
+export async function updateRequest(
   tx: Tx,
   ctx: EmploymentContext,
   requestId: string,
   patch: AddRequestPatch,
 ): Promise<PartTimeRequestView> {
-  const { employee, request } = await lockPartTimeRequest(tx, ctx, requestId);
-  assertAdd(request);
+  const { employee, request, target } = await lockPartTimeRequest(tx, ctx, requestId);
   assertRevision(ctx.expectedRevision, request.revision);
   assertAction(request, 'submit');
   await requireRequestScope(tx, ctx, request);
-  return rewriteVersion(tx, ctx, employee, request, patch);
+  if (request.requestType === 'add') return rewriteVersion(tx, ctx, employee, request, patch);
+  return rewriteDateVersion(tx, ctx, request, dateTarget(target), patch, { state: true, refresh: true });
 }
 
 /**
- * 审批编辑（适配器 edit，独立编辑与编辑并同意共用，§4.3A 末）：先合入改动得到待写版本，按新增申请重跑 D-1～D-10 与周期边界，
- * 通过才追加版本；不通过抛业务错误，由审批事务整体回滚（任务、实例、申请都不变）。审批人只操作本单，不走 HR 员工范围（DEC-057）。
+ * 审批编辑（适配器 edit，独立编辑与编辑并同意共用，§4.3A 末）：先合入改动得到待写版本，按申请类型重跑——新增 D-1～D-10 与周期边界、
+ * 延长 E-1～E-6、结束 T-1～T-2——通过才追加版本；不通过抛业务错误，由审批事务整体回滚（任务、实例、申请都不变）。
+ * 审批人只操作本单，不走 HR 员工范围（DEC-057）。
  */
 export async function editRequestInApproval(
   tx: Tx,
@@ -336,10 +492,16 @@ export async function editRequestInApproval(
   requestId: string,
   patch: AddRequestPatch,
 ): Promise<void> {
-  const { employee, request } = await lockPartTimeRequest(tx, ctx, requestId);
-  assertAdd(request);
+  const { employee, request, target } = await lockPartTimeRequest(tx, ctx, requestId);
   if (request.state !== 'in_review') assertAction(request, 'withdraw');
-  await rewriteVersion(tx, ctx, employee, request, patch, { approvalEdit: true });
+  const meta = { approvalEdit: true };
+  if (request.requestType === 'add') await rewriteVersion(tx, ctx, employee, request, patch, meta);
+  else
+    await rewriteDateVersion(tx, ctx, request, dateTarget(target), patch, {
+      state: request.requestType === 'extend',
+      refresh: false,
+      meta,
+    });
 }
 
 /** 审批侧结论回写（驳回 / 不同意 / 审批侧撤回）：只处理仍在审批中的申请，重复回调不重复写。 */
@@ -360,7 +522,38 @@ const approvalContext = (ctx: EmploymentContext, fields?: FieldAccess): Approval
   ({ ...ctx, expectedRevision: 0, ...(fields ? { fields } : {}) }) as ApprovalContext;
 
 /**
- * 提交（含驳回后重提）：只允许原发起人，按最新版本重跑 D-1～D-10 与周期边界，写 in_review 后交审批中心匹配流程并派首节点；
+ * 提交前的复核：新增按最新版本重跑 D-1～D-10 与周期边界；延长 / 结束重跑 E-1～E-6 / T-1～T-4，并以提交时目标记录的当前期号
+ * 为落地比对的基线（草稿期间目标被系统路径动过则追加一版刷新，§1.4 base_term_no “提交时”）。返回复核后的申请与只提示不拦的信息。
+ */
+async function recheckForSubmit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employee: { readonly id: string; readonly code: string },
+  request: PartTimeRequestRow,
+  target: PartTimeRecordRow | null,
+) {
+  if (request.requestType === 'add') {
+    const checked = await checkNewPartTime(tx, ctx, employee, normalizeNewPartTime(inputOf(request)), request.id);
+    return { request, warnings: checked.warnings };
+  }
+  const record = dateTarget(target);
+  const { version } = request;
+  const warnings = await checkDateRequest(tx, ctx, request.requestType, record, version.endDate!, {
+    state: true,
+    excludeRequestId: request.id,
+  });
+  if (record.termNo === version.baseTermNo && record.endDate === version.originalEndDate) return { request, warnings };
+  const refreshed = await appendRequestVersion(
+    tx,
+    ctx,
+    request,
+    await datePayload(tx, ctx, record, version.endDate!, version.remark),
+  );
+  return { request: refreshed, warnings };
+}
+
+/**
+ * 提交（含驳回后重提）：只允许原发起人，按最新版本重跑该类申请的规则，写 in_review 后交审批中心匹配流程并派首节点；
  * 没有匹配的流程、首节点无审批人等拒绝时整单回滚，申请保持原状态（DEC-017 / DEC-054）。驳回后的重提沿用原实例（DEC-103）。
  */
 export async function submitRequest(
@@ -369,19 +562,18 @@ export async function submitRequest(
   requestId: string,
   fields?: FieldAccess,
 ): Promise<PartTimeRequestView> {
-  const { employee, request } = await lockPartTimeRequest(tx, ctx, requestId);
-  assertAdd(request);
-  assertRevision(ctx.expectedRevision, request.revision);
-  assertAction(request, 'submit');
-  assertInitiator(request, ctx);
-  await requireRequestScope(tx, ctx, request);
-  const checked = await checkNewPartTime(tx, ctx, employee, normalizeNewPartTime(inputOf(request)), request.id);
+  const locked = await lockPartTimeRequest(tx, ctx, requestId);
+  assertRevision(ctx.expectedRevision, locked.request.revision);
+  assertAction(locked.request, 'submit');
+  assertInitiator(locked.request, ctx);
+  await requireRequestScope(tx, ctx, locked.request);
+  const { request, warnings } = await recheckForSubmit(tx, ctx, locked.employee, locked.request, locked.target);
   const submitted = await appendRequestState(tx, ctx, request, 'in_review');
   await auditRequest(tx, ctx, 'part_time.request.submit', submitted, ...stateChange(request, submitted));
   const { startOrResume } = await import('../../approval/engine.js');
   await startOrResume(tx, approvalContext(ctx, fields), { businessType: 'part_time', businessId: request.id });
   const settled = (await loadPartTimeRequest(tx, ctx.tenantId, request.id))!;
-  return requestView(settled, { warnings: checked.warnings });
+  return requestView(settled, { warnings });
 }
 
 /** 发起人撤回：审批中 → 草稿，结束在途实例（AC-TRF-28）。 */
@@ -473,36 +665,82 @@ function isLandingRejection(error: unknown): error is AppError {
   return error instanceof AppError && ERROR_STATUS[error.code] < 500;
 }
 
+/** 新增申请落地：复核 D-1～D-10 与周期边界（按落地时数据），通过 → 建兼职记录 + 第 1 期；返回新记录 ID。 */
+async function landAddRequest(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employee: { readonly id: string; readonly code: string },
+  approved: PartTimeRequestRow,
+): Promise<string> {
+  const normalized = normalizeNewPartTime(inputOf(approved));
+  const checked = await checkNewPartTime(tx, ctx, employee, normalized, approved.id);
+  const record = await insertCheckedPartTime(tx, ctx, employee.id, normalized, checked, { sourceId: approved.id });
+  return record.id;
+}
+
 /**
- * 审批末节点同意后的落地（审批适配器 approved 回调，同一事务；§4.4）：先写 approved，再复核并落地。复核通过 → 建兼职记录 +
- * 第 1 期（source = create、source_id = 申请 ID）并写 effective；任一业务校验不通过 → 写 voided（landing_rejected）、
- * 审计、通知发起人，审批结论保留（F-007 §2-3 同一落点）。重复回调（已不是审批中）不重复落地。
+ * 延长 / 结束申请落地（§4.4）：目标记录当前期号 ≠ 提交时的基线 → 返回 null（作废 changed_since_submit）；否则重跑 E-1～E-3 / E-6
+ * 或 T-1～T-2（按落地时数据），通过 → 在同一条记录上追加期限（source = extend / end、source_id = 申请 ID），不新增记录；返回目标 ID。
+ */
+async function landDateRequest(
+  tx: Tx,
+  ctx: EmploymentContext,
+  approved: PartTimeRequestRow,
+  target: PartTimeRecordRow,
+): Promise<string | null> {
+  const { version, requestType } = approved;
+  if (target.termNo !== version.baseTermNo) return null;
+  await checkDateRequest(tx, ctx, requestType as DateRequestType, target, version.endDate!, { state: false });
+  const next = await appendPartTimeTerm(tx, ctx, target, {
+    endDate: version.endDate,
+    source: requestType as DateRequestType,
+    sourceId: approved.id,
+  });
+  await auditEmployment(
+    tx,
+    ctx,
+    requestType === 'extend' ? 'employment.part_time.extended' : 'employment.part_time.ended',
+    PART_TIME_AUDIT_OBJECTS.record,
+    target.id,
+    { endDate: target.endDate },
+    { endDate: version.endDate, termNo: next.termNo },
+    undefined,
+    { requestId: approved.id },
+    { employeeId: target.employeeId, orgId: target.departmentId },
+  );
+  return target.id;
+}
+
+/**
+ * 审批末节点同意后的落地（审批适配器 approved 回调，同一事务；§4.4）：先写 approved，再复核并落地。复核通过 → 新增建兼职记录 +
+ * 第 1 期，延长 / 结束在目标记录上追加期限，并写 effective；任一业务校验不通过 → 写 voided（landing_rejected）、目标被改过
+ * → voided（changed_since_submit），审计、通知发起人，审批结论保留（F-007 §2-3 同一落点）。重复回调（已不是审批中）不重复落地。
  */
 export async function landApprovedRequest(tx: Tx, ctx: EmploymentContext, requestId: string): Promise<void> {
-  const { employee, request } = await lockPartTimeRequest(tx, ctx, requestId);
+  const { employee, request, target } = await lockPartTimeRequest(tx, ctx, requestId);
   if (request.state !== 'in_review') return;
-  assertAdd(request);
   const approved = await appendRequestState(tx, ctx, request, assertAction(request, 'approve'));
   await auditRequest(tx, ctx, 'part_time.request.approved', approved, ...stateChange(request, approved));
-  try {
-    const normalized = normalizeNewPartTime(inputOf(approved));
-    const checked = await checkNewPartTime(tx, ctx, employee, normalized, approved.id);
-    const record = await insertCheckedPartTime(tx, ctx, employee.id, normalized, checked, { sourceId: approved.id });
-    const landed = await appendRequestState(tx, ctx, approved, assertAction(approved, 'land'), { recordId: record.id });
-    await auditRequest(
-      tx,
-      ctx,
-      'part_time.request.effective',
-      landed,
-      ...stateChange(approved, landed, { recordId: record.id }),
-    );
-  } catch (error) {
-    if (!isLandingRejection(error)) throw error;
-    await voidPartTimeRequest(tx, ctx, approved, {
-      reason: 'landing_rejected',
+  const voidLanding = (reason: 'landing_rejected' | 'changed_since_submit') =>
+    voidPartTimeRequest(tx, ctx, approved, {
+      reason,
       action: 'part_time.request.voided',
       template: PART_TIME_NOTICE_TEMPLATES.voided,
       keepInstance: true,
     });
+  try {
+    const recordId =
+      request.requestType === 'add'
+        ? await landAddRequest(tx, ctx, employee, approved)
+        : await landDateRequest(tx, ctx, approved, dateTarget(target));
+    if (recordId === null) {
+      await voidLanding('changed_since_submit');
+      return;
+    }
+    const landed = await appendRequestState(tx, ctx, approved, assertAction(approved, 'land'), { recordId });
+    await auditRequest(tx, ctx, 'part_time.request.effective', landed, ...stateChange(approved, landed, { recordId }));
+  } catch (error) {
+    if (!isLandingRejection(error)) throw error;
+    await voidLanding('landing_rejected');
   }
 }

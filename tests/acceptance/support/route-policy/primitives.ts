@@ -374,6 +374,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['transfer.initiator', /\binitiator\b/, { modules: ['employment'] }],
     ['employment.importRowOperation', /operation === 'edit'/, { modules: ['employment'] }],
     ['employment.exitMode', /mode === 'direct' \? BUTTON\.direct/, { modules: ['employment'] }],
+    ['employment.partTimeRequestType', call('isDateRequestBody'), { modules: ['employment'] }],
     ['contracts.operation', /\bcontractAction\(|\bCONTRACT_FLOW\b/, { modules: ['contracts'] }],
     ['contracts.commandButton', /\bcontractAction\(|\bCONTRACT_FLOW\b/, { modules: ['contracts'] }],
     ['contracts.importMode', /'initialize'/, { modules: ['contracts'] }],

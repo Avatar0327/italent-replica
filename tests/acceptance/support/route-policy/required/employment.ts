@@ -515,6 +515,52 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
+// PT-4c 兼职申请新建（POST /part-time-requests）：requestType = add 走 requirePartTimeCreateAccess；
+// extend / end 走 createDateRequestRoute 的
+// requirePartTimeWriteAccess（同编辑兼职：目标兼职与其兼职部门写入口径范围 → 对象更新权 + 字段写权 + 延长 / 结束按钮）
+function partTimeRequestCreate(): Obligation[] {
+  const add = partTimeRequestWrite(
+    'POST',
+    '/part-time-requests',
+    "const ctx = await readContext(c, deps, 'object.create')",
+    'create',
+    ['Employment.PartTimeApproval'],
+  );
+  const [addObject, addButton, ...shared] = add;
+  const route = (anchor: string) => fn(PART_TIME_REQUEST, 'createDateRequestRoute', anchor);
+  const access = route('await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target))');
+  const write = fn(
+    PART_TIME_GUARD,
+    'requirePartTimeWriteAccess',
+    "await requireEmploymentWrite(scoped, 'update', target.business, target.button)",
+  );
+  const buttons = ['Employment.PartTimeApproval', 'Employment.PartTimeEnd', 'Employment.PartTimeExtend'];
+  return [
+    ob(
+      `obj:${RECORD}:{create,update}`,
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'objectOp:TenantBase.EmploymentRecord:update',
+        'object:object.* 动作',
+      ],
+      [
+        ...addObject!.at,
+        route("const ctx = await readContext(c, deps, 'object.update')"),
+        READ,
+        access,
+        write,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#{${buttons.map((button) => `${button}@detail`).join(',')}}`,
+      [],
+      [...addButton!.at, access, write, WRITE_BUTTON, RECORD_CONST],
+    ),
+    ...shared,
+  ];
+}
 function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
   const call = (text: string) =>
     unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
@@ -1730,13 +1776,9 @@ export const EMPLOYMENT: RequiredTable = {
     'Employment.PartTimeBatchEnd',
   ),
   // ---- R2 BE-7 PT-4b 兼职新增申请入口（request-routes.ts）---------------------------------------------------------------------
-  'POST /api/tenant/employment/part-time-requests': partTimeRequestWrite(
-    'POST',
-    '/part-time-requests',
-    "const ctx = await readContext(c, deps, 'object.create')",
-    'create',
-    ['Employment.PartTimeApproval'],
-  ),
+  // 声明里对象操作与按钮是 requestType 的映射选择器，权限记为取值集合（obj:…:{create,update}、btn:…#{三个按钮}），一条义务各登记
+  // add 与 extend / end 两条路径的证据；范围与直接操作守卫两条路径共有
+  'POST /api/tenant/employment/part-time-requests': partTimeRequestCreate(),
   'PATCH /api/tenant/employment/part-time-requests/:id': partTimeRequestWrite(
     'PATCH',
     '/part-time-requests/:id',

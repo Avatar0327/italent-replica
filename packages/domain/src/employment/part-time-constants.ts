@@ -101,7 +101,6 @@ export const PART_TIME_ERRORS = {
   /** 批量结束：同一 recordId 重复（§4.4）。 */
   duplicateRecord: 'DUPLICATE_RECORD',
   linkageNotAvailable: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
-  requestTypeNotAvailable: 'PART_TIME_REQUEST_TYPE_NOT_AVAILABLE',
   /** 申请当前状态不允许该动作（如审批中不能直接修改）。 */
   requestStateInvalid: 'PART_TIME_REQUEST_STATE_INVALID',
   /** 审批编辑带了适配器不接的字段。 */

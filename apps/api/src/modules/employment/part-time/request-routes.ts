@@ -1,15 +1,16 @@
 /**
- * 兼职申请路由（R2-T05 BE-7 PT-4b，设计 §4.1 / §7.2 / §13.1）：新增兼职申请（requestType = add）的建（可直接提交）/ 读 / 改 /
+ * 兼职申请路由（R2-T05 BE-7 PT-4b / PT-4c，设计 §4.1 / §7.2 / §13.1）：三类申请（新增 / 延长 / 结束）的建（可直接提交）/ 读 / 改 /
  * 提交 / 撤回 / 撤销 / 删除。路由只做参数解析、权限与范围判定和重放守卫，业务一律调 request-service（PT-4a），审批实例的发起 /
- * 撤回 / 取消在服务里走审批中心既有入口；校验与新增兼职同一套（D-1～D-10、周期边界），不在这里另写一份。
- * 仍关闭的行为：requestType = extend / end → 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE（PT-4c 开闸，请求体其余字段不看，无任何写入）；
- * isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开，服务层统一拒绝）。
- * 新建带 requestType、employeeId、可选 submit（建并提交一步到位，另要 Employment.Submit）；修改 / 动作带 If-Match（申请头 revision）。
- * 回执 = 申请读形状（request-read.ts）。
+ * 撤回 / 取消在服务里走审批中心既有入口；校验与新增兼职同一套（D-1～D-10、周期边界）、延长 / 结束同一套（E-1～E-6、T-1～T-4），
+ * 不在这里另写一份。仍关闭的行为：isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE
+ * （PT-7 才开，服务层统一拒绝）。
+ * 新增申请新建带 requestType = add、employeeId；延长 / 结束申请带 requestType、recordId（目标兼职）、endDate（新结束日期）、可选
+ * requestRemark，权限按“编辑兼职”口径（对象更新权 + 延长 / 结束按钮 + 目标记录的兼职部门范围）；都可选 submit（建并提交一步到位，
+ * 另要 Employment.Submit）。修改 / 动作带 If-Match（申请头 revision），按钮随申请类型。回执 = 申请读形状（request-read.ts）。
  */
 import { withTenant } from '@italent/db';
-import { PART_TIME_BUTTONS, PART_TIME_ERRORS, PART_TIME_REMARK_MAX, PART_TIME_REQUEST_TYPES } from '@italent/domain';
-import type { Hono } from 'hono';
+import { PART_TIME_BUTTONS, PART_TIME_REMARK_MAX } from '@italent/domain';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../../authorization.js';
 import { AppError } from '../../../errors.js';
@@ -34,9 +35,12 @@ import type { EmploymentContext } from '../types.js';
 import {
   partTimeCreateGuard,
   partTimeRequestGuard,
+  partTimeWriteGuard,
   requirePartTimeCreateAccess,
   requirePartTimeRequestAccess,
+  requirePartTimeWriteAccess,
   type PartTimeRequestTarget,
+  type PartTimeWriteTarget,
 } from './replay-guard.js';
 import { loadPartTimeRequestDetail, loadRequestReceipt } from './request-read.js';
 import {
@@ -44,13 +48,15 @@ import {
   deleteRequest,
   notFound,
   revokeRequest,
+  createDateRequest,
   submitRequest,
-  updateAddRequest,
+  updateRequest,
   withdrawRequest,
   type AddRequestInput,
   type AddRequestPatch,
+  type DateRequestInput,
 } from './request-service.js';
-import { createSchema, editBusiness, editInput, editSchema, serviceInput, writeBusiness } from './routes.js';
+import { createSchema, date, editBusiness, editInput, editSchema, serviceInput, writeBusiness } from './routes.js';
 
 const remark = z.string().max(PART_TIME_REMARK_MAX).nullable().optional();
 /** 新增申请（requestType = add）请求体：新增兼职的字段（共用 createSchema）+ 员工 + 申请备注 + 是否建完直接提交。 */
@@ -61,8 +67,17 @@ const createRequestSchema = createSchema.extend({
   submit: z.boolean().optional(),
 });
 type CreateRequestBody = z.infer<typeof createRequestSchema>;
-/** 只看 requestType：延长 / 结束申请随 PT-4c，其余字段（该类的专有字段）此时不解析。 */
-const requestTypeSchema = z.looseObject({ requestType: z.enum(PART_TIME_REQUEST_TYPES) });
+/** 延长 / 结束申请请求体：目标兼职记录 + 新结束日期（必填，不能置空）+ 备注；联动两字段只为统一拒绝而接收（PT-7）。 */
+const createDateRequestSchema = z.strictObject({
+  requestType: z.enum(['extend', 'end']),
+  recordId: normalizedUuid,
+  endDate: date,
+  requestRemark: remark,
+  submit: z.boolean().optional(),
+  isDepartmentHead: z.boolean().nullable().optional(),
+  addedSubordinateIds: z.array(normalizedUuid).nullable().optional(),
+});
+type CreateDateBody = z.infer<typeof createDateRequestSchema>;
 /** 修改草稿 / 驳回中的申请：只给要改的键（共用 editSchema）+ 申请备注。 */
 const patchRequestSchema = editSchema.extend({ requestRemark: remark });
 type PatchRequestBody = z.infer<typeof patchRequestSchema>;
@@ -75,9 +90,6 @@ const ACTION_BUTTONS = {
 } as const;
 const ACTIONS = { submit: submitRequest, withdraw: withdrawRequest, revoke: revokeRequest } as const;
 
-const typeNotAvailable = () =>
-  new AppError('CONFLICT', '该类兼职申请暂未开放', { reason: PART_TIME_ERRORS.requestTypeNotAvailable });
-
 /** 字段写权的载荷：新增兼职的字段 + 申请备注（requestRemark 是任职记录权限目录里的可授编辑字段）。 */
 function createBusiness(body: CreateRequestBody) {
   return { ...writeBusiness(body), ...(body.requestRemark != null ? { requestRemark: body.requestRemark } : {}) };
@@ -85,6 +97,22 @@ function createBusiness(body: CreateRequestBody) {
 
 function patchBusiness(body: PatchRequestBody) {
   return { ...editBusiness(body), ...(body.requestRemark !== undefined ? { requestRemark: body.requestRemark } : {}) };
+}
+
+/** 延长 / 结束申请的字段写权载荷：结束日期与备注（requestRemark 是任职记录权限目录里的可授编辑字段）。 */
+function dateBusiness(body: CreateDateBody) {
+  return { endDate: body.endDate, ...(body.requestRemark != null ? { requestRemark: body.requestRemark } : {}) };
+}
+
+function dateInput(body: CreateDateBody): DateRequestInput {
+  return {
+    requestType: body.requestType,
+    recordId: body.recordId,
+    endDate: body.endDate,
+    remark: body.requestRemark ?? null,
+    ...(body.isDepartmentHead !== undefined ? { isDepartmentHead: body.isDepartmentHead } : {}),
+    ...(body.addedSubordinateIds !== undefined ? { addedSubordinateIds: body.addedSubordinateIds } : {}),
+  };
 }
 
 function createInput(body: CreateRequestBody): AddRequestInput {
@@ -133,10 +161,9 @@ function registerRequestCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 新建（建草稿，或 submit = true 建完直接提交）：object.create + 新增兼职申请按钮（建并提交另要 Employment.Submit）+ 员工主职与兼职
   // 部门范围 + 字段创建权；命令内 partTimeCreateGuard 三个出口按当前授权重过。建 + 提交同一事务：没有匹配的流程 / 首节点无人时整单回滚
   router.post('/part-time-requests', async (c) => {
+    if (await isDateRequestBody(c)) return createDateRequestRoute(c, deps);
     const ctx = await readContext(c, deps, 'object.create');
-    const raw = await jsonBody(c);
-    if (parse(requestTypeSchema, raw).requestType !== 'add') throw typeNotAvailable();
-    const body = parse(createRequestSchema, raw);
+    const body = parse(createRequestSchema, await jsonBody(c));
     const target = {
       employeeId: body.employeeId,
       business: createBusiness(body),
@@ -166,9 +193,54 @@ function registerRequestCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
+/** 请求体的 requestType 是不是延长 / 结束（只看这一个键，读不了或不是对象都当新增，由新增入口的严格校验给 400）。 */
+async function isDateRequestBody(c: Context<TenantEnv>): Promise<boolean> {
+  const raw: unknown = await c.req.json().catch(() => undefined);
+  const type = (raw as { requestType?: unknown } | null | undefined)?.requestType;
+  return type === 'extend' || type === 'end';
+}
+
+const DATE_BUTTONS = { extend: PART_TIME_BUTTONS.extend, end: PART_TIME_BUTTONS.end } as const;
+
+/**
+ * 延长 / 结束申请的新建（建草稿，或 submit = true 建完直接提交）：object.update + 延长 / 结束按钮（建并提交另要 Employment.Submit）+
+ * 目标兼职记录的兼职部门范围（同编辑兼职，范围外与不存在同一个 404）+ endDate / requestRemark 字段写权；命令内 partTimeWriteGuard
+ * 三个出口按当前授权重过；锁内 E-1～E-6 / T-1～T-4 由 createDateRequest 判，通过才写。建 + 提交同一事务。
+ */
+async function createDateRequestRoute(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const ctx = await readContext(c, deps, 'object.update');
+  const body = parse(createDateRequestSchema, await jsonBody(c));
+  const target: PartTimeWriteTarget = {
+    recordIds: [body.recordId],
+    business: dateBusiness(body),
+    button: DATE_BUTTONS[body.requestType],
+    ...(body.submit ? { extraButtons: ['Employment.Submit'] } : {}),
+  };
+  await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target));
+  return runWrite(
+    c,
+    deps,
+    ctx,
+    { action: 'part-time-request-create', input: body },
+    async (tx, context) => {
+      const created = await createDateRequest(tx, context, dateInput(body));
+      const done = body.submit
+        ? await submitRequest(
+            tx,
+            { ...context, expectedRevision: created.revision },
+            created.id,
+            approvalFields(deps, ctx),
+          )
+        : created;
+      return { status: 201, body: await receipt(tx, context, done.id, done.warnings) };
+    },
+    { guard: partTimeWriteGuard(deps, ctx, target) },
+  );
+}
+
 function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision；入口先校验申请存在与范围（404）再判字段 / 按钮权（403）；
-  // 命令内 partTimeRequestGuard 重过；锁内 revision / 状态 / D-1～D-10 与周期边界由 updateAddRequest 判，越界当次拒绝不留版本
+  // 命令内 partTimeRequestGuard 重过；锁内 revision / 状态 / D-1～D-10 / E-1～E-6 / T-1～T-2 与周期边界由 updateRequest 判，越界当次拒绝不留版本
   router.patch('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
@@ -187,7 +259,7 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       ctx,
       { id, action: 'part-time-request-update', input: body },
       async (tx, context) => {
-        const updated = await updateAddRequest(tx, context, id, patchInput(body));
+        const updated = await updateRequest(tx, context, id, patchInput(body));
         return { status: 200, body: await receipt(tx, context, id, updated.warnings) };
       },
       { guard: partTimeRequestGuard(deps, ctx, target) },

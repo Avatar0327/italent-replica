@@ -72,7 +72,7 @@ const endBeforeStart = () =>
   });
 
 /** PT-7 前不接受负责人 / 新增下属（§4.8）：新增与编辑共用，给 true / 非空数组一律拒绝，不静默丢弃。 */
-function assertNoLinkage(input: Pick<NewPartTimeInput, 'isDepartmentHead' | 'addedSubordinateIds'>): void {
+export function assertNoLinkage(input: Pick<NewPartTimeInput, 'isDepartmentHead' | 'addedSubordinateIds'>): void {
   if (input.isDepartmentHead === true || input.addedSubordinateIds?.length)
     throw new AppError('VALIDATION_FAILED', '兼职暂不支持设置部门负责人或新增下属', {
       reason: PART_TIME_ERRORS.linkageNotAvailable,
@@ -315,11 +315,12 @@ export async function requirePartTimeRecordScope(
   }
 }
 
-/** E-4：有未办结（草稿 / 审批中 / 驳回）的延长或结束申请的兼职记录 ID。 */
+/** E-4：有未办结（草稿 / 审批中 / 驳回）的延长或结束申请的兼职记录 ID；excludeRequestId = 申请自己的复核不算占位。 */
 export async function openDateRequestRecords(
   tx: Tx,
   ctx: EmploymentContext,
   recordIds: readonly string[],
+  excludeRequestId?: string,
 ): Promise<Set<string>> {
   const rows = rowsOf<{ id: string }>(
     await tx.execute(sql`
@@ -328,6 +329,7 @@ export async function openDateRequestRecords(
         WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE q.tenant_id=${ctx.tenantId} AND q.request_type IN ('extend', 'end')
         AND q.record_id = ANY(${uuidArray(recordIds)}) AND s.state IN ('draft', 'in_review', 'rejected')
+        ${excludeRequestId === undefined ? sql`` : sql`AND q.id <> ${excludeRequestId}::uuid`}
     `),
   );
   return new Set(rows.map((row) => row.id));
@@ -372,20 +374,45 @@ export interface BatchEndViolation {
   readonly message: string;
 }
 
-/** 批量结束逐条规则（revision 已一致之后）：T-1 → T-2 → E-5 → E-4；通过返回 null。纯判断，today 为租户今天。 */
+/** 结束日期规则（批量结束与结束申请共用）：T-1 → T-2；通过返回 null。纯判断。 */
+export function endDateViolation(
+  row: Pick<PartTimeRecordRow, 'startDate' | 'endDate'>,
+  endDate: string,
+): BatchEndViolation | null {
+  if (endDate < row.startDate)
+    return {
+      code: 'VALIDATION_FAILED',
+      reason: PART_TIME_ERRORS.endBeforeStart,
+      message: `结束日期不可早于开始日期（${row.startDate}）`,
+    };
+  if (row.endDate !== null && endDate > row.endDate)
+    return {
+      code: 'CONFLICT',
+      reason: PART_TIME_ERRORS.endAfterCurrent,
+      message: '结束日期不能晚于当前结束日期，要推后请用延长',
+    };
+  return null;
+}
+
+/** E-5 → E-4（延长、结束、批量结束共用）：已结束的兼职不能再办；有未办结的延长 / 结束申请的不能再办。纯判断，today 为租户今天。 */
+export function dateRequestStateViolation(
+  row: Pick<PartTimeRecordRow, 'startDate' | 'endDate'>,
+  today: string,
+  openRequest: boolean,
+): BatchEndViolation | null {
+  if (partTimeServiceStatus(row, today) === 'ended')
+    return { code: 'CONFLICT', reason: PART_TIME_ERRORS.alreadyEnded, message: '该兼职已结束，不能再办理' };
+  if (openRequest)
+    return { code: 'CONFLICT', reason: PART_TIME_ERRORS.requestInProgress, message: '该兼职有未办结的延长或结束申请' };
+  return null;
+}
+
+/** 批量结束逐条规则（revision 已一致之后）：T-1 → T-2 → E-5 → E-4；通过返回 null。 */
 export function batchEndViolation(
   row: Pick<PartTimeRecordRow, 'startDate' | 'endDate'>,
   endDate: string,
   today: string,
   openRequest: boolean,
 ): BatchEndViolation | null {
-  const conflict = (reason: string, message: string): BatchEndViolation => ({ code: 'CONFLICT', reason, message });
-  if (endDate < row.startDate)
-    return { code: 'VALIDATION_FAILED', reason: PART_TIME_ERRORS.endBeforeStart, message: '结束日期不能早于开始日期' };
-  if (row.endDate !== null && endDate > row.endDate)
-    return conflict(PART_TIME_ERRORS.endAfterCurrent, '结束日期不能晚于当前结束日期，要推后请用延长');
-  if (partTimeServiceStatus(row, today) === 'ended')
-    return conflict(PART_TIME_ERRORS.alreadyEnded, '该兼职已结束，不能再结束');
-  if (openRequest) return conflict(PART_TIME_ERRORS.requestInProgress, '该兼职有未办结的延长或结束申请');
-  return null;
+  return endDateViolation(row, endDate) ?? dateRequestStateViolation(row, today, openRequest);
 }

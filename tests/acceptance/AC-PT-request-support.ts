@@ -17,16 +17,19 @@ import {
 } from '../../apps/api/src/modules/employment/part-time/request-store.js';
 import {
   createAddRequest,
+  createDateRequest,
   deleteRequest,
   revokeRequest,
   submitRequest,
-  updateAddRequest,
+  updateRequest,
   withdrawRequest,
   type AddRequestInput,
   type AddRequestPatch,
+  type DateRequestInput,
 } from '../../apps/api/src/modules/employment/part-time/request-service.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { approvalWorld, APV_TODAY, type InstanceView, type Person } from './AC-APV-support.js';
+import { insertPartTimeRecord, type PartTimeSeed } from './AC-PT-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -40,11 +43,13 @@ export interface WorldOptions {
   /** 主职部门负责人为空：第二节点无人，转异常管理员（首节点无人提交即报错，DEC-054，所以不能清 HRBP）。 */
   readonly noPrimaryHead?: boolean;
   /** 流程的异常管理员是一个外部账号（真 PG 锁序用例：入职按其邮箱首次绑定、全局停用接管）；缺省为夹具的默认异常管理员。 */
-  readonly externalExceptionAdmin?: boolean;
+  readonly externalExceptionAdmin?: boolean | 'extend';
   /** 节点增加“不同意”出口（沿不同意连线办结，DEC-144）；预置流程只有同意出口。 */
   readonly disagree?: boolean;
-  /** 把四个节点改成审批中可编辑结束日 / 备注（PB-82 / 83）。 */
+  /** 把三类申请的四个节点都改成审批中可编辑结束日 / 备注（PB-82 / 83）；缺省保持预置（结束兼职 with_approve，其余不可编辑）。 */
   readonly editMode?: 'separate' | 'with_approve';
+  /** 延长流程第 2 个节点改成会签（主职负责人 + 主职HRBP）：负责人为空时异常管理员占一席，替代人是 HRBP 时交接会合席（F-070）。 */
+  readonly countersign?: boolean;
   /** 节点额外开放（表单字段 + 可编辑字段）的审批字段，用来分别覆盖“节点禁止编辑”与“适配器拒绝”两层。 */
   readonly extraEditable?: readonly string[];
 }
@@ -72,22 +77,40 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
   await withTenant(db, tenantId, async (tx) => {
     const ctx = { tenantId, userId: w.hr.id, timezone: 'Asia/Shanghai', now: new Date(), commandId: randomUUID() };
     for (const installed of await installPresets(tx, { ...ctx, expectedRevision: 0 })) {
-      if (installed.approvalType !== 'part_time_add') continue;
+      if (!installed.approvalType.startsWith('part_time_')) continue;
       const preset = PRESET_PROCESSES.find((p) => p.presetKey === installed.presetKey)!;
       const definition = {
         ...preset.definition,
-        exceptionAdminUserId: external?.id ?? w.exceptionAdmin,
-        nodes: preset.definition.nodes.map((node) => ({
-          ...node,
-          ...(options.editMode
-            ? {
-                editMode: options.editMode,
-                editableFields: ['endDate', 'requestRemark', ...(options.extraEditable ?? [])],
-                formFields: [...node.formFields, ...(options.extraEditable ?? [])],
-              }
-            : {}),
-          ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
-        })),
+        // 外部异常管理员只给新增流程（缺省）或延长流程（'extend'）——真 PG 锁序用例的接管对象；延长 / 结束流程仍用夹具默认异常管理员
+        exceptionAdminUserId:
+          installed.approvalType ===
+          (options.externalExceptionAdmin === 'extend' ? 'part_time_extend' : 'part_time_add')
+            ? (external?.id ?? w.exceptionAdmin)
+            : w.exceptionAdmin,
+        nodes: preset.definition.nodes.map((preNode, index) => {
+          const node =
+            options.countersign && installed.approvalType === 'part_time_extend' && index === 1
+              ? {
+                  ...preNode,
+                  kind: 'countersign' as const,
+                  key: 'joint',
+                  name: '主职联合会签',
+                  approvers: ['latest_record_department_head', 'latest_record_department_hrbp'] as const,
+                  transitionRule: { type: 'all' as const },
+                }
+              : preNode;
+          return {
+            ...node,
+            ...(options.editMode
+              ? {
+                  editMode: options.editMode,
+                  editableFields: ['endDate', 'requestRemark', ...(options.extraEditable ?? [])],
+                  formFields: [...node.formFields, ...(options.extraEditable ?? [])],
+                }
+              : {}),
+            ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
+          };
+        }),
       };
       const draft = await replaceDraft(tx, { ...ctx, expectedRevision: installed.revision }, installed.id, definition);
       await publishProcess(tx, { ...ctx, expectedRevision: draft.revision }, installed.id);
@@ -116,7 +139,48 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
   const create = (patch: Partial<AddRequestInput> = {}, ctx = context()) =>
     run((tx) => createAddRequest(tx, ctx, input(patch)));
   const update = (id: string, revision: number, patch: AddRequestPatch) =>
-    run((tx) => updateAddRequest(tx, context(revision), id, patch));
+    run((tx) => updateRequest(tx, context(revision), id, patch));
+  /** 可信造一条兼职记录（缺省：兼职部门、09-01～10-31、普通兼职）；不过校验，用来造边界场景。 */
+  const seedRecord = (patch: Partial<PartTimeSeed> = {}) =>
+    run((tx) =>
+      insertPartTimeRecord(tx, {
+        tenantId,
+        employeeId: worker.employeeId,
+        departmentId: side,
+        startDate: '2026-09-01',
+        endDate: '2026-10-31',
+        ...patch,
+      }),
+    );
+  /** 可信造数：给兼职记录追加一版快照载荷，把它的当前部门改成 departmentId（编辑兼职改部门的等价）。 */
+  const moveSnapshot = (recordId: string, departmentId: string) =>
+    run(async (tx) => {
+      const [last] = rowsOf<{ id: string; version_no: number; effective_date: string; selected_staff_id: string }>(
+        await tx.execute(sql`SELECT id, version_no, effective_date::text, selected_staff_id
+          FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${recordId}::uuid
+          ORDER BY version_no DESC LIMIT 1`),
+      );
+      await tx.execute(sql`INSERT INTO employment_payload_versions(tenant_id, employee_id, business_id, version_no,
+          previous_version_id, command_id, trigger_business_id, kind, mode, effective_date, form_id, selected_staff_id,
+          is_record_snapshot, department_id)
+        VALUES (${tenantId}, ${worker.employeeId}, ${recordId}, ${last!.version_no + 1}, ${last!.id}, ${randomUUID()},
+          ${recordId}, 'part_time', 'direct', ${last!.effective_date}, 'part_time', ${last!.selected_staff_id}, true,
+          ${departmentId})`);
+    });
+  /** 可信造数：给兼职记录追加一期（模拟别的入口——编辑 / 调动 / 批量结束——改过它的期限）。 */
+  const appendTerm = (recordId: string, termNo: number, endDate: string | null, source: string) =>
+    run((tx) =>
+      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
+          source, command_id)
+        VALUES (${tenantId}, ${worker.employeeId}, ${recordId}, ${termNo}, ${endDate}, ${source},
+          ${`pt-test-${randomUUID()}`})`),
+    );
+  /** 延长 / 结束申请（PT-4c）：经内部服务建草稿。 */
+  const createDate = (input: DateRequestInput, ctx = context()) => run((tx) => createDateRequest(tx, ctx, input));
+  const extend = (recordId: string, endDate: string, remark?: string) =>
+    createDate({ requestType: 'extend', recordId, endDate, ...(remark !== undefined ? { remark } : {}) });
+  const end = (recordId: string, endDate: string, remark?: string) =>
+    createDate({ requestType: 'end', recordId, endDate, ...(remark !== undefined ? { remark } : {}) });
   const send = (id: string, revision: number, userId = w.hr.id) =>
     run((tx) => submitRequest(tx, context(revision, userId), id, ALL_VISIBLE));
   const withdraw = (id: string, revision: number) => run((tx) => withdrawRequest(tx, context(revision), id));
@@ -249,6 +313,9 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     return {
       create: (patch: Record<string, unknown> = {}, options: RequestOptions = {}) =>
         send('POST', REQUESTS, { body: requestBody(patch), ...options }),
+      /** 延长 / 结束申请（PT-4c）：请求体 { requestType, recordId, endDate, requestRemark?, submit? }。 */
+      createDate: (body: Record<string, unknown>, options: RequestOptions = {}) =>
+        send('POST', REQUESTS, { body, ...options }),
       one: (id: string) => send('GET', `${REQUESTS}/${id}`),
       patch: (id: string, revision: number, body: Record<string, unknown>, options: RequestOptions = {}) =>
         send('PATCH', `${REQUESTS}/${id}`, { ifMatch: revision, body, ...options }),
@@ -296,9 +363,26 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     for (const actor of [pHrbp, pHead, sHrbp, sHead]) await decide(requestId, actor, 'approve');
   }
 
+  /** 节点顺序（§4.5）：新增 / 延长 = 主职HRBP → 主职负责人 → 兼职HRBP → 兼职负责人；结束相反。 */
+  const order = {
+    add: [pHrbp, pHead, sHrbp, sHead],
+    extend: [pHrbp, pHead, sHrbp, sHead],
+    end: [sHead, sHrbp, pHead, pHrbp],
+  };
+  /** 按给定顺序逐个同意，每次先断言当前待办恰是该审批人（PB-38）。 */
+  async function approveInOrder(requestId: string, actors: readonly Person[], stopBefore = actors.length) {
+    for (const [index, actor] of actors.slice(0, stopBefore).entries()) {
+      const pending = w.pending(await instance(requestId)).map((task) => task.assigneeUserId);
+      expect(pending, `第 ${index + 1} 个节点`).toEqual([actor.userId]);
+      await decide(requestId, actor, 'approve');
+    }
+  }
+
   return {
     ...w,
     external,
+    order,
+    approveInOrder,
     primary,
     side,
     staff,
@@ -309,6 +393,12 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     input,
     create,
     update,
+    seedRecord,
+    moveSnapshot,
+    appendTerm,
+    createDate,
+    extend,
+    end,
     send,
     withdraw,
     revoke,
@@ -347,7 +437,10 @@ export interface RequestBody {
   serviceType: string;
   effectiveDate: string;
   endDate: string | null;
+  /** 延长 / 结束申请：创建时目标兼职记录的当前结束日（原定结束日期，不随落地回写）。 */
+  originalEndDate: string | null;
   requestRemark: string | null;
+  /** 延长 / 结束申请：目标兼职记录；新增申请：审批通过并落地后的兼职记录。 */
   recordId: string | null;
   fields: Record<string, unknown>;
   customFields: Record<string, unknown>;

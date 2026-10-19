@@ -17,7 +17,7 @@ import {
 } from '@italent/domain';
 import { rowsOf } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
-import { uuidArray } from './store.js';
+import { currentDepartment, latestSnapshot, uuidArray } from './store.js';
 
 /** 申请载荷（版本）：预置字段与兼职记录同一组（§1.1），日期与备注是申请自己的。 */
 export interface PartTimeRequestVersion {
@@ -57,8 +57,10 @@ export interface PartTimeRequestRow {
   readonly version: PartTimeRequestVersion;
 }
 
+// 部门：新增申请取最新版本；延长 / 结束申请取目标兼职记录的当前部门（§7.2 / §7.3A：读取时取当前值，范围 / 审计 / 重放都据此判）
 const VERSION_COLUMNS = sql`v.id AS "versionId", v.version_no AS "versionNo", v.service_type AS "serviceType",
-  v.department_id AS "departmentId", v.position_id AS "positionId", v.post_id AS "postId",
+  CASE WHEN q.record_id IS NULL THEN v.department_id ELSE ${currentDepartment} END AS "departmentId",
+  v.position_id AS "positionId", v.post_id AS "postId",
   v.sequence_id AS "sequenceId", v.level_id AS "levelId", v.direct_manager_id AS "directManagerId",
   v.dotted_manager_id AS "dottedManagerId", v.employment_type AS "employmentType",
   v.employment_form AS "employmentForm", v.start_date::text AS "startDate", v.end_date::text AS "endDate",
@@ -121,6 +123,8 @@ export async function loadPartTimeRequest(
         WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY event_no DESC LIMIT 1) s ON true
       JOIN LATERAL (SELECT * FROM part_time_request_versions
         WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY version_no DESC LIMIT 1) v ON true
+      LEFT JOIN employment_records r ON r.tenant_id=q.tenant_id AND r.id=q.record_id
+      ${latestSnapshot}
       WHERE q.tenant_id=${tenantId} AND q.id=${id}::uuid
       ${lock ? sql`FOR UPDATE OF q` : sql``}
     `),
