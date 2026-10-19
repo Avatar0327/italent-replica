@@ -1295,6 +1295,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-initiation.ts#HR_ONLY': ['60bb518a3c6f', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-initiation.ts#NO_BLACKLIST': ['7f9420a12076', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-initiation.ts#applyInitiationSubset': ['c94c691d4d8e', '39820571cbe7'],
+  'apps/api/src/modules/employment/exit-initiation.ts#assertBlacklistFields': ['1bba374f6704', '8a0ea25aeb27'],
   'apps/api/src/modules/employment/exit-initiation.ts#assertBusinessInputSubset': ['8f22754ea5d9', 'cf92eca35baf'],
   'apps/api/src/modules/employment/exit-initiation.ts#assertInitiatorRelation': ['581277507f01', '6cd27ede735f'],
   'apps/api/src/modules/employment/exit-initiation.ts#boundEmployee': ['eb2b337f676a', 'f3b71127b550'],

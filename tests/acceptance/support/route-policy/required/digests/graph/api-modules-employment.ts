@@ -1975,6 +1975,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit.ts#EXIT_SELF_REASON_CODES',
     'packages/domain/src/employment/exit.ts#EXIT_SELF_WHEREABOUTS_CODES',
   ],
+  'apps/api/src/modules/employment/exit-initiation.ts#assertBlacklistFields': [
+    '#NO_BLACKLIST',
+    '#resolveBlacklistFields',
+  ],
   'apps/api/src/modules/employment/exit-initiation.ts#assertBusinessInputSubset': ['#reject'],
   'apps/api/src/modules/employment/exit-initiation.ts#assertInitiatorRelation': [
     '#boundEmployee',
@@ -2201,9 +2205,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-batch.ts#createExitBatch',
+    'apps/api/src/modules/employment/exit-initiation.ts#assertBlacklistFields',
     '#batchSchema',
     '#parse',
     'apps/api/src/modules/employment/replay-guard.ts#exitBatchGuard',
+    'packages/domain/src/contracts/rules.ts#addDays',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/dictionaries/:dict': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
