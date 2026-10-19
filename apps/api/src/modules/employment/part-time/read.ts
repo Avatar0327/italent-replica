@@ -40,7 +40,8 @@ export interface PartTimeRecordDto {
   readonly partTimeView: readonly PartTimeRecordView[];
 }
 
-function dto(row: Record<string, unknown>, today: string): PartTimeRecordDto {
+/** 行 → 读形状；员工页签、详情、六视图的 serviceStatus / partTimeView 都从这里出（同一个纯函数）。 */
+export function dto(row: Record<string, unknown>, today: string): PartTimeRecordDto {
   const current = (row.current_payload as Record<string, unknown> | null) ?? row;
   const span = { startDate: String(row.start_text), endDate: (row.end_text as string | null) ?? null };
   return {
@@ -60,17 +61,24 @@ function dto(row: Record<string, unknown>, today: string): PartTimeRecordDto {
   };
 }
 
-function query(ctx: EmploymentContext, predicate: SQL, page: PageQuery): SQL {
-  const department = sql`(CASE WHEN current_payload.body IS NULL THEN r.department_id::text
-    ELSE current_payload.body->>'department_id' END)::uuid`;
-  const visible = employmentVisibilitySql(ctx.scope, {
-    employee: sql`r.employee_id`,
-    department,
-    creator: partTimeRecordCreator(ctx.tenantId, sql`r.id`),
-  });
+/** 兼职记录的取数口径只写这一处：员工页签、详情、六视图共用同一组列、连接与可见谓词（DEC-431①）。 */
+export const PART_TIME_START = sql`r.start_date`;
+/** 期限链当前期（最大期号）的结束日，列名 end_date；LEFT JOIN LATERAL 取一次，视图谓词多次引用不重复子查询。 */
+export const PART_TIME_END = sql`cur.end_date`;
+/** 记录当前部门：被编辑改过的以最新快照载荷为准。 */
+export const PART_TIME_DEPARTMENT = sql`(CASE WHEN current_payload.body IS NULL THEN r.department_id::text
+  ELSE current_payload.body->>'department_id' END)::uuid`;
+/** 当前直线经理，口径同 PART_TIME_DEPARTMENT。 */
+export const PART_TIME_DIRECT_MANAGER = sql`(CASE WHEN current_payload.body IS NULL THEN r.direct_manager_id::text
+  ELSE current_payload.body->>'direct_manager_id' END)::uuid`;
+
+export function partTimeColumns(): SQL {
+  return sql`r.*, r.start_date::text AS start_text, r.entry_date::text AS entry_text, b.revision,
+    cur.end_date::text AS end_text, current_payload.body AS current_payload`;
+}
+
+export function partTimeFrom(ctx: Pick<EmploymentContext, 'tenantId'>): SQL {
   return sql`
-    SELECT r.*, r.start_date::text AS start_text, r.entry_date::text AS entry_text, b.revision,
-      ${partTimeCurrentEndSql(ctx.tenantId, sql`r.id`)}::text AS end_text, current_payload.body AS current_payload
     FROM employment_records r
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.employee_id=r.employee_id AND b.id=r.id
     LEFT JOIN LATERAL (
@@ -78,20 +86,35 @@ function query(ctx: EmploymentContext, predicate: SQL, page: PageQuery): SQL {
       WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1
     ) current_payload ON true
+    LEFT JOIN LATERAL (SELECT ${partTimeCurrentEndSql(ctx.tenantId, sql`r.id`)} AS end_date) cur ON true`;
+}
+
+/** DEC-177 两项并集（记录部门 = 兼职部门 ∪ 员工当前主职部门），放在 LIMIT / OFFSET 之前。 */
+export function partTimeVisible(ctx: EmploymentContext): SQL {
+  return employmentVisibilitySql(ctx.scope, {
+    employee: sql`r.employee_id`,
+    department: PART_TIME_DEPARTMENT,
+    creator: partTimeRecordCreator(ctx.tenantId, sql`r.id`),
+  });
+}
+
+function query(ctx: EmploymentContext, predicate: SQL, page: PageQuery): SQL {
+  return sql`
+    SELECT ${partTimeColumns()} ${partTimeFrom(ctx)}
     WHERE r.tenant_id=${ctx.tenantId} AND r.service_type <> 'primary' AND r.kind=${PART_TIME_KIND}
-      AND ${predicate} AND ${visible}
+      AND ${predicate} AND ${partTimeVisible(ctx)}
     ORDER BY r.start_date DESC, r.id LIMIT ${page.limit} OFFSET ${page.offset}
   `;
 }
 
-const today = (ctx: EmploymentContext) => tenantLocalDate(ctx.now, ctx.timezone);
+export const partTimeToday = (ctx: EmploymentContext) => tenantLocalDate(ctx.now, ctx.timezone);
 
 /** 单条；不存在、不是兼职、对操作人不可见（DEC-177）都是 null。 */
 export async function loadPartTime(tx: Tx, ctx: EmploymentContext, id: string): Promise<PartTimeRecordDto | null> {
   const [row] = rowsOf<Record<string, unknown>>(
     await tx.execute(query(ctx, sql`r.id=${id}::uuid`, { limit: 1, offset: 0 })),
   );
-  return row ? dto(row, today(ctx)) : null;
+  return row ? dto(row, partTimeToday(ctx)) : null;
 }
 
 /** 单条读取的统一拒绝：与不存在同码，不区分原因（不泄露范围外记录是否存在）。 */
@@ -110,5 +133,5 @@ export async function listEmployeePartTimes(
   const rows = rowsOf<Record<string, unknown>>(
     await tx.execute(query(ctx, sql`r.employee_id=${employeeId}::uuid`, page)),
   );
-  return rows.map((row) => dto(row, today(ctx)));
+  return rows.map((row) => dto(row, partTimeToday(ctx)));
 }
