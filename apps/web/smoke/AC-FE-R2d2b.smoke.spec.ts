@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures.js';
 import { requestSetup } from './part-time-request-fixtures.js';
-const named = (name: string) => ({ name, exact: true });
+const named = (name: string) => ({ name: new RegExp(`^${name.split('').join('\\s*')}$`) });
 async function dateForm(page: import('@playwright/test').Page, kind = '延长') {
   await page
     .getByRole('button', named(`${kind}兼职申请`))
@@ -85,13 +85,14 @@ for (const submit of [false, true])
     const state = await requestSetup(page);
     await page.getByRole('button', named('新增兼职申请')).click();
     const form = page.getByRole('dialog', named('新增兼职申请'));
-    await form.getByLabel('兼职人员', { exact: true }).click();
+    await form.getByRole('combobox', named('兼职人员')).click();
     await page.getByTitle('合成兼职员工', { exact: true }).click();
-    await form.getByLabel('兼职类型', { exact: true }).click();
+    await form.getByRole('combobox', named('兼职类型')).click();
     await page.locator('.ant-select-dropdown:visible').getByTitle('兼职', { exact: true }).click();
     await form.getByLabel('开始日期', { exact: true }).fill('2026-09-01');
-    await form.getByLabel('兼职部门', { exact: true }).click();
+    await form.getByRole('combobox', named('兼职部门')).click();
     await page.getByTitle('合成兼职部门', { exact: true }).click();
+    await form.screenshot({ path: '../../.demo/fe-r2d2b-add.png' });
     await form.getByRole('button', named(submit ? '提交' : '保存草稿')).click();
     await expect(form).toHaveCount(0);
     expect(state.writes[0]?.body).toMatchObject({
@@ -120,7 +121,7 @@ for (const approvalType of ['part_time_extend', 'transfer'])
       logs: [],
     };
     let writes = 0;
-    await page.route('**/approval/**', (route) => {
+    await page.route('**/api/tenant/approval/**', (route) => {
       const req = route.request();
       if (req.method() === 'POST') {
         writes++;
@@ -147,3 +148,59 @@ for (const approvalType of ['part_time_extend', 'transfer'])
     await expect(form).toHaveCount(0);
     expect(writes).toBe(1);
   });
+test('AC-FE-R2d2b-09 草稿修改、提交、撤回、删除使用真实 revision', async ({ page }) => {
+  const state = await requestSetup(page);
+  state.row.status = 'draft';
+  await page.getByRole('button', named('审批中的兼职')).click();
+  await page.getByRole('button', named('查看详情')).click();
+  const detail = page.getByRole('dialog').filter({ has: page.getByRole('heading', named('兼职申请详情')) });
+  await detail.getByRole('button', named('修改')).click();
+  let form = page.getByRole('dialog', named('修改兼职申请'));
+  await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
+  await form.getByRole('button', named('保存')).click();
+  await expect(form).toHaveCount(0);
+  expect(state.writes[0]).toMatchObject({ method: 'PATCH', revision: '1', body: { endDate: '2027-01-31' } });
+  for (const action of ['提交', '撤回', '删除']) {
+    await detail.getByRole('button', named(action)).click();
+    form = page.getByRole('dialog', named(`${action}兼职申请`));
+    await form.getByRole('button', named(action)).click();
+    await expect(form).toHaveCount(0);
+  }
+  expect(state.writes.map((write) => write.revision)).toEqual(['1', '2', '3', '4']);
+  await expect(detail.getByRole('button', named('修改'))).toHaveCount(0);
+});
+test('AC-FE-R2d2b-10 写成功后读取失败仍 unknown，重开不换命令', async ({ page }) => {
+  const state = await requestSetup(page);
+  state.readFailure = true;
+  const form = await dateForm(page);
+  await form.getByLabel('新结束日期', { exact: true }).fill('2026-12-31');
+  await form.getByRole('button', named('保存草稿')).click();
+  await expect(form).toContainText('结果待确认');
+  await expect(form.getByRole('button', named('保存草稿'))).toBeDisabled();
+  await form.getByRole('button', named('取消')).click();
+  const reopened = await dateForm(page);
+  await expect(reopened).toContainText('结果待确认');
+  expect(state.writes).toHaveLength(1);
+});
+test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，显式确认才重提', async ({ page }) => {
+  const state = await requestSetup(page);
+  state.row.status = 'draft';
+  state.failure = 409;
+  await page.getByRole('button', named('审批中的兼职')).click();
+  await page.getByRole('button', named('查看详情')).click();
+  await page.getByRole('button', named('修改')).click();
+  const form = page.getByRole('dialog', named('修改兼职申请'));
+  await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
+  await form.getByRole('button', named('保存')).click();
+  await expect(form.getByRole('button', named('重读最新版本'))).toBeVisible();
+  state.row.revision = 9;
+  state.row.requestRemark = '合成服务端新备注';
+  await form.getByRole('button', named('重读最新版本')).click();
+  await form.getByRole('button', named('已核对差异，继续编辑')).click();
+  await expect(form.getByLabel('新结束日期', { exact: true })).toHaveValue('2027-01-31');
+  await expect(form.getByLabel('延长备注', { exact: true })).toHaveValue('合成服务端新备注');
+  state.failure = 0;
+  await form.getByRole('button', named('保存')).click();
+  await expect(form).toHaveCount(0);
+  expect(state.writes.at(-1)).toMatchObject({ revision: '9', body: { endDate: '2027-01-31' } });
+});

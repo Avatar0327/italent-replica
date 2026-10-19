@@ -1,6 +1,7 @@
 import { Button, Table } from 'antd';
 import { columnKeys, columnWidth, type Row, type View } from './model.js';
 import { Cell } from './references.js';
+import { DateRequestButtons } from './RequestEntries.js';
 import { m } from './messages.js';
 export function PartTimeTable({
   rows,
@@ -42,9 +43,12 @@ export function PartTimeTable({
           width: columnWidth(view, 'operation'),
           fixed: 'right' as const,
           render: (_: unknown, row: Row) => (
-            <Button type="link" onClick={() => onOpen(row)}>
-              {m.open}
-            </Button>
+            <>
+              <Button type="link" onClick={() => onOpen(row)}>
+                {m.open}
+              </Button>
+              {!profile && view !== 'in_approval' && <DateRequestButtons row={row} />}
+            </>
           ),
         },
       ]}

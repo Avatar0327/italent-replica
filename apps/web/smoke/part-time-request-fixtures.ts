@@ -1,10 +1,11 @@
+import type { Row } from '../src/part-time/model.js';
 import type { Page } from '@playwright/test';
 import { setup, fields, request, record, recordId, listRecord } from './part-time-fixtures.js';
 export async function requestSetup(page: Page) {
   await setup(page);
   const state = {
-    row: structuredClone(request) as Record<string, any>,
-    writes: [] as { path: string; method: string; body: any; revision?: string }[],
+    row: structuredClone(request) as Row,
+    writes: [] as { path: string; method: string; body: Record<string, unknown>; revision?: string }[],
     failure: 0,
     unknown: false,
     readFailure: false,
@@ -107,7 +108,9 @@ export async function requestSetup(page: Page) {
                 ? 'deleted'
                 : state.row.status,
       };
-    state.row.revision++;
+    state.row.revision = Number(state.row.revision) + 1;
+    if (state.row.kind === 'extend' && String(state.row.endDate) < String(state.row.originalEndDate))
+      state.row.warnings = [{ reason: 'PART_TIME_NOT_EXTENDED' }];
     const { primary: _p, employee: _e, ...receipt } = state.row;
     return route.fulfill({ status: path.endsWith('/part-time-requests') ? 201 : 200, json: receipt });
   });
