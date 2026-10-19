@@ -50,6 +50,28 @@ function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
   return { held: held.promise, release: release.resolve, done };
 }
 
+/**
+ * 用例收尾的单一入口（F-244）：无论 body 是否抛错，都先放行持锁方，再等持锁方与被阻塞的 HTTP 请求都结束。
+ * body 错误与 release 错误分别保存：release 自身抛错也照样执行 allSettled（allSettled 不会抛，收尾里的 HTTP / 事务错误
+ * 不会覆盖原始失败原因）；最后优先重抛 body 的原始错误，body 成功而 release 失败时才抛 release 错误。
+ */
+async function settleAfter(release: () => void, pending: Promise<unknown>[], body: () => Promise<void>) {
+  const failures: { body?: { error: unknown }; release?: { error: unknown } } = {};
+  try {
+    await body();
+  } catch (error) {
+    failures.body = { error };
+  }
+  try {
+    release();
+  } catch (error) {
+    failures.release = { error };
+  }
+  await Promise.allSettled(pending);
+  const failure = failures.body ?? failures.release;
+  if (failure) throw failure.error;
+}
+
 describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () => {
   it('连接角色是普通角色（非超级用户、无 BYPASSRLS）', async () => {
     const w = await requestWorld(database().db, 'pt4b-pg-role');
@@ -91,14 +113,16 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => submitRequest(tx, w.context(created.revision), created.id, ALL_VISIBLE));
     await a.held;
     const b = api.act(created.id, 'withdraw', created.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    const loser = await w.refusal(await b);
-    expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
-    expect((await w.load(created.id)).state).toBe('in_review');
-    expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review']);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      const loser = await w.refusal(await b);
+      expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
+      expect((await w.load(created.id)).state).toBe('in_review');
+      expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review']);
+    });
   });
 
   it('并发撤回 vs 提交：撤回先持锁，提交（同一旧 revision）后到复核失败；恰一方成功，申请回到草稿', async () => {
@@ -109,16 +133,18 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => withdrawRequest(tx, w.context(submitted.revision), created.id));
     await a.held;
     const b = api.act(created.id, 'submit', submitted.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    const loser = await w.refusal(await b);
-    expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
-    expect((await w.load(created.id)).state).toBe('draft');
-    expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review', 'draft']);
-    // 审批侧：实例已随撤回结束，没有遗留待办
-    expect(w.pending(await w.instance(created.id))).toEqual([]);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      const loser = await w.refusal(await b);
+      expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
+      expect((await w.load(created.id)).state).toBe('draft');
+      expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review', 'draft']);
+      // 审批侧：实例已随撤回结束，没有遗留待办
+      expect(w.pending(await w.instance(created.id))).toEqual([]);
+    });
   });
 
   it('同 revision 的两个提交（不同命令 ID）：恰一个成功，另一个 REVISION_CONFLICT，只有一个审批实例', async () => {
@@ -128,17 +154,19 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => submitRequest(tx, w.context(created.revision), created.id, ALL_VISIBLE));
     await a.held;
     const b = api.act(created.id, 'submit', created.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    const instances = await w.run(async (tx) =>
-      rowsOf<{ n: number }>(
-        await tx.execute(sql`SELECT count(*)::int AS n FROM approval_instances
-          WHERE tenant_id=${w.tenant.id} AND business_id=${created.id}::uuid`),
-      ),
-    );
-    expect(instances).toEqual([{ n: 1 }]);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      const instances = await w.run(async (tx) =>
+        rowsOf<{ n: number }>(
+          await tx.execute(sql`SELECT count(*)::int AS n FROM approval_instances
+            WHERE tenant_id=${w.tenant.id} AND business_id=${created.id}::uuid`),
+        ),
+      );
+      expect(instances).toEqual([{ n: 1 }]);
+    });
   });
 
   it('撤销（HR）vs 撤回（发起人）同一审批中申请：先到者生效，后到者 REVISION_CONFLICT，实例只取消一次', async () => {
@@ -149,11 +177,13 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => withdrawRequest(tx, w.context(submitted.revision), created.id));
     await a.held;
     const b = api.act(created.id, 'revoke', submitted.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect((await w.load(created.id)).state).toBe('draft');
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect((await w.load(created.id)).state).toBe('draft');
+    });
   });
 
   it('提交在组织校验之前已持申请头锁：组织锁被占时 HTTP 提交停在组织校验，观察连接对申请头 NOWAIT 取锁得 55P03；释放后提交 200', async () => {
@@ -170,7 +200,7 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     await held.promise;
     const submit = api.act(created.id, 'submit', created.revision);
     let locked = false;
-    try {
+    await settleAfter(release.resolve, [holder, submit], async () => {
       await waitForBlocked(w.db, 1);
       try {
         await w.run(async (tx) => {
@@ -181,11 +211,65 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
         const failure = error as { code?: string; cause?: { code?: string } };
         locked = (failure.code ?? failure.cause?.code) === '55P03';
       }
-    } finally {
-      release.resolve();
-      await holder;
-    }
+    });
     expect((await submit).status).toBe(200);
     expect(locked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
+  });
+});
+
+describe('settleAfter 收尾分支（故障注入，PGlite / 真 PG 均跑）', () => {
+  /** 一条“稍后才结束”的待收尾任务，统计到 allSettled 返回时仍未结束的数量。 */
+  function laterTasks(failing: boolean) {
+    const open = new Set([1, 2]);
+    const task = (id: number, fail: boolean) =>
+      new Promise<void>((resolve, reject) =>
+        setTimeout(() => {
+          open.delete(id);
+          return fail ? reject(new Error(`收尾任务 ${id} 失败`)) : resolve();
+        }, 20),
+      );
+    return { pending: [task(1, failing), task(2, false)], unfinished: () => open.size };
+  }
+
+  it('release 与 body 同时抛错：抛出的是 body 原始错误，两条待收尾任务都已结束（含收尾任务自身拒绝）', async () => {
+    const { pending, unfinished } = laterTasks(true);
+    const bodyError = new Error('等待 1 个会话阻塞超时');
+    const release = () => {
+      throw new Error('release 失败');
+    };
+    await expect(
+      settleAfter(release, pending, async () => {
+        throw bodyError;
+      }),
+    ).rejects.toBe(bodyError);
+    expect(unfinished()).toBe(0);
+  });
+
+  it('body 成功而 release 抛错：抛 release 错误，待收尾任务仍已结束', async () => {
+    const { pending, unfinished } = laterTasks(false);
+    const releaseError = new Error('release 失败');
+    const release = () => {
+      throw releaseError;
+    };
+    await expect(settleAfter(release, pending, async () => undefined)).rejects.toBe(releaseError);
+    expect(unfinished()).toBe(0);
+  });
+
+  it('body 抛错而 release 正常：先放行再收尾，仍抛 body 原始错误', async () => {
+    const { pending, unfinished } = laterTasks(true);
+    const order: string[] = [];
+    const bodyError = new Error('body 失败');
+    await expect(
+      settleAfter(
+        () => order.push('release'),
+        pending,
+        async () => {
+          order.push('body');
+          throw bodyError;
+        },
+      ),
+    ).rejects.toBe(bodyError);
+    expect(order).toEqual(['body', 'release']);
+    expect(unfinished()).toBe(0);
   });
 });
