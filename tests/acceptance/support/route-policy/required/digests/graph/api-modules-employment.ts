@@ -1873,8 +1873,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-downstream.ts#probes': ['#ledgerProbe', '#notConnected'],
   'apps/api/src/modules/employment/exit-downstream.ts#trimDownstream': ['#visibleMap'],
   'apps/api/src/modules/employment/exit-downstream.ts#visibleMap': [
+    '#DEPARTMENT_SCOPED_TYPES',
     '#allowed',
-    'apps/api/src/modules/employment/exit-gate.ts#disclose',
+    'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',

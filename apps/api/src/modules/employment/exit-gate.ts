@@ -264,8 +264,9 @@ export interface Disclosable {
 const DISCLOSE_LIMIT = 1000;
 
 /**
- * 预览用披露（F-237）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与 disclose 完全一致；
- * 只给只读预览用（候选查询至多 1001 条，故至多两批），保存 / 门禁路径仍走 disclose，不全局放宽。
+ * 只读投影用披露（F-237 预览；#451 撤销清单响应）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与
+ * disclose 完全一致，不截断目标、不放宽业务准入上限。保存 / 门禁路径仍走 disclose，不全局放宽。
+ * 撤销清单的响应投影发生在撤销提交之后，目标数 = 作废申请（≤ 上限）+ 兼职等追加类目，可能略超单批上限，必须分批而不是 413。
  */
 export async function batchDisclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
   const parts = [];
