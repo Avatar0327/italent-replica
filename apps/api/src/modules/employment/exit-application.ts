@@ -9,6 +9,7 @@ import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { z } from 'zod';
 import { auditEmployment } from './context.js';
+import { activateIfDue } from './exit-activation.js';
 import { confirmExit } from './exit-confirmation.js';
 import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
@@ -23,7 +24,12 @@ import {
 import { normalizeEmploymentInput } from './fields.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
 import type { CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
+import { lockExitParticipants } from './exit-lock-plan.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
+import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
+import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
+import { appendLinkageVersion } from '../transfer/linkage/store.js';
+import { validateLinkage } from '../transfer/linkage/validation.js';
 
 export type { ExitInitiation } from './exit-initiation.js';
 
@@ -74,6 +80,9 @@ export async function createExitApplication(
     fields: input.fields ?? {},
     customFields: input.customFields ?? {},
   });
+  // 职责转交计划（DEC-213）：结构校验在锁之前；参与员工闭包（离职人 + 转交下属）先于任何其他锁取齐（§5.2 ①，与批量共用）
+  const duty = exit.dutyTransfer === undefined ? null : normalizeLinkage({ dutyTransfer: exit.dutyTransfer });
+  await lockExitParticipants(tx, ctx, [{ employeeId, dutyTransfer: exit.dutyTransfer }]);
   // 先持员工行锁（不比 revision）：并发的两笔申请在锁后重读未办结离职，败者得到 EXIT_IN_PROGRESS 而不是 revision 冲突
   await lockEmploymentEmployee(tx, ctx, employeeId);
   await assertInitiatorRelation(tx, ctx, input.initiation, employeeId);
@@ -115,9 +124,25 @@ export async function createExitApplication(
     undefined,
     { employeeId },
   );
-  // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14）；仍只存 approved，不落地（§18.1 ③）
-  if (input.mode === 'direct') await confirmExit(tx, ctx, { ...business, mode: 'direct' });
-  return business;
+  // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
+  if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
+  // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）
+  if (input.mode !== 'direct') return business;
+  await confirmExit(tx, ctx, { ...business, mode: 'direct' });
+  const activation = await activateIfDue(tx, ctx, business.id);
+  if (!activation || activation.outcome === 'pending') return business;
+  // 落地 / 失败 / 挂起都推进业务 revision（trigger = approval 由调用命令统一递增一次）
+  const locked = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: business.revision }, business.id);
+  await bumpEmploymentBusiness(tx, ctx, locked);
+  return requireSavedBusiness(tx, ctx, business.id);
+}
+
+/** 职责转交计划的授权（逐下属 / 组织角色字段权，§9.1）、校验与保存；任一不通过整单回滚。 */
+async function saveDutyTransfer(tx: Tx, ctx: EmploymentContext, business: EmploymentBusiness, options: LinkageOptions) {
+  const target = { businessId: business.id, employeeId: business.employeeId };
+  await authorizeLinkageWrite(tx, ctx, {}, { employeeId: business.employeeId, operation: 'create', options });
+  await validateLinkage(tx, ctx, business.employeeId, options);
+  await appendLinkageVersion(tx, ctx, target, options);
 }
 
 const SETTLED = ['voided', 'disapproved', 'deleted'];

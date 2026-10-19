@@ -4,6 +4,7 @@
  * 以可信方式安装并发布“兼职”预置流程（与开通时同一路径）。申请经内部服务调用（PT-4a 没有公开路由），审批走真实审批中心接口。
  */
 import { randomUUID } from 'node:crypto';
+import type { Authorizer } from '@italent/api';
 import { createUser, grantMembership, sql, withTenant, type Db, type Tx } from '@italent/db';
 import { PRESET_PROCESSES } from '@italent/domain';
 import { expect } from 'vitest';
@@ -26,10 +27,12 @@ import {
 } from '../../apps/api/src/modules/employment/part-time/request-service.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { approvalWorld, APV_TODAY, type InstanceView, type Person } from './AC-APV-support.js';
-import { cmd } from './support/tenant-api.js';
+import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const EMPLOYMENT = '/api/tenant/employment';
+const REQUESTS = `${EMPLOYMENT}/part-time-requests`;
+type Send = (method: string, path: string, options?: RequestOptions) => Promise<Response>;
 /** 审批人看得到全部字段（盲审另测）。 */
 export const ALL_VISIBLE: FieldAccess = { viewable: async () => undefined };
 
@@ -151,7 +154,8 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
             WHERE tenant_id=${tenantId} AND service_type<>'primary') AS parts,
           (SELECT count(*)::int FROM employment_part_time_terms WHERE tenant_id=${tenantId}) AS terms,
           (SELECT count(*)::int FROM audit_events WHERE tenant_id=${tenantId}) AS audits,
-          (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${tenantId}) AS outbox`),
+          (SELECT count(*)::int FROM employment_outbox WHERE tenant_id=${tenantId}) AS outbox,
+          (SELECT count(*)::int FROM command_ledger WHERE tenant_id=${tenantId}) AS ledger`),
       );
       return row!;
     });
@@ -226,6 +230,48 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     return id;
   }
 
+  /** PT-4b 公开入口的请求体（新增申请）；fields 合并部门缺省值。 */
+  const requestBody = (patch: Record<string, unknown> = {}) => ({
+    requestType: 'add',
+    employeeId: worker.employeeId,
+    partTimeType: 'part_time',
+    startDate: '2026-09-01',
+    ...patch,
+    fields: { departmentId: side, ...(patch.fields as object | undefined) },
+  });
+  /** 同一租户 / HR 用户换授权器的请求函数（受限操作人 / 可撤权授权器）；时钟与世界一致。 */
+  function sendWith(authorize: Authorizer, user = w.hr.id): Send {
+    const api = tenantApi(db, { authorize, clock: w.clock });
+    return (method, path, options = {}) => api.request(method, path, { user, tenant: tenantId, ...options });
+  }
+  /** 申请入口（PT-4b）：缺省以 HR 全权身份请求，可传 sendWith(...) 换成受限授权器或其他用户。 */
+  function http(send: Send = (method, path, options) => w.request(w.hr.id, method, path, options)) {
+    return {
+      create: (patch: Record<string, unknown> = {}, options: RequestOptions = {}) =>
+        send('POST', REQUESTS, { body: requestBody(patch), ...options }),
+      one: (id: string) => send('GET', `${REQUESTS}/${id}`),
+      patch: (id: string, revision: number, body: Record<string, unknown>, options: RequestOptions = {}) =>
+        send('PATCH', `${REQUESTS}/${id}`, { ifMatch: revision, body, ...options }),
+      act: (id: string, action: 'submit' | 'withdraw' | 'revoke', revision: number, options: RequestOptions = {}) =>
+        send('POST', `${REQUESTS}/${id}/${action}`, { ifMatch: revision, ...options }),
+      remove: (id: string, revision: number, options: RequestOptions = {}) =>
+        send('DELETE', `${REQUESTS}/${id}`, { ifMatch: revision, ...options }),
+    };
+  }
+  /** 成功响应的 JSON（失败时把响应体带进断言信息）。 */
+  async function ok<T = RequestBody>(response: Response, status = 200): Promise<T> {
+    const text = await response.clone().text();
+    if (response.status !== status) throw new Error(`预期 ${status}，实际 ${response.status}：${text}`);
+    return (await response.json()) as T;
+  }
+  /** 失败响应：状态码 + 机读错误码 + details.reason。 */
+  async function refusal(response: Response) {
+    const parsed = (await response.json()) as {
+      error: { code: string; message: string; details?: { reason?: string } };
+    };
+    return { status: response.status, code: parsed.error.code, reason: parsed.error.details?.reason };
+  }
+
   const instance = (requestId: string): Promise<InstanceView> => w.instanceOf(requestId);
   /** 当前待办人做决定（approve / reject / disagree / edit），返回最新实例。 */
   async function decide(
@@ -280,7 +326,34 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     instance,
     decide,
     approveAll,
+    requestBody,
+    sendWith,
+    http,
+    ok,
+    refusal,
   };
+}
+
+/** 申请接口响应体（读形状；字段是否出现取决于查看权）。 */
+export interface RequestBody {
+  id: string;
+  employeeId: string;
+  revision: number;
+  kind: string;
+  status: string;
+  initiator: string;
+  processCode: string | null;
+  versionNo: number;
+  serviceType: string;
+  effectiveDate: string;
+  endDate: string | null;
+  requestRemark: string | null;
+  recordId: string | null;
+  fields: Record<string, unknown>;
+  customFields: Record<string, unknown>;
+  warnings: { reason: string }[];
+  primary?: { fields: Record<string, unknown> };
+  employee?: { code: string; name: string };
 }
 
 export type RequestWorld = Awaited<ReturnType<typeof requestWorld>>;

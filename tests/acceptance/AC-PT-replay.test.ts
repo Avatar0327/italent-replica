@@ -16,6 +16,7 @@ import type { EmploymentContext } from '../../apps/api/src/modules/employment/ty
 import { authorizeEmploymentResult } from '../../apps/api/src/modules/permission/employment-replay.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { denyButton, httpWorld } from './AC-PT-http-support.js';
+import { requestWorld } from './AC-PT-request-support.js';
 import { partTimeWorld, type PartTimeWorld } from './AC-PT-support.js';
 import { orgScope, revocable } from './support/revocable-rights.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -336,5 +337,101 @@ describe('AC-PT-replay PT-3c：编辑兼职与批量结束的命令重放（PB-5
     await x.w.moveSnapshot(x.record.id, elsewhere.id);
     x.rights.scope = orgScope(x.w.tenantId, TODAY, x.w.primaryOrg.id, x.w.partTimeOrg.id);
     expect((await x.calls[entry](key)).status).toBe(404);
+  });
+});
+
+describe('AC-PT-replay PT-4b：新增兼职申请的命令重放（PB-70，PB-56 / PB-64～69 同口径）', () => {
+  async function replayWorld(label: string) {
+    const w = await requestWorld(database().db, `pt4b-replay-${label}`);
+    const { authorize, rights } = revocable();
+    const api = w.http(w.sendWith(authorize));
+    const create = (key: string, patch: Record<string, unknown> = {}) => api.create(patch, { idempotencyKey: key });
+    const submit = (key: string, id: string, revision: number) =>
+      api.act(id, 'submit', revision, { idempotencyKey: key });
+    return { w, rights, create, submit };
+  }
+
+  it('PB-70：首次 201（申请 ID 能被 currentTargets 找到，足迹含 part-time-request）；同键同内容重放返回原响应，不再写入', async () => {
+    const { w, create } = await replayWorld('first');
+    const key = randomUUID();
+    const created = await w.ok(await create(key), 201);
+    const footprint = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ object_type: string }>(
+        await tx.execute(sql`SELECT DISTINCT object_type FROM audit_events WHERE tenant_id=${w.tenant.id}
+          AND object_id=${created.id} AND action='part_time.request.create'`),
+      ),
+    );
+    expect(footprint).toEqual([{ object_type: PART_TIME_AUDIT_OBJECTS.request }]);
+    const before = await w.writes();
+    const again = await create(key);
+    expect(again.status).toBe(201);
+    expect(await again.json()).toEqual(created);
+    expect(await w.writes()).toEqual(before);
+  });
+
+  it('PB-70：提交的首次 / 重放同口径（命令内 guard 三个出口）；首次业务失败后同键回查返回同一失败，不写入', async () => {
+    const { w, create, submit } = await replayWorld('submit');
+    const created = await w.ok(await create(randomUUID()), 201);
+    const key = randomUUID();
+    const first = await w.ok(await submit(key, created.id, created.revision));
+    expect(first.status).toBe('in_review');
+    const before = await w.writes();
+    const again = await submit(key, created.id, created.revision);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual(first);
+    expect(await w.writes()).toEqual(before);
+
+    const failKey = randomUUID();
+    const failed = await w.refusal(await create(failKey, { startDate: '2026-09-10', endDate: '2026-09-01' }));
+    expect(failed).toMatchObject({ status: 400, reason: 'PART_TIME_END_BEFORE_START' });
+    const mid = await w.writes();
+    expect(await w.refusal(await create(failKey, { startDate: '2026-09-10', endDate: '2026-09-01' }))).toEqual(failed);
+    expect(await w.writes()).toEqual(mid);
+  });
+
+  it.each([
+    [
+      '撤掉兼职部门范围（只剩主职部门）',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.scope = orgScope(x.w.tenant.id, TODAY, x.w.primary);
+      },
+    ],
+    [
+      '数据范围收为空',
+      404,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.emptyScope = true;
+      },
+    ],
+    [
+      '撤掉 Employment.PartTimeApproval 按钮',
+      403,
+      (x: Awaited<ReturnType<typeof replayWorld>>) => {
+        x.rights.deny = denyButton('Employment.PartTimeApproval');
+      },
+    ],
+  ] as const)('%s：同键重放被拒（%s），不返回台账里的原响应，业务与审计不变', async (_name, status, revoke) => {
+    const x = await replayWorld(`revoked-${status}`);
+    const key = randomUUID();
+    const created = await x.w.ok(await x.create(key), 201);
+    const before = await x.w.writes();
+    revoke(x);
+    const replay = await x.create(key);
+    expect(replay.status).toBe(status);
+    expect(JSON.stringify(await replay.json())).not.toContain(created.id);
+    expect(await x.w.writes()).toEqual(before);
+  });
+
+  it('提交的重放同样按当前授权重判：撤掉 Employment.Submit 后同键重放 403；他人把申请改到范围外部门后重放 404', async () => {
+    const x = await replayWorld('submit-revoked');
+    const created = await x.w.ok(await x.create(randomUUID()), 201);
+    const key = randomUUID();
+    await x.w.ok(await x.submit(key, created.id, created.revision));
+    x.rights.deny = denyButton('Employment.Submit');
+    expect((await x.submit(key, created.id, created.revision)).status).toBe(403);
+    x.rights.deny = undefined;
+    x.rights.scope = orgScope(x.w.tenant.id, TODAY, x.w.primary);
+    expect((await x.submit(key, created.id, created.revision)).status).toBe(404);
   });
 });

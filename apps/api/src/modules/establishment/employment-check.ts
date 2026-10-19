@@ -2,13 +2,14 @@ import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { projectOrgAdjustmentRecords } from '../employment/org-adjustment-projection.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
+import { cycleOn, loadCycleStarts, loadExitStates } from '../employment/exit-occupancy-store.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
 import { resolveEffectiveInheritance } from '../employment/inheritance.js';
 import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from '../employment/timeline.js';
 /** DEC-145 / 18 §11：真实任职投影，条件内且、条件间或；外部人员计数但不拦其调入。 */
 import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
-import { addDays, tenantLocalDate } from '@italent/domain';
+import { addDays, exitOccupancy, tenantLocalDate, type TimelineSegment } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import type { ActivationTarget } from '../employment/activation-checks.js';
 import type { EmploymentContext, EmploymentRecord, PresetFields } from '../employment/types.js';
@@ -196,6 +197,34 @@ interface MemberInterval {
   readonly fields: Partial<PresetFields>;
   readonly from: string;
   readonly until: string;
+  /** 来源任职周期（记录用时间轴 staff_id，申请用载荷 selectedStaffId）：切段、投影、合并全程携带，离职预减按它扣（P2-1）。 */
+  readonly staffId?: string;
+}
+
+/** 按员工归组的真实主职区间（含来源周期）。 */
+function groupOccupancy(rows: Awaited<ReturnType<typeof occupancyRows>>) {
+  const members = new Map<string, MemberInterval[]>();
+  for (const row of rows) {
+    const intervals = members.get(row.employeeId) ?? [];
+    intervals.push({
+      employeeId: row.employeeId,
+      fields: camelFields(row.fields),
+      from: row.from,
+      until: row.until,
+      staffId: row.staffId,
+    });
+    members.set(row.employeeId, intervals);
+  }
+  return members;
+}
+
+/** 在 [from, until) 内挖掉原区间，留下两侧残段。 */
+function cutInterval(interval: MemberInterval, from: string, until: string): MemberInterval[] {
+  if (interval.until <= from || interval.from >= until) return [interval];
+  return [
+    ...(interval.from < from ? [{ ...interval, until: from }] : []),
+    ...(interval.until > until ? [{ ...interval, from: until }] : []),
+  ];
 }
 
 async function projectedMembers(
@@ -216,12 +245,7 @@ async function projectedMembers(
   // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
   const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
-  const members = new Map<string, MemberInterval[]>();
-  for (const row of rows) {
-    const intervals = members.get(row.employeeId) ?? [];
-    intervals.push({ employeeId: row.employeeId, fields: camelFields(row.fields), from: row.from, until: row.until });
-    members.set(row.employeeId, intervals);
-  }
+  const members = groupOccupancy(rows);
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
   const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
   const projectedAdjustments = await adjustmentProjection(tx, ctx, target);
@@ -244,6 +268,10 @@ async function projectedMembers(
         fields,
         effectiveDate: payload.effectiveDate,
       });
+    // 申请的来源周期：载荷 selectedStaffId；确实没选周期的按申请自己的生效日所在周期（设计 §6-1），不按投影后的日期推断
+    const applicationStaff =
+      payload.selectedStaffId ??
+      (await cycleOn(tx, ctx.tenantId, row.employeeId, String(raw.declaredEffectiveDate ?? payload.effectiveDate)));
     const from = [payload.effectiveDate, target.effectiveDate].sort().at(-1)!;
     const until = window?.to && window.to < windowEnd ? window.to : windowEnd;
     if (predecessor && (timings.transferIn === 'submitted' || row.state !== 'in_review'))
@@ -260,28 +288,73 @@ async function projectedMembers(
         target.effectiveDate,
         windowEnd,
         timings.transferOut === 'submitted' || row.state !== 'in_review',
+        applicationStaff,
       );
     if (!window || from >= until) continue;
     const previous = members.get(row.employeeId) ?? [];
     const intervals =
       timings.transferOut === 'submitted' || row.state !== 'in_review'
-        ? previous.flatMap((interval) => {
-            if (interval.until <= from || interval.from >= until) return [interval];
-            return [
-              ...(interval.from < from ? [{ ...interval, until: from }] : []),
-              ...(interval.until > until ? [{ ...interval, from: until }] : []),
-            ];
-          })
+        ? previous.flatMap((interval) => cutInterval(interval, from, until))
         : previous;
     if (timings.transferIn === 'submitted' || row.state !== 'in_review')
-      intervals.push({ employeeId: row.employeeId, fields, from, until });
+      intervals.push({ employeeId: row.employeeId, fields, from, until, ...staffOf(applicationStaff) });
     members.set(row.employeeId, intervals);
   }
   if (!target.occupancyOnly)
     await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut, projectedAdjustments);
+  await subtractPendingExits(tx, ctx, members, timings);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
 }
+
+/**
+ * 批准即预减（离职设计 §6-1 / §6B.1，R-P1）：审批通过 / 直接离职确认当天 R 起，离职人同一任职周期内的占用区间扣掉
+ * [R, 下一周期入职日)——时间轴记录段与申请预占段（上面已并入同一成员区间）一并扣，不用最后工作日过滤。区间归属的周期取成员区间自带的来源周期
+ * （记录段用时间轴 staff_id，申请预占段用载荷 selectedStaffId；没选周期的才按起点所在周期回退）；扣减由 domain exitOccupancy 判定，
+ * 与组织停用计数同一实现。
+ */
+async function subtractPendingExits(
+  tx: Tx,
+  ctx: EmploymentContext,
+  members: Map<string, MemberInterval[]>,
+  timings: { transferIn: 'submitted' | 'approved'; transferOut: 'submitted' | 'approved' },
+) {
+  const exits = await loadExitStates(tx, ctx.tenantId, [...members.keys()]);
+  if (!exits.length) return;
+  const affected = [...new Set(exits.map((exit) => exit.employeeId))];
+  const cycleAt = await loadCycleStarts(tx, ctx.tenantId, affected);
+  for (const employeeId of affected) {
+    const intervals = members.get(employeeId) ?? [];
+    const records: TimelineSegment[] = intervals.map((interval, index) => ({
+      recordId: String(index),
+      employeeId,
+      // 区间自带来源周期；没有的（只剩未选定周期的申请预占）按设计回退：取区间起点所在周期
+      staffId: interval.staffId ?? cycleAt(employeeId, interval.from),
+      kind: 'member',
+      departmentId: String(interval.fields.departmentId ?? ''),
+      positionId: null,
+      capacityId: null,
+      from: interval.from,
+      to: interval.until,
+    }));
+    const { p } = exitOccupancy({
+      records,
+      applications: [],
+      exits: exits.filter((exit) => exit.employeeId === employeeId),
+      detachedTransfers: [],
+      timings,
+    });
+    members.set(
+      employeeId,
+      p.flatMap((segment) => {
+        const source = intervals[Number(segment.sourceId)]!;
+        return [{ ...source, from: segment.from, until: segment.to ?? source.until }];
+      }),
+    );
+  }
+}
+
+const staffOf = (staffId: string | null | undefined) => (staffId ? { staffId } : {});
 
 async function adjustmentProjection(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
   const projectedAdjustments = new Map<string, EmploymentRecord>();
@@ -385,9 +458,15 @@ async function occupancyRows(
   until: string,
   orgIds: readonly string[],
 ) {
-  const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
+  const rows = rowsOf<{
+    employeeId: string;
+    staffId: string;
+    fields: Record<string, unknown>;
+    from: string;
+    until: string;
+  }>(
     await tx.execute(sql`
-    SELECT r.employee_id AS "employeeId", COALESCE(p.body,to_jsonb(r)) AS fields,
+    SELECT r.employee_id AS "employeeId", t.staff_id::text AS "staffId", COALESCE(p.body,to_jsonb(r)) AS fields,
       GREATEST(lower(t.valid_during),${target.effectiveDate}::date)::text AS "from",
       LEAST(upper(t.valid_during),${until}::date)::text AS until
     FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
@@ -412,7 +491,7 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
     await tx.execute(sql`
     SELECT b.employee_id AS "employeeId",
       to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal'),
-        'effective_date',${date}) AS fields,s.state
+        'effective_date',${date},'declared_effective_date',p.effective_date) AS fields,s.state
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
       ORDER BY version_no DESC LIMIT 1) p ON true
@@ -446,6 +525,11 @@ async function projectTarget(
   transferOut: string,
   projectedAdjustments: Map<string, EmploymentRecord>,
 ) {
+  const [selected] = rowsOf<{ staffId: string | null }>(
+    await tx.execute(sql`SELECT selected_staff_id::text AS "staffId" FROM employment_payload_versions
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${target.businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  const staffId = selected?.staffId ?? undefined;
   const [existing] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_timeline
     WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),
@@ -480,6 +564,7 @@ async function projectTarget(
       target.effectiveDate,
       next && next < periodUntil ? next : periodUntil,
       true,
+      staffId,
     );
   if (window) {
     const from = [window.from, target.effectiveDate].sort().at(-1)!;
@@ -498,6 +583,7 @@ async function projectTarget(
           fields: projectedAdjustments.get(target.businessId)?.fields ?? target.fields ?? {},
           from,
           until,
+          ...staffOf(staffId),
         },
       ]);
   }
@@ -512,6 +598,7 @@ async function projectAdjustments(
   start: string,
   end: string,
   replace: boolean,
+  staffId?: string | null,
 ) {
   for (const record of await projectOrgAdjustmentRecords(tx, ctx, source, projected)) {
     const from = [record.effectiveDate, start].sort().at(-1)!;
@@ -529,7 +616,7 @@ async function projectAdjustments(
       : previous;
     members.set(source.employeeId, [
       ...intervals,
-      { employeeId: source.employeeId, fields: record.fields, from, until },
+      { employeeId: source.employeeId, fields: record.fields, from, until, ...staffOf(staffId) },
     ]);
   }
 }

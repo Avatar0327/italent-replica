@@ -39,13 +39,16 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
   }
 }
 
-export async function lockTransferParticipants(
+/** 取锁结果：busy = 有参与者行被他人持锁（SKIP LOCKED 跳过）；missing = 员工主档本身不存在（F-238，两者不能混为一谈）。 */
+export type SweepLockOutcome = 'acquired' | 'busy' | 'missing';
+
+async function acquire(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
-  extra: readonly string[] = [],
-  options: { skipLocked?: boolean } = {},
-): Promise<boolean> {
+  extra: readonly string[],
+  skipLocked: boolean,
+): Promise<SweepLockOutcome> {
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
@@ -55,17 +58,17 @@ export async function lockTransferParticipants(
   );
   const held: string[] = setting?.value ? (JSON.parse(setting.value) as string[]) : [];
   const needed = planned.filter((id) => !held.includes(id));
-  if (!needed.length) return true;
+  if (!needed.length) return 'acquired';
   if (held.length && needed[0]! < held.at(-1)!)
     throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   const rows = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=ANY(${array(needed)})
-    ORDER BY id FOR NO KEY UPDATE ${options.skipLocked ? sql`SKIP LOCKED` : sql``}
+    ORDER BY id FOR NO KEY UPDATE ${skipLocked ? sql`SKIP LOCKED` : sql``}
   `),
   );
   if (rows.length !== needed.length) {
-    if (options.skipLocked) return false;
+    if (skipLocked) return (await employeeExists(tx, ctx, employeeId, rows)) ? 'busy' : 'missing';
     if (!held.includes(employeeId) && !rows.some((row) => row.id === employeeId))
       throw new AppError('NOT_FOUND', '员工不存在');
     throw new AppError('VALIDATION_FAILED', '联动人员不可用', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
@@ -83,8 +86,33 @@ export async function lockTransferParticipants(
     SELECT id FROM employment_business_objects WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${array(planned)})
     ORDER BY employee_id,id FOR UPDATE
   `);
-  return true;
+  return 'acquired';
 }
+
+/** SKIP LOCKED 跳过了行时区分原因：本人已取到（在 rows 里）或主档仍在 → 被锁；主档查不到 → 不存在。普通读不被行锁阻塞。 */
+async function employeeExists(tx: Tx, ctx: EmploymentContext, employeeId: string, locked: readonly { id: string }[]) {
+  if (locked.some((row) => row.id === employeeId)) return true;
+  return (
+    rowsOf(
+      await tx.execute(
+        sql`SELECT 1 FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=${employeeId}::uuid`,
+      ),
+    ).length > 0
+  );
+}
+
+/**
+ * 取员工锁（含联动闭包）。默认阻塞等锁，员工不存在或联动人员不可用时抛错，返回值恒为 'acquired'（既有调用方都不看返回值）。
+ * 定时批次传 skipLocked（非阻塞，只用于单名员工）：被他人持锁 → 'busy'（下一次调度重试）；员工主档不存在 → 'missing'
+ * （没有可重试的对象，调用方收口，不当作被锁，F-238）。
+ */
+export const lockTransferParticipants = (
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[] = [],
+  options: { skipLocked?: boolean } = {},
+): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options.skipLocked === true);
 
 /** 审批适配器须在实例锁之前调用；批量交接会签合席可推进业务，批次须先锁整个参与员工闭包。 */
 export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, businessId: string) {

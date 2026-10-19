@@ -55,3 +55,17 @@ export async function mayMergeSeat(tx: Tx, ctx: ApprovalContext, businessIds: re
   );
   return Boolean(row?.found);
 }
+
+/**
+ * 本次动作是否可能让任职业务进入结算 / 生效链，从而要在审批实例锁之前取齐组织 / 编制资源锁（F-070，DEC-431① 唯一判断）。
+ * 普通办理（同意、驳回、撤回……，reassignFrom 未传）总有可能推进业务；改派（手动交接、成员撤销 / 停用接管，reassignFrom =
+ * 原持有人）只有会签合席结算才可能推进业务，仅改派时不取。lock 与 lockMany 共用这一个函数，不按调用方打标记。
+ */
+export async function mayAdvanceBusiness(
+  tx: Tx,
+  ctx: ApprovalContext,
+  businessIds: readonly string[],
+  reassignFrom?: string,
+) {
+  return !reassignFrom || (await mayMergeSeat(tx, ctx, businessIds, reassignFrom));
+}

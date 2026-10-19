@@ -1,7 +1,7 @@
 /**
  * 离职 / 退休“批准即预减”的记账层（R2-T03 设计 §6-2，DEC-266①）：在 confirmed 阶段（审批通过 / 直接离职保存）
  * 按 R 记一条 exit_effects(establishment_pre_released)。只记账：不追加编制版本、不改调编分配、不取编制锁；
- * 预减投影（pendingExits，§6-1）随 B3-3 上线，这里的台账行是投影与撤销清单的输入。
+ * 预减投影（pendingExits，§6-1，exit-occupancy-store.ts + employment-check.ts）读 exit_requests 的 R；这里的台账行是撤销清单的输入。
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, exitEffects, sql, type Tx } from '@italent/db';

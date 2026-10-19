@@ -218,6 +218,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/employment-check.ts#establishmentPeriodStartsWithin': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
+  'apps/api/src/modules/establishment/employment-check.ts#groupOccupancy': ['#camelFields'],
   'apps/api/src/modules/establishment/employment-check.ts#nextReservedTransfer': [
     'apps/api/src/modules/employment/activation-store.ts#pendingActivationState',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
@@ -237,6 +238,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/establishment/employment-check.ts#projectAdjustments': [
     'apps/api/src/modules/employment/org-adjustment-projection.ts#projectOrgAdjustmentRecords',
+    '#staffOf',
     'packages/domain/src/contracts/rules.ts#addDays',
   ],
   'apps/api/src/modules/establishment/employment-check.ts#projectTarget': [
@@ -246,20 +248,25 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
     '#nextReservedTransfer',
     '#projectAdjustments',
+    '#staffOf',
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
   'apps/api/src/modules/establishment/employment-check.ts#projectedMembers': [
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#cycleOn',
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
     'apps/api/src/modules/employment/reporting-cycle.ts#insertedWindow',
     '#adjustmentProjection',
-    '#camelFields',
+    '#cutInterval',
+    '#groupOccupancy',
     '#maximumMembers',
     '#occupancyRows',
     '#pendingTransfers',
     '#projectAdjustments',
     '#projectTarget',
     '#resolveProjectedTransfer',
+    '#staffOf',
+    '#subtractPendingExits',
     'apps/api/src/modules/establishment/membership-windows.ts#clipMembership',
     'apps/api/src/modules/establishment/settings.ts#readSettings',
   ],
@@ -267,6 +274,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
+  ],
+  'apps/api/src/modules/establishment/employment-check.ts#subtractPendingExits': [
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#loadCycleStarts',
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#loadExitStates',
+    'packages/domain/src/employment/exit-occupancy.ts#exitOccupancy',
   ],
   'apps/api/src/modules/establishment/exit-release.ts#capacitiesOn': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',

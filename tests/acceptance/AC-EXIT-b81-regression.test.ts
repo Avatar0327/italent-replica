@@ -1,7 +1,7 @@
 /**
  * B-81 回归（docs/08_设计/R2-T03_离职管理设计.md §5.0A、§12）：对调动与 main 现有 kind，待生效队列的排序、计划日、
  * 执行日结果不变。先于 B1b 实现在 main 上写成并通过，实现后原样通过；基准是 main 的排序口径
- * （只有调动按 greatest(载荷日, 今天)，其余 kind 按载荷日，再按计划日、开新周期排后、操作序号）。
+ * （调动与离职按 greatest(计划日, 今天)，B3-3 起离职与调动同式；其余 kind 按载荷日，再按计划日、开新周期排后、操作序号）。
  */
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -43,7 +43,7 @@ function legacyOrder(applications: readonly SyntheticApplication[], ids: readonl
       return {
         id: ids[index]!,
         key: [
-          application.kind === 'transfer' && effective < today ? today : effective,
+          (application.kind === 'transfer' || application.kind === 'leave') && effective < today ? today : effective,
           plannedOf(application.versions),
           CYCLE_OPENING_KINDS.includes(application.kind) ? '1' : '0',
           String(application.submitSeq).padStart(12, '0'),
@@ -55,7 +55,7 @@ function legacyOrder(applications: readonly SyntheticApplication[], ids: readonl
 }
 
 describe('B-81：调动与 main 现有 kind 的队列顺序不变', () => {
-  // 含离职：在 B3-1 启用离职顺延之前，离职的队列排序仍按 main 口径（载荷日，不随执行日顺延）
+  // 含离职：B3-3 起离职与调动同按最终执行日期排序（设计 §5.0）
   const legacyKinds = ALL_KINDS;
 
   it.each([

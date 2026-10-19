@@ -1,6 +1,6 @@
 /**
  * 兼职路由（R2-T05 BE-7 PT-3b / PT-3c，设计 §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、员工兼职列表、单条详情，
- * 以及编辑兼职（PATCH）与批量结束；六视图、申请入口由后续批次开放（此处不注册，404）。写入只调内部服务
+ * 以及编辑兼职（PATCH）与批量结束；六视图由后续批次开放（此处不注册，404），申请入口见 request-routes.ts。写入只调内部服务
  * createPartTime / editPartTime / batchEndPartTimes，路由层不另写校验或写库逻辑。
  * 新增请求体 { partTimeType, startDate, endDate?, fields, customFields? }；回执 = 兼职记录读形状（开始日期沿用 effectiveDate 编码）。
  * 新建对象没有 revision，不要求 If-Match；编辑带 If-Match（底层业务头 revision）；批量结束不带 If-Match，逐条 revision。
@@ -67,7 +67,7 @@ const partTimeFields = presetFieldsSchema
     addedSubordinateIds: true,
   })
   .extend({ departmentId: normalizedUuid });
-const createSchema = z.strictObject({
+export const createSchema = z.strictObject({
   partTimeType: z.enum(PART_TIME_SERVICE_TYPES),
   startDate: date,
   endDate: date.nullable().optional(),
@@ -77,7 +77,7 @@ const createSchema = z.strictObject({
 type CreateBody = z.infer<typeof createSchema>;
 
 /** 请求体 → 内部服务入参；显式 null 与缺省不同（预览带出默认值时显式 null 表示不要），所以按“自有键”搬运。 */
-function serviceInput(employeeId: string, body: CreateBody): CreatePartTimeInput {
+export function serviceInput(employeeId: string, body: CreateBody): CreatePartTimeInput {
   const fields = body.fields as Record<string, unknown>;
   const optional = Object.fromEntries(
     [...PART_TIME_FIELD_KEYS, 'isDepartmentHead', 'addedSubordinateIds']
@@ -96,7 +96,7 @@ function serviceInput(employeeId: string, body: CreateBody): CreatePartTimeInput
 }
 
 /** 字段权限判定的载荷：实际写入的字段，开始日期按任职记录的 effectiveDate 编码判（startDate 不是任职记录字段）。 */
-function writeBusiness(body: CreateBody) {
+export function writeBusiness(body: CreateBody) {
   return {
     ...partTimePermissionFields({
       partTimeType: body.partTimeType,
@@ -109,7 +109,7 @@ function writeBusiness(body: CreateBody) {
 }
 
 /** 编辑（PATCH）入参：只给要改的键；开始日期 / 兼职类型只为拒绝改动而接收（§5.1，A-9）。 */
-const editSchema = z.strictObject({
+export const editSchema = z.strictObject({
   endDate: date.nullable().optional(),
   startDate: date.optional(),
   partTimeType: z.enum(PART_TIME_SERVICE_TYPES).optional(),
@@ -118,7 +118,7 @@ const editSchema = z.strictObject({
 });
 type EditBody = z.infer<typeof editSchema>;
 
-function editInput(body: EditBody): EditPartTimeInput {
+export function editInput(body: EditBody): EditPartTimeInput {
   const fields = (body.fields ?? {}) as Record<string, unknown>;
   const given = [...PART_TIME_FIELD_KEYS, 'departmentId', 'isDepartmentHead', 'addedSubordinateIds']
     .filter((key) => Object.hasOwn(fields, key))
@@ -133,7 +133,7 @@ function editInput(body: EditBody): EditPartTimeInput {
 }
 
 /** 字段权限判定的载荷：实际给出的键（开始日期按任职记录的 effectiveDate 编码判）。 */
-function editBusiness(body: EditBody) {
+export function editBusiness(body: EditBody) {
   return {
     ...partTimePermissionFields({
       ...(body.partTimeType !== undefined ? { partTimeType: body.partTimeType } : {}),

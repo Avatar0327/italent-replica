@@ -6,12 +6,14 @@
  * - 会签合席（替代人已在本节点占着一席，非调动任职业务）：仍持组织锁，守住 F-065 / F-017 的保护。
  * 全局取锁顺序不变：员工闭包 / 多员工业务头 → 组织 / 编制 → 账号 / 成员 → 剩余业务头 → 实例。
  */
+import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { createUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
 import { cmd } from './support/tenant-api.js';
 import { NODES, pendingOf } from './support/f048.js';
 import { waitForBlocked } from './support/pg-interleave.js';
@@ -28,9 +30,10 @@ const COUNTERSIGN = {
 } as const;
 
 /** 外部账号 U 持有离职申请（非调动任职业务）的异常待办；countersign 时 U 占会签节点里无人可办的那一席。 */
-async function leaveScene(label: string, countersign: boolean) {
+async function leaveScene(label: string, countersign: boolean, withTransfer = false) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
+  await installExitSeeds(w.db, w.tenant.id);
   const source = await createUser(
     w.db,
     { email: `${label}-${randomUUID()}@example.com`, displayName: '外部异常管理员' },
@@ -44,13 +47,22 @@ async function leaveScene(label: string, countersign: boolean) {
     nodes: [NODES.outHead, countersign ? COUNTERSIGN : { key: 'hrbp', approver: 'record_department_hrbp' }],
     exceptionAdminUserId: source.id,
   });
-  const employee = await w.json<{ revision: number }>(
-    await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
-  );
+  // 同员工有一张未落地的调动申请：离职生效会回退它的带编分配，所以合席结算前要把编制锁也取齐（R2-T03 B3-3）
+  if (withTransfer) await w.application(s.subject.employeeId, { departmentId: s.to });
   const created = await w.json<{ id: string; revision: number }>(
     await w.request(w.hr.id, 'POST', `/api/tenant/employment/employees/${s.subject.employeeId}/businesses`, {
-      ifMatch: employee.revision,
-      body: { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-20', fields: {} },
+      ifMatch: (
+        await w.json<{ revision: number }>(
+          await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
+        )
+      ).revision,
+      body: {
+        kind: 'leave',
+        mode: 'application',
+        lastWorkDate: '2026-10-20',
+        fields: {},
+        exit: { exitTypeCode: 'voluntary' },
+      },
     }),
     201,
   );
@@ -70,6 +82,9 @@ async function leaveScene(label: string, countersign: boolean) {
   return {
     w,
     view,
+    source,
+    s,
+    created,
     handover: () =>
       w.request(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
         ifMatch: 0,
@@ -79,6 +94,11 @@ async function leaveScene(label: string, countersign: boolean) {
     tryOrganizationLock: () =>
       withTenant(w.db, w.tenant.id, (tx) =>
         tx.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE NOWAIT`),
+      ),
+    /** 编制锁（establishment_settings）：NOWAIT，被挡住即抛 55P03。 */
+    tryEstablishmentLock: () =>
+      withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT tenant_id FROM establishment_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE NOWAIT`),
       ),
     successor,
   };
@@ -93,7 +113,10 @@ function isLockNotAvailable(error: unknown): boolean {
 }
 
 /** 交接停在实例锁上（已完成全部预锁）时，另一事务能否取到租户组织锁。 */
-async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typeof leaveScene>>) {
+async function lockFreeWhileHandoverQueued(
+  f: Awaited<ReturnType<typeof leaveScene>>,
+  probe: 'tryOrganizationLock' | 'tryEstablishmentLock' = 'tryOrganizationLock',
+) {
   let handedOver: Promise<Response> = Promise.resolve(new Response());
   let free: boolean | undefined;
   await withTenant(f.w.db, f.w.tenant.id, async (barrier) => {
@@ -101,7 +124,7 @@ async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typ
       WHERE tenant_id=${f.w.tenant.id} AND id=${f.view.id}::uuid FOR UPDATE`);
     handedOver = f.handover();
     await waitForBlocked(f.w.db, 1);
-    free = await f.tryOrganizationLock().then(
+    free = await f[probe]().then(
       () => true,
       (error: unknown) => {
         if (!isLockNotAvailable(error)) throw error;
@@ -117,12 +140,66 @@ async function organizationLockFreeWhileHandoverQueued(f: Awaited<ReturnType<typ
 describe.runIf(realPostgres)('AC-APV F-070 手动交接的组织锁范围（DEC-196 全局锁序不变）', () => {
   it('仅改派（不会合席）：交接排队等实例锁时不持组织锁，普通组织写入不被挡住；交接结果不变', async () => {
     const f = await leaveScene('f070-reassign-only', false);
-    expect(await organizationLockFreeWhileHandoverQueued(f)).toBe(true);
+    expect(await lockFreeWhileHandoverQueued(f)).toBe(true);
     expect(pendingOf(await f.w.detail(f.view.id))).toEqual([expect.objectContaining({ assigneeUserId: f.successor })]);
   });
 
   it('会签合席（替代人已占本节点一席，非调动任职业务）：仍持组织锁，守住合席结算 / 落地的保护', async () => {
     const f = await leaveScene('f070-countersign-merge', true);
-    expect(await organizationLockFreeWhileHandoverQueued(f)).toBe(false);
+    expect(await lockFreeWhileHandoverQueued(f)).toBe(false);
+  });
+
+  it('会签合席 + 同员工有未落地调动申请：除组织锁外还持编制锁（离职生效会回退其带编分配）；无调动申请时不持编制锁', async () => {
+    const withTransfer = await leaveScene('f070-merge-with-transfer', true, true);
+    expect(await lockFreeWhileHandoverQueued(withTransfer, 'tryEstablishmentLock')).toBe(false);
+    const without = await leaveScene('f070-merge-no-transfer', true);
+    expect(await lockFreeWhileHandoverQueued(without, 'tryEstablishmentLock')).toBe(true);
+  });
+
+  it('成员撤销接管合席结算并让离职生效：等组织锁期间尚未持有实例锁（锁序 组织 → 实例），放行后离职生效', async () => {
+    const f = await leaveScene('f070-revoke-settle', true);
+    const { w } = f;
+    // 会签节点 all：先由异常管理员以外的席位同意，异常管理员 U 仍待办
+    const outHeadTask = pendingOf(f.view).find((task) => task.assigneeUserId === f.s.outHead.userId)!;
+    const view = await w.json<{ id: string }>(
+      await w.taskAction(f.s.outHead.userId, outHeadTask.id, 'approve', f.view.revision),
+    );
+    // 发起人 HR 交接 U 的任务给已同意的席位：实例因本人发起被跳过，但替代人已登记，成员撤销时接管会合席结算
+    const handover = await w.json<{ skipped: { instanceId: string }[] }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: f.source.id, toUserId: f.s.outHead.userId },
+      }),
+    );
+    expect(handover.skipped.map((item) => item.instanceId)).toContain(view.id);
+    w.setNow('2026-10-21T02:00:00Z');
+    const [membership] = await withTenant(w.db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT revision::int AS revision FROM tenant_memberships
+        WHERE tenant_id=${w.tenant.id} AND user_id=${f.source.id}::uuid`);
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { revision: number }[];
+    });
+    let removed: Promise<Response> = Promise.resolve(new Response());
+    let instanceFree: boolean | undefined;
+    await withTenant(w.db, w.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE`);
+      removed = w.request(w.hr.id, 'POST', `/api/tenant/permission/users/${f.source.id}/remove`, {
+        ifMatch: membership!.revision,
+      });
+      await waitForBlocked(w.db, 1);
+      instanceFree = await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT id FROM approval_instances WHERE tenant_id=${w.tenant.id}
+          AND id=${view.id}::uuid FOR UPDATE NOWAIT`),
+      ).then(
+        () => true,
+        (error: unknown) => {
+          if (!isLockNotAvailable(error)) throw error;
+          return false;
+        },
+      );
+    });
+    const response = await removed;
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(instanceFree, '等组织锁期间不应已持有实例锁').toBe(true);
+    expect((await w.business(f.created.id)).status).toBe('effective');
   });
 });

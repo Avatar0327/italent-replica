@@ -3,8 +3,10 @@
  * 只读，不按调用方数据范围过滤；由组织模块决定返回哪些字段（DEC-057 最少字段）。
  */
 import { sql, type Tx } from '@italent/db';
+import { exitOccupancy, type TimelineSegment } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { businessDate } from './fields.js';
+import { loadExitStates } from './exit-occupancy-store.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { checkPage, rowsOf } from './read-model.js';
 
@@ -94,8 +96,10 @@ export async function ineligibleOrgPeople(
 }
 
 /**
- * DEC-129：自 from 起（含 from 之后才生效的调入）仍在这些部门在职的人数，按部门对员工去重。
- * 只计已生效的任职；审批中的申请生效时另按部门停用校验（DEC-125 申请只存单据）。
+ * DEC-129：自 from 起（含 from 之后才生效的调入）仍在这些部门在职的任职记录条数（DEC-275②：按记录计，不按员工去重）。
+ * 只计已生效的任职；审批中的申请生效时另按部门停用校验（DEC-125 申请只存单据）。离职的影响（设计 §6A.1 / §6B.1 O 投影）：
+ * 审批通过未生效的离职，同任职周期的记录从生效日 E 起不计入——D ≥ E 不计、D < E 照计；审批中 / 草稿 / 已驳回 / 作废的离职不影响，
+ * 已生效的离职时间轴已截断。是否计入由 domain exitOccupancy 判定（与编制预减同一实现），这里只取数。
  */
 export async function countDepartmentStaff(
   tx: Tx,
@@ -105,25 +109,41 @@ export async function countDepartmentStaff(
 ): Promise<Map<string, number>> {
   if (!orgIds.length) return new Map();
   businessDate(from);
-  const rows = rowsOf<{ orgId: string; count: number }>(
+  const records = rowsOf<TimelineSegment>(
     await tx.execute(sql`
       WITH candidates AS (
         SELECT id FROM employment_records WHERE tenant_id=${tenantId} AND department_id = ANY(${uuidArray(orgIds)})
         UNION
         SELECT business_id FROM employment_payload_versions
         WHERE tenant_id=${tenantId} AND department_id = ANY(${uuidArray(orgIds)}) AND is_record_snapshot
-      ), staffed AS (
-        SELECT r.employee_id, ${currentDepartment} AS department_id
-        FROM candidates candidate
-        JOIN employment_records r ON r.tenant_id=${tenantId} AND r.id=candidate.id
-        JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
-        ${latestSnapshot}
-        WHERE t.valid_during && daterange(${from}::date, NULL, '[)')
-          AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
       )
-      SELECT department_id AS "orgId", count(DISTINCT employee_id)::int AS count FROM staffed
-      WHERE department_id = ANY(${uuidArray(orgIds)}) GROUP BY department_id
+      SELECT r.id AS "recordId", r.employee_id::text AS "employeeId", t.staff_id::text AS "staffId", r.kind,
+        ${currentDepartment}::text AS "departmentId", NULL::text AS "positionId", NULL::text AS "capacityId",
+        lower(t.valid_during)::text AS "from", upper(t.valid_during)::text AS "to"
+      FROM candidates candidate
+      JOIN employment_records r ON r.tenant_id=${tenantId} AND r.id=candidate.id
+      JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
+      ${latestSnapshot}
+      WHERE t.valid_during && daterange(${from}::date, NULL, '[)')
+        AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
     `),
+  ).filter((record) => orgIds.includes(record.departmentId));
+  const exits = await loadExitStates(
+    tx,
+    tenantId,
+    [...new Set(records.map((record) => record.employeeId))],
+    ['approved'],
   );
-  return new Map(rows.map((row) => [row.orgId, Number(row.count)]));
+  const { o } = exitOccupancy({
+    records,
+    applications: [],
+    exits,
+    detachedTransfers: [],
+    timings: { transferIn: 'submitted', transferOut: 'submitted' },
+  });
+  const counted = new Map<string, Set<string>>();
+  for (const segment of o)
+    if (segment.to === null || segment.to > from)
+      counted.set(segment.departmentId, (counted.get(segment.departmentId) ?? new Set()).add(segment.sourceId));
+  return new Map([...counted].map(([orgId, ids]) => [orgId, ids.size]));
 }
