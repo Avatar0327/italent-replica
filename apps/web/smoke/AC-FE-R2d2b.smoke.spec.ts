@@ -188,7 +188,7 @@ test('AC-FE-R2d2b-10 写成功后读取失败仍 unknown，重开不换命令', 
   await page.getByRole('button', named('修改')).click();
   const edit = page.getByRole('dialog', named('修改兼职申请'));
   await expect(edit.getByRole('button', named('保存'))).toBeDisabled();
-  await expect(edit).toContainText('结果待确认');
+  await expect(edit).toContainText('本对象有未确认的其他操作');
   expect(state.writes).toHaveLength(1);
 });
 test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，显式确认才重提', async ({ page }) => {
