@@ -1067,7 +1067,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
   // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
   // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
-  // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；requirePartTimeWriteAccess（同
+  // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；
+  // requirePartTimeWriteAccess（同
   // 编辑兼职）：目标兼职与其兼职部门写入口径范围（404「兼职记录不存在」）→ 对象更新权 + endDate / requestRemark 字段写权 +
   // Employment.PartTimeExtend / PartTimeEnd（403），建并提交另要 Employment.Submit；命令内 partTimeWriteGuard 重过；锁内 E-1～E-6 /
   // T-1～T-4 由 createDateRequest 判。分支键 requestType 登记为域 employment.partTimeRequestType（操作与发起按钮按它取值）

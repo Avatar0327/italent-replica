@@ -515,7 +515,8 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
-// PT-4c 兼职申请新建（POST /part-time-requests）：requestType = add 走 requirePartTimeCreateAccess；extend / end 走 createDateRequestRoute 的
+// PT-4c 兼职申请新建（POST /part-time-requests）：requestType = add 走 requirePartTimeCreateAccess；
+// extend / end 走 createDateRequestRoute 的
 // requirePartTimeWriteAccess（同编辑兼职：目标兼职与其兼职部门写入口径范围 → 对象更新权 + 字段写权 + 延长 / 结束按钮）
 function partTimeRequestCreate(): Obligation[] {
   const add = partTimeRequestWrite(
