@@ -74,6 +74,15 @@ async function dutyTransferTiming(tx: Tx, tenantId: string) {
   return (await readEffectiveSetting(tx, tenantId, 'exit.duty_transfer_timing')).value as string;
 }
 
+/** 离职单所在任职周期（最新载荷版本的 selected_staff_id）。 */
+async function selectedStaffOf(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  const [version] = rowsOf<{ staffId: string }>(
+    await tx.execute(sql`SELECT selected_staff_id AS "staffId" FROM employment_payload_versions
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  return version!.staffId;
+}
+
 /** 创建离职（专用 / 通用 / 批量入口共用）；确认清单超限时（DEC-626）响应带 warnings，其余形态不变。 */
 export async function createExitApplication(
   tx: Tx,
@@ -83,6 +92,7 @@ export async function createExitApplication(
   const employeeId = input.employeeId.toLowerCase();
   const kind = input.kind ?? 'leave';
   const exit = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
+  const typed = input.changeType ? { changeType: input.changeType } : {};
   if (kind === 'retirement') assertRetirementFields(exit);
   assertBusinessInputSubset(input.initiation, input);
   const normalized = normalizeEmploymentInput(ctx, {
@@ -108,22 +118,18 @@ export async function createExitApplication(
     lastWorkDate: normalized.lastWorkDate!,
     exit,
     payload: { fields: normalized.fields, customFields: normalized.customFields },
-    ...(input.changeType ? { changeType: input.changeType } : {}),
+    ...typed,
   });
   const business = await createEmploymentBusiness(tx, ctx, employeeId, normalized, {
     exitPass: EXIT_GATE_PASS,
-    ...(input.changeType ? { changeType: input.changeType } : {}),
+    ...typed,
   });
-  const [version] = rowsOf<{ staffId: string }>(
-    await tx.execute(sql`SELECT selected_staff_id AS "staffId" FROM employment_payload_versions
-      WHERE tenant_id=${ctx.tenantId} AND business_id=${business.id}::uuid ORDER BY version_no DESC LIMIT 1`),
-  );
   await tx.insert(exitRequests).values({
     ...columnValues(exit),
     tenantId: ctx.tenantId,
     businessId: business.id,
     employeeId,
-    staffId: version!.staffId,
+    staffId: await selectedStaffOf(tx, ctx, business.id),
     mode: input.mode,
     initiator: input.initiation,
     initiatorUserId: ctx.userId,

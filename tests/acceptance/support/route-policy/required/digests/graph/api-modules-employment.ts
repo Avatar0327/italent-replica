@@ -1668,6 +1668,7 @@ export const GRAPH: Graph = {
     '#columnValues',
     '#dutyTransferTiming',
     '#saveDutyTransfer',
+    '#selectedStaffOf',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
@@ -1680,7 +1681,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/retirement-application.ts#assertRetirementFields',
     'apps/api/src/modules/employment/retirement-application.ts#writeRetirementExtension',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
@@ -1698,6 +1698,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/access.ts#authorizeLinkageWrite',
     'apps/api/src/modules/transfer/linkage/store.ts#appendLinkageVersion',
     'apps/api/src/modules/transfer/linkage/validation.ts#validateLinkage',
+  ],
+  'apps/api/src/modules/employment/exit-application.ts#selectedStaffOf': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': [
     'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
