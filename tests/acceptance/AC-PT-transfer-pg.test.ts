@@ -48,7 +48,8 @@ function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
 }
 
 /** 调动联动执行里的端口调用：先取员工行锁（调用方职责，§7.1），再结束兼职。 */
-const transferEnd = (w: RequestWorld, recordId: string, endDate: string, itemId = randomUUID()) =>
+const transferEnd =
+  (w: RequestWorld, recordId: string, endDate: string, itemId = randomUUID()) =>
   async (tx: Parameters<Parameters<RequestWorld['run']>[0]>[0]) => {
     const ctx = w.context();
     await lockEmploymentEmployee(tx, ctx, w.worker.employeeId);

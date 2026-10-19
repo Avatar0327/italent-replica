@@ -54,8 +54,9 @@ describe('PB-52 继任端口 riskPartTimeIncumbents', () => {
     // 已结束：联动写出的空区间（开始日 − 1），人工入口写不出
     const endedRecord = await seed(ended.id, w.position.id, SC_TODAY, null);
     await w.asTenant((tx) =>
-      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date, source,
-        command_id) VALUES (${w.tenant.id}, ${ended.id}, ${endedRecord}, 2, '2026-09-30', 'exit', 'pt-succession-ended')`),
+      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
+          source, command_id)
+        VALUES (${w.tenant.id}, ${ended.id}, ${endedRecord}, 2, '2026-09-30', 'exit', 'pt-succession-ended')`),
     );
     await seed(elsewhere.id, other.id, SC_TODAY, null);
 

@@ -59,7 +59,8 @@ export async function insertPartTimeRecord(tx: Tx, seed: PartTimeSeed): Promise<
   await tx.execute(sql`INSERT INTO employment_records(id, tenant_id, employee_id, payload_version_id, staff_id,
       entry_date, kind, start_date, service_type, department_id, position_id, employ_type, place)
     VALUES (${id}, ${tenantId}, ${employeeId}, ${payload}, ${cycle.id}, ${cycle.entry_date}, ${kind}, ${start},
-      ${seed.serviceType ?? 'part_time'}, ${departmentId}, ${seed.positionId ?? null}, 'internal', ${seed.place ?? null})`);
+      ${seed.serviceType ?? 'part_time'}, ${departmentId}, ${seed.positionId ?? null}, 'internal',
+      ${seed.place ?? null})`);
   if (seed.endDate !== undefined)
     await tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date,
         source, command_id)
