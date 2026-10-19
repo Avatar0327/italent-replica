@@ -126,7 +126,13 @@ const OPERATIONS: readonly ExitOperation[] = [
     replayable: true,
     prepare: async (x) => {
       const draft = await x.w.createdLeave(x.employee.id, leaveBody(LATER));
-      return (key) => x.call('DELETE', `/businesses/${draft.id}`, { ifMatch: draft.revision, key });
+      // 离职单的通用 DELETE 映射为 cancel，reason 必填（R2-T03 设计 §4 / §4 授权表 cancel 行；BE-4j）；断言不变
+      return (key) =>
+        x.call('DELETE', `/businesses/${draft.id}`, {
+          ifMatch: draft.revision,
+          body: { reason: 'F-195 事务内范围复核' },
+          key,
+        });
     },
   },
   {
