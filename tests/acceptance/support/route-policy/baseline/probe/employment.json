@@ -885,9 +885,9 @@
   },
   "PATCH /api/tenant/employment/exits/cancellations/:id": {
     "all": {
-      "code": "INTERNAL_ERROR",
-      "error": "5fec07b17b5b",
-      "status": 500
+      "code": "NOT_FOUND",
+      "error": "41f5c596716f",
+      "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
@@ -900,6 +900,7 @@
       "scope:data.scope.all:"
     ],
     "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.DimissionCancel@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
@@ -1460,9 +1461,9 @@
   },
   "POST /api/tenant/employment/exits/:id/cancel": {
     "all": {
-      "code": "INTERNAL_ERROR",
-      "error": "5fec07b17b5b",
-      "status": 500
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
@@ -1475,14 +1476,15 @@
       "scope:data.scope.all:"
     ],
     "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.DimissionCancel@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/exits/:id/restore": {
     "all": {
-      "code": "INTERNAL_ERROR",
-      "error": "5fec07b17b5b",
-      "status": 500
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
@@ -1495,6 +1497,7 @@
       "scope:data.scope.all:"
     ],
     "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.DimissionCancel@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },

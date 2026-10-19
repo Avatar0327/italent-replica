@@ -2228,6 +2228,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'packages/domain/src/employment/exit.ts#EXIT_BUTTONS',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/:id/cancel': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -2236,6 +2237,7 @@ export const GRAPH: Graph = {
     '#runExitCancel',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'packages/domain/src/employment/exit.ts#EXIT_BUTTONS',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/:id/restore': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -2244,6 +2246,7 @@ export const GRAPH: Graph = {
     '#requireExitBusiness',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'packages/domain/src/employment/exit.ts#EXIT_BUTTONS',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/batch': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
