@@ -108,6 +108,7 @@ async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow)
       employeeId: item.employeeId,
       recordId: item.partTimeRecordId!,
       endDate: item.effectiveDate,
+      itemId: item.id,
     });
     return;
   }

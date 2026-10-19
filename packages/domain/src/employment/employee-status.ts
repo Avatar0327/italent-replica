@@ -27,6 +27,20 @@ export const EMPLOYEE_STATUS_LABELS: Readonly<Record<EmployeeStatusCode, string>
   12: '非正式',
 };
 
+/**
+ * 终止任职业务（离职 → 离职 8；退休 → 退休 6，R2-T04 §4）的唯一判定：评审组退组、继任结束等“人退出”下游的订阅入口、
+ * 到期判断与后台复核都调用它，不在各订阅方各写一个 kind / 状态分支（DEC-431①）。
+ */
+export const TERMINATING_RECORD_STATUS = { leave: EMPLOYEE_STATUS.left, retirement: EMPLOYEE_STATUS.retired } as const;
+export const TERMINATING_EMPLOYEE_STATUSES: readonly EmployeeStatusCode[] = Object.values(TERMINATING_RECORD_STATUS);
+export const isTerminatingRecord = (kind: string, employeeStatus: number): boolean =>
+  Object.hasOwn(TERMINATING_RECORD_STATUS, kind) &&
+  TERMINATING_RECORD_STATUS[kind as keyof typeof TERMINATING_RECORD_STATUS] === employeeStatus;
+/** 员工状态口径（employees.ts：left / retired）是否已终止任职。 */
+export const isTerminatedEmployeeStatus = (status: string): boolean => status === 'left' || status === 'retired';
+/** 终止业务的中文名（审计 / 结束原因文案）。 */
+export const TERMINATING_KIND_LABELS = { leave: '离职', retirement: '退休' } as const;
+
 /** 入职状态可为空（未填写）；待入职视图把空也当作有效待入职（Q-M0-76）。 */
 export const ENTRY_STATUS = { normal: 0, cancelled: 1, postponed: 2 } as const;
 export type EntryStatusCode = (typeof ENTRY_STATUS)[keyof typeof ENTRY_STATUS];

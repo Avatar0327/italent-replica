@@ -167,7 +167,7 @@ async function createItems(
   transfer: ActivatedTransfer,
   { options }: StoredLinkage,
 ): Promise<LinkageItemRow[]> {
-  // TODO(需取证 #71)：结束兼职的失效日期口径（`21` AC-LNK-06 🟡）按“调动生效日 − 1 天”暂定。
+  // 结束兼职的失效日 = 调动实际生效日 − 1 天：#71、R2d（10-13 调动 → 10-12）、R2f 三次实测一致（`21` AC-LNK-06 🟢）。
   const partTimeEnd = addDays(transfer.effectiveDate, -1);
   const values = [
     ...dutyLines(options).map((line) => ({ ...line, partTimeRecordId: null, effectiveDate: transfer.effectiveDate })),

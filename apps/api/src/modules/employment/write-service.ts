@@ -110,8 +110,9 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
-  if (normalized.kind === 'leave' && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
-    throw new AppError('FORBIDDEN', '离职业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
+  // 离职与退休同门禁（R2-T04 §1.2）：不再有不带下游（预减 / 作废 / 合同 / 转交）的当场落地退休
+  if (isExitKind(normalized.kind) && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
+    throw new AppError('FORBIDDEN', '离职 / 退休业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
   // 经门禁的直接离职先存 approved；生效由 createExitApplication 在写完扩展行与 confirmed 阶段后调用 activateIfDue（§5.3）
   const gatedDirect = options.exitPass === EXIT_GATE_PASS && normalized.mode === 'direct';
   if (normalized.kind === 'transfer')
@@ -432,9 +433,9 @@ async function assertSuccessorSequence(
       AND t.start_date=${position.date}::date AND t.sort_order=${position.order}
   `),
   );
-  // 离职设计 §5.8：离职之后紧跟已落地的调动（未来直接调动 / 同日迟到落地、按 C-3 排在离职之后）放行，
-  // 落地后由 detachFutureTransfers 摘下该调动的时间轴行，离职照常生效
-  if (kind === 'leave' && successor?.kind === 'transfer') return;
+  // 离职设计 §5.8（退休同，R2-T04 §4.1）：离职 / 退休之后紧跟已落地的调动（未来直接调动 / 同日迟到落地、
+  // 按 C-3 排在其后）放行，落地后由 detachFutureTransfers 摘下该调动的时间轴行，离职 / 退休照常生效
+  if (isExitKind(kind) && successor?.kind === 'transfer') return;
   const reason = successor && sequenceViolation(kind, successor.kind);
   if (reason) {
     throw new AppError('CONFLICT', '任职业务前后顺序不合法', {

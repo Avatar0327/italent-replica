@@ -25,11 +25,11 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=ANY(${array([...ids])})
-        AND p.kind IN ('transfer','leave') AND s.state NOT IN ('deleted','disapproved','voided')
+        AND p.kind IN ('transfer','leave','retirement') AND s.state NOT IN ('deleted','disapproved','voided')
         AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id
           AND o.business_id=b.id AND o.event_type='employment.transfer.linked')
         AND NOT EXISTS (SELECT 1 FROM transfer_linkage_runs r WHERE r.tenant_id=b.tenant_id
-          AND r.business_id=b.id AND p.kind='leave')
+          AND r.business_id=b.id AND p.kind IN ('leave','retirement'))
     `),
     );
     const size = ids.size;
@@ -125,5 +125,6 @@ export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, busin
     WHERE b.tenant_id=${ctx.tenantId} AND b.id=${businessId}::uuid
   `),
   );
-  if (row?.kind === 'transfer' || row?.kind === 'leave') await lockTransferParticipants(tx, ctx, row.employeeId);
+  if (row?.kind === 'transfer' || row?.kind === 'leave' || row?.kind === 'retirement')
+    await lockTransferParticipants(tx, ctx, row.employeeId);
 }

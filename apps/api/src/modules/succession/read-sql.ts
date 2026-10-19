@@ -90,7 +90,7 @@ export async function loadPeople(
 }
 
 /**
- * 职位现任（asOf 当日时间轴上的主职任职，人员状态按 §4.1）；兼职来源待 R2-T05，当前为空集（设计 P2）。
+ * 职位现任（asOf 当日时间轴上的主职任职，人员状态按 §4.1）；兼职现任另走 riskPartTimeIncumbents 端口（R2-T05 PT-6），这里只取主职。
  * 同职位按入职先后稳定排序。返回 职位 ID → 员工 ID 列表。
  */
 export async function loadIncumbentIds(
