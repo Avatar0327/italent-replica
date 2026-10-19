@@ -1101,7 +1101,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
   // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
-  // D-1～D-10 与周期边界由 updateAddRequest 判，越界当次拒绝不留版本；linkage 两字段同新建
+  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；linkage 两字段同新建
   'PATCH /part-time-requests/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
