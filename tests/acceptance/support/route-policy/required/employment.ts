@@ -516,6 +516,32 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
+// ---- R2-T03 B4 撤销离职（exit-routes.ts registerExitCancel / runExitCancel）--------------------------------------------
+const EXIT_CANCEL_BUTTON =
+  "await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true })";
+const EXIT_CANCEL_READ = "const ctx = await readContext(c, deps, 'object.update', revision(c))";
+function exitCancelEntry(method: string, path: string): Obligation[] {
+  const call = (text: string) => at(EXIT, method, path, text);
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [call(EXIT_CANCEL_READ), READ, call(EXIT_CANCEL_BUTTON), WRITE_OBJECT],
+    ),
+    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [call(EXIT_CANCEL_BUTTON), WRITE_BUTTON]),
+  ];
+}
+function exitCancelCommand(): Obligation[] {
+  const call = (text: string) => at(EXIT, 'POST', '/exits/:id/cancel', text);
+  const run = fn(EXIT, 'runExitCancel', "guard: exitCommandGuard(deps, ctx, 'cancel'");
+  return [
+    ...exitCancelEntry('POST', '/exits/:id/cancel'),
+    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [run, EXIT_GUARD, EXIT_PERMISSION, WRITE_BUTTON]),
+    businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
+    linkage(fn(EXIT, 'runExitCancel', 'body: await cancelExit(tx, context, id, input)')),
+  ];
+}
+
 // PT-4c 兼职申请新建（POST /part-time-requests）：requestType = add 走 requirePartTimeCreateAccess；
 // extend / end 走 createDateRequestRoute 的
 // requirePartTimeWriteAccess（同编辑兼职：目标兼职与其兼职部门写入口径范围 → 对象更新权 + 字段写权 + 延长 / 结束按钮）
@@ -1820,6 +1846,18 @@ export const EMPLOYMENT: RequiredTable = {
       at(PART_TIME_REQUEST, 'GET', '/part-time-requests/:id', "const ctx = await readPageContext(c, deps, 'detail')"),
     ),
   ],
+  // PT-5 兼职六视图：readPageContext(list) + 筛选字段须可见（requireViewableFilters，否则 403）；范围谓词在 queries.ts 分页前过滤
+  'GET /api/tenant/employment/part-times': [
+    recordView(at(PART_TIME, 'GET', '/part-times', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(PART_TIME, 'GET', '/part-times', 'requireViewableFilters('),
+        fn(PART_TIME, 'requireViewableFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
   'GET /api/tenant/employment/employees/:id/part-times': [
     recordView(
       at(PART_TIME, 'GET', '/employees/:id/part-times', "const ctx = await readPageContext(c, deps, 'detail')"),
@@ -2581,6 +2619,33 @@ export const EMPLOYMENT: RequiredTable = {
     'Employment.DimissionApproval',
     'registerExitChanges',
   ),
+  // ---- R2-T03 B4 撤销离职 ----
+  'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
+  'POST /api/tenant/employment/exits/:id/restore': [
+    ...exitCancelEntry('POST', '/exits/:id/restore'),
+    businessWrite(at(EXIT, 'POST', '/exits/:id/restore', 'await authorizeBusinessWrite(deps, ctx, id)')),
+  ],
+  'PATCH /api/tenant/employment/exits/cancellations/:id': [
+    ...exitCancelEntry('PATCH', '/exits/cancellations/:id'),
+    ob(
+      `btn:${RECORD}#Employment.DimissionCancel@detail`,
+      [],
+      [
+        at(EXIT, 'PATCH', '/exits/cancellations/:id', "guard: exitCommandGuard(deps, ctx, 'cancel'"),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.exitCancellation',
+      [],
+      [
+        at(EXIT, 'PATCH', '/exits/cancellations/:id', 'await requireEmployeeInScope(tx, ctx, found.employeeId)'),
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+  ],
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),

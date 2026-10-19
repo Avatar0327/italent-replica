@@ -148,6 +148,7 @@ export const m = {
   /** 列表列名与档案字段名不同时以原站列名为准。 */
   columnLabels: { workDate: '首次参加工作日期' } as Record<string, string>,
   kinds: {
+    part_time: '兼职',
     hire: '入职',
     rehire: '重聘入职',
     retire_rehire: '退休返聘',

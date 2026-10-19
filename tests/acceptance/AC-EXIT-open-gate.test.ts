@@ -219,27 +219,3 @@ describe('AC-DM-20 失败待办与重试端到端（B-02a、B-09、EXIT_APPLICAT
     expect(await x.todos()).toEqual([]);
   });
 });
-
-describe('AC-DM-32 B4 前撤销仍不可用（§18.1 末段）', () => {
-  it('approved 离职的通用 DELETE / revoke 409 EXIT_OPERATION_NOT_AVAILABLE，无写入；已生效的同样', async () => {
-    const x = await world('open-cancel-closed');
-    const direct = await x.createdLeave(x.employee.id, leaveBody('2026-10-20', 'direct'));
-    const before = await x.stateOf(x.employee.id);
-    const removed = await x.session.request('DELETE', `/businesses/${direct.id}`, { ifMatch: direct.revision });
-    expect(await x.reason(removed)).toMatchObject({ status: 409, reason: 'EXIT_OPERATION_NOT_AVAILABLE' });
-    const revoked = await x.session.request('POST', `/businesses/${direct.id}/revoke`, {
-      ifMatch: direct.revision,
-      body: {},
-    });
-    expect(await x.reason(revoked)).toMatchObject({ status: 409, reason: 'EXIT_OPERATION_NOT_AVAILABLE' });
-    expect(await x.stateOf(x.employee.id)).toEqual(before);
-    expect(await x.runScheduler('2026-10-21T01:00:00Z')).toMatchObject({ activated: [direct.id] });
-    const effective = await x.business(direct.id);
-    const afterEffective = await x.stateOf(x.employee.id);
-    const removedEffective = await x.session.request('DELETE', `/businesses/${direct.id}`, {
-      ifMatch: effective.revision,
-    });
-    expect(await x.reason(removedEffective)).toMatchObject({ status: 409, reason: 'EXIT_OPERATION_NOT_AVAILABLE' });
-    expect(await x.stateOf(x.employee.id)).toEqual(afterEffective);
-  });
-});

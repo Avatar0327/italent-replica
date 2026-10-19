@@ -125,6 +125,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS',
   ],
   'packages/domain/src/approval/presets.ts#partTimePreset': [
+    '#PART_TIME_EDITABLE',
     '#PART_TIME_FORM',
     '#PART_TIME_NODES',
     '#draft',

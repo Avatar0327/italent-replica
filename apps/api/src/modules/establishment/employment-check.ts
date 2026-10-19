@@ -76,12 +76,46 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
   return (await employmentEstablishmentAssessment(tx, ctx, target)) === 'strict';
 }
 
+/** 一处超编的明细（离职撤销的 DEC-258 确认与审计用，设计 §6-3 / §6B.3 B-77）：哪个编制对象、实际峰值、上限。 */
+export interface CapacityExcess {
+  readonly capacityId: string;
+  readonly orgId: string;
+  readonly positionId: string | null;
+  /** 细分岗位没有匹配、按“拒绝”处理时没有峰值 / 上限。 */
+  readonly peak: number | null;
+  readonly limit: number | null;
+  readonly strict: boolean;
+}
+
 export async function employmentEstablishmentAssessment(
   tx: Tx,
   ctx: EmploymentContext,
   target: ActivationTarget,
 ): Promise<EstablishmentAssessment> {
-  if (!CAPACITY_KINDS.includes(target.kind) || !target.departmentId) return 'none';
+  return (await evaluateEstablishment(tx, ctx, target, false)).assessment;
+}
+
+/**
+ * 同一判定的明细版（稳定的编制评估端口）：不提前返回，逐编制收集全部超编的峰值 / 上限；assessment 与单项版结果一致。
+ * 单项版（定时生效、保存、删除恢复）仍在第一处严格超编就返回，行为不变。
+ */
+export async function employmentEstablishmentExcesses(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+): Promise<{ assessment: EstablishmentAssessment; excesses: CapacityExcess[] }> {
+  return evaluateEstablishment(tx, ctx, target, true);
+}
+
+async function evaluateEstablishment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  collect: boolean,
+): Promise<{ assessment: EstablishmentAssessment; excesses: CapacityExcess[] }> {
+  const excesses: CapacityExcess[] = [];
+  const none = { assessment: 'none' as const, excesses };
+  if (!CAPACITY_KINDS.includes(target.kind) || !target.departmentId) return none;
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
   const previous = await findPredecessor(tx, ctx.tenantId, target.employeeId, target.effectiveDate);
@@ -100,8 +134,7 @@ export async function employmentEstablishmentAssessment(
         : (target.fields?.employType ?? previous?.fields.employType ?? 'internal'),
   };
   await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
-  if (!target.occupancyOnly && fields.employType === 'external') return 'none';
-  let warning = false;
+  if (!target.occupancyOnly && fields.employType === 'external') return none;
   const transfer = {
     ...target,
     targetOrgId: target.departmentId,
@@ -110,48 +143,73 @@ export async function employmentEstablishmentAssessment(
   // 周期取业务生效日（迟到执行已按 DEC-186 调整）；容量读取允许采用 HR 当天已生效的调整。
   const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
   for (const capacity of await targetCapacities(tx, ctx, transfer, capacityAsOf)) {
-    const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
-    if (!target.occupancyOnly && !matchesOccupancy(fields, scheme.occupancyRanges)) continue;
-    const windows = await membershipWindows(
-      tx,
-      ctx.tenantId,
-      capacity.orgId,
-      target.effectiveDate,
-      capacity.periodEnd,
-      scheme.excludedOrgIds,
-    );
-    const ids = [...new Set(windows.flatMap((window) => window.orgIds))];
-    const members = await projectedMembers(
-      tx,
-      ctx,
-      { ...target, fields },
-      capacity.periodStart,
-      capacity.periodEnd,
-      ids,
-      windows,
-    );
-    const count = (inclusive: boolean, positionId?: string) =>
-      members(
-        (person) =>
-          (inclusive ? ids.includes(String(person.departmentId)) : person.departmentId === capacity.orgId) &&
-          (!positionId || person.positionId === positionId) &&
-          matchesOccupancy(person, scheme.occupancyRanges),
-      );
-    const exceeds = (local: number | null, inclusive: number | null, positionId?: string) =>
-      (capacity.orgId === target.departmentId && local !== null && count(false, positionId) > local) ||
-      (inclusive !== null && count(true, positionId) > inclusive);
-    const over = exceeds(capacity.localCapacity, capacity.inclusiveCapacity);
-    if (over && capacity.strictControl) return 'strict';
-    warning ||= over;
-    if (scheme.subdivision === 'position') {
-      const part = capacity.subdivisions.find((item) => item.positionId === target.positionId);
-      if (!part && scheme.unmatchedPolicy === 'reject') return 'strict';
-      const partOver = !!part && exceeds(part.localCapacity, part.inclusiveCapacity, part.positionId);
-      if (partOver && capacity.strictControl) return 'strict';
-      warning ||= partOver;
-    }
+    const found = await capacityExcesses(tx, ctx, { ...target, fields }, capacity, capacityAsOf);
+    excesses.push(...found);
+    // 单项版：第一处严格超编就返回（与引入明细版之前一致）；明细版继续收集
+    if (!collect && found.some((item) => item.strict)) return { assessment: 'strict', excesses };
   }
-  return warning ? 'warning' : 'none';
+  const assessment = excesses.some((item) => item.strict) ? 'strict' : excesses.length ? 'warning' : 'none';
+  return { assessment, excesses };
+}
+
+/** 一个编制对象上的超编（本级 / 含下级、岗位细分）；没有超编返回空。 */
+async function capacityExcesses(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget & { readonly fields: Partial<PresetFields> },
+  capacity: Awaited<ReturnType<typeof targetCapacities>>[number],
+  capacityAsOf: string,
+): Promise<CapacityExcess[]> {
+  const { fields } = target;
+  const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
+  if (!target.occupancyOnly && !matchesOccupancy(fields, scheme.occupancyRanges)) return [];
+  const windows = await membershipWindows(
+    tx,
+    ctx.tenantId,
+    capacity.orgId,
+    target.effectiveDate,
+    capacity.periodEnd,
+    scheme.excludedOrgIds,
+  );
+  const ids = [...new Set(windows.flatMap((window) => window.orgIds))];
+  const members = await projectedMembers(tx, ctx, target, capacity.periodStart, capacity.periodEnd, ids, windows);
+  const count = (inclusive: boolean, positionId?: string) =>
+    members(
+      (person) =>
+        (inclusive ? ids.includes(String(person.departmentId)) : person.departmentId === capacity.orgId) &&
+        (!positionId || person.positionId === positionId) &&
+        matchesOccupancy(person, scheme.occupancyRanges),
+    );
+  /** 超编则返回实际峰值与被超过的上限（本级优先，再看含下级）。 */
+  const excess = (local: number | null, inclusive: number | null, positionId?: string) => {
+    if (capacity.orgId === target.departmentId && local !== null) {
+      const peak = count(false, positionId);
+      if (peak > local) return { peak, limit: local };
+    }
+    if (inclusive !== null) {
+      const peak = count(true, positionId);
+      if (peak > inclusive) return { peak, limit: inclusive };
+    }
+    return null;
+  };
+  const record = (positionId: string | null, found: { peak: number; limit: number } | null, strict: boolean) => ({
+    capacityId: capacity.id,
+    orgId: capacity.orgId,
+    positionId,
+    peak: found?.peak ?? null,
+    limit: found?.limit ?? null,
+    strict,
+  });
+  const result: CapacityExcess[] = [];
+  const over = excess(capacity.localCapacity, capacity.inclusiveCapacity);
+  if (over) result.push(record(null, over, capacity.strictControl));
+  if (scheme.subdivision !== 'position') return result;
+  const part = capacity.subdivisions.find((item) => item.positionId === target.positionId);
+  // 细分岗位没有匹配且方案要求拒绝：一律按严格处理（不看 strictControl）
+  if (!part && scheme.unmatchedPolicy === 'reject') return [...result, record(target.positionId, null, true)];
+  const partOver = part ? excess(part.localCapacity, part.inclusiveCapacity, part.positionId) : null;
+  if (part && partOver) result.push(record(part.positionId, partOver, capacity.strictControl));
+  return result;
 }
 
 /**
