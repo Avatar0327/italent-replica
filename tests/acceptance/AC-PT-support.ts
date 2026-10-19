@@ -76,6 +76,8 @@ export interface PartTimeRequestSeed {
   readonly departmentId: string;
   readonly startDate?: string;
   readonly endDate?: string | null;
+  /** extend / end：创建申请时目标兼职的原定结束日期（PT-5 申请历史显示）。 */
+  readonly originalEndDate?: string | null;
   readonly serviceType?: string;
   readonly state?: string;
   /** state = effective 的事件必须带落地的兼职记录（CHECK part_time_request_events_record）。 */
@@ -92,9 +94,10 @@ export async function insertPartTimeRequest(tx: Tx, seed: PartTimeRequestSeed): 
       initiator_user_id)
     VALUES (${id}, ${tenantId}, ${employeeId}, ${type}, ${seed.recordId ?? null}, 'hr', ${seed.initiatorUserId})`);
   await tx.execute(sql`INSERT INTO part_time_request_versions(id, tenant_id, employee_id, request_id, version_no,
-      command_id, service_type, department_id, start_date, end_date, base_term_no)
+      command_id, service_type, department_id, start_date, end_date, original_end_date, base_term_no)
     VALUES (${version}, ${tenantId}, ${employeeId}, ${id}, 1, ${`pt-request-${id}`}, ${seed.serviceType ?? 'part_time'},
-      ${seed.departmentId}, ${seed.startDate ?? '2026-09-01'}, ${seed.endDate ?? null}, ${type === 'add' ? null : 1})`);
+      ${seed.departmentId}, ${seed.startDate ?? '2026-09-01'}, ${seed.endDate ?? null}, ${seed.originalEndDate ?? null},
+      ${type === 'add' ? null : 1})`);
   const state = seed.state ?? 'in_review';
   await tx.execute(sql`INSERT INTO part_time_request_events(tenant_id, employee_id, request_id, version_id, state,
       event_no, command_id, reason, record_id)

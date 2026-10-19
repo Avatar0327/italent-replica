@@ -1,21 +1,31 @@
 /**
  * 兼职路由（R2-T05 BE-7 PT-3b / PT-3c，设计 §4.1 / §6.3 / §7.2 / §13.1）：新增预览、直接新增、员工兼职列表、单条详情，
- * 以及编辑兼职（PATCH）与批量结束；六视图由后续批次开放（此处不注册，404），申请入口见 request-routes.ts。写入只调内部服务
+ * 以及编辑兼职（PATCH）与批量结束，PT-5 起加六视图（GET part-times?view=…）与详情的期限链 / 申请历史；申请入口见 request-routes.ts。写入只调内部服务
  * createPartTime / editPartTime / batchEndPartTimes，路由层不另写校验或写库逻辑。
  * 新增请求体 { partTimeType, startDate, endDate?, fields, customFields? }；回执 = 兼职记录读形状（开始日期沿用 effectiveDate 编码）。
  * 新建对象没有 revision，不要求 If-Match；编辑带 If-Match（底层业务头 revision）；批量结束不带 If-Match，逐条 revision。
  * 结果未知时以同一 Idempotency-Key 重放。
  */
 import { withTenant } from '@italent/db';
-import { PART_TIME_BUTTONS, PART_TIME_SERVICE_TYPES, partTimePermissionFields, tenantLocalDate } from '@italent/domain';
-import type { Hono } from 'hono';
+import {
+  PART_TIME_BUTTONS,
+  PART_TIME_EXPIRING_DAYS,
+  PART_TIME_SERVICE_TYPES,
+  PART_TIME_VIEWS,
+  partTimePermissionFields,
+  tenantLocalDate,
+} from '@italent/domain';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../../authorization.js';
 import { AppError } from '../../../errors.js';
 import type { TenantRouteDeps } from '../../../routes.js';
 import type { TenantEnv } from '../../../tenant-context.js';
 import { validIsoDate } from '../../org/read-model.js';
+import { getModuleViewableFields } from '../../permission/module-access.js';
 import {
+  EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
   jsonBody,
   pageQuery,
   readContext,
@@ -28,9 +38,17 @@ import {
 } from '../context.js';
 import type { EmploymentContext } from '../types.js';
 import { getEmployee } from '../employees.js';
+import { resolveDepartmentIds } from '../exit-queries.js';
 import { customFields, normalizedUuid, presetFieldsSchema } from '../fields.js';
 import { parse } from '../entry-routes.js';
-import { listEmployeePartTimes, loadPartTime, partTimeNotFound } from './read.js';
+import {
+  loadPartTimeHistory,
+  listPartTimeView,
+  type PartTimeHistory,
+  type PartTimeViewFilter,
+  type PartTimeViewItem,
+} from './queries.js';
+import { listEmployeePartTimes, loadPartTime, partTimeNotFound, partTimeToday } from './read.js';
 import {
   partTimeCreateGuard,
   partTimeWriteGuard,
@@ -276,13 +294,143 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       hasDataPermission: ctx.scope?.hasDataPermission ?? true,
     });
   });
-  // 兼职详情（B32 当前字段；期限链与申请历史随 PT-5）：范围外与不存在同一个 404
+  // 六视图（B25～B30，§6.1）：view 缺失 / 不合法 400，不回退到 all；readPageContext(list)；筛选用到的字段不可查看 403；分页前按 DEC-177
+  // 过滤，total 与本页同一份结果；姓名 / 工号按人员对象、其余按任职记录对象的可见字段裁剪
+  router.get('/part-times', async (c) => {
+    const ctx = await readPageContext(c, deps, 'list');
+    const { view, days, departmentId, includeChildren, ...rest } = parseViewQuery(c);
+    const page = pageQuery(c);
+    const filter: PartTimeViewFilter = rest;
+    const show = await viewableIn(deps, ctx);
+    requireViewableFilters({ ...filter, ...(departmentId ? { departmentIds: [departmentId] } : {}) }, show);
+    const today = partTimeToday(ctx);
+    const { items, total } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const departmentIds = departmentId
+        ? await resolveDepartmentIds(tx, ctx.tenantId, departmentId, includeChildren !== 'false', today)
+        : undefined;
+      const scoped = { ...filter, ...(departmentIds ? { departmentIds } : {}) };
+      return listPartTimeView(tx, ctx, { view, days: days ?? PART_TIME_EXPIRING_DAYS.default, page, filter: scoped });
+    });
+    return c.json({
+      items: await trimViewItems(deps, ctx, items, show),
+      total,
+      page: page.page,
+      pageSize: page.pageSize,
+      hasDataPermission: ctx.scope?.hasDataPermission ?? true,
+    });
+  });
+  // 兼职详情（B32）：当前字段 + 期限链 + 申请历史。范围外与不存在同一个 404；期限链随结束日期字段权，申请历史逐条按 §6.2 可见与字段权裁剪
   router.get('/part-times/:recordId', async (c) => {
     const recordId = uuidParam(c, 'recordId');
     const ctx = await readPageContext(c, deps, 'detail');
-    const record = await withTenant(deps.db, ctx.tenantId, (tx) => loadPartTime(tx, ctx, recordId));
-    if (!record) throw partTimeNotFound();
-    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: record.employeeId });
-    return c.json(await trimEmploymentResponse(deps, ctx, record));
+    const found = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const record = await loadPartTime(tx, ctx, recordId);
+      return record && { record, history: await loadPartTimeHistory(tx, ctx, recordId) };
+    });
+    if (!found) throw partTimeNotFound();
+    await requirePermission(deps.authorize, {
+      ...ctx,
+      action: 'tenant.employment.read',
+      resource: found.record.employeeId,
+    });
+    return c.json({
+      ...((await trimEmploymentResponse(deps, ctx, found.record)) as object),
+      ...(await trimHistory(deps, ctx, found.history)),
+    });
   });
+}
+
+// ---- 六视图的查询参数、筛选字段权与响应裁剪 ---------------------------------------------------------------------------
+
+const enabledQuery = z.enum(['true', 'false']).optional();
+const viewQuery = z.object({
+  view: z.enum(PART_TIME_VIEWS),
+  days: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(PART_TIME_EXPIRING_DAYS.min).max(PART_TIME_EXPIRING_DAYS.max))
+    .optional(),
+  keyword: z.string().trim().min(1).max(100).optional(),
+  departmentId: normalizedUuid.optional(),
+  includeChildren: enabledQuery,
+  serviceType: z.enum(PART_TIME_SERVICE_TYPES).optional(),
+  startFrom: date.optional(),
+  startTo: date.optional(),
+  endFrom: date.optional(),
+  endTo: date.optional(),
+  directManagerId: normalizedUuid.optional(),
+});
+const VIEW_QUERY_KEYS = Object.keys(viewQuery.shape);
+
+/** 日期区间首尾颠倒按非法处理（400）。 */
+function parseViewQuery(c: Context<TenantEnv>) {
+  const query = parse(viewQuery, Object.fromEntries(VIEW_QUERY_KEYS.map((key) => [key, c.req.query(key)])));
+  if (query.startFrom && query.startTo && query.startFrom > query.startTo)
+    throw new AppError('VALIDATION_FAILED', '开始日期区间的起止日期颠倒');
+  if (query.endFrom && query.endTo && query.endFrom > query.endTo)
+    throw new AppError('VALIDATION_FAILED', '结束日期区间的起止日期颠倒');
+  return query;
+}
+
+/** 姓名 / 工号属人员对象，其余按任职记录对象；无字段权限配置 = 全可见（同离职 / 实习视图）。 */
+async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext) {
+  const [employee, employment] = await Promise.all([
+    getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT),
+    getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),
+  ]);
+  const has = (set: ReadonlySet<string> | undefined) => (field: string) => set === undefined || set.has(field);
+  return { employee: has(employee), employment: has(employment) };
+}
+type Viewable = Awaited<ReturnType<typeof viewableIn>>;
+
+/** 筛选 → 依赖的字段：按它筛选等于探测它的值，须先能看到（403，不让筛选成为探针）。 */
+const FILTER_FIELDS: Readonly<Record<keyof PartTimeViewFilter, { employee?: string[]; employment?: string[] }>> = {
+  keyword: { employee: ['name', 'code'] },
+  departmentIds: { employment: ['departmentId'] },
+  serviceType: { employment: ['serviceType'] },
+  startFrom: { employment: ['effectiveDate'] },
+  startTo: { employment: ['effectiveDate'] },
+  endFrom: { employment: ['endDate'] },
+  endTo: { employment: ['endDate'] },
+  directManagerId: { employment: ['directManagerId'] },
+};
+
+function requireViewableFilters(filter: PartTimeViewFilter, show: Viewable) {
+  const used = (Object.keys(FILTER_FIELDS) as (keyof PartTimeViewFilter)[]).filter((key) => filter[key] !== undefined);
+  const hidden = used.some(
+    (key) =>
+      !(FILTER_FIELDS[key].employee ?? []).every(show.employee) ||
+      !(FILTER_FIELDS[key].employment ?? []).every(show.employment),
+  );
+  if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看');
+}
+
+/** 行：任职字段按任职记录、姓名 / 工号按人员对象、主职部门按任职记录的部门字段裁剪（同类位置统一在这里）。 */
+async function trimViewItems(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  items: readonly PartTimeViewItem[],
+  show: Viewable,
+) {
+  const records = items.map(({ employee: _employee, primaryDepartmentId: _primary, ...record }) => record);
+  const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
+  return trimmed.map((record, index) => {
+    const { employee, primaryDepartmentId } = items[index]!;
+    const person = Object.fromEntries(Object.entries(employee).filter(([field]) => show.employee(field)));
+    return {
+      ...record,
+      ...(Object.keys(person).length ? { employee: person } : {}),
+      ...(primaryDepartmentId !== undefined && show.employment('departmentId') ? { primaryDepartmentId } : {}),
+    };
+  });
+}
+
+/** 期限链记录结束日期的变更历史，跟随结束日期字段权（无权整个键缺席）；申请历史逐条经 trimEmploymentResponse。 */
+async function trimHistory(deps: TenantRouteDeps, ctx: EmploymentContext, history: PartTimeHistory) {
+  const show = await viewableIn(deps, ctx);
+  return {
+    ...(show.employment('endDate') ? { terms: history.terms } : {}),
+    requests: await trimEmploymentResponse(deps, ctx, history.requests),
+  };
 }

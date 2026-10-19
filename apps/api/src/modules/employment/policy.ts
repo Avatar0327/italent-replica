@@ -1000,7 +1000,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
-  // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b 兼职新增与读取入口（R2-T05 §4.1 / §7.2；编辑 / 批量结束 / 视图 / 申请未注册）----
+  // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b / PT-5 兼职新增与读取入口（R2-T05 §4.1 / §6.1 / §7.2；六视图自 PT-5 开放）----
   // 预览（只读 POST）：readContext(object.create, resource=id) 人员范围 404；body 严格（400）；实际写入字段的创建权；
   // Employment.PartTime / PartTimeApproval 任一（都无 403）；兼职部门 requireEmploymentScope（404）；与新增同一套校验后带出默认值
   'POST /employees/:id/part-times/preview': any(
@@ -1182,6 +1182,19 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.partTimeRequest'),
     ...byId,
   }),
+  // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，
+  // 不回退到 all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType /
+  // startFrom / startTo / endFrom / endTo / directManagerId 严格校验 400；readPageContext(list)，筛选用到的字段不可查看
+  // 403「筛选字段不可查看」；分页前 employmentVisibilitySql（DEC-177 两项并集）过滤，范围为空 → 空集，total 与本页同一份结果；
+  // 任职字段按任职记录、姓名 / 工号按人员对象可见字段裁剪（无权缺席）
+  'GET /part-times': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.partTimeViews'),
+  }),
   // 员工页签：readPageContext(detail) + tenant.employment.read；按 DEC-177 可见谓词分页，一条都不可见且员工不在范围内 → 404「员工不存在」
   'GET /employees/:id/part-times': object({
     object: EMPLOYMENT,
@@ -1191,7 +1204,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: RESPONSE,
     ...byId,
   }),
-  // 兼职详情：loadPartTime（DEC-177 可见）→ 404「兼职记录不存在」→ tenant.employment.read（resource=员工）
+  // 兼职详情（当前字段 + 期限链 + 申请历史）：loadPartTime（DEC-177 可见）→ 404「兼职记录不存在」→ tenant.employment.read（resource=员工）；
+  // 期限链随结束日期字段权，申请历史逐条按 §6.2 可见并经 trimEmploymentResponse 裁剪
   'GET /part-times/:recordId': object({
     object: EMPLOYMENT,
     operation: 'view',
