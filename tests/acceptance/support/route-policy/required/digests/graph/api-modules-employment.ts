@@ -2736,20 +2736,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator': [
     'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
   ],
-  'apps/api/src/modules/employment/part-time/date-request.ts#assertExtendsFurther': [
-    '#conflict',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
-  ],
   'apps/api/src/modules/employment/part-time/date-request.ts#checkDateRequest': [
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
-    '#assertExtendsFurther',
+    '#checkExtendEnd',
     '#reject',
     'apps/api/src/modules/employment/part-time/validation.ts#dateRequestStateViolation',
     'apps/api/src/modules/employment/part-time/validation.ts#endDateViolation',
     'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
     'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/date-request.ts#checkExtendEnd': [
+    '#conflict',
+    '#reject',
+    'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_DEPARTMENT': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
@@ -3622,7 +3625,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStart': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#endDateViolation': [
+    '#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#normalizeBatchEnd': [

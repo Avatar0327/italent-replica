@@ -168,15 +168,15 @@ describe('F-247：延长填更早结束日 = 可确认警告，审批通过后�
     expect(await w.writes()).toEqual(before);
   });
 
-  it('E-3 只在真正延长时校验：兼职部门自 11-20 起停用，缩短到 10-15 放行，延长到 11-20 仍拒绝', async () => {
+  it('E-3 只在真正延长时校验：兼职部门自 10-10 起已停用（造数），缩短到 10-15 放行，延长到 11-20 仍拒绝', async () => {
     const w = await world('shorten-org');
     const lone = await w.org('缩短停用部门');
-    const record = await w.seedRecord({ departmentId: lone, endDate: '2026-10-31' });
     await disableOrg(w, lone, '2026-10-10');
-    expect((await w.extend(record, '2026-10-15')).warnings).toEqual([NOT_EXTENDED.reason]);
+    const record = await w.seedRecord({ departmentId: lone, endDate: '2026-10-31' });
     expect(await w.rejected(() => w.extend(record, '2026-11-20'))).toMatchObject({
       reason: 'EMPLOYMENT_DEPARTMENT_DISABLED',
     });
+    expect((await w.extend(record, '2026-10-15')).warnings).toEqual([NOT_EXTENDED.reason]);
   });
 
   it('DEC-624 shortenOnly：主职审批中离职且计划日早于开始日（B-3），缩短放行（落地也不被作废）、延长仍拒绝', async () => {
@@ -311,7 +311,7 @@ describe('PB-33 / E-1～E-6：创建时的拒绝（当次无任何写入）', ()
   });
 });
 
-describe('审批编辑（延长申请预置不可编辑，租户改成可编辑后同样受校验；拒绝形态同 §4.3A 末）', () => {
+describe('审批编辑（夹具把四个节点统一改成指定编辑模式；预置本身的开放见 AC-PT-F249；拒绝形态同 §4.3A 末）', () => {
   async function scene(editMode: 'separate' | 'with_approve', options: Parameters<typeof requestWorld>[2] = {}) {
     const w = await world(`edit-${editMode}`, { editMode, ...options });
     const record = await w.seedRecord({ endDate: '2026-10-31' });
