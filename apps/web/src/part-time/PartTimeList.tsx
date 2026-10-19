@@ -7,6 +7,7 @@ import { allowedFilters, listPath, views, type Filters, type ListResult, type Vi
 import { PartTimeTable } from './PartTimeTable.js';
 import { PartTimeDetail, type Selection } from './PartTimeDetail.js';
 import { useRead } from './useRead.js';
+import { RequestEntries, NewRequestButton } from './RequestEntries.js';
 import { m } from './messages.js';
 function useList() {
   const [params, setParams] = useSearchParams();
@@ -62,7 +63,7 @@ export function PartTimeList() {
     switchView,
   } = state;
   return (
-    <>
+    <RequestEntries refresh={result.reload} saved={(id) => select({ id, request: true })}>
       <h1>{m.title}</h1>
       <nav className="part-time-views" aria-label={m.title}>
         {views.map((item) => (
@@ -101,7 +102,7 @@ export function PartTimeList() {
           onClose={() => select(undefined)}
         />
       )}
-    </>
+    </RequestEntries>
   );
 }
 
@@ -110,6 +111,7 @@ function ListCard({ state }: { state: State }) {
   return (
     <section className="part-time-card">
       <div className="part-time-toolbar">
+        <NewRequestButton />
         <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
         <Button
           type="text"
