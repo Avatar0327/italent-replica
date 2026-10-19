@@ -1,4 +1,8 @@
 /** DEC-442①：共享按钮契约与领域目录一致；类型断言由 pnpm typecheck 执行。 */
+import { createApp, routeManifest } from '@italent/api';
+import type { Db } from '@italent/db';
+import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
+import { catalogButtonMismatches } from './support/route-policy/catalog-buttons.js';
 import type { ButtonLevel, ButtonRef, ManifestRoute, TenantRouteDeps } from '@italent/api';
 import { BUTTON_LEVELS, type ButtonLevel as DomainButtonLevel, EVALUATION_OBJECTS } from '@italent/domain';
 import { describe, expect, expectTypeOf, it } from 'vitest';
@@ -157,5 +161,24 @@ describe('AC-PRM-FW-02 / AC-PRM-FW-08 DEC-442① 按钮层级契约', () => {
     expect(checkEvidence(table, { read: broken, registry, branch: false }).map((f) => f.code)).toEqual(
       expect.arrayContaining(['EVIDENCE_ANCHOR', 'EVIDENCE_STALE']),
     );
+  });
+});
+
+// DEC-642：运行时、声明、冻结基准可以同时写错；另与真实按钮目录核对，不能以三者一致代替目录授权。
+describe('DEC-642 策略按钮层级与真实目录一致', () => {
+  it('全部已挂载路由（含动态按钮、逐行与可选分支）都按目录层级声明', () => {
+    const routes = routeManifest(createApp({ db: {} as Db, authorize: async () => false })).declared;
+    const findings = routes.flatMap((entry) => catalogButtonMismatches(entry.policy).map((f) => `${entry.key}: ${f}`));
+    expect(findings).toEqual([]);
+  });
+
+  it('能判红 #447 的错位，正确的 list 声明通过', () => {
+    const object = 'TenantBase.EmploymentRecord';
+    const code = 'Employment.PartTimeBatchEnd';
+    expect(objectCatalog.get(object)?.buttons.find((b) => b.code === code)?.level).toBe('list');
+    expect(catalogButtonMismatches(buttonOnly(object, button(code, 'detail'), FORBIDDEN))).toEqual([
+      `${object}#${code}: 声明 detail，目录 list`,
+    ]);
+    expect(catalogButtonMismatches(buttonOnly(object, button(code, 'list'), FORBIDDEN))).toEqual([]);
   });
 });

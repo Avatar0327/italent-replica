@@ -106,6 +106,13 @@ function employeeFields() {
     pinyinInitials: text('pinyin_initials'),
     lastNamePinyin: text('last_name_pinyin'),
     firstNamePinyin: text('first_name_pinyin'),
+    // R2-T04 §2.3 退休规则相关字段
+    expectedRetirementConfirmed: boolean('expected_retirement_confirmed'),
+    identityType: text('identity_type'),
+    earliestRetirementDate: date('earliest_retirement_date', { mode: 'string' }),
+    latestRetirementDate: date('latest_retirement_date', { mode: 'string' }),
+    flexibleRangeConfirmed: boolean('flexible_range_confirmed'),
+    originalExpectedRetirementDate: date('original_expected_retirement_date', { mode: 'string' }),
     educationLevel: text('education_level'),
     lastSchool: text('last_school'),
     major: text('major'),

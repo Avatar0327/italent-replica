@@ -1,5 +1,5 @@
 {
-  "id": "11485423-f841-47c5-a451-61faeaa28bb1",
+  "id": "9cc2a4e9-5ff1-4614-b2c1-20bda9a12b55",
   "prevId": "c8345854-b3ac-4c8b-90e0-c7af3c7db605",
   "version": "7",
   "dialect": "postgresql",
@@ -11751,7 +11751,7 @@
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
@@ -12461,7 +12461,7 @@
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_records_service_type": {
           "name": "employment_records_service_type",
@@ -16437,6 +16437,42 @@
         "first_name_pinyin": {
           "name": "first_name_pinyin",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expected_retirement_confirmed": {
+          "name": "expected_retirement_confirmed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "identity_type": {
+          "name": "identity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "earliest_retirement_date": {
+          "name": "earliest_retirement_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_retirement_date": {
+          "name": "latest_retirement_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flexible_range_confirmed": {
+          "name": "flexible_range_confirmed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_expected_retirement_date": {
+          "name": "original_expected_retirement_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         },
@@ -60509,6 +60545,428 @@
         "retirement_requests_type_needs_expected": {
           "name": "retirement_requests_type_needs_expected",
           "value": "\"retirement_requests\".\"retire_type\" IS NULL OR \"retirement_requests\".\"expected_retirement_date\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.retirement_identity_types": {
+      "name": "retirement_identity_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "retirement_identity_types_code": {
+          "name": "retirement_identity_types_code",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"code\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "retirement_identity_types_tenant_id_tenants_id_fk": {
+          "name": "retirement_identity_types_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_identity_types",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "retirement_identity_types_tenant_id": {
+          "name": "retirement_identity_types_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "retirement_identity_types_code_nonempty": {
+          "name": "retirement_identity_types_code_nonempty",
+          "value": "btrim(\"retirement_identity_types\".\"code\") <> ''"
+        },
+        "retirement_identity_types_name_nonempty": {
+          "name": "retirement_identity_types_name_nonempty",
+          "value": "btrim(\"retirement_identity_types\".\"name\") <> ''"
+        },
+        "retirement_identity_types_revision_positive": {
+          "name": "retirement_identity_types_revision_positive",
+          "value": "\"retirement_identity_types\".\"revision\" > 0"
+        },
+        "retirement_identity_types_display_order": {
+          "name": "retirement_identity_types_display_order",
+          "value": "\"retirement_identity_types\".\"display_order\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.retirement_rule_conditions": {
+      "name": "retirement_rule_conditions",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_code": {
+          "name": "field_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator": {
+          "name": "operator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "values": {
+          "name": "values",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "retirement_rule_conditions_tenant_id_tenants_id_fk": {
+          "name": "retirement_rule_conditions_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_rule_conditions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "retirement_rule_conditions_rule_fk": {
+          "name": "retirement_rule_conditions_rule_fk",
+          "tableFrom": "retirement_rule_conditions",
+          "tableTo": "retirement_rules",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "retirement_rule_conditions_pk": {
+          "name": "retirement_rule_conditions_pk",
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "retirement_rule_conditions_slot": {
+          "name": "retirement_rule_conditions_slot",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "rule_id",
+            "field_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "retirement_rule_conditions_seq": {
+          "name": "retirement_rule_conditions_seq",
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 4"
+        },
+        "retirement_rule_conditions_field": {
+          "name": "retirement_rule_conditions_field",
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType')"
+        },
+        "retirement_rule_conditions_operator": {
+          "name": "retirement_rule_conditions_operator",
+          "value": "\"retirement_rule_conditions\".\"operator\" = 'in'"
+        },
+        "retirement_rule_conditions_values": {
+          "name": "retirement_rule_conditions_values",
+          "value": "cardinality(\"retirement_rule_conditions\".\"values\") BETWEEN 1 AND 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.retirement_rules": {
+      "name": "retirement_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_type": {
+          "name": "rule_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence_no": {
+          "name": "sequence_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_ids": {
+          "name": "org_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "include_subordinates": {
+          "name": "include_subordinates",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "retirement_age_years": {
+          "name": "retirement_age_years",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retirement_age_months": {
+          "name": "retirement_age_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "retirement_rules_tenant_id_tenants_id_fk": {
+          "name": "retirement_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "retirement_rules_tenant_id": {
+          "name": "retirement_rules_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "retirement_rules_sequence": {
+          "name": "retirement_rules_sequence",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "purpose",
+            "sequence_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "retirement_rules_purpose": {
+          "name": "retirement_rules_purpose",
+          "value": "\"retirement_rules\".\"purpose\" IN ('expected_date')"
+        },
+        "retirement_rules_rule_type": {
+          "name": "retirement_rules_rule_type",
+          "value": "\"retirement_rules\".\"rule_type\" IN ('fixed_age')"
+        },
+        "retirement_rules_name": {
+          "name": "retirement_rules_name",
+          "value": "btrim(\"retirement_rules\".\"name\") <> '' AND char_length(\"retirement_rules\".\"name\") <= 100"
+        },
+        "retirement_rules_priority": {
+          "name": "retirement_rules_priority",
+          "value": "\"retirement_rules\".\"priority\" BETWEEN 0 AND 9999"
+        },
+        "retirement_rules_sequence_positive": {
+          "name": "retirement_rules_sequence_positive",
+          "value": "\"retirement_rules\".\"sequence_no\" > 0"
+        },
+        "retirement_rules_orgs": {
+          "name": "retirement_rules_orgs",
+          "value": "cardinality(\"retirement_rules\".\"org_ids\") BETWEEN 1 AND 50"
+        },
+        "retirement_rules_age": {
+          "name": "retirement_rules_age",
+          "value": "\"retirement_rules\".\"purpose\" <> 'expected_date' OR (\"retirement_rules\".\"retirement_age_years\" BETWEEN 30 AND 80\n        AND \"retirement_rules\".\"retirement_age_months\" BETWEEN 0 AND 11)"
+        },
+        "retirement_rules_revision_positive": {
+          "name": "retirement_rules_revision_positive",
+          "value": "\"retirement_rules\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false
