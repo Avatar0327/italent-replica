@@ -1,11 +1,25 @@
 {
-  "reason": "R2 BE-15b1：新增试用期考核对象（TenantBase.ProbationAssessment）的字段、数据操作与 Assessment.Create / Assessment.Edit 按钮授权项，进组织员工系统管理员 / HR 管理员 / HR 专员三个标准身份（DEC-415 同 Offer 批量审批单）；数据范围按考核对象员工，不预置看全部；第 1 轮审查 P2-2（DEC-415）：标准版系统管理员 / 人事管理员预置考核对象的看全部（人事专员不预置）",
+  "reason": "R2 BE-5a（DEC-637 A-2）：新增退休四个按钮 Employment.Retire / RetireApproval / RetireEdit / RetireCancel（标准 HR 三身份 full，按钮授权与数据范围分开，非管理员范围不扩大）与退休扩展字段 retireType / reEmployed / expectedRetirementDate 的查看项（EmploymentRecord 对象）；实际退休日期 actualRetirementDate 改为系统字段（只由退休生效 / 撤销写），员工信息对象的该字段编辑授权项删除",
   "add": [
-    "standard_hr_admin/TenantBase.ProbationAssessment/*",
-    "standard_hr_specialist/TenantBase.ProbationAssessment/*",
-    "standard_org_system_admin/TenantBase.ProbationAssessment/*",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ProbationAssessment",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.ProbationAssessment"
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.Retire*",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:retireType:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:reEmployed:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.Retire*",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:retireType:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:reEmployed:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.Retire*",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:retireType:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:reEmployed:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:retireType:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:reEmployed:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:expectedRetirementDate:view"
   ],
-  "remove": []
+  "remove": [
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:actualRetirementDate:edit",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:actualRetirementDate:edit",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:actualRetirementDate:edit"
+  ]
 }

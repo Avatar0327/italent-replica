@@ -40,8 +40,8 @@ export interface FinalExecutionInput {
 
 /**
  * 该业务若在执行日 a 落地，实际写入的生效日。
- * transfer → max(计划日, a)（DEC-186 / 195②）；leave → max(L + 1, a)（DEC-263① / 272）；
- * 其余 kind 按原生效日落地、不顺延，retirement 暂同（R2-T04 若采用契约 C-1 再与 leave 同式，契约 C-5 末句）。
+ * transfer → max(计划日, a)（DEC-186 / 195②）；leave / retirement → max(L + 1, a)（DEC-263① / 272，退休见 DEC-638 A-15）；
+ * 其余 kind 按原生效日落地、不顺延。
  */
 export function finalExecutionDate(input: FinalExecutionInput): string {
   switch (input.kind) {
@@ -51,6 +51,8 @@ export function finalExecutionDate(input: FinalExecutionInput): string {
         executionDate: input.executionDate,
       }).effectiveDate;
     case 'leave':
+    case 'retirement':
+      // 退休沿用离职的迟到顺延（R2-T04 §4.2，DEC-638 A-15）：同为终止业务、同一编排器
       return resolveLateLeave({
         lastWorkDate: input.lastWorkDate ?? addDays(input.plannedEffectiveDate, -1),
         executionDate: input.executionDate,

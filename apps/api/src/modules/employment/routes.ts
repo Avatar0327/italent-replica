@@ -92,6 +92,7 @@ import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes, runExitCancel } from './exit-routes.js';
+import { registerRetirementRoutes } from './retirement-routes.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
@@ -132,6 +133,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   registerExitRoutes(module, deps, authorizeBusinessWrite);
+  registerRetirementRoutes(module, deps, authorizeBusinessWrite);
   registerBlacklistRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
@@ -231,8 +233,8 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (email !== undefined && !NEW_CYCLE_KINDS.includes(input.kind)) {
       throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供登录邮箱');
     }
-    if (input.kind !== 'leave' && Object.keys(exit).length)
-      throw new AppError('VALIDATION_FAILED', '只有离职业务可以提供离职字段');
+    if (!isExitKind(input.kind) && Object.keys(exit).length)
+      throw new AppError('VALIDATION_FAILED', '只有离职或退休业务可以提供离职字段');
     await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create');
     if (input.kind === 'transfer') {
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
@@ -243,6 +245,7 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     const gate: ExitGateTarget = {
       employeeId: id,
+      kind: input.kind,
       initiation: 'hr',
       mode: input.mode,
       lastWorkDate: input.lastWorkDate!,
@@ -254,9 +257,10 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
       ctx,
       { ...input, loginEmail: email, entry, exit },
       async (tx, context) => {
-        if (input.kind === 'leave') {
-          // 通用入口创建离职与专用入口同一服务、同一门禁（§4A / §4B）；发起方式固定为 HR
+        if (isExitKind(input.kind)) {
+          // 通用入口创建离职 / 退休与专用入口同一服务、同一门禁（§4A / §4B，R2-T04 §3.2）；发起方式固定为 HR
           const created = await createExitApplication(tx, context, {
+            kind: input.kind as 'leave' | 'retirement',
             employeeId: id,
             initiation: 'hr',
             mode: input.mode,
@@ -279,7 +283,7 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
         if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
         return { status: 201, body: business };
       },
-      input.kind === 'leave'
+      isExitKind(input.kind)
         ? { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId: input.fields.departmentId }) }
         : {},
     );
@@ -364,6 +368,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
+    const exitTarget = { employeeId: current.employeeId, kind: current.kind };
     await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
     const departmentId = input.fields?.departmentId;
@@ -393,7 +398,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       },
       {
         guard: isExitKind(current.kind)
-          ? exitCommandGuard(deps, ctx, 'update', { employeeId: current.employeeId, patch: input }, { businessId: id })
+          ? exitCommandGuard(deps, ctx, 'update', { ...exitTarget, patch: input }, { businessId: id })
           : sameOrderWriteGuard(deps, ctx, {
               businessId: id,
               employeeId: current.employeeId,
@@ -446,9 +451,10 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
         // 离职单的通用 DELETE 映射到撤销（设计 §4，B4）：与 POST exits/:id/cancel 同一实现，不留绕过 §6B 的删除路径；
         // 已作废 / 未通过的离职单仍是清理删除，走下面的通用流程
+        // 退休单的撤销归 5a′（R2-T04 §6），本批不接：退休的通用 delete / revoke 仍走下面的门禁（见 exit-gate cancelConditions）
         if (
           action === 'delete' &&
-          isExitKind(current.kind) &&
+          current.kind === 'leave' &&
           (await routesToCancel(deps, ctx, id, c.req.header('idempotency-key')))
         )
           return runExitCancel(c, deps, ctx, id, current.employeeId, true);
@@ -459,7 +465,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 deps,
                 ctx,
                 operation,
-                { employeeId: current.employeeId, deleting: action === 'delete' },
+                { employeeId: current.employeeId, kind: current.kind, deleting: action === 'delete' },
                 { businessId: id },
               )
             : sameOrderWriteGuard(deps, ctx, {

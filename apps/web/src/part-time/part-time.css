@@ -72,3 +72,9 @@
 .part-time-detail h3 {
   margin: 20px 0 12px;
 }
+
+.part-time-direct-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+}

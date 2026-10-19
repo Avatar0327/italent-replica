@@ -4,6 +4,8 @@
  * 4 合同 → 6 职责转交 → 7 状态 / 审计 → 8 后续任务端口。步骤 0a 以外全部在一个保存点内：
  * 任一步业务规则拒绝即整体回滚，只留一条 failed 尝试（DEC-052）；存储不可用原样抛出、不记失败。
  * 入口：审批通过 / 直接保存（activateIfDue）、调度与 HR 重试（activation-service 按队列逐条调用）、activate 端口（transitions.ts）。
+ * 退休（R2-T04 §4）走同一编排器，差异只有：要求 retirement_requests 扩展行、审计动作名、版本链落地后回写实际退休日期
+ * 并按快照 P 重派生退休类型（R-1，保存点内），事件带 kind / reEmployed。
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, exitEffects, sql, type Tx } from '@italent/db';
@@ -24,6 +26,7 @@ import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEve
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
 import {
+  isExitKind,
   loadExitRequest,
   isOverLimitAck,
   pendingTransferAckSet,
@@ -42,6 +45,7 @@ import {
   voidInFlightApplications,
 } from './exit-void-applications.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
+import { loadRetirementRequest, rederiveRetireType } from './retirement-application.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import {
   bumpEmploymentBusiness,
@@ -54,6 +58,7 @@ import { detachFutureTransfers, loadPlannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import type { EmploymentContext } from './types.js';
 import { appendEmploymentState, materializeEmploymentRecord } from './write-service.js';
+import { appendEmployee, employeeSnapshot } from '../personnel/employee-write.js';
 
 export interface ExitActivationOptions {
   readonly trigger: ActivationTrigger;
@@ -109,7 +114,7 @@ export async function postponeLateExit(
   await auditEmployment(
     tx,
     ctx,
-    'employment.leave.rescheduled',
+    business.payload.kind === 'retirement' ? 'employment.retirement.rescheduled' : 'employment.leave.rescheduled',
     'employment-business',
     business.id,
     { effectiveDate: previous.effectiveDate, lastWorkDate: previous.lastWorkDate },
@@ -285,6 +290,39 @@ async function detachAndRecord(tx: Tx, ctx: EmploymentContext, business: LockedE
   return detached.length;
 }
 
+/**
+ * R-1（R2-T04 §4.3）：版本链落地后回写人事“实际退休日期” = 最终生效日 E′，并按快照 P 重派生退休类型（顺延使 L′ 变化，
+ * DEC-638 A-3）。失败整单回滚（RT-R2）；实际退休日期是系统字段，只在这里（与 5a′ 的撤销）写。
+ */
+async function syncActualRetirementDate(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  late: { lastWorkDate: string; effectiveDate: string },
+) {
+  const retired = await rederiveRetireType(tx, ctx, business.id, late.lastWorkDate);
+  // 审计旧值取写入前的真实人事快照（同事务、员工锁内）：再次退休（退休 → 返聘 → 再退休）时是上一次的实际退休日期
+  const previous = await employeeSnapshot(tx, ctx, business.employeeId);
+  const before = (previous?.actualRetirementDate as string | null | undefined) ?? null;
+  await appendEmployee(tx, ctx, business.employeeId, { actualRetirementDate: late.effectiveDate }, false);
+  await auditEmployment(
+    tx,
+    ctx,
+    'retirement.actual_date.synced',
+    'exit-request',
+    business.id,
+    { actualRetirementDate: before, ...(retired ? { retireType: retired.before } : {}) },
+    {
+      actualRetirementDate: late.effectiveDate,
+      lastWorkDate: late.lastWorkDate,
+      ...(retired ? { retireType: retired.after } : {}),
+    },
+    undefined,
+    undefined,
+    { employeeId: business.employeeId },
+  );
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -318,6 +356,7 @@ async function runSteps(
     await auditIncompleteAck(tx, ctx, business, voided, late.lastWorkDate);
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
+  if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
   const detached = await detachAndRecord(tx, ctx, business);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
@@ -337,7 +376,7 @@ async function runSteps(
   await auditEmployment(
     tx,
     ctx,
-    'employment.exit.effective',
+    business.payload.kind === 'retirement' ? 'employment.retirement.effective' : 'employment.exit.effective',
     'exit-request',
     business.id,
     { state: 'approved' },
@@ -359,6 +398,8 @@ async function runSteps(
     source,
     lastWorkDate: late.lastWorkDate,
     effectiveDate: late.effectiveDate,
+    kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
+    reEmployed: (await loadRetirementRequest(tx, ctx.tenantId, business.id))?.reEmployed === true,
   };
   await runExitEffectiveHooks(tx, ctx, event);
   // 审批落地由调用命令统一递增一次业务 revision；调度 / 重试 / 内部入口在这里递增
@@ -411,8 +452,14 @@ export async function activateExit(
   // §5.2 ④ ⑤：组织 / 编制资源先于任何审批实例锁取齐，所有生效路径锁序一致
   await lockExitOrganizationResources(tx, ctx, owner.employeeId, businessId);
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
-  if (business.payload.kind !== 'leave' || !exit || business.state !== 'approved')
-    throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职可以生效', { reason: 'NOT_PENDING' });
+  // 退休另要求薄扩展行存在，缺则同样 NOT_PENDING（fail-closed，R2-T04 §4.1 #1）
+  if (
+    !isExitKind(business.payload.kind) ||
+    !exit ||
+    business.state !== 'approved' ||
+    (business.payload.kind === 'retirement' && !(await loadRetirementRequest(tx, ctx.tenantId, businessId)))
+  )
+    throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职或退休可以生效', { reason: 'NOT_PENDING' });
   const source = options.source ?? (exit.mode === 'direct' ? 'direct' : 'approval');
   if (source === 'free_direct' && exit.mode !== 'direct')
     throw new AppError('VALIDATION_FAILED', '免审批直接生效只适用于直接离职', { reason: 'EXIT_SOURCE_INVALID' });
