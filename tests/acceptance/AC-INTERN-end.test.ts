@@ -236,3 +236,28 @@ describe('AC-INTERN-end-04 权限：沿用直接离职的写权限组合', () =>
     expect(response.status, await response.clone().text()).toBe(201);
   });
 });
+
+describe('AC-INTERN-end-05 与 BE-4j 通用撤销衔接（#432）', () => {
+  it('撤销已生效的结束实习：按普通直接离职撤销，恢复在职，雇佣关系仍为实习生，回到“实习中”', async () => {
+    const w = await endWorld(testDb().db, 'end-cancel');
+    const intern = await w.hire('撤销合成实习生', 'intern');
+    const business = await w.terminateOk(intern.employee.id, { endDate: '2026-09-30' });
+    expect(names(await w.view('left'))).toEqual([intern.name]);
+    const current = (await (await w.session.request('GET', `/businesses/${business.id}`)).json()) as {
+      revision: number;
+    };
+    const response = await w.session.request('POST', `/exits/${business.id}/cancel`, {
+      ifMatch: current.revision,
+      body: { reason: '合成撤销原因' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await w.timeline(intern.employee.id)).toMatchObject([{ kind: 'hire', valid: '[2026-09-01,)' }]);
+    expect(await w.view('left')).toEqual([]);
+    expect(names(await w.view('interning'))).toEqual([intern.name]);
+    const [record] = (await w.session.records(intern.employee.id, '2026-10-05')) as unknown as {
+      kind: string;
+      fields: Record<string, unknown>;
+    }[];
+    expect(record).toMatchObject({ kind: 'hire', fields: { employType: 'intern' } });
+  });
+});
