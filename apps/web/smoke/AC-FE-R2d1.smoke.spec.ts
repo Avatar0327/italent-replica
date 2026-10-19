@@ -183,3 +183,14 @@ test('AC-FE-R2d1-08 审批中行直读申请接口；无入口权时菜单隐藏
   await expect(page.getByRole('menuitem', { name: '兼职管理', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '兼职管理', exact: true })).toHaveCount(0);
 });
+
+test('AC-FE-R2d1-09 姓名关键字可逐字输入空格，提交保持内部空格', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: '高级筛选' });
+  await drawer.getByLabel('姓名 / 工号', { exact: true }).pressSequentially('Demo Person');
+  await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveValue('Demo Person');
+  const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('keyword') === 'Demo Person');
+  await drawer.getByRole('button', { name: /^确\s*定$/ }).click();
+  await read;
+});
