@@ -241,6 +241,7 @@ export const logEvents: Record<string, string> = {
   complete: '审批通过',
   disapprove: '审批不通过',
   cancel: '终止',
+  system_revoke: '撤销',
   admin_intervene: '管理员干预',
   jump: '跳转节点',
   edit: '修改申请',

@@ -26,7 +26,13 @@ import {
   type AssessmentBatchInput,
 } from './assessment.js';
 import { requireAssessmentWrite } from './assessment-access.js';
-import { assessmentView, listAssessments, loadAssessment, requireAssessmentInScope } from './assessment-store.js';
+import {
+  assessmentView,
+  listAssessments,
+  loadAssessmentRead,
+  requireAssessmentInScope,
+  withTerminationFlag,
+} from './assessment-store.js';
 import {
   commandContext,
   jsonBody,
@@ -108,19 +114,19 @@ export function registerAssessmentRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listAssessments(tx, ctx.tenantId, filter, ctx.scope, page),
     );
-    const items = await trimEmploymentResponse(deps, ctx, rows.map(assessmentView));
+    const items = withTerminationFlag(await trimEmploymentResponse(deps, ctx, rows.map(assessmentView)), rows);
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/probation-assessments/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail', undefined, PROBATION_ASSESSMENT_OBJECT);
     const row = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const found = await loadAssessment(tx, ctx.tenantId, id);
+      const found = await loadAssessmentRead(tx, ctx.tenantId, id);
       // 范围外与不存在同一个 404
       await requireAssessmentInScope(tx, ctx, found);
       return found;
     });
-    return c.json(await trimEmploymentResponse(deps, ctx, assessmentView(row)));
+    return c.json(withTerminationFlag(await trimEmploymentResponse(deps, ctx, assessmentView(row)), [row]));
   });
   router.patch('/probation-assessments/:id', async (c) => {
     const id = uuidParam(c);

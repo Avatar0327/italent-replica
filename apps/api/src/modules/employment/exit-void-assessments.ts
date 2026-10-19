@@ -2,19 +2,24 @@
  * 离职生效时作废在途考核（F-229，DEC-617；R2-T03 设计 §5.1 步骤 8 的 effective 端口订阅方）。
  * 订阅 exitPostEffectHooks.onEffective，与离职生效同一事务、同一保存点：失败即整单回滚。三种生效来源
  * （approval / direct / free_direct）都经 activateExit，因此都覆盖。生效前考核保持在途不变（本文件只在生效后运行）。
- * 对该员工的每条在途考核（assessment-in-flight.ts 同一查询）：状态置“已作废”（终态、只读）→ 终止审批实例并移除待办 → 审计。
+ * 对该员工的每条在途考核（assessment-in-flight.ts 同一查询）：状态置 cancelled（终态、只读）→ 系统撤销审批实例并移除待办 → 审计。
  * 锁序：员工（离职已持有）→ 考核记录按 ID 升序 → 审批实例，与审批回调（assessment-approval-adapter.ts）一致，
  * 审批通过与离职生效并发时只有先拿到员工锁的一方成功。
- * 复刻取舍：终态沿用考核的 cancelled（已作废），不新增状态；生效后撤销离职不恢复考核（DEC-617“终止作废”）。
+ * 终态对齐原站（F-248，DEC-633）：考核状态值仍是 cancelled（不迁移、不回写存量），是否“已终止”由 voided_by_exit 审计派生
+ * （assessment-store.ts terminatedByExit）；审批实例走系统撤销：日志操作人“系统”、动作“撤销”、理由见 EXIT_VOID_REASON。
+ * 生效后撤销离职不恢复考核（DEC-617“终止作废”）。
  */
 import type { Tx } from '@italent/db';
-import { cancel } from '../approval/actions.js';
+import { revokeBySystem } from '../approval/actions.js';
 import { schedulerAwareContext } from '../approval/context.js';
 import { activeInstanceOf } from '../approval/store.js';
 import { inFlightAssessments } from './assessment-in-flight.js';
 import { loadAssessment, saveAssessment } from './assessment-store.js';
 import { exitPostEffectHooks, type ExitEffectiveEvent } from './exit-confirmation.js';
 import type { EmploymentContext } from './types.js';
+
+/** 原站日志理由原文（F234A）。 */
+export const EXIT_VOID_REASON = '离职业务终止在途审批流程';
 
 export interface VoidedAssessment {
   readonly id: string;
@@ -39,7 +44,7 @@ export async function voidInFlightAssessments(
       effectiveDate: event.effectiveDate,
       instanceId: active?.id ?? null,
     });
-    if (active) await cancel(tx, approvalCtx, active.id);
+    if (active) await revokeBySystem(tx, approvalCtx, active.id, EXIT_VOID_REASON);
     voided.push({ id: row.id, stateBefore: row.status, instanceId: active?.id ?? null });
   }
   return voided;
