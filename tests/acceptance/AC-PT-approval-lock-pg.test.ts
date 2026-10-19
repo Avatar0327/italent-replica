@@ -13,6 +13,8 @@ import { getUser, setUserStatus, sql, withPlatform, withTenant, type Db } from '
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
+import { bootstrapTenantAdmin } from '@italent/api';
+import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { requestWorld } from './AC-PT-request-support.js';
 import { cmd } from './support/tenant-api.js';
 import { pendingOf } from './support/f048.js';
@@ -111,3 +113,199 @@ describe.runIf(realPostgres)('AC-PT-approval-lock-pg PB-80 适配器资源预锁
     expect(pendingOf(await w.instance(created.id))[0]!.assigneeUserId).toBe(w.approvers.pHead.userId);
   });
 });
+
+/**
+ * #433 第 1 轮 P2-1：手动交接（reassignFrom）单人节点、无会签合席时不会推进业务，适配器 lock 不得取组织锁 —— 否则交接已登记
+ * 替代人（来源 / 替代人成员行 KEY SHARE）再回头等组织锁，与入职绑定的“组织锁 → 成员行 FOR UPDATE”成环。
+ * 屏障：B 持组织锁 → 启动交接 A → A 必须不在组织锁上等（waitForBlocked 不成立则 A 已结束）；B 再取来源成员行 FOR UPDATE 不得死锁。
+ * 新增（add）与延长（extend）同一个适配器入口，两个都测；结束（end）本就不取组织锁。
+ */
+describe.runIf(realPostgres)('AC-PT-approval-lock-pg #433 P2-1 手动交接 × 入职绑定强制交错', () => {
+  for (const kind of ['add', 'extend'] as const) {
+    it(`${kind}：交接仅改派不取组织锁——B 持组织锁并随后取来源成员行，两边都完成，无死锁，交接 200`, async () => {
+      const w = await requestWorld(database().db, `pt433-handover-${kind}`, {
+        noPrimaryHead: true,
+        externalExceptionAdmin: true,
+      });
+      const source = kind === 'add' ? w.external!.id : w.exceptionAdmin;
+      const api = w.http();
+      const created =
+        kind === 'add'
+          ? await w.ok(await api.create({ endDate: '2026-12-31' }), 201)
+          : await w.ok(
+              await api.createDate({
+                requestType: 'extend',
+                recordId: await w.seedRecord(),
+                endDate: '2026-12-31',
+              }),
+              201,
+            );
+      await w.ok(await api.act(created.id, 'submit', created.revision));
+      await w.decide(created.id, w.approvers.pHrbp, 'approve');
+      expect(w.pending(await w.instance(created.id))[0]!.assigneeUserId).toBe(source);
+      const admin = await w.member('交接操作员');
+      await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: admin }, cmd());
+      const successor = await w.member('替代人');
+      const deadlocksBefore = await deadlocks(w.db);
+      let handover: Promise<Response> = Promise.resolve(new Response());
+      const blocker = await withTenant(w.db, w.tenant.id, async (tx) => {
+        await tx.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE`);
+        handover = w.request(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
+          ifMatch: 0,
+          body: { fromUserId: source, toUserId: successor },
+        });
+        // 交接要么已经结束（没有等组织锁），要么正等别的锁；给它足够时间走到登记替代人（成员行 KEY SHARE）
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await tx.execute(
+          sql`SELECT user_id FROM tenant_memberships
+            WHERE tenant_id=${w.tenant.id} AND user_id=${source}::uuid FOR UPDATE`,
+        );
+        return 'ok';
+      }).catch((error: { code?: string; cause?: { code?: string } }) => error.code ?? error.cause?.code ?? 'error');
+      const response = await handover;
+      expect({
+        blocker,
+        status: response.status,
+        body: response.status === 200 ? null : await response.text(),
+      }).toEqual({
+        blocker: 'ok',
+        status: 200,
+        body: null,
+      });
+      expect(await deadlocks(w.db)).toBe(deadlocksBefore);
+    });
+  }
+});
+
+/**
+ * 延长申请手动交接的组织锁范围（F-070 同口径，DEC-431① 单一判定 mayAdvanceBusiness）：交接排队等实例锁时（已完成全部预锁），
+ * 仅改派 → 不持组织锁；替代人已占本节点一席（会签合席）→ 仍持组织锁，守住合席结算 / 落地的保护。
+ */
+describe.runIf(realPostgres)('AC-PT-approval-lock-pg #433 P2-1 延长申请交接的组织锁范围', () => {
+  async function extendHandover(label: string, countersign: boolean) {
+    const w = await requestWorld(database().db, label, { noPrimaryHead: true, countersign });
+    const api = w.http();
+    const created = await w.ok(
+      await api.createDate({
+        requestType: 'extend',
+        recordId: await w.seedRecord(),
+        endDate: '2026-12-31',
+        submit: true,
+      }),
+      201,
+    );
+    await w.decide(created.id, w.approvers.pHrbp, 'approve');
+    const view = await w.instance(created.id);
+    expect(pendingOf(view)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ assigneeUserId: w.exceptionAdmin })]),
+    );
+    const admin = await w.member('交接操作员');
+    await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: admin }, cmd());
+    const successor = countersign ? w.approvers.pHrbp.userId : await w.member('替代人');
+    let handed: Promise<Response> = Promise.resolve(new Response());
+    let free = false;
+    await withTenant(w.db, w.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT id FROM approval_instances
+        WHERE tenant_id=${w.tenant.id} AND id=${view.id}::uuid FOR UPDATE`);
+      handed = w.request(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: w.exceptionAdmin, toUserId: successor },
+      });
+      await waitForBlocked(w.db, 1);
+      free = await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE NOWAIT`),
+      ).then(
+        () => true,
+        (error: { code?: string; cause?: { code?: string } }) => {
+          if ((error.code ?? error.cause?.code) !== '55P03') throw error;
+          return false;
+        },
+      );
+    });
+    const response = await handed;
+    expect(response.status, await response.clone().text()).toBe(200);
+    return free;
+  }
+
+  it('仅改派（单人节点）：交接排队时不持组织锁，普通组织写入不被挡住', async () => {
+    expect(await extendHandover('pt433-extend-reassign-only', false)).toBe(true);
+  });
+
+  it('会签合席（替代人已占本节点一席）：交接排队时仍持组织锁', async () => {
+    expect(await extendHandover('pt433-extend-merge-seat', true)).toBe(false);
+  });
+
+  it('成员撤销接管合席结算（lock，无 lockMany 预锁）：等组织锁期间尚未持有实例锁（锁序 组织 → 实例），放行后接管完成', async () => {
+    const w = await requestWorld(database().db, 'pt433-extend-revoke-settle', {
+      noPrimaryHead: true,
+      countersign: true,
+      externalExceptionAdmin: 'extend',
+    });
+    const source = w.external!.id;
+    const created = await w.ok(
+      await w.http().createDate({
+        requestType: 'extend',
+        recordId: await w.seedRecord(),
+        endDate: '2026-12-31',
+        submit: true,
+      }),
+      201,
+    );
+    await w.decide(created.id, w.approvers.pHrbp, 'approve');
+    const view = await w.instance(created.id);
+    expect(pendingOf(view)).toEqual(expect.arrayContaining([expect.objectContaining({ assigneeUserId: source })]));
+    // 仍是可用流程的异常管理员时拒绝移除（DEC-098）：作废该流程，在途实例按冻结版本继续
+    const processes = await w.json<{ items: { id: string; revision: number }[] }>(
+      await w.request(w.hr.id, 'GET', '/api/tenant/approval/processes?approvalType=part_time_extend'),
+    );
+    const process = processes.items[0]!;
+    await w.json(
+      await w.request(w.hr.id, 'POST', `/api/tenant/approval/processes/${process.id}/discard`, {
+        ifMatch: process.revision,
+      }),
+    );
+    // 发起人 HR 把 U 的任务交接给已占席位的主职HRBP：实例因本人发起被跳过，但替代人已登记，成员撤销时接管会合席结算
+    const handover = await w.json<{ skipped: { instanceId: string }[] }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: source, toUserId: w.approvers.pHrbp.userId },
+      }),
+    );
+    expect(handover.skipped.map((item) => item.instanceId)).toContain(view.id);
+    const [membership] = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ revision: number }>(
+        await tx.execute(sql`SELECT revision::int AS revision FROM tenant_memberships
+          WHERE tenant_id=${w.tenant.id} AND user_id=${source}::uuid`),
+      ),
+    );
+    let removed: Promise<Response> = Promise.resolve(new Response());
+    let instanceFree: boolean | undefined;
+    await withTenant(w.db, w.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.tenant.id} FOR UPDATE`);
+      removed = w.request(w.hr.id, 'POST', `/api/tenant/permission/users/${source}/remove`, {
+        ifMatch: membership!.revision,
+      });
+      await waitForBlocked(w.db, 1);
+      instanceFree = await withTenant(w.db, w.tenant.id, (tx) =>
+        tx.execute(sql`SELECT id FROM approval_instances WHERE tenant_id=${w.tenant.id}
+          AND id=${view.id}::uuid FOR UPDATE NOWAIT`),
+      ).then(
+        () => true,
+        (error: { code?: string; cause?: { code?: string } }) => {
+          if ((error.code ?? error.cause?.code) !== '55P03') throw error;
+          return false;
+        },
+      );
+    });
+    const response = await removed;
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(instanceFree, '等组织锁期间不应已持有实例锁').toBe(true);
+  });
+});
+
+async function deadlocks(db: Db) {
+  const [row] = (await db.execute(
+    sql`SELECT deadlocks::int AS n FROM pg_stat_database WHERE datname=current_database()`,
+  )) as unknown as { n: number }[];
+  return row!.n;
+}

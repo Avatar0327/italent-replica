@@ -28,9 +28,12 @@ export interface PartTimeRequestDto {
   readonly serviceType: string;
   /** 兼职开始日期（沿用任职记录的 effectiveDate 编码，字段权限同任职记录对象）。 */
   readonly effectiveDate: string;
+  /** 新增：结束日期；延长：新结束日期；结束：结束日期。 */
   readonly endDate: string | null;
+  /** 延长 / 结束：申请创建时目标兼职的原定结束日期（申请版本字段，不被落地后的实际失效日覆盖，R2f1）；新增为 null。 */
+  readonly originalEndDate: string | null;
   readonly requestRemark: string | null;
-  /** 审批通过并落地后的兼职记录 ID（只有详情读得到）。 */
+  /** 延长 / 结束：目标兼职记录；新增：审批通过并落地后的兼职记录（落地前为空）。 */
   readonly recordId: string | null;
   readonly fields: Partial<PresetFields>;
   readonly customFields: CustomFields;
@@ -60,8 +63,9 @@ export function requestDto(
     serviceType: version.serviceType,
     effectiveDate: version.startDate,
     endDate: version.endDate,
+    originalEndDate: version.originalEndDate,
     requestRemark: version.remark,
-    recordId: extra.recordId ?? null,
+    recordId: extra.recordId ?? request.recordId,
     fields: {
       departmentId: version.departmentId,
       positionId: version.positionId,

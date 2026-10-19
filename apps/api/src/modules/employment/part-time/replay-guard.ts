@@ -111,6 +111,8 @@ export interface PartTimeWriteTarget {
   readonly button: string;
   /** 编辑改部门时的新部门：新旧部门都要在范围内。 */
   readonly departmentId?: string;
+  /** 只判按钮的附加按钮（延长 / 结束申请建并提交另要 Employment.Submit）。 */
+  readonly extraButtons?: readonly string[];
 }
 
 /**
@@ -136,6 +138,8 @@ export async function requirePartTimeWriteAccess(
     if (target.departmentId) await requirePartTimeRecordScope(tx, scoped, row, target.departmentId);
   }
   await requireEmploymentWrite(scoped, 'update', target.business, target.button);
+  for (const extra of target.extraButtons ?? [])
+    await requireEmploymentWrite(scoped, 'update', {}, extra, undefined, { commandOnly: true });
   return rows;
 }
 
@@ -152,12 +156,22 @@ export function partTimeWriteGuard(
   });
 }
 
+/** 申请类型 → 该类申请的发起按钮（§7.2：新增兼职申请 / 延长兼职申请 / 结束兼职申请）。 */
+export const REQUEST_BUTTONS = {
+  add: PART_TIME_BUTTONS.application,
+  extend: PART_TIME_BUTTONS.extend,
+  end: PART_TIME_BUTTONS.end,
+} as const;
+
 export interface PartTimeRequestTarget {
   readonly requestId: string;
   readonly operation: 'update' | 'delete';
   /** requireEmploymentWrite 的载荷：修改申请实际改动的字段；提交 / 撤回 / 撤销 / 删除为空。 */
   readonly business: object;
-  /** 第 1 个按钮与字段写权一起判，其余只判按钮：申请动作 = 新增兼职申请 + Employment.Submit / Withdraw / Delete，撤销只要 Employment.Revoke。 */
+  /**
+   * 第 1 个按钮与字段写权一起判，其余只判按钮：申请动作 = 申请类型对应的按钮 + Employment.Submit / Withdraw / Delete，撤销只要 Employment.Revoke。
+   * 申请类型对应的按钮在路由里统一写 PART_TIME_BUTTONS.application，入口读到申请后按 REQUEST_BUTTONS 换成该类型的按钮（新增 / 延长 / 结束）。
+   */
   readonly buttons: readonly string[];
   /** 修改申请时改了兼职部门的新部门：新旧部门都要在范围内。 */
   readonly departmentId?: string;
@@ -190,7 +204,10 @@ export async function requirePartTimeRequestAccess(
     if (error instanceof AppError && error.code === 'NOT_FOUND') throw requestNotFound();
     throw error;
   }
-  await requireWriteButtons(scoped, target.operation, target.business, target.buttons);
+  const buttons = target.buttons.map((code) =>
+    code === PART_TIME_BUTTONS.application ? REQUEST_BUTTONS[request.requestType] : code,
+  );
+  await requireWriteButtons(scoped, target.operation, target.business, buttons);
   return request;
 }
 

@@ -1061,16 +1061,29 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ledger: 'single',
     }),
   }),
-  // ---- employment/part-time/request-routes.ts：R2 BE-7 PT-4b 兼职新增申请入口（R2-T05 §4.1 / §7.2；延长 / 结束申请随 PT-4c，409）----
-  // 新建（草稿，或 submit = true 建完直接提交）：readContext(object.create)；requestType 先于其余字段判（extend / end → 409
-  // PART_TIME_REQUEST_TYPE_NOT_AVAILABLE，无写入）；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
+  // ---- employment/part-time/request-routes.ts：R2 BE-7 PT-4b / PT-4c 兼职申请入口（R2-T05 §4.1 / §7.2）----
+  // 新建（草稿，或 submit = true 建完直接提交）：requestType = add ——
+  // readContext(object.create)；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
   // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
   // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）
+  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
+  // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；
+  // requirePartTimeWriteAccess（同
+  // 编辑兼职）：目标兼职与其兼职部门写入口径范围（404「兼职记录不存在」）→ 对象更新权 + endDate / requestRemark 字段写权 +
+  // Employment.PartTimeExtend / PartTimeEnd（403），建并提交另要 Employment.Submit；命令内 partTimeWriteGuard 重过；锁内 E-1～E-6 /
+  // T-1～T-4 由 createDateRequest 判。分支键 requestType 登记为域 employment.partTimeRequestType（操作与发起按钮按它取值）
   'POST /part-time-requests': object({
     object: EMPLOYMENT,
-    operation: 'create',
-    button: button(PART_TIME_BUTTONS.application, 'detail'),
+    operation: { from: 'body', path: 'requestType', map: { add: 'create', extend: 'update', end: 'update' } },
+    button: {
+      from: 'body',
+      path: 'requestType',
+      map: {
+        add: button(PART_TIME_BUTTONS.application, 'detail'),
+        extend: button(PART_TIME_BUTTONS.extend, 'detail'),
+        end: button(PART_TIME_BUTTONS.end, 'detail'),
+      },
+    },
     guards: [DIRECT_OPERATION],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
@@ -1088,7 +1101,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
   // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
-  // D-1～D-10 与周期边界由 updateAddRequest 判，越界当次拒绝不留版本；linkage 两字段同新建
+  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；linkage 两字段同新建
   'PATCH /part-time-requests/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
