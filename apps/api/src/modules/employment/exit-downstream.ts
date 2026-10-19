@@ -8,7 +8,7 @@
  */
 import { sql, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
-import { disclose } from './exit-gate.js';
+import { batchDisclose } from './exit-gate.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { visibleEmploymentRecords } from './visibility.js';
@@ -175,7 +175,7 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
   // 兼职申请（PT-6b，kind = 'part-time'）与任职业务同按 DEC-177 以所属部门判定；其余未知类型仍走失败即关
   const businesses = targets.filter((target) => DEPARTMENT_SCOPED_TYPES.includes(target.type));
   const shown = businesses.length
-    ? await disclose(
+    ? await batchDisclose(
         tx,
         ctx,
         employeeId,
