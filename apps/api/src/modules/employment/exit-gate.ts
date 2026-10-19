@@ -462,7 +462,7 @@ async function checkPendingTransferAck(
   );
 }
 
-export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string, ack: AckRecord) {
+export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string, ack: AckRecord | null) {
   await tx
     .update(exitRequests)
     .set({ pendingTransferAck: ack })

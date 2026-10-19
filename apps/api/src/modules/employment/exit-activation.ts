@@ -132,10 +132,30 @@ const sameIds = (a: readonly string[], b: readonly string[]) => {
   return left.length === right.length && left.every((id, i) => id === right[i]);
 };
 
+const auditAckSetChanged = (
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  before: object,
+  after: object,
+) =>
+  auditEmployment(
+    tx,
+    ctx,
+    'employment.exit.ack_set_changed',
+    'exit-request',
+    business.id,
+    before,
+    after,
+    undefined,
+    undefined,
+    { employeeId: business.employeeId },
+  );
+
 /**
  * §8 确认集合按生效用的最后工作日重算，差异只写审计（顺延 L′ 后，或创建 / 提交时超限未完整确认——DEC-626）。
- * 令牌哈希含最后工作日，顺延后必变，所以只比规范化后的完整 ID 集合；超限单没有完整确认集合，按“未完整确认”记全部实际 ID。
- * 重算时仍超限与步骤 1 同口径整单拒绝，不拿截断的集合算差异（F-241）。
+ * 令牌哈希含最后工作日，顺延后必变，所以只比规范化后的完整 ID 集合。重算时仍超限与步骤 1 同口径整单拒绝，不拿截断的集合算差异（F-241）。
+ * 超限单没有完整确认集合：这里只做超限校验，差异审计在步骤 1 作废之后按实际作废集合写（auditIncompleteAck）。
  */
 async function reconcileConfirmedSet(
   tx: Tx,
@@ -150,21 +170,25 @@ async function reconcileConfirmedSet(
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
     });
-  const incomplete = isOverLimitAck(stored);
-  if (!incomplete && sameIds(stored?.ids ?? [], recomputed?.ids ?? [])) return;
-  await auditEmployment(
+  if (isOverLimitAck(stored) || sameIds(stored?.ids ?? [], recomputed?.ids ?? [])) return;
+  await auditAckSetChanged(tx, ctx, business, { ids: stored?.ids ?? [] }, { ids: recomputed?.ids ?? [], lastWorkDate });
+}
+
+/** DEC-626：未完整确认的单，差异审计记录全部实际作废的申请 ID（步骤 1 的作废结果，与 application_voided 台账同源）。 */
+const auditIncompleteAck = (
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  voided: readonly { readonly id: string }[],
+  lastWorkDate: string,
+) =>
+  auditAckSetChanged(
     tx,
     ctx,
-    'employment.exit.ack_set_changed',
-    'exit-request',
-    business.id,
-    incomplete ? { ids: [], incomplete: true } : { ids: stored?.ids ?? [] },
-    { ids: recomputed?.ids ?? [], lastWorkDate },
-    undefined,
-    undefined,
-    { employeeId: business.employeeId },
+    business,
+    { ids: [], incomplete: true },
+    { ids: voided.map((item) => item.id).sort(), lastWorkDate },
   );
-}
 
 /** 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；再重算 §8 确认集合。 */
 async function revalidateAfterPostponement(
@@ -290,6 +314,8 @@ async function runSteps(
   }
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
+  if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
+    await auditIncompleteAck(tx, ctx, business, voided, late.lastWorkDate);
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   const detached = await detachAndRecord(tx, ctx, business);
