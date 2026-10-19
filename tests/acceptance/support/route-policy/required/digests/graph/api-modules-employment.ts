@@ -1590,6 +1590,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/exit-activation.ts#auditAckSetChanged': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+  ],
+  'apps/api/src/modules/employment/exit-activation.ts#auditIncompleteAck': ['#auditAckSetChanged'],
   'apps/api/src/modules/employment/exit-activation.ts#detachAndRecord': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/timeline.ts#detachFutureTransfers',
@@ -1602,7 +1606,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/late-execution.ts#resolveLateLeave',
   ],
   'apps/api/src/modules/employment/exit-activation.ts#reconcileConfirmedSet': [
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#auditAckSetChanged',
     '#sameIds',
     'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
     'apps/api/src/modules/employment/exit-gate.ts#isOverLimitAck',
@@ -1614,6 +1618,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-activation.ts#runSteps': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#auditIncompleteAck',
     '#detachAndRecord',
     '#postponeLateExit',
     '#reconcileConfirmedSet',
