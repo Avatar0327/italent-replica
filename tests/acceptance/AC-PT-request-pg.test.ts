@@ -50,6 +50,19 @@ function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
   return { held: held.promise, release: release.resolve, done };
 }
 
+/**
+ * 用例收尾的单一入口（F-244）：无论 body 是否抛错，都先放行持锁方，再等持锁方与被阻塞的 HTTP 请求都结束。
+ * 用 allSettled 等待，收尾里的 HTTP / 事务错误不会覆盖 body 的原始失败原因；body 抛错时 finally 之后原样继续抛出。
+ */
+async function settleAfter(release: () => void, pending: Promise<unknown>[], body: () => Promise<void>) {
+  try {
+    await body();
+  } finally {
+    release();
+    await Promise.allSettled(pending);
+  }
+}
+
 describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () => {
   it('连接角色是普通角色（非超级用户、无 BYPASSRLS）', async () => {
     const w = await requestWorld(database().db, 'pt4b-pg-role');
@@ -91,14 +104,16 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => submitRequest(tx, w.context(created.revision), created.id, ALL_VISIBLE));
     await a.held;
     const b = api.act(created.id, 'withdraw', created.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    const loser = await w.refusal(await b);
-    expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
-    expect((await w.load(created.id)).state).toBe('in_review');
-    expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review']);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      const loser = await w.refusal(await b);
+      expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
+      expect((await w.load(created.id)).state).toBe('in_review');
+      expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review']);
+    });
   });
 
   it('并发撤回 vs 提交：撤回先持锁，提交（同一旧 revision）后到复核失败；恰一方成功，申请回到草稿', async () => {
@@ -109,16 +124,18 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => withdrawRequest(tx, w.context(submitted.revision), created.id));
     await a.held;
     const b = api.act(created.id, 'submit', submitted.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    const loser = await w.refusal(await b);
-    expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
-    expect((await w.load(created.id)).state).toBe('draft');
-    expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review', 'draft']);
-    // 审批侧：实例已随撤回结束，没有遗留待办
-    expect(w.pending(await w.instance(created.id))).toEqual([]);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      const loser = await w.refusal(await b);
+      expect(loser).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
+      expect((await w.load(created.id)).state).toBe('draft');
+      expect((await w.states(created.id)).map((row) => row.state)).toEqual(['draft', 'in_review', 'draft']);
+      // 审批侧：实例已随撤回结束，没有遗留待办
+      expect(w.pending(await w.instance(created.id))).toEqual([]);
+    });
   });
 
   it('同 revision 的两个提交（不同命令 ID）：恰一个成功，另一个 REVISION_CONFLICT，只有一个审批实例', async () => {
@@ -128,17 +145,19 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => submitRequest(tx, w.context(created.revision), created.id, ALL_VISIBLE));
     await a.held;
     const b = api.act(created.id, 'submit', created.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    const instances = await w.run(async (tx) =>
-      rowsOf<{ n: number }>(
-        await tx.execute(sql`SELECT count(*)::int AS n FROM approval_instances
-          WHERE tenant_id=${w.tenant.id} AND business_id=${created.id}::uuid`),
-      ),
-    );
-    expect(instances).toEqual([{ n: 1 }]);
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      const instances = await w.run(async (tx) =>
+        rowsOf<{ n: number }>(
+          await tx.execute(sql`SELECT count(*)::int AS n FROM approval_instances
+            WHERE tenant_id=${w.tenant.id} AND business_id=${created.id}::uuid`),
+        ),
+      );
+      expect(instances).toEqual([{ n: 1 }]);
+    });
   });
 
   it('撤销（HR）vs 撤回（发起人）同一审批中申请：先到者生效，后到者 REVISION_CONFLICT，实例只取消一次', async () => {
@@ -149,11 +168,13 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     const a = holdThen(w, (tx) => withdrawRequest(tx, w.context(submitted.revision), created.id));
     await a.held;
     const b = api.act(created.id, 'revoke', submitted.revision);
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
-    expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
-    expect((await w.load(created.id)).state).toBe('draft');
+    await settleAfter(a.release, [a.done, b], async () => {
+      await waitForBlocked(w.db, 1);
+      a.release();
+      expect(await a.done).toBeUndefined();
+      expect(await w.refusal(await b)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+      expect((await w.load(created.id)).state).toBe('draft');
+    });
   });
 
   it('提交在组织校验之前已持申请头锁：组织锁被占时 HTTP 提交停在组织校验，观察连接对申请头 NOWAIT 取锁得 55P03；释放后提交 200', async () => {
@@ -170,7 +191,7 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     await held.promise;
     const submit = api.act(created.id, 'submit', created.revision);
     let locked = false;
-    try {
+    await settleAfter(release.resolve, [holder, submit], async () => {
       await waitForBlocked(w.db, 1);
       try {
         await w.run(async (tx) => {
@@ -181,10 +202,7 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
         const failure = error as { code?: string; cause?: { code?: string } };
         locked = (failure.code ?? failure.cause?.code) === '55P03';
       }
-    } finally {
-      release.resolve();
-      await holder;
-    }
+    });
     expect((await submit).status).toBe(200);
     expect(locked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
   });
