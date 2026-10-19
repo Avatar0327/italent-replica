@@ -19,7 +19,7 @@ import { lockEstablishment } from '../establishment/store.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment } from './context.js';
-import { exceedsVoidLimit, inFlightApplications, VOID_LIMIT } from './exit-gate.js';
+import { exceedsVoidLimit, inFlightApplications, VOID_LIMIT, type InFlight } from './exit-gate.js';
 import {
   bumpEmploymentBusiness,
   lockEmploymentBusiness,
