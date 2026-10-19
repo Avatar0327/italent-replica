@@ -840,6 +840,8 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },
+  retirement_rule: { code: 'TenantBase.EmploymentSettings' },
+  retirement_identity_type: { code: 'TenantBase.EmploymentSettings' },
   employment_custom_field: { code: 'TenantBase.EmploymentCustomField' },
   'approval-process': { code: 'TenantBase.ApprovalProcess' },
   transfer_form: {

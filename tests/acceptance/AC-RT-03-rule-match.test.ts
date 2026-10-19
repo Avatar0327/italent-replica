@@ -46,7 +46,11 @@ describe('AC-RT-03 预计退休日期规则匹配（纯函数）', () => {
   });
 
   it('同优先级取登记序号小者', () => {
-    const rules = [rule('late', { sequenceNo: 3 }), rule('early', { sequenceNo: 1 }), rule('middle', { sequenceNo: 2 })];
+    const rules = [
+      rule('late', { sequenceNo: 3 }),
+      rule('early', { sequenceNo: 1 }),
+      rule('middle', { sequenceNo: 2 }),
+    ];
     expect(matchRule(rules, person)?.id).toBe('early');
   });
 
@@ -95,7 +99,8 @@ describe('AC-RT-03 预计退休日期规则匹配（纯函数）', () => {
   });
 
   it('员工在条件槽位上没有值（空）时该条件不满足', () => {
-    const rules = [rule('id-worker', { conditions: [internal, { fieldCode: 'identityType', operator: 'in', values: ['10'] }] })];
+    const identity: RetirementCondition = { fieldCode: 'identityType', operator: 'in', values: ['10'] };
+    const rules = [rule('id-worker', { conditions: [internal, identity] })];
     expect(matchRule(rules, { ...person, identityType: null })).toBeNull();
     expect(matchRule(rules, { ...person, identityType: '10' })?.id).toBe('id-worker');
   });

@@ -36,6 +36,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
 const BL = `${SRC}/employment/blacklist-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
+const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -2847,6 +2848,64 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ]),
   ),
+  // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
+  'GET /api/tenant/employment/retirement-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIREMENT_RULE,
+          'GET',
+          '/retirement-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/retirement-rules', 'create', 'input'],
+        ['PUT', '/retirement-rules/:id', 'update', 'input'],
+        ['POST', '/retirement-rules/:id/copy', 'create', '{}'],
+        ['PUT', '/retirement-rules/:id/enabled', 'update', '{ enabled }'],
+        ['DELETE', '/retirement-rules/:id', 'update', '{}'],
+      ] as const
+    ).map(([method, path, operation, payload]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            RETIREMENT_RULE,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  'GET /api/tenant/employment/retirement-identity-types': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIREMENT_RULE,
+          'GET',
+          '/retirement-identity-types',
+          "const ctx = await readContext(c, deps, 'object.view', 0)",
+        ),
+        READ,
+      ],
+    ),
+  ],
   /**
    * 立即执行：准入只认配置写（admin:other_settings 不叠加数据范围，系统批次按规则适用组织办理）；任职记录查看权的
    * 披露用途另列 runReceiptDisclosure（第 4 轮审查 P2）。配置对象 update 义务的范围是回执的人员披露（同 BE-15a 第 2 轮审查 P1）——首次返回与同键重放都经 runWrite 的投影出口

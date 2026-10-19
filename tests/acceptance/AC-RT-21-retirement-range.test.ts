@@ -75,7 +75,10 @@ describe('AC-RT-21 新增人事字段', () => {
       'originalExpectedRetirementDate',
     ])
       expect(before, key).toHaveProperty(key, null);
-    const system = await s.request('PATCH', path, { ifMatch: 0, body: { originalExpectedRetirementDate: '2030-01-01' } });
+    const system = await s.request('PATCH', path, {
+      ifMatch: 0,
+      body: { originalExpectedRetirementDate: '2030-01-01' },
+    });
     expect(system.status).toBe(400);
     const ok = await s.request('PATCH', path, {
       ifMatch: 0,
@@ -93,37 +96,43 @@ describe('AC-RT-21 新增人事字段', () => {
 });
 
 describe('AC-RT-21 P 为空 × 弹性范围已核准（A-20，手工部分）', () => {
-  it.each([true, false])('弹性范围已核准 = %s：HR 手工清空 P → 同一版本里上下限清空，核准标志不变', async (confirmed) => {
-    const s = await seeded(`clear-${confirmed}`, confirmed);
-    const cleared = await s.patch(1, { expectedRetirementDate: null });
-    expect(cleared.status, await cleared.clone().text()).toBe(200);
-    expect(await cleared.json()).toMatchObject({
-      expectedRetirementDate: null,
-      earliestRetirementDate: null,
-      latestRetirementDate: null,
-      flexibleRangeConfirmed: confirmed,
-      revision: 2,
-    });
-    const history = rows<{ revision: number }>(
-      await withTenant(testDb().db, s.tenant.id, (tx) =>
-        tx.execute(sql`SELECT revision FROM personnel_employee_versions WHERE tenant_id = ${s.tenant.id}
+  it.each([true, false])(
+    '弹性范围已核准 = %s：HR 手工清空 P → 同一版本里上下限清空，核准标志不变',
+    async (confirmed) => {
+      const s = await seeded(`clear-${confirmed}`, confirmed);
+      const cleared = await s.patch(1, { expectedRetirementDate: null });
+      expect(cleared.status, await cleared.clone().text()).toBe(200);
+      expect(await cleared.json()).toMatchObject({
+        expectedRetirementDate: null,
+        earliestRetirementDate: null,
+        latestRetirementDate: null,
+        flexibleRangeConfirmed: confirmed,
+        revision: 2,
+      });
+      const history = rows<{ revision: number }>(
+        await withTenant(testDb().db, s.tenant.id, (tx) =>
+          tx.execute(sql`SELECT revision FROM personnel_employee_versions WHERE tenant_id = ${s.tenant.id}
           AND employee_id = ${s.employee.id}::uuid ORDER BY revision`),
-      ),
-    );
-    expect(history.map((row) => row.revision)).toEqual([1, 2]);
-  });
+        ),
+      );
+      expect(history.map((row) => row.revision)).toEqual([1, 2]);
+    },
+  );
 
-  it.each([true, false])('弹性范围已核准 = %s：内部入口（appendEmployee，批处理同形）清空 P 同样清空上下限', async (confirmed) => {
-    const s = await seeded(`internal-${confirmed}`, confirmed);
-    await internalAppend(s, { expectedRetirementDate: null });
-    expect(await current(s)).toMatchObject({
-      expectedRetirementDate: null,
-      earliestRetirementDate: null,
-      latestRetirementDate: null,
-      flexibleRangeConfirmed: confirmed,
-      revision: 2,
-    });
-  });
+  it.each([true, false])(
+    '弹性范围已核准 = %s：内部入口（appendEmployee，批处理同形）清空 P 同样清空上下限',
+    async (confirmed) => {
+      const s = await seeded(`internal-${confirmed}`, confirmed);
+      await internalAppend(s, { expectedRetirementDate: null });
+      expect(await current(s)).toMatchObject({
+        expectedRetirementDate: null,
+        earliestRetirementDate: null,
+        latestRetirementDate: null,
+        flexibleRangeConfirmed: confirmed,
+        revision: 2,
+      });
+    },
+  );
 
   it('P 为空时手工提交非空上下限 400 RETIREMENT_RANGE_WITHOUT_EXPECTED_DATE，不产生新版本', async () => {
     const s = await personnelSession(testDb().db, 'rt-range-empty-p');
@@ -166,12 +175,15 @@ describe('AC-RT-21 P 为空 × 弹性范围已核准（A-20，手工部分）', 
           false,
         ),
       ),
-    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: { reason: 'RETIREMENT_RANGE_WITHOUT_EXPECTED_DATE' } });
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: { reason: 'RETIREMENT_RANGE_WITHOUT_EXPECTED_DATE' },
+    });
   });
 });
 
 describe('AC-RT-21 / 23 上下限次序，P 不必落在范围内', () => {
-  it('上下限都非空时 earliest ≤ latest；相等可以；只给一端不校验次序', async () => {
+  it('上下限都非空时 earliest ≤ latest（只改一端也与另一端比）；相等可以；一端为空不校验次序', async () => {
     const s = await personnelSession(testDb().db, 'rt-range-order');
     const path = `/employees/${s.employee.id}`;
     const first = await s.request('PATCH', path, { ifMatch: 0, body: { expectedRetirementDate: '2030-06-01' } });

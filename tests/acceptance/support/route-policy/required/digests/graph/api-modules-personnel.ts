@@ -134,11 +134,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/personnel/employee-write.ts#appendEmployee': [
     'apps/api/src/modules/personnel/attachments.ts#validateAttachments',
     '#employeeSnapshot',
+    'apps/api/src/modules/personnel/identity-types.ts#requireEnabledIdentityTypes',
     'apps/api/src/modules/personnel/store.ts#assertRevision',
     'apps/api/src/modules/personnel/store.ts#audit',
     'apps/api/src/modules/personnel/store.ts#insert',
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/store.ts#rows',
+    'apps/api/src/modules/personnel/validation.ts#normalizeRetirementRange',
     'apps/api/src/modules/personnel/validation.ts#validateDates',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS',
@@ -154,6 +156,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/access.ts#trim',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
+  'apps/api/src/modules/personnel/identity-types.ts#listRetirementIdentityTypes': ['#columns'],
   'apps/api/src/modules/personnel/lists.ts#STATUS_FILTERS': [
     'packages/domain/src/employment/employee-status.ts#isEmployeeStatusCode',
     'packages/domain/src/employment/employee-status.ts#isEntryStatusCode',

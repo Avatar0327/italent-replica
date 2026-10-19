@@ -32,6 +32,15 @@ interface Rule {
   readonly revision: number;
 }
 
+/** 字典没有修改接口（DEC-640③），停用只能以表属主身份直接写库来造数。 */
+function disableIdentityType(db: ReturnType<typeof testDb>['db'], tenantId: string, code: string) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    await tx.execute(sql`UPDATE retirement_identity_types SET enabled = false WHERE tenant_id = ${tenantId}
+      AND code = ${code}`);
+  });
+}
+
 async function installRetirementSeeds(db: ReturnType<typeof testDb>['db'], tenantId: string) {
   await withTenant(db, tenantId, (tx) =>
     installMissingSeeds(
@@ -59,7 +68,8 @@ async function world(label: string) {
     ],
     ...extra,
   });
-  const create = (value: unknown, ifMatch = 0) => session.request('POST', '/retirement-rules', { ifMatch, body: value });
+  const create = (value: unknown, ifMatch = 0) =>
+    session.request('POST', '/retirement-rules', { ifMatch, body: value });
   async function created(value: unknown): Promise<Rule> {
     const response = await create(value);
     expect(response.status, await response.clone().text()).toBe(201);
@@ -93,9 +103,11 @@ describe('AC-RT-15 个人身份字典（DEC-640③，只读）', () => {
 
   it('不提供新增与修改：POST / PUT 路径不存在', async () => {
     const w = await world('dict-ro');
-    const [first] = ((await (await w.session.request('GET', '/retirement-identity-types')).json()) as {
-      items: { id: string }[];
-    }).items;
+    const [first] = (
+      (await (await w.session.request('GET', '/retirement-identity-types')).json()) as {
+        items: { id: string }[];
+      }
+    ).items;
     const post = await w.session.request('POST', '/retirement-identity-types', {
       ifMatch: 0,
       body: { code: '30', name: '新增' },
@@ -149,7 +161,8 @@ describe('AC-RT-15 三个租户配置项（DEC-638 A-5）', () => {
     };
     for (const value of ['true', 1, null]) expect((await put('retirement.auto_expected_date', value)).status).toBe(400);
     for (const value of ['yes', 0]) expect((await put('retirement.auto_flexible_range', value)).status).toBe(400);
-    for (const value of [0, 366, 1.5, '30', true]) expect((await put('retirement.upcoming_days', value)).status).toBe(400);
+    for (const value of [0, 366, 1.5, '30', true])
+      expect((await put('retirement.upcoming_days', value)).status).toBe(400);
     expect((await put('retirement.auto_expected_date', true)).status).toBe(200);
     expect((await put('retirement.upcoming_days', 365)).status).toBe(200);
     const read = await api.request('GET', '/api/tenant/settings/retirement.upcoming_days', who);
@@ -170,8 +183,8 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
       retirementAgeYears: 60,
       retirementAgeMonths: 0,
       conditions: [
-        { fieldCode: 'employType', operator: 'in', values: ['internal'] },
         { fieldCode: 'gender', operator: 'in', values: ['male'] },
+        { fieldCode: 'employType', operator: 'in', values: ['internal'] },
       ],
       enabled: true,
       revision: 1,
@@ -238,14 +251,20 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
       ['雇佣关系值为空', [{ fieldCode: 'employType', operator: 'in', values: [] }]],
       ['not_in 不开放', [{ fieldCode: 'employType', operator: 'not_in', values: ['internal'] }]],
       ['is_empty 不开放', [{ fieldCode: 'employType', operator: 'is_empty', values: [] }]],
-      ['未知槽位（用工形式 / 人员类别未实现）', [
-        { fieldCode: 'employType', operator: 'in', values: ['internal'] },
-        { fieldCode: 'employmentForm', operator: 'in', values: ['a'] },
-      ]],
-      ['同槽位两条', [
-        { fieldCode: 'employType', operator: 'in', values: ['internal'] },
-        { fieldCode: 'employType', operator: 'in', values: ['intern'] },
-      ]],
+      [
+        '未知槽位（用工形式 / 人员类别未实现）',
+        [
+          { fieldCode: 'employType', operator: 'in', values: ['internal'] },
+          { fieldCode: 'employmentForm', operator: 'in', values: ['a'] },
+        ],
+      ],
+      [
+        '同槽位两条',
+        [
+          { fieldCode: 'employType', operator: 'in', values: ['internal'] },
+          { fieldCode: 'employType', operator: 'in', values: ['intern'] },
+        ],
+      ],
       ['雇佣关系取值不在内部员工 / 实习生 / 外部', [{ fieldCode: 'employType', operator: 'in', values: ['staff'] }]],
       ['值重复', [{ fieldCode: 'employType', operator: 'in', values: ['internal', 'internal'] }]],
       ['缺 operator', [{ fieldCode: 'employType', values: ['internal'] }]],
@@ -285,10 +304,7 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
     expect(unknown.status).toBe(400);
     expect((await errorOf(unknown)).details?.reason).toBe('RETIREMENT_IDENTITY_TYPE_UNKNOWN');
     await w.created(identity(['10', '20']));
-    await withTenant(w.db, w.session.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE retirement_identity_types SET enabled = false WHERE tenant_id = ${w.session.tenant.id}
-        AND code = '20'`),
-    );
+    await disableIdentityType(w.db, w.session.tenant.id, '20');
     const disabled = await w.create(identity(['10', '20']));
     expect(disabled.status).toBe(400);
     expect((await errorOf(disabled)).details?.reason).toBe('RETIREMENT_IDENTITY_TYPE_DISABLED');
@@ -325,9 +341,9 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
       conditions: [{ fieldCode: 'employType', operator: 'in', values: ['intern'] }],
       revision: 2,
     });
-    expect((await w.session.request('PUT', `/retirement-rules/${later.id}`, { ifMatch: 1, body: w.body() })).status).toBe(
-      409,
-    );
+    expect(
+      (await w.session.request('PUT', `/retirement-rules/${later.id}`, { ifMatch: 1, body: w.body() })).status,
+    ).toBe(409);
     expect(
       (await w.session.request('PUT', `/retirement-rules/${randomUUID()}`, { ifMatch: 1, body: w.body() })).status,
     ).toBe(404);
@@ -358,7 +374,7 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
     const removed = await w.session.request('DELETE', `/retirement-rules/${copy.id}`, { ifMatch: 1 });
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect((await w.session.request('DELETE', `/retirement-rules/${copy.id}`, { ifMatch: 1 })).status).toBe(404);
-    expect((await w.list()).map((rule) => rule.id)).toEqual([later.id, tie.id, first.id]);
+    expect((await w.list()).map((rule) => rule.id)).toEqual([later.id, first.id, tie.id]);
 
     const leftovers = await withTenant(w.db, w.session.tenant.id, async (tx) =>
       rows<{ n: number }>(
@@ -403,7 +419,9 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
   it('写入要任职设置配置写权限，读取要对象查看权：无权 403 且不写入', async () => {
     const w = await world('403');
     const rule = await w.created(w.body());
-    const denyWrite = tenantApi(w.db, { authorize: (request) => request.action !== 'tenant.employment.configuration.write' });
+    const denyWrite = tenantApi(w.db, {
+      authorize: (request) => request.action !== 'tenant.employment.configuration.write',
+    });
     const who = { user: w.session.user.id, tenant: w.session.tenant.id };
     const base = '/api/tenant/employment/retirement-rules';
     for (const [method, path, body] of [
@@ -413,7 +431,8 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
       ['POST', `${base}/${rule.id}/copy`, undefined],
       ['DELETE', `${base}/${rule.id}`, undefined],
     ] as const) {
-      const response = await denyWrite.request(method, path, { ...who, ifMatch: method === 'POST' && !path.endsWith('copy') ? 0 : 1, body });
+      const ifMatch = method === 'POST' && !path.endsWith('copy') ? 0 : 1;
+      const response = await denyWrite.request(method, path, { ...who, ifMatch, body });
       expect(response.status, `${method} ${path}`).toBe(403);
     }
     expect(await w.list()).toMatchObject([{ name: '干部男性 60 岁退休', revision: 1 }]);
@@ -433,10 +452,7 @@ describe('AC-RT-15 人事“个人身份”只能取字典启用编码（A-9）'
     const unknown = await s.request('PATCH', path, { ifMatch: 1, body: { identityType: '99' } });
     expect(unknown.status).toBe(400);
     expect((await errorOf(unknown)).details?.reason).toBe('RETIREMENT_IDENTITY_TYPE_UNKNOWN');
-    await withTenant(testDb().db, s.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE retirement_identity_types SET enabled = false WHERE tenant_id = ${s.tenant.id}
-        AND code = '20'`),
-    );
+    await disableIdentityType(testDb().db, s.tenant.id, '20');
     const disabled = await s.request('PATCH', path, { ifMatch: 1, body: { identityType: '20' } });
     expect(disabled.status).toBe(400);
     expect((await errorOf(disabled)).details?.reason).toBe('RETIREMENT_IDENTITY_TYPE_DISABLED');

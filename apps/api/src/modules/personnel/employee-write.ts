@@ -3,7 +3,8 @@ import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_FIELDS, PERSONNEL_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { audit, assertRevision, camel, insert, lockPerson, rows, type PersonnelContext, type Row } from './store.js';
-import { validateDates } from './validation.js';
+import { requireEnabledIdentityTypes } from './identity-types.js';
+import { normalizeRetirementRange, validateDates } from './validation.js';
 import { validateAttachments } from './attachments.js';
 
 export async function employeeSnapshot(tx: Tx, ctx: PersonnelContext, employeeId: string) {
@@ -31,6 +32,9 @@ export async function appendEmployee(
   const after = { ...before, ...patch };
   after.displayName = after.engName ? `${after.name}（${after.engName}）` : after.name;
   validateDates(after);
+  normalizeRetirementRange(after, patch);
+  // A-9：个人身份只能取字典启用编码（只在本次写入带了新值时校验，已停用的旧值不挡其他字段的编辑）
+  if (typeof patch.identityType === 'string') await requireEnabledIdentityTypes(tx, ctx.tenantId, [patch.identityType]);
   if (after.confirmRehireUserId) {
     const [person] = rows(
       await tx.execute(sql`SELECT user_id FROM permission_user_person_links
