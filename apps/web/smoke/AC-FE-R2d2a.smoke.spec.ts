@@ -5,7 +5,7 @@ const department = record.fields.departmentId;
 const manager = '60000000-0000-4000-8000-000000000002';
 const second = '40000000-0000-4000-8000-000000000002';
 const buttons = ['Employment.PartTime', 'Employment.PartTimeEdit', 'Employment.PartTimeBatchEnd'];
-async function ready(page: Page, allowed = buttons) {
+async function ready(page: Page, allowed = buttons, custom: string[] = []) {
   await setup(page);
   await page.route('**/permission/me/objects/*', (route) =>
     route.fulfill({
@@ -13,6 +13,7 @@ async function ready(page: Page, allowed = buttons) {
         objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
         dataOperations: { read: true, create: true, update: true },
         viewableFields: [
+          ...custom,
           ...fields,
           'partTimeType',
           'sequenceId',
@@ -21,6 +22,7 @@ async function ready(page: Page, allowed = buttons) {
           'employmentType',
         ],
         editableFields: [
+          ...custom,
           ...fields.filter((key) => key !== 'serviceType'),
           'partTimeType',
           'sequenceId',
@@ -97,7 +99,7 @@ async function date(page: Page, label: string, value: string) {
   }
   await page.getByRole('dialog').locator('.ant-modal-title, .ant-drawer-title').click();
 }
-const save = (page: Page) => page.getByRole('dialog').getByRole('button', { name: /^保\s*存$/ });
+const save = (page: Page) => page.getByRole('dialog').getByRole('button', { name: /保\s*存$/ });
 
 test('AC-FE-R2d2a-01 新增必填拦截、预览带出经理、保存真实载荷', async ({ page }) => {
   await ready(page);
@@ -331,4 +333,43 @@ test('AC-FE-R2d2a-08 有按钮但无对象写权，记录仍展示、提交入�
   await page.getByRole('checkbox', { name: 'Select all' }).check();
   await expect(page.getByRole('button', { name: '批量结束兼职', exact: true })).toBeDisabled();
   await expect(page.getByText('合成兼职员工', { exact: true }).first()).toBeVisible();
+});
+
+test('AC-FE-R2d2a-09 租户自定义字段按元数据与字段权显示、编辑保存', async ({ page }) => {
+  const id = '70000000-0000-4000-8000-000000000001';
+  await ready(page, buttons, [`custom:${id}`]);
+  await page.route('**/employment/custom-fields?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id,
+            code: 'ext_synthetic',
+            name: '合成兼职说明',
+            objectType: 'employment',
+            valueType: 'text',
+            revision: 1,
+            inherit: true,
+          },
+        ],
+        page: 1,
+        pageSize: 200,
+        hasDataPermission: true,
+      },
+    }),
+  );
+  let body: unknown;
+  await page.route(`**/employment/part-times/${recordId}`, (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({ json: { ...record, customFields: { [id]: '旧说明' } } });
+    body = route.request().postDataJSON();
+    return route.fulfill({ json: { ...record, revision: 2, customFields: { [id]: '新说明' }, warnings: [] } });
+  });
+  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  const field = page.getByRole('textbox', { name: '合成兼职说明', exact: true });
+  await expect(field).toHaveValue('旧说明');
+  await field.fill('新说明');
+  await save(page).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(body).toEqual({ customFields: { [id]: '新说明' } });
 });

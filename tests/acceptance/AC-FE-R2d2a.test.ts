@@ -31,6 +31,10 @@ describe('AC-FE-R2d2a 直接维护契约', () => {
       },
     );
   });
+  it('租户自定义字段按 custom:id 投影，false 不丢失且只发送显式字段', () => {
+    expect(directValues({ customFields: { a: false, b: 0 } })).toMatchObject({ 'custom:a': false, 'custom:b': 0 });
+    expect(directBody({ 'custom:a': false, 'custom:b': null }, false)).toEqual({ customFields: { a: false, b: null } });
+  });
   it('编辑不发送任职类型、开始日、员工和未给出的字段', () => {
     expect(
       directBody({ departmentId: 'department-b', effectiveDate: '2020-01-01', serviceType: 'secondment' }, false),
