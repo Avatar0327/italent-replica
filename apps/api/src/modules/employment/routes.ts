@@ -39,7 +39,7 @@ import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
 import { createExitApplication } from './exit-application.js';
-import { isCancellableState } from './exit-cancel.js';
+import { isCancelReplay, isCancellableState } from './exit-cancel.js';
 import {
   businessState,
   isExitKind,
@@ -411,11 +411,15 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerBusinessTransitions(router, deps);
 }
 
-/** 有离职扩展行、且处于可撤销状态（草稿 / 审批中 / 已驳回 / 审批通过 / 已生效）的离职单。 */
-async function isCancellableExit(deps: TenantRouteDeps, ctx: EmploymentContext, id: string) {
+/**
+ * 通用 DELETE 对离职单是否按“撤销”处理：有离职扩展行，且（处于可撤销状态，或这个幂等键已是本业务的撤销命令——重放）。
+ * 已作废 / 未通过 / 已删除且不是撤销重放的，仍是通用清理删除。
+ */
+async function routesToCancel(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, key: string | undefined) {
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    if (!(await loadExitRequest(tx, ctx.tenantId, id))) return false;
     const state = await businessState(tx, ctx.tenantId, id);
-    return !!state && isCancellableState(state) && !!(await loadExitRequest(tx, ctx.tenantId, id));
+    return (!!state && isCancellableState(state)) || (await isCancelReplay(tx, ctx.tenantId, key, id));
   });
 }
 
@@ -441,7 +445,11 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
         // 离职单的通用 DELETE 映射到撤销（设计 §4，B4）：与 POST exits/:id/cancel 同一实现，不留绕过 §6B 的删除路径；
         // 已作废 / 未通过的离职单仍是清理删除，走下面的通用流程
-        if (action === 'delete' && isExitKind(current.kind) && (await isCancellableExit(deps, ctx, id)))
+        if (
+          action === 'delete' &&
+          isExitKind(current.kind) &&
+          (await routesToCancel(deps, ctx, id, c.req.header('idempotency-key')))
+        )
           return runExitCancel(c, deps, ctx, id, current.employeeId, true);
         const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
         const guard = {

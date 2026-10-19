@@ -213,6 +213,21 @@ export async function updateCancellationReason(
   };
 }
 
+/**
+ * 该幂等键是否已被本业务的“撤销命令”用过（回执带 cancellation）。通用 DELETE 对离职单的分流依赖当前状态
+ * （可撤销 → 撤销；已作废 / 已删除 → 清理）；首次撤销后状态已变，重放必须仍走撤销分支才能得到同一指纹与首次回执，
+ * 而清理命令的重放（回执不带 cancellation）和新键的清理走通用 delete（第 1 轮审查 P2-3）。
+ */
+export async function isCancelReplay(tx: Tx, tenantId: string, key: string | undefined, businessId: string) {
+  if (!key) return false;
+  const [row] = rowsOf<{ found: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM command_ledger WHERE tenant_id=${tenantId}
+      AND command_id=${key} AND response_status < 400 AND response_body ? 'cancellation'
+      AND response_body->>'id' = ${businessId}) AS found`),
+  );
+  return Boolean(row?.found);
+}
+
 /** 撤销记录所属员工（入口先验范围 / 按钮用）；不存在返回 undefined。 */
 export async function cancellationOwner(tx: Tx, tenantId: string, cancellationId: string) {
   const [row] = await tx

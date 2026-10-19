@@ -66,6 +66,15 @@ export const pendingActivationState = (timezone: string) => sql`((s.state='appro
     AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type='employment.transfer.linked')))`;
 
+/**
+ * 已失效的“员工已离职”失败（离职设计 §5.8，B4 第 1 轮 P2-4）：未来直接调动 T 被离职摘下后到期复查记
+ * EMPLOYEE_DEPARTED_BEFORE_TRANSFER；撤销离职把 T 挂回时间轴后，这条失败不再成立，待办 / 队列 / 生效结果都不再看它。
+ * 只改“最近一次有效尝试”的取法，尝试历史行原样保留（审计）；T 没有因此被标为已完成，未到期的联动仍待执行。
+ * 引用别名 a（employment_activation_attempts），只依赖 employment_timeline，升级前的旧结构同样可用。
+ */
+export const STALE_DEPARTED_FAILURE = sql`(a.reason = 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER' AND EXISTS (
+  SELECT 1 FROM employment_timeline tl WHERE tl.tenant_id=a.tenant_id AND tl.record_id=a.business_id))`;
+
 export type ShiftedKind = 'transfer' | 'leave';
 
 /**
@@ -111,7 +120,8 @@ export async function pendingActivations(
         OR EXISTS (SELECT 1 FROM transfer_linkage_versions v
           WHERE v.tenant_id=b.tenant_id AND v.business_id=b.id))) AS "reminderOnly",
       a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
-      COALESCE(a.attempt_no, 0) AS "lastAttemptNo", a.reason AS "lastReason",
+      (SELECT COALESCE(max(n.attempt_no), 0) FROM employment_activation_attempts n
+        WHERE n.tenant_id=b.tenant_id AND n.business_id=b.id) AS "lastAttemptNo", a.reason AS "lastReason",
       COALESCE((SELECT jsonb_agg(item->>'id') FROM jsonb_array_elements(
         CASE WHEN jsonb_typeof(a.detail->'blockers')='array' THEN a.detail->'blockers' ELSE '[]'::jsonb END) item),
         '[]'::jsonb) AS "lastBlockerIds"
@@ -124,7 +134,8 @@ export async function pendingActivations(
       ORDER BY s.event_no DESC LIMIT 1) s ON true
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id, attempt_no, reason, detail
       FROM employment_activation_attempts a
-      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
+      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id AND NOT ${STALE_DEPARTED_FAILURE}
+      ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
     ORDER BY ${finalDate}, ${planned},
@@ -313,6 +324,7 @@ export async function activationSummary(
         WHERE f.tenant_id=${tenantId} AND f.business_id=${businessId}::uuid AND f.outcome='failed') AS failures
     FROM (SELECT 1) seed LEFT JOIN LATERAL (
       SELECT * FROM employment_activation_attempts a WHERE a.tenant_id=${tenantId} AND a.business_id=${businessId}::uuid
+        AND NOT ${STALE_DEPARTED_FAILURE}
       ORDER BY a.attempt_no DESC LIMIT 1
     ) last ON true
   `),
@@ -388,7 +400,8 @@ export async function listActivationTodos(
     JOIN LATERAL (SELECT state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     JOIN LATERAL (SELECT * FROM employment_activation_attempts a
-      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
+      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id AND NOT ${STALE_DEPARTED_FAILURE}
+      ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     LEFT JOIN LATERAL (SELECT r.department_id FROM employment_timeline t
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date

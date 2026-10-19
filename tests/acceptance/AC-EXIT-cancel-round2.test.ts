@@ -83,32 +83,46 @@ describe('P2-2 撤销已生效离职同步前驱人员履历', () => {
   });
 });
 
-describe('P2-3 通用 DELETE 撤销的同键重放', () => {
-  it('首次 200；同键同内容重放返回首次回执且只有一条撤销记录；同键异内容 409；新键对已作废单是清理', async () => {
-    const x = await world('r2-delete-replay');
-    const leave = await x.directLeave('2026-10-20');
-    const send = (key: string, reason: string, ifMatch = leave.revision) =>
-      x.session.request('DELETE', `/businesses/${leave.id}`, { ifMatch, body: { reason }, idempotencyKey: key });
+describe('P2-3 通用 DELETE 撤销的同键重放（撤销后状态变为 voided / deleted 也一样）', () => {
+  it.each(['approved', 'effective', 'draft'] as const)(
+    '%s：首次 200；同键同内容重放返回首次回执且只有一条撤销记录；同键异内容 409；新键对已撤销单是清理',
+    async (state) => {
+      const x = await world(`r2-delete-replay-${state}`);
+      const leave =
+        state === 'approved'
+          ? await x.directLeave('2026-10-20')
+          : state === 'effective'
+            ? await x.createdLeave(x.employee.id, leaveBody('2026-10-05', 'direct'))
+            : await x.createdLeave(x.employee.id, leaveBody('2026-10-20', 'application'));
+      const send = (key: string, reason: string, ifMatch = leave.revision) =>
+        x.session.request('DELETE', `/businesses/${leave.id}`, { ifMatch, body: { reason }, idempotencyKey: key });
 
-    const first = await send('r2-delete-replay', '误录入');
-    expect(first.status, await first.clone().text()).toBe(200);
-    const firstBody = await first.json();
+      const first = await send('r2-delete-replay', '误录入');
+      expect(first.status, await first.clone().text()).toBe(200);
+      const firstBody = await first.json();
 
-    const replay = await send('r2-delete-replay', '误录入');
-    expect(replay.status, await replay.clone().text()).toBe(200);
-    expect(await replay.json()).toEqual(firstBody);
-    const count = await x.sqlRows<{ n: number }>(sql`SELECT count(*)::int AS n FROM exit_cancellations
-      WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid`);
-    expect(count[0]!.n).toBe(1);
+      const replay = await send('r2-delete-replay', '误录入');
+      expect(replay.status, await replay.clone().text()).toBe(200);
+      expect(await replay.json()).toEqual(firstBody);
+      const count = await x.sqlRows<{ n: number }>(sql`SELECT count(*)::int AS n FROM exit_cancellations
+        WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid`);
+      expect(count[0]!.n).toBe(1);
 
-    const conflict = await send('r2-delete-replay', '换了原因');
-    expect(await x.reason(conflict)).toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
+      const conflict = await send('r2-delete-replay', '换了原因');
+      expect(await x.reason(conflict)).toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
 
-    const cleaned = await send('r2-delete-replay-new', '清理', (await x.business(leave.id)).revision);
-    expect(cleaned.status, await cleaned.clone().text()).toBe(200);
-    expect(await x.stateOfBusiness(leave.id)).toBe('deleted');
-    expect((await x.cancellationOf(leave.id))!.revision).toBe(1);
-  });
+      // 新键：已撤销的单据（approved → voided）再删是清理；已删除的（effective / draft → deleted）不能再清理，不写第二条撤销记录
+      const fresh = await send('r2-delete-replay-new', '清理', (await x.business(leave.id)).revision);
+      if (state === 'approved') {
+        expect(fresh.status, await fresh.clone().text()).toBe(200);
+        expect(await x.stateOfBusiness(leave.id)).toBe('deleted');
+      } else expect(fresh.status).toBeGreaterThanOrEqual(400);
+      expect((await x.cancellationOf(leave.id))!.revision).toBe(1);
+      const after = await x.sqlRows<{ n: number }>(sql`SELECT count(*)::int AS n FROM exit_cancellations
+        WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid`);
+      expect(after[0]!.n).toBe(1);
+    },
+  );
 });
 
 describe('P2-4 挂回调动后“员工已离职”失败待办收敛', () => {

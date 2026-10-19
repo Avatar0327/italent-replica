@@ -18,8 +18,9 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import {
-  employmentEstablishmentAssessment,
+  employmentEstablishmentExcesses,
   establishmentPeriodStartsWithin,
+  type CapacityExcess,
 } from '../establishment/employment-check.js';
 import { readSettings } from '../establishment/settings.js';
 import { auditEmployment } from './context.js';
@@ -106,10 +107,13 @@ export async function loadOccupancy(tx: Tx, ctx: EmploymentContext, employeeId: 
 
 interface Warning {
   readonly reason: 'ESTABLISHMENT_EXCEEDED';
+  readonly capacityId: string;
   readonly departmentId?: string;
-  readonly positionId?: string | null;
+  readonly positionId: string | null;
   readonly from: string;
   readonly to: string | null;
+  readonly peak: number | null;
+  readonly limit: number | null;
 }
 
 /** 部门在该段起点之后是否对操作人可见（组织名 / 部门 ID 只给可见范围内的人）。 */
@@ -142,16 +146,20 @@ async function assertAvailable(tx: Tx, ctx: EmploymentContext, employeeId: strin
   }
 }
 
-/** ② ΔP 的一段：按来源（时间轴记录 / 申请）取字段，在段起点与段内每个编制周期起点各判一次（同删除恢复前一条的口径）。 */
-async function segmentExceeds(tx: Tx, ctx: EmploymentContext, employeeId: string, segment: OccupancySegment) {
+/**
+ * ② ΔP 的一段：按来源（时间轴记录 / 申请）取字段，在段起点与段内每个编制周期起点各判一次（同删除恢复前一条的口径）；
+ * 经编制评估端口 employmentEstablishmentExcesses 取逐编制的实际峰值 / 上限（P2-5），同一编制对象取最大峰值。
+ */
+async function segmentExcesses(tx: Tx, ctx: EmploymentContext, employeeId: string, segment: OccupancySegment) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const fields =
     (await loadEmploymentRecord(tx, ctx.tenantId, segment.sourceId, segment.from))?.fields ??
     (await loadEmploymentBusiness(tx, ctx.tenantId, segment.sourceId, today))?.fields;
-  if (!fields) return false;
+  if (!fields) return [];
+  const worst = new Map<string, CapacityExcess>();
   const starts = await establishmentPeriodStartsWithin(tx, ctx.tenantId, segment.from, segment.to);
   for (const effectiveDate of [segment.from, ...starts]) {
-    const assessment = await employmentEstablishmentAssessment(tx, ctx, {
+    const { excesses } = await employmentEstablishmentExcesses(tx, ctx, {
       businessId: segment.sourceId,
       employeeId,
       kind: 'transfer',
@@ -162,9 +170,13 @@ async function segmentExceeds(tx: Tx, ctx: EmploymentContext, employeeId: string
       reconcileCarried: false,
       fields,
     });
-    if (assessment !== 'none') return true;
+    for (const item of excesses) {
+      const key = `${item.capacityId}:${item.positionId ?? ''}`;
+      if ((worst.get(key)?.peak ?? -1) < (item.peak ?? 0)) worst.set(key, item);
+      else if (!worst.has(key)) worst.set(key, item);
+    }
   }
-  return false;
+  return [...worst.values()];
 }
 
 async function assertCapacity(
@@ -178,16 +190,24 @@ async function assertCapacity(
   const warnings: Warning[] = [];
   let hidden = 0;
   for (const segment of segments) {
-    if (!(await segmentExceeds(tx, ctx, employeeId, segment))) continue;
-    if (await departmentVisible(tx, ctx, employeeId, segment))
+    const excesses = await segmentExcesses(tx, ctx, employeeId, segment);
+    if (!excesses.length) continue;
+    // 部门 / 编制明细只给部门可见范围内的人，其余只计件数
+    if (!(await departmentVisible(tx, ctx, employeeId, segment))) {
+      hidden += excesses.length;
+      continue;
+    }
+    for (const item of excesses)
       warnings.push({
         reason: 'ESTABLISHMENT_EXCEEDED',
+        capacityId: item.capacityId,
         departmentId: segment.departmentId,
-        positionId: segment.positionId,
+        positionId: item.positionId ?? segment.positionId,
         from: segment.from,
         to: segment.to,
+        peak: item.peak,
+        limit: item.limit,
       });
-    else hidden += 1;
   }
   if (!warnings.length && !hidden) return;
   if (!confirmed)

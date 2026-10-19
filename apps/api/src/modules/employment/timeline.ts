@@ -329,6 +329,8 @@ export async function reattachFutureTransfers(
     WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${leaveBusinessId}::uuid AND x.employee_id=${employeeId}::uuid
       AND x.kind='future_transfer_detached' AND x.phase='effective' AND x.target_type='employment-record'
       AND NOT EXISTS (SELECT 1 FROM employment_timeline t WHERE t.tenant_id=x.tenant_id AND t.record_id=x.target_id)
+      -- 被摘下后又被 HR 删除的调动（墓碑）不再挂回：它没有时间轴行是正确的最终状态
+      AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d WHERE d.tenant_id=x.tenant_id AND d.record_id=x.target_id)
     ORDER BY x.detail->'window'->>'from', x.id`),
   );
   for (const item of detached)

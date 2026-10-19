@@ -1,5 +1,5 @@
 import { lockTransferParticipants } from './transfer-locks.js';
-import { pendingActivationState } from './activation-store.js';
+import { pendingActivationState, STALE_DEPARTED_FAILURE } from './activation-store.js';
 import { completionCandidates, remindCompletion } from '../transfer/completion.js';
 /**
  * 定时生效调度（R1-T08，`08` §12 / §16；REQ-TRF-004）。按各租户时区判定业务日（DEC-056，事件时间存 UTC），
@@ -173,7 +173,8 @@ async function dueEmployees(
     JOIN LATERAL (SELECT state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id FROM employment_activation_attempts a
-      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
+      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id AND NOT ${STALE_DEPARTED_FAILURE}
+      ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
       AND p.effective_date<=${businessDate}::date
       AND (${cursor}::uuid IS NULL OR b.employee_id>${cursor}::uuid)

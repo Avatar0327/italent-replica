@@ -59,6 +59,8 @@ interface EffectRow {
   readonly targetId: string | null;
   readonly detail: Record<string, unknown>;
   readonly departmentId: string | null;
+  /** 目标记录当前是否在时间轴上（被摘下的调动撤销后挂回才在；已删除的不在）。 */
+  readonly onTimeline: boolean;
 }
 
 /** 离职台账（只追加）的全部行，附目标业务最新载荷的部门（可见性判定用）。 */
@@ -68,7 +70,8 @@ async function effectsOf(tx: Tx, ctx: EmploymentContext, businessId: string): Pr
     SELECT x.kind, x.phase, x.target_type AS "targetType", x.target_id::text AS "targetId", x.detail,
       (SELECT p.department_id::text FROM employment_payload_versions p
         WHERE p.tenant_id=x.tenant_id AND p.business_id=x.target_id
-        ORDER BY p.version_no DESC LIMIT 1) AS "departmentId"
+        ORDER BY p.version_no DESC LIMIT 1) AS "departmentId",
+      EXISTS (SELECT 1 FROM employment_timeline tl WHERE tl.tenant_id=x.tenant_id AND tl.record_id=x.target_id) AS "onTimeline"
     FROM exit_effects x WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${businessId}::uuid
     ORDER BY x.created_at, x.id`),
   );
@@ -144,7 +147,10 @@ export async function probeDownstream(tx: Tx, ctx: EmploymentContext, input: Dow
   const effects = await effectsOf(tx, ctx, input.businessId);
   const additional: DownstreamAdditional[] = [];
   for (const { effect, action } of ADDITIONAL) {
-    const rows = effects.filter((row) => row.kind === effect);
+    // “已挂回”只报实际回到时间轴的调动；撤销前已被 HR 删除的不报（P2-1）
+    const rows = effects.filter(
+      (row) => row.kind === effect && (effect !== 'future_transfer_detached' || row.onTimeline),
+    );
     if (!rows.length) continue;
     additional.push({ kind: effect, action, targets: ledgerTargets(rows, [effect]), hiddenCount: 0 });
   }
