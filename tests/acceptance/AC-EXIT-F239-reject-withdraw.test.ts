@@ -132,7 +132,11 @@ describe('F-239 离职生效前驳回 / 撤回：不作废在途考核', () => {
 
     // 撤回回到草稿后删除，再另发一条离职申请
     const back = await currentOf(x, draft.id);
-    const removed = await x.request(x.hr.id, 'DELETE', `${BUSINESSES}/${draft.id}`, { ifMatch: back.revision });
+    // 离职单的通用 DELETE 映射为 cancel，reason 必填（R2-T03 设计 §4，BE-4j）
+    const removed = await x.request(x.hr.id, 'DELETE', `${BUSINESSES}/${draft.id}`, {
+      ifMatch: back.revision,
+      body: { reason: 'F-239 撤回后删除草稿' },
+    });
     expect(removed.status, await removed.clone().text()).toBeLessThan(300);
     x.setNow('2026-10-01T01:00:00Z');
     const other = await submittedApplication(x, person.employeeId);
