@@ -37,8 +37,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/blacklist.ts#blacklistReasonLabel': ['#BLACKLIST_REASONS'],
   'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_CODES': ['#EMPLOYEE_STATUS'],
   'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES': ['#ENTRY_STATUS'],
+  'packages/domain/src/employment/employee-status.ts#TERMINATING_RECORD_STATUS': ['#EMPLOYEE_STATUS'],
   'packages/domain/src/employment/employee-status.ts#isEmployeeStatusCode': ['#EMPLOYEE_STATUS_CODES'],
   'packages/domain/src/employment/employee-status.ts#isEntryStatusCode': ['#ENTRY_STATUS_CODES'],
+  'packages/domain/src/employment/employee-status.ts#isTerminatingRecord': ['#TERMINATING_RECORD_STATUS'],
   'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': [
@@ -78,6 +80,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/exit-occupancy.ts#subtractAll': ['#subtractSpan'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
   'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/exit.ts#buttonsOf': ['#EXIT_BUTTONS', '#RETIREMENT_BUTTONS'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',
     '#resolveLateExecution',

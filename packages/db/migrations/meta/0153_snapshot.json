@@ -1,5 +1,5 @@
 {
-  "id": "11485423-f841-47c5-a451-61faeaa28bb1",
+  "id": "c8345854-b3ac-4c8b-90e0-c7af3c7db605",
   "prevId": "a887e90e-4f5c-4994-86be-70a7d0c6b115",
   "version": "7",
   "dialect": "postgresql",
@@ -11751,7 +11751,7 @@
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
@@ -12461,7 +12461,7 @@
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization')"
         },
         "employment_records_service_type": {
           "name": "employment_records_service_type",
@@ -60397,6 +60397,118 @@
         "part_time_requests_revision_positive": {
           "name": "part_time_requests_revision_positive",
           "value": "\"part_time_requests\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.retirement_requests": {
+      "name": "retirement_requests",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expected_retirement_date": {
+          "name": "expected_retirement_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retire_type": {
+          "name": "retire_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "re_employed": {
+          "name": "re_employed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "retirement_requests_employee": {
+          "name": "retirement_requests_employee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "retirement_requests_exit_fk": {
+          "name": "retirement_requests_exit_fk",
+          "tableFrom": "retirement_requests",
+          "tableTo": "exit_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "business_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "retirement_requests_tenant_id_business_id_pk": {
+          "name": "retirement_requests_tenant_id_business_id_pk",
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "retirement_requests_type": {
+          "name": "retirement_requests_type",
+          "value": "\"retirement_requests\".\"retire_type\" IS NULL OR \"retirement_requests\".\"retire_type\" IN ('early', 'normal', 'delayed')"
+        },
+        "retirement_requests_type_needs_expected": {
+          "name": "retirement_requests_type_needs_expected",
+          "value": "\"retirement_requests\".\"retire_type\" IS NULL OR \"retirement_requests\".\"expected_retirement_date\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false

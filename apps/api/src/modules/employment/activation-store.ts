@@ -54,7 +54,7 @@ const QUEUE_LIMIT = 200;
  * 离职（含 approved 直接离职）与申请一样参与排序、前序与 HR 待办（R2-T03 §18.1 关口①，B3-3 起）。
  */
 export const pendingActivationState = (timezone: string) => sql`((s.state='approved' AND
-    (p.mode='application' OR p.kind='leave') OR
+    (p.mode='application' OR p.kind IN ('leave','retirement')) OR
   s.state='effective' AND p.kind='transfer' AND (EXISTS (
     SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type IN ('employment.transfer.recheck.pending','employment.transfer.linkage.pending'))
@@ -75,7 +75,7 @@ export const pendingActivationState = (timezone: string) => sql`((s.state='appro
 export const STALE_DEPARTED_FAILURE = sql`(COALESCE(a.reason, '') = 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER' AND EXISTS (
   SELECT 1 FROM employment_timeline tl WHERE tl.tenant_id=a.tenant_id AND tl.record_id=a.business_id))`;
 
-export type ShiftedKind = 'transfer' | 'leave';
+export type ShiftedKind = 'transfer' | 'leave' | 'retirement';
 
 /**
  * 最终执行日期的 SQL 镜像（domain `finalExecutionDate`，设计 §5.0）：`shifted` 里的 kind 按 greatest(计划日, 今天)
@@ -86,7 +86,7 @@ export function finalExecutionDateSql(
   kind: SQL,
   planned: SQL,
   today: string,
-  shifted: readonly ShiftedKind[] = ['transfer', 'leave'],
+  shifted: readonly ShiftedKind[] = ['transfer', 'leave', 'retirement'],
 ): SQL {
   const kinds = sql.join(
     shifted.map((item) => sql`${item}`),
@@ -95,8 +95,8 @@ export function finalExecutionDateSql(
   return sql`(CASE WHEN ${kind}::text IN (${kinds}) THEN greatest(${planned}, ${today}::date) ELSE ${planned} END)`;
 }
 
-/** 待生效队列按“最终执行日期”顺延的 kind：调动与离职同式（设计 §5.0，DEC-272）。 */
-export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer', 'leave'];
+/** 待生效队列按“最终执行日期”顺延的 kind：调动、离职与退休同式（设计 §5.0，DEC-272；退休见 R2-T04 §4.2）。 */
+export const QUEUE_SHIFTED_KINDS: readonly ShiftedKind[] = ['transfer', 'leave', 'retirement'];
 
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
 export async function pendingActivations(

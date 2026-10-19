@@ -1,14 +1,16 @@
 /**
  * 离职写入口公共门禁（R2-T03 §4A）：kind=leave / retirement 所有公开入口的唯一前置条件实现。
+ * 退休（R2-T04 §3.1）走同一函数同一顺序，按钮取 buttonsOf(kind)（Employment.Retire*，不复用 Dimission*），
+ * 差异只有：不判离职字典（离职专用列必须为空，由申请服务在锁前校验）、离职 / 退休互斥。
  * 顺序固定：功能操作权 + 按钮权 + 字段权（复用 context.ts requireEmploymentWrite，不以 Employment.Create / Edit / Delete
  * 代替 Dimission* 四个按钮）→ 范围由调用方入口先验（readContext / authorizeBusinessWrite）→ 本文件的前置条件：
  * 日期创建后不可改（§7.2，DEC-499）、同员工无未办结离职、字典启用、§8A 逾期迟到调动、§8B 转正在途、§8 在途调动确认令牌、
  * 通用 revoke / DELETE 对离职单 409 USE_EXIT_CANCEL（撤销只经 exit-cancel.ts，B4）。所有拒绝发生在首个写之前（调用方在命令事务内先调用本门禁）。
- * 退休（R2-T04）只受日期规则约束；没有扩展行的离职（可信造数）保持 main 行为。
+ * 没有扩展行的离职 / 退休（可信造数）保持 main 行为。
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
-import { EXIT_BUTTONS, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
+import { buttonsOf, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
@@ -38,7 +40,9 @@ export function exitSourceOf(mode: string, changeType: string | null | undefined
   return mode === 'direct' ? 'direct' : 'approval';
 }
 
-const BUTTON = { ...EXIT_BUTTONS, retry: 'Employment.RetryActivation' } as const;
+const buttonsFor = (kind: BusinessKind) => ({ ...buttonsOf(kind), retry: 'Employment.RetryActivation' }) as const;
+/** 门禁目标的业务类型：显式给出 > 已加载业务的载荷 > 缺省离职（无业务的旧入口都是离职）。 */
+const kindOfTarget = (target: ExitGateTarget): BusinessKind => target.kind ?? target.business?.payload.kind ?? 'leave';
 
 /** 创建 / 提交时确认过的在途调动集合与令牌哈希（写入 exit_requests.pending_transfer_ack，不回传，§8）。 */
 export interface AckRecord {
@@ -124,6 +128,7 @@ interface PermissionSpec {
 
 /** 每个操作要过的 对象操作 + 载荷 + 按钮；统一经 requireEmploymentWrite，不新增权限原语。 */
 function permissionSpec(operation: ExitOperation, target: ExitGateTarget): PermissionSpec | null {
+  const BUTTON = buttonsFor(kindOfTarget(target));
   switch (operation) {
     case 'create':
       // 自助 / 经理代发的发起人按钮归 F-020（暂名 Portal.ExitApply / Team.ExitApply）
@@ -523,13 +528,21 @@ async function assertDictionaries(tx: Tx, ctx: EmploymentContext, exit: ExitOpti
   if (exit.exitTypeCode) await assertExitDictionaryEnabled(tx, ctx.tenantId, 'types', exit.exitTypeCode);
 }
 
-/** 同员工无未办结离职：调用方须已持员工行锁（并发的两笔申请在锁后重读，恰一笔成功）。 */
+/** 同员工无未办结的离职或退休（R2-T04 §3.1 互斥）：调用方须已持员工行锁（并发的两笔申请在锁后重读，恰一笔成功）。 */
+/** 名称沿用离职：现已含退休单（kind IN leave, retirement）。 */
 export const leavesInProgress = (tx: Tx, ctx: EmploymentContext, employeeId: string) =>
-  inFlightApplications(tx, ctx, employeeId, ['leave'], ['draft', 'in_review', 'approved', 'rejected'], null);
+  inFlightApplications(
+    tx,
+    ctx,
+    employeeId,
+    ['leave', 'retirement'],
+    ['draft', 'in_review', 'approved', 'rejected'],
+    null,
+  );
 
 async function assertNoLeaveInProgress(tx: Tx, ctx: EmploymentContext, employeeId: string) {
   if ((await leavesInProgress(tx, ctx, employeeId)).length)
-    throw conflict('EXIT_IN_PROGRESS', '该员工已有未办结的离职');
+    throw conflict('EXIT_IN_PROGRESS', '该员工已有未办结的离职或退休');
 }
 
 /** 最后工作日不早于当前周期的入职生效日期（离职与结束实习共用，结束实习在资格检查前先判日期）。 */
@@ -550,8 +563,12 @@ export async function assertLastWorkDateNotBeforeEntry(
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
   const exit = target.exit ?? {};
   const lastWorkDate = target.lastWorkDate!;
-  assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
-  await assertDictionaries(tx, ctx, exit);
+  // 退休不判离职字典：离职专用列必须为空（申请服务在锁前已拒绝），只复核交接人（R2-T04 §3.1）
+  if (kindOfTarget(target) === 'retirement') await assertHandoverEmployee(tx, ctx, exit.handoverEmployeeId);
+  else {
+    assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
+    await assertDictionaries(tx, ctx, exit);
+  }
   await assertLastWorkDateNotBeforeEntry(tx, ctx, target.employeeId, lastWorkDate);
   await assertNoLeaveInProgress(tx, ctx, target.employeeId);
   await assertNoOverdueTransfer(tx, ctx, target.employeeId);
@@ -592,8 +609,15 @@ async function cancelConditions(
   cancelling: boolean,
 ) {
   if (cancelling || !['draft', 'in_review', 'rejected', 'approved', 'effective'].includes(business.state)) return;
-  if (await loadExitRequest(tx, ctx.tenantId, business.id))
-    throw conflict('USE_EXIT_CANCEL', '请使用撤销离职入口', { endpoint: 'POST /exits/:id/cancel' });
+  if (!(await loadExitRequest(tx, ctx.tenantId, business.id))) return;
+  // 退休的撤销归 5a′（R2-T04 §6，复用 cancelExit 参数化）：本批对 approved / effective 退休不提供，
+  // 未办结的退休（草稿 / 审批中 / 已驳回）的 revoke / delete 保持 #432 之前的通用流程，不绕过 §6B（它们不占编制）
+  if (business.payload.kind === 'retirement') {
+    if (['approved', 'effective'].includes(business.state))
+      throw conflict('EXIT_OPERATION_NOT_AVAILABLE', '退休撤销暂不可用');
+    return;
+  }
+  throw conflict('USE_EXIT_CANCEL', '请使用撤销离职入口', { endpoint: 'POST /exits/:id/cancel' });
 }
 
 /**
@@ -607,12 +631,6 @@ export async function requireExitGate(
   target: ExitGateTarget,
   provided?: string,
 ): Promise<ExitGateResult> {
-  const kind = target.kind ?? target.business?.payload.kind ?? 'leave';
-  if (kind === 'retirement') {
-    if (operation === 'update' && target.business && target.patch)
-      assertExitDatesUnchanged(target.business, target.patch);
-    return { ack: null };
-  }
   const row = target.business ? await loadExitRequest(tx, ctx.tenantId, target.business.id) : undefined;
   await requireExitPermission(ctx, operation, { ...target, ...(row ? { row } : {}) });
   switch (operation) {

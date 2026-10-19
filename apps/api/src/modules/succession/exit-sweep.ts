@@ -2,7 +2,13 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isUuid, sql, successionExitApplications as applications, type Tx } from '@italent/db';
 import { inArray } from 'drizzle-orm';
-import { decide, EMPLOYEE_STATUS, SUCCESSION_APP, tenantLocalDate } from '@italent/domain';
+import {
+  decide,
+  isTerminatingRecord,
+  SUCCESSION_APP,
+  TERMINATING_EMPLOYEE_STATUSES,
+  tenantLocalDate,
+} from '@italent/domain';
 import { objectCatalog } from '../permission/catalog.js';
 import { loadSubject } from '../permission/subject.js';
 import { resolveDataScope } from '../permission/scope-resolver.js';
@@ -97,7 +103,8 @@ export const EXIT_SWEEP_PRODUCER: CalcProducer = {
       JOIN employment_timeline t ON t.tenant_id=a.tenant_id AND t.record_id=a.employment_record_id
       JOIN LATERAL employment_record_status(t.tenant_id,t.record_id) s ON true
       WHERE a.tenant_id=${tenant.id}::uuid AND a.source<>'delete_revert' AND a.candidate_record_ids<>'[]'::jsonb
-        AND t.start_date<=${businessDate}::date AND s.employee_status=8 ORDER BY a.employee_id`),
+        AND t.start_date<=${businessDate}::date
+        AND s.employee_status=ANY(${`{${TERMINATING_EMPLOYEE_STATUSES.join(',')}}`}::int[]) ORDER BY a.employee_id`),
     );
     await enqueueCalcRun(
       tx,
@@ -137,7 +144,7 @@ export const EXIT_SWEEP_HANDLER: CalcHandler = {
     let changed = 0;
     for (const application of active) {
       const event = await recheckRecordEvent(tx, ctx, application.employmentRecordId, today);
-      if (event.kind !== 'effective' || event.record.employeeStatus !== EMPLOYEE_STATUS.left) continue;
+      if (event.kind !== 'effective' || !isTerminatingRecord(event.record.kind, event.record.employeeStatus)) continue;
       changed += await applyExit(
         tx,
         { ...ctx, userId: current.userId },

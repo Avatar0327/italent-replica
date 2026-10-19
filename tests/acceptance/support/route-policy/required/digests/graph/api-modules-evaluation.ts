@@ -671,7 +671,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/evaluation/review-group-state.ts#isDueReviewGroupLeave',
     'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState',
     'apps/api/src/modules/evaluation/review-group-state.ts#reviewGroupEmployeeStatus',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#isTerminatedEmployeeStatus',
+    'packages/domain/src/employment/employee-status.ts#isTerminatingRecord',
   ],
   'apps/api/src/modules/evaluation/review-group-exit.ts#registerReviewGroupExitHook': [
     'apps/api/src/modules/employment/status-hooks.ts#registerEmployeeStatusHooks',
@@ -782,7 +783,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/evaluation/read-model.ts#view',
   ],
   'apps/api/src/modules/evaluation/review-group-state.ts#isDueReviewGroupLeave': [
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#isTerminatingRecord',
   ],
   'apps/api/src/modules/evaluation/review-group-state.ts#lockReviewGroupState': [
     'apps/api/src/audit/request-context.ts#currentAuditRequest',

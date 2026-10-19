@@ -3,7 +3,7 @@
  * 复用任职状态钩子（R3-T05 A3 / DEC-343）与 ev_sync_queue：到期在任职事务内移出，未来直接离职排队到期处理。
  */
 import { sql, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS } from '@italent/domain';
+import { isTerminatedEmployeeStatus, isTerminatingRecord } from '@italent/domain';
 import { RECORD_CREATE_EVENT } from '../employment/record-events.js';
 import {
   registerEmployeeStatusHooks,
@@ -71,7 +71,7 @@ export async function settleReviewGroupExit(
 
 const hooks: EmployeeStatusHooks = {
   async onRecordMaterialized(tx, ctx, event) {
-    if (event.kind !== 'leave' || event.employeeStatus !== EMPLOYEE_STATUS.left) return;
+    if (!isTerminatingRecord(event.kind, event.employeeStatus)) return;
     // 记录 outbox 在钩子之前同事务写好；按记录判重，重放不重做，未来事件不被时间游标越过（F-055）。
     const [queued] = rowsOf<{ id: string }>(
       await tx.execute(sql`INSERT INTO ev_sync_queue
@@ -100,7 +100,7 @@ const hooks: EmployeeStatusHooks = {
       }
     }
     // 删除重聘等记录可能恢复离职，旧队列已完成也须再次退组；生效前取消离职仍保留原组。
-    if ((await reviewGroupEmployeeStatus(tx, state, event.employeeId)) === 'left') {
+    if (isTerminatedEmployeeStatus(await reviewGroupEmployeeStatus(tx, state, event.employeeId))) {
       await settleDueReviewGroupExits(tx, state);
       await exitEmployeeReviewGroups(tx, state, [event.employeeId]);
     }

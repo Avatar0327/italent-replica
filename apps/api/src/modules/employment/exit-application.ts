@@ -11,6 +11,11 @@ import { z } from 'zod';
 import { auditEmployment } from './context.js';
 import { activateIfDue } from './exit-activation.js';
 import { confirmExit } from './exit-confirmation.js';
+import {
+  assertRetirementFields,
+  writeRetirementExtension,
+  type RetirementCreateInput,
+} from './retirement-application.js';
 import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate, withAckWarnings } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
@@ -49,6 +54,10 @@ export interface ExitApplicationInput {
   readonly batchId?: string;
   /** 变动类型：只由可信的系统联动传入（结束实习记“实习结束”，BE-6b），不开放给请求体；该类离职免审批直接生效（DEC-593①）。 */
   readonly changeType?: ChangeType;
+  /** 业务类型：离职（缺省）或退休（R2-T04 §3.2，同一服务、同一门禁、同一事务时序）。 */
+  readonly kind?: 'leave' | 'retirement';
+  /** 退休专有入参（kind = retirement）；5a 为空。 */
+  readonly retirement?: RetirementCreateInput;
 }
 
 /** exit_requests 的可写列（扩展行 ← exit 区块）；金额以字符串入库。 */
@@ -72,10 +81,12 @@ export async function createExitApplication(
   input: ExitApplicationInput,
 ): Promise<EmploymentBusiness> {
   const employeeId = input.employeeId.toLowerCase();
+  const kind = input.kind ?? 'leave';
   const exit = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
+  if (kind === 'retirement') assertRetirementFields(exit);
   assertBusinessInputSubset(input.initiation, input);
   const normalized = normalizeEmploymentInput(ctx, {
-    kind: 'leave',
+    kind,
     mode: input.mode,
     lastWorkDate: input.lastWorkDate,
     ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
@@ -91,6 +102,7 @@ export async function createExitApplication(
   await assertInitiatorRelation(tx, ctx, input.initiation, employeeId);
   const { ack } = await requireExitGate(tx, ctx, 'create', {
     employeeId,
+    kind,
     initiation: input.initiation,
     mode: input.mode,
     lastWorkDate: normalized.lastWorkDate!,
@@ -122,7 +134,7 @@ export async function createExitApplication(
   await auditEmployment(
     tx,
     ctx,
-    'exit.request.create',
+    kind === 'retirement' ? 'retirement.request.create' : 'exit.request.create',
     'exit-request',
     business.id,
     null,
@@ -131,11 +143,19 @@ export async function createExitApplication(
     undefined,
     { employeeId },
   );
+  // 退休薄扩展行（R2-T04 §3.2 第 6 步）：在 exit_requests 之后、生效链之前冻结 P 并派生类型，失败整单回滚
+  if (kind === 'retirement')
+    await writeRetirementExtension(
+      tx,
+      ctx,
+      { id: business.id, employeeId, lastWorkDate: normalized.lastWorkDate! },
+      input.retirement ?? {},
+    );
   // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
   if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
   // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）
   if (input.mode !== 'direct') return withAckWarnings(tx, ctx, business);
-  await confirmExit(tx, ctx, { ...business, mode: 'direct' });
+  await confirmExit(tx, ctx, { ...business, mode: 'direct', kind });
   const activation = await activateIfDue(tx, ctx, business.id);
   if (!activation || activation.outcome === 'pending') return withAckWarnings(tx, ctx, business);
   // 落地 / 失败 / 挂起都推进业务 revision（trigger = approval 由调用命令统一递增一次）
@@ -189,30 +209,33 @@ export async function updateExitFields(
   ctx: EmploymentContext,
   businessId: string,
   patch: ExitPatch,
-  options: { readonly approvalEdit?: boolean } = {},
+  options: { readonly approvalEdit?: boolean; readonly kind?: 'leave' | 'retirement' } = {},
 ): Promise<EmploymentBusiness> {
+  const kind = options.kind ?? 'leave';
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
   const [row] = await tx
     .select()
     .from(exitRequests)
     .where(and(eq(exitRequests.tenantId, ctx.tenantId), eq(exitRequests.businessId, businessId)));
-  if (!row || business.payload.kind !== 'leave') throw new AppError('NOT_FOUND', '离职单不存在');
+  if (!row || business.payload.kind !== kind)
+    throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
   await requireExitGate(tx, ctx, 'update', {
     employeeId: business.employeeId,
+    kind,
     business,
     patch: patch.dates,
     payload: patch.fields,
     ...(options.approvalEdit ? { approvalEdit: true } : {}),
   });
-  for (const [key, kind] of [
+  for (const [key, dictionary] of [
     ['reasonCode', 'reasons'],
     ['whereaboutsCode', 'whereabouts'],
     ['exitTypeCode', 'types'],
   ] as const) {
     const value = patch.fields[key];
-    if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, kind, value);
+    if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, dictionary, value);
   }
   await assertHandoverEmployee(tx, ctx, patch.fields.handoverEmployeeId);
   const values = columnValues(patch.fields);
@@ -226,7 +249,7 @@ export async function updateExitFields(
   await auditEmployment(
     tx,
     ctx,
-    'exit.request.update',
+    kind === 'retirement' ? 'retirement.request.update' : 'exit.request.update',
     'exit-request',
     businessId,
     picked,
