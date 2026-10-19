@@ -73,6 +73,10 @@ export const statusLabels: Record<string, string> = {
   merged: '已合并',
 };
 export const typeLabels: Record<string, string> = {
+  part_time: '兼职',
+  part_time_add: '新增兼职',
+  part_time_extend: '延长兼职',
+  part_time_end: '结束兼职',
   transfer: '调动',
   employment_transfer: '调动',
   regularization: '转正',

@@ -87,7 +87,9 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
     expect(result.menus.map((menu) => menu.key)).toEqual([
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
-      ...(app === 'transfer' && code === M.employmentRecord.code ? ['entries', 'exit-settings', 'offers'] : []),
+      ...(app === 'transfer' && code === M.employmentRecord.code
+        ? ['entries', 'exit-settings', 'offers', 'part-time']
+        : []),
       // F-190b：带教信息分组，子项仍沿用原路径。
       ...(app === 'idp' && code === 'IDP.TutorShip' ? ['tutorship-information-group'] : []),
     ]);

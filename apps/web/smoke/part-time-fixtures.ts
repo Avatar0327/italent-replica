@@ -161,4 +161,6 @@ export async function setup(page: Page, path = '/part-time') {
   );
   await page.goto(path);
   await page.getByLabel('切换演示身份').selectOption(user);
+  await page.waitForURL('/staff');
+  await page.goto(path);
 }

@@ -106,3 +106,79 @@ test('AC-FE-R2d1-05 档案兼职记录只读该员工接口', async ({ page }) =
   await read;
   await expect(page.getByRole('tabpanel', { name: '兼职记录', exact: true })).toContainText('2026-09-01');
 });
+
+test('AC-FE-R2d1-06 字段无查看权时不出现筛选，也不解析被裁剪的引用', async ({ page }) => {
+  await setup(page);
+  const referenceReads: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/org/organizations/')) referenceReads.push(r.url());
+  });
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
+        dataOperations: { read: true },
+        viewableFields: [],
+        editableFields: [],
+        buttons: [],
+      },
+    }),
+  );
+  await page.route('**/employment/part-times?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [{ id: recordId }],
+        total: 1,
+        page: 1,
+        pageSize: 30,
+        hasDataPermission: true,
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole('button', { name: '查看详情', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: '高级筛选' });
+  await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByLabel('兼职部门', { exact: true })).toHaveCount(0);
+  await expect(drawer.locator('input')).toHaveCount(0);
+  expect(referenceReads).toEqual([]);
+});
+
+test('AC-FE-R2d1-07 详情404和列表403明确报错，不回退旧数据', async ({ page }) => {
+  await setup(page);
+  await page.route(`**/employment/part-times/${recordId}`, (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND' } } }),
+  );
+  await page.getByRole('button', { name: '查看详情', exact: true }).click();
+  await expect(page.getByRole('dialog').getByText('页面或记录不存在', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('2026-09-01', { exact: true })).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await page.route('**/employment/part-times?*', (route) =>
+    route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN' } } }),
+  );
+  await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
+  await expect(page.getByText('暂无访问权限', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: listRecord.employee.code, exact: true })).toHaveCount(0);
+});
+
+test('AC-FE-R2d1-08 审批中行直读申请接口；无入口权时菜单隐藏', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: '审批中的兼职', exact: true }).click();
+  const read = page.waitForRequest((r) => r.url().includes('/employment/part-time-requests/'));
+  await page.getByRole('button', { name: '查看详情', exact: true }).first().click();
+  await read;
+  await expect(page.getByRole('heading', { name: '兼职申请详情', exact: true })).toBeVisible();
+  await page.route('**/permission/me/snapshot', async (route) => {
+    const { snapshotFixture } = await import('./fixtures.js');
+    return route.fulfill({
+      json: {
+        ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) => (app.app === 'transfer' ? { ...app, entryObjects: [] } : app)),
+      },
+    });
+  });
+  await page.reload();
+  await expect(page.getByRole('menuitem', { name: '兼职管理', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '兼职管理', exact: true })).toHaveCount(0);
+});
