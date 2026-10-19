@@ -15,7 +15,7 @@ import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { activateWithJudgement } from './activation-checks.js';
 import { activateExit } from './exit-activation.js';
-import { loadExitRequest } from './exit-gate.js';
+import { isExitKind, loadExitRequest } from './exit-gate.js';
 import {
   activationPredecessors,
   failureBlockerIds,
@@ -81,8 +81,8 @@ export async function activateDueBusinesses(
       if (!item.reminderOnly) unresolved.push(item);
       continue;
     }
-    // 走过离职门禁的离职（有扩展行）；可信造数（无扩展行）保持其他业务的 activate 端口行为
-    if (item.kind === 'leave' && (await loadExitRequest(tx, ctx.tenantId, item.id))) {
+    // 走过离职门禁的离职 / 退休（有扩展行）；可信造数（无扩展行）保持其他业务的 activate 端口行为
+    if (isExitKind(item.kind) && (await loadExitRequest(tx, ctx.tenantId, item.id))) {
       // 离职只经 activateExit 单一编排器：它自己记生效尝试（生效 / 失败 / 挂起），这里只汇总结果
       const outcome = await activateExit(tx, { ...ctx, expectedRevision: item.revision }, item.id, { trigger });
       if (outcome.outcome === 'effective') {

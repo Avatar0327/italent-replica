@@ -28,7 +28,7 @@ import {
 
 const database = useTestDb();
 /** 完整规则（调动与离职都顺延，B3-1 启用后的公开口径）；公开路径当前默认只顺延调动。 */
-const FULL_RULE = ['transfer', 'leave'] as const;
+const FULL_RULE = ['transfer', 'leave', 'retirement'] as const;
 
 describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延）', () => {
   it('finalExecutionDateSql 与 finalExecutionDate 对全部 kind × 计划日 × 执行日逐点相等', async () => {
@@ -110,7 +110,7 @@ describe('AC-DM-26：SQL 队列 ≡ 纯函数（含离职与多次迟到顺延�
 
 describe('离职与调动同按最终执行日期顺延（QUEUE_SHIFTED_KINDS，B3-3 起公开路径默认）', () => {
   it('公开路径默认顺延调动与离职：计划日在前的迟到调动与离职同日（最终 10-18），再按计划日排序', async () => {
-    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer', 'leave']);
+    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer', 'leave', 'retirement']); // R2-T04 §4.2（A-15）：退休同顺延
     const w = await activationWorld(database().db, 'exit-gate-default');
     const person = await w.hired();
     const [exit, transfer] = await seedQueue(w, person.employee.id, [

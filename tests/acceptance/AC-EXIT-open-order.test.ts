@@ -31,7 +31,7 @@ const queueOf = (x: World, today: string) =>
 
 describe('AC-DM-26 公开队列纳入离职，离职与调动同按最终执行日期顺延（D-3 / D-4，§5.0）', () => {
   it('QUEUE_SHIFTED_KINDS 含离职；场景 S：队列 [T, 离职]，调度到期 T REBUILD_REQUIRED、离职 PREDECESSOR_FAILED', async () => {
-    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer', 'leave']);
+    expect(QUEUE_SHIFTED_KINDS).toEqual(['transfer', 'leave', 'retirement']); // R2-T04 §4.2（A-15）：退休同顺延
     const x = await world('open-b11-1');
     const transfer = await x.transferIn('approved', '2026-10-10');
     const leave = await x.directLeave('2026-10-15');

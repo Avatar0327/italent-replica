@@ -151,7 +151,12 @@ async function requireEditTargets(tx: Tx, scoped: EmploymentContext, targets: re
     const departmentId = target.patch.fields?.departmentId;
     if (departmentId !== undefined)
       await requireScopedEmploymentObject(tx, scoped, target.employeeId, departmentId, target.id);
-    if (exit) await requireExitPermission(scoped, 'update', { employeeId: target.employeeId, patch: target.patch });
+    if (exit)
+      await requireExitPermission(scoped, 'update', {
+        employeeId: target.employeeId,
+        kind: target.kind,
+        patch: target.patch,
+      });
   }
 }
 

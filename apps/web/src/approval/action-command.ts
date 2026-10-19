@@ -3,6 +3,7 @@ import { useApiClient } from '../foundation/index.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { lockedContext, type Values } from '../foundation/forms/store.js';
 import { acceptReceipt, approvalRequest, readApproval } from './api.js';
+import { approvalNotice, confirmNotice } from './before-approve.js';
 import { useApprovalCommand } from './commands.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 
@@ -49,6 +50,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     // 催办由合同行内发起，本单不重提；槽里是催办时各按钮都已禁用。
     if (!context || context.action === 'urge') return;
     const { action, taskId } = context;
+    await confirmNotice(approvalNotice(detail, action));
     const result = await command.submit({
       values,
       baseline: {},

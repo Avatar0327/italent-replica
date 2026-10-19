@@ -102,11 +102,18 @@ async function approveBusiness(
   business: LockedEmploymentBusiness,
   exitRow: Awaited<ReturnType<typeof loadExitRequest>>,
 ) {
-  if (exitRow) assertExitHrFields(exitRow);
+  // 离职类型只对离职必填；退休不要求（R2-T04 §3.3）
+  if (exitRow && business.payload.kind === 'leave') assertExitHrFields(exitRow);
   await appendEmploymentState(tx, ctx, business, 'approved');
   if (!exitRow) return approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
   const { effectiveDate, mode } = business.payload;
-  await confirmExit(tx, ctx, { id: business.id, employeeId: business.employeeId, effectiveDate, mode });
+  await confirmExit(tx, ctx, {
+    id: business.id,
+    employeeId: business.employeeId,
+    effectiveDate,
+    mode,
+    kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
+  });
   await activateIfDue(tx, ctx, business.id);
 }
 

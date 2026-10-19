@@ -248,7 +248,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/succession/calc-contract.ts#CalcObjectFailure',
     '#key',
     '#records',
+    'apps/api/src/modules/succession/read-sql.ts#rowsOf',
     'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/employment/employee-status.ts#TERMINATING_KIND_LABELS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/exit-store.ts#installSuccessionExitHooks': [
@@ -270,7 +272,7 @@ export const GRAPH: Graph = {
     '#lockExitTargets',
     '#records',
     'apps/api/src/modules/succession/read-sql.ts#rowsOf',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#isTerminatingRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/succession/health-compute-run.ts#runProjectHealthCompute': [
