@@ -130,6 +130,8 @@ export function domainConstants(): Record<string, string[]> {
     'employment.importRowOperation': ['create', 'edit'],
     // 离职办理方式（employment/exit-gate.ts permissionSpec：direct → Dimission、application → DimissionApproval）
     'employment.exitMode': ['application', 'direct'],
+    // 兼职申请类型（part-time/request-routes.ts：requestType = add 走新增入口，extend / end 走 createDateRequestRoute，PT-4c）
+    'employment.partTimeRequestType': ['add', 'end', 'extend'],
     // 人才标准六对象（forms/:object）与可选所属管理单元的五对象（candidates/owner-orgs，字典不设单元）
     'talent.object': Object.keys(TALENT_OBJECTS).sort(),
     // 人才表单的 operation 查询参数（talent/form-access.ts talentFormHandler：create / update，其余 400）
@@ -182,6 +184,8 @@ const AUTHORIZE_IMPORT = `${MODULES}/employment/routes.ts#authorizeImport`;
 const EMPLOYMENT_CREATE = "if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object";
 const EMPLOYMENT_UPDATE = "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')";
 const TODOS = `${MODULES}/contracts/todos.ts#registerMergedTodos`;
+const PART_TIME_REQUEST_ROUTE = `${MODULES}/employment/part-time/request-routes.ts#route:POST /part-time-requests`;
+const PART_TIME_DATE_ROUTE = `${MODULES}/employment/part-time/request-routes.ts#createDateRequestRoute`;
 
 export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>> = {
   'job.kind': [
@@ -274,6 +278,41 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
       at: [
         evidence('call', AUTHORIZE_IMPORT, "'Employment.Create'"),
         evidence('call', AUTHORIZE_IMPORT, "'Employment.Edit'"),
+      ],
+    },
+  ],
+  'employment.partTimeRequestType': [
+    {
+      field: 'operation',
+      values: { add: 'create', extend: 'update', end: 'update' },
+      at: [
+        evidence('call', PART_TIME_REQUEST_ROUTE, "const ctx = await readContext(c, deps, 'object.create')"),
+        evidence('call', PART_TIME_DATE_ROUTE, "const ctx = await readContext(c, deps, 'object.update')"),
+      ],
+    },
+    {
+      field: 'button',
+      values: {
+        add: buttonRef('Employment.PartTimeApproval', 'detail'),
+        extend: buttonRef('Employment.PartTimeExtend', 'detail'),
+        end: buttonRef('Employment.PartTimeEnd', 'detail'),
+      },
+      at: [
+        evidence(
+          'call',
+          PART_TIME_REQUEST_ROUTE,
+          'buttons: body.submit ? ACTION_BUTTONS.submit : [PART_TIME_BUTTONS.application]',
+        ),
+        evidence(
+          'const',
+          `${MODULES}/employment/part-time/request-routes.ts#DATE_BUTTONS`,
+          'extend: PART_TIME_BUTTONS.extend',
+        ),
+        evidence(
+          'const',
+          `${MODULES}/employment/part-time/request-routes.ts#DATE_BUTTONS`,
+          'end: PART_TIME_BUTTONS.end',
+        ),
       ],
     },
   ],
