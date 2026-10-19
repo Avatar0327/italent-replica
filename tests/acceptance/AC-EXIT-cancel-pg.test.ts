@@ -8,6 +8,11 @@ import './support/exit-gate-enforced.js';
 import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { activateDueBusinesses } from '../../apps/api/src/modules/employment/activation-service.js';
+import { cancelExit } from '../../apps/api/src/modules/employment/exit-cancel.js';
+import { lockTransferParticipants } from '../../apps/api/src/modules/employment/transfer-locks.js';
+import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { cancelWorld, type CancelWorld } from './AC-EXIT-cancel-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
@@ -35,22 +40,22 @@ function holder(x: CancelWorld, lock: (tx: Tx) => Promise<unknown>) {
   return { held: held.promise, release: release.resolve, done };
 }
 
-const lockEmployee = (x: CancelWorld) => (tx: Tx) =>
-  tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${x.session.tenant.id}
-    AND id=${x.employee.id}::uuid FOR NO KEY UPDATE`);
 const lockOrg = (x: CancelWorld) => (tx: Tx) => lockOrganizationSettings(tx, x.session.tenant.id);
 
-/** 先后启动的请求排在同一把锁后面：第 n 个请求发出后等恰有 n 个会话在等锁，全部排队后才放锁。 */
+/** 先后启动的请求排在同一把锁后面：第 n 个请求发出后等恰有 n 个会话在等锁，全部排队后才放锁（出错也放锁，不拖垮后面的用例）。 */
 async function queueBehind(x: CancelWorld, lock: (tx: Tx) => Promise<unknown>, requests: (() => Promise<unknown>)[]) {
   const session = holder(x, lock);
   await session.held;
   const running: Promise<unknown>[] = [];
-  for (const [index, request] of requests.entries()) {
-    running.push(request());
-    await waitForBlocked(x.db, index + 1);
+  try {
+    for (const [index, request] of requests.entries()) {
+      running.push(request());
+      await waitForBlocked(x.db, index + 1);
+    }
+  } finally {
+    session.release();
+    await session.done;
   }
-  session.release();
-  await session.done;
   return Promise.allSettled(running);
 }
 
@@ -71,42 +76,56 @@ async function lockable(x: CancelWorld, instanceId: string) {
 const response = (settled: PromiseSettledResult<unknown>) => (settled as PromiseFulfilledResult<Response>).value;
 
 describe.runIf(live)('AC-EXIT-cancel-pg ② 撤销 vs 定时生效', () => {
-  /** 离职 L = 10-15（E = 10-16）已批准；调度与 HR 撤销都在 10-17 执行，排在同一把员工行锁后面。 */
+  /** 离职 L = 10-15（E = 10-16）已批准；调度与 HR 撤销都在 10-17 执行。 */
   async function scene(label: string) {
     const x = await world(label);
     const leave = await x.directLeave('2026-10-15');
     const revision = (await x.business(leave.id)).revision;
     x.session.setNow('2026-10-17T01:00:00Z');
-    const cancel = () => x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision });
-    const schedule = () => x.runScheduler('2026-10-17T01:00:00Z');
-    return { x, leave, cancel, schedule };
+    const contextAt = (): EmploymentContext => ({
+      tenantId: x.session.tenant.id,
+      userId: x.session.user.id,
+      timezone: x.session.tenant.timezone,
+      now: new Date('2026-10-17T02:00:00Z'),
+      commandId: randomUUID(),
+      expectedRevision: revision,
+    });
+    return { x, leave, revision, contextAt };
   }
 
-  it('撤销先、调度后：离职作废，调度无事可做，时间轴没有离职记录', async () => {
-    const { x, leave, cancel, schedule } = await scene('pg-cancel-first');
-    const settled = await queueBehind(x, lockEmployee(x), [cancel, schedule]);
-
-    expect(
-      settled.every((result) => result.status === 'fulfilled'),
-      JSON.stringify(settled),
-    ).toBe(true);
-    expect(response(settled[0]!).status).toBe(200);
-    expect((settled[1] as PromiseFulfilledResult<{ activated: string[] }>).value.activated).toEqual([]);
+  it('撤销事务持锁期间调度无事可做（跳过被锁的员工）；放锁后离职已作废，再调度仍无事可做', async () => {
+    const { x, leave, contextAt } = await scene('pg-cancel-first');
+    const session = holder(x, (tx) => cancelExit(tx, contextAt(), leave.id, { reason: '撤销' }));
+    await session.held;
+    try {
+      expect(await x.runScheduler('2026-10-17T01:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
+    } finally {
+      session.release();
+      await session.done;
+    }
     expect(await x.stateOfBusiness(leave.id)).toBe('voided');
+    expect(await x.runScheduler('2026-10-17T03:00:00Z')).toMatchObject({ activated: [] });
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
     expect(await x.cancellationOf(leave.id)).toMatchObject({ case: 'approved_voided' });
   });
 
-  it('调度先、撤销后：离职生效，撤销带的是调度前的 revision → 409 REVISION_CONFLICT，不盲重试', async () => {
-    const { x, leave, cancel, schedule } = await scene('pg-schedule-first');
-    const settled = await queueBehind(x, lockEmployee(x), [schedule, cancel]);
-
-    expect(
-      settled.every((result) => result.status === 'fulfilled'),
-      JSON.stringify(settled),
-    ).toBe(true);
-    expect((settled[0] as PromiseFulfilledResult<{ activated: string[] }>).value.activated).toEqual([leave.id]);
-    expect(await x.reason(response(settled[1]!))).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
+  it('调度事务先持锁、撤销排在其后：离职生效，撤销带的是调度前的 revision → 409 REVISION_CONFLICT，不盲重试', async () => {
+    const { x, leave, revision, contextAt } = await scene('pg-schedule-first');
+    const session = holder(x, async (tx) => {
+      const ctx = contextAt();
+      await lockTransferParticipants(tx, ctx, x.employee.id);
+      await activateDueBusinesses(tx, ctx, x.employee.id, 'scheduler');
+    });
+    await session.held;
+    let cancelling: Promise<Response> | undefined;
+    try {
+      cancelling = x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision });
+      await waitForBlocked(x.db, 1);
+    } finally {
+      session.release();
+      await session.done;
+    }
+    expect(await x.reason(await cancelling!)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     expect(await x.stateOfBusiness(leave.id)).toBe('effective');
     expect(await x.cancellationOf(leave.id)).toBeUndefined();
     // 带最新 revision 显式重提：撤销已生效离职（恢复在职）
@@ -159,12 +178,16 @@ describe.runIf(live)('AC-EXIT-cancel-pg 锁序：员工 / 业务 → 组织 → 
     const instance = (await x.instanceOf(draft.id))!;
     const session = holder(x, lockOrg(x));
     await session.held;
-    const running = x.cancel(draft.id, { reason: '撤销' });
-    await waitForBlocked(x.db, 1);
-    expect(await lockable(x, instance.id), '撤销事务不应在等组织锁时持有审批实例锁').toBe(true);
-    session.release();
-    await session.done;
-    const done = await running;
+    let running: Promise<Response> | undefined;
+    try {
+      running = x.cancel(draft.id, { reason: '撤销' });
+      await waitForBlocked(x.db, 1);
+      expect(await lockable(x, instance.id), '撤销事务不应在等组织锁时持有审批实例锁').toBe(true);
+    } finally {
+      session.release();
+      await session.done;
+    }
+    const done = await running!;
     expect(done.status, await done.clone().text()).toBe(200);
     expect((await x.instanceOf(draft.id))!.status).toBe('cancelled');
   });

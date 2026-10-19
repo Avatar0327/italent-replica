@@ -1609,11 +1609,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button(EXIT_BUTTONS.cancel, 'detail'),
-    scope: pointScope({ param: 'id' }, 'employment.exitCancellation', NF_BUSINESS),
-    fields: fixed(
-      ['id', 'businessId', 'employeeId', 'case', 'stateBefore', 'reason', 'revision', 'createdAt'],
-      'R2-T03 设计 §7.1：撤销记录固定键，其余列不可改',
-    ),
+    scope: guardScope('employment.exitCancellation', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.exitCancellation'),
+    write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
     ...byId,
   }),
   // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------

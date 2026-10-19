@@ -515,6 +515,32 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
+// ---- R2-T03 B4 撤销离职（exit-routes.ts registerExitCancel / runExitCancel）--------------------------------------------
+const EXIT_CANCEL_BUTTON =
+  "await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true })";
+const EXIT_CANCEL_READ = "const ctx = await readContext(c, deps, 'object.update', revision(c))";
+function exitCancelEntry(method: string, path: string): Obligation[] {
+  const call = (text: string) => at(EXIT, method, path, text);
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [call(EXIT_CANCEL_READ), READ, call(EXIT_CANCEL_BUTTON), WRITE_OBJECT],
+    ),
+    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [call(EXIT_CANCEL_BUTTON), WRITE_BUTTON]),
+  ];
+}
+function exitCancelCommand(): Obligation[] {
+  const call = (text: string) => at(EXIT, 'POST', '/exits/:id/cancel', text);
+  const run = fn(EXIT, 'runExitCancel', "guard: exitCommandGuard(deps, ctx, 'cancel'");
+  return [
+    ...exitCancelEntry('POST', '/exits/:id/cancel'),
+    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [run, EXIT_GUARD, EXIT_PERMISSION, WRITE_BUTTON]),
+    businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
+    linkage(fn(EXIT, 'runExitCancel', 'body: await cancelExit(tx, context, id, input)')),
+  ];
+}
+
 function exitBusinessCommand(path: string, anchor: string, unit: 'route' | 'registerExitChanges'): Obligation[] {
   const call = (text: string) =>
     unit === 'route' ? at(EXIT, 'PATCH', path, text) : exitCall('registerExitChanges', text);
@@ -2538,6 +2564,33 @@ export const EMPLOYMENT: RequiredTable = {
     'Employment.DimissionApproval',
     'registerExitChanges',
   ),
+  // ---- R2-T03 B4 撤销离职 ----
+  'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
+  'POST /api/tenant/employment/exits/:id/restore': [
+    ...exitCancelEntry('POST', '/exits/:id/restore'),
+    businessWrite(at(EXIT, 'POST', '/exits/:id/restore', 'await authorizeBusinessWrite(deps, ctx, id)')),
+  ],
+  'PATCH /api/tenant/employment/exits/cancellations/:id': [
+    ...exitCancelEntry('PATCH', '/exits/cancellations/:id'),
+    ob(
+      `btn:${RECORD}#Employment.DimissionCancel@detail`,
+      [],
+      [
+        at(EXIT, 'PATCH', '/exits/cancellations/:id', "guard: exitCommandGuard(deps, ctx, 'cancel'"),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.exitCancellation',
+      [],
+      [
+        at(EXIT, 'PATCH', '/exits/cancellations/:id', 'await requireEmployeeInScope(tx, ctx, found.employeeId)'),
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
+  ],
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
