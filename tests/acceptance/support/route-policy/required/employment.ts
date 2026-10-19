@@ -389,7 +389,7 @@ function partTimePreview(button: string): Obligation[] {
 // ---- R2 BE-7 PT-3c 兼职编辑 / 批量结束（part-time/routes.ts）------------------------------------------------------------
 // 入口与命令内共用 requirePartTimeWriteAccess（replay-guard.ts）：目标存在 → 兼职部门写入口径范围（requireScopedEmploymentObject）→
 // requireEmploymentWrite（对象更新权 + 字段写权 + 按钮）
-function partTimeWrite(method: string, path: string, readCall: string, button: string): Obligation[] {
+function partTimeWrite(method: string, path: string, readCall: string, button: string, level = 'detail'): Obligation[] {
   const route = (anchor: string) => at(PART_TIME, method, path, anchor);
   const access = route('await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target))');
   return [
@@ -408,7 +408,7 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
       ],
     ),
     ob(
-      `btn:${RECORD}#${button}@detail`,
+      `btn:${RECORD}#${button}@${level}`,
       [],
       [
         access,
@@ -1803,6 +1803,7 @@ export const EMPLOYMENT: RequiredTable = {
     '/part-times/batch-end',
     "const ctx = await readContext(c, deps, 'object.update')",
     'Employment.PartTimeBatchEnd',
+    'list',
   ),
   // ---- R2 BE-7 PT-4b 兼职新增申请入口（request-routes.ts）---------------------------------------------------------------------
   // 声明里对象操作与按钮是 requestType 的映射选择器，权限记为取值集合（obj:…:{create,update}、btn:…#{三个按钮}），一条义务各登记
