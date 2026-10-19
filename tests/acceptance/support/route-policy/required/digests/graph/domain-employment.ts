@@ -78,7 +78,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/exit-occupancy.ts#segment': ['#OPEN'],
   'packages/domain/src/employment/exit-occupancy.ts#subtractAll': ['#subtractSpan'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
-  'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_BLACKLIST_DETAIL_FIELDS', '#EXIT_REQUEST_FIELDS'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',
     '#resolveLateExecution',
