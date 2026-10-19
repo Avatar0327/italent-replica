@@ -450,6 +450,10 @@ for (const stale of ['success', 'error'] as const) {
 for (const action of ['create', 'edit', 'batch'] as const) {
   test(`AC-FE-R2d2a-11 ${action} 写成功后读取失败，关闭换视图重开仍锁定`, async ({ page }) => {
     await ready(page);
+    const returnedId = action === 'create' ? '40000000-0000-4000-8000-000000000003' : recordId;
+    await page.route(`**/employment/part-times/${returnedId}`, (route) =>
+      route.fulfill({ json: { ...record, id: returnedId } }),
+    );
     let writes = 0;
     let failedRead = false;
     await page.route('**/employment/part-times?*', (route) => {
@@ -458,7 +462,15 @@ for (const action of ['create', 'edit', 'batch'] as const) {
         return route.fulfill({ status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE' } } });
       }
       return route.fulfill({
-        json: { items: [listRecord, { ...listRecord, id: second }], total: 2, page: 1, pageSize: 30 },
+        json: {
+          items: [
+            { ...listRecord, id: writes ? returnedId : recordId },
+            { ...listRecord, id: second },
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 30,
+        },
       });
     });
     const path =
@@ -479,7 +491,7 @@ for (const action of ['create', 'edit', 'batch'] as const) {
               batchId: 'batch-read-failure',
               items: [recordId, second].map((id) => ({ ...record, id, revision: 2 })),
             }
-          : { ...record, revision: action === 'create' ? 1 : 2, warnings: [] };
+          : { ...record, id: returnedId, revision: action === 'create' ? 1 : 2, warnings: [] };
       return route.fulfill({ status: action === 'create' ? 201 : 200, json });
     });
     if (action === 'create') await fillNew(page);
