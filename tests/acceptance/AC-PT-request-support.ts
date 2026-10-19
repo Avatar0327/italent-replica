@@ -43,11 +43,13 @@ export interface WorldOptions {
   /** 主职部门负责人为空：第二节点无人，转异常管理员（首节点无人提交即报错，DEC-054，所以不能清 HRBP）。 */
   readonly noPrimaryHead?: boolean;
   /** 流程的异常管理员是一个外部账号（真 PG 锁序用例：入职按其邮箱首次绑定、全局停用接管）；缺省为夹具的默认异常管理员。 */
-  readonly externalExceptionAdmin?: boolean;
+  readonly externalExceptionAdmin?: boolean | 'extend';
   /** 节点增加“不同意”出口（沿不同意连线办结，DEC-144）；预置流程只有同意出口。 */
   readonly disagree?: boolean;
   /** 把三类申请的四个节点都改成审批中可编辑结束日 / 备注（PB-82 / 83）；缺省保持预置（结束兼职 with_approve，其余不可编辑）。 */
   readonly editMode?: 'separate' | 'with_approve';
+  /** 延长流程第 2 个节点改成会签（主职负责人 + 主职HRBP）：负责人为空时异常管理员占一席，替代人是 HRBP 时交接会合席（F-070）。 */
+  readonly countersign?: boolean;
   /** 节点额外开放（表单字段 + 可编辑字段）的审批字段，用来分别覆盖“节点禁止编辑”与“适配器拒绝”两层。 */
   readonly extraEditable?: readonly string[];
 }
@@ -79,20 +81,36 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
       const preset = PRESET_PROCESSES.find((p) => p.presetKey === installed.presetKey)!;
       const definition = {
         ...preset.definition,
-        // 外部异常管理员只给新增流程（真 PG 锁序用例的接管对象）；延长 / 结束流程仍用夹具默认异常管理员
+        // 外部异常管理员只给新增流程（缺省）或延长流程（'extend'）——真 PG 锁序用例的接管对象；延长 / 结束流程仍用夹具默认异常管理员
         exceptionAdminUserId:
-          installed.approvalType === 'part_time_add' ? (external?.id ?? w.exceptionAdmin) : w.exceptionAdmin,
-        nodes: preset.definition.nodes.map((node) => ({
-          ...node,
-          ...(options.editMode
-            ? {
-                editMode: options.editMode,
-                editableFields: ['endDate', 'requestRemark', ...(options.extraEditable ?? [])],
-                formFields: [...node.formFields, ...(options.extraEditable ?? [])],
-              }
-            : {}),
-          ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
-        })),
+          installed.approvalType ===
+          (options.externalExceptionAdmin === 'extend' ? 'part_time_extend' : 'part_time_add')
+            ? (external?.id ?? w.exceptionAdmin)
+            : w.exceptionAdmin,
+        nodes: preset.definition.nodes.map((preNode, index) => {
+          const node =
+            options.countersign && installed.approvalType === 'part_time_extend' && index === 1
+              ? {
+                  ...preNode,
+                  kind: 'countersign' as const,
+                  key: 'joint',
+                  name: '主职联合会签',
+                  approvers: ['latest_record_department_head', 'latest_record_department_hrbp'] as const,
+                  transitionRule: { type: 'all' as const },
+                }
+              : preNode;
+          return {
+            ...node,
+            ...(options.editMode
+              ? {
+                  editMode: options.editMode,
+                  editableFields: ['endDate', 'requestRemark', ...(options.extraEditable ?? [])],
+                  formFields: [...node.formFields, ...(options.extraEditable ?? [])],
+                }
+              : {}),
+            ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
+          };
+        }),
       };
       const draft = await replaceDraft(tx, { ...ctx, expectedRevision: installed.revision }, installed.id, definition);
       await publishProcess(tx, { ...ctx, expectedRevision: draft.revision }, installed.id);

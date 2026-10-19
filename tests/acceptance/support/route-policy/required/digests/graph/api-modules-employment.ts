@@ -2637,6 +2637,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
   ],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#lock': [
+    'apps/api/src/modules/approval/adapter-support.ts#mayAdvanceBusiness',
     '#asEmployment',
     'apps/api/src/modules/employment/part-time/request-store.ts#partTimeRequestOwner',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',

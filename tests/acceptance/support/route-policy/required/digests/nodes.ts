@@ -1512,7 +1512,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#filledFields': ['17182ca2ab88', '33b9a70ec0bc'],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#idArray': ['afe3fe5fb5b6', '7a645dc8391f'],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#loadRequest': ['484b23d26532', 'b5dc83a6baa7'],
-  'apps/api/src/modules/employment/part-time/approval-adapter.ts#lock': ['dc6c2d97899b', '3a0e5b2fd831'],
+  'apps/api/src/modules/employment/part-time/approval-adapter.ts#lock': ['e3ee82c07bd1', '5e007755e091'],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#lockMany': ['1cca905d1fe7', '0cd86a29e477'],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#partTimeAdapter': ['36ce9410f824', '78c27cc77383'],
   'apps/api/src/modules/employment/part-time/approval-adapter.ts#patchOf': ['c20c6f975687', '4b31efa1471e'],

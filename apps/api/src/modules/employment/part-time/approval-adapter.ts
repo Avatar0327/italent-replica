@@ -39,8 +39,14 @@ const asEmployment = (ctx: ApprovalContext): EmploymentContext =>
   ({ ...ctx, expectedRevision: 0 }) as EmploymentContext;
 const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
-/** 单实例命令（同意 / 驳回 / 不同意 / 撤回 / 审批编辑 / 加签激活）：员工 → 申请头 → 目标兼职记录头 →（add / extend）组织锁。 */
-async function lock(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<void> {
+/**
+ * 单实例命令（同意 / 驳回 / 不同意 / 撤回 / 审批编辑 / 加签激活 / 手动交接与成员撤销 / 停用接管逐单）：员工 → 申请头 → 目标兼职记录头 →
+ * （add / extend）组织锁。结束只缩短区间，不查部门可用性，不取（§4.5A）。
+ * 改派类入口（reassignFrom = 原持有人）只在 mayAdvanceBusiness 为真（可能会签合席推进业务、落地时取组织锁）时取组织锁，
+ * 与 lockMany 共用这一个判定（F-070）：否则交接已登记替代人（成员行 KEY SHARE）再回头等组织锁，与入职绑定的
+ * “组织锁 → 成员行 FOR UPDATE”成环（#433 第 1 轮 P2-1）。
+ */
+async function lock(tx: Tx, ctx: ApprovalContext, requestId: string, reassignFrom?: string): Promise<void> {
   const owner = await partTimeRequestOwner(tx, ctx.tenantId, requestId);
   if (!owner) throw new AppError('NOT_FOUND', '兼职申请不存在');
   await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
@@ -49,8 +55,8 @@ async function lock(tx: Tx, ctx: ApprovalContext, requestId: string): Promise<vo
   if (owner.recordId)
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${owner.recordId}::uuid FOR UPDATE`);
-  // 落地要查部门可用性（D-7 / E-3）持组织锁；结束只缩短区间，不查，不取（§4.5A）
-  if (owner.requestType !== 'end') await lockOrganizationSettings(tx, ctx.tenantId);
+  if (owner.requestType !== 'end' && (await mayAdvanceBusiness(tx, ctx, [requestId], reassignFrom)))
+    await lockOrganizationSettings(tx, ctx.tenantId);
 }
 
 /**
