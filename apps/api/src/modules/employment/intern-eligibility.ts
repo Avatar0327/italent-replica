@@ -4,10 +4,11 @@
  * 新增、申请改期、落地（含审批通过后到期生效）都经过，不各写一份。
  */
 import { sql, type Tx } from '@italent/db';
-import { EMPLOYEE_STATUS } from '@italent/domain';
+import { addDays, EMPLOYEE_STATUS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findPredecessor } from './read-model.js';
-import { rowsOf } from './record-store.js';
+import { voidSupersededRegularizations } from './exit-void-applications.js';
+import { rowsOf, type EmploymentEmployeeRow } from './record-store.js';
 import type { BusinessKind, EmploymentContext } from './types.js';
 
 /**
@@ -30,14 +31,23 @@ export async function assertInternRegularizationEligible(
     throw new AppError('CONFLICT', '只有在职实习生可以实习转正', { reason: 'NOT_INTERN' });
 }
 
-/** 新增实习转正时已有审批中 / 审批通过未生效的实习转正申请 → 拒绝，避免同一人两条转正。 */
-export async function assertNoPendingRegularization(
+/**
+ * 新增实习转正时已有审批中 / 审批通过未生效的实习转正申请（DEC-593③③）：
+ * - 直接转正（免审批）：自动作废在途申请，与离职生效步骤 1 复用同一作废实现（exit-void-applications.ts，DEC-431①）；
+ * - 申请方式（mode = application）：仍拒绝 409，避免同一人两条转正在途。
+ * 调用方已持员工行锁；作废放在取组织 / 编制锁之前（§5.2 锁序）。
+ */
+export async function resolveInFlightRegularization(
   tx: Tx,
   ctx: EmploymentContext,
-  employeeId: string,
-  kind: BusinessKind,
+  employee: EmploymentEmployeeRow,
+  input: { readonly kind: BusinessKind; readonly mode: 'application' | 'direct' },
 ): Promise<void> {
-  if (kind !== 'intern_regularization') return;
+  if (input.kind !== 'intern_regularization') return;
+  if (input.mode === 'direct') {
+    await voidSupersededRegularizations(tx, ctx, employee);
+    return;
+  }
   const [pending] = rowsOf<{ id: string }>(
     await tx.execute(sql`
       SELECT b.id FROM employment_business_objects b
@@ -45,7 +55,7 @@ export async function assertNoPendingRegularization(
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
-      WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
+      WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employee.id}::uuid
         AND p.kind='intern_regularization' AND p.mode='application' AND s.state IN ('in_review','approved')
       LIMIT 1`),
   );
@@ -53,6 +63,25 @@ export async function assertNoPendingRegularization(
     throw new AppError('CONFLICT', '当前存在审批中的实习转正申请，无法再次实习转正', {
       reason: 'INTERN_REGULARIZATION_IN_PROGRESS',
     });
+}
+
+/**
+ * 结束实习的资格（BE-6b，31 IN-R7）：最后工作日（结束日）当天在岗且是实习生，且结束日次日起没有结束实习身份或实习转正的记录。
+ * 结束日期早于入职日期由离职门禁统一判（assertLastWorkDateNotBeforeEntry）。保存与生效两处共用：
+ * 保存到生效之间若转正申请已落地，人已不是实习生，生效失败交 HR（exit-activation.ts，仅免审批直接生效）。
+ */
+export async function assertInternEndable(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+): Promise<void> {
+  await assertNothingEndsInternshipAfter(tx, ctx, employeeId, addDays(lastWorkDate, 1));
+  const previous = await findPredecessor(tx, ctx.tenantId, employeeId, lastWorkDate);
+  if (!previous || ['leave', 'retirement'].includes(previous.kind))
+    throw new AppError('CONFLICT', '已结束实习的人员不能再结束实习', { reason: 'ACTIVE_EMPLOYMENT_REQUIRED' });
+  if (previous.fields.employType !== 'intern' || previous.employeeStatus === EMPLOYEE_STATUS.pendingEntry)
+    throw new AppError('CONFLICT', '只有在职实习生可以结束实习', { reason: 'NOT_INTERN' });
 }
 
 /**

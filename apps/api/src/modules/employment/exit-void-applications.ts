@@ -4,6 +4,8 @@
  * 与离职预览的“将作废”清单（exit-preview.ts）同一来源。排在离职之前的已批准申请已由步骤 0a 保证先落地，这里剩下的都排在离职之后。
  * 逐条按业务 ID 升序（§5.2 ③ 预锁）：状态置作废 → 审批实例 cancel → 带编调动回退 → 台账 → 审计 / outbox → 站内消息。
  * 任一条失败即整单失败，由调用方的保存点回滚（含已作废的前几条）。
+ * 作废实现（voidApplications / voidOne）只有一份：直接实习转正自动作废在途转正申请（DEC-593③③，voidSupersededRegularizations）
+ * 复用它，只是原因不同——离职记台账 exit_effects（B4 撤销按它核对），转正不记，审计动作与站内消息模板按原因区分。
  */
 import { exitEffects, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
@@ -22,6 +24,7 @@ import {
   bumpEmploymentBusiness,
   lockEmploymentBusiness,
   rowsOf,
+  type EmploymentEmployeeRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { BUSINESS_KINDS, type EmploymentContext } from './types.js';
@@ -63,11 +66,12 @@ export interface VoidedApplication {
 
 const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
-/** §5.2 ③：该员工其他任职业务头按 id 升序 FOR UPDATE；返回各自 revision（锁业务头校验用）。 */
-export async function lockOtherBusinessHeads(tx: Tx, ctx: EmploymentContext, employeeId: string, exitId: string) {
+/** §5.2 ③：该员工其他任职业务头按 id 升序 FOR UPDATE；返回各自 revision（锁业务头校验用）。exitId 为空 = 全部业务头。 */
+export async function lockOtherBusinessHeads(tx: Tx, ctx: EmploymentContext, employeeId: string, exitId: string | null) {
   const heads = rowsOf<{ id: string; revision: number }>(
     await tx.execute(sql`SELECT id, revision FROM employment_business_objects
-      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND id<>${exitId}::uuid
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
+        AND (${exitId}::uuid IS NULL OR id<>${exitId}::uuid)
       ORDER BY id FOR UPDATE`),
   );
   return new Map(heads.map((head) => [head.id, Number(head.revision)]));
@@ -99,21 +103,46 @@ async function lockInstances(tx: Tx, ctx: EmploymentContext, businessIds: readon
     ORDER BY id FOR UPDATE`);
 }
 
+/** 作废原因：离职生效步骤 1，或直接实习转正（DEC-593③③）。 */
+type VoidCause =
+  | { readonly kind: 'exit'; readonly exit: LockedEmploymentBusiness; readonly lastWorkDate: string }
+  | { readonly kind: 'direct_regularization'; readonly employee: EmploymentEmployeeRow };
+
+/** 各原因的状态事件说明、审计动作、审计附加字段与站内消息模板（其余步骤完全相同）。 */
+function describeCause(cause: VoidCause, kind: string) {
+  if (cause.kind === 'direct_regularization')
+    return {
+      employee: cause.employee,
+      meta: { reason: 'direct_regularization' },
+      action: 'employment.business.voided_by_regularization',
+      extra: { reason: 'direct_regularization' },
+      template: 'application_voided_by_regularization',
+    };
+  const { exit, lastWorkDate } = cause;
+  return {
+    employee: exit.employee,
+    meta: { reason: 'exit', exitBusinessId: exit.id },
+    action: kind === 'transfer' ? 'employment.transfer.voided_by_exit' : 'employment.business.voided_by_exit',
+    extra: { exitBusinessId: exit.id, lastWorkDate },
+    template: 'application_voided_by_exit',
+  };
+}
+
 /** 台账与审计里的 effectiveDate 取该申请最新载荷的生效日（只作说明，不参与判断）。 */
 async function voidOne(
   tx: Tx,
   ctx: EmploymentContext,
-  exit: LockedEmploymentBusiness,
-  lastWorkDate: string,
+  cause: VoidCause,
   business: LockedEmploymentBusiness,
 ): Promise<VoidedApplication> {
   const { kind, effectiveDate } = business.payload;
   const stateBefore = business.state;
+  const described = describeCause(cause, kind);
   const approvalCtx = schedulerAwareContext(ctx);
   // 活动实例（running / returned）才要取消；通知挂在最近相关的实例上，审批已通过的申请没有活动实例但发起人仍应收到消息
   const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', business.id);
   const instance = active ?? (await latestInstanceOf(tx, ctx.tenantId, 'employment', business.id));
-  await appendEmploymentState(tx, ctx, business, 'voided', { reason: 'exit', exitBusinessId: exit.id });
+  await appendEmploymentState(tx, ctx, business, 'voided', described.meta);
   if (active) await cancel(tx, approvalCtx, active.id);
   const released = kind === 'transfer' ? await reverseCarriedEstablishment(tx, ctx, business.id) : [];
   try {
@@ -130,35 +159,59 @@ async function voidOne(
     throw error;
   }
   const detail = { kind, stateBefore, effectiveDate, instanceId: instance?.id ?? null };
-  await tx.insert(exitEffects).values({
-    tenantId: ctx.tenantId,
-    businessId: exit.id,
-    employeeId: exit.employeeId,
-    phase: 'effective',
-    kind: 'application_voided',
-    targetType: 'employment-business',
-    targetId: business.id,
-    detail,
-    commandId: ctx.commandId,
-    createdAt: ctx.now,
-  });
+  if (cause.kind === 'exit')
+    await tx.insert(exitEffects).values({
+      tenantId: ctx.tenantId,
+      businessId: cause.exit.id,
+      employeeId: cause.exit.employeeId,
+      phase: 'effective',
+      kind: 'application_voided',
+      targetType: 'employment-business',
+      targetId: business.id,
+      detail,
+      commandId: ctx.commandId,
+      createdAt: ctx.now,
+    });
   await auditEmployment(
     tx,
     ctx,
-    kind === 'transfer' ? 'employment.transfer.voided_by_exit' : 'employment.business.voided_by_exit',
+    described.action,
     'employment-business',
     business.id,
     { state: stateBefore },
-    { state: 'voided', exitBusinessId: exit.id, lastWorkDate, ...detail },
+    { state: 'voided', ...described.extra, ...detail },
   );
   // 没有审批实例的草稿无处挂站内消息，只留上面的 outbox 事件（A-7）
   if (instance) {
     const applicant = await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId);
     for (const recipientUserId of new Set([instance.initiatorUserId, applicant].filter((id): id is string => !!id)))
-      await notifyMessage(tx, approvalCtx, instance, { recipientUserId, templateCode: 'application_voided_by_exit' });
+      await notifyMessage(tx, approvalCtx, instance, { recipientUserId, templateCode: described.template });
   }
   await bumpEmploymentBusiness(tx, ctx, business);
   return { id: business.id, ...detail };
+}
+
+/** 逐条作废（业务 ID 升序）：先锁审批实例，再逐条锁业务头、作废。heads 是调用方已预锁的各业务头 revision。 */
+async function voidApplications(
+  tx: Tx,
+  ctx: EmploymentContext,
+  cause: VoidCause,
+  open: readonly InFlight[],
+  heads: ReadonlyMap<string, number>,
+): Promise<VoidedApplication[]> {
+  await lockInstances(
+    tx,
+    ctx,
+    open.map((row) => row.id),
+  );
+  const voided: VoidedApplication[] = [];
+  for (const row of open) {
+    const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: heads.get(row.id)! }, row.id);
+    // 员工行已由调用方持有；共用同一个员工对象，避免多次递增后员工 revision 回退
+    business.employee = describeCause(cause, business.payload.kind).employee;
+    voided.push(await voidOne(tx, ctx, cause, business));
+  }
+  return voided;
 }
 
 export async function voidInFlightApplications(
@@ -174,17 +227,26 @@ export async function voidInFlightApplications(
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
     });
-  await lockInstances(
-    tx,
-    ctx,
-    open.map((row) => row.id),
-  );
-  const voided: VoidedApplication[] = [];
-  for (const row of open) {
-    const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: heads.get(row.id)! }, row.id);
-    // 员工行已由本单持有；共用同一个员工对象，避免多次递增后员工 revision 回退
-    business.employee = exit.employee;
-    voided.push(await voidOne(tx, ctx, exit, lastWorkDate, business));
-  }
-  return voided;
+  return voidApplications(tx, ctx, { kind: 'exit', exit, lastWorkDate }, open, heads);
+}
+
+/**
+ * DEC-593③③：直接实习转正（免审批）办理时，自动作废该人在途的实习转正申请（审批中 / 审批通过未生效）——
+ * 同一人不会同时有两条转正，也不留一条后来必然落地失败的申请。调用方须已持员工行锁（createEmploymentBusiness），
+ * 在取任何组织 / 编制锁之前调用（§5.2 锁序：员工 → 业务头 → … → 审批实例）；失败随调用方事务整体回滚。
+ * 申请方式（mode = application）再提一条仍 409，见 intern-eligibility.ts。
+ */
+export async function voidSupersededRegularizations(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employee: EmploymentEmployeeRow,
+): Promise<VoidedApplication[]> {
+  const open = (
+    await inFlightApplications(tx, ctx, employee.id, ['intern_regularization'], ['in_review', 'approved'], 'application', {
+      unlanded: true,
+    })
+  ).sort((a, b) => a.id.localeCompare(b.id));
+  if (!open.length) return [];
+  const heads = await lockOtherBusinessHeads(tx, ctx, employee.id, null);
+  return voidApplications(tx, ctx, { kind: 'direct_regularization', employee }, open, heads);
 }

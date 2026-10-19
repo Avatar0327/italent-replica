@@ -24,7 +24,7 @@ import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
 import { EXIT_GATE_PASS, isExitKind, requireExitGate } from './exit-gate.js';
-import { assertInternRegularizationEligible, assertNoPendingRegularization } from './intern-eligibility.js';
+import { assertInternRegularizationEligible, resolveInFlightRegularization } from './intern-eligibility.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { emptyPresetFields } from './types.js';
@@ -119,7 +119,7 @@ export async function createEmploymentBusiness(
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await assertNotBeforeCurrentCycle(tx, ctx, employee.id, normalized);
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
-  await assertNoPendingRegularization(tx, ctx, employee.id, normalized.kind);
+  await resolveInFlightRegularization(tx, ctx, employee, normalized);
   assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
   // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）

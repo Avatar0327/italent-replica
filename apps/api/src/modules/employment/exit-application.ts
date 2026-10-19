@@ -23,7 +23,7 @@ import {
 } from './exit-initiation.js';
 import { normalizeEmploymentInput } from './fields.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
-import type { CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
+import type { ChangeType, CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { lockExitParticipants } from './exit-lock-plan.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
 import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
@@ -47,6 +47,8 @@ export interface ExitApplicationInput {
   readonly exit?: ExitOptions;
   /** 批量申请的批次号（exits/batch，设计 §2.1 batch_id）。 */
   readonly batchId?: string;
+  /** 变动类型：只由可信的系统联动传入（结束实习记“实习结束”，BE-6b），不开放给请求体；该类离职免审批直接生效（DEC-593①）。 */
+  readonly changeType?: ChangeType;
 }
 
 /** exit_requests 的可写列（扩展行 ← exit 区块）；金额以字符串入库。 */
@@ -93,8 +95,12 @@ export async function createExitApplication(
     lastWorkDate: normalized.lastWorkDate!,
     exit,
     payload: { fields: normalized.fields, customFields: normalized.customFields },
+    ...(input.changeType ? { changeType: input.changeType } : {}),
   });
-  const business = await createEmploymentBusiness(tx, ctx, employeeId, normalized, { exitPass: EXIT_GATE_PASS });
+  const business = await createEmploymentBusiness(tx, ctx, employeeId, normalized, {
+    exitPass: EXIT_GATE_PASS,
+    ...(input.changeType ? { changeType: input.changeType } : {}),
+  });
   const [version] = rowsOf<{ staffId: string }>(
     await tx.execute(sql`SELECT selected_staff_id AS "staffId" FROM employment_payload_versions
       WHERE tenant_id=${ctx.tenantId} AND business_id=${business.id}::uuid ORDER BY version_no DESC LIMIT 1`),

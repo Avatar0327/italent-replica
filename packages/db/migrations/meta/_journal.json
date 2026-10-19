@@ -1072,6 +1072,13 @@
       "when": 1792334084080,
       "tag": "0152_be15b2_auto_assessment",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1792387590045,
+      "tag": "0153_be6b_intern_end_change_type",
+      "breakpoints": true
     }
   ]
 }

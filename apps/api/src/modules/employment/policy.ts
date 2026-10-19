@@ -993,6 +993,22 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
+  // 结束实习（BE-6b，DEC-593）：If-Match 必填；body 严格 { endDate, cancelPendingEntry?, confirmed?, pendingTransferAck? }（离职类型 / 原因
+  // 等其余字段 400）；沿用直接离职的权限组合（Employment.Dimission，原站有无独立权限项未验证）+ 人员范围 404；命令内 exitCommandGuard
+  // 按当前授权重过范围 / 按钮 / 字段；员工锁 → 日期不早于入职（400）→ 在职实习生（409 NOT_INTERN）→ 在途转正确认（409 CONFIRMATION_REQUIRED）
+  // → 离职门禁与申请服务（直接离职、变动类型“实习结束”，免审批生效，来源 free_direct）
+  'POST /interns/:id/terminate': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(EXIT_BUTTONS.direct, 'detail'),
+    guards: [LINKAGE],
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: RESPONSE,
+    write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, {
+      controls: ['endDate', 'cancelPendingEntry', 'confirmed', 'pendingTransferAck'],
+    }),
+    ...byId,
+  }),
   // ---- employment/part-time/routes.ts：R2 BE-7 PT-3b 兼职新增与读取入口（R2-T05 §4.1 / §7.2；编辑 / 批量结束 / 视图 / 申请未注册）----
   // 预览（只读 POST）：readContext(object.create, resource=id) 人员范围 404；body 严格（400）；实际写入字段的创建权；
   // Employment.PartTime / PartTimeApproval 任一（都无 403）；兼职部门 requireEmploymentScope（404）；与新增同一套校验后带出默认值
