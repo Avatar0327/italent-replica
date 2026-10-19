@@ -97,13 +97,14 @@ describe('AC-DM-02 撤销审批通过未生效的离职（approved_voided，B-03
 
   it('申请离职审批通过后撤销：同样作废，申请流程已办结的实例不动', async () => {
     const x = await world('cancel-approved-application');
-    const leave = await x.approvedLeave('2026-10-20', TODAY);
-    expect(await x.stateOfBusiness(leave.id)).toBe('approved');
+    const draft = await x.submittedLeave('2026-10-20');
+    await x.approveInReview(draft.id);
+    expect(await x.stateOfBusiness(draft.id)).toBe('approved');
 
-    const result = await x.cancelled(leave.id);
+    const result = await x.cancelled(draft.id);
 
     expect(result).toMatchObject({ status: 'voided', cancellation: { case: 'approved_voided' } });
-    expect((await x.instanceOf(leave.id))!.status).toBe('approved');
+    expect((await x.instanceOf(draft.id))!.status).toBe('approved');
     expect(await x.exitStates()).toEqual([]);
   });
 
@@ -123,7 +124,8 @@ describe('AC-DM-02 撤销审批通过未生效的离职（approved_voided，B-03
     );
     expect(await x.managerOf(subordinate.id)).toBe(receiver.id);
 
-    const result = await x.cancelled(leave.id);
+    // 下属与接收人都在调出部门（编制 1），恢复占编超编，确认后执行
+    const result = await x.cancelled(leave.id, { reason: '录入有误', confirmed: true });
 
     expect(item(result, 'duty_transfer')).toMatchObject({ status: 'found', hiddenCount: 0 });
     expect(item(result, 'duty_transfer').targets).toHaveLength(1);

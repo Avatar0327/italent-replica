@@ -17,20 +17,25 @@ const TODAY = '2026-10-06';
 const world = (label: string) => cancelWorld(database().db, label, TODAY);
 
 describe('§4 通用入口映射：不留绕过 §6B 的删除路径', () => {
-  it('通用 revoke 对离职单（审批中 / 已批准 / 已生效）→ 409 USE_EXIT_CANCEL，无写入', async () => {
-    const x = await world('entry-revoke');
-    const review = await x.submittedLeave('2026-10-20');
-    const approved = await x.directLeave('2026-10-25');
-    const before = await x.stateOf(x.employee.id);
-    for (const id of [review.id, approved.id]) {
-      const response = await x.session.request('POST', `/businesses/${id}/revoke`, {
-        ifMatch: (await x.business(id)).revision,
+  it.each(['in_review', 'approved', 'effective'] as const)(
+    '通用 revoke 对离职单（%s）→ 409 USE_EXIT_CANCEL，无写入',
+    async (state) => {
+      const x = await world(`entry-revoke-${state}`);
+      const leave =
+        state === 'in_review'
+          ? await x.submittedLeave('2026-10-20')
+          : state === 'approved'
+            ? await x.directLeave('2026-10-25')
+            : await x.createdLeave(x.employee.id, leaveBody('2026-10-05', 'direct'));
+      const before = await x.stateOf(x.employee.id);
+      const response = await x.session.request('POST', `/businesses/${leave.id}/revoke`, {
+        ifMatch: (await x.business(leave.id)).revision,
         body: {},
       });
       expect(await x.reason(response)).toMatchObject({ status: 409, reason: 'USE_EXIT_CANCEL' });
-    }
-    expect(await x.stateOf(x.employee.id)).toEqual(before);
-  });
+      expect(await x.stateOf(x.employee.id)).toEqual(before);
+    },
+  );
 
   it('通用 DELETE 对离职单与专用撤销同一实现：带原因成功（已批准 / 已生效），缺原因 400', async () => {
     const x = await world('entry-delete');
@@ -201,6 +206,8 @@ describe('AC-DM-29 / B-59 任职状态钩子与 BE-8 撤销端口', () => {
 
   it('撤销已生效离职通知 onRecordDeleted 一次；撤销 approved / 未办结只走撤销端口，不通知记录删除', async () => {
     const x = await world('entry-hooks');
+    deleted.length = 0;
+    cancelled.length = 0;
     const approved = await x.directLeave('2026-10-25');
     await x.cancelled(approved.id);
     expect(deleted).toEqual([]);

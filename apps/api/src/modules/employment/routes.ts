@@ -39,7 +39,15 @@ import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
 import { createExitApplication } from './exit-application.js';
-import { isExitKind, requireExitGate, type ExitOperation, type ExitGateTarget } from './exit-gate.js';
+import { isCancellableState } from './exit-cancel.js';
+import {
+  businessState,
+  isExitKind,
+  loadExitRequest,
+  requireExitGate,
+  type ExitOperation,
+  type ExitGateTarget,
+} from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
@@ -82,7 +90,7 @@ import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 import { failedImportAnchors, importedItems } from './import-audit.js';
 import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
-import { registerExitRoutes } from './exit-routes.js';
+import { registerExitRoutes, runExitCancel } from './exit-routes.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
@@ -403,6 +411,14 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerBusinessTransitions(router, deps);
 }
 
+/** 有离职扩展行、且处于可撤销状态（草稿 / 审批中 / 已驳回 / 审批通过 / 已生效）的离职单。 */
+async function isCancellableExit(deps: TenantRouteDeps, ctx: EmploymentContext, id: string) {
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const state = await businessState(tx, ctx.tenantId, id);
+    return !!state && isCancellableState(state) && !!(await loadExitRequest(tx, ctx.tenantId, id));
+  });
+}
+
 function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
   for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
@@ -423,6 +439,10 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
         if (action === 'submit')
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
+        // 离职单的通用 DELETE 映射到撤销（设计 §4，B4）：与 POST exits/:id/cancel 同一实现，不留绕过 §6B 的删除路径；
+        // 已作废 / 未通过的离职单仍是清理删除，走下面的通用流程
+        if (action === 'delete' && isExitKind(current.kind) && (await isCancellableExit(deps, ctx, id)))
+          return runExitCancel(c, deps, ctx, id, current.employeeId, true);
         const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
         const guard = {
           guard: isExitKind(current.kind)

@@ -23,14 +23,18 @@ import {
   pageQuery,
   readContext,
   readPageContext,
+  requireEmployeeInScope,
   requireEmploymentScope,
   requireEmploymentWrite,
   revision,
   runWrite,
+  trimEmploymentResponse,
   uuidParam,
   type EmploymentContext,
 } from './context.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
+import { cancelExit, cancellationOwner, rejectRestore, updateCancellationReason } from './exit-cancel.js';
+import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest } from './exit-gate.js';
 import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
@@ -75,6 +79,7 @@ export function registerExitRoutes(
   registerExitViews(router, deps);
   registerExitCreate(router, deps);
   registerExitChanges(router, deps, authorizeBusinessWrite);
+  registerExitCancel(router, deps, authorizeBusinessWrite);
 }
 
 function registerExitDictionaries(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -291,6 +296,105 @@ function registerExitChanges(
         { guard: exitCommandGuard(deps, ctx, action, { employeeId: current.employeeId }, { businessId: id }) },
       );
     });
+}
+
+// ---- 撤销离职（B4，设计 §7.1 / §7.3 / §9.1）------------------------------------------------------------------------
+
+const cancelSchema = z.strictObject({ reason: z.string().max(500), confirmed: z.boolean().optional() });
+
+/**
+ * 撤销回执响应前的按查看人裁剪：业务头按任职字段权，撤销清单目标按各自对象的可见性（不可见只计 hiddenCount）。
+ * 命令台账里存的是未裁剪的清单，重放同样走这里，所以撤权后重放得到的也是按当前权限裁剪的结果。
+ */
+async function projectCancelReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
+  const { cancellation, downstream, ...business } = body as {
+    cancellation: unknown;
+    downstream: Downstream;
+    employeeId: string;
+  };
+  const trimmed = (await trimEmploymentResponse(deps, ctx, business)) as Record<string, unknown>;
+  const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    trimDownstream(tx, ctx, downstream, business.employeeId),
+  );
+  return { ...trimmed, cancellation, downstream: visible };
+}
+
+/**
+ * POST exits/:id/cancel 与通用 DELETE businesses/:id（对离职单映射到撤销）共用：解析 { reason, confirmed? }，命令内复核权限与范围，
+ * 同一事务执行 cancelExit。reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
+ */
+export async function runExitCancel(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  employeeId: string,
+  deleting = false,
+) {
+  const parsed = cancelSchema.safeParse(await jsonBody(c).catch(() => ({})));
+  if (!parsed.success || !parsed.data.reason.trim())
+    throw new AppError('VALIDATION_FAILED', '请填写撤销离职原因', {
+      reason: 'EXIT_CANCEL_REASON_REQUIRED',
+      issues: parsed.success ? [] : parsed.error.issues,
+    });
+  const input = parsed.data;
+  return runWrite(
+    c,
+    deps,
+    ctx,
+    { id, ...input },
+    async (tx, context) => ({ status: 200, body: await cancelExit(tx, context, id, input) }),
+    {
+      guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId, deleting }, { businessId: id }),
+      project: (body) => projectCancelReceipt(deps, ctx, body),
+    },
+  );
+}
+
+function registerExitCancel(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
+  // 撤销：功能权 object.update → DimissionCancel → 范围（范围外 404）→ 原因 / 确认 → 命令内 §6B（approved / effective）
+  router.post('/exits/:id/cancel', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true });
+    const current = await authorizeBusinessWrite(deps, ctx, id);
+    await requireExitBusiness(deps, ctx, id);
+    return runExitCancel(c, deps, ctx, id, current.employeeId);
+  });
+  // restore：授权先于不支持（B-57）；已撤销 / 作废的离职不能恢复，需要时另发新离职单
+  router.post('/exits/:id/restore', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true });
+    await authorizeBusinessWrite(deps, ctx, id);
+    await requireExitBusiness(deps, ctx, id);
+    return rejectRestore();
+  });
+  // 修改撤销原因（DM-R5）：只有 reason 可改；If-Match = 撤销记录 revision；范围按所属员工
+  router.patch('/exits/cancellations/:id', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true });
+    const owner = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const found = await cancellationOwner(tx, ctx.tenantId, id);
+      if (found) await requireEmployeeInScope(tx, ctx, found.employeeId);
+      return found;
+    });
+    if (!owner) throw new AppError('NOT_FOUND', '撤销的离职记录不存在');
+    const { reason } = parse(z.strictObject({ reason: z.string().max(500) }), await jsonBody(c));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, reason },
+      async (tx, context) => ({ status: 200, body: await updateCancellationReason(tx, context, id, reason) }),
+      { guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId: owner.employeeId }, {}), project: (body) => body },
+    );
+  });
 }
 
 // ---- 视图与详情（B5，设计 §3.2 / §9.1）-------------------------------------------------------------------------

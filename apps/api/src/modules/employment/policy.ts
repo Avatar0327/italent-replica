@@ -1578,6 +1578,44 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Withdraw）；提交只接受 { pendingTransferAck }、只允许原发起人（403 EXIT_SUBMIT_INITIATOR_ONLY）；命令内状态迁移 + 审批钩子
   'POST /exits/:id/submit': exitTransition(),
   'POST /exits/:id/withdraw': exitTransition(),
+  // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
+  // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
+  // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective
+  // 过 §6B（停用交集 409 EMPLOYMENT_DEPARTMENT_DISABLED，超编 409 CONFIRMATION_REQUIRED）；回执固定形状，业务头按任职字段权裁剪，
+  // 撤销清单目标按各自对象可见性裁剪（不可见只计 hiddenCount）
+  'POST /exits/:id/cancel': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(EXIT_BUTTONS.cancel, 'detail'),
+    guards: [LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: projector('employment.response', 'employment.exitCancelReceipt'),
+    write: employmentCommand(['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+    ...byId,
+  }),
+  // restore：授权先于不支持（B-57）——功能权 / DimissionCancel / 范围外 404 之后一律 409 EXIT_RESTORE_NOT_SUPPORTED，无命令事务
+  'POST /exits/:id/restore': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(EXIT_BUTTONS.cancel, 'detail'),
+    scope: BUSINESS_WRITE,
+    fields: fixed(['error'], '固定拒绝：409 EXIT_RESTORE_NOT_SUPPORTED，没有业务响应'),
+    write: write('body', none('只读拒绝：没有命令事务，没有提交前足迹'), none('只读拒绝：没有业务响应')),
+    ...byId,
+  }),
+  // 修改撤销原因（DM-R5）：If-Match = 撤销记录 revision；DimissionCancel + 所属员工范围（范围外 / 不存在 404）；
+  // body 严格 { reason }（400）；只有 reason 可改，审计 exit.cancellation.update
+  'PATCH /exits/cancellations/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(EXIT_BUTTONS.cancel, 'detail'),
+    scope: pointScope({ param: 'id' }, 'employment.exitCancellation', NF_BUSINESS),
+    fields: fixed(
+      ['id', 'businessId', 'employeeId', 'case', 'stateBefore', 'reason', 'revision', 'createdAt'],
+      'R2-T03 设计 §7.1：撤销记录固定键，其余列不可改',
+    ),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------
   // 视图：view ∈ in_progress / completed / all / cancellations（缺失或不合法 400）；筛选 departmentId（含下级，可 includeChildren=false）/
   // keyword / lastWorkDateFrom / lastWorkDateTo / exitTypeCode / reasonCode / whereaboutsCode / status（仅离职中 / 全部）/

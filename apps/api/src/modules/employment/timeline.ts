@@ -302,3 +302,46 @@ export async function detachFutureTransfers(
     WHERE tenant_id=${ctx.tenantId} AND record_id=${leaveRecordId}::uuid`);
   return detached.map((item) => ({ ...item, to: item.to ?? null }));
 }
+
+export interface ReattachedTransfer {
+  readonly recordId: string;
+  /** 挂回后的时间轴窗口 [from, to)，to 为空表示开放。 */
+  readonly from: string;
+  readonly to: string | null;
+}
+
+/**
+ * 离职设计 §5.8 / §7.1：撤销已生效离职后，把离职落地时摘下的未来调动按台账窗口挂回原位（B4）。
+ * 必须在离职自己的时间轴行已移除之后调用；按原窗口起点升序逐条走与落地同一个插入入口（insertEmploymentTimeline，
+ * 同日先后按原计划日 / 操作序号），前一条的区间随之接到第一个挂回的调动。台账只追加，不改；已在时间轴上的目标跳过（幂等）。
+ * 返回挂回后的最终窗口，供调用方按最终窗口做恢复守卫。调用方已持员工锁。
+ */
+export async function reattachFutureTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  leaveBusinessId: string,
+): Promise<ReattachedTransfer[]> {
+  const detached = rowsOf<{ recordId: string; staffId: string; from: string }>(
+    await tx.execute(sql`
+    SELECT x.target_id::text AS "recordId", r.staff_id::text AS "staffId", x.detail->'window'->>'from' AS "from"
+    FROM exit_effects x JOIN employment_records r ON r.tenant_id=x.tenant_id AND r.id=x.target_id
+    WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${leaveBusinessId}::uuid AND x.employee_id=${employeeId}::uuid
+      AND x.kind='future_transfer_detached' AND x.phase='effective' AND x.target_type='employment-record'
+      AND NOT EXISTS (SELECT 1 FROM employment_timeline t WHERE t.tenant_id=x.tenant_id AND t.record_id=x.target_id)
+    ORDER BY x.detail->'window'->>'from', x.id`),
+  );
+  for (const item of detached)
+    await insertEmploymentTimeline(tx, ctx, employeeId, item.recordId, item.staffId, item.from);
+  if (!detached.length) return [];
+  const ids = sql.join(
+    detached.map((item) => sql`${item.recordId}::uuid`),
+    sql`, `,
+  );
+  return rowsOf<ReattachedTransfer>(
+    await tx.execute(sql`SELECT record_id::text AS "recordId", start_date::text AS "from",
+        upper(valid_during)::text AS "to"
+      FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND record_id IN (${ids})
+      ORDER BY start_date, sort_order`),
+  );
+}
