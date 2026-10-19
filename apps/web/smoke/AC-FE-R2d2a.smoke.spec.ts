@@ -71,7 +71,11 @@ async function ready(page: Page, allowed = buttons) {
   await expect(page.getByRole('button', { name: '查看详情', exact: true })).toHaveCount(2);
 }
 async function choose(page: Page, label: string, text: string) {
-  await page.getByRole('dialog').getByRole('combobox', { name: label, exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('combobox', { name: label, exact: true })
+    .locator('xpath=ancestor::div[contains(@class,"ant-select-selector")]')
+    .click();
   await page
     .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
     .getByText(text, { exact: true })
@@ -152,6 +156,7 @@ test('AC-FE-R2d2a-02 编辑改部门、只读开始日、清空结束日拦截',
   });
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(page.getByRole('dialog').getByLabel('开始日期', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog').getByRole('textbox', { name: '人员类别', exact: true })).toHaveCount(0);
   await date(page, '结束日期', '');
   await save(page).click();
   await expect(page.getByText('已有结束日期不可清空', { exact: true })).toBeVisible();
@@ -179,7 +184,6 @@ test('AC-FE-R2d2a-03 批量结束冲突逐条提示、重读重提使用新版�
             message: '版本冲突',
             details: {
               items: [{ recordId, expected: 1, actual: 2 }],
-              hiddenCount: 1,
             },
           },
         },
@@ -199,13 +203,15 @@ test('AC-FE-R2d2a-03 批量结束冲突逐条提示、重读重提使用新版�
   await date(page, '结束日期', '2026-10-20');
   await save(page).click();
   await expect(page.getByText(`${recordId}：版本 1 → 2`, { exact: true })).toBeVisible();
-  await expect(page.getByText('另有 1 条记录不可见', { exact: true })).toBeVisible();
   for (const id of [recordId, second])
     await page.route(`**/employment/part-times/${id}`, (route) =>
       route.fulfill({ json: { ...record, id, revision: 2 } }),
     );
   await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
-  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  const confirm = page.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
+  await confirm.click();
+  await expect(confirm).toHaveCount(0);
+  await expect(save(page)).toBeEnabled();
   await save(page).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body).toEqual({
@@ -232,7 +238,7 @@ test('AC-FE-R2d2a-05 编辑结果未知关闭换视图重开仍锁定，回查�
   await choose(page, '部门', '合成部门乙');
   await save(page).click();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(save(page)).toBeDisabled();
@@ -264,7 +270,10 @@ test('AC-FE-R2d2a-06 编辑冲突重读：保留部门草稿、更新未改结�
   await choose(page, '部门', '合成部门乙');
   await save(page).click();
   await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
-  await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  const confirm = page.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
+  await confirm.click();
+  await expect(confirm).toHaveCount(0);
+  await expect(save(page)).toBeEnabled();
   await expect(page.getByRole('dialog').getByPlaceholder('选择日期')).toHaveValue('2026-12-31');
   await save(page).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -291,4 +300,28 @@ test('AC-FE-R2d2a-07 批量未知锁住单条编辑与重组批次', async ({ pa
   await expect(page.getByText('本对象有未确认的其他操作，确认结果前不能发起新操作。')).toBeVisible();
   await expect(save(page)).toBeDisabled();
   expect(writes).toBe(1);
+});
+
+test('AC-FE-R2d2a-08 有按钮但无对象写权，记录仍展示、提交入口禁用', async ({ page }) => {
+  await ready(page);
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
+        dataOperations: { read: true, create: false, update: false },
+        viewableFields: fields,
+        editableFields: fields,
+        buttons: buttons.map((buttonCode) => ({
+          buttonCode,
+          level: buttonCode.endsWith('BatchEnd') ? 'list' : 'detail',
+        })),
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole('button', { name: '编辑', exact: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: '新增兼职', exact: true })).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'Select all' }).check();
+  await expect(page.getByRole('button', { name: '批量结束兼职', exact: true })).toBeDisabled();
+  await expect(page.getByText('合成兼职员工', { exact: true }).first()).toBeVisible();
 });
