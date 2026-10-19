@@ -1701,7 +1701,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ob(
       `btn:${RECORD}#Employment.Dimission@detail`,
-      ['button:buttonResource', 'button:object.button'],
+      [],
       [
         at(INTERN, 'POST', '/interns/:id/terminate', "{ guard: exitCommandGuard(deps, ctx, 'create', gate, {}) }"),
         EXIT_GUARD,
