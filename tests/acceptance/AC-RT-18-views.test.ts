@@ -10,6 +10,7 @@ import { sql, withTenant } from '@italent/db';
 import { addDays, classifyRetirement, RETIREMENT_VIEWS, type RetirementBillFacts } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { rowsOf } from '../../apps/api/src/modules/employment/read-model.js';
 import { transitionEmployment } from '../../apps/api/src/modules/employment/transitions.js';
 import { retirementWorld } from './AC-RT-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -36,7 +37,14 @@ interface Scenario {
   employeeId: string;
   /** 在职区间 [from, to)，to 缺省 = 至今；staff 为周期标签。 */
   spans: { from: string; to?: string; staff: 1 | 2; entry: string }[];
-  bills: { id: string; staff: 1 | 2; state: string; createdOn: string; submittedOn: string | null; effective: string }[];
+  bills: {
+    id: string;
+    staff: 1 | 2;
+    state: string;
+    createdOn: string;
+    submittedOn: string | null;
+    effective: string;
+  }[];
   expected: string | null;
 }
 
@@ -81,7 +89,14 @@ const world = async () => {
     const draft = await x.submittedRetire(addDays(effectiveDate, -1), s.employeeId);
     const done = await x.approve(draft, `${effectiveDate}T02:00:00Z`);
     expect(done.status).toBe('effective');
-    s.bills.push({ id: draft.id, staff, state: 'effective', createdOn: TODAY, submittedOn: TODAY, effective: effectiveDate });
+    s.bills.push({
+      id: draft.id,
+      staff,
+      state: 'effective',
+      createdOn: TODAY,
+      submittedOn: TODAY,
+      effective: effectiveDate,
+    });
     s.spans[s.spans.length - 1]!.to = effectiveDate;
     return draft;
   }
@@ -140,12 +155,11 @@ async function fixture(w: World) {
   s.rejected.bills[0]!.state = 'rejected';
   // 返聘：旧周期已生效退休，2026-10-01 重新入职（第二个周期），P 改为新周期内的 10-20
   const employee = await x.session.getEmployee(s.rehire.employeeId);
-  const rehired = await x.session.business(
-    s.rehire.employeeId,
-    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-10-01', fields: { departmentId: x.from.id } },
-    employee.revision,
-  );
-  expect(rehired.status).toBe('effective');
+  const rehired = await x.session.request('POST', `/employees/${s.rehire.employeeId}/businesses`, {
+    ifMatch: employee.revision,
+    body: { kind: 'retire_rehire', mode: 'direct', effectiveDate: '2026-10-01', fields: { departmentId: x.from.id } },
+  });
+  expect(rehired.status, await rehired.clone().text()).toBe(201);
   s.rehire.spans.push({ from: '2026-10-01', staff: 2, entry: '2026-10-01' });
   await x.setExpectedRetirement('2026-10-20', s.rehire.employeeId);
   s.rehire.expected = '2026-10-20';
@@ -168,8 +182,10 @@ async function fixture(w: World) {
 async function cancelRetirement(w: World, scenario: Scenario, businessId: string) {
   const { x } = w;
   await withTenant(database().db, x.session.tenant.id, async (tx) => {
-    const [head] = (await tx.execute(sql`SELECT revision FROM employment_business_objects
-      WHERE tenant_id=${x.session.tenant.id} AND id=${businessId}::uuid`)) as unknown as { revision: number }[];
+    const [head] = rowsOf<{ revision: number }>(
+      await tx.execute(sql`SELECT revision FROM employment_business_objects
+        WHERE tenant_id=${x.session.tenant.id} AND id=${businessId}::uuid`),
+    );
     await transitionEmployment(
       tx,
       {
@@ -237,12 +253,18 @@ describe('AC-RT-18 五视图固定夹具（asOf = 10-15，N = 30）', () => {
 
   it('全部：创建 ≤ asOf 的全部退休单含草稿 / 驳回', async () => {
     const page = await w.view('all');
-    expect([...w.ids(page)].sort()).toEqual(Object.values(f.bill).map((b) => b.id).sort());
+    expect([...w.ids(page)].sort()).toEqual(
+      Object.values(f.bill)
+        .map((b) => b.id)
+        .sort(),
+    );
     expect(page.total).toBe(Object.keys(f.bill).length);
   });
 
   it('asOf 早于创建日：单不存在于任何单据视图；晚提交的单在提交前只在“全部”，提交后进“退休中”', async () => {
-    for (const name of ['processing', 'completed', 'all']) expect((await w.view(name, '', '2026-10-05')).items).toEqual([]);
+    for (const name of ['processing', 'all']) expect((await w.view(name, '', '2026-10-05')).items).toEqual([]);
+    // 已完成只看 E′ ≤ asOf（夹具里“返聘”的旧单 E′ = 09-20 是倒填的生效日）
+    expect(w.ids(await w.view('completed', '', '2026-10-05'))).toEqual([f.bill.old.id]);
     const lateId = f.bill.late.id;
     expect(w.ids(await w.view('processing', '', '2026-10-07'))).not.toContain(lateId);
     expect(w.ids(await w.view('all', '', '2026-10-07'))).toContain(lateId);
@@ -327,6 +349,7 @@ describe('AC-RT-18 随机夹具：SQL ≡ 纯函数 classifyRetirement', () => {
     const dates = (count: number, from: string) => Array.from({ length: count }, (_, i) => addDays(from, i));
     const PROBE = dates(120, '2026-08-25');
 
+    const seen = new Map<string, number>(RETIREMENT_VIEWS.map((name) => [name, 0]));
     for (let round = 0; round < 12; round += 1) {
       for (const s of all.filter(() => next(3) === 0)) {
         s.expected = next(8) === 0 ? null : PROBE[next(PROBE.length)]!;
@@ -361,9 +384,14 @@ describe('AC-RT-18 随机夹具：SQL ≡ 纯函数 classifyRetirement', () => {
       }
       for (const name of RETIREMENT_VIEWS) {
         const page = await w.view(name, `&upcomingDays=${upcomingDays}&pageSize=100`, asOf);
-        expect([...w.ids(page)].sort(), `${name} asOf=${asOf} N=${upcomingDays}`).toEqual([...expected.get(name)!].sort());
+        expect([...w.ids(page)].sort(), `${name} asOf=${asOf} N=${upcomingDays}`).toEqual(
+          [...expected.get(name)!].sort(),
+        );
         expect(page.total).toBe(expected.get(name)!.length);
+        seen.set(name, seen.get(name)! + page.total);
       }
     }
+    // 防空转：每个视图在随机轮次里都至少命中过行
+    for (const [name, count] of seen) expect(count, name).toBeGreaterThan(0);
   });
 });

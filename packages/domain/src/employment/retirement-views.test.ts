@@ -65,7 +65,9 @@ describe('AC-RT-18 员工行：即将退休 / 过期未退休', () => {
   });
 
   it('流程中必须在 asOf 当日结束前已提交：asOf 之后才提交的单不排除', () => {
-    expect(personView({ expectedDate: '2026-10-20' }, [bill({ state: 'in_review', submitted: false })])).toBe('upcoming');
+    expect(personView({ expectedDate: '2026-10-20' }, [bill({ state: 'in_review', submitted: false })])).toBe(
+      'upcoming',
+    );
   });
 
   it('返聘后再次临近退休：旧周期 effective 不排除，新 P 进“即将”；旧 P 早于新周期入职日则不进“过期”', () => {

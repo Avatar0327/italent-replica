@@ -6,6 +6,7 @@ import './support/exit-gate-enforced.js';
 import type { Authorizer } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { denyButtons } from './AC-EXIT-gate-support.js';
 import { retirementWorld } from './AC-RT-support.js';
 
@@ -24,7 +25,12 @@ async function world(label: string) {
     const employee = await x.session.getEmployee(created.id);
     const hire = await asOther('POST', `/employees/${created.id}/businesses`, {
       ifMatch: employee.revision,
-      body: { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: x.from.id } },
+      body: withLoginEmail(created.id, {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-09-01',
+        fields: { departmentId: x.from.id },
+      }),
     });
     expect(hire.status, await hire.clone().text()).toBe(201);
     await x.setExpectedRetirement(expected, created.id);
@@ -38,7 +44,12 @@ async function world(label: string) {
   async function mine(name: string, expected: string) {
     const { employee } = await x.hired(name);
     await x.setExpectedRetirement(expected, employee.id);
-    const draft = await x.createdRetire(employee.id, { kind: 'retirement', mode: 'application', lastWorkDate: '2026-10-25', fields: {} });
+    const draft = await x.createdRetire(employee.id, {
+      kind: 'retirement',
+      mode: 'application',
+      lastWorkDate: '2026-10-25',
+      fields: {},
+    });
     return { employeeId: employee.id, billId: draft.id };
   }
   async function view(name: string, api = x.session.request, query = '') {
@@ -96,8 +107,23 @@ describe('AC-RT-19 字段裁剪', () => {
   it('无退休类型 / 是否同时返聘字段权 → 两键缺席；无预计退休日期字段权 → P 与到期天数缺席（不是 null）', async () => {
     const w = await world('rt19-fields');
     const made = await w.mine('裁剪员工', '2026-10-20');
-    const base = ['id', 'employeeId', 'status', 'revision', 'lastWorkDate', 'effectiveDate', 'name', 'code', 'createdAt'];
-    const sighted = w.x.restricted(denyButtons(), undefined, [...base, 'retireType', 'reEmployed', 'expectedRetirementDate']);
+    const base = [
+      'id',
+      'employeeId',
+      'status',
+      'revision',
+      'lastWorkDate',
+      'effectiveDate',
+      'name',
+      'code',
+      'createdAt',
+    ];
+    const sighted = w.x.restricted(denyButtons(), undefined, [
+      ...base,
+      'retireType',
+      'reEmployed',
+      'expectedRetirementDate',
+    ]);
     const blind = w.x.restricted(denyButtons(), undefined, base);
 
     const withFields = (await w.view('all', sighted)).items[0]!;
@@ -107,7 +133,11 @@ describe('AC-RT-19 字段裁剪', () => {
     for (const key of ['retireType', 'reEmployed', 'expectedRetirementDate']) expect(trimmed).not.toHaveProperty(key);
 
     const person = (await w.view('upcoming', sighted)).items[0]!;
-    expect(person).toMatchObject({ employeeId: made.employeeId, expectedRetirementDate: '2026-10-20', daysToRetirement: 5 });
+    expect(person).toMatchObject({
+      employeeId: made.employeeId,
+      expectedRetirementDate: '2026-10-20',
+      daysToRetirement: 5,
+    });
     const hidden = (await w.view('upcoming', blind)).items[0]!;
     for (const key of ['expectedRetirementDate', 'daysToRetirement']) expect(hidden).not.toHaveProperty(key);
   });

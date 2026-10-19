@@ -24,6 +24,7 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
 import { assertRetirementFields, assertRetirementImmutableKeys } from './retirement-application.js';
 import { exitCommandGuard, exitEditGuard } from './replay-guard.js';
+import { registerRetirementViews } from './retirement-view-routes.js';
 import { transitionEmployment } from './transitions.js';
 
 const KIND = 'retirement' as const;
@@ -41,6 +42,7 @@ export function registerRetirementRoutes(
   deps: TenantRouteDeps,
   authorizeBusinessWrite: BusinessWriteGuard,
 ) {
+  registerRetirementViews(router, deps);
   registerRetirementCreate(router, deps);
   registerRetirementChanges(router, deps, authorizeBusinessWrite);
 }

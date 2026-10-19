@@ -448,7 +448,7 @@ function parseViewQuery(c: Context<TenantEnv>) {
 }
 
 /** 姓名 / 工号属人员对象，其余按任职记录对象；无字段权限配置 = 全可见（同实习视图）。 */
-async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
+export async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
   const [employee, employment] = await Promise.all([
     getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT),
     getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),
