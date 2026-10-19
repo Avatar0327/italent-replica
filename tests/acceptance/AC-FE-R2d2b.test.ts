@@ -36,12 +36,15 @@ const row = {
 };
 
 describe('AC-FE-R2d2b 状态与权限交集（D2B-01 澄清）', () => {
-  it.each([
+  const cases: [string | undefined, string[]][] = [
     ['draft', ['edit', 'submit', 'delete', 'revoke']],
     ['rejected', ['edit', 'submit', 'delete', 'revoke']],
     ['in_review', ['withdraw', 'revoke']],
-    ...['approved', 'effective', 'voided', 'deleted', 'disapproved', undefined].map((state) => [state, []] as const),
-  ])('%s 只显示约定动作', (status, expected) => {
+    ...['approved', 'effective', 'voided', 'deleted', 'disapproved', undefined].map(
+      (state): [string | undefined, string[]] => [state, []],
+    ),
+  ];
+  it.each(cases)('%s 只显示约定动作', (status, expected) => {
     expect(actionsFor({ ...row, status }, permission)).toEqual(expected);
   });
   it('缺对象、按钮权 fail closed；撤销只需自身按钮，不借用申请按钮', () => {

@@ -109,7 +109,6 @@ export function RequestForm(props: RequestFormProps) {
     action,
     full,
     permissions,
-    create,
     busy,
     error,
     fields,
@@ -135,7 +134,7 @@ export function RequestForm(props: RequestFormProps) {
           <Button disabled={busy} onClick={props.close}>
             {r.cancel}
           </Button>
-          {create ? (
+          {action === 'create' ? (
             <>
               <Button disabled={locked} onClick={() => void send(false)}>
                 {r.draft}
