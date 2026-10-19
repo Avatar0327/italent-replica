@@ -72,7 +72,7 @@ export const pendingActivationState = (timezone: string) => sql`((s.state='appro
  * 只改“最近一次有效尝试”的取法，尝试历史行原样保留（审计）；T 没有因此被标为已完成，未到期的联动仍待执行。
  * 引用别名 a（employment_activation_attempts），只依赖 employment_timeline，升级前的旧结构同样可用。
  */
-export const STALE_DEPARTED_FAILURE = sql`(a.reason = 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER' AND EXISTS (
+export const STALE_DEPARTED_FAILURE = sql`(COALESCE(a.reason, '') = 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER' AND EXISTS (
   SELECT 1 FROM employment_timeline tl WHERE tl.tenant_id=a.tenant_id AND tl.record_id=a.business_id))`;
 
 export type ShiftedKind = 'transfer' | 'leave';

@@ -770,7 +770,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/activation-store.ts#QUEUE_LIMIT': ['58aea7cd7212', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/activation-store.ts#QUEUE_SHIFTED_KINDS': ['7511a610c4c4', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/activation-store.ts#REBUILD_REQUIRED': ['75855cdc161b', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/activation-store.ts#STALE_DEPARTED_FAILURE': ['d6c59d5af5d0', '7a645dc8391f'],
+  'apps/api/src/modules/employment/activation-store.ts#STALE_DEPARTED_FAILURE': ['5b4ec3679768', '7a645dc8391f'],
   'apps/api/src/modules/employment/activation-store.ts#activationPredecessors': ['2e212d2bfaac', 'ea541372891b'],
   'apps/api/src/modules/employment/activation-store.ts#activationSummary': ['96cb3cf971c0', '53e4490fa3a1'],
   'apps/api/src/modules/employment/activation-store.ts#blockerIds': ['7c61ef82a740', 'f19f5c63351b'],
