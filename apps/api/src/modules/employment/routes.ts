@@ -39,7 +39,7 @@ import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
 import { createExitApplication } from './exit-application.js';
-import { isExitKind, requireExitGate, type ExitOperation, type ExitGateTarget } from './exit-gate.js';
+import { isExitKind, requireExitGate, withAckWarnings, type ExitOperation, type ExitGateTarget } from './exit-gate.js';
 import { splitExitOptions } from './exit-initiation.js';
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
@@ -462,7 +462,13 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
             else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
             else await employmentApprovalHooks.deleted(tx, context, id);
-            return { status: 200, body: business };
+            return {
+              status: 200,
+              body:
+                action === 'submit' && isExitKind(business.kind)
+                  ? await withAckWarnings(tx, context, business)
+                  : business,
+            };
           },
           guard,
         );
