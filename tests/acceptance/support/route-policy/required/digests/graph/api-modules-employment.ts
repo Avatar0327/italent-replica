@@ -190,6 +190,7 @@ export const GRAPH: Graph = {
     '#listQuery',
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
     'apps/api/src/modules/employment/assessment-store.ts#listAssessments',
+    'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
@@ -198,8 +199,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/assessment-routes.ts#route:GET /probation-assessments/:id': [
     'apps/api/src/modules/employment/assessment-store.ts#assessmentView',
-    'apps/api/src/modules/employment/assessment-store.ts#loadAssessment',
+    'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead',
     'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
+    'apps/api/src/modules/employment/assessment-store.ts#withTerminationFlag',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -227,6 +229,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
   ],
+  'apps/api/src/modules/employment/assessment-store.ts#READ_COLUMNS': ['#COLUMNS'],
   'apps/api/src/modules/employment/assessment-store.ts#assertAssessmentRevision': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
   ],
@@ -239,12 +242,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#listAssessments': [
-    '#COLUMNS',
+    '#READ_COLUMNS',
     '#assessmentScopeSql',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#loadAssessment': [
     '#COLUMNS',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/assessment-store.ts#loadAssessmentRead': [
+    '#READ_COLUMNS',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope': [
@@ -2882,20 +2889,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator': [
     'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql',
   ],
-  'apps/api/src/modules/employment/part-time/date-request.ts#assertExtendsFurther': [
-    '#conflict',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
-  ],
   'apps/api/src/modules/employment/part-time/date-request.ts#checkDateRequest': [
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
-    '#assertExtendsFurther',
+    '#checkExtendEnd',
     '#reject',
     'apps/api/src/modules/employment/part-time/validation.ts#dateRequestStateViolation',
     'apps/api/src/modules/employment/part-time/validation.ts#endDateViolation',
     'apps/api/src/modules/employment/part-time/validation.ts#openDateRequestRecords',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailableWithin',
     'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/date-request.ts#checkExtendEnd': [
+    '#conflict',
+    '#reject',
+    'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_DEPARTMENT': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
@@ -3768,7 +3778,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStart': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#endDateViolation': [
+    '#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/validation.ts#normalizeBatchEnd': [

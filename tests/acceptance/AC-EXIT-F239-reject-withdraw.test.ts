@@ -40,7 +40,7 @@ async function submitted(x: AssessmentExitWorld, draft: { id: string; revision: 
 
 const cancelLogs = (x: AssessmentExitWorld, instanceId: string) =>
   x.rows<{ id: string }>(sql`SELECT id FROM approval_instance_logs
-    WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid AND event='cancel'`);
+    WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid AND event='system_revoke'`);
 
 /** 作废事件（auditEmployment 与审计同事务写 employment_outbox）；下游按它收到“考核已被离职作废”。 */
 const voidEvents = (x: AssessmentExitWorld, assessmentId: string) =>

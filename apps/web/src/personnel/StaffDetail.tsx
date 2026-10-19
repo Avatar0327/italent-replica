@@ -8,6 +8,8 @@ import { useRead } from './useRead.js';
 import { EmploymentRecords, PersonnelProfile } from './ProfileSections.js';
 import { displayValue, type Row } from './model.js';
 import { m } from './messages.js';
+import { EmployeePartTimes } from '../part-time/EmployeePartTimes.js';
+import { m as partTime } from '../part-time/messages.js';
 
 export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClose(): void }) {
   const result = useRead<Row>(`/api/tenant/personnel/employees/${encodeURIComponent(employeeId)}`);
@@ -51,6 +53,7 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
           ? [
               { key: 'profile', label: m.profile, children: <PersonnelProfile row={row} employeeId={employeeId} /> },
               { key: 'records', label: m.records, children: <EmploymentRecords employeeId={employeeId} /> },
+              { key: 'part-time', label: partTime.profileTab, children: <EmployeePartTimes employeeId={employeeId} /> },
             ]
           : undefined
       }

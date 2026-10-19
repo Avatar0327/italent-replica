@@ -50,12 +50,49 @@ const COLUMNS = sql`id::text AS id, employee_id::text AS "employeeId", anchor_id
   initiation, initiator_user_id::text AS "initiatorUserId",
   regularization_business_id::text AS "regularizationBusinessId", revision::integer AS revision`;
 
+/**
+ * F-248（DEC-633）：读取投影多一个只读派生量——考核是否因离职收口而终止（有 voided_by_exit 审计）。状态值仍是 cancelled，
+ * 发起人撤回 / 审批中心作废等其余 cancelled 为 false；前端据此显示“已终止”或原名“已作废”。列表与详情共用这一处。
+ */
+const READ_COLUMNS = sql`${COLUMNS}, EXISTS (SELECT 1 FROM audit_events ae WHERE ae.tenant_id=a.tenant_id
+  AND ae.object_id=a.id::text AND ae.action='employment.assessment.voided_by_exit') AS "terminatedByExit"`;
+
+export interface AssessmentReadRow extends AssessmentRow {
+  readonly terminatedByExit: boolean;
+}
+
 /** 接口形状（对象 TenantBase.ProbationAssessment 的字段目录 + id / revision / 创建所属员工）。 */
 export type AssessmentView = Omit<AssessmentRow, 'anchorId' | 'departmentId'>;
 
-export function assessmentView(row: AssessmentRow): AssessmentView {
-  const { anchorId: _anchor, departmentId: _department, ...view } = row;
+export function assessmentView(row: AssessmentRow | AssessmentReadRow): AssessmentView {
+  // 离职终止标记不是字段目录里的字段，不进裁剪 / 审计的输入，由 withTerminationFlag 在裁剪后补回
+  const {
+    anchorId: _anchor,
+    departmentId: _department,
+    terminatedByExit: _terminated,
+    ...view
+  } = row as AssessmentReadRow;
   return view;
+}
+
+/** 详情读取：行 + 离职终止标记（不加锁；写路径用 loadAssessment）。 */
+export async function loadAssessmentRead(tx: Tx, tenantId: string, id: string): Promise<AssessmentReadRow> {
+  const [row] = rowsOf<AssessmentReadRow>(
+    await tx.execute(sql`SELECT ${READ_COLUMNS} FROM employment_probation_assessments a
+      WHERE a.tenant_id=${tenantId} AND a.id=${id}::uuid`),
+  );
+  if (!row) throw new AppError('NOT_FOUND', '考核记录不存在');
+  return row;
+}
+
+/**
+ * 接口输出：在字段裁剪（trimEmploymentResponse）之后补回 terminatedByExit。它不是对象字段目录里的字段，跟随 status 的
+ * 可见性——看不到状态的人也看不到“因离职终止”，不新增字段授权项。
+ */
+export function withTerminationFlag<T>(trimmed: T, rows: readonly AssessmentReadRow[]): T {
+  const flag = (item: unknown, row: AssessmentReadRow) =>
+    item && typeof item === 'object' && 'status' in item ? { ...item, terminatedByExit: row.terminatedByExit } : item;
+  return (Array.isArray(trimmed) ? trimmed.map((item, i) => flag(item, rows[i]!)) : flag(trimmed, rows[0]!)) as T;
 }
 
 export async function loadAssessment(tx: Tx, tenantId: string, id: string, lock = false): Promise<AssessmentRow> {
@@ -93,9 +130,9 @@ export async function listAssessments(
   filter: AssessmentFilter,
   scope: EmploymentContext['scope'],
   page: { readonly limit: number; readonly offset: number },
-): Promise<AssessmentRow[]> {
-  return rowsOf<AssessmentRow>(
-    await tx.execute(sql`SELECT ${COLUMNS} FROM employment_probation_assessments a
+): Promise<AssessmentReadRow[]> {
+  return rowsOf<AssessmentReadRow>(
+    await tx.execute(sql`SELECT ${READ_COLUMNS} FROM employment_probation_assessments a
       WHERE a.tenant_id=${tenantId} AND ${assessmentScopeSql(scope, tenantId)}
         AND (${filter.employeeId ?? null}::uuid IS NULL OR a.employee_id=${filter.employeeId ?? null}::uuid)
         AND (${filter.status ?? null}::text IS NULL OR a.status=${filter.status ?? null})
