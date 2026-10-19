@@ -20,9 +20,9 @@ import { auditEmployment } from '../context.js';
 import { rowsOf } from '../record-store.js';
 import type { EmployeeStatusHookContext, EmployeeStatusHooks, EmploymentRecordEvent } from '../status-hooks.js';
 import type { EmploymentContext } from '../types.js';
-import { lockOpenRequests } from './request-store.js';
+import { lockOpenInstances, lockOpenRequests } from './request-store.js';
 import { voidPartTimeRequest } from './request-service.js';
-import { appendPartTimeTerm, lockPartTimeRecords, uuidArray } from './store.js';
+import { appendPartTimeTerm, lockPartTimeRecords } from './store.js';
 
 async function endPartTimesByExit(tx: Tx, hook: EmployeeStatusHookContext, event: EmploymentRecordEvent) {
   const [exit] = rowsOf<{ staffId: string }>(
@@ -54,10 +54,7 @@ async function endPartTimesByExit(tx: Tx, hook: EmployeeStatusHookContext, event
 async function voidRequestsByExit(tx: Tx, hook: EmployeeStatusHookContext, event: EmploymentRecordEvent) {
   const ctx: EmploymentContext = { ...hook, expectedRevision: 0 };
   const requests = await lockOpenRequests(tx, ctx, event.employeeId);
-  if (!requests.length) return;
-  await tx.execute(sql`SELECT id FROM approval_instances WHERE tenant_id=${ctx.tenantId} AND business_type='part_time'
-    AND business_id = ANY(${uuidArray(requests.map((request) => request.id))}) AND status IN ('running','returned')
-    ORDER BY id FOR UPDATE`);
+  await lockOpenInstances(tx, ctx, requests);
   for (const request of requests)
     await voidPartTimeRequest(tx, ctx, request, {
       reason: 'exit',

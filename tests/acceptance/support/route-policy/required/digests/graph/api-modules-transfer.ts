@@ -571,6 +571,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/preview-defaults.ts#managerForTransferDepartment': [
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
+  'apps/api/src/modules/transfer/preview.ts#PART_TIME_FIELD_CODES': [
+    'packages/domain/src/employment/part-time-constants.ts#partTimePermissionCode',
+  ],
   'apps/api/src/modules/transfer/preview.ts#previewTransfer': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/configuration.ts#readEmploymentSettings',
@@ -585,8 +588,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/access.ts#transferDirectActions',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferFields',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
+    'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
     'apps/api/src/modules/transfer/service.ts#transferTargetContext',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/transfer/preview.ts#visiblePartTimes': ['#PART_TIME_FIELD_CODES'],
   'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields': [
     'packages/domain/src/transfer/required.ts#missingTransferRequiredFields',
   ],
@@ -685,6 +691,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/transfer/preview.ts#previewTransfer',
+    'apps/api/src/modules/transfer/preview.ts#visiblePartTimes',
     '#visibleTransferForm',
     'apps/api/src/modules/transfer/service.ts#normalizeTransferInput',
   ],
