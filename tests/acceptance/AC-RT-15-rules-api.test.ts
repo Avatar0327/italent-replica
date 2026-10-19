@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { matchRule, type RetirementRule } from '../../packages/domain/src/employment/retirement-rules.js';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession } from './AC-EMP-support.js';
 import { personnelSession } from './AC-SUB-support.js';
@@ -459,5 +460,61 @@ describe('AC-RT-15 人事“个人身份”只能取字典启用编码（A-9）'
     const cleared = await s.request('PATCH', path, { ifMatch: 1, body: { identityType: null } });
     expect(cleared.status, await cleared.clone().text()).toBe(200);
     expect(await cleared.json()).toMatchObject({ identityType: null, revision: 2 });
+  });
+});
+
+/** 条件取值可含任意字符：制表符、换行、双引号、反斜杠、逗号、花括号、前后空格（DEC-431① 写入走同一处，参数绑定）。 */
+const NASTY_VALUES = ['CN\tRegion', 'line1\nline2', 'say "hi"', 'back\\slash', 'a,b', '{x}', ' lead and trail '];
+
+describe('AC-RT-15 条件取值往返保真（第 1 轮审查 P2-1）', () => {
+  const nationality = (values: readonly string[]) => [
+    { fieldCode: 'employType', operator: 'in', values: ['internal'] },
+    { fieldCode: 'nationality', operator: 'in', values: [...values] },
+  ];
+  const valuesOf = (rule: Rule) => rule.conditions.find((c) => c.fieldCode === 'nationality')!.values;
+  const asRule = (rule: Rule): RetirementRule => ({
+    id: rule.id,
+    purpose: 'expected_date',
+    enabled: true,
+    priority: rule.priority,
+    sequenceNo: 1,
+    scopeOrgIds: rule.orgIds,
+    retirementAgeYears: rule.retirementAgeYears,
+    retirementAgeMonths: rule.retirementAgeMonths,
+    conditions: rule.conditions as RetirementRule['conditions'],
+  });
+  /** 读回逐字相等（响应与列表两处），且每个值都按精确匹配命中、被改写的近似值不命中。 */
+  async function expectFaithful(w: Awaited<ReturnType<typeof world>>, rule: Rule, expected: readonly string[]) {
+    expect(valuesOf(rule)).toEqual(expected);
+    const listed = (await w.list()).find((item) => item.id === rule.id)!;
+    expect(valuesOf(listed)).toEqual(expected);
+    const person = { orgId: w.org.id, gender: null, employType: 'internal', identityType: null };
+    for (const value of expected)
+      expect(matchRule([asRule(listed)], { ...person, nationality: value })?.id, JSON.stringify(value)).toBe(rule.id);
+    for (const value of expected) {
+      const damaged = value.replace(/[\t\n"\\ ,{}]/g, '');
+      if (damaged !== value && !expected.includes(damaged))
+        expect(matchRule([asRule(listed)], { ...person, nationality: damaged }), JSON.stringify(damaged)).toBeNull();
+    }
+  }
+
+  it('创建、编辑、复制三条写入路径读回逐字相等并精确匹配', async () => {
+    const w = await world('faithful');
+    const created = await w.created(w.body({ conditions: nationality(NASTY_VALUES) }));
+    await expectFaithful(w, created, NASTY_VALUES);
+
+    const edited = [...NASTY_VALUES].reverse().concat(['tab\t', 'cr\r\nlf', '中文,"引号"']);
+    const response = await w.session.request('PUT', `/retirement-rules/${created.id}`, {
+      ifMatch: 1,
+      body: w.body({ conditions: nationality(edited) }),
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    await expectFaithful(w, (await response.json()) as Rule, edited);
+
+    const copied = await w.session.request('POST', `/retirement-rules/${created.id}/copy`, { ifMatch: 0 });
+    expect(copied.status, await copied.clone().text()).toBe(201);
+    const copy = (await copied.json()) as Rule;
+    expect(copy.id).not.toBe(created.id);
+    await expectFaithful(w, copy, edited);
   });
 });
