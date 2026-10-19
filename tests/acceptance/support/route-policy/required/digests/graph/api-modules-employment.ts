@@ -3752,6 +3752,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords': ['#partTimeRows'],
+  'apps/api/src/modules/employment/part-time/succession-port.ts#riskPartTimeIncumbents': [
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_POSITION',
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_START',
+    'apps/api/src/modules/employment/part-time/read.ts#partTimeFrom',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentSql',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/part-time/validation.ts#EDITABLE_FIELD_KEYS': ['#PART_TIME_FIELD_KEYS'],
   'apps/api/src/modules/employment/part-time/validation.ts#assertExclusiveTypeFree': [
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
