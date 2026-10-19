@@ -53,6 +53,8 @@ describe('AC-FE-R2d2a 直接维护契约', () => {
     const items = [{ recordId: row.id, revision: 3 }];
     const receipt = { total: 1, succeeded: 1, failed: 0, batchId: 'batch-a', items: [{ ...row, revision: 4 }] };
     expect(batchReceipt(receipt, items).length).toBe(1);
+    // trimEmploymentResponse 不把 batchId 作为协议元数据保留；有字段权配置时它可以缺席。
+    expect(batchReceipt({ ...receipt, batchId: undefined }, items).length).toBe(1);
     expect(() => batchReceipt({ ...receipt, items: [row] }, items)).toThrow();
     expect(() => batchReceipt({ ...receipt, items: [{ ...row, id: 'other', revision: 4 }] }, items)).toThrow();
     expect(() => batchReceipt({ ...receipt, items: [] }, items)).toThrow();
