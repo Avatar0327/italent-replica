@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { createExitApplication } from './exit-application.js';
+import { withAckWarnings } from './exit-gate.js';
 import { lockExitParticipants } from './exit-lock-plan.js';
 import { lockEmploymentEmployee, rowsOf } from './record-store.js';
 import { exitBatchFailure, exitBatchRejected, type ExitBatchFailure, type ExitBatchItem } from './replay-guard.js';
@@ -20,7 +21,7 @@ export const EXIT_BATCH_LIMIT = 100;
 export async function submitExit(tx: Tx, ctx: EmploymentContext, id: string, ack?: string) {
   const business = await transitionEmployment(tx, ctx, { id, action: 'submit', ...(ack ? { ack } : {}) });
   await employmentApprovalHooks.submitted(tx, ctx, id);
-  return business;
+  return withAckWarnings(tx, ctx, business);
 }
 
 export async function createExitBatch(
