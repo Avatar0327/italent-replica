@@ -818,6 +818,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/expression/rules/failures.ts#renderRuleFailureText',
   ],
   'apps/api/src/modules/succession/ports.ts#SUCCESSION_PORTS': [
+    'apps/api/src/modules/employment/part-time/succession-port.ts#riskPartTimeIncumbents',
     'apps/api/src/modules/succession/health-compute.ts#healthComputePort',
   ],
   'apps/api/src/modules/succession/ports.ts#getSuccessionSync': ['#syncProviders'],

@@ -1,8 +1,7 @@
 /**
- * DEC-012：调动联动改写过的合同、下属经理、组织角色仍保持联动结果时，拒绝删除该调动（R1-T11 删除守卫的探针，
- * 第四轮 P2）。只看“当前仍在”的结果，HR 之后手工调整过的不再拦截（同 deletion-guards.ts 的组织探针）。
+ * DEC-012：调动联动改写过的合同、下属经理、组织角色、兼职仍保持联动结果时，拒绝删除该调动（R1-T11 删除守卫的探针，
+ * 第四轮 P2；兼职 PT-6）。只看“当前仍在”的结果，HR 之后手工调整过的不再拦截（同 deletion-guards.ts 的组织探针）。
  * 提示只给件数，不带合同编号、姓名、组织名：删除操作人未必看得到这些对象或字段。
- * 兼职结束按 DEC-191 只有端口，生产端口不会产生成功子项，暂不登记。
  */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -16,6 +15,7 @@ export function registerTransferDeletionProbes(): void {
   registerDeletionLinkageProbe('transfer-linkage:contract', contractProbe);
   registerDeletionLinkageProbe('transfer-linkage:subordinate', subordinateProbe);
   registerDeletionLinkageProbe('transfer-linkage:org-role', orgRoleProbe);
+  registerDeletionLinkageProbe('transfer-linkage:part-time', partTimeEndProbe);
 }
 
 /** 联动生成的新合同仍有效、且没有被之后的合同版本取代（HR 再次变更、续签、终止都算已调整）。 */
@@ -107,4 +107,26 @@ async function orgRoleProbe(tx: Tx, ctx: EmploymentContext, record: EmploymentRe
     role: row.role,
     count: Number(row.count),
   }));
+}
+
+/**
+ * 联动成功结束的兼职，期限链当前期（最大期号）仍是该子项写的那一期（source = transfer、source_id = 子项 ID）。
+ * HR 之后改过结束日、延长或离职再结束（追加了新期）的不再拦截；兼职记录对操作人是否可见不影响件数口径（只给件数）。
+ */
+async function partTimeEndProbe(tx: Tx, ctx: EmploymentContext, record: EmploymentRecord): Promise<LinkedChange[]> {
+  if (record.kind !== 'transfer') return [];
+  const [row] = rowsOf<{ count: number }>(
+    await tx.execute(sql`
+      SELECT count(DISTINCT i.part_time_record_id)::int AS count FROM transfer_linkage_items i
+      JOIN LATERAL (
+        SELECT t.source, t.source_id FROM employment_part_time_terms t
+        WHERE t.tenant_id=i.tenant_id AND t.record_id=i.part_time_record_id ORDER BY t.term_no DESC LIMIT 1
+      ) cur_term ON true
+      WHERE i.tenant_id=${ctx.tenantId} AND i.business_id=${record.id}::uuid
+        AND i.item_type='part_time_end' AND i.status='succeeded'
+        AND cur_term.source='transfer' AND cur_term.source_id=i.id
+    `),
+  );
+  const count = Number(row?.count ?? 0);
+  return count ? [{ kind: 'partTimeEnd', label: `${count} 条兼职记录`, count }] : [];
 }

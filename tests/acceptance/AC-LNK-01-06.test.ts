@@ -3,25 +3,36 @@
  * 职责转交允许部分失败、可单独重试（R3），薪资只生成“待调薪”提醒（R4，DEC-002）。
  */
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from '@italent/api';
-import { registerTransferPartTimePort } from '../../apps/api/src/modules/transfer/linkage/part-time.js';
+import {
+  registerTransferPartTimePort,
+  resetTransferPartTimePortForTest,
+} from '../../apps/api/src/modules/transfer/linkage/part-time.js';
 import { D, linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 
 const database = useTestDb();
 
-/** 兼职模块（R2-T05）未上线：用测试替身登记兼职记录与结束结果（同 DEC-145 编制判定替身的做法）。 */
+/**
+ * 端口替身（同 DEC-145 编制判定替身的做法）：登记兼职记录与结束结果，只验证联动子项的执行与重试机制。
+ * 真实端口（employment/part-time/transfer-port.ts）由 createApp 装配登记，所以替身要在建完世界之后再登记，
+ * 并在 afterEach 恢复缺省实现（PT-6，§4.9），避免泄漏到同文件其他用例。
+ */
 const partTimes = new Map<string, { employeeId: string; endDate: string | null; fail: boolean }>();
-registerTransferPartTimePort({
-  async exists(_tx, _ctx, input) {
-    return partTimes.get(input.recordId)?.employeeId === input.employeeId;
-  },
-  async end(_tx, _ctx, input) {
-    const record = partTimes.get(input.recordId)!;
-    if (record.fail) throw new AppError('CONFLICT', '兼职记录已变更', { reason: 'PART_TIME_CHANGED' });
-    record.endDate = input.endDate;
-  },
-});
+function registerStubPort() {
+  registerTransferPartTimePort({
+    async exists(_tx, _ctx, input) {
+      return partTimes.get(input.recordId)?.employeeId === input.employeeId;
+    },
+    async end(_tx, _ctx, input) {
+      const record = partTimes.get(input.recordId)!;
+      if (record.fail) throw new AppError('CONFLICT', '兼职记录已变更', { reason: 'PART_TIME_CHANGED' });
+      record.endDate = input.endDate;
+      expect(input.itemId).toEqual(expect.any(String));
+    },
+  });
+}
+afterEach(() => resetTransferPartTimePortForTest());
 
 async function approved(w: LinkageWorld, person: { employee: { id: string } }, linkage: object) {
   const business = await w.saved(await w.transfer(person, { linkage }));
@@ -264,6 +275,7 @@ describe('AC-LNK-05 调整薪资只生成待调薪提醒（DEC-002）', () => {
 describe('AC-LNK-06 结束兼职', () => {
   it('生效时兼职失效日期 = 调动生效日 − 1；兼职失败单独记录，修正后重试', async () => {
     const w = await linkageWorld(database().db, 'lnk-part-time');
+    registerStubPort();
     const person = await w.hire('兼职员工');
     const ok = crypto.randomUUID();
     const broken = crypto.randomUUID();
