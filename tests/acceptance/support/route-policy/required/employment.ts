@@ -34,6 +34,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
@@ -2695,6 +2696,51 @@ export const EMPLOYMENT: RequiredTable = {
           operation,
           at(
             BL,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
+  'GET /api/tenant/employment/exit-handover-items': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'GET',
+          '/exit-handover-items',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/exit-handover-items', 'create'],
+        ['PUT', '/exit-handover-items/:id', 'update'],
+        ['DELETE', '/exit-handover-items/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            HANDOVER,
+            'registerExitHandoverRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            HANDOVER,
             method,
             path,
             `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +

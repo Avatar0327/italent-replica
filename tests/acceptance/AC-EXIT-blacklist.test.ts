@@ -9,7 +9,7 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { applyInitiationSubset } from '../../apps/api/src/modules/employment/exit-initiation.js';
+import { applyInitiationSubset, type ExitOptions } from '../../apps/api/src/modules/employment/exit-initiation.js';
 import {
   blacklistExitWorld,
   DUE_LAST_WORK_DATE,
@@ -76,11 +76,12 @@ describe('离职表单加黑字段（DM-R2；R2f B68）', () => {
   });
 
   it('员工自助离职 / 经理代发不出现加黑字段（规格 30 第 22 行）', () => {
-    for (const exit of [
+    const exits: ExitOptions[] = [
       { whereaboutsCode: 'startup', blacklistReason: 'integrity' },
       { whereaboutsCode: 'startup', blacklistExpiryDate: '2026-12-31' },
       { whereaboutsCode: 'startup', blacklistNote: '说明' },
-    ])
+    ];
+    for (const exit of exits)
       for (const initiation of ['self', 'manager'] as const)
         expect(() => applyInitiationSubset(initiation, 'application', exit)).toThrowError(
           expect.objectContaining({
@@ -179,7 +180,7 @@ describe('手动勾选：离职生效后才进名单（DM-R2、DEC-630）', () =
     const approved = await x.approve(draft, `${TODAY}T02:00:00Z`);
     expect(approved.status).toBe('approved');
     expect(await x.activeRows(x.employee.id)).toEqual([]);
-    expect(await x.runScheduler('2026-10-12T01:00:00Z')).toMatchObject({ activated: [draft.id] });
+    expect(await x.runScheduler('2026-10-11T01:00:00Z')).toMatchObject({ activated: [draft.id] });
     expect(await x.activeRows(x.employee.id)).toEqual([
       expect.objectContaining({ source: 'manual', blacklistDate: FUTURE_EFFECTIVE_DATE, exitRequestId: draft.id }),
     ]);

@@ -87,6 +87,7 @@ import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
+import { registerExitHandoverRoutes } from './exit-handover-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
@@ -124,6 +125,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerCustomFields(module, deps);
   registerExitRoutes(module, deps, authorizeBusinessWrite);
   registerBlacklistRoutes(module, deps);
+  registerExitHandoverRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   registerInternRoutes(module, deps);

@@ -256,6 +256,13 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-gate.ts': {
     requireExitPermission: 'd3c36096e66e',
   },
+  'apps/api/src/modules/employment/exit-handover-routes.ts': {
+    registerExitHandoverRoutes: 'abd9d83ad584',
+    'route:DELETE /exit-handover-items/:id': '5ebc08a496e4',
+    'route:GET /exit-handover-items': 'b31b2c3d62ea',
+    'route:POST /exit-handover-items': 'a6dc7f6af758',
+    'route:PUT /exit-handover-items/:id': '207ece2e458f',
+  },
   'apps/api/src/modules/employment/exit-routes.ts': {
     registerExitChanges: '16711630aa98',
     requirePreviewButton: '4e4efd3f6659',
@@ -1710,6 +1717,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': '7a8b25e5e52e',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': '589484677a4f',
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#registerExitHandoverRoutes': '6f28c8bcc639',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:DELETE /exit-handover-items/:id': 'fce7af77a812',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:GET /exit-handover-items': 'eb712f090eec',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:POST /exit-handover-items': '841423377692',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:PUT /exit-handover-items/:id': '4137d84f8448',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '86fbd7cd8761',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd8613363bdae',
   'apps/api/src/modules/employment/exit-routes.ts#requireViewableExitFilters': 'e90182a03729',

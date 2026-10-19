@@ -1072,6 +1072,13 @@
       "when": 1792334084080,
       "tag": "0152_be15b2_auto_assessment",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1792389371332,
+      "tag": "0153_be8b1_exit_blacklist",
+      "breakpoints": true
     }
   ]
 }

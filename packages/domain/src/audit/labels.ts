@@ -76,6 +76,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   // R2 BE-8a 黑名单与离职自动加黑规则（规则是配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   blacklist: { label: '黑名单', app: ORG_PEOPLE },
   blacklist_rule: { label: '离职自动加黑规则', app: ORG_PEOPLE },
+  // R2 BE-8b1 离职交接事项设置（配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
+  exit_handover_item: { label: '离职交接事项', app: ORG_PEOPLE },
   'establishment-scheme': { label: '编制方案', app: ORG_PEOPLE },
   'establishment-capacity': { label: '编制', app: ORG_PEOPLE },
   'TenantBase.EmploymentContract': { label: '合同协议', app: ORG_PEOPLE },
@@ -342,6 +344,7 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'exit_dictionary',
   'offer_dictionary',
   'blacklist_rule',
+  'exit_handover_item',
   'personnel-order-settings',
   'org_setting',
   'job_setting',

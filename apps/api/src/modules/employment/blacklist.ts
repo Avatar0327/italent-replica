@@ -4,7 +4,8 @@
  *   加黑日期由系统写（手动加黑 = 租户今天；离职加黑由 BE-8b 传离职生效日）；有效截止日期为空 = 永久，原因不推导期限。
  * - 移出只改状态、保留记录；删除整行删除，审计留快照（AGENTS §5）。批量移出 / 删除整批成功或整批失败。
  * - 拦截（DEC-569）：新周期入职类保存时在编制校验之后调用 assertNotBlacklisted，命中有效黑名单 → 409，事务整体回滚。
- * 接线点（BE-8b）：离职生效写名单调用 addBlacklistEntry(source = manual / auto_rule, blacklistDate = 离职生效日)。
+ * 离职生效写名单（BE-8b1，exit-blacklist.ts）：addBlacklistEntry(source = manual / auto_rule, blacklistDate = 离职生效日,
+ *   exitRequestId = 写入它的离职请求，撤销离职时据此回收)。
  */
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Tx } from '@italent/db';
@@ -232,7 +233,12 @@ export async function addBlacklistEntry(
   tx: Tx,
   ctx: EmploymentContext,
   input: BlacklistCreateInput,
-  options: { readonly source?: BlacklistSource; readonly blacklistDate?: string } = {},
+  options: {
+    readonly source?: BlacklistSource;
+    readonly blacklistDate?: string;
+    /** 离职生效加黑写入时的离职请求 ID；黑名单页新增、导入不传。 */
+    readonly exitRequestId?: string;
+  } = {},
 ): Promise<BlacklistEntry> {
   await lockBlacklist(tx, ctx.tenantId);
   assertRevision(ctx.expectedRevision, 0);
@@ -250,11 +256,12 @@ export async function addBlacklistEntry(
   const id = randomUUID();
   await tx.execute(sql`
     INSERT INTO employment_blacklist(id, tenant_id, employee_id, name, id_number, mobile_phone, email, reason,
-      blacklist_date, expiry_date, note, source, created_by, created_at, updated_at)
+      blacklist_date, expiry_date, note, source, exit_request_id, created_by, created_at, updated_at)
     VALUES (${id}::uuid, ${ctx.tenantId}, ${employeeId}::uuid, ${person.name}, ${person.idNumber},
       ${person.mobilePhone}, ${person.email}, ${input.reason}, ${blacklistDate}::date,
       ${input.expiryDate ?? null}::date, ${input.note || null}, ${options.source ?? 'manual'},
-      ${auditActor(ctx.userId)}::uuid, ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
+      ${options.exitRequestId ?? null}::uuid, ${auditActor(ctx.userId)}::uuid,
+      ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
   const after = (await readEntry(tx, ctx.tenantId, id))!;
   await audit(tx, ctx, 'create', id, null, after);
   return after;

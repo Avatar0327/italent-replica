@@ -1812,6 +1812,33 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     byId,
   ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，DEC-266③）----------------------------------
+  // 同自动加黑规则：任职设置配置对象（审计 exit_handover_item.*）；字段只有类别 / 序号 / 待办类别 / 待办事项 / 办理表单 / 备注
+  'GET /exit-handover-items': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /exit-handover-items': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_handover_item'),
+  ),
+  'PUT /exit-handover-items/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_handover_item'),
+    byId,
+  ),
+  // 配置对象没有删除操作：沿用 update（空字段集合）
+  'DELETE /exit-handover-items/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:exit_handover_item', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
   // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（B57，DEC-533② / DEC-539）--------------
   // 同自动加黑规则：任职设置配置对象；body 严格（到期前天数 0～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置0至999的整数”；
   // 名称 / 适用组织 / 业务处理规则 / 发起人类型必填，试用结果须为字典启用项）；审计 auto_regularization_rule.*
