@@ -883,6 +883,26 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "PATCH /api/tenant/employment/exits/cancellations/:id": {
+    "all": {
+      "code": "INTERNAL_ERROR",
+      "error": "5fec07b17b5b",
+      "status": 500
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "PATCH /api/tenant/employment/part-time-requests/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -1436,6 +1456,46 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "POST /api/tenant/employment/exits/:id/cancel": {
+    "all": {
+      "code": "INTERNAL_ERROR",
+      "error": "5fec07b17b5b",
+      "status": 500
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/exits/:id/restore": {
+    "all": {
+      "code": "INTERNAL_ERROR",
+      "error": "5fec07b17b5b",
+      "status": 500
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/exits/:id/submit": {

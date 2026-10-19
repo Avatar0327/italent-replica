@@ -198,25 +198,32 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment': [
-    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
-    'apps/api/src/modules/establishment/carried-transfer.ts#reconcileCarriedEstablishment',
-    '#CAPACITY_KINDS',
+  'apps/api/src/modules/establishment/employment-check.ts#capacityExcesses': [
     '#matchesOccupancy',
     '#projectedMembers',
     'apps/api/src/modules/establishment/membership-windows.ts#membershipWindows',
     'apps/api/src/modules/establishment/schemes.ts#loadScheme',
-    'apps/api/src/modules/establishment/store.ts#lockEstablishment',
-    'apps/api/src/modules/establishment/transfer-service.ts#targetCapacities',
-    'apps/api/src/system-actor.ts#auditActor',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment': [
+    '#evaluateEstablishment',
   ],
   'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExceeded': [
     '#employmentEstablishmentAssessment',
   ],
+  'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentExcesses': ['#evaluateEstablishment'],
   'apps/api/src/modules/establishment/employment-check.ts#establishmentPeriodStartsWithin': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/establishment/employment-check.ts#evaluateEstablishment': [
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/establishment/carried-transfer.ts#reconcileCarriedEstablishment',
+    '#CAPACITY_KINDS',
+    '#capacityExcesses',
+    'apps/api/src/modules/establishment/store.ts#lockEstablishment',
+    'apps/api/src/modules/establishment/transfer-service.ts#targetCapacities',
+    'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/establishment/employment-check.ts#groupOccupancy': ['#camelFields'],
   'apps/api/src/modules/establishment/employment-check.ts#nextReservedTransfer': [

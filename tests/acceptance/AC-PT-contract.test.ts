@@ -25,6 +25,12 @@ import { approvalWorld, transferScene } from './AC-APV-support.js';
 
 const testDb = useTestDb();
 
+/** F-249 / DEC-629：节点“编辑并同意”可改的字段；新增不含 isDepartmentHead（DEC-634 / PB-57）、薪资、工号、开始日期。 */
+const EDITABLE = {
+  part_time_add: ['partTimeType', 'endDate', 'departmentId', 'directManagerId', 'postId', 'levelId'],
+  part_time_extend: ['endDate', 'requestRemark'],
+  part_time_end: ['endDate', 'requestRemark'],
+};
 const TYPES = [
   ['part_time_add', '兼职', 'AddParttimeJobProcess'],
   ['part_time_extend', '延长兼职', 'ExtendParttimeJobProcess'],
@@ -152,7 +158,7 @@ describe('AC-PT-contract BE-7 PT-1 预置流程（§4.5）', () => {
     }
   });
 
-  it('节点：审批人为空转异常管理员；发起人回避开、多主体回避关（DEC-332①）；只有结束兼职“编辑并同意”结束日期与备注', () => {
+  it('节点：审批人为空转异常管理员；发起人回避开、多主体回避关（DEC-332①）；F-249 起三类节点都是“编辑并同意”（新增 6 项 / 延长、结束 2 项）', () => {
     for (const [code] of TYPES) {
       const { nodes } = PRESET_PROCESSES.find((p) => p.approvalType === code)!.definition;
       expect(nodes).toHaveLength(4);
@@ -161,11 +167,10 @@ describe('AC-PT-contract BE-7 PT-1 预置流程（§4.5）', () => {
           noAssignee: 'exception_admin',
           actions: { avoidSelf: true, avoidSubjects: false },
         });
-        if (code === 'part_time_end') {
-          expect(node).toMatchObject({ editMode: 'with_approve', editableFields: ['endDate', 'requestRemark'] });
-        } else {
-          expect(node).toMatchObject({ editMode: 'none', editableFields: [] });
-        }
+        expect(node).toMatchObject({
+          editMode: 'with_approve',
+          editableFields: EDITABLE[code as keyof typeof EDITABLE],
+        });
       }
     }
   });

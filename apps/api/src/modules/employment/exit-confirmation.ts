@@ -43,6 +43,19 @@ export interface ExitEffectiveEvent {
 type EffectiveHook = (tx: Tx, ctx: EmploymentContext, event: ExitEffectiveEvent) => Promise<void>;
 const effectiveHooks: EffectiveHook[] = [];
 
+/** 撤销的四种情况（设计 §7.1，exit_cancellations.cancel_case）。 */
+export type ExitCancelCase = 'process_voided' | 'approved_voided' | 'record_deleted' | 'record_deleted_reinstated';
+
+export interface ExitCancelledEvent {
+  readonly businessId: string;
+  readonly employeeId: string;
+  readonly stateBefore: string;
+  readonly case: ExitCancelCase;
+}
+
+type CancelledHook = (tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) => Promise<void>;
+const cancelledHooks: CancelledHook[] = [];
+
 /**
  * 离职后续任务端口（设计 §0 / §5.1 步骤 8）：confirmed 在审批通过 / 直接离职保存时调用（DM-R14 交接自动发起，BE-8）；
  * effective 在离职落地后调用（自动加黑 BE-8、账号停用另行任务）。订阅方在同一事务内处理，失败即整单回滚；默认没有订阅方。
@@ -54,7 +67,15 @@ export const exitPostEffectHooks = {
   onEffective(hook: EffectiveHook): void {
     effectiveHooks.push(hook);
   },
+  /** 离职被撤销（B4，设计 §7.1）：BE-8 把已自动发起的交接置终止、回收自动加黑；与撤销同事务，默认没有订阅方。 */
+  onCancelled(hook: CancelledHook): void {
+    cancelledHooks.push(hook);
+  },
 };
+
+export async function runExitCancelledHooks(tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) {
+  for (const hook of cancelledHooks) await hook(tx, ctx, event);
+}
 
 export async function runExitEffectiveHooks(tx: Tx, ctx: EmploymentContext, event: ExitEffectiveEvent) {
   for (const hook of effectiveHooks) await hook(tx, ctx, event);

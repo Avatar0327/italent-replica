@@ -5,7 +5,7 @@
  * 顺序固定：功能操作权 + 按钮权 + 字段权（复用 context.ts requireEmploymentWrite，不以 Employment.Create / Edit / Delete
  * 代替 Dimission* 四个按钮）→ 范围由调用方入口先验（readContext / authorizeBusinessWrite）→ 本文件的前置条件：
  * 日期创建后不可改（§7.2，DEC-499）、同员工无未办结离职、字典启用、§8A 逾期迟到调动、§8B 转正在途、§8 在途调动确认令牌、
- * §18.1 撤销（B4 前对 approved / effective 不提供）。所有拒绝发生在首个写之前（调用方在命令事务内先调用本门禁）。
+ * 通用 revoke / DELETE 对离职单 409 USE_EXIT_CANCEL（撤销只经 exit-cancel.ts，B4）。所有拒绝发生在首个写之前（调用方在命令事务内先调用本门禁）。
  * 没有扩展行的离职 / 退休（可信造数）保持 main 行为。
  */
 import { createHmac } from 'node:crypto';
@@ -67,6 +67,8 @@ export interface ExitGateTarget {
   readonly patch?: EmploymentBusinessPatch;
   /** cancel：通用 DELETE（object.delete）还是 revoke（object.update）。 */
   readonly deleting?: boolean;
+  /** cancel：来自离职撤销入口（cancelExit）；通用 revoke / delete 不带它，对离职单 409 USE_EXIT_CANCEL。 */
+  readonly cancelling?: boolean;
   /** 离职扩展行（门禁内部加载；submit / withdraw 按发起方式取按钮）。 */
   readonly row?: typeof exitRequests.$inferSelect;
   /** 审批编辑 / 编辑并同意：权限由审批中心按节点规则负责，本门禁只判日期。 */
@@ -558,11 +560,23 @@ async function submitConditions(
   return checkPendingTransferAck(tx, ctx, business.employeeId, lastWorkDate, provided, stored);
 }
 
-/** 撤销在 B4 前对 approved / effective 离职不提供（§18.1 末段），不存在绕过 §6B 的删除路径。 */
-async function cancelConditions(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
-  if (!['approved', 'effective'].includes(business.state)) return;
-  if (await loadExitRequest(tx, ctx.tenantId, business.id))
-    throw conflict('EXIT_OPERATION_NOT_AVAILABLE', '离职撤销暂不可用');
+/** 通用 revoke / DELETE 对离职单不提供撤销（设计 §4，B4）：撤销只经 cancelExit（§6B 区间变化统一校验），不留绕过的删除路径。 */
+async function cancelConditions(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  cancelling: boolean,
+) {
+  if (cancelling || !['draft', 'in_review', 'rejected', 'approved', 'effective'].includes(business.state)) return;
+  if (!(await loadExitRequest(tx, ctx.tenantId, business.id))) return;
+  // 退休的撤销归 5a′（R2-T04 §6，复用 cancelExit 参数化）：本批对 approved / effective 退休不提供，
+  // 未办结的退休（草稿 / 审批中 / 已驳回）的 revoke / delete 保持 #432 之前的通用流程，不绕过 §6B（它们不占编制）
+  if (business.payload.kind === 'retirement') {
+    if (['approved', 'effective'].includes(business.state))
+      throw conflict('EXIT_OPERATION_NOT_AVAILABLE', '退休撤销暂不可用');
+    return;
+  }
+  throw conflict('USE_EXIT_CANCEL', '请使用撤销离职入口', { endpoint: 'POST /exits/:id/cancel' });
 }
 
 /**
@@ -591,7 +605,7 @@ export async function requireExitGate(
     case 'submit':
       return { ack: await submitConditions(tx, ctx, target, provided) };
     case 'cancel':
-      await cancelConditions(tx, ctx, target.business!);
+      await cancelConditions(tx, ctx, target.business!, target.cancelling === true);
       return { ack: null };
     default:
       return { ack: null };

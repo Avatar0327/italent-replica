@@ -79,7 +79,10 @@ describe('AC-DM-21 逾期迟到调动三类（§8A）', () => {
     });
     expect(await w.reason(blocked)).toMatchObject({ status: 409, reason: 'EXIT_LATE_TRANSFER_PENDING' });
     expect(await w.stateOf(employee.id)).toEqual(before);
-    const removed = await w.session.request('DELETE', `/businesses/${draft.id}`, { ifMatch: draft.revision });
+    const removed = await w.session.request('DELETE', `/businesses/${draft.id}`, {
+      ifMatch: draft.revision,
+      body: { reason: '删除草稿' },
+    });
     expect(removed.status).toBe(200);
   });
 
