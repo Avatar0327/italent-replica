@@ -4285,6 +4285,40 @@
         ]
       }
     },
+    "GET /api/tenant/employment/part-times": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/part-times/:recordId": {
       "edge": {
         "anonymous": {
@@ -4302,6 +4336,9 @@
       },
       "module": "employment",
       "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "trimEmploymentResponse"
         ],
@@ -11528,8 +11565,7 @@
           "employment scope",
           "employment visibility",
           "readContext（非配置对象）",
-          "scope.all",
-          "scopeSql"
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
@@ -16650,9 +16686,7 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
-          "scope.all",
-          "scopeSql"
+          "readContext（非配置对象）"
         ],
         "scopePoint": [
           "employment point"
@@ -17421,8 +17455,7 @@
           "employment scope",
           "employment visibility",
           "readContext（非配置对象）",
-          "scope.all",
-          "scopeSql"
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"
