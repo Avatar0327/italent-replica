@@ -204,3 +204,31 @@ test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，�
   await expect(form).toHaveCount(0);
   expect(state.writes.at(-1)).toMatchObject({ revision: '9', body: { endDate: '2027-01-31' } });
 });
+test('AC-FE-R2d2b-12 显式重读申请按原基线保留人工修改并回填未改字段', async ({ page }) => {
+  const state = await requestSetup(page);
+  state.row.status = 'draft';
+  await page.getByRole('button', named('审批中的兼职')).click();
+  await page.getByRole('button', named('查看详情')).click();
+  await page.getByRole('button', named('修改')).click();
+  const form = page.getByRole('dialog', named('修改兼职申请'));
+  await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
+  state.row.revision = 9;
+  state.row.requestRemark = '合成重读新备注';
+  await form.getByRole('button', named('重读申请')).click();
+  await expect(form.getByLabel('新结束日期', { exact: true })).toHaveValue('2027-01-31');
+  await expect(form.getByLabel('延长备注', { exact: true })).toHaveValue('合成重读新备注');
+});
+test('AC-FE-R2d2b-13 HR 撤销后终态不再显示申请动作', async ({ page }) => {
+  const state = await requestSetup(page);
+  state.row.status = 'in_review';
+  await page.getByRole('button', named('审批中的兼职')).click();
+  await page.getByRole('button', named('查看详情')).click();
+  const detail = page.getByRole('dialog').filter({ has: page.getByRole('heading', named('兼职申请详情')) });
+  await detail.getByRole('button', named('撤销')).click();
+  const form = page.getByRole('dialog', named('撤销兼职申请'));
+  await form.getByRole('button', named('撤销')).click();
+  await expect(form).toHaveCount(0);
+  expect(state.writes[0]).toMatchObject({ method: 'POST', revision: '1', body: {} });
+  expect(state.writes[0]?.path).toContain('/revoke');
+  await expect(detail.getByRole('button', named('撤回'))).toHaveCount(0);
+});
