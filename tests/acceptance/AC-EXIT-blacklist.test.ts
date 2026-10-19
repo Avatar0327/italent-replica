@@ -7,8 +7,11 @@
  * - 本人已在有效名单：跳过并在审计留痕、不回滚离职；其他错误整笔生效回滚；同一笔离职最多写一行。
  */
 import './support/exit-gate-enforced.js';
+import { randomUUID } from 'node:crypto';
+import { pgErrorCode, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { addBlacklistEntry } from '../../apps/api/src/modules/employment/blacklist.js';
 import { applyInitiationSubset, type ExitOptions } from '../../apps/api/src/modules/employment/exit-initiation.js';
 import {
   blacklistExitWorld,
@@ -137,10 +140,27 @@ describe('离职表单加黑字段（DM-R2；R2f B68）', () => {
         exit: { exitTypeCode: 'voluntary', ...(index === 0 ? MANUAL : {}) },
       })),
     );
-    const bad = await x.session.request('POST', '/exits/batch', {
-      body: { items: [{ ...items[1]!, exit: { exitTypeCode: 'voluntary', blacklistReason: 'integrity' } }] },
-    });
-    expect(bad.status, await bad.clone().text()).toBeGreaterThanOrEqual(400);
+    // 加黑参数不合法是请求本身的错误：严格 400（不是业务门禁整批 409 EXIT_BATCH_REJECTED），且整批没有任何写入
+    const before = await Promise.all([x.employee.id, other].map((id) => x.stateOf(id)));
+    for (const [label, exit, reason] of [
+      [
+        '未勾选却带原因',
+        { exitTypeCode: 'voluntary', blacklistReason: 'integrity' },
+        'EXIT_BLACKLIST_FIELDS_NOT_ALLOWED',
+      ],
+      ['勾选却不带原因', { exitTypeCode: 'voluntary', addToBlacklist: true }, 'EXIT_BLACKLIST_REASON_REQUIRED'],
+      [
+        '截止日期早于离职生效日',
+        { exitTypeCode: 'voluntary', ...MANUAL, blacklistExpiryDate: '2026-10-20' },
+        'BLACKLIST_EXPIRY_BEFORE_DATE',
+      ],
+    ] as const) {
+      const bad = await x.session.request('POST', '/exits/batch', {
+        body: { items: [items[0]!, { ...items[1]!, exit }] },
+      });
+      expect(await x.reasonOf(bad), label).toMatchObject({ status: 400, code: 'VALIDATION_FAILED', reason });
+    }
+    expect(await Promise.all([x.employee.id, other].map((id) => x.stateOf(id)))).toEqual(before);
     const response = await x.session.request('POST', '/exits/batch', { body: { items } });
     expect(response.status, await response.clone().text()).toBe(201);
     const { items: created } = (await response.json()) as { items: { id: string }[] };
@@ -385,5 +405,36 @@ describe('名单已有有效记录 / 其他错误 / 幂等', () => {
       details: { reason: 'NOT_PENDING' },
     });
     expect(await x.rows(x.employee.id)).toHaveLength(1);
+  });
+
+  it('同一笔离职的名单历史只有一行：生效写入、经公开接口移出后，再以同一离职 ID 写名单被拒绝，历史总行数仍为 1（索引 employment_blacklist_exit_request）', async () => {
+    const x = await world('exit-history-unique');
+    const leave = await x.createdExit(x.employee.id, DUE_LAST_WORK_DATE, 'direct', MANUAL);
+    expect(leave.status).toBe('effective');
+    const [written] = await x.page.list().then((page) => page.items);
+    expect(written).toBeDefined();
+    const removed = await x.page.remove([{ id: written!.id, revision: written!.revision }]);
+    expect(removed.status, await removed.clone().text()).toBe(200);
+    expect(await x.activeRows(x.employee.id)).toEqual([]);
+    // 移出后本人不在有效名单，名单页查重帮不上忙：只有按离职 ID 的历史唯一能拦住第二次写入
+    const again = withTenant(x.db, x.tenantId, (tx) =>
+      addBlacklistEntry(
+        tx,
+        {
+          tenantId: x.tenantId,
+          userId: x.session.user.id,
+          timezone: x.session.tenant.timezone,
+          now: new Date(`${TODAY}T02:00:00Z`),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
+        { employeeId: x.employee.id, reason: 'integrity' },
+        { source: 'manual', blacklistDate: TODAY, exitRequestId: leave.id },
+      ),
+    );
+    await expect(again).rejects.toSatisfy((error: unknown) => pgErrorCode(error) === '23505');
+    const history = await x.rows(x.employee.id);
+    expect(history.filter((row) => row.exitRequestId === leave.id)).toHaveLength(1);
+    expect(history).toHaveLength(1);
   });
 });
