@@ -53,7 +53,8 @@ describe('exists（校验层，DEC-177）', () => {
     const endsToday = await w.seedRecord({ endDate: APV_TODAY });
     const future = await w.seedRecord({ startDate: '2026-10-02', endDate: null });
     const ended = await w.seedRecord({ endDate: '2026-09-30' });
-    const empty = await w.seedRecord({ startDate: '2026-09-20', endDate: '2026-09-19' });
+    const empty = await w.seedRecord({ startDate: '2026-09-20', endDate: null });
+    await w.appendTerm(empty, 2, '2026-09-19', 'exit');
     const employeeId = w.worker.employeeId;
     expect(await exists(w, ctx, employeeId, ongoing)).toBe(true);
     expect(await exists(w, ctx, employeeId, endsToday)).toBe(true);
@@ -90,14 +91,15 @@ describe('PB-50 listOngoing（调动表单“兼职调整”区）', () => {
     const open = await w.seedRecord({ startDate: '2026-09-10', endDate: null });
     await w.seedRecord({ startDate: '2026-10-02', endDate: null });
     await w.seedRecord({ endDate: '2026-09-30' });
-    await w.seedRecord({ startDate: '2026-09-20', endDate: '2026-09-19' });
+    const empty = await w.seedRecord({ startDate: '2026-09-20', endDate: null });
+    await w.appendTerm(empty, 2, '2026-09-19', 'transfer');
     const hidden = await w.seedRecord({ startDate: '2026-09-15', endDate: null, departmentId: w.staff });
     const list = (ctx: EmploymentContext) =>
       w.run((tx) => transferPartTimePort().listOngoing!(tx, ctx, w.worker.employeeId, APV_TODAY));
 
     const all = await list(w.context());
     expect(all.hiddenCount).toBe(0);
-    expect(all.items.map((item) => item.id)).toEqual([ongoing, hidden, open]);
+    expect(all.items.map((item) => item.id)).toEqual([ongoing, open, hidden]);
     expect(all.items[0]).toEqual({
       id: ongoing,
       serviceType: 'part_time',

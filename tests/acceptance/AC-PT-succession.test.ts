@@ -4,7 +4,7 @@
  * 兼职员工；开关关时不调用（risk-people.ts 既有），所以默认关 → 上线后结果与 main 相同。
  */
 import { createTestDb } from '@italent/testkit';
-import { withTenant, type DbHandle } from '@italent/db';
+import { sql, withTenant, type DbHandle } from '@italent/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { riskPeople } from '../../apps/api/src/modules/succession/risk-people.js';
 import { SUCCESSION_PORTS } from '../../apps/api/src/modules/succession/ports.js';
@@ -25,9 +25,9 @@ describe('PB-52 继任端口 riskPartTimeIncumbents', () => {
 
   it('开关开：asOf 当日进行中且职位 = 该职位的兼职员工计入现任（去重，不含未开始 / 已结束 / 其他职位）；关：与 main 相同', async () => {
     const w = await riskWorld(handle.db);
-    const other = await w.position(w.org.id, '其他职位');
+    const other = await w.newPosition(w.org.id, '其他职位');
     const incumbent = await w.hire('主职现任', { departmentId: w.org.id, positionId: w.position.id });
-    const hire = (name: string) => w.hire(name, { departmentId: w.org.id }, '2026-08-01');
+    const hire = (name: string) => w.hire(name, { departmentId: w.org.id });
     const [ongoing, openEnd, future, ended, elsewhere] = [
       await hire('兼职进行中'),
       await hire('兼职无结束日'),
@@ -46,19 +46,31 @@ describe('PB-52 继任端口 riskPartTimeIncumbents', () => {
           endDate,
         }),
       );
-    await seed(ongoing.id, w.position.id, '2026-09-01', SC_TODAY);
-    await seed(openEnd.id, w.position.id, '2026-09-01', null);
+    await seed(ongoing.id, w.position.id, SC_TODAY, SC_TODAY);
+    await seed(openEnd.id, w.position.id, SC_TODAY, null);
     // 主职现任同时兼职同一职位：只算一次
     await seed(incumbent.id, w.position.id, SC_TODAY, null);
     await seed(future.id, w.position.id, '2026-10-02', null);
-    await seed(ended.id, w.position.id, '2026-09-01', '2026-09-30');
-    await seed(elsewhere.id, other.id, '2026-09-01', null);
+    // 已结束：联动写出的空区间（开始日 − 1），人工入口写不出
+    const endedRecord = await seed(ended.id, w.position.id, SC_TODAY, null);
+    await w.asTenant((tx) =>
+      tx.execute(sql`INSERT INTO employment_part_time_terms(tenant_id, employee_id, record_id, term_no, end_date, source,
+        command_id) VALUES (${w.tenant.id}, ${ended.id}, ${endedRecord}, 2, '2026-09-30', 'exit', 'pt-succession-ended')`),
+    );
+    await seed(elsewhere.id, other.id, SC_TODAY, null);
 
     const run = (partTime: boolean) =>
       w.asTenant((tx) =>
         riskPeople(
           tx,
-          { tenantId: w.tenant.id, userId: w.user.id, positionId: w.position.id, asOf: SC_TODAY, today: SC_TODAY, partTime },
+          {
+            tenantId: w.tenant.id,
+            userId: w.user.id,
+            positionId: w.position.id,
+            asOf: SC_TODAY,
+            today: SC_TODAY,
+            partTime,
+          },
           [],
         ),
       );

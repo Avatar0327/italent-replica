@@ -35,7 +35,7 @@ import {
   saveTransferForm,
   type ResolvedTransferForm,
 } from './configuration.js';
-import { previewTransfer } from './preview.js';
+import { previewTransfer, visiblePartTimes } from './preview.js';
 import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
 import { readTransferDraft, releaseTransferDraft } from './draft-slot.js';
 import { sameOrderCreateGuard, sameOrderWriteGuard } from './same-order-guard.js';
@@ -68,6 +68,7 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       employeeRevision,
       allowDirectTransfer,
       allowedActions,
+      ...(preview.partTimes ? { partTimes: visiblePartTimes(preview.partTimes, viewable) } : {}),
       // 不返回不可见字段名或值；仅给前端一个不可提交的配置状态（PR-A P3）。
       requiredFieldsUnavailable:
         preview.requiredDepartmentMissing &&

@@ -10,6 +10,7 @@ import type { SQL } from 'drizzle-orm';
 import { registerOrgHealthComputePort, type OrgHealthComputePort } from '../talent-review/health-port.js';
 import { loadIncumbentIds, loadPeople, rowsOf, type PersonView } from './read-sql.js';
 import { healthComputePort, type HealthReads } from './health-compute.js';
+import { riskPartTimeIncumbents } from '../employment/part-time/succession-port.js';
 import { createInMemoryTalentReviewSyncPort } from '../talent-review/sync-port-memory.js';
 
 export interface SuccessionPorts {
@@ -18,7 +19,10 @@ export interface SuccessionPorts {
   readonly reviewReads?: HealthReads;
 }
 
-export const SUCCESSION_PORTS: SuccessionPorts = { orgHealthCompute: healthComputePort };
+export const SUCCESSION_PORTS: SuccessionPorts = {
+  orgHealthCompute: healthComputePort,
+  riskPartTimeIncumbents,
+};
 
 /** T04 PR-D 真实端口接线前按 SP-18 替身取数，无来源返回 unavailable / null，不伪造 0%。 */
 export function successionReviewReads(tenantId: string) {
