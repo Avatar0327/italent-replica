@@ -78,6 +78,9 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   blacklist_rule: { label: '离职自动加黑规则', app: ORG_PEOPLE },
   // R2 BE-8b1 离职交接事项设置（配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   exit_handover_item: { label: '离职交接事项', app: ORG_PEOPLE },
+  // R2 BE-5c1a 退休：预计退休日期规则与个人身份字典（配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
+  retirement_rule: { label: '退休规则', app: ORG_PEOPLE },
+  retirement_identity_type: { label: '个人身份字典', app: ORG_PEOPLE },
   'establishment-scheme': { label: '编制方案', app: ORG_PEOPLE },
   'establishment-capacity': { label: '编制', app: ORG_PEOPLE },
   'TenantBase.EmploymentContract': { label: '合同协议', app: ORG_PEOPLE },
@@ -350,6 +353,8 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'offer_dictionary',
   'blacklist_rule',
   'exit_handover_item',
+  'retirement_rule',
+  'retirement_identity_type',
   'personnel-order-settings',
   'org_setting',
   'job_setting',

@@ -210,8 +210,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       28: 'dbfe9141fe60b633',
       // R2-T04 BE-5a：退休四个按钮（DEC-637 A-2）与退休扩展字段；实际退休日期改系统字段（版本占位，合并时按 main + 1 定号）
       29: '2b8399af9a4fd7c1',
+      // R2 BE-5c1a：人事新增 6 个退休字段的员工信息字段授权项（版本占位，合并时按 main + 1 定号）
+      30: '4430ca0006c0dcba',
       // claude/R2-BE-8b1-exit-blacklist（merge:main 定号，DEC-439④）
-      30: 'c30cdb3dd73d5cb1',
+      31: '372d0df0dc765c8f',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

@@ -20,6 +20,7 @@ import {
   resolveModuleScopeInTransaction,
   scopeAllowsInTransaction,
 } from '../permission/module-access.js';
+import { objectCatalog } from '../permission/catalog.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { firstCreatorSql } from '../permission/scope-audit.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
@@ -218,16 +219,16 @@ export async function requireEmploymentWrite(
     }
     await requireObjectWrite(ctx.authorize, ctx, { objectCode, operation, payload: actual });
   }
-  if (button)
+  if (button) {
+    // DEC-642 / DEC-431①：首次与重放同走目录，未知按钮不猜层级。
+    const definition = objectCatalog.get(objectCode)?.buttons.find((entry) => entry.code === button);
+    if (!definition) throw new AppError('FORBIDDEN', '按钮未登记');
     await requirePermission(ctx.authorize, {
       ...ctx,
       action: 'object.button',
-      resource: buttonResource(
-        objectCode,
-        button,
-        ['Employment.Import', 'Employee.Create'].includes(button) ? 'list' : 'detail',
-      ),
+      resource: buttonResource(objectCode, button, definition.level),
     });
+  }
 }
 
 /** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */

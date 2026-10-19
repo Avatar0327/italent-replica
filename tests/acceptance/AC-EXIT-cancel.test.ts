@@ -13,8 +13,8 @@ const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => cancelWorld(database().db, label, TODAY);
 
-/** 撤销清单固定四类，顺序固定；未接入的类目以 not_connected 占位。 */
-const FIXED = ['contract', 'duty_transfer', 'handover', 'payroll'];
+/** 撤销清单固定四类，顺序固定；未接入的类目以 not_connected 占位。其后追加已登记的探针类目（兼职 PT-6b：part-time）。 */
+const FIXED = ['contract', 'duty_transfer', 'handover', 'payroll', 'part-time'];
 const kinds = (result: { downstream: { items: { kind: string }[] } }) => result.downstream.items.map((i) => i.kind);
 const item = (result: Awaited<ReturnType<CancelWorld['cancelled']>>, kind: string) =>
   result.downstream.items.find((entry) => entry.kind === kind)!;
@@ -144,6 +144,7 @@ describe('AC-DM-02 撤销审批通过未生效的离职（approved_voided，B-03
       'none',
       'not_connected',
       'not_connected',
+      'none',
     ]);
     // 同一份清单落进撤销记录（撤销后可查）
     expect((await x.cancellationOf(leave.id))!.downstream.items.map((entry) => entry.kind)).toEqual(FIXED);

@@ -1083,8 +1083,15 @@
     {
       "idx": 154,
       "version": "7",
-      "when": 1792400812734,
-      "tag": "0154_be8b1_exit_blacklist",
+      "when": 1792403051308,
+      "tag": "0154_be5c1a_retirement_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1792403051309,
+      "tag": "0155_be8b1_exit_blacklist",
       "breakpoints": true
     }
   ]
