@@ -72,9 +72,9 @@ describe('AC-DM-27 B-61 审批通过未生效的离职：从 E 起不计入占�
       body: {},
     });
     expect(sent.status, await sent.clone().text()).toBe(200);
-    const revoked = await x.session.request('POST', `/businesses/${draft.id}/revoke`, {
+    const revoked = await x.session.request('POST', `/exits/${draft.id}/cancel`, {
       ifMatch: (await x.business(draft.id)).revision,
-      body: {},
+      body: { reason: '撤销审批中的离职' },
     });
     expect(revoked.status, await revoked.clone().text()).toBe(200);
     expect(await x.stateOfBusiness(draft.id)).toBe('voided');
