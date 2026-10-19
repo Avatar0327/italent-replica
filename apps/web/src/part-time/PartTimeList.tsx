@@ -124,7 +124,6 @@ export function PartTimeList() {
   );
 }
 
-// TODO(需取证 #447)：批量按钮目录为 list，API 当前验 detail；等待独立契约修复。
 function ListCard({ state }: { state: State }) {
   const { view, page, setPage, setFilters, setDays, setDrawer, select, result } = state;
   return (

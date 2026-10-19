@@ -33,7 +33,9 @@ export function useDirectAccess() {
       return {
         visible: p.field(code).visible,
         editable:
-          operation(create) && p.field(code).editable && (create || !['serviceType', 'effectiveDate'].includes(key)),
+          operation(create) &&
+          p.field(code).editable &&
+          (create || !['serviceType', 'effectiveDate', 'employmentType'].includes(key)),
       };
     },
   };
