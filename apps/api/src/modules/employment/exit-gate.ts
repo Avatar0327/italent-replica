@@ -560,7 +560,10 @@ async function submitConditions(
   return checkPendingTransferAck(tx, ctx, business.employeeId, lastWorkDate, provided, stored);
 }
 
-/** 通用 revoke / DELETE 对离职单不提供撤销（设计 §4，B4）：撤销只经 cancelExit（§6B 区间变化统一校验），不留绕过的删除路径。 */
+/**
+ * 通用 revoke / DELETE 对离职 / 退休单不提供撤销（设计 §4，B4；退休 R2-T04 §6，5a′）：撤销只经 cancelExit
+ * （§6B 区间变化统一校验），不留绕过的删除路径；通用 DELETE 在路由层先映射到撤销，到这里的只剩 revoke。
+ */
 async function cancelConditions(
   tx: Tx,
   ctx: EmploymentContext,
@@ -569,14 +572,10 @@ async function cancelConditions(
 ) {
   if (cancelling || !['draft', 'in_review', 'rejected', 'approved', 'effective'].includes(business.state)) return;
   if (!(await loadExitRequest(tx, ctx.tenantId, business.id))) return;
-  // 退休的撤销归 5a′（R2-T04 §6，复用 cancelExit 参数化）：本批对 approved / effective 退休不提供，
-  // 未办结的退休（草稿 / 审批中 / 已驳回）的 revoke / delete 保持 #432 之前的通用流程，不绕过 §6B（它们不占编制）
-  if (business.payload.kind === 'retirement') {
-    if (['approved', 'effective'].includes(business.state))
-      throw conflict('EXIT_OPERATION_NOT_AVAILABLE', '退休撤销暂不可用');
-    return;
-  }
-  throw conflict('USE_EXIT_CANCEL', '请使用撤销离职入口', { endpoint: 'POST /exits/:id/cancel' });
+  const retirement = business.payload.kind === 'retirement';
+  throw conflict('USE_EXIT_CANCEL', retirement ? '请使用撤销退休入口' : '请使用撤销离职入口', {
+    endpoint: retirement ? 'POST /retirements/:id/cancel' : 'POST /exits/:id/cancel',
+  });
 }
 
 /**

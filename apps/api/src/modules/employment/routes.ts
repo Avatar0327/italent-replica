@@ -449,15 +449,14 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
         if (action === 'submit')
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
-        // 离职单的通用 DELETE 映射到撤销（设计 §4，B4）：与 POST exits/:id/cancel 同一实现，不留绕过 §6B 的删除路径；
-        // 已作废 / 未通过的离职单仍是清理删除，走下面的通用流程
-        // 退休单的撤销归 5a′（R2-T04 §6），本批不接：退休的通用 delete / revoke 仍走下面的门禁（见 exit-gate cancelConditions）
+        // 离职 / 退休单的通用 DELETE 映射到撤销（设计 §4，B4；退休 R2-T04 §6，5a′）：与 POST exits|retirements/:id/cancel
+        // 同一实现，不留绕过 §6B 的删除路径；已作废 / 未通过的单仍是清理删除，走下面的通用流程
         if (
           action === 'delete' &&
-          current.kind === 'leave' &&
+          isExitKind(current.kind) &&
           (await routesToCancel(deps, ctx, id, c.req.header('idempotency-key')))
         )
-          return runExitCancel(c, deps, ctx, id, current.employeeId, true);
+          return runExitCancel(c, deps, ctx, id, current.employeeId, true, current.kind as 'leave' | 'retirement');
         const operation: ExitOperation = action === 'submit' || action === 'withdraw' ? action : 'cancel';
         const guard = {
           guard: isExitKind(current.kind)

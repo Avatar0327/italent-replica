@@ -1655,6 +1655,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   'POST /retirements/:id/submit': exitTransition(RETIREMENT_BUTTONS.application),
   'POST /retirements/:id/withdraw': exitTransition(RETIREMENT_BUTTONS.application),
+  // ---- employment/retirement-routes.ts：R2-T04 BE-5a′ 撤销退休（设计 §6 / §12.1；与撤销离职同一个 cancelExit，按钮取 RetireCancel）----
+  // 权限链、范围、命令内复核（exitCommandGuard）、回执裁剪与 exits 对应入口一致；路径的业务类型与单据 kind 不一致一律 404
+  'POST /retirements/:id/cancel': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    guards: [LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: projector('employment.response', 'employment.exitCancelReceipt'),
+    write: employmentCommand(['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+    ...byId,
+  }),
+  'POST /retirements/:id/restore': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    scope: BUSINESS_WRITE,
+    fields: fixed(['error'], '固定拒绝：409 EXIT_RESTORE_NOT_SUPPORTED，没有业务响应'),
+    write: write('body', none('只读拒绝：没有命令事务，没有提交前足迹'), none('只读拒绝：没有业务响应')),
+    ...byId,
+  }),
+  'PATCH /retirements/cancellations/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    scope: guardScope('employment.exitCancellation', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.exitCancellation'),
+    write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
   // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
   // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective

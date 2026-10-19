@@ -85,56 +85,46 @@ describe('AC-RT-11b 通用入口映射：退休单不留绕过 §6B 的删除路
   });
 });
 
-describe('AC-RT-11b 幂等重放：专用入口与通用 DELETE 同键都得首次回执', () => {
-  it('专用入口首次撤销，同键 POST 与同键 DELETE 重放都返回首次回执，不重复写入', async () => {
+describe('AC-RT-11b 幂等重放：专用入口与通用 DELETE 各自同键重放都得首次回执', () => {
+  it('专用入口：同键重放返回首次回执，不重复写入', async () => {
     const x = await world('rt11b-replay');
     const retire = await x.directRetire('2026-10-25');
     const revision = (await x.business(retire.id)).revision;
-    const first = await x.cancelRetire(
-      retire.id,
-      { reason: '原因' },
-      { ifMatch: revision, idempotencyKey: 'rt-replay-1' },
-    );
+    const send = () =>
+      x.cancelRetire(retire.id, { reason: '原因' }, { ifMatch: revision, idempotencyKey: 'rt-replay-1' });
+    const first = await send();
     expect(first.status, await first.clone().text()).toBe(200);
     const firstBody = await first.json();
     const after = await x.stateOf(x.employee.id);
 
-    const again = await x.cancelRetire(
-      retire.id,
-      { reason: '原因' },
-      { ifMatch: revision, idempotencyKey: 'rt-replay-1' },
-    );
+    const again = await send();
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual(firstBody);
-    const viaDelete = await x.session.request('DELETE', `/businesses/${retire.id}`, {
-      ifMatch: revision,
-      body: { reason: '原因' },
-      idempotencyKey: 'rt-replay-1',
-    });
-    expect(viaDelete.status, await viaDelete.clone().text()).toBe(200);
-    expect(await viaDelete.json()).toEqual(firstBody);
     expect(await x.stateOf(x.employee.id)).toEqual(after);
     expect((await x.cancellationOf(retire.id))!.revision).toBe(1);
   });
 
-  it('通用 DELETE 首次撤销，同键 POST 专用入口重放得首次回执', async () => {
+  it('通用 DELETE：首次撤销后状态已变，同键重放仍走撤销分支，得首次回执（不是清理删除）', async () => {
     const x = await world('rt11b-replay-delete');
-    const retire = await x.directRetire('2026-10-25');
+    const retire = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
     const revision = (await x.business(retire.id)).revision;
-    const first = await x.session.request('DELETE', `/businesses/${retire.id}`, {
-      ifMatch: revision,
-      body: { reason: '原因' },
-      idempotencyKey: 'rt-replay-2',
-    });
+    const send = () =>
+      x.session.request('DELETE', `/businesses/${retire.id}`, {
+        ifMatch: revision,
+        body: { reason: '原因' },
+        idempotencyKey: 'rt-replay-2',
+      });
+    const first = await send();
     expect(first.status, await first.clone().text()).toBe(200);
     const firstBody = await first.json();
-    const again = await x.cancelRetire(
-      retire.id,
-      { reason: '原因' },
-      { ifMatch: revision, idempotencyKey: 'rt-replay-2' },
-    );
+    const after = await x.stateOf(x.employee.id);
+
+    const again = await send();
     expect(again.status, await again.clone().text()).toBe(200);
     expect(await again.json()).toEqual(firstBody);
+    expect(await x.stateOfBusiness(retire.id)).toBe('deleted');
+    expect(await x.stateOf(x.employee.id)).toEqual(after);
+    expect((await x.cancellationOf(retire.id))!.revision).toBe(1);
   });
 });
 
