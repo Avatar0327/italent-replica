@@ -36,7 +36,7 @@ import { createExitApplication, parseExitPatch, updateExitFields } from './exit-
 import { cancelExit, cancellationOwner, rejectRestore, updateCancellationReason } from './exit-cancel.js';
 import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
-import { businessKind, loadExitRequest } from './exit-gate.js';
+import { businessKind, loadExitRequest, requireExitPermission } from './exit-gate.js';
 import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
 import {
   EXIT_INITIATIONS,
@@ -331,6 +331,8 @@ export async function runExitCancel(
   employeeId: string,
   deleting = false,
 ) {
+  // 权限链先于校验（§9.1）：无 DimissionCancel 者先得 403，不因缺原因而得 400
+  await requireExitPermission(ctx, 'cancel', { employeeId, deleting });
   const parsed = cancelSchema.safeParse(await jsonBody(c).catch(() => ({})));
   if (!parsed.success || !parsed.data.reason.trim())
     throw new AppError('VALIDATION_FAILED', '请填写撤销离职原因', {
@@ -379,12 +381,14 @@ function registerExitCancel(
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
     await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true });
+    // 范围外与不存在同一个 404、同一文案，不泄露撤销记录是否存在
+    const missing = () => new AppError('NOT_FOUND', '撤销的离职记录不存在');
     const owner = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const found = await cancellationOwner(tx, ctx.tenantId, id);
-      if (found) await requireEmployeeInScope(tx, ctx, found.employeeId);
+      if (found) await requireEmployeeInScope(tx, ctx, found.employeeId).catch(() => Promise.reject(missing()));
       return found;
     });
-    if (!owner) throw new AppError('NOT_FOUND', '撤销的离职记录不存在');
+    if (!owner) throw missing();
     const { reason } = parse(z.strictObject({ reason: z.string().max(500) }), await jsonBody(c));
     return runWrite(
       c,

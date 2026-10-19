@@ -2239,6 +2239,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-cancel.ts#cancelExit',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     '#cancelSchema',
     '#projectCancelReceipt',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
