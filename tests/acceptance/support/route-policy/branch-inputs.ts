@@ -57,6 +57,7 @@ const subsetKind = (method: string, path: string, position = 'object'): BranchIn
 ];
 const SUBSET = '/employees/:employeeId/subsets/:kind';
 
+const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
 // ---- 任职导入（employment/routes.ts + forward-import.ts）：items[*].operation ∈ create / edit -------------------------
 const EMPLOYMENT = `${SRC}/employment/routes.ts`;
 const IMPORT_SCHEMA = impl(`${SRC}/employment/forward-import.ts#schema`, "z.discriminatedUnion('operation', [");
@@ -154,6 +155,19 @@ export const BRANCH_INPUTS: Readonly<Record<string, readonly BranchInput[]>> = {
       IMPORT_SCHEMA,
     ]),
   ],
+
+  // 兼职申请新建（part-time/request-routes.ts）：body.requestType ∈ add / extend / end（isDateRequestBody 先于权限读它，extend / end 另走
+  // createDateRequestRoute；其余值落到新增入口的 zod 严格校验 400）
+  'POST /api/tenant/employment/part-time-requests': ['operation', 'button'].map((position) =>
+    input(position, 'employment.partTimeRequestType', 'body', 'requestType', [
+      call(
+        `${PART_TIME_REQUEST}#route:POST /part-time-requests`,
+        'if (await isDateRequestBody(c)) return createDateRequestRoute(c, deps)',
+      ),
+      impl(`${PART_TIME_REQUEST}#isDateRequestBody`, "return type === 'extend' || type === 'end'"),
+      impl(`${PART_TIME_REQUEST}#createRequestSchema`, "requestType: z.literal('add')"),
+    ]),
+  ),
 
   [`GET ${PERSONNEL}${SUBSET}`]: [
     ...subsetKind('GET', SUBSET, 'of[0].object'),

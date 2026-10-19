@@ -73,6 +73,11 @@
       "create",
       "edit"
     ],
+    "employment.partTimeRequestType": [
+      "add",
+      "end",
+      "extend"
+    ],
     "import.rowOperation": [
       "create",
       "update"
@@ -17206,6 +17211,7 @@
           "runCommand / runWrite"
         ],
         "domain": [
+          "employment.partTimeRequestType",
           "transfer.initiator"
         ],
         "fieldsIn": [
@@ -17219,12 +17225,14 @@
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentRecord:create"
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
           "checkScope",
           "employment scope",
-          "readContext（非配置对象）"
+          "readContext（非配置对象）",
+          "scope.all"
         ],
         "scopePoint": [
           "employment point"

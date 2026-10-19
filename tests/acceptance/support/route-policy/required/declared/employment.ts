@@ -65,10 +65,13 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     ['POST /api/tenant/employment/employees/:id/import', 'rows.button'],
     ['POST /api/tenant/employment/employees/:id/import', 'rows.operation'],
     ['POST /api/tenant/employment/employees/:id/import/forward-update-preview', 'rows.operation'],
+    ['POST /api/tenant/employment/part-time-requests', 'button'],
+    ['POST /api/tenant/employment/part-time-requests', 'operation'],
   ],
   /** 输入来源表（branch-inputs.ts）里有登记的端点 */
   branchInputEndpoints: [
     'POST /api/tenant/employment/employees/:id/import',
     'POST /api/tenant/employment/employees/:id/import/forward-update-preview',
+    'POST /api/tenant/employment/part-time-requests',
   ],
 };

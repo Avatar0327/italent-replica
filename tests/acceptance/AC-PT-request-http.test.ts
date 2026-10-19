@@ -1,7 +1,7 @@
 /**
  * BE-7 PT-4b 兼职新增申请公开入口（docs/08_设计/R2-T05_兼职设计.md §4.1 / §7.2 / §13.1，§9 PB-32 / PB-57 / PB-75）：
  * POST part-time-requests（requestType = add）与 GET / PATCH / submit / withdraw / revoke / DELETE 的 HTTP 全链路。
- * 开闸边界：extend / end → 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE 且无任何写入（含幂等台账）；
+ * 开闸边界：延长 / 结束申请已随 PT-4c 开放（AC-PT-date-request-http）；
  * isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PB-57）。
  * 权限（§7.2）：对象创建 / 更新 / 删除权 → 按钮 → 员工主职 + 兼职部门范围 → 字段写权；提交 / 撤回只允许原发起人（DEC-113）。
  * 日期框架：今天 2026-10-01，主职 2020-01-01 入职；审批走真实审批中心接口。
@@ -105,23 +105,6 @@ describe('PB-32 HTTP：新增申请 → 提交 → 四节点 → 通过', () => 
 });
 
 describe('开闸边界：仍关闭的行为必须真关', () => {
-  it('requestType = extend / end → 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE，各表与幂等台账均无写入', async () => {
-    const w = await world('closed-types');
-    const before = await w.writes();
-    for (const requestType of ['extend', 'end']) {
-      const key = randomUUID();
-      const response = await w
-        .http()
-        .create({ requestType, recordId: randomUUID(), endDate: '2026-12-31' }, { idempotencyKey: key });
-      expect(await w.refusal(response), requestType).toEqual({
-        status: 409,
-        code: 'CONFLICT',
-        reason: 'PART_TIME_REQUEST_TYPE_NOT_AVAILABLE',
-      });
-    }
-    expect(await w.writes()).toEqual(before);
-  });
-
   it('requestType 不在三类之内 → 400；缺 requestType → 400', async () => {
     const w = await world('bad-type');
     expect((await w.http().create({ requestType: 'transfer' })).status).toBe(400);
