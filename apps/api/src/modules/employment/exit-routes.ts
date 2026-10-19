@@ -6,7 +6,14 @@
  * 按钮权 → 范围（范围外 404）→ 字段权 → §4A 前置条件；写入口的按钮、范围、字段在命令事务内按当前授权复核
  * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。E ≤ 今天的直接离职在保存事务内生效（§5.3）。
  */
-import { buttonResource, EXIT_BUTTONS, EXIT_SETTING_KEYS, EXIT_SETTINGS, tenantLocalDate } from '@italent/domain';
+import {
+  addDays,
+  buttonResource,
+  EXIT_BUTTONS,
+  EXIT_SETTING_KEYS,
+  EXIT_SETTINGS,
+  tenantLocalDate,
+} from '@italent/domain';
 import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -33,7 +40,7 @@ import {
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest } from './exit-gate.js';
-import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
+import { assertBlacklistFields, exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
 import {
   EXIT_INITIATIONS,
   EXIT_STATES,
@@ -204,6 +211,8 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exits/batch', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const { items } = parse(batchSchema, await jsonBody(c));
+    // 加黑参数不合法是请求本身的错误（400），先于逐人业务门禁（那里的失败按批量契约整批 409）；生效日 = 最后工作日次日
+    for (const item of items) if (item.exit) assertBlacklistFields(item.exit, addDays(item.lastWorkDate, 1));
     const guard = exitBatchGuard(deps, ctx, items);
     return runWrite(
       c,

@@ -132,6 +132,11 @@ export function resolveBlacklistFields(
   return next;
 }
 
+/** 只校验不合并：批量入口在逐人业务门禁之前先拒绝不合法的加黑参数（400，不并入逐条 409），与创建同一入口。 */
+export function assertBlacklistFields(exit: Partial<BlacklistFields>, effectiveDate: string): void {
+  resolveBlacklistFields(NO_BLACKLIST, exit, effectiveDate);
+}
+
 /** 请求里是否出现了加黑相关的键（编辑时决定要不要重算整组）。 */
 export const touchesBlacklist = (exit: Partial<BlacklistFields>) =>
   exit.addToBlacklist !== undefined || BLACKLIST_DETAIL_KEYS.some((key) => exit[key] !== undefined);
