@@ -55,7 +55,7 @@ export function FiltersDrawer({
       }}
       onApply={() => {
         if (rangeInvalid(draft)) setInvalid(true);
-        else onApply(draft, nextDays);
+        else onApply({ ...draft, keyword: draft.keyword?.trim() || undefined }, nextDays);
       }}
     >
       {invalid && <Alert type="error" message={m.rangeInvalid} />}
@@ -105,7 +105,7 @@ function BasicFilters({
             aria-label={m.keyword}
             maxLength={100}
             value={draft.keyword ?? ''}
-            onChange={(e) => set('keyword', e.target.value.trim() || undefined)}
+            onChange={(e) => set('keyword', e.target.value || undefined)}
           />
         </label>
       )}
