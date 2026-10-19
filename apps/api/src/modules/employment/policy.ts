@@ -1047,7 +1047,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'POST /part-times/batch-end': object({
     object: EMPLOYMENT,
     operation: 'update',
-    button: button(PART_TIME_BUTTONS.batchEnd, 'detail'),
+    button: button(PART_TIME_BUTTONS.batchEnd, 'list'),
     guards: [DIRECT_OPERATION],
     scope: guardScope('employment.scope', NF_PART_TIME),
     fields: RESPONSE,
