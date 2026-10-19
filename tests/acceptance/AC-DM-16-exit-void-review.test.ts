@@ -5,9 +5,10 @@
  */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
-import { createUser, sql } from '@italent/db';
+import { createUser, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
 import { exitActivator } from './AC-EXIT-activation-support.js';
 import { downstreamWorld, type DownstreamWorld } from './AC-EXIT-downstream-support.js';
@@ -107,11 +108,30 @@ describe('P2-3 退休申请同样作废', () => {
   it('经通用创建入口建的退休草稿：离职后 voided，效果台账与 outbox 齐全', async () => {
     const x = await world('p23-retirement');
     const leave = await x.directLeave('2026-10-05');
+    // R2-T04 §13.1 #1：离职/退休互斥后，公开入口已建不出这个组合；草稿改用可信造数（ctx.trustedExit = retirement），
+    // 原断言（voided、台账、outbox）保持——离职作废“除本单外全部 kind”（DEC-496①）仍是必须保持的行为
     const employee = await x.session.getEmployee(x.employee.id);
-    const draft = await x.session.business(
-      x.employee.id,
-      { kind: 'retirement', mode: 'application', effectiveDate: '2026-12-01', lastWorkDate: '2026-11-30', fields: {} },
-      employee.revision,
+    const draft = await withTenant(x.db, x.session.tenant.id, (tx) =>
+      createEmploymentBusiness(
+        tx,
+        {
+          tenantId: x.session.tenant.id,
+          userId: x.session.user.id,
+          timezone: x.session.tenant.timezone,
+          now: new Date(`${TODAY}T01:00:00Z`),
+          commandId: randomUUID(),
+          expectedRevision: employee.revision,
+          trustedExit: 'retirement',
+        },
+        x.employee.id,
+        {
+          kind: 'retirement',
+          mode: 'application',
+          effectiveDate: '2026-12-01',
+          lastWorkDate: '2026-11-30',
+          fields: {},
+        },
+      ),
     );
     expect(draft.status).toBe('draft');
     expect(await x.activate(leave.id, TODAY)).toMatchObject({ outcome: 'effective' });
