@@ -17,6 +17,7 @@ import {
   type BlacklistSource,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { adminAncestors } from '../approval/resolver.js';
 import { addBlacklistEntry, revokeExitListing } from './blacklist.js';
 import { loadBlacklistRules, readAutoBlacklistEnabled } from './blacklist-rules.js';
@@ -155,11 +156,20 @@ export async function writeExitBlacklist(
 }
 
 /**
- * 撤销离职回收名单（DEC-631；订阅 onCancelled，与撤销同事务）：只移出这笔离职写入的有效名单行（exit_request_id 匹配）。
+ * 撤销离职回收名单（DEC-631；订阅 onCancelled，与撤销同事务；操作人记系统）：只移出这笔离职写入的有效名单行（exit_request_id 匹配）。
  * 该行早已被手动移出 / 已过期：不动，审计 exit.blacklist.revoke_skipped 留痕；这笔离职没写过行，但本人另有有效名单行
  * （黑名单页手动新增、导入、别的离职写的）：同样不动并留痕；撤销照常完成。
  */
-export async function revokeExitBlacklist(tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent): Promise<void> {
+export async function revokeExitBlacklist(
+  tx: Tx,
+  cancelCtx: EmploymentContext,
+  event: ExitCancelledEvent,
+): Promise<void> {
+  // 只有撤销生效的离职写过名单（未办结 / approved 的离职从没进过名单，不进入回收，也不留跳过审计）
+  if (event.stateBefore !== 'effective') return;
+  // 自动回收是系统联动，不是 HR 在名单页的操作：移出与回收审计记系统操作人（SYSTEM_USER_ID，审计 / removed_by 为空，
+  // 不冒用 HR）；撤销记录本身的操作人仍是发起撤销的 HR，名单页手动移出仍记实际 HR
+  const ctx = { ...cancelCtx, userId: SYSTEM_USER_ID };
   const result = await revokeExitListing(tx, ctx, event.businessId);
   const trace = (action: string, after: Record<string, unknown>) =>
     auditEmployment(tx, ctx, action, 'exit-request', event.businessId, null, after, undefined, undefined, {
