@@ -181,6 +181,28 @@ describe('PT-6b 撤销离职清单列出兼职项 + PB-61 撤销变体', () => {
     const leave = await x.directLeave(LAST_DAY);
     expect(partTimeItem(await x.cancelled(leave.id))).toMatchObject({ status: 'none', targets: [], hiddenCount: 0 });
   });
+
+  it('只列本次离职的结果：先前已撤销的另一次离职结束的兼职、作废的申请不入第二次的清单', async () => {
+    const x = await partTimeExitWorld('pt6b-only-this-exit');
+    const part = await x.makePartTime(null);
+    const firstRequest = await x.draftRequest();
+    const first = await x.effectiveExit();
+    await x.cancelled(first.id);
+    const { revision } = await x.record(part.id);
+    expect((await x.edit(part.id, '2026-10-31', revision)).status).toBe(200);
+    const secondRequest = await x.draftRequest();
+
+    const second = await x.directLeave('2026-10-20');
+    await x.activate(second.id, '2026-10-21');
+    const item = partTimeItem(await x.cancelled(second.id));
+
+    expect(item.targets.map((target) => [target.type, target.id])).toEqual([
+      ['employment-record', part.id],
+      ['part-time-request', secondRequest],
+    ]);
+    expect(item.targets[0]!.detail).toMatchObject({ originalEndDate: '2026-10-31', endDate: '2026-10-20' });
+    expect(item.targets.map((target) => target.id)).not.toContain(firstRequest);
+  });
 });
 
 describe('PT-6b 清单按查看人裁剪（DEC-177，失败即关）', () => {

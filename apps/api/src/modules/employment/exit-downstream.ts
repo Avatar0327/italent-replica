@@ -164,15 +164,16 @@ async function allowed(ctx: EmploymentContext, resource: string) {
   return ctx.authorize ? Boolean(await ctx.authorize({ ...ctx, action: 'object.view', resource })) : true;
 }
 
+const DEPARTMENT_SCOPED_TYPES = ['employment-business', 'employment-record', 'part-time-request'];
+
 /** 每个目标是否对查看人可见：合同类按合同对象查看权，任职业务按 DEC-177，职责转交按下属可见，编制按编制对象查看权。 */
 async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly DownstreamTarget[], employeeId: string) {
   const visible = new Map<string, boolean>();
   const key = (target: DownstreamTarget) => `${target.type}:${target.id}`;
   const contract = await allowed(ctx, CONTRACT_OBJECT);
   const capacity = await allowed(ctx, MODULE_OBJECTS.establishment.code);
-  const businesses = targets.filter(
-    (target) => target.type === 'employment-business' || target.type === 'employment-record',
-  );
+  // 兼职申请（PT-6b，kind = 'part-time'）与任职业务同按 DEC-177 以所属部门判定；其余未知类型仍走失败即关
+  const businesses = targets.filter((target) => DEPARTMENT_SCOPED_TYPES.includes(target.type));
   const shown = businesses.length
     ? await disclose(
         tx,
