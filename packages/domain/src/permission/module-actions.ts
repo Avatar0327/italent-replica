@@ -3,7 +3,13 @@ import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
 import { OFFER_APPROVAL_PROGRESS_FIELDS, OFFER_BATCH_FIELDS } from '../offer/approval.js';
 import { ASSESSMENT_BUTTONS, ASSESSMENT_FIELDS, ASSESSMENT_SYSTEM_FIELDS } from '../employment/assessment.js';
-import { EXIT_BUTTONS, EXIT_REQUEST_FIELDS, EXIT_REQUEST_SYSTEM_FIELDS } from '../employment/exit.js';
+import {
+  EXIT_BUTTONS,
+  EXIT_REQUEST_FIELDS,
+  EXIT_REQUEST_SYSTEM_FIELDS,
+  RETIREMENT_BUTTONS,
+} from '../employment/exit.js';
+import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
@@ -401,6 +407,11 @@ export const MODULE_OBJECTS = {
       button(EXIT_BUTTONS.application, 'detail', 'create'),
       button(EXIT_BUTTONS.edit, 'detail', 'update'),
       button(EXIT_BUTTONS.cancel, 'detail', 'update'),
+      // R2-T04 退休（设计 §12.2，DEC-637 A-2）：独立于 Dimission*；RetireCancel 的路由在 5a′
+      button(RETIREMENT_BUTTONS.direct, 'detail', 'create'),
+      button(RETIREMENT_BUTTONS.application, 'detail', 'create'),
+      button(RETIREMENT_BUTTONS.edit, 'detail', 'update'),
+      button(RETIREMENT_BUTTONS.cancel, 'detail', 'update'),
       // BE-7 兼职（设计 §7.2）：新增兼职 / 新增兼职申请 / 延长申请 / 结束申请 / 批量结束 / 编辑兼职
       button(PART_TIME_BUTTONS.direct, 'detail', 'create'),
       button(PART_TIME_BUTTONS.application, 'detail', 'create'),
@@ -430,6 +441,8 @@ export const MODULE_OBJECTS = {
       'entryStatus',
       'activation',
       ...EXIT_REQUEST_SYSTEM_FIELDS,
+      // R2-T04 退休扩展字段：类型由 L 与快照 P 派生，P 快照与是否返聘不可手改
+      ...RETIREMENT_REQUEST_FIELDS,
       // 兼职：原定结束日期取申请版本，任职状态 / 视图归属按期限链派生，只可授查看
       ...PART_TIME_SYSTEM_FIELDS,
     ],
