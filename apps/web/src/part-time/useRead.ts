@@ -6,17 +6,20 @@ export function useRead<T>(path: string | null) {
   const [generation, setGeneration] = useState(0);
   const key = `${session.tenantId}/${session.identityKey}/${path}/${generation}`;
   const latestKey = useRef(key);
+  const sequence = useRef(0);
   latestKey.current = key;
   const [state, setState] = useState<{ key: string; data?: T; error?: unknown }>();
   useEffect(() => {
     const controller = new AbortController();
+    const request = ++sequence.current;
+    const current = () => !controller.signal.aborted && latestKey.current === key && sequence.current === request;
     if (path)
       void api.request<T>(path, { signal: controller.signal }).then(
         (data) => {
-          if (!controller.signal.aborted) setState({ key, data });
+          if (current()) setState({ key, data });
         },
         (error: unknown) => {
-          if (!controller.signal.aborted) setState({ key, error });
+          if (current()) setState({ key, error });
         },
       );
     return () => controller.abort();
@@ -29,8 +32,11 @@ export function useRead<T>(path: string | null) {
     refresh: () => setGeneration((n) => n + 1),
     async reload() {
       if (!path) throw new Error('Missing read path');
+      // 初次读取和写后重读共用序号；过期重读不能让提交方解除锁定。
+      const request = ++sequence.current;
       const data = await api.request<T>(path);
       if (latestKey.current !== key) throw new DOMException('Context changed', 'AbortError');
+      if (sequence.current !== request) throw new DOMException('Read superseded', 'AbortError');
       setState({ key, data });
     },
   };
