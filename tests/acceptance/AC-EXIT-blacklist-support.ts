@@ -111,8 +111,19 @@ export async function blacklistExitWorld(db: Db, label: string) {
     x.sqlRows<{ after: Record<string, unknown> | null }>(sql`SELECT after FROM audit_events
       WHERE tenant_id=${tenantId} AND object_id=${objectId} AND action=${action} ORDER BY occurred_at, id`);
 
+  /** 撤销离职（POST exits/:id/cancel，If-Match 取业务当前 revision）；成功 200。 */
+  async function cancelExit(businessId: string) {
+    const response = await x.session.request('POST', `/exits/${businessId}/cancel`, {
+      ifMatch: (await x.business(businessId)).revision,
+      body: { reason: '录入有误' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (await response.json()) as { status: string; cancellation: { case: string } };
+  }
+
   return {
     ...x,
+    cancelExit,
     tenantId,
     page,
     as,
