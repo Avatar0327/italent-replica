@@ -114,6 +114,7 @@ function registerRetirementChanges(
       const ack = await transitionBody(c, action);
       const current = await authorizeBusinessWrite(deps, ctx, id);
       await requireExitBusiness(deps, ctx, id, KIND);
+      const target = { employeeId: current.employeeId, kind: KIND };
       return runWrite(
         c,
         deps,
@@ -125,15 +126,7 @@ function registerRetirementChanges(
           await employmentApprovalHooks.withdrawn(tx, context, id);
           return { status: 200, body: business };
         },
-        {
-          guard: exitCommandGuard(
-            deps,
-            ctx,
-            action,
-            { employeeId: current.employeeId, kind: KIND },
-            { businessId: id },
-          ),
-        },
+        { guard: exitCommandGuard(deps, ctx, action, target, { businessId: id }) },
       );
     });
 }

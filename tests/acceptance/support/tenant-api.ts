@@ -57,7 +57,8 @@ export function pinFormulaIdBinding(value: boolean): void {
 
 /**
  * R2-T03 B2a：离职创建经门禁后，直接离职只存 approved、不落地（设计 §18.1），而存量验收用例大量把“已离职员工”当作前置夹具。
- * 缺省（'seed'）把经通用入口创建 kind=leave 的请求改走服务端可信端口 ctx.trustedExit='seed'（进程内、与 HTTP 同一命令台账 / 审计 / 事务），
+ * 缺省（'seed'）把经通用入口创建 kind=leave / retirement 的请求改走服务端可信端口 ctx.trustedExit='seed'
+ * （退休同理，R2-T04 BE-5a：退休与离职共用同一门禁；进程内、与 HTTP 同一命令台账 / 审计 / 事务），
  * 行为与门禁之前的 main 相同；离职门禁自己的验收文件 import './support/exit-gate-enforced.js' 切到 'enforce'，走真实门禁。
  */
 let exitGateMode: 'seed' | 'enforce' = 'seed';
@@ -91,7 +92,8 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
       exitGateMode === 'seed' && method === 'POST' && (!('authorize' in deps) || deps.authorize === allowAll)
         ? LEAVE_CREATE.exec(path)
         : null;
-    if (seeded && (options.body as { kind?: string } | undefined)?.kind === 'leave' && options.user && options.tenant)
+    const seededKind = (options.body as { kind?: string } | undefined)?.kind;
+    if (seeded && (seededKind === 'leave' || seededKind === 'retirement') && options.user && options.tenant)
       return seedLeave(seeded[1]!, options, key ?? undefined);
     let body: string | undefined;
     if (options.body !== undefined) {
