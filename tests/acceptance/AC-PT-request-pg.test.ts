@@ -52,15 +52,24 @@ function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
 
 /**
  * 用例收尾的单一入口（F-244）：无论 body 是否抛错，都先放行持锁方，再等持锁方与被阻塞的 HTTP 请求都结束。
- * 用 allSettled 等待，收尾里的 HTTP / 事务错误不会覆盖 body 的原始失败原因；body 抛错时 finally 之后原样继续抛出。
+ * body 错误与 release 错误分别保存：release 自身抛错也照样执行 allSettled（allSettled 不会抛，收尾里的 HTTP / 事务错误
+ * 不会覆盖原始失败原因）；最后优先重抛 body 的原始错误，body 成功而 release 失败时才抛 release 错误。
  */
 async function settleAfter(release: () => void, pending: Promise<unknown>[], body: () => Promise<void>) {
+  const failures: { body?: { error: unknown }; release?: { error: unknown } } = {};
   try {
     await body();
-  } finally {
-    release();
-    await Promise.allSettled(pending);
+  } catch (error) {
+    failures.body = { error };
   }
+  try {
+    release();
+  } catch (error) {
+    failures.release = { error };
+  }
+  await Promise.allSettled(pending);
+  const failure = failures.body ?? failures.release;
+  if (failure) throw failure.error;
 }
 
 describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () => {
@@ -205,5 +214,62 @@ describe.skipIf(!realPostgres)('AC-PT-request-pg 新增兼职申请真 PG', () =
     });
     expect((await submit).status).toBe(200);
     expect(locked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
+  });
+});
+
+describe('settleAfter 收尾分支（故障注入，PGlite / 真 PG 均跑）', () => {
+  /** 一条“稍后才结束”的待收尾任务，统计到 allSettled 返回时仍未结束的数量。 */
+  function laterTasks(failing: boolean) {
+    const open = new Set([1, 2]);
+    const task = (id: number, fail: boolean) =>
+      new Promise<void>((resolve, reject) =>
+        setTimeout(() => {
+          open.delete(id);
+          return fail ? reject(new Error(`收尾任务 ${id} 失败`)) : resolve();
+        }, 20),
+      );
+    return { pending: [task(1, failing), task(2, false)], unfinished: () => open.size };
+  }
+
+  it('release 与 body 同时抛错：抛出的是 body 原始错误，两条待收尾任务都已结束（含收尾任务自身拒绝）', async () => {
+    const { pending, unfinished } = laterTasks(true);
+    const bodyError = new Error('等待 1 个会话阻塞超时');
+    const release = () => {
+      throw new Error('release 失败');
+    };
+    await expect(
+      settleAfter(release, pending, async () => {
+        throw bodyError;
+      }),
+    ).rejects.toBe(bodyError);
+    expect(unfinished()).toBe(0);
+  });
+
+  it('body 成功而 release 抛错：抛 release 错误，待收尾任务仍已结束', async () => {
+    const { pending, unfinished } = laterTasks(false);
+    const releaseError = new Error('release 失败');
+    const release = () => {
+      throw releaseError;
+    };
+    await expect(settleAfter(release, pending, async () => undefined)).rejects.toBe(releaseError);
+    expect(unfinished()).toBe(0);
+  });
+
+  it('body 抛错而 release 正常：先放行再收尾，仍抛 body 原始错误', async () => {
+    const { pending, unfinished } = laterTasks(true);
+    const order: string[] = [];
+    const bodyError = new Error('body 失败');
+    await expect(
+      settleAfter(
+        () => order.push('release'),
+        pending,
+        async () => {
+          order.push('body');
+          throw bodyError;
+        },
+      ),
+    ).rejects.toBe(bodyError);
+    expect(order).toEqual(['body', 'release']);
+    expect(unfinished()).toBe(0);
   });
 });
