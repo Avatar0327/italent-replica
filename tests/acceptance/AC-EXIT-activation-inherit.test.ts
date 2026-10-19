@@ -26,6 +26,7 @@ const cells = [
 describe('AC-DM-23 B-50 离职落地的继承矩阵（经内部编排器）', () => {
   it.each(cells)('$name', async ({ inherit, formId, expected }) => {
     const fixture = await inheritanceFixture(database().db, `exit-inherit-${formId}-${inherit}`, inherit);
+    fixture.setNow('2026-09-30T01:00:00Z'); // 保存当天 = L：E = 10-01 尚未到，保存为 approved，由编排器入口在 10-01 落地
     const created = await fixture.business(
       fixture.employee.id,
       { kind: 'leave', mode: 'direct', formId, lastWorkDate: '2026-09-30' },

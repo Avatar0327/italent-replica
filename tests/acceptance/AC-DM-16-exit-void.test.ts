@@ -122,9 +122,8 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
     await expect(x.activate(leave.id, '2026-10-13')).rejects.toMatchObject({
       details: { reason: 'ACTIVATION_PREDECESSOR_PENDING' },
     });
-    await x.runScheduler('2026-10-13T02:00:00Z');
-    expect(await x.stateOfBusiness(earlier.id)).toBe('effective');
-    expect(await x.activate(leave.id, '2026-10-13')).toMatchObject({ outcome: 'effective' });
+    // B3-3 起调度按队列顺序连续推进：先调动落地，再离职落地并作废晚于 L 的调动
+    expect(await x.runScheduler('2026-10-13T02:00:00Z')).toMatchObject({ activated: [earlier.id, leave.id] });
     expect(await x.stateOfBusiness(earlier.id)).toBe('effective');
     expect(await x.stateOfBusiness(later.id)).toBe('voided');
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'transfer', 'leave']);

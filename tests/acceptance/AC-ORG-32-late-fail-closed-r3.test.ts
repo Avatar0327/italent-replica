@@ -175,5 +175,6 @@ it('S2-P2-02 两笔触及同一下属：有跨对象联动依赖，后笔不豁�
   await expectRebuildRequired(w, t1, [t2.id], { planned: '2026-10-05', execution: '2026-10-10' }, 2);
   expect((await w.business(t2.id)).activation).toMatchObject({ status: 'suspended' });
   expect(await managerOf(w, s.hire.id)).toBe(m.employee.id);
-  expect((await w.todos()).map((item) => item.id)).toEqual([t1.id]);
+  // 待办：失败的 t1 与因前序失败挂起的 t2 各一条（离职设计 §10.1：挂起项同样出现在 HR 待办）
+  expect((await w.todos()).map((item) => item.id)).toEqual([t1.id, t2.id]);
 });

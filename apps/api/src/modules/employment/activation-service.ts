@@ -14,6 +14,8 @@ import type { Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { activateWithJudgement } from './activation-checks.js';
+import { activateExit } from './exit-activation.js';
+import { loadExitRequest } from './exit-gate.js';
 import {
   activationPredecessors,
   failureBlockerIds,
@@ -77,6 +79,32 @@ export async function activateDueBusinesses(
     // 失败的业务只由 HR 修正后重试（DEC-052），定时任务不自动重试，失败次数不随每次运行增加。
     if (item.lastOutcome === 'failed' && (item.id !== retryBusinessId || attempted.has(item.id))) {
       if (!item.reminderOnly) unresolved.push(item);
+      continue;
+    }
+    // 走过离职门禁的离职（有扩展行）；可信造数（无扩展行）保持其他业务的 activate 端口行为
+    if (item.kind === 'leave' && (await loadExitRequest(tx, ctx.tenantId, item.id))) {
+      // 离职只经 activateExit 单一编排器：它自己记生效尝试（生效 / 失败 / 挂起），这里只汇总结果
+      const outcome = await activateExit(tx, { ...ctx, expectedRevision: item.revision }, item.id, { trigger });
+      if (outcome.outcome === 'effective') {
+        result.activated.push(item.id);
+        queue = await dueQueue(tx, ctx, employeeId);
+        unresolved = [];
+        index = -1;
+        continue;
+      }
+      if (outcome.outcome === 'failed') {
+        result.failed.push(item.id);
+        if (item.id !== retryBusinessId || outcome.reason !== REBUILD_REQUIRED) attempted.add(item.id);
+        unresolved.push({
+          ...item,
+          lastOutcome: 'failed',
+          lastReason: outcome.reason,
+          lastBlockerIds: failureBlockerIds(outcome.detail),
+        });
+      } else if (outcome.outcome === 'suspended') {
+        result.suspended.push(item.id);
+        unresolved.push({ ...item, lastOutcome: 'suspended', lastBlockedBy: outcome.blockedByBusinessId });
+      }
       continue;
     }
     const failure = await activateWithJudgement(tx, ctx, item);

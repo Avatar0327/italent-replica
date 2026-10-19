@@ -2,8 +2,8 @@
  * R2-T03 B2b / AC-DM-22（HTTP 入口）：离职专用路由 preview / 新建 / submit / withdraw（设计 §4 / §4A / §9.1）。
  * 权限链固定为 功能操作权 → 按钮权 → 范围 → 字段权 → §4A 前置条件；专用入口只认 Dimission* 按钮，不要求 Employment.Create
  * / Submit / Withdraw。B-64：有按钮无功能权 403；撤权后同键重放 403；B-64f 非原发起人不能代重提；B-64g 原发起人撤权后不能
- * 重提。B-30：停用的字典项不能再选，已保存单原样保留。每个拒绝都读前后状态逐项相等；新入口同样遵守 §18.1 关口
- * （直接离职 L 已过只存 approved，时间轴 / 合同 / 调动申请 / 审批实例不变）。
+ * 重提。B-30：停用的字典项不能再选，已保存单原样保留。每个拒绝都读前后状态逐项相等；B3-3 起直接离职 L 已过
+ * 在保存事务内生效（§5.3）。
  */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
@@ -109,17 +109,14 @@ describe('AC-DM-22 POST exits/employees/:id/preview', () => {
 });
 
 describe('AC-DM-22 POST exits/employees/:id（专用新建入口）', () => {
-  it('直接离职 L 已过：201 approved，不落地（§18.1 ③）；申请 201 draft；不要求 Employment.Create', async () => {
+  it('直接离职 L 已过：201 effective，保存事务内生效（§5.3）；申请 201 draft；不要求 Employment.Create', async () => {
     const { w, employee } = await world('routes-create');
-    const before = await w.stateOf(employee.id);
     const noCreate = w.restricted(denyButtons('Employment.Create'));
     const direct = await create(w, employee.id, exitBody('2026-10-01', 'direct'), noCreate);
     expect(direct.status, await direct.clone().text()).toBe(201);
     const business = (await direct.json()) as { id: string; status: string };
-    expect(business.status).toBe('approved');
-    const after = await w.stateOf(employee.id);
-    const untouched = (state: typeof before) => [state.timeline, state.contracts, state.instances, state.attempts];
-    expect(untouched(after)).toEqual(untouched(before));
+    expect(business.status).toBe('effective');
+    expect((await w.stateOf(employee.id)).timeline).toHaveLength(2);
     expect(await w.exitRow(business.id)).toMatchObject({ mode: 'direct', initiator: 'hr' });
     const second = (await w.hired('申请员工')).employee;
     const draft = await create(w, second.id, exitBody(LATER, 'application', { reasonCode: 'personal' }), noCreate);
@@ -127,15 +124,15 @@ describe('AC-DM-22 POST exits/employees/:id（专用新建入口）', () => {
     expect(await draft.json()).toMatchObject({ status: 'draft', effectiveDate: '2026-10-21' });
   });
 
-  it('按钮缺失 / 有按钮无功能权 403；dutyTransfer 400；kind 不是离职 400；均无写入', async () => {
+  it('按钮缺失 / 有按钮无功能权 403；dutyTransfer 结构非法 400；kind 不是离职 400；均无写入', async () => {
     const { w, employee } = await world('routes-create-deny');
     const before = await w.stateOf(employee.id);
     const noDirect = w.restricted(denyButtons('Employment.Dimission'));
     expect((await create(w, employee.id, exitBody(LATER, 'direct'), noDirect)).status).toBe(403);
     const noOperation = w.restricted(denyOperation('object.create'));
     expect((await create(w, employee.id, exitBody(LATER), noOperation)).status).toBe(403);
-    const duty = await create(w, employee.id, exitBody(LATER, 'application', { dutyTransfer: {} }));
-    expect(await w.reason(duty)).toMatchObject({ status: 400, reason: 'EXIT_DUTY_TRANSFER_NOT_AVAILABLE' });
+    const duty = await create(w, employee.id, exitBody(LATER, 'application', { dutyTransfer: { subordinates: 'x' } }));
+    expect(await w.reason(duty)).toMatchObject({ status: 400 });
     expect((await create(w, employee.id, { ...exitBody(LATER), kind: 'transfer' })).status).toBe(400);
     expect(await w.stateOf(employee.id)).toEqual(before);
   });

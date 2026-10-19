@@ -112,7 +112,7 @@ export async function createEmploymentBusiness(
   const normalized = normalizeEmploymentInput(ctx, input);
   if (normalized.kind === 'leave' && !ctx.trustedExit && options.exitPass !== EXIT_GATE_PASS)
     throw new AppError('FORBIDDEN', '离职业务须经离职门禁创建', { reason: 'EXIT_GATE_REQUIRED' });
-  // 经门禁的直接离职只存 approved，不落地（§18.1 关口③；B3-3 起改为调用 activateExit）
+  // 经门禁的直接离职先存 approved；生效由 createExitApplication 在写完扩展行与 confirmed 阶段后调用 activateIfDue（§5.3）
   const gatedDirect = options.exitPass === EXIT_GATE_PASS && normalized.mode === 'direct';
   if (normalized.kind === 'transfer')
     await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);

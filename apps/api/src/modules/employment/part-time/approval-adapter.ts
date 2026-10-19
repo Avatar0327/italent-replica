@@ -20,7 +20,7 @@ import {
 } from '@italent/domain';
 import type { ApprovalTypeCode } from '@italent/domain';
 import { AppError } from '../../../errors.js';
-import { employeeHeader, mayMergeSeat, profileValues } from '../../approval/adapter-support.js';
+import { employeeHeader, mayAdvanceBusiness, profileValues } from '../../approval/adapter-support.js';
 import type { BusinessAdapter, BusinessSnapshot } from '../../approval/adapters.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from '../../approval/context.js';
 import { lockOrganizationSettings } from '../../org/locks.js';
@@ -74,7 +74,7 @@ async function lockMany(
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id = ANY(${idArray(records)}) ORDER BY id FOR UPDATE`);
   if (!options.organization || !heads.some((head) => head.requestType !== 'end')) return;
-  if (!options.reassignFrom || (await mayMergeSeat(tx, ctx, requestIds, options.reassignFrom)))
+  if (await mayAdvanceBusiness(tx, ctx, requestIds, options.reassignFrom))
     await lockOrganizationSettings(tx, ctx.tenantId);
 }
 

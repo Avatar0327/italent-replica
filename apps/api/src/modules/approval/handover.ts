@@ -267,7 +267,7 @@ interface Step {
  * @returns 改派的任务数；替代人本人回避后无人接替时返回原因，整单不动
  */
 async function handoverInstance(tx: Tx, ctx: ApprovalContext, instanceId: string, input: HandoverInput) {
-  const run = await openRun(tx, ctx, instanceId, true);
+  const run = await openRun(tx, ctx, instanceId, input.fromUserId);
   const pending = await pendingExceptionTasks(tx, run, input.fromUserId);
   if (!pending.length) return null;
   const plan: Step[] = [];
@@ -471,7 +471,7 @@ async function takeOverInstance(
   successorScope: SQL | null,
   settle: boolean,
 ) {
-  const run = await openRun(tx, ctx, instanceId, true);
+  const run = await openRun(tx, ctx, instanceId, leaving);
   const pending = await pendingExceptionTasks(tx, run, leaving);
   if (!pending.length) return;
   const plan: Step[] = [];

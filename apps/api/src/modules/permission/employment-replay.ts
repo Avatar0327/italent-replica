@@ -4,6 +4,7 @@ import { authorizeEstablishmentReplay } from './establishment-replay.js';
 import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
+import { ASSESSMENT_AUDIT_TYPE } from '../employment/assessment-store.js';
 import { partTimeRecordCreator } from '../employment/part-time/creator-sql.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
@@ -101,14 +102,22 @@ const LINKED_ACTIONS = new Set([
   'employment.part_time.ended_by_transfer',
   'part_time.request.voided_by_exit',
   'part_time.request.voided_by_transfer',
+  // 离职生效时作废在途考核（F-229，DEC-617）：考核不是命令直接写入的对象，同 DEC-178 按可见口径复核
+  'employment.assessment.voided_by_exit',
 ]);
-/** 任职足迹的审计 / outbox 对象类型：任职记录、任职业务，以及兼职记录与兼职申请（R2-T05 §7.3A）。 */
-const FOOTPRINT_TYPES = sql.join(
-  ['employment-record', 'employment-business', PART_TIME_AUDIT_OBJECTS.record, PART_TIME_AUDIT_OBJECTS.request].map(
-    (type) => sql`${type}`,
-  ),
-  sql`,`,
-);
+/** 任职足迹的审计 / outbox 对象类型：任职记录、任职业务，兼职记录与兼职申请（R2-T05 §7.3A），以及试用期考核（F-229）。 */
+// 函数而非模块常量：assessment-store 与本文件有循环依赖，模块求值时取到的 ASSESSMENT_AUDIT_TYPE 可能还是 undefined
+const footprintTypes = () =>
+  sql.join(
+    [
+      'employment-record',
+      'employment-business',
+      PART_TIME_AUDIT_OBJECTS.record,
+      PART_TIME_AUDIT_OBJECTS.request,
+      ASSESSMENT_AUDIT_TYPE,
+    ].map((type) => sql`${type}`),
+    sql`,`,
+  );
 
 /**
  * 本命令只经联动改写的记录：DEC-178 按 DEC-177 可见口径复查；
@@ -187,13 +196,13 @@ async function footprints(tx: Tx, tenantId: string, commandId: string) {
     SELECT a.object_id AS id,a.action,a.after,NULL::uuid AS "snapshotDepartment",false AS "hasSnapshot"
     FROM audit_events a
     WHERE a.tenant_id=${tenantId} AND a.command_id=${commandId}
-      AND a.object_type IN (${FOOTPRINT_TYPES})
+      AND a.object_type IN (${footprintTypes()})
     UNION ALL
     SELECT o.object_id::text AS id,'snapshot' AS action,NULL::jsonb AS after,p.department_id,true
     FROM employment_outbox o JOIN employment_payload_versions p
       ON p.tenant_id=o.tenant_id AND p.id=o.payload_version_id
     WHERE o.tenant_id=${tenantId} AND o.command_id=${commandId}
-      AND o.object_type IN (${FOOTPRINT_TYPES})
+      AND o.object_type IN (${footprintTypes()})
     LIMIT ${MAX_EVENTS + 1}
   `),
   );
@@ -212,6 +221,7 @@ const businessDepartment = (alias: string) => {
 
 async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
   // 删除是不可变状态事件；对象和 payload 仍保留，因此合法删除响应也能通过范围复查。
+  // 试用期考核（F-229）不在业务头表：部门取创建时快照，创建人 = 发起人。
   // 兼职申请不在业务头表（R2-T05 §7.3A）：新增按申请最新版本部门，延长 / 结束按目标兼职记录当前部门；创建人 = 发起人。
   const wanted = sql`(SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
   return rows<Target>(
@@ -235,6 +245,10 @@ async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
       q.initiator_user_id
     FROM part_time_requests q
     WHERE q.tenant_id=${tenantId} AND q.id::text IN ${wanted}
+    UNION ALL
+    SELECT a.id,a.employee_id,a.department_id,a.initiator_user_id
+    FROM employment_probation_assessments a
+    WHERE a.tenant_id=${tenantId} AND a.id::text IN ${wanted}
   `),
   );
 }

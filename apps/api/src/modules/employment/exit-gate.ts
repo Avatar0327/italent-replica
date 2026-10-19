@@ -3,7 +3,7 @@
  * 顺序固定：功能操作权 + 按钮权 + 字段权（复用 context.ts requireEmploymentWrite，不以 Employment.Create / Edit / Delete
  * 代替 Dimission* 四个按钮）→ 范围由调用方入口先验（readContext / authorizeBusinessWrite）→ 本文件的前置条件：
  * 日期创建后不可改（§7.2，DEC-499）、同员工无未办结离职、字典启用、§8A 逾期迟到调动、§8B 转正在途、§8 在途调动确认令牌、
- * §18.1 关口 ④⑤ 与撤销。所有拒绝发生在首个写之前（调用方在命令事务内先调用本门禁）。
+ * §18.1 撤销（B4 前对 approved / effective 不提供）。所有拒绝发生在首个写之前（调用方在命令事务内先调用本门禁）。
  * 退休（R2-T04）只受日期规则约束；没有扩展行的离职（可信造数）保持 main 行为。
  */
 import { createHmac } from 'node:crypto';
@@ -477,8 +477,6 @@ async function assertNoLeaveInProgress(tx: Tx, ctx: EmploymentContext, employeeI
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
   const exit = target.exit ?? {};
   const lastWorkDate = target.lastWorkDate!;
-  if (exit.dutyTransfer !== undefined)
-    throw new AppError('VALIDATION_FAILED', '职责转交暂不可用', { reason: 'EXIT_DUTY_TRANSFER_NOT_AVAILABLE' });
   assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
   await assertDictionaries(tx, ctx, exit);
   const cycle = await currentEmploymentCycle(tx, ctx, target.employeeId);
@@ -512,7 +510,7 @@ async function submitConditions(
   return checkPendingTransferAck(tx, ctx, business.employeeId, lastWorkDate, provided, stored);
 }
 
-/** 撤销在 B4 前对 approved / effective 离职不提供（§18.1），不存在绕过 §6B 的删除路径。 */
+/** 撤销在 B4 前对 approved / effective 离职不提供（§18.1 末段），不存在绕过 §6B 的删除路径。 */
 async function cancelConditions(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (!['approved', 'effective'].includes(business.state)) return;
   if (await loadExitRequest(tx, ctx.tenantId, business.id))
@@ -552,10 +550,6 @@ export async function requireExitGate(
       return { ack: await submitConditions(tx, ctx, target, provided) };
     case 'cancel':
       await cancelConditions(tx, ctx, target.business!);
-      return { ack: null };
-    case 'retry':
-      if (target.business && (await loadExitRequest(tx, ctx.tenantId, target.business.id)))
-        throw conflict('EXIT_ACTIVATION_NOT_AVAILABLE', '离职生效暂不可用');
       return { ack: null };
     default:
       return { ack: null };

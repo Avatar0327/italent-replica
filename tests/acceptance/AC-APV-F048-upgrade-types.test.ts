@@ -15,6 +15,7 @@ import { approvalWorld, transferScene, type InstanceView } from './AC-APV-suppor
 import { contractWorld } from './AC-CT-support.js';
 import { planWorld } from './AC-IDP-plan-support.js';
 import { pendingOf } from './support/f048.js';
+import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -218,12 +219,14 @@ async function idpBefore(db: Db) {
 it('升级前发起的离职 / 员工子集 / 合同 / IDP 在途实例：avoid_self=true 保持，按单主体回退，升级后继续办理并走完（DEC-329④ / DEC-332①）', async () => {
   const handle = database();
   const continuations = await withPreAuditSchema(handle.db, () =>
-    withoutSubjectsTable(handle.db, async () => ({
-      leave: await leaveBefore(handle.db),
-      personnel: await personnelBefore(handle.db),
-      contract: await contractBefore(handle.db),
-      idp: await idpBefore(handle.db),
-    })),
+    withPreAssessmentSchema(handle.db, () =>
+      withoutSubjectsTable(handle.db, async () => ({
+        leave: await leaveBefore(handle.db),
+        personnel: await personnelBefore(handle.db),
+        contract: await contractBefore(handle.db),
+        idp: await idpBefore(handle.db),
+      })),
+    ),
   );
   await handle.migrate();
   for (const [name, { tenantId, run }] of Object.entries(continuations)) {

@@ -10,6 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { loadRecusalFacts } from '../../apps/api/src/modules/approval/subjects.js';
 import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
+import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
 
 const database = useTestDb({ migrateBefore: '_approval_subjects' });
@@ -39,15 +40,17 @@ async function withoutSubjectsTable<T>(db: Db, run: () => Promise<T>): Promise<T
 it('升级前的在途实例：节点列值保持、无冻结行按单主体回退，升级后重提只冻结新一轮并照常走完', async () => {
   const handle = database();
   const { w, s, process, view } = await withPreAuditSchema(handle.db, () =>
-    withoutSubjectsTable(handle.db, async () => {
-      const w = await approvalWorld(handle.db, 'f048-upgrade');
-      const s = await transferScene(w);
-      const process = await w.publishedProcess({
-        nodes: [{ key: 'out_head', approver: 'latest_record_department_head', actions: { avoidSelf: true } }],
-      });
-      const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
-      return { w, s, process, view: await w.submit(draft) };
-    }),
+    withPreAssessmentSchema(handle.db, () =>
+      withoutSubjectsTable(handle.db, async () => {
+        const w = await approvalWorld(handle.db, 'f048-upgrade');
+        const s = await transferScene(w);
+        const process = await w.publishedProcess({
+          nodes: [{ key: 'out_head', approver: 'latest_record_department_head', actions: { avoidSelf: true } }],
+        });
+        const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
+        return { w, s, process, view: await w.submit(draft) };
+      }),
+    ),
   );
   await handle.migrate();
 

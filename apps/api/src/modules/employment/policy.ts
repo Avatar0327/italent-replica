@@ -1534,7 +1534,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // 新建：If-Match 必填；resource=id 人员范围 404；body 不接受 kind（400）；按 mode 取按钮（direct → Dimission、
   // application → DimissionApproval），不要求 Employment.Create；字段 = 任职载荷 + exit 区块；带 departmentId 时
-  // requireEmploymentScope；命令内员工锁 → 门禁（§4A：未办结离职 / 字典 / §8A / §8B / §8 令牌 / 关口⑤）→ 申请服务
+  // requireEmploymentScope；命令内员工锁 → 门禁（§4A：未办结离职 / 字典 / §8A / §8B / §8 令牌）→ 申请服务
   'POST /exits/employees/:id': object({
     object: EMPLOYMENT,
     operation: 'create',

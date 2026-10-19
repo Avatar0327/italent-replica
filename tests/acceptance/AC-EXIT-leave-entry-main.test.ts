@@ -1,7 +1,6 @@
 /**
- * B-81 / R2-T03 B1b 第 1 轮 P2：离职的新排序日期（greatest(计划日, 今天)）与实际顺延 / 生效关口一起在 B3-1 启用；
- * 在此之前，现有公开入口对离职保持 main 行为——队列排序、到期、实际落地日、向后更新候选与 main 相同。
- * 夹具只用 main 上已有的入口与导出，在 main 上同样可运行并通过。
+ * B-81 / R2-T03：没有离职扩展行的离职（可信造数端口建的，不经门禁）仍走通用 activate 端口，按 main 行为落地——
+ * 到期、实际落地日不顺延；排序日期与向后更新候选随 B3-3 与调动同按最终执行日期（设计 §5.0 / §5.0A D-9）。
  */
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -30,7 +29,7 @@ async function approvedLeave(w: ActivationWorld, employeeId: string) {
   return draft;
 }
 
-describe('离职在现有公开入口上保持 main 行为（新排序日期待 B3-1 与顺延关口一起启用）', () => {
+describe('无扩展行的离职（可信造数）：通用 activate 端口落地，向后更新候选按最终执行日期', () => {
   it('提前批准的离职（计划生效日 10-16），10-18 队列给出的日期与实际落地日一致，都是 10-16', async () => {
     const w = await activationWorld(database().db, 'exit-entry-queue');
     const person = await w.hired();
@@ -46,7 +45,7 @@ describe('离职在现有公开入口上保持 main 行为（新排序日期待 
     expect(landed.map((record) => record.effectiveDate)).toEqual(['2026-10-16']);
   });
 
-  it('补录 10-17 的直接业务：10-16 的离职申请排在它之前，不是向后更新目标（与 main 相同）', async () => {
+  it('补录 10-17 的直接业务：10-16 的离职申请 10-18 才执行（最终执行日期 10-18），排在它之后，成为向后更新候选（D-9）', async () => {
     const w = await activationWorld(database().db, 'exit-entry-forward', { today: '2026-10-10' });
     const person = await w.hired();
     const leave = await approvedLeave(w, person.employee.id);
@@ -57,6 +56,6 @@ describe('离职在现有公开入口上保持 main 行为（新排序日期待 
       effectiveDate: '2026-10-17',
       fields: { place: '新地点' },
     });
-    expect(plan.changes.map((change) => change.businessId)).not.toContain(leave.id);
+    expect(plan.changes.map((change) => change.businessId)).toContain(leave.id);
   });
 });

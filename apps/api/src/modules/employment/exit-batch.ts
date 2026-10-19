@@ -5,10 +5,11 @@
  * 逐人范围与权限在命令内复核（exitBatchGuard，replay-guard.ts），复核不过的人在这里只计原因、不执行。
  */
 import { randomUUID } from 'node:crypto';
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { createExitApplication } from './exit-application.js';
-import { lockEmploymentEmployee } from './record-store.js';
+import { lockExitParticipants } from './exit-lock-plan.js';
+import { lockEmploymentEmployee, rowsOf } from './record-store.js';
 import { exitBatchFailure, exitBatchRejected, type ExitBatchFailure, type ExitBatchItem } from './replay-guard.js';
 import { transitionEmployment } from './transitions.js';
 import type { EmploymentBusiness, EmploymentContext } from './types.js';
@@ -35,8 +36,21 @@ export async function createExitBatch(
     .map((item, index) => ({ item, index }))
     .filter(({ index }) => !skipped.has(index))
     .sort((a, b) => a.item.employeeId.localeCompare(b.item.employeeId) || a.index - b.index);
-  // 锁序（org/locks.ts 全局序：员工 → 组织 → 编制 → 实例）：先按员工 ID 顺序一次锁齐全批员工，再逐人建单提交。
-  // 提交会取组织锁，若边做边锁员工，就会出现“持组织锁再等员工锁”，与单人入口（先员工后组织）成环（真 PG 交错 ③）
+  // 锁序（org/locks.ts 全局序：员工 → 组织 → 编制 → 实例）：整批参与员工闭包（离职员工 + 各人的转交下属）先于任何组织锁，
+  // 与单人入口共用 exit-lock-plan.ts 按 UUID 升序一次取齐；不存在的员工另行作为逐条原因（B-25），不进闭包。
+  const present = new Set(
+    rowsOf<{ id: string }>(
+      await tx.execute(sql`SELECT id::text AS id FROM employment_employees WHERE tenant_id=${ctx.tenantId}
+        AND id=ANY(${`{${order.map(({ item }) => item.employeeId).join(',')}}`}::uuid[])`),
+    ).map((row) => row.id),
+  );
+  await lockExitParticipants(
+    tx,
+    ctx,
+    order
+      .filter(({ item }) => present.has(item.employeeId.toLowerCase()))
+      .map(({ item }) => ({ employeeId: item.employeeId, dutyTransfer: item.exit?.dutyTransfer })),
+  );
   for (const { item, index } of order) {
     try {
       await lockEmploymentEmployee(tx, ctx, item.employeeId);

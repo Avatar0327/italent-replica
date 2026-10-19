@@ -172,8 +172,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/contracts/ports.ts#assertNoInFlightForTransfer': [
     'apps/api/src/modules/contracts/service.ts#assertNoInFlight',
   ],
+  'apps/api/src/modules/contracts/ports.ts#cancelExitRequests': [
+    'apps/api/src/modules/approval/actions.ts#cancel',
+    'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    'apps/api/src/modules/contracts/context.ts#audit',
+  ],
   'apps/api/src/modules/contracts/ports.ts#changeContractForTransfer': ['#portCommand'],
   'apps/api/src/modules/contracts/ports.ts#generateContractForBusiness': ['#portCommand'],
+  'apps/api/src/modules/contracts/ports.ts#handleContractsOnExit': [
+    'apps/api/src/modules/contracts/configuration.ts#settings',
+    'apps/api/src/modules/contracts/context.ts#checkScope',
+    'apps/api/src/modules/contracts/context.ts#lockEmployee',
+    '#cancelExitRequests',
+    'apps/api/src/modules/contracts/service.ts#deleteContract',
+    'apps/api/src/modules/contracts/service.ts#setContractState',
+  ],
   'apps/api/src/modules/contracts/ports.ts#portCommand': [
     '#constraintName',
     'apps/api/src/modules/contracts/service.ts#createCommand',

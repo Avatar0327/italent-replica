@@ -8,6 +8,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
 import { lockEstablishment } from '../establishment/store.js';
+import { lockExitOrganizationResources } from '../employment/exit-void-applications.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
@@ -49,7 +50,7 @@ import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
-import { employeeHeader, mayMergeSeat, profileValues } from './adapter-support.js';
+import { employeeHeader, mayAdvanceBusiness, mayMergeSeat, profileValues } from './adapter-support.js';
 
 export { mayMergeSeat };
 
@@ -99,7 +100,11 @@ export interface BusinessSnapshot {
 
 export interface BusinessAdapter {
   /** 按业务侧既有顺序加锁（员工 → 业务单），审批命令随后再锁实例，与业务入口的锁序一致（清单 11）。 */
-  lock(tx: Tx, ctx: ApprovalContext, businessId: string, sourceOnly?: boolean): Promise<void>;
+  /**
+   * @param reassignFrom 仅改派类入口传入（手动交接、成员撤销 / 停用接管）：原持有人。传了就只在可能会签合席时取
+   *   业务的组织 / 编制资源锁（mayAdvanceBusiness），普通办理总取。
+   */
+  lock(tx: Tx, ctx: ApprovalContext, businessId: string, reassignFrom?: string): Promise<void>;
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
@@ -317,7 +322,7 @@ async function completedTransferDates(
 }
 
 const employmentAdapter: BusinessAdapter = {
-  async lock(tx, ctx, businessId) {
+  async lock(tx, ctx, businessId, reassignFrom) {
     const [owner] = rowsOf<{ employee_id: string; kind: string }>(
       await tx.execute(sql`SELECT employee_id, (SELECT kind FROM employment_payload_versions p
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
@@ -330,6 +335,11 @@ const employmentAdapter: BusinessAdapter = {
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
     // org/locks.ts：员工 / 业务 → 组织 → 编制 → 实例；审批推进时只重入资源锁。
     if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
+    // 离职最后节点同意 / 会签合席结算会当场进入生效链（R2-T03 §5.2）：组织 / 编制资源在审批实例锁之前取齐。
+    // 是否可能推进业务由 mayAdvanceBusiness 统一判断（手动交接 / 成员撤销接管只在可能合席时取，F-070）。
+    else if (owner.kind === 'leave' && (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom))) {
+      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
+    }
   },
   /**
    * F-065：批量交接在登记替代人（对成员行取 KEY SHARE）之前取齐组织锁，顺序与 lock 一致（员工 / 业务 → 组织 → 编制）。
@@ -338,18 +348,20 @@ const employmentAdapter: BusinessAdapter = {
    */
   async lockMany(tx, ctx, businessIds, options) {
     if (!options.organization) return;
-    const kinds = rowsOf<{ kind: string | null }>(
-      await tx.execute(sql`SELECT (SELECT kind FROM employment_payload_versions p
-        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
+    const rows = rowsOf<{ id: string; employee_id: string; kind: string | null }>(
+      await tx.execute(sql`SELECT b.id::text AS id, b.employee_id::text AS employee_id,
+        (SELECT kind FROM employment_payload_versions p
+          WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
         FROM employment_business_objects b
-        WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[])`),
+        WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[]) ORDER BY b.id`),
     );
-    if (kinds.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
-    else if (
-      kinds.length &&
-      (!options.reassignFrom || (await mayMergeSeat(tx, ctx, businessIds, options.reassignFrom)))
-    )
+    if (rows.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
+    else if (rows.length && (await mayAdvanceBusiness(tx, ctx, businessIds, options.reassignFrom))) {
       await lockOrganizationSettings(tx, ctx.tenantId);
+      // 离职合席结算会当场进入生效链：有未落地调动申请时还要取编制锁（与 lock 的离职分支同一个取锁函数）
+      for (const row of rows.filter((item) => item.kind === 'leave'))
+        await lockExitOrganizationResources(tx, ctx, row.employee_id, row.id);
+    }
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
