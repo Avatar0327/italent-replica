@@ -1,0 +1,74 @@
+.part-time-page {
+  padding: 20px;
+  background: #f5f7fa;
+  min-height: 100%;
+}
+.part-time-page h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.part-time-views {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.part-time-views button {
+  flex: 1;
+  text-align: left;
+  min-height: 76px;
+  padding: 12px 18px;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #303640;
+}
+.part-time-views button[aria-pressed='true'] {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.part-time-views strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 5px;
+}
+.part-time-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+.part-time-toolbar,
+.part-time-pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+}
+.part-time-pagination {
+  justify-content: flex-end;
+}
+.part-time-filters {
+  display: grid;
+  gap: 20px;
+  padding-top: 16px;
+}
+.part-time-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.part-time-filters .ant-select {
+  width: 100%;
+}
+.part-time-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.part-time-detail h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.part-time-detail h3 {
+  margin: 20px 0 12px;
+}
