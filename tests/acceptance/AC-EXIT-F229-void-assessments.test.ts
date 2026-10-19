@@ -335,7 +335,7 @@ describe('F-229 生效时作废在途考核', () => {
     await expectVoided(x, assessmentId, instance.id, leave.id);
     expect((await x.audits(assessmentId, 'employment.assessment.voided_by_exit'))[0]!.actor).toBeNull();
     const [log] = await x.rows<{ actor: string | null }>(sql`SELECT actor_user_id AS actor FROM approval_instance_logs
-      WHERE tenant_id=${x.tenantId} AND instance_id=${instance.id}::uuid AND event='cancel'`);
+      WHERE tenant_id=${x.tenantId} AND instance_id=${instance.id}::uuid AND event='system_revoke'`);
     expect(log).toEqual({ actor: null });
   });
 
