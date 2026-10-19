@@ -459,6 +459,21 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/part-times": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6e741d150d16",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/part-times/:recordId": {
     "all": {
       "code": "NOT_FOUND",

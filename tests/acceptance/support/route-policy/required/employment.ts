@@ -1855,6 +1855,18 @@ export const EMPLOYMENT: RequiredTable = {
       at(PART_TIME_REQUEST, 'GET', '/part-time-requests/:id', "const ctx = await readPageContext(c, deps, 'detail')"),
     ),
   ],
+  // PT-5 兼职六视图：readPageContext(list) + 筛选字段须可见（requireViewableFilters，否则 403）；范围谓词在 queries.ts 分页前过滤
+  'GET /api/tenant/employment/part-times': [
+    recordView(at(PART_TIME, 'GET', '/part-times', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(PART_TIME, 'GET', '/part-times', 'requireViewableFilters('),
+        fn(PART_TIME, 'requireViewableFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
+    ),
+  ],
   'GET /api/tenant/employment/employees/:id/part-times': [
     recordView(
       at(PART_TIME, 'GET', '/employees/:id/part-times', "const ctx = await readPageContext(c, deps, 'detail')"),

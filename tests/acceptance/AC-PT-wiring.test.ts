@@ -42,15 +42,10 @@ describe('AC-PT-wiring 兼职装配（PB-79）', () => {
     ]);
   });
 
-  it('PT-4b 开放新增、读取、编辑、批量结束与新增申请入口（见 AC-PT-http-* / 10-batch-end / request-http）：六视图仍是 404', async () => {
+  it('PT-5 开放六视图（见 AC-PT-06-views）：有 view 即 200；没有 view 是 400，不回退到全部，也不是 404', async () => {
     const w = await serviceWorld(database().db, 'pt-wiring-routes');
-    for (const [method, path] of [
-      ['GET', '/part-times'],
-      ['GET', '/part-times?view=ongoing'],
-    ] as const) {
-      const response = await w.request(method, path, method === 'GET' ? {} : { ifMatch: 1, body: {} });
-      expect(response.status, `${method} ${path}`).toBe(404);
-    }
+    expect((await w.request('GET', '/part-times?view=ongoing')).status).toBe(200);
+    expect((await w.request('GET', '/part-times')).status).toBe(400);
   });
 
   it('守卫：本用例的静态依赖图不含 index.ts / @italent/api（只经 app.ts createApp 建应用）', () => {
