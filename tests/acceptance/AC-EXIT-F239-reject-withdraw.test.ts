@@ -1,7 +1,7 @@
 /**
  * F-239（#424 F-229 审查后补测试）：离职申请在生效前被驳回 / 撤回，不作废在途考核。
  * 考核只在离职真正生效时作废（exit-void-assessments.ts 订阅 effective 端口）；驳回、撤回阶段不碰考核。
- * 之后重新发起并经公开入口（审批最后节点）生效，考核恰好作废一次：终态 cancelled、作废审计 1 条、审批实例取消日志 1 条。
+ * 之后重新发起并经公开入口（审批最后节点）生效，考核恰好作废一次：终态 cancelled、作废审计 1 条、outbox 作废事件 1 条、审批实例取消日志 1 条。
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
@@ -42,12 +42,18 @@ const cancelLogs = (x: AssessmentExitWorld, instanceId: string) =>
   x.rows<{ id: string }>(sql`SELECT id FROM approval_instance_logs
     WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid AND event='cancel'`);
 
-/** 考核仍在途：状态、审批实例、待办原样，没有作废审计 / 取消日志。 */
+/** 作废事件（auditEmployment 与审计同事务写 employment_outbox）；下游按它收到“考核已被离职作废”。 */
+const voidEvents = (x: AssessmentExitWorld, assessmentId: string) =>
+  x.rows<{ payload: { after?: { exitBusinessId?: string } } }>(sql`SELECT payload FROM employment_outbox
+    WHERE tenant_id=${x.tenantId} AND object_id=${assessmentId} AND event_type=${VOIDED}`);
+
+/** 考核仍在途：状态、审批实例、待办原样，没有作废审计 / 作废事件 / 取消日志。 */
 async function expectUntouched(x: AssessmentExitWorld, assessmentId: string, instanceId: string, revision: number) {
   expect(await x.assessmentRow(assessmentId)).toEqual({ status: 'in_review', revision });
   expect(await x.instanceRows(assessmentId)).toEqual([{ id: instanceId, status: 'running' }]);
   expect(await x.pendingTaskCount(assessmentId)).toBe(1);
   expect(await x.audits(assessmentId, VOIDED)).toEqual([]);
+  expect(await voidEvents(x, assessmentId)).toEqual([]);
   expect(await cancelLogs(x, instanceId)).toEqual([]);
 }
 
@@ -69,11 +75,15 @@ async function approveAndExpectOneVoid(
   const audit = await x.audits(assessmentId, VOIDED);
   expect(audit).toHaveLength(1);
   expect(audit[0]!.after).toMatchObject({ status: 'cancelled', exitBusinessId: draft.id });
+  const events = await voidEvents(x, assessmentId);
+  expect(events).toHaveLength(1);
+  expect(events[0]!.payload.after?.exitBusinessId).toBe(draft.id);
   expect(await cancelLogs(x, instanceId)).toHaveLength(1);
   // 生效已落地：调度再跑一遍不会重复作废
   const rerun = await runEmploymentActivations(x.db, cmd(), { tenantId: x.tenantId }, { clock: () => new Date(DAY) });
   expect(rerun.runs.flatMap((run) => run.activated)).toEqual([]);
   expect(await x.audits(assessmentId, VOIDED)).toHaveLength(1);
+  expect(await voidEvents(x, assessmentId)).toHaveLength(1);
   expect(await cancelLogs(x, instanceId)).toHaveLength(1);
   return draft;
 }
@@ -113,7 +123,7 @@ describe('F-239 离职生效前驳回 / 撤回：不作废在途考核', () => {
       ifMatch: current.revision,
     });
     expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
-    expect(await x.leaveStatus(draft.id)).not.toBe('effective');
+    expect(await x.leaveStatus(draft.id)).toBe('draft');
     await expectUntouched(x, assessmentId, instance.id, revision);
 
     const idle = await runEmploymentActivations(x.db, cmd(), { tenantId: x.tenantId }, { clock: () => new Date(DAY) });
