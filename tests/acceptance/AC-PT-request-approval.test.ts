@@ -14,7 +14,7 @@ import { instanceScopeSql } from '../../apps/api/src/modules/approval/access.js'
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { grantFieldAccess, grantVisibleFields, permissionAdmin } from './AC-APV-support.js';
-import { insertPartTimeRecord, insertPartTimeRequest } from './AC-PT-support.js';
+import { insertPartTimeRecord } from './AC-PT-support.js';
 import { requestWorld } from './AC-PT-request-support.js';
 
 const database = useTestDb();
@@ -405,37 +405,6 @@ describe('适配器契约与 P-47', () => {
     expect(() => adapter.resubmit({} as never, {} as never, 'x', {})).toThrowError(
       expect.objectContaining({ code: 'CONFLICT', details: { reason: 'APPROVAL_RESUBMIT_VIA_BUSINESS' } }),
     );
-  });
-
-  it('延长 / 结束申请的审批回调 PT-4a 前一律 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE', async () => {
-    const w = await requestWorld(database().db, 'types');
-    const record = await w.run((tx) =>
-      insertPartTimeRecord(tx, {
-        tenantId: w.tenant.id,
-        employeeId: w.worker.employeeId,
-        departmentId: w.side,
-        endDate: '2026-12-31',
-      }),
-    );
-    const extend = await w.run((tx) =>
-      insertPartTimeRequest(tx, {
-        tenantId: w.tenant.id,
-        employeeId: w.worker.employeeId,
-        initiatorUserId: w.hr.id,
-        departmentId: w.side,
-        requestType: 'extend',
-        recordId: record,
-      }),
-    );
-    for (const call of [
-      () => w.run((tx) => ADAPTERS.part_time.snapshot(tx, w.context(), extend)),
-      () => w.run((tx) => ADAPTERS.part_time.approved(tx, w.context(), extend)),
-      () => w.run((tx) => ADAPTERS.part_time.edit(tx, w.context(), extend, { endDate: '2027-01-31' })),
-    ])
-      await expect(call()).rejects.toMatchObject({
-        code: 'CONFLICT',
-        details: { reason: 'PART_TIME_REQUEST_TYPE_NOT_AVAILABLE' },
-      });
   });
 
   it('P-47：“使用用户”维度对兼职申请取发起人，其他用户不命中', async () => {
