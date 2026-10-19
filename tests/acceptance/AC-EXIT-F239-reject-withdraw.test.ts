@@ -40,7 +40,7 @@ async function submitted(x: AssessmentExitWorld, draft: { id: string; revision: 
 
 const cancelLogs = (x: AssessmentExitWorld, instanceId: string) =>
   x.rows<{ id: string }>(sql`SELECT id FROM approval_instance_logs
-    WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid AND event='cancel'`);
+    WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid AND event='system_revoke'`);
 
 /** 作废事件（auditEmployment 与审计同事务写 employment_outbox）；下游按它收到“考核已被离职作废”。 */
 const voidEvents = (x: AssessmentExitWorld, assessmentId: string) =>
@@ -132,7 +132,11 @@ describe('F-239 离职生效前驳回 / 撤回：不作废在途考核', () => {
 
     // 撤回回到草稿后删除，再另发一条离职申请
     const back = await currentOf(x, draft.id);
-    const removed = await x.request(x.hr.id, 'DELETE', `${BUSINESSES}/${draft.id}`, { ifMatch: back.revision });
+    // 离职单的通用 DELETE 映射为 cancel，reason 必填（R2-T03 设计 §4，BE-4j）
+    const removed = await x.request(x.hr.id, 'DELETE', `${BUSINESSES}/${draft.id}`, {
+      ifMatch: back.revision,
+      body: { reason: 'F-239 撤回后删除草稿' },
+    });
     expect(removed.status, await removed.clone().text()).toBeLessThan(300);
     x.setNow('2026-10-01T01:00:00Z');
     const other = await submittedApplication(x, person.employeeId);
