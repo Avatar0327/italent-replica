@@ -595,7 +595,7 @@ function exitBusinessCommand(
       ],
     ),
     businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
-    ...(unit === 'registerExitChanges'
+    ...(unit !== 'route'
       ? [linkage(call('const business = await transitionEmployment(tx, context, { id, action })'))]
       : []),
   ];
