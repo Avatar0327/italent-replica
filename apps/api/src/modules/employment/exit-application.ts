@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { auditEmployment } from './context.js';
 import { activateIfDue } from './exit-activation.js';
 import { confirmExit } from './exit-confirmation.js';
-import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate } from './exit-gate.js';
+import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate, withAckWarnings } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
   applyInitiationSubset,
@@ -65,6 +65,7 @@ async function dutyTransferTiming(tx: Tx, tenantId: string) {
   return (await readEffectiveSetting(tx, tenantId, 'exit.duty_transfer_timing')).value as string;
 }
 
+/** 创建离职（专用 / 通用 / 批量入口共用）；确认清单超限时（DEC-626）响应带 warnings，其余形态不变。 */
 export async function createExitApplication(
   tx: Tx,
   ctx: EmploymentContext,
@@ -133,14 +134,14 @@ export async function createExitApplication(
   // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
   if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
   // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）
-  if (input.mode !== 'direct') return business;
+  if (input.mode !== 'direct') return withAckWarnings(tx, ctx, business);
   await confirmExit(tx, ctx, { ...business, mode: 'direct' });
   const activation = await activateIfDue(tx, ctx, business.id);
-  if (!activation || activation.outcome === 'pending') return business;
+  if (!activation || activation.outcome === 'pending') return withAckWarnings(tx, ctx, business);
   // 落地 / 失败 / 挂起都推进业务 revision（trigger = approval 由调用命令统一递增一次）
   const locked = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: business.revision }, business.id);
   await bumpEmploymentBusiness(tx, ctx, locked);
-  return requireSavedBusiness(tx, ctx, business.id);
+  return withAckWarnings(tx, ctx, await requireSavedBusiness(tx, ctx, business.id));
 }
 
 /** 职责转交计划的授权（逐下属 / 组织角色字段权，§9.1）、校验与保存；任一不通过整单回滚。 */

@@ -19,7 +19,7 @@ import { lockEstablishment } from '../establishment/store.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment } from './context.js';
-import { inFlightApplications, type InFlight } from './exit-gate.js';
+import { exceedsVoidLimit, inFlightApplications, VOID_LIMIT } from './exit-gate.js';
 import {
   bumpEmploymentBusiness,
   lockEmploymentBusiness,
@@ -33,8 +33,7 @@ import { appendEmploymentState } from './write-service.js';
 /** 除离职本身外所有 kind（含退休）的在途申请都在作废之列（§5.1-1、A-10 “不论 kind”）；预览与执行共用。 */
 export const VOIDABLE_KINDS = BUSINESS_KINDS.filter((kind) => kind !== 'leave');
 export const OPEN_STATES = ['draft', 'in_review', 'approved', 'rejected'];
-/** 候选查询（inFlightApplications）至多返回 1001 条；超过这里的上限即整单拒绝，不消费截断清单。 */
-export const VOID_LIMIT = 1000;
+export { exceedsVoidLimit, VOID_LIMIT };
 
 /**
  * 待作废候选与超限判定的单一入口：预览提示（exit-preview.ts）与生效时整单拒绝共用，不各写一套（DEC-431①）。
@@ -54,7 +53,6 @@ export const voidCandidates = (
     ...(excludeId ? { excludeId } : {}),
     ...(lastWorkDate ? { approvedAfter: lastWorkDate } : {}),
   });
-export const exceedsVoidLimit = (candidates: readonly InFlight[]) => candidates.length > VOID_LIMIT;
 
 export interface VoidedApplication {
   readonly id: string;
