@@ -1002,7 +1002,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'create',
     button: button(EXIT_BUTTONS.direct, 'detail'),
     guards: [LINKAGE],
-    scope: guardScope('employment.scope', NF_DATA),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, {
       controls: ['endDate', 'cancelPendingEntry', 'confirmed', 'pendingTransferAck'],

@@ -222,9 +222,7 @@ describe('AC-INTERN-end-14 DEC-593③③ 直接实习转正自动作废在途转
     expect(await w.instanceOf(applicationId)).toMatchObject({ id: instance.id, status: 'cancelled' });
     expect(await w.pendingTasks(instance.id)).toEqual([]);
     const messages = await w.notices(instance.id);
-    expect(messages.map((row) => row.template)).toEqual(
-      messages.map(() => 'application_voided_by_regularization'),
-    );
+    expect(messages.map((row) => row.template)).toEqual(messages.map(() => 'application_voided_by_regularization'));
     expect(messages.map((row) => row.recipient)).toContain(w.session.user.id);
     const [audit] = await w.audits(applicationId, 'employment.business.voided_by_regularization');
     expect(audit!.after).toMatchObject({ state: 'voided', kind: 'intern_regularization', stateBefore: 'in_review' });
@@ -238,9 +236,9 @@ describe('AC-INTERN-end-14 DEC-593③③ 直接实习转正自动作废在途转
     const { intern, applicationId } = await pendingEntry(w, '直接作废待入职合成实习生');
     await w.regularizeOk(intern.employee.id, direct.effectiveDate, w.other.id);
     expect(await w.statusOf(applicationId)).toBe('voided');
-    expect(
-      (await w.timeline(intern.employee.id)).filter((row) => row.kind === 'intern_regularization'),
-    ).toHaveLength(1);
+    expect((await w.timeline(intern.employee.id)).filter((row) => row.kind === 'intern_regularization')).toHaveLength(
+      1,
+    );
   });
 
   it('直接转正失败（严格控编超编）时整单回滚：申请不被作废', async () => {
@@ -264,7 +262,9 @@ describe('AC-INTERN-end-14 DEC-593③③ 直接实习转正自动作废在途转
       body: { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-25', fields: {} },
     });
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { details: { reason: 'INTERN_REGULARIZATION_IN_PROGRESS' } } });
+    expect(await response.json()).toMatchObject({
+      error: { details: { reason: 'INTERN_REGULARIZATION_IN_PROGRESS' } },
+    });
     expect(await w.statusOf(applicationId)).toBe('in_review');
   });
 });

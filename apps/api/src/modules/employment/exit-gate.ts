@@ -38,7 +38,6 @@ export function exitSourceOf(mode: string, changeType: string | null | undefined
   return mode === 'direct' ? 'direct' : 'approval';
 }
 
-
 const BUTTON = { ...EXIT_BUTTONS, retry: 'Employment.RetryActivation' } as const;
 
 /** 创建 / 提交时确认过的在途调动集合与令牌哈希（写入 exit_requests.pending_transfer_ack，不回传，§8）。 */

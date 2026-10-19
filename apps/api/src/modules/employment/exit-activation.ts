@@ -266,7 +266,8 @@ async function runSteps(
     await assertExtendedEmploymentAvailable(tx, ctx, ref, before, planned, late.effectiveDate);
   }
   // 结束实习保存到生效之间，转正申请可能已审批通过并落地：此时人已不是实习生，不能再记“实习结束”，生效失败交 HR（DEC-593①）
-  if (source === 'free_direct') await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
+  if (business.payload.changeType === 'intern_end')
+    await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）

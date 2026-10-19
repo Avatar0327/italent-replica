@@ -67,7 +67,12 @@ export interface VoidedApplication {
 const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 /** §5.2 ③：该员工其他任职业务头按 id 升序 FOR UPDATE；返回各自 revision（锁业务头校验用）。exitId 为空 = 全部业务头。 */
-export async function lockOtherBusinessHeads(tx: Tx, ctx: EmploymentContext, employeeId: string, exitId: string | null) {
+export async function lockOtherBusinessHeads(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  exitId: string | null,
+) {
   const heads = rowsOf<{ id: string; revision: number }>(
     await tx.execute(sql`SELECT id, revision FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
@@ -242,9 +247,17 @@ export async function voidSupersededRegularizations(
   employee: EmploymentEmployeeRow,
 ): Promise<VoidedApplication[]> {
   const open = (
-    await inFlightApplications(tx, ctx, employee.id, ['intern_regularization'], ['in_review', 'approved'], 'application', {
-      unlanded: true,
-    })
+    await inFlightApplications(
+      tx,
+      ctx,
+      employee.id,
+      ['intern_regularization'],
+      ['in_review', 'approved'],
+      'application',
+      {
+        unlanded: true,
+      },
+    )
   ).sort((a, b) => a.id.localeCompare(b.id));
   if (!open.length) return [];
   const heads = await lockOtherBusinessHeads(tx, ctx, employee.id, null);

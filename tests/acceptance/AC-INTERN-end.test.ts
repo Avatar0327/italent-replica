@@ -88,7 +88,11 @@ describe('AC-INTERN-end-01 结束实习：保存即生效', () => {
     expect(run.activated).toEqual([business.id]);
     expect(await w.statusOf(business.id)).toBe('effective');
     const [audit] = await w.audits(business.id, 'employment.exit.effective');
-    expect(audit!.after).toMatchObject({ source: 'free_direct', effectiveDate: '2026-10-11', lastWorkDate: '2026-10-10' });
+    expect(audit!.after).toMatchObject({
+      source: 'free_direct',
+      effectiveDate: '2026-10-11',
+      lastWorkDate: '2026-10-10',
+    });
     expect(await w.leaves(intern.employee.id)).toBe(1);
   });
 });
@@ -120,7 +124,11 @@ describe('AC-INTERN-end-02 校验', () => {
   it('员工 revision 不一致 → 409，不落地', async () => {
     const w = await endWorld(testDb().db, 'end-revision');
     const intern = await w.hire('版本合成实习生', 'intern');
-    const response = await w.terminate(intern.employee.id, { endDate: '2026-09-30' }, (await w.revision(intern.employee.id)) - 1);
+    const response = await w.terminate(
+      intern.employee.id,
+      { endDate: '2026-09-30' },
+      (await w.revision(intern.employee.id)) - 1,
+    );
     expect(response.status).toBe(409);
     expect(await w.timeline(intern.employee.id)).toHaveLength(1);
   });

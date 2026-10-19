@@ -1574,6 +1574,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/activation-store.ts#recordActivationAttempt',
     'apps/api/src/modules/employment/activation-store.ts#unresolvedPredecessor',
     '#runSteps',
+    'apps/api/src/modules/employment/exit-gate.ts#exitSourceOf',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads',
@@ -1619,6 +1620,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-projection.ts#assertNoNewEstablishmentOccupancy',
     'apps/api/src/modules/employment/exit-projection.ts#loadTimelineSegments',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications',
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/timeline.ts#loadPlannedEffectiveDate',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
@@ -1758,6 +1760,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#assertLastWorkDateNotBeforeEntry': [
+    'apps/api/src/modules/employment/cycles.ts#currentEmploymentCycle',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoLeaveInProgress': ['#conflict', '#leavesInProgress'],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoOverdueTransfer': ['#conflict', '#overdueTransferBlocker'],
   'apps/api/src/modules/employment/exit-gate.ts#assertNoRegularizationInFlight': [
@@ -1785,13 +1790,14 @@ export const GRAPH: Graph = {
     '#pendingTransferAckSet',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#createConditions': [
-    'apps/api/src/modules/employment/cycles.ts#currentEmploymentCycle',
     '#assertActualLeaveDate',
     '#assertDictionaries',
+    '#assertLastWorkDateNotBeforeEntry',
     '#assertNoLeaveInProgress',
     '#assertNoOverdueTransfer',
     '#assertNoRegularizationInFlight',
     '#checkPendingTransferAck',
+    '#exitSourceOf',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#createPayload': ['#EXIT_CONTROL_KEYS'],
   'apps/api/src/modules/employment/exit-gate.ts#disclose': [
@@ -2143,6 +2149,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidApplications': [
+    '#describeCause',
+    '#lockInstances',
+    '#voidOne',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
@@ -2151,10 +2163,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
     '#VOID_LIMIT',
     '#exceedsVoidLimit',
-    '#lockInstances',
+    '#voidApplications',
     '#voidCandidates',
-    '#voidOne',
-    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidOne': [
     'apps/api/src/modules/approval/actions.ts#cancel',
@@ -2164,10 +2174,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#activeInstanceOf',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#describeCause',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
     'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidSupersededRegularizations': [
+    'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
+    '#lockOtherBusinessHeads',
+    '#voidApplications',
   ],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
@@ -2411,15 +2427,22 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable': [
+    '#assertNothingEndsInternshipAfter',
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
   'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible': [
     '#assertNothingEndsInternshipAfter',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
-  'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization': [
+  'apps/api/src/modules/employment/intern-eligibility.ts#assertNothingEndsInternshipAfter': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/intern-eligibility.ts#assertNothingEndsInternshipAfter': [
+  'apps/api/src/modules/employment/intern-eligibility.ts#resolveInFlightRegularization': [
+    'apps/api/src/modules/employment/exit-void-applications.ts#voidSupersededRegularizations',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/intern-regularization.ts#confirmEstablishment': [
@@ -2461,6 +2484,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/terminate': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-termination.ts#internTerminationInput',
+    'apps/api/src/modules/employment/intern-termination.ts#terminateIntern',
+    'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -2485,6 +2519,22 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/employment/intern-termination.ts#confirmInFlightRegularizations': [
+    'apps/api/src/modules/employment/exit-gate.ts#disclose',
+    'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
+    '#IN_REVIEW_NOTICE',
+    '#PENDING_ENTRY_NOTICE',
+    '#RETURN_REASON',
+    '#toDisclosable',
+  ],
+  'apps/api/src/modules/employment/intern-termination.ts#terminateIntern': [
+    'apps/api/src/modules/employment/exit-application.ts#createExitApplication',
+    'apps/api/src/modules/employment/exit-gate.ts#assertLastWorkDateNotBeforeEntry',
+    'apps/api/src/modules/employment/exit-lock-plan.ts#lockExitParticipants',
+    'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable',
+    '#confirmInFlightRegularizations',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
   ],
   'apps/api/src/modules/employment/intern-views.ts#convertingQuery': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -4638,7 +4688,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     'apps/api/src/modules/employment/inheritance.ts#prepareInheritance',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
-    'apps/api/src/modules/employment/intern-eligibility.ts#assertNoPendingRegularization',
+    'apps/api/src/modules/employment/intern-eligibility.ts#resolveInFlightRegularization',
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',

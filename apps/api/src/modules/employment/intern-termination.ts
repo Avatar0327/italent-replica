@@ -60,7 +60,12 @@ async function confirmInFlightRegularizations(
   if (due.length)
     throw new AppError('CONFLICT', '已通过审批的实习转正将在结束日当天或之前生效，请先处理该转正', {
       reason: 'INTERN_REGULARIZATION_DUE_BEFORE_END_DATE',
-      ...(await disclose(tx, ctx, employeeId, toDisclosable(due, () => ({})))),
+      ...(await disclose(
+        tx,
+        ctx,
+        employeeId,
+        toDisclosable(due, () => ({})),
+      )),
     });
   const warned = rows.filter((row) => row.state === 'in_review' || !input.cancelPendingEntry);
   if (!warned.length || input.confirmed) return;
