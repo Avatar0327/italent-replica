@@ -472,6 +472,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',
+    'apps/api/src/modules/org-adjustment/approval-adapter.ts#orgAdjustmentAdapter',
     'apps/api/src/modules/talent-review/approval-adapter.ts#talentReviewAdapter',
   ],
   'apps/api/src/modules/approval/adapters.ts#businessRevision': ['apps/api/src/modules/approval/context.ts#rowsOf'],
