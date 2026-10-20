@@ -23,10 +23,15 @@ import {
   assertBusinessInputSubset,
   assertInitiatorRelation,
   exitOptionsSchema,
+  NO_BLACKLIST,
+  resolveBlacklistFields,
+  touchesBlacklist,
+  type BlacklistFields,
   type ExitInitiation,
   type ExitOptions,
 } from './exit-initiation.js';
 import { normalizeEmploymentInput } from './fields.js';
+import { loadPlannedEffectiveDate } from './timeline.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
 import type { ChangeType, CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { lockExitParticipants } from './exit-lock-plan.js';
@@ -60,11 +65,21 @@ export interface ExitApplicationInput {
   readonly retirement?: RetirementCreateInput;
 }
 
+/** 请求里出现加黑键时，用合并后的整组替换（false 时三项清空）；没出现则原样返回。 */
+function withBlacklist<T extends Partial<BlacklistFields>>(
+  exit: T,
+  current: BlacklistFields,
+  effectiveDate: string,
+): T {
+  return touchesBlacklist(exit) ? { ...exit, ...resolveBlacklistFields(current, exit, effectiveDate) } : exit;
+}
+
 /** exit_requests 的可写列（扩展行 ← exit 区块）；金额以字符串入库。 */
 function columnValues(exit: ExitOptions) {
   const { dutyTransfer: _duty, pendingTransferAck: _ack, compensationAmount, nonCompeteAmount, ...rest } = exit;
   return {
     ...rest,
+    ...(rest.blacklistNote === undefined ? {} : { blacklistNote: rest.blacklistNote || null }),
     ...(compensationAmount === undefined ? {} : { compensationAmount: compensationAmount.toFixed(2) }),
     ...(nonCompeteAmount === undefined ? {} : { nonCompeteAmount: nonCompeteAmount.toFixed(2) }),
   };
@@ -91,9 +106,9 @@ export async function createExitApplication(
 ): Promise<EmploymentBusiness> {
   const employeeId = input.employeeId.toLowerCase();
   const kind = input.kind ?? 'leave';
-  const exit = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
+  const subset = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
   const typed = input.changeType ? { changeType: input.changeType } : {};
-  if (kind === 'retirement') assertRetirementFields(exit);
+  if (kind === 'retirement') assertRetirementFields(subset);
   assertBusinessInputSubset(input.initiation, input);
   const normalized = normalizeEmploymentInput(ctx, {
     kind,
@@ -104,6 +119,8 @@ export async function createExitApplication(
     fields: input.fields ?? {},
     customFields: input.customFields ?? {},
   });
+  // 加黑三项在锁之前校验（400 不占锁）；只在勾选时把合并后的整组写进扩展行，未勾选的离职扩展行与审计保持原样
+  const exit = withBlacklist(subset, NO_BLACKLIST, normalized.effectiveDate);
   // 职责转交计划（DEC-213）：结构校验在锁之前；参与员工闭包（离职人 + 转交下属）先于任何其他锁取齐（§5.2 ①，与批量共用）
   const duty = exit.dutyTransfer === undefined ? null : normalizeLinkage({ dutyTransfer: exit.dutyTransfer });
   await lockExitParticipants(tx, ctx, [{ employeeId, dutyTransfer: exit.dutyTransfer }]);
@@ -244,7 +261,9 @@ export async function updateExitFields(
     if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, dictionary, value);
   }
   await assertHandoverEmployee(tx, ctx, patch.fields.handoverEmployeeId);
-  const values = columnValues(patch.fields);
+  // 加黑三项与 addToBlacklist 合并校验（创建同一入口）：生效日取计划生效日，“是”改“否”清掉旧值
+  const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
+  const values = columnValues(withBlacklist(patch.fields, row, planned));
   if (!Object.keys(values).length) throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   await tx
     .update(exitRequests)

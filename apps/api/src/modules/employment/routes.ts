@@ -99,6 +99,7 @@ import { registerRetirementRuleRoutes } from './retirement-rule-routes.js';
 import { registerRetirementIntentionRoutes } from './retirement-intention-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
+import { registerExitHandoverRoutes } from './exit-handover-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
 import { registerEntryRoutes } from './entry-routes.js';
 import { registerEntryEmailRoutes } from './entry-email-routes.js';
@@ -137,6 +138,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerExitRoutes(module, deps, authorizeBusinessWrite);
   registerRetirementRoutes(module, deps, authorizeBusinessWrite);
   registerBlacklistRoutes(module, deps);
+  registerExitHandoverRoutes(module, deps);
   registerEntryRoutes(module, deps, authorizeBusinessWrite);
   registerEntryEmailRoutes(module, deps, authorizeBusinessWrite);
   registerInternRoutes(module, deps);
