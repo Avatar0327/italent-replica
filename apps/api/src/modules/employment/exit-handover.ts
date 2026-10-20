@@ -17,6 +17,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   checkHandoverTrigger,
   HANDOVER_CANCEL_REASON,
+  HANDOVER_NODE_KEYS,
   HANDOVER_NOT_LAUNCHED_HINTS,
   HANDOVER_NODE_OF_TODO,
   HANDOVER_TRIGGER_DEFAULT,
@@ -54,6 +55,9 @@ import {
 import { findCurrentRecord } from './read-model.js';
 import { lockEmploymentEmployee, rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
+
+/** 引擎因节点取不到审批人而拒绝推进的两种原因（engine.ts firstNodeEmpty / noAssignee，都带 details.nodeKey）。 */
+const NO_HANDLER_REASONS: ReadonlySet<string> = new Set(['APPROVAL_FIRST_NODE_EMPTY', 'APPROVAL_NO_ASSIGNEE']);
 
 const REQUEST_TYPE = 'exit-handover-request';
 
@@ -131,9 +135,12 @@ export async function launchExitHandover(
     return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId));
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
-    const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
-    // 工作交接节点三者都空（交接人、直线经理、兜底处理人）：不发起，落“交接未发起”记录，离职批准照常通过（DEC-663）
-    if (reason === 'APPROVAL_FIRST_NODE_EMPTY') return recordNotLaunched(tx, ctx, event, initiatorUserId);
+    const details = error.details as { reason?: string; nodeKey?: string } | undefined;
+    const reason = details?.reason ?? error.code;
+    // 工作交接节点取不到处理人（交接人、直线经理、兜底处理人都空）：不发起，落“交接未发起”记录，离职批准照常通过（DEC-663）。
+    // 与节点“无审批人”策略无关：转异常管理员时引擎报“首节点审批人为空”，无操作时报“无审批人”，按引擎给的节点编码判定
+    if (NO_HANDLER_REASONS.has(reason) && details?.nodeKey === HANDOVER_NODE_KEYS.work)
+      return recordNotLaunched(tx, ctx, event, initiatorUserId);
     await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
     return { outcome: 'failed', reason };
   }
