@@ -9,6 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { createMou, updateMou } from '../../apps/api/src/modules/permission/data-scope-admin.js';
 import { BASE, seedPermissionWorld } from './AC-PRM-support.js';
+import { idleInTransaction } from './support/pg-interleave.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -32,7 +33,8 @@ async function waitForBlocked(db: Db, expected: number) {
 }
 
 describe.skipIf(!realPostgres)('管理单元：删除父级 × 新建下级（真 PG 交错）', () => {
-  it('删除父级持锁未提交时新建下级等待；删除提交后新建按父级不存在拒绝', async () => {
+  /** expectedBlocked 默认 1；失败路径回归注入一个不符的人数，模拟“等待阻塞超时”。 */
+  async function deleteThenCreate(expectedBlocked = 1) {
     const { db } = testDb();
     const world = await seedPermissionWorld(db);
     const created = await world.api.request('POST', `${BASE}/mous`, {
@@ -67,7 +69,7 @@ describe.skipIf(!realPostgres)('管理单元：删除父级 × 新建下级（�
       () => 'created',
       (error: unknown) => error,
     );
-    await waitForBlocked(db, 1);
+    await waitForBlocked(db, expectedBlocked);
     release();
     await deleting;
     expect(await creating).toMatchObject({ code: 'NOT_FOUND' });
@@ -76,5 +78,12 @@ describe.skipIf(!realPostgres)('管理单元：删除父级 × 新建下级（�
       tx.execute(sql`SELECT count(*)::int AS n FROM permission_mous WHERE parent_id=${parent.id}::uuid`),
     );
     expect(Number(rowsOf<{ n: number }>(orphans)[0]?.n)).toBe(0);
+  }
+
+  it('删除父级持锁未提交时新建下级等待；删除提交后新建按父级不存在拒绝', () => deleteThenCreate());
+
+  it('失败路径（F-282）：阻塞人数不符、等待超时后，不留着持锁事务（无“事务内空闲”会话）', async () => {
+    await expect(deleteThenCreate(2)).rejects.toThrow('超时');
+    expect(await idleInTransaction(testDb().db), '持锁事务应已结束').toBe(0);
   });
 });

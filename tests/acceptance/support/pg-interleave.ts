@@ -10,6 +10,15 @@ export async function lockWaiters(db: Db): Promise<number> {
   return Number(row?.n);
 }
 
+/** 停在“事务内空闲”的会话数（持锁事务没结束的特征）；本连接不算。 */
+export async function idleInTransaction(db: Db): Promise<number> {
+  const [row] = rowsOf<{ n: number }>(
+    await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname=current_database() AND state='idle in transaction' AND pid<>pg_backend_pid()`),
+  );
+  return Number(row?.n);
+}
+
 /** 等到请求结束或恰有 expected 个会话在等锁，返回先发生的那一个。 */
 export async function settledOrBlocked(db: Db, request: Promise<unknown>, expected: number) {
   let settled = false;

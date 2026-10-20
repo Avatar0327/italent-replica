@@ -19,7 +19,7 @@ import {
 } from './AC-TR-F082-rebind-support.js';
 import { lockFieldCatalog } from '../../apps/api/src/modules/talent-review/field-catalog.js';
 import { rowsOf } from './support/f048.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { idleInTransaction, waitForBlocked } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -137,7 +137,8 @@ pg('AC-22 改绑 × 新建字段 / 删除字段 / 改名（真 PG）', () => {
 });
 
 pg('AC-22 两遍规划之间新增同名字段（真 PG，F082-5 第 1 轮 P3）', () => {
-  it('第一遍规划之后、版本行共享锁之前提交了同名新字段：409 CALC_FIELD_CHANGED、没有引用写入；换命令 ID 重试转 unresolved', async () => {
+  /** secondBlocked 默认 2；失败路径回归注入一个不符的人数，模拟“第二次等待阻塞超时”。 */
+  async function twoPassScenario(secondBlocked = 2) {
     const db = testDb().db;
     const w = await rebindWorld(db, 'f082-pg22-twopass');
     const [target, source] = [await w.numberField(), await w.field('number', { name: '双遍乙' })];
@@ -158,7 +159,7 @@ pg('AC-22 两遍规划之间新增同名字段（真 PG，F082-5 第 1 轮 P3）
     await waitForBlocked(db, 1);
     // 改绑的第一遍规划读到的字段目录里还没有新字段（新建未提交），随后在版本行共享锁处排队
     const rebinding = w.rebind();
-    await waitForBlocked(db, 2);
+    await waitForBlocked(db, secondBlocked);
     release();
     await holder;
     const fresh = await creating;
@@ -177,5 +178,13 @@ pg('AC-22 两遍规划之间新增同名字段（真 PG，F082-5 第 1 轮 P3）
       [`candidate:${source.id}`, `candidate:${fresh.id}`].sort(),
     );
     await expectConsistent(db, w);
+  }
+
+  it('第一遍规划之后、版本行共享锁之前提交了同名新字段：409 CALC_FIELD_CHANGED、没有引用写入；换命令 ID 重试转 unresolved', () =>
+    twoPassScenario());
+
+  it('失败路径（F-282）：第二次等待阻塞人数不符、超时后，不留着持锁事务（无“事务内空闲”会话）', async () => {
+    await expect(twoPassScenario(3)).rejects.toThrow('超时');
+    expect(await idleInTransaction(testDb().db), '持锁事务应已结束').toBe(0);
   });
 });

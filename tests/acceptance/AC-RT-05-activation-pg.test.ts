@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { retirementWorld, type RetirementWorld } from './AC-RT-support.js';
 import { tenantApi } from './support/tenant-api.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { idleInTransaction, waitForBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -41,13 +41,14 @@ async function queueBehind(
   x: RetirementWorld,
   lock: (tx: Tx) => Promise<unknown>,
   requests: readonly (() => Promise<unknown>)[],
+  blockedAfter = (index: number) => index + 1, // 失败路径回归注入不符的人数
 ) {
   const session = holder(x, lock);
   await session.held;
   const running: Promise<unknown>[] = [];
   for (const [index, request] of requests.entries()) {
     running.push(request());
-    await waitForBlocked(x.db, index + 1);
+    await waitForBlocked(x.db, blockedAfter(index));
   }
   session.release();
   await session.done;
@@ -104,6 +105,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-05-pg ① 退休�
       expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'retirement']);
     },
   );
+  it('失败路径（F-282）：阻塞人数不符、等待超时后，不留着持锁事务（无“事务内空闲”会话）', async () => {
+    const x = await world('rt-pg-wait-fail');
+    const draft = await x.submittedRetire('2026-10-05');
+    const review = await x.transferIn('in_review', '2026-10-30');
+    const requests = [() => x.approveInReview(draft.id), () => approveTransfer(x, review.id)];
+    await expect(queueBehind(x, lockEmployee(x), requests, (index) => index + 2)).rejects.toThrow('超时');
+    expect(await idleInTransaction(x.db), '持锁事务应已结束').toBe(0);
+  });
 });
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-05-pg ② 组织停用 vs 退休申请最后节点同意', () => {
