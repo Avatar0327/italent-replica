@@ -1,5 +1,5 @@
 {
-  "id": "2bf6a411-31a3-4931-8f5f-7e559521cf08",
+  "id": "ebac6ab7-d814-4ccf-a48a-4405950bfe68",
   "prevId": "7540dc75-836b-4a04-be4f-ada64ee16a3f",
   "version": "7",
   "dialect": "postgresql",
@@ -10770,6 +10770,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "employment_outbox_part_time_linkage_pending": {
+          "name": "employment_outbox_part_time_linkage_pending",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"employment_outbox\".\"event_type\" = 'employment.part_time.linkage.pending'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -61449,306 +61477,6 @@
         "exit_handover_items_revision_positive": {
           "name": "exit_handover_items_revision_positive",
           "value": "\"exit_handover_items\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retirement_rule_daily_runs": {
-      "name": "retirement_rule_daily_runs",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'running'"
-        },
-        "position_employee_id": {
-          "name": "position_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "lease_until": {
-          "name": "lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "skipped_count": {
-          "name": "skipped_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "retirement_rule_daily_runs_tenant_id_tenants_id_fk": {
-          "name": "retirement_rule_daily_runs_tenant_id_tenants_id_fk",
-          "tableFrom": "retirement_rule_daily_runs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "retirement_rule_daily_runs_pk": {
-          "name": "retirement_rule_daily_runs_pk",
-          "columns": [
-            "tenant_id",
-            "purpose",
-            "business_date"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retirement_rule_daily_runs_purpose": {
-          "name": "retirement_rule_daily_runs_purpose",
-          "value": "\"retirement_rule_daily_runs\".\"purpose\" IN ('expected_date', 'flexible_range')"
-        },
-        "retirement_rule_daily_runs_state": {
-          "name": "retirement_rule_daily_runs_state",
-          "value": "\"retirement_rule_daily_runs\".\"state\" IN ('running', 'done')"
-        },
-        "retirement_rule_daily_runs_attempts": {
-          "name": "retirement_rule_daily_runs_attempts",
-          "value": "\"retirement_rule_daily_runs\".\"attempts\" > 0 AND \"retirement_rule_daily_runs\".\"skipped_count\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retirement_rule_run_cursors": {
-      "name": "retirement_rule_run_cursors",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position_employee_id": {
-          "name": "position_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "retirement_rule_run_cursors_tenant_id_tenants_id_fk": {
-          "name": "retirement_rule_run_cursors_tenant_id_tenants_id_fk",
-          "tableFrom": "retirement_rule_run_cursors",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "retirement_rule_run_cursors_tenant_id": {
-          "name": "retirement_rule_run_cursors_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "retirement_rule_run_cursors_purpose": {
-          "name": "retirement_rule_run_cursors_purpose",
-          "value": "\"retirement_rule_run_cursors\".\"purpose\" IN ('expected_date', 'flexible_range')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retirement_rule_run_skips": {
-      "name": "retirement_rule_run_skips",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "retirement_rule_run_skips_tenant_id_tenants_id_fk": {
-          "name": "retirement_rule_run_skips_tenant_id_tenants_id_fk",
-          "tableFrom": "retirement_rule_run_skips",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "retirement_rule_run_skips_run_fk": {
-          "name": "retirement_rule_run_skips_run_fk",
-          "tableFrom": "retirement_rule_run_skips",
-          "tableTo": "retirement_rule_daily_runs",
-          "columnsFrom": [
-            "tenant_id",
-            "purpose",
-            "business_date"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "purpose",
-            "business_date"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "retirement_rule_run_skips_pk": {
-          "name": "retirement_rule_run_skips_pk",
-          "columns": [
-            "tenant_id",
-            "purpose",
-            "business_date",
-            "employee_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retirement_rule_run_skips_state": {
-          "name": "retirement_rule_run_skips_state",
-          "value": "\"retirement_rule_run_skips\".\"state\" IN ('pending', 'given_up')"
         }
       },
       "isRLSEnabled": false

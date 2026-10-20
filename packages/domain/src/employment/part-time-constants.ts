@@ -52,6 +52,18 @@ export const PART_TIME_REMARK_MAX = 32766;
 /** 审计 / outbox 对象类型（§7.4）。 */
 export const PART_TIME_AUDIT_OBJECTS = { record: 'employment-part-time', request: 'part-time-request' } as const;
 
+/**
+ * 联动事件（§4.8，PT-7；经 auditEmployment 写 audit + employment_outbox，不建表）：待执行（开始日 > 今天时保存）→
+ * 已执行 / 已跳过（到期或立即执行的结果，带机读原因）。待执行且没有后两者之一 = 未办结，由定时生效在开始日执行。
+ */
+export const PART_TIME_LINKAGE_EVENTS = {
+  pending: 'employment.part_time.linkage.pending',
+  linked: 'employment.part_time.linked',
+  skipped: 'employment.part_time.linkage.skipped',
+} as const;
+/** 联动跳过的机读原因（审计 after.reason）：兼职已结束 / 记录不可用 / 兼职上已没有联动 / 其余取业务拒绝的原因码。 */
+export const PART_TIME_LINKAGE_SKIPS = { ended: 'ENDED', unavailable: 'UNAVAILABLE', none: 'NO_LINKAGE' } as const;
+
 /** 任职记录对象上的兼职按钮（§7.2；原站编码未取证，B-9，复刻自定）。 */
 export const PART_TIME_BUTTONS = {
   direct: 'Employment.PartTime',
@@ -100,7 +112,6 @@ export const PART_TIME_ERRORS = {
   typeImmutable: 'PART_TIME_TYPE_IMMUTABLE',
   /** 批量结束：同一 recordId 重复（§4.4）。 */
   duplicateRecord: 'DUPLICATE_RECORD',
-  linkageNotAvailable: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
   /** 申请当前状态不允许该动作（如审批中不能直接修改）。 */
   requestStateInvalid: 'PART_TIME_REQUEST_STATE_INVALID',
   /** 审批编辑带了适配器不接的字段。 */
