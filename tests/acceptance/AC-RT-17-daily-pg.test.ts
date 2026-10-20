@@ -3,6 +3,7 @@
  * - 两个进程同时认领当天批次，只有一个持有租约；
  * - 每日批次与立即执行同时跑：同一员工同日至多一次写入；
  * - HR 手改并核准同一员工（持员工锁）时，批次 SKIP LOCKED 跳过、第二遍仍忙则放弃，核准写入后不被覆盖。
+ * - F-292：主扫描、第二遍写入及仍忙分支，所有权校验后至提交前均阻止租约接管。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -31,25 +32,22 @@ const expectedRun = (result: Awaited<ReturnType<typeof runBatch>>) =>
 
 /**
  * 屏障：第一次按指定用途加载规则的调用（持有批次的进程 A）在规则加载完成后暂停，其余调用（B）直接通过。
- * 返回 reached（A 已暂停）与 proceed（放行 A）。
+ * 只覆盖已接管后的旧 owner 拒绝及两用途顺序；FOR SHARE 的保护由“校验后屏障”三例证明。
  */
 function pauseFirstRuleLoad(purpose: 'expected_date' | 'flexible_range') {
-  let reached!: () => void;
-  let proceed!: () => void;
-  const reachedSignal = new Promise<void>((resolve) => (reached = resolve));
-  const proceedSignal = new Promise<void>((resolve) => (proceed = resolve));
+  const gate = barriers.gate();
   const load = rulesModule.loadRetirementRulesForRun;
   let paused = false;
   vi.spyOn(rulesModule, 'loadRetirementRulesForRun').mockImplementation(async (...args) => {
     const loaded = await load(...args);
     if (args[2] === purpose && !paused) {
       paused = true;
-      reached();
-      await proceedSignal;
+      gate.reach();
+      await gate.proceed;
     }
     return loaded;
   });
-  return { reached: reachedSignal, proceed };
+  return gate;
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日批次并发（真 PG）', () => {
@@ -163,36 +161,35 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日
     await w.fixedAgeRule(60);
     await w.setSwitch('expected_date', true);
 
-    let locked!: () => void;
-    let release!: () => void;
-    const lockedSignal = new Promise<void>((resolve) => (locked = resolve));
-    const releaseSignal = new Promise<void>((resolve) => (release = resolve));
-    const hr = withTenant(w.db, w.tenantId, async (tx) => {
-      await appendEmployee(
-        tx,
-        {
-          tenantId: w.tenantId,
-          userId: w.userId,
-          timezone: w.session.tenant.timezone,
-          now: clockAt(DAY),
-          commandId: randomUUID(),
-          expectedRevision: 0,
-        } as never,
-        employee,
-        { expectedRetirementDate: '2031-01-31', expectedRetirementConfirmed: true },
-        false,
-      );
-      locked();
-      await releaseSignal;
-    });
-    await lockedSignal;
+    const gate = barriers.gate();
+    const hr = barriers.track(
+      withTenant(w.db, w.tenantId, async (tx) => {
+        await appendEmployee(
+          tx,
+          {
+            tenantId: w.tenantId,
+            userId: w.userId,
+            timezone: w.session.tenant.timezone,
+            now: clockAt(DAY),
+            commandId: randomUUID(),
+            expectedRevision: 0,
+          } as never,
+          employee,
+          { expectedRetirementDate: '2031-01-31', expectedRetirementConfirmed: true },
+          false,
+        );
+        gate.reach();
+        await gate.proceed;
+      }),
+    );
+    await gate.waitFor(hr);
 
-    const result = await runBatch(w);
+    const result = await barriers.track(runBatch(w));
     const run = expectedRun(result);
     expect(run.updated.map((item) => item.employeeId)).toEqual([other]);
     expect(run.givenUp).toBe(1);
     expect(await w.runRow('expected_date', DAY)).toMatchObject({ state: 'done', skipped: 1 });
-    release();
+    gate.release();
     await hr;
 
     expect(await w.personOf(employee)).toMatchObject({ expected: '2031-01-31', confirmed: true });
@@ -209,8 +206,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日
     const base = await w.personOf(employee);
     const barrier = pauseFirstRuleLoad('expected_date');
 
-    const stale = runBatch(w, clockAt(DAY));
-    await barrier.reached;
+    const stale = barriers.track(runBatch(w, clockAt(DAY)));
+    await barrier.waitFor(stale);
     const changed = await w.session.request('PUT', `/retirement-rules/${rule.id}`, {
       ifMatch: rule.revision,
       body: {
@@ -225,11 +222,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日
     });
     expect(changed.status, await changed.clone().text()).toBe(200);
 
-    const taker = await runBatch(w, clockAt(DAY, '02:11:00'));
+    const taker = await barriers.track(runBatch(w, clockAt(DAY, '02:11:00')));
     expect(expectedRun(taker)).toMatchObject({ ran: true, resumed: true });
     expect(await w.personOf(employee)).toMatchObject({ expected: '2036-06-30', revision: base.revision + 1 });
 
-    barrier.proceed();
+    barrier.release();
     expect(expectedRun(await stale).ran).toBe(false);
     // 旧进程的人事版本与审计整体回滚：P 与版本号都不被它改变
     expect(await w.personOf(employee)).toMatchObject({ expected: '2036-06-30', revision: base.revision + 1 });
@@ -251,13 +248,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日
     await w.setSwitch('flexible_range', true);
     const barrier = pauseFirstRuleLoad('expected_date');
 
-    const first = runBatch(w, clockAt(DAY));
-    await barrier.reached;
-    const second = await runBatch(w, clockAt(DAY));
+    const first = barriers.track(runBatch(w, clockAt(DAY)));
+    await barrier.waitFor(first);
+    const second = await barriers.track(runBatch(w, clockAt(DAY)));
     expect(second.runs[0]!.purposes.map((item) => item.ran)).toEqual([false, false]);
     expect(await w.runRow('flexible_range', DAY)).toBeUndefined();
 
-    barrier.proceed();
+    barrier.release();
     const done = (await first).runs[0]!.purposes;
     expect(done.map((item) => item.ran)).toEqual([true, true]);
     expect(await w.personOf(employee)).toMatchObject({
