@@ -225,8 +225,13 @@ function editableInput(
   }
   // 必填与详情下发的 required 同一张表（APPROVAL_EDIT_REQUIRED）：空值当次拒收
   const required = APPROVAL_EDIT_REQUIRED[approvalType] ?? {};
-  const blank = keys.find((key) => Object.hasOwn(required, key) && isBlank(fields[key]));
-  if (blank) throw approvalError('VALIDATION_FAILED', required[blank]!, '必填项不能为空', { field: blank });
+  const blanks = keys.filter((key) => Object.hasOwn(required, key) && isBlank(fields[key]));
+  if (blanks.length) {
+    throw approvalError('VALIDATION_FAILED', required[blanks[0]!]!, '必填项不能为空', {
+      field: blanks[0],
+      missingFields: blanks,
+    });
+  }
   return fields;
 }
 
