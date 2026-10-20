@@ -1,5 +1,6 @@
 /**
- * 撤销离职（R2-T03 设计 §7.1，DM-R5 / R6，DEC-222；批 B4）：四种情况共用一个入口 cancelExit，状态迁移走 transitionEmployment
+ * 撤销离职 / 退休（R2-T03 设计 §7.1，DM-R5 / R6，DEC-222；批 B4；退休 R2-T04 §6，批 5a′ 同一个 cancelExit、只把写死离职的点参数化）：
+ * 四种情况共用一个入口 cancelExit，状态迁移走 transitionEmployment
  * （revoke / delete，唯一的状态机与时间轴写入处），本文件负责：情况判定、全局锁序（员工 / 业务 → 组织 → 编制 → 审批实例）、
  * §6B 区间变化统一校验（approved / effective 两种情况各一次，函数同一个）、撤销记录 exit_cancellations、撤销清单（下游探针）、审计与撤销端口。
  * “不删历史”：版本、状态事件、exit_requests、exit_effects、命令台账全部保留，只追加 voided / deleted 事件 + 墓碑 + 撤销记录。
@@ -16,12 +17,13 @@ import { auditEmployment } from './context.js';
 import { loadOccupancy, assertOccupancyChange } from './exit-cancel-intervals.js';
 import { runExitCancelledHooks, type ExitCancelCase } from './exit-confirmation.js';
 import { probeDownstream, type Downstream } from './exit-downstream.js';
-import { loadExitRequest } from './exit-gate.js';
+import { businessKind, isExitKind, loadExitRequest } from './exit-gate.js';
 import { lockExitOrganizationResources } from './exit-void-applications.js';
+import './retirement-cancel-hook.js';
 import { lockEmploymentBusiness, rowsOf } from './record-store.js';
 import { transitionEmployment } from './transitions.js';
 import { lockTransferParticipants } from './transfer-locks.js';
-import type { EmploymentBusiness, EmploymentContext } from './types.js';
+import type { BusinessKind, EmploymentBusiness, EmploymentContext } from './types.js';
 
 export interface CancelInput {
   /** 撤销离职原因（必填，原站弹窗唯一必填项，T-402e / W-108）。 */
@@ -60,9 +62,15 @@ export function exitCancelCase(state: string, today: string, lastWorkDate: strin
   throw new AppError('CONFLICT', '当前状态不能撤销离职', { reason: 'EXIT_NOT_CANCELLABLE', state });
 }
 
-const textReason = (value: string) => {
+/** 文案按业务类型取名（退休 R2-T04 §6）；原因码、状态码两种业务共用。 */
+export const exitKindLabel = (kind: string) => (kind === 'retirement' ? '退休' : '离职');
+
+const textReason = (value: string, kind: string) => {
   const reason = value.trim();
-  if (!reason) throw new AppError('VALIDATION_FAILED', '请填写撤销离职原因', { reason: 'EXIT_CANCEL_REASON_REQUIRED' });
+  if (!reason)
+    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
+      reason: 'EXIT_CANCEL_REASON_REQUIRED',
+    });
   return reason;
 };
 
@@ -84,13 +92,8 @@ async function lockForCancel(tx: Tx, ctx: EmploymentContext, businessId: string,
   return business;
 }
 
-export async function cancelExit(
-  tx: Tx,
-  ctx: EmploymentContext,
-  businessId: string,
-  input: CancelInput,
-): Promise<CancelReceipt> {
-  const reason = textReason(input.reason);
+/** 锁前的业务头（状态 + 业务类型）：不是离职 / 退休单一律 404（文案按类型）。 */
+async function loadCancelHead(tx: Tx, ctx: EmploymentContext, businessId: string) {
   const [head] = rowsOf<{ state: string; kind: string }>(
     await tx.execute(sql`SELECT s.state, p.kind FROM employment_business_objects b
       JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
@@ -99,11 +102,23 @@ export async function cancelExit(
         ORDER BY version_no DESC LIMIT 1) p ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.id=${businessId}::uuid`),
   );
-  if (!head || head.kind !== 'leave') throw new AppError('NOT_FOUND', '离职单不存在');
+  if (!head || !isExitKind(head.kind as BusinessKind))
+    throw new AppError('NOT_FOUND', `${exitKindLabel(head?.kind ?? 'leave')}单不存在`);
+  return head;
+}
+
+export async function cancelExit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  businessId: string,
+  input: CancelInput,
+): Promise<CancelReceipt> {
+  const head = await loadCancelHead(tx, ctx, businessId);
+  const reason = textReason(input.reason, head.kind);
   const occupying = head.state === 'approved' || head.state === 'effective';
   const business = await lockForCancel(tx, ctx, businessId, occupying);
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
-  if (!exit) throw new AppError('NOT_FOUND', '离职单不存在');
+  if (!exit) throw new AppError('NOT_FOUND', `${exitKindLabel(head.kind)}单不存在`);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 锁后以最新状态判定（等锁期间业务可能已被生效 / 撤销，revision 不符已在 lockEmploymentBusiness 拒绝）
   const cancelCase = exitCancelCase(business.state, today, business.payload.lastWorkDate);
@@ -145,12 +160,18 @@ export async function cancelExit(
     'exit-request',
     businessId,
     { state: stateBefore },
-    { state: result.status, case: cancelCase, reason, cancellationId: row!.id },
+    { state: result.status, case: cancelCase, reason, cancellationId: row!.id, kind: head.kind },
     undefined,
     undefined,
     { employeeId: business.employeeId },
   );
-  await runExitCancelledHooks(tx, ctx, { businessId, employeeId: business.employeeId, stateBefore, case: cancelCase });
+  await runExitCancelledHooks(tx, ctx, {
+    businessId,
+    employeeId: business.employeeId,
+    stateBefore,
+    case: cancelCase,
+    kind: head.kind === 'retirement' ? 'retirement' : 'leave',
+  });
   return {
     ...result,
     cancellation: {
@@ -172,13 +193,14 @@ export async function updateCancellationReason(
   cancellationId: string,
   reasonInput: string,
 ) {
-  const reason = textReason(reasonInput);
   const [current] = await tx
     .select()
     .from(exitCancellations)
     .where(and(eq(exitCancellations.tenantId, ctx.tenantId), eq(exitCancellations.id, cancellationId)))
     .for('update');
   if (!current) throw new AppError('NOT_FOUND', '撤销的离职记录不存在');
+  const kind = (await businessKind(tx, ctx.tenantId, current.businessId)) ?? 'leave';
+  const reason = textReason(reasonInput, kind);
   if (current.revision !== ctx.expectedRevision)
     throw new AppError('REVISION_CONFLICT', '撤销记录已被修改，请刷新后显式重提', {
       expected: ctx.expectedRevision,
@@ -195,8 +217,8 @@ export async function updateCancellationReason(
     'exit.cancellation.update',
     'exit-cancellation',
     cancellationId,
-    { reason: current.reason },
-    { reason },
+    { reason: current.reason, kind },
+    { reason, kind },
     undefined,
     undefined,
     { employeeId: current.employeeId },
@@ -237,7 +259,10 @@ export async function cancellationOwner(tx: Tx, tenantId: string, cancellationId
   return row;
 }
 
-/** restore（设计 §7.3）：已撤销 / 作废的离职不能恢复。授权已由入口完成，这里只给统一拒绝。 */
-export function rejectRestore(): never {
-  throw new AppError('CONFLICT', '已撤销的离职不能恢复，请重新办理离职', { reason: 'EXIT_RESTORE_NOT_SUPPORTED' });
+/** restore（设计 §7.3，退休 R2-T04 §6 第 7 行同样不支持）：已撤销 / 作废的不能恢复。授权已由入口完成，这里只给统一拒绝。 */
+export function rejectRestore(kind: 'leave' | 'retirement' = 'leave'): never {
+  const label = exitKindLabel(kind);
+  throw new AppError('CONFLICT', `已撤销的${label}不能恢复，请重新办理${label}`, {
+    reason: 'EXIT_RESTORE_NOT_SUPPORTED',
+  });
 }
