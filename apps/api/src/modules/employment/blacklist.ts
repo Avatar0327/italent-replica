@@ -4,7 +4,8 @@
  *   加黑日期由系统写（手动加黑 = 租户今天；离职加黑由 BE-8b 传离职生效日）；有效截止日期为空 = 永久，原因不推导期限。
  * - 移出只改状态、保留记录；删除整行删除，审计留快照（AGENTS §5）。批量移出 / 删除整批成功或整批失败。
  * - 拦截（DEC-569）：新周期入职类保存时在编制校验之后调用 assertNotBlacklisted，命中有效黑名单 → 409，事务整体回滚。
- * 接线点（BE-8b）：离职生效写名单调用 addBlacklistEntry(source = manual / auto_rule, blacklistDate = 离职生效日)。
+ * 离职生效写名单（BE-8b1，exit-blacklist.ts）：addBlacklistEntry(source = manual / auto_rule, blacklistDate = 离职生效日,
+ *   exitRequestId = 写入它的离职请求，撤销离职时据此回收)。
  */
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Tx } from '@italent/db';
@@ -17,6 +18,7 @@ import {
   BLACKLIST_STATUSES,
   blacklistBlockedMessage,
   type BlacklistSource,
+  isBlacklistEffective,
   MODULE_OBJECTS,
   tenantLocalDate,
 } from '@italent/domain';
@@ -232,7 +234,12 @@ export async function addBlacklistEntry(
   tx: Tx,
   ctx: EmploymentContext,
   input: BlacklistCreateInput,
-  options: { readonly source?: BlacklistSource; readonly blacklistDate?: string } = {},
+  options: {
+    readonly source?: BlacklistSource;
+    readonly blacklistDate?: string;
+    /** 离职生效加黑写入时的离职请求 ID；黑名单页新增、导入不传。 */
+    readonly exitRequestId?: string;
+  } = {},
 ): Promise<BlacklistEntry> {
   await lockBlacklist(tx, ctx.tenantId);
   assertRevision(ctx.expectedRevision, 0);
@@ -250,11 +257,12 @@ export async function addBlacklistEntry(
   const id = randomUUID();
   await tx.execute(sql`
     INSERT INTO employment_blacklist(id, tenant_id, employee_id, name, id_number, mobile_phone, email, reason,
-      blacklist_date, expiry_date, note, source, created_by, created_at, updated_at)
+      blacklist_date, expiry_date, note, source, exit_request_id, created_by, created_at, updated_at)
     VALUES (${id}::uuid, ${ctx.tenantId}, ${employeeId}::uuid, ${person.name}, ${person.idNumber},
       ${person.mobilePhone}, ${person.email}, ${input.reason}, ${blacklistDate}::date,
       ${input.expiryDate ?? null}::date, ${input.note || null}, ${options.source ?? 'manual'},
-      ${auditActor(ctx.userId)}::uuid, ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
+      ${options.exitRequestId ?? null}::uuid, ${auditActor(ctx.userId)}::uuid,
+      ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
   const after = (await readEntry(tx, ctx.tenantId, id))!;
   await audit(tx, ctx, 'create', id, null, after);
   return after;
@@ -305,18 +313,45 @@ async function lockBatch(tx: Tx, ctx: EmploymentContext, input: BlacklistBatchIn
   return entries;
 }
 
+/** 移出一行（黑名单页批量移出与撤销离职回收共用同一套 SQL，DEC-431①）：只改状态，保留记录，审计 blacklist.remove。 */
+async function removeEntry(tx: Tx, ctx: EmploymentContext, before: BlacklistEntry): Promise<BlacklistEntry> {
+  await tx.execute(sql`UPDATE employment_blacklist SET status = 'removed',
+    removed_at = ${ctx.now.toISOString()}::timestamptz, removed_by = ${auditActor(ctx.userId)}::uuid,
+    revision = revision + 1, updated_at = ${ctx.now.toISOString()}::timestamptz
+    WHERE tenant_id = ${ctx.tenantId} AND id = ${before.id}::uuid`);
+  const after = (await readEntry(tx, ctx.tenantId, before.id))!;
+  await audit(tx, ctx, 'remove', before.id, before, after);
+  return after;
+}
+
 export async function removeBlacklistEntries(tx: Tx, ctx: EmploymentContext, input: BlacklistBatchInput) {
   const items: BlacklistEntry[] = [];
-  for (const before of await lockBatch(tx, ctx, input, true)) {
-    await tx.execute(sql`UPDATE employment_blacklist SET status = 'removed',
-      removed_at = ${ctx.now.toISOString()}::timestamptz, removed_by = ${auditActor(ctx.userId)}::uuid,
-      revision = revision + 1, updated_at = ${ctx.now.toISOString()}::timestamptz
-      WHERE tenant_id = ${ctx.tenantId} AND id = ${before.id}::uuid`);
-    const after = (await readEntry(tx, ctx.tenantId, before.id))!;
-    await audit(tx, ctx, 'remove', before.id, before, after);
-    items.push(after);
-  }
+  for (const before of await lockBatch(tx, ctx, input, true)) items.push(await removeEntry(tx, ctx, before));
   return { items };
+}
+
+/** 撤销离职回收名单的结果：移出 / 该行早已被移出 / 该行已过有效截止日期 / 这笔离职没有写过名单行。 */
+export type ExitListingRevocation =
+  | { readonly outcome: 'removed' | 'already_removed' | 'expired'; readonly entry: BlacklistEntry }
+  | { readonly outcome: 'none' };
+
+/**
+ * 撤销离职时回收这笔离职写入的名单行（DEC-631；按 exit_request_id 认行）：仍有效才移出（走 removeEntry），
+ * 已被手动移出或已过期的原样不动。行锁（FOR UPDATE）与名单页并发的移出 / 编辑串行；黑名单页新增、导入的行 exit_request_id 为空，不会被选中。
+ */
+export async function revokeExitListing(
+  tx: Tx,
+  ctx: EmploymentContext,
+  exitRequestId: string,
+): Promise<ExitListingRevocation> {
+  const [entry] = rowsOf<BlacklistEntry>(
+    await tx.execute(sql`SELECT ${COLUMNS} FROM employment_blacklist
+      WHERE tenant_id = ${ctx.tenantId} AND exit_request_id = ${exitRequestId}::uuid FOR UPDATE`),
+  );
+  if (!entry) return { outcome: 'none' };
+  if (entry.status !== 'active') return { outcome: 'already_removed', entry };
+  if (!isBlacklistEffective(entry, tenantLocalDate(ctx.now, ctx.timezone))) return { outcome: 'expired', entry };
+  return { outcome: 'removed', entry: await removeEntry(tx, ctx, entry) };
 }
 
 export async function deleteBlacklistEntries(tx: Tx, ctx: EmploymentContext, input: BlacklistBatchInput) {

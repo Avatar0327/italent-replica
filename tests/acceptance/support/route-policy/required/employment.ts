@@ -18,6 +18,7 @@ const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
+const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
@@ -35,6 +36,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -512,29 +514,78 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
-// ---- R2-T03 B4 撤销离职（exit-routes.ts registerExitCancel / runExitCancel）--------------------------------------------
-const EXIT_CANCEL_BUTTON =
-  "await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true })";
+// ---- R2-T03 B4 撤销离职（exit-routes.ts registerExitCancel / runExitCancel）；R2-T04 5a′ 撤销退休同一套 ----
+interface CancelEntry {
+  readonly file: string;
+  readonly base: '/exits' | '/retirements';
+  readonly button: string;
+  readonly buttonText: string;
+}
+const EXIT_CANCEL: CancelEntry = {
+  file: EXIT,
+  base: '/exits',
+  button: 'Employment.DimissionCancel',
+  buttonText: "await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true })",
+};
+const RETIRE_CANCEL: CancelEntry = {
+  file: RETIRE,
+  base: '/retirements',
+  button: 'Employment.RetireCancel',
+  buttonText:
+    "await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true })",
+};
 const EXIT_CANCEL_READ = "const ctx = await readContext(c, deps, 'object.update', revision(c))";
-function exitCancelEntry(method: string, path: string): Obligation[] {
-  const call = (text: string) => at(EXIT, method, path, text);
+function exitCancelEntry(method: string, path: string, entry: CancelEntry = EXIT_CANCEL): Obligation[] {
+  const call = (text: string) => at(entry.file, method, path, text);
   return [
     ob(
       `obj:${RECORD}:update`,
       ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
-      [call(EXIT_CANCEL_READ), READ, call(EXIT_CANCEL_BUTTON), WRITE_OBJECT],
+      [call(EXIT_CANCEL_READ), READ, call(entry.buttonText), WRITE_OBJECT],
     ),
-    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [call(EXIT_CANCEL_BUTTON), WRITE_BUTTON]),
+    ob(`btn:${RECORD}#${entry.button}@detail`, [], [call(entry.buttonText), WRITE_BUTTON]),
   ];
 }
-function exitCancelCommand(): Obligation[] {
-  const call = (text: string) => at(EXIT, 'POST', '/exits/:id/cancel', text);
+function exitCancelCommand(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
+  const path = `${entry.base}/:id/cancel`;
+  const call = (text: string) => at(entry.file, 'POST', path, text);
   const run = fn(EXIT, 'runExitCancel', "guard: exitCommandGuard(deps, ctx, 'cancel'");
   return [
-    ...exitCancelEntry('POST', '/exits/:id/cancel'),
-    ob(`btn:${RECORD}#Employment.DimissionCancel@detail`, [], [run, EXIT_GUARD, EXIT_PERMISSION, WRITE_BUTTON]),
+    ...exitCancelEntry('POST', path, entry),
+    ob(`btn:${RECORD}#${entry.button}@detail`, [], [run, EXIT_GUARD, EXIT_PERMISSION, WRITE_BUTTON]),
     businessWrite(call('const current = await authorizeBusinessWrite(deps, ctx, id)')),
     linkage(fn(EXIT, 'runExitCancel', 'body: await cancelExit(tx, context, id, input)')),
+  ];
+}
+function exitCancelRestore(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
+  const path = `${entry.base}/:id/restore`;
+  return [
+    ...exitCancelEntry('POST', path, entry),
+    businessWrite(at(entry.file, 'POST', path, 'await authorizeBusinessWrite(deps, ctx, id)')),
+  ];
+}
+function exitCancellationPatch(entry: CancelEntry = EXIT_CANCEL): Obligation[] {
+  const path = `${entry.base}/cancellations/:id`;
+  return [
+    ...exitCancelEntry('PATCH', path, entry),
+    ob(
+      `btn:${RECORD}#${entry.button}@detail`,
+      [],
+      [
+        at(entry.file, 'PATCH', path, "guard: exitCommandGuard(deps, ctx, 'cancel'"),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.exitCancellation',
+      [],
+      [
+        fn(EXIT, 'requireCancellationOwner', 'await requireEmployeeInScope(tx, ctx, found.employeeId)'),
+        EMPLOYEE_IN_SCOPE,
+      ],
+    ),
   ];
 }
 
@@ -710,6 +761,51 @@ const ASSESSMENT_SCOPE_SQL: Evidence = {
 };
 const assessmentView = (call: Evidence) =>
   ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
+
+/** R2-T04 BE-5d2 意向退休日期申请：授权复用任职记录对象，读用 DEC-177 可见口径，写用申请行自己的三个坐标（DEC-193）。 */
+const INTENT = `${SRC}/employment/retirement-intention-routes.ts`;
+const INTENT_SERVICE = `${SRC}/employment/retirement-intention.ts`;
+const INTENT_ACCESS = `${SRC}/employment/retirement-intention-access.ts`;
+const INTENT_STORE = `${SRC}/employment/retirement-intention-store.ts`;
+const INTENT_WRITE_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${INTENT_ACCESS}#requireIntentionWriteScope`,
+  anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+};
+const INTENT_BUTTON = (method: string, path: string, call: string): Obligation =>
+  ob(
+    `btn:${RECORD}#Employment.RetireIntention@detail`,
+    [],
+    [
+      at(INTENT, method, path, call),
+      fn(INTENT, 'intentionGuard', 'await requireIntentionRight(tx, scoped, {'),
+      fn(INTENT_ACCESS, 'requireIntentionRight', 'await requireEmploymentWrite( scoped, request.operation,'),
+      WRITE_BUTTON,
+    ],
+  );
+const intentionWriteScope = (anchorUnit: string, name: string, anchor: string): Obligation =>
+  ob(
+    'guard:employment.intentionWrite',
+    [],
+    [fn(anchorUnit, name, anchor), INTENT_WRITE_SCOPE],
+    '范围外与不存在同一个 404',
+  );
+function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
+  const path = `/retirement-intentions/:id/${action}`;
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(INTENT, 'POST', path, "const ctx = await readContext(c, deps, 'object.update', revision(c))"),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON('POST', path, '{ guard: intentionGuard(deps, ctx, { intentionId: id }, {}) }'),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ];
+}
 
 export const EMPLOYMENT: RequiredTable = {
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
@@ -2745,33 +2841,84 @@ export const EMPLOYMENT: RequiredTable = {
     'registerRetirementChanges',
     RETIRE,
   ),
+  // ---- employment/retirement-intention-routes.ts：R2-T04 BE-5d2 意向退休日期申请（设计 §11 / §12.1）---------------------------
+  'POST /api/tenant/employment/retirement-intentions/employees/:id': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'POST',
+          '/retirement-intentions/employees/:id',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'POST',
+      '/retirement-intentions/employees/:id',
+      '{ guard: intentionGuard(deps, ctx, { employeeId: id }, definedKeys(input)) }',
+    ),
+    intentionWriteScope(
+      INTENT_SERVICE,
+      'createIntention',
+      'await requireIntentionWriteScope(tx, ctx, { employeeId, departmentId, initiatorUserId: ctx.userId })',
+    ),
+  ],
+  'PATCH /api/tenant/employment/retirement-intentions/:id': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'PATCH',
+          '/retirement-intentions/:id',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'PATCH',
+      '/retirement-intentions/:id',
+      '{ guard: intentionGuard(deps, ctx, { intentionId: id }, definedKeys(patch)) }',
+    ),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ],
+  'POST /api/tenant/employment/retirement-intentions/:id/submit': intentionAction('submit'),
+  'POST /api/tenant/employment/retirement-intentions/:id/withdraw': intentionAction('withdraw'),
+  'GET /api/tenant/employment/retirement-intentions': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/retirement-intentions/:id': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    ob(
+      'guard:employment.intentionVisibility',
+      [],
+      [
+        at(INTENT, 'GET', '/retirement-intentions/:id', 'loadVisibleIntention(tx, ctx, id)'),
+        {
+          role: 'impl',
+          unit: `${INTENT_STORE}#loadVisibleIntention`,
+          anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+        },
+      ],
+      '看不见与不存在同一个 404（DEC-177 可见口径）',
+    ),
+  ],
   // ---- R2-T03 B4 撤销离职 ----
   'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
-  'POST /api/tenant/employment/exits/:id/restore': [
-    ...exitCancelEntry('POST', '/exits/:id/restore'),
-    businessWrite(at(EXIT, 'POST', '/exits/:id/restore', 'await authorizeBusinessWrite(deps, ctx, id)')),
-  ],
-  'PATCH /api/tenant/employment/exits/cancellations/:id': [
-    ...exitCancelEntry('PATCH', '/exits/cancellations/:id'),
-    ob(
-      `btn:${RECORD}#Employment.DimissionCancel@detail`,
-      [],
-      [
-        at(EXIT, 'PATCH', '/exits/cancellations/:id', "guard: exitCommandGuard(deps, ctx, 'cancel'"),
-        EXIT_GUARD,
-        EXIT_PERMISSION,
-        WRITE_BUTTON,
-      ],
-    ),
-    ob(
-      'guard:employment.exitCancellation',
-      [],
-      [
-        at(EXIT, 'PATCH', '/exits/cancellations/:id', 'await requireEmployeeInScope(tx, ctx, found.employeeId)'),
-        EMPLOYEE_IN_SCOPE,
-      ],
-    ),
-  ],
+  'POST /api/tenant/employment/exits/:id/restore': exitCancelRestore(),
+  'PATCH /api/tenant/employment/exits/cancellations/:id': exitCancellationPatch(),
+  // ---- R2-T04 BE-5a′ 撤销退休（同一套，按钮 RetireCancel）----
+  'POST /api/tenant/employment/retirements/:id/cancel': exitCancelCommand(RETIRE_CANCEL),
+  'POST /api/tenant/employment/retirements/:id/restore': exitCancelRestore(RETIRE_CANCEL),
+  'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
@@ -2786,6 +2933,13 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/exits/:id': [
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+  ],
+  // ---- R2-T04 BE-5d1 退休五视图与详情（retirement-view-routes.ts registerRetirementViews）-------------------------------
+  'GET /api/tenant/employment/retirements': [
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/retirements/:id': [
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
@@ -2887,6 +3041,51 @@ export const EMPLOYMENT: RequiredTable = {
           operation,
           at(
             BL,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
+  'GET /api/tenant/employment/exit-handover-items': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'GET',
+          '/exit-handover-items',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/exit-handover-items', 'create'],
+        ['PUT', '/exit-handover-items/:id', 'update'],
+        ['DELETE', '/exit-handover-items/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            HANDOVER,
+            'registerExitHandoverRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            HANDOVER,
             method,
             path,
             `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
