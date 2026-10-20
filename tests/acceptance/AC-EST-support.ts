@@ -23,7 +23,8 @@ export async function forceDisableOrg(db: Db, tenantId: string, orgId: string, f
       INSERT INTO org_hierarchy_links (tenant_id, version_id, dimension, parent_org_id, sequence)
       SELECT l.tenant_id, ${id}::uuid, l.dimension, l.parent_org_id, l.sequence FROM org_hierarchy_links l
       JOIN org_versions v ON v.tenant_id = l.tenant_id AND v.id = l.version_id
-      WHERE v.tenant_id = ${tenantId} AND v.id = (SELECT previous_version_id FROM org_versions WHERE id = ${id}::uuid)`);
+      WHERE v.tenant_id = ${tenantId}
+        AND v.id = (SELECT previous_version_id FROM org_versions WHERE id = ${id}::uuid)`);
     const updated = await tx.execute(
       sql`UPDATE org_objects SET revision = revision + 1 WHERE tenant_id = ${tenantId} AND id = ${orgId}::uuid
         RETURNING revision`,
@@ -31,6 +32,22 @@ export async function forceDisableOrg(db: Db, tenantId: string, orgId: string, f
     const rows = (Array.isArray(updated) ? updated : (updated as { rows: unknown[] }).rows) as { revision: number }[];
     return rows[0]!.revision;
   });
+}
+
+/**
+ * 经入口停用含编制的组织：入口先做完全部既有校验（人员、职位、未来版本），最后才轮到 F-296 编制关口；
+ * 命中关口时按“11e 已先结束编制”的口径追加停用版本，其余响应原样返回。用在关心停用校验而非编制的夹具里。
+ */
+export async function disableLiftingEstablishmentGate(
+  db: Db,
+  tenantId: string,
+  org: { id: string },
+  effectiveDate: string,
+  response: Response,
+): Promise<Response> {
+  const body = response.status === 409 ? ((await response.clone().json()) as { error?: { code?: string } }) : null;
+  if (body?.error?.code !== 'ORG_DEACTIVATE_ESTABLISHMENT_END_NOT_AVAILABLE') return response;
+  return Response.json({ revision: await forceDisableOrg(db, tenantId, org.id, effectiveDate) });
 }
 
 export const EST_NOW = new Date('2026-10-01T01:00:00.000Z');
