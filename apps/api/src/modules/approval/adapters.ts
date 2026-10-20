@@ -16,6 +16,7 @@ import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
+import { retirementIntentionAdapter } from '../employment/retirement-intention-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
@@ -67,7 +68,8 @@ export type BusinessType =
   | 'part_time'
   | 'offer'
   | 'offer_batch'
-  | 'probation_assessment';
+  | 'probation_assessment'
+  | 'retirement_intention';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -618,4 +620,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   offer_batch: offerBatchAdapter,
   // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
   probation_assessment: assessmentAdapter,
+  // R2 BE-5d2：意向退休日期申请（业务单 = 意向申请；通过只记录，不写人事字段，A-6）
+  retirement_intention: retirementIntentionAdapter,
 };
