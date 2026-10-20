@@ -2991,7 +2991,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/linkage-participants.ts#hasRequestTables': [
+    '#requestsReady',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/part-time/linkage-participants.ts#partTimeLinkageParticipants': [
+    '#hasRequestTables',
     '#uuidArray',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_EVENTS',

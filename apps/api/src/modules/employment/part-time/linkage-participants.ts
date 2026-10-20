@@ -13,6 +13,22 @@ import { rowsOf } from '../record-store.js';
 
 const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
+/**
+ * 升级前的库（迁移停在兼职申请版本表的联动列之前，升级演练用例）还没有这一列：查到有表之后记住，不每次闭包规划都多一次往返。
+ * 缓存按进程；生产库迁移完整，第一次查询之后恒为真。
+ */
+let requestsReady = false;
+async function hasRequestTables(tx: Tx): Promise<boolean> {
+  if (requestsReady) return true;
+  const [row] = rowsOf<{ ready: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+      WHERE table_schema=current_schema() AND table_name='part_time_request_versions'
+        AND column_name='added_subordinate_ids') AS ready`),
+  );
+  requestsReady = row?.ready === true;
+  return requestsReady;
+}
+
 /** 这些员工名下兼职联动涉及的下属（去重前的原始数组列表，空值已滤掉）。 */
 export async function partTimeLinkageParticipants(
   tx: Tx,
@@ -30,7 +46,9 @@ export async function partTimeLinkageParticipants(
           AND d.event_type IN (${EVENTS.linked}, ${EVENTS.skipped}))`),
   );
   const requests = rowsOf<{ ids: string[] | null }>(
-    await tx.execute(sql`
+    !(await hasRequestTables(tx))
+      ? []
+      : await tx.execute(sql`
       SELECT v.added_subordinate_ids AS ids FROM part_time_requests q
       JOIN LATERAL (SELECT state FROM part_time_request_events e
         WHERE e.tenant_id=q.tenant_id AND e.request_id=q.id ORDER BY event_no DESC LIMIT 1) s ON true
