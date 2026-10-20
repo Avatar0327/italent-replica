@@ -26,6 +26,7 @@ import { activateDueBusinesses } from './activation-service.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
 import { runAutoAssessmentSlot } from './auto-assessment-scheduler.js';
 import { runAutoRegularizationSlot } from './auto-regularization-scheduler.js';
+import { runRetirementSlot } from './retirement-scheduler.js';
 import { EmploymentError } from './errors.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
@@ -259,4 +260,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
   await runAutoRegularizationSlot(db, slot, clock, onError);
   // BE-15b2（DEC-539①）：自动发起考核的每日批次接在自动转正之后（先转正，再按入职天数发起考核）
   await runAutoAssessmentSlot(db, slot, clock, onError);
+  // BE-5c2（R2-T04 §9.2）：预计退休日期 / 弹性范围的每日批次，预计日期先于弹性范围
+  await runRetirementSlot(db, slot, clock, onError);
 }

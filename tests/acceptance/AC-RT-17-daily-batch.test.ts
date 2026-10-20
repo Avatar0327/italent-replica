@@ -87,7 +87,7 @@ describe('AC-RT-17 每日批次', () => {
 
   it('租约过期后从 position_employee_id 续跑：已处理员工零写入，接管登记 attempts + 1', async () => {
     const w = await batchWorld(testDb().db, 'rt17-lease');
-    const ids = [];
+    const ids: string[] = [];
     for (let i = 0; i < 5; i += 1) ids.push(await w.member(`续跑员工${i}`));
     ids.sort();
     await w.fixedAgeRule(60);
@@ -127,7 +127,7 @@ describe('AC-RT-17 每日批次', () => {
     ['锁仍被持有', true, 'given_up'],
   ] as const)('位置提交后、第二遍前崩溃：接管者读到跳过清单重试（%s）', async (_label, stillBusy, expected) => {
     const w = await batchWorld(testDb().db, `rt17-crash-${expected}`);
-    const ids = [];
+    const ids: string[] = [];
     for (let i = 0; i < 4; i += 1) ids.push(await w.member(`崩溃员工${i}`));
     ids.sort();
     await w.fixedAgeRule(60);
@@ -152,7 +152,9 @@ describe('AC-RT-17 每日批次', () => {
     const resumed = await runAt(w, clockAt(DAY, '02:11:00'));
     const run = resumed.of('expected_date');
     expect(run.aborted).toBe(false);
-    expect(run.updated.map((item) => item.employeeId).sort()).toEqual((stillBusy ? ids.slice(1) : ids).slice().sort());
+    // 接管后只办理位置之后的人（ids[2]、ids[3]）与第二遍释放了锁的 ids[0]；ids[1] 在崩溃前已处理
+    const expectedUpdated = stillBusy ? ids.slice(2) : [ids[0]!, ...ids.slice(2)];
+    expect(run.updated.map((item) => item.employeeId).sort()).toEqual(expectedUpdated.slice().sort());
     const row = await w.runRow('expected_date', DAY);
     if (expected === 'done') {
       expect(await w.skipRows('expected_date', DAY)).toEqual([]);
@@ -167,7 +169,7 @@ describe('AC-RT-17 每日批次', () => {
 
   it('第二遍中途崩溃：接管者看到位置已到末尾、仍有 pending，直接进入第二遍', async () => {
     const w = await batchWorld(testDb().db, 'rt17-pass2');
-    const ids = [];
+    const ids: string[] = [];
     for (let i = 0; i < 3; i += 1) ids.push(await w.member(`二遍员工${i}`));
     ids.sort();
     await w.fixedAgeRule(60);
