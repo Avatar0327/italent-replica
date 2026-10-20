@@ -7,7 +7,7 @@
  * - 同一响应多条日志批量只查一次名字。
  */
 import { randomUUID } from 'node:crypto';
-import { withTenant } from '@italent/db';
+import { withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, TRANSFER_NODES, transferScene, type InstanceView } from './AC-APV-support.js';
@@ -25,6 +25,48 @@ function current(view: InstanceView) {
   const tasks = view.tasks.filter((task) => task.status === 'pending');
   expect(tasks).toHaveLength(1);
   return tasks[0]!;
+}
+
+/**
+ * HTTP 级取名计数：包一层库连接，数事务里发往 tenant_member_accounts 的语句条数。
+ * 夹具搭建期间的读写也会经过它，所以每次请求前先 reset。
+ */
+function nameQueryCounter(db: Db) {
+  let count = 0;
+  /** drizzle 的 sql 对象只暴露 queryChunks：把其中的静态文本片段（含嵌套）拼起来即可识别语句。 */
+  const textOf = (query: unknown): string => {
+    if (typeof query === 'string') return query;
+    const chunks = (query as { queryChunks?: unknown[] } | null)?.queryChunks;
+    if (Array.isArray(chunks)) return chunks.map(textOf).join('');
+    const value = (query as { value?: unknown } | null)?.value;
+    return Array.isArray(value) ? value.join('') : '';
+  };
+  const wrapTx = <T extends object>(tx: T): T =>
+    new Proxy(tx, {
+      get: (target, key) => {
+        const value = Reflect.get(target, key);
+        if (key !== 'execute') return value;
+        return (query: unknown, ...rest: unknown[]) => {
+          if (textOf(query).includes('tenant_member_accounts')) count += 1;
+          return (value as (...args: unknown[]) => unknown).call(target, query, ...rest);
+        };
+      },
+    });
+  const counted = new Proxy(db, {
+    get: (target, key) => {
+      const value = Reflect.get(target, key);
+      if (key !== 'transaction') return value;
+      return (fn: (tx: object) => unknown, ...rest: unknown[]) =>
+        (value as (...args: unknown[]) => unknown).call(target, (tx: object) => fn(wrapTx(tx)), ...rest);
+    },
+  });
+  return {
+    db: counted,
+    reset: () => {
+      count = 0;
+    },
+    count: () => count,
+  };
 }
 
 const approvals = (logs: readonly Named[]) => logs.filter((log) => log.event === 'approve');
@@ -115,6 +157,44 @@ describe('F-264 审批日志操作人姓名', () => {
     );
     const after = await w.detail(view.id);
     expect(approvals(after.logs).find((log) => log.actorUserId === ghost)).toMatchObject({ actorName: FALLBACK });
+  });
+
+  it('HTTP 响应里只批量查一次名字：详情、历史分页、管理员日志各一次', async () => {
+    const spy = nameQueryCounter(database().db);
+    const w = await approvalWorld(spy.db, 'f264-count');
+    const s = await transferScene(w);
+    const admin = (await w.person('流程管理员', s.from)).userId;
+    await w.publishedProcess({ nodes: TRANSFER_NODES });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
+    const calls: [string, () => Promise<Response>][] = [
+      ['详情', () => w.request(w.hr.id, 'GET', `${BASE}/instances/${view.id}`)],
+      ['历史分页', () => w.request(w.hr.id, 'GET', `${BASE}/instances/${view.id}/logs`)],
+      ['管理员日志', () => w.request(admin, 'GET', `${BASE}/admin-logs`)],
+    ];
+    for (const [name, call] of calls) {
+      spy.reset();
+      const response = await call();
+      expect(response.status, name).toBe(200);
+      expect(spy.count(), name).toBe(1);
+    }
+  });
+
+  it('自动节点（相同审批人跳过）日志的 actorUserId 与 actorName 均为 null', async () => {
+    const w = await approvalWorld(database().db, 'f264-auto');
+    const s = await transferScene(w);
+    await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
+    await w.publishedProcess({
+      nodes: [
+        { key: 'out_head', approver: 'latest_record_department_head' },
+        { key: 'in_head', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
+        { key: 'in_hrbp', approver: 'record_department_hrbp' },
+      ],
+    });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
+    const skip = view.logs.find((log) => log.event === 'skip' && log.nodeKey === 'in_head')!;
+    expect(skip).toMatchObject({ actorUserId: null, actorName: null });
   });
 
   it('同一响应的多条日志只批量查一次名字；系统动作不查也不带名', async () => {
