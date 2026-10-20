@@ -45,7 +45,7 @@ test('AC-FE-R2d2b-03 等于原日期不确认，409 中文提示与重读恢复'
   await form.getByRole('button', named('提交')).click();
   await expect(form).toContainText('新结束日期不能与原结束日期相同');
   await expect(page.getByText('请确认以下信息', { exact: true })).toHaveCount(0);
-  await expect(form.getByRole('button', named('重读最新版本'))).toBeVisible();
+  await expect(actionButton(form, '重读最新版本')).toBeVisible();
   expect(state.writes).toHaveLength(1);
 });
 test('AC-FE-R2d2b-04 非原发起人提交被拒是中文拒绝并重读，不进 unknown', async ({ page }) => {
@@ -202,10 +202,10 @@ test('AC-FE-R2d2b-11 409 重读保留改过字段，未改字段回填新值，�
   const form = page.getByRole('dialog', named('修改兼职申请'));
   await form.getByLabel('新结束日期', { exact: true }).fill('2027-01-31');
   await form.getByRole('button', named('保存')).click();
-  await expect(form.getByRole('button', named('重读最新版本'))).toBeVisible();
+  await expect(actionButton(form, '重读最新版本')).toBeVisible();
   state.row.revision = 9;
   state.row.requestRemark = '合成服务端新备注';
-  await form.getByRole('button', named('重读最新版本')).click();
+  await actionButton(form, '重读最新版本').click();
   await form.getByRole('button', named('已核对差异，继续编辑')).click();
   await expect(form.getByLabel('新结束日期', { exact: true })).toHaveValue('2027-01-31');
   await expect(form.getByLabel('延长备注', { exact: true })).toHaveValue('合成服务端新备注');

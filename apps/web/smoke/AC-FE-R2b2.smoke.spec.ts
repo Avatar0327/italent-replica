@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Page, Locator } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { item, named, pickDate, save } from './contracts-fixtures.js';
@@ -219,7 +220,7 @@ test('AC-FE-R2b2-09 409 重读保留改动，显式确认后用新 revision', as
   const dialog = await onboard(page);
   await choose(dialog, '是否有试用期', '否');
   await dialog.getByRole('button', save).click();
-  await dialog.getByRole('button', named('重读最新版本')).click();
+  await actionButton(dialog, '重读最新版本').click();
   await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
   await dialog.getByRole('button', save).click();
   await expect(dialog).toHaveCount(0);
@@ -243,7 +244,7 @@ for (const action of ['complete', 'generate-email'])
     dialog = await onboard(page);
     await expect(dialog.getByRole('button', save)).toBeDisabled();
     await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
-    await dialog.getByRole('button', named('回查原单')).click();
+    await actionButton(dialog, '回查原单').click();
     await expect(dialog).toContainText('原单当前值');
     await expect(dialog.getByRole('button', save)).toBeDisabled();
     expect(writes).toBe(1);
@@ -343,7 +344,7 @@ for (const action of ['edit', 'postpone', 'delete']) {
       await dialog.getByRole('button', submit).click();
       await expect(dialog.getByRole('button', submit)).toBeDisabled();
       if (failure !== 'unknown') {
-        await dialog.getByRole('button', named('重读最新版本')).click();
+        await actionButton(dialog, '重读最新版本').click();
         await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
         await dialog.getByRole('button', submit).click();
         await expect(dialog).toHaveCount(0);
@@ -359,7 +360,7 @@ for (const action of ['edit', 'postpone', 'delete']) {
           dialog = page.getByRole('dialog', { name: /^编辑/ });
         } else dialog = await actionDialog(page, action);
         await expect(dialog.getByRole('button', submit)).toBeDisabled();
-        await dialog.getByRole('button', named('回查原单')).click();
+        await actionButton(dialog, '回查原单').click();
         await expect(dialog).toContainText('原单当前值');
         await expect(dialog.getByRole('button', submit)).toBeDisabled();
         expect(attempts).toBe(1);
@@ -381,7 +382,7 @@ test('AC-FE-R2b2-14 编辑冲突重读从服务端列表恢复未改动的试用
   const dialog = page.getByRole('dialog', { name: /^编辑/ });
   await pickDate(dialog, '计划入职日期', '2026-10-25');
   await dialog.getByRole('button', save).click();
-  await dialog.getByRole('button', named('重读最新版本')).click();
+  await actionButton(dialog, '重读最新版本').click();
   await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
   await expect(item(dialog, '是否有试用期').locator('.ant-select-selection-item')).toHaveText('是');
   await expect(item(dialog, '计划入职日期').getByRole('textbox')).toHaveValue('2026-10-25');
@@ -441,7 +442,7 @@ test('AC-FE-R2b2-16 写成功后等整页重读，读失败维持 unknown 锁', 
   await expect(dialog.getByRole('button', save)).toBeDisabled();
   expect(state.writes).toHaveLength(1);
   release();
-  await expect(dialog.getByRole('button', named('回查原单'))).toBeVisible();
+  await expect(actionButton(dialog, '回查原单')).toBeVisible();
   await expect(dialog.getByRole('button', save)).toBeDisabled();
   expect(state.writes).toHaveLength(1);
 });
@@ -537,7 +538,7 @@ for (const [action, status] of [
     let dialog = await actionDialog(page, action);
     if (action === 'edit') await pickDate(dialog, '计划入职日期', '2026-10-25');
     await dialog.getByRole('button', save).click();
-    await expect(dialog.getByRole('button', named('回查原单'))).toBeVisible();
+    await expect(actionButton(dialog, '回查原单')).toBeVisible();
     expect(state.row.id).toBe(nextId);
     await dialog.getByRole('button', named('取消')).click();
     fail = false;

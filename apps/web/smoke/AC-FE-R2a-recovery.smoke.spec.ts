@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 // F-127b 第 3～4 轮：配置对象写命令的冲突恢复（确认后的基线、按 ID 重读本行、业务字段差异、下一次 If-Match、模块级命令存储）。
 import { test, expect } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
@@ -40,7 +41,7 @@ async function stub(page: Page, list: string, write: string, rows: () => object[
 }
 const confirmPop = (page: Page) => page.getByRole('tooltip').getByRole('button', named('确定')).click();
 const rereadAndConfirm = async (scope: Locator) => {
-  await scope.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(scope, '重读最新版本').click();
   await scope.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
 };
 
@@ -101,7 +102,7 @@ test('AC-FE-R2a-28 规则删除冲突：按业务字段展示差异，核对前�
   const table = page.locator('.ant-table').first();
   await table.getByRole('button', named('删除')).click();
   await confirmPop(page);
-  await table.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(table, '重读最新版本').click();
   const differences = table.locator('.ant-table').filter({ hasText: '最新值' });
   await expect(differences.getByRole('row').filter({ hasText: '规则名称' })).toContainText('他人改名规则');
   await expect(differences.getByRole('row').filter({ hasText: '续签规则明细' })).toContainText('"months":24');
@@ -183,7 +184,7 @@ test('AC-FE-R2a-29b 重读时本行已被删除：提示已删除，保持锁定
   const table = page.locator('.ant-table');
   await table.getByRole('button', named('停用')).click();
   await confirmPop(page);
-  await table.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(table, '重读最新版本').click();
   await expect(table.getByText('该记录已被删除', { exact: false })).toBeVisible();
   await expect(table.getByRole('button', named('停用'))).toBeDisabled();
   expect(writes).toHaveLength(1);
@@ -238,7 +239,7 @@ test('AC-FE-R2a-31 规则编辑冲突后被他人删除：表单内提示已删�
   const edit = page.getByRole('dialog', { name: '编辑自动续签规则', exact: true });
   await item(edit, '规则名称').getByRole('textbox').fill('合成改名规则');
   await edit.getByRole('button', save).click();
-  await edit.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(edit, '重读最新版本').click();
   const gone = edit.getByRole('alert').filter({ hasText: '该记录已被删除' });
   await expect(gone).toBeVisible();
   await expect(edit.getByRole('button', save)).toBeDisabled();

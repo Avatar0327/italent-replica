@@ -155,7 +155,7 @@ test('AC-FE-R3a 编辑按当前详情 revision 提交，仅发送改动字段', 
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.goto('/qualification?view=categories');
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await actionButton(page, '编辑').click();
   await page.getByLabel('名称', { exact: true }).fill('更新后的合成类别');
   await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -179,7 +179,7 @@ test('AC-FE-R3a 无按钮权限隐藏新建和编辑，隐藏字段不生成列�
   await page.goto('/qualification?view=levels');
   await expect(page.getByRole('heading', { name: '任职级别', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^新\s*建$/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
+  await expect(actionButton(page, '编辑')).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: '编码' })).toHaveCount(0);
 });
 
@@ -317,7 +317,7 @@ for (const changeName of [false, true]) {
     await page.goto('/staff');
     await page.getByLabel('切换演示身份').selectOption(user);
     await page.goto('/qualification?view=levels');
-    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await actionButton(page, '编辑').click();
     const layer = page.getByLabel('层级', { exact: true });
     await expect(page.locator('.ant-form-item').filter({ has: layer })).toContainText('合成配置');
     await page.locator('.ant-form-item').filter({ has: layer }).locator('.ant-select-clear').click();
@@ -325,7 +325,7 @@ for (const changeName of [false, true]) {
     await actionButton(page, '保存').click();
     await expect.poll(() => body).toEqual([changeName ? { name: '改名后的级别', layerId: null } : { layerId: null }]);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await actionButton(page, '编辑').click();
     await expect(page.getByLabel('层级', { exact: true })).toHaveValue('');
   });
 }

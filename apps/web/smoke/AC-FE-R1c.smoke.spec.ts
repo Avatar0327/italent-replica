@@ -446,7 +446,7 @@ test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开�
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
-  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await actionButton(page, '回查原单').click();
   await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
   await expect(actionButton(page, '保存')).toBeDisabled();
   expect(writes).toBe(1);
@@ -489,7 +489,7 @@ test('AC-FE-R1c-07b 版本冲突与结果未知分开：重读最新版本后按
   await actionButton(page, '保存').click();
   await expect(page.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toHaveCount(0);
-  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(page, '重读最新版本').click();
   await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(page.getByLabel('审批意见')).toHaveValue('合成审批意见');
   await actionButton(page, '保存').click();

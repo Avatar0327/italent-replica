@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Locator } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { activity, ev, id, questionnaire, setupR3b } from './r3b-fixtures.js';
@@ -55,7 +56,7 @@ for (const [tab, path] of [
         expect(writes).toEqual([{ name: '待保存名称' }]);
         return;
       }
-      await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+      await actionButton(form, '重读最新版本').click();
       await expect(form.getByRole('button', { name: '已核对差异，继续编辑', exact: true })).toBeEnabled();
       await expectContentLocked(form);
       await expect(form.getByRole('spinbutton', { name: /^分值/ })).toHaveValue('5');
@@ -85,7 +86,7 @@ test('AC-FE-F123-R2 360 冲突重读启用后只读评价形式显示最新值�
   const form = page.getByRole('dialog', { name: '编辑', exact: true });
   await field(form, '名称').getByRole('textbox').fill('保留名称草稿');
   await form.getByRole('button', save).click();
-  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(form, '重读最新版本').click();
   await expect(field(form, '评价形式')).toContainText('single');
   await expect(field(form, '评价形式').getByRole('combobox')).toHaveCount(0);
   await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
@@ -125,7 +126,7 @@ for (const completed of [false, true]) {
       await form.getByRole('checkbox').check();
     }
     await form.getByRole('button', save).click();
-    await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+    await actionButton(form, '重读最新版本').click();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
     if (!completed) {
       await expect(form.getByRole('checkbox')).not.toBeChecked();
@@ -173,7 +174,7 @@ test('AC-FE-F123-R2 套卷重读变为已使用，只读分值用最新值且可
   await form.getByRole('spinbutton', { name: /^分值/ }).fill('9');
   await form.getByRole('textbox', { name: '选项文字', exact: true }).fill('我的选项草稿');
   await form.getByRole('button', save).click();
-  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(form, '重读最新版本').click();
   await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(form.getByRole('spinbutton', { name: /^分值/ })).toHaveValue('7');
   await expect(form.getByRole('spinbutton', { name: /^分值/ })).toBeDisabled();
