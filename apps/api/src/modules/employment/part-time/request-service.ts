@@ -38,7 +38,7 @@ import {
   type RequestPayload,
 } from './request-store.js';
 import { partTimeNotFound } from './read.js';
-import { linkageOf, lockLinkageParticipants } from './linkage.js';
+import { assertLinkageLocksHeld, linkageOf } from './linkage.js';
 import { checkNewPartTime, insertCheckedPartTime, type CreatePartTimeInput } from './service.js';
 import { appendPartTimeTerm, lockPartTimeRecords, readPartTimeRecords, type PartTimeRecordRow } from './store.js';
 import { normalizeNewPartTime, requirePartTimeRecordScope, type NormalizedPartTime } from './validation.js';
@@ -744,8 +744,9 @@ export async function landApprovedRequest(tx: Tx, ctx: EmploymentContext, reques
   if (request.state !== 'in_review') return;
   const approved = await appendRequestState(tx, ctx, request, assertAction(request, 'approve'));
   await auditRequest(tx, ctx, 'part_time.request.approved', approved, ...stateChange(request, approved));
-  // 联动闭包（本人 + 新增下属）先于落地取齐，顺序不对时 409 整个同意失败，不作废已批申请（§7.1）
-  if (request.requestType === 'add') await lockLinkageParticipants(tx, ctx, employee.id, linkageOf(request.version));
+  // 落地只重入、复核：联动闭包（本人 + 申请下属 + 规划里原有的下属）已在 adapter lock 经联动单一规划入口取齐，这里断言在集合内，
+  // 不在就抛内部错误（开发期暴露），绝不在持组织锁之后补锁（§7.1）
+  if (request.requestType === 'add') await assertLinkageLocksHeld(tx, employee.id, linkageOf(request.version));
   const voidLanding = (reason: 'landing_rejected' | 'changed_since_submit') =>
     voidPartTimeRequest(tx, ctx, approved, {
       reason,

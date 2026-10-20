@@ -50,16 +50,20 @@ const idArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`
 async function lock(tx: Tx, ctx: ApprovalContext, requestId: string, reassignFrom?: string): Promise<void> {
   const owner = await partTimeRequestOwner(tx, ctx.tenantId, requestId);
   if (!owner) throw new AppError('NOT_FOUND', '兼职申请不存在');
-  // 新增申请带“新增下属”时，落地会改这些人的直线经理：先按 UUID 升序取整个联动闭包（§7.1），其余仍只锁本人
-  const subordinates = owner.requestType === 'add' ? await requestSubordinates(tx, ctx.tenantId, requestId) : [];
-  if (subordinates.length)
+  // 新增申请的同意 / 接管 / 审批编辑都可能当场落地并办联动（审批编辑当次才打开负责人也算）：一律先经联动单一规划入口收齐闭包
+  // （本人 + 申请下属 + 规划里原有待执行 / 审批中的下属，UUID 升序，§7.1），之后落地只重入、复核；其余类型只锁本人
+  if (owner.requestType === 'add') {
+    const subordinates = await requestSubordinates(tx, ctx.tenantId, requestId);
     await lockLinkageParticipants(
       tx,
       asEmployment(ctx),
       owner.employeeId,
       linkageOf({ addedSubordinateIds: subordinates }),
+      {
+        mayLand: true,
+      },
     );
-  else await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
+  } else await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
   await tx.execute(sql`SELECT 1 FROM part_time_requests
     WHERE tenant_id=${ctx.tenantId} AND id=${requestId}::uuid FOR UPDATE`);
   if (owner.recordId)

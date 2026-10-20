@@ -117,6 +117,20 @@ export const lockTransferParticipants = (
   options: { skipLocked?: boolean } = {},
 ): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options.skipLocked === true);
 
+/**
+ * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取
+ * 组织锁的事务成环）。不在集合内说明某条入口没经 lockTransferParticipants 规划完整参与者——抛内部错误，开发期即暴露，不静默补锁。
+ */
+export async function assertEmployeeLocksHeld(tx: Tx, ids: readonly string[]): Promise<void> {
+  const [setting] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+  );
+  const held = new Set<string>(setting?.value ? (JSON.parse(setting.value) as string[]) : []);
+  const missing = ids.map((id) => id.toLowerCase()).filter((id) => !held.has(id));
+  if (missing.length)
+    throw new Error(`联动参与者未在预锁集合内（入口须先经 lockLinkageParticipants 规划）：${missing.join(',')}`);
+}
+
 /** 审批适配器须在实例锁之前调用；批量交接会签合席可推进业务，批次须先锁整个参与员工闭包。 */
 export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, businessId: string) {
   if (!isUuid(businessId)) throw new AppError('VALIDATION_FAILED', '业务标识必须是 UUID');

@@ -23,7 +23,7 @@ import { auditEmployment } from '../context.js';
 import { findCurrentRecord } from '../read-model.js';
 import { editEmploymentRecord } from '../record-edit.js';
 import { rowsOf } from '../record-store.js';
-import { lockTransferParticipants } from '../transfer-locks.js';
+import { assertEmployeeLocksHeld, lockTransferParticipants } from '../transfer-locks.js';
 import { validateTransferSubordinates } from '../transfer-linkage.js';
 import { emptyPresetFields, type EmploymentContext, type PresetFields } from '../types.js';
 import { lockPartTimeRecordsById, readPartTimeRecords, type PartTimeRecordRow } from './store.js';
@@ -52,18 +52,26 @@ export function linkageDelta(before: Partial<LinkageFields>, after: Partial<Link
 }
 
 /**
- * 先于员工行锁取整个联动闭包（本人 + 本次输入的下属 + 规划里原有的未办结联动 / 审批中申请的下属，UUID 升序）——创建、编辑、
- * 申请落地、审批同意共用的唯一预锁入口。本次意图只要有联动（负责人或下属）就收齐：编辑只设负责人时，完整意图会连同原待执行的
- * 下属一起办（resolveLinkageIntent），闭包不能只看本次输入（第 2 轮 P2）。没有联动意图就只有调用方既有的员工锁。
+ * 会触发联动落地的写路径，在第一次员工 / 业务 / 组织 / 实例锁之前都经这一个函数规划并锁定完整参与者（本人 + 本次输入的下属 +
+ * 规划里原有的未办结联动 / 审批中申请的下属，UUID 升序）。入口清单：直接新增、编辑、审批 adapter lock（新增申请）；批量交接 /
+ * 停用接管 / 调度经 lockTransferParticipants 的同一份规划。意图含联动（负责人或下属）就收齐——完整意图会连同原待执行的下属一起办
+ * （resolveLinkageIntent），闭包不能只看本次输入；mayLand 给“此刻没有联动、但这一步之内可能打开负责人”的入口（审批同意时
+ * 审批编辑可能打开负责人），一律收齐。没有联动意图也不会落地的路径只有调用方既有的员工锁。
+ * 落地与执行（applyLinkage）只重入、复核：assertLinkageLocksHeld。
  */
 export async function lockLinkageParticipants(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   intent: PartTimeLinkage,
+  options: { readonly mayLand?: boolean } = {},
 ): Promise<void> {
-  if (hasLinkage(intent)) await lockTransferParticipants(tx, ctx, employeeId, intent.subordinateIds);
+  if (options.mayLand || hasLinkage(intent)) await lockTransferParticipants(tx, ctx, employeeId, intent.subordinateIds);
 }
+
+/** 落地 / 执行只重入：本人与要改的下属必须已在预锁集合内，否则抛内部错误（不静默补锁）。 */
+export const assertLinkageLocksHeld = (tx: Tx, employeeId: string, intent: PartTimeLinkage) =>
+  hasLinkage(intent) ? assertEmployeeLocksHeld(tx, [employeeId, ...intent.subordinateIds]) : Promise.resolve();
 
 /** 保存时校验联动人员（沿用调动联动：负责人要有兼职部门的组织写范围；下属须在职、不是本人、在操作人范围内）。 */
 export async function validatePartTimeLinkage(
@@ -153,6 +161,7 @@ function skipReason(error: unknown): string | null {
 async function applyLinkage(tx: Tx, ctx: EmploymentContext, record: PartTimeRecordRow, linkage: PartTimeLinkage) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const departmentId = record.departmentId!;
+  await assertLinkageLocksHeld(tx, record.employeeId, linkage);
   await validatePartTimeLinkage(tx, ctx, record.employeeId, departmentId, linkage, today);
   if (linkage.head) {
     const [org] = await loadOrgSnapshot(tx, ctx.tenantId, today, undefined, {
