@@ -11884,6 +11884,54 @@
         ]
       }
     },
+    "PATCH /api/tenant/employment/retirements/cancellations/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
     "PATCH /api/tenant/establishment/capacities/:id": {
       "edge": {
         "anonymous": {
@@ -18235,6 +18283,99 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirements/:id/cancel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "transfer write"
+        ],
+        "fieldsOut": [
+          "employment runWrite()",
+          "trimEmploymentResponse"
+        ],
+        "guard": [
+          "employment.businessWrite",
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "readContext（非配置对象）"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirements/:id/restore": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "revision(c)"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "guard": [
+          "employment.businessWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "readContext（非配置对象）"
         ]
       }
     },
