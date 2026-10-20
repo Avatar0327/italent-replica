@@ -7,10 +7,9 @@
 import { createPgDb, type Db, sql, type Tx } from '@italent/db';
 import { createTestDb, useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
+import { SHORT_WAIT_MS, waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const CLOSE_BUDGET_MS = 10_000;
-const SHORT_WAIT_MS = 200;
 
 const testDb = useTestDb();
 

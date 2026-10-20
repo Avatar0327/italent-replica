@@ -12,48 +12,19 @@ import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { retirementWorld, type RetirementWorld } from './AC-RT-support.js';
 import { tenantApi } from './support/tenant-api.js';
-import { idleInTransaction, waitForBlocked } from './support/pg-interleave.js';
+import { idleInTransaction, queueBehind, type QueueOptions, SHORT_WAIT_MS } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => retirementWorld(database().db, label, TODAY);
 
-const signal = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
-};
-
-/** 持锁会话：在一个事务里执行 lock，放行后才提交。 */
-function holder(x: RetirementWorld, lock: (tx: Tx) => Promise<unknown>) {
-  const held = signal();
-  const release = signal();
-  const done = withTenant(x.db, x.session.tenant.id, async (tx) => {
-    await lock(tx);
-    held.resolve();
-    await release.promise;
-  });
-  return { held: held.promise, release: release.resolve, done };
-}
-
-/** 先后启动的请求排在同一把锁后面：第 n 个请求发出后等恰有 n 个会话在等锁，全部排队后才放锁。 */
-async function queueBehind(
+/** 先后启动的请求排在同一把锁后面（共用 queueBehind，持锁事务无条件收束）。 */
+const queued = (
   x: RetirementWorld,
   lock: (tx: Tx) => Promise<unknown>,
   requests: readonly (() => Promise<unknown>)[],
-  blockedAfter = (index: number) => index + 1, // 失败路径回归注入不符的人数
-) {
-  const session = holder(x, lock);
-  await session.held;
-  const running: Promise<unknown>[] = [];
-  for (const [index, request] of requests.entries()) {
-    running.push(request());
-    await waitForBlocked(x.db, blockedAfter(index));
-  }
-  session.release();
-  await session.done;
-  return Promise.allSettled(running);
-}
+  options?: QueueOptions,
+) => queueBehind({ run: (fn) => withTenant(x.db, x.session.tenant.id, fn), take: lock }, x.db, requests, options);
 
 const lockEmployee = (x: RetirementWorld) => (tx: Tx) =>
   tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${x.session.tenant.id}
@@ -81,7 +52,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-05-pg ① 退休�
       const transferApproval = () => approveTransfer(x, review.id);
       const requests = order === '退休先' ? [retireApproval, transferApproval] : [transferApproval, retireApproval];
 
-      const settled = await queueBehind(x, lockEmployee(x), requests);
+      const settled = await queued(x, lockEmployee(x), requests);
 
       expect(
         settled.every((result) => result.status === 'fulfilled'),
@@ -110,7 +81,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-05-pg ① 退休�
     const draft = await x.submittedRetire('2026-10-05');
     const review = await x.transferIn('in_review', '2026-10-30');
     const requests = [() => x.approveInReview(draft.id), () => approveTransfer(x, review.id)];
-    await expect(queueBehind(x, lockEmployee(x), requests, (index) => index + 2)).rejects.toThrow('超时');
+    await expect(
+      queued(x, lockEmployee(x), requests, { blockedAfter: (index) => index + 2, waitMs: SHORT_WAIT_MS }),
+    ).rejects.toThrow('超时');
     expect(await idleInTransaction(x.db), '持锁事务应已结束').toBe(0);
   });
 });
@@ -137,7 +110,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-05-pg ② 组织�
       const approval = () => x.approveInReview(draft.id);
       const requests = order === '同意先' ? [approval, disable(x, '2026-10-20')] : [disable(x, '2026-10-20'), approval];
 
-      const settled = await queueBehind(x, orgLock(x), requests);
+      const settled = await queued(x, orgLock(x), requests);
 
       const [approved, stopped] = order === '同意先' ? settled : [settled[1]!, settled[0]!];
       expect(approved!.status, JSON.stringify(approved)).toBe('fulfilled');
