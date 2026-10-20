@@ -207,16 +207,18 @@ describe('AC-RT-11b PATCH retirements/cancellations/:id 修改撤销原因', () 
 });
 
 describe('AC-RT-11b 撤销回执形状与离职一致', () => {
-  it('回执 = 业务头 + cancellation + downstream 固定四类', async () => {
+  it('回执 = 业务头 + cancellation + downstream 固定清单（与离职撤销同一份，不写死类目）', async () => {
     const x = await world('rt11b-receipt');
     const retire = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
+    const colleague = await x.newcomer('另一人');
+    const leave = await x.directLeave('2026-10-25', undefined, colleague.id);
+    const leaveKinds = (await x.cancelled(leave.id)).downstream.items.map((entry) => entry.kind);
+
     const result = await x.retireCancelled(retire.id);
-    expect(result.downstream.items.map((entry) => entry.kind)).toEqual([
-      'contract',
-      'duty_transfer',
-      'handover',
-      'payroll',
-    ]);
+
+    // 清单类目由撤销清单探针登记表决定（兼职 PT6b 等后续模块会追加），退休复用同一份，所以与离职逐项一致
+    expect(result.downstream.items.map((entry) => entry.kind)).toEqual(leaveKinds);
+    expect(leaveKinds.slice(0, 4)).toEqual(['contract', 'duty_transfer', 'handover', 'payroll']);
     expect(Object.keys(result.cancellation).sort()).toEqual(
       ['case', 'createdAt', 'id', 'reason', 'revision', 'stateBefore'].sort(),
     );
