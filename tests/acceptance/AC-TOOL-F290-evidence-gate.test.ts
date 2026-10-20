@@ -4,8 +4,11 @@
  * 取证清单：✅ 已证；🟡 且状态列写明剩余部分由 DEC 定口径或可后补的降为“可后补”，不拦开工；其余照旧。
  * 全部用小夹具字符串，不依赖真实清单的行数（DEC-431①：状态判定只有 evidenceState / decisionSettled 两个入口）。
  */
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import { gateReport, parseDecisions, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
 
 const TARGET = 'R9-T01';
@@ -143,5 +146,51 @@ describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误�
       .map((d) => d.id);
     expect(open).toEqual(['D-057']);
     expect(settledNotTicked).toEqual(Array.from({ length: 16 }, (_, i) => `D-0${62 + i}`));
+  });
+});
+
+describe('F-290 CLI 回归：整行逐项判定（第 4 轮）', () => {
+  const dirs: string[] = [];
+  afterAll(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+  // 在临时目录放夹具清单 / 登记册，真实运行 scripts/evidence-gate.mjs R9-T01
+  const runCli = (status: string) => {
+    const root = mkdtempSync(path.join(tmpdir(), 'f290-'));
+    dirs.push(root);
+    mkdirSync(path.join(root, 'docs/07_M0'), { recursive: true });
+    mkdirSync(path.join(root, 'docs/00_状态'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'docs/07_M0/03_需取证清单.md'),
+      `${evidenceRow('Q-M0-903', 'R9-T01（开工前）', status)}\n`,
+    );
+    writeFileSync(path.join(root, 'docs/00_状态/04_缺口冲突差异登记册.md'), '');
+    const script = new URL('../../scripts/evidence-gate.mjs', import.meta.url);
+    const run = spawnSync(process.execPath, [script.pathname, TARGET], {
+      encoding: 'utf8',
+      env: { ...process.env, EVIDENCE_GATE_ROOT: `${root}/` },
+    });
+    return { code: run.status, out: run.stdout };
+  };
+
+  const blocked = [
+    ['剩余之前的子项不可后补', '🟡 ①不可后补；剩余可后补'],
+    ['补测记录：该项不允许后补', '🟡 已取一半；剩余可后补；10-20 补：该项不允许后补'],
+    ['补测记录：是否可后补尚不确定', '🟡 已取一半；剩余可后补；10-20 补：是否可后补尚不确定'],
+    ['剩余之前的子项仍须取证', '🟡 ①仍须取证；剩余可后补'],
+    ['补测记录：该项仍未完成取证', '🟡 已取一半；剩余可后补；10-20 补：该项仍未完成取证'],
+    ['待确认', '🟡 已取一半；剩余可后补；②待确认'],
+    ['可能', '🟡 已取一半；剩余可后补；②可能还有差异'],
+  ] as const;
+  it.each(blocked)('%s：阻塞，退出码 1', (_name, status) => {
+    const { code, out } = runCli(status);
+    expect(code).toBe(1);
+    expect(out).toContain('⛔ 开工前须完成的取证 1 项');
+  });
+
+  it('对照：补测记录的尾部是已取事实时放行，退出码 0', () => {
+    const { code, out } = runCli('🟡 已取一半；剩余可后补；10-20 补：该项已取证');
+    expect(code).toBe(0);
+    expect(out).toContain('可先按暂定口径开发');
   });
 });

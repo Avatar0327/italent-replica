@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { gateReport, parseDecisions, parseEvidence } from './evidence-gate-lib.mjs';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
+// EVIDENCE_GATE_ROOT 仅供自测指向夹具目录；默认读本仓库 docs/
+const root = process.env.EVIDENCE_GATE_ROOT ?? fileURLToPath(new URL('..', import.meta.url));
 const read = (p) => readFileSync(root + p, 'utf8');
 
 const { lines, exitCode } = gateReport(
