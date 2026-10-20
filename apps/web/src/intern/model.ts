@@ -90,11 +90,13 @@ export function cellValue(row: Row, key: string): string {
   return text(row[key as keyof Row]);
 }
 
-export type Entry = 'regularize' | 'apply' | 'terminate' | 'withdraw' | 'revoke';
+export type Entry = 'regularize' | 'terminate' | 'withdraw' | 'revoke';
 /**
  * 详情顶部入口（补证 R2d / R2f1）：读接口没有逐行动作（同 F-268），按服务端视图归属、单据状态与权限快照里的
  * 对象操作和按钮显示；资格（在职实习生、在途申请、原发起人）由服务端在提交时判定。
- * 实习转正中的人仍是实习生：可直接转正（DEC-593 自动作废在途申请）与结束实习，不能再发起第二张申请。
+ * 实习转正中的人仍是实习生：可直接转正（DEC-593 自动作废在途申请）与结束实习。
+ * DEC-647：不开放“实习转正申请”（HR 只用直接转正；申请入口与试用期区由 F-285 后补），
+ * 实习转正中已有的审批中申请仍可撤回 / 撤销。
  */
 export function entriesFor(view: InternView, row: Row, p: ObjectPermission | undefined): Entry[] {
   if (!p || !validObject({ id: row.employeeId, revision: 0 })) return [];
@@ -106,7 +108,6 @@ export function entriesFor(view: InternView, row: Row, p: ObjectPermission | und
     view === 'converting' && row.state === 'in_review' && validObject({ id: row.id, revision: row.revision });
   const entries: [Entry, boolean][] = [
     ['regularize', intern && create && can('Employment.Create')],
-    ['apply', view === 'interning' && create && can('Employment.Create')],
     ['terminate', intern && create && can(EXIT_BUTTONS.direct)],
     ['withdraw', reviewing && update && can('Employment.Withdraw')],
     ['revoke', reviewing && update && can('Employment.Revoke')],
@@ -118,8 +119,7 @@ export function entriesFor(view: InternView, row: Row, p: ObjectPermission | und
 export const probationFields = ['probation', 'probationMonths', 'probationEndDate'];
 const reportingFields = ['positionId', 'directManagerId', 'dottedManagerId'];
 const recordFields = ['effectiveDate', 'departmentId', ...reportingFields];
-export const formFields = (application: boolean) =>
-  application ? recordFields : [...recordFields, ...probationFields];
+export const formFields = [...recordFields, ...probationFields];
 export const terminateFields = ['endDate', 'cancelPendingEntry'];
 /** 服务端控制项（不在字段目录里）：不按字段权限，随对象“新增”操作可写、总是显示。 */
 export const controlFields = [...probationFields, ...terminateFields];
@@ -135,21 +135,23 @@ export function editableFields(fields: readonly string[], p: ObjectPermission | 
 
 /**
  * 打开基线（与 409 重读同一投影）：部门、职位、汇报关系取当前主职任职（records 的 fields，按可见字段裁剪后缺键为空），
- * 转正日期为空，直接转正默认有试用期（补证 R2f1）。默认带出的值就是基线，用户没改就不算修改。
+ * 转正日期为空，默认有试用期（补证 R2f1）。默认带出的值就是基线，用户没改就不算修改。
  */
-export function openingValues(application: boolean, record?: Values): Values {
+export function openingValues(record?: Values): Values {
   return {
     effectiveDate: null,
     ...projectFields(record?.fields as Values | undefined, ['departmentId', ...reportingFields]),
-    ...(application ? {} : { probation: true, probationMonths: null, probationEndDate: null }),
+    probation: true,
+    probationMonths: null,
+    probationEndDate: null,
   };
 }
 export const terminateOpening = (): Values => ({ endDate: null, cancelPendingEntry: false });
 
 /** 本地校验在提交前抛出（ConflictCommands：send 里抛的错会被判为结果未知）。 */
-export function validateRegularize(values: Values, editable: readonly string[], application: boolean) {
-  const required = ['effectiveDate', 'departmentId', ...(values.probation === true ? ['probationMonths'] : [])];
-  if (!application) required.push('probation', ...(values.probation === true ? ['probationEndDate'] : []));
+export function validateRegularize(values: Values, editable: readonly string[]) {
+  const terms = values.probation === true ? ['probationMonths', 'probationEndDate'] : [];
+  const required = ['effectiveDate', 'departmentId', 'probation', ...terms];
   for (const field of required) {
     if (!editable.includes(field)) throw new ApiError(403, 'FORBIDDEN', 'forbidden', m.denied);
     if (isBlank(values[field])) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', m.required(m.labels[field]!));
@@ -166,15 +168,6 @@ export function regularizeBody(values: Values): Values {
     ...present(values, ['effectiveDate', 'departmentId', ...reportingFields]),
     probation,
     ...(probation ? present(values, ['probationMonths', 'probationEndDate']) : {}),
-  };
-}
-/** 实习转正申请走通用新增（routes.ts registerEmployeeBusinessCreate）：任职字段放 fields，试用期控制项不受理。 */
-export function applicationBody(values: Values): Values {
-  return {
-    kind: 'intern_regularization',
-    mode: 'application',
-    effectiveDate: values.effectiveDate,
-    fields: present(values, ['departmentId', ...reportingFields]),
   };
 }
 /** POST /interns/:id/terminate（intern-termination.ts）：开关默认关，只有打开时才发。 */

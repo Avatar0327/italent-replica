@@ -1,5 +1,5 @@
 import { Modal } from 'antd';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -11,30 +11,10 @@ import { useDirectApi } from '../part-time/direct-api.js';
 import { m } from './messages.js';
 import { apiRoot, businesses, confirmationOf, type Confirmation } from './model.js';
 
-export interface Draft {
-  id: string;
-  revision: number;
-}
-interface Drafts {
-  drafts: Readonly<Record<string, Draft>>;
-  setDraft(employeeId: string, draft?: Draft): void;
-}
-const DraftContext = createContext<Drafts | undefined>(undefined);
-/**
- * 页面根部：未确认命令的存储（F-123 内核，DEC-473）与本会话里建好、尚未提交的申请草稿（按员工 id）。
- * 读接口不列草稿，草稿只在本页可见（PR“未验证”）。
- */
+/** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开后仍在。 */
 export function InternCommands({ children }: { children: ReactNode }) {
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const setDraft = (employeeId: string, draft?: Draft) =>
-    setDrafts(({ [employeeId]: _old, ...rest }) => (draft ? { ...rest, [employeeId]: draft } : rest));
-  return (
-    <FormCommands>
-      <DraftContext.Provider value={{ drafts, setDraft }}>{children}</DraftContext.Provider>
-    </FormCommands>
-  );
+  return <FormCommands>{children}</FormCommands>;
 }
-export const useDrafts = () => useContext(DraftContext)!;
 
 export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employees`, employeeId);
 

@@ -104,7 +104,6 @@ test('AC-FE-R2d3-03 直接实习转正：试用期自动算、超编确认后同
     return route.fulfill({ status: 201, json: business('intern_regularization') });
   });
   await openDetail(page, 'interning');
-  await expect(page.getByRole('button', { name: '实习转正申请', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '实习转正', exact: true }).click();
   for (const section of ['员工信息', '任职信息', '试用期信息', '汇报关系', '合同协议'])
     await expect(dialog(page).getByRole('heading', { name: section, exact: true })).toBeVisible();

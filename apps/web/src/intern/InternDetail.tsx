@@ -34,7 +34,7 @@ export function InternDetail({
   const actions = (
     <Space wrap>
       {entries
-        .filter((entry) => ['regularize', 'apply', 'terminate'].includes(entry))
+        .filter((entry): entry is 'regularize' | 'terminate' => entry === 'regularize' || entry === 'terminate')
         .map((entry) => (
           <Button key={entry} type={entry === 'regularize' ? 'primary' : 'default'} onClick={() => setOpen(entry)}>
             {m.entries[entry]}
@@ -50,8 +50,7 @@ export function InternDetail({
   return (
     <>
       <StaffDetail employeeId={row.employeeId!} onClose={onClose} actions={actions} />
-      {open === 'regularize' && <RegularizeForm {...form} application={false} />}
-      {open === 'apply' && <RegularizeForm {...form} application />}
+      {open === 'regularize' && <RegularizeForm {...form} />}
       {open === 'terminate' && <TerminateForm {...form} />}
     </>
   );

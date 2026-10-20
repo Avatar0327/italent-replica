@@ -1,6 +1,6 @@
 import { expectedProbationEndDate } from '@italent/domain';
 import { Alert, Button, Descriptions, Form, Modal, Radio, Select, Space, message } from 'antd';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -13,20 +13,10 @@ import { TenantDatePicker } from '../foundation/selectors.js';
 import { PageState } from '../foundation/PageState.js';
 import { refPaths } from '../part-time/references.js';
 import type { Latest } from '../foundation/forms/store.js';
-import {
-  employeePath,
-  useBusinessRead,
-  useDrafts,
-  useEmployeeRead,
-  useInternCommand,
-  useOpening,
-  type Draft,
-} from './commands.js';
+import { employeePath, useEmployeeRead, useInternCommand, useOpening } from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
-  applicationBody,
-  businesses,
   controlFields,
   editableFields,
   formFields,
@@ -49,16 +39,12 @@ export interface FormProps {
 }
 const kind = 'intern_regularization';
 
-/** 直接“实习转正”与“实习转正申请”共用任职 / 试用期部分（补证 R2f1 五区）；申请建好草稿后转为“提交草稿”。 */
-export function RegularizeForm({ application, ...props }: FormProps & { application: boolean }) {
-  const { drafts } = useDrafts();
-  const draft = application ? drafts[props.row.employeeId!] : undefined;
-  const project = useCallback((record?: Values) => openingValues(application, record), [application]);
-  const read = useEmployeeRead(props.row.employeeId!, project, true);
-  if (draft) return <DraftSubmit {...props} draft={draft} />;
+/** 直接“实习转正”（补证 R2f1 五区）。DEC-647：不开放“实习转正申请”，申请表单与试用期区由 F-285 后补。 */
+export function RegularizeForm(props: FormProps) {
+  const read = useEmployeeRead(props.row.employeeId!, openingValues, true);
   return (
-    <WithOpening read={read} title={application ? m.entries.apply : m.entries.regularize} onClose={props.onClose}>
-      {(opening) => <RegularizeEditor {...props} application={application} opening={opening} read={read} />}
+    <WithOpening read={read} title={m.entries.regularize} onClose={props.onClose}>
+      {(opening) => <RegularizeEditor {...props} opening={opening} read={read} />}
     </WithOpening>
   );
 }
@@ -84,17 +70,16 @@ export function WithOpening({
   );
 }
 
-type EditorProps = FormProps & { application: boolean; opening: Latest; read(): Promise<Latest> };
-function useRegularize({ row, onDone, refresh, application, opening, read }: EditorProps) {
+type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest> };
+function useRegularize({ row, onDone, refresh, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
   const permissions = usePermissions(object);
   const permission = permissions.snapshot.objects[object];
-  const editable = editableFields(formFields(application), permission);
-  const { setDraft } = useDrafts();
+  const editable = editableFields(formFields, permission);
   const [form] = Form.useForm();
   const [baseline] = useState(() => opening.values);
   const target = { id: employeeId, revision: opening.revision, baseline, read };
-  const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', refresh);
+  const cmd = useInternCommand(interns, target, 'regularize', refresh);
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
   const locked = cmd.disabled || !permission?.dataOperations.create;
@@ -103,25 +88,16 @@ function useRegularize({ row, onDone, refresh, application, opening, read }: Edi
     setError(undefined);
     try {
       const values = projectFields(await form.validateFields(), editable);
-      validateRegularize(values, editable, application);
-      let created: Draft | undefined;
+      validateRegularize(values, editable);
       const done = await cmd.submit(values, editable, {
-        path: application ? `${employeePath(employeeId)}/businesses` : `${slotKey(interns, employeeId)}/regularize`,
-        body: application ? applicationBody : regularizeBody,
+        path: `${slotKey(interns, employeeId)}/regularize`,
+        body: regularizeBody,
         accept: (raw, sent) => {
           const receipt = acceptBusiness(raw, { employeeId, kind, sent });
-          created = { id: String(receipt.id), revision: Number(receipt.revision) };
-          return application
-            ? { path: slotKey(businesses, created.id), id: created.id, revision: created.revision }
-            : { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };
+          return { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };
         },
       });
       if (!done) return;
-      if (application && created) {
-        setDraft(employeeId, created);
-        void message.success(m.draftSaved);
-        return;
-      }
       void message.success(m.success.regularize);
       onDone();
     } catch (cause) {
@@ -132,7 +108,7 @@ function useRegularize({ row, onDone, refresh, application, opening, read }: Edi
 }
 
 function RegularizeEditor(props: EditorProps) {
-  const { row, onClose, application } = props;
+  const { row, onClose } = props;
   const state = useRegularize(props);
   const { form, baseline, permission, editable, cmd, error, locked, submit } = state;
   const probation = Form.useWatch('probation', form) === true;
@@ -142,7 +118,7 @@ function RegularizeEditor(props: EditorProps) {
         {m.cancel}
       </Button>
       <Button type="primary" loading={cmd.form.busy} disabled={locked} onClick={() => void submit()}>
-        {application ? m.saveDraft : m.save}
+        {m.save}
       </Button>
     </Space>
   );
@@ -154,7 +130,7 @@ function RegularizeEditor(props: EditorProps) {
   return (
     <Modal
       open
-      title={application ? m.entries.apply : m.entries.regularize}
+      title={m.entries.regularize}
       width={800}
       footer={footer}
       onCancel={onClose}
@@ -177,18 +153,14 @@ function RegularizeEditor(props: EditorProps) {
             {field('effectiveDate', <TenantDatePicker />, true)}
             {field('departmentId', <RefSelect path={refPaths.departmentId!} ariaLabel={m.labels.departmentId} />, true)}
             {field('positionId', <RefSelect path={refPaths.positionId!} ariaLabel={m.labels.positionId} />)}
-            {!application && field('probation', <YesNo />, true)}
+            {field('probation', <YesNo />, true)}
           </div>
           <h3>{m.sections.probation}</h3>
-          {application ? (
-            <Alert type="info" message={m.applicationProbationNote} />
-          ) : (
-            probation && (
-              <div className="intern-form-grid">
-                {field('probationMonths', <MonthSelect />, true)}
-                {field('probationEndDate', <TenantDatePicker />, true)}
-              </div>
-            )
+          {probation && (
+            <div className="intern-form-grid">
+              {field('probationMonths', <MonthSelect />, true)}
+              {field('probationEndDate', <TenantDatePicker />, true)}
+            </div>
           )}
           <h3>{m.sections.reporting}</h3>
           <div className="intern-form-grid">
@@ -290,58 +262,5 @@ function EmployeeSection({ row }: { row: Row }) {
         ]}
       />
     </>
-  );
-}
-
-/** 申请草稿已建好：提交走 POST /businesses/:id/submit（空体），草稿 revision 作 If-Match。 */
-function DraftSubmit({ row, draft, onClose, onDone, refresh }: FormProps & { draft: Draft }) {
-  const employeeId = row.employeeId!;
-  const { setDraft } = useDrafts();
-  const permissions = usePermissions(object);
-  const allowed = !!permissions.snapshot.objects[object]?.dataOperations.update && permissions.can('Employment.Submit');
-  const read = useBusinessRead(draft.id);
-  const target = { id: draft.id, revision: draft.revision, baseline: {}, read };
-  const cmd = useInternCommand(businesses, target, 'submit', refresh);
-  const locked = cmd.disabled || !allowed;
-  const submit = async () => {
-    if (locked) return;
-    try {
-      const done = await cmd.submit({}, [], {
-        path: `${slotKey(businesses, draft.id)}/submit`,
-        body: () => ({}),
-        accept: (raw, sent) => {
-          const receipt = acceptBusiness(raw, { employeeId, kind, sent, id: draft.id });
-          return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
-        },
-      });
-      if (!done) return;
-      setDraft(employeeId, undefined);
-      void message.success(m.success.apply);
-      onDone();
-    } catch {
-      // 拒绝 / 冲突 / 结果未知都由内核状态条显示
-    }
-  };
-  return (
-    <Modal
-      open
-      title={m.entries.apply}
-      onCancel={onClose}
-      closable={!cmd.form.busy}
-      maskClosable={false}
-      footer={
-        <Space>
-          <Button onClick={onClose} disabled={cmd.form.busy}>
-            {m.cancel}
-          </Button>
-          <Button type="primary" loading={cmd.form.busy} disabled={locked} onClick={() => void submit()}>
-            {m.submitDraft}
-          </Button>
-        </Space>
-      }
-    >
-      <Alert type="info" showIcon message={allowed ? m.draftSaved : m.denied} />
-      <CommandStatus submission={cmd.form} />
-    </Modal>
   );
 }
