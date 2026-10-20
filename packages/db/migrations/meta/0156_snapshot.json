@@ -1,5 +1,5 @@
 {
-  "id": "f387db60-1338-4d1b-9d93-91d378d940a6",
+  "id": "20c347d2-c2a7-4132-a42a-4d8949f715de",
   "prevId": "11485423-f841-47c5-a451-61faeaa28bb1",
   "version": "7",
   "dialect": "postgresql",
@@ -23314,7 +23314,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -60869,6 +60869,37 @@
           "primaryKey": false,
           "notNull": false
         },
+        "expected_function": {
+          "name": "expected_function",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "earliest_function": {
+          "name": "earliest_function",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_function": {
+          "name": "latest_function",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "all_orgs": {
+          "name": "all_orgs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "preset_code": {
+          "name": "preset_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "enabled": {
           "name": "enabled",
           "type": "boolean",
@@ -60932,17 +60963,45 @@
             "purpose",
             "sequence_no"
           ]
+        },
+        "retirement_rules_preset": {
+          "name": "retirement_rules_preset",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "preset_code"
+          ]
         }
       },
       "policies": {},
       "checkConstraints": {
         "retirement_rules_purpose": {
           "name": "retirement_rules_purpose",
-          "value": "\"retirement_rules\".\"purpose\" IN ('expected_date')"
+          "value": "\"retirement_rules\".\"purpose\" IN ('expected_date', 'flexible_range')"
         },
         "retirement_rules_rule_type": {
           "name": "retirement_rules_rule_type",
-          "value": "\"retirement_rules\".\"rule_type\" IN ('fixed_age')"
+          "value": "\"retirement_rules\".\"rule_type\" IN ('fixed_age', 'builtin')"
+        },
+        "retirement_rules_preset_code": {
+          "name": "retirement_rules_preset_code",
+          "value": "\"retirement_rules\".\"preset_code\" IS NULL OR \"retirement_rules\".\"preset_code\" IN ('expected_date_statutory', 'flexible_range_statutory')"
+        },
+        "retirement_rules_expected_function": {
+          "name": "retirement_rules_expected_function",
+          "value": "\"retirement_rules\".\"expected_function\" IS NULL OR \"retirement_rules\".\"expected_function\" = 'statutory_expected_date'"
+        },
+        "retirement_rules_earliest_function": {
+          "name": "retirement_rules_earliest_function",
+          "value": "\"retirement_rules\".\"earliest_function\" IS NULL OR \"retirement_rules\".\"earliest_function\" = 'statutory_earliest'"
+        },
+        "retirement_rules_latest_function": {
+          "name": "retirement_rules_latest_function",
+          "value": "\"retirement_rules\".\"latest_function\" IS NULL OR \"retirement_rules\".\"latest_function\" = 'statutory_latest'"
+        },
+        "retirement_rules_shape": {
+          "name": "retirement_rules_shape",
+          "value": "(\"retirement_rules\".\"rule_type\" = 'fixed_age' AND \"retirement_rules\".\"purpose\" = 'expected_date'\n          AND \"retirement_rules\".\"expected_function\" IS NULL AND \"retirement_rules\".\"earliest_function\" IS NULL AND \"retirement_rules\".\"latest_function\" IS NULL)\n        OR (\"retirement_rules\".\"rule_type\" = 'builtin' AND \"retirement_rules\".\"retirement_age_years\" IS NULL AND \"retirement_rules\".\"retirement_age_months\" IS NULL\n          AND ((\"retirement_rules\".\"purpose\" = 'expected_date' AND \"retirement_rules\".\"expected_function\" IS NOT NULL\n              AND \"retirement_rules\".\"earliest_function\" IS NULL AND \"retirement_rules\".\"latest_function\" IS NULL)\n            OR (\"retirement_rules\".\"purpose\" = 'flexible_range' AND \"retirement_rules\".\"expected_function\" IS NULL\n              AND \"retirement_rules\".\"earliest_function\" IS NOT NULL AND \"retirement_rules\".\"latest_function\" IS NOT NULL)))"
         },
         "retirement_rules_name": {
           "name": "retirement_rules_name",
@@ -60958,204 +61017,15 @@
         },
         "retirement_rules_orgs": {
           "name": "retirement_rules_orgs",
-          "value": "cardinality(\"retirement_rules\".\"org_ids\") BETWEEN 1 AND 50"
+          "value": "(\"retirement_rules\".\"all_orgs\" AND cardinality(\"retirement_rules\".\"org_ids\") = 0)\n        OR (NOT \"retirement_rules\".\"all_orgs\" AND cardinality(\"retirement_rules\".\"org_ids\") BETWEEN 1 AND 50)"
         },
         "retirement_rules_age": {
           "name": "retirement_rules_age",
-          "value": "\"retirement_rules\".\"purpose\" <> 'expected_date' OR (\"retirement_rules\".\"retirement_age_years\" BETWEEN 30 AND 80\n        AND \"retirement_rules\".\"retirement_age_months\" BETWEEN 0 AND 11)"
+          "value": "\"retirement_rules\".\"rule_type\" <> 'fixed_age' OR (\"retirement_rules\".\"retirement_age_years\" BETWEEN 30 AND 80\n        AND \"retirement_rules\".\"retirement_age_months\" BETWEEN 0 AND 11)"
         },
         "retirement_rules_revision_positive": {
           "name": "retirement_rules_revision_positive",
           "value": "\"retirement_rules\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retirement_intentions": {
-      "name": "retirement_intentions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "staff_id": {
-          "name": "staff_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "department_id": {
-          "name": "department_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "intended_date": {
-          "name": "intended_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expected_date_snapshot": {
-          "name": "expected_date_snapshot",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "earliest_snapshot": {
-          "name": "earliest_snapshot",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latest_snapshot": {
-          "name": "latest_snapshot",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "initiator": {
-          "name": "initiator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "initiator_user_id": {
-          "name": "initiator_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "approval_instance_id": {
-          "name": "approval_instance_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "retirement_intentions_employee": {
-          "name": "retirement_intentions_employee",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "retirement_intentions_open": {
-          "name": "retirement_intentions_open",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"retirement_intentions\".\"state\" IN ('draft', 'in_review', 'rejected')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "retirement_intentions_tenant_id_id_pk": {
-          "name": "retirement_intentions_tenant_id_id_pk",
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retirement_intentions_initiator": {
-          "name": "retirement_intentions_initiator",
-          "value": "\"retirement_intentions\".\"initiator\" IN ('hr', 'self')"
-        },
-        "retirement_intentions_state": {
-          "name": "retirement_intentions_state",
-          "value": "\"retirement_intentions\".\"state\" IN ('draft', 'in_review', 'rejected', 'approved', 'disapproved', 'withdrawn')"
-        },
-        "retirement_intentions_reason": {
-          "name": "retirement_intentions_reason",
-          "value": "\"retirement_intentions\".\"reason\" IS NULL OR char_length(\"retirement_intentions\".\"reason\") <= 500"
         }
       },
       "isRLSEnabled": false

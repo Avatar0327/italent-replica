@@ -59,8 +59,9 @@ export const retirementRequests = pgTable(
 
 /**
  * R2 BE-5c1a 预计退休日期规则与个人身份字典（docs/08_设计/R2-T04_退休设计.md §2.4，DEC-640）。
- * 规则表照自动转正规则形态（优先级 + 登记顺序号、整份保存、硬删除）；首版 purpose 只有 expected_date、
- * rule_type 只有 fixed_age（弹性范围规则 5c1b、高级公式 R3-T00 再放开）。
+ * 规则表照自动转正规则形态（优先级 + 登记顺序号、整份保存、硬删除）；5c1b 放开 purpose = flexible_range 与
+ * rule_type = builtin（选用内置法定函数，DEC-641；高级公式 R3-T00 再放开）。预置法定规则 preset_code 非空，
+ * 覆盖全公司（all_orgs，org_ids 为空）；预置规则的复制件是普通规则，保留 all_orgs 直到管理员选定适用组织。
  * 条件按固定槽位存：每槽至多一条、操作符只有 in（DEC-640②）。个人身份字典只读，预置工人 10 / 干部 20。
  */
 const tenant = () =>
@@ -83,6 +84,14 @@ export const retirementRules = pgTable(
     includeSubordinates: boolean('include_subordinates').notNull().default(true),
     retirementAgeYears: integer('retirement_age_years'),
     retirementAgeMonths: integer('retirement_age_months'),
+    /** 选用的内置函数（rule_type = builtin）：expected_date 用 expected_function，flexible_range 用 earliest / latest。 */
+    expectedFunction: text('expected_function'),
+    earliestFunction: text('earliest_function'),
+    latestFunction: text('latest_function'),
+    /** 适用全公司：org_ids 为空；只由预置规则及其复制件携带。 */
+    allOrgs: boolean('all_orgs').notNull().default(false),
+    /** 预置法定规则的稳定编码（DEC-361 种子补装按它判已装）；自建规则为空。 */
+    presetCode: text('preset_code'),
     enabled: boolean('enabled').notNull().default(true),
     revision: integer('revision').notNull().default(1),
     createdAt: utc(),
@@ -91,15 +100,47 @@ export const retirementRules = pgTable(
   (t) => [
     unique('retirement_rules_tenant_id').on(t.tenantId, t.id),
     unique('retirement_rules_sequence').on(t.tenantId, t.purpose, t.sequenceNo),
-    check('retirement_rules_purpose', sql`${t.purpose} IN ('expected_date')`),
-    check('retirement_rules_rule_type', sql`${t.ruleType} IN ('fixed_age')`),
+    unique('retirement_rules_preset').on(t.tenantId, t.presetCode),
+    check('retirement_rules_purpose', sql`${t.purpose} IN ('expected_date', 'flexible_range')`),
+    check('retirement_rules_rule_type', sql`${t.ruleType} IN ('fixed_age', 'builtin')`),
+    check(
+      'retirement_rules_preset_code',
+      sql`${t.presetCode} IS NULL OR ${t.presetCode} IN ('expected_date_statutory', 'flexible_range_statutory')`,
+    ),
+    check(
+      'retirement_rules_expected_function',
+      sql`${t.expectedFunction} IS NULL OR ${t.expectedFunction} = 'statutory_expected_date'`,
+    ),
+    check(
+      'retirement_rules_earliest_function',
+      sql`${t.earliestFunction} IS NULL OR ${t.earliestFunction} = 'statutory_earliest'`,
+    ),
+    check(
+      'retirement_rules_latest_function',
+      sql`${t.latestFunction} IS NULL OR ${t.latestFunction} = 'statutory_latest'`,
+    ),
+    // 规则形态：固定年龄只用于预计日期且不带函数；内置函数不带年龄，预计日期选预计函数、弹性范围选最早 + 最晚函数
+    check(
+      'retirement_rules_shape',
+      sql`(${t.ruleType} = 'fixed_age' AND ${t.purpose} = 'expected_date'
+          AND ${t.expectedFunction} IS NULL AND ${t.earliestFunction} IS NULL AND ${t.latestFunction} IS NULL)
+        OR (${t.ruleType} = 'builtin' AND ${t.retirementAgeYears} IS NULL AND ${t.retirementAgeMonths} IS NULL
+          AND ((${t.purpose} = 'expected_date' AND ${t.expectedFunction} IS NOT NULL
+              AND ${t.earliestFunction} IS NULL AND ${t.latestFunction} IS NULL)
+            OR (${t.purpose} = 'flexible_range' AND ${t.expectedFunction} IS NULL
+              AND ${t.earliestFunction} IS NOT NULL AND ${t.latestFunction} IS NOT NULL)))`,
+    ),
     check('retirement_rules_name', sql`btrim(${t.name}) <> '' AND char_length(${t.name}) <= 100`),
     check('retirement_rules_priority', sql`${t.priority} BETWEEN 0 AND 9999`),
     check('retirement_rules_sequence_positive', sql`${t.sequenceNo} > 0`),
-    check('retirement_rules_orgs', sql`cardinality(${t.orgIds}) BETWEEN 1 AND 50`),
+    check(
+      'retirement_rules_orgs',
+      sql`(${t.allOrgs} AND cardinality(${t.orgIds}) = 0)
+        OR (NOT ${t.allOrgs} AND cardinality(${t.orgIds}) BETWEEN 1 AND 50)`,
+    ),
     check(
       'retirement_rules_age',
-      sql`${t.purpose} <> 'expected_date' OR (${t.retirementAgeYears} BETWEEN 30 AND 80
+      sql`${t.ruleType} <> 'fixed_age' OR (${t.retirementAgeYears} BETWEEN 30 AND 80
         AND ${t.retirementAgeMonths} BETWEEN 0 AND 11)`,
     ),
     check('retirement_rules_revision_positive', sql`${t.revision} > 0`),
