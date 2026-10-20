@@ -41,6 +41,7 @@ export * from './employment/auto-assessment.js';
 export * from './employment/blacklist.js';
 export * from './employment/retirement-rules.js';
 export * from './employment/retirement-views.js';
+export * from './employment/retirement-statutory.js';
 export * from './transfer/catalog.js';
 export * from './transfer/required.js';
 export {

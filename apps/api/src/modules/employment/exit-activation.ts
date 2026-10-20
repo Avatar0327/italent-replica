@@ -26,6 +26,7 @@ import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEve
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
 import {
+  exitSourceOf,
   isExitKind,
   loadExitRequest,
   isOverLimitAck,
@@ -44,6 +45,7 @@ import {
   lockOtherBusinessHeads,
   voidInFlightApplications,
 } from './exit-void-applications.js';
+import { assertInternEndable } from './intern-eligibility.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
 import { loadRetirementRequest, rederiveRetireType } from './retirement-application.js';
 import { blockingPredecessors } from './linkage-dependency.js';
@@ -62,7 +64,10 @@ import { appendEmployee, employeeSnapshot } from '../personnel/employee-write.js
 
 export interface ExitActivationOptions {
   readonly trigger: ActivationTrigger;
-  /** 缺省：直接离职为 direct，申请为 approval。free_direct = 免审批直接生效（DEC-593，BE-6b 结束实习：次日生效，类型 / 原因为空，不发交接）。 */
+  /**
+   * 缺省按离职单判定（exitSourceOf）：直接离职为 direct，申请为 approval，变动类型“实习结束”的直接离职为 free_direct。
+   * free_direct = 免审批直接生效（DEC-593，BE-6b 结束实习：次日生效，类型 / 原因为空，不发交接）。
+   */
   readonly source?: ExitActivationSource;
 }
 
@@ -195,15 +200,19 @@ const auditIncompleteAck = (
     { ids: voided.map((item) => item.id).sort(), lastWorkDate },
   );
 
-/** 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；再重算 §8 确认集合。 */
+/**
+ * 步骤 0b：顺延后按 L′ 重验转正在途（入口已无法拦截，只能失败交 HR）；再重算 §8 确认集合。
+ * 免审批直接生效（结束实习）的转正在途已在保存前确认并由步骤 1 作废，不在这里拦（DEC-593③④，见 regularizationBlocker）。
+ */
 async function revalidateAfterPostponement(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   exit: ExitRow,
   lastWorkDate: string,
+  source: ExitActivationSource,
 ) {
-  const blocker = await regularizationBlocker(tx, ctx, business.employeeId, lastWorkDate);
+  const blocker = await regularizationBlocker(tx, ctx, business.employeeId, lastWorkDate, source);
   if (blocker)
     throw new AppError('CONFLICT', '存在审批中的转正流程，请先处理', {
       activationFailure: { reason: 'EXIT_REGULARIZATION_IN_FLIGHT', detail: { ...blocker } },
@@ -344,12 +353,15 @@ async function runSteps(
   const before: TimelineSegment[] = await loadTimelineSegments(tx, ctx, business.employeeId);
   const late = await postponeLateExit(tx, ctx, business, planned, today);
   if (late.postponed) {
-    await revalidateAfterPostponement(tx, ctx, business, exit, late.lastWorkDate);
+    await revalidateAfterPostponement(tx, ctx, business, exit, late.lastWorkDate, source);
     await assertExtendedEmploymentAvailable(tx, ctx, ref, before, planned, late.effectiveDate);
   } else if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null)) {
     // DEC-626：创建 / 提交时超限未完整确认，不论是否迟到都在作废前按当时状态重算
     await reconcileConfirmedSet(tx, ctx, business, exit, late.lastWorkDate);
   }
+  // 结束实习保存到生效之间，转正申请可能已审批通过并落地：此时人已不是实习生，不能再记“实习结束”，生效失败交 HR（DEC-593①）
+  if (business.payload.changeType === 'intern_end')
+    await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
@@ -460,7 +472,7 @@ export async function activateExit(
     (business.payload.kind === 'retirement' && !(await loadRetirementRequest(tx, ctx.tenantId, businessId)))
   )
     throw new AppError('CONFLICT', '只有审批通过、尚未生效的离职或退休可以生效', { reason: 'NOT_PENDING' });
-  const source = options.source ?? (exit.mode === 'direct' ? 'direct' : 'approval');
+  const source = options.source ?? exitSourceOf(exit.mode, business.payload.changeType);
   if (source === 'free_direct' && exit.mode !== 'direct')
     throw new AppError('VALIDATION_FAILED', '免审批直接生效只适用于直接离职', { reason: 'EXIT_SOURCE_INVALID' });
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
