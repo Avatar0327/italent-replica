@@ -11993,7 +11993,6 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18419,7 +18418,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18465,7 +18463,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]

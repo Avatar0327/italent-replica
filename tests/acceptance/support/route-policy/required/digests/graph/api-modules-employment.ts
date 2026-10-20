@@ -4686,28 +4686,33 @@ export const GRAPH: Graph = {
     '#auditIntention',
     '#loadIntention',
   ],
+  'apps/api/src/modules/employment/retirement-intention.ts#assertEmployed': [
+    '#conflict',
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_EMPLOYED_STATUSES',
+  ],
   'apps/api/src/modules/employment/retirement-intention.ts#checkedSnapshots': [
     '#retirementFacts',
     'packages/domain/src/employment/retirement-intention.ts#intentionDateViolation',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/retirement-intention.ts#createIntention': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope',
     'apps/api/src/modules/employment/retirement-intention-store.ts#auditIntention',
     'apps/api/src/modules/employment/retirement-intention-store.ts#loadIntention',
     'apps/api/src/modules/employment/retirement-intention-store.ts#openIntentionOf',
+    '#assertEmployed',
     '#checkedSnapshots',
     '#conflict',
-    '#employedRecord',
+    '#currentRecordOf',
   ],
   'apps/api/src/modules/employment/retirement-intention.ts#createSchema': ['#date', '#reason'],
-  'apps/api/src/modules/employment/retirement-intention.ts#employedRecord': [
+  'apps/api/src/modules/employment/retirement-intention.ts#currentRecordOf': [
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
-    '#conflict',
-    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_EMPLOYED_STATUSES',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/retirement-intention.ts#employedRecord': ['#assertEmployed', '#currentRecordOf'],
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope',
