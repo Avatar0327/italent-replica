@@ -148,7 +148,7 @@ for (const [status, reason, text] of [
       await route.fallback();
     });
     const dialog = await onboard(page);
-    const generate = dialog.getByRole('button', { name: '生成邮箱', exact: true });
+    const generate = actionButton(dialog, '生成邮箱');
     // F-227：挂起回执，让每种邮箱结果都先经过真实加载态，避免快响应掩盖定位遗漏。
     try {
       await generate.click();
@@ -259,13 +259,13 @@ for (const action of ['complete', 'generate-email'])
     });
     let dialog = await onboard(page);
     await choose(dialog, '是否有试用期', '否');
-    await dialog.getByRole('button', action === 'complete' ? save : named('生成邮箱')).click();
+    await (action === 'complete' ? dialog.getByRole('button', save) : actionButton(dialog, '生成邮箱')).click();
     await expect(dialog.getByRole('button', save)).toBeDisabled();
     await dialog.getByRole('button', named('取消')).click();
     await tab(page, '今日待入职').click();
     dialog = await onboard(page);
     await expect(dialog.getByRole('button', save)).toBeDisabled();
-    await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+    await expect(actionButton(dialog, '生成邮箱')).toBeDisabled();
     await actionButton(dialog, '回查原单').click();
     await expect(dialog).toContainText('原单当前值');
     await expect(dialog.getByRole('button', save)).toBeDisabled();
@@ -518,7 +518,7 @@ test('AC-FE-R2b2-19 编辑未知后其他动作共用原单锁', async ({ page, 
   await dialog.getByRole('button', named('取消')).click();
   dialog = await onboard(page);
   await expect(dialog.getByRole('button', save)).toBeDisabled();
-  await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+  await expect(actionButton(dialog, '生成邮箱')).toBeDisabled();
   await dialog.getByRole('button', named('取消')).click();
   dialog = await actionDialog(page, 'delete');
   await expect(dialog.getByRole('button', named('是'))).toBeDisabled();
@@ -575,7 +575,7 @@ for (const [action, status] of [
     await dialog.getByRole('button', named('取消')).click();
     dialog = await onboard(page);
     await expect(dialog.getByRole('button', save)).toBeDisabled();
-    await expect(dialog.getByRole('button', named('生成邮箱'))).toBeDisabled();
+    await expect(actionButton(dialog, '生成邮箱')).toBeDisabled();
     await dialog.getByRole('button', named('取消')).click();
     dialog = await actionDialog(page, 'delete');
     await expect(dialog.getByRole('button', named('是'))).toBeDisabled();
