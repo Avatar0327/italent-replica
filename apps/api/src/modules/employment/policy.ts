@@ -163,6 +163,26 @@ const HANDOVER_TICK_KEYS = ['item', 'mine'] as const;
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
 const RETIREMENT_IDENTITY_TYPE_KEYS = EXIT_DICTIONARY_KEYS;
+/** retirement-rules.ts RetirementRuleView 的响应键。 */
+const RETIREMENT_RULE_KEYS = [
+  'id',
+  'purpose',
+  'ruleType',
+  'name',
+  'priority',
+  'orgIds',
+  'allOrgs',
+  'preset',
+  'includeSubordinates',
+  'retirementAgeYears',
+  'retirementAgeMonths',
+  'expectedFunction',
+  'earliestFunction',
+  'latestFunction',
+  'conditions',
+  'enabled',
+  'revision',
+] as const;
 /** 黑名单记录 / 列表 / 回执按黑名单对象的字段查看权平铺裁剪（blacklist-routes.ts trimBlacklist）。 */
 const BLACKLIST_FIELDS = projector('employment.blacklist', 'employment.blacklist');
 /** 选人员加黑：该员工须在操作人的任职数据范围内（requireEmployeeInScope，范围外与不存在同一个 404「员工不存在」）。 */
@@ -2106,7 +2126,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // （purpose：expected_date / flexible_range；ruleType：fixed_age 仅预计日期，退休年龄 30～80 岁、月数 0～11 / builtin 选用内置法定函数，
   // 弹性范围只能 builtin；条件为性别 / 国籍 / 雇佣关系（必填）/ 个人身份固定槽位，每槽至多一条、操作符只有 in，个人身份取值须为字典启用编码）；
   // 预置法定规则 PUT / DELETE 409 RETIREMENT_RULE_PRESET，可启停、可复制；PUT 不能改用途与类型；审计 retirement_rule.save / delete / enabled
-  'GET /retirement-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  // F-269：读 = 任职记录查看权（设计 §12.1），同字典 GET；写仍是配置写。规则是租户配置，无组织 / 人员字段，不按范围裁剪
+  'GET /retirement-rules': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('规则读取无按钮'),
+    scope: noScope('退休规则是租户配置，无组织 / 人员字段'),
+    fields: fixed(RETIREMENT_RULE_KEYS, 'R2-T04 §9.1：规则固定键，配置对象不做字段裁剪'),
+  }),
   'POST /retirement-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('retirement_rule')),
   'PUT /retirement-rules/:id': configuration(
     SETTINGS,
