@@ -1,6 +1,11 @@
 import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
 import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from '../offer/approval.js';
 import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
+import {
+  ORG_ADJUSTMENT_FORM_FIELDS,
+  ORG_ADJUSTMENT_OBJECT_CODE,
+  ORG_ADJUSTMENT_PROCESS_CODE,
+} from '../org-adjustment/fields.js';
 import { ASSESSMENT_FORM_FIELDS, PROBATION_ASSESSMENT_OBJECT } from '../employment/assessment.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 /**
@@ -32,6 +37,9 @@ export const APPROVER_EXPRESSIONS = [
   'approval_subject_first_level_org_head', // Offer 批量审批 - 审批主体组织 → 一级组织 → 负责人
   // R2 BE-15b1（29 PB-R3）：只有试用期考核两类审批可选（ASSESSMENT_ONLY_APPROVERS）
   'assessment_employee', // 考核 - 考核对象本人（员工自评节点，不按自审处理，同 idp_employee）
+  // R2-T08 BE-10a（§4.2）：只有组织调整可选（ORG_ADJUSTMENT_APPROVERS），取审批主体组织的 HRBP / 负责人
+  'approval_subject_org_hrbp',
+  'approval_subject_org_head',
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
@@ -52,6 +60,20 @@ export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
   'approval_subject_first_level_org_head',
+]);
+
+/**
+ * 组织调整审批的审批人白名单（R2-T08 §4.2）：申请单不是员工任职记录，流程主体与任职记录类取值取不到人，只开放这几项；
+ * 两个“审批主体组织”取值只用于组织调整，不改其他业务的审批行为。
+ */
+export const ORG_ADJUSTMENT_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'owner',
+  'approval_subject_org_hrbp',
+  'approval_subject_org_head',
+]);
+export const ORG_ADJUSTMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'approval_subject_org_hrbp',
+  'approval_subject_org_head',
 ]);
 
 /**
@@ -382,6 +404,7 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * talent_review：盘点结果审批（R3-T04 C-08）：PR-A 登记类型与预置流程，发起入口与运行时适配器随 PR-D 接入（集合审批）。
  * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
  * probation_assessment：试用中考核 / 转正考核（R2 BE-15b1，29 PB-R3）：业务单 = 考核记录，审批流 员工自评 → 经理评价。
+ * org_adjustment：组织调整申请（R2-T08 BE-10a，DEC-526②）：业务单 = 组织调整申请单（独立对象，不再挂任职适配器），BE-10a 为占位。
  */
 export type ApprovalAdapterKind =
   | 'employment'
@@ -393,7 +416,8 @@ export type ApprovalAdapterKind =
   | 'part_time'
   | 'offer'
   | 'offer_batch'
-  | 'probation_assessment';
+  | 'probation_assessment'
+  | 'org_adjustment';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -469,7 +493,8 @@ const employmentType = (
 /**
  * 审批类型目录（`14` §11.1，原站 88 个类型中首版涉及的任职记录类型 + 员工信息类型）。原站没有“重聘”审批类型：
  * 重聘入职、退休返聘是「入职」的异动类型（`07` §2），走入职审批（approvalTypeOfBusiness）。
- * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），任职记录上的组织调整异动没有对应的标准流程编码。
+ * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），复刻为独立类型 ORG_ADJUSTMENT_TYPE（R2-T08）；任职记录上的组织调整
+ * 异动（改组织名称 / 上级的任职联动）没有对应的审批流程。
  */
 /**
  * Offer 审批（BE-14a3）：表单字段为 Offer 字段集，按 Offer 对象字段权限披露。原站单个 Offer 审批的标准编码与节点未取证，
@@ -529,6 +554,25 @@ const assessmentType = (code: 'probation_assessment' | 'regularization_assessmen
     approvalEdit: true,
   }) as const satisfies ApprovalTypeDefinition;
 
+/**
+ * 组织调整审批（R2-T08 §4.1，DEC-526②）：业务单 = 组织调整申请单，字段权限按 OrgAdjustment 对象（编码见
+ * ORG_ADJUSTMENT_OBJECT_CODE，待 F-273 取证），表单即 §4.5 的静态命名空间字段；审批主体组织决定审批人（OA-R1）。
+ */
+const ORG_ADJUSTMENT_TYPE = {
+  code: 'org_adjustment',
+  name: '组织调整',
+  objectCode: ORG_ADJUSTMENT_OBJECT_CODE,
+  adapter: 'org_adjustment',
+  defaultProcessCode: ORG_ADJUSTMENT_PROCESS_CODE,
+  conditionFields: [
+    { path: 'processCode', label: '流程编码', kind: 'text' },
+    { path: 'adjustment.approvalSubjectOrgId', label: '审批主体组织', kind: 'org' },
+  ],
+  formFields: ORG_ADJUSTMENT_FORM_FIELDS,
+  readonlyFields: [],
+  approvalEdit: true,
+} as const satisfies ApprovalTypeDefinition;
+
 const contractType = (code: string, name: string, defaultProcessCode: string) =>
   ({
     code,
@@ -574,7 +618,7 @@ export const APPROVAL_TYPES = {
     ...employmentType('retirement', '退休', 'RetireProcess', LEAVE_CONDITION_FIELDS),
     formFields: [...employmentFormFields, ...RETIREMENT_REQUEST_FIELDS],
   },
-  org_adjustment: employmentType('org_adjustment', '组织调整'),
+  org_adjustment: ORG_ADJUSTMENT_TYPE,
   // BE-7 兼职（R2-T05 §1.5）：PT-1 只登记类型与预置，申请对象与发起入口随 PT-4a / PT-4b 接入
   part_time_add: partTimeType('part_time_add', '兼职', 'AddParttimeJobProcess'),
   part_time_extend: partTimeType('part_time_extend', '延长兼职', 'ExtendParttimeJobProcess'),

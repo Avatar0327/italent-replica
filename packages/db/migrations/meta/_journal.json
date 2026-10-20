@@ -1100,6 +1100,13 @@
       "when": 1792450147014,
       "tag": "0156_be5c1b_retirement_statutory",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1792459976876,
+      "tag": "0157_be10a_org_adjustment",
+      "breakpoints": true
     }
   ]
 }

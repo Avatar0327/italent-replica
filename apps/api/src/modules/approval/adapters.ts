@@ -14,6 +14,7 @@ import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
+import { orgAdjustmentAdapter } from '../org-adjustment/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
@@ -67,7 +68,8 @@ export type BusinessType =
   | 'part_time'
   | 'offer'
   | 'offer_batch'
-  | 'probation_assessment';
+  | 'probation_assessment'
+  | 'org_adjustment';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -618,4 +620,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   offer_batch: offerBatchAdapter,
   // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
   probation_assessment: assessmentAdapter,
+  // R2-T08 BE-10a：组织调整（业务单 = 组织调整申请单），BE-10a 为占位，BE-10c 接入真适配器
+  org_adjustment: orgAdjustmentAdapter,
 };

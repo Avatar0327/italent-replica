@@ -119,7 +119,10 @@ describe('审批人表达式的类型限制（§4.2）', () => {
       ]);
     }
     for (const approver of ['approval_subject_org_hrbp', 'approval_subject_org_head', 'owner']) {
-      const created = await post({ ...process('org_adjustment', approver), nodes: [{ key: 'n1', approver, formFields: ['subject'] }] });
+      const created = await post({
+        ...process('org_adjustment', approver),
+        nodes: [{ key: 'n1', approver, formFields: ['subject'] }],
+      });
       expect(created.status, approver).toBe(201);
     }
   });

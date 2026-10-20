@@ -45,8 +45,19 @@ describe('状态枚举（§2.1 / §3，DEC-526④）', () => {
       '作废',
       '已驳回',
     ]);
-    const byLabel = Object.fromEntries(ORG_ADJUSTMENT_STATUS_FILTERS.map((f) => [f.label, statusFilterApprovalStatus(f.code)]));
-    expect(byLabel).toMatchObject({ 草稿: 0, 已暂存: 0, 审批中: 1, 审批通过: 2, 审批未通过: 3, 生效: 4, 作废: 5, 已驳回: 6 });
+    const byLabel = Object.fromEntries(
+      ORG_ADJUSTMENT_STATUS_FILTERS.map((f) => [f.label, statusFilterApprovalStatus(f.code)]),
+    );
+    expect(byLabel).toMatchObject({
+      草稿: 0,
+      已暂存: 0,
+      审批中: 1,
+      审批通过: 2,
+      审批未通过: 3,
+      生效: 4,
+      作废: 5,
+      已驳回: 6,
+    });
     expect(new Set(ORG_ADJUSTMENT_STATUS_FILTERS.map((f) => f.code)).size).toBe(8);
     expect(statusFilterApprovalStatus('no_such')).toBeNull();
   });
@@ -61,7 +72,10 @@ describe('静态命名空间字段编码目录（§4.5）', () => {
     const sections = Object.keys(ORG_ADJUSTMENT_SECTION_FIELDS);
     expect(sections).toEqual(['orgItems', 'transferItems', 'positionItems', 'establishmentItems', 'partTimeItems']);
     for (const [section, fields] of Object.entries(ORG_ADJUSTMENT_SECTION_FIELDS)) {
-      expect(fields.every((code) => code.startsWith(`${section}.`)), section).toBe(true);
+      expect(
+        fields.every((code) => code.startsWith(`${section}.`)),
+        section,
+      ).toBe(true);
       expect(new Set(fields).size).toBe(fields.length);
     }
     expect(ORG_ADJUSTMENT_SECTION_FIELDS.orgItems).toEqual(

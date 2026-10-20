@@ -51,7 +51,8 @@ async function insertItem(tx: Tx, w: World, adjustmentId: string, over: Record<s
     sql`, `,
   );
   await tx.execute(
-    sql`INSERT INTO org_adjustment_org_items(tenant_id, ${sql.raw(columns.join(', '))}) VALUES (${w.tenant.id}, ${values})`,
+    sql`INSERT INTO org_adjustment_org_items(tenant_id, ${sql.raw(columns.join(', '))})
+      VALUES (${w.tenant.id}, ${values})`,
   );
   return row;
 }
@@ -125,7 +126,12 @@ describe('申请单 CHECK（§2.1）', () => {
         insertHeader(tx, w, orgId, { approval_status: 1, execution_status: status }),
       );
     }
-    for (const bad of [{ approval_status: 7 }, { approval_status: -1 }, { execution_status: 0 }, { execution_status: 4 }]) {
+    for (const bad of [
+      { approval_status: 7 },
+      { approval_status: -1 },
+      { execution_status: 0 },
+      { execution_status: 4 },
+    ]) {
       expect(await rejects(w, (tx) => insertHeader(tx, w, orgId, bad)), JSON.stringify(bad)).toMatch(/check|violates/i);
     }
   });
@@ -149,7 +155,11 @@ describe('申请单 CHECK（§2.1）', () => {
       );
     }
     await withTenant(testDb().db, w.tenant.id, (tx) =>
-      insertHeader(tx, w, orgId, { subject: '题'.repeat(100), scope_note: '范'.repeat(500), content: '内'.repeat(2000) }),
+      insertHeader(tx, w, orgId, {
+        subject: '题'.repeat(100),
+        scope_note: '范'.repeat(500),
+        content: '内'.repeat(2000),
+      }),
     );
     const code = `OA${uniqueSuffix()}`;
     await withTenant(testDb().db, w.tenant.id, (tx) => insertHeader(tx, w, orgId, { code }));
@@ -160,7 +170,11 @@ describe('申请单 CHECK（§2.1）', () => {
 describe('组织明细 CHECK 与唯一约束（§2.2）', () => {
   it('新增无目标组织；变更 / 停用必须有目标；调整类型只能 1～3', async () => {
     const { w, orgId } = await world('oa10a-items');
-    const adjustmentId = await withTenant(testDb().db, w.tenant.id, async (tx) => (await insertHeader(tx, w, orgId)).id);
+    const adjustmentId = await withTenant(
+      testDb().db,
+      w.tenant.id,
+      async (tx) => (await insertHeader(tx, w, orgId)).id,
+    );
     await withTenant(testDb().db, w.tenant.id, async (tx) => {
       await insertItem(tx, w, adjustmentId, { seq: 1, adjust_type: 1 });
       await insertItem(tx, w, adjustmentId, { seq: 2, adjust_type: 2, target_org_id: orgId });
@@ -201,21 +215,21 @@ describe('组织明细 CHECK 与唯一约束（§2.2）', () => {
       await insertItem(tx, w, second!, { seq: 1, adjust_type: 2, target_org_id: orgId });
       await insertItem(tx, w, first!, { seq: 2, adjust_type: 1, created_org_id: other });
     });
-    expect(await rejects(w, (tx) => insertItem(tx, w, first!, { seq: 3, adjust_type: 3, target_org_id: orgId }))).toMatch(
-      /duplicate|unique/i,
-    );
-    expect(await rejects(w, (tx) => insertItem(tx, w, second!, { seq: 2, adjust_type: 1, created_org_id: other }))).toMatch(
-      /duplicate|unique/i,
-    );
+    expect(
+      await rejects(w, (tx) => insertItem(tx, w, first!, { seq: 3, adjust_type: 3, target_org_id: orgId })),
+    ).toMatch(/duplicate|unique/i);
+    expect(
+      await rejects(w, (tx) => insertItem(tx, w, second!, { seq: 2, adjust_type: 1, created_org_id: other })),
+    ).toMatch(/duplicate|unique/i);
     // 引用别的单的明细 → 外键拒绝；引用同单明细 → 通过
     const parent = await withTenant(testDb().db, w.tenant.id, async (tx) =>
       resultRows<{ id: string }>(
         await tx.execute(sql`SELECT id FROM org_adjustment_org_items WHERE adjustment_id = ${first!} AND seq = 2`),
       ),
     );
-    expect(
-      await rejects(w, (tx) => insertItem(tx, w, second!, { seq: 3, parent_item_id: parent[0]!.id })),
-    ).toMatch(/foreign key/i);
+    expect(await rejects(w, (tx) => insertItem(tx, w, second!, { seq: 3, parent_item_id: parent[0]!.id }))).toMatch(
+      /foreign key/i,
+    );
     await withTenant(testDb().db, w.tenant.id, (tx) =>
       insertItem(tx, w, first!, { seq: 4, parent_item_id: parent[0]!.id, cascaded_from_item_id: parent[0]!.id }),
     );
@@ -225,12 +239,25 @@ describe('组织明细 CHECK 与唯一约束（§2.2）', () => {
 describe('共享 CHECK 放宽（§2.4）', () => {
   const definition = async (name: string) =>
     resultRows<{ def: string }>(
-      await testDb().db.execute(sql`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = ${name}`),
+      await testDb().db.execute(
+        sql`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = ${name}`,
+      ),
     ).map((row) => row.def);
 
   it('approval_instances.business_type 含 org_adjustment，原 9 项不丢', async () => {
     const [def] = await definition('approval_instances_business_type');
-    for (const value of ['employment', 'personnel_change', 'contract', 'idp', 'talent_review', 'part_time', 'offer', 'offer_batch', 'probation_assessment', 'org_adjustment']) {
+    for (const value of [
+      'employment',
+      'personnel_change',
+      'contract',
+      'idp',
+      'talent_review',
+      'part_time',
+      'offer',
+      'offer_batch',
+      'probation_assessment',
+      'org_adjustment',
+    ]) {
       expect(def, value).toContain(`'${value}'`);
     }
   });

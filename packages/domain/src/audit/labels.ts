@@ -73,6 +73,9 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
   'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
   'part-time-request': { label: '兼职申请', app: ORG_PEOPLE },
+  // R2-T08 BE-10a 组织调整（§9.4）：申请单与组织明细；其余明细分区随各自批次登记
+  'org-adjustment': { label: '组织调整申请', app: ORG_PEOPLE },
+  'org-adjustment-item': { label: '组织调整明细', app: ORG_PEOPLE },
   // R2 BE-8a 黑名单与离职自动加黑规则（规则是配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   blacklist: { label: '黑名单', app: ORG_PEOPLE },
   blacklist_rule: { label: '离职自动加黑规则', app: ORG_PEOPLE },
@@ -270,10 +273,41 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   currentLevelId: '当前职级',
   currentPositionId: '当前职位',
   currentPostId: '当前职务',
+  // R2-T08 BE-10a 组织调整申请的头字段（code / name / shortName 等沿用上方已登记的同名字段）
+  subject: '调整主题',
+  approvalSubjectOrgId: '审批主体组织',
+  content: '调整内容',
+  scopeNote: '调整范围',
+  approvalStatus: '审批状态',
+  executionStatus: '执行状态',
+  executionNote: '执行备注',
   // F-222：codex-F185b B1/B2 的 Offer 批量审批单功能权限原文。
   PartDisAgree: '部分不同意',
   AllDisAgree: '全部不同意',
 };
+
+/** 组织调整的审计动作（R2-T08 §9.4）；被调端口各自的 org.* / employment.* / transfer.* 审计照常写，带 trigger。 */
+export const ORG_ADJUSTMENT_AUDIT_ACTIONS = [
+  'org-adjustment.create',
+  'org-adjustment.update',
+  'org-adjustment.void',
+  'org-adjustment.submit',
+  'org-adjustment.withdraw',
+  'org-adjustment.rebase',
+  'org-adjustment.item.create',
+  'org-adjustment.item.update',
+  'org-adjustment.item.delete',
+  'org-adjustment.approved',
+  'org-adjustment.rejected',
+  'org-adjustment.disapproved',
+  'org-adjustment.execution.scheduled',
+  'org-adjustment.execution.started',
+  'org-adjustment.execution.group.succeeded',
+  'org-adjustment.execution.group.failed',
+  'org-adjustment.execution.group.retry',
+  'org-adjustment.execution.takeover',
+  'org-adjustment.execution.completed',
+] as const;
 
 export function auditFieldLabel(field: string): string {
   return FIELD_LABELS[field] ?? field;
@@ -310,6 +344,11 @@ const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   currentPostId: 'post',
   directManagerId: 'employee',
   dottedManagerId: 'employee',
+  approvalSubjectOrgId: 'org',
+  parentOrgId: 'org',
+  targetOrgId: 'org',
+  transferToOrgId: 'org',
+  newHeadManagerId: 'employee',
   personInChargeId: 'employee',
   hrbpId: 'employee',
   shopOwnerId: 'employee',
