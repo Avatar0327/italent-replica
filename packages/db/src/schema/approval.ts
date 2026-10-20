@@ -375,7 +375,7 @@ export const approvalInstances = pgTable(
     check(
       'approval_instances_business_type',
       sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review','part_time',
-        'offer','offer_batch','probation_assessment')`,
+        'offer','offer_batch','probation_assessment','retirement_intention')`,
     ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
