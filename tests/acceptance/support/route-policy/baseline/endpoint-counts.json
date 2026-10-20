@@ -5,7 +5,7 @@
     "avatar": 5,
     "command-result": 1,
     "contracts": 25,
-    "employment": 141,
+    "employment": 147,
     "establishment": 16,
     "evaluation": 34,
     "hr-dashboard": 2,
@@ -30,5 +30,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 772
+  "total": 778
 }
