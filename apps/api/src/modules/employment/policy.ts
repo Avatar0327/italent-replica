@@ -1003,6 +1003,43 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     guards: ['employment.viewableFilters'],
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.internViews'),
+    // F-283 逐行 availableActions（intern-actions.ts）：对每行跑转正 / 结束实习 / 撤回 / 撤销写入口的同一组判定，只决定响应里
+    // 的动作码，不参与准入；无对应对象操作权（readContext 的 403）时该类动作不下发，其余错误照常抛出
+    optional: {
+      rowActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'create',
+            button: button('Employment.Create', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 regularize / terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button(EXIT_BUTTONS.direct, 'detail'),
+            scope: noScope('只判按钮：员工范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button('Employment.Withdraw', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 withdraw / revoke'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：业务范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
   // 直接实习转正：If-Match 必填；body 严格（合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
   // 看全部的写别名；requireEmploymentWrite('create', 实际写入字段, Employment.Create)；requireEmploymentScope（人员 + 目标部门）；
@@ -1220,6 +1257,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: pointScope({ param: 'id' }, 'employment.partTimeRequest', NF_PART_TIME_REQUEST),
     fields: projector('employment.response', 'employment.partTimeRequest'),
     ...byId,
+    // F-268 逐单 availableActions（part-time/request-actions.ts）：对改 / 提交 / 删除 / 撤回 / 撤销各跑写入口的同一个
+    // requirePartTimeRequestAccess（对象操作权 + 申请类型按钮 + 写入口径范围），只决定响应里的动作码，不参与准入
+    optional: {
+      requestActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button(PART_TIME_BUTTONS.application, 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 edit / submit / withdraw'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'delete',
+            button: button('Employment.Delete', 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 delete'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：申请范围已由上面两项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
   // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，
   // 不回退到 all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType /

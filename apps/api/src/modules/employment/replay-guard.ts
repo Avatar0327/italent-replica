@@ -214,12 +214,15 @@ export function exitCommandGuard(
   scopeTarget: ExitScopeTarget,
 ): ScopedCommandGuard {
   return scopedGuard({
-    before: async (tx) =>
-      requireExitCommandAccess(tx, await commandContext(tx, deps, ctx), operation, target, scopeTarget),
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      await requireExitScope(tx, scoped, target, scopeTarget);
+      await requireExitPermission(scoped, operation, target);
+    },
   });
 }
 
-/** 离职类入口“范围 + Dimission* 权限链”的单一入口：命令内复核与读口下发动作（结束实习等）共用。 */
+/** 离职类入口的“范围 + Dimission* 权限链”两步（与 exitCommandGuard 同一对原语）：读口逐行下发“结束实习”时调用。 */
 export async function requireExitCommandAccess(
   tx: Tx,
   scoped: EmploymentContext,

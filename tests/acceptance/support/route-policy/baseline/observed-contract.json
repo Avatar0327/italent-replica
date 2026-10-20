@@ -4349,14 +4349,30 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.EmploymentRecord:update"
+        ],
         "scope": [
+          "employment scope",
           "readPageContext"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -4385,13 +4401,18 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "employment scope",
           "employment visibility",
           "readPageContext",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
