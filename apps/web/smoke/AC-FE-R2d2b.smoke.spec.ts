@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { requestSetup } from './part-time-request-fixtures.js';
@@ -136,14 +137,14 @@ for (const approvalType of ['part_time_extend', 'transfer'])
     await page.getByText('合成待办申请', { exact: true }).click();
     await page.getByRole('button', { name: /^同\s*意$/ }).click();
     const form = page.getByRole('dialog', { name: /^同\s*意$/ });
-    await form.getByRole('button', { name: /^保\s*存$/ }).click();
+    await actionButton(form, '保存').click();
     if (approvalType === 'part_time_extend') {
       const confirm = page.getByRole('dialog').filter({ hasText: '请确认以下信息' });
       await expect(confirm).toBeVisible();
       await confirm.getByRole('button', { name: /取\s*消/ }).click();
       expect(writes).toBe(0);
       await expect(form).toBeVisible();
-      await form.getByRole('button', { name: /^保\s*存$/ }).click();
+      await actionButton(form, '保存').click();
       await confirm.getByRole('button', { name: /确\s*定/ }).click();
     }
     await expect(form).toHaveCount(0);
