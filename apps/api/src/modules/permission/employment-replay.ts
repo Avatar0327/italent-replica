@@ -5,6 +5,7 @@ import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import { ASSESSMENT_AUDIT_TYPE } from '../employment/assessment-store.js';
+import { INTENTION_AUDIT_TYPE } from '../employment/retirement-intention-store.js';
 import { partTimeRecordCreator } from '../employment/part-time/creator-sql.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
@@ -115,6 +116,7 @@ const footprintTypes = () =>
       PART_TIME_AUDIT_OBJECTS.record,
       PART_TIME_AUDIT_OBJECTS.request,
       ASSESSMENT_AUDIT_TYPE,
+      INTENTION_AUDIT_TYPE,
     ].map((type) => sql`${type}`),
     sql`,`,
   );
@@ -221,7 +223,7 @@ const businessDepartment = (alias: string) => {
 
 async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
   // 删除是不可变状态事件；对象和 payload 仍保留，因此合法删除响应也能通过范围复查。
-  // 试用期考核（F-229）不在业务头表：部门取创建时快照，创建人 = 发起人。
+  // 试用期考核（F-229）不在业务头表：部门取创建时快照，创建人 = 发起人。意向退休申请（5d2）同形：快照部门 + 发起人。
   // 兼职申请不在业务头表（R2-T05 §7.3A）：新增按申请最新版本部门，延长 / 结束按目标兼职记录当前部门；创建人 = 发起人。
   const wanted = sql`(SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
   return rows<Target>(
@@ -249,6 +251,10 @@ async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
     SELECT a.id,a.employee_id,a.department_id,a.initiator_user_id
     FROM employment_probation_assessments a
     WHERE a.tenant_id=${tenantId} AND a.id::text IN ${wanted}
+    UNION ALL
+    SELECT r.id,r.employee_id,r.department_id,r.initiator_user_id
+    FROM retirement_intentions r
+    WHERE r.tenant_id=${tenantId} AND r.id::text IN ${wanted}
   `),
   );
 }

@@ -10,6 +10,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import { RETIREMENT_INTENTION_FORM_FIELDS } from '../employment/retirement-intention.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
   APPROVAL_TYPES,
@@ -123,6 +124,7 @@ type GenericType = Exclude<
   | 'part_time_end'
   | 'offer'
   | 'offer_batch'
+  | 'retirement_intention'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -378,6 +380,26 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [
         node('direct_head', '直接上级', 'direct_manager', { formFields: RETIRE_FORM }),
         node('hr_interview', 'HR访谈', 'record_department_hrbp', { formFields: RETIRE_FORM }),
+      ],
+    }),
+  },
+  {
+    // R2-T04 §11.2：意向退休日期申请预置为本类型兜底流程（原站未发布 IntendedRetireProcess，A-19），直接上级一个节点；
+    // 通过只记录、不生效，故无 HR 访谈节点。敏感且有重大影响（DEC-332①），avoidSelf = true
+    presetKey: 'standard_retirement_intention',
+    code: 'Standard_retirement_intention',
+    approvalType: 'retirement_intention',
+    definition: draft({
+      name: '标准意向退休日期申请流程',
+      description: '出厂预置：直接上级审批，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('retirement_intention'),
+      // 驳回 = 退回发起人修改重提；“不同意”= 终态 disapproved，两条出口都留给直接上级
+      nodes: [
+        node('direct_head', '直接上级', 'direct_manager', {
+          formFields: RETIREMENT_INTENTION_FORM_FIELDS,
+          exits: AGREE_OR_NOT,
+        }),
       ],
     }),
   },
