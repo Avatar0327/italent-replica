@@ -56,12 +56,19 @@ export const GRAPH: Graph = {
     '#CUSTOM_FIELD',
     '#MAX_NODES',
     '#NODE_KEY',
+    '#fallbackViolations',
     '#nodeShapeViolations',
     '#offerApproverViolation',
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
+  'packages/domain/src/approval/definition.ts#fallbackViolations': [
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_LIMIT',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+    'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'packages/domain/src/approval/definition.ts#nodeShapeViolations': [
     'packages/domain/src/approval/countersign.ts#transitionRuleViolations',
@@ -115,6 +122,7 @@ export const GRAPH: Graph = {
     '#OFFER_PRESETS',
     '#PRESET_ACTIONS',
     '#RETIRE_FORM',
+    '#anyOneNode',
     '#draft',
     '#genericPreset',
     '#node',
@@ -126,6 +134,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#RETIRE_FORM': [
     'packages/domain/src/employment/retirement.ts#RETIREMENT_REQUEST_FIELDS',
   ],
+  'packages/domain/src/approval/presets.ts#anyOneNode': ['#node'],
   'packages/domain/src/approval/presets.ts#genericPreset': [
     '#GENERIC_FORM',
     '#draft',

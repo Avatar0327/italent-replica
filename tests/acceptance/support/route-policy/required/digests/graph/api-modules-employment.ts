@@ -2206,6 +2206,7 @@ export const GRAPH: Graph = {
     '#mineOf',
     '#pendingNodeOf',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NOT_LAUNCHED_HINTS',
   ],
   'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
