@@ -17,6 +17,7 @@ import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.j
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { pendingOf } from './support/f048.js';
 import { settledOrBlocked } from './support/pg-interleave.js';
+import { orderedEmployeePair } from './support/ordered-employee-pair.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -30,13 +31,15 @@ function signal() {
 }
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 
-/** 造一个 UUID 比申请员工小 / 大的下属（随机 UUID，按需重试，两种顺序都必须覆盖）。 */
+/** 两种员工 UUID 顺序都必须覆盖。 */
 async function subordinateOrdered(w: RequestWorld, order: 'below' | 'above') {
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const person = await w.person(`下属${order}${attempt}`, w.primary);
-    if ((order === 'below') === person.employeeId < w.worker.employeeId) return person;
-  }
-  throw new Error('造不出指定 UUID 顺序的下属');
+  const pair = await orderedEmployeePair(
+    w.worker,
+    () => w.person(`下属${order}`, w.primary),
+    (person) => person.employeeId,
+    order,
+  );
+  return pair.subordinate;
 }
 
 const headOf = (w: RequestWorld) =>
