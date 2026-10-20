@@ -4,6 +4,7 @@
  * 取证清单：✅ 已证；🟡 且状态列写明剩余部分由 DEC 定口径或可后补的降为“可后补”，不拦开工；其余照旧。
  * 全部用小夹具字符串，不依赖真实清单的行数（DEC-431①：状态判定只有 evidenceState / decisionSettled 两个入口）。
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { gateReport, parseDecisions, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
 
@@ -88,6 +89,11 @@ describe('F-290 取证清单状态识别', () => {
     ['🟡 ①定口径；②待用户决定', '🟡 ①由 DEC-392 定口径；②待用户决定'],
     ['🟡 声明剩余可后补却又明写仍须开工前完成', '🟡 已取一半；剩余可后补；但 ② 开工前须取证'],
     ['🟡 否定句：剩余尚未定口径', '🟡 已取一半；剩余部分尚未由 DEC-392 定口径'],
+    ['🟡 第 2 轮：剩余不可后补', '🟡 已取一半；剩余不可后补'],
+    ['🟡 第 2 轮：剩余不能按 DEC 定口径', '🟡 已取一半；剩余不能按 DEC-392 定口径'],
+    ['🟡 第 2 轮：剩余①可后补；②仍须在实现前完成取证', '🟡 已取一半；剩余①可后补；②仍须在实现前完成取证'],
+    ['🟡 剩余里夹一项白名单外的说明', '🟡 已取一半；剩余①可后补；②另有若干事项'],
+    ['🟡 剩余未必可后补（不确定表达）', '🟡 已取一半；剩余未必可后补'],
     ['🔴', '🔴 未定论'],
     ['🔴 即使写了可后补', '🔴 未定论；可后补'],
     ['□ 未取证', ''],
@@ -113,5 +119,29 @@ describe('F-290 取证清单状态识别', () => {
     const rows = [evidenceRow('Q-M0-901', blocks, '✅ 已证'), evidenceRow('Q-M0-902', blocks, '🟡 剩余（可后补）')];
     const { lines } = gate(rows, [], []);
     expect(lines[0]).toBe('未完成取证 1 项（共 2 项）');
+  });
+});
+
+describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误放）', () => {
+  const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+
+  it('取证清单：由状态列放行的恰为 Q-M0-127 / 132 / 133 / 153', () => {
+    const released = parseEvidence(read('docs/07_M0/03_需取证清单.md'))
+      .filter((e) => e.level === '可后补' && !/后续|落地后|恢复时|可后补/.test(e.blocks))
+      .map((e) => e.id);
+    expect(released).toEqual(['Q-M0-127', 'Q-M0-132', 'Q-M0-133', 'Q-M0-153']);
+  });
+
+  it('差异登记册：非 ✅ 开头而放行的恰为 D-062～D-077，仍待决的只有 D-057', () => {
+    const md = read('docs/00_状态/04_缺口冲突差异登记册.md');
+    const open = parseDecisions(md).map((d) => d.id);
+    const settledNotTicked = md
+      .split('\n')
+      .filter((l) => /^\| \*\*D-\d+\*\*/.test(l))
+      .map((l) => ({ id: /D-\d+/.exec(l)![0], st: l.split('|')[5]!.trim() }))
+      .filter((d) => !open.includes(d.id) && !d.st.startsWith('✅'))
+      .map((d) => d.id);
+    expect(open).toEqual(['D-057']);
+    expect(settledNotTicked).toEqual(Array.from({ length: 16 }, (_, i) => `D-0${62 + i}`));
   });
 });
