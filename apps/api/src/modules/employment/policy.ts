@@ -1028,7 +1028,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         fields: noFields('回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不含任职字段'),
       }),
     ],
-    noFields('回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不含任职字段'),
+    projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
     {
       guards: [LINKAGE, 'employment.entryContract'],
       write: employmentWrite(

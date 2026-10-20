@@ -238,7 +238,8 @@ export const DIGESTS: Digests = {
     switchProbationStatus: '8674c73d1637',
   },
   'apps/api/src/modules/employment/entry-contract.ts': {
-    requireEntryContractAccess: 'b0bb33380ef9',
+    requireContractCreateAccess: 'bd60c54bb43c',
+    requireEntryContractAccess: 'f8fc205b772e',
   },
   'apps/api/src/modules/employment/entry-email-routes.ts': {
     'route:GET /entry-email-rules': 'd23f7d1da5e5',
@@ -288,9 +289,15 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/forward-preview.ts': {
     previewEmploymentForwardUpdate: '9e9497cd9082',
   },
+  'apps/api/src/modules/employment/intern-create.ts': {
+    createInternEntry: 'ea950058c976',
+    internCreateGuard: '90b1908cbf8e',
+    requireInternCreateWrite: 'fc3d44f4e1d8',
+  },
   'apps/api/src/modules/employment/intern-routes.ts': {
     requireViewableInternFilters: '24f248bf8141',
     'route:GET /interns': '30204c189bd9',
+    'route:POST /interns': 'd9461538e0df',
     'route:POST /interns/:id/regularize': '30a7f759a110',
     'route:POST /interns/:id/terminate': 'ca0f1ae74dd2',
     'route:POST /rehire-matches': '0f65f77ec626',
@@ -1762,7 +1769,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject': '074eba4f3f59',
   'apps/api/src/modules/employment/employee-status.ts#lockPendingEntry': '607049f9acef',
   'apps/api/src/modules/employment/employee-status.ts#switchProbationStatus': '734ad6b5d180',
-  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': '47572e8e1b5b',
+  'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess': '08979d956365',
+  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': '48894fa4f933',
   'apps/api/src/modules/employment/entry-email-routes.ts#route:GET /entry-email-rules': '8c5fedf5902b',
   'apps/api/src/modules/employment/entry-email-routes.ts#route:PUT /entry-email-rules': 'de8a18655aa2',
   'apps/api/src/modules/employment/entry-routes.ts#completeEntryGuard': '4963ad52b4dd',
@@ -1797,8 +1805,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': '72c5c332f80e',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '4f083b329455',
+  'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '125c2b5c413f',
+  'apps/api/src/modules/employment/intern-create.ts#internCreateGuard': '9ab9aa646d66',
+  'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite': '3bd6ef83b493',
   'apps/api/src/modules/employment/intern-routes.ts#requireViewableInternFilters': 'f5174f751364',
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns': '6d66b4713234',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/terminate': '32bffd4d3e5f',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
