@@ -3017,12 +3017,17 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_LINKAGE_EVENTS',
   ],
   'apps/api/src/modules/employment/part-time/linkage.ts#applyLinkage': [
+    '#assertLinkageLocksHeld',
     '#validatePartTimeLinkage',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
     'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/part-time/linkage.ts#assertLinkageLocksHeld': [
+    '#hasLinkage',
+    'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld',
   ],
   'apps/api/src/modules/employment/part-time/linkage.ts#audit': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -3492,8 +3497,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#normalizeNewPartTime',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#landApprovedRequest': [
+    'apps/api/src/modules/employment/part-time/linkage.ts#assertLinkageLocksHeld',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
-    'apps/api/src/modules/employment/part-time/linkage.ts#lockLinkageParticipants',
     '#assertAction',
     '#auditRequest',
     '#dateTarget',
@@ -5261,6 +5266,10 @@ export const GRAPH: Graph = {
     '#array',
     '#employeeExists',
     '#participants',
+  ],
+  'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#SETTING',
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
