@@ -40,7 +40,13 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
-import { cancelExit, cancellationOwner, rejectRestore, updateCancellationReason } from './exit-cancel.js';
+import {
+  cancelExit,
+  cancellationOwner,
+  exitKindLabel,
+  rejectRestore,
+  updateCancellationReason,
+} from './exit-cancel.js';
 import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest, requireExitPermission } from './exit-gate.js';
@@ -337,8 +343,9 @@ async function projectCancelReceipt(deps: TenantRouteDeps, ctx: EmploymentContex
 }
 
 /**
- * POST exits/:id/cancel 与通用 DELETE businesses/:id（对离职单映射到撤销）共用：解析 { reason, confirmed? }，命令内复核权限与范围，
- * 同一事务执行 cancelExit。reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
+ * POST exits/:id/cancel、POST retirements/:id/cancel 与通用 DELETE businesses/:id（对离职 / 退休单映射到撤销）共用：
+ * 解析 { reason, confirmed? }，命令内复核权限（按钮取 buttonsOf(kind).cancel）与范围，同一事务执行 cancelExit。
+ * reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
  */
 export async function runExitCancel(
   c: Context<TenantEnv>,
@@ -347,12 +354,13 @@ export async function runExitCancel(
   id: string,
   employeeId: string,
   deleting = false,
+  kind: 'leave' | 'retirement' = 'leave',
 ) {
-  // 权限链先于校验（§9.1）：无 DimissionCancel 者先得 403，不因缺原因而得 400
-  await requireExitPermission(ctx, 'cancel', { employeeId, deleting });
+  // 权限链先于校验（§9.1）：无 DimissionCancel / RetireCancel 者先得 403，不因缺原因而得 400
+  await requireExitPermission(ctx, 'cancel', { employeeId, deleting, kind });
   const parsed = cancelSchema.safeParse(await jsonBody(c).catch(() => ({})));
   if (!parsed.success || !parsed.data.reason.trim())
-    throw new AppError('VALIDATION_FAILED', '请填写撤销离职原因', {
+    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
       reason: 'EXIT_CANCEL_REASON_REQUIRED',
       issues: parsed.success ? [] : parsed.error.issues,
     });
@@ -364,10 +372,31 @@ export async function runExitCancel(
     { id, ...input },
     async (tx, context) => ({ status: 200, body: await cancelExit(tx, context, id, input) }),
     {
-      guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId, deleting }, { businessId: id }),
+      guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId, deleting, kind }, { businessId: id }),
       project: (body) => projectCancelReceipt(deps, ctx, body),
     },
   );
+}
+
+/**
+ * 撤销记录的入口校验（PATCH exits|retirements/cancellations/:id 共用）：记录不存在、所属业务不是该路径的业务类型、
+ * 所属员工在范围外是同一个 404、同一文案，不泄露撤销记录是否存在（退休 R2-T04 §6：路径的业务类型与单据 kind 一致）。
+ */
+export async function requireCancellationOwner(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  kind: 'leave' | 'retirement',
+) {
+  const missing = () => new AppError('NOT_FOUND', '撤销的离职记录不存在');
+  const owner = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const found = await cancellationOwner(tx, ctx.tenantId, id);
+    if (!found || (await businessKind(tx, ctx.tenantId, found.businessId)) !== kind) return undefined;
+    await requireEmployeeInScope(tx, ctx, found.employeeId).catch(() => Promise.reject(missing()));
+    return found;
+  });
+  if (!owner) throw missing();
+  return owner;
 }
 
 function registerExitCancel(
@@ -398,14 +427,7 @@ function registerExitCancel(
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
     await requireEmploymentWrite(ctx, 'update', {}, EXIT_BUTTONS.cancel, undefined, { commandOnly: true });
-    // 范围外与不存在同一个 404、同一文案，不泄露撤销记录是否存在
-    const missing = () => new AppError('NOT_FOUND', '撤销的离职记录不存在');
-    const owner = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const found = await cancellationOwner(tx, ctx.tenantId, id);
-      if (found) await requireEmployeeInScope(tx, ctx, found.employeeId).catch(() => Promise.reject(missing()));
-      return found;
-    });
-    if (!owner) throw missing();
+    const owner = await requireCancellationOwner(deps, ctx, id, 'leave');
     const { reason } = parse(z.strictObject({ reason: z.string().max(500) }), await jsonBody(c));
     return runWrite(
       c,
@@ -448,7 +470,7 @@ function parseViewQuery(c: Context<TenantEnv>) {
 }
 
 /** 姓名 / 工号属人员对象，其余按任职记录对象；无字段权限配置 = 全可见（同实习视图）。 */
-async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
+export async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
   const [employee, employment] = await Promise.all([
     getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT),
     getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),
