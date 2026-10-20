@@ -370,7 +370,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/disclosure.ts#ownTasks': ['1e555c7e65c9', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/disclosure.ts#pick': ['860ee12c5610', 'bb1117e3491d'],
   'apps/api/src/modules/approval/disclosure.ts#projectLog': ['97c4827be8ae', 'cd6103fb4afa'],
-  'apps/api/src/modules/approval/disclosure.ts#readDetail': ['7f9e384aa276', '6a229d2d587a'],
+  'apps/api/src/modules/approval/disclosure.ts#readDetail': ['91e0bfb1a88f', '6a229d2d587a'],
   'apps/api/src/modules/approval/disclosure.ts#recordsHidden': ['35e5a9937b33', 'b2b7de1be2fd'],
   'apps/api/src/modules/approval/disclosure.ts#viewerNode': ['9fcb6c7f0d83', '47d9234dcee7'],
   'apps/api/src/modules/approval/disclosure.ts#visibleTasks': ['c6e7585702d5', '029b0b243c86'],
