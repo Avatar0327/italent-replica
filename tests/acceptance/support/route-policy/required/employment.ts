@@ -27,6 +27,7 @@ const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
 const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
 const PART_TIME_REQUEST_SERVICE = `${SRC}/employment/part-time/request-service.ts`;
 const PART_TIME_VALIDATION = `${SRC}/employment/part-time/validation.ts`;
+const PART_TIME_LINKAGE = `${SRC}/employment/part-time/linkage.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
 // readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
@@ -353,6 +354,31 @@ function exitPreview(button: string, file = EXIT, path = '/exits/employees/:id/p
     },
   ];
 }
+
+/**
+ * R2 BE-7 PT-7 兼职联动（设计 §4.8）：直接新增 / 编辑在命令事务内保存并执行“是否部门负责人 / 新增下属”，复用调动联动的校验
+ * （validateTransferSubordinates：负责人的组织写范围 requireTransferOrganizationScope、下属范围 requireScopedEmploymentObject），
+ * 联动记录 / 组织在范围外一律 LINKED_RECORD_OUT_OF_SCOPE（DEC-178），不新增授权项。
+ */
+const ptLinkage = (call: Evidence): Obligation =>
+  ob(
+    'guard:employment.linkage',
+    ['guard:employment.linkage'],
+    [
+      call,
+      {
+        role: 'impl',
+        unit: `${PART_TIME_LINKAGE}#validatePartTimeLinkage`,
+        anchor: 'await validateTransferSubordinates(',
+      },
+      {
+        role: 'impl',
+        unit: `${SRC}/org/write-service.ts#requireTransferOrganizationScope`,
+        anchor: "throw new AppError('LINKED_RECORD_OUT_OF_SCOPE'",
+      },
+    ],
+    '联动人员 / 组织写范围按 DEC-178 复核',
+  );
 
 // ---- R2 BE-7 PT-3b 兼职新增预览 / 直接新增 / 员工页签 / 详情（part-time/routes.ts）-------------------------------------------
 const PT_PREVIEW = '/employees/:id/part-times/preview';
@@ -1923,14 +1949,32 @@ export const EMPLOYMENT: RequiredTable = {
         'const created = await createPartTime(tx, context, serviceInput(id, body))',
       ),
     ),
+    ptLinkage(
+      at(
+        PART_TIME,
+        'POST',
+        '/employees/:id/part-times',
+        'const created = await createPartTime(tx, context, serviceInput(id, body))',
+      ),
+    ),
   ],
   // ---- R2 BE-7 PT-3c 编辑兼职 / 批量结束（part-time/routes.ts；写入口径判定与命令内复核在 replay-guard.ts）-----------------------------
-  'PATCH /api/tenant/employment/part-times/:recordId': partTimeWrite(
-    'PATCH',
-    '/part-times/:recordId',
-    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
-    'Employment.PartTimeEdit',
-  ),
+  'PATCH /api/tenant/employment/part-times/:recordId': [
+    ...partTimeWrite(
+      'PATCH',
+      '/part-times/:recordId',
+      "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+      'Employment.PartTimeEdit',
+    ),
+    ptLinkage(
+      at(
+        PART_TIME,
+        'PATCH',
+        '/part-times/:recordId',
+        'const edited = await editPartTime(tx, context, id, editInput(body))',
+      ),
+    ),
+  ],
   'POST /api/tenant/employment/part-times/batch-end': partTimeWrite(
     'POST',
     '/part-times/batch-end',

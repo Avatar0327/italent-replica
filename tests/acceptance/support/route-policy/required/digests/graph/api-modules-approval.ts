@@ -1347,11 +1347,7 @@ export const GRAPH: Graph = {
     '#isEligibleApprover',
     '#personOfUser',
   ],
-  'apps/api/src/modules/approval/resolver.ts#handoverWorkOwner': [
-    '#candidateOf',
-    '#directManagerOf',
-    '#handoverHrAdmin',
-  ],
+  'apps/api/src/modules/approval/resolver.ts#handoverWorkOwner': ['#candidateOf', '#directManagerOf'],
   'apps/api/src/modules/approval/resolver.ts#isActiveAccount': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#isAssignable': ['#enterAssigneeGate', '#isActiveAccount'],
   'apps/api/src/modules/approval/resolver.ts#isEligibleApprover': ['#departed', '#isAssignable', '#personOfUser'],
