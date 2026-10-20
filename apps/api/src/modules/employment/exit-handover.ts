@@ -1,9 +1,10 @@
 /**
  * 离职交接执行（R2 BE-8b2，B64 / B65，DM-R11 / DM-R13 / DM-R14，DEC-632；设计 R2-T03 §0 / §5.1 步骤 8 的 confirmed / cancelled 端口订阅方）。
  * - 自动发起：订阅 exitPostEffectHooks.onConfirmed（端口只对离职申请审批通过调用，直接离职不调用，B-59）。按 exit.handover_trigger 判断开关与
- *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。发起在保存点内：没有可用流程、首节点无人等
- *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批；同一离职最多一张进行中 / 已完成的交接（部分唯一索引兜底，重放返回已有的一张）。
- * - 事项：发起时把交接事项设置当时的全部事项整份快照到本单，之后改设置不影响；“交接人”只读文本，不随负责人回填（R2f2）。
+ *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。发起在保存点内：没有可用流程等
+ *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批；首节点无人可发（无交接人且无直线经理）例外：
+ *   409 EXIT_HANDOVER_FIRST_NODE_EMPTY，整个批准动作回滚（DEC-661）。同一离职最多一张进行中 / 已完成的交接
+ *   （部分唯一索引兜底，重放返回已有的一张）。
  * - 办理：勾选“办理完成”即自动保存（tickHandoverItem，不点同意也生效、不推进节点）；只能改当前待办节点负责的类别
  *   （工作交接节点办“工作交接”类、其他事项交接节点办“其他”类）；“本人事项办完”只统计当前审批人本节点的事项。
  * - 交接未完成不阻止离职生效：本文件不读写离职状态，交接完成与否对离职生效没有影响（B64 本租户配置）。
@@ -91,9 +92,18 @@ async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise
   return row?.lastWorkDate ?? null;
 }
 
-/** 审批中心上下文：发起人换成员工本人账号，审批发起日志标“系统代发”。 */
+/**
+ * 审批中心上下文：发起人换成员工本人账号，操作人显式设为系统（actorUserId: null）——审批发起日志、审计与主体冻结的操作人都记系统，
+ * 不冒用批准离职的审批人（第 2 轮 P2-2）；发起日志另标“系统代发”。
+ */
 const launchContext = (ctx: EmploymentContext, initiatorUserId: string) =>
-  ({ ...ctx, userId: initiatorUserId, expectedRevision: 0, systemProxy: true }) as unknown as ApprovalContext;
+  ({
+    ...ctx,
+    userId: initiatorUserId,
+    actorUserId: null,
+    expectedRevision: 0,
+    systemProxy: true,
+  }) as unknown as ApprovalContext;
 
 /** 发起入口（订阅方本体，导出供重放测试直调）：只对离职申请；调用方已持员工锁与离职业务头锁。 */
 export async function launchExitHandover(
@@ -117,6 +127,11 @@ export async function launchExitHandover(
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
     const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
+    // 首节点无人可发（没有交接人也没有直线经理）：不兜底给别人，整个批准动作回滚，离职保持原状态，补人后可重新发起（DEC-661）
+    if (reason === 'APPROVAL_FIRST_NODE_EMPTY')
+      throw new AppError('CONFLICT', '未指定交接人且无直线经理，无法发起工作交接，请补充交接人后重新批准', {
+        reason: 'EXIT_HANDOVER_FIRST_NODE_EMPTY',
+      });
     await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
     return { outcome: 'failed', reason };
   }
