@@ -1564,18 +1564,18 @@ export const GRAPH: Graph = {
     '#prepareEntryAction',
     'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
   ],
+  'apps/api/src/modules/employment/entry-views.ts#entryViewPredicate': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
   'apps/api/src/modules/employment/entry-views.ts#listEntryView': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
-    '#viewPredicate',
+    '#entryViewPredicate',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
-  ],
-  'apps/api/src/modules/employment/entry-views.ts#viewPredicate': [
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
@@ -4095,23 +4095,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
   'apps/api/src/modules/employment/probation-views.ts#listProbationView': [
-    'apps/api/src/modules/employment/context.ts#employmentCreator',
-    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
-    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
-    '#filterPredicate',
     '#organizationsOf',
-    '#probationInfo',
-    '#viewPredicate',
-    'apps/api/src/modules/employment/probation.ts#cycleRegularization',
+    '#probationViewRows',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/probation-views.ts#organizationsOf': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/probation-views.ts#probationInfo': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/probation-views.ts#probationViewRows': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
+    '#filterPredicate',
+    '#probationInfo',
+    '#viewPredicate',
+    'apps/api/src/modules/employment/probation.ts#cycleRegularization',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/probation-views.ts#viewPredicate': [
@@ -4803,6 +4806,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES',
     'apps/api/src/modules/employment/exit-queries.ts#on',
   ],
+  'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_SOURCE': ['#SUBMITTED_AT_JOIN'],
   'apps/api/src/modules/employment/retirement-views.ts#billPredicate': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [

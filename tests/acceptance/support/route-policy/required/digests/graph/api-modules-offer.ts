@@ -471,6 +471,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/approval-progress.ts#withApprovalProgress',
     'apps/api/src/modules/offer/entry-link.ts#currentEntryIds',
     '#TEXT_FILTERS',
+    '#offerViewConditions',
     '#withActions',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],

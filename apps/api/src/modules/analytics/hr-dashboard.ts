@@ -129,7 +129,8 @@ const finished = (c: DashboardAsOf, since: string) =>
  * 所以“已提交”的时点取首个 in_review / approved / effective 事件；退休 / 离职走门禁，一定先经审批事件。
  */
 const SUBMITTED_OR_DIRECT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
-  WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id AND ev.state IN ('in_review','approved','effective')) sub ON true`;
+  WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id
+    AND ev.state IN ('in_review','approved','effective')) sub ON true`;
 
 function business(c: DashboardAsOf, kind: 'transfer' | 'regularization', where: SQL, byEmployee = false): SQL {
   return sql`SELECT ${pick(byEmployee ? sql`b.employee_id` : sql`b.id`, sql`b.employee_id`, sql`p.department_id`)}
@@ -145,7 +146,8 @@ function business(c: DashboardAsOf, kind: 'transfer' | 'regularization', where: 
 // ---- 试用期（5、7）：试用期视图（BE-3）的候选行，窗口用视图自己的“预计结束日期”筛选 -------------------------------------------
 
 function probation(c: DashboardAsOf, window: { expectedEndFrom?: string; expectedEndTo: string }): SQL {
-  return sql`SELECT ${pick(sql`cr.employee_id`, sql`cr.employee_id`, sql`COALESCE(snap.department_id, cr.department_id)`)}
+  const department = sql`COALESCE(snap.department_id, cr.department_id)`;
+  return sql`SELECT ${pick(sql`cr.employee_id`, sql`cr.employee_id`, department)}
     ${probationViewRows(c.tenantId, { view: 'all', today: c.asOf, filter: window }, undefined)}`;
 }
 
@@ -241,10 +243,11 @@ const METRICS: Readonly<Record<HrDashboardCode, Metric>> = {
   exitInProgress: { visibility: 'employment', rows: (a) => exits(a, processing(a), true) },
   contractApproving: {
     visibility: 'employment',
-    rows: (a) =>
-      sql`SELECT ${pick(sql`${contractRequests.id}`, sql`${contractRequests.employeeId}`, NULL_UUID, sql`${contractRequests.createdBy}`)}
-        FROM contract_requests WHERE ${contractRequests.tenantId}=${a.tenantId}
-          AND ${contractRequests.status} IN ('in_review','approved')`,
+    rows: (a) => {
+      const q = contractRequests;
+      return sql`SELECT ${pick(sql`${q.id}`, sql`${q.employeeId}`, NULL_UUID, sql`${q.createdBy}`)}
+        FROM contract_requests WHERE ${q.tenantId}=${a.tenantId} AND ${q.status} IN ('in_review','approved')`;
+    },
   },
   noDirectManager: {
     visibility: 'employment',
@@ -272,7 +275,8 @@ function visible(a: DashboardAsOf, kind: Visibility): SQL {
 /** 一个指标在调用者范围内的候选集合（去重）：数字与明细都从这里取。 */
 export function indicatorRows(code: HrDashboardCode, a: DashboardAsOf): SQL {
   const metric = METRICS[code];
-  return sql`SELECT DISTINCT m.id, m.employee_id, m.org_id FROM (${metric.rows(a)}) m WHERE ${visible(a, metric.visibility)}`;
+  return sql`SELECT DISTINCT m.id, m.employee_id, m.org_id FROM (${metric.rows(a)}) m
+    WHERE ${visible(a, metric.visibility)}`;
 }
 
 /** 23 个数字：一条语句、同一快照。 */

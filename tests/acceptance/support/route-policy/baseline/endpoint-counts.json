@@ -8,6 +8,7 @@
     "employment": 141,
     "establishment": 16,
     "evaluation": 34,
+    "hr-dashboard": 2,
     "idp": 58,
     "job": 14,
     "offers": 20,
@@ -29,5 +30,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 770
+  "total": 772
 }

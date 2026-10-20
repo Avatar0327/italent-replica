@@ -11,6 +11,7 @@ import { CONTRACTS } from './contracts.js';
 import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
 import { EVALUATION } from './evaluation.js';
+import { HR_DASHBOARD } from './hr-dashboard.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
 import { OFFERS } from './offers.js';
@@ -51,6 +52,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   qualification: QUALIFICATION,
   evaluation: EVALUATION,
   succession: SUCCESSION,
+  'hr-dashboard': HR_DASHBOARD,
 };
 
 const PARTS: readonly RequiredTable[] = Object.values(REQUIRED_BY_MODULE);
