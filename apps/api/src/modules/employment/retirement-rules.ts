@@ -185,7 +185,7 @@ const arrayOf = (values: readonly string[], type: 'text' | 'uuid') =>
     sql`, `,
   )}]::${sql.raw(type)}[]`;
 
-/** 自建规则先于预置规则，其内按优先级再按登记顺序号（与匹配时“同优先级取先登记者”一致）；条件按固定槽位顺序。 */
+/** 预置法定规则先于自建规则（DEC-646②），其内按优先级再按登记顺序号（同优先级取先登记者）；条件按固定槽位顺序。 */
 async function selectRules(tx: Tx, tenantId: string, filter: RuleFilter) {
   const rules = rowsOf<RuleRow>(
     await tx.execute(sql`
@@ -198,7 +198,7 @@ async function selectRules(tx: Tx, tenantId: string, filter: RuleFilter) {
         ${filter.purpose ? sql`AND purpose = ${filter.purpose}` : sql``}
         ${filter.id ? sql`AND id = ${filter.id}::uuid` : sql``}
         ${filter.enabledOnly ? sql`AND enabled` : sql``}
-      ORDER BY (preset_code IS NOT NULL), priority, sequence_no LIMIT ${RETIREMENT_RULE_LIMIT + PRESET_RULE_COUNT}`),
+      ORDER BY (preset_code IS NULL), priority, sequence_no LIMIT ${RETIREMENT_RULE_LIMIT + PRESET_RULE_COUNT}`),
   );
   if (!rules.length) return [];
   const conditions = rowsOf<RetirementCondition & { ruleId: string }>(
@@ -229,7 +229,7 @@ export async function listRetirementRules(
 
 /**
  * 5c2 批次与立即执行用：取启用的规则，适用组织已按“包含下级”展开（行政维度、按计算当天的组织版本），
- * 排序交给 matchRule（自建先于预置、优先级、序号）。预置规则 scopeAllOrgs = true，不看组织。
+ * 排序交给 matchRules（预置法定先于自建，DEC-646②；其内优先级、序号）。预置规则 scopeAllOrgs = true，不看组织。
  */
 export async function loadRetirementRulesForRun(
   tx: Tx,

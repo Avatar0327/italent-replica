@@ -10,6 +10,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import { RETIREMENT_INTENTION_FORM_FIELDS } from '../employment/retirement-intention.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
   APPROVAL_TYPES,
@@ -123,6 +124,7 @@ type GenericType = Exclude<
   | 'part_time_end'
   | 'offer'
   | 'offer_batch'
+  | 'retirement_intention'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -154,7 +156,7 @@ const RETIRE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', 
  * → 兼职部门负责人”，结束按 R2f1 / F-165③ 相反。HRBP 无人时转异常管理员（F-165③），首节点无人提交即报错（DEC-054）。
  * 三类节点都“同意时打开可编辑的业务表单”（结束 R2f1；新增 / 延长 F234A C9，DEC-629）：结束 / 延长可改结束日期与申请备注
  * （延长的新结束日期必填，A-14 / B-8）；新增可改兼职类型 / 结束日期 / 兼职部门 / 直线经理 / 职务 / 职级，必填兼职类型 / 开始日期 /
- * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”维持关闭到 PT-7（DEC-634 / PB-57）。
+ * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属不开（F234A C9 字段集，取最小集合）。
  * 开始日期的字段权限编码未定（§7.2 只登记 6 个新字段），表单暂不放。
  */
 const PART_TIME_FORM = [
@@ -163,12 +165,21 @@ const PART_TIME_FORM = [
   'postId',
   'levelId',
   'directManagerId',
+  'isDepartmentHead',
   'endDate',
   'requestRemark',
 ];
 /** 审批中可编辑的表单字段（F-249）：延长 / 结束只改结束日与备注；新增见上方注释。 */
 const PART_TIME_EDITABLE = {
-  part_time_add: ['partTimeType', 'endDate', 'departmentId', 'directManagerId', 'postId', 'levelId'],
+  part_time_add: [
+    'partTimeType',
+    'endDate',
+    'departmentId',
+    'directManagerId',
+    'postId',
+    'levelId',
+    'isDepartmentHead',
+  ],
   part_time_extend: ['endDate', 'requestRemark'],
   part_time_end: ['endDate', 'requestRemark'],
 } as const;
@@ -369,6 +380,26 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [
         node('direct_head', '直接上级', 'direct_manager', { formFields: RETIRE_FORM }),
         node('hr_interview', 'HR访谈', 'record_department_hrbp', { formFields: RETIRE_FORM }),
+      ],
+    }),
+  },
+  {
+    // R2-T04 §11.2：意向退休日期申请预置为本类型兜底流程（原站未发布 IntendedRetireProcess，A-19），直接上级一个节点；
+    // 通过只记录、不生效，故无 HR 访谈节点。敏感且有重大影响（DEC-332①），avoidSelf = true
+    presetKey: 'standard_retirement_intention',
+    code: 'Standard_retirement_intention',
+    approvalType: 'retirement_intention',
+    definition: draft({
+      name: '标准意向退休日期申请流程',
+      description: '出厂预置：直接上级审批，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('retirement_intention'),
+      // 驳回 = 退回发起人修改重提；“不同意”= 终态 disapproved，两条出口都留给直接上级
+      nodes: [
+        node('direct_head', '直接上级', 'direct_manager', {
+          formFields: RETIREMENT_INTENTION_FORM_FIELDS,
+          exits: AGREE_OR_NOT,
+        }),
       ],
     }),
   },

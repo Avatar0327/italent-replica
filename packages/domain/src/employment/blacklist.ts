@@ -34,6 +34,14 @@ export type BlacklistStatus = (typeof BLACKLIST_STATUSES)[number];
 export const BLACKLIST_NOTE_MAX = 500;
 export const BLACKLIST_BATCH_LIMIT = 100;
 
+/** “离职当月”期限的截止日（DEC-630）：离职生效日（= 加黑日期）所在自然月的最后一天。 */
+export function exitMonthExpiryDate(effectiveDate: string): string {
+  const year = Number(effectiveDate.slice(0, 4));
+  const month = Number(effectiveDate.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${effectiveDate.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`;
+}
+
 /** 有效黑名单：在名单且有效截止日期为空（永久）或不早于判定日。 */
 export function isBlacklistEffective(
   entry: { readonly status: string; readonly expiryDate: string | null },
