@@ -4617,6 +4617,65 @@
         ]
       }
     },
+    "GET /api/tenant/employment/retirements": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/retirements/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/settings": {
       "edge": {
         "anonymous": {
