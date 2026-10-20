@@ -18516,7 +18516,8 @@
       "primitives": {
         "button": [
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireEmploymentWrite(按钮)"
         ],
         "command": [
           "assertRevision",

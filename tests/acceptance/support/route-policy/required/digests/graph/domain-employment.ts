@@ -125,4 +125,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/probation.ts#normalizeProbationInfo': ['#expectedProbationEndDate'],
   'packages/domain/src/employment/probation.ts#probationAdjustmentViolation': ['#violation'],
   'packages/domain/src/employment/probation.ts#resolveDeferredProbation': ['#expectedProbationEndDate'],
+  'packages/domain/src/employment/retirement.ts#retireRehireStartDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
 };
