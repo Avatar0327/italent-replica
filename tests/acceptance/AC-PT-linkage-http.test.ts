@@ -149,3 +149,45 @@ describe('PATCH part-times/:recordId 编辑', () => {
     expect((await w.managerOf(sub)).directManagerId).toBe(w.employeeId);
   });
 });
+
+describe('到期日编辑 × 未办结的待执行联动（第 1 轮 P2-1：编辑只办增量却结清整条待办）', () => {
+  const FUTURE = '2026-10-10';
+
+  it('待执行负责人 + 到期日 PATCH 追加下属：编辑办理完整联动意图（负责人也设），之后调度不再有余留', async () => {
+    const w = await world('due-edit-head-then-sub');
+    const sub = await w.subordinate();
+    const record = await w.make({ startDate: FUTURE, fields: { isDepartmentHead: true } });
+    expect(await w.events(record.id)).toMatchObject({ [PENDING]: 1 });
+    w.setNow(`${FUTURE}T01:00:00.000Z`);
+    await w.ok(await w.edit(record.id, { fields: { addedSubordinateIds: [sub] } }, record.revision));
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+    expect((await w.managerOf(sub, FUTURE)).directManagerId).toBe(w.employeeId);
+    expect((await w.sweep(FUTURE)).errors).toEqual([]);
+    expect(await w.events(record.id)).toMatchObject({ [PENDING]: 1, [LINKED]: 1 });
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+  });
+
+  it('反向：待执行下属 + 到期日 PATCH 设为负责人：下属经理也被改，不被记录级已执行事件吞掉', async () => {
+    const w = await world('due-edit-sub-then-head');
+    const sub = await w.subordinate();
+    const record = await w.make({ startDate: FUTURE, fields: { addedSubordinateIds: [sub] } });
+    w.setNow(`${FUTURE}T01:00:00.000Z`);
+    await w.ok(await w.edit(record.id, { fields: { isDepartmentHead: true } }, record.revision));
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+    expect((await w.managerOf(sub, FUTURE)).directManagerId).toBe(w.employeeId);
+    await w.sweep(FUTURE);
+    expect(await w.events(record.id)).toMatchObject({ [LINKED]: 1 });
+  });
+
+  it('到期前（开始日 > 今天）PATCH 追加下属：只并入待执行意图，开始日由调度一次办完整', async () => {
+    const w = await world('before-due-edit');
+    const sub = await w.subordinate();
+    const record = await w.make({ startDate: FUTURE, fields: { isDepartmentHead: true } });
+    await w.ok(await w.edit(record.id, { fields: { addedSubordinateIds: [sub] } }, record.revision));
+    expect(await w.headOf(w.partTimeOrg.id)).toBeNull();
+    await w.sweep(FUTURE);
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+    expect((await w.managerOf(sub, FUTURE)).directManagerId).toBe(w.employeeId);
+    expect(await w.events(record.id)).toMatchObject({ [PENDING]: 1, [LINKED]: 1 });
+  });
+});
