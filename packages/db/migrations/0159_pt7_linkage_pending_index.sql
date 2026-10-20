@@ -1,0 +1,1 @@
+CREATE INDEX "employment_outbox_part_time_linkage_pending" ON "employment_outbox" USING btree ("tenant_id","employee_id","business_id") WHERE "employment_outbox"."event_type" = 'employment.part_time.linkage.pending';

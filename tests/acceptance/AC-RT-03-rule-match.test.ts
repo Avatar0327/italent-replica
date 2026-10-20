@@ -137,10 +137,11 @@ describe('AC-RT-03 预计退休日期规则匹配（纯函数）', () => {
     expect(matchRule([range('off', { enabled: false })], person, 'flexible_range')).toBeNull();
   });
 
-  it('预置规则排在自建规则之后（不论优先级数值）；预置规则覆盖全公司，部门为空也命中', () => {
+  it('预置规则排在自建规则之前（DEC-646②，不论优先级数值）；预置规则覆盖全公司，部门为空也命中', () => {
     const preset = rule('preset', { priority: 0, preset: true, scopeOrgIds: [], scopeAllOrgs: true });
     const custom = rule('custom', { priority: 9999, sequenceNo: 9 });
-    expect(matchRule([preset, custom], person)?.id).toBe('custom');
+    expect(matchRule([preset, custom], person)?.id).toBe('preset');
+    expect(matchRule([custom, { ...preset, enabled: false }], person)?.id).toBe('custom');
     expect(matchRule([preset], { ...person, orgId: ORG_B })?.id).toBe('preset');
     expect(matchRule([preset], { ...person, orgId: null })?.id).toBe('preset');
     expect(matchRule([preset, rule('custom-off', { enabled: false })], person)?.id).toBe('preset');
