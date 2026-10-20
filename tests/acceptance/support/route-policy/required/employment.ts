@@ -1706,6 +1706,42 @@ export const EMPLOYMENT: RequiredTable = {
       '直接落地的实习转正把人员状态联动到后续记录前按 DEC-178 复核',
     ),
   ],
+  // 结束实习（BE-6b）：权限与直接离职同一组合；范围由 readContext 的人员范围与命令内 exitCommandGuard 的 requireExitScope 判，没有部门参数
+  'POST /api/tenant/employment/interns/:id/terminate': [
+    ob(
+      `obj:${RECORD}:create`,
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/interns/:id/terminate',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+        ),
+        READ,
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Dimission@detail`,
+      [],
+      [
+        at(INTERN, 'POST', '/interns/:id/terminate', "{ guard: exitCommandGuard(deps, ctx, 'create', gate, {}) }"),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+      '结束实习沿用直接离职的按钮（原站是否另有独立权限项未验证）',
+    ),
+    linkage(at(INTERN, 'POST', '/interns/:id/terminate', 'body: await terminateIntern(tx, context, id, input)')),
+  ],
   'POST /api/tenant/employment/rehire-matches': [
     ob(
       `obj:${EMPLOYEE}:create`,
