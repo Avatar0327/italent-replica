@@ -5,16 +5,19 @@
  * - HR 手改并核准同一员工（持员工锁）时，批次 SKIP LOCKED 跳过、第二遍仍忙则放弃，核准写入后不被覆盖。
  */
 import { randomUUID } from 'node:crypto';
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as rulesModule from '../../apps/api/src/modules/employment/retirement-rules.js';
+import * as locks from '../../apps/api/src/modules/employment/transfer-locks.js';
 import { runRetirementBatches } from '../../apps/api/src/modules/employment/retirement-scheduler.js';
 import { appendEmployee } from '../../apps/api/src/modules/personnel/employee-write.js';
-import { batchWorld, clockAt, type BatchWorld } from './AC-RT-batch-support.js';
+import { batchWorld, clockAt, rows, type BatchWorld } from './AC-RT-batch-support.js';
+import { batchBarriers, takeoverWaitsForOwner } from './support/retirement-batch-barrier.js';
 
 const testDb = useTestDb();
 const DAY = '2026-10-01';
+const barriers = batchBarriers();
 
 const runBatch = (w: BatchWorld, clock = clockAt(DAY)) =>
   runRetirementBatches(
@@ -50,7 +53,75 @@ function pauseFirstRuleLoad(purpose: 'expected_date' | 'flexible_range') {
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-17-daily-pg 每日批次并发（真 PG）', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(async () => {
+    try {
+      await barriers.close();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each([
+    ['主扫描', 'main'],
+    ['第二遍写入', 'retry-write'],
+    ['第二遍仍忙', 'retry-busy'],
+  ] as const)('AC-RT-17 校验后屏障：%s事务提交前，租约接管必须等待所有权共享锁', async (_label, phase) => {
+    const w = await batchWorld(testDb().db, `rt17pg-owner-${phase}`);
+    const employee = await w.member('所有权屏障合成员工');
+    await w.fixedAgeRule(60);
+    await w.setSwitch('expected_date', true);
+    const base = await w.personOf(employee);
+    const gate = barriers.gate();
+    const original = locks.lockTransferParticipants;
+    let calls = 0;
+    let ownerPid = 0;
+    vi.spyOn(locks, 'lockTransferParticipants').mockImplementation(async (...args) => {
+      calls += 1;
+      if (phase !== 'main' && calls === 1) return 'busy';
+      if (calls === (phase === 'main' ? 1 : 2)) {
+        // asBatchOwner 已完成 running/attempts 校验及 FOR SHARE；同一员工事务尚未提交（设计 §9.2）。
+        ownerPid = rows<{ pid: number }>(await args[0].execute(sql`SELECT pg_backend_pid() AS pid`))[0]!.pid;
+        gate.reach();
+        await gate.proceed;
+        if (phase === 'retry-busy') return 'busy';
+      }
+      return original(...args);
+    });
+
+    const owner = barriers.track(runBatch(w));
+    try {
+      await gate.waitFor(owner);
+      expect(ownerPid).toBeGreaterThan(0);
+      expect(await w.runRow('expected_date', DAY)).toMatchObject({ state: 'running', attempts: 1 });
+      expect(await w.personOf(employee)).toEqual(base);
+      if (phase !== 'main')
+        expect(await w.skipRows('expected_date', DAY)).toEqual([{ employeeId: employee, state: 'pending' }]);
+
+      const taker = barriers.track(runBatch(w, clockAt(DAY, '02:11:00')));
+      expect(
+        await takeoverWaitsForOwner(w.db, ownerPid, taker),
+        '接管 UPDATE 必须等待已通过所有权校验的员工事务提交',
+      ).toBe(true);
+      gate.release();
+      const results = await Promise.all([owner, taker]);
+      for (const result of results)
+        for (const run of result.runs[0]!.purposes)
+          expect(run).toMatchObject({ aborted: false, abortReason: null, failed: [] });
+      expect(await w.runRow('expected_date', DAY)).toMatchObject({
+        state: 'done',
+        skipped: phase === 'retry-busy' ? 1 : 0,
+      });
+      expect(await w.skipRows('expected_date', DAY)).toEqual(
+        phase === 'retry-busy' ? [{ employeeId: employee, state: 'given_up' }] : [],
+      );
+      expect(await w.personOf(employee)).toMatchObject({
+        revision: base.revision + (phase === 'retry-busy' ? 0 : 1),
+        expected: phase === 'retry-busy' ? base.expected : '2035-06-30',
+      });
+    } finally {
+      gate.release();
+    }
+  });
 
   it('两个进程同时认领当天批次：只有一个持有租约，每名员工只写一次', async () => {
     const w = await batchWorld(testDb().db, 'rt17pg-claim');
