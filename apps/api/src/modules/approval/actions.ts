@@ -6,7 +6,6 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_EDIT_REQUIRED,
-  APPROVAL_TYPES,
   instanceRecusal,
   jumpAllowed,
   rejectToPreviousAllowed,
