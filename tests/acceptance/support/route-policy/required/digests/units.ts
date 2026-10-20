@@ -508,6 +508,19 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/evaluation/store.ts': {
     requireOwnerOrg: 'e9b77971c7e3',
   },
+  'apps/api/src/modules/hr-analysis/roster-access.ts': {
+    CONTRACT_OBJECT: '76ce5952c0a8',
+    RECORD_OBJECT: '681652578035',
+    ROSTER_OBJECT: '8de8f6aea0b4',
+    rosterAccess: '6e3124c34846',
+  },
+  'apps/api/src/modules/hr-analysis/roster-query.ts': {
+    population: '6aab8654bd9b',
+  },
+  'apps/api/src/modules/hr-analysis/roster-routes.ts': {
+    'route:GET /api/tenant/hr-analysis/roster': 'e87080b9244b',
+    'route:GET /api/tenant/hr-analysis/roster/export': '4e2a66cd1026',
+  },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
     idpWriteContext: '8b79ce0f8846',
@@ -1923,6 +1936,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#CONTRACT_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#RECORD_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': '28916c40573f',
+  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '931b893deaf9',
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '2908a648958c',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',
   'apps/api/src/modules/idp/access.ts#idpWriteContext': 'ad47dfbf76d3',
   'apps/api/src/modules/idp/access.ts#objectFields': 'f7ce614aaf23',

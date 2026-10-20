@@ -20,10 +20,12 @@ import { getModuleViewableFields } from '../permission/module-access.js';
 import { access, type AccessContext } from '../personnel/access.js';
 
 export const ROSTER_OBJECT = MODULE_OBJECTS.hrRoster.code;
+const RECORD_OBJECT = MODULE_OBJECTS.employmentRecord.code;
+const CONTRACT_OBJECT = MODULE_OBJECTS.contract.code;
 const SOURCE_OBJECTS: Readonly<Record<RosterSource, string>> = {
   person: PERSONNEL_OBJECT,
-  record: MODULE_OBJECTS.employmentRecord.code,
-  contract: MODULE_OBJECTS.contract.code,
+  record: RECORD_OBJECT,
+  contract: CONTRACT_OBJECT,
 };
 
 export interface RosterAccess {
@@ -46,13 +48,15 @@ export async function rosterAccess(
       action: 'object.button',
       resource: buttonResource(ROSTER_OBJECT, 'export', 'list'),
     });
+  // 任职 / 合同对象无查看权不拒绝请求，只让对应的列整类缺席（披露，不是准入）
+  const viewable: Record<RosterSource, boolean> = {
+    person: true,
+    record: await deps.authorize({ ...ctx, action: 'object.view', resource: RECORD_OBJECT }),
+    contract: await deps.authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT }),
+  };
   const sets = new Map<RosterSource, ReadonlySet<string> | undefined | false>();
-  for (const source of Object.keys(SOURCE_OBJECTS) as RosterSource[]) {
-    const object = SOURCE_OBJECTS[source];
-    // 人员对象的查看权已由 access 校验；任职 / 合同对象无查看权 → false（整类列缺席）
-    const viewable = source === 'person' || (await deps.authorize({ ...ctx, action: 'object.view', resource: object }));
-    sets.set(source, viewable ? await getModuleViewableFields(deps, ctx, object) : false);
-  }
+  for (const source of Object.keys(SOURCE_OBJECTS) as RosterSource[])
+    sets.set(source, viewable[source] ? await getModuleViewableFields(deps, ctx, SOURCE_OBJECTS[source]) : false);
   const canSee = (source: RosterSource, field: string) => {
     const fields = sets.get(source);
     return fields === undefined || (fields !== false && fields.has(field));

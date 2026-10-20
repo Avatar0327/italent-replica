@@ -6,14 +6,30 @@
  * “导出”按钮 → 逐列字段权：人员 / 任职记录 / 合同三个对象各取可见字段（任职、合同另须对象查看权），无权的整列缺席，
  * 导出表头与列表 columns 是同一份可见列；筛选字段无查看权 403（守卫 hrAnalysis.rosterFilters）。
  */
-import { PERSONNEL_OBJECT } from '@italent/domain';
+import { MODULE_OBJECTS, PERSONNEL_OBJECT } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';
 import { all, button, listScope, noButton, noScope, object, projector } from '../../route-policy/presets.js';
 import { ROSTER_OBJECT } from './roster-access.js';
 
 const BASE = '/api/tenant/hr-analysis/roster';
 const projection = projector('hrAnalysis.roster', 'hrAnalysis.roster');
-const guards = ['hrAnalysis.rosterColumns', 'hrAnalysis.rosterFilters'];
+
+/**
+ * 任职记录 / 合同对象的查看权不拒绝请求，只决定对应的列是否出现（披露分支，同 personnel 的 nestedSubsets）；
+ * 字段权随其后的可见字段集合逐列裁剪。分支的行范围就是员工档案对象解析出的同一个范围。
+ */
+const columnBranch = (code: string) =>
+  object({
+    object: code,
+    operation: 'view',
+    button: noButton('列只按对象查看权与字段权出现，无按钮'),
+    scope: listScope('personnel.personScope'),
+    fields: projection,
+  });
+const optional = {
+  recordColumns: columnBranch(MODULE_OBJECTS.employmentRecord.code),
+  contractColumns: columnBranch(MODULE_OBJECTS.contract.code),
+};
 
 /** 员工档案对象：查看权 + 数据范围（复用 personnel 列表的 personScope，AC-HA-05）。 */
 const person = object({
@@ -33,6 +49,6 @@ const rosterView = (exporting: boolean) =>
   });
 
 export const HR_ANALYSIS_POLICIES = defineTable('hr-analysis', {
-  [`GET ${BASE}`]: all([person, rosterView(false)], projection, { guards }),
-  [`GET ${BASE}/export`]: all([person, rosterView(true)], projection, { guards }),
+  [`GET ${BASE}`]: all([person, rosterView(false)], projection, { optional }),
+  [`GET ${BASE}/export`]: all([person, rosterView(true)], projection, { optional }),
 });
