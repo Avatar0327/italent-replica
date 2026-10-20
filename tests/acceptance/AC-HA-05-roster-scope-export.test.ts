@@ -20,7 +20,7 @@ import {
 
 const database = useTestDb();
 const ASOF = '2025-07-01';
-const SECRET = { mobilePhone: '13900000009', idNumber: '110101199001010099', email: 'secret@example.com' };
+const SECRET = { mobilePhone: '13900000009', idNumber: '110101199001010099', backupMail: 'secret@example.com' };
 
 async function fixture(label: string) {
   const w = await rosterWorld(database().db, label);
@@ -60,11 +60,13 @@ describe('AC-HA-05 数据范围与字段权', () => {
 
   it('无敏感字段（手机 / 证件号码 / 个人邮箱）查看权：行里键缺席；筛选敏感字段 403；其余列照常', async () => {
     const { w } = await fixture('ha05-fields');
-    const blind = w.restricted(allow, { hidden: { [PERSON_OBJECT]: ['mobilePhone', 'idNumber', 'email'] } });
+    const blind = w.restricted(allow, {
+      hidden: { [PERSON_OBJECT]: ['mobilePhone', 'idNumber', 'backupMail', 'email'] },
+    });
     const page = await w.rosterOk(ASOF, '', blind);
     expect(page.items).toHaveLength(2);
     for (const item of page.items) {
-      for (const key of ['mobilePhone', 'idNumber', 'email']) expect(item, key).not.toHaveProperty(key);
+      for (const key of ['mobilePhone', 'idNumber', 'backupMail']) expect(item, key).not.toHaveProperty(key);
       expect(item).toHaveProperty('employeeName');
     }
     expect(JSON.stringify(page)).not.toContain(SECRET.mobilePhone);
@@ -125,7 +127,7 @@ describe('BE-12a 导出：同步 CSV（UTF-8 带 BOM），与列表同一套过�
     const { w, mine } = await fixture('ha05-export-scope');
     const hrbp = w.restricted(allow, {
       personIds: [mine.id],
-      hidden: { [PERSON_OBJECT]: ['mobilePhone', 'idNumber', 'email'] },
+      hidden: { [PERSON_OBJECT]: ['mobilePhone', 'idNumber', 'backupMail'] },
     });
     const response = await w.exported(ASOF, '', hrbp);
     expect(response.status, await response.clone().text()).toBe(200);

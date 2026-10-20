@@ -12,19 +12,15 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
-import { assertExportable, rosterCsv } from './roster-csv.js';
+import { validIsoDate } from '../org/read-model.js';
+import { exportLimitResponse, rosterCsv } from './roster-csv.js';
 import { requireExportButton, requireFilterField, rosterAccess, type RosterAccess } from './roster-access.js';
 import { countRoster, listRoster, trimRosterRow, type RosterFilter } from './roster-query.js';
 import { ROSTER_EXPORT_MAX_ROWS } from '@italent/domain';
 
 const BASE = '/api/tenant/hr-analysis/roster';
-const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00Z`);
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  });
+// 日期统一走组织模块的 validIsoDate（年份 0000、月日越界都拒绝，避免落到数据库 22008 → 500）
+const isoDate = z.string().refine(validIsoDate);
 const text = z.string().min(1).max(200);
 const query = z.strictObject({
   asOf: isoDate.optional(),
@@ -84,10 +80,16 @@ export function registerRosterRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     await requireExportButton(deps, rights.ctx);
     requireFilterRights(rights, filter);
     const asOf = requested ?? tenantLocalDate(rights.ctx.now, rights.ctx.timezone);
-    const items = await withTenant(deps.db, rights.ctx.tenantId, async (tx) => {
-      assertExportable(await countRoster(tx, rights.ctx, asOf, filter));
-      return listRoster(tx, rights.ctx, asOf, filter, { limit: ROSTER_EXPORT_MAX_ROWS, offset: 0 });
+    const result = await withTenant(deps.db, rights.ctx.tenantId, async (tx) => {
+      const total = await countRoster(tx, rights.ctx, asOf, filter);
+      if (total > ROSTER_EXPORT_MAX_ROWS) return { total };
+      return {
+        total,
+        items: await listRoster(tx, rights.ctx, asOf, filter, { limit: ROSTER_EXPORT_MAX_ROWS, offset: 0 }),
+      };
     });
+    if (!result.items) return exportLimitResponse(c, result.total);
+    const items = result.items;
     c.header('Content-Type', 'text/csv; charset=utf-8');
     c.header('Content-Disposition', `attachment; filename="roster-${asOf}.csv"`);
     return c.body(

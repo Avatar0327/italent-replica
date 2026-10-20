@@ -39,7 +39,8 @@ export const ROSTER_COLUMNS: readonly RosterColumn[] = [
   person('major', '专业'),
   person('mobilePhone', '手机'),
   person('idNumber', '证件号码'),
-  person('email', '个人邮箱'),
+  // 规格 17：个人邮箱 = BackupMail（Email 是登录 / 主邮箱，不在名册里）
+  person('backupMail', '个人邮箱'),
   person('registAddress', '籍贯'),
   person('householdAddress', '户籍所在地'),
   person('householdCategory', '户口类别'),

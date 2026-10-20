@@ -143,7 +143,7 @@ function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typ
         'major',
         'mobilePhone',
         'idNumber',
-        'email',
+        'backupMail',
         'registAddress',
         'householdAddress',
         'householdCategory',
