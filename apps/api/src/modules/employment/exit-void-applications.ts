@@ -85,14 +85,21 @@ export async function lockOtherBusinessHeads(
  * 带编调动回退、组织角色转交）会在中途首次取组织 / 编制锁，而步骤 1 的 lockInstances 先于它们执行，会与“组织锁 → 审批实例”的其他路径成环。
  * 所以调度、审批落地、直接保存、activate / retry 进入生效链后统一先在这里取齐：组织设置锁一律取；有未落地的调动申请
  * （步骤 1 要回退其带编分配）时再取编制锁。之后各步只是重入已持有的锁。
+ * 直接实习转正（F-257）后面紧跟的编制检查（employment-check.ts）一定会取编制锁，所以传 establishment: true 无条件先取，
+ * 与检查同一把锁、同一顺序（组织 → 编制），避免实例锁先于编制锁。
  */
 export async function lockExitOrganizationResources(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   exitId: string | null,
+  options: { readonly establishment?: boolean } = {},
 ) {
   await lockOrganizationSettings(tx, ctx.tenantId);
+  if (options.establishment) {
+    await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
+    return;
+  }
   const transfers = await inFlightApplications(tx, ctx, employeeId, ['transfer'], OPEN_STATES);
   if (transfers.some((row) => !row.landed && row.id !== exitId))
     await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
@@ -224,7 +231,9 @@ async function voidApplications(
   const open = [...candidates].sort((a, b) => a.id.localeCompare(b.id));
   if (!open.length) return [];
   const { employee } = describeCause(cause, '');
-  await lockExitOrganizationResources(tx, ctx, employee.id, cause.kind === 'exit' ? cause.exit.id : null);
+  await lockExitOrganizationResources(tx, ctx, employee.id, cause.kind === 'exit' ? cause.exit.id : null, {
+    establishment: cause.kind === 'direct_regularization',
+  });
   await lockInstances(
     tx,
     ctx,

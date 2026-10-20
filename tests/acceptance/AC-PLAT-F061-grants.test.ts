@@ -212,8 +212,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       29: '2b8399af9a4fd7c1',
       // R2 BE-5c1a：人事新增 6 个退休字段的员工信息字段授权项（版本占位，合并时按 main + 1 定号）
       30: '4430ca0006c0dcba',
+      // R2 BE-5d2：任职记录新增意向退休申请按钮 Employment.RetireIntention 与意向日期 / 原因 / 快照三项字段授权项（版本占位，合并时按 main + 1 定号）
+      31: 'd377733df73b381b',
       // claude/R2-BE-8b1-exit-blacklist（merge:main 定号，DEC-439④）
-      31: '372d0df0dc765c8f',
+      32: 'fd09fce1ad5dde6d',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

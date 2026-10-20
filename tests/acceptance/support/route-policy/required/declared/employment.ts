@@ -63,6 +63,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/transfers/employees/:id',
     'POST /api/tenant/employment/transfers/employees/:id/preview',
     'PATCH /api/tenant/employment/probation-assessments/:id',
+    'POST /api/tenant/employment/retirement-intentions/employees/:id',
+    'PATCH /api/tenant/employment/retirement-intentions/:id',
     'PUT /api/tenant/employment/auto-assessment-rules/:id/enabled',
     'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
     'PUT /api/tenant/employment/retirement-rules/:id',

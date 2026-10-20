@@ -25,8 +25,12 @@ export const dedicatedBody = (lastWorkDate: string, mode: 'application' | 'direc
   ...(exit ? { exit } : {}),
 });
 
-export async function retirementWorld(db: Db, label: string, today = '2026-10-06') {
-  const x = await downstreamWorld(db, label, today);
+/** 在任一退休可用的夹具（离职生效 / 下游夹具及其扩展，如撤销 / 编制夹具）之上叠加退休辅助。 */
+export function withRetirement<W extends Awaited<ReturnType<typeof downstreamWorld>>>(
+  db: Db,
+  x: W,
+  today = '2026-10-06',
+) {
   const tenantId = x.session.tenant.id;
   const rows = <T>(statement: ReturnType<typeof sql>) => x.sqlRows<T>(statement);
 
@@ -115,6 +119,10 @@ export async function retirementWorld(db: Db, label: string, today = '2026-10-06
     audits,
     employeeStatusOf,
   };
+}
+
+export async function retirementWorld(db: Db, label: string, today = '2026-10-06') {
+  return withRetirement(db, await downstreamWorld(db, label, today), today);
 }
 
 export type RetirementWorld = Awaited<ReturnType<typeof retirementWorld>>;

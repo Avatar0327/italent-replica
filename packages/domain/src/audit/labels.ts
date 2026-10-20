@@ -73,6 +73,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   // BE-7 兼职（R2-T05 §7.4）：兼职记录（含期限链）与兼职申请
   'employment-part-time': { label: '兼职记录', app: ORG_PEOPLE },
   'part-time-request': { label: '兼职申请', app: ORG_PEOPLE },
+  // R2 BE-5d2 意向退休日期申请（审计动作 retirement_intention.*）
+  'retirement-intention': { label: '意向退休申请', app: ORG_PEOPLE },
   // R2 BE-8a 黑名单与离职自动加黑规则（规则是配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   blacklist: { label: '黑名单', app: ORG_PEOPLE },
   blacklist_rule: { label: '离职自动加黑规则', app: ORG_PEOPLE },
@@ -211,6 +213,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   reEmployed: '是否同时返聘',
   expectedRetirementDate: '预计退休日期',
   actualRetirementDate: '实际退休日期',
+  // R2 BE-5d2 意向退休日期申请
+  intendedDate: '意向退休日期',
+  expectedDateSnapshot: '申请时预计退休日期',
+  earliestSnapshot: '申请时最早退休日期',
+  latestSnapshot: '申请时最晚退休日期',
   stopDate: '结束日期',
   entryDate: '入职日期',
   kind: '业务类型',
