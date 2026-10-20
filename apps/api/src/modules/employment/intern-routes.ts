@@ -1,7 +1,8 @@
 /**
- * 实习生路由（R2 BE-6a）：实习四视图（B34～B37）、直接实习转正（B41）、按证件号的重聘判定（B38 / A48）。
+ * 实习生路由（R2 BE-6a / BE-6b）：实习四视图（B34～B37）、直接实习转正与结束实习（B41）、按证件号的重聘判定（B38 / A48）。
  * 策略登记在 employment/policy.ts。写权限沿用任职记录的“新增”对象操作与 Employment.Create 按钮（原站“实习转正”是否
- * 另有独立权限项未验证）；重聘判定是新增人员流程的一步，沿用 Employee.Create 与“新建员工须看全部”（DEC-121）。
+ * 另有独立权限项未验证）；结束实习沿用直接离职的权限组合（Employment.Dimission，同样未验证有无独立权限项）；
+ * 重聘判定是新增人员流程的一步，沿用 Employee.Create 与“新建员工须看全部”（DEC-121）。
  */
 import { withTenant } from '@italent/db';
 import { INTERN_VIEWS, PERSONNEL_OBJECT, tenantLocalDate } from '@italent/domain';
@@ -26,9 +27,10 @@ import {
 } from './context.js';
 import { parse } from './entry-routes.js';
 import { internRegularizationInput, regularizationFields, regularizeIntern } from './intern-regularization.js';
+import { internTerminationInput, terminateIntern } from './intern-termination.js';
 import { listInternView, type InternViewItem } from './intern-views.js';
 import { matchRehire, rehireMatchInput } from './rehire-match.js';
-import { internRegularizationGuard } from './replay-guard.js';
+import { exitCommandGuard, internRegularizationGuard } from './replay-guard.js';
 import type { EmploymentContext } from './types.js';
 
 const viewFilter = z.strictObject({
@@ -58,6 +60,29 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
       { id, action: 'intern-regularize', input },
       async (tx, context) => ({ status: 201, body: await regularizeIntern(tx, context, id, input) }),
       { guard: internRegularizationGuard(deps, ctx, id, business, input.departmentId) },
+    );
+  });
+  // 结束实习（B41）：权限沿用直接离职（Employment.Dimission，原站是否另有独立权限项未验证），保存即生效、不走审批
+  router.post('/interns/:id/terminate', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.create', revision(c), id);
+    const input = parse(internTerminationInput, await jsonBody(c));
+    const gate = {
+      employeeId: id,
+      initiation: 'hr' as const,
+      mode: 'direct' as const,
+      lastWorkDate: input.endDate,
+      exit: {},
+      payload: { fields: {}, customFields: {} },
+      changeType: 'intern_end' as const,
+    };
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, action: 'intern-terminate', input },
+      async (tx, context) => ({ status: 201, body: await terminateIntern(tx, context, id, input) }),
+      { guard: exitCommandGuard(deps, ctx, 'create', gate, {}) },
     );
   });
   router.post('/rehire-matches', async (c) => {

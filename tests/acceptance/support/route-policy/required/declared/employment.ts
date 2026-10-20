@@ -29,6 +29,11 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/auto-assessment-rules/:id/enabled',
     'PUT /api/tenant/employment/auto-regularization-rules/:id',
     'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
+    'DELETE /api/tenant/employment/retirement-rules/:id',
+    'POST /api/tenant/employment/retirement-rules',
+    'POST /api/tenant/employment/retirement-rules/:id/copy',
+    'PUT /api/tenant/employment/retirement-rules/:id',
+    'PUT /api/tenant/employment/retirement-rules/:id/enabled',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
@@ -48,6 +53,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/retirements/employees/:id',
     'POST /api/tenant/employment/retirements/employees/:id/preview',
     'POST /api/tenant/employment/interns/:id/regularize',
+    'POST /api/tenant/employment/interns/:id/terminate',
     'POST /api/tenant/employment/pending-entries/:id/complete',
     'POST /api/tenant/employment/pending-entries/:id/postpone',
     'POST /api/tenant/employment/records/:id/forward-update-preview',
@@ -56,6 +62,8 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PATCH /api/tenant/employment/probation-assessments/:id',
     'PUT /api/tenant/employment/auto-assessment-rules/:id/enabled',
     'PUT /api/tenant/employment/auto-regularization-rules/:id/enabled',
+    'PUT /api/tenant/employment/retirement-rules/:id',
+    'PUT /api/tenant/employment/retirement-rules/:id/enabled',
     'PUT /api/tenant/employment/blacklist-rules/:id',
     'PUT /api/tenant/employment/blacklist/:id',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
