@@ -164,6 +164,33 @@ describe('F-290 精确匹配：放行表之外一律阻塞', () => {
   });
 });
 
+describe('F-290 ✅ 只认状态列开头（第 6 轮）', () => {
+  const settledDecision = (status: string) => gate([], [decisionRow('D-904', status)]).exitCode === 0;
+
+  it.each([['待用户决定（①✅ 已取证；②待原站实测）'], ['🟡 待用户决定；①已取证✅'], ['待原站实测 ✅']])(
+    '✅ 出现在状态列中间 / 末尾：%s 仍按待决拦截并列出',
+    (status) => {
+      const { lines, exitCode } = gate([], [decisionRow('D-904', status)]);
+      expect(exitCode).toBe(1);
+      expect(lines.join('\n')).toContain('D-904');
+    },
+  );
+
+  it.each(RELEASED_DECISIONS)('%s 原文末尾 / 中间追加 ✅ 均阻塞', (id) => {
+    const cell = decisionCell(id);
+    expect(settledDecision(`${cell} ✅`)).toBe(false);
+    expect(settledDecision(`${cell}✅`)).toBe(false);
+    expect(settledDecision(`${cell.slice(0, 2)}✅${cell.slice(2)}`)).toBe(false);
+  });
+
+  it.each([['✅ 用户 2026-10-06 选① → DEC-222'], ['  ✅ 已确认'], ['✅']])(
+    '✅ 开头（含首部空白）：%s 不拦开工',
+    (status) => {
+      expect(settledDecision(status)).toBe(true);
+    },
+  );
+});
+
 describe('F-290 CLI 回归：第 3～5 轮全部复现写法阻塞、退出码 1', () => {
   const dirs: string[] = [];
   afterAll(() => {
