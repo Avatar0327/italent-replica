@@ -333,6 +333,22 @@ async function syncActualRetirementDate(
   );
 }
 
+/**
+ * R-2（R2-T04 §8.3）：同时返聘在合同终止之后、职责转交之前生成；失败整个保存点回滚，退休不生效。
+ * 返回退休扩展行（非退休为 undefined），生效事件据此带 reEmployed。
+ */
+async function createRehireIfPlanned(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  effectiveDate: string,
+) {
+  if (business.payload.kind !== 'retirement') return undefined;
+  const retirement = await loadRetirementRequest(tx, ctx.tenantId, business.id);
+  if (retirement?.rehirePlan) await createRetirementRehire(tx, ctx, business, retirement.rehirePlan, effectiveDate);
+  return retirement;
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -384,11 +400,7 @@ async function runSteps(
   await recordEffectiveCorrection(tx, ctx, business, detail);
   // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
   await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
-  // R-2（R2-T04 §8.3）：同时返聘在合同终止之后、职责转交之前生成；失败整个保存点回滚，退休不生效
-  const retirement =
-    business.payload.kind === 'retirement' ? await loadRetirementRequest(tx, ctx.tenantId, business.id) : undefined;
-  if (retirement?.rehirePlan)
-    await createRetirementRehire(tx, ctx, business, retirement.rehirePlan, late.effectiveDate);
+  const retirement = await createRehireIfPlanned(tx, ctx, business, late.effectiveDate);
   await runExitDutyTransfer(tx, ctx, exit, 'effective', late.effectiveDate);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(

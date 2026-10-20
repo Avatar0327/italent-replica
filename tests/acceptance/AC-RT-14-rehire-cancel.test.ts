@@ -1,6 +1,7 @@
 /**
  * R2-T04 BE-5b / AC-RT-14：同时返聘的互斥与撤销（设计 §4.4、§6 #6，DEC-638 A-11）。
- * ① 同时返聘 + 加黑 → 400 RETIREMENT_REHIRE_BLACKLIST_CONFLICT；通用入口不接受 reEmployed / rehire（400 RETIREMENT_REHIRE_USE_ENDPOINT）。
+ * ① 同时返聘 + 加黑 → 400 RETIREMENT_REHIRE_BLACKLIST_CONFLICT；
+ *    通用入口不接受 reEmployed / rehire（400 RETIREMENT_REHIRE_USE_ENDPOINT）。
  * ② 已生成返聘的退休撤销 → 409 RETIREMENT_HAS_REHIRE（专用撤销入口与通用 DELETE 同一判定，在任何写之前）；
  *    先经通用 DELETE 删除返聘业务（真实路径可达）后可撤销，不级联。
  * ③ 审批通过未生效（approved）的退休撤销：不生成返聘，plain 撤销。

@@ -151,17 +151,8 @@ export async function createExitApplication(
     { employeeId },
   );
   // 退休薄扩展行（R2-T04 §3.2 第 6 步）：在 exit_requests 之后、生效链之前冻结 P 并派生类型，失败整单回滚
-  if (kind === 'retirement') {
-    const retirement = input.retirement ?? {};
-    // 同时返聘的业务干跑（R2-T04 §8.2）：返聘部门 / 职位在返聘日可用、不在黑名单；失败与扩展行写入失败一样整单回滚
-    if (retirement.rehire) await validateRehirePlan(tx, ctx, employeeId, retirement.rehire, normalized.lastWorkDate!);
-    await writeRetirementExtension(
-      tx,
-      ctx,
-      { id: business.id, employeeId, lastWorkDate: normalized.lastWorkDate! },
-      retirement,
-    );
-  }
+  if (kind === 'retirement')
+    await writeRetirement(tx, ctx, { id: business.id, employeeId, lastWorkDate: normalized.lastWorkDate! }, input);
   // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
   if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
   // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）
@@ -173,6 +164,22 @@ export async function createExitApplication(
   const locked = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: business.revision }, business.id);
   await bumpEmploymentBusiness(tx, ctx, locked);
   return withAckWarnings(tx, ctx, await requireSavedBusiness(tx, ctx, business.id));
+}
+
+/**
+ * 退休专有的创建写入（§3.2 第 6 步）：同时返聘的业务干跑（返聘部门 / 职位在返聘日可用、不在黑名单，§8.2）与薄扩展行；
+ * 任一失败与扩展行写入失败一样整单回滚。
+ */
+async function writeRetirement(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: { readonly id: string; readonly employeeId: string; readonly lastWorkDate: string },
+  input: ExitApplicationInput,
+) {
+  const retirement = input.retirement ?? {};
+  if (retirement.rehire)
+    await validateRehirePlan(tx, ctx, business.employeeId, retirement.rehire, business.lastWorkDate);
+  await writeRetirementExtension(tx, ctx, business, retirement);
 }
 
 /** 职责转交计划的授权（逐下属 / 组织角色字段权，§9.1）、校验与保存；任一不通过整单回滚。 */

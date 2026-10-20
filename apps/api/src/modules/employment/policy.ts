@@ -1641,7 +1641,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'create',
     button: RETIREMENT_CREATE_BUTTON,
-    guards: [LINKAGE],
+    guards: [LINKAGE, 'employment.rehire'],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),

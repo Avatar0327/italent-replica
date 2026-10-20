@@ -109,7 +109,7 @@ function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps
           ...(rehire ? { retirement: { rehire } } : {}),
         }),
       }),
-      { guard: rehire ? rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) : guard },
+      { guard: rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) },
     );
   });
 }

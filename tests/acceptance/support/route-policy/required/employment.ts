@@ -19,6 +19,8 @@ const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
+const REHIRE = `${SRC}/employment/retirement-rehire.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
@@ -2311,8 +2313,13 @@ export const EMPLOYMENT: RequiredTable = {
         [
           fn(ENTRY, 'completeEntryGuard', 'requireEntryContractAccess(tx, deps, ctx, id, contract)'),
           fn(
-            `${SRC}/employment/entry-contract.ts`,
+            ENTRY_CONTRACT,
             'requireEntryContractAccess',
+            'await requireContractCreateAccess(tx, deps, ctx, owner, contract)',
+          ),
+          fn(
+            ENTRY_CONTRACT,
+            'requireContractCreateAccess',
             "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
           ),
           {
@@ -2742,7 +2749,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE,
           'POST',
           '/retirements/employees/:id',
-          "{ guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) }",
+          "const guard = exitCommandGuard(deps, ctx, 'create', gate, { departmentId })",
         ),
         EXIT_GUARD,
         EXIT_PERMISSION,
@@ -2764,6 +2771,55 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(at(RETIRE, 'POST', '/retirements/employees/:id', 'body: await createExitApplication(tx, context,')),
+    // 条件准入（请求带 reEmployed + rehire 才挂；R2-T04 §8.2）：返聘写的是新任职，字段按 Employment.Create 复核，
+    // 返聘合同另要合同“新建”按钮 / 字段创建权 / 合同数据范围；入口与 CommandGuard.before 两处同一函数
+    ob(
+      'guard:employment.rehire',
+      [],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          '{ guard: rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) }',
+        ),
+        fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+      ],
+      '条件守卫：同时返聘时另要 Employment.Create 字段权 / 返聘部门范围；带合同计划时另要合同新建权限',
+    ),
+    {
+      ...ob(
+        `btn:${RECORD}#Employment.Create@detail`,
+        ['button:requireEmploymentWrite(按钮)', 'button:buttonResource', 'button:object.button'],
+        [
+          at(RETIRE, 'POST', '/retirements/employees/:id', 'if (rehire) await requireRehireWrite(ctx, id, rehire)'),
+          fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+          fn(REHIRE, 'requireRehireWrite', "'Employment.Create',"),
+          WRITE_BUTTON,
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
+    {
+      ...ob(
+        'btn:TenantBase.EmploymentContract#create@list',
+        ['button:buttonResource', 'button:object.button'],
+        [
+          fn(REHIRE, 'rehireGuard', 'await requireContractCreateAccess('),
+          fn(
+            ENTRY_CONTRACT,
+            'requireContractCreateAccess',
+            "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
+          ),
+          {
+            role: 'const',
+            unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+            anchor: "'TenantBase.EmploymentContract'",
+          },
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
   ],
   'PATCH /api/tenant/employment/retirements/:id': [
     ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),

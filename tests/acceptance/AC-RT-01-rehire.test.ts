@@ -67,7 +67,7 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
     expect(audit!.after).toMatchObject({
       rehireBusinessId: extension.rehire_business_id,
       rehireDate: '2026-10-07',
-      contractId: requests[0]!.id,
+      rehireContractId: requests[0]!.id,
       initiatorUserId: x.session.user.id,
     });
     expect(await x.audits(created.id, 'employment.retirement.effective')).toHaveLength(1);

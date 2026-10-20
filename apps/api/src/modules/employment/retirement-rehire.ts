@@ -141,16 +141,17 @@ export async function requireRehireWrite(ctx: EmploymentContext, employeeId: str
 /**
  * 同时返聘创建的命令内复核（#199，DEC-385③）：在退休创建本身的复核之后，按当前授权重过返聘的字段权 / 部门范围，
  * 以及返聘合同的创建权（字段 / 按钮 / 对该员工的合同范围，起始日 = 计划返聘日，口径同办理入职带合同）。
- * 首次执行、同键重放、失败回查三个出口都经它；生效时不再重验（授权以发起人创建时为准，§8.3）。
+ * 普通退休（没有计划）原样返回 base。首次执行、同键重放、失败回查三个出口都经它；生效时不再重验（授权以发起人创建时为准，§8.3）。
  */
 export function rehireGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
   base: ScopedCommandGuard,
   employeeId: string,
-  plan: RehirePlan,
+  plan: RehirePlan | undefined,
   lastWorkDate: string,
 ): ScopedCommandGuard {
+  if (!plan) return base;
   return scopedGuard({
     ...base,
     before: async (tx) => {
@@ -326,7 +327,7 @@ async function recordRehire(
       rehireBusinessId: outcome.rehireBusinessId,
       rehireDate: outcome.startDate,
       retirementEffectiveDate: business.payload.effectiveDate,
-      contractId: outcome.contractId,
+      rehireContractId: outcome.contractId,
       initiatorUserId: exit?.initiatorUserId ?? null,
     },
     undefined,
