@@ -40,7 +40,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '7f9e384aa276',
+    readDetail: '91e0bfb1a88f',
   },
   'apps/api/src/modules/approval/node-actions.ts': {
     retrieveTask: '649138642c42',
@@ -55,7 +55,7 @@ export const DIGESTS: Digests = {
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
-    respondHistory: 'ffb2db620d20',
+    respondHistory: '9bab67d00813',
     'route:GET /admin-logs': 'ca4d3201d9b0',
     'route:GET /instances': 'f66cdd697241',
     'route:GET /notifications': '7e11cf9c0c2e',
