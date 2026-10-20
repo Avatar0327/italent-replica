@@ -47,7 +47,7 @@ export interface HandoverDetail {
   } | null;
 }
 
-export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: boolean } = {}) {
+export async function handoverWorld(db: Db, label: string) {
   const x = await blacklistExitWorld(db, label);
   const tenantId = x.tenantId;
   const tenantAs = (userId: string) => ({ tenant: tenantId, user: userId });
@@ -63,8 +63,7 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
   const hrbp = await person('部门HRBP');
   await setHrbp(db, tenantId, x.from.id, hrbp.employeeId);
   const hrAdmin = await x.otherUser();
-  // 默认有人事管理员；hrAdmin: false 造“兜底角色也无人”
-  if (options.hrAdmin !== false) await grantHrAdminProfile(db, tenantId, hrAdmin.id);
+  await grantHrAdminProfile(db, tenantId, hrAdmin.id);
   const processAdmin = await x.otherUser();
   const exceptionAdmin = await x.otherUser();
 
@@ -111,6 +110,8 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
   ) {
     const draft = await x.createdExit(employeeId, options.lastWorkDate ?? FUTURE_LAST_WORK_DATE, 'application', {
       exitTypeCode: 'voluntary',
+      // 工作交接是首节点，没有交接人也没有直线经理时发起会被拒绝（首节点无审批人），所以缺省带上交接人
+      handoverEmployeeId: workOwner.employeeId,
       ...options.exit,
     });
     const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
@@ -122,7 +123,7 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
     return { draft, approved };
   }
 
-  /** 可信端口批准（不断言成功）：返回成功的业务头，或失败的错误码与原因。 */
+  /** 可信端口批准（不断言成功）：返回批准结果，或失败的错误码与原因（并发用例逐个核对每个操作的结果）。 */
   async function tryApprove(target: { id: string }, at: string) {
     const service = await import('../../apps/api/src/modules/employment/transitions.js');
     const current = await x.business(target.id);
@@ -141,8 +142,8 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
       );
       return { ok: result.status === 200, status: result.status };
     } catch (error) {
-      const failure = error as { code?: string; details?: { reason?: string; cause?: string } };
-      return { ok: false, code: failure.code, reason: failure.details?.reason, cause: failure.details?.cause };
+      const failure = error as { code?: string; details?: { reason?: string } };
+      return { ok: false, code: failure.code, reason: failure.details?.reason };
     }
   }
   const preReleaseDate = async (exitId: string) =>

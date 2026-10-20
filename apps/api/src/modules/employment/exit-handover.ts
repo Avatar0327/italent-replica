@@ -1,9 +1,8 @@
 /**
  * 离职交接执行（R2 BE-8b2，B64 / B65，DM-R11 / DM-R13 / DM-R14，DEC-632；设计 R2-T03 §0 / §5.1 步骤 8 的 confirmed / cancelled 端口订阅方）。
  * - 自动发起：订阅 exitPostEffectHooks.onConfirmed（端口只对离职申请审批通过调用，直接离职不调用，B-59）。按 exit.handover_trigger 判断开关与
- *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。该发起而发起不了（员工没有账号、没有可用流程、
- *   工作交接节点连人事管理员也无人）一律抛 409 EXIT_HANDOVER_LAUNCH_FAILED，整个批准动作回滚；同一离职最多一张进行中 / 已完成的交接
- *   （部分唯一索引兜底，重放返回已有的一张）。
+ *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。发起在保存点内：没有可用流程、首节点无人等
+ *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批；同一离职最多一张进行中 / 已完成的交接（部分唯一索引兜底，重放返回已有的一张）。
  * - 事项：发起时把交接事项设置当时的全部事项整份快照到本单，之后改设置不影响；“交接人”只读文本，不随负责人回填（R2f2）。
  * - 办理：勾选“办理完成”即自动保存（tickHandoverItem，不点同意也生效、不推进节点）；只能改当前待办节点负责的类别
  *   （工作交接节点办“工作交接”类、其他事项交接节点办“其他”类）；“本人事项办完”只统计当前审批人本节点的事项。
@@ -92,30 +91,11 @@ async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise
   return row?.lastWorkDate ?? null;
 }
 
-/**
- * 审批中心上下文：发起人换成员工本人账号，操作人显式设为系统（actorUserId: null）——审批发起日志、审计与主体冻结的操作人都记系统，
- * 不冒用批准离职的审批人（第 2 轮 P2-2）；发起日志另标“系统代发”。
- */
+/** 审批中心上下文：发起人换成员工本人账号，审批发起日志标“系统代发”。 */
 const launchContext = (ctx: EmploymentContext, initiatorUserId: string) =>
-  ({
-    ...ctx,
-    userId: initiatorUserId,
-    actorUserId: null,
-    expectedRevision: 0,
-    systemProxy: true,
-  }) as unknown as ApprovalContext;
+  ({ ...ctx, userId: initiatorUserId, expectedRevision: 0, systemProxy: true }) as unknown as ApprovalContext;
 
-/** 发起失败：整个批准动作回滚（离职保持审批中、不写预减时点），补齐后可重新批准——不吞掉、不留“离职已批准、交接零条”。 */
-const launchFailure = (cause: string) =>
-  new AppError('CONFLICT', '无法自动发起离职交接，请补齐交接人 / 直线经理 / 人事管理员或员工账号后重新批准', {
-    reason: 'EXIT_HANDOVER_LAUNCH_FAILED',
-    cause,
-  });
-
-/**
- * 发起入口（订阅方本体，导出供重放测试直调）：只对离职申请；调用方已持员工锁与离职业务头锁。
- * 该发起而发起不了（员工没有账号、没有可用流程、首节点连兜底角色也无人……）一律抛 EXIT_HANDOVER_LAUNCH_FAILED，不再只留痕。
- */
+/** 发起入口（订阅方本体，导出供重放测试直调）：只对离职申请；调用方已持员工锁与离职业务头锁。 */
 export async function launchExitHandover(
   tx: Tx,
   ctx: EmploymentContext,
@@ -130,14 +110,21 @@ export async function launchExitHandover(
   });
   if (decision !== 'launch') return { outcome: 'skipped', reason: decision.toUpperCase() };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
-  if (!initiatorUserId) throw launchFailure('NO_INITIATOR_ACCOUNT');
+  if (!initiatorUserId) return skip(tx, ctx, event, 'NO_INITIATOR_ACCOUNT');
   try {
-    // 保存点只用来清掉半成品行；错误照常向上抛，让整个批准动作回滚
+    // 保存点：业务拒绝（没有可用流程、首节点无审批人……）整体回退，只留痕，不拖垮离职审批
     return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId));
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
-    throw launchFailure((error.details as { reason?: string } | undefined)?.reason ?? error.code);
+    const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
+    await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
+    return { outcome: 'failed', reason };
   }
+}
+
+async function skip(tx: Tx, ctx: EmploymentContext, event: ExitConfirmedEvent, reason: string): Promise<LaunchResult> {
+  await auditHandover(tx, ctx, 'skipped', 'exit-request', event.businessId, null, { reason });
+  return { outcome: 'skipped', reason };
 }
 
 async function createAndStart(

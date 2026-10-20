@@ -22,8 +22,8 @@ import {
 } from './AC-EXIT-handover-support.js';
 
 const database = useTestDb();
-const world = async (label: string, options: { hrAdmin?: boolean } = {}) => {
-  const x = await handoverWorld(database().db, label, options);
+const world = async (label: string) => {
+  const x = await handoverWorld(database().db, label);
   await x.addSettingItems();
   await x.publishHandoverProcess();
   return x;
@@ -128,39 +128,21 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     expect(await x.statusOf(leave.id)).toEqual({ status: 'not_started', request: null });
   });
 
-  it('员工没有可用账号（无法作为发起人）：批准被拒绝，离职保持审批中，补齐后可重新批准', async () => {
+  it('员工没有可用账号（无法作为发起人）：跳过并留痕，离职审批照常通过', async () => {
     const x = await world('launch-no-account');
     const lone = await x.colleague('无账号员工');
     await x.unbindAccount(lone.id);
-    const draft = await x.createdExit(lone.id, FUTURE_LAST_WORK_DATE, 'application', { exitTypeCode: 'voluntary' });
-    expect(
-      (await x.session.request('POST', `/businesses/${draft.id}/submit`, { ifMatch: draft.revision, body: {} })).status,
-    ).toBe(200);
-    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({
-      ok: false,
-      code: 'CONFLICT',
-      reason: 'EXIT_HANDOVER_LAUNCH_FAILED',
-      cause: 'NO_INITIATOR_ACCOUNT',
-    });
-    expect((await x.business(draft.id)).status).toBe('in_review');
-    expect(await x.preReleaseDate(draft.id)).toBeNull();
-    expect(await x.requestRows(draft.id)).toEqual([]);
-    // 补齐账号后重新批准成功，恰一张
-    await x.person('补账号', lone.id);
-    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ ok: true });
-    expect(await x.requestRows(draft.id)).toHaveLength(1);
+    const { approved } = await x.approvedApplication(lone.id);
+    expect(approved.status).toBe('approved');
+    expect(await x.requestRows(approved.id)).toEqual([]);
+    expect(await x.auditActions(approved.id, 'exit_handover.skipped')).toEqual([
+      { after: expect.objectContaining({ reason: 'NO_INITIATOR_ACCOUNT' }) },
+    ]);
   });
 
-  it('首节点无人兜底（P2-1）：既没有交接人也没有直线经理时取人事管理员，发起成功且恰一张', async () => {
-    const x = await world('launch-hr-fallback');
-    const { approved } = await x.approvedApplication(x.employee.id, { exit: { handoverEmployeeId: undefined } });
-    const rows = await x.requestRows(approved.id);
-    expect(rows).toHaveLength(1);
-    expect(await x.pendingNode(rows[0]!.instanceId!)).toMatchObject({ nodeKey: 'work_handover', userId: x.hrAdmin.id });
-  });
-
-  it('兜底角色也无人（P2-1）：批准被拒绝并整体回滚，离职保持审批中、没有交接单，补齐后重新批准成功', async () => {
-    const x = await world('launch-nobody', { hrAdmin: false });
+  it('首节点无人可发（DEC-661）：无交接人且无直线经理 → 明确错误、整体回滚，补交接人后可重新发起', async () => {
+    const x = await world('launch-first-empty');
+    // 不借助夹具的默认交接人：直接建申请，不带交接人；该员工没有直线经理
     const draft = await x.createdExit(x.employee.id, FUTURE_LAST_WORK_DATE, 'application', {
       exitTypeCode: 'voluntary',
     });
@@ -172,21 +154,24 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({
       ok: false,
       code: 'CONFLICT',
-      reason: 'EXIT_HANDOVER_LAUNCH_FAILED',
-      cause: 'APPROVAL_FIRST_NODE_EMPTY',
+      reason: 'EXIT_HANDOVER_FIRST_NODE_EMPTY',
     });
+    // 全部回滚：离职保持审批中、不写预减时点、没有交接单 / 交接审批实例 / 失败留痕
     expect((await x.business(draft.id)).status).toBe('in_review');
     expect(await x.preReleaseDate(draft.id)).toBeNull();
     expect(await x.requestRows(draft.id)).toEqual([]);
     expect(await x.handoverInstanceCount()).toBe(0);
-    // 补齐后（填交接人）重新批准成功：不再出现“离职已批准、交接零条”
+    expect(await x.auditActions(draft.id, 'exit_handover.launch_failed')).toEqual([]);
+    // 补交接人后重新批准：发起成功且恰一张，首节点待办是交接人
     const edit = await x.session.request('PATCH', `/exits/${draft.id}`, {
       ifMatch: (await x.business(draft.id)).revision,
       body: { handoverEmployeeId: x.workOwner.employeeId },
     });
     expect(edit.status, await edit.clone().text()).toBe(200);
     expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ ok: true });
-    expect(await x.requestRows(draft.id)).toHaveLength(1);
+    const rows = await x.requestRows(draft.id);
+    expect(rows).toHaveLength(1);
+    expect(await x.pendingNode(rows[0]!.instanceId!)).toMatchObject({ userId: x.workOwner.userId });
   });
 
   it('审计归属（P2-2）：系统代发的审批发起 / 冻结主体操作人为系统，员工仍是发起人', async () => {
