@@ -24,7 +24,12 @@ import {
 const database = useTestDb();
 const world = async (
   label: string,
-  options: { hrAdmin?: boolean; fallbackWork?: readonly string[]; fallbackOther?: readonly string[] } = {},
+  options: {
+    hrAdmin?: boolean;
+    fallbackWork?: readonly string[];
+    fallbackOther?: readonly string[];
+    noAssignee?: 'exception_admin' | 'none';
+  } = {},
 ) => {
   const x = await handoverWorld(database().db, label, { hrAdmin: options.hrAdmin ?? true });
   await x.addSettingItems();
@@ -33,7 +38,10 @@ const world = async (
   for (const name of [...(options.fallbackWork ?? []), ...(options.fallbackOther ?? [])])
     people.set(name, await x.person(name));
   const ids = (names: readonly string[] | undefined) => (names ?? []).map((name) => people.get(name)!.userId);
-  await x.publishHandoverProcess({ work: ids(options.fallbackWork), other: ids(options.fallbackOther) });
+  await x.publishHandoverProcess(
+    { work: ids(options.fallbackWork), other: ids(options.fallbackOther) },
+    options.noAssignee,
+  );
   return Object.assign(x, { people });
 };
 
@@ -226,9 +234,48 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     });
     const [audit] = await x.auditActions(rows[0]!.id, 'exit_handover.not_launched');
     expect(audit?.after).toMatchObject({ reason: 'NO_HANDLER' });
-    // 重放不重复落记录
+    // 重放不重复落记录：真正再进一次发起入口（同一事件），仍只有这一条未发起记录
+    const { launchExitHandover } = await import('../../apps/api/src/modules/employment/exit-handover.js');
+    const again = await withTenant(x.db, x.tenantId, (tx) =>
+      launchExitHandover(
+        tx,
+        {
+          tenantId: x.tenantId,
+          userId: x.session.user.id,
+          timezone: x.session.tenant.timezone,
+          now: new Date(`${TODAY}T03:00:00Z`),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
+        { businessId: draft.id, employeeId: x.employee.id, mode: 'application', kind: 'leave', reEmployed: false },
+      ),
+    );
+    expect(again).toMatchObject({ outcome: 'exists', requestId: rows[0]!.id });
     expect(await x.requestRows(draft.id)).toHaveLength(1);
+    expect(await x.auditActions(rows[0]!.id, 'exit_handover.not_launched')).toHaveLength(1);
   });
+
+  it.each(['exception_admin', 'none'] as const)(
+    '三者都空且节点“无审批人”策略 = %s（第 4 轮 P2-1）：同样落恰一条“交接未发起”记录，不留失败态',
+    async (noAssignee) => {
+      const x = await world(`launch-all-empty-${noAssignee}`, { noAssignee });
+      const { draft, approved, rows } = await approveWithoutHandler(x);
+      expect(approved).toMatchObject({ ok: true });
+      expect((await x.business(draft.id)).status).toBe('approved');
+      expect(await x.preReleaseDate(draft.id)).not.toBeNull();
+      expect(await x.handoverInstanceCount()).toBe(0);
+      expect(rows).toEqual([expect.objectContaining({ state: 'not_launched', instanceId: null })]);
+      expect(await x.statusOf(draft.id)).toMatchObject({
+        status: 'not_launched',
+        request: {
+          notLaunchedReason: 'NO_HANDLER',
+          hint: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+        },
+      });
+      expect(await x.auditActions(rows[0]!.id, 'exit_handover.not_launched')).toHaveLength(1);
+      expect(await x.auditActions(draft.id, 'exit_handover.launch_failed')).toEqual([]);
+    },
+  );
 
   it('三者都空后撤销离职：未发起记录一并置已终止', async () => {
     const x = await world('launch-all-empty-cancel');

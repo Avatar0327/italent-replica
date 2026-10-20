@@ -76,7 +76,10 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
   }
 
   /** 发布四节点交接流程（取预置定义，代码在测试里排在夹具兜底之前）。 */
-  async function publishHandoverProcess(fallback: { work?: readonly string[]; other?: readonly string[] } = {}) {
+  async function publishHandoverProcess(
+    fallback: { work?: readonly string[]; other?: readonly string[] } = {},
+    noAssignee: 'exception_admin' | 'none' = 'exception_admin',
+  ) {
     const preset = PRESET_PROCESSES.find((candidate) => candidate.approvalType === 'exit_handover');
     expect(preset, '缺少 exit_handover 预置流程').toBeTruthy();
     const ctx = { tenantId, userId: processAdmin.id, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
@@ -92,7 +95,9 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
           nodes: preset!.definition.nodes.map((node) => {
             const ids =
               node.key === 'work_handover' ? fallback.work : node.key === 'other_handover' ? fallback.other : [];
-            return ids?.length ? { ...node, fallbackUserIds: [...ids] } : node;
+            const withFallback = ids?.length ? { ...node, fallbackUserIds: [...ids] } : node;
+            // 节点“无审批人”策略（DEC-054 / 318）：转异常管理员 / 无操作；交接取不到人时与它无关（第 4 轮 P2-1）
+            return { ...withFallback, noAssignee };
           }),
         },
       );
