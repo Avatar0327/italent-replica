@@ -16,10 +16,16 @@ export function deriveRetireType(lastWorkDate: string, expectedDate: string | nu
   return lastWorkDate < expectedDate ? 'early' : lastWorkDate === expectedDate ? 'normal' : 'delayed';
 }
 
-/** 退休单可写的 exit 区块字段（§3.2）：交接人、加黑、职责转交计划；其余离职字段一律拒绝，在途调动确认令牌是门禁控制项。 */
+/**
+ * 退休单可写的 exit 区块字段（§3.2）：交接人、加黑（含 BE-8b1 的有效截止日期 / 原因 / 说明，设计 §3.2 “c3 共用”）、职责转交计划；
+ * 其余离职字段一律拒绝，在途调动确认令牌是门禁控制项。
+ */
 export const RETIREMENT_EXIT_KEYS = [
   'handoverEmployeeId',
   'addToBlacklist',
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
   'dutyTransfer',
   'pendingTransferAck',
 ] as const;

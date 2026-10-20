@@ -98,6 +98,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/presets.ts#PRESET_ACTIONS': ['#PRESET_RECUSAL'],
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
+    '#AGREE_OR_NOT',
     '#ASSESSMENT_PRESETS',
     '#HEAD_FIRST',
     '#HRBP_FIRST',
@@ -112,6 +113,7 @@ export const GRAPH: Graph = {
     '#node',
     '#partTimePreset',
     '#standardCondition',
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
   ],
   'packages/domain/src/approval/presets.ts#RETIRE_FORM': [
     'packages/domain/src/employment/retirement.ts#RETIREMENT_REQUEST_FIELDS',
@@ -169,6 +171,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS': ['#TRANSFER_DETAIL_VIEW'],
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [
     '#EMPLOYEE_INFO_CONDITION_FIELDS',
+    '#EMPLOYMENT_CONDITION_FIELDS',
     '#LEAVE_CONDITION_FIELDS',
     '#OFFER_BATCH_TYPE',
     '#OFFER_TYPE',
@@ -181,7 +184,10 @@ export const GRAPH: Graph = {
     '#idpType',
     '#partTimeType',
     '#personnelFormFields',
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_SNAPSHOT_FIELDS',
     'packages/domain/src/employment/retirement.ts#RETIREMENT_REQUEST_FIELDS',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS',
   ],

@@ -18,6 +18,7 @@ const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
+const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
@@ -35,6 +36,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -759,6 +761,51 @@ const ASSESSMENT_SCOPE_SQL: Evidence = {
 };
 const assessmentView = (call: Evidence) =>
   ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
+
+/** R2-T04 BE-5d2 意向退休日期申请：授权复用任职记录对象，读用 DEC-177 可见口径，写用申请行自己的三个坐标（DEC-193）。 */
+const INTENT = `${SRC}/employment/retirement-intention-routes.ts`;
+const INTENT_SERVICE = `${SRC}/employment/retirement-intention.ts`;
+const INTENT_ACCESS = `${SRC}/employment/retirement-intention-access.ts`;
+const INTENT_STORE = `${SRC}/employment/retirement-intention-store.ts`;
+const INTENT_WRITE_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${INTENT_ACCESS}#requireIntentionWriteScope`,
+  anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+};
+const INTENT_BUTTON = (method: string, path: string, call: string): Obligation =>
+  ob(
+    `btn:${RECORD}#Employment.RetireIntention@detail`,
+    [],
+    [
+      at(INTENT, method, path, call),
+      fn(INTENT, 'intentionGuard', 'await requireIntentionRight(tx, scoped, {'),
+      fn(INTENT_ACCESS, 'requireIntentionRight', 'await requireEmploymentWrite( scoped, request.operation,'),
+      WRITE_BUTTON,
+    ],
+  );
+const intentionWriteScope = (anchorUnit: string, name: string, anchor: string): Obligation =>
+  ob(
+    'guard:employment.intentionWrite',
+    [],
+    [fn(anchorUnit, name, anchor), INTENT_WRITE_SCOPE],
+    '范围外与不存在同一个 404',
+  );
+function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
+  const path = `/retirement-intentions/:id/${action}`;
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(INTENT, 'POST', path, "const ctx = await readContext(c, deps, 'object.update', revision(c))"),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON('POST', path, '{ guard: intentionGuard(deps, ctx, { intentionId: id }, {}) }'),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ];
+}
 
 export const EMPLOYMENT: RequiredTable = {
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
@@ -2794,6 +2841,76 @@ export const EMPLOYMENT: RequiredTable = {
     'registerRetirementChanges',
     RETIRE,
   ),
+  // ---- employment/retirement-intention-routes.ts：R2-T04 BE-5d2 意向退休日期申请（设计 §11 / §12.1）---------------------------
+  'POST /api/tenant/employment/retirement-intentions/employees/:id': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'POST',
+          '/retirement-intentions/employees/:id',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'POST',
+      '/retirement-intentions/employees/:id',
+      '{ guard: intentionGuard(deps, ctx, { employeeId: id }, definedKeys(input)) }',
+    ),
+    intentionWriteScope(
+      INTENT_SERVICE,
+      'createIntention',
+      'await requireIntentionWriteScope(tx, ctx, { employeeId, departmentId, initiatorUserId: ctx.userId })',
+    ),
+  ],
+  'PATCH /api/tenant/employment/retirement-intentions/:id': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'PATCH',
+          '/retirement-intentions/:id',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'PATCH',
+      '/retirement-intentions/:id',
+      '{ guard: intentionGuard(deps, ctx, { intentionId: id }, definedKeys(patch)) }',
+    ),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ],
+  'POST /api/tenant/employment/retirement-intentions/:id/submit': intentionAction('submit'),
+  'POST /api/tenant/employment/retirement-intentions/:id/withdraw': intentionAction('withdraw'),
+  'GET /api/tenant/employment/retirement-intentions': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/retirement-intentions/:id': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    ob(
+      'guard:employment.intentionVisibility',
+      [],
+      [
+        at(INTENT, 'GET', '/retirement-intentions/:id', 'loadVisibleIntention(tx, ctx, id)'),
+        {
+          role: 'impl',
+          unit: `${INTENT_STORE}#loadVisibleIntention`,
+          anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+        },
+      ],
+      '看不见与不存在同一个 404（DEC-177 可见口径）',
+    ),
+  ],
   // ---- R2-T03 B4 撤销离职 ----
   'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
   'POST /api/tenant/employment/exits/:id/restore': exitCancelRestore(),
@@ -2816,6 +2933,13 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/exits/:id': [
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+  ],
+  // ---- R2-T04 BE-5d1 退休五视图与详情（retirement-view-routes.ts registerRetirementViews）-------------------------------
+  'GET /api/tenant/employment/retirements': [
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/retirements/:id': [
+    recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   'GET /api/tenant/employment/exits/dictionaries/:dict': [
     ob(
@@ -2917,6 +3041,51 @@ export const EMPLOYMENT: RequiredTable = {
           operation,
           at(
             BL,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
+  'GET /api/tenant/employment/exit-handover-items': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'GET',
+          '/exit-handover-items',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/exit-handover-items', 'create'],
+        ['PUT', '/exit-handover-items/:id', 'update'],
+        ['DELETE', '/exit-handover-items/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            HANDOVER,
+            'registerExitHandoverRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            HANDOVER,
             method,
             path,
             `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
@@ -3060,15 +3229,10 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/retirement-rules': [
     ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
       [
-        at(
-          RETIREMENT_RULE,
-          'GET',
-          '/retirement-rules',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
+        at(RETIREMENT_RULE, 'GET', '/retirement-rules', "const ctx = await readContext(c, deps, 'object.view', 0)"),
         READ,
       ],
     ),
