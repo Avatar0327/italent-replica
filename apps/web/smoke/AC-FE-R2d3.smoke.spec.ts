@@ -349,3 +349,33 @@ test('AC-FE-R2d3-11 写后回读 revision 未前进：直接转正按结果未�
   await expect(page.getByText('实习转正成功')).toHaveCount(0);
   await expect(save(page)).toBeDisabled();
 });
+
+test('AC-FE-R2d3-12 读基线时并发改任职：不拼“新 revision + 旧任职字段”（第 2 轮 P2-R2-1）', async ({ page }) => {
+  const { server } = await setup(page);
+  const sent: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/interns/${employee}/regularize`, (route) => {
+    sent.push(posted(route.request()));
+    server.employeeRevision = employeeRevision + 2;
+    return route.fulfill({
+      status: 201,
+      json: business('intern_regularization', { employeeRevision: employeeRevision + 2 }),
+    });
+  });
+  await openDetail(page, 'interning');
+  // 交错顺序：任职先读到部门 A → 另一位 HR 改成 B、员工 revision 5 → 6 → 员工 revision 随后才应答
+  let changed!: () => void;
+  const answered = new Promise<void>((resolve) => (changed = resolve));
+  server.afterRecords = () => {
+    server.afterRecords = undefined;
+    [server.record, server.employeeRevision] = [{ ...server.record, departmentId: target }, employeeRevision + 1];
+    changed();
+  };
+  server.beforeEmployee = () => Promise.race([answered, new Promise<void>((resolve) => setTimeout(resolve, 800))]);
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(dialog(page).getByText('合成转正部门').first()).toBeVisible();
+  await date(page, '实习转正日期', '2026-10-16');
+  await dialog(page).getByRole('radio', { name: '否' }).check();
+  await save(page).click();
+  await expect(page.getByText('实习转正成功')).toBeVisible();
+  expect(sent.map((item) => [item.ifMatch, item.body.departmentId])).toEqual([[String(employeeRevision + 1), target]]);
+});

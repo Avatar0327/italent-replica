@@ -108,6 +108,10 @@ export interface Server {
   businessRevision: number;
   record: Record<string, unknown>;
   listStatus: number;
+  /** 受控交错：员工读取在应答前等待它（用例按需挂上）。 */
+  beforeEmployee?: () => Promise<void>;
+  /** 受控交错：任职记录应答后调用（模拟另一位 HR 随即改了任职）。 */
+  afterRecords?: () => void;
 }
 /** 列表请求按 view 返回对应视图的一行；读回 query 便于断言。 */
 export async function setup(page: Page, options: Options = {}) {
@@ -181,19 +185,24 @@ export async function setup(page: Page, options: Options = {}) {
 
 /** 员工 revision、当前主职任职与申请单 revision 按“服务端状态”返回（打开基线、409 重读与写后回读都读这里）。 */
 async function routeServer(page: Page, server: Server) {
-  await page.route(`**/employment/employees/${employee}`, (route) =>
-    route.fulfill({ json: { id: employee, code: base.code, name: base.name, revision: server.employeeRevision } }),
-  );
-  await page.route(`**/employment/employees/${employee}/records?*`, (route) =>
-    route.fulfill({
+  await page.route(`**/employment/employees/${employee}`, async (route) => {
+    await server.beforeEmployee?.();
+    return route.fulfill({
+      json: { id: employee, code: base.code, name: base.name, revision: server.employeeRevision },
+    });
+  });
+  await page.route(`**/employment/employees/${employee}/records?*`, async (route) => {
+    const fields = server.record;
+    await route.fulfill({
       json: {
-        items: [{ id: recordId, employeeId: employee, serviceType: 'primary', isCurrent: true, fields: server.record }],
+        items: [{ id: recordId, employeeId: employee, serviceType: 'primary', isCurrent: true, fields }],
         page: 1,
         pageSize: 200,
         hasDataPermission: true,
       },
-    }),
-  );
+    });
+    server.afterRecords?.();
+  });
   await page.route('**/employment/businesses/*', (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-1);
     return route.fulfill({ json: { id, employeeId: employee, revision: server.businessRevision } });
