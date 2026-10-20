@@ -40,7 +40,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '7f9e384aa276',
+    readDetail: '91e0bfb1a88f',
   },
   'apps/api/src/modules/approval/node-actions.ts': {
     retrieveTask: '649138642c42',
@@ -55,7 +55,7 @@ export const DIGESTS: Digests = {
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
-    respondHistory: 'ffb2db620d20',
+    respondHistory: '9bab67d00813',
     'route:GET /admin-logs': 'ca4d3201d9b0',
     'route:GET /instances': 'f66cdd697241',
     'route:GET /notifications': '7e11cf9c0c2e',
@@ -203,7 +203,7 @@ export const DIGESTS: Digests = {
     'route:POST /auto-regularization/run': 'b99798a886bf',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
-    visibleEmployees: '311254d756ec',
+    visibleEmployees: '3837643e5dc4',
     writeContext: 'a154208ec77b',
   },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
@@ -377,7 +377,7 @@ export const DIGESTS: Digests = {
     loadVisibleIntention: 'fcea8ae3db97',
   },
   'apps/api/src/modules/employment/retirement-intention.ts': {
-    createIntention: '1bc5ad0bda27',
+    createIntention: '5c4cea444719',
     guardedRow: '015f7233832e',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
@@ -395,6 +395,7 @@ export const DIGESTS: Digests = {
     'route:GET /retirement-rules': '6f863b4c24d4',
     'route:POST /retirement-rules': 'c0ccabb2ca46',
     'route:POST /retirement-rules/:id/copy': '012777f500a5',
+    'route:POST /retirement-rules/run': 'bc894d79ebb5',
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
@@ -1864,7 +1865,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
     '87d5b8962599',
   'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
-  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '1e373858e5db',
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
@@ -1878,6 +1879,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules': 'e9b54a0cf91a',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': '83a9d7934f65',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
