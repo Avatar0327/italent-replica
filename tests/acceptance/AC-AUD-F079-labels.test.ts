@@ -21,6 +21,11 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['earliestRetirementDate', '最早退休日期'],
     ['latestRetirementDate', '最晚退休日期'],
     ['flexibleRangeConfirmed', '弹性退休范围已核准'],
+    // R2-T04 5d2 意向退休日期申请审计动作 retirement_intention.* 的变更内容
+    ['intendedDate', '意向退休日期'],
+    ['expectedDateSnapshot', '申请时预计退休日期'],
+    ['earliestSnapshot', '申请时最早退休日期'],
+    ['latestSnapshot', '申请时最晚退休日期'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });

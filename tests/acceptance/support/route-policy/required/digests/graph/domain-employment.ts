@@ -43,6 +43,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/employee-status.ts#isTerminatingRecord': ['#TERMINATING_RECORD_STATUS'],
   'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_TODO_TYPE_CODES': ['#HANDOVER_TODO_TYPES'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': [
     '#closed',
     '#compareApplications',
@@ -79,7 +80,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/exit-occupancy.ts#segment': ['#OPEN'],
   'packages/domain/src/employment/exit-occupancy.ts#subtractAll': ['#subtractSpan'],
   'packages/domain/src/employment/exit.ts#EXIT_DICTIONARY_KINDS': ['#EXIT_DICTIONARIES'],
-  'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_REQUEST_FIELDS'],
+  'packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS': ['#EXIT_BLACKLIST_DETAIL_FIELDS', '#EXIT_REQUEST_FIELDS'],
   'packages/domain/src/employment/exit.ts#buttonsOf': ['#EXIT_BUTTONS', '#RETIREMENT_BUTTONS'],
   'packages/domain/src/employment/late-execution.ts#resolveLateLeave': [
     'packages/domain/src/contracts/rules.ts#addDays',
@@ -125,6 +126,13 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/probation.ts#normalizeProbationInfo': ['#expectedProbationEndDate'],
   'packages/domain/src/employment/probation.ts#probationAdjustmentViolation': ['#violation'],
   'packages/domain/src/employment/probation.ts#resolveDeferredProbation': ['#expectedProbationEndDate'],
+  'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_EMPLOYED_STATUSES': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS': [
+    '#RETIREMENT_INTENTION_EDITABLE_FIELDS',
+    '#RETIREMENT_INTENTION_SNAPSHOT_FIELDS',
+  ],
   'packages/domain/src/employment/retirement-rules.ts#EARLIEST_FUNCTIONS': [
     'packages/domain/src/employment/retirement-statutory.ts#STATUTORY_FUNCTIONS',
     'packages/domain/src/employment/retirement-statutory.ts#statutoryEarliestDate',
@@ -138,12 +146,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-statutory.ts#statutoryLatestDate',
   ],
   'packages/domain/src/employment/retirement-rules.ts#expectedDateByRule': ['#EXPECTED_FUNCTIONS', '#expectedDateOf'],
-  'packages/domain/src/employment/retirement-rules.ts#matchRule': ['#inScope', '#satisfies'],
-  'packages/domain/src/employment/retirement-rules.ts#resolveExpectedDate': ['#expectedDateByRule', '#matchRule'],
+  'packages/domain/src/employment/retirement-rules.ts#matchRules': ['#inScope', '#satisfies'],
+  'packages/domain/src/employment/retirement-rules.ts#resolveExpectedDate': ['#expectedDateByRule', '#matchRules'],
   'packages/domain/src/employment/retirement-rules.ts#resolveFlexibleRange': [
     '#EARLIEST_FUNCTIONS',
     '#LATEST_FUNCTIONS',
-    '#matchRule',
+    '#matchRules',
   ],
   'packages/domain/src/employment/retirement-statutory.ts#STATUTORY_DELAY_TABLES': ['#buildTable'],
   'packages/domain/src/employment/retirement-statutory.ts#buildTable': ['#DELAY_RULES', '#monthKey'],
