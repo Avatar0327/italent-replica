@@ -34,22 +34,6 @@ export async function forceDisableOrg(db: Db, tenantId: string, orgId: string, f
   });
 }
 
-/**
- * 经入口停用含编制的组织：入口先做完全部既有校验（人员、职位、未来版本），最后才轮到 F-296 编制关口；
- * 命中关口时按“11e 已先结束编制”的口径追加停用版本，其余响应原样返回。用在关心停用校验而非编制的夹具里。
- */
-export async function disableLiftingEstablishmentGate(
-  db: Db,
-  tenantId: string,
-  org: { id: string },
-  effectiveDate: string,
-  response: Response,
-): Promise<Response> {
-  const body = response.status === 409 ? ((await response.clone().json()) as { error?: { code?: string } }) : null;
-  if (body?.error?.code !== 'ORG_DEACTIVATE_ESTABLISHMENT_END_NOT_AVAILABLE') return response;
-  return Response.json({ revision: await forceDisableOrg(db, tenantId, org.id, effectiveDate) });
-}
-
 export const EST_NOW = new Date('2026-10-01T01:00:00.000Z');
 
 export interface EstablishmentScheme {

@@ -6,7 +6,6 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { disableLiftingEstablishmentGate } from './AC-EST-support.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -18,19 +17,13 @@ async function world(label: string) {
   const x = await downstreamWorld(database().db, label, TODAY);
   const api = tenantApi(x.db, { clock: () => new Date(`${TODAY}T01:00:00Z`) });
   /** 调出部门（员工所在）自 effectiveDate 起停用。 */
-  const disable = async (effectiveDate: string) =>
-    disableLiftingEstablishmentGate(
-      database().db,
-      x.session.tenant.id,
-      x.from,
-      effectiveDate,
-      await api.request('PATCH', `/api/tenant/org/organizations/${x.from.id}`, {
-        tenant: x.session.tenant.id,
-        user: x.session.user.id,
-        ifMatch: x.from.revision,
-        body: { enabled: false, effectiveDate },
-      }),
-    );
+  const disable = (effectiveDate: string) =>
+    api.request('PATCH', `/api/tenant/org/organizations/${x.from.id}`, {
+      tenant: x.session.tenant.id,
+      user: x.session.user.id,
+      ifMatch: x.from.revision,
+      body: { enabled: false, effectiveDate },
+    });
   return { ...x, disable };
 }
 

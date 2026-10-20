@@ -162,9 +162,17 @@ export async function updateOrganization(
   // F-213：整支预检（含下级设立日）全部做在任何写入之前，非法请求不执行 revision 更新与版本追加。
   const from = unavailableFrom(current, normalized);
   const root = { ...current, code, name: normalized.name };
-  const descendants = from ? await planDeactivation(tx, ctx, root, from, options.authorizeCascade) : [];
+  // F-296：编制检查范围 = planDeactivation 已授权的完整子树（含已停用、已排定停用的下级），与“待追加停用版本”的 descendants 分开。
+  const authorizedSubtree: string[] = [];
+  const authorize: CascadeAuthorizer | undefined =
+    options.authorizeCascade &&
+    (async (cascadeTx, ids) => {
+      await options.authorizeCascade!(cascadeTx, ids);
+      authorizedSubtree.push(...ids);
+    });
+  const descendants = from ? await planDeactivation(tx, ctx, root, from, authorize) : [];
   // F-296：11e 合入后改为调用 endCapacity 并拆除本关口。须在 planDeactivation 的数据范围授权之后（先授权后判断）。
-  if (from) await assertNoEstablishmentToEnd(tx, ctx, [root.id, ...descendants.map((node) => node.id)], from);
+  if (from) await assertNoEstablishmentToEnd(tx, ctx, [root.id, ...authorizedSubtree], from);
   const revision = object.revision + 1;
   await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
   const path = parentPath(ctx, normalized, nodes);

@@ -6,7 +6,6 @@
 import { sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { loadExitStates } from '../../apps/api/src/modules/employment/exit-occupancy-store.js';
-import { disableLiftingEstablishmentGate } from './AC-EST-support.js';
 import { capacityWorld } from './AC-EXIT-capacity-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -27,8 +26,8 @@ export interface Cancelled {
   };
 }
 
-export async function cancelWorld(db: Db, label: string, today = '2026-10-06') {
-  const x = await capacityWorld(db, label, today);
+export async function cancelWorld(db: Db, label: string, today = '2026-10-06', options: { capacity?: boolean } = {}) {
+  const x = await capacityWorld(db, label, today, options);
   const tenantId = x.session.tenant.id;
 
   /** 撤销（If-Match 缺省取业务当前 revision）；返回原始响应。 */
@@ -76,19 +75,13 @@ export async function cancelWorld(db: Db, label: string, today = '2026-10-06') {
     );
   /** 组织自 effectiveDate 起停用（org.revision 取创建时的值，每个组织在一个用例里至多停用一次）。 */
   const orgApi = tenantApi(db, { clock: () => new Date(`${today}T01:00:00Z`) });
-  const disable = async (org: { id: string; revision: number }, effectiveDate: string) =>
-    disableLiftingEstablishmentGate(
-      db,
-      tenantId,
-      org,
-      effectiveDate,
-      await orgApi.request('PATCH', `/api/tenant/org/organizations/${org.id}`, {
-        tenant: tenantId,
-        user: x.session.user.id,
-        ifMatch: org.revision,
-        body: { enabled: false, effectiveDate },
-      }),
-    );
+  const disable = (org: { id: string; revision: number }, effectiveDate: string) =>
+    orgApi.request('PATCH', `/api/tenant/org/organizations/${org.id}`, {
+      tenant: tenantId,
+      user: x.session.user.id,
+      ifMatch: org.revision,
+      body: { enabled: false, effectiveDate },
+    });
   /** 员工自 effectiveDate 起的直接调动（未来日期即“已落地、待执行”的未来直接调动）。 */
   async function directTransfer(department: { id: string }, effectiveDate: string, employeeId = x.employee.id) {
     const employee = await x.session.getEmployee(employeeId);
