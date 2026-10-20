@@ -242,7 +242,8 @@ const loadRules = (batch: Batch): Promise<RetirementRule[]> =>
 async function renew(tx: Tx, batch: Batch, position?: string) {
   const [row] = rowsOf(
     await tx.execute(sql`UPDATE retirement_rule_daily_runs SET lease_until=${leaseUntil(batch.clock)}::timestamptz,
-        ${position ? sql`position_employee_id=${position}::uuid,` : sql``} updated_at=${batch.ctx.now.toISOString()}::timestamptz
+        ${position ? sql`position_employee_id=${position}::uuid,` : sql``}
+        updated_at=${batch.ctx.now.toISOString()}::timestamptz
       WHERE ${runKey(batch)} AND state='running' AND attempts=${batch.attempts} RETURNING 1`),
   );
   if (!row) throw new LeaseLost();
@@ -269,7 +270,8 @@ async function mainScan(batch: Batch, from: string | null, result: RetirementPur
     await withTenant(batch.db, batch.tenant.id, async (tx) => {
       await renew(tx, batch, position!);
       if (skipped.length)
-        await tx.execute(sql`INSERT INTO retirement_rule_run_skips(tenant_id, purpose, business_date, employee_id, state)
+        await tx.execute(sql`INSERT INTO retirement_rule_run_skips(tenant_id, purpose, business_date, employee_id,
+            state)
           SELECT ${batch.tenant.id}, ${batch.purpose}, ${batch.businessDate}::date, e, 'pending'
           FROM unnest(${`{${skipped.join(',')}}`}::uuid[]) AS e ON CONFLICT DO NOTHING`);
     });

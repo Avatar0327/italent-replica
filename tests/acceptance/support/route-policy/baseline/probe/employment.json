@@ -1998,6 +1998,21 @@
       "obj:TenantBase.EmploymentSettings:create"
     ]
   },
+  "POST /api/tenant/employment/retirement-rules/run": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "faf6ec9231c6",
+      "reason": "RETIREMENT_RUN_PURPOSE_REQUIRED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
   "POST /api/tenant/employment/retirements/:id/submit": {
     "all": {
       "code": "NOT_FOUND",

@@ -16,6 +16,11 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['reEmployed', '是否同时返聘'],
     ['expectedRetirementDate', '预计退休日期'],
     ['actualRetirementDate', '实际退休日期'],
+    // R2-T04 BE-5c2：批处理写入的人事字段
+    ['expectedRetirementConfirmed', '预计退休日期已核准'],
+    ['earliestRetirementDate', '最早退休日期'],
+    ['latestRetirementDate', '最晚退休日期'],
+    ['flexibleRangeConfirmed', '弹性退休范围已核准'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });

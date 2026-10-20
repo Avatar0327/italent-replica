@@ -135,7 +135,8 @@ describe('AC-RT-17b 立即执行与游标', () => {
     await withTenant(w.db, w.tenantId, (tx) =>
       tx.execute(sql`INSERT INTO employment_auto_regularization_run_cursors(id, tenant_id, user_id, business_date,
           position_employee_id, command_id)
-        VALUES (${autoHandle}::uuid, ${w.tenantId}, ${w.userId}::uuid, '2026-10-01'::date, ${randomUUID()}::uuid, 'x')`),
+        VALUES (${autoHandle}::uuid, ${w.tenantId}, ${w.userId}::uuid, '2026-10-01'::date,
+          ${randomUUID()}::uuid, 'x')`),
     );
     await invalid(await runNow(w, 'expected_date', { cursor: autoHandle }));
 
