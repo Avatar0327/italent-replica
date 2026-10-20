@@ -1360,7 +1360,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-handover-store.ts#latestHandoverOfExit': ['cfd503b993db', 'dc0c67d1e4f5'],
   'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems': ['d4b440d74347', 'f3b71127b550'],
   'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest': ['6d6f9ac31d5b', 'f49144994f82'],
-  'apps/api/src/modules/employment/exit-handover-store.ts#moveHandoverRequest': ['8ba6c50751d8', '7a645dc8391f'],
+  'apps/api/src/modules/employment/exit-handover-store.ts#moveHandoverRequest': ['bedf59856647', '7a645dc8391f'],
   'apps/api/src/modules/employment/exit-handover.ts#REQUEST_TYPE': ['fbad9e86cdd9', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-handover.ts#auditHandover': ['53996471f003', '8ef9d574cd3e'],
   'apps/api/src/modules/employment/exit-handover.ts#exitHandoverStatus': ['8936c0bd8801', 'dd4b0befe74e'],
