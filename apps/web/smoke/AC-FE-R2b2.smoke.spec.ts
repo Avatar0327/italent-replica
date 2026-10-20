@@ -137,8 +137,30 @@ for (const [status, reason, text] of [
         ...(reason ? { reason } : {}),
         ...(status === 'failed' ? { ruleId: typeId, ruleName: '合成邮箱规则' } : {}),
       };
+    let requests = 0;
+    let release: () => void = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/pending-entries/*/generate-email', async (route) => {
+      requests++;
+      await pending;
+      await route.fallback();
+    });
     const dialog = await onboard(page);
-    await dialog.getByRole('button', { name: '生成邮箱', exact: true }).click();
+    const generate = dialog.getByRole('button', { name: '生成邮箱', exact: true });
+    // F-227：挂起回执，让每种邮箱结果都先经过真实加载态，避免快响应掩盖定位遗漏。
+    try {
+      await generate.click();
+      await expect.poll(() => requests).toBe(1);
+      await expect(
+        dialog.getByRole('button').filter({ hasText: '生成邮箱' }).getByRole('img', { name: 'loading', exact: true }),
+      ).toBeVisible();
+      await expect(generate).toBeDisabled();
+      await expect(generate).toHaveCount(1);
+    } finally {
+      release();
+    }
     await expect(dialog).toContainText(text!);
     if (status === 'generated') await expect(dialog).toContainText('合成邮箱规则');
     expect(state.writes).toHaveLength(1);
