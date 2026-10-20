@@ -284,6 +284,7 @@ export const DIGESTS: Digests = {
     requireViewableInternFilters: '24f248bf8141',
     'route:GET /interns': '30204c189bd9',
     'route:POST /interns/:id/regularize': '30a7f759a110',
+    'route:POST /interns/:id/terminate': 'ca0f1ae74dd2',
     'route:POST /rehire-matches': '0f65f77ec626',
   },
   'apps/api/src/modules/employment/part-time/replay-guard.ts': {
@@ -1752,6 +1753,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#requireViewableInternFilters': 'f5174f751364',
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/terminate': '32bffd4d3e5f',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess': '8d0660b89133',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',

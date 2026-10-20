@@ -53,6 +53,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/retirements/employees/:id',
     'POST /api/tenant/employment/retirements/employees/:id/preview',
     'POST /api/tenant/employment/interns/:id/regularize',
+    'POST /api/tenant/employment/interns/:id/terminate',
     'POST /api/tenant/employment/pending-entries/:id/complete',
     'POST /api/tenant/employment/pending-entries/:id/postpone',
     'POST /api/tenant/employment/records/:id/forward-update-preview',
