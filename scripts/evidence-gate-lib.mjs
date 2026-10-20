@@ -21,10 +21,14 @@ export function taskIds(text) {
 // 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理
 const level = (text) => (/后续|落地后|恢复时|可后补/.test(text) ? '可后补' : '开工前');
 
-// 🟡 行的状态列写明“剩余部分由 DEC 定口径 / 可后补 / 后续补 / 落地后补 / 不挡开工”时不拦开工；
-// 只提到 DEC 编号（如“与 DEC-261 同构”）不算。🔴 / □ 不适用，照旧按任务列判级。
-const REMAINDER_DEFERRED =
-  /DEC-\d+[^。；]{0,30}定口径|口径已定[：:]\s*DEC-\d+|按设计口径定|可后补|后续补|落地后|不挡开工/;
+// 🟡 行放行需要状态列有明确的“剩余事项”声明（剩余 / 其余 / 未测 + 可后补 / 后续补 / 落地后补 / DEC 定口径），
+// 且没有任何仍要求开工前完成、待决或否定的说明；局部已定、否定句、混合状态一律保守拦截。
+// 只提到 DEC 编号（如“与 DEC-261 同构”）或零散的“可后补”字样不算。🔴 / □ 不适用，照旧按任务列判级。
+const REMAINDER_DECLARED =
+  /(?:剩余|其余|余下|未测)[^。；;]{0,40}?(?:可后补|后续补|落地后补|[由按]\s*DEC-\d+\s*定口径|按设计口径定)/;
+const REMAINDER_CONFLICT =
+  /开工前|写代码前|须先|必须先|待用户决定|待原站实测|待取证|尚未[^。；;]{0,12}定口径|未[由按][^。；;]{0,12}定口径/;
+const remainderDeferred = (statusCell) => REMAINDER_DECLARED.test(statusCell) && !REMAINDER_CONFLICT.test(statusCell);
 
 export function evidenceState(blocks, statusCell) {
   const st = /🔴/.test(statusCell)
@@ -34,7 +38,7 @@ export function evidenceState(blocks, statusCell) {
       : /✅/.test(statusCell)
         ? '✅'
         : '□ 未取证';
-  const deferred = st === '🟡 部分' && REMAINDER_DEFERRED.test(statusCell);
+  const deferred = st === '🟡 部分' && remainderDeferred(statusCell);
   return { st, level: deferred ? '可后补' : level(blocks) };
 }
 
