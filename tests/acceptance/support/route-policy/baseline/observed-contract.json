@@ -9,6 +9,7 @@
       "part_time",
       "personnel_change",
       "probation_assessment",
+      "retirement_intention",
       "talent_review"
     ],
     "approval.taskObject": [
@@ -403,6 +404,46 @@
         ],
         "scopePoint": [
           "employment point"
+        ]
+      }
+    },
+    "DELETE /api/tenant/employment/exit-handover-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },
@@ -4174,6 +4215,35 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exit-handover-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/employment/exits": {
       "edge": {
         "anonymous": {
@@ -4588,6 +4658,74 @@
         ]
       }
     },
+    "GET /api/tenant/employment/retirement-intentions": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/retirement-intentions/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/retirement-rules": {
       "edge": {
         "anonymous": {
@@ -4605,15 +4743,12 @@
       },
       "module": "employment",
       "primitives": {
-        "fieldsOut": [
-          "trimModuleResponse"
-        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentSettings:view"
+          "TenantBase.EmploymentRecord:view"
         ]
       }
     },
@@ -11702,11 +11837,18 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -11882,6 +12024,50 @@
         ],
         "scopePoint": [
           "employment point"
+        ]
+      }
+    },
+    "PATCH /api/tenant/employment/retirement-intentions/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "scope.all"
         ]
       }
     },
@@ -16936,6 +17122,9 @@
         "fieldsOut": [
           "employment runWrite()"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -16989,6 +17178,7 @@
         ],
         "scope": [
           "employment scope",
+          "employment visibility",
           "readContext（非配置对象）"
         ],
         "scopePoint": [
@@ -17031,6 +17221,46 @@
         ],
         "scopePoint": [
           "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exit-handover-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
         ]
       }
     },
@@ -18265,6 +18495,141 @@
         ]
       }
     },
+    "POST /api/tenant/employment/retirement-intentions/:id/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "checkScope",
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirement-intentions/:id/withdraw": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
+        "scope": [
+          "checkScope",
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirement-intentions/employees/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment visibility",
+          "readContext（非配置对象）",
+          "scope.all"
+        ]
+      }
+    },
     "POST /api/tenant/employment/retirement-rules": {
       "edge": {
         "anonymous": {
@@ -18342,6 +18707,50 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirement-rules/run": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },
@@ -25221,6 +25630,46 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/exit-handover-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"

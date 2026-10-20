@@ -57,6 +57,7 @@ import {
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
   RETIREMENT_BUTTONS,
+  RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
   PART_TIME_BUTTONS,
 } from '@italent/domain';
@@ -119,6 +120,7 @@ const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
 const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
 const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
+const NF_INTENTION = denied(404, 'NOT_FOUND', '意向退休申请不存在');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -143,6 +145,26 @@ const CUSTOM_FIELD_FIELDS = shape('employment.customField');
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
 const RETIREMENT_IDENTITY_TYPE_KEYS = EXIT_DICTIONARY_KEYS;
+/** retirement-rules.ts RetirementRuleView 的响应键。 */
+const RETIREMENT_RULE_KEYS = [
+  'id',
+  'purpose',
+  'ruleType',
+  'name',
+  'priority',
+  'orgIds',
+  'allOrgs',
+  'preset',
+  'includeSubordinates',
+  'retirementAgeYears',
+  'retirementAgeMonths',
+  'expectedFunction',
+  'earliestFunction',
+  'latestFunction',
+  'conditions',
+  'enabled',
+  'revision',
+] as const;
 /** 黑名单记录 / 列表 / 回执按黑名单对象的字段查看权平铺裁剪（blacklist-routes.ts trimBlacklist）。 */
 const BLACKLIST_FIELDS = projector('employment.blacklist', 'employment.blacklist');
 /** 选人员加黑：该员工须在操作人的任职数据范围内（requireEmployeeInScope，范围外与不存在同一个 404「员工不存在」）。 */
@@ -280,6 +302,15 @@ const RUN_RECEIPT_DISCLOSURE = object({
     ['employeeId', 'ruleId', 'businessId', 'businessStatus', 'initiatorUserId', 'reason'],
     'BE-15a 第 2 轮审查 P1：立即执行回执的逐人固定键',
   ),
+});
+
+/** 退休规则立即执行回执的人员披露（BE-5c2）：同上，逐人条目是固定键（员工、规则、写入的人事字段名、失败原因），不含日期值。 */
+const RETIREMENT_RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(['employeeId', 'ruleId', 'fields', 'reason'], 'BE-5c2：退休规则立即执行回执的逐人固定键'),
 });
 
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
@@ -1025,13 +1056,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     byId,
   ),
   // 直接新增：不要求 If-Match（新建对象）；body 严格；requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；人员 + 兼职
-  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead = true / 非空 addedSubordinateIds
-  // → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放
+  // （字段写权沿用 body.fields 判定，不新增授权项；联动人员 / 组织写范围的复核登记 employment.linkage，DEC-178）：
+  // 保存时校验联动人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件；不触发向后更新（AC-FWD-11）
   'POST /employees/:id/part-times': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button(PART_TIME_BUTTONS.direct, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1049,13 +1081,13 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 编辑兼职（PT-3c，§5.1 + 直接修改结束日期）：readContext(object.update, If-Match 必填)；body 严格（400）；requirePartTimeWriteAccess：
   // 目标存在与兼职部门（改部门时含新部门）requireScopedEmploymentObject（写入口径 404「兼职记录不存在」）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeEdit（403）；命令内 partTimeWriteGuard 三个出口重过；命令内 editPartTime 锁 + 版本 + 周期边界 + E-4 +
-  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；不触发向后更新（AC-FWD-11）
   'PATCH /part-times/:recordId': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button(PART_TIME_BUTTONS.edit, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_PART_TIME),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1089,8 +1121,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 新建（草稿，或 submit = true 建完直接提交）：requestType = add ——
   // readContext(object.create)；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
   // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
-  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
+  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
   // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；
   // requirePartTimeWriteAccess（同
   // 编辑兼职）：目标兼职与其兼职部门写入口径范围（404「兼职记录不存在」）→ 对象更新权 + endDate / requestRemark 字段写权 +
@@ -1125,7 +1157,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
   // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
-  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；linkage 两字段同新建
+  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；联动两字段同新建（保存并校验，不执行）
   'PATCH /part-time-requests/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
@@ -1979,6 +2011,33 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     byId,
   ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，DEC-266③）----------------------------------
+  // 同自动加黑规则：任职设置配置对象（审计 exit_handover_item.*）；字段只有类别 / 序号 / 待办类别 / 待办事项 / 办理表单 / 备注
+  'GET /exit-handover-items': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'POST /exit-handover-items': configuration(
+    SETTINGS,
+    'create',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_handover_item'),
+  ),
+  'PUT /exit-handover-items/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('exit_handover_item'),
+    byId,
+  ),
+  // 配置对象没有删除操作：沿用 update（空字段集合）
+  'DELETE /exit-handover-items/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    write('body', 'config.audited:exit_handover_item', none('配置对象无范围，返回后只投影'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+    }),
+    byId,
+  ),
   // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（B57，DEC-533② / DEC-539）--------------
   // 同自动加黑规则：任职设置配置对象；body 严格（到期前天数 0～999 整数，否则 400 AUTO_RULE_DAYS_INVALID“请设置0至999的整数”；
   // 名称 / 适用组织 / 业务处理规则 / 发起人类型必填，试用结果须为字典启用项）；审计 auto_regularization_rule.*
@@ -2054,12 +2113,44 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       ),
     },
   ),
+  // 立即执行（R2-T04 §9.2，BE-5c2）：?purpose= 必填（expected_date / flexible_range），body 严格 { cursor? }（上次回执的 next，
+  // 随机句柄，绑定租户 × 操作人 × 用途 × 业务日，其余 400 RETIREMENT_RUN_CURSOR_INVALID）；对应自动计算开关关闭 400
+  // RETIREMENT_AUTO_DISABLED；一次最多一页，按规则适用组织扫描（系统批次提前执行，不叠加操作人数据范围），经人事写端口写入
+  // （审计 personnel.retirement_rule，actor = 系统）；回执逐人固定键，按操作人当前任职范围裁剪（首次与重放同一出口）
+  'POST /retirement-rules/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织；这里的范围是回执的人员披露
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RETIREMENT_RUN_RECEIPT_DISCLOSURE },
+      write: write('body', 'config.audited:retirement_rule_run', none('配置对象无范围，回执只含员工 / 规则 ID'), {
+        commandOnly: true,
+        preconditions: ['assertRevision'],
+      }),
+    },
+  ),
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a / 5c1b 预计退休日期与弹性范围规则、个人身份字典（R2-T04 §9.1，DEC-640 / 641）----
   // 同自动转正规则：任职设置配置对象；GET ?purpose= 缺省 expected_date，可选 flexible_range，其他取值 400；body 严格
   // （purpose：expected_date / flexible_range；ruleType：fixed_age 仅预计日期，退休年龄 30～80 岁、月数 0～11 / builtin 选用内置法定函数，
   // 弹性范围只能 builtin；条件为性别 / 国籍 / 雇佣关系（必填）/ 个人身份固定槽位，每槽至多一条、操作符只有 in，个人身份取值须为字典启用编码）；
   // 预置法定规则 PUT / DELETE 409 RETIREMENT_RULE_PRESET，可启停、可复制；PUT 不能改用途与类型；审计 retirement_rule.save / delete / enabled
-  'GET /retirement-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  // F-269：读 = 任职记录查看权（设计 §12.1），同字典 GET；写仍是配置写。规则是租户配置，无组织 / 人员字段，不按范围裁剪
+  'GET /retirement-rules': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('规则读取无按钮'),
+    scope: noScope('退休规则是租户配置，无组织 / 人员字段'),
+    fields: fixed(RETIREMENT_RULE_KEYS, 'R2-T04 §9.1：规则固定键，配置对象不做字段裁剪'),
+  }),
   'POST /retirement-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('retirement_rule')),
   'PUT /retirement-rules/:id': configuration(
     SETTINGS,
@@ -2233,4 +2324,71 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     ...byId,
   }),
+  // ---- employment/retirement-intention-routes.ts：R2-T04 BE-5d2 意向退休日期申请（设计 §11 / §12.1）-------------------------
+  // 授权复用任职记录对象：数据操作 + 详情级按钮 Employment.RetireIntention + 字段权（intendedDate / reason）。读用 DEC-177 可见口径
+  // （员工当前部门或申请快照部门任一在范围内；使用用户维度取本表发起人），写用申请行自己的三个坐标（快照部门 / 员工 / 发起人，
+  // DEC-193），不用 employmentVisibilitySql、也不查任职业务创建人。范围外与不存在同一个 404「意向退休申请不存在」
+  // 创建：If-Match = 员工 revision；readContext 不带员工 ID（员工主档创建人不是本单坐标），命令内持员工锁后用即将写入的快照部门 / 员工 / 本单发起人判写范围；
+  // 员工须当前在职（409 RETIREMENT_INTENTION_NOT_EMPLOYED）、同员工无未办结申请（409 RETIREMENT_INTENTION_IN_PROGRESS）、
+  // 日期晚于今天（400 RETIREMENT_INTENTION_NOT_FUTURE）、有弹性上下限时落在其内（400 RETIREMENT_INTENTION_OUT_OF_RANGE）
+  'POST /retirement-intentions/employees/:id': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    // 范围 = 即将写入的快照部门 / 员工 / 本单发起人三坐标（§11.1，creatorId = ctx.userId），不用员工主档创建人；范围外 404
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentWrite('body', [
+      'lockEmploymentEmployee',
+      'assertRevision',
+      'requireIntentionWriteScope',
+      'assertIntentionCreatable',
+    ]),
+    ...byId,
+  }),
+  // 修改：If-Match = 申请 revision；只有草稿 / 已驳回可改（审批中 409 RETIREMENT_INTENTION_IN_APPROVAL，已办结 409
+  // RETIREMENT_INTENTION_NOT_EDITABLE）；body 严格 { intendedDate?, reason? } 至少一项；日期按当前预计退休日期与弹性范围重校验
+  'PATCH /retirement-intentions/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentWrite('body', ['lockIntention', 'assertRevision', 'assertIntentionEditable']),
+    ...byId,
+  }),
+  // 提交（含驳回后重提，沿用原实例）/ 撤回：If-Match = 申请 revision；请求体不接受任何字段（400）；提交只允许原发起人（403
+  // RETIREMENT_INTENTION_INITIATOR_ONLY）并重判在职与日期，没有匹配的流程 / 首节点无审批人整单回滚；撤回草稿 / 审批中 / 已驳回 → 已撤回
+  'POST /retirement-intentions/:id/submit': intentionAction(),
+  'POST /retirement-intentions/:id/withdraw': intentionAction(),
+  // 列表：筛选严格校验（employeeId / status）；DEC-177 可见口径在分页前过滤，total 与本页同一范围
+  'GET /retirement-intentions': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('employment.intentionVisibility'),
+    fields: RESPONSE,
+  }),
+  // 详情：看不见与不存在同一个 404「意向退休申请不存在」
+  'GET /retirement-intentions/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: guardScope('employment.intentionVisibility', NF_INTENTION),
+    fields: RESPONSE,
+    ...byId,
+  }),
 });
+
+/** 意向申请的提交 / 撤回：同一按钮 Employment.RetireIntention（命令式，空字段集合），写范围 = 申请行三个坐标。 */
+function intentionAction() {
+  return object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentCommand(['lockIntention', 'assertRevision', 'assertIntentionStateAllowsAction']),
+    ...byId,
+  });
+}

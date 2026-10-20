@@ -24,7 +24,13 @@ describe('AC-IN-F215 通用新增接口的实习转正资格', () => {
       const w = await internWorld(testDb().db, `f215-left-${mode}`);
       const { employee } = await w.hire('已离职合成实习生', 'intern');
       await w.leave(employee.id, '2026-09-20');
-      const body = { kind: 'intern_regularization', mode, effectiveDate: '2026-09-15', fields: {} };
+      const body = {
+        kind: 'intern_regularization',
+        mode,
+        effectiveDate: '2026-09-15',
+        fields: {},
+        ...(mode === 'application' ? { probation: false } : {}),
+      };
       const { response, ifMatch } = await generic(w, employee.id, body);
       expect(response.status, await response.clone().text()).toBe(409);
       expect(await response.json()).toMatchObject({ error: { details: { reason: 'ACTIVE_EMPLOYMENT_REQUIRED' } } });

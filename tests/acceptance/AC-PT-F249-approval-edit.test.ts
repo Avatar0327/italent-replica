@@ -1,8 +1,9 @@
 /**
  * F-249（DEC-629 / DEC-634，docs/08_设计/R2-T05_兼职设计.md §4.5 / §13）：延长 / 新增节点对齐原站，审批人可编辑业务表单。
  * 预置流程原样安装（不用夹具的 editMode 覆盖）：延长节点开 新结束日期（必填）+ 延长备注；新增节点开 兼职类型 / 结束日期 /
- * 兼职部门 / 直线经理 / 职务 / 职级，必填 兼职类型 / 开始日期 / 兼职部门；薪资、工号、开始日期不开；“是否部门负责人”按 DEC-634
- * 维持关闭到 PT-7（PB-57）。审批编辑复用创建 / 修改同一校验入口（新增 = checkNewPartTime，延长 = checkDateRequest），经公开审批接口。
+ * 兼职部门 / 直线经理 / 职务 / 职级，必填 兼职类型 / 开始日期 / 兼职部门；薪资、工号、开始日期不开；“是否部门负责人”按 DEC-634 随 PT-7
+ * 开放（见 AC-PT-linkage-request），新增下属不开（F234A C9 字段集，取最小集合）。
+ * 审批编辑复用创建 / 修改同一校验入口（新增 = checkNewPartTime，延长 = checkDateRequest），经公开审批接口。
  * 日期框架：今天 2026-10-01，兼职默认 09-01 起。
  */
 import { useTestDb } from '@italent/testkit';
@@ -143,12 +144,12 @@ describe('F-249 新增节点：兼职类型 / 结束日期 / 兼职部门 / 直�
     expect(await w.load(created.id)).toEqual(before);
   });
 
-  it('不开：工号 / 薪资 / 是否部门负责人 → 403 APPROVAL_FIELD_NOT_EDITABLE；开始日期 → 同样拒绝，均无写入', async () => {
+  it('不开：工号 / 薪资 / 新增下属 → 403 APPROVAL_FIELD_NOT_EDITABLE；开始日期 → 同样拒绝，均无写入', async () => {
     const s = await scene('closed');
     const { w, created } = s;
     const before = { writes: await w.writes(), request: await w.load(created.id) };
-    for (const field of ['jobNumber', 'salaryAmount', 'isDepartmentHead']) {
-      const response = await approveWith(s, { [field]: field === 'isDepartmentHead' ? true : 'x' });
+    for (const field of ['jobNumber', 'salaryAmount', 'addedSubordinateIds']) {
+      const response = await approveWith(s, { [field]: 'x' });
       expect([response.status, await reasonOf(response)], field).toEqual([403, 'APPROVAL_FIELD_NOT_EDITABLE']);
     }
     const moved = await approveWith(s, { effectiveDate: '2026-09-02' });

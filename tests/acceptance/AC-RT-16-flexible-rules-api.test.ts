@@ -4,7 +4,7 @@
  *   没有“提前 / 延迟 N 个月”两列；expected_date 也可选用内置函数（rule_type = builtin）；
  * - 每租户预置两条法定规则（预计退休日期、弹性范围）：覆盖全公司、默认停用（自动计算开关默认关，A-5）、
  *   不可编辑 / 删除（409 RETIREMENT_RULE_PRESET）、可启停、可复制（复制件是普通规则）；
- * - 预置规则排在自建规则之后；规则用途与类型创建后不可改；
+ * - 预置规则排在自建规则之前（DEC-646②）；规则用途与类型创建后不可改；
  * - loadRetirementRulesForRun 把启用规则展开成纯函数的入参，供 5c2 批次与立即执行调用。
  */
 import { randomUUID } from 'node:crypto';
@@ -87,7 +87,7 @@ async function world(label: string) {
 }
 
 describe('AC-RT-16 预置法定规则（DEC-641①）', () => {
-  it('每租户预置两条：预计退休日期、弹性范围；覆盖全公司、默认停用、排在最后；再补装不重复', async () => {
+  it('每租户预置两条：预计退休日期、弹性范围；覆盖全公司、默认停用、排在最前（DEC-646②）；再补装不重复', async () => {
     const w = await world('preset');
     const [expected] = await w.list('expected_date');
     expect(expected).toMatchObject({
@@ -122,7 +122,7 @@ describe('AC-RT-16 预置法定规则（DEC-641①）', () => {
       { fieldCode: 'employType', operator: 'in', values: ['internal', 'intern', 'external'] },
     ]);
     const custom = await w.created(w.range({ priority: 9999 }));
-    expect((await w.list('flexible_range')).map((rule) => rule.id)).toEqual([custom.id, range!.id]);
+    expect((await w.list('flexible_range')).map((rule) => rule.id)).toEqual([range!.id, custom.id]);
     await withTenant(w.db, w.session.tenant.id, (tx) =>
       installMissingSeeds(
         tx,
@@ -218,7 +218,7 @@ describe('AC-RT-16 弹性范围规则：保存与校验（DEC-640①、DEC-641�
     expect(toggled.status).toBe(200);
     const removed = await w.session.request('DELETE', `/retirement-rules/${copy.id}`, { ifMatch: 2 });
     expect(removed.status, await removed.clone().text()).toBe(200);
-    expect((await w.list('flexible_range')).map((item) => item.id)).toEqual([rule.id, expect.any(String)]);
+    expect((await w.list('flexible_range')).map((item) => item.id)).toEqual([expect.any(String), rule.id]);
     // 两种用途的规则分开存放，互不出现在对方列表里
     expect((await w.list('expected_date')).some((item) => item.id === rule.id)).toBe(false);
   });
@@ -326,7 +326,7 @@ describe('AC-RT-16 弹性范围规则：保存与校验（DEC-640①、DEC-641�
     const c = await w.created(w.expected({ name: 'c' }));
     expect([a, b, c].map((rule) => rule.revision)).toEqual([1, 1, 1]);
     const order = (await w.list('flexible_range')).map((rule) => rule.name);
-    expect(order.slice(0, 2)).toEqual(['a', 'b']); // 同优先级按登记先后
+    expect(order.slice(1, 3)).toEqual(['a', 'b']); // 预置法定先于自建；同优先级按登记先后
     expect(order).toHaveLength(3);
   });
 });
@@ -356,7 +356,7 @@ describe('AC-RT-16 loadRetirementRulesForRun：给 5c2 批次与立即执行的�
     });
     expect([...rules[0]!.scopeOrgIds].sort()).toEqual([w.org.id, child.id].sort());
 
-    // 启用两条预置后：自建先、预置后；预置覆盖全公司
+    // 启用两条预置后：预置法定先、自建后（DEC-646②）；预置覆盖全公司
     for (const purpose of ['expected_date', 'flexible_range']) {
       const [preset] = (await w.list(purpose)).filter((rule) => rule.preset);
       const on = await w.session.request('PUT', `/retirement-rules/${preset!.id}/enabled`, {
@@ -366,8 +366,8 @@ describe('AC-RT-16 loadRetirementRulesForRun：给 5c2 批次与立即执行的�
       expect(on.status, await on.clone().text()).toBe(200);
     }
     rules = await load('flexible_range');
-    expect(rules.map((rule) => rule.preset)).toEqual([false, true]);
-    expect(rules[1]).toMatchObject({ scopeAllOrgs: true, scopeOrgIds: [] });
+    expect(rules.map((rule) => rule.preset)).toEqual([true, false]);
+    expect(rules[0]).toMatchObject({ scopeAllOrgs: true, scopeOrgIds: [] });
 
     const person = { orgId: null, gender: 'male', nationality: null, employType: 'internal', identityType: null };
     const facts = { birthday: '1990-06-15', expectedDate: '2053-06-16' };
@@ -376,7 +376,8 @@ describe('AC-RT-16 loadRetirementRulesForRun：给 5c2 批次与立即执行的�
       earliest: '2050-06-16',
       latest: '2056-06-16',
     });
-    expect(resolveFlexibleRange(rules, { ...person, orgId: child.id }, facts)?.rule.id).toBe(custom.id);
+    // 法定优先：自建规则命中子部门，但法定算得出，自建不生效
+    expect(resolveFlexibleRange(rules, { ...person, orgId: child.id }, facts)?.rule.id).not.toBe(custom.id);
     const expectedRules = await load('expected_date');
     expect(resolveExpectedDate(expectedRules, person, { birthday: '1990-06-15', expectedDate: null })).toMatchObject({
       rule: { preset: true },

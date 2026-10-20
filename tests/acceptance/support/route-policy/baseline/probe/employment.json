@@ -80,6 +80,26 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
+  "DELETE /api/tenant/employment/exit-handover-items/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "50e8b522290c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings",
+      "obj:TenantBase.EmploymentSettings:update"
+    ]
+  },
   "DELETE /api/tenant/employment/part-time-requests/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -393,6 +413,20 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
+  "GET /api/tenant/employment/exit-handover-items": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentSettings"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
   "GET /api/tenant/employment/exits": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -626,18 +660,52 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
-  "GET /api/tenant/employment/retirement-rules": {
+  "GET /api/tenant/employment/retirement-intentions": {
     "all": {
       "status": 200
     },
     "fieldQueries": [
-      "fields:TenantBase.EmploymentSettings"
+      "fields:TenantBase.EmploymentRecord"
     ],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
       "scope:data.scope.all:"
     ],
     "trace": [
-      "obj:TenantBase.EmploymentSettings:view"
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/retirement-intentions/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4d124b4cd251",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/retirement-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
     ]
   },
   "GET /api/tenant/employment/retirements": {
@@ -1071,6 +1139,26 @@
     "all": {
       "code": "VALIDATION_FAILED",
       "error": "b491850815cd",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PATCH /api/tenant/employment/retirement-intentions/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "d0b5b1f7a738",
       "status": 400
     },
     "fieldQueries": [],
@@ -1562,6 +1650,20 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "POST /api/tenant/employment/exit-handover-items": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "eeb647dbce6a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
   "POST /api/tenant/employment/exits/:id/cancel": {
     "all": {
       "code": "NOT_FOUND",
@@ -2020,6 +2122,66 @@
       "obj:TenantBase.Employee:create"
     ]
   },
+  "POST /api/tenant/employment/retirement-intentions/:id/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4d124b4cd251",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/retirement-intentions/:id/withdraw": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4d124b4cd251",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/retirement-intentions/employees/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "8bfd350b549b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
   "POST /api/tenant/employment/retirement-rules": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -2052,6 +2214,21 @@
     "trace": [
       "admin:other_settings",
       "obj:TenantBase.EmploymentSettings:create"
+    ]
+  },
+  "POST /api/tenant/employment/retirement-rules/run": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "faf6ec9231c6",
+      "reason": "RETIREMENT_RUN_PURPOSE_REQUIRED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
     ]
   },
   "POST /api/tenant/employment/retirements/:id/cancel": {
@@ -2400,6 +2577,25 @@
       "status": 400
     },
     "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/exit-handover-items/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "eeb647dbce6a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
     "scopeQueries": [
       "scope:data.scope.all:"
     ],
