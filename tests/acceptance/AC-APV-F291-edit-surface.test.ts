@@ -16,6 +16,7 @@ import {
   type InstanceView,
 } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -210,12 +211,66 @@ describe('F-291 与命令侧同源', () => {
         comment: '合成意见',
         fields: { [field.key]: null },
       });
-      expect([blank.status, field.key]).toEqual([400, field.key]);
+      const body = (await blank.json()) as { error: { details?: { reason?: string; field?: string } } };
+      expect([blank.status, body.error.details?.reason, body.error.details?.field]).toEqual([
+        400,
+        'APPROVAL_FIELD_REQUIRED',
+        field.key,
+      ]);
     }
     const optional = await w.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {
       comment: '合成意见',
       fields: { endDate: null },
     });
     expect(optional.status, await optional.clone().text()).toBe(200);
+  });
+});
+
+describe('F-291 调动：既有必填规则（DEC-165 新部门必填）纳入同一必填来源', () => {
+  async function transferEdit(label: string) {
+    const w = await approvalWorld(database().db, `f291-transfer-${label}`);
+    const s = await transferScene(w);
+    await w.publishedProcess({
+      nodes: [
+        {
+          key: 'out_head',
+          approver: 'latest_record_department_head',
+          formFields: ['departmentId', 'effectiveDate', 'place'],
+          editableFields: ['departmentId', 'place'],
+          editMode: 'with_approve',
+        },
+      ],
+    });
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to, place: '原地点' }));
+    const task = view.tasks.find((item) => item.status === 'pending')!;
+    return { w, s, view, task };
+  }
+
+  it('详情：departmentId required=true、place required=false', async () => {
+    const { w, s, view } = await transferEdit('detail');
+    const detail = (await w.detail(view.id, s.outHead.userId)) as Detail;
+    expect(detail.form.edit?.fields).toEqual([
+      { key: 'departmentId', required: true, value: expect.any(String) },
+      { key: 'place', required: false, value: '原地点' },
+    ]);
+  });
+
+  it('清空部门被拒（400 TRANSFER_REQUIRED_FIELDS，与既有口径一致），任务不动；合法新部门可同意', async () => {
+    const { w, s, view, task } = await transferEdit('submit');
+    const blank = await w.taskAction(s.outHead.userId, task.id, 'approve', view.revision, {
+      fields: { departmentId: null },
+    });
+    expect(blank.status, await blank.clone().text()).toBe(400);
+    expect(await blank.json()).toMatchObject({
+      error: { details: { reason: 'TRANSFER_REQUIRED_FIELDS', missingFields: ['departmentId'] } },
+    });
+    expect((await w.detail(view.id, s.outHead.userId)).tasks.find((item) => item.id === task.id)?.status).toBe(
+      'pending',
+    );
+    const other = await w.org(`新调入部门${uniqueSuffix()}`);
+    const ok = await w.taskAction(s.outHead.userId, task.id, 'approve', view.revision, {
+      fields: { departmentId: other, place: '新地点' },
+    });
+    expect(ok.status, await ok.clone().text()).toBe(200);
   });
 });
