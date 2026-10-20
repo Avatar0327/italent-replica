@@ -163,15 +163,15 @@ describe('F-264 考核类审批日志', () => {
     expect(approver.actorName).toEqual(expect.any(String));
     expect(approver.actorName).not.toBe(FALLBACK);
 
-    const other = await x.launch('regularization', person);
-    const instanceId = (await x.instanceRows(other))[0]!.id;
-    await withTenant(x.db, x.tenantId, (tx) =>
+    const other = await x.launch('regularization', await x.probationer('转正员工'));
+    const instanceId = (await x.instance(other)).id;
+    await withTenant(x.db, x.tenant.id, (tx) =>
       revokeBySystem(
         tx,
         {
-          tenantId: x.tenantId,
+          tenantId: x.tenant.id,
           userId: x.hr.id,
-          timezone: x.timezone,
+          timezone: 'Asia/Shanghai',
           now: x.clock(),
           commandId: randomUUID(),
           expectedRevision: 0,
