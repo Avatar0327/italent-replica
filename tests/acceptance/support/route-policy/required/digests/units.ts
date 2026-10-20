@@ -377,7 +377,7 @@ export const DIGESTS: Digests = {
     loadVisibleIntention: 'fcea8ae3db97',
   },
   'apps/api/src/modules/employment/retirement-intention.ts': {
-    createIntention: '1bc5ad0bda27',
+    createIntention: '5c4cea444719',
     guardedRow: '015f7233832e',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
@@ -1865,7 +1865,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
     '87d5b8962599',
   'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
-  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '1e373858e5db',
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
