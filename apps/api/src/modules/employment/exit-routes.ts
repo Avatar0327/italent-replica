@@ -7,6 +7,7 @@
  * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。E ≤ 今天的直接离职在保存事务内生效（§5.3）。
  */
 import {
+  addDays,
   buttonResource,
   buttonsOf,
   EXIT_BUTTONS,
@@ -50,7 +51,7 @@ import {
 import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest, requireExitPermission } from './exit-gate.js';
-import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
+import { assertBlacklistFields, exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
 import {
   EXIT_INITIATIONS,
   EXIT_STATES,
@@ -227,6 +228,8 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exits/batch', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const { items } = parse(batchSchema, await jsonBody(c));
+    // 加黑参数不合法是请求本身的错误（400），先于逐人业务门禁（那里的失败按批量契约整批 409）；生效日 = 最后工作日次日
+    for (const item of items) if (item.exit) assertBlacklistFields(item.exit, addDays(item.lastWorkDate, 1));
     const guard = exitBatchGuard(deps, ctx, items);
     return runWrite(
       c,

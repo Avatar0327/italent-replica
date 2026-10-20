@@ -15,11 +15,13 @@ const system = [
 ];
 // R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）；
 // R2 BE-15a：自动转正规则同样挂在这里（includeSubordinates / mode / daysBefore / initiatorType / probationResult）；
-// R2 BE-15b2：自动发起考核规则同样（assessmentType / daysAfterEntry）
+// R2 BE-15b2：自动发起考核规则同样（assessmentType / daysAfterEntry）；
+// R2 BE-8b1：离职交接事项同样（category / sequenceNo / todoType / title / formRef / remark）
 const settingsFields = [
   'allowDirectTransfer',
   'assessmentType',
   'autoPopulate',
+  'category',
   'code',
   'conditions',
   'daysAfterEntry',
@@ -28,6 +30,7 @@ const settingsFields = [
   'displayOrder',
   'enabled',
   'entryEmailRules',
+  'formRef',
   'includeSubordinates',
   'initiatorType',
   'mode',
@@ -37,7 +40,11 @@ const settingsFields = [
   'priority',
   'probationResult',
   'reason',
+  'remark',
+  'sequenceNo',
   'term',
+  'title',
+  'todoType',
   'unrestrictTargetDepartment',
 ];
 

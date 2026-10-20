@@ -168,16 +168,13 @@ describe('createPartTime：日期与业务校验（D-1～D-10）', () => {
     expect(primary.code).toBe('VALIDATION_FAILED');
   });
 
-  it('PT-7 前不接受“是否部门负责人 / 新增下属”：400 PART_TIME_LINKAGE_NOT_AVAILABLE，无写入（§4.8）', async () => {
+  it('PT-7 起接受“是否部门负责人 / 新增下属”（§4.8）：联动人员不合格（本人）→ 400 整单拒绝，无写入；false / 空数组等同未给', async () => {
     const w = await serviceWorld(database().db, 'pt-linkage');
     const before = await w.writes();
-    for (const patch of [{ isDepartmentHead: true }, { addedSubordinateIds: [w.employeeId] }] as const) {
-      const error = await w.rejection(patch);
-      expect(error.code).toBe('VALIDATION_FAILED');
-      expect(w.reason(error)).toBe('PART_TIME_LINKAGE_NOT_AVAILABLE');
-    }
+    const error = await w.rejection({ addedSubordinateIds: [w.employeeId] });
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(w.reason(error)).toBe('TRANSFER_PERSON_NOT_ELIGIBLE');
     expect(await w.writes()).toEqual(before);
-    // false / 空数组等同未给
     expect((await w.create({ isDepartmentHead: false, addedSubordinateIds: [] })).id).toBeTruthy();
   });
 
