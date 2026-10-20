@@ -212,8 +212,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       29: '2b8399af9a4fd7c1',
       // R2 BE-5c1a：人事新增 6 个退休字段的员工信息字段授权项（版本占位，合并时按 main + 1 定号）
       30: '4430ca0006c0dcba',
+      // R2 BE-5d2：任职记录新增意向退休申请按钮 Employment.RetireIntention 与意向日期 / 原因 / 快照三项字段授权项（版本占位，合并时按 main + 1 定号）
+      31: 'd377733df73b381b',
       // R2 BE-12a：新增人事分析 - 时点员工花名册对象（TenantBase.HrRoster，查看 + 导出按钮），标准版系统管理员 / 人事管理员（DEC-415；版本占位，合并时按 main + 1 定号）
-      31: '6e1c882141c67d4f',
+      32: '9c82a32e71c526b8',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

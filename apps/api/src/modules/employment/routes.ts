@@ -96,6 +96,7 @@ import { registerRetirementRoutes } from './retirement-routes.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerRetirementRuleRoutes } from './retirement-rule-routes.js';
+import { registerRetirementIntentionRoutes } from './retirement-intention-routes.js';
 import { registerAssessmentRoutes } from './assessment-routes.js';
 import { registerBlacklistRoutes } from './blacklist-routes.js';
 import { assertEntryOptionsAllowed, splitEntryOptions } from './entry-options.js';
@@ -142,6 +143,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
   registerRetirementRuleRoutes(module, deps);
+  registerRetirementIntentionRoutes(module, deps);
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
   registerPartTimeRoutes(module, deps);
