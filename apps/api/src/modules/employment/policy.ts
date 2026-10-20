@@ -1762,6 +1762,26 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.exitDetail'),
     ...byId,
   }),
+  // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
+  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
+  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  'GET /retirements': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.retirementViews'),
+  }),
+  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
+  'GET /retirements/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.retirementDetail'),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({
