@@ -92,6 +92,11 @@ export function withRehire<W extends RetirementWorld>(db: Db, x: W, today = '202
       SELECT id, status, effective_date::text, actual_termination_date::text AS actual FROM contract_records
       WHERE tenant_id=${tenantId} AND employee_id=${x.employee.id}::uuid AND deleted=false ORDER BY effective_date, id`);
 
+  const contractRequestsOf = () =>
+    rows<{ id: string; operation: string; status: string; mode: string; effective_date: string }>(sql`
+      SELECT id, operation, status, mode, effective_date::text FROM contract_requests
+      WHERE tenant_id=${tenantId} AND employee_id=${x.employee.id}::uuid ORDER BY effective_date, id`);
+
   const rehireEffects = (businessId: string) =>
     rows<{ target_id: string | null; detail: Record<string, unknown> }>(sql`
       SELECT target_id, detail FROM exit_effects WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
@@ -129,6 +134,7 @@ export function withRehire<W extends RetirementWorld>(db: Db, x: W, today = '202
     cycles,
     accountLinks,
     contractStarts,
+    contractRequestsOf,
     rehireEffects,
     setHead,
     headOf,

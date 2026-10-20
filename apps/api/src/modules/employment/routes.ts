@@ -93,6 +93,7 @@ import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes, runExitCancel } from './exit-routes.js';
 import { registerRetirementRoutes } from './retirement-routes.js';
+import { assertNoRehireKeys } from './retirement-rehire.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerRetirementRuleRoutes } from './retirement-rule-routes.js';
@@ -227,6 +228,8 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (isRegularizationEntryKind((body as { kind?: unknown } | null)?.kind))
       return createRegularizationViaBusinesses(c, deps, ctx, id, body, probationResult);
     if (probationResult !== undefined) throw new AppError('VALIDATION_FAILED', '只有转正业务可以提供试用结果');
+    // 同时返聘只经退休专用入口（R2-T04 §8.2）：通用入口见到 reEmployed / rehire 直接 400，不落到“未知字段”的泛化报错
+    assertNoRehireKeys(body);
     const { rawInput: withoutEmail, email } = splitLoginEmail(body);
     const { rawInput: withoutExit, exit } = splitExitOptions(withoutEmail);
     const { rawInput, entry } = splitEntryOptions(withoutExit);

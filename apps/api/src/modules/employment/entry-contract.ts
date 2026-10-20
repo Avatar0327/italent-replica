@@ -61,6 +61,20 @@ export async function requireEntryContractAccess(
   `),
   );
   if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
+  await requireContractCreateAccess(tx, deps, ctx, owner, contract);
+}
+
+/**
+ * 合同“新建”的权限复核本体：字段创建权、合同“新建”按钮、对该员工的合同数据范围。办理入职按已落地记录取起始日，
+ * 退休同时返聘（R2-T04 §8.2）在创建时记录还不存在，按返聘日 R 直接给出，两处口径一致。
+ */
+export async function requireContractCreateAccess(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  owner: { readonly employeeId: string; readonly effectiveDate: string },
+  contract: EntryContract,
+): Promise<void> {
   const access = await contractContext(tx, deps, ctx);
   await checkFields(access, 'create', contractFields(owner, contract));
   await requirePermission(access.authorize!, {

@@ -21,6 +21,7 @@ import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
 import { rowsOf } from './record-store.js';
+import { assertNoLiveRehire } from './retirement-application.js';
 import { plannedEffectiveDate } from './timeline.js';
 import type { LockedEmploymentBusiness } from './record-store.js';
 import type { BusinessKind, ChangeType, EmploymentBusinessPatch, EmploymentContext } from './types.js';
@@ -612,6 +613,8 @@ async function cancelConditions(
   business: LockedEmploymentBusiness,
   cancelling: boolean,
 ) {
+  // 撤销退休（cancelExit，cancelling）先过返聘守卫：已生成的返聘未删除则整个撤销 409，在任何写之前（设计 §6 #6，A-11）
+  if (cancelling && business.payload.kind === 'retirement') await assertNoLiveRehire(tx, ctx.tenantId, business.id);
   if (cancelling || !['draft', 'in_review', 'rejected', 'approved', 'effective'].includes(business.state)) return;
   if (!(await loadExitRequest(tx, ctx.tenantId, business.id))) return;
   const retirement = business.payload.kind === 'retirement';

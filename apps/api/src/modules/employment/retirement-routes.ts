@@ -35,6 +35,7 @@ import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
 import { assertRetirementFields, assertRetirementImmutableKeys } from './retirement-application.js';
+import { rehireGuard, requireRehireWrite, resolveRehirePlan, splitRehireOptions } from './retirement-rehire.js';
 import { exitCommandGuard, exitEditGuard } from './replay-guard.js';
 import { transitionEmployment } from './transitions.js';
 
@@ -63,17 +64,26 @@ function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps
   router.post('/retirements/employees/:id/preview', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.view', 0, id);
-    const { lastWorkDate } = parse(z.strictObject({ lastWorkDate: day }), await jsonBody(c));
+    // 5b 起可带 reEmployed + rehire：预览同时返回返聘日与返聘校验结果（结构错误仍 400，业务问题进 rehire.blockers）
+    const { lastWorkDate, ...rehire } = parse(
+      z.strictObject({ lastWorkDate: day, reEmployed: z.unknown().optional(), rehire: z.unknown().optional() }),
+      await jsonBody(c),
+    );
     await requirePreviewButton(deps, ctx, KIND);
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, KIND)));
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, KIND, rehire)),
+    );
   });
-  // 新建（HR 端，退休申请 / 直接退休）：与通用入口同一申请服务与门禁；不要求 Employment.Create
+  // 新建（HR 端，退休申请 / 直接退休）：与通用入口同一申请服务与门禁；不要求 Employment.Create（同时返聘的计划另要，见 rehireGuard）
   router.post('/retirements/employees/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const input = parseExitCreate(ctx, await jsonBody(c), KIND);
+    const { rawInput, ...rehireInput } = splitRehireOptions(await jsonBody(c));
+    const input = parseExitCreate(ctx, rawInput, KIND);
+    const rehire = resolveRehirePlan(ctx, rehireInput, input.lastWorkDate, input.exit);
     const departmentId = input.fields.departmentId;
     if (departmentId !== undefined) requireEmploymentScope(ctx, id, departmentId);
+    if (rehire) await requireRehireWrite(ctx, id, rehire);
     const gate = {
       employeeId: id,
       kind: KIND,
@@ -83,16 +93,23 @@ function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps
       exit: input.exit,
       payload: { fields: input.fields, customFields: input.customFields },
     };
+    const guard = exitCommandGuard(deps, ctx, 'create', gate, { departmentId });
     return runWrite(
       c,
       deps,
       ctx,
-      input,
+      { ...input, ...rehireInput },
       async (tx, context) => ({
         status: 201,
-        body: await createExitApplication(tx, context, { ...input, kind: KIND, employeeId: id, initiation: 'hr' }),
+        body: await createExitApplication(tx, context, {
+          ...input,
+          kind: KIND,
+          employeeId: id,
+          initiation: 'hr',
+          ...(rehire ? { retirement: { rehire } } : {}),
+        }),
       }),
-      { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) },
+      { guard: rehire ? rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) : guard },
     );
   });
 }

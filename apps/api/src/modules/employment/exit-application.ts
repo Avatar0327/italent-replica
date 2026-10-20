@@ -16,6 +16,7 @@ import {
   writeRetirementExtension,
   type RetirementCreateInput,
 } from './retirement-application.js';
+import { validateRehirePlan } from './retirement-rehire.js';
 import { assertHandoverEmployee, EXIT_GATE_PASS, requireExitGate, withAckWarnings } from './exit-gate.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import {
@@ -56,7 +57,7 @@ export interface ExitApplicationInput {
   readonly changeType?: ChangeType;
   /** 业务类型：离职（缺省）或退休（R2-T04 §3.2，同一服务、同一门禁、同一事务时序）。 */
   readonly kind?: 'leave' | 'retirement';
-  /** 退休专有入参（kind = retirement）；5a 为空。 */
+  /** 退休专有入参（kind = retirement）：同时返聘计划（5b）。 */
   readonly retirement?: RetirementCreateInput;
 }
 
@@ -150,13 +151,17 @@ export async function createExitApplication(
     { employeeId },
   );
   // 退休薄扩展行（R2-T04 §3.2 第 6 步）：在 exit_requests 之后、生效链之前冻结 P 并派生类型，失败整单回滚
-  if (kind === 'retirement')
+  if (kind === 'retirement') {
+    const retirement = input.retirement ?? {};
+    // 同时返聘的业务干跑（R2-T04 §8.2）：返聘部门 / 职位在返聘日可用、不在黑名单；失败与扩展行写入失败一样整单回滚
+    if (retirement.rehire) await validateRehirePlan(tx, ctx, employeeId, retirement.rehire, normalized.lastWorkDate!);
     await writeRetirementExtension(
       tx,
       ctx,
       { id: business.id, employeeId, lastWorkDate: normalized.lastWorkDate! },
-      input.retirement ?? {},
+      retirement,
     );
+  }
   // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
   if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
   // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）

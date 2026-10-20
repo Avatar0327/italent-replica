@@ -5,7 +5,7 @@
  * 任一步业务规则拒绝即整体回滚，只留一条 failed 尝试（DEC-052）；存储不可用原样抛出、不记失败。
  * 入口：审批通过 / 直接保存（activateIfDue）、调度与 HR 重试（activation-service 按队列逐条调用）、activate 端口（transitions.ts）。
  * 退休（R2-T04 §4）走同一编排器，差异只有：要求 retirement_requests 扩展行、审计动作名、版本链落地后回写实际退休日期
- * 并按快照 P 重派生退休类型（R-1，保存点内），事件带 kind / reEmployed。
+ * 并按快照 P 重派生退休类型（R-1，保存点内），同时返聘的退休在合同端口之后生成返聘（R-2，§8.3），事件带 kind / reEmployed。
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, exitEffects, sql, type Tx } from '@italent/db';
@@ -48,6 +48,7 @@ import {
 import { assertInternEndable } from './intern-eligibility.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
 import { loadRetirementRequest, rederiveRetireType } from './retirement-application.js';
+import { createRetirementRehire } from './retirement-rehire.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import {
   bumpEmploymentBusiness,
@@ -383,6 +384,11 @@ async function runSteps(
   await recordEffectiveCorrection(tx, ctx, business, detail);
   // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
   await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
+  // R-2（R2-T04 §8.3）：同时返聘在合同终止之后、职责转交之前生成；失败整个保存点回滚，退休不生效
+  const retirement =
+    business.payload.kind === 'retirement' ? await loadRetirementRequest(tx, ctx.tenantId, business.id) : undefined;
+  if (retirement?.rehirePlan)
+    await createRetirementRehire(tx, ctx, business, retirement.rehirePlan, late.effectiveDate);
   await runExitDutyTransfer(tx, ctx, exit, 'effective', late.effectiveDate);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(
@@ -411,7 +417,7 @@ async function runSteps(
     lastWorkDate: late.lastWorkDate,
     effectiveDate: late.effectiveDate,
     kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
-    reEmployed: (await loadRetirementRequest(tx, ctx.tenantId, business.id))?.reEmployed === true,
+    reEmployed: retirement?.reEmployed === true,
   };
   await runExitEffectiveHooks(tx, ctx, event);
   // 审批落地由调用命令统一递增一次业务 revision；调度 / 重试 / 内部入口在这里递增

@@ -188,6 +188,22 @@ export async function createEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
+/**
+ * 新周期入职类业务的创建前干跑（只读）：与 createEmploymentBusiness 同一条继承 → 引用 / 部门可用性 / 必填校验，不写任何数据。
+ * 退休同时返聘在创建时用它提前暴露返聘部门 / 职位 / 引用问题（R2-T04 §8.2）；生效时的权威校验仍在 createEmploymentBusiness 里。
+ */
+export async function validateNewCycleEmployment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: NormalizedEmploymentInput,
+): Promise<void> {
+  if (!NEW_CYCLE_KINDS.includes(input.kind)) throw new AppError('VALIDATION_FAILED', '只有入职类业务可以干跑');
+  const prepared = await prepareInheritance(tx, ctx, { ...input, employeeId, staffId: undefined });
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, { staffId: '', predecessor: null });
+  await validatePreparedEmployment(tx, ctx, employeeId, input.kind, prepared, effective.fields);
+}
+
 /** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */
 function defaultChangeType(kind: BusinessKind): ChangeType | undefined {
   return kind === 'intern_regularization' ? 'intern_regularization' : undefined;

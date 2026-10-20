@@ -5,9 +5,12 @@
  * 夹具里的日期都按口径手算（今天 2026-10-06）：L = 10-04 → 计划 E = 10-05 已过 → 当场生效并顺延为 E′ = 10-06、R = 10-07。
  */
 import './support/exit-gate-enforced.js';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { blacklistApi } from './AC-DM-R2-blacklist-support.js';
 import { denyButtons } from './AC-EXIT-gate-support.js';
+import { seedLegacyOrgDeactivation } from './AC-TRF-activation-support.js';
 import { rehireWorld } from './AC-RT-rehire-support.js';
 
 const database = useTestDb();
@@ -49,11 +52,13 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
     expect(await x.accountLinks()).toEqual(accountsBefore);
     expect(await x.headOf(x.from.id)).toBe(x.employee.id);
 
-    // 旧合同终止于 L′ = 10-05；返聘合同起始 R
-    const contracts = await x.contractStarts();
-    expect(contracts.map((row) => [row.id, row.status, row.effective_date, row.actual])).toEqual([
+    // 旧合同终止于 L′ = 10-05；返聘合同由合同端口按返聘日 R 生成（R 在未来：已批准的直接新建，到期由合同调度落地）
+    expect((await x.contractStarts()).map((row) => [row.id, row.status, row.effective_date, row.actual])).toEqual([
       [oldContract.id, 'terminated', '2026-01-01', '2026-10-05'],
-      [contracts[1]!.id, expect.any(String), '2026-10-07', null],
+    ]);
+    const requests = (await x.contractRequestsOf()).filter((row) => row.effective_date === '2026-10-07');
+    expect(requests).toEqual([
+      { id: expect.any(String), operation: 'create', status: 'approved', mode: 'direct', effective_date: '2026-10-07' },
     ]);
 
     // 台账与审计
@@ -62,6 +67,7 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
     expect(audit!.after).toMatchObject({
       rehireBusinessId: extension.rehire_business_id,
       rehireDate: '2026-10-07',
+      contractId: requests[0]!.id,
       initiatorUserId: x.session.user.id,
     });
     expect(await x.audits(created.id, 'employment.retirement.effective')).toHaveLength(1);
@@ -87,6 +93,34 @@ describe('AC-RT-01 / AC-RT-22② 直接退休同时返聘（L 已过，当场生
     expect((await x.audits(draft.id, 'employment.retirement.rehired'))[0]!.after).toMatchObject({
       rehireDate: '2026-10-19',
     });
+  });
+
+  it('审批最后节点同意且 E 已到：审批事务内生效并生成返聘（审批触发入口）', async () => {
+    const x = await world('rt01-approval');
+    const draft = await x.createdRehire(x.rehireBody('2026-10-05', 'application'));
+    const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
+      ifMatch: draft.revision,
+      body: {},
+    });
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    expect((await x.approve(draft, `${TODAY}T02:00:00Z`)).status).toBe('effective');
+    expect((await x.timeline()).map((row) => [row.kind, row.start_date])).toEqual([
+      ['hire', '2026-09-01'],
+      ['retirement', '2026-10-06'],
+      ['retire_rehire', '2026-10-07'],
+    ]);
+    expect((await x.extension(draft.id))!.rehire_business_id).toBeTruthy();
+  });
+
+  it('返聘计划带试用期：返聘任职写试用期第 1 版，开始日 = 返聘日', async () => {
+    const x = await world('rt01-probation');
+    const plan = x.rehirePlan({ entry: { probation: true, probationMonths: 3 } });
+    const created = await x.createdRehire(x.rehireBody('2026-10-04', 'direct', plan));
+    const rehireId = (await x.extension(created.id))!.rehire_business_id!;
+    expect(
+      await x.sqlRows(sql`SELECT version_no, has_probation, months, start_date::text AS start_date
+        FROM employment_probation_versions WHERE tenant_id=${x.session.tenant.id} AND business_id=${rehireId}::uuid`),
+    ).toEqual([{ version_no: 1, has_probation: true, months: 3, start_date: '2026-10-07' }]);
   });
 
   it('不同时返聘的退休不生成返聘；reEmployed = false 等同不填', async () => {
@@ -131,12 +165,24 @@ describe('AC-RT-22② 创建时校验（结构与业务），失败整单不留�
     expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 
-  it('返聘部门在 R 日不可用（创建时干跑）→ 409，前后读取逐项相等', async () => {
+  it('返聘部门在返聘日 R 已停用（创建时干跑）→ 400，前后读取逐项相等', async () => {
     const x = await world('rt22-business');
-    const missing = '00000000-0000-4000-8000-000000000001';
+    await seedLegacyOrgDeactivation(x, '2026-10-07', x.to);
     const before = await x.stateOf(x.employee.id);
-    const response = await x.postRehire(x.rehireBody('2026-10-04', 'direct', x.rehirePlan({ departmentId: missing })));
-    expect([400, 404, 409]).toContain(response.status);
+    const response = await x.postRehire(x.rehireBody('2026-10-04', 'direct'));
+    expect(await x.reason(response)).toMatchObject({
+      status: 400,
+      reason: 'EMPLOYMENT_DEPARTMENT_DISABLED',
+    });
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
+  });
+
+  it('员工当前在黑名单：创建时 409 EMPLOYEE_BLACKLISTED，不留任何写入', async () => {
+    const x = await world('rt22-blacklisted');
+    await blacklistApi(x.session).added({ employeeId: x.employee.id, reason: 'instability' });
+    const before = await x.stateOf(x.employee.id);
+    const response = await x.postRehire(x.rehireBody('2026-10-04', 'direct'));
+    expect(await x.reason(response)).toMatchObject({ status: 409, reason: 'EMPLOYEE_BLACKLISTED' });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 

@@ -22,8 +22,20 @@ import {
   type InFlight,
 } from './exit-gate.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
+import { previewRehire } from './retirement-rehire.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
+
+async function rehirePreview(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  input: { reEmployed?: unknown; rehire?: unknown },
+) {
+  const preview = await previewRehire(tx, ctx, employeeId, lastWorkDate, input);
+  return preview ? { rehire: preview } : {};
+}
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));
@@ -34,6 +46,7 @@ export async function previewExit(
   employeeId: string,
   lastWorkDate: string,
   kind: 'leave' | 'retirement' = 'leave',
+  rehire: { reEmployed?: unknown; rehire?: unknown } = {},
 ) {
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
@@ -57,6 +70,8 @@ export async function previewExit(
     effectiveDate: dayAfter(lastWorkDate),
     // 退休另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行）
     ...(kind === 'retirement' ? await retirementPreview(tx, ctx, employeeId, lastWorkDate) : {}),
+    // 同时返聘（5b）：返聘日与创建时会遇到的问题；没带 reEmployed + rehire 时没有这一块
+    ...(kind === 'retirement' ? await rehirePreview(tx, ctx, employeeId, lastWorkDate, rehire) : {}),
     blockers,
     ack: ack
       ? {
