@@ -44,7 +44,7 @@ const EXPORT = 'GET /api/tenant/hr-analysis/roster/export';
 /** 与 personnel.ts 的 op() 同一证据形状：入口调用 rosterAccess → access → authorize。 */
 const person = (route: string, exporting: boolean): Obligation => ({
   perm: `obj:${PERSON}:view`,
-  facts: ['object:personnel access', `objectOp:${PERSON}:view`],
+  facts: [`objectOp:${PERSON}:view`],
   at: [
     call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
     impl("const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list')"),
@@ -64,7 +64,8 @@ const person = (route: string, exporting: boolean): Obligation => ({
 });
 const rosterView = (route: string, exporting: boolean): Obligation => ({
   perm: `obj:${ROSTER}:view`,
-  facts: [`objectOp:${ROSTER}:view`],
+  // 导出按钮校验与列表共处一个函数，探测器按近闭包文本把按钮事实也记在列表端点上，这里一并承接
+  facts: ['object:object.* 动作', 'button:buttonResource', 'button:object.button', `objectOp:${ROSTER}:view`],
   at: [
     call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
     impl("await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: ROSTER_OBJECT })"),
@@ -73,12 +74,12 @@ const rosterView = (route: string, exporting: boolean): Obligation => ({
 });
 const exportButton = (route: string): Obligation => ({
   perm: `btn:${ROSTER}#export@list`,
-  facts: ['button:buttonResource'],
+  facts: ['button:buttonResource', 'button:object.button'],
   at: [
     call(route, 'const rights = await rosterAccess(c, deps, true)'),
     impl(
       "await requirePermission(deps.authorize, { ...ctx, action: 'object.button', " +
-        "resource: buttonResource(ROSTER_OBJECT, 'export', 'list') })",
+        "resource: buttonResource(ROSTER_OBJECT, 'export', 'list'), })",
     ),
     ROSTER_CONST,
   ],
@@ -86,7 +87,6 @@ const exportButton = (route: string): Obligation => ({
 const columns = (route: string, exporting: boolean, object: string, constant: string, purpose: string): Obligation => ({
   perm: `obj:${object}:view`,
   purpose: `disclosure:${purpose}`,
-  facts: [`objectOp:${object}:view`],
   at: [
     call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
     impl(
