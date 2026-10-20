@@ -1,22 +1,34 @@
 /**
- * R2-T04 退休路由（5a：preview / 新建 / 编辑 / 提交 / 撤回；挂在任职子应用 policedSub 上，策略登记在 employment/policy.ts）。
+ * R2-T04 退休路由（5a：preview / 新建 / 编辑 / 提交 / 撤回；5a′：撤销 / restore / 改撤销原因；挂在任职子应用 policedSub 上，策略登记在 employment/policy.ts）。
  * 与离职路由（exit-routes.ts）同一权限链与同一申请服务，差异只有按钮（Employment.Retire*，不复用 Dimission*）与退休专有字段；
  * 写入口的按钮、范围、字段在命令事务内按当前授权复核（exitCommandGuard / exitEditGuard，#199）。
  */
+import { RETIREMENT_BUTTONS } from '@italent/domain';
 import { withTenant } from '@italent/db';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { jsonBody, readContext, requireEmploymentScope, revision, runWrite, uuidParam } from './context.js';
+import {
+  jsonBody,
+  readContext,
+  requireEmploymentScope,
+  requireEmploymentWrite,
+  revision,
+  runWrite,
+  uuidParam,
+} from './context.js';
 import { createExitApplication, parseExitPatch, updateExitFields, type ExitPatch } from './exit-application.js';
 import { submitExit } from './exit-batch.js';
+import { rejectRestore, updateCancellationReason } from './exit-cancel.js';
 import {
   parse,
   day,
   parseExitCreate,
+  requireCancellationOwner,
   requireExitBusiness,
   requirePreviewButton,
+  runExitCancel,
   transitionBody,
 } from './exit-routes.js';
 import { previewExit } from './exit-preview.js';
@@ -43,6 +55,7 @@ export function registerRetirementRoutes(
 ) {
   registerRetirementCreate(router, deps);
   registerRetirementChanges(router, deps, authorizeBusinessWrite);
+  registerRetirementCancel(router, deps, authorizeBusinessWrite);
 }
 
 function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -129,4 +142,49 @@ function registerRetirementChanges(
         { guard: exitCommandGuard(deps, ctx, action, target, { businessId: id }) },
       );
     });
+}
+
+// ---- 撤销退休（5a′，设计 §6）：与撤销离职同一个 cancelExit，按钮取 Employment.RetireCancel -----------------------------------
+function registerRetirementCancel(
+  router: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  authorizeBusinessWrite: BusinessWriteGuard,
+) {
+  // 撤销：功能权 object.update → RetireCancel → 范围（范围外 404）→ 不是退休单 404 → 原因 / 确认 → 命令内 §6B（approved / effective）
+  router.post('/retirements/:id/cancel', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true });
+    const current = await authorizeBusinessWrite(deps, ctx, id);
+    await requireExitBusiness(deps, ctx, id, KIND);
+    return runExitCancel(c, deps, ctx, id, current.employeeId, false, KIND);
+  });
+  // restore：授权先于不支持（B-57）；已撤销 / 作废的退休不能恢复，需要时另发新退休单
+  router.post('/retirements/:id/restore', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true });
+    await authorizeBusinessWrite(deps, ctx, id);
+    await requireExitBusiness(deps, ctx, id, KIND);
+    return rejectRestore(KIND);
+  });
+  // 修改撤销原因（DM-R5）：只有 reason 可改；If-Match = 撤销记录 revision；范围按所属员工；离职的撤销记录 404
+  router.patch('/retirements/cancellations/:id', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true });
+    const owner = await requireCancellationOwner(deps, ctx, id, KIND);
+    const { reason } = parse(z.strictObject({ reason: z.string().max(500) }), await jsonBody(c));
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { id, reason },
+      async (tx, context) => ({ status: 200, body: await updateCancellationReason(tx, context, id, reason) }),
+      {
+        guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId: owner.employeeId, kind: KIND }, {}),
+        project: (body) => body,
+      },
+    );
+  });
 }
