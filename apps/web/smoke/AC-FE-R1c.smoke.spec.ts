@@ -886,3 +886,42 @@ for (const status of [409, 422]) {
     expect(bodies[1]).toMatchObject({ fields: { place: '合成改正工作地' } });
   });
 }
+
+test('AC-FE-F267 延长兼职待办同意编辑新结束日期和备注，提交字段与意见', async ({ page }) => {
+  const current = {
+    ...detail(),
+    approvalType: 'part_time_extend',
+    form: {
+      values: { endDate: '2026-12-01', originalEndDate: '2026-11-01' },
+      edit: {
+        taskId: task,
+        mode: 'with_approve',
+        fields: [
+          { key: 'endDate', required: true, value: '2026-12-01' },
+          { key: 'requestRemark', required: false, value: null },
+        ],
+      },
+    },
+  };
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: current }));
+  const bodies: unknown[] = [];
+  await page.route(`**/api/tenant/approval/tasks/${task}/approve`, async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ...current, revision: 5 } });
+  });
+  await switchIdentity(page, '/approval');
+  await openTodo(page);
+  await page.getByRole('button', { name: button('同意') }).click();
+  const form = page.getByRole('dialog');
+  await expect(form.getByLabel('新结束日期')).toHaveValue('2026-12-01');
+  await expect(form.locator('label').filter({ hasText: '新结束日期' })).toHaveClass(/ant-form-item-required/);
+  await form.getByLabel('新结束日期').fill('2026-12-31');
+  await form.getByLabel('延长备注').fill('合成延长备注');
+  await form.getByLabel('审批意见').fill('合成审批意见');
+  await form.getByRole('button', { name: button('保存') }).click();
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies[0]).toEqual({
+    fields: { endDate: '2026-12-31', requestRemark: '合成延长备注' },
+    comment: '合成审批意见',
+  });
+});
