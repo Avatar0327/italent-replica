@@ -1,7 +1,8 @@
 import { Modal } from 'antd';
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import type { Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Latest } from '../foundation/forms/store.js';
 import { sameValue, type Values } from '../foundation/forms/values.js';
@@ -44,7 +45,7 @@ export function useLatest(path: string, baseline: Values) {
     return { id: latest.id, revision: Number(latest.revision), values: baseline };
   };
 }
-export const employeePath = (employeeId: string) => `${apiRoot}/employees/${encodeURIComponent(employeeId)}`;
+export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employees`, employeeId);
 
 function ask(confirmation: Confirmation) {
   return new Promise<boolean>((resolve) => {
@@ -78,6 +79,8 @@ export function useInternCommand(
   const post = useDirectApi();
   const snapshot = { id: target.id, revision: target.revision ?? -1, values: target.baseline };
   const cmd = useConflictCommand(resource, snapshot, target.read, { action });
+  // 同一提交点只跑一个提交循环：连点或确认框打开期间再点不会把锁定中的原命令当作失败显示
+  const running = useRef(false);
   return {
     ...cmd,
     /** 处理中 / 结果未知 / 冲突、对象标识无效，或本员工有别的入口的命令未确认（forAction blocked）：不能提交。 */
@@ -88,32 +91,59 @@ export function useInternCommand(
       send: Send,
       onConfirmation?: (confirmation: Confirmation) => void,
     ) {
-      let extra: Values = {};
-      for (;;) {
-        try {
-          await cmd.run({
-            values,
-            editableFields,
-            send: async ({ edited, command }: { edited: Values; command: Command<Values> }) => {
-              const raw = await post(send.path, 'POST', { ...command, body: { ...send.body(edited), ...extra } });
-              send.accept(raw, command.revision!);
-              return { id: target.id };
-            },
-          });
-          return;
-        } catch (error) {
-          const confirmation = confirmationOf(error);
-          // 同一确认项已带上仍被要求确认：不再循环，按拒绝显示
-          const repeated = Object.entries(confirmation?.extra ?? {}).every(([key, value]) =>
-            sameValue(extra[key], value),
-          );
-          if (!confirmation || repeated) throw error;
-          onConfirmation?.(confirmation);
-          if (!(await ask(confirmation))) throw error;
-          extra = { ...extra, ...confirmation.extra };
-        }
+      // 返回是否真正写入完成：并发的第二次点击直接返回 false，调用方不得据此提示成功
+      if (running.current) return false;
+      running.current = true;
+      try {
+        await submitConfirmed(
+          cmd.run,
+          target.id,
+          send,
+          values,
+          editableFields,
+          (raw) => post(send.path, 'POST', raw),
+          onConfirmation,
+        );
+        return true;
+      } finally {
+        running.current = false;
       }
     },
   };
 }
 export type InternCommand = ReturnType<typeof useInternCommand>;
+
+type Run = ReturnType<typeof useConflictCommand>['run'];
+async function submitConfirmed(
+  run: Run,
+  id: string,
+  send: Send,
+  values: Values,
+  editableFields: readonly string[],
+  post: (command: Command<Values>) => Promise<Values>,
+  onConfirmation?: (confirmation: Confirmation) => void,
+) {
+  let extra: Values = {};
+  for (;;) {
+    try {
+      await run({
+        values,
+        editableFields,
+        send: async ({ edited, command }: { edited: Values; command: Command<Values> }) => {
+          const raw = await post({ ...command, body: { ...send.body(edited), ...extra } });
+          send.accept(raw, command.revision!);
+          return { id };
+        },
+      });
+      return;
+    } catch (error) {
+      const confirmation = confirmationOf(error);
+      // 同一确认项已带上仍被要求确认：不再循环，按拒绝显示
+      const repeated = Object.entries(confirmation?.extra ?? {}).every(([key, value]) => sameValue(extra[key], value));
+      if (!confirmation || repeated) throw error;
+      onConfirmation?.(confirmation);
+      if (!(await ask(confirmation))) throw error;
+      extra = { ...extra, ...confirmation.extra };
+    }
+  }
+}

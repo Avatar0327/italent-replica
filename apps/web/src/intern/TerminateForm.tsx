@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ApiError, rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock } from '../foundation/forms/FormLock.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { isBlank, projectFields, type Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -40,11 +41,11 @@ export function TerminateForm({ row, onClose, onDone }: FormProps) {
       const values = projectFields(await form.validateFields(), editable);
       if (isBlank(values.endDate))
         throw new ApiError(400, 'VALIDATION_FAILED', 'fields', m.required(m.labels.endDate!));
-      await cmd.submit(
+      const done = await cmd.submit(
         values,
         editable,
         {
-          path: `${interns}/${employeeId}/terminate`,
+          path: `${slotKey(interns, employeeId)}/terminate`,
           body: terminateBody,
           accept: (raw, sent) => acceptBusiness(raw, { employeeId, kind: 'leave', sent }),
         },
@@ -52,6 +53,7 @@ export function TerminateForm({ row, onClose, onDone }: FormProps) {
           if (confirmation.pendingEntry) setPendingEntry(true);
         },
       );
+      if (!done) return;
       void message.success(m.success.terminate);
       await onDone();
     } catch (cause) {

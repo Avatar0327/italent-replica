@@ -115,6 +115,8 @@ const recordFields = ['effectiveDate', 'departmentId', 'positionId', 'directMana
 export const formFields = (application: boolean) =>
   application ? recordFields : [...recordFields, ...probationFields];
 export const terminateFields = ['endDate', 'cancelPendingEntry'];
+/** 服务端控制项（不在字段目录里）：不按字段权限，随对象“新增”操作可写、总是显示。 */
+export const controlFields = [...probationFields, ...terminateFields];
 export const monthOptions = Array.from(
   { length: PROBATION_MONTHS_MAX - PROBATION_MONTHS_MIN + 1 },
   (_, index) => PROBATION_MONTHS_MIN + index,
@@ -122,9 +124,7 @@ export const monthOptions = Array.from(
 
 export function editableFields(fields: readonly string[], p: ObjectPermission | undefined): string[] {
   const create = !!p?.dataOperations.create;
-  return fields.filter(
-    (field) => create && ([...probationFields, ...terminateFields].includes(field) || fieldAccess(p, field).editable),
-  );
+  return fields.filter((field) => create && (controlFields.includes(field) || fieldAccess(p, field).editable));
 }
 
 /** 本地校验在提交前抛出（ConflictCommands：send 里抛的错会被判为结果未知）。 */

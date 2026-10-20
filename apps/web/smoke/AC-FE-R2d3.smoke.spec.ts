@@ -193,7 +193,7 @@ test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草
   await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
   await expect(dialog(page).getByText(/实习转正申请暂不能填写试用期信息/)).toBeVisible();
   await date(page, '实习转正日期', '2026-10-20');
-  await save(page, /保存草稿/).click();
+  await save(page, /保存草稿/).dblclick();
   await expect(dialog(page).getByText(/申请草稿已保存/)).toBeVisible();
   expect(created[0]?.body).toEqual({
     kind: 'intern_regularization',
@@ -202,6 +202,7 @@ test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草
     fields: { departmentId: rows.interning.departmentId },
   });
   expect(created[0]?.ifMatch).toBe(String(employeeRevision));
+  expect(created).toHaveLength(1);
   await save(page, /提交草稿/).click();
   await expect(page.getByText('实习转正申请已提交')).toBeVisible();
   expect(submitted).toEqual([{ body: {}, ifMatch: '1', key: expect.any(String) }]);

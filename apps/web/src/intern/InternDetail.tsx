@@ -1,6 +1,7 @@
 import { Button, Popconfirm, Space, message } from 'antd';
 import { useState } from 'react';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
 import { useInternCommand, useLatest } from './commands.js';
@@ -27,7 +28,8 @@ export function InternDetail({
   const done = async () => {
     setOpen(undefined);
     onClose();
-    await refresh();
+    // 写入已确认，刷新失败只提示，不当作提交失败
+    await refresh().catch(() => void message.error(m.refreshFailed));
   };
   const form = { row, onClose: () => setOpen(undefined), onDone: done };
   const actions = (
@@ -66,16 +68,17 @@ function ApplicationAction({
   action: 'withdraw' | 'revoke';
   onDone(): Promise<void>;
 }) {
-  const read = useLatest(`${businesses}/${row.id}`, {});
+  const read = useLatest(slotKey(businesses, row.id), {});
   const cmd = useInternCommand(businesses, { id: row.id, revision: row.revision, baseline: {}, read }, action);
   const run = async () => {
     try {
-      await cmd.submit({}, [], {
-        path: `${businesses}/${row.id}/${action}`,
+      const done = await cmd.submit({}, [], {
+        path: `${slotKey(businesses, row.id)}/${action}`,
         body: () => ({}),
         accept: (raw, sent) =>
           acceptBusiness(raw, { employeeId: row.employeeId!, kind: 'intern_regularization', sent, id: row.id }),
       });
+      if (!done) return;
       void message.success(m.success[action]);
       await onDone();
     } catch {

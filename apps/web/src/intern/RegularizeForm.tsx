@@ -5,6 +5,7 @@ import { NameOf, RefSelect } from '../contracts/references.js';
 import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
+import { slotKey } from '../foundation/forms/slot.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -18,6 +19,7 @@ import {
   acceptBusiness,
   applicationBody,
   businesses,
+  controlFields,
   editableFields,
   formFields,
   interns,
@@ -70,14 +72,15 @@ function useRegularize({ row, onDone, application }: FormProps & { application: 
       const values = projectFields(await form.validateFields(), editable);
       validateRegularize(values, editable, application);
       let created: Draft | undefined;
-      await cmd.submit(values, editable, {
-        path: application ? `${employeePath(employeeId)}/businesses` : `${interns}/${employeeId}/regularize`,
+      const done = await cmd.submit(values, editable, {
+        path: application ? `${employeePath(employeeId)}/businesses` : `${slotKey(interns, employeeId)}/regularize`,
         body: application ? applicationBody : regularizeBody,
         accept: (raw, sent) => {
           const receipt = acceptBusiness(raw, { employeeId, kind, sent });
           created = { id: String(receipt.id), revision: Number(receipt.revision) };
         },
       });
+      if (!done) return;
       if (application && created) {
         setDraft(employeeId, created);
         void message.success(m.draftSaved);
@@ -195,8 +198,7 @@ export function InternField({
   checked?: boolean;
   children: ReactNode;
 }) {
-  const control = !['probation', 'probationMonths', 'probationEndDate', 'endDate', 'cancelPendingEntry'].includes(name);
-  if (control && !permission?.viewableFields.includes(name)) return null;
+  if (!controlFields.includes(name) && !permission?.viewableFields.includes(name)) return null;
   const label = m.labels[name]!;
   return (
     <Form.Item
@@ -262,17 +264,18 @@ function DraftSubmit({ row, draft, onClose, onDone }: FormProps & { draft: Draft
   const { setDraft } = useDrafts();
   const permissions = usePermissions(object);
   const allowed = !!permissions.snapshot.objects[object]?.dataOperations.update && permissions.can('Employment.Submit');
-  const read = useLatest(`${businesses}/${draft.id}`, {});
+  const read = useLatest(slotKey(businesses, draft.id), {});
   const cmd = useInternCommand(businesses, { id: draft.id, revision: draft.revision, baseline: {}, read }, 'submit');
   const locked = cmd.disabled || !allowed;
   const submit = async () => {
     if (locked) return;
     try {
-      await cmd.submit({}, [], {
-        path: `${businesses}/${draft.id}/submit`,
+      const done = await cmd.submit({}, [], {
+        path: `${slotKey(businesses, draft.id)}/submit`,
         body: () => ({}),
         accept: (raw, sent) => acceptBusiness(raw, { employeeId, kind, sent, id: draft.id }),
       });
+      if (!done) return;
       setDraft(employeeId, undefined);
       void message.success(m.success.apply);
       await onDone();
