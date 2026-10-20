@@ -214,12 +214,21 @@ export function exitCommandGuard(
   scopeTarget: ExitScopeTarget,
 ): ScopedCommandGuard {
   return scopedGuard({
-    before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      await requireExitScope(tx, scoped, target, scopeTarget);
-      await requireExitPermission(scoped, operation, target);
-    },
+    before: async (tx) =>
+      requireExitCommandAccess(tx, await commandContext(tx, deps, ctx), operation, target, scopeTarget),
   });
+}
+
+/** 离职类入口“范围 + Dimission* 权限链”的单一入口：命令内复核与读口下发动作（结束实习等）共用。 */
+export async function requireExitCommandAccess(
+  tx: Tx,
+  scoped: EmploymentContext,
+  operation: ExitOperation,
+  target: ExitGateTarget,
+  scopeTarget: ExitScopeTarget,
+) {
+  await requireExitScope(tx, scoped, target, scopeTarget);
+  await requireExitPermission(scoped, operation, target);
 }
 
 /**
@@ -356,6 +365,28 @@ async function requireExitScope(
   if (departmentId !== undefined) requireEmploymentScope(scoped, target.employeeId, departmentId);
 }
 
+/**
+ * 直接实习转正（BE-6a）的权限与范围，入口、命令内复核、读口下发动作共用：看全部别名的任职写权、员工在范围内、新增权 + 按钮 +
+ * 字段创建权、目标部门范围（departmentId 缺省 = 只判员工范围，读口还不知道会转到哪个部门）。
+ */
+export async function requireInternRegularizationAccess(
+  tx: Tx,
+  scoped: EmploymentContext,
+  employeeId: string,
+  business: object,
+  departmentId?: string,
+): Promise<void> {
+  if (scoped.trustedScopeBypass)
+    await requirePermission(scoped.authorize!, {
+      ...scoped,
+      action: 'tenant.employment.write',
+      resource: employeeId,
+    });
+  await requireEmployeeInScope(tx, scoped, employeeId);
+  await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
+  if (departmentId !== undefined) requireEmploymentScope(scoped, employeeId, departmentId);
+}
+
 /** 直接实习转正（BE-6a）的命令内复核：按当前授权重过入口同一口径（新增权、按钮、字段创建权、员工与目标部门范围）。 */
 export function internRegularizationGuard(
   deps: TenantRouteDeps,
@@ -365,17 +396,7 @@ export function internRegularizationGuard(
   departmentId: string,
 ): ScopedCommandGuard {
   return scopedGuard({
-    before: async (tx) => {
-      const scoped = await commandContext(tx, deps, ctx);
-      if (scoped.trustedScopeBypass)
-        await requirePermission(scoped.authorize!, {
-          ...scoped,
-          action: 'tenant.employment.write',
-          resource: employeeId,
-        });
-      await requireEmployeeInScope(tx, scoped, employeeId);
-      await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create');
-      requireEmploymentScope(scoped, employeeId, departmentId);
-    },
+    before: async (tx) =>
+      requireInternRegularizationAccess(tx, await commandContext(tx, deps, ctx), employeeId, business, departmentId),
   });
 }

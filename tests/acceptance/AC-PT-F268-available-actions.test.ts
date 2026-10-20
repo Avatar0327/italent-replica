@@ -60,7 +60,7 @@ describe('F-268：状态机 × 角色（HR 发起人，全权）', () => {
     const w = await world('date-kinds');
     const record = await w.seedRecord();
     const extend = await w.ok(
-      await w.http().createDate({ requestType: 'extend', recordId: record.id, endDate: '2026-12-31' }),
+      await w.http().createDate({ requestType: 'extend', recordId: record, endDate: '2026-12-31' }),
       201,
     );
     expect(await offered(w, extend.id)).toEqual(['edit', 'submit', 'delete', 'revoke']);
@@ -163,6 +163,7 @@ describe('F-268：一致性——下发的写入口不因权限 / 状态被拒�
     '%s 样本 × 多种操作人',
     async (state) => {
       const w = await world(`consistency-${state}`);
+      day = 1;
       const other = await w.member('另一位HR');
       const variants: Variant[] = [
         { name: '全权发起人', send: async () => w.sendWith(() => true) },
