@@ -25,6 +25,8 @@ export interface RoutingSubject {
   readonly recordDepartmentId: string | null;
   /** 发展计划的指导人（审批人表达式 idp_tutor，R3-T07）。 */
   readonly tutorEmployeeId?: string | null;
+  /** 离职交接申请的工作交接人（审批人表达式 handover_work_owner，R2 BE-8b2）。 */
+  readonly handoverEmployeeId?: string | null;
   /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
 }
@@ -286,7 +288,38 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
       return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));
     }
+    // R2 BE-8b2（B64，原站未验证，取保守做法）：只用于离职交接申请，类型限制见 HANDOVER_ONLY_APPROVERS
+    case 'handover_work_owner':
+      return handoverWorkOwner(tx, subject);
+    case 'handover_hr_admin':
+      return handoverHrAdmin(tx, subject);
+    case 'handover_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
   }
+}
+
+/** 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）。 */
+async function handoverWorkOwner(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  const owner = await candidateOf(tx, subject, subject.handoverEmployeeId ?? null);
+  if (owner.userId) return owner;
+  return directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
+}
+
+const HR_ADMIN_PROFILE = 'standard_hr_admin';
+const HR_ADMIN_SCAN = 200;
+
+/** 其他事项交接：人事管理员角色（标准身份 standard_hr_admin 的有效授权），按授权先后取第一个具备审批资格的人。 */
+async function handoverHrAdmin(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  const grants = rowsOf<{ user_id: string }>(
+    await tx.execute(sql`SELECT g.user_id FROM permission_grants g
+      JOIN permission_profiles p ON p.tenant_id=g.tenant_id AND p.id=g.profile_id
+      WHERE g.tenant_id=${subject.tenantId} AND g.status='active' AND p.code=${HR_ADMIN_PROFILE}
+      ORDER BY g.created_at, g.id LIMIT ${HR_ADMIN_SCAN}`),
+  );
+  for (const { user_id: userId } of grants)
+    if (await isEligibleApprover(tx, subject, userId))
+      return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+  return NOBODY;
 }
 
 /** DEC-230 / DEC-068：直接上级与自审回避共用最新生效主职任职上的直线经理。 */

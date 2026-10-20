@@ -31,7 +31,7 @@ const world = async (label: string) => {
 
 describe('预置流程：四节点、只有同意 / 不同意（B64，R2f2）', () => {
   it('节点 工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明；没有驳回 / 跳转 / 加签 / 转交', () => {
-    const preset = PRESET_PROCESSES.find((candidate) => String(candidate.approvalType) === 'exit_handover')!;
+    const preset = PRESET_PROCESSES.find((candidate) => candidate.approvalType === 'exit_handover')!;
     expect(preset.definition.nodes.map((node) => node.key)).toEqual([
       'work_handover',
       'other_handover',
@@ -131,6 +131,7 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
   it('员工没有可用账号（无法作为发起人）：跳过并留痕，离职审批照常通过', async () => {
     const x = await world('launch-no-account');
     const lone = await x.colleague('无账号员工');
+    await x.unbindAccount(lone.id);
     const { approved } = await x.approvedApplication(lone.id);
     expect(approved.status).toBe('approved');
     expect(await x.requestRows(approved.id)).toEqual([]);
@@ -174,7 +175,7 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
       subordinate.revision,
     );
     await x.person('有经理的离职者', subordinate.id);
-    const second = await x.launched(subordinate.id, {});
+    const second = await x.launched(subordinate.id, { handoverEmployeeId: undefined });
     expect((await x.pendingNode(second.instanceId))?.userId).toBe(manager.userId);
   });
 });
@@ -233,7 +234,9 @@ describe('办理：勾选即自动保存、只改本节点负责的类别（R2f2
     const items = (await x.detailAs(x.hrAdmin.id, request.id)).body.items;
     expect(items.map((item) => item.editable)).toEqual([false, true, true]);
     const first = await x.tick(x.hrAdmin.id, request.id, items[1]!, true);
-    expect(await first.json()).toMatchObject({ mine: { nodeKey: 'other_handover', total: 2, done: 1, allDone: false } });
+    expect(await first.json()).toMatchObject({
+      mine: { nodeKey: 'other_handover', total: 2, done: 1, allDone: false },
+    });
     const second = await x.tick(x.hrAdmin.id, request.id, items[2]!, true);
     expect(await second.json()).toMatchObject({ mine: { total: 2, done: 2, allDone: true } });
     expect((await x.tick(x.workOwner.userId, request.id, items[0]!, true)).status).toBe(403);

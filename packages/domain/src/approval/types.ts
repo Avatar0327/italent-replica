@@ -36,6 +36,10 @@ export const APPROVER_EXPRESSIONS = [
   'approval_subject_first_level_org_head', // Offer 批量审批 - 审批主体组织 → 一级组织 → 负责人
   // R2 BE-15b1（29 PB-R3）：只有试用期考核两类审批可选（ASSESSMENT_ONLY_APPROVERS）
   'assessment_employee', // 考核 - 考核对象本人（员工自评节点，不按自审处理，同 idp_employee）
+  // R2 BE-8b2（B64，原站未验证，取保守做法）：只有离职交接申请可选（HANDOVER_ONLY_APPROVERS）
+  'handover_work_owner', // 离职交接 - 工作交接：离职申请的交接人，没填取直线经理
+  'handover_hr_admin', // 离职交接 - 其他事项交接：人事管理员角色（standard_hr_admin 的有效授权人，按授权先后取首个可用者）
+  'handover_employee', // 离职交接 - 员工确认：离职员工本人（不按自审处理）
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
@@ -52,6 +56,12 @@ export const OFFER_APPROVERS: Readonly<Record<'offer' | 'offer_batch', ReadonlyS
 };
 /** 只在试用期考核两类审批上可用的审批人表达式：取考核对象本人（员工自评）。 */
 export const ASSESSMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['assessment_employee']);
+/** 只在离职交接申请上可用的审批人表达式。 */
+export const HANDOVER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'handover_work_owner',
+  'handover_hr_admin',
+  'handover_employee',
+]);
 export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
@@ -387,6 +397,7 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
  * probation_assessment：试用中考核 / 转正考核（R2 BE-15b1，29 PB-R3）：业务单 = 考核记录，审批流 员工自评 → 经理评价。
  * retirement_intention：意向退休日期申请（R2-T04 5d2，设计 §11）：业务单 = 意向申请，审批通过只记录、不写人事字段（A-6）。
+ * exit_handover：离职交接申请（R2 BE-8b2，B64）：业务单 = 交接申请，离职申请审批通过后系统代发，四节点，通过不改离职状态。
  */
 export type ApprovalAdapterKind =
   | 'employment'
@@ -399,7 +410,8 @@ export type ApprovalAdapterKind =
   | 'offer'
   | 'offer_batch'
   | 'probation_assessment'
-  | 'retirement_intention';
+  | 'retirement_intention'
+  | 'exit_handover';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -592,6 +604,19 @@ export const APPROVAL_TYPES = {
     conditionFields: EMPLOYMENT_CONDITION_FIELDS,
     formFields: RETIREMENT_INTENTION_FORM_FIELDS,
     readonlyFields: RETIREMENT_INTENTION_SNAPSHOT_FIELDS,
+    approvalEdit: false,
+  },
+  // R2 BE-8b2 离职交接申请：业务单是独立交接申请表，授权复用任职记录对象；原站流程编码未取证，defaultProcessCode = null + 本类型兜底预置。
+  // 表单不带字段（审批人只办事项，事项在交接申请详情里读写），所以没有盲审字段
+  exit_handover: {
+    code: 'exit_handover',
+    name: '离职交接申请',
+    objectCode: MODULE_OBJECTS.employmentRecord.code,
+    adapter: 'exit_handover',
+    defaultProcessCode: null,
+    conditionFields: EMPLOYMENT_CONDITION_FIELDS,
+    formFields: [],
+    readonlyFields: [],
     approvalEdit: false,
   },
   // BE-7 兼职（R2-T05 §1.5）：PT-1 只登记类型与预置，申请对象与发起入口随 PT-4a / PT-4b 接入

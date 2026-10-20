@@ -9,6 +9,7 @@ import {
   avoidsSubjects,
   ENABLED_AVOID_SUBJECTS_RESULTS,
   hasExit,
+  HANDOVER_ONLY_APPROVERS,
   IDP_ONLY_APPROVERS,
   isCountersign,
   OFFER_APPROVERS,
@@ -65,6 +66,10 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     );
     if (type.adapter !== 'probation_assessment' && assessmentOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核审批`);
+    }
+    const handoverOnly = approverExpressionsOf(node).filter((expression) => HANDOVER_ONLY_APPROVERS.has(expression));
+    if (type.adapter !== 'exit_handover' && handoverOnly.length) {
+      violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
     }
     const offerViolation = offerApproverViolation(node, type);
     if (offerViolation) violations.push(offerViolation);

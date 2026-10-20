@@ -39,7 +39,12 @@ export interface HandoverDetail {
   readonly id: string;
   readonly status: string;
   readonly items: readonly HandoverItemView[];
-  readonly mine: { readonly nodeKey: string; readonly total: number; readonly done: number; readonly allDone: boolean } | null;
+  readonly mine: {
+    readonly nodeKey: string;
+    readonly total: number;
+    readonly done: number;
+    readonly allDone: boolean;
+  } | null;
 }
 
 export async function handoverWorld(db: Db, label: string) {
@@ -71,14 +76,14 @@ export async function handoverWorld(db: Db, label: string) {
 
   /** 发布四节点交接流程（取预置定义，代码在测试里排在夹具兜底之前）。 */
   async function publishHandoverProcess() {
-    const preset = PRESET_PROCESSES.find((candidate) => String(candidate.approvalType) === 'exit_handover');
+    const preset = PRESET_PROCESSES.find((candidate) => candidate.approvalType === 'exit_handover');
     expect(preset, '缺少 exit_handover 预置流程').toBeTruthy();
     const ctx = { tenantId, userId: processAdmin.id, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
     await withTenant(db, tenantId, async (tx) => {
       const created = await createProcess(
         tx,
         { ...ctx, commandId: randomUUID() },
-        { code: 'AAA_EXIT_HANDOVER', approvalType: 'exit_handover' as never },
+        { code: 'AAA_EXIT_HANDOVER', approvalType: 'exit_handover' },
         { ...preset!.definition, exceptionAdminUserId: exceptionAdmin.id },
       );
       await publishProcess(tx, { ...ctx, commandId: randomUUID(), expectedRevision: created.revision }, created.id);
@@ -105,6 +110,8 @@ export async function handoverWorld(db: Db, label: string) {
   ) {
     const draft = await x.createdExit(employeeId, options.lastWorkDate ?? FUTURE_LAST_WORK_DATE, 'application', {
       exitTypeCode: 'voluntary',
+      // 工作交接是首节点，没有交接人也没有直线经理时发起会被拒绝（首节点无审批人），所以缺省带上交接人
+      handoverEmployeeId: workOwner.employeeId,
       ...options.exit,
     });
     const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
@@ -190,8 +197,16 @@ export async function handoverWorld(db: Db, label: string) {
     return { exitId: approved.id, request: request!, instanceId: request!.instanceId! };
   }
 
+  /** 解除员工与账号的绑定（造“没有可用账号的员工”）。 */
+  const unbindAccount = (employeeId: string) =>
+    withTenant(db, tenantId, (tx) =>
+      tx.execute(sql`DELETE FROM permission_user_person_links WHERE tenant_id=${tenantId}
+        AND employee_id=${employeeId}::uuid`),
+    );
+
   return {
     ...x,
+    unbindAccount,
     tenantAs,
     leaverUserId,
     workOwner,

@@ -173,6 +173,7 @@ function routingSubject(run: Run): RoutingSubject {
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
     tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
+    handoverEmployeeId: run.snapshot.handoverEmployeeId ?? null,
     cache: new Map(),
   };
 }
