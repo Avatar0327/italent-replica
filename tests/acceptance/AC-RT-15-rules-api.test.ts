@@ -28,6 +28,7 @@ interface Rule {
   readonly includeSubordinates: boolean;
   readonly retirementAgeYears: number;
   readonly retirementAgeMonths: number;
+  readonly preset: boolean;
   readonly conditions: { fieldCode: string; operator: string; values: string[] }[];
   readonly enabled: boolean;
   readonly revision: number;
@@ -76,10 +77,11 @@ async function world(label: string) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as Rule;
   }
+  /** 租户自建规则（5c1b 起每租户另有预置法定规则，排在最后，见 AC-RT-16-flexible-rules-api）。 */
   async function list(query = ''): Promise<Rule[]> {
     const response = await session.request('GET', `/retirement-rules${query}`);
     expect(response.status, await response.clone().text()).toBe(200);
-    return ((await response.json()) as { items: Rule[] }).items;
+    return ((await response.json()) as { items: Rule[] }).items.filter((rule) => !rule.preset);
   }
   return { session, org, body, create, created, list, db: testDb().db };
 }
@@ -196,18 +198,18 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
     expect(await w.list('?purpose=expected_date')).toHaveLength(1);
   });
 
-  it('弹性范围规则与高级公式本单不开放：purpose = flexible_range、rule_type = formula、提前 / 延迟月数均 400', async () => {
+  it('高级公式与提前 / 延迟月数不开放：ruleType = formula、earlierMonths、laterMonths 均 400；固定年龄不能用于弹性范围', async () => {
     const w = await world('closed');
     for (const extra of [
-      { purpose: 'flexible_range' },
       { ruleType: 'formula' },
       { earlierMonths: 12 },
       { laterMonths: 12 },
+      { purpose: 'flexible_range' }, // 固定年龄规则不能用于弹性范围，弹性范围只选内置函数
     ]) {
       const response = await w.create(w.body(extra));
       expect(response.status, `${JSON.stringify(extra)} → ${await response.clone().text()}`).toBe(400);
     }
-    const query = await w.session.request('GET', '/retirement-rules?purpose=flexible_range');
+    const query = await w.session.request('GET', '/retirement-rules?purpose=formula');
     expect(query.status).toBe(400);
     expect(await w.list()).toEqual([]);
   });
@@ -393,6 +395,8 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
     );
     expect(audits.map((a) => a.action).sort()).toEqual(
       [
+        'retirement_rule.save', // 预置法定规则 ×2（种子装载）
+        'retirement_rule.save',
         'retirement_rule.save', // 新增 ×3
         'retirement_rule.save',
         'retirement_rule.save',
@@ -410,7 +414,7 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
       tx.execute(sql`INSERT INTO retirement_rules(id, tenant_id, purpose, rule_type, name, priority, sequence_no,
           org_ids, include_subordinates, retirement_age_years, retirement_age_months, enabled)
         SELECT gen_random_uuid(), ${w.session.tenant.id}, 'expected_date', 'fixed_age', 'r' || n, 1, n,
-          ARRAY[${w.org.id}]::uuid[], true, 60, 0, true FROM generate_series(1, 100) n`),
+          ARRAY[${w.org.id}]::uuid[], true, 60, 0, true FROM generate_series(101, 200) n`),
     );
     const response = await w.create(w.body());
     expect(response.status).toBe(409);
@@ -475,6 +479,7 @@ describe('AC-RT-15 条件取值往返保真（第 1 轮审查 P2-1）', () => {
   const asRule = (rule: Rule): RetirementRule => ({
     id: rule.id,
     purpose: 'expected_date',
+    ruleType: 'fixed_age',
     enabled: true,
     priority: rule.priority,
     sequenceNo: 1,
