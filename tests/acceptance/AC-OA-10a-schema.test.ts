@@ -57,17 +57,14 @@ async function insertItem(tx: Tx, w: World, adjustmentId: string, over: Record<s
   return row;
 }
 
-const rejects = (w: World, run: (tx: Tx) => Promise<unknown>) =>
-  withTenant(testDb().db, w.tenant.id, async (tx) => {
-    // 子事务：失败行不污染外层事务
-    await tx.execute(sql`SAVEPOINT s1`);
-    const error = await run(tx).then(
-      () => null,
-      (e: unknown) => e as Error,
-    );
-    await tx.execute(sql`ROLLBACK TO SAVEPOINT s1`);
-    return error ? String((error as { cause?: unknown }).cause ?? error) + String(error.message) : null;
-  });
+/** 每次尝试各开一个租户事务，失败让整个事务回滚（真 PG 与 PGlite 行为一致，不依赖保存点）。 */
+const rejects = async (w: World, run: (tx: Tx) => Promise<unknown>) => {
+  const error = await withTenant(testDb().db, w.tenant.id, run).then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  return error ? `${error.message} ${String((error as { cause?: unknown }).cause ?? '')}` : null;
+};
 
 describe('表结构与租户隔离', () => {
   it.each(['org_adjustments', 'org_adjustment_org_items'])('%s：ENABLE + FORCE RLS', async (table) => {
