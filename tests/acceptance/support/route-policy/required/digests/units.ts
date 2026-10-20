@@ -373,6 +373,10 @@ export const DIGESTS: Digests = {
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
+  'apps/api/src/modules/employment/retirement-view-routes.ts': {
+    'route:GET /retirements': '2cf12c7bcd9a',
+    'route:GET /retirements/:id': '224782a4b1fb',
+  },
   'apps/api/src/modules/employment/routes.ts': {
     authorizeBusinessWrite: '9cd4b1d55a33',
     authorizeImport: 'cc34067133db',
@@ -1829,6 +1833,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/:id': 'f5a8b6b3c5f6',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'fd6829e031d2',
   'apps/api/src/modules/employment/routes.ts#authorizeImport': 'ef294a22f161',
   'apps/api/src/modules/employment/routes.ts#importEmployment': '70bca03f3fb8',
