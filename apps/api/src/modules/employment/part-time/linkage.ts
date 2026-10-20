@@ -137,7 +137,7 @@ export async function queuePartTimeLinkage(
       await audit(tx, ctx, EVENTS.pending, record, linkage.head ? { isDepartmentHead: true } : {});
     return;
   }
-  await executeLinkage(tx, ctx, record, linkage, { strict: true });
+  await executeLinkage(tx, ctx, record, await resolveLinkageIntent(tx, ctx, recordId, linkage), { strict: true });
 }
 
 /** 业务拒绝（4xx）→ 跳过原因：优先取 details.reason，其次错误码；存储错误（5xx）照常抛，下次运行重试。 */
@@ -209,6 +209,23 @@ async function executeLinkage(
   await audit(tx, ctx, EVENTS.linked, record, done);
 }
 
+/**
+ * 这条兼职此刻要办的完整联动意图（立即落地、编辑、到期调度共用的单一入口；参与者 = 意图里的下属，取锁规划见
+ * linkage-participants.ts，所有闭包入口走同一份）。给出 increment（编辑新出现的联动）且没有未办结的待执行联动时，办增量；
+ * 否则一律办当前保存的完整意图——开始日已到、调度还没跑时，原待执行的负责人 / 下属还没办，增量不能结清整条待办（第 1 轮 P2-1）。
+ */
+export async function resolveLinkageIntent(
+  tx: Tx,
+  ctx: EmploymentContext,
+  recordId: string,
+  increment?: PartTimeLinkage,
+): Promise<PartTimeLinkage> {
+  const outstanding =
+    (await eventExists(tx, ctx, recordId, [EVENTS.pending])) &&
+    !(await eventExists(tx, ctx, recordId, [EVENTS.linked, EVENTS.skipped]));
+  return increment && !outstanding ? increment : currentLinkage(tx, ctx, recordId);
+}
+
 /** 记录当前保存的联动字段（最新载荷版本；编辑追加的快照继承全部字段）。 */
 async function currentLinkage(tx: Tx, ctx: EmploymentContext, recordId: string): Promise<PartTimeLinkage> {
   const [row] = rowsOf<{ head: boolean | null; subs: string[] | string | null }>(
@@ -242,7 +259,7 @@ export async function runDuePartTimeLinkage(tx: Tx, ctx: EmploymentContext, empl
     due.map((row) => row.id),
   )) {
     if (await eventExists(tx, ctx, record.id, [EVENTS.linked, EVENTS.skipped])) continue;
-    await executeLinkage(tx, ctx, record, await currentLinkage(tx, ctx, record.id), { strict: false });
+    await executeLinkage(tx, ctx, record, await resolveLinkageIntent(tx, ctx, record.id), { strict: false });
   }
 }
 
