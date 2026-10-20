@@ -61,14 +61,20 @@ async function stateOf(world: World, orgIds: readonly string[]) {
   });
 }
 
-async function expectGate(world: World, root: Organization, ids: readonly string[], effectiveDate: string) {
+async function expectGate(
+  world: World,
+  root: Organization,
+  ids: readonly string[],
+  effectiveDate: string,
+  alreadyDisabled: readonly string[] = [],
+) {
   const before = await stateOf(world, ids);
   const response = await world.patchOrg(root, { enabled: false, effectiveDate });
   expect(response.status, await response.clone().text()).toBe(409);
   expect(await response.json()).toMatchObject({ error: { code: CODE, message: MESSAGE } });
   expect(await stateOf(world, ids)).toEqual(before);
   const after = await world.orgsAt(effectiveDate);
-  for (const id of ids) expect(after.get(id)).toMatchObject({ enabled: true });
+  for (const id of ids) expect(after.get(id)).toMatchObject({ enabled: !alreadyDisabled.includes(id) });
 }
 
 async function tree(world: World) {
@@ -119,6 +125,17 @@ describe('AC-ORG-36 F-296 直接停用含编制组织的临时关口', () => {
     const response = await world.patchOrg(t.root, { enabled: false, effectiveDate: '2027-02-01' });
     expect(response.status, await response.clone().text()).toBe(200);
     expect((await world.orgsAt('2027-02-01')).get(t.child.id)).toMatchObject({ enabled: false });
+  });
+
+  it('⑦E 当日已停用 / 已排定停用的下级有编制：同样 409（检查范围是完整的已授权子树）', async () => {
+    const world = await orgPeopleWorld(testDb().db, 'org36scheduled');
+    const t = await tree(world);
+    // 下级（连同孙级）先排定 11-01 停用（此时无编制，放行）；它仍启用的 10-01 建当年编制；再停用上级，E=12-01 时下级已停用但编制仍在。
+    const stopped = await world.patchOrg(t.child, { enabled: false, effectiveDate: '2026-11-01' });
+    expect(stopped.status, await stopped.clone().text()).toBe(200);
+    const stoppedChild = (await world.orgsAt('2026-11-01')).get(t.child.id)!;
+    await capacity(world, await scheme(world), stoppedChild, '2026-01-01');
+    await expectGate(world, t.root, t.ids, '2026-12-01', [t.child.id, t.grandchild.id]);
   });
 
   it('⑥拒绝后整支仍启用、无任何写入；对照：停用日晚于该周期结束日后可正常停用', async () => {
