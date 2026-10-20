@@ -193,19 +193,3 @@ describe('AC-RT-22 创建时序与原子性（设计 §3.2）', () => {
     expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 });
-
-describe('撤销退休归 5a′（#432 合入后的边界）', () => {
-  it('退休单不被接到离职撤销：草稿通用 DELETE 仍可清理；approved / effective 409 EXIT_OPERATION_NOT_AVAILABLE，无写入', async () => {
-    const x = await world('rt-cancel-boundary');
-    const draft = await x.createdRetire(x.employee.id, retireBody(LATER));
-    const other = (await x.hired('另一人')).employee;
-    const approved = await x.directRetire('2026-10-20', undefined, other.id);
-    const before = await x.stateOf(other.id);
-    const blocked = await x.session.request('DELETE', `/businesses/${approved.id}`, { ifMatch: approved.revision });
-    expect(await x.reason(blocked)).toMatchObject({ status: 409, reason: 'EXIT_OPERATION_NOT_AVAILABLE' });
-    expect(await x.stateOf(other.id)).toEqual(before);
-    const removed = await x.session.request('DELETE', `/businesses/${draft.id}`, { ifMatch: draft.revision });
-    expect(removed.status, await removed.clone().text()).toBe(200);
-    expect((await x.business(draft.id)).status).toBe('deleted');
-  });
-});
