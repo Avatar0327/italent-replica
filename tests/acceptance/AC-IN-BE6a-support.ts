@@ -75,7 +75,7 @@ function helpers(db: Db, session: EmploymentSession, orgId: string) {
 
   /** 发起并提交实习转正申请（审批中）。 */
   async function applyRegularization(employeeId: string, effectiveDate = '2026-10-20') {
-    const input = { kind: 'intern_regularization', mode: 'application', effectiveDate, fields: {} };
+    const input = { kind: 'intern_regularization', mode: 'application', effectiveDate, fields: {}, probation: false };
     const draft = await session.business(employeeId, input, await revision(employeeId));
     const submitted = await session.request('POST', `/businesses/${draft.id}/submit`, {
       ifMatch: draft.revision,
