@@ -318,11 +318,85 @@ describe('AC-RT-23 P 重算后移出已核准旧范围', () => {
     });
     await w.fixedAgeRule(60);
     await w.statutoryRangeRule();
+    const base = await w.personOf(employee);
+
+    // 第一步：只开预计日期——写 P，上下限仍是旧范围，版本 +1
+    await w.setSwitch('expected_date', true);
+    await runAt(w, clockAt(DAY));
+    expect(await w.personOf(employee)).toMatchObject({
+      expected: NEW_P,
+      earliest: '2030-06-01',
+      latest: '2033-06-01',
+      revision: base.revision + 1,
+    });
+
+    // 第二步：弹性批次按新 P 写新范围，版本再 +1
+    await w.setSwitch('expected_date', false);
+    await w.setSwitch('flexible_range', true);
+    await runAt(w, clockAt(DAY));
+    expect(await w.personOf(employee)).toMatchObject({
+      expected: NEW_P,
+      earliest: '2035-06-11',
+      latest: '2038-06-30',
+      revision: base.revision + 2,
+    });
+  });
+
+  it('两个开关都开：同一次调度先写 P 再写范围（预计日期批次 done 后才认领弹性批次）', async () => {
+    const w = await batchWorld(testDb().db, 'rt23-both');
+    const employee = await w.member('同次调度员工', {
+      ...OLD,
+      earliestRetirementDate: '2030-06-01',
+      latestRetirementDate: '2033-06-01',
+      flexibleRangeConfirmed: false,
+    });
+    await w.fixedAgeRule(60);
+    await w.statutoryRangeRule();
+    await w.setSwitch('expected_date', true);
+    await w.setSwitch('flexible_range', true);
+    const base = await w.personOf(employee);
+    await runAt(w, clockAt(DAY));
+    expect(await w.personOf(employee)).toMatchObject({
+      expected: NEW_P,
+      earliest: '2035-06-11',
+      latest: '2038-06-30',
+      revision: base.revision + 2,
+    });
+  });
+
+  it('预计日期批次中止（行仍 running）时弹性批次本次不跑；预计日期完成后同一次调度按新 P 写范围', async () => {
+    const w = await batchWorld(testDb().db, 'rt23-abort-order');
+    const employee = await w.member('中止员工', {
+      ...OLD,
+      earliestRetirementDate: '2030-06-01',
+      latestRetirementDate: '2033-06-01',
+      flexibleRangeConfirmed: false,
+    });
+    await w.fixedAgeRule(60);
+    await w.statutoryRangeRule();
     await w.setSwitch('expected_date', true);
     await w.setSwitch('flexible_range', true);
     const base = await w.personOf(employee);
 
-    await runAt(w, clockAt(DAY));
+    const lock = locks.lockTransferParticipants;
+    vi.spyOn(locks, 'lockTransferParticipants').mockImplementation(async () => {
+      throw new Error('storage down');
+    });
+    const crashed = await runAt(w, clockAt(DAY));
+    expect(crashed.of('expected_date')).toMatchObject({ ran: true, aborted: true });
+    expect(crashed.of('flexible_range').ran).toBe(false);
+    expect(await w.runRow('flexible_range', DAY)).toBeUndefined();
+
+    // 租约未过期：预计日期被持有，弹性仍不认领
+    vi.spyOn(locks, 'lockTransferParticipants').mockImplementation(lock);
+    const held = await runAt(w, clockAt(DAY, '02:05:00'));
+    expect(held.of('expected_date').ran).toBe(false);
+    expect(held.of('flexible_range').ran).toBe(false);
+    expect(await w.personOf(employee)).toMatchObject({ revision: base.revision });
+
+    const resumed = await runAt(w, clockAt(DAY, '02:11:00'));
+    expect(resumed.of('expected_date')).toMatchObject({ ran: true, resumed: true });
+    expect(resumed.of('flexible_range').ran).toBe(true);
     expect(await w.personOf(employee)).toMatchObject({
       expected: NEW_P,
       earliest: '2035-06-11',
@@ -345,7 +419,12 @@ describe('AC-RT-23 P 重算后移出已核准旧范围', () => {
 
     await w.setSwitch('flexible_range', true);
     await runAt(w, clockAt(DAY));
-    expect(await w.personOf(employee)).toMatchObject({ expected: '2030-06-01', revision: base.revision });
+    expect(await w.personOf(employee)).toMatchObject({
+      expected: '2030-06-01',
+      earliest: '2030-06-01',
+      latest: '2033-06-01',
+      revision: base.revision,
+    });
 
     await w.setSwitch('flexible_range', false);
     await w.setSwitch('expected_date', true);

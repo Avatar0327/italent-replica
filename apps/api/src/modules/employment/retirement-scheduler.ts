@@ -117,7 +117,7 @@ async function sweepTenant(
 ): Promise<RetirementTenantRun> {
   const businessDate = tenantLocalDate(now, tenant.timezone);
   const purposes: RetirementPurposeRun[] = [];
-  // 预计日期先于弹性范围：弹性范围按人事当前的 P 计算，同一次调度里先落新 P 再算范围
+  // 预计日期先于弹性范围：同一次调度里先落新 P 再算范围；多进程时由 claim 保证弹性批次等预计日期批次 done
   for (const purpose of PURPOSES) {
     const run: RetirementPurposeRun = {
       purpose,
@@ -146,7 +146,20 @@ interface Claimed {
 const leaseUntil = (clock: () => Date) =>
   new Date(clock().getTime() + RETIREMENT_BATCH_LEASE_MINUTES * 60_000).toISOString();
 
-/** 认领当天批次：新建 / 接管过期租约；开关关闭、已完成、租约仍有效返回 null。 */
+/**
+ * 弹性范围按人事当前的 P 计算，所以预计日期开关开启时，弹性批次只在当天预计日期批次 done 之后才认领（第 1 轮审查 P2-2）：
+ * 预计日期批次在别的进程处理中 / 中止（行仍 running）/ 尚未认领，弹性批次本次不跑，下次调度再试。预计日期开关关闭时不等。
+ */
+async function expectedDatePending(tx: Tx, tenantId: string, businessDate: string) {
+  if (!(await readRetirementSwitch(tx, tenantId, 'expected_date'))) return false;
+  const [done] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM retirement_rule_daily_runs WHERE tenant_id=${tenantId}
+      AND purpose='expected_date' AND business_date=${businessDate}::date AND state='done'`),
+  );
+  return !done;
+}
+
+/** 认领当天批次：新建 / 接管过期租约；开关关闭、已完成、租约仍有效、（弹性范围）预计日期批次未完成返回 null。 */
 async function claim(
   db: Db,
   tenantId: string,
@@ -158,6 +171,7 @@ async function claim(
 ): Promise<(Claimed & { readonly resumed: boolean }) | null> {
   return withTenant(db, tenantId, async (tx) => {
     if (!(await readRetirementSwitch(tx, tenantId, purpose))) return null;
+    if (purpose === 'flexible_range' && (await expectedDatePending(tx, tenantId, businessDate))) return null;
     const lease = leaseUntil(clock);
     const [created] = rowsOf<{ attempts: number }>(
       await tx.execute(sql`INSERT INTO retirement_rule_daily_runs(tenant_id, purpose, business_date, state,
@@ -279,9 +293,30 @@ async function mainScan(batch: Batch, from: string | null, result: RetirementPur
   }
 }
 
+/**
+ * 批次所有权校验的唯一入口（第 1 轮审查 P2-1）：以批次身份写员工的每个事务（主扫描 settleEmployee、第二遍 retryEmployee）
+ * 都经 asBatchOwner 开场。FOR SHARE 读到本次认领的 running 行（attempts 相符）并持有到事务结束：别的进程接管租约要 UPDATE
+ * 这一行，会等本事务提交，所以“校验通过 → 写入提交”之间不可能被接管；已被接管 / 已 done（attempts 或 state 不符）则抛
+ * LeaseLost，该员工的人事版本与审计随事务整体回滚，本次调度结束。同类位置清单：主扫描员工事务、第二遍员工事务（含放弃分支）；
+ * 页尾推进（renew）、置 done（finish）本来就带同一条件的 UPDATE。
+ */
+async function assertOwnsBatch(tx: Tx, batch: Batch) {
+  const [row] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM retirement_rule_daily_runs
+      WHERE ${runKey(batch)} AND state='running' AND attempts=${batch.attempts} FOR SHARE`),
+  );
+  if (!row) throw new LeaseLost();
+}
+
+const asBatchOwner = <T>(batch: Batch, work: (tx: Tx) => Promise<T>): Promise<T> =>
+  withTenant(batch.db, batch.tenant.id, async (tx) => {
+    await assertOwnsBatch(tx, batch);
+    return work(tx);
+  });
+
 /** 一名员工一个事务：SKIP LOCKED 取锁，被他人持有 → 'busy'；主档不存在没有可办理的对象 → null。 */
 async function settleEmployee(batch: Batch, employeeId: string, rules: readonly RetirementRule[]) {
-  return withTenant(batch.db, batch.tenant.id, async (tx) => {
+  return asBatchOwner(batch, async (tx) => {
     const lock = await lockTransferParticipants(tx, batch.ctx, employeeId, [], { skipLocked: true });
     if (lock === 'busy') return 'busy' as const;
     return lock === 'missing' ? null : applyRetirementRules(tx, batch.ctx, employeeId, batch.purpose, rules);
@@ -309,7 +344,7 @@ async function retryEmployee(
   rules: readonly RetirementRule[],
   result: RetirementPurposeRun,
 ) {
-  await withTenant(batch.db, batch.tenant.id, async (tx) => {
+  await asBatchOwner(batch, async (tx) => {
     const lock = await lockTransferParticipants(tx, batch.ctx, employeeId, [], { skipLocked: true });
     const skip = sql`tenant_id=${batch.tenant.id} AND purpose=${batch.purpose}
       AND business_date=${batch.businessDate}::date AND employee_id=${employeeId}::uuid`;
