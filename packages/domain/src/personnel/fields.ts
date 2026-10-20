@@ -51,6 +51,13 @@ export const EMPLOYEE_EDITABLE_FIELDS: readonly PersonnelField[] = [
   { code: 'pinyinInitials', kind: 'text' },
   { code: 'lastNamePinyin', kind: 'text' },
   { code: 'firstNamePinyin', kind: 'text' },
+  // R2-T04 §2.3：退休规则相关字段；原预计退休日期只由意向申请写回（5d2），不接受手写
+  { code: 'expectedRetirementConfirmed', kind: 'boolean' },
+  { code: 'identityType', kind: 'text' },
+  { code: 'earliestRetirementDate', kind: 'date' },
+  { code: 'latestRetirementDate', kind: 'date' },
+  { code: 'flexibleRangeConfirmed', kind: 'boolean' },
+  { code: 'originalExpectedRetirementDate', kind: 'date', system: true },
 ];
 export const EMPLOYEE_REFLECTED_FIELDS: readonly PersonnelField[] = [
   { code: 'educationLevel', kind: 'text', system: true },

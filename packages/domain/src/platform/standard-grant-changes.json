@@ -1,25 +1,30 @@
 {
-  "reason": "R2 BE-5a（DEC-637 A-2）：新增退休四个按钮 Employment.Retire / RetireApproval / RetireEdit / RetireCancel（标准 HR 三身份 full，按钮授权与数据范围分开，非管理员范围不扩大）与退休扩展字段 retireType / reEmployed / expectedRetirementDate 的查看项（EmploymentRecord 对象）；实际退休日期 actualRetirementDate 改为系统字段（只由退休生效 / 撤销写），员工信息对象的该字段编辑授权项删除",
+  "reason": "R2 BE-5c1a：人事员工信息新增 6 个退休字段（预计退休日期已核准、个人身份、最早 / 最晚退休日期、弹性范围已核准、原预计退休日期）的字段查看 / 编辑授权项，按既有员工信息字段规则进四个标准身份（原预计退休日期为系统字段，只有查看）；不产生按钮或看全部授权",
   "add": [
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.Retire*",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:retireType:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:reEmployed:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.Retire*",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:retireType:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:reEmployed:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.Retire*",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:retireType:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:reEmployed:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:expectedRetirementDate:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:retireType:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:reEmployed:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:expectedRetirementDate:view"
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:expectedRetirementConfirmed:*",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:identityType:*",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:earliestRetirementDate:*",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:latestRetirementDate:*",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:flexibleRangeConfirmed:*",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:originalExpectedRetirementDate:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:expectedRetirementConfirmed:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:identityType:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:earliestRetirementDate:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:latestRetirementDate:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:flexibleRangeConfirmed:*",
+    "standard_hr_specialist/TenantBase.EmployeeInformation/field:originalExpectedRetirementDate:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:expectedRetirementConfirmed:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:identityType:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:earliestRetirementDate:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:latestRetirementDate:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:flexibleRangeConfirmed:*",
+    "standard_manager/TenantBase.EmployeeInformation/field:originalExpectedRetirementDate:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:expectedRetirementConfirmed:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:identityType:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:earliestRetirementDate:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:latestRetirementDate:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:flexibleRangeConfirmed:*",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:originalExpectedRetirementDate:*"
   ],
-  "remove": [
-    "standard_hr_admin/TenantBase.EmployeeInformation/field:actualRetirementDate:edit",
-    "standard_hr_specialist/TenantBase.EmployeeInformation/field:actualRetirementDate:edit",
-    "standard_org_system_admin/TenantBase.EmployeeInformation/field:actualRetirementDate:edit"
-  ]
+  "remove": []
 }

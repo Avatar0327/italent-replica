@@ -37,6 +37,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
 const BL = `${SRC}/employment/blacklist-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
+const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
 const STATUS = `${SRC}/employment/employee-status.ts`;
 const ACCESS = `${SRC}/transfer/access.ts`;
 const SERVICE = `${SRC}/transfer/service.ts`;
@@ -388,7 +389,7 @@ function partTimePreview(button: string): Obligation[] {
 // ---- R2 BE-7 PT-3c 兼职编辑 / 批量结束（part-time/routes.ts）------------------------------------------------------------
 // 入口与命令内共用 requirePartTimeWriteAccess（replay-guard.ts）：目标存在 → 兼职部门写入口径范围（requireScopedEmploymentObject）→
 // requireEmploymentWrite（对象更新权 + 字段写权 + 按钮）
-function partTimeWrite(method: string, path: string, readCall: string, button: string): Obligation[] {
+function partTimeWrite(method: string, path: string, readCall: string, button: string, level = 'detail'): Obligation[] {
   const route = (anchor: string) => at(PART_TIME, method, path, anchor);
   const access = route('await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeWriteAccess(tx, ctx, target))');
   return [
@@ -407,7 +408,7 @@ function partTimeWrite(method: string, path: string, readCall: string, button: s
       ],
     ),
     ob(
-      `btn:${RECORD}#${button}@detail`,
+      `btn:${RECORD}#${button}@${level}`,
       [],
       [
         access,
@@ -1753,6 +1754,42 @@ export const EMPLOYMENT: RequiredTable = {
       '直接落地的实习转正把人员状态联动到后续记录前按 DEC-178 复核',
     ),
   ],
+  // 结束实习（BE-6b）：权限与直接离职同一组合；范围由 readContext 的人员范围与命令内 exitCommandGuard 的 requireExitScope 判，没有部门参数
+  'POST /api/tenant/employment/interns/:id/terminate': [
+    ob(
+      `obj:${RECORD}:create`,
+      [
+        'object:readContext(object.*)',
+        'objectOp:TenantBase.EmploymentRecord:create',
+        'object:object.* 动作',
+        'object:requireObjectWrite（对象写操作权）',
+      ],
+      [
+        at(
+          INTERN,
+          'POST',
+          '/interns/:id/terminate',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+        ),
+        READ,
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.Dimission@detail`,
+      [],
+      [
+        at(INTERN, 'POST', '/interns/:id/terminate', "{ guard: exitCommandGuard(deps, ctx, 'create', gate, {}) }"),
+        EXIT_GUARD,
+        EXIT_PERMISSION,
+        WRITE_BUTTON,
+      ],
+      '结束实习沿用直接离职的按钮（原站是否另有独立权限项未验证）',
+    ),
+    linkage(at(INTERN, 'POST', '/interns/:id/terminate', 'body: await terminateIntern(tx, context, id, input)')),
+  ],
   'POST /api/tenant/employment/rehire-matches': [
     ob(
       `obj:${EMPLOYEE}:create`,
@@ -1851,6 +1888,7 @@ export const EMPLOYMENT: RequiredTable = {
     '/part-times/batch-end',
     "const ctx = await readContext(c, deps, 'object.update')",
     'Employment.PartTimeBatchEnd',
+    'list',
   ),
   // ---- R2 BE-7 PT-4b 兼职新增申请入口（request-routes.ts）---------------------------------------------------------------------
   // 声明里对象操作与按钮是 requestType 的映射选择器，权限记为取值集合（obj:…:{create,update}、btn:…#{三个按钮}），一条义务各登记
@@ -3019,6 +3057,64 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ]),
   ),
+  // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
+  'GET /api/tenant/employment/retirement-rules': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIREMENT_RULE,
+          'GET',
+          '/retirement-rules',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/retirement-rules', 'create', 'input'],
+        ['PUT', '/retirement-rules/:id', 'update', 'input'],
+        ['POST', '/retirement-rules/:id/copy', 'create', '{}'],
+        ['PUT', '/retirement-rules/:id/enabled', 'update', '{ enabled }'],
+        ['DELETE', '/retirement-rules/:id', 'update', '{}'],
+      ] as const
+    ).map(([method, path, operation, payload]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            RETIREMENT_RULE,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${payload}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  'GET /api/tenant/employment/retirement-identity-types': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIREMENT_RULE,
+          'GET',
+          '/retirement-identity-types',
+          "const ctx = await readContext(c, deps, 'object.view', 0)",
+        ),
+        READ,
+      ],
+    ),
+  ],
   /**
    * 立即执行：准入只认配置写（admin:other_settings 不叠加数据范围，系统批次按规则适用组织办理）；任职记录查看权的
    * 披露用途另列 runReceiptDisclosure（第 4 轮审查 P2）。配置对象 update 义务的范围是回执的人员披露（同 BE-15a 第 2 轮审查 P1）——首次返回与同键重放都经 runWrite 的投影出口

@@ -17,18 +17,28 @@ import { findOverdueTransfers } from './activation-store.js';
 import { assessmentVoidNotice, inFlightAssessments, type InFlightAssessment } from './assessment-in-flight.js';
 import { EMPLOYMENT_OBJECT, employmentCreator, requireEmploymentWrite } from './context.js';
 import { currentEmploymentCycle } from './cycles.js';
+import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
 import { rowsOf } from './record-store.js';
 import { plannedEffectiveDate } from './timeline.js';
 import type { LockedEmploymentBusiness } from './record-store.js';
-import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
+import type { BusinessKind, ChangeType, EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { visibleEmploymentRecords } from './visibility.js';
 
 export type ExitOperation = 'create' | 'submit' | 'update' | 'withdraw' | 'cancel' | 'retry';
 /** createEmploymentBusiness 只认经过本门禁的离职创建（exit-application.ts 持有）；可信造数走 ctx.trustedExit。 */
 export const EXIT_GATE_PASS = Object.freeze({ passedExitGate: true });
 export const isExitKind = (kind: BusinessKind) => kind === 'leave' || kind === 'retirement';
+
+/**
+ * 离职单的生效来源（单一判定）：变动类型“实习结束”的直接离职是免审批直接生效（DEC-593①），其余按办理方式。
+ * 来源跟着离职单的变动类型走，所以调度、HR 重试在到期后生效时与保存当场生效同一来源，不需要另存一列。
+ */
+export function exitSourceOf(mode: string, changeType: string | null | undefined): ExitActivationSource {
+  if (mode === 'direct' && changeType === 'intern_end') return 'free_direct';
+  return mode === 'direct' ? 'direct' : 'approval';
+}
 
 const buttonsFor = (kind: BusinessKind) => ({ ...buttonsOf(kind), retry: 'Employment.RetryActivation' }) as const;
 /** 门禁目标的业务类型：显式给出 > 已加载业务的载荷 > 缺省离职（无业务的旧入口都是离职）。 */
@@ -63,6 +73,8 @@ export interface ExitGateTarget {
   /** 创建时写入的任职载荷（字段权限按键校验）。 */
   readonly payload?: object;
   readonly exit?: ExitOptions;
+  /** 变动类型“实习结束”的直接离职是免审批直接生效（DEC-593），门禁据此放行转正在途（regularizationBlocker）。 */
+  readonly changeType?: ChangeType;
   readonly business?: LockedEmploymentBusiness;
   readonly patch?: EmploymentBusinessPatch;
   /** cancel：通用 DELETE（object.delete）还是 revoke（object.update）。 */
@@ -264,8 +276,9 @@ export interface Disclosable {
 const DISCLOSE_LIMIT = 1000;
 
 /**
- * 预览用披露（F-237）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与 disclose 完全一致；
- * 只给只读预览用（候选查询至多 1001 条，故至多两批），保存 / 门禁路径仍走 disclose，不全局放宽。
+ * 只读投影用披露（F-237 预览；#451 撤销清单响应）：清单超过 disclose 的单次上限时受控分批披露后汇总，逐项裁剪口径与
+ * disclose 完全一致，不截断目标、不放宽业务准入上限。保存 / 门禁路径仍走 disclose，不全局放宽。
+ * 撤销清单的响应投影发生在撤销提交之后，目标数 = 作废申请（≤ 上限）+ 兼职等追加类目，可能略超单批上限，必须分批而不是 413。
  */
 export async function batchDisclose(tx: Tx, ctx: EmploymentContext, employeeId: string, rows: readonly Disclosable[]) {
   const parts = [];
@@ -338,8 +351,20 @@ export const REGULARIZATION_KINDS = ['intern_regularization', 'labor_regularizat
 const plannedRows = (rows: readonly InFlight[]) =>
   rows.map((row) => ({ id: row.id, effectiveDate: row.planned, departmentId: row.departmentId }));
 
-/** §8B：审批中、计划生效日 ≤ 最后工作日的劳务转正式 / 实习转正的披露；没有返回 null。 */
-export async function regularizationBlocker(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
+/**
+ * §8B：审批中、计划生效日 ≤ 最后工作日的劳务转正式 / 实习转正的披露；没有返回 null。
+ * 例外只有一处（DEC-593③④）：免审批直接生效（结束实习）不被转正在途拦截——HR 在保存前已确认“结束实习将作废该申请”，
+ * 申请随生效链步骤 1 一并作废。入口 409（createConditions）与顺延后重验（步骤 0b）都经这里，来源判定不散在调用方。
+ * 经离职管理正常发起的离职（direct / approval）仍按 §8B 拦截。
+ */
+export async function regularizationBlocker(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  source: ExitActivationSource = 'direct',
+) {
+  if (source === 'free_direct') return null;
   const rows = (await inFlightApplications(tx, ctx, employeeId, REGULARIZATION_KINDS, ['in_review'])).filter(
     (row) => row.planned <= lastWorkDate,
   );
@@ -352,8 +377,9 @@ async function assertNoRegularizationInFlight(
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string,
+  source?: ExitActivationSource,
 ) {
-  const found = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate);
+  const found = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate, source);
   if (found) throw conflict('EXIT_REGULARIZATION_IN_FLIGHT', '存在审批中的转正流程，请先处理', found);
 }
 
@@ -520,6 +546,21 @@ async function assertNoLeaveInProgress(tx: Tx, ctx: EmploymentContext, employeeI
     throw conflict('EXIT_IN_PROGRESS', '该员工已有未办结的离职或退休');
 }
 
+/** 最后工作日不早于当前周期的入职生效日期（离职与结束实习共用，结束实习在资格检查前先判日期）。 */
+export async function assertLastWorkDateNotBeforeEntry(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+) {
+  const cycle = await currentEmploymentCycle(tx, ctx, employeeId);
+  if (cycle && lastWorkDate < cycle.entryDate)
+    throw new AppError('VALIDATION_FAILED', `最后工作日不能早于入职生效日期（${cycle.entryDate}）`, {
+      reason: 'EXIT_LAST_WORK_DATE_BEFORE_ENTRY',
+      entryDate: cycle.entryDate,
+    });
+}
+
 async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGateTarget): Promise<AckRecord | null> {
   const exit = target.exit ?? {};
   const lastWorkDate = target.lastWorkDate!;
@@ -529,15 +570,16 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
     assertActualLeaveDate(exit.actualLeaveDate, lastWorkDate);
     await assertDictionaries(tx, ctx, exit);
   }
-  const cycle = await currentEmploymentCycle(tx, ctx, target.employeeId);
-  if (cycle && lastWorkDate < cycle.entryDate)
-    throw new AppError('VALIDATION_FAILED', `最后工作日不能早于入职生效日期（${cycle.entryDate}）`, {
-      reason: 'EXIT_LAST_WORK_DATE_BEFORE_ENTRY',
-      entryDate: cycle.entryDate,
-    });
+  await assertLastWorkDateNotBeforeEntry(tx, ctx, target.employeeId, lastWorkDate);
   await assertNoLeaveInProgress(tx, ctx, target.employeeId);
   await assertNoOverdueTransfer(tx, ctx, target.employeeId);
-  await assertNoRegularizationInFlight(tx, ctx, target.employeeId, lastWorkDate);
+  await assertNoRegularizationInFlight(
+    tx,
+    ctx,
+    target.employeeId,
+    lastWorkDate,
+    target.mode && exitSourceOf(target.mode, target.changeType),
+  );
   return checkPendingTransferAck(tx, ctx, target.employeeId, lastWorkDate, exit.pendingTransferAck, null);
 }
 
