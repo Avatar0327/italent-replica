@@ -99,9 +99,25 @@ export interface Options {
   buttons?: string[];
   viewableFields?: string[];
 }
+/**
+ * 可变的“服务端状态”：用例在写接口里改它，写后回读（员工 / 申请单 revision、列表）按它返回。
+ * record 是当前主职任职（GET /employees/:id/records 的 isCurrent + primary 行的 fields）。
+ */
+export interface Server {
+  employeeRevision: number;
+  businessRevision: number;
+  record: Record<string, unknown>;
+  listStatus: number;
+}
 /** 列表请求按 view 返回对应视图的一行；读回 query 便于断言。 */
 export async function setup(page: Page, options: Options = {}) {
   const queries: URLSearchParams[] = [];
+  const server: Server = {
+    employeeRevision,
+    businessRevision: rows.converting.revision,
+    record: { departmentId: department, positionId: null, directManagerId: null, dottedManagerId: null },
+    listStatus: 200,
+  };
   await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
@@ -127,7 +143,12 @@ export async function setup(page: Page, options: Options = {}) {
     const query = new URL(route.request().url()).searchParams;
     queries.push(query);
     const view = (query.get('view') ?? 'interning') as InternViewKey;
-    route.fulfill({
+    if (server.listStatus !== 200)
+      return route.fulfill({
+        status: server.listStatus,
+        json: { error: { code: 'UNAVAILABLE', message: '暂不可用' } },
+      });
+    return route.fulfill({
       json: { items: [rows[view]], page: Number(query.get('page')), pageSize: 30, hasDataPermission: true },
     });
   });
@@ -151,13 +172,27 @@ export async function setup(page: Page, options: Options = {}) {
     route.fulfill({ json: { id: employee, name: base.name, code: base.code, revision: 1 } }),
   );
   await page.route(`**/employment/employees/${employee}`, (route) =>
-    route.fulfill({ json: { id: employee, code: base.code, name: base.name, revision: employeeRevision } }),
+    route.fulfill({ json: { id: employee, code: base.code, name: base.name, revision: server.employeeRevision } }),
   );
+  await page.route(`**/employment/employees/${employee}/records?*`, (route) =>
+    route.fulfill({
+      json: {
+        items: [{ id: recordId, employeeId: employee, serviceType: 'primary', isCurrent: true, fields: server.record }],
+        page: 1,
+        pageSize: 200,
+        hasDataPermission: true,
+      },
+    }),
+  );
+  await page.route('**/employment/businesses/*', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    return route.fulfill({ json: { id, employeeId: employee, revision: server.businessRevision } });
+  });
   await page.goto('/interns');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.waitForURL('/staff');
   await page.goto('/interns');
-  return queries;
+  return { queries, server };
 }
 
 const labels = { interning: '实习中', converting: '实习转正中', converted: '已转正', left: '已离职' } as const;

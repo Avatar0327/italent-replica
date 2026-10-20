@@ -17,6 +17,8 @@ import {
   entriesFor,
   formFields,
   listPath,
+  openingValues,
+  terminateOpening,
   regularizeBody,
   terminateBody,
   validateRegularize,
@@ -202,5 +204,33 @@ describe('AC-FE-R2d3 回执与二次确认按真实接口形状', () => {
     ).toEqual({ pendingTransferAck: 'token' });
     expect(confirmationOf(conflict({ reason: 'NOT_INTERN' }))).toBeUndefined();
     expect(confirmationOf({ status: 400, details: { reason: 'CONFIRMATION_REQUIRED' } })).toBeUndefined();
+  });
+});
+
+describe('AC-FE-R2d3 打开基线与 409 重读同源（第 1 轮 P2-1）', () => {
+  it('部门 / 职位 / 汇报关系取当前主职任职投影，转正日期为空，直接转正默认有试用期', () => {
+    const record = { fields: { departmentId: 'dept', positionId: 'pos', directManagerId: 'mgr', levelId: 'lv' } };
+    expect(openingValues(false, record)).toEqual({
+      effectiveDate: null,
+      departmentId: 'dept',
+      positionId: 'pos',
+      directManagerId: 'mgr',
+      dottedManagerId: null,
+      probation: true,
+      probationMonths: null,
+      probationEndDate: null,
+    });
+    expect(openingValues(true, record)).toEqual({
+      effectiveDate: null,
+      departmentId: 'dept',
+      positionId: 'pos',
+      directManagerId: 'mgr',
+      dottedManagerId: null,
+    });
+  });
+  it('字段被裁剪（缺键）或没有当前任职：投影为空，不拿列表行或别的字段补值', () => {
+    expect(openingValues(true, { fields: {} })).toMatchObject({ departmentId: null, directManagerId: null });
+    expect(openingValues(true)).toMatchObject({ departmentId: null });
+    expect(terminateOpening()).toEqual({ endDate: null, cancelPendingEntry: false });
   });
 });

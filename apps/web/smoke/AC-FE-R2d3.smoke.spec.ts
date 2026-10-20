@@ -2,6 +2,7 @@ import type { Page, Request } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
 import {
   applicationId,
+  department,
   business,
   conflict,
   employeeRevision,
@@ -55,7 +56,7 @@ const posted = (request: Request) => ({
 });
 
 test('AC-FE-R2d3-01 四视图各按 view 读，列按投影，筛选 / 分页 / 切换视图不串数据', async ({ page }) => {
-  const queries = await setup(page);
+  const { queries } = await setup(page);
   await expect(page.getByRole('heading', { name: '实习生', exact: true })).toBeVisible();
   expect(queries[0]?.get('view')).toBe('interning');
   expect(queries[0]?.get('pageSize')).toBe('30');
@@ -91,7 +92,7 @@ test('AC-FE-R2d3-02 筛选字段不可见时不显示控件；无按钮时详情
 });
 
 test('AC-FE-R2d3-03 直接实习转正：试用期自动算、超编确认后同一上下文重提、成功后刷新', async ({ page }) => {
-  const queries = await setup(page);
+  const { queries, server } = await setup(page);
   const sent: ReturnType<typeof posted>[] = [];
   await page.route(`**/employment/interns/${employee}/regularize`, (route) => {
     sent.push(posted(route.request()));
@@ -99,6 +100,7 @@ test('AC-FE-R2d3-03 直接实习转正：试用期自动算、超编确认后同
       return route.fulfill(
         conflict('已超出设定编制，确认后继续保存', { reason: 'CONFIRMATION_REQUIRED', warnings: [] }),
       );
+    server.employeeRevision = employeeRevision + 1;
     return route.fulfill({ status: 201, json: business('intern_regularization') });
   });
   await openDetail(page, 'interning');
@@ -136,7 +138,7 @@ test('AC-FE-R2d3-03 直接实习转正：试用期自动算、超编确认后同
 });
 
 test('AC-FE-R2d3-04 结束实习：在途转正确认、显示取消待入职开关，确认后重提', async ({ page }) => {
-  await setup(page);
+  const { server } = await setup(page);
   const sent: ReturnType<typeof posted>[] = [];
   await page.route(`**/employment/interns/${employee}/terminate`, (route) => {
     sent.push(posted(route.request()));
@@ -148,6 +150,7 @@ test('AC-FE-R2d3-04 结束实习：在途转正确认、显示取消待入职开
           hiddenCount: 0,
         }),
       );
+    server.employeeRevision = employeeRevision + 1;
     return route.fulfill({ status: 201, json: business('leave', { status: 'approved' }) });
   });
   await openDetail(page, 'interning');
@@ -172,7 +175,7 @@ test('AC-FE-R2d3-04 结束实习：在途转正确认、显示取消待入职开
 });
 
 test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草稿', async ({ page }) => {
-  await setup(page);
+  const { server } = await setup(page);
   const created: ReturnType<typeof posted>[] = [];
   const submitted: ReturnType<typeof posted>[] = [];
   const draft = business('intern_regularization', {
@@ -183,10 +186,12 @@ test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草
   });
   await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
     created.push(posted(route.request()));
+    [server.employeeRevision, server.businessRevision] = [employeeRevision + 1, 1];
     return route.fulfill({ status: 201, json: draft });
   });
   await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
     submitted.push(posted(route.request()));
+    server.businessRevision = 2;
     return route.fulfill({ json: { ...draft, status: 'in_review', revision: 2 } });
   });
   await openDetail(page, 'interning');
@@ -209,10 +214,11 @@ test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草
 });
 
 test('AC-FE-R2d3-06 实习转正中：撤回审批中的申请，入口不含实习转正申请', async ({ page }) => {
-  await setup(page);
+  const { server } = await setup(page);
   const withdrawn: ReturnType<typeof posted>[] = [];
   await page.route(`**/employment/businesses/${applicationId}/withdraw`, (route) => {
     withdrawn.push(posted(route.request()));
+    server.businessRevision = 4;
     return route.fulfill({
       json: business('intern_regularization', { id: applicationId, status: 'draft', revision: 4 }),
     });
@@ -259,21 +265,19 @@ test('AC-FE-R2d3-07 结果未知只读锁定：关闭重开、换入口仍锁定
 });
 
 test('AC-FE-R2d3-08 409 版本冲突：重读员工最新 revision、保留输入，核对后按新版本重提', async ({ page }) => {
-  await setup(page);
+  const { server } = await setup(page);
   const sent: ReturnType<typeof posted>[] = [];
   await page.route(`**/employment/interns/${employee}/terminate`, (route) => {
     sent.push(posted(route.request()));
     if (sent.length === 1)
       return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    server.employeeRevision = employeeRevision + 2;
     return route.fulfill({ status: 201, json: business('leave', { employeeRevision: employeeRevision + 2 }) });
   });
   await openDetail(page, 'interning');
   await page.getByRole('button', { name: '结束实习', exact: true }).click();
   await date(page, '实习结束日期', '2026-10-31');
-  await page.unroute(`**/employment/employees/${employee}`);
-  await page.route(`**/employment/employees/${employee}`, (route) =>
-    route.fulfill({ json: { id: employee, revision: employeeRevision + 1 } }),
-  );
+  server.employeeRevision = employeeRevision + 1;
   await save(page).click();
   await expect(
     dialog(page)
@@ -287,4 +291,83 @@ test('AC-FE-R2d3-08 409 版本冲突：重读员工最新 revision、保留输�
   await expect(page.getByText('结束实习成功')).toBeVisible();
   expect(sent.map((item) => item.ifMatch)).toEqual([String(employeeRevision), String(employeeRevision + 1)]);
   expect(sent[1]!.body).toEqual({ endDate: '2026-10-31' });
+});
+
+test('AC-FE-R2d3-09 409 重读回填任职字段：默认部门未改、服务端部门已变，重提发最新部门（第 1 轮 P2-1）', async ({
+  page,
+}) => {
+  const { server } = await setup(page);
+  const sent: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/interns/${employee}/regularize`, (route) => {
+    sent.push(posted(route.request()));
+    if (sent.length === 1)
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    server.employeeRevision = employeeRevision + 2;
+    return route.fulfill({
+      status: 201,
+      json: business('intern_regularization', { employeeRevision: employeeRevision + 2 }),
+    });
+  });
+  await openDetail(page, 'interning');
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(dialog(page).getByText('合成实习部门').first()).toBeVisible();
+  await date(page, '实习转正日期', '2026-10-16');
+  await dialog(page).getByRole('radio', { name: '否' }).check();
+  // 另一位 HR 已把当前主职部门改成“合成转正部门”，员工 revision + 1
+  server.record = { ...server.record, departmentId: target };
+  server.employeeRevision = employeeRevision + 1;
+  await save(page).click();
+  await dialog(page).getByRole('button', { name: '重读最新版本' }).click();
+  await expect(dialog(page).getByRole('cell', { name: '部门', exact: true })).toBeVisible();
+  await dialog(page).getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await save(page).click();
+  await expect(page.getByText('实习转正成功')).toBeVisible();
+  expect(sent[0]!.body).toMatchObject({ departmentId: department, effectiveDate: '2026-10-16', probation: false });
+  expect(sent[1]!.body).toEqual({ effectiveDate: '2026-10-16', departmentId: target, probation: false });
+  expect(sent.map((item) => item.ifMatch)).toEqual([String(employeeRevision), String(employeeRevision + 1)]);
+});
+
+test('AC-FE-R2d3-10 写后列表读取失败：结果待确认、关闭重开与换入口仍锁定（第 1 轮 P2-2）', async ({ page }) => {
+  const { server } = await setup(page);
+  let attempts = 0;
+  await page.route(`**/employment/interns/${employee}/terminate`, (route) => {
+    attempts += 1;
+    [server.employeeRevision, server.listStatus] = [employeeRevision + 1, 503];
+    return route.fulfill({ status: 201, json: business('leave') });
+  });
+  await openDetail(page, 'interning');
+  await page.getByRole('button', { name: '结束实习', exact: true }).click();
+  await date(page, '实习结束日期', '2026-10-31');
+  await save(page).click();
+  await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
+  await expect(page.getByText('结束实习成功')).toHaveCount(0);
+  await expect(save(page)).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '结束实习', exact: true }).click();
+  await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(dialog(page).getByText('本对象有未确认的其他操作，确认结果前不能发起新操作。')).toBeVisible();
+  await expect(save(page)).toBeDisabled();
+  expect(attempts).toBe(1);
+});
+
+test('AC-FE-R2d3-11 写后回读 revision 未前进：直接转正按结果未知锁定，不提示成功（第 1 轮 P2-2）', async ({ page }) => {
+  await setup(page);
+  await page.route(`**/employment/interns/${employee}/regularize`, (route) =>
+    route.fulfill({ status: 201, json: business('intern_regularization') }),
+  );
+  await openDetail(page, 'interning');
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await date(page, '实习转正日期', '2026-10-16');
+  await dialog(page).getByRole('radio', { name: '否' }).check();
+  await save(page).click();
+  await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
+  await expect(page.getByText('实习转正成功')).toHaveCount(0);
+  await expect(save(page)).toBeDisabled();
 });
