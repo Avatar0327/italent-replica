@@ -116,9 +116,24 @@ function helpers(w: InternWorld, db: InternWorld['db'], api: Api, as: { user: st
     const saved = await api.request('PUT', '/api/tenant/contracts/settings', {
       ...as,
       ifMatch: revision,
-      body: { indefiniteTypeIds: [typeId] },
+      body: { indefiniteTypeIds: [typeId], accumulateRehire: true },
     });
     expect(saved.status, await saved.clone().text()).toBe(200);
+  }
+
+  /** 给人员补一份已生效的历史合同（累计签订次数 +1；合同模块直写命令）。 */
+  async function priorContract(employeeId: string, typeId: string, companyId: string, year: number) {
+    const response = await api.request('POST', '/api/tenant/contracts/commands', {
+      ...as,
+      ifMatch: 0,
+      body: {
+        operation: 'create',
+        mode: 'direct',
+        employeeId,
+        fields: { typeId, companyId, effectiveDate: `${year}-01-01`, endDate: `${year}-12-31` },
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
   }
 
   /** 已退休实习生（证件号 + 退休日），重聘候选的 endKind = retirement。 */
@@ -141,6 +156,7 @@ function helpers(w: InternWorld, db: InternWorld['db'], api: Api, as: { user: st
   return {
     commandResult,
     markIndefinite,
+    priorContract,
     retiredIntern,
     rehireBody,
     hireBody,

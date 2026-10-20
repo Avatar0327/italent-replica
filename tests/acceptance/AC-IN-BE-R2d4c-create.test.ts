@@ -312,15 +312,19 @@ describe('AC-IN-R2d4c-09 第 2 轮 P2-2：回执取自实际保存的合同，�
     expect(await c.contracts()).toEqual([]);
   });
 
-  it('合同类型被租户设为无固定期限（合同服务会把终止日置空）→ 拒绝并整体回滚，不回填请求值', async () => {
+  it('累计第 3 次签订且类型为无固定期限（合同服务会把终止日置空）→ 拒绝并整体回滚，不回填请求值', async () => {
     const c = await world('end-type-indefinite');
+    const left = await c.leftIntern('累计签订合成实习生');
+    await c.priorContract(left.employee.id, c.typeId, c.companyId, 2024);
+    await c.priorContract(left.employee.id, c.typeId, c.companyId, 2025);
     await c.markIndefinite(c.typeId);
-    const body = c.hireBody({ contract: { typeId: c.typeId, companyId: c.companyId, endDate: '2027-09-30' } });
-    const response = await c.create(body);
+    const { revision } = await c.w.session.getEmployee(left.employee.id);
+    const contract = { typeId: c.typeId, companyId: c.companyId, endDate: '2027-09-30' };
+    const response = await c.create(c.rehireBody(left.employee.id, { contract }), { ifMatch: revision });
     expect(response.status, await response.clone().text()).toBe(400);
     expect(await reasonOf(response)).toBe('INTERN_CONTRACT_TERM_CONFLICT');
-    expect(await c.employeesByCode(body.code as string)).toEqual([]);
-    expect(await c.contracts()).toEqual([]);
+    expect(await c.contracts()).toHaveLength(2);
+    expect(await c.w.session.records(left.employee.id)).toHaveLength(2);
   });
 });
 

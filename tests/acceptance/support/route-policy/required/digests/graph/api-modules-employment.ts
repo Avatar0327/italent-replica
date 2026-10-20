@@ -2807,6 +2807,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-create.ts#resolveEmployee': [
     'apps/api/src/modules/employment/employees.ts#createEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord',
+    'apps/api/src/modules/employment/write-service.ts#sequenceViolation',
   ],
   'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable': [
     '#assertNothingEndsInternshipAfter',
@@ -5900,7 +5902,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
     'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#latestTimelineRecord',
     '#sequenceViolation',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
@@ -5966,6 +5968,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#insertNewEmploymentCycle': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
