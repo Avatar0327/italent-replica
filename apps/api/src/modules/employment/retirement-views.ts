@@ -41,18 +41,21 @@ const dayEnd = ({ asOf, timezone }: RetirementAsOf): SQL =>
 
 // ---- 退休单行（退休中 / 已完成 / 全部）--------------------------------------------------------------------------------
 
+/** “首个 in_review / approved 事件”的时间（已提交的事实依据，别名 sub）；人事看板的离职 / 调动 / 转正在途同用。 */
+export const SUBMITTED_AT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
+      WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id AND ev.state IN ('in_review','approved')) sub ON true`;
+
 /** 退休单在离职候选集之上的追加：退休扩展行与“首个 in_review / approved 事件”的时间（已提交的事实依据）。 */
 export const RETIREMENT_SOURCE: CandidateSource = {
   kind: 'retirement',
   columns: sql`rr.retire_type AS "retireType", rr.re_employed AS "reEmployed",
       rr.expected_retirement_date::text AS "expectedRetirementDate", sub.at AS "submittedAt",`,
   joins: sql`LEFT JOIN retirement_requests rr ON rr.tenant_id=x.tenant_id AND rr.business_id=x.business_id
-    LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
-      WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id AND ev.state IN ('in_review','approved')) sub ON true`,
+    ${SUBMITTED_AT_JOIN}`,
 };
 
 /** 谓词表（§10.2）：processing = 流程中，或 effective 且 E′ > asOf 且已提交；completed = effective 且 E′ ≤ asOf。 */
-function billPredicate(view: RetirementBillView, at: RetirementAsOf): SQL {
+export function billPredicate(view: RetirementBillView, at: RetirementAsOf): SQL {
   const end = dayEnd(at);
   switch (view) {
     case 'processing':

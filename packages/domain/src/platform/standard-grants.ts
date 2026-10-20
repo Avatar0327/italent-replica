@@ -79,6 +79,9 @@ export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
   // DEC-415：R2 BE-15b1 试用期考核（组织员工模块）给本模块的预置管理员
   approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.ProbationAssessment', 'DEC-415'),
   approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.ProbationAssessment', 'DEC-415'),
+  // DEC-415：R2 BE-12b 人事看板（组织员工模块）给本模块的预置管理员
+  approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.HrDashboard', 'DEC-415'),
+  approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.HrDashboard', 'DEC-415'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RiskLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.HealthLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.Population', 'DEC-384'),

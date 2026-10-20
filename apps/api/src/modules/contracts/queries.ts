@@ -158,32 +158,28 @@ async function missingContracts(tx: Tx, { ctx, query, limit, offset, today, orgI
   return { items, total: count?.total ?? 0 };
 }
 
-/** 三个合同记录视图各自的基础条件。 */
-function viewPredicate(query: ListQuery, config: { renewalTypeIds: string[] }, today: string): SQL {
+/**
+ * 即将到期的合同（不含在途续签排除）：有效、终止日在 [today, today + days]（含两端）、尚无后续合同接上。
+ * 合同列表“即将到期”在此之上再排除在途续签（A1）；人事看板“未来 30 天合同到期”（规格 35 §2.1 #6“尚未续签生效”）不排除。
+ */
+export function expiringContract(today: string, days: number, config: { renewalTypeIds: string[] }): SQL {
   const c = contractRecords;
-  let view = sql`true`;
-  if (query.view === 'valid')
-    view = sql`${c.status}='valid' AND ${c.effectiveDate}<=${today}::date
-      AND (${c.endDate} IS NULL OR ${c.endDate}>=${today}::date)`;
-  if (query.view === 'expiring') {
-    // A1：已有后续续签合同、或已有针对本合同（或同员工同类型接在终止日次日）的在途 / 已通过续签申请的，不再算即将到期
-    view = sql`${c.status}='valid' AND ${c.endDate} BETWEEN ${today}::date AND ${today}::date+${query.days}::int
-      AND NOT ${successorExists(
-        {
-          tenantId: sql`${c.tenantId}`,
-          employeeId: sql`${c.employeeId}`,
-          typeId: sql`${c.typeId}`,
-          endDate: sql`${c.endDate}`,
-        },
-        config.renewalTypeIds,
-      )}
-      AND NOT EXISTS (SELECT 1 FROM contract_requests q WHERE q.tenant_id=${c.tenantId}
-        AND q.operation IN ('create','renew') AND q.status IN ('in_review','approved')
-        AND (q.target_id=${c.id} OR (q.employee_id=${c.employeeId} AND q.type_id=${c.typeId}
-          AND q.effective_date=${c.endDate}+1)))`;
-  }
-  if (query.view === 'expired_unrenewed') {
-    view = sql`${c.status}<>'void' AND ${c.endDate}<${today}::date
+  return sql`${c.status}='valid' AND ${c.endDate} BETWEEN ${today}::date AND ${today}::date+${days}::int
+    AND NOT ${successorExists(
+      {
+        tenantId: sql`${c.tenantId}`,
+        employeeId: sql`${c.employeeId}`,
+        typeId: sql`${c.typeId}`,
+        endDate: sql`${c.endDate}`,
+      },
+      config.renewalTypeIds,
+    )}`;
+}
+
+/** 过期未续签的合同：终止日已过、未终止在到期日之前、没有变更链与后续合同；列表“过期未续签”与人事看板“合同已过期”共用。 */
+export function expiredUnrenewedContract(today: string, config: { renewalTypeIds: string[] }): SQL {
+  const c = contractRecords;
+  return sql`${c.status}<>'void' AND ${c.endDate}<${today}::date
       AND (${c.actualTerminationDate} IS NULL OR ${c.actualTerminationDate}>=${c.endDate})
       AND NOT EXISTS (SELECT 1 FROM contract_changes change
         WHERE change.tenant_id=${c.tenantId} AND change.before_contract_id=${c.id})
@@ -196,7 +192,24 @@ function viewPredicate(query: ListQuery, config: { renewalTypeIds: string[] }, t
         },
         config.renewalTypeIds,
       )}`;
+}
+
+/** 三个合同记录视图各自的基础条件。 */
+function viewPredicate(query: ListQuery, config: { renewalTypeIds: string[] }, today: string): SQL {
+  const c = contractRecords;
+  let view = sql`true`;
+  if (query.view === 'valid')
+    view = sql`${c.status}='valid' AND ${c.effectiveDate}<=${today}::date
+      AND (${c.endDate} IS NULL OR ${c.endDate}>=${today}::date)`;
+  if (query.view === 'expiring') {
+    // A1：已有后续续签合同、或已有针对本合同（或同员工同类型接在终止日次日）的在途 / 已通过续签申请的，不再算即将到期
+    view = sql`${expiringContract(today, query.days, config)}
+      AND NOT EXISTS (SELECT 1 FROM contract_requests q WHERE q.tenant_id=${c.tenantId}
+        AND q.operation IN ('create','renew') AND q.status IN ('in_review','approved')
+        AND (q.target_id=${c.id} OR (q.employee_id=${c.employeeId} AND q.type_id=${c.typeId}
+          AND q.effective_date=${c.endDate}+1)))`;
   }
+  if (query.view === 'expired_unrenewed') view = expiredUnrenewedContract(today, config);
   return view;
 }
 

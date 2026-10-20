@@ -307,6 +307,9 @@ export const MODULE_OBJECTS = {
     crud,
     ['operatorUserId'],
   ),
+  // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
+  // 看全部默认给本模块的预置管理员（DEC-415）
+  hrDashboard: object('HrDashboard', [], []),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(

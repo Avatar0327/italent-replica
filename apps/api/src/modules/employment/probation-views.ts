@@ -122,18 +122,15 @@ const probationInfo = sql`SELECT
         THEN (anchor.start_date + make_interval(months => pv.months::integer))::date - 1
     END AS end_date`;
 
-export async function listProbationView(
-  tx: Tx,
+/**
+ * 试用期视图的候选行（FROM … WHERE …，别名 cr / e / st / pi / snap / reg / pick 等）：列表与人事看板（analytics/hr-dashboard，
+ * BE-12b）共用，视图谓词只有这一份；今天 = asOf，范围过滤在分页之前。
+ */
+export function probationViewRows(
   tenantId: string,
-  input: {
-    readonly view: ProbationView;
-    readonly today: string;
-    readonly page: PageQuery;
-    readonly filter: ProbationViewFilter;
-  },
+  input: { readonly view: ProbationView; readonly today: string; readonly filter: ProbationViewFilter },
   scope: EmploymentScope | undefined,
-): Promise<ProbationViewItem[]> {
-  checkPage(input.page);
+): SQL {
   const department = sql`COALESCE(snap.department_id, cr.department_id)`;
   const visible = employmentScopePredicate(
     scope,
@@ -145,17 +142,7 @@ export async function listProbationView(
     ENTRY_LIKE_KINDS.map((kind) => sql`${kind}`),
     sql`, `,
   );
-  const items = rowsOf<Omit<ProbationViewItem, 'organizationId'>>(
-    await tx.execute(sql`
-    SELECT cr.id, cr.employee_id AS "employeeId", e.code,
-      ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
-      ${department} AS "departmentId", COALESCE(snap.post_id, cr.post_id) AS "postId",
-      st.employee_status::integer AS "employeeStatus", e.revision,
-      pi.has_probation AS "hasProbation", pi.start_date::text AS "startDate", pv.months::integer AS months,
-      pi.end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
-      pick.id AS "regularizationBusinessId", pick.state AS "regularizationState",
-      pick.mode AS "regularizationMode", pick.result_code AS "probationResult",
-      asm.id AS "assessmentId", asm.assessment_type AS "assessmentType"
+  return sql`
     FROM employment_timeline cur
     JOIN employment_records cr ON cr.tenant_id=cur.tenant_id AND cr.id=cur.record_id
     JOIN employment_employees e ON e.tenant_id=cr.tenant_id AND e.id=cr.employee_id
@@ -183,7 +170,34 @@ export async function listProbationView(
     WHERE cur.tenant_id=${tenantId} AND cur.valid_during @> ${input.today}::date
       AND st.employee_status IN (${EMPLOYEE_STATUS.probation}, ${EMPLOYEE_STATUS.regular})
       AND ${viewPredicate(input.view, input.filter, input.today)}
-      AND ${filterPredicate(tenantId, input.filter)} AND ${visible}
+      AND ${filterPredicate(tenantId, input.filter)} AND ${visible}`;
+}
+
+export async function listProbationView(
+  tx: Tx,
+  tenantId: string,
+  input: {
+    readonly view: ProbationView;
+    readonly today: string;
+    readonly page: PageQuery;
+    readonly filter: ProbationViewFilter;
+  },
+  scope: EmploymentScope | undefined,
+): Promise<ProbationViewItem[]> {
+  checkPage(input.page);
+  const department = sql`COALESCE(snap.department_id, cr.department_id)`;
+  const items = rowsOf<Omit<ProbationViewItem, 'organizationId'>>(
+    await tx.execute(sql`
+    SELECT cr.id, cr.employee_id AS "employeeId", e.code,
+      ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
+      ${department} AS "departmentId", COALESCE(snap.post_id, cr.post_id) AS "postId",
+      st.employee_status::integer AS "employeeStatus", e.revision,
+      pi.has_probation AS "hasProbation", pi.start_date::text AS "startDate", pv.months::integer AS months,
+      pi.end_date::text AS "expectedEndDate", reg.effective_date AS "regularizationDate",
+      pick.id AS "regularizationBusinessId", pick.state AS "regularizationState",
+      pick.mode AS "regularizationMode", pick.result_code AS "probationResult",
+      asm.id AS "assessmentId", asm.assessment_type AS "assessmentType"
+    ${probationViewRows(tenantId, input, scope)}
     ORDER BY pi.end_date NULLS LAST, cr.employee_id
     LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
