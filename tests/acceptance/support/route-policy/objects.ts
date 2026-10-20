@@ -181,7 +181,7 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
   },
   { fn: 'objectContext', extract: (args, r) => [r.codes(args[2] ?? ''), opAt(args, 3, 'view')] },
   { fn: 'writeFields', extract: (args, r) => [r.codes(args[2] ?? ''), opAt(args, 3)] },
-  { fn: 'access', modules: ['personnel'], extract: (args, r) => [r.codes(args[2] ?? ''), opAt(args, 3)] },
+  { fn: 'access', modules: ['personnel', 'hr-analysis'], extract: (args, r) => [r.codes(args[2] ?? ''), opAt(args, 3)] },
   {
     fn: 'talentContext',
     modules: ['talent'],
