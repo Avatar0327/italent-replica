@@ -1651,7 +1651,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
     '1adfff90e2fd',
   ],
   'apps/api/src/modules/employment/part-time/request-read.ts#loadRequestReceipt': ['9d6b476984ca', '8df7bf7ccf3e'],
-  'apps/api/src/modules/employment/part-time/request-read.ts#requestDto': ['8ba2612a7503', 'e3b0c44298fc'],
+  'apps/api/src/modules/employment/part-time/request-read.ts#requestDto': ['2ff6fcaa9100', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/part-time/request-routes.ts#ACTIONS': ['3f4c650f9625', '27d39ccceb46'],
   'apps/api/src/modules/employment/part-time/request-routes.ts#ACTION_BUTTONS': ['0cf9d397ed95', '7692f890d8f1'],
   'apps/api/src/modules/employment/part-time/request-routes.ts#DATE_BUTTONS': ['d9c91010381e', '7692f890d8f1'],
