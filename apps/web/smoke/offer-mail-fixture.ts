@@ -2,6 +2,7 @@ import { offerExamples } from '../src/demo-stubs/offers.js';
 
 // 沿用 Offer 列表的合成样例；仅测试拦截返回此数据，产品读取真实接口。
 export const mailRow = offerExamples().find((row) => row.state === 'onboarded')!;
+export const sentMailRow = offerExamples().find((row) => row.state === 'sent')!;
 export const mailFixture = {
   offerId: mailRow.id,
   name: mailRow.name,

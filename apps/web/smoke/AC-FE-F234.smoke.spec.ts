@@ -1,5 +1,5 @@
 import { test, expect, snapshotFixture, tenant, user } from './fixtures.js';
-import { mailFixture, mailRow } from './offer-mail-fixture.js';
+import { mailFixture, mailRow, sentMailRow } from './offer-mail-fixture.js';
 
 const named = (name: string) => ({ name, exact: true });
 test.beforeEach(async ({ context, baseURL }) => {
@@ -14,6 +14,8 @@ test.beforeEach(async ({ context, baseURL }) => {
     if (path.includes('/permission/me/objects/'))
       return route.fulfill({ json: { dataOperations: { read: true }, viewableFields: ['name'], buttons: [] } });
     if (path.endsWith(`/offers/${mailRow.id}/mail`)) return route.fulfill({ json: mailFixture });
+    if (path.endsWith(`/offers/${sentMailRow.id}/mail`))
+      return route.fulfill({ json: { ...mailFixture, offerId: sentMailRow.id, name: sentMailRow.name } });
     return route.fulfill({ json: { items: [] } });
   });
 });
@@ -48,13 +50,14 @@ test('AC-FE-F234 下拉邮件入口同样打开新标签，待发没有邮件入
   await expect(page.getByRole('menuitem', named('查看Offer邮件'))).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByRole('button', named('已发Offer')).click();
-  await page.getByRole('row').filter({ hasText: '合成超编丙' }).getByRole('button', named('行操作')).click();
+  await page.getByRole('row').filter({ hasText: sentMailRow.name }).getByRole('button', named('行操作')).click();
   const item = page.getByRole('menuitem', named('查看Offer邮件'));
   await expect(item).not.toHaveAttribute('aria-disabled', 'true');
   const opened = context.waitForEvent('page');
   await item.click();
   const mail = await opened;
-  await expect(mail).toHaveURL(/\/offers\/demo-offer-03\/mail$/);
+  await expect(mail).toHaveURL(new RegExp(`/offers/${sentMailRow.id}/mail$`));
+  await expect(mail.getByRole('heading', named(sentMailRow.name))).toBeVisible();
   await expect(page).toHaveURL(/\/offers$/);
   await mail.close();
 });

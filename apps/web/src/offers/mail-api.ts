@@ -24,14 +24,12 @@ export async function readOfferMail(tenantId: string, id: string, signal: AbortS
   signal.throwIfAborted();
   if (response.status === 404 && body?.error?.details?.reason === 'OFFER_MAIL_NOT_SENT') return null;
   if (!response.ok) {
-    const kind =
-      response.status === 401
-        ? 'login'
-        : response.status === 403
-          ? 'forbidden'
-          : response.status === 404
-            ? 'not-found'
-            : 'unknown';
+    const kinds: Partial<Record<number, 'login' | 'forbidden' | 'not-found'>> = {
+      401: 'login',
+      403: 'forbidden',
+      404: 'not-found',
+    };
+    const kind = kinds[response.status] ?? 'unknown';
     const message = { login: ui.login, forbidden: ui.denied, 'not-found': ui.missing, unknown: ui.failed }[kind];
     throw new ApiError(response.status, body?.error?.code ?? 'REQUEST_FAILED', kind, message);
   }
