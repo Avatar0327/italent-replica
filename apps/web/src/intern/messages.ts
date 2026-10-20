@@ -71,7 +71,7 @@ export const m = {
   confirm: '确定',
   required: (label: string) => `请填写${label}`,
   denied: '没有该字段或按钮的操作权限',
-  refreshFailed: '已保存，但刷新列表失败，请手动刷新。',
+  unconfirmed: '已提交，但写后读取失败，结果待确认；请勿重复提交。',
   invalidReceipt: '回执与原单不符，请刷新后核对结果。',
   draftSaved: '申请草稿已保存（仅本页可见），提交草稿后进入审批。',
   success: {

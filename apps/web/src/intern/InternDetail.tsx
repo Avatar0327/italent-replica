@@ -4,7 +4,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
-import { useInternCommand, useLatest } from './commands.js';
+import { useBusinessRead, useInternCommand } from './commands.js';
 import { m } from './messages.js';
 import { acceptBusiness, businesses, entriesFor, object, type Entry, type InternView, type Row } from './model.js';
 import { RegularizeForm } from './RegularizeForm.js';
@@ -25,13 +25,12 @@ export function InternDetail({
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
-  const done = async () => {
+  // 写后回读与列表刷新已在提交完成路径里确认（commands.tsx settle），这里只关闭表单与详情
+  const done = () => {
     setOpen(undefined);
     onClose();
-    // 写入已确认，刷新失败只提示，不当作提交失败
-    await refresh().catch(() => void message.error(m.refreshFailed));
   };
-  const form = { row, onClose: () => setOpen(undefined), onDone: done };
+  const form = { row, onClose: () => setOpen(undefined), onDone: done, refresh };
   const actions = (
     <Space wrap>
       {entries
@@ -44,7 +43,7 @@ export function InternDetail({
       {entries
         .filter((entry): entry is 'withdraw' | 'revoke' => entry === 'withdraw' || entry === 'revoke')
         .map((entry) => (
-          <ApplicationAction key={entry} row={row} action={entry} onDone={done} />
+          <ApplicationAction key={entry} row={row} action={entry} onDone={done} refresh={refresh} />
         ))}
     </Space>
   );
@@ -63,24 +62,30 @@ function ApplicationAction({
   row,
   action,
   onDone,
+  refresh,
 }: {
   row: Row;
   action: 'withdraw' | 'revoke';
-  onDone(): Promise<void>;
+  onDone(): void;
+  refresh(): Promise<unknown>;
 }) {
-  const read = useLatest(slotKey(businesses, row.id), {});
-  const cmd = useInternCommand(businesses, { id: row.id, revision: row.revision, baseline: {}, read }, action);
+  const read = useBusinessRead(row.id);
+  const target = { id: row.id, revision: row.revision, baseline: {}, read };
+  const cmd = useInternCommand(businesses, target, action, refresh);
   const run = async () => {
     try {
       const done = await cmd.submit({}, [], {
         path: `${slotKey(businesses, row.id)}/${action}`,
         body: () => ({}),
-        accept: (raw, sent) =>
-          acceptBusiness(raw, { employeeId: row.employeeId!, kind: 'intern_regularization', sent, id: row.id }),
+        accept: (raw, sent) => {
+          const expected = { employeeId: row.employeeId!, kind: 'intern_regularization', sent, id: row.id };
+          const receipt = acceptBusiness(raw, expected);
+          return { path: slotKey(businesses, row.id), id: row.id, revision: Number(receipt.revision) };
+        },
       });
       if (!done) return;
       void message.success(m.success[action]);
-      await onDone();
+      onDone();
     } catch {
       // 拒绝 / 冲突 / 结果未知由内核状态条显示
     }

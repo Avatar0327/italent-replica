@@ -1,6 +1,6 @@
 import { expectedProbationEndDate } from '@italent/domain';
 import { Alert, Button, Descriptions, Form, Modal, Radio, Select, Space, message } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -12,8 +12,16 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { PageState } from '../foundation/PageState.js';
 import { refPaths } from '../part-time/references.js';
-import { useRead } from '../part-time/useRead.js';
-import { employeePath, useDrafts, useInternCommand, useLatest, type Draft } from './commands.js';
+import type { Latest } from '../foundation/forms/store.js';
+import {
+  employeePath,
+  useBusinessRead,
+  useDrafts,
+  useEmployeeRead,
+  useInternCommand,
+  useOpening,
+  type Draft,
+} from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
@@ -25,6 +33,7 @@ import {
   interns,
   monthOptions,
   object,
+  openingValues,
   regularizeBody,
   validateRegularize,
   type Row,
@@ -33,8 +42,10 @@ import {
 export interface FormProps {
   row: Row;
   onClose(): void;
-  /** 写入已确认：关闭表单与详情、刷新当前视图（成功后人员换视图，补证 R2d）。 */
-  onDone(): Promise<void>;
+  /** 写入与写后读取都已确认：关闭表单与详情（列表已在提交完成路径里刷新，补证 R2d 换视图）。 */
+  onDone(): void;
+  /** 写后刷新当前视图；失败按结果未知锁定（commands.tsx settle）。 */
+  refresh(): Promise<unknown>;
 }
 const kind = 'intern_regularization';
 
@@ -42,26 +53,48 @@ const kind = 'intern_regularization';
 export function RegularizeForm({ application, ...props }: FormProps & { application: boolean }) {
   const { drafts } = useDrafts();
   const draft = application ? drafts[props.row.employeeId!] : undefined;
-  return draft ? <DraftSubmit {...props} draft={draft} /> : <RegularizeEditor {...props} application={application} />;
+  const project = useCallback((record?: Values) => openingValues(application, record), [application]);
+  const read = useEmployeeRead(props.row.employeeId!, project, true);
+  if (draft) return <DraftSubmit {...props} draft={draft} />;
+  return (
+    <WithOpening read={read} title={application ? m.entries.apply : m.entries.regularize} onClose={props.onClose}>
+      {(opening) => <RegularizeEditor {...props} application={application} opening={opening} read={read} />}
+    </WithOpening>
+  );
 }
 
-function useRegularize({ row, onDone, application }: FormProps & { application: boolean }) {
+/** 基线读到之前只显示加载 / 错误（可重试），不拿空值或列表行冒充打开基线。 */
+export function WithOpening({
+  read,
+  title,
+  onClose,
+  children,
+}: {
+  read(): Promise<Latest>;
+  title: string;
+  onClose(): void;
+  children(opening: Latest): ReactNode;
+}) {
+  const opening = useOpening(read);
+  if (opening.data) return <>{children(opening.data)}</>;
+  return (
+    <Modal open title={title} footer={null} onCancel={onClose}>
+      <PageState kind={opening.error ? 'error' : 'loading'} error={opening.error} retry={opening.retry} />
+    </Modal>
+  );
+}
+
+type EditorProps = FormProps & { application: boolean; opening: Latest; read(): Promise<Latest> };
+function useRegularize({ row, onDone, refresh, application, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
-  const employee = useRead<Values>(employeePath(employeeId));
   const permissions = usePermissions(object);
   const permission = permissions.snapshot.objects[object];
-  const fields = formFields(application);
-  const editable = editableFields(fields, permission);
+  const editable = editableFields(formFields(application), permission);
   const { setDraft } = useDrafts();
   const [form] = Form.useForm();
-  const [baseline] = useState(() => projectFields({}, fields));
-  const read = useLatest(employeePath(employeeId), baseline);
-  const revision = employee.data?.revision as number | undefined;
-  const cmd = useInternCommand(
-    interns,
-    { id: employeeId, revision, baseline, read },
-    application ? 'apply' : 'regularize',
-  );
+  const [baseline] = useState(() => opening.values);
+  const target = { id: employeeId, revision: opening.revision, baseline, read };
+  const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', refresh);
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
   const locked = cmd.disabled || !permission?.dataOperations.create;
@@ -78,6 +111,9 @@ function useRegularize({ row, onDone, application }: FormProps & { application: 
         accept: (raw, sent) => {
           const receipt = acceptBusiness(raw, { employeeId, kind, sent });
           created = { id: String(receipt.id), revision: Number(receipt.revision) };
+          return application
+            ? { path: slotKey(businesses, created.id), id: created.id, revision: created.revision }
+            : { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };
         },
       });
       if (!done) return;
@@ -87,18 +123,18 @@ function useRegularize({ row, onDone, application }: FormProps & { application: 
         return;
       }
       void message.success(m.success.regularize);
-      await onDone();
+      onDone();
     } catch (cause) {
       if (!(cause && typeof cause === 'object' && 'errorFields' in cause)) setError(cause);
     }
   };
-  return { form, employee, permission, editable, cmd, error, locked, submit };
+  return { form, baseline, permission, editable, cmd, error, locked, submit };
 }
 
-function RegularizeEditor(props: FormProps & { application: boolean }) {
+function RegularizeEditor(props: EditorProps) {
   const { row, onClose, application } = props;
   const state = useRegularize(props);
-  const { form, employee, permission, editable, cmd, error, locked, submit } = state;
+  const { form, baseline, permission, editable, cmd, error, locked, submit } = state;
   const probation = Form.useWatch('probation', form) === true;
   const footer = (
     <Space>
@@ -125,7 +161,6 @@ function RegularizeEditor(props: FormProps & { application: boolean }) {
       closable={!cmd.form.busy}
       maskClosable={false}
     >
-      {!employee.data && <PageState kind={employee.error ? 'error' : 'loading'} error={employee.error} />}
       <CommandStatus submission={cmd.form} labels={m.labels} />
       {!!error && !cmd.form.state?.error && <Alert type="error" showIcon message={rejectionMessage(error)} />}
       <EmployeeSection row={row} />
@@ -134,7 +169,7 @@ function RegularizeEditor(props: FormProps & { application: boolean }) {
           form={form}
           layout="vertical"
           disabled={locked}
-          initialValues={{ departmentId: row.departmentId ?? null, ...(application ? {} : { probation: true }) }}
+          initialValues={baseline}
           onValuesChange={(changed: Values, all: Values) => fillProbationEnd(form, changed, all)}
         >
           <h3>{m.sections.employment}</h3>
@@ -259,13 +294,14 @@ function EmployeeSection({ row }: { row: Row }) {
 }
 
 /** 申请草稿已建好：提交走 POST /businesses/:id/submit（空体），草稿 revision 作 If-Match。 */
-function DraftSubmit({ row, draft, onClose, onDone }: FormProps & { draft: Draft }) {
+function DraftSubmit({ row, draft, onClose, onDone, refresh }: FormProps & { draft: Draft }) {
   const employeeId = row.employeeId!;
   const { setDraft } = useDrafts();
   const permissions = usePermissions(object);
   const allowed = !!permissions.snapshot.objects[object]?.dataOperations.update && permissions.can('Employment.Submit');
-  const read = useLatest(slotKey(businesses, draft.id), {});
-  const cmd = useInternCommand(businesses, { id: draft.id, revision: draft.revision, baseline: {}, read }, 'submit');
+  const read = useBusinessRead(draft.id);
+  const target = { id: draft.id, revision: draft.revision, baseline: {}, read };
+  const cmd = useInternCommand(businesses, target, 'submit', refresh);
   const locked = cmd.disabled || !allowed;
   const submit = async () => {
     if (locked) return;
@@ -273,12 +309,15 @@ function DraftSubmit({ row, draft, onClose, onDone }: FormProps & { draft: Draft
       const done = await cmd.submit({}, [], {
         path: `${slotKey(businesses, draft.id)}/submit`,
         body: () => ({}),
-        accept: (raw, sent) => acceptBusiness(raw, { employeeId, kind, sent, id: draft.id }),
+        accept: (raw, sent) => {
+          const receipt = acceptBusiness(raw, { employeeId, kind, sent, id: draft.id });
+          return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
+        },
       });
       if (!done) return;
       setDraft(employeeId, undefined);
       void message.success(m.success.apply);
-      await onDone();
+      onDone();
     } catch {
       // 拒绝 / 冲突 / 结果未知都由内核状态条显示
     }

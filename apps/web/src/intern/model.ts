@@ -7,8 +7,7 @@ import {
   type InternView,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
-import { validObject } from '../foundation/forms/ConflictCommands.js';
-import { isBlank, type Values } from '../foundation/forms/values.js';
+import { isBlank, projectFields, type Values } from '../foundation/forms/values.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { m } from './messages.js';
 
@@ -19,6 +18,12 @@ export const apiRoot = '/api/tenant/employment';
 export const interns = `${apiRoot}/interns`;
 export const businesses = `${apiRoot}/businesses`;
 export const pageSize = 30;
+/**
+ * 对象标识与 revision 可用（口径同 ConflictCommands validObject）。纯模型不引 TSX：根 tsconfig 不开 JSX，
+ * 单测直接引本文件（P2-3）。
+ */
+const validObject = (item: { id?: string; revision?: number }) =>
+  typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && (item.revision ?? -1) >= 0;
 export const views = INTERN_VIEWS.map((key) => ({ key, label: m.views[key] }));
 export type { InternView };
 
@@ -111,7 +116,8 @@ export function entriesFor(view: InternView, row: Row, p: ObjectPermission | und
 
 /** 表单字段：试用期三项是服务端控制项（policy.ts controls），随对象“新增”操作可写；其余按字段权限。 */
 export const probationFields = ['probation', 'probationMonths', 'probationEndDate'];
-const recordFields = ['effectiveDate', 'departmentId', 'positionId', 'directManagerId', 'dottedManagerId'];
+const reportingFields = ['positionId', 'directManagerId', 'dottedManagerId'];
+const recordFields = ['effectiveDate', 'departmentId', ...reportingFields];
 export const formFields = (application: boolean) =>
   application ? recordFields : [...recordFields, ...probationFields];
 export const terminateFields = ['endDate', 'cancelPendingEntry'];
@@ -127,6 +133,19 @@ export function editableFields(fields: readonly string[], p: ObjectPermission | 
   return fields.filter((field) => create && (controlFields.includes(field) || fieldAccess(p, field).editable));
 }
 
+/**
+ * 打开基线（与 409 重读同一投影）：部门、职位、汇报关系取当前主职任职（records 的 fields，按可见字段裁剪后缺键为空），
+ * 转正日期为空，直接转正默认有试用期（补证 R2f1）。默认带出的值就是基线，用户没改就不算修改。
+ */
+export function openingValues(application: boolean, record?: Values): Values {
+  return {
+    effectiveDate: null,
+    ...projectFields(record?.fields as Values | undefined, ['departmentId', ...reportingFields]),
+    ...(application ? {} : { probation: true, probationMonths: null, probationEndDate: null }),
+  };
+}
+export const terminateOpening = (): Values => ({ endDate: null, cancelPendingEntry: false });
+
 /** 本地校验在提交前抛出（ConflictCommands：send 里抛的错会被判为结果未知）。 */
 export function validateRegularize(values: Values, editable: readonly string[], application: boolean) {
   const required = ['effectiveDate', 'departmentId', ...(values.probation === true ? ['probationMonths'] : [])];
@@ -139,13 +158,12 @@ export function validateRegularize(values: Values, editable: readonly string[], 
 
 const present = (values: Values, keys: readonly string[]) =>
   Object.fromEntries(keys.filter((key) => !isBlank(values[key])).map((key) => [key, values[key]]));
-const reporting = ['positionId', 'directManagerId', 'dottedManagerId'];
 
 /** POST /interns/:id/regularize（intern-regularization.ts internRegularizationInput，严格体）。 */
 export function regularizeBody(values: Values): Values {
   const probation = values.probation === true;
   return {
-    ...present(values, ['effectiveDate', 'departmentId', ...reporting]),
+    ...present(values, ['effectiveDate', 'departmentId', ...reportingFields]),
     probation,
     ...(probation ? present(values, ['probationMonths', 'probationEndDate']) : {}),
   };
@@ -156,7 +174,7 @@ export function applicationBody(values: Values): Values {
     kind: 'intern_regularization',
     mode: 'application',
     effectiveDate: values.effectiveDate,
-    fields: present(values, ['departmentId', ...reporting]),
+    fields: present(values, ['departmentId', ...reportingFields]),
   };
 }
 /** POST /interns/:id/terminate（intern-termination.ts）：开关默认关，只有打开时才发。 */
