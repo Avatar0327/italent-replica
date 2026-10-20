@@ -4981,9 +4981,6 @@ export const GRAPH: Graph = {
     '#KIND',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
-  'apps/api/src/modules/employment/retirement-rule-routes.ts#SETTINGS': [
-    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
-  ],
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': [
     'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
     'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
@@ -4998,10 +4995,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': [
     'apps/api/src/modules/employment/context.ts#readContext',
-    '#SETTINGS',
     'apps/api/src/modules/employment/retirement-rules.ts#listRetirementRules',
     'apps/api/src/modules/employment/retirement-rules.ts#parseRulePurpose',
-    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
   ],
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules': [
     'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
