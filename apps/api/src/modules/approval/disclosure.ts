@@ -6,7 +6,6 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
-  APPROVAL_TYPES,
   instanceRecusal,
   jumpAllowed,
   nodeRecusal,
@@ -26,6 +25,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
+import { editSurface, type EditSurface } from './edit-surface.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
@@ -164,9 +164,15 @@ function pick(source: Readonly<Row>, fields: readonly string[]): Row {
 }
 
 /** 详情公布的动作与命令执行共用同一套判定（rules.ts），不公布执行不了的动作（X-15 / X-16 / F14 / F16）。 */
-function actionsFor(data: DetailData, userId: string, blind: boolean): string[] {
+function actionsFor(
+  data: DetailData,
+  userId: string,
+  blind: boolean,
+  viewable: ReadonlySet<string> | undefined,
+): { actions: string[]; edit: EditSurface | null } {
   const { instance, version, allTasks } = data;
   const actions: string[] = [];
+  let edit: EditSurface | null = null;
   const running = instance.status === 'running';
   const mine = allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
@@ -197,9 +203,19 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (decide && jumpAllowed(node) && !addSignLink(allTasks, mine)) actions.push('jump');
     if (!recused && (node.actions.transfer || mine.isExceptionAdmin)) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
-    // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。
-    const editable = APPROVAL_TYPES[data.snapshot.approvalType].approvalEdit && !addSignLink(allTasks, mine);
-    if (decide && node.editMode === 'separate' && editable) actions.push('edit');
+    // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。F-291：独立编辑按钮与
+    // 详情下发的 form.edit 同一判定（edit-surface.ts），交集为空（查看人看不到任何可编辑字段）时都不公布。
+    if (decide) {
+      edit = editSurface({
+        approvalType: data.snapshot.approvalType,
+        node,
+        tasks: allTasks,
+        mine,
+        values: data.snapshot.values,
+        viewable,
+      });
+      if (edit?.mode === 'separate') actions.push('edit');
+    }
     if (!recused && node.actions.copySend) actions.push('cc');
   }
   const retrievable = retrievableTask(instance, version, allTasks, userId);
@@ -208,7 +224,7 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   // DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的申请，不公布管理员转交 / 干预。
   if (running && !instanceHit && data.admin.transfer) actions.push('adminTransfer');
   if (running && !instanceHit && data.admin.intervene) actions.push('adminIntervene');
-  return actions;
+  return { actions, edit };
 }
 
 function initiatorActions({ instance, version }: DetailData): string[] {
@@ -231,6 +247,12 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
   const disclosed = disclosedFields(data, userId, viewable);
+  const { actions, edit } = actionsFor(
+    data,
+    userId,
+    blindReviewFields(snapshot.changedFields, viewable).length > 0,
+    viewable,
+  );
   const fields = [...disclosed];
   // DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。
   if (instance.status === 'approved' && disclosed.has('effectiveDate'))
@@ -260,8 +282,13 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     logs: hidden ? [] : data.logs.map((log) => projectLog(log, disclosed)),
     recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
-    form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
-    actions: [...new Set(actionsFor(data, userId, blindReviewFields(snapshot.changedFields, viewable).length > 0))],
+    form: {
+      nodeKey: node?.key ?? null,
+      values: pick(snapshot.values, fields),
+      ...originals,
+      ...(edit ? { edit } : {}),
+    },
+    actions: [...new Set(actions)],
   };
 }
 

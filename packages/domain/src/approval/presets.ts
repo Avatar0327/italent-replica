@@ -9,6 +9,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  */
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
+import { PART_TIME_ERRORS } from '../employment/part-time-constants.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
@@ -172,6 +173,15 @@ const PART_TIME_EDITABLE = {
   part_time_extend: ['endDate', 'requestRemark'],
   part_time_end: ['endDate', 'requestRemark'],
 } as const;
+/**
+ * 审批中编辑的必填字段 → 拒收空值的机器可读原因（F-291）：详情下发 required 与命令侧 editableInput 拒收空值共用这一张表。
+ * 兼职新增必填兼职类型 / 兼职部门（开始日期不可编辑）；延长 / 结束必填结束日期，沿用业务侧同名原因。
+ */
+export const APPROVAL_EDIT_REQUIRED: Partial<Record<ApprovalTypeCode, Readonly<Record<string, string>>>> = {
+  part_time_add: { partTimeType: 'APPROVAL_FIELD_REQUIRED', departmentId: 'APPROVAL_FIELD_REQUIRED' },
+  part_time_extend: { endDate: PART_TIME_ERRORS.endDateRequired },
+  part_time_end: { endDate: PART_TIME_ERRORS.endDateRequired },
+};
 const PART_TIME_NODES = {
   primaryHrbp: ['primary_hrbp', '主职部门HRBP', 'latest_record_department_hrbp'],
   primaryHead: ['primary_head', '主职部门负责人', 'latest_record_department_head'],

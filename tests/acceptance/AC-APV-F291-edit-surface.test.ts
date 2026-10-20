@@ -6,6 +6,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { editSurface } from '../../apps/api/src/modules/approval/edit-surface.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import {
   approvalWorld,
@@ -117,39 +118,48 @@ describe('F-291 不下发的情形', () => {
     expect((await detailOf(w, created.id, other.userId)).form.edit).toBeUndefined();
   });
 
-  it('加签人不下发，原审批人仍下发（14 §11.3）', async () => {
-    const { w, created, view, task } = await extendScene('add-sign');
+  it('前加签人有待办但不下发（14 §11.3）', async () => {
+    const { w, created, view, task } = await extendScene('add-sign', { addSign: true });
     const signer = await w.person('加签人', w.staff);
     const response = await w.taskAction(task.assigneeUserId, task.id, 'add-sign', view.revision, {
       userIds: [signer.userId],
-      type: 'parallel',
+      type: 'before',
     });
     expect(response.status, await response.clone().text()).toBe(200);
-    expect((await detailOf(w, created.id, signer.userId)).form.edit).toBeUndefined();
-    expect((await detailOf(w, created.id, task.assigneeUserId)).form.edit?.taskId).toBe(task.id);
+    const signerView = await detailOf(w, created.id, signer.userId);
+    expect(signerView.actions).toContain('approve');
+    expect(signerView.form.edit).toBeUndefined();
   });
 
-  it('员工信息类（approvalEdit=false）、editMode=none 的节点不下发', async () => {
-    const { editSurface } = await import('../../apps/api/src/modules/approval/edit-surface.js');
+  it('员工信息类（approvalEdit=false）、editMode=none、查看人对可编辑字段全无查看权：不下发', async () => {
     const node = { editMode: 'with_approve', editableFields: ['place'] } as never;
     const mine = { id: 't1' } as never;
-    const given = (approvalType: string, nodeOverride: object = {}) =>
+    const given = (approvalType: string, nodeOverride: object = {}, viewable?: ReadonlySet<string>) =>
       editSurface({
         approvalType: approvalType as never,
         node: { ...(node as object), ...nodeOverride } as never,
         tasks: [],
         mine,
         values: { place: 'x' },
-        viewable: undefined,
+        viewable,
       });
     expect(given('transfer')).toMatchObject({ mode: 'with_approve', fields: [{ key: 'place', value: 'x' }] });
-    expect(given('employee_info')).toBeNull();
+    expect(given('emp_info_change')).toBeNull();
+    expect(given('transfer', {}, new Set(['effectiveDate']))).toBeNull();
     expect(given('transfer', { editMode: 'none', editableFields: [] })).toBeNull();
   });
 
-  it('查看人对节点可编辑字段无查看权：该字段被剔除；全部无权则不下发', async () => {
+  it('查看人对节点可编辑字段无查看权：该字段被剔除，其余按节点顺序保留', async () => {
     const w = await approvalWorld(database().db, 'f291-field-access');
     const s = await transferScene(w);
+    const field = await w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/employment/custom-fields', {
+        ifMatch: 0,
+        body: { name: '机密备注', valueType: 'text', objectType: 'employment' },
+      }),
+      201,
+    );
+    const hidden = `custom:${field.id}`;
     const admin = await permissionAdmin(w);
     await grantFieldAccess(admin, s.outHead.userId, { view: ['id', 'departmentId', 'effectiveDate', 'place'] });
     await w.publishedProcess({
@@ -157,8 +167,8 @@ describe('F-291 不下发的情形', () => {
         {
           key: 'out_head',
           approver: 'latest_record_department_head',
-          formFields: ['departmentId', 'effectiveDate', 'place', 'postId'],
-          editableFields: ['place', 'postId'],
+          formFields: ['departmentId', 'effectiveDate', 'place', hidden],
+          editableFields: [hidden, 'place'],
           editMode: 'with_approve',
         },
       ],
