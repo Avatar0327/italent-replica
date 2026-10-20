@@ -36,6 +36,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -3049,6 +3050,51 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ]),
   ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
+  'GET /api/tenant/employment/exit-handover-items': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'GET',
+          '/exit-handover-items',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/exit-handover-items', 'create'],
+        ['PUT', '/exit-handover-items/:id', 'update'],
+        ['DELETE', '/exit-handover-items/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            HANDOVER,
+            'registerExitHandoverRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            HANDOVER,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
   // ---- employment/auto-regularization-routes.ts：R2 BE-15a 自动转正规则与立即执行（同自动加黑规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/auto-regularization-rules': [
     ob(
@@ -3183,15 +3229,10 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/retirement-rules': [
     ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
       [
-        at(
-          RETIREMENT_RULE,
-          'GET',
-          '/retirement-rules',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
+        at(RETIREMENT_RULE, 'GET', '/retirement-rules', "const ctx = await readContext(c, deps, 'object.view', 0)"),
         READ,
       ],
     ),

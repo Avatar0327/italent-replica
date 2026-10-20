@@ -407,6 +407,46 @@
         ]
       }
     },
+    "DELETE /api/tenant/employment/exit-handover-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
     "DELETE /api/tenant/employment/part-time-requests/:id": {
       "edge": {
         "anonymous": {
@@ -4175,6 +4215,35 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exit-handover-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
     "GET /api/tenant/employment/exits": {
       "edge": {
         "anonymous": {
@@ -4674,15 +4743,12 @@
       },
       "module": "employment",
       "primitives": {
-        "fieldsOut": [
-          "trimModuleResponse"
-        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentSettings:view"
+          "TenantBase.EmploymentRecord:view"
         ]
       }
     },
@@ -17204,6 +17270,46 @@
         ]
       }
     },
+    "POST /api/tenant/employment/exit-handover-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
     "POST /api/tenant/employment/exits/:id/cancel": {
       "edge": {
         "anonymous": {
@@ -25528,6 +25634,46 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/exit-handover-items/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"
