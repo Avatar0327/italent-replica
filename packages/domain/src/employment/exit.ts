@@ -63,6 +63,9 @@ export const EXIT_REQUEST_FIELDS = [
   'whereaboutsCode',
   'handoverEmployeeId',
   'addToBlacklist',
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
   'compensationAmount',
   'nonCompeteAmount',
   'lastPayDate',
@@ -75,10 +78,17 @@ export const EXIT_REQUEST_FIELDS = [
   'attachmentRefs',
 ] as const;
 
+/** 加黑三项（BE-8b1）：只存离职扩展行、生效时写名单，不进审批表单（审批人只看“是否加入黑名单”，原因与说明不披露给审批节点）。 */
+export const EXIT_BLACKLIST_DETAIL_FIELDS: readonly string[] = [
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
+];
+
 /** 审批表单里的离职扩展字段（LEAVE_FORM 与审批适配器 exitMetadata 共用；附件引用不进表单，§9）。 */
 export const EXIT_FORM_FIELDS: readonly string[] = [
   'reasonCode',
-  ...EXIT_REQUEST_FIELDS.filter((field) => field !== 'attachmentRefs'),
+  ...EXIT_REQUEST_FIELDS.filter((field) => field !== 'attachmentRefs' && !EXIT_BLACKLIST_DETAIL_FIELDS.includes(field)),
 ];
 
 /** 系统写入、只可查看的离职字段：发起人账号、批次、编制预减时点、转交时机快照（§2.1）。 */

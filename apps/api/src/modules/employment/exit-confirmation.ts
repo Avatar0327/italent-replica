@@ -51,6 +51,8 @@ export interface ExitCancelledEvent {
   readonly employeeId: string;
   readonly stateBefore: string;
   readonly case: ExitCancelCase;
+  /** 业务类型（R2-T04 §6）：退休撤销的人事回写订阅方据此只处理退休。 */
+  readonly kind: 'leave' | 'retirement';
 }
 
 type CancelledHook = (tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) => Promise<void>;
