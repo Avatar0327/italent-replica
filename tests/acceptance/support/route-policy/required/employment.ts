@@ -6,7 +6,7 @@
  * requireTransferSource / transferBusinessContext → requireManagerBusinessSource；直接调动 requireDirectTransfer；业务写范围
  * authorizeBusinessWrite；直接操作范围 requireScopedEmploymentObject（DEC-193）；联动 requireLinkedEmploymentRecord（DEC-178）。
  */
-import { bound, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
+import { bound, guardScope, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const SRC = 'apps/api/src/modules';
@@ -1983,8 +1983,21 @@ export const EMPLOYMENT: RequiredTable = {
       linkage(fn(INTERN_CREATE, 'createInternEntry', 'const created = await createEmploymentBusiness(')),
     ],
     {
-      [`obj:${EMPLOYEE}:create`]: bound(NONE),
-      [`obj:${RECORD}:create`]: bound(NONE),
+      // 人员新增只认看全部（DEC-121）；任职新增范围同通用新增入口（employment.scope）
+      [`obj:${EMPLOYEE}:create`]: bound({ scope: 'see-all' }, [
+        {
+          role: 'scope',
+          unit: `${INTERN_CREATE}#requireInternCreateWrite`,
+          anchor: 'requireEmploymentScope(employeeCtx);',
+        },
+      ]),
+      [`obj:${RECORD}:create`]: bound(guardScope('employment.scope'), [
+        {
+          role: 'scope',
+          unit: `${INTERN_CREATE}#requireInternCreateWrite`,
+          anchor: 'requireEmploymentScope(ctx, input.employeeId, business.fields.departmentId);',
+        },
+      ]),
     },
   ),
   'POST /api/tenant/employment/rehire-matches': [
