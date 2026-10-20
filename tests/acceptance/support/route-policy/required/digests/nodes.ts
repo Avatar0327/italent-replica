@@ -3456,7 +3456,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/org/write-service.ts#recordAt': ['3628014ff3fb', '32f760d2de41'],
   'apps/api/src/modules/org/write-service.ts#rejectEarlierThanFutureVersion': ['9c3633e118d2', '6a6663a2c682'],
   'apps/api/src/modules/org/write-service.ts#requireTransferOrganizationScope': ['aaf12f781a3b', '72e05c3b04df'],
-  'apps/api/src/modules/org/write-service.ts#updateOrganization': ['25add5359353', 'e932c1f5b066'],
+  'apps/api/src/modules/org/write-service.ts#updateOrganization': ['25424990b2a0', 'e932c1f5b066'],
   'apps/api/src/modules/org/write-service.ts#validateFutureSnapshots': ['f2335754afd8', 'a9bd650a4492'],
   'apps/api/src/modules/org/write-service.ts#validateOrganization': ['4fd02a73aaee', '826d8eabce88'],
   'apps/api/src/modules/permission/admin-http.ts#COMMAND_ID': ['2180f2d1eac5', 'e3b0c44298fc'],
