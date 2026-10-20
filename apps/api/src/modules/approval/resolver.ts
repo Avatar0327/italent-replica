@@ -298,11 +298,15 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
   }
 }
 
-/** 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）。 */
+/**
+ * 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）；
+ * 两者都没有时取人事管理员角色（与“其他事项交接”同口径），保证必需的交接能发起（第 2 轮 P2-1，03 裁定）。
+ */
 async function handoverWorkOwner(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
   const owner = await candidateOf(tx, subject, subject.handoverEmployeeId ?? null);
   if (owner.userId) return owner;
-  return directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
+  const manager = await directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
+  return manager.userId ? manager : handoverHrAdmin(tx, subject);
 }
 
 const HR_ADMIN_PROFILE = 'standard_hr_admin';
