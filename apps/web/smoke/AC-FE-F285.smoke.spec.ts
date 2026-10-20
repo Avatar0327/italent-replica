@@ -1,0 +1,200 @@
+import type { Page, Request } from '@playwright/test';
+import { test, expect, employee } from './fixtures.js';
+import { applicationId, business, employeeRevision, openDetail, rows, setup } from './intern-fixtures.js';
+
+const dialog = (page: Page) => page.getByRole('dialog', { name: '实习转正申请', exact: true });
+const submit = (page: Page) => dialog(page).getByRole('button', { name: /提\s*交$/ });
+const field = (page: Page, label: string) =>
+  dialog(page)
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('label').getByText(label, { exact: true }) });
+async function date(page: Page, label: string, value: string) {
+  await field(page, label).locator('input').fill(value);
+  await field(page, label).locator('input').press('Enter');
+  await dialog(page).locator('.ant-modal-title').click();
+}
+async function month(page: Page) {
+  await dialog(page)
+    .getByRole('combobox', { name: '试用期(月)', exact: true })
+    .locator('xpath=ancestor::div[contains(@class,"ant-select-selector")]')
+    .click();
+  await page.locator('.ant-select-dropdown:visible').getByText('1个月', { exact: true }).click();
+}
+const posted = (request: Request) => ({
+  body: request.postDataJSON() as Record<string, unknown>,
+  revision: request.headers()['if-match'],
+  key: request.headers()['idempotency-key'],
+});
+const rejection = (status: number, reason: string, message: string) => ({
+  status,
+  json: { error: { code: status === 409 ? 'CONFLICT' : 'VALIDATION_FAILED', message, details: { reason } } },
+});
+
+async function application(page: Page) {
+  const fixture = await setup(page);
+  const created: ReturnType<typeof posted>[] = [];
+  const submitted: ReturnType<typeof posted>[] = [];
+  const state = { submitted: false, revision: 1 };
+  const receipt = (status: string, revision: number) =>
+    business('intern_regularization', { id: applicationId, status, revision, mode: 'application' });
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
+    created.push(posted(route.request()));
+    fixture.server.employeeRevision = employeeRevision + 1;
+    return route.fulfill({ status: 201, json: receipt('draft', 1) });
+  });
+  await page.route(`**/employment/businesses/${applicationId}`, (route) =>
+    route.fulfill({ json: receipt(state.submitted ? 'in_review' : 'draft', state.revision) }),
+  );
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    submitted.push(posted(route.request()));
+    state.submitted = true;
+    state.revision = 2;
+    return route.fulfill({ json: receipt('in_review', 2) });
+  });
+  await page.route('**/employment/interns?*', (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    fixture.queries.push(query);
+    return route.fulfill({
+      json: {
+        items:
+          query.get('view') === 'converting' && state.submitted
+            ? [{ ...rows.converting, revision: state.revision }]
+            : query.get('view') === 'interning' && !state.submitted
+              ? [rows.interning]
+              : [],
+        page: Number(query.get('page')),
+        pageSize: 30,
+        hasDataPermission: true,
+      },
+    });
+  });
+  await openDetail(page, 'interning');
+  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+  await date(page, '实习转正日期', '2026-10-16');
+  return { ...fixture, created, submitted, state, receipt };
+}
+
+test('AC-FE-F285-01 带试用期申请：五区共用、推算可手改、两步真实回执后进入实习转正中', async ({ page }) => {
+  const { created, submitted } = await application(page);
+  await expect(dialog(page).getByRole('heading')).toHaveText([
+    '员工信息',
+    '任职信息',
+    '试用期信息',
+    '汇报关系',
+    '合同协议',
+  ]);
+  await month(page);
+  await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('2026-11-15');
+  await date(page, '预计试用结束日期', '2026-12-01');
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('cell', { name: '审批中', exact: true })).toBeVisible();
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({
+    revision: String(employeeRevision),
+    body: {
+      kind: 'intern_regularization',
+      mode: 'application',
+      effectiveDate: '2026-10-16',
+      fields: { departmentId: rows.interning.departmentId },
+      probation: true,
+      probationMonths: 1,
+      probationEndDate: '2026-12-01',
+    },
+  });
+  expect(submitted).toEqual([{ body: {}, revision: '1', key: expect.any(String) }]);
+  expect(submitted[0]!.key).not.toBe(created[0]!.key);
+});
+
+test('AC-FE-F285-02 关闭试用期清空，重新开启不残留；选择否申请成功', async ({ page }) => {
+  const { created } = await application(page);
+  await month(page);
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await expect(field(page, '试用期(月)')).toHaveCount(0);
+  await dialog(page).getByRole('radio', { name: '是', exact: true }).check();
+  await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('');
+  await submit(page).click();
+  await expect(field(page, '试用期(月)').getByText('请填写试用期(月)', { exact: true })).toBeVisible();
+  expect(created).toHaveLength(0);
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(created[0]!.body.probation).toBe(false);
+  expect(created[0]!.body).not.toHaveProperty('probationMonths');
+  expect(created[0]!.body).not.toHaveProperty('probationEndDate');
+});
+
+test('AC-FE-F285-03 月数为空或结束日过早阻止提交；服务端400在字段显示并保留输入可重提', async ({ page }) => {
+  const { created } = await application(page);
+  await submit(page).click();
+  await expect(field(page, '试用期(月)').getByText('请填写试用期(月)', { exact: true })).toBeVisible();
+  expect(created).toHaveLength(0);
+  await month(page);
+  await date(page, '预计试用结束日期', '2026-10-15');
+  await submit(page).click();
+  await expect(field(page, '预计试用结束日期').getByText('预计试用结束日期不得早于实习转正日期')).toBeVisible();
+  expect(created).toHaveLength(0);
+  await date(page, '预计试用结束日期', '2026-11-20');
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) =>
+    route.fulfill(rejection(400, 'PROBATION_MONTHS_REQUIRED', '有试用期时必须填写试用期(月)')),
+  );
+  await submit(page).click();
+  await expect(field(page, '试用期(月)').getByText('有试用期时必须填写试用期(月)')).toBeVisible();
+  await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('2026-11-20');
+  await expect(submit(page)).toBeEnabled();
+});
+
+test('AC-FE-F285-04 创建结果未知关闭重开及切到直接转正仍锁定，不发第二次命令', async ({ page }) => {
+  await application(page);
+  let attempts = 0;
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
+    attempts += 1;
+    return route.abort('failed');
+  });
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(submit(page)).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+  await expect(submit(page)).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: '实习转正', exact: true }).getByRole('button', { name: /保\s*存/ }),
+  ).toBeDisabled();
+  expect(attempts).toBe(1);
+});
+
+test('AC-FE-F285-05 提交审批明确拒绝：重读、关闭重开仍处理同一草稿，不重复创建', async ({ page }) => {
+  const { created, submitted, state, receipt } = await application(page);
+  let reads = 0;
+  let attempts = 0;
+  await page.route(`**/employment/businesses/${applicationId}`, (route) => {
+    reads += 1;
+    return route.fulfill({ json: receipt(state.submitted ? 'in_review' : 'draft', state.revision) });
+  });
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill(rejection(422, 'NO_PROCESS', '未匹配到审批流程'));
+    submitted.push(posted(route.request()));
+    state.submitted = true;
+    state.revision = 2;
+    return route.fulfill({ json: receipt('in_review', 2) });
+  });
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(dialog(page).getByText('未匹配到审批流程').first()).toBeVisible();
+  await expect.poll(() => reads).toBeGreaterThan(1);
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
