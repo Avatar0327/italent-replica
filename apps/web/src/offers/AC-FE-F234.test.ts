@@ -89,6 +89,21 @@ describe('AC-FE-F234 Offer 邮件详情', () => {
     expect(host.textContent).not.toContain('暂无Offer邮件');
     expect(host.querySelector('h1')).toBeNull();
   });
+  it('403 显示通用无权状态，不能误报未发送', async () => {
+    mockResponse({ error: { code: 'FORBIDDEN' } }, 403);
+    await render();
+    expect(host.textContent).toContain(ui.denied);
+    expect(host.textContent).not.toContain('暂无Offer邮件');
+    expect(host.querySelector('.offer-mail-page')).toBeNull();
+  });
+  it('网络拒绝显示加载失败，不能误报未发送或无权', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    await render();
+    expect(host.textContent).toContain(ui.failed);
+    expect(host.textContent).not.toContain('暂无Offer邮件');
+    expect(host.textContent).not.toContain(ui.denied);
+    expect(host.querySelector('.offer-mail-page')).toBeNull();
+  });
   it('非 404 不因 reason 相同伪装成无邮件', async () => {
     mockResponse({ error: { code: 'UNAVAILABLE', details: { reason: 'OFFER_MAIL_NOT_SENT' } } }, 503);
     await render();
