@@ -35,14 +35,8 @@ export function TerminateForm(props: FormProps) {
   );
 }
 
-function TerminateEditor({
-  row,
-  onClose,
-  onDone,
-  refresh,
-  opening,
-  read,
-}: FormProps & { opening: Latest; read(): Promise<Latest> }) {
+type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest> };
+function useTerminate({ row, onDone, refresh, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
   const permission = usePermissions(object).snapshot.objects[object];
   const [pendingEntry, setPendingEntry] = useState(false);
@@ -84,6 +78,12 @@ function TerminateEditor({
       if (!(cause && typeof cause === 'object' && 'errorFields' in cause)) setError(cause);
     }
   };
+  return { permission, pendingEntry, editable, form, baseline, cmd, error, locked, submit };
+}
+
+function TerminateEditor(props: EditorProps) {
+  const { onClose } = props;
+  const { permission, pendingEntry, editable, form, baseline, cmd, error, locked, submit } = useTerminate(props);
   return (
     <Modal
       open

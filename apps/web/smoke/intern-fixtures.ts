@@ -171,6 +171,16 @@ export async function setup(page: Page, options: Options = {}) {
   await page.route(`**/personnel/employees/${employee}`, (route) =>
     route.fulfill({ json: { id: employee, name: base.name, code: base.code, revision: 1 } }),
   );
+  await routeServer(page, server);
+  await page.goto('/interns');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await page.waitForURL('/staff');
+  await page.goto('/interns');
+  return { queries, server };
+}
+
+/** 员工 revision、当前主职任职与申请单 revision 按“服务端状态”返回（打开基线、409 重读与写后回读都读这里）。 */
+async function routeServer(page: Page, server: Server) {
   await page.route(`**/employment/employees/${employee}`, (route) =>
     route.fulfill({ json: { id: employee, code: base.code, name: base.name, revision: server.employeeRevision } }),
   );
@@ -188,11 +198,6 @@ export async function setup(page: Page, options: Options = {}) {
     const id = new URL(route.request().url()).pathname.split('/').at(-1);
     return route.fulfill({ json: { id, employeeId: employee, revision: server.businessRevision } });
   });
-  await page.goto('/interns');
-  await page.getByLabel('切换演示身份').selectOption(user);
-  await page.waitForURL('/staff');
-  await page.goto('/interns');
-  return { queries, server };
 }
 
 const labels = { interning: '实习中', converting: '实习转正中', converted: '已转正', left: '已离职' } as const;
