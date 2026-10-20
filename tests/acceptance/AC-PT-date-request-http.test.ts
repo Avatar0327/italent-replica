@@ -2,7 +2,7 @@
  * BE-7 PT-4c 延长 / 结束申请公开入口（docs/08_设计/R2-T05_兼职设计.md §4.1 / §4.4 / §7.2 / §13.1，§9 PB-33 / 35 / 41 / 57）：
  * POST part-time-requests（requestType = extend / end）与既有 GET / PATCH / submit / withdraw / revoke / DELETE 对延长 / 结束申请的
  * HTTP 全链路。开闸要真开：extend / end 不再 409 PART_TIME_REQUEST_TYPE_NOT_AVAILABLE；仍关的行为要真关：
- * isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PB-57，至 PT-7）。
+ * isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_FIELD_NOT_EDITABLE（延长 / 结束只改结束日期与备注，PT-7 后）。
  * 权限（§7.2）：对象更新权（不是创建权）→ 延长 / 结束按钮 → 兼职记录的兼职部门范围 → endDate / requestRemark 字段写权；
  * 同一兼职有未办结申请时直接改结束日期 / 批量结束 409（PB-41）。日期框架：今天 2026-10-01。
  */
@@ -19,7 +19,7 @@ const TODAY = '2026-10-01';
 const EMPLOYMENT = '/api/tenant/employment';
 
 const world = (label: string) => requestWorld(database().db, `pt4c-http-${label}`);
-const linkage = { status: 400, code: 'VALIDATION_FAILED', reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE' };
+const linkage = { status: 400, code: 'VALIDATION_FAILED', reason: 'PART_TIME_FIELD_NOT_EDITABLE' };
 
 const dateBody = (requestType: 'extend' | 'end', recordId: string, patch: Record<string, unknown> = {}) => ({
   requestType,
@@ -166,9 +166,9 @@ describe('F-247：延长填更早结束日 → 回执带 warnings，不再 409�
   });
 });
 
-describe('PB-57：负责人 / 新增下属两字段仍关闭（延长 / 结束申请同样），创建与修改都无写入', () => {
+describe('PB-57（PT-7 后）：延长 / 结束申请不带联动，两字段 true / 非空 → 400 FIELD_NOT_EDITABLE，创建与修改都无写入', () => {
   it.each(['extend', 'end'] as const)(
-    '%s：isDepartmentHead = true / 非空 addedSubordinateIds → 400 LINKAGE_NOT_AVAILABLE',
+    '%s：isDepartmentHead = true / 非空 addedSubordinateIds → 400 FIELD_NOT_EDITABLE',
     async (type) => {
       const w = await world(`linkage-${type}`);
       const api = w.http();

@@ -217,3 +217,45 @@ export const retirementIdentityTypes = pgTable(
     check('retirement_identity_types_display_order', sql`${t.displayOrder} >= 0`),
   ],
 );
+
+/**
+ * 意向退休日期申请（5d2，设计 §2.5 / §11）：独立申请表，单表 + revision，不做版本链（意向申请不是任职记录）。
+ * 快照列（预计退休日期与弹性上下限）在创建 / 提交时冻结，只读；department_id 是申请时主职部门快照，写范围的组织坐标取它。
+ * 同员工至多一张未办结（draft / in_review / rejected），部分唯一索引兜住并发。审批通过只置 approved，不写人事字段（A-6）。
+ */
+export const retirementIntentions = pgTable(
+  'retirement_intentions',
+  {
+    id: uuid('id').notNull(),
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    staffId: uuid('staff_id').notNull(),
+    departmentId: uuid('department_id'),
+    intendedDate: date('intended_date', { mode: 'string' }).notNull(),
+    expectedDateSnapshot: date('expected_date_snapshot', { mode: 'string' }),
+    earliestSnapshot: date('earliest_snapshot', { mode: 'string' }),
+    latestSnapshot: date('latest_snapshot', { mode: 'string' }),
+    reason: text('reason'),
+    initiator: text('initiator').notNull(),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    state: text('state').notNull(),
+    approvalInstanceId: uuid('approval_instance_id'),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    index('retirement_intentions_employee').on(t.tenantId, t.employeeId),
+    uniqueIndex('retirement_intentions_open')
+      .on(t.tenantId, t.employeeId)
+      .where(sql`${t.state} IN ('draft', 'in_review', 'rejected')`),
+    check('retirement_intentions_initiator', sql`${t.initiator} IN ('hr', 'self')`),
+    check(
+      'retirement_intentions_state',
+      sql`${t.state} IN ('draft', 'in_review', 'rejected', 'approved', 'disapproved', 'withdrawn')`,
+    ),
+    check('retirement_intentions_reason', sql`${t.reason} IS NULL OR char_length(${t.reason}) <= 500`),
+  ],
+);

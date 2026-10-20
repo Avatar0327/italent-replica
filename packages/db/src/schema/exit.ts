@@ -65,6 +65,10 @@ export const exitRequests = pgTable(
     whereaboutsCode: text('whereabouts_code'),
     handoverEmployeeId: uuid('handover_employee_id'),
     addToBlacklist: boolean('add_to_blacklist').notNull().default(false),
+    /** 加黑三项（DM-R2，R2f B68）：只在 addToBlacklist 时有值；有效截止日期空 = 永久。离职生效时由 BE-8b1 写入黑名单。 */
+    blacklistExpiryDate: day('blacklist_expiry_date'),
+    blacklistReason: text('blacklist_reason'),
+    blacklistNote: text('blacklist_note'),
     compensationAmount: numeric('compensation_amount', { precision: 14, scale: 2 }),
     nonCompeteAmount: numeric('non_compete_amount', { precision: 14, scale: 2 }),
     lastPayDate: day('last_pay_date'),
@@ -115,6 +119,14 @@ export const exitRequests = pgTable(
         AND coalesce(${t.taxPeriod}, '2000-01') ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`,
     ),
     check('exit_requests_tax_year', sql`${t.taxYear} IS NULL OR ${t.taxYear} BETWEEN 1900 AND 9999`),
+    check(
+      'exit_requests_blacklist',
+      sql`(${t.addToBlacklist} OR (${t.blacklistExpiryDate} IS NULL AND ${t.blacklistReason} IS NULL
+          AND ${t.blacklistNote} IS NULL))
+        AND (${t.blacklistReason} IS NULL
+          OR ${t.blacklistReason} IN ('major_violation', 'integrity', 'instability', 'resignation', 'other'))
+        AND coalesce(char_length(${t.blacklistNote}), 0) <= 500`,
+    ),
   ],
 );
 
@@ -214,5 +226,38 @@ export const exitCancellations = pgTable(
     ),
     check('exit_cancellations_reason', sql`btrim(${t.reason}) <> ''`),
     check('exit_cancellations_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * 离职交接事项设置（BE-8b1，B64；DEC-266③）：事项类别、序号、待办类别、待办事项、事项办理表单、备注。
+ * 没有适用人群与负责人（办理人由交接流程会签节点决定，归 BE-8b2）；不预置原站 30 项。
+ */
+export const exitHandoverItems = pgTable(
+  'exit_handover_items',
+  {
+    id: id(),
+    tenantId: tenant(),
+    category: text('category').notNull(),
+    sequenceNo: integer('sequence_no').notNull(),
+    todoType: text('todo_type').notNull(),
+    title: text('title').notNull(),
+    /** 事项办理表单：只存文本或表单标识，不接表单引擎。 */
+    formRef: text('form_ref'),
+    remark: text('remark'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    unique('exit_handover_items_tenant_id').on(t.tenantId, t.id),
+    index('exit_handover_items_list').on(t.tenantId, t.sequenceNo, t.createdAt, t.id),
+    check('exit_handover_items_category', sql`btrim(${t.category}) <> '' AND char_length(${t.category}) <= 50`),
+    check('exit_handover_items_sequence', sql`${t.sequenceNo} >= 1`),
+    check('exit_handover_items_todo_type', sql`${t.todoType} IN ('work_handover', 'other')`),
+    check('exit_handover_items_title', sql`btrim(${t.title}) <> '' AND char_length(${t.title}) <= 200`),
+    check('exit_handover_items_form', sql`${t.formRef} IS NULL OR char_length(${t.formRef}) <= 200`),
+    check('exit_handover_items_remark', sql`${t.remark} IS NULL OR char_length(${t.remark}) <= 500`),
+    check('exit_handover_items_revision_positive', sql`${t.revision} > 0`),
   ],
 );

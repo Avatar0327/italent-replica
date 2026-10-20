@@ -29,6 +29,7 @@ const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
 const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
 const PART_TIME_REQUEST_SERVICE = `${SRC}/employment/part-time/request-service.ts`;
 const PART_TIME_VALIDATION = `${SRC}/employment/part-time/validation.ts`;
+const PART_TIME_LINKAGE = `${SRC}/employment/part-time/linkage.ts`;
 const PROBATION = `${SRC}/employment/probation-routes.ts`;
 const REGULARIZATION = `${SRC}/employment/regularization.ts`;
 // readContext 带 resource 时先按人员范围判（转正逐人在保存点内同一函数判）
@@ -38,6 +39,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
   anchor: "throw new AppError('NOT_FOUND', '任职数据不存在')",
 };
 const BL = `${SRC}/employment/blacklist-routes.ts`;
+const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -353,6 +355,31 @@ function exitPreview(button: string, file = EXIT, path = '/exits/employees/:id/p
     },
   ];
 }
+
+/**
+ * R2 BE-7 PT-7 兼职联动（设计 §4.8）：直接新增 / 编辑在命令事务内保存并执行“是否部门负责人 / 新增下属”，复用调动联动的校验
+ * （validateTransferSubordinates：负责人的组织写范围 requireTransferOrganizationScope、下属范围 requireScopedEmploymentObject），
+ * 联动记录 / 组织在范围外一律 LINKED_RECORD_OUT_OF_SCOPE（DEC-178），不新增授权项。
+ */
+const ptLinkage = (call: Evidence): Obligation =>
+  ob(
+    'guard:employment.linkage',
+    ['guard:employment.linkage'],
+    [
+      call,
+      {
+        role: 'impl',
+        unit: `${PART_TIME_LINKAGE}#validatePartTimeLinkage`,
+        anchor: 'await validateTransferSubordinates(',
+      },
+      {
+        role: 'impl',
+        unit: `${SRC}/org/write-service.ts#requireTransferOrganizationScope`,
+        anchor: "throw new AppError('LINKED_RECORD_OUT_OF_SCOPE'",
+      },
+    ],
+    '联动人员 / 组织写范围按 DEC-178 复核',
+  );
 
 // ---- R2 BE-7 PT-3b 兼职新增预览 / 直接新增 / 员工页签 / 详情（part-time/routes.ts）-------------------------------------------
 const PT_PREVIEW = '/employees/:id/part-times/preview';
@@ -762,6 +789,51 @@ const ASSESSMENT_SCOPE_SQL: Evidence = {
 };
 const assessmentView = (call: Evidence) =>
   ob(`obj:${ASSESSMENT}:view`, ['object:readPageContext'], [call, PAGE, READ, ASSESSMENT_CONST]);
+
+/** R2-T04 BE-5d2 意向退休日期申请：授权复用任职记录对象，读用 DEC-177 可见口径，写用申请行自己的三个坐标（DEC-193）。 */
+const INTENT = `${SRC}/employment/retirement-intention-routes.ts`;
+const INTENT_SERVICE = `${SRC}/employment/retirement-intention.ts`;
+const INTENT_ACCESS = `${SRC}/employment/retirement-intention-access.ts`;
+const INTENT_STORE = `${SRC}/employment/retirement-intention-store.ts`;
+const INTENT_WRITE_SCOPE: Evidence = {
+  role: 'impl',
+  unit: `${INTENT_ACCESS}#requireIntentionWriteScope`,
+  anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+};
+const INTENT_BUTTON = (method: string, path: string, call: string): Obligation =>
+  ob(
+    `btn:${RECORD}#Employment.RetireIntention@detail`,
+    [],
+    [
+      at(INTENT, method, path, call),
+      fn(INTENT, 'intentionGuard', 'await requireIntentionRight(tx, scoped, {'),
+      fn(INTENT_ACCESS, 'requireIntentionRight', 'await requireEmploymentWrite( scoped, request.operation,'),
+      WRITE_BUTTON,
+    ],
+  );
+const intentionWriteScope = (anchorUnit: string, name: string, anchor: string): Obligation =>
+  ob(
+    'guard:employment.intentionWrite',
+    [],
+    [fn(anchorUnit, name, anchor), INTENT_WRITE_SCOPE],
+    '范围外与不存在同一个 404',
+  );
+function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
+  const path = `/retirement-intentions/:id/${action}`;
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(INTENT, 'POST', path, "const ctx = await readContext(c, deps, 'object.update', revision(c))"),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON('POST', path, '{ guard: intentionGuard(deps, ctx, { intentionId: id }, {}) }'),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ];
+}
 
 export const EMPLOYMENT: RequiredTable = {
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
@@ -1878,14 +1950,32 @@ export const EMPLOYMENT: RequiredTable = {
         'const created = await createPartTime(tx, context, serviceInput(id, body))',
       ),
     ),
+    ptLinkage(
+      at(
+        PART_TIME,
+        'POST',
+        '/employees/:id/part-times',
+        'const created = await createPartTime(tx, context, serviceInput(id, body))',
+      ),
+    ),
   ],
   // ---- R2 BE-7 PT-3c 编辑兼职 / 批量结束（part-time/routes.ts；写入口径判定与命令内复核在 replay-guard.ts）-----------------------------
-  'PATCH /api/tenant/employment/part-times/:recordId': partTimeWrite(
-    'PATCH',
-    '/part-times/:recordId',
-    "const ctx = await readContext(c, deps, 'object.update', revision(c))",
-    'Employment.PartTimeEdit',
-  ),
+  'PATCH /api/tenant/employment/part-times/:recordId': [
+    ...partTimeWrite(
+      'PATCH',
+      '/part-times/:recordId',
+      "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+      'Employment.PartTimeEdit',
+    ),
+    ptLinkage(
+      at(
+        PART_TIME,
+        'PATCH',
+        '/part-times/:recordId',
+        'const edited = await editPartTime(tx, context, id, editInput(body))',
+      ),
+    ),
+  ],
   'POST /api/tenant/employment/part-times/batch-end': partTimeWrite(
     'POST',
     '/part-times/batch-end',
@@ -2851,6 +2941,76 @@ export const EMPLOYMENT: RequiredTable = {
     'registerRetirementChanges',
     RETIRE,
   ),
+  // ---- employment/retirement-intention-routes.ts：R2-T04 BE-5d2 意向退休日期申请（设计 §11 / §12.1）---------------------------
+  'POST /api/tenant/employment/retirement-intentions/employees/:id': [
+    ob(
+      `obj:${RECORD}:create`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'POST',
+          '/retirement-intentions/employees/:id',
+          "const ctx = await readContext(c, deps, 'object.create', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'POST',
+      '/retirement-intentions/employees/:id',
+      '{ guard: intentionGuard(deps, ctx, { employeeId: id }, definedKeys(input)) }',
+    ),
+    intentionWriteScope(
+      INTENT_SERVICE,
+      'createIntention',
+      'await requireIntentionWriteScope(tx, ctx, { employeeId, departmentId, initiatorUserId: ctx.userId })',
+    ),
+  ],
+  'PATCH /api/tenant/employment/retirement-intentions/:id': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          INTENT,
+          'PATCH',
+          '/retirement-intentions/:id',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    INTENT_BUTTON(
+      'PATCH',
+      '/retirement-intentions/:id',
+      '{ guard: intentionGuard(deps, ctx, { intentionId: id }, definedKeys(patch)) }',
+    ),
+    intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
+  ],
+  'POST /api/tenant/employment/retirement-intentions/:id/submit': intentionAction('submit'),
+  'POST /api/tenant/employment/retirement-intentions/:id/withdraw': intentionAction('withdraw'),
+  'GET /api/tenant/employment/retirement-intentions': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  'GET /api/tenant/employment/retirement-intentions/:id': [
+    recordView(at(INTENT, 'GET', '/retirement-intentions/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    ob(
+      'guard:employment.intentionVisibility',
+      [],
+      [
+        at(INTENT, 'GET', '/retirement-intentions/:id', 'loadVisibleIntention(tx, ctx, id)'),
+        {
+          role: 'impl',
+          unit: `${INTENT_STORE}#loadVisibleIntention`,
+          anchor: "throw new AppError('NOT_FOUND', '意向退休申请不存在')",
+        },
+      ],
+      '看不见与不存在同一个 404（DEC-177 可见口径）',
+    ),
+  ],
   // ---- R2-T03 B4 撤销离职 ----
   'POST /api/tenant/employment/exits/:id/cancel': exitCancelCommand(),
   'POST /api/tenant/employment/exits/:id/restore': exitCancelRestore(),
@@ -2981,6 +3141,51 @@ export const EMPLOYMENT: RequiredTable = {
           operation,
           at(
             BL,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
+              "'TenantBase.EmploymentSettings'",
+          ),
+        ),
+      ),
+    ]),
+  ),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
+  'GET /api/tenant/employment/exit-handover-items': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'GET',
+          '/exit-handover-items',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/exit-handover-items', 'create'],
+        ['PUT', '/exit-handover-items/:id', 'update'],
+        ['DELETE', '/exit-handover-items/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(
+            HANDOVER,
+            'registerExitHandoverRoutes',
+            "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),",
+          ),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            HANDOVER,
             method,
             path,
             `await requireEmploymentWrite(ctx, '${operation}', ${method === 'DELETE' ? '{}' : 'input'}, undefined, ` +
@@ -3124,15 +3329,10 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/retirement-rules': [
     ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
       [
-        at(
-          RETIREMENT_RULE,
-          'GET',
-          '/retirement-rules',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
+        at(RETIREMENT_RULE, 'GET', '/retirement-rules', "const ctx = await readContext(c, deps, 'object.view', 0)"),
         READ,
       ],
     ),

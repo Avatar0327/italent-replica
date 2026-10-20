@@ -241,6 +241,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/permission/employment-replay.ts#footprintTypes': [
     'apps/api/src/modules/employment/assessment-store.ts#ASSESSMENT_AUDIT_TYPE',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#INTENTION_AUDIT_TYPE',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/permission/employment-replay.ts#footprints': ['#MAX_EVENTS', '#footprintTypes', '#rows'],

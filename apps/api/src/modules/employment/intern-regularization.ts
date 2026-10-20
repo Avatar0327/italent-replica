@@ -8,6 +8,7 @@ import { PROBATION_MONTHS_MAX, PROBATION_MONTHS_MIN } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { employmentEstablishmentAssessment } from '../establishment/employment-check.js';
+import { isRegularizationProbationValid } from './entry-options.js';
 import type { EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { createEmploymentBusiness } from './write-service.js';
 
@@ -29,13 +30,10 @@ export const internRegularizationInput = z
     probationEndDate: z.iso.date().optional(),
     confirmed: z.boolean().optional(),
   })
-  .refine(
-    (input) =>
-      input.probation
-        ? input.probationMonths !== undefined
-        : input.probationMonths === undefined && input.probationEndDate === undefined,
-    { message: '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息', path: ['probationMonths'] },
-  );
+  .refine(isRegularizationProbationValid, {
+    message: '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息',
+    path: ['probationMonths'],
+  });
 export type InternRegularizationInput = z.infer<typeof internRegularizationInput>;
 
 /** 写入的任职字段（字段写权限、数据范围都按它校验）：部门 + 请求里给出的职位 / 汇报关系。 */

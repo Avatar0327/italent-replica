@@ -5,6 +5,8 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
+  BLACKLIST_NOTE_MAX,
+  BLACKLIST_REASON_CODES,
   EXIT_MANAGER_INITIATION_KEY,
   EXIT_SELF_REASON_CODES,
   EXIT_SELF_WHEREABOUTS_CODES,
@@ -12,6 +14,7 @@ import {
 } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
+import { validIsoDate } from '../org/read-model.js';
 import { currentPersons } from '../permission/scope-persons.js';
 import { normalizedUuid } from './fields.js';
 import { rowsOf } from './record-store.js';
@@ -21,6 +24,7 @@ export type ExitInitiation = 'hr' | 'self' | 'manager';
 
 const code = z.string().trim().min(1).max(100);
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const realDay = day.refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 /** 请求体里的 exit 区块（通用入口与专用入口同形）；不含 initiation：HTTP 入口的发起方式由路由固定。 */
@@ -31,6 +35,10 @@ export const exitOptionsSchema = z.strictObject({
   attachmentRefs: z.array(normalizedUuid).max(20).optional(),
   handoverEmployeeId: normalizedUuid.optional(),
   addToBlacklist: z.boolean().optional(),
+  /** 加黑三项（DM-R2）：只在 addToBlacklist 时可填；有效截止日期空 = 永久，原因必填，说明与黑名单页一致 ≤500 字。 */
+  blacklistExpiryDate: realDay.nullable().optional(),
+  blacklistReason: z.enum(BLACKLIST_REASON_CODES).optional(),
+  blacklistNote: z.string().trim().max(BLACKLIST_NOTE_MAX).nullable().optional(),
   compensationAmount: z.number().min(0).max(1e11).optional(),
   nonCompeteAmount: z.number().min(0).max(1e11).optional(),
   lastPayDate: day.optional(),
@@ -51,6 +59,9 @@ const HR_ONLY: readonly (keyof ExitOptions)[] = [
   'exitTypeCode',
   'handoverEmployeeId',
   'addToBlacklist',
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
   'compensationAmount',
   'nonCompeteAmount',
   'lastPayDate',
@@ -75,6 +86,60 @@ export function splitExitOptions(body: unknown): { rawInput: unknown; exit: Exit
 
 const reject = (reason: string, message: string, details: object = {}) =>
   new AppError('VALIDATION_FAILED', message, { reason, ...details });
+
+export interface BlacklistFields {
+  readonly addToBlacklist: boolean;
+  readonly blacklistReason: string | null;
+  readonly blacklistExpiryDate: string | null;
+  readonly blacklistNote: string | null;
+}
+
+export const NO_BLACKLIST: BlacklistFields = {
+  addToBlacklist: false,
+  blacklistReason: null,
+  blacklistExpiryDate: null,
+  blacklistNote: null,
+};
+
+const BLACKLIST_DETAIL_KEYS = ['blacklistReason', 'blacklistExpiryDate', 'blacklistNote'] as const;
+
+/**
+ * 加黑字段的唯一合并 / 校验入口（创建、批量、编辑共用，DEC-431①）：current 是库里现值（创建时为空），patch 是请求里出现的键。
+ * addToBlacklist 为 false 时不得带三项（400，带 null 也算带）；为 true 时原因必填，有效截止日期（空 = 永久）不得早于离职生效日
+ * （与黑名单页 assertExpiry 同一口径）。返回合并后的整组值：false 时三项清空，编辑把“是”改成“否”即清掉旧值。
+ */
+export function resolveBlacklistFields(
+  current: BlacklistFields,
+  patch: Partial<BlacklistFields>,
+  effectiveDate: string,
+): BlacklistFields {
+  const add = patch.addToBlacklist ?? current.addToBlacklist;
+  if (!add) {
+    if (BLACKLIST_DETAIL_KEYS.some((key) => patch[key] !== undefined))
+      throw reject('EXIT_BLACKLIST_FIELDS_NOT_ALLOWED', '未勾选加入黑名单时不能填写有效截止日期、加黑原因和加黑说明');
+    return NO_BLACKLIST;
+  }
+  const next: BlacklistFields = {
+    addToBlacklist: true,
+    blacklistReason: patch.blacklistReason ?? current.blacklistReason,
+    blacklistExpiryDate:
+      patch.blacklistExpiryDate === undefined ? current.blacklistExpiryDate : patch.blacklistExpiryDate,
+    blacklistNote: (patch.blacklistNote === undefined ? current.blacklistNote : patch.blacklistNote) || null,
+  };
+  if (!next.blacklistReason) throw reject('EXIT_BLACKLIST_REASON_REQUIRED', '加入黑名单须填写加黑原因');
+  if (next.blacklistExpiryDate && next.blacklistExpiryDate < effectiveDate)
+    throw reject('BLACKLIST_EXPIRY_BEFORE_DATE', '有效截止日期不能早于离职生效日');
+  return next;
+}
+
+/** 只校验不合并：批量入口在逐人业务门禁之前先拒绝不合法的加黑参数（400，不并入逐条 409），与创建同一入口。 */
+export function assertBlacklistFields(exit: Partial<BlacklistFields>, effectiveDate: string): void {
+  resolveBlacklistFields(NO_BLACKLIST, exit, effectiveDate);
+}
+
+/** 请求里是否出现了加黑相关的键（编辑时决定要不要重算整组）。 */
+export const touchesBlacklist = (exit: Partial<BlacklistFields>) =>
+  exit.addToBlacklist !== undefined || BLACKLIST_DETAIL_KEYS.some((key) => exit[key] !== undefined);
 
 /** 按发起方式选字段子集并校验；返回补缺省后的 exit（self / manager 的原因缺省 personal）。 */
 export function applyInitiationSubset(
