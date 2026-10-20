@@ -481,7 +481,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/resolver.ts#enterAssigneeGate': ['de662185bfb7', 'ee285bbbf4f7'],
   'apps/api/src/modules/approval/resolver.ts#firstLevelOrg': ['3fd4d5d209ad', '26a79029fd0a'],
   'apps/api/src/modules/approval/resolver.ts#handoverHrAdmin': ['1e5d8cd628ca', '1442fc8435ca'],
-  'apps/api/src/modules/approval/resolver.ts#handoverWorkOwner': ['f63ffd4fa42c', '17d54cf769c2'],
+  'apps/api/src/modules/approval/resolver.ts#handoverWorkOwner': ['3c644efba3ed', '20e7dd8d2c5a'],
   'apps/api/src/modules/approval/resolver.ts#isActiveAccount': ['18a3df00d6b8', 'b2687afdb035'],
   'apps/api/src/modules/approval/resolver.ts#isAssignable': ['dbe9a257cea8', '96e56f574e79'],
   'apps/api/src/modules/approval/resolver.ts#isEligibleApprover': ['874d1c2b8521', '6d86e5a9d637'],
