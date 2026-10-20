@@ -11,11 +11,23 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { findCurrentRecord } from '../../apps/api/src/modules/employment/read-model.js';
+import { createPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
+import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { pendingOf } from './support/f048.js';
+import { settledOrBlocked } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
+
+function signal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 
 /** 造一个 UUID 比申请员工小 / 大的下属（随机 UUID，按需重试，两种顺序都必须覆盖）。 */
@@ -107,4 +119,65 @@ describe.runIf(realPostgres)('AC-PT-linkage-handover-pg 批量交接 / 停用接
       await expectLanded(w, sub, created.id);
     });
   }
+});
+
+/**
+ * 第 3 轮 P2：只设负责人、不带新增下属的新增申请，审批落地也要在第一次员工锁之前收齐闭包——A 另有未来兼职的待执行下属 B 时，
+ * 落地办完整意图（含 B），若 adapter 的预锁只锁 A、落地才补锁 B，会与“先锁 B 再取组织锁”的另一事务成环（40P01 → 409
+ * APPROVAL_CONCURRENT_CONFLICT）。adapter 对新增申请一律走闭包规划（审批编辑当次才打开负责人的情形同样覆盖）。
+ */
+describe.runIf(realPostgres)('AC-PT-linkage-handover-pg 第 3 轮：只设负责人的申请审批 × 先锁下属的另一事务', () => {
+  async function headOnly(label: string, openByApprovalEdit: boolean) {
+    const w = await requestWorld(database().db, label);
+    await w.run((tx) =>
+      tx.execute(sql`UPDATE org_objects SET revision=(SELECT max(version_no) FROM org_versions
+        WHERE tenant_id=${w.tenant.id} AND org_id=${w.side}::uuid)
+        WHERE tenant_id=${w.tenant.id} AND id=${w.side}::uuid`),
+    );
+    const sub = await w.person('合成待执行下属', w.primary);
+    const pendingOrg = await w.org('合成未来兼职部门');
+    await w.run((tx) =>
+      createPartTime(tx, w.context(), {
+        employeeId: w.worker.employeeId,
+        serviceType: 'part_time',
+        startDate: '2026-10-20',
+        departmentId: pendingOrg,
+        addedSubordinateIds: [sub.employeeId],
+      }),
+    );
+    const created = await w.create(openByApprovalEdit ? {} : { isDepartmentHead: true });
+    await w.send(created.id, created.revision);
+    await w.approveInOrder(created.id, w.order.add.slice(0, 3));
+    const view = await w.instance(created.id);
+    const task = w.pending(view)[0]!;
+    const held = signal();
+    const release = signal();
+    const other = withTenant(w.db, w.tenant.id, async (tx) => {
+      await lockEmploymentEmployee(tx, w.context(), sub.employeeId);
+      held.resolve();
+      await release.promise;
+      await lockOrganizationSettings(tx, w.tenant.id);
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await held.promise;
+    const approval = w.taskAction(task.assigneeUserId, task.id, 'approve', view.revision, {
+      comment: '合成审批',
+      ...(openByApprovalEdit ? { fields: { isDepartmentHead: true } } : {}),
+    });
+    expect(await settledOrBlocked(w.db, approval, 1)).toBe('blocked');
+    release.resolve();
+    const otherResult = await other;
+    const response = await approval;
+    expect(otherResult, '另一事务不得被死锁牺牲').toBeUndefined();
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await w.load(created.id)).state).toBe('effective');
+    expect(await headOf(w)).toBe(w.worker.employeeId);
+  }
+
+  it('申请本身只设负责人：末节点同意在第一次员工锁前收齐 A 的待执行下属闭包，不死锁', () =>
+    headOnly('lk-head-only', false));
+
+  it('申请无联动、末节点审批编辑当次才打开负责人：同样先收齐闭包，不死锁', () => headOnly('lk-edit-opens-head', true));
 });
