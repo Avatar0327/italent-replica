@@ -1441,7 +1441,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/entry-offer-hooks.ts#entryOfferHooks': ['#hooks', '#narrow'],
   'apps/api/src/modules/employment/entry-offer-hooks.ts#hooks': ['#noop'],
   'apps/api/src/modules/employment/entry-options.ts#assertEntryOptionsAllowed': [
+    '#assertInternRegularizationEntry',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
+  ],
+  'apps/api/src/modules/employment/entry-options.ts#assertInternRegularizationEntry': [
+    '#isRegularizationProbationValid',
   ],
   'apps/api/src/modules/employment/entry-options.ts#entryControls': ['#probationTerms'],
   'apps/api/src/modules/employment/entry-options.ts#probationTerms': [
@@ -2916,6 +2920,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
   ],
   'apps/api/src/modules/employment/intern-regularization.ts#internRegularizationInput': [
+    'apps/api/src/modules/employment/entry-options.ts#isRegularizationProbationValid',
     '#id',
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MAX',
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MIN',
