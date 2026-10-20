@@ -1,6 +1,6 @@
 import { Modal } from 'antd';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Command } from '../foundation/client.js';
+import { ApiError, type Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, type CommandForm } from '../foundation/forms/useCommandForm.js';
@@ -47,17 +47,35 @@ async function currentRecord(api: Api, employeeId: string) {
   throw new Error(m.invalidReceipt);
 }
 
+/** 一致快照的读取次数上限：期间每次都有人改了此员工，就报错交用户重试，不拿不一致的快照。 */
+const SNAPSHOT_ATTEMPTS = 3;
+
 /**
- * 员工三个入口的打开基线与 409 重读同一来源（claude_fe_rules b）：员工 revision 作 If-Match，表单值由
- * project 按当前主职任职投影。默认带出的部门、汇报关系就是基线本身，不算人工修改；重读后交内核比较、回填。
+ * 员工 revision 与当前主职任职的一致快照（第 2 轮 P2-R2-1）：任职前后各读一次员工 revision，两次相同才接受
+ * ——此员工的任何任职写入都会让员工 revision 加一，revision 没变就说明读到的任职属于这个版本；
+ * 不同就整份丢弃重读。不并行读：并行时可能拼出“新 revision + 旧任职字段”，用新 If-Match 发旧值。
+ */
+async function consistentSnapshot(api: Api, employeeId: string) {
+  for (let attempt = 0; attempt < SNAPSHOT_ATTEMPTS; attempt += 1) {
+    const before = await readObject(api, employeePath(employeeId), employeeId);
+    const record = await currentRecord(api, employeeId);
+    if ((await readObject(api, employeePath(employeeId), employeeId)) === before) return { revision: before, record };
+  }
+  // 机读码区分于业务拒绝；只读不写，不进命令内核，打开时由 PageState 显示原因并可重试
+  throw new ApiError(409, 'SNAPSHOT_UNSTABLE', 'conflict', m.unstableSnapshot);
+}
+
+/**
+ * 员工入口的打开基线与 409 重读共用这一个读取函数（claude_fe_rules b，DEC-431①）：员工 revision 作 If-Match，
+ * 表单值由 project 按当前主职任职投影。默认带出的部门、汇报关系就是基线本身，不算人工修改；重读后交内核比较、回填。
+ * 结束实习不带任职字段（withRecord = false），只读员工 revision。
  */
 export function useEmployeeRead(employeeId: string, project: (record?: Values) => Values, withRecord: boolean) {
   const api = useApiClient();
   return useCallback(async (): Promise<Latest> => {
-    const [revision, record] = await Promise.all([
-      readObject(api, employeePath(employeeId), employeeId),
-      withRecord ? currentRecord(api, employeeId) : undefined,
-    ]);
+    const { revision, record } = withRecord
+      ? await consistentSnapshot(api, employeeId)
+      : { revision: await readObject(api, employeePath(employeeId), employeeId), record: undefined };
     return { id: employeeId, revision, values: project(record) };
   }, [api, employeeId, project, withRecord]);
 }

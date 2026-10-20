@@ -68,6 +68,7 @@ export const m = {
   required: (label: string) => `请填写${label}`,
   denied: '没有该字段或按钮的操作权限',
   unconfirmed: '已提交，但写后读取失败，结果待确认；请勿重复提交。',
+  unstableSnapshot: '此员工的任职正在被修改，未能读到一致的版本，请稍后重试。',
   invalidReceipt: '回执与原单不符，请刷新后核对结果。',
   success: {
     regularize: '实习转正成功',
