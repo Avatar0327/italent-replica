@@ -113,8 +113,8 @@ describe('AC-APV-F294 管理员日志隐藏记录', () => {
     const w = await approvalWorld(database().db, 'f294-denied');
     const s = await transferScene(w);
     await w.publishedProcess({ nodes: TRANSFER_NODES });
-    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
-    view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
     const real = tenantApi(w.db, { authorize: undefined, clock: w.clock });
     const denied = await real.request('GET', `${BASE}/admin-logs`, w.as(s.outHead.userId));
     expect(denied.status).toBe(403);
@@ -135,8 +135,8 @@ describe('AC-APV-F294 管理员日志隐藏记录', () => {
     const w = await approvalWorld(database().db, 'f294-tenant-a');
     const s = await transferScene(w);
     await w.publishedProcess({ nodes: TRANSFER_NODES });
-    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
-    view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
     expect((await adminLogs(w, w.hr.id)).items).toHaveLength(1);
     const other = await approvalWorld(database().db, 'f294-tenant-b');
     expect((await adminLogs(other, other.hr.id)).items).toEqual([]);
