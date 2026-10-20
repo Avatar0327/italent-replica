@@ -1,5 +1,6 @@
 import {
   EMPLOYEE_STATUS_LABELS,
+  expectedProbationEndDate,
   EXIT_BUTTONS,
   INTERN_VIEWS,
   PROBATION_MONTHS_MAX,
@@ -90,13 +91,12 @@ export function cellValue(row: Row, key: string): string {
   return text(row[key as keyof Row]);
 }
 
-export type Entry = 'regularize' | 'terminate' | 'withdraw' | 'revoke';
+export type Entry = 'regularize' | 'apply' | 'terminate' | 'withdraw' | 'revoke';
 /**
  * 详情顶部入口（补证 R2d / R2f1）：读接口没有逐行动作（同 F-268），按服务端视图归属、单据状态与权限快照里的
  * 对象操作和按钮显示；资格（在职实习生、在途申请、原发起人）由服务端在提交时判定。
  * 实习转正中的人仍是实习生：可直接转正（DEC-593 自动作废在途申请）与结束实习。
- * DEC-647：不开放“实习转正申请”（HR 只用直接转正；申请入口与试用期区由 F-285 后补），
- * 实习转正中已有的审批中申请仍可撤回 / 撤销。
+ * F-285（03 修订验收①）：申请仅实习中且状态允许，复用本处推导；逐行动作由 F-283 后续统一接线。
  */
 export function entriesFor(view: InternView, row: Row, p: ObjectPermission | undefined): Entry[] {
   if (!p || !validObject({ id: row.employeeId, revision: 0 })) return [];
@@ -106,8 +106,10 @@ export function entriesFor(view: InternView, row: Row, p: ObjectPermission | und
   const intern = view === 'interning' || view === 'converting';
   const reviewing =
     view === 'converting' && row.state === 'in_review' && validObject({ id: row.id, revision: row.revision });
+  const regularize = intern && create && can('Employment.Create');
   const entries: [Entry, boolean][] = [
-    ['regularize', intern && create && can('Employment.Create')],
+    ['regularize', regularize],
+    ['apply', regularize && view === 'interning' && row.state === 'effective' && update && can('Employment.Submit')],
     ['terminate', intern && create && can(EXIT_BUTTONS.direct)],
     ['withdraw', reviewing && update && can('Employment.Withdraw')],
     ['revoke', reviewing && update && can('Employment.Revoke')],
@@ -154,8 +156,51 @@ export function validateRegularize(values: Values, editable: readonly string[]) 
   const required = ['effectiveDate', 'departmentId', 'probation', ...terms];
   for (const field of required) {
     if (!editable.includes(field)) throw new ApiError(403, 'FORBIDDEN', 'forbidden', m.denied);
-    if (isBlank(values[field])) throw new ApiError(400, 'VALIDATION_FAILED', 'fields', m.required(m.labels[field]!));
+    if (isBlank(values[field])) invalidField(field, m.required(m.labels[field]!));
   }
+  if (values.probation !== true) return;
+  const months = values.probationMonths;
+  if (!Number.isInteger(months) || Number(months) < PROBATION_MONTHS_MIN || Number(months) > PROBATION_MONTHS_MAX)
+    invalidField('probationMonths', m.invalidMonths);
+  if (String(values.probationEndDate) < String(values.effectiveDate)) invalidField('probationEndDate', m.invalidEnd);
+}
+
+function invalidField(field: string, message: string): never {
+  throw new ApiError(400, 'VALIDATION_FAILED', 'fields', message, {
+    details: { fieldErrors: { [field]: [message] } },
+  });
+}
+
+/** 直接转正与申请共用：变更日期 / 月数时推算，可手改；关闭试用期清除隐藏值。 */
+export function probationChanges(changed: Values, all: Values): Values {
+  if (changed.probation === false) return { probationMonths: null, probationEndDate: null };
+  if (!('effectiveDate' in changed || 'probationMonths' in changed) || all.probation !== true) return {};
+  const { effectiveDate, probationMonths } = all;
+  return typeof effectiveDate === 'string' &&
+    Number.isInteger(probationMonths) &&
+    Number(probationMonths) >= 1 &&
+    Number(probationMonths) <= 6
+    ? { probationEndDate: expectedProbationEndDate(effectiveDate, Number(probationMonths)) }
+    : { probationEndDate: null };
+}
+
+/** DirectError 保留后端 reason；本地 ApiError 和服务端字段数组统一映射到原字段。 */
+export function regularizeFieldErrors(error: unknown) {
+  if (error instanceof ApiError && error.fieldErrors.length) return error.fieldErrors;
+  const failure = error as { details?: Values; message?: string } | undefined;
+  const fields: Record<string, string> = {
+    PROBATION_REQUIRED: 'probation',
+    PROBATION_MONTHS_REQUIRED: 'probationMonths',
+    PROBATION_END_BEFORE_START: 'probationEndDate',
+  };
+  const field = fields[String(failure?.details?.reason)];
+  if (field) return [{ name: [field], errors: [failure!.message ?? m.required(m.labels[field]!)] }];
+  const details = failure?.details;
+  return Array.isArray(details)
+    ? details.flatMap((issue: { path?: string[]; message?: string }) =>
+        issue.path?.length && issue.message ? [{ name: issue.path, errors: [issue.message] }] : [],
+      )
+    : [];
 }
 
 const present = (values: Values, keys: readonly string[]) =>
@@ -168,6 +213,18 @@ export function regularizeBody(values: Values): Values {
     ...present(values, ['effectiveDate', 'departmentId', ...reportingFields]),
     probation,
     ...(probation ? present(values, ['probationMonths', 'probationEndDate']) : {}),
+  };
+}
+/** 通用申请先创建 draft，再按草稿 revision 提交审批（F-284 HTTP 契约）。 */
+export function applicationBody(values: Values): Values {
+  const { effectiveDate, probation, probationMonths, probationEndDate, ...fields } = regularizeBody(values);
+  return {
+    kind: 'intern_regularization',
+    mode: 'application',
+    effectiveDate,
+    fields,
+    probation,
+    ...(probation ? { probationMonths, probationEndDate } : {}),
   };
 }
 /** POST /interns/:id/terminate（intern-termination.ts）：开关默认关，只有打开时才发。 */

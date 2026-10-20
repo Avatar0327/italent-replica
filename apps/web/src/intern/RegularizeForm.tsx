@@ -1,6 +1,5 @@
-import { expectedProbationEndDate } from '@italent/domain';
 import { Alert, Button, Descriptions, Form, Modal, Radio, Select, Space, message } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -9,14 +8,24 @@ import { slotKey } from '../foundation/forms/slot.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
+import { useApiClient } from '../foundation/Session.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { PageState } from '../foundation/PageState.js';
 import { refPaths } from '../part-time/references.js';
 import type { Latest } from '../foundation/forms/store.js';
-import { employeePath, useEmployeeRead, useInternCommand, useOpening } from './commands.js';
+import {
+  employeePath,
+  useEmployeeRead,
+  useInternCommand,
+  useInternDraft,
+  useOpening,
+  type ApplicationDraft,
+} from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
+  applicationBody,
+  businesses,
   controlFields,
   editableFields,
   formFields,
@@ -24,6 +33,8 @@ import {
   monthOptions,
   object,
   openingValues,
+  probationChanges,
+  regularizeFieldErrors,
   regularizeBody,
   validateRegularize,
   type Row,
@@ -31,19 +42,20 @@ import {
 
 export interface FormProps {
   row: Row;
+  application?: boolean;
   onClose(): void;
   /** 写入与写后读取都已确认：关闭表单与详情（列表已在提交完成路径里刷新，补证 R2d 换视图）。 */
   onDone(): void;
   /** 写后刷新当前视图；失败按结果未知锁定（commands.tsx settle）。 */
-  refresh(): Promise<unknown>;
+  refresh(applicationId?: string): Promise<unknown>;
 }
 const kind = 'intern_regularization';
 
-/** 直接“实习转正”（补证 R2f1 五区）。DEC-647：不开放“实习转正申请”，申请表单与试用期区由 F-285 后补。 */
+/** 直接转正与申请共用 R2f1 五区、试用期推算和校验（DEC-647 / DEC-431①）。 */
 export function RegularizeForm(props: FormProps) {
   const read = useEmployeeRead(props.row.employeeId!, openingValues, true);
   return (
-    <WithOpening read={read} title={m.entries.regularize} onClose={props.onClose}>
+    <WithOpening read={read} title={props.application ? m.entries.apply : m.entries.regularize} onClose={props.onClose}>
       {(opening) => <RegularizeEditor {...props} opening={opening} read={read} />}
     </WithOpening>
   );
@@ -71,46 +83,125 @@ export function WithOpening({
 }
 
 type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest> };
-function useRegularize({ row, onDone, refresh, opening, read }: EditorProps) {
+function useRegularizeRead(employeeId: string, draft: ApplicationDraft | undefined, read: () => Promise<Latest>) {
+  const api = useApiClient();
+  return async (): Promise<Latest> => {
+    if (!draft) return read();
+    const latest = await api.request<Values>(slotKey(businesses, draft.id));
+    if (latest.id !== draft.id || latest.employeeId !== employeeId || !Number.isSafeInteger(latest.revision))
+      throw new Error(m.invalidReceipt);
+    return {
+      id: employeeId,
+      revision: Number(latest.revision),
+      values: {
+        // 当前详情不返回试用期控制项，不能把本地输入冒充最新值（#486 待决定）。
+        ...projectFields(
+          latest.fields as Values | undefined,
+          formFields.filter((field) => !controlFields.includes(field) && field !== 'effectiveDate'),
+        ),
+        effectiveDate: latest.effectiveDate ?? null,
+      },
+    };
+  };
+}
+
+function useRejectedRead(read: () => Promise<Latest>, refresh: FormProps['refresh']) {
+  const [readError, setReadError] = useState(false);
+  const [reading, setReading] = useState(false);
+  const reread = async () => {
+    setReading(true);
+    try {
+      await read();
+      await refresh();
+      setReadError(false);
+    } catch {
+      setReadError(true);
+    } finally {
+      setReading(false);
+    }
+  };
+  return { readError, reading, reread };
+}
+
+function useRegularize({ row, application, onDone, refresh, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
+  const saved = useInternDraft(employeeId);
+  const draft = application ? saved.draft : undefined;
+  const autoSubmit = useRef(false);
   const permissions = usePermissions(object);
   const permission = permissions.snapshot.objects[object];
   const editable = editableFields(formFields, permission);
   const [form] = Form.useForm();
-  const [baseline] = useState(() => opening.values);
-  const target = { id: employeeId, revision: opening.revision, baseline, read };
-  const cmd = useInternCommand(interns, target, 'regularize', refresh);
+  const [baseline] = useState(() => draft?.values ?? opening.values);
+  const readCurrent = useRegularizeRead(employeeId, draft, read);
+  const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: readCurrent };
+  const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', () =>
+    application && !draft ? Promise.resolve() : refresh(draft?.id),
+  );
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
-  const locked = cmd.disabled || !permission?.dataOperations.create;
+  const { readError, reading, reread } = useRejectedRead(readCurrent, refresh);
+  const locked =
+    cmd.disabled ||
+    reading ||
+    readError ||
+    !permission?.dataOperations.create ||
+    !permissions.can('Employment.Create') ||
+    (application && (!permission?.dataOperations.update || !permissions.can('Employment.Submit')));
   const submit = async () => {
     if (locked) return;
     setError(undefined);
     try {
-      const values = projectFields(await form.validateFields(), editable);
-      validateRegularize(values, editable);
-      const done = await cmd.submit(values, editable, {
-        path: `${slotKey(interns, employeeId)}/regularize`,
-        body: regularizeBody,
+      const values = draft?.values ?? projectFields(await form.validateFields(), editable);
+      if (!draft) validateRegularize(values, editable);
+      let created: { id: string; revision: number; values: Values } | undefined;
+      const done = await cmd.submit(draft ? {} : values, draft ? [] : editable, {
+        path: draft
+          ? `${slotKey(businesses, draft.id)}/submit`
+          : application
+            ? `${employeePath(employeeId)}/businesses`
+            : `${slotKey(interns, employeeId)}/regularize`,
+        body: draft ? () => ({}) : application ? applicationBody : regularizeBody,
         accept: (raw, sent) => {
-          const receipt = acceptBusiness(raw, { employeeId, kind, sent });
+          const receipt = acceptBusiness(raw, { employeeId, kind, sent, id: draft?.id });
+          if (application && receipt.mode !== 'application') throw new Error(m.invalidReceipt);
+          if (draft) return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
+          if (application) {
+            if (receipt.status !== 'draft') throw new Error(m.invalidReceipt);
+            created = { id: String(receipt.id), revision: Number(receipt.revision), values };
+          }
           return { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };
         },
+        rejected: reread,
       });
       if (!done) return;
-      void message.success(m.success.regularize);
+      if (created) {
+        autoSubmit.current = true;
+        saved.put(created);
+        return;
+      }
+      if (application) saved.put();
+      void message.success(application ? m.success.apply : m.success.regularize);
       onDone();
     } catch (cause) {
+      form.setFields(regularizeFieldErrors(cause));
       if (!(cause && typeof cause === 'object' && 'errorFields' in cause)) setError(cause);
     }
   };
-  return { form, baseline, permission, editable, cmd, error, locked, submit };
+  // 创建已确认才自动进入第二步；重开页面只恢复同一草稿，由用户显式重提。
+  useEffect(() => {
+    if (autoSubmit.current && draft) {
+      autoSubmit.current = false;
+      void submit();
+    }
+  });
+  return { form, baseline, permission, editable, cmd, error, locked, submit, draft, readError, reread };
 }
 
 function RegularizeEditor(props: EditorProps) {
   const { row, onClose } = props;
   const state = useRegularize(props);
-  const { form, baseline, permission, editable, cmd, error, locked, submit } = state;
+  const { form, baseline, permission, editable, cmd, error, locked, submit, draft, readError, reread } = state;
   const probation = Form.useWatch('probation', form) === true;
   const footer = (
     <Space>
@@ -118,7 +209,7 @@ function RegularizeEditor(props: EditorProps) {
         {m.cancel}
       </Button>
       <Button type="primary" loading={cmd.form.busy} disabled={locked} onClick={() => void submit()}>
-        {m.save}
+        {props.application ? m.submit : m.save}
       </Button>
     </Space>
   );
@@ -130,7 +221,7 @@ function RegularizeEditor(props: EditorProps) {
   return (
     <Modal
       open
-      title={m.entries.regularize}
+      title={props.application ? m.entries.apply : m.entries.regularize}
       width={800}
       footer={footer}
       onCancel={onClose}
@@ -138,15 +229,17 @@ function RegularizeEditor(props: EditorProps) {
       maskClosable={false}
     >
       <CommandStatus submission={cmd.form} labels={m.labels} />
+      {draft && <Alert type="info" message={m.draftCreated} />}
+      {readError && <ReadFailure reread={reread} />}
       {!!error && !cmd.form.state?.error && <Alert type="error" showIcon message={rejectionMessage(error)} />}
       <EmployeeSection row={row} />
-      <FormLock locked={locked}>
+      <FormLock locked={locked || !!draft}>
         <Form
           form={form}
           layout="vertical"
-          disabled={locked}
+          disabled={locked || !!draft}
           initialValues={baseline}
-          onValuesChange={(changed: Values, all: Values) => fillProbationEnd(form, changed, all)}
+          onValuesChange={(changed: Values, all: Values) => form.setFieldsValue(probationChanges(changed, all))}
         >
           <h3>{m.sections.employment}</h3>
           <div className="intern-form-grid">
@@ -181,13 +274,10 @@ function RegularizeEditor(props: EditorProps) {
   );
 }
 
-/** 预计试用结束日期按“转正日 + 月数”自动算（与后端 expectedProbationEndDate 同一函数），可手改；关掉试用期时清空。 */
-function fillProbationEnd(form: { setFieldsValue(values: Values): void }, changed: Values, all: Values) {
-  if (changed.probation === false) form.setFieldsValue({ probationMonths: null, probationEndDate: null });
-  if (!('effectiveDate' in changed || 'probationMonths' in changed)) return;
-  const { effectiveDate, probationMonths } = all;
-  if (all.probation === true && typeof effectiveDate === 'string' && typeof probationMonths === 'number')
-    form.setFieldsValue({ probationEndDate: expectedProbationEndDate(effectiveDate, probationMonths) });
+function ReadFailure({ reread }: { reread(): Promise<void> }) {
+  return (
+    <Alert type="error" message={m.rereadFailed} action={<Button onClick={() => void reread()}>{m.refresh}</Button>} />
+  );
 }
 
 export function InternField({

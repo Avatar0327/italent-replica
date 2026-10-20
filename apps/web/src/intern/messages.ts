@@ -32,6 +32,7 @@ export const m = {
   page: (n: number) => `第 ${n} 页`,
   entries: {
     regularize: '实习转正',
+    apply: '实习转正申请',
     terminate: '结束实习',
     withdraw: '撤回',
     revoke: '撤销',
@@ -70,8 +71,13 @@ export const m = {
   unconfirmed: '已提交，但写后读取失败，结果待确认；请勿重复提交。',
   unstableSnapshot: '此员工的任职正在被修改，未能读到一致的版本，请稍后重试。',
   invalidReceipt: '回执与原单不符，请刷新后核对结果。',
+  invalidMonths: '试用期(月)必须为1～6的整数',
+  invalidEnd: '预计试用结束日期不得早于实习转正日期',
+  draftCreated: '申请已保存，继续提交同一申请；已保存的字段只读。',
+  rereadFailed: '重读失败，请重试读取后再提交。',
   success: {
     regularize: '实习转正成功',
+    apply: '实习转正申请提交成功',
     terminate: '结束实习成功',
     withdraw: '已撤回',
     revoke: '已撤销',

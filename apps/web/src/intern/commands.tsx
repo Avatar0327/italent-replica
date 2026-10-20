@@ -1,19 +1,44 @@
 import { Modal } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Latest } from '../foundation/forms/store.js';
 import { projectFields, sameValue, type Values } from '../foundation/forms/values.js';
-import { useApiClient } from '../foundation/Session.js';
+import { useApiClient, useSession } from '../foundation/Session.js';
 import { useDirectApi } from '../part-time/direct-api.js';
 import { m } from './messages.js';
 import { apiRoot, businesses, confirmationOf, type Confirmation } from './model.js';
 
 /** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开后仍在。 */
 export function InternCommands({ children }: { children: ReactNode }) {
-  return <FormCommands>{children}</FormCommands>;
+  const [drafts, setDrafts] = useState<Record<string, ApplicationDraft | undefined>>({});
+  return (
+    <Drafts.Provider value={{ drafts, put: (key, draft) => setDrafts((old) => ({ ...old, [key]: draft })) }}>
+      <FormCommands>{children}</FormCommands>
+    </Drafts.Provider>
+  );
+}
+
+export interface ApplicationDraft {
+  id: string;
+  revision: number;
+  values: Values;
+}
+const Drafts = createContext<
+  | {
+      drafts: Record<string, ApplicationDraft | undefined>;
+      put(key: string, draft: ApplicationDraft | undefined): void;
+    }
+  | undefined
+>(undefined);
+/** 两步申请已确认创建的草稿按会话、员工保留；第二步失败不得重新创建。 */
+export function useInternDraft(employeeId: string) {
+  const context = useContext(Drafts)!;
+  const session = useSession();
+  const key = JSON.stringify([session.tenantId, session.identityKey, employeeId]);
+  return { draft: context.drafts[key], put: (draft?: ApplicationDraft) => context.put(key, draft) };
 }
 
 export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employees`, employeeId);
@@ -120,6 +145,8 @@ export interface Send {
    * 返回写后回读的对象（路径、id、revision 下限）。
    */
   accept(raw: Values, sent: number): { path: string; id: string; revision: number };
+  /** 明确拒绝后重读；409 revision 冲突仍由内核展示差异、显式确认。 */
+  rejected?(): Promise<void>;
 }
 /**
  * 一个提交点（resource + 对象 id + 动作）：409 冲突、结果未知、明确拒绝都交内核；服务端要求二次确认时
@@ -171,6 +198,13 @@ export function useInternCommand(
           onConfirmation,
         });
         return true;
+      } catch (error) {
+        const status = (error as { status?: number } | undefined)?.status;
+        if (status && [403, 409, 422].includes(status)) {
+          if ((error as { code?: string }).code === 'REVISION_CONFLICT') await cmd.form.reload?.();
+          else await send.rejected?.();
+        }
+        throw error;
       } finally {
         running.current = false;
       }

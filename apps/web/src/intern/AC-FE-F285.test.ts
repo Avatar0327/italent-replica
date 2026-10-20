@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ObjectPermission } from '../foundation/permission-model.js';
+import { DirectError } from '../part-time/direct-api.js';
 import * as model from './model.js';
 
 const permission: ObjectPermission = {
@@ -53,5 +54,30 @@ describe('AC-FE-F285 申请入口与共用试用期校验', () => {
       departmentId: values.departmentId,
       probation: false,
     });
+  });
+  it('试用期日期按同一函数推算、手改保留；关闭与清除月数均清空日期', () => {
+    expect(model.probationChanges({ probationMonths: 1 }, values)).toEqual({ probationEndDate: '2026-11-15' });
+    expect(model.probationChanges({ effectiveDate: '2026-02-01' }, { ...values, effectiveDate: '2026-02-01' })).toEqual(
+      { probationEndDate: '2026-02-28' },
+    );
+    expect(model.probationChanges({ probationEndDate: '2026-12-01' }, values)).toEqual({});
+    expect(model.probationChanges({ probation: false }, values)).toEqual({
+      probationMonths: null,
+      probationEndDate: null,
+    });
+    expect(model.probationChanges({ probationMonths: null }, { ...values, probationMonths: null })).toEqual({
+      probationEndDate: null,
+    });
+    expect(model.probationChanges({ probation: true }, { ...values, probationMonths: null })).toEqual({});
+  });
+  it('400 PROBATION_MONTHS_REQUIRED 精确映射到月数字段，不改用户输入', () => {
+    const before = structuredClone(values);
+    const error = new DirectError(400, 'VALIDATION_FAILED', '有试用期时必须填写试用期(月)', {
+      reason: 'PROBATION_MONTHS_REQUIRED',
+    });
+    expect(model.regularizeFieldErrors(error)).toEqual([
+      { name: ['probationMonths'], errors: ['有试用期时必须填写试用期(月)'] },
+    ]);
+    expect(values).toEqual(before);
   });
 });

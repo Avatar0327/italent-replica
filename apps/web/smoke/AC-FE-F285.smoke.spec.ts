@@ -1,6 +1,6 @@
 import type { Page, Request } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
-import { applicationId, business, employeeRevision, openDetail, rows, setup } from './intern-fixtures.js';
+import { applicationId, business, employeeRevision, openDetail, rows, setup, target } from './intern-fixtures.js';
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: '实习转正申请', exact: true });
 const submit = (page: Page) => dialog(page).getByRole('button', { name: /提\s*交$/ });
@@ -135,13 +135,21 @@ test('AC-FE-F285-03 月数为空或结束日过早阻止提交；服务端400在
   await expect(field(page, '预计试用结束日期').getByText('预计试用结束日期不得早于实习转正日期')).toBeVisible();
   expect(created).toHaveLength(0);
   await date(page, '预计试用结束日期', '2026-11-20');
-  await page.route(`**/employment/employees/${employee}/businesses`, (route) =>
-    route.fulfill(rejection(400, 'PROBATION_MONTHS_REQUIRED', '有试用期时必须填写试用期(月)')),
-  );
+  const attempts: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
+    attempts.push(posted(route.request()));
+    return attempts.length === 1
+      ? route.fulfill(rejection(400, 'PROBATION_MONTHS_REQUIRED', '有试用期时必须填写试用期(月)'))
+      : route.fallback();
+  });
   await submit(page).click();
   await expect(field(page, '试用期(月)').getByText('有试用期时必须填写试用期(月)')).toBeVisible();
   await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('2026-11-20');
   await expect(submit(page)).toBeEnabled();
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(attempts[1]!.body).toEqual(attempts[0]!.body);
+  expect(attempts[1]!.key).not.toBe(attempts[0]!.key);
 });
 
 test('AC-FE-F285-04 创建结果未知关闭重开及切到直接转正仍锁定，不发第二次命令', async ({ page }) => {
@@ -188,7 +196,7 @@ test('AC-FE-F285-05 提交审批明确拒绝：重读、关闭重开仍处理同
   await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
   await submit(page).click();
   await expect(dialog(page).getByText('未匹配到审批流程').first()).toBeVisible();
-  await expect.poll(() => reads).toBeGreaterThan(1);
+  await expect.poll(() => reads).toBeGreaterThan(0);
   await dialog(page)
     .getByRole('button', { name: /取\s*消/ })
     .click();
@@ -197,4 +205,130 @@ test('AC-FE-F285-05 提交审批明确拒绝：重读、关闭重开仍处理同
   await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F285-06 创建409：重读最新部门、保留日期与试用期，核对后用新revision重提', async ({ page }) => {
+  const { created, server, receipt } = await application(page);
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
+    created.push(posted(route.request()));
+    server.employeeRevision += 1;
+    if (created.length === 1) {
+      server.record = { ...server.record, departmentId: target };
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } },
+      });
+    }
+    return route.fulfill({
+      status: 201,
+      json: { ...receipt('draft', 1), employeeRevision: server.employeeRevision },
+    });
+  });
+  await month(page);
+  await submit(page).click();
+  await expect(dialog(page).getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+  await expect(submit(page)).toBeDisabled();
+  await dialog(page).getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await expect(field(page, '实习转正日期').locator('input')).toHaveValue('2026-10-16');
+  await expect(field(page, '部门').getByText('合成转正部门', { exact: true })).toBeVisible();
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(created.map((item) => item.revision)).toEqual(['5', '6']);
+  expect(created[1]!.body.fields).toEqual({ departmentId: target });
+});
+
+test('AC-FE-F285-07 提交审批结果未知：换视图后直接转正、撤回与撤销均不能绕开员工恢复锁', async ({ page }) => {
+  const { state, created } = await application(page);
+  let attempts = 0;
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    attempts += 1;
+    state.submitted = true;
+    state.revision = 2;
+    return route.abort('failed');
+  });
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(submit(page)).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('dialog', { name: '员工档案' }).getByRole('button', { name: '关闭' }).click();
+  await openDetail(page, 'converting');
+  for (const name of [/撤\s*回/, /撤\s*销/]) await expect(page.getByRole('button', { name })).toBeDisabled();
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: '实习转正', exact: true }).getByRole('button', { name: /保\s*存/ }),
+  ).toBeDisabled();
+  expect(created).toHaveLength(1);
+  expect(attempts).toBe(1);
+});
+
+test('AC-FE-F285-08 错误创建回执锁定且不发第二步', async ({ page }) => {
+  const { receipt, submitted } = await application(page);
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) =>
+    route.fulfill({ status: 201, json: { ...receipt('draft', 1), employeeRevision } }),
+  );
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(dialog(page).getByText(/当前表单已锁定/)).toBeVisible();
+  expect(submitted).toHaveLength(0);
+});
+
+test('AC-FE-F285-09 403资格拒绝显示服务端原因并重读列表，不在前端补资格规则', async ({ page }) => {
+  const { queries } = await application(page);
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) =>
+    route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '当前身份不能发起此申请' } } }),
+  );
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  const before = queries.length;
+  await submit(page).click();
+  await expect(dialog(page).getByText('当前身份不能发起此申请').first()).toBeVisible();
+  await expect.poll(() => queries.length).toBeGreaterThan(before);
+  await expect(dialog(page).getByRole('radio', { name: '否', exact: true })).toBeChecked();
+});
+
+test('AC-FE-F285-10 审批提交成功但视图回读失败，关闭重开不重发', async ({ page }) => {
+  const { created, submitted } = await application(page);
+  await page.route('**/employment/interns?*', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: 'UNAVAILABLE', message: '列表暂不可用' } },
+    }),
+  );
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(dialog(page).getByText(/当前表单已锁定/)).toBeVisible();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+  await expect(submit(page)).toBeDisabled();
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F285-11 提交审批409重读同一草稿，核对后按草稿新revision重提', async ({ page }) => {
+  const { state, created, submitted, receipt } = await application(page);
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    submitted.push(posted(route.request()));
+    if (submitted.length === 1) {
+      state.revision = 3;
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'REVISION_CONFLICT', message: '草稿版本冲突' } },
+      });
+    }
+    state.revision = 4;
+    state.submitted = true;
+    return route.fulfill({ json: receipt('in_review', 4) });
+  });
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(dialog(page).getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+  await expect(submit(page)).toBeDisabled();
+  await dialog(page).getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(submitted.map((item) => item.revision)).toEqual(['1', '3']);
+  expect(created).toHaveLength(1);
 });

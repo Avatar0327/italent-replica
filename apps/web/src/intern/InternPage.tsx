@@ -5,6 +5,7 @@ import { NameOf, RefSelect } from '../contracts/references.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
+import { useApiClient } from '../foundation/Session.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
@@ -48,6 +49,7 @@ function useFilterPermission() {
 }
 
 function InternList() {
+  const api = useApiClient();
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
   const [page, setPage] = useState(1);
@@ -63,6 +65,14 @@ function InternList() {
     select(undefined);
   };
   const items = result.data?.items ?? [];
+  const refresh = async (applicationId?: string) => {
+    if (!applicationId) return result.reload();
+    const { data, page } = await applicationView(api, applicationId);
+    setParams({ view: 'converting' });
+    setPage(page);
+    setFilters({});
+    return data;
+  };
   return (
     <>
       <h1>{m.title}</h1>
@@ -110,11 +120,21 @@ function InternList() {
           view={selected.view}
           row={selected.row}
           onClose={() => select(undefined)}
-          refresh={() => result.reload()}
+          refresh={refresh}
         />
       )}
     </>
   );
+}
+
+/** 以服务端视图成员关系确认提交结果，不按浏览器日期或本地状态将行挪入视图。 */
+async function applicationView(api: ReturnType<typeof useApiClient>, applicationId: string) {
+  for (let page = 1; page <= 100; page += 1) {
+    const data = await api.request<ListResult>(listPath('converting', page));
+    if (data.items.some((item) => item.id === applicationId)) return { data, page };
+    if (data.items.length < pageSize) break;
+  }
+  throw new Error(m.unconfirmed);
 }
 
 function FilterBar({
