@@ -174,43 +174,22 @@ test('AC-FE-R2d3-04 结束实习：在途转正确认、显示取消待入职开
   expect(sent[1]!.key).not.toBe(sent[0]!.key);
 });
 
-test('AC-FE-R2d3-05 实习转正申请：建草稿（通用新增）后提交草稿', async ({ page }) => {
-  const { server } = await setup(page);
-  const created: ReturnType<typeof posted>[] = [];
-  const submitted: ReturnType<typeof posted>[] = [];
-  const draft = business('intern_regularization', {
-    id: applicationId,
-    mode: 'application',
-    status: 'draft',
-    revision: 1,
-  });
-  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
-    created.push(posted(route.request()));
-    [server.employeeRevision, server.businessRevision] = [employeeRevision + 1, 1];
-    return route.fulfill({ status: 201, json: draft });
-  });
-  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
-    submitted.push(posted(route.request()));
-    server.businessRevision = 2;
-    return route.fulfill({ json: { ...draft, status: 'in_review', revision: 2 } });
+test('AC-FE-R2d3-05 DEC-647：实习中 / 实习转正中详情都不渲染“实习转正申请”，直接转正照常', async ({ page }) => {
+  await setup(page);
+  const applications: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/businesses')) applications.push(request.url());
   });
   await openDetail(page, 'interning');
-  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
-  await expect(dialog(page).getByText(/实习转正申请暂不能填写试用期信息/)).toBeVisible();
-  await date(page, '实习转正日期', '2026-10-20');
-  await save(page, /保存草稿/).dblclick();
-  await expect(dialog(page).getByText(/申请草稿已保存/)).toBeVisible();
-  expect(created[0]?.body).toEqual({
-    kind: 'intern_regularization',
-    mode: 'application',
-    effectiveDate: '2026-10-20',
-    fields: { departmentId: rows.interning.departmentId },
-  });
-  expect(created[0]?.ifMatch).toBe(String(employeeRevision));
-  expect(created).toHaveLength(1);
-  await save(page, /提交草稿/).click();
-  await expect(page.getByText('实习转正申请已提交')).toBeVisible();
-  expect(submitted).toEqual([{ body: {}, ifMatch: '1', key: expect.any(String) }]);
+  await expect(page.getByRole('button', { name: '实习转正', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '结束实习', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '实习转正申请', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('row').getByRole('button', { name: '实习转正申请' })).toHaveCount(0);
+  await page.getByRole('dialog', { name: '员工档案' }).getByRole('button', { name: '关闭' }).click();
+  await openDetail(page, 'converting');
+  await expect(page.getByRole('button', { name: '实习转正', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '实习转正申请', exact: true })).toHaveCount(0);
+  expect(applications).toEqual([]);
 });
 
 test('AC-FE-R2d3-06 实习转正中：撤回审批中的申请，入口不含实习转正申请', async ({ page }) => {
@@ -338,7 +317,7 @@ test('AC-FE-R2d3-10 写后列表读取失败：结果待确认、关闭重开与
   await openDetail(page, 'interning');
   await page.getByRole('button', { name: '结束实习', exact: true }).click();
   await date(page, '实习结束日期', '2026-10-31');
-  await save(page).click();
+  await save(page).dblclick();
   await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
   await expect(page.getByText('结束实习成功')).toHaveCount(0);
   await expect(save(page)).toBeDisabled();

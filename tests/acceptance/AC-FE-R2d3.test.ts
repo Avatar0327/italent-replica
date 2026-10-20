@@ -9,7 +9,6 @@ import { m } from '../../apps/web/src/intern/messages.js';
 import {
   acceptBusiness,
   allowedFilters,
-  applicationBody,
   cellValue,
   columns,
   confirmationOf,
@@ -90,8 +89,12 @@ describe('AC-FE-R2d3 详情三个入口按服务端视图、状态与权限快�
   const interning = { id: 'record', employeeId, revision: 1 };
   const converting = { id: applicationId, employeeId, revision: 3, state: 'in_review' };
 
-  it('实习中：实习转正 / 实习转正申请 / 结束实习', () => {
-    expect(entriesFor('interning', interning, all)).toEqual(['regularize', 'apply', 'terminate']);
+  it('实习中：实习转正 / 结束实习', () => {
+    expect(entriesFor('interning', interning, all)).toEqual(['regularize', 'terminate']);
+  });
+  it('DEC-647：任何视图、任何权限组合都不出“实习转正申请”入口（F-285 后补）', () => {
+    for (const { key } of views)
+      for (const row of [interning, converting]) expect(entriesFor(key, row, all) as string[]).not.toContain('apply');
   });
   it('实习转正中：可直接转正、结束实习，审批中的申请可撤回 / 撤销，不能再发起申请', () => {
     expect(entriesFor('converting', converting, all)).toEqual(['regularize', 'terminate', 'withdraw', 'revoke']);
@@ -139,14 +142,6 @@ describe('AC-FE-R2d3 请求体与本地校验（补证 R2f1 五区）', () => {
       probation: false,
     });
   });
-  it('实习转正申请走通用新增：kind / mode 固定，任职字段放 fields，不带试用期控制项', () => {
-    expect(applicationBody(values)).toEqual({
-      kind: 'intern_regularization',
-      mode: 'application',
-      effectiveDate: '2026-10-16',
-      fields: { departmentId: 'dept', directManagerId: 'manager' },
-    });
-  });
   it('结束实习：只有实习结束日期；离职同步取消待入职默认关、只在打开时发送', () => {
     expect(terminateBody({ endDate: '2026-10-31', cancelPendingEntry: false })).toEqual({ endDate: '2026-10-31' });
     expect(terminateBody({ endDate: '2026-10-31', cancelPendingEntry: true })).toEqual({
@@ -155,7 +150,7 @@ describe('AC-FE-R2d3 请求体与本地校验（补证 R2f1 五区）', () => {
     });
   });
   it('可写字段：任职字段按字段权限，试用期控制项随新增操作；必填缺失或无写权时提交前拒绝', () => {
-    const editable = editableFields(formFields(false), all);
+    const editable = editableFields(formFields, all);
     expect(editable).toEqual([
       'effectiveDate',
       'departmentId',
@@ -164,12 +159,9 @@ describe('AC-FE-R2d3 请求体与本地校验（补证 R2f1 五区）', () => {
       'probationMonths',
       'probationEndDate',
     ]);
-    expect(editableFields(formFields(true), all)).not.toContain('probation');
-    expect(() => validateRegularize({ ...values, probationEndDate: null }, editable, false)).toThrow(
-      '预计试用结束日期',
-    );
-    expect(() => validateRegularize(values, ['effectiveDate'], false)).toThrow(m.denied);
-    expect(() => validateRegularize(values, editable, false)).not.toThrow();
+    expect(() => validateRegularize({ ...values, probationEndDate: null }, editable)).toThrow('预计试用结束日期');
+    expect(() => validateRegularize(values, ['effectiveDate'])).toThrow(m.denied);
+    expect(() => validateRegularize(values, editable)).not.toThrow();
   });
 });
 
@@ -210,7 +202,7 @@ describe('AC-FE-R2d3 回执与二次确认按真实接口形状', () => {
 describe('AC-FE-R2d3 打开基线与 409 重读同源（第 1 轮 P2-1）', () => {
   it('部门 / 职位 / 汇报关系取当前主职任职投影，转正日期为空，直接转正默认有试用期', () => {
     const record = { fields: { departmentId: 'dept', positionId: 'pos', directManagerId: 'mgr', levelId: 'lv' } };
-    expect(openingValues(false, record)).toEqual({
+    expect(openingValues(record)).toEqual({
       effectiveDate: null,
       departmentId: 'dept',
       positionId: 'pos',
@@ -220,17 +212,10 @@ describe('AC-FE-R2d3 打开基线与 409 重读同源（第 1 轮 P2-1）', () =
       probationMonths: null,
       probationEndDate: null,
     });
-    expect(openingValues(true, record)).toEqual({
-      effectiveDate: null,
-      departmentId: 'dept',
-      positionId: 'pos',
-      directManagerId: 'mgr',
-      dottedManagerId: null,
-    });
   });
   it('字段被裁剪（缺键）或没有当前任职：投影为空，不拿列表行或别的字段补值', () => {
-    expect(openingValues(true, { fields: {} })).toMatchObject({ departmentId: null, directManagerId: null });
-    expect(openingValues(true)).toMatchObject({ departmentId: null });
+    expect(openingValues({ fields: {} })).toMatchObject({ departmentId: null, directManagerId: null });
+    expect(openingValues()).toMatchObject({ departmentId: null });
     expect(terminateOpening()).toEqual({ endDate: null, cancelPendingEntry: false });
   });
 });
