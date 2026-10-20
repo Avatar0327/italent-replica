@@ -49,7 +49,7 @@ export interface ExitViewFilter {
   readonly initiation?: ExitInitiationFilter;
 }
 
-interface ExitRow {
+export interface ExitRow {
   id: string;
   employeeId: string;
   code: string;
@@ -128,7 +128,7 @@ export interface ExitItem {
 
 const iso = (value: string | Date) => new Date(value).toISOString();
 
-function toItem(row: ExitRow): ExitItem {
+export function toItem(row: ExitRow): ExitItem {
   const {
     activationStatus,
     activationReason,
@@ -227,12 +227,29 @@ function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
   return parts;
 }
 
+export { candidates as exitCandidates };
+
+/** 候选集的业务类型：离职（默认）或退休；退休追加扩展行与“首次提交时间”列（employment/retirement-views.ts）。 */
+export interface CandidateSource {
+  readonly kind: 'leave' | 'retirement';
+  /** 追加的选择列，每列以逗号结尾。 */
+  readonly columns: SQL;
+  readonly joins: SQL;
+}
+export const LEAVE_SOURCE: CandidateSource = { kind: 'leave', columns: sql``, joins: sql`` };
+
 /**
  * 候选行（范围过滤后、分页前），ord 是 order 下的全局名次。部门 / 职务：前驱任职记录 = 最终最后工作日当天或之前的
  * 最后一条时间轴记录（离职记录自己从最后工作日次日起，不会取到自己），取它最新的记录快照；
  * 单据部门（可见谓词用）优先取离职载荷自己的部门。
  */
-function candidates(tenantId: string, scope: EmploymentScope | undefined, where: SQL[], order: SQL): SQL {
+function candidates(
+  tenantId: string,
+  scope: EmploymentScope | undefined,
+  where: SQL[],
+  order: SQL,
+  source: CandidateSource = LEAVE_SOURCE,
+): SQL {
   const visible = employmentVisibilitySql(scope, {
     employee: sql`b.employee_id`,
     department: sql`COALESCE(p.department_id, prev.department_id)`,
@@ -255,6 +272,7 @@ function candidates(tenantId: string, scope: EmploymentScope | undefined, where:
       CASE WHEN act.outcome='suspended' THEN act.blocked_by_business_id END AS "blockedByBusinessId",
       c.id AS "cancellationId", c.reason AS "cancellationReason", c.cancel_case AS "cancellationCase",
       c.state_before AS "cancellationStateBefore", c.revision AS "cancellationRevision", c.created_at AS "cancelledAt",
+      ${source.columns}
       row_number() OVER (ORDER BY ${order}) AS ord
     FROM exit_requests x
     JOIN employment_business_objects b ON b.tenant_id=x.tenant_id AND b.id=x.business_id
@@ -281,15 +299,36 @@ function candidates(tenantId: string, scope: EmploymentScope | undefined, where:
     LEFT JOIN exit_types et ON et.tenant_id=x.tenant_id AND lower(et.code)=lower(x.exit_type_code)
     LEFT JOIN exit_reasons er ON er.tenant_id=x.tenant_id AND lower(er.code)=lower(x.reason_code)
     LEFT JOIN exit_whereabouts ew ON ew.tenant_id=x.tenant_id AND lower(ew.code)=lower(x.whereabouts_code)
-    WHERE x.tenant_id=${tenantId} AND p.kind='leave' AND ${visible}
+    ${source.joins}
+    WHERE x.tenant_id=${tenantId} AND p.kind=${source.kind} AND ${visible}
       AND ${sql.join([sql`true`, ...where], sql` AND `)}
   `;
 }
 
 /**
- * 一个视图的一页：总数与本页同一条语句、同一份物化候选集（并发生效时不会先数后取而越界）；
- * 越界页返回空 items 与同一 total。
+ * 候选集的一页：总数与本页同一条语句、同一份物化候选集（并发生效时不会先数后取而越界）；
+ * 越界页返回空行与同一 total。离职与退休两套视图共用，行里带 ord / total 包装列。
  */
+export async function pageOfCandidates<T extends { id?: unknown }>(
+  tx: Tx,
+  candidateSql: SQL,
+  page: PageQuery,
+): Promise<{ rows: (T & { total: number })[]; total: number }> {
+  checkPage(page);
+  const rows = rowsOf<T & { total: number }>(
+    await tx.execute(sql`
+    WITH base AS MATERIALIZED (${candidateSql}),
+      counted AS (SELECT count(*)::int AS total FROM base)
+    SELECT counted.total, page.* FROM counted
+    LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ord LIMIT ${page.limit} OFFSET ${page.offset}) page
+      ON true
+    ORDER BY page.ord
+  `),
+  );
+  return { total: Number(rows[0]?.total ?? 0), rows };
+}
+
+/** 一个视图的一页（离职）。 */
 export async function listExitView(
   tx: Tx,
   tenantId: string,
@@ -301,19 +340,13 @@ export async function listExitView(
   },
   scope: EmploymentScope | undefined,
 ): Promise<{ items: ExitItem[]; total: number }> {
-  checkPage(input.page);
   const where = [viewPredicate(input.view), ...filterPredicates(tenantId, input.filter)];
-  const rows = rowsOf<ExitRow & { total: number }>(
-    await tx.execute(sql`
-    WITH base AS MATERIALIZED (${candidates(tenantId, scope, where, viewOrder(input.view, input.show))}),
-      counted AS (SELECT count(*)::int AS total FROM base)
-    SELECT counted.total, page.* FROM counted
-    LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ord LIMIT ${input.page.limit} OFFSET ${input.page.offset}) page
-      ON true
-    ORDER BY page.ord
-  `),
+  const { rows, total } = await pageOfCandidates<ExitRow>(
+    tx,
+    candidates(tenantId, scope, where, viewOrder(input.view, input.show)),
+    input.page,
   );
-  return { total: Number(rows[0]?.total ?? 0), items: rows.filter((row) => row.id).map(toItem) };
+  return { total, items: rows.filter((row) => row.id).map(toItem) };
 }
 
 /** 扩展行的业务字段（详情用）；金额按数字返回，缺省为 null。 */
@@ -401,9 +434,12 @@ export async function loadExitDetail(
   tenantId: string,
   id: string,
   scope: EmploymentScope | undefined,
+  source: CandidateSource = LEAVE_SOURCE,
 ): Promise<ExitDetail | null> {
   const [row] = rowsOf<ExitRow>(
-    await tx.execute(sql`SELECT * FROM (${candidates(tenantId, scope, [sql`b.id=${id}::uuid`], sql`b.id`)}) base`),
+    await tx.execute(
+      sql`SELECT * FROM (${candidates(tenantId, scope, [sql`b.id=${id}::uuid`], sql`b.id`, source)}) base`,
+    ),
   );
   if (!row) return null;
   const { extension: ext, versions, events, instance, effects } = await loadDetailParts(tx, tenantId, id);
@@ -449,11 +485,11 @@ export async function loadExitDetail(
 //   3. 排序（EXIT_SORT_DEPENDENCIES）：排序键依赖的字段；看不到时改用 id 排序。
 // 视图归属（离职中 / 已完成 / 撤销）由视图名这一显式查询参数决定，是业务入口本身（设计 §3.2），不另按状态字段权拦截。
 
-type Dependency =
+export type Dependency =
   { readonly field: string; readonly object?: 'employee' } | { readonly field: null; readonly why: string };
 
 const independent = (why: string): Dependency => ({ field: null, why });
-const on = (field: string): Dependency => ({ field });
+export const on = (field: string): Dependency => ({ field });
 const CONTAINER = independent('容器本身不含值，其中每个叶子在表里各有登记的规则');
 
 /** 键名就是任职记录字段编码的顶层叶子（逐个列出）。 */
@@ -569,23 +605,33 @@ const allows = (rule: Dependency, show: ExitViewable) =>
  * 2. 登记了字段依赖的路径（含容器）先判权，无权整个键缺席，不进入递归；
  * 3. 裁剪前有成员、裁剪后一个不剩的容器整体缺席——不留 {} / []；裁剪前本来就是空的容器（有权时的 []）原样保留。
  */
-function trimNode(value: unknown, path: string, show: ExitViewable): unknown {
+function trimNode(
+  value: unknown,
+  path: string,
+  show: ExitViewable,
+  table: Readonly<Record<string, Dependency>> = EXIT_RESPONSE_DEPENDENCIES,
+): unknown {
   if (path !== '') {
-    const rule = EXIT_RESPONSE_DEPENDENCIES[path];
+    const rule = table[path];
     if (!rule || !allows(rule, show)) return DROPPED;
   }
   if (Array.isArray(value)) {
-    const kept = value.map((item) => trimNode(item, `${path}[]`, show)).filter((item) => item !== DROPPED);
+    const kept = value.map((item) => trimNode(item, `${path}[]`, show, table)).filter((item) => item !== DROPPED);
     return value.length > 0 && kept.length === 0 ? DROPPED : kept;
   }
   if (value !== null && typeof value === 'object') {
     const entries = Object.entries(value);
     const kept = entries
-      .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show)] as const)
+      .map(([key, item]) => [key, trimNode(item, path ? `${path}.${key}` : key, show, table)] as const)
       .filter(([, item]) => item !== DROPPED);
     return entries.length > 0 && kept.length === 0 ? DROPPED : Object.fromEntries(kept);
   }
   return value;
+}
+
+/** 按指定的响应路径表裁剪（退休视图在离职表之上追加退休专有路径，裁剪规则只此一处）。 */
+export function trimWith(table: Readonly<Record<string, Dependency>>, value: unknown, show: ExitViewable) {
+  return trimNode(value, '', show, table) as Record<string, unknown>;
 }
 
 export function trimExit<T extends ExitItem>(item: T, show: ExitViewable): Partial<T> {

@@ -26,7 +26,7 @@ export const DIGESTS: Digests = {
     requireProcessButton: '782f172bb6ca',
     requireProcessView: '06663664d062',
     requireResubmitRight: 'b40f94bd56fe',
-    requireWithdrawRight: 'b2b959b1fcb6',
+    requireWithdrawRight: '5a47d8c76327',
   },
   'apps/api/src/modules/approval/actions.ts': {
     adminAct: 'd76e0f4e36c7',
@@ -35,7 +35,7 @@ export const DIGESTS: Digests = {
     openTask: '6f9c0c04e106',
   },
   'apps/api/src/modules/approval/adapters.ts': {
-    ADAPTERS: '8b82e8d642bc',
+    ADAPTERS: '04f9a0119fbc',
     personnelAdapter: '5e08297e79d8',
   },
   'apps/api/src/modules/approval/disclosure.ts': {
@@ -350,6 +350,26 @@ export const DIGESTS: Digests = {
     requireEditTargets: '1384bafcddad',
     requireExitEditRights: '79a409abe52e',
   },
+  'apps/api/src/modules/employment/retirement-intention-access.ts': {
+    requireIntentionRight: 'a9e148cf6a93',
+    requireIntentionWriteScope: '1e3002a93baf',
+  },
+  'apps/api/src/modules/employment/retirement-intention-routes.ts': {
+    intentionGuard: 'a4ae072e9f95',
+    'route:GET /retirement-intentions': 'c27ab662952e',
+    'route:GET /retirement-intentions/:id': '98cc81b89c0c',
+    'route:PATCH /retirement-intentions/:id': '3974ae923459',
+    'route:POST /retirement-intentions/:id/submit': 'a6c1e862c697',
+    'route:POST /retirement-intentions/:id/withdraw': 'a6c1e862c697',
+    'route:POST /retirement-intentions/employees/:id': '4ee8c2492fc3',
+  },
+  'apps/api/src/modules/employment/retirement-intention-store.ts': {
+    loadVisibleIntention: 'fcea8ae3db97',
+  },
+  'apps/api/src/modules/employment/retirement-intention.ts': {
+    createIntention: '1bc5ad0bda27',
+    guardedRow: '015f7233832e',
+  },
   'apps/api/src/modules/employment/retirement-routes.ts': {
     registerRetirementChanges: '317f44fc42df',
     'route:PATCH /retirements/:id': '9f9608cf2822',
@@ -367,6 +387,10 @@ export const DIGESTS: Digests = {
     'route:POST /retirement-rules/:id/copy': '012777f500a5',
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
+  },
+  'apps/api/src/modules/employment/retirement-view-routes.ts': {
+    'route:GET /retirements': '2cf12c7bcd9a',
+    'route:GET /retirements/:id': '224782a4b1fb',
   },
   'apps/api/src/modules/employment/routes.ts': {
     authorizeBusinessWrite: '9cd4b1d55a33',
@@ -1570,12 +1594,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/access.ts#requireProcessButton': '1c392448567d',
   'apps/api/src/modules/approval/access.ts#requireProcessView': '0df64680109c',
   'apps/api/src/modules/approval/access.ts#requireResubmitRight': 'e7d8176a0b1c',
-  'apps/api/src/modules/approval/access.ts#requireWithdrawRight': '6c6159ebcc94',
+  'apps/api/src/modules/approval/access.ts#requireWithdrawRight': '0fababe5622a',
   'apps/api/src/modules/approval/actions.ts#adminAct': 'ceaaad3064d4',
   'apps/api/src/modules/approval/actions.ts#assertTargetInScope': '1fe41485709d',
   'apps/api/src/modules/approval/actions.ts#openOwn': '1977a0826369',
   'apps/api/src/modules/approval/actions.ts#openTask': 'b572a86c10cb',
-  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '6383de2b4c67',
+  'apps/api/src/modules/approval/adapters.ts#ADAPTERS': '90677db56d33',
   'apps/api/src/modules/approval/adapters.ts#personnelAdapter': '9a797db38d5f',
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
@@ -1807,6 +1831,22 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope': '90ef4cd1f0fc',
   'apps/api/src/modules/employment/replay-guard.ts#requireEditTargets': 'aa1f389d7a24',
   'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights': '2007bd7eaee2',
+  'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionRight': '69a301c4f5c1',
+  'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': '0b611979014e',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': '02aebe00f7b4',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions': '9e50ab965e69',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': 'f621e1693421',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:PATCH /retirement-intentions/:id':
+    '3523950dadcd',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/:id/submit':
+    '82f1cd5f6bb3',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/:id/withdraw':
+    '82f1cd5f6bb3',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
+    '87d5b8962599',
+  'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
+  'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/cancellations/:id': '44c8bd549f2a',
@@ -1821,6 +1861,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/:id': 'f5a8b6b3c5f6',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'fd6829e031d2',
   'apps/api/src/modules/employment/routes.ts#authorizeImport': 'ef294a22f161',
   'apps/api/src/modules/employment/routes.ts#importEmployment': '70bca03f3fb8',

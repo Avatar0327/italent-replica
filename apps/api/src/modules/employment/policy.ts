@@ -57,6 +57,7 @@ import {
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
   RETIREMENT_BUTTONS,
+  RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
   PART_TIME_BUTTONS,
 } from '@italent/domain';
@@ -119,6 +120,7 @@ const F_UNBOUND = denied(403, 'FORBIDDEN', '当前用户未绑定员工');
 const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
 const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
 const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
+const NF_INTENTION = denied(404, 'NOT_FOUND', '意向退休申请不存在');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -1762,6 +1764,26 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.exitDetail'),
     ...byId,
   }),
+  // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
+  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
+  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  'GET /retirements': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.retirementViews'),
+  }),
+  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
+  'GET /retirements/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.retirementDetail'),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
   // :dict ∉ types / reasons / whereabouts → 400；enabled 查询非法 → 400；字典无组织字段，不按范围裁剪，返回固定键
   'GET /exits/dictionaries/:dict': object({
@@ -2213,4 +2235,71 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     }),
     ...byId,
   }),
+  // ---- employment/retirement-intention-routes.ts：R2-T04 BE-5d2 意向退休日期申请（设计 §11 / §12.1）-------------------------
+  // 授权复用任职记录对象：数据操作 + 详情级按钮 Employment.RetireIntention + 字段权（intendedDate / reason）。读用 DEC-177 可见口径
+  // （员工当前部门或申请快照部门任一在范围内；使用用户维度取本表发起人），写用申请行自己的三个坐标（快照部门 / 员工 / 发起人，
+  // DEC-193），不用 employmentVisibilitySql、也不查任职业务创建人。范围外与不存在同一个 404「意向退休申请不存在」
+  // 创建：If-Match = 员工 revision；readContext 不带员工 ID（员工主档创建人不是本单坐标），命令内持员工锁后用即将写入的快照部门 / 员工 / 本单发起人判写范围；
+  // 员工须当前在职（409 RETIREMENT_INTENTION_NOT_EMPLOYED）、同员工无未办结申请（409 RETIREMENT_INTENTION_IN_PROGRESS）、
+  // 日期晚于今天（400 RETIREMENT_INTENTION_NOT_FUTURE）、有弹性上下限时落在其内（400 RETIREMENT_INTENTION_OUT_OF_RANGE）
+  'POST /retirement-intentions/employees/:id': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    // 范围 = 即将写入的快照部门 / 员工 / 本单发起人三坐标（§11.1，creatorId = ctx.userId），不用员工主档创建人；范围外 404
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentWrite('body', [
+      'lockEmploymentEmployee',
+      'assertRevision',
+      'requireIntentionWriteScope',
+      'assertIntentionCreatable',
+    ]),
+    ...byId,
+  }),
+  // 修改：If-Match = 申请 revision；只有草稿 / 已驳回可改（审批中 409 RETIREMENT_INTENTION_IN_APPROVAL，已办结 409
+  // RETIREMENT_INTENTION_NOT_EDITABLE）；body 严格 { intendedDate?, reason? } 至少一项；日期按当前预计退休日期与弹性范围重校验
+  'PATCH /retirement-intentions/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentWrite('body', ['lockIntention', 'assertRevision', 'assertIntentionEditable']),
+    ...byId,
+  }),
+  // 提交（含驳回后重提，沿用原实例）/ 撤回：If-Match = 申请 revision；请求体不接受任何字段（400）；提交只允许原发起人（403
+  // RETIREMENT_INTENTION_INITIATOR_ONLY）并重判在职与日期，没有匹配的流程 / 首节点无审批人整单回滚；撤回草稿 / 审批中 / 已驳回 → 已撤回
+  'POST /retirement-intentions/:id/submit': intentionAction(),
+  'POST /retirement-intentions/:id/withdraw': intentionAction(),
+  // 列表：筛选严格校验（employeeId / status）；DEC-177 可见口径在分页前过滤，total 与本页同一范围
+  'GET /retirement-intentions': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('employment.intentionVisibility'),
+    fields: RESPONSE,
+  }),
+  // 详情：看不见与不存在同一个 404「意向退休申请不存在」
+  'GET /retirement-intentions/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: guardScope('employment.intentionVisibility', NF_INTENTION),
+    fields: RESPONSE,
+    ...byId,
+  }),
 });
+
+/** 意向申请的提交 / 撤回：同一按钮 Employment.RetireIntention（命令式，空字段集合），写范围 = 申请行三个坐标。 */
+function intentionAction() {
+  return object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
+    fields: RESPONSE,
+    write: employmentCommand(['lockIntention', 'assertRevision', 'assertIntentionStateAllowsAction']),
+    ...byId,
+  });
+}
