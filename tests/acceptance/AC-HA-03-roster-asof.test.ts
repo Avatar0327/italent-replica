@@ -75,7 +75,7 @@ describe('AC-HA-03 时点花名册：任职、合同、组织同取 asOf 当天'
     const { w, zhang } = await fixture('ha03-today');
     const today = await w.rosterOk(undefined);
     expect(today.asOf).toBe('2026-10-06');
-    expect(today.items[0]).toMatchObject({
+    expect(today.items.find((item) => item.employeeId === zhang.id)).toMatchObject({
       employeeId: zhang.id,
       age: 36,
       orgLevel1: '集团G',
@@ -89,7 +89,11 @@ describe('AC-HA-03 时点花名册：任职、合同、组织同取 asOf 当天'
     expect(renamed.items[0]).toMatchObject({ orgLevel3: '平台组', contractEffectiveDate: '2026-01-01' });
     expect(String(renamed.items[0]!['orgFullName'])).toMatch(/集团G\/研发部R\/平台组$/);
     // 未来日期合法：取当前已落地的未来版本
-    expect((await w.rosterOk('2027-06-01')).items[0]).toMatchObject({ orgLevel2: '销售部S', age: 36 });
+    const future = await w.rosterOk('2027-06-01');
+    expect(future.items.find((item) => item.employeeId === zhang.id)).toMatchObject({
+      orgLevel2: '销售部S',
+      age: 36,
+    });
   });
 
   it('asOf 不合法 400；没有任职的日期（入职前）名册为空', async () => {
