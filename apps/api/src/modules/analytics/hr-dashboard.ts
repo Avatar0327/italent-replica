@@ -195,7 +195,7 @@ const METRICS: Readonly<Record<HrDashboardCode, Metric>> = {
   },
   contractExpiring30: {
     visibility: 'employment',
-    rows: (a) => contracts(a, expiringContract(a.asOf, HR_DASHBOARD_SOON_DAYS, config(a))),
+    rows: (a) => contracts(a, expiringContract(a.asOf, HR_DASHBOARD_SOON_DAYS, config(a), true)),
   },
   probationOverdue: {
     visibility: 'employment',
@@ -203,7 +203,7 @@ const METRICS: Readonly<Record<HrDashboardCode, Metric>> = {
   },
   contractOverdue: {
     visibility: 'employment',
-    rows: (a) => contracts(a, expiredUnrenewedContract(a.asOf, config(a))),
+    rows: (a) => contracts(a, expiredUnrenewedContract(a.asOf, config(a), true)),
   },
   offerPending: { visibility: 'offer', rows: (a) => offerRows(a, viewIs('pending')) },
   offerSentThisMonth: {
@@ -272,11 +272,14 @@ function visible(a: DashboardAsOf, kind: Visibility): SQL {
   });
 }
 
-/** 一个指标在调用者范围内的候选集合（去重）：数字与明细都从这里取。 */
+/**
+ * 一个指标在调用者范围内的候选集合：先按候选记录做范围过滤（范围看每条记录所在部门），再按指标主体 ID 去重
+ * （同一个人年内多条入职 / 离职记录只算一次，跨部门也一样）；数字与明细都从这里取，分页的 ID 因此唯一。
+ */
 export function indicatorRows(code: HrDashboardCode, a: DashboardAsOf): SQL {
   const metric = METRICS[code];
-  return sql`SELECT DISTINCT m.id, m.employee_id, m.org_id FROM (${metric.rows(a)}) m
-    WHERE ${visible(a, metric.visibility)}`;
+  return sql`SELECT DISTINCT ON (m.id) m.id, m.employee_id, m.org_id FROM (${metric.rows(a)}) m
+    WHERE ${visible(a, metric.visibility)} ORDER BY m.id, m.org_id`;
 }
 
 /** 23 个数字：一条语句、同一快照。 */

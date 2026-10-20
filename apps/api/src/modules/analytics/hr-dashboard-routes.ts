@@ -9,11 +9,11 @@
 import { withTenant } from '@italent/db';
 import { HR_DASHBOARD_INDICATORS, HR_DASHBOARD_OBJECT, tenantLocalDate, type HrDashboardCode } from '@italent/domain';
 import type { Context, Hono } from 'hono';
-import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
+import { validIsoDate } from '../org/read-model.js';
 import { objectContext, requestScope } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { dashboardRenewalTypes, hrDashboardCounts, hrDashboardPage, type DashboardAsOf } from './hr-dashboard.js';
@@ -23,15 +23,21 @@ export const HR_DASHBOARD_BASE = '/api/tenant/analytics/hr-dashboard';
 // 人员类指标按员工归属裁剪：组织类范围规则对本对象同样带出“按人员”的关联谓词（与员工信息类对象同口径）
 registerPersonScopedObject(HR_DASHBOARD_OBJECT);
 
-const asOfSchema = z.iso.date();
+/**
+ * asOf 的可计算范围：窗口要算 asOf − 1 天与 asOf + 30 天，两端都必须还是合法日期（0001-01-01 之前、9999-12-31 之后没有日期），
+ * 所以取 [0001-01-02, 9999-12-01]；格式与历法合法性复用组织模块的 validIsoDate（0000 年不合法）。
+ */
+const AS_OF_MIN = '0001-01-02';
+const AS_OF_MAX = '9999-12-01';
+const validAsOf = (value: string) => validIsoDate(value) && value >= AS_OF_MIN && value <= AS_OF_MAX;
 
 async function dashboardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   const base = await objectContext(c, deps, HR_DASHBOARD_OBJECT, 'view');
   const scope = await requestScope(c, deps, base, HR_DASHBOARD_OBJECT);
   const raw = c.req.query('asOf');
-  const parsed = raw === undefined ? undefined : asOfSchema.safeParse(raw);
-  if (parsed && !parsed.success) throw new AppError('VALIDATION_FAILED', 'asOf 必须是 YYYY-MM-DD 日期');
-  const asOf = parsed?.data ?? tenantLocalDate(base.now, base.timezone);
+  if (raw !== undefined && !validAsOf(raw))
+    throw new AppError('VALIDATION_FAILED', `asOf 必须是 ${AS_OF_MIN} 至 ${AS_OF_MAX} 之间的 YYYY-MM-DD 日期`);
+  const asOf = raw ?? tenantLocalDate(base.now, base.timezone);
   return { base, scope, asOf };
 }
 

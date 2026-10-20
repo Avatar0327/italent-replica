@@ -17,7 +17,7 @@ export const DIGESTS: Digests = {
     requirePermission: '697f511a2e1f',
   },
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
-    dashboardContext: '64ee1b654b33',
+    dashboardContext: '01da30826e17',
     'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
     'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
   },
@@ -1593,7 +1593,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes/:id': '4a5d1edd24bd',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/operation-logs': 'e453470a6384',
   'apps/api/src/authorization.ts#requirePermission': 'de23424a7b48',
-  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '761d0fdbdc46',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '15f5d8c90a73',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
     '980851c99aab',

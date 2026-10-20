@@ -28,11 +28,17 @@ export function currentPrimarySummary(tenantId: string, asOf: string): SQL {
 }
 
 /** 下一份合同已接上（同员工、同类型或同属续签类型、生效日为本合同终止日次日）。 */
-function successorExists(c: { tenantId: SQL; employeeId: SQL; typeId: SQL; endDate: SQL }, renewalTypes: string[]) {
+function successorExists(
+  c: { tenantId: SQL; employeeId: SQL; typeId: SQL; endDate: SQL },
+  renewalTypes: string[],
+  asOf?: string,
+) {
   const types = `{${renewalTypes.join(',')}}`;
+  // 给出 asOf（人事看板的时点口径）：后续合同在 asOf 当天或之前已生效才算接上；不给（合同列表）按当前
+  const reached = asOf ? sql`AND next.effective_date<=${asOf}::date` : sql``;
   return sql`EXISTS (SELECT 1 FROM contract_records next WHERE next.tenant_id=${c.tenantId}
     AND next.employee_id=${c.employeeId} AND NOT next.deleted AND next.status<>'void'
-    AND next.approval_status='effective' AND next.effective_date=${c.endDate}+1
+    AND next.approval_status='effective' AND next.effective_date=${c.endDate}+1 ${reached}
     AND (next.type_id=${c.typeId} OR (next.type_id::text=ANY(${types}::text[])
       AND ${c.typeId}::text=ANY(${types}::text[]))))`;
 }
@@ -162,7 +168,12 @@ async function missingContracts(tx: Tx, { ctx, query, limit, offset, today, orgI
  * 即将到期的合同（不含在途续签排除）：有效、终止日在 [today, today + days]（含两端）、尚无后续合同接上。
  * 合同列表“即将到期”在此之上再排除在途续签（A1）；人事看板“未来 30 天合同到期”（规格 35 §2.1 #6“尚未续签生效”）不排除。
  */
-export function expiringContract(today: string, days: number, config: { renewalTypeIds: string[] }): SQL {
+export function expiringContract(
+  today: string,
+  days: number,
+  config: { renewalTypeIds: string[] },
+  pointInTime = false,
+): SQL {
   const c = contractRecords;
   return sql`${c.status}='valid' AND ${c.endDate} BETWEEN ${today}::date AND ${today}::date+${days}::int
     AND NOT ${successorExists(
@@ -173,11 +184,16 @@ export function expiringContract(today: string, days: number, config: { renewalT
         endDate: sql`${c.endDate}`,
       },
       config.renewalTypeIds,
+      pointInTime ? today : undefined,
     )}`;
 }
 
 /** 过期未续签的合同：终止日已过、未终止在到期日之前、没有变更链与后续合同；列表“过期未续签”与人事看板“合同已过期”共用。 */
-export function expiredUnrenewedContract(today: string, config: { renewalTypeIds: string[] }): SQL {
+export function expiredUnrenewedContract(
+  today: string,
+  config: { renewalTypeIds: string[] },
+  pointInTime = false,
+): SQL {
   const c = contractRecords;
   return sql`${c.status}<>'void' AND ${c.endDate}<${today}::date
       AND (${c.actualTerminationDate} IS NULL OR ${c.actualTerminationDate}>=${c.endDate})
@@ -191,6 +207,7 @@ export function expiredUnrenewedContract(today: string, config: { renewalTypeIds
           endDate: sql`${c.endDate}`,
         },
         config.renewalTypeIds,
+        pointInTime ? today : undefined,
       )}`;
 }
 

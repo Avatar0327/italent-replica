@@ -6,7 +6,9 @@ import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': [
-    '#asOfSchema',
+    '#AS_OF_MAX',
+    '#AS_OF_MIN',
+    '#validAsOf',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
     'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT',
@@ -28,6 +30,11 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/job/context.ts#pageQuery',
       'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_INDICATORS',
     ],
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#validAsOf': [
+    '#AS_OF_MAX',
+    '#AS_OF_MIN',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+  ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#METRICS': [
     '#NULL_UUID',
     '#WORKING_TYPES',
