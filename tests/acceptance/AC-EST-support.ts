@@ -1,9 +1,37 @@
 import { randomUUID } from 'node:crypto';
-import { type Db, withTenant } from '@italent/db';
+import { type Db, sql, withTenant } from '@italent/db';
 import { expect, vi } from 'vitest';
 import type { EstablishmentPersonnelPort } from '../../apps/api/src/modules/establishment/personnel.js';
 import { orgSession } from './AC-ORG-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
+
+/**
+ * 造“含编制的组织已停用”的前置数据。F-296：直接停用含编制的组织在 11e 前会被拒（409），
+ * 本用例要的是停用后的编制行为，所以绕过入口、按版本链追加一个停用版本（org_versions + 层级 + revision）。
+ */
+export async function forceDisableOrg(db: Db, tenantId: string, orgId: string, from: string): Promise<number> {
+  return withTenant(db, tenantId, async (tx) => {
+    const id = randomUUID();
+    await tx.execute(sql`
+      INSERT INTO org_versions (id, tenant_id, org_id, version_no, previous_version_id, start_date, stop_date, enabled,
+        code, name, short_name, broad_type, established_on, full_name, level)
+      SELECT ${id}::uuid, tenant_id, org_id, version_no + 1, id, ${from}::date, stop_date, false,
+        code, name, short_name, broad_type, established_on, full_name, level
+      FROM org_versions WHERE tenant_id = ${tenantId} AND org_id = ${orgId}::uuid
+      ORDER BY start_date DESC, version_no DESC LIMIT 1`);
+    await tx.execute(sql`
+      INSERT INTO org_hierarchy_links (tenant_id, version_id, dimension, parent_org_id, sequence)
+      SELECT l.tenant_id, ${id}::uuid, l.dimension, l.parent_org_id, l.sequence FROM org_hierarchy_links l
+      JOIN org_versions v ON v.tenant_id = l.tenant_id AND v.id = l.version_id
+      WHERE v.tenant_id = ${tenantId} AND v.id = (SELECT previous_version_id FROM org_versions WHERE id = ${id}::uuid)`);
+    const updated = await tx.execute(
+      sql`UPDATE org_objects SET revision = revision + 1 WHERE tenant_id = ${tenantId} AND id = ${orgId}::uuid
+        RETURNING revision`,
+    );
+    const rows = (Array.isArray(updated) ? updated : (updated as { rows: unknown[] }).rows) as { revision: number }[];
+    return rows[0]!.revision;
+  });
+}
 
 export const EST_NOW = new Date('2026-10-01T01:00:00.000Z');
 
