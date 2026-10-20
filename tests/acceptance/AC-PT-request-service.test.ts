@@ -60,9 +60,9 @@ describe('草稿的创建与修改（D-1～D-10、周期边界）', () => {
       reason: 'PART_TIME_EXCLUSIVE_TYPE_EXISTS',
     });
     expect((await w.update(first.id, 1, { remark: '改备注' })).versionNo).toBe(2);
-    // PT-7 前不接受负责人 / 新增下属（§4.8，PB-57 申请侧）
-    expect(await w.rejected(() => w.create({ isDepartmentHead: true }))).toMatchObject({
-      reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
+    // PT-7 起接受负责人 / 新增下属（§4.8，PB-57 申请侧改正例）；联动人员不合格才拒绝
+    expect(await w.rejected(() => w.create({ addedSubordinateIds: [w.worker.employeeId] }))).toMatchObject({
+      reason: 'TRANSFER_PERSON_NOT_ELIGIBLE',
     });
   });
 });
