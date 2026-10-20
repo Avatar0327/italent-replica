@@ -1405,13 +1405,13 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-void-applications.ts#describeCause': ['d380fd5e96e6', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-void-applications.ts#idArray': ['afe3fe5fb5b6', '7a645dc8391f'],
   'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources': [
-    'f1e2906491c0',
-    '56b4775a66c3',
+    '358413b2197a',
+    'b100bd8794a5',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#lockInstances': ['4b8ff6699b0e', '595049fe34f2'],
   'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads': ['df7d06127ef1', '6898487cf7ce'],
   'apps/api/src/modules/employment/exit-void-applications.ts#tooManyToVoid': ['9adcb5e3f0aa', '48c548bdaf39'],
-  'apps/api/src/modules/employment/exit-void-applications.ts#voidApplications': ['050da42f4fe3', '499baf8c7835'],
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidApplications': ['0f44183124c3', '499baf8c7835'],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates': ['8cec4bbbbd04', 'b1b0778d71ea'],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
     'b10f796624e8',
