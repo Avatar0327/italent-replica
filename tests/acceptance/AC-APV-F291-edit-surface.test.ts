@@ -2,7 +2,7 @@
  * F-291（F-267BE，DEC-654 批 1 / DEC-655）：审批详情对“当前可审批任务”下发本节点可编辑字段 form.edit。
  * 下发 = 节点 editableFields ∩ 查看人可见字段（按节点顺序，带当前值与必填）；与 actions 的 edit 判定、命令侧
  * “同意带 fields”的前置检查同源（edit-surface.ts），必填与命令侧拒收空值同一张表。口径：docs/09_派发/后续任务.md F-291。
- * 兼职预置流程原样安装（F-249）：延长 / 结束 = endDate + requestRemark，新增 = 6 项，不含是否部门负责人。
+ * 兼职预置流程原样安装（F-249）：延长 / 结束 = endDate + requestRemark，新增 = 7 项（含 PT-7 开放的是否部门负责人，不含新增下属）。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -79,7 +79,7 @@ describe('F-291 兼职三类节点：下发 edit', () => {
     });
   });
 
-  it('新增：DEC-629 / DEC-634 开放的 6 项（不含是否部门负责人），兼职类型 / 兼职部门必填', async () => {
+  it('新增：DEC-629 / DEC-634 开放的 7 项（含 PT-7 开放的是否部门负责人，不含新增下属），兼职类型 / 兼职部门必填', async () => {
     const w = await world('add');
     const created = await w.create({ endDate: null });
     await w.send(created.id, 1);
@@ -93,6 +93,7 @@ describe('F-291 兼职三类节点：下发 edit', () => {
       'directManagerId',
       'postId',
       'levelId',
+      'isDepartmentHead',
     ]);
     expect(edit.fields.filter((field) => field.required).map((field) => field.key)).toEqual([
       'partTimeType',
