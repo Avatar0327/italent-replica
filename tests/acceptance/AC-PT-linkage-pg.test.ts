@@ -9,8 +9,11 @@ import { withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentActivations } from '@italent/api';
+import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
+import { httpWorld } from './AC-PT-http-support.js';
 import { createPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
-import { LINKED, linkageWorld, type LinkageWorld } from './AC-PT-linkage-support.js';
+import { LINKED, linkageWorld, withLinkage, type LinkageWorld } from './AC-PT-linkage-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -108,5 +111,33 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-linkage-pg 兼职联动�
     expect(await w.orgVersions(w.partTimeOrg.id)).toBe(versions + 1);
     expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
     expect((await w.managerOf(sub, '2026-10-10')).directManagerId).toBe(w.employeeId);
+  });
+  it('第 2 轮 P2：到期日只 PATCH 设为负责人（无下属输入）执行完整意图，须先收齐原待执行下属的闭包——另一操作先锁下属再取组织锁，不得 40P01 / 500', async () => {
+    const w = withLinkage(await httpWorld(database().db, 'lk-pg-edit-plan'));
+    const sub = await w.subordinate();
+    const record = await w.make({ startDate: '2026-10-10', fields: { addedSubordinateIds: [sub] } });
+    w.setNow('2026-10-10T01:00:00.000Z');
+    // 另一操作（为下属 B 新增兼职一类）：先锁 B 的员工行，随后才取组织锁
+    const held = signal();
+    const proceed = signal();
+    const other = withTenant(w.db, w.tenantId, async (tx) => {
+      await lockEmploymentEmployee(tx, w.context(), sub);
+      held.resolve();
+      await proceed.promise;
+      await lockOrganizationSettings(tx, w.tenantId);
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await held.promise;
+    const patch = w.edit(record.id, { fields: { isDepartmentHead: true } }, record.revision);
+    await waitForBlocked(w.db, 1);
+    proceed.resolve();
+    expect(await other, '另一操作不得被死锁牺牲').toBeUndefined();
+    const response = await patch;
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await w.headOf(w.partTimeOrg.id)).toBe(w.employeeId);
+    expect((await w.managerOf(sub, '2026-10-10')).directManagerId).toBe(w.employeeId);
+    expect(await w.events(record.id)).toMatchObject({ [LINKED]: 1 });
   });
 });
