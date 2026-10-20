@@ -1,6 +1,6 @@
 /**
  * R2 BE-5c1a 预计退休日期规则与个人身份字典路由（R2-T04 §9.1 / §12.1；挂在任职子应用 policedSub 上，策略登记在
- * employment/policy.ts）。同自动转正规则：读 = 任职设置配置对象查看；写（新增 / 编辑 / 复制 / 启停 / 删除）= 任职设置配置写
+ * employment/policy.ts）。读 = 任职记录查看权（object.view，F-269）；写（新增 / 编辑 / 复制 / 启停 / 删除）= 任职设置配置写
  * （tenant.employment.configuration.write），命令内经 CommandGuard.before 按当前授权再过一遍（#199）。
  * 个人身份字典只读（DEC-640③）：读取对持任职记录查看权者开放（人事表单下拉），没有 POST / PUT。
  * 三个配置项（自动计算预计日期 / 弹性范围开关、即将退休天数）走既有 /api/tenant/settings/:key，这里只登记取值校验。
@@ -9,7 +9,6 @@ import { withTenant } from '@italent/db';
 import {
   isRetirementSwitchValue,
   isRetirementUpcomingDays,
-  MODULE_OBJECTS,
   RETIREMENT_AUTO_EXPECTED_DATE_KEY,
   RETIREMENT_AUTO_FLEXIBLE_RANGE_KEY,
   RETIREMENT_UPCOMING_DAYS_KEY,
@@ -17,7 +16,6 @@ import {
 import type { Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { trimModuleResponse } from '../permission/module-access.js';
 import { listRetirementIdentityTypes } from '../personnel/identity-types.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import { ruleGuard, writeContext } from './auto-regularization-routes.js';
@@ -37,14 +35,13 @@ registerSettingValidator(RETIREMENT_AUTO_EXPECTED_DATE_KEY, isRetirementSwitchVa
 registerSettingValidator(RETIREMENT_AUTO_FLEXIBLE_RANGE_KEY, isRetirementSwitchValue);
 registerSettingValidator(RETIREMENT_UPCOMING_DAYS_KEY, isRetirementUpcomingDays);
 
-const SETTINGS = MODULE_OBJECTS.employmentSettings.code;
-
 export function registerRetirementRuleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/retirement-rules', async (c) => {
-    const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
+    // F-269：读 = 任职记录查看权（设计 §12.1），与字典读取同口径；规则是租户配置，无字段裁剪、不叠加数据范围
+    const ctx = await readContext(c, deps, 'object.view', 0);
     const purpose = parseRulePurpose(c.req.query('purpose'));
-    const rules = await withTenant(deps.db, ctx.tenantId, (tx) => listRetirementRules(tx, ctx.tenantId, purpose));
-    return c.json({ items: await trimModuleResponse(deps, ctx, SETTINGS, rules) });
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => listRetirementRules(tx, ctx.tenantId, purpose));
+    return c.json({ items });
   });
   router.post('/retirement-rules', async (c) => {
     const ctx = await writeContext(c, deps);
