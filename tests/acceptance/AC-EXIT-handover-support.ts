@@ -196,7 +196,8 @@ export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: 
   /** 实例上全部待办（会签节点同时多席）。 */
   const pendingTasks = (instanceId: string) =>
     x.sqlRows<{ taskId: string; userId: string; nodeKey: string; isExceptionAdmin: boolean }>(sql`
-      SELECT id AS "taskId", assignee_user_id AS "userId", node_key AS "nodeKey", is_exception_admin AS "isExceptionAdmin"
+      SELECT id AS "taskId", assignee_user_id AS "userId", node_key AS "nodeKey",
+        is_exception_admin AS "isExceptionAdmin"
       FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND status='pending'
       ORDER BY assignee_user_id`);
   const instanceStatus = async (instanceId: string) =>

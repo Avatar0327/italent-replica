@@ -130,7 +130,8 @@ export async function moveHandoverRequest(
   next: { readonly state: HandoverRequestState; readonly endReason?: HandoverEndReason },
 ) {
   await tx.execute(sql`UPDATE exit_handover_requests SET state = ${next.state}, end_reason = ${next.endReason ?? null},
-    not_launched_reason = NULL, revision = revision + 1, command_id = ${ctx.commandId}, updated_at = ${ctx.now.toISOString()}::timestamptz
+    not_launched_reason = NULL, revision = revision + 1, command_id = ${ctx.commandId},
+    updated_at = ${ctx.now.toISOString()}::timestamptz
     WHERE tenant_id = ${ctx.tenantId} AND id = ${row.id}::uuid`);
 }
 
