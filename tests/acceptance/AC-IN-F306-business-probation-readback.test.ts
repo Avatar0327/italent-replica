@@ -47,7 +47,7 @@ describe('AC-IN-F306 申请详情试用期回读', () => {
         WHERE tenant_id=${w.session.tenant.id} AND business_id=${created.id}::uuid
         ORDER BY version_no DESC LIMIT 1`),
     );
-    const rows = Array.isArray(persisted) ? persisted : persisted.rows;
+    const rows = Array.isArray(persisted) ? persisted : (persisted as { rows: unknown[] }).rows;
     expect(rows[0]).toEqual(terms);
     expect(await read(w, created.id)).toMatchObject({ ...created, ...terms });
   });
