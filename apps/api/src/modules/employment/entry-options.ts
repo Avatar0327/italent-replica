@@ -45,8 +45,31 @@ export function assertProbationTerms(entry: EntryOptions): void {
     });
 }
 
+/**
+ * 实习转正的试用期口径（直接转正与转正申请共用，DEC-647）：有试用期必须填试用期(月)——转正没有办理入职那样的补填环节；
+ * 无试用期不能带月数 / 预计结束日。预计结束日不传按月数推算，由 saveEntryProbation 统一处理。
+ */
+export function isRegularizationProbationValid(
+  entry: Pick<EntryOptions, 'probation' | 'probationMonths' | 'probationEndDate'>,
+): boolean {
+  return entry.probation
+    ? entry.probationMonths !== undefined
+    : entry.probationMonths === undefined && entry.probationEndDate === undefined;
+}
+
+/** 实习转正申请受理试用期三项（DEC-647）；直接转正走专用入口（intern-regularization.ts），不经通用入口的控制项。 */
+function assertInternRegularizationEntry(input: NormalizedEmploymentInput, entry: EntryOptions): void {
+  if (input.mode !== 'application' || entry.pendingEntry)
+    throw new AppError('VALIDATION_FAILED', '实习转正只有申请可以提供是否有试用期，直接转正请使用实习转正入口');
+  if (!isRegularizationProbationValid(entry))
+    throw new AppError('VALIDATION_FAILED', '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息', {
+      reason: 'PROBATION_MONTHS_REQUIRED',
+    });
+}
+
 export function assertEntryOptionsAllowed(input: NormalizedEmploymentInput, entry: EntryOptions | undefined): void {
   if (!entry) return;
+  if (input.kind === 'intern_regularization') return assertInternRegularizationEntry(input, entry);
   if (!NEW_CYCLE_KINDS.includes(input.kind))
     throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供待入职 / 是否有试用期');
   const terms = entry.probationMonths !== undefined || entry.probationEndDate !== undefined;
