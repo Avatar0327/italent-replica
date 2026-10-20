@@ -88,8 +88,9 @@ export function evidenceState(blocks, statusCell) {
   return { st, level: deferred ? '可后补' : level(blocks) };
 }
 
-// 差异行：✅ 视为已结；其余只有放行表里的状态原文放行（“待用户决定 / 待原站实测”和认不出的写法仍拦）
-export const decisionSettled = (statusCell) => /✅/.test(statusCell) || RELEASED_DECISION_STATUS.has(norm(statusCell));
+// 差异行：✅ 须在状态列开头（去掉首部空白后）才算已结；其余只有放行表里的状态原文放行（“待用户决定 / 待原站实测”和认不出的写法仍拦）
+export const decisionSettled = (statusCell) =>
+  /^✅/.test(statusCell.trim()) || RELEASED_DECISION_STATUS.has(norm(statusCell));
 
 export function parseEvidence(markdown) {
   return markdown
