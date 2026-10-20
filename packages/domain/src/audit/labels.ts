@@ -76,9 +76,13 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   // R2-T08 BE-10a 组织调整（§9.4）：申请单与组织明细；其余明细分区随各自批次登记
   'org-adjustment': { label: '组织调整申请', app: ORG_PEOPLE },
   'org-adjustment-item': { label: '组织调整明细', app: ORG_PEOPLE },
+  // R2 BE-5d2 意向退休日期申请（审计动作 retirement_intention.*）
+  'retirement-intention': { label: '意向退休申请', app: ORG_PEOPLE },
   // R2 BE-8a 黑名单与离职自动加黑规则（规则是配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   blacklist: { label: '黑名单', app: ORG_PEOPLE },
   blacklist_rule: { label: '离职自动加黑规则', app: ORG_PEOPLE },
+  // R2 BE-8b1 离职交接事项设置（配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
+  exit_handover_item: { label: '离职交接事项', app: ORG_PEOPLE },
   // R2 BE-5c1a 退休：预计退休日期规则与个人身份字典（配置类，见下方 AUDIT_CONFIG_OBJECT_TYPES）
   retirement_rule: { label: '退休规则', app: ORG_PEOPLE },
   retirement_identity_type: { label: '个人身份字典', app: ORG_PEOPLE },
@@ -212,6 +216,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   reEmployed: '是否同时返聘',
   expectedRetirementDate: '预计退休日期',
   actualRetirementDate: '实际退休日期',
+  // R2 BE-5d2 意向退休日期申请
+  intendedDate: '意向退休日期',
+  expectedDateSnapshot: '申请时预计退休日期',
+  earliestSnapshot: '申请时最早退休日期',
+  latestSnapshot: '申请时最晚退休日期',
   stopDate: '结束日期',
   entryDate: '入职日期',
   kind: '业务类型',
@@ -389,6 +398,7 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'exit_dictionary',
   'offer_dictionary',
   'blacklist_rule',
+  'exit_handover_item',
   'retirement_rule',
   'retirement_identity_type',
   'personnel-order-settings',

@@ -118,7 +118,7 @@ CREATE INDEX "org_adjustments_status" ON "org_adjustments" USING btree ("tenant_
 ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_change_type" CHECK ("employment_payload_versions"."change_type" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment'));--> statement-breakpoint
 ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_change_type" CHECK ("employment_records"."change_type" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment'));--> statement-breakpoint
 ALTER TABLE "approval_instances" ADD CONSTRAINT "approval_instances_business_type" CHECK ("approval_instances"."business_type" IN ('employment','personnel_change','contract','idp','talent_review','part_time',
-        'offer','offer_batch','probation_assessment','org_adjustment'));--> statement-breakpoint
+        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approver" CHECK ("approval_process_nodes"."approver_expression" IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
         'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',

@@ -19,6 +19,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { employmentEmployees } from './employment.js';
+import { exitRequests } from './exit.js';
 import { tenants } from './tenancy.js';
 
 const tenant = () =>
@@ -50,6 +51,8 @@ export const employmentBlacklist = pgTable(
     note: text('note'),
     source: text('source').notNull(),
     status: text('status').notNull().default('active'),
+    /** 写入这行的离职请求（BE-8b1 离职生效加黑；撤销离职时据此认出“这笔离职写的”行）；黑名单页新增、导入的行为空。 */
+    exitRequestId: uuid('exit_request_id'),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     removedBy: uuid('removed_by'),
     revision: integer('revision').notNull().default(1),
@@ -64,6 +67,15 @@ export const employmentBlacklist = pgTable(
       columns: [t.tenantId, t.employeeId],
       foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
     }),
+    foreignKey({
+      name: 'employment_blacklist_exit_fk',
+      columns: [t.tenantId, t.exitRequestId],
+      foreignColumns: [exitRequests.tenantId, exitRequests.businessId],
+    }),
+    // 同一笔离职（无论名单行后来是否被移出）最多写一行：定时生效重试、批量逐条生效都不会重复写
+    uniqueIndex('employment_blacklist_exit_request')
+      .on(t.tenantId, t.exitRequestId)
+      .where(sql`${t.exitRequestId} IS NOT NULL`),
     uniqueIndex('employment_blacklist_active_employee')
       .on(t.tenantId, t.employeeId)
       .where(sql`${t.status} = 'active' AND ${t.employeeId} IS NOT NULL`),
