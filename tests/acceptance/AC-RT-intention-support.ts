@@ -79,16 +79,12 @@ export async function intentionWorld(db: Db, label: string) {
       ),
     );
   }
-  /** 人事版本链现状：版本数 + 最新版本的退休相关列（A-6：通过前后必须相等）。 */
+  /** 人事版本链完整快照：该员工全部版本行（逐列），A-6 通过前后必须逐项相等。 */
   const personnelState = async (employeeId = subject.employeeId) =>
     (
-      await rows<Record<string, unknown>>(sql`SELECT count(*)::int AS versions, max(revision) AS revision,
-        (array_agg(expected_retirement_date::text ORDER BY revision DESC))[1] AS expected,
-        (array_agg(earliest_retirement_date::text ORDER BY revision DESC))[1] AS earliest,
-        (array_agg(latest_retirement_date::text ORDER BY revision DESC))[1] AS latest,
-        (array_agg(original_expected_retirement_date::text ORDER BY revision DESC))[1] AS original
-        FROM personnel_employee_versions WHERE tenant_id=${w.tenant.id} AND employee_id=${employeeId}::uuid`)
-    )[0]!;
+      await rows<{ row: Record<string, unknown> }>(sql`SELECT to_jsonb(v) AS row FROM personnel_employee_versions v
+        WHERE v.tenant_id=${w.tenant.id} AND v.employee_id=${employeeId}::uuid ORDER BY v.revision`)
+    ).map((entry) => entry.row);
 
   async function revisionOf(employeeId = subject.employeeId) {
     const employee = await w.json<{ revision: number }>(
@@ -143,27 +139,28 @@ export async function intentionWorld(db: Db, label: string) {
     expect(response.status, await response.clone().text()).toBe(200);
   }
 
-  /** 该意向申请相关的审计 / 命令台账 / 审批实例行，供“被拒后前后逐项相等”的断言。 */
+  /**
+   * 该意向申请相关的完整快照（逐列逐行）：申请行、全部审批实例及其任务 / 日志、申请对象的审计行、租户命令台账。
+   * 被拒的写入前后必须逐项相等（审计行与台账只增不改，所以整表比较即可发现多写）。
+   */
   async function footprint(intentionId: string) {
+    const json = async (statement: ReturnType<typeof sql>) =>
+      (await rows<{ row: unknown }>(statement)).map((entry) => entry.row);
     return {
-      row: (
-        await rows<Record<string, unknown>>(sql`SELECT state, revision, intended_date::text AS intended_date, reason,
-          approval_instance_id::text AS approval_instance_id FROM retirement_intentions
-          WHERE tenant_id=${w.tenant.id} AND id=${intentionId}::uuid`)
-      )[0],
-      instances: await rows<Record<string, unknown>>(sql`SELECT i.id::text AS id, i.status, i.revision,
-          (SELECT count(*)::int FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
-            AND t.status='pending') AS pending
-        FROM approval_instances i
+      row: await json(sql`SELECT to_jsonb(r) AS row FROM retirement_intentions r
+        WHERE r.tenant_id=${w.tenant.id} AND r.id=${intentionId}::uuid`),
+      instances: await json(sql`SELECT to_jsonb(i) AS row FROM approval_instances i
         WHERE i.tenant_id=${w.tenant.id} AND i.business_id=${intentionId}::uuid ORDER BY i.id`),
-      audits: (
-        await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM audit_events
-          WHERE tenant_id=${w.tenant.id} AND object_id=${intentionId}`)
-      )[0]!.n,
-      ledger: (
-        await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM command_ledger
-          WHERE tenant_id=${w.tenant.id}`)
-      )[0]!.n,
+      tasks: await json(sql`SELECT to_jsonb(t) AS row FROM approval_tasks t JOIN approval_instances i
+        ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+        WHERE t.tenant_id=${w.tenant.id} AND i.business_id=${intentionId}::uuid ORDER BY t.id`),
+      logs: await json(sql`SELECT to_jsonb(l) AS row FROM approval_instance_logs l JOIN approval_instances i
+        ON i.tenant_id=l.tenant_id AND i.id=l.instance_id
+        WHERE l.tenant_id=${w.tenant.id} AND i.business_id=${intentionId}::uuid ORDER BY l.instance_id, l.seq`),
+      audits: await json(sql`SELECT to_jsonb(a) AS row FROM audit_events a
+        WHERE a.tenant_id=${w.tenant.id} AND a.object_id=${intentionId} ORDER BY to_jsonb(a)::text`),
+      ledger: await json(sql`SELECT to_jsonb(c) AS row FROM command_ledger c
+        WHERE c.tenant_id=${w.tenant.id} ORDER BY to_jsonb(c)::text`),
     };
   }
 

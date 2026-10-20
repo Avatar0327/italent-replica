@@ -38,7 +38,7 @@ describe('AC-RT-20 意向申请主流程', () => {
       sql`SELECT business_type FROM approval_instances WHERE tenant_id=${w.tenant.id} AND id=${view.id}::uuid`,
     );
     expect(typeRow).toEqual({ business_type: 'retirement_intention' });
-    expect((await w.footprint(draft.id)).row).toMatchObject({ state: 'in_review', approval_instance_id: view.id });
+    expect((await w.footprint(draft.id)).row[0]).toMatchObject({ state: 'in_review', approval_instance_id: view.id });
 
     // 驳回到发起人 → 申请 rejected，可修改后同单重提（沿用原实例，DEC-103）
     await w.decide(draft.id, 'reject');

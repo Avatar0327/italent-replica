@@ -17,9 +17,13 @@ const adminOf = (w: IntentionWorld) => {
 };
 
 /** 任职记录对象的对象权限：创建 / 修改 + 全部字段（非系统字段可编辑）+ 意向申请按钮（可选）；off = 按钮收回，其余照旧。 */
-const recordPermission = (button: boolean) => ({
+const recordPermission = (button: boolean, readOnlyFields: readonly string[] = []) => ({
   dataOperations: { create: true, update: true, delete: false },
-  fields: record.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+  fields: record.fields.map((f) => ({
+    fieldCode: f.code,
+    view: true,
+    edit: !f.system && !readOnlyFields.includes(f.code),
+  })),
   buttons: button ? [{ buttonCode: RETIREMENT_INTENTION_BUTTON, level: 'detail' as const }] : [],
 });
 
@@ -77,13 +81,19 @@ export async function realUser(w: IntentionWorld, name: string, options: RealUse
   async function revokeButton() {
     expect((await setObjectPermission(world, profile, recordPermission(false), record.code)).status).toBe(200);
   }
+  /** 收回指定字段的编辑权（保留对象更新权、按钮与字段查看权）。 */
+  async function revokeFieldEdit(...fieldCodes: string[]) {
+    expect((await setObjectPermission(world, profile, recordPermission(true, fieldCodes), record.code)).status).toBe(
+      200,
+    );
+  }
   const call = (method: string, path: string, init: { ifMatch?: number; body?: unknown } = {}) =>
     world.api.request(method, path.startsWith('/api/') ? path : `${EMPLOYMENT}${path}`, {
       ...as,
       ...(init.ifMatch !== undefined ? { ifMatch: init.ifMatch } : {}),
       ...(init.body !== undefined ? { body: init.body } : {}),
     });
-  return { userId, as, call, setScope, revokeButton, world };
+  return { userId, as, call, setScope, revokeButton, revokeFieldEdit, world };
 }
 
 /** 任职记录对象的实体数据范围规则（如只有“使用用户”维度）；配置前按管理单元 fail-closed 解析。 */
