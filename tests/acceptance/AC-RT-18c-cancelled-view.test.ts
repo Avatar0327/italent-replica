@@ -38,29 +38,36 @@ describe('AC-RT-18c view=cancelled 固定夹具', () => {
     const second = await x.newcomer('第二人');
     const third = await x.newcomer('第三人');
     const fourth = await x.newcomer('第四人');
+    const fifth = await x.newcomer('第五人');
+    const sixth = await x.newcomer('第六人');
     const approved = await x.directRetire('2026-10-25');
     const process = await x.createdRetire(second.id, retireBody('2026-10-20', 'application'));
+    const later = await x.createdRetire(fifth.id, retireBody('2026-10-21', 'application'));
+    const latest = await x.createdRetire(sixth.id, retireBody('2026-10-22', 'application'));
     const kept = await x.directRetire('2026-10-26', undefined, third.id);
     const leave = await x.directLeave('2026-10-27', undefined, fourth.id);
 
     expect((await view()).items).toEqual([]);
 
+    // 夹具时钟固定时两次撤销的 created_at 相同，排序退化为随机 UUID；第二次显式推后一天，顺序才是确定的
     await x.retireCancelled(approved.id, { reason: '录入有误' });
-    await x.retireCancelled(process.id, { reason: '不办了' });
+    await x.atDay('2026-10-07', () => x.retireCancelled(process.id, { reason: '不办了' }));
+    await x.atDay('2026-10-08', () => x.retireCancelled(later.id, { reason: '第三条' }));
+    await x.atDay('2026-10-09', () => x.retireCancelled(latest.id, { reason: '第四条' }));
     await x.cancelled(leave.id, { reason: '离职撤销' });
 
     const page = await view();
-    expect(page.total).toBe(2);
+    expect(page.total).toBe(4);
     // 后撤销的在前
-    expect(page.items.map((item) => item.id)).toEqual([process.id, approved.id]);
+    expect(page.items.map((item) => item.id)).toEqual([latest.id, later.id, process.id, approved.id]);
     expect(page.items.map((item) => item.id)).not.toContain(kept.id);
-    expect(page.items[0]).toMatchObject({
+    expect(page.items[2]).toMatchObject({
       id: process.id,
       employeeId: second.id,
       status: 'deleted',
       cancellation: { reason: '不办了', case: 'process_voided', stateBefore: 'draft', revision: 1 },
     });
-    expect(page.items[1]).toMatchObject({
+    expect(page.items[3]).toMatchObject({
       id: approved.id,
       employeeId: x.employee.id,
       status: 'voided',
@@ -70,12 +77,12 @@ describe('AC-RT-18c view=cancelled 固定夹具', () => {
     expect(page.items[0]!.cancellation).toHaveProperty('createdAt');
     expect(page.items[0]).not.toHaveProperty('exitTypeCode');
     // 改撤销原因后视图读到新值
-    const patched = await x.session.request('PATCH', `/retirements/cancellations/${page.items[1]!.cancellation.id}`, {
+    const patched = await x.session.request('PATCH', `/retirements/cancellations/${page.items[3]!.cancellation.id}`, {
       ifMatch: 1,
       body: { reason: '更正' },
     });
     expect(patched.status, await patched.clone().text()).toBe(200);
-    expect((await view()).items[1]!.cancellation).toMatchObject({ reason: '更正', revision: 2 });
+    expect((await view()).items[3]!.cancellation).toMatchObject({ reason: '更正', revision: 2 });
     // 离职撤销视图仍只有离职的那一条
     const exits = await x.session.request('GET', '/exits?view=cancellations');
     expect(((await exits.json()) as { items: { id: string }[] }).items.map((item) => item.id)).toEqual([leave.id]);
