@@ -63,10 +63,17 @@ describe('F-234BE 查看 Offer 邮件', () => {
 
   it('已入职 / 已拒绝 / 失效（已发过）同样可查看', async () => {
     const w = await offerWorld(testDb().db, 'mail-states');
-    for (const status of ['onboarded', 'rejected', 'invalid']) {
+    const states: Record<string, (id: string) => Promise<unknown>> = {
+      onboarded: (id) => w.force(id, 'status', 'onboarded'),
+      rejected: async (id) =>
+        w.moved(await w.get(id), { target: 'rejected', refusalTime: '2026-10-16', refusalReasonCode: 'personal' }),
+      invalid: (id) => w.invalidated(id),
+    };
+    for (const [status, move] of Object.entries(states)) {
       const offer = await w.social();
       expect((await send(w, offer)).status).toBe(200);
-      await w.force(offer.id, 'status', status);
+      await move(offer.id);
+      expect((await w.get(offer.id)).status).toBe(status);
       const mail = await mailOf(await w.request('GET', `/${offer.id}/mail`));
       expect(mail, status).toMatchObject({ offerId: offer.id, recipient: offer.personalEmail, subject: '录用通知' });
     }

@@ -35,6 +35,7 @@ import { withRehireHint } from './identity.js';
 import { frozenPerTransaction, offerCopyCheck, offerCreateCheck } from './checks.js';
 import { offerApprovalFields, submitOfferApproval, submitOfferBatch } from './approval.js';
 import { parseOfferBatch, parseOfferCreate, parseOfferSubmit, parseOfferUpdate } from './input.js';
+import { registerOfferMail } from './mail.js';
 import { OFFER_POLICIES } from './policy.js';
 import { registerOfferSend } from './send.js';
 import {
@@ -237,6 +238,7 @@ export const registerOfferRoutes: TenantRouteModule = (router, deps) => {
   registerCommands(module, deps);
   registerOfferTransitions(module, deps);
   registerOfferSend(module, deps);
+  registerOfferMail(module, deps);
   registerApprovals(module, deps);
   router.route('/api/tenant/offers', module);
 };
