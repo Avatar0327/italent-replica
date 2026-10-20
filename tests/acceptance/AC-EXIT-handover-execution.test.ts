@@ -22,12 +22,32 @@ import {
 } from './AC-EXIT-handover-support.js';
 
 const database = useTestDb();
-const world = async (label: string) => {
-  const x = await handoverWorld(database().db, label);
+const world = async (
+  label: string,
+  options: { hrAdmin?: boolean; fallbackWork?: readonly string[]; fallbackOther?: readonly string[] } = {},
+) => {
+  const x = await handoverWorld(database().db, label, { hrAdmin: options.hrAdmin ?? true });
   await x.addSettingItems();
-  await x.publishHandoverProcess();
-  return x;
+  // 兜底处理人是流程定义里的用户（须是本租户成员），所以先建人再发布流程；默认不预置，三者都空必须真实为空
+  const people = new Map<string, { employeeId: string; userId: string }>();
+  for (const name of [...(options.fallbackWork ?? []), ...(options.fallbackOther ?? [])])
+    people.set(name, await x.person(name));
+  const ids = (names: readonly string[] | undefined) => (names ?? []).map((name) => people.get(name)!.userId);
+  await x.publishHandoverProcess({ work: ids(options.fallbackWork), other: ids(options.fallbackOther) });
+  return Object.assign(x, { people });
 };
+
+/** 离职申请：提交并批准，不带交接人（该员工没有直线经理）；返回批准结果与交接单。 */
+async function approveWithoutHandler(x: Awaited<ReturnType<typeof world>>, employeeId = x.employee.id) {
+  const draft = await x.createdExit(employeeId, FUTURE_LAST_WORK_DATE, 'application', { exitTypeCode: 'voluntary' });
+  const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
+    ifMatch: draft.revision,
+    body: {},
+  });
+  expect(sent.status).toBe(200);
+  const approved = await x.tryApprove(draft, `${TODAY}T02:00:00Z`);
+  return { draft, approved, rows: await x.requestRows(draft.id) };
+}
 
 describe('预置流程：四节点、只有同意 / 不同意（B64，R2f2）', () => {
   it('节点 工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明；没有驳回 / 跳转 / 加签 / 转交', () => {
@@ -140,38 +160,90 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     ]);
   });
 
-  it('首节点无人可发（DEC-661）：无交接人且无直线经理 → 明确错误、整体回滚，补交接人后可重新发起', async () => {
-    const x = await world('launch-first-empty');
-    // 不借助夹具的默认交接人：直接建申请，不带交接人；该员工没有直线经理
-    const draft = await x.createdExit(x.employee.id, FUTURE_LAST_WORK_DATE, 'application', {
-      exitTypeCode: 'voluntary',
-    });
-    const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
-      ifMatch: draft.revision,
+  it('兜底处理人（DEC-663 ②）：交接人、直线经理都空 → 取本节点兜底列表（多人），任一人同意即通过', async () => {
+    const x = await world('launch-fallback', { fallbackWork: ['兜底甲', '兜底乙'] });
+    const { approved, rows } = await approveWithoutHandler(x);
+    expect(approved).toMatchObject({ ok: true });
+    expect(rows).toHaveLength(1);
+    const pending = await x.pendingTasks(rows[0]!.instanceId!);
+    expect(pending.map((task) => [task.nodeKey, task.userId]).sort()).toEqual(
+      [
+        ['work_handover', x.people.get('兜底甲')!.userId],
+        ['work_handover', x.people.get('兜底乙')!.userId],
+      ].sort(),
+    );
+    // 会签任一人同意：甲同意后进入下一节点，乙的待办随之结束
+    const task = pending.find((candidate) => candidate.userId === x.people.get('兜底甲')!.userId)!;
+    const response = await x.api.request('POST', `/api/tenant/approval/tasks/${task.taskId}/approve`, {
+      ...x.tenantAs(task.userId),
+      ifMatch: (await x.pendingNode(rows[0]!.instanceId!))!.revision,
       body: {},
     });
-    expect(sent.status).toBe(200);
-    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({
-      ok: false,
-      code: 'CONFLICT',
-      reason: 'EXIT_HANDOVER_FIRST_NODE_EMPTY',
-    });
-    // 全部回滚：离职保持审批中、不写预减时点、没有交接单 / 交接审批实例 / 失败留痕
-    expect((await x.business(draft.id)).status).toBe('in_review');
-    expect(await x.preReleaseDate(draft.id)).toBeNull();
-    expect(await x.requestRows(draft.id)).toEqual([]);
-    expect(await x.handoverInstanceCount()).toBe(0);
-    expect(await x.auditActions(draft.id, 'exit_handover.launch_failed')).toEqual([]);
-    // 补交接人后重新批准：发起成功且恰一张，首节点待办是交接人
-    const edit = await x.session.request('PATCH', `/exits/${draft.id}`, {
-      ifMatch: (await x.business(draft.id)).revision,
-      body: { handoverEmployeeId: x.workOwner.employeeId },
-    });
-    expect(edit.status, await edit.clone().text()).toBe(200);
-    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ ok: true });
-    const rows = await x.requestRows(draft.id);
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await x.pendingTasks(rows[0]!.instanceId!)).map((candidate) => candidate.nodeKey)).toEqual([
+      'other_handover',
+    ]);
+  });
+
+  it('有交接人 / 直线经理时不用兜底；兜底里没有审批资格的人被跳过（DEC-663 ⑤）', async () => {
+    const x = await world('launch-fallback-skip', { fallbackWork: ['已失效兜底', '有效兜底'] });
+    // 已失效兜底人：定义保存时是本租户成员，之后被移出租户
+    await withTenant(x.db, x.tenantId, (tx) =>
+      tx.execute(sql`UPDATE tenant_memberships SET status='revoked' WHERE tenant_id=${x.tenantId}
+        AND user_id=${x.people.get('已失效兜底')!.userId}::uuid`),
+    );
+    const { rows } = await approveWithoutHandler(x);
     expect(rows).toHaveLength(1);
-    expect(await x.pendingNode(rows[0]!.instanceId!)).toMatchObject({ userId: x.workOwner.userId });
+    expect((await x.pendingTasks(rows[0]!.instanceId!)).map((task) => task.userId)).toEqual([
+      x.people.get('有效兜底')!.userId,
+    ]);
+    // 有交接人时兜底不参与
+    const other = await world('launch-fallback-unused', { fallbackWork: ['不该出现的兜底'] });
+    const launched = await other.launched();
+    expect((await other.pendingTasks(launched.instanceId)).map((task) => task.userId)).toEqual([
+      other.workOwner.userId,
+    ]);
+  });
+
+  it('三者都空（DEC-663 ③）：离职照常批准，不发起交接，落“交接未发起”记录并带 HR 提示，审计在，不回滚', async () => {
+    const x = await world('launch-all-empty');
+    const { draft, approved, rows } = await approveWithoutHandler(x);
+    expect(approved).toMatchObject({ ok: true });
+    expect((await x.business(draft.id)).status).toBe('approved');
+    expect(await x.preReleaseDate(draft.id)).not.toBeNull();
+    expect(await x.handoverInstanceCount()).toBe(0);
+    expect(rows).toEqual([
+      expect.objectContaining({ state: 'not_launched', employeeId: x.employee.id, instanceId: null }),
+    ]);
+    expect(await x.itemRows(rows[0]!.id)).toEqual([]);
+    expect(await x.statusOf(draft.id)).toMatchObject({
+      status: 'not_launched',
+      request: {
+        id: rows[0]!.id,
+        notLaunchedReason: 'NO_HANDLER',
+        hint: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+      },
+    });
+    const [audit] = await x.auditActions(rows[0]!.id, 'exit_handover.not_launched');
+    expect(audit?.after).toMatchObject({ reason: 'NO_HANDLER' });
+    // 重放不重复落记录
+    expect(await x.requestRows(draft.id)).toHaveLength(1);
+  });
+
+  it('三者都空后撤销离职：未发起记录一并置已终止', async () => {
+    const x = await world('launch-all-empty-cancel');
+    const { draft } = await approveWithoutHandler(x);
+    await x.cancelExit(draft.id);
+    expect((await x.requestRows(draft.id))[0]).toMatchObject({ state: 'terminated', endReason: 'exit_cancelled' });
+  });
+
+  it('其他事项交接取不到人（DEC-663 ④）：转给流程的异常管理员', async () => {
+    const x = await world('launch-other-admin', { hrAdmin: false });
+    const { instanceId } = await x.launched();
+    expect((await x.decide(instanceId)).status).toBe(200);
+    expect(await x.pendingTasks(instanceId)).toEqual([
+      expect.objectContaining({ nodeKey: 'other_handover', userId: x.exceptionAdmin.id, isExceptionAdmin: true }),
+    ]);
   });
 
   it('审计归属（P2-2）：系统代发的审批发起 / 冻结主体操作人为系统，员工仍是发起人', async () => {
@@ -368,6 +440,66 @@ describe('与离职生效 / 撤销离职的关系', () => {
     await x.approveAll(instanceId);
     await x.cancelExit(exitId);
     expect((await x.requestRows(exitId))[0]).toMatchObject({ state: 'completed', endReason: null });
+  });
+});
+
+describe('兜底处理人配置（流程定义节点，DEC-663 ⑥）', () => {
+  const processBody = (x: Awaited<ReturnType<typeof world>>, fallback: unknown) => ({
+    code: 'FALLBACK_API',
+    approvalType: 'exit_handover',
+    name: '兜底配置',
+    exceptionAdminUserId: x.exceptionAdmin.id,
+    isFallback: true,
+    conditions: { items: [] },
+    nodes: [
+      {
+        key: 'work_handover',
+        kind: 'countersign',
+        approvers: ['handover_work_owner'],
+        transitionRule: { type: 'any' },
+        fallbackUserIds: fallback,
+      },
+    ],
+  });
+  const post = (x: Awaited<ReturnType<typeof world>>, body: unknown) =>
+    x.api.request('POST', '/api/tenant/approval/processes', { ...x.tenantAs(x.processAdmin.id), ifMatch: 0, body });
+
+  it('流程定义接口能写入并读回兜底列表；预置定义默认为空', async () => {
+    const x = await world('fallback-api', { fallbackWork: ['配置兜底'] });
+    const user = x.people.get('配置兜底')!.userId;
+    const created = await post(x, processBody(x, [user]));
+    expect(created.status, await created.clone().text()).toBe(201);
+    const view = (await created.json()) as { id: string; latestVersion: { nodes: Record<string, unknown>[] } };
+    expect(view.latestVersion.nodes[0]).toMatchObject({ key: 'work_handover', fallbackUserIds: [user] });
+    const read = await x.api.request('GET', `/api/tenant/approval/processes/${view.id}`, x.tenantAs(x.processAdmin.id));
+    expect(((await read.json()) as typeof view).latestVersion.nodes[0]).toMatchObject({ fallbackUserIds: [user] });
+    // 预置定义默认不带兜底
+    const preset = PRESET_PROCESSES.find((candidate) => candidate.approvalType === 'exit_handover')!;
+    expect(preset.definition.nodes.every((node) => !node.fallbackUserIds?.length)).toBe(true);
+  });
+
+  it('非法 userId 被拒：非 UUID 400；不是本租户成员 400 APPROVAL_FALLBACK_USER_INVALID；重复 / 配在不支持的节点上 400', async () => {
+    const x = await world('fallback-api-invalid');
+    const stranger = await handoverWorld(database().db, 'fallback-api-stranger');
+    const reasonOf = async (response: Response) => {
+      const body = (await response.json()) as { error?: { code?: string; details?: { reason?: string } } };
+      return { status: response.status, code: body.error?.code, reason: body.error?.details?.reason };
+    };
+    expect(await reasonOf(await post(x, processBody(x, ['not-a-uuid'])))).toMatchObject({
+      status: 400,
+      code: 'VALIDATION_FAILED',
+    });
+    expect(await reasonOf(await post(x, processBody(x, [stranger.hrAdmin.id])))).toMatchObject({
+      status: 400,
+      reason: 'APPROVAL_FALLBACK_USER_INVALID',
+    });
+    const member = x.hrAdmin.id;
+    expect(await reasonOf(await post(x, processBody(x, [member, member])))).toMatchObject({ status: 400 });
+    // 兜底只对离职交接申请的交接节点有意义：转调动流程上配置被拒
+    const wrongType = { ...processBody(x, [member]), approvalType: 'transfer' };
+    expect((await post(x, { ...wrongType, nodes: [{ ...wrongType.nodes[0], approvers: ['owner'] }] })).status).toBe(
+      400,
+    );
   });
 });
 

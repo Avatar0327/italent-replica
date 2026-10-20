@@ -47,7 +47,7 @@ export interface HandoverDetail {
   } | null;
 }
 
-export async function handoverWorld(db: Db, label: string) {
+export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: boolean } = {}) {
   const x = await blacklistExitWorld(db, label);
   const tenantId = x.tenantId;
   const tenantAs = (userId: string) => ({ tenant: tenantId, user: userId });
@@ -63,7 +63,8 @@ export async function handoverWorld(db: Db, label: string) {
   const hrbp = await person('部门HRBP');
   await setHrbp(db, tenantId, x.from.id, hrbp.employeeId);
   const hrAdmin = await x.otherUser();
-  await grantHrAdminProfile(db, tenantId, hrAdmin.id);
+  // 默认有人事管理员；hrAdmin: false 造“人事管理员角色也无人”
+  if (options.hrAdmin !== false) await grantHrAdminProfile(db, tenantId, hrAdmin.id);
   const processAdmin = await x.otherUser();
   const exceptionAdmin = await x.otherUser();
 
@@ -75,7 +76,7 @@ export async function handoverWorld(db: Db, label: string) {
   }
 
   /** 发布四节点交接流程（取预置定义，代码在测试里排在夹具兜底之前）。 */
-  async function publishHandoverProcess() {
+  async function publishHandoverProcess(fallback: { work?: readonly string[]; other?: readonly string[] } = {}) {
     const preset = PRESET_PROCESSES.find((candidate) => candidate.approvalType === 'exit_handover');
     expect(preset, '缺少 exit_handover 预置流程').toBeTruthy();
     const ctx = { tenantId, userId: processAdmin.id, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
@@ -84,7 +85,16 @@ export async function handoverWorld(db: Db, label: string) {
         tx,
         { ...ctx, commandId: randomUUID() },
         { code: 'AAA_EXIT_HANDOVER', approvalType: 'exit_handover' },
-        { ...preset!.definition, exceptionAdminUserId: exceptionAdmin.id },
+        {
+          ...preset!.definition,
+          exceptionAdminUserId: exceptionAdmin.id,
+          // 兜底处理人挂在两个交接节点上（DEC-663）；夹具默认不预置，三者都空必须真实为空
+          nodes: preset!.definition.nodes.map((node) => {
+            const ids =
+              node.key === 'work_handover' ? fallback.work : node.key === 'other_handover' ? fallback.other : [];
+            return ids?.length ? { ...node, fallbackUserIds: [...ids] } : node;
+          }),
+        },
       );
       await publishProcess(tx, { ...ctx, commandId: randomUUID(), expectedRevision: created.revision }, created.id);
     });
@@ -183,6 +193,12 @@ export async function handoverWorld(db: Db, label: string) {
       WHERE t.tenant_id=${tenantId} AND t.instance_id=${instanceId}::uuid AND t.status='pending'`);
     return task;
   }
+  /** 实例上全部待办（会签节点同时多席）。 */
+  const pendingTasks = (instanceId: string) =>
+    x.sqlRows<{ taskId: string; userId: string; nodeKey: string; isExceptionAdmin: boolean }>(sql`
+      SELECT id AS "taskId", assignee_user_id AS "userId", node_key AS "nodeKey", is_exception_admin AS "isExceptionAdmin"
+      FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND status='pending'
+      ORDER BY assignee_user_id`);
   const instanceStatus = async (instanceId: string) =>
     (
       await x.sqlRows<{ status: string }>(
@@ -251,6 +267,7 @@ export async function handoverWorld(db: Db, label: string) {
     hrbp,
     hrAdmin,
     exceptionAdmin,
+    processAdmin,
     person,
     addSettingItems,
     publishHandoverProcess,
@@ -259,6 +276,7 @@ export async function handoverWorld(db: Db, label: string) {
     requestRows,
     itemRows,
     pendingNode,
+    pendingTasks,
     instanceStatus,
     decide,
     approveAll,
