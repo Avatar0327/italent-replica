@@ -5844,10 +5844,6 @@
       },
       "module": "hr-analysis",
       "primitives": {
-        "button": [
-          "buttonResource",
-          "object.button"
-        ],
         "object": [
           "object.* 动作"
         ],

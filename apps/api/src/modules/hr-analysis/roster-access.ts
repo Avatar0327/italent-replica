@@ -35,19 +35,9 @@ export interface RosterAccess {
   readonly canSee: (source: RosterSource, field: string) => boolean;
 }
 
-export async function rosterAccess(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  exporting: boolean,
-): Promise<RosterAccess> {
+export async function rosterAccess(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<RosterAccess> {
   const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list');
   await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: ROSTER_OBJECT });
-  if (exporting)
-    await requirePermission(deps.authorize, {
-      ...ctx,
-      action: 'object.button',
-      resource: buttonResource(ROSTER_OBJECT, 'export', 'list'),
-    });
   // 任职 / 合同对象无查看权不拒绝请求，只让对应的列整类缺席（披露，不是准入）
   const viewable: Record<RosterSource, boolean> = {
     person: true,
@@ -70,4 +60,13 @@ export async function rosterAccess(
 /** 筛选条件涉及的字段无查看权 → 403（同 personnel 列表：不能用看不到的字段探测值）。 */
 export function requireFilterField(rights: RosterAccess, source: RosterSource, field: string) {
   if (!rights.canSee(source, field)) throw new AppError('FORBIDDEN', '花名册筛选字段不可查看');
+}
+
+/** 导出另须列表级“导出”按钮（只导出入口调用；列表不涉及按钮）。 */
+export async function requireExportButton(deps: TenantRouteDeps, ctx: AccessContext) {
+  await requirePermission(deps.authorize, {
+    ...ctx,
+    action: 'object.button',
+    resource: buttonResource(ROSTER_OBJECT, 'export', 'list'),
+  });
 }

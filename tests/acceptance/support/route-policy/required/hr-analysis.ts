@@ -42,11 +42,11 @@ const GET = 'GET /api/tenant/hr-analysis/roster';
 const EXPORT = 'GET /api/tenant/hr-analysis/roster/export';
 
 /** 与 personnel.ts 的 op() 同一证据形状：入口调用 rosterAccess → access → authorize。 */
-const person = (route: string, exporting: boolean): Obligation => ({
+const person = (route: string): Obligation => ({
   perm: `obj:${PERSON}:view`,
   facts: [`objectOp:${PERSON}:view`],
   at: [
-    call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
+    call(route, `const rights = await rosterAccess(c, deps)`),
     impl("const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list')"),
     ACCESS_IMPL,
     {
@@ -62,12 +62,11 @@ const person = (route: string, exporting: boolean): Obligation => ({
     },
   ],
 });
-const rosterView = (route: string, exporting: boolean): Obligation => ({
+const rosterView = (route: string): Obligation => ({
   perm: `obj:${ROSTER}:view`,
-  // 导出按钮校验与列表共处一个函数，探测器按近闭包文本把按钮事实也记在列表端点上，这里一并承接
-  facts: ['object:object.* 动作', 'button:buttonResource', 'button:object.button', `objectOp:${ROSTER}:view`],
+  facts: ['object:object.* 动作', `objectOp:${ROSTER}:view`],
   at: [
-    call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
+    call(route, `const rights = await rosterAccess(c, deps)`),
     impl("await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: ROSTER_OBJECT })"),
     ROSTER_CONST,
   ],
@@ -76,39 +75,44 @@ const exportButton = (route: string): Obligation => ({
   perm: `btn:${ROSTER}#export@list`,
   facts: ['button:buttonResource', 'button:object.button'],
   at: [
-    call(route, 'const rights = await rosterAccess(c, deps, true)'),
-    impl(
-      "await requirePermission(deps.authorize, { ...ctx, action: 'object.button', " +
+    call(route, 'await requireExportButton(deps, rights.ctx)'),
+    {
+      role: 'impl',
+      unit: `${ACCESS}#requireExportButton`,
+      anchor:
+        "await requirePermission(deps.authorize, { ...ctx, action: 'object.button', " +
         "resource: buttonResource(ROSTER_OBJECT, 'export', 'list'), })",
-    ),
+    },
     ROSTER_CONST,
   ],
 });
-const columns = (route: string, exporting: boolean, object: string, constant: string, purpose: string): Obligation => ({
-  perm: `obj:${object}:view`,
-  purpose: `disclosure:${purpose}`,
-  at: [
-    call(route, `const rights = await rosterAccess(c, deps, ${exporting})`),
-    impl(
-      `${purpose === 'recordColumns' ? 'record' : 'contract'}: await deps.authorize({ ...ctx, action: 'object.view', resource: ${constant} })`,
-    ),
-    {
-      role: 'const',
-      unit: `${ACCESS}#${constant}`,
-      anchor: `MODULE_OBJECTS.${purpose === 'recordColumns' ? 'employmentRecord' : 'contract'}.code`,
-    },
-    SCOPE,
-  ],
-});
+/** 披露分支：任职记录 / 合同对象的查看权（key = rosterAccess 里 viewable 的键）。 */
+const BRANCHES = {
+  recordColumns: { object: RECORD, key: 'record', constant: 'RECORD_OBJECT', domain: 'employmentRecord' },
+  contractColumns: { object: CONTRACT, key: 'contract', constant: 'CONTRACT_OBJECT', domain: 'contract' },
+} as const;
+const columns = (route: string, branch: keyof typeof BRANCHES): Obligation => {
+  const { object, key, constant, domain } = BRANCHES[branch];
+  return {
+    perm: `obj:${object}:view`,
+    purpose: `disclosure:${branch}`,
+    at: [
+      call(route, 'const rights = await rosterAccess(c, deps)'),
+      impl(`${key}: await deps.authorize({ ...ctx, action: 'object.view', resource: ${constant} })`),
+      { role: 'const', unit: `${ACCESS}#${constant}`, anchor: `MODULE_OBJECTS.${domain}.code` },
+      SCOPE,
+    ],
+  };
+};
 
 function entry(route: string, exporting: boolean): Obligation[] {
   return withNeeds(
     [
-      person(route, exporting),
-      rosterView(route, exporting),
+      person(route),
+      rosterView(route),
       ...(exporting ? [exportButton(route)] : []),
-      columns(route, exporting, RECORD, 'RECORD_OBJECT', 'recordColumns'),
-      columns(route, exporting, CONTRACT, 'CONTRACT_OBJECT', 'contractColumns'),
+      columns(route, 'recordColumns'),
+      columns(route, 'contractColumns'),
     ],
     {
       [`obj:${PERSON}:view`]: bound(list('personnel.personScope'), [SCOPE]),

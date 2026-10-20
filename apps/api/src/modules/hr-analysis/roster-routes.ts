@@ -13,7 +13,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
 import { assertExportable, rosterCsv } from './roster-csv.js';
-import { requireFilterField, rosterAccess, type RosterAccess } from './roster-access.js';
+import { requireExportButton, requireFilterField, rosterAccess, type RosterAccess } from './roster-access.js';
 import { countRoster, listRoster, trimRosterRow, type RosterFilter } from './roster-query.js';
 import { ROSTER_EXPORT_MAX_ROWS } from '@italent/domain';
 
@@ -60,7 +60,7 @@ function requireFilterRights(rights: RosterAccess, filter: RosterFilter) {
 export function registerRosterRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(BASE, async (c) => {
     const { asOf: requested, filter } = parseQuery(c);
-    const rights = await rosterAccess(c, deps, false);
+    const rights = await rosterAccess(c, deps);
     requireFilterRights(rights, filter);
     const page = pageQuery(c);
     const asOf = requested ?? tenantLocalDate(rights.ctx.now, rights.ctx.timezone);
@@ -80,7 +80,8 @@ export function registerRosterRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
   });
   router.get(`${BASE}/export`, async (c) => {
     const { asOf: requested, filter } = parseQuery(c);
-    const rights = await rosterAccess(c, deps, true);
+    const rights = await rosterAccess(c, deps);
+    await requireExportButton(deps, rights.ctx);
     requireFilterRights(rights, filter);
     const asOf = requested ?? tenantLocalDate(rights.ctx.now, rights.ctx.timezone);
     const items = await withTenant(deps.db, rights.ctx.tenantId, async (tx) => {

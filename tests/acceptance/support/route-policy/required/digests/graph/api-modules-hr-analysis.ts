@@ -19,6 +19,11 @@ export const GRAPH: Graph = {
     '#RECORD_OBJECT',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
+  'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#ROSTER_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
   'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': [
     'apps/api/src/authorization.ts#requirePermission',
     '#CONTRACT_OBJECT',
@@ -29,7 +34,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/access.ts#access',
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_COLUMNS',
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_FIXED_COLUMNS',
-    'packages/domain/src/permission/decide.ts#buttonResource',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
   'apps/api/src/modules/hr-analysis/roster-csv.ts#assertExportable': [
@@ -99,6 +103,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': [
+    'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton',
     'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess',
     'apps/api/src/modules/hr-analysis/roster-csv.ts#assertExportable',
     'apps/api/src/modules/hr-analysis/roster-csv.ts#rosterCsv',
