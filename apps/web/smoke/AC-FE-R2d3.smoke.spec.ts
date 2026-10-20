@@ -379,3 +379,24 @@ test('AC-FE-R2d3-12 读基线时并发改任职：不拼“新 revision + 旧任
   await expect(page.getByText('实习转正成功')).toBeVisible();
   expect(sent.map((item) => [item.ifMatch, item.body.departmentId])).toEqual([[String(employeeRevision + 1), target]]);
 });
+
+test('AC-FE-R2d3-13 读基线期间员工一直在变：有限次重读后报错，不渲染表单（第 2 轮 P2-R2-1）', async ({ page }) => {
+  const { server } = await setup(page);
+  let posts = 0;
+  await page.route(`**/employment/interns/${employee}/regularize`, (route) => {
+    posts += 1;
+    return route.abort();
+  });
+  await openDetail(page, 'interning');
+  let records = 0;
+  server.afterRecords = () => {
+    records += 1;
+    server.employeeRevision += 1;
+  };
+  await page.getByRole('button', { name: '实习转正', exact: true }).click();
+  await expect(dialog(page).getByText('此员工的任职正在被修改，未能读到一致的版本，请稍后重试。')).toBeVisible();
+  await expect(save(page)).toHaveCount(0);
+  // 每轮读取最多 3 次；开发模式 StrictMode 会把打开时的读取 effect 执行两次（先挂载的那次结果被丢弃）
+  expect([3, 6]).toContain(records);
+  expect(posts).toBe(0);
+});
