@@ -309,10 +309,10 @@ export const APPROVAL: RequiredTable = {
   ],
   'GET /api/tenant/approval/instances/:id': canOpen(fn('respondDetail', 'const viewer = await viewerOf(deps, ctx)')),
   'GET /api/tenant/approval/instances/:id/tasks': canOpen(
-    fn('respondHistory', 'const detail = await readDetail(tx, ctx, instanceId, viewer)'),
+    fn('respondHistory', 'const detail = await readDetail(tx, ctx, instanceId, viewer, false)'),
   ),
   'GET /api/tenant/approval/instances/:id/logs': canOpen(
-    fn('respondHistory', 'const detail = await readDetail(tx, ctx, instanceId, viewer)'),
+    fn('respondHistory', 'const detail = await readDetail(tx, ctx, instanceId, viewer, false)'),
   ),
   'GET /api/tenant/approval/admin-logs': [
     {
