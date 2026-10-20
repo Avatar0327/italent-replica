@@ -193,7 +193,13 @@ describe('AC-INTERN-end-03 结束后不能再实习转正（IN-R4），只能重
     await w.terminateOk(intern.employee.id, { endDate: '2026-09-20' });
     const response = await w.session.request('POST', `/employees/${intern.employee.id}/businesses`, {
       ifMatch: await w.revision(intern.employee.id),
-      body: { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-20', fields: {} },
+      body: {
+        kind: 'intern_regularization',
+        mode: 'application',
+        effectiveDate: '2026-10-20',
+        fields: {},
+        probation: false,
+      },
     });
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: { details: { reason: 'ACTIVE_EMPLOYMENT_REQUIRED' } } });

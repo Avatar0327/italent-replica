@@ -40,7 +40,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '7f9e384aa276',
+    readDetail: '91e0bfb1a88f',
   },
   'apps/api/src/modules/approval/node-actions.ts': {
     retrieveTask: '649138642c42',
@@ -55,7 +55,7 @@ export const DIGESTS: Digests = {
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
-    respondHistory: 'ffb2db620d20',
+    respondHistory: '9bab67d00813',
     'route:GET /admin-logs': 'ca4d3201d9b0',
     'route:GET /instances': 'f66cdd697241',
     'route:GET /notifications': '7e11cf9c0c2e',
@@ -203,7 +203,7 @@ export const DIGESTS: Digests = {
     'route:POST /auto-regularization/run': 'b99798a886bf',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
-    visibleEmployees: '311254d756ec',
+    visibleEmployees: '3837643e5dc4',
     writeContext: 'a154208ec77b',
   },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
@@ -295,6 +295,9 @@ export const DIGESTS: Digests = {
     'route:POST /interns/:id/terminate': 'ca0f1ae74dd2',
     'route:POST /rehire-matches': '0f65f77ec626',
   },
+  'apps/api/src/modules/employment/part-time/linkage.ts': {
+    validatePartTimeLinkage: '470d781276f9',
+  },
   'apps/api/src/modules/employment/part-time/replay-guard.ts': {
     requirePartTimeCreateAccess: 'c4e7c604b097',
     requirePartTimePreviewButton: 'b6599d36ef99',
@@ -374,7 +377,7 @@ export const DIGESTS: Digests = {
     loadVisibleIntention: 'fcea8ae3db97',
   },
   'apps/api/src/modules/employment/retirement-intention.ts': {
-    createIntention: '1bc5ad0bda27',
+    createIntention: '5c4cea444719',
     guardedRow: '015f7233832e',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
@@ -389,9 +392,10 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
     'route:DELETE /retirement-rules/:id': '8de974e02097',
     'route:GET /retirement-identity-types': '81f057781643',
-    'route:GET /retirement-rules': '1dacbd1d213c',
+    'route:GET /retirement-rules': '6f863b4c24d4',
     'route:POST /retirement-rules': 'c0ccabb2ca46',
     'route:POST /retirement-rules/:id/copy': '012777f500a5',
+    'route:POST /retirement-rules/run': 'bc894d79ebb5',
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
@@ -749,6 +753,9 @@ export const DIGESTS: Digests = {
     'route:PUT /api/tenant/org/settings': '1d14b609c0b6',
     visibleParents: '0b74f18d06b3',
     write: 'ff1b399350c1',
+  },
+  'apps/api/src/modules/org/write-service.ts': {
+    requireTransferOrganizationScope: 'aaf12f781a3b',
   },
   'apps/api/src/modules/permission/admin-http.ts': {
     adminGuard: '0752b9788c1e',
@@ -1799,6 +1806,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': 'e7c20dfe2c5e',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/terminate': '32bffd4d3e5f',
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /rehire-matches': '6214b17c9ebb',
+  'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage': '1193d874b58f',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess': '8d0660b89133',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimePreviewButton': 'a6aa688e31db',
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess': '6931fb8099e3',
@@ -1860,7 +1868,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
     '87d5b8962599',
   'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
-  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '1e373858e5db',
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
@@ -1871,9 +1879,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '5f9e3e39dd73',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': '9c74e44bfb8b',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-identity-types': '4e944340ea36',
-  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': 'b2548100ed05',
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules': 'e9b54a0cf91a',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': '83a9d7934f65',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
@@ -2138,6 +2147,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org/routes.ts#route:PUT /api/tenant/org/settings': 'afec69d1b639',
   'apps/api/src/modules/org/routes.ts#visibleParents': 'c980b0d216a7',
   'apps/api/src/modules/org/routes.ts#write': '67dcca9db848',
+  'apps/api/src/modules/org/write-service.ts#requireTransferOrganizationScope': '72e05c3b04df',
   'apps/api/src/modules/permission/admin-http.ts#adminGuard': '9d063f8ea5e6',
   'apps/api/src/modules/permission/data-scope-routes.ts#mouViewGuard': '9d063f8ea5e6',
   'apps/api/src/modules/permission/data-scope-routes.ts#route:DELETE /api/tenant/permission/mous/:id': 'aa3bf5263329',
