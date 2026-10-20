@@ -47,7 +47,7 @@ export interface HandoverDetail {
   } | null;
 }
 
-export async function handoverWorld(db: Db, label: string) {
+export async function handoverWorld(db: Db, label: string, options: { hrAdmin?: boolean } = {}) {
   const x = await blacklistExitWorld(db, label);
   const tenantId = x.tenantId;
   const tenantAs = (userId: string) => ({ tenant: tenantId, user: userId });
@@ -63,7 +63,8 @@ export async function handoverWorld(db: Db, label: string) {
   const hrbp = await person('部门HRBP');
   await setHrbp(db, tenantId, x.from.id, hrbp.employeeId);
   const hrAdmin = await x.otherUser();
-  await grantHrAdminProfile(db, tenantId, hrAdmin.id);
+  // 默认有人事管理员；hrAdmin: false 造“兜底角色也无人”
+  if (options.hrAdmin !== false) await grantHrAdminProfile(db, tenantId, hrAdmin.id);
   const processAdmin = await x.otherUser();
   const exceptionAdmin = await x.otherUser();
 
@@ -110,8 +111,6 @@ export async function handoverWorld(db: Db, label: string) {
   ) {
     const draft = await x.createdExit(employeeId, options.lastWorkDate ?? FUTURE_LAST_WORK_DATE, 'application', {
       exitTypeCode: 'voluntary',
-      // 工作交接是首节点，没有交接人也没有直线经理时发起会被拒绝（首节点无审批人），所以缺省带上交接人
-      handoverEmployeeId: workOwner.employeeId,
       ...options.exit,
     });
     const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
@@ -123,6 +122,41 @@ export async function handoverWorld(db: Db, label: string) {
     return { draft, approved };
   }
 
+  /** 可信端口批准（不断言成功）：返回成功的业务头，或失败的错误码与原因。 */
+  async function tryApprove(target: { id: string }, at: string) {
+    const service = await import('../../apps/api/src/modules/employment/transitions.js');
+    const current = await x.business(target.id);
+    try {
+      const result = await service.runEmploymentTransition(
+        db,
+        {
+          tenantId,
+          userId: x.session.user.id,
+          timezone: x.session.tenant.timezone,
+          now: new Date(at),
+          commandId: randomUUID(),
+          expectedRevision: current.revision,
+        },
+        { id: target.id, action: 'approve' },
+      );
+      return { ok: result.status === 200, status: result.status };
+    } catch (error) {
+      const failure = error as { code?: string; details?: { reason?: string; cause?: string } };
+      return { ok: false, code: failure.code, reason: failure.details?.reason, cause: failure.details?.cause };
+    }
+  }
+  const preReleaseDate = async (exitId: string) =>
+    (
+      await x.sqlRows<{ date: string | null }>(sql`SELECT pre_release_date::text AS date FROM exit_requests
+        WHERE tenant_id=${tenantId} AND business_id=${exitId}::uuid`)
+    )[0]?.date;
+  const handoverInstanceCount = async () =>
+    Number(
+      (
+        await x.sqlRows<{ n: number }>(sql`SELECT count(*)::int AS n FROM approval_instances
+          WHERE tenant_id=${tenantId} AND business_type='exit_handover'`)
+      )[0]!.n,
+    );
   const requestRows = (exitId: string) =>
     x.sqlRows<{
       id: string;
@@ -207,6 +241,9 @@ export async function handoverWorld(db: Db, label: string) {
   return {
     ...x,
     unbindAccount,
+    tryApprove,
+    preReleaseDate,
+    handoverInstanceCount,
     tenantAs,
     leaverUserId,
     workOwner,

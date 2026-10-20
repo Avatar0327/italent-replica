@@ -22,8 +22,8 @@ import {
 } from './AC-EXIT-handover-support.js';
 
 const database = useTestDb();
-const world = async (label: string) => {
-  const x = await handoverWorld(database().db, label);
+const world = async (label: string, options: { hrAdmin?: boolean } = {}) => {
+  const x = await handoverWorld(database().db, label, options);
   await x.addSettingItems();
   await x.publishHandoverProcess();
   return x;
@@ -128,16 +128,84 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     expect(await x.statusOf(leave.id)).toEqual({ status: 'not_started', request: null });
   });
 
-  it('员工没有可用账号（无法作为发起人）：跳过并留痕，离职审批照常通过', async () => {
+  it('员工没有可用账号（无法作为发起人）：批准被拒绝，离职保持审批中，补齐后可重新批准', async () => {
     const x = await world('launch-no-account');
     const lone = await x.colleague('无账号员工');
     await x.unbindAccount(lone.id);
-    const { approved } = await x.approvedApplication(lone.id);
-    expect(approved.status).toBe('approved');
-    expect(await x.requestRows(approved.id)).toEqual([]);
-    expect(await x.auditActions(approved.id, 'exit_handover.skipped')).toEqual([
-      { after: expect.objectContaining({ reason: 'NO_INITIATOR_ACCOUNT' }) },
+    const draft = await x.createdExit(lone.id, FUTURE_LAST_WORK_DATE, 'application', { exitTypeCode: 'voluntary' });
+    expect(
+      (await x.session.request('POST', `/businesses/${draft.id}/submit`, { ifMatch: draft.revision, body: {} })).status,
+    ).toBe(200);
+    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+      reason: 'EXIT_HANDOVER_LAUNCH_FAILED',
+      cause: 'NO_INITIATOR_ACCOUNT',
+    });
+    expect((await x.business(draft.id)).status).toBe('in_review');
+    expect(await x.preReleaseDate(draft.id)).toBeNull();
+    expect(await x.requestRows(draft.id)).toEqual([]);
+    // 补齐账号后重新批准成功，恰一张
+    await x.person('补账号', lone.id);
+    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ ok: true });
+    expect(await x.requestRows(draft.id)).toHaveLength(1);
+  });
+
+  it('首节点无人兜底（P2-1）：既没有交接人也没有直线经理时取人事管理员，发起成功且恰一张', async () => {
+    const x = await world('launch-hr-fallback');
+    const { approved } = await x.approvedApplication(x.employee.id, { exit: { handoverEmployeeId: undefined } });
+    const rows = await x.requestRows(approved.id);
+    expect(rows).toHaveLength(1);
+    expect(await x.pendingNode(rows[0]!.instanceId!)).toMatchObject({ nodeKey: 'work_handover', userId: x.hrAdmin.id });
+  });
+
+  it('兜底角色也无人（P2-1）：批准被拒绝并整体回滚，离职保持审批中、没有交接单，补齐后重新批准成功', async () => {
+    const x = await world('launch-nobody', { hrAdmin: false });
+    const draft = await x.createdExit(x.employee.id, FUTURE_LAST_WORK_DATE, 'application', {
+      exitTypeCode: 'voluntary',
+    });
+    const sent = await x.session.request('POST', `/businesses/${draft.id}/submit`, {
+      ifMatch: draft.revision,
+      body: {},
+    });
+    expect(sent.status).toBe(200);
+    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+      reason: 'EXIT_HANDOVER_LAUNCH_FAILED',
+      cause: 'APPROVAL_FIRST_NODE_EMPTY',
+    });
+    expect((await x.business(draft.id)).status).toBe('in_review');
+    expect(await x.preReleaseDate(draft.id)).toBeNull();
+    expect(await x.requestRows(draft.id)).toEqual([]);
+    expect(await x.handoverInstanceCount()).toBe(0);
+    // 补齐后（填交接人）重新批准成功：不再出现“离职已批准、交接零条”
+    const edit = await x.session.request('PATCH', `/exits/${draft.id}`, {
+      ifMatch: (await x.business(draft.id)).revision,
+      body: { handoverEmployeeId: x.workOwner.employeeId },
+    });
+    expect(edit.status, await edit.clone().text()).toBe(200);
+    expect(await x.tryApprove(draft, `${TODAY}T02:00:00Z`)).toMatchObject({ ok: true });
+    expect(await x.requestRows(draft.id)).toHaveLength(1);
+  });
+
+  it('审计归属（P2-2）：系统代发的审批发起 / 冻结主体操作人为系统，员工仍是发起人', async () => {
+    const x = await world('launch-actor');
+    const { request, instanceId } = await x.launched();
+    const audits = await x.sqlRows<{ action: string; actor: string | null }>(sql`
+      SELECT action, actor_user_id AS actor FROM audit_events WHERE tenant_id=${x.tenantId}
+        AND object_id=${instanceId} AND action IN ('approval.instance.start', 'approval.instance.subjects_freeze')
+      ORDER BY action`);
+    expect(audits).toEqual([
+      { action: 'approval.instance.start', actor: null },
+      { action: 'approval.instance.subjects_freeze', actor: null },
     ]);
+    const [log] = await x.sqlRows<{ actor: string | null; initiator: string }>(sql`
+      SELECT l.actor_user_id AS actor, i.initiator_user_id AS initiator FROM approval_instance_logs l
+      JOIN approval_instances i ON i.tenant_id=l.tenant_id AND i.id=l.instance_id
+      WHERE l.tenant_id=${x.tenantId} AND l.instance_id=${instanceId}::uuid AND l.event='start'`);
+    expect(log).toEqual({ actor: null, initiator: x.leaverUserId });
+    expect(request.initiatorUserId).toBe(x.leaverUserId);
   });
 
   it('事项快照：发起后再改设置（改名、新增、删除）不影响已发起的交接', async () => {
