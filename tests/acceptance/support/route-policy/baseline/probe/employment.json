@@ -1733,6 +1733,26 @@
       "obj:TenantBase.EmploymentRecord:create"
     ]
   },
+  "POST /api/tenant/employment/interns/:id/terminate": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "c18533a148d3",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
   "POST /api/tenant/employment/part-time-requests": {
     "all": {
       "code": "VALIDATION_FAILED",
