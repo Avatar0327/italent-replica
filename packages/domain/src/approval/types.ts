@@ -3,6 +3,10 @@ import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from
 import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
 import { ASSESSMENT_FORM_FIELDS, PROBATION_ASSESSMENT_OBJECT } from '../employment/assessment.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import {
+  RETIREMENT_INTENTION_FORM_FIELDS,
+  RETIREMENT_INTENTION_SNAPSHOT_FIELDS,
+} from '../employment/retirement-intention.js';
 /**
  * 审批中心领域模型（R1-T07；docs/02_业务建模/14、REQ-APV-001~004）。
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
@@ -382,6 +386,7 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
  * talent_review：盘点结果审批（R3-T04 C-08）：PR-A 登记类型与预置流程，发起入口与运行时适配器随 PR-D 接入（集合审批）。
  * part_time：兼职申请（BE-7，R2-T05 §1.4 / §1.5）：PT-1 登记类型与预置流程，适配器为占位，PT-4a 接入兼职申请对象。
  * probation_assessment：试用中考核 / 转正考核（R2 BE-15b1，29 PB-R3）：业务单 = 考核记录，审批流 员工自评 → 经理评价。
+ * retirement_intention：意向退休日期申请（R2-T04 5d2，设计 §11）：业务单 = 意向申请，审批通过只记录、不写人事字段（A-6）。
  */
 export type ApprovalAdapterKind =
   | 'employment'
@@ -393,7 +398,8 @@ export type ApprovalAdapterKind =
   | 'part_time'
   | 'offer'
   | 'offer_batch'
-  | 'probation_assessment';
+  | 'probation_assessment'
+  | 'retirement_intention';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -575,6 +581,19 @@ export const APPROVAL_TYPES = {
     formFields: [...employmentFormFields, ...RETIREMENT_REQUEST_FIELDS],
   },
   org_adjustment: employmentType('org_adjustment', '组织调整'),
+  // R2-T04 5d2 意向退休日期申请（设计 §11.2）：业务单是独立申请表，授权复用任职记录对象；原站类型编码 10000558 / 对象
+  // TenantBase.FlexibleRetireApproval / 流程 IntendedRetireProcess（未发布，A-19）不冒充，defaultProcessCode = null + 本类型兜底预置
+  retirement_intention: {
+    code: 'retirement_intention',
+    name: '意向退休日期申请',
+    objectCode: MODULE_OBJECTS.employmentRecord.code,
+    adapter: 'retirement_intention',
+    defaultProcessCode: null,
+    conditionFields: EMPLOYMENT_CONDITION_FIELDS,
+    formFields: RETIREMENT_INTENTION_FORM_FIELDS,
+    readonlyFields: RETIREMENT_INTENTION_SNAPSHOT_FIELDS,
+    approvalEdit: false,
+  },
   // BE-7 兼职（R2-T05 §1.5）：PT-1 只登记类型与预置，申请对象与发起入口随 PT-4a / PT-4b 接入
   part_time_add: partTimeType('part_time_add', '兼职', 'AddParttimeJobProcess'),
   part_time_extend: partTimeType('part_time_extend', '延长兼职', 'ExtendParttimeJobProcess'),

@@ -113,17 +113,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_BUTTON',
     'packages/domain/src/permission/decide.ts#buttonResource',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/approval/access.ts#resubmitGuard': [
     'apps/api/src/modules/approval/store.ts#loadInstance',
     'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentResubmitRight',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
   ],
   'apps/api/src/modules/approval/access.ts#withdrawGuard': [
     '#isOfferBusiness',
     '#requireOfferOwnerRight',
     'apps/api/src/modules/approval/store.ts#loadInstance',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
   ],
   'apps/api/src/modules/approval/actions.ts#addSign': [
     '#assertAddSignType',
@@ -470,6 +473,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/employment/assessment-approval-adapter.ts#assessmentAdapter',
     'apps/api/src/modules/employment/part-time/approval-adapter.ts#partTimeAdapter',
+    'apps/api/src/modules/employment/retirement-intention-adapter.ts#retirementIntentionAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerAdapter',
     'apps/api/src/modules/offer/approval-adapter.ts#offerBatchAdapter',

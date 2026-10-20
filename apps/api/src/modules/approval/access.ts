@@ -18,6 +18,7 @@ import {
   MODULE_OBJECTS,
   OFFER_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
+  RETIREMENT_INTENTION_BUTTON,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { requirePermission } from '../../authorization.js';
@@ -26,6 +27,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { requireAssessmentResubmitRight } from '../employment/assessment-access.js';
 import { employmentCreator } from '../employment/context.js';
+import { authorizeIntentionApproval } from '../employment/retirement-intention-access.js';
 import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
@@ -97,7 +99,9 @@ export function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
       WHEN i.business_type='contract' THEN (SELECT created_by FROM contract_requests c
         WHERE c.tenant_id=i.tenant_id AND c.id=i.business_id)
       WHEN i.business_type='part_time' THEN (SELECT q.initiator_user_id FROM part_time_requests q
-        WHERE q.tenant_id=i.tenant_id AND q.id=i.business_id) END`,
+        WHERE q.tenant_id=i.tenant_id AND q.id=i.business_id)
+      WHEN i.business_type='retirement_intention' THEN (SELECT r.initiator_user_id FROM retirement_intentions r
+        WHERE r.tenant_id=i.tenant_id AND r.id=i.business_id) END`,
   });
 }
 
@@ -151,6 +155,9 @@ export function withdrawGuard(deps: TenantRouteDeps, ctx: TenantContext, instanc
     before: async (tx) => {
       const instance = await loadInstance(tx, ctx.tenantId, instanceId);
       if (isOfferBusiness(instance.businessType)) await requireOfferOwnerRight(deps, ctx, tx, instanceId);
+      // 意向退休申请：在撤回按钮 / 员工范围前置之外，再过写范围（申请时部门快照 + 发起人），两道都过才执行
+      if (instance.businessType === 'retirement_intention')
+        await authorizeIntentionApproval(tx, deps, ctx, instance.businessId);
     },
   };
 }
@@ -170,6 +177,8 @@ export function resubmitGuard(
       const instance = await loadInstance(tx, ctx.tenantId, instanceId);
       if (instance.businessType === 'probation_assessment')
         await requireAssessmentResubmitRight(tx, deps, ctx, instance.businessId, corrections);
+      if (instance.businessType === 'retirement_intention')
+        await authorizeIntentionApproval(tx, deps, ctx, instance.businessId, { fields: corrections });
     },
   };
 }
@@ -196,7 +205,9 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
         ? IDP_PLAN_OBJECT
         : MODULE_OBJECTS.employmentRecord.code;
   const withdrawButton =
-    { contract: 'withdraw', idp: 'update' }[instance.businessType as string] ?? 'Employment.Withdraw';
+    { contract: 'withdraw', idp: 'update', retirement_intention: RETIREMENT_INTENTION_BUTTON }[
+      instance.businessType as string
+    ] ?? 'Employment.Withdraw';
   await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: {} });
   await requirePermission(deps.authorize, {
     ...ctx,
