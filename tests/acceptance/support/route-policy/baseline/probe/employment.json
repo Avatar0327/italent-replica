@@ -1988,7 +1988,7 @@
   "POST /api/tenant/employment/retirement-rules": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "264820aabe72",
+      "error": "ff61cede464e",
       "status": 400
     },
     "fieldQueries": [],
@@ -2415,7 +2415,7 @@
   "PUT /api/tenant/employment/retirement-rules/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "264820aabe72",
+      "error": "ff61cede464e",
       "status": 400
     },
     "fieldQueries": [],
