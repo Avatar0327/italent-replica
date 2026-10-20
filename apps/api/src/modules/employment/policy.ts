@@ -2188,15 +2188,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 授权复用任职记录对象：数据操作 + 详情级按钮 Employment.RetireIntention + 字段权（intendedDate / reason）。读用 DEC-177 可见口径
   // （员工当前部门或申请快照部门任一在范围内；使用用户维度取本表发起人），写用申请行自己的三个坐标（快照部门 / 员工 / 发起人，
   // DEC-193），不用 employmentVisibilitySql、也不查任职业务创建人。范围外与不存在同一个 404「意向退休申请不存在」
-  // 创建：If-Match = 员工 revision；readContext 带员工 ID 先按人员范围判 404「任职数据不存在」，命令内再用即将写入的快照部门判写范围；
+  // 创建：If-Match = 员工 revision；readContext 不带员工 ID（员工主档创建人不是本单坐标），命令内持员工锁后用即将写入的快照部门 / 员工 / 本单发起人判写范围；
   // 员工须当前在职（409 RETIREMENT_INTENTION_NOT_EMPLOYED）、同员工无未办结申请（409 RETIREMENT_INTENTION_IN_PROGRESS）、
   // 日期晚于今天（400 RETIREMENT_INTENTION_NOT_FUTURE）、有弹性上下限时落在其内（400 RETIREMENT_INTENTION_OUT_OF_RANGE）
   'POST /retirement-intentions/employees/:id': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button(RETIREMENT_INTENTION_BUTTON, 'detail'),
-    guards: ['employment.intentionWrite'],
-    scope: guardScope('employment.scope', NF_DATA),
+    // 范围 = 即将写入的快照部门 / 员工 / 本单发起人三坐标（§11.1，creatorId = ctx.userId），不用员工主档创建人；范围外 404
+    scope: guardScope('employment.intentionWrite', NF_INTENTION),
     fields: RESPONSE,
     write: employmentWrite('body', [
       'lockEmploymentEmployee',

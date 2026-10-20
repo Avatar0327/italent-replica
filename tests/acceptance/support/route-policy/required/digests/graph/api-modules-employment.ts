@@ -4505,17 +4505,24 @@ export const GRAPH: Graph = {
     '#expectedRetirementDateOf',
     'packages/domain/src/employment/retirement.ts#deriveRetireType',
   ],
+  'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval': [
+    '#intentionCommandContext',
+    '#lockIntentionRows',
+    '#requireIntentionRight',
+  ],
   'apps/api/src/modules/employment/retirement-intention-access.ts#intentionCommandContext': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
-  'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionApprovalRight': [
+  'apps/api/src/modules/employment/retirement-intention-access.ts#lockIntentionRows': [
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#loadIntention',
+  ],
+  'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionRight': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
-    '#intentionCommandContext',
     '#requireIntentionWriteScope',
-    'apps/api/src/modules/employment/retirement-intention-store.ts#loadIntention',
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_BUTTON',
   ],
   'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': [
@@ -4556,11 +4563,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-routes.ts#parse',
   ],
   'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': [
-    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#commandContext',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
-    'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_BUTTON',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#lockIntentionRows',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionRight',
   ],
   'apps/api/src/modules/employment/retirement-intention-routes.ts#listQuery': [
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_STATES',
@@ -4728,8 +4734,10 @@ export const GRAPH: Graph = {
     '#linkInstance',
   ],
   'apps/api/src/modules/employment/retirement-intention.ts#updateIntention': [
+    'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
     'apps/api/src/modules/employment/retirement-intention-store.ts#saveIntention',
     '#EDITABLE',
+    '#approvalContext',
     '#checkedSnapshots',
     '#conflict',
     '#employedRecord',

@@ -5,7 +5,7 @@
  * 自助入口随 F-020，服务已按 initiation 设计，这里不挂路由。
  */
 import { withTenant } from '@italent/db';
-import { RETIREMENT_INTENTION_BUTTON, RETIREMENT_INTENTION_STATES } from '@italent/domain';
+import { RETIREMENT_INTENTION_STATES } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -15,12 +15,10 @@ import type { FieldAccess } from '../approval/context.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import {
   commandContext,
-  EMPLOYMENT_OBJECT,
   jsonBody,
   pageQuery,
   readContext,
   readPageContext,
-  requireEmploymentWrite,
   revision,
   runWrite,
   scopedGuard,
@@ -29,6 +27,7 @@ import {
   type EmploymentContext,
 } from './context.js';
 import { parse } from './entry-routes.js';
+import { lockIntentionRows, requireIntentionRight } from './retirement-intention-access.js';
 import {
   createIntention,
   parseIntentionCreate,
@@ -61,21 +60,21 @@ async function emptyBody(c: C): Promise<void> {
 }
 
 /**
- * 命令事务内的当前权限复核：对象写权 + 字段写权 + 按钮 Employment.RetireIntention（首次、同键重放与失败回查同一出口）。
- * 申请行的写范围由服务在任何写之前判（需要先锁员工 / 申请行才能读到部门快照），这里不重复。
+ * 命令事务内的当前权限复核（首次、同键重放与失败回查同一出口）：先取员工锁 → 申请行锁，再在持锁状态下解析当前授权，
+ * 与审批中心撤回 / 重提共用同一个入口 requireIntentionRight（DEC-431①）：对象写权 + 实际字段编辑权 + Employment.RetireIntention
+ * + 申请行三坐标写范围。创建没有申请行：写范围由服务按即将写入的快照部门 / 员工 / 本单发起人判（§11.1）。
  */
 function intentionGuard(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
-  operation: 'create' | 'update',
-  payload: Readonly<Record<string, unknown>>,
+  target: { readonly employeeId: string } | { readonly intentionId: string },
+  fields: Readonly<Record<string, unknown>>,
 ) {
   return scopedGuard({
     before: async (tx) => {
+      const row = await lockIntentionRows(tx, ctx, target);
       const scoped = await commandContext(tx, deps, ctx);
-      await requireEmploymentWrite(scoped, operation, payload, RETIREMENT_INTENTION_BUTTON, EMPLOYMENT_OBJECT, {
-        commandOnly: Object.keys(payload).length === 0,
-      });
+      await requireIntentionRight(tx, scoped, { operation: 'employeeId' in target ? 'create' : 'update', fields, row });
     },
   });
 }
@@ -92,7 +91,8 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 创建草稿：If-Match = 员工 revision；员工须当前在职，同员工无未办结申请，日期晚于今天且落在弹性范围内
   router.post('/retirement-intentions/employees/:id', async (c) => {
     const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.create', revision(c), id);
+    // 不带员工 ID：员工主档创建人不是本单的范围坐标（§11.1 creatorId = 本单发起人），范围由命令内三坐标授权判定
+    const ctx = await readContext(c, deps, 'object.create', revision(c));
     const input = parseIntentionCreate(await jsonBody(c));
     return runWrite(
       c,
@@ -100,7 +100,7 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, input },
       async (tx, context) => ({ status: 201, body: intentionView(await createIntention(tx, context, id, input)) }),
-      { guard: intentionGuard(deps, ctx, 'create', definedKeys(input)) },
+      { guard: intentionGuard(deps, ctx, { employeeId: id }, definedKeys(input)) },
     );
   });
   router.patch('/retirement-intentions/:id', async (c) => {
@@ -113,7 +113,7 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, patch },
       async (tx, context) => ({ status: 200, body: intentionView(await updateIntention(tx, context, id, patch)) }),
-      { guard: intentionGuard(deps, ctx, 'update', definedKeys(patch)) },
+      { guard: intentionGuard(deps, ctx, { intentionId: id }, definedKeys(patch)) },
     );
   });
   for (const action of ['submit', 'withdraw'] as const)
@@ -134,7 +134,7 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               : await withdrawIntention(tx, context, id),
           ),
         }),
-        { guard: intentionGuard(deps, ctx, 'update', {}) },
+        { guard: intentionGuard(deps, ctx, { intentionId: id }, {}) },
       );
     });
 }

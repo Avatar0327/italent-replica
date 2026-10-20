@@ -2036,7 +2036,6 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "btn:TenantBase.EmploymentRecord#Employment.RetireIntention@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
@@ -2057,7 +2056,6 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "btn:TenantBase.EmploymentRecord#Employment.RetireIntention@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },

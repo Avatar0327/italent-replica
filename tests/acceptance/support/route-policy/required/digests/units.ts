@@ -350,22 +350,23 @@ export const DIGESTS: Digests = {
     requireExitEditRights: '79a409abe52e',
   },
   'apps/api/src/modules/employment/retirement-intention-access.ts': {
+    requireIntentionRight: 'a9e148cf6a93',
     requireIntentionWriteScope: '1e3002a93baf',
   },
   'apps/api/src/modules/employment/retirement-intention-routes.ts': {
-    intentionGuard: '540c1fdc5d3b',
+    intentionGuard: 'a4ae072e9f95',
     'route:GET /retirement-intentions': 'c27ab662952e',
     'route:GET /retirement-intentions/:id': '98cc81b89c0c',
-    'route:PATCH /retirement-intentions/:id': 'c1c1bdd98fcc',
-    'route:POST /retirement-intentions/:id/submit': '3a2b3c2c44de',
-    'route:POST /retirement-intentions/:id/withdraw': '3a2b3c2c44de',
-    'route:POST /retirement-intentions/employees/:id': '2a0265aef2fc',
+    'route:PATCH /retirement-intentions/:id': '3974ae923459',
+    'route:POST /retirement-intentions/:id/submit': 'a6c1e862c697',
+    'route:POST /retirement-intentions/:id/withdraw': 'a6c1e862c697',
+    'route:POST /retirement-intentions/employees/:id': '4ee8c2492fc3',
   },
   'apps/api/src/modules/employment/retirement-intention-store.ts': {
     loadVisibleIntention: 'fcea8ae3db97',
   },
   'apps/api/src/modules/employment/retirement-intention.ts': {
-    createIntention: '2cb2fa86cb35',
+    createIntention: '1bc5ad0bda27',
     guardedRow: '015f7233832e',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
@@ -1821,8 +1822,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope': '90ef4cd1f0fc',
   'apps/api/src/modules/employment/replay-guard.ts#requireEditTargets': 'aa1f389d7a24',
   'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights': '2007bd7eaee2',
+  'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionRight': '69a301c4f5c1',
   'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionWriteScope': '0b611979014e',
-  'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': 'c80d3849ccf0',
+  'apps/api/src/modules/employment/retirement-intention-routes.ts#intentionGuard': '02aebe00f7b4',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions': '9e50ab965e69',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:GET /retirement-intentions/:id': 'f621e1693421',
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:PATCH /retirement-intentions/:id':
@@ -1834,7 +1836,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
     '87d5b8962599',
   'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
-  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '503cf2226290',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',

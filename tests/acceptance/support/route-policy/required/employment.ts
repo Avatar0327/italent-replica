@@ -727,11 +727,8 @@ const INTENT_BUTTON = (method: string, path: string, call: string): Obligation =
     [],
     [
       at(INTENT, method, path, call),
-      fn(
-        INTENT,
-        'intentionGuard',
-        'await requireEmploymentWrite(scoped, operation, payload, RETIREMENT_INTENTION_BUTTON, EMPLOYMENT_OBJECT, {',
-      ),
+      fn(INTENT, 'intentionGuard', 'await requireIntentionRight(tx, scoped, {'),
+      fn(INTENT_ACCESS, 'requireIntentionRight', 'await requireEmploymentWrite( scoped, request.operation,'),
       WRITE_BUTTON,
     ],
   );
@@ -754,7 +751,7 @@ function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
         WRITE_OBJECT,
       ],
     ),
-    INTENT_BUTTON('POST', path, "{ guard: intentionGuard(deps, ctx, 'update', {}) }"),
+    INTENT_BUTTON('POST', path, '{ guard: intentionGuard(deps, ctx, { intentionId: id }, {}) }'),
     intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
   ];
 }
@@ -2803,7 +2800,7 @@ export const EMPLOYMENT: RequiredTable = {
           INTENT,
           'POST',
           '/retirement-intentions/employees/:id',
-          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
+          "const ctx = await readContext(c, deps, 'object.create', revision(c))",
         ),
         READ,
         WRITE_OBJECT,
@@ -2812,21 +2809,7 @@ export const EMPLOYMENT: RequiredTable = {
     INTENT_BUTTON(
       'POST',
       '/retirement-intentions/employees/:id',
-      "{ guard: intentionGuard(deps, ctx, 'create', definedKeys(input)) }",
-    ),
-    ob(
-      'guard:employment.scope',
-      [],
-      [
-        at(
-          INTENT,
-          'POST',
-          '/retirement-intentions/employees/:id',
-          "const ctx = await readContext(c, deps, 'object.create', revision(c), id)",
-        ),
-        { role: 'impl', unit: `${CTX}#readContext`, anchor: '(tx) => requireEmployeeInScope(tx, result, resource)' },
-        EMPLOYEE_IN_SCOPE,
-      ],
+      '{ guard: intentionGuard(deps, ctx, { employeeId: id }, definedKeys(input)) }',
     ),
     intentionWriteScope(
       INTENT_SERVICE,
@@ -2852,7 +2835,7 @@ export const EMPLOYMENT: RequiredTable = {
     INTENT_BUTTON(
       'PATCH',
       '/retirement-intentions/:id',
-      "{ guard: intentionGuard(deps, ctx, 'update', definedKeys(patch)) }",
+      '{ guard: intentionGuard(deps, ctx, { intentionId: id }, definedKeys(patch)) }',
     ),
     intentionWriteScope(INTENT_SERVICE, 'guardedRow', 'await requireIntentionWriteScope(tx, ctx, row)'),
   ],

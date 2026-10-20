@@ -120,13 +120,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/access.ts#resubmitGuard': [
     'apps/api/src/modules/approval/store.ts#loadInstance',
     'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentResubmitRight',
-    'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionApprovalRight',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
   ],
   'apps/api/src/modules/approval/access.ts#withdrawGuard': [
     '#isOfferBusiness',
     '#requireOfferOwnerRight',
     'apps/api/src/modules/approval/store.ts#loadInstance',
-    'apps/api/src/modules/employment/retirement-intention-access.ts#requireIntentionApprovalRight',
+    'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
   ],
   'apps/api/src/modules/approval/actions.ts#addSign': [
     '#assertAddSignType',

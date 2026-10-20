@@ -5,7 +5,7 @@
  * 审批通过只置 approved，不写人事字段（A-6，DEC-637 / DEC-638）；审批中心（approval/）经动态导入调用，避免静态环。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, type Tx } from '@italent/db';
+import { pgErrorCode, sql, type Tx } from '@italent/db';
 import {
   intentionDateViolation,
   RETIREMENT_INTENTION_EMPLOYED_STATUSES,
@@ -116,13 +116,20 @@ export async function createIntention(
     throw conflict('RETIREMENT_INTENTION_IN_PROGRESS', '该员工已有未办结的意向退休日期申请');
   const snapshots = await checkedSnapshots(tx, ctx, employeeId, input.intendedDate);
   const id = randomUUID();
-  await tx.execute(sql`INSERT INTO retirement_intentions(id, tenant_id, employee_id, staff_id, department_id,
+  try {
+    await tx.execute(sql`INSERT INTO retirement_intentions(id, tenant_id, employee_id, staff_id, department_id,
       intended_date, expected_date_snapshot, earliest_snapshot, latest_snapshot, reason, initiator, initiator_user_id,
       state, revision, command_id, created_at, updated_at)
     VALUES (${id}::uuid, ${ctx.tenantId}, ${employeeId}::uuid, ${current.staffId}::uuid, ${departmentId}::uuid,
       ${input.intendedDate}::date, ${snapshots.expectedDateSnapshot}::date, ${snapshots.earliestSnapshot}::date,
       ${snapshots.latestSnapshot}::date, ${input.reason ?? null}, ${initiation}, ${ctx.userId}::uuid, 'draft', 1,
       ${ctx.commandId}, ${ctx.now.toISOString()}::timestamptz, ${ctx.now.toISOString()}::timestamptz)`);
+  } catch (error) {
+    // 部分唯一索引兜底：别的路径（未取员工锁）并发写入同员工的未办结申请，提交后这里撞唯一冲突 → 同一个 409
+    if (pgErrorCode(error) === '23505')
+      throw conflict('RETIREMENT_INTENTION_IN_PROGRESS', '该员工已有未办结的意向退休日期申请');
+    throw error;
+  }
   const created = await loadIntention(tx, ctx.tenantId, id);
   await auditIntention(tx, ctx, 'create', id, null, created);
   return created;
@@ -155,13 +162,19 @@ export async function updateIntention(
   await employedRecord(tx, ctx, row.employeeId);
   const intendedDate = patch.intendedDate ?? row.intendedDate;
   const snapshots = await checkedSnapshots(tx, ctx, row.employeeId, intendedDate);
-  return saveIntention(
+  const saved = await saveIntention(
     tx,
     ctx,
     row,
     { ...snapshots, intendedDate, ...(patch.reason !== undefined ? { reason: patch.reason } : {}) },
     'update',
   );
+  // 已驳回的申请仍挂着退回中的实例：同事务让实例记下新的业务版本，审批页面里修改前的旧 revision 随即 409（第 1 轮 P2-3）
+  if (row.approvalInstanceId) {
+    const { refreshBusinessVersion } = await import('../approval/engine.js');
+    await refreshBusinessVersion(tx, approvalContext(ctx), 'retirement_intention', id);
+  }
+  return saved;
 }
 
 const approvalContext = (ctx: EmploymentContext, fields?: FieldAccess): ApprovalContext =>

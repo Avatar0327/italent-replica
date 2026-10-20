@@ -27,7 +27,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { requireAssessmentResubmitRight } from '../employment/assessment-access.js';
 import { employmentCreator } from '../employment/context.js';
-import { requireIntentionApprovalRight } from '../employment/retirement-intention-access.js';
+import { authorizeIntentionApproval } from '../employment/retirement-intention-access.js';
 import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
@@ -157,7 +157,7 @@ export function withdrawGuard(deps: TenantRouteDeps, ctx: TenantContext, instanc
       if (isOfferBusiness(instance.businessType)) await requireOfferOwnerRight(deps, ctx, tx, instanceId);
       // 意向退休申请：在撤回按钮 / 员工范围前置之外，再过写范围（申请时部门快照 + 发起人），两道都过才执行
       if (instance.businessType === 'retirement_intention')
-        await requireIntentionApprovalRight(tx, deps, ctx, instance.businessId, 'withdraw');
+        await authorizeIntentionApproval(tx, deps, ctx, instance.businessId);
     },
   };
 }
@@ -178,7 +178,7 @@ export function resubmitGuard(
       if (instance.businessType === 'probation_assessment')
         await requireAssessmentResubmitRight(tx, deps, ctx, instance.businessId, corrections);
       if (instance.businessType === 'retirement_intention')
-        await requireIntentionApprovalRight(tx, deps, ctx, instance.businessId, 'resubmit');
+        await authorizeIntentionApproval(tx, deps, ctx, instance.businessId, { fields: corrections });
     },
   };
 }
