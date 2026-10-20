@@ -16,8 +16,8 @@ import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/re
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import { pendingOf } from './support/f048.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
 import { orderedEmployeePair } from './support/ordered-employee-pair.js';
+import { settledOrBlocked } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -39,7 +39,8 @@ async function subordinateOrdered(w: RequestWorld, order: 'below' | 'above') {
     (person) => person.employeeId,
     order,
   );
-  return pair.subordinate;
+  expect(pair.subordinate.employeeId < pair.worker.employeeId).toBe(order === 'below');
+  return pair;
 }
 
 const headOf = (w: RequestWorld) =>
@@ -69,27 +70,36 @@ async function scene(label: string, order: 'below' | 'above', external: boolean)
       WHERE tenant_id=${w.tenant.id} AND org_id=${w.side}::uuid)
       WHERE tenant_id=${w.tenant.id} AND id=${w.side}::uuid`),
   );
-  const sub = await subordinateOrdered(w, order);
-  const created = await w.create({ isDepartmentHead: true, addedSubordinateIds: [sub.employeeId] });
+  const { worker, subordinate: sub } = await subordinateOrdered(w, order);
+  const created = await w.create({
+    employeeId: worker.employeeId,
+    isDepartmentHead: true,
+    addedSubordinateIds: [sub.employeeId],
+  });
   await w.send(created.id, created.revision);
   await w.approveInOrder(created.id, [w.approvers.pHrbp, w.approvers.pHead, w.approvers.sHrbp]);
   await w.decide(created.id, w.approvers.sHrbp, 'approve');
   const view = await w.instance(created.id);
   const source = external ? w.external!.id : w.exceptionAdmin;
   expect(pendingOf(view)).toEqual([expect.objectContaining({ assigneeUserId: source })]);
-  return { w, sub, created, view, source };
+  return { w, worker, sub, created, view, source };
 }
 
-async function expectLanded(w: RequestWorld, sub: { employeeId: string }, requestId: string) {
+async function expectLanded(
+  w: RequestWorld,
+  worker: { employeeId: string },
+  sub: { employeeId: string },
+  requestId: string,
+) {
   expect((await w.states(requestId)).map((event) => event.state)).toContain('effective');
-  expect(await headOf(w)).toBe(w.worker.employeeId);
-  expect(await managerOf(w, sub.employeeId)).toBe(w.worker.employeeId);
+  expect(await headOf(w)).toBe(worker.employeeId);
+  expect(await managerOf(w, sub.employeeId)).toBe(worker.employeeId);
 }
 
 describe.runIf(realPostgres)('AC-PT-linkage-handover-pg 批量交接 / 停用接管 × 合席落地 × 申请下属预锁', () => {
   for (const order of ['below', 'above'] as const) {
     it(`手动交接（下属 UUID ${order === 'below' ? '小于' : '大于'}申请员工）：200，合席落地，负责人 / 下属经理已改`, async () => {
-      const { w, sub, created, source } = await scene(`lk-handover-${order}`, order, false);
+      const { w, worker, sub, created, source } = await scene(`lk-handover-${order}`, order, false);
       const admin = await w.member('交接操作员');
       await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: admin }, cmd());
       const response = await w.request(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
@@ -97,11 +107,11 @@ describe.runIf(realPostgres)('AC-PT-linkage-handover-pg 批量交接 / 停用接
         body: { fromUserId: source, toUserId: w.approvers.sHrbp.userId },
       });
       expect(response.status, await response.clone().text()).toBe(200);
-      await expectLanded(w, sub, created.id);
+      await expectLanded(w, worker, sub, created.id);
     });
 
     it(`全局停用接管（下属 UUID ${order === 'below' ? '小于' : '大于'}申请员工）：停用成功，合席落地，负责人 / 下属经理已改`, async () => {
-      const { w, sub, created, source } = await scene(`lk-takeover-${order}`, order, true);
+      const { w, worker, sub, created, source } = await scene(`lk-takeover-${order}`, order, true);
       // DEC-098：仍是可用流程的异常管理员时拒绝停用——作废流程，在途实例按冻结版本继续；替代人由可信夹具直写（已占席位的 HRBP）
       const processes = await w.json<{ items: { id: string; revision: number }[] }>(
         await w.request(w.hr.id, 'GET', '/api/tenant/approval/processes?approvalType=part_time_add'),
@@ -119,7 +129,7 @@ describe.runIf(realPostgres)('AC-PT-linkage-handover-pg 批量交接 / 停用接
       );
       const user = await getUser(w.db, source);
       await setUserStatus(w.db, { userId: source, status: 'disabled', expectedRevision: user!.revision }, cmd());
-      await expectLanded(w, sub, created.id);
+      await expectLanded(w, worker, sub, created.id);
     });
   }
 });

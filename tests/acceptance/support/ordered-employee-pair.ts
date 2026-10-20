@@ -5,9 +5,9 @@ export async function orderedEmployeePair<T>(
   idOf: (person: T) => string,
   order: 'below' | 'above',
 ): Promise<{ worker: T; subordinate: T }> {
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const subordinate = await makePerson();
-    if ((order === 'below') === idOf(subordinate) < idOf(worker)) return { worker, subordinate };
-  }
-  throw new Error('造不出指定 UUID 顺序的下属');
+  const other = await makePerson();
+  if (idOf(worker) === idOf(other)) throw new Error('顺序夹具需要两个不同的员工 UUID');
+  return (order === 'below') === idOf(other) < idOf(worker)
+    ? { worker, subordinate: other }
+    : { worker: other, subordinate: worker };
 }
