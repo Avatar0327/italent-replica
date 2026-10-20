@@ -51,14 +51,18 @@ export function linkageDelta(before: Partial<LinkageFields>, after: Partial<Link
   };
 }
 
-/** 先于员工行锁取整个联动闭包（本人 + 下属，UUID 升序）；没有下属时只有本人一把锁，沿用调用方既有的员工锁。 */
+/**
+ * 先于员工行锁取整个联动闭包（本人 + 本次输入的下属 + 规划里原有的未办结联动 / 审批中申请的下属，UUID 升序）——创建、编辑、
+ * 申请落地、审批同意共用的唯一预锁入口。本次意图只要有联动（负责人或下属）就收齐：编辑只设负责人时，完整意图会连同原待执行的
+ * 下属一起办（resolveLinkageIntent），闭包不能只看本次输入（第 2 轮 P2）。没有联动意图就只有调用方既有的员工锁。
+ */
 export async function lockLinkageParticipants(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
-  subordinateIds: readonly string[],
+  intent: PartTimeLinkage,
 ): Promise<void> {
-  if (subordinateIds.length) await lockTransferParticipants(tx, ctx, employeeId, subordinateIds);
+  if (hasLinkage(intent)) await lockTransferParticipants(tx, ctx, employeeId, intent.subordinateIds);
 }
 
 /** 保存时校验联动人员（沿用调动联动：负责人要有兼职部门的组织写范围；下属须在职、不是本人、在操作人范围内）。 */

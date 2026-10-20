@@ -27,7 +27,7 @@ import { lockOrganizationSettings } from '../../org/locks.js';
 import { findCurrentRecord } from '../read-model.js';
 import { lockEmploymentEmployee } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
-import { lockLinkageParticipants } from './linkage.js';
+import { linkageOf, lockLinkageParticipants } from './linkage.js';
 import { loadPartTimeRequest, partTimeRequestOwner, type PartTimeRequestRow } from './request-store.js';
 import {
   editRequestInApproval,
@@ -52,7 +52,13 @@ async function lock(tx: Tx, ctx: ApprovalContext, requestId: string, reassignFro
   if (!owner) throw new AppError('NOT_FOUND', '兼职申请不存在');
   // 新增申请带“新增下属”时，落地会改这些人的直线经理：先按 UUID 升序取整个联动闭包（§7.1），其余仍只锁本人
   const subordinates = owner.requestType === 'add' ? await requestSubordinates(tx, ctx.tenantId, requestId) : [];
-  if (subordinates.length) await lockLinkageParticipants(tx, asEmployment(ctx), owner.employeeId, subordinates);
+  if (subordinates.length)
+    await lockLinkageParticipants(
+      tx,
+      asEmployment(ctx),
+      owner.employeeId,
+      linkageOf({ addedSubordinateIds: subordinates }),
+    );
   else await lockEmploymentEmployee(tx, asEmployment(ctx), owner.employeeId);
   await tx.execute(sql`SELECT 1 FROM part_time_requests
     WHERE tenant_id=${ctx.tenantId} AND id=${requestId}::uuid FOR UPDATE`);

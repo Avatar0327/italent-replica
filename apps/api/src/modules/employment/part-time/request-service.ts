@@ -38,7 +38,7 @@ import {
   type RequestPayload,
 } from './request-store.js';
 import { partTimeNotFound } from './read.js';
-import { lockLinkageParticipants } from './linkage.js';
+import { linkageOf, lockLinkageParticipants } from './linkage.js';
 import { checkNewPartTime, insertCheckedPartTime, type CreatePartTimeInput } from './service.js';
 import { appendPartTimeTerm, lockPartTimeRecords, readPartTimeRecords, type PartTimeRecordRow } from './store.js';
 import { normalizeNewPartTime, requirePartTimeRecordScope, type NormalizedPartTime } from './validation.js';
@@ -745,8 +745,7 @@ export async function landApprovedRequest(tx: Tx, ctx: EmploymentContext, reques
   const approved = await appendRequestState(tx, ctx, request, assertAction(request, 'approve'));
   await auditRequest(tx, ctx, 'part_time.request.approved', approved, ...stateChange(request, approved));
   // 联动闭包（本人 + 新增下属）先于落地取齐，顺序不对时 409 整个同意失败，不作废已批申请（§7.1）
-  if (request.requestType === 'add')
-    await lockLinkageParticipants(tx, ctx, employee.id, request.version.addedSubordinateIds ?? []);
+  if (request.requestType === 'add') await lockLinkageParticipants(tx, ctx, employee.id, linkageOf(request.version));
   const voidLanding = (reason: 'landing_rejected' | 'changed_since_submit') =>
     voidPartTimeRequest(tx, ctx, approved, {
       reason,

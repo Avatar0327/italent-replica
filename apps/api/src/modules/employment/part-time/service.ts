@@ -54,7 +54,6 @@ import {
   assertExclusiveTypeFree,
   batchEndViolation,
   normalizeNewPartTime,
-  normalizeSubordinates,
   type NormalizedPartTime,
   openDateRequestRecords,
   partTimePresetFields,
@@ -178,7 +177,7 @@ export async function createPartTime(
 ): Promise<CreatedPartTime> {
   const normalized = normalizeNewPartTime(input);
   // 有下属时先按 UUID 升序取整个联动闭包（§7.1），再取员工行锁（已持有则重入）
-  await lockLinkageParticipants(tx, ctx, normalized.employeeId, linkageOf(normalized.fields).subordinateIds);
+  await lockLinkageParticipants(tx, ctx, normalized.employeeId, linkageOf(normalized.fields));
   const employee = await lockEmploymentEmployee(tx, ctx, normalized.employeeId);
   // PT-R2 / PT-R3：员工按主职在范围，且兼职部门在范围（默认开，A-6）；可信端口（无 scope）不设限
   await requireEmployeeInScope(tx, ctx, employee.id);
@@ -384,10 +383,9 @@ export async function editPartTime(
   recordId: string,
   input: EditPartTimeInput,
 ): Promise<EditedPartTime> {
-  // 追加下属时先按 UUID 升序取整个联动闭包（§7.1），之后才取兼职业务头锁
+  // 本次带联动（设负责人 / 追加下属）时先按 UUID 升序收齐整个联动闭包（§7.1），之后才取兼职业务头锁
   const [owner] = await readPartTimeRecords(tx, ctx, [recordId]);
-  if (owner)
-    await lockLinkageParticipants(tx, ctx, owner.employeeId, normalizeSubordinates(input.addedSubordinateIds) ?? []);
+  if (owner) await lockLinkageParticipants(tx, ctx, owner.employeeId, linkageOf(input));
   const business = await lockEmploymentBusiness(tx, ctx, recordId, { partTime: true });
   const [row] = await lockPartTimeRecords(tx, ctx, business.employeeId, { ids: [recordId] });
   if (!row) throw partTimeNotFound();
