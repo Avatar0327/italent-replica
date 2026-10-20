@@ -40,7 +40,8 @@ describe('AC-IN-R2d4c-01 新增实习生（入职日今天）：人员 + 任职 
     ]);
     expect(await c.viewIds('interning')).toContain(receipt.employeeId);
     const [record] = await c.w.session.records(receipt.employeeId);
-    expect(record).toMatchObject({ id: receipt.businessId, kind: 'hire', employType: 'intern' });
+    expect(record).toMatchObject({ id: receipt.businessId, kind: 'hire' });
+    expect(await c.w.view('interning')).toMatchObject([{ employeeId: receipt.employeeId, employType: 'intern' }]);
   });
 
   it('入职日早于今天：同样写正式合同，起始日 = 入职日', async () => {
@@ -70,7 +71,7 @@ describe('AC-IN-R2d4c-02 新增实习生（入职日在未来）：待入职合�
     for (const view of ['interning', 'converting', 'converted', 'left']) {
       expect(await c.viewIds(view)).not.toContain(receipt.employeeId);
     }
-    const response = await c.w.session.request('GET', '/pending-entries?view=pending');
+    const response = await c.w.session.request('GET', '/pending-entries?view=all');
     expect(response.status, await response.clone().text()).toBe(200);
     expect(JSON.stringify(await response.json())).toContain(receipt.employeeId);
   });
@@ -155,7 +156,6 @@ describe('AC-IN-R2d4c-05 重聘：沿用候选人员，不新建人员', () => {
       {
         kind: 'rehire',
         employeeId: left.employee.id,
-        loginEmail: `rehire.${uniqueSuffix()}@example.com`,
         effectiveDate: '2026-10-01',
         fields: { departmentId: c.w.org.id },
         contract: formal(c),
@@ -164,7 +164,8 @@ describe('AC-IN-R2d4c-05 重聘：沿用候选人员，不新建人员', () => {
     );
     expect(receipt).toMatchObject({ employeeId: left.employee.id, kind: 'rehire', view: 'interning' });
     const records = await c.w.session.records(left.employee.id);
-    expect(records[0]).toMatchObject({ id: receipt.businessId, kind: 'rehire', employType: 'intern' });
+    expect(records.find((record) => record.id === receipt.businessId)).toMatchObject({ kind: 'rehire' });
+    expect(await c.w.view('interning')).toMatchObject([{ employeeId: left.employee.id, employType: 'intern' }]);
     expect(await c.contracts()).toMatchObject([{ employeeId: left.employee.id, effectiveDate: '2026-10-01' }]);
     expect(await c.viewIds('interning')).toContain(left.employee.id);
   });
@@ -177,7 +178,6 @@ describe('AC-IN-R2d4c-05 重聘：沿用候选人员，不新建人员', () => {
       {
         kind: 'rehire',
         employeeId: active.employee.id,
-        loginEmail: `rehire.${uniqueSuffix()}@example.com`,
         effectiveDate: '2026-10-01',
         fields: { departmentId: c.w.org.id },
         contract: formal(c),
