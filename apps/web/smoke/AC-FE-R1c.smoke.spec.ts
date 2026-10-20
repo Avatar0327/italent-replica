@@ -915,6 +915,15 @@ test('AC-FE-F267 延长兼职待办同意编辑新结束日期和备注，提交
   const form = page.getByRole('dialog');
   await expect(form.getByLabel('新结束日期')).toHaveValue('2026-12-01');
   await expect(form.locator('label').filter({ hasText: '新结束日期' })).toHaveClass(/ant-form-item-required/);
+  // 审批编辑后的日期参与既有缩短提示；取消确认不能发送命令。
+  await form.getByLabel('新结束日期').fill('2026-10-01');
+  await form.getByRole('button', { name: button('保存') }).click();
+  const confirmation = page.getByRole('dialog').filter({ hasText: '请确认以下信息' });
+  await expect(confirmation).toContainText('2026-10-01');
+  await confirmation.getByRole('button', { name: button('取消') }).click();
+  await expect(confirmation).toBeHidden();
+  expect(bodies).toHaveLength(0);
+  await expect(form.getByLabel('新结束日期')).toHaveValue('2026-10-01');
   await form.getByLabel('新结束日期').fill('2026-12-31');
   await form.getByLabel('延长备注').fill('合成延长备注');
   await form.getByLabel('审批意见').fill('合成审批意见');

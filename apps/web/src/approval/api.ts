@@ -1,13 +1,17 @@
 import { ApiError, newCommand, type ApiClient, type PageRequest } from '../foundation/client.js';
 import { completedExamples } from '../demo-stubs/approval.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
+import { editFields, actionTask } from './edit-model.js';
 import { messages as m } from './messages.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalLog, ApprovalRow, ApprovalView } from './types.js';
 
 const base = '/api/tenant/approval';
-const actions: ApprovalAction[] = ['approve', 'disagree', 'reject', 'transfer', 'withdraw'];
+const actions: ApprovalAction[] = ['approve', 'disagree', 'reject', 'transfer', 'withdraw', 'edit'];
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const visibleActions = (detail: ApprovalDetail) => actions.filter((action) => detail.actions.includes(action));
+export const visibleActions = (detail: ApprovalDetail) =>
+  actions.filter(
+    (action) => detail.actions.includes(action) && (action !== 'edit' || editFields(detail, action).length > 0),
+  );
 
 export async function approvalList(
   api: ApiClient,
@@ -63,15 +67,19 @@ export function approvalRequest(
   detail: ApprovalDetail,
   action: ApprovalAction,
   taskId?: string,
-  input: { comment?: unknown; toUserId?: unknown } = {},
+  input: Record<string, unknown> = {},
 ) {
+  taskId = actionTask(detail, taskId);
   if (!visibleActions(detail).includes(action) || (action !== 'withdraw' && !taskId))
     throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
   const toUserId = typeof input.toUserId === 'string' ? input.toUserId.trim().toLowerCase() : undefined;
   if (action === 'transfer' && (!toUserId || !uuidPattern.test(toUserId)))
     throw new ApiError(422, 'INVALID_TARGET', 'fields', m.targetInvalid);
   const comment = typeof input.comment === 'string' ? input.comment.trim() || null : null;
-  const body: { comment?: string | null; toUserId?: string } = action === 'withdraw' ? {} : { comment };
+  const body: { comment?: string | null; toUserId?: string; fields?: Record<string, unknown> } =
+    action === 'withdraw' || action === 'edit' ? {} : { comment };
+  const keys = editFields(detail, action).map(({ key }) => key);
+  if (keys.length) body.fields = Object.fromEntries(Object.entries(input).filter(([key]) => keys.includes(key)));
   if (action === 'transfer') body.toUserId = toUserId;
   return {
     path:
@@ -89,4 +97,22 @@ export function approvalCommand(
 ) {
   const request = approvalRequest(detail, action, taskId, input);
   return { path: request.path, command: newCommand(request.body, detail.revision) };
+}
+
+/** 审批 fields 是传输信封；内核表单的字段名不带此前缀。保留状态码供内核区分明确拒绝与未知。 */
+export function approvalFailure(error: unknown): unknown {
+  if (!(error instanceof ApiError)) return error;
+  return new ApiError(
+    error.status,
+    error.code,
+    error.kind,
+    error.code === 'APPROVAL_FIELD_NOT_EDITABLE' ? (error.serverMessage ?? m.fieldNotEditable) : error.message,
+    {
+      message: error.serverMessage,
+      details: error.fieldErrors.flatMap(({ name, errors }) =>
+        errors.map((message) => ({ path: name[0] === 'fields' ? name.slice(1) : name, message })),
+      ),
+    },
+    error.retryAfter,
+  );
 }
