@@ -21,6 +21,11 @@ export function taskIds(text) {
 // 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理
 const level = (text) => (/后续|落地后|恢复时|可后补/.test(text) ? '可后补' : '开工前');
 
+// 🟡 行的状态列写明“剩余部分由 DEC 定口径 / 可后补 / 后续补 / 落地后补 / 不挡开工”时不拦开工；
+// 只提到 DEC 编号（如“与 DEC-261 同构”）不算。🔴 / □ 不适用，照旧按任务列判级。
+const REMAINDER_DEFERRED =
+  /DEC-\d+[^。；]{0,30}定口径|口径已定[：:]\s*DEC-\d+|按设计口径定|可后补|后续补|落地后|不挡开工/;
+
 export function evidenceState(blocks, statusCell) {
   const st = /🔴/.test(statusCell)
     ? '🔴 未定论'
@@ -29,11 +34,12 @@ export function evidenceState(blocks, statusCell) {
       : /✅/.test(statusCell)
         ? '✅'
         : '□ 未取证';
-  return { st, level: level(blocks) };
+  const deferred = st === '🟡 部分' && REMAINDER_DEFERRED.test(statusCell);
+  return { st, level: deferred ? '可后补' : level(blocks) };
 }
 
-// 差异行：状态列以 ✅ 开头视为已结；其余（含“待用户决定 / 待原站实测”和认不出的写法）仍拦
-export const decisionSettled = (statusCell) => /✅/.test(statusCell);
+// 差异行：状态列以 ✅ / “已定” / “已关闭”开头视为已结；其余（含“待用户决定 / 待原站实测”和认不出的写法）仍拦
+export const decisionSettled = (statusCell) => /^(✅|已定|已关闭)/.test(statusCell.trim());
 
 export function parseEvidence(markdown) {
   return markdown

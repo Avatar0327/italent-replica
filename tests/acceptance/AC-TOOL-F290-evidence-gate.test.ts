@@ -91,17 +91,18 @@ describe('F-290 取证清单状态识别', () => {
   });
 
   it('任务列已写“后续 / 可后补”的行保持原有的可后补处理（与 F-271 对 Q-M0-119 的结果一致）', () => {
-    const row = evidenceRow('Q-M0-119', 'R9-T01（①④ 已满足；剩余项可后补，F-271 对账）', '🟡 口径已定：DEC-526；仍未验证');
+    const row = evidenceRow(
+      'Q-M0-119',
+      'R9-T01（①④ 已满足；剩余项可后补，F-271 对账）',
+      '🟡 口径已定：DEC-526；仍未验证',
+    );
     const { lines, exitCode } = gate([row], []);
     expect(exitCode).toBe(0);
     expect(lines.join('\n')).toContain('Q-M0-119');
   });
 
   it('无参数时仍列出全部非 ✅ 的取证（含可后补）', () => {
-    const rows = [
-      evidenceRow('Q-M0-901', blocks, '✅ 已证'),
-      evidenceRow('Q-M0-902', blocks, '🟡 剩余（可后补）'),
-    ];
+    const rows = [evidenceRow('Q-M0-901', blocks, '✅ 已证'), evidenceRow('Q-M0-902', blocks, '🟡 剩余（可后补）')];
     const { lines } = gate(rows, [], []);
     expect(lines[0]).toBe('未完成取证 1 项（共 2 项）');
   });
