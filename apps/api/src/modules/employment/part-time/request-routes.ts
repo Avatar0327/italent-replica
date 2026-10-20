@@ -2,8 +2,8 @@
  * 兼职申请路由（R2-T05 BE-7 PT-4b / PT-4c，设计 §4.1 / §7.2 / §13.1）：三类申请（新增 / 延长 / 结束）的建（可直接提交）/ 读 / 改 /
  * 提交 / 撤回 / 撤销 / 删除。路由只做参数解析、权限与范围判定和重放守卫，业务一律调 request-service（PT-4a），审批实例的发起 /
  * 撤回 / 取消在服务里走审批中心既有入口；校验与新增兼职同一套（D-1～D-10、周期边界）、延长 / 结束同一套（E-1～E-6、T-1～T-4），
- * 不在这里另写一份。仍关闭的行为：isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE
- * （PT-7 才开，服务层统一拒绝）。
+ * 不在这里另写一份。联动字段（PT-7，§4.8）：新增申请保存并校验 isDepartmentHead / addedSubordinateIds，审批通过落地才执行；
+ * 延长 / 结束申请只改结束日期与备注，两字段 true / 非空 → 400 PART_TIME_FIELD_NOT_EDITABLE（服务层统一拒绝）。
  * 新增申请新建带 requestType = add、employeeId；延长 / 结束申请带 requestType、recordId（目标兼职）、endDate（新结束日期）、可选
  * requestRemark，权限按“编辑兼职”口径（对象更新权 + 延长 / 结束按钮 + 目标记录的兼职部门范围）；都可选 submit（建并提交一步到位，
  * 另要 Employment.Submit）。修改 / 动作带 If-Match（申请头 revision），按钮随申请类型。回执 = 申请读形状（request-read.ts）。
@@ -67,7 +67,7 @@ const createRequestSchema = createSchema.extend({
   submit: z.boolean().optional(),
 });
 type CreateRequestBody = z.infer<typeof createRequestSchema>;
-/** 延长 / 结束申请请求体：目标兼职记录 + 新结束日期（必填，不能置空）+ 备注；联动两字段只为统一拒绝而接收（PT-7）。 */
+/** 延长 / 结束申请请求体：目标兼职记录 + 新结束日期（必填，不能置空）+ 备注；联动两字段只为统一拒绝而接收（PT-7 后仍不受理）。 */
 const createDateRequestSchema = z.strictObject({
   requestType: z.enum(['extend', 'end']),
   recordId: normalizedUuid,
