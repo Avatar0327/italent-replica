@@ -103,7 +103,46 @@ function helpers(w: InternWorld, db: InternWorld['db'], api: Api, as: { user: st
     return person;
   }
 
+  /** 本人命令结果摘要（F-120 只读恢复链：GET /commands/:id/result），不是同键 POST 重放。 */
+  async function commandResult(commandId: string) {
+    const response = await api.request('GET', `/api/tenant/commands/${commandId}/result`, as);
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  /** 把合同类型列入“无固定期限”类型（合同设置 indefiniteTypeIds）：合同服务会把终止日置空。 */
+  async function markIndefinite(typeId: string) {
+    const current = await api.request('GET', '/api/tenant/contracts/settings', as);
+    const { revision } = (await current.json()) as { revision: number };
+    const saved = await api.request('PUT', '/api/tenant/contracts/settings', {
+      ...as,
+      ifMatch: revision,
+      body: { indefiniteTypeIds: [typeId] },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+  }
+
+  /** 已退休实习生（证件号 + 退休日），重聘候选的 endKind = retirement。 */
+  async function retiredIntern(name: string) {
+    const person = await w.hire(name, 'intern');
+    await w.identify(person.employee.id, 'id_card', `SYN${uniqueSuffix()}`);
+    await w.retire(person.employee.id, '2026-09-20');
+    return person;
+  }
+
+  /** 重聘请求体（沿用候选人员，不带工号 / 姓名）。 */
+  const rehireBody = (employeeId: string, extra: Record<string, unknown> = {}) => ({
+    kind: 'rehire',
+    employeeId,
+    effectiveDate: '2026-10-01',
+    fields: { departmentId: w.org.id },
+    ...extra,
+  });
+
   return {
+    commandResult,
+    markIndefinite,
+    retiredIntern,
+    rehireBody,
     hireBody,
     create,
     createOk,
@@ -127,7 +166,9 @@ export interface ContractRow {
 export interface CreateReceipt {
   readonly employeeId: string;
   readonly businessId: string;
-  readonly kind: 'hire' | 'rehire';
+  readonly id: string;
+  readonly revision: number;
+  readonly kind: 'hire' | 'rehire' | 'retire_rehire';
   readonly view: 'interning' | 'pendingEntry';
   readonly contract: {
     readonly stage: 'formal' | 'pending';

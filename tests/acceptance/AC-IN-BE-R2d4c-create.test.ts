@@ -271,3 +271,126 @@ describe('AC-IN-R2d4c-07 权限：同 POST /employees（Employee.Create + 看全
     expect(response.status, await response.clone().text()).toBe(201);
   });
 });
+
+const reasonOf = async (response: Response) =>
+  ((await response.json()) as { error: { details?: { reason?: string } } }).error.details?.reason;
+
+describe('AC-IN-R2d4c-08 第 2 轮 P2-1：已占用的重聘候选不得重复创建待入职', () => {
+  it.each([
+    ['先晚后早', '2026-10-20', '2026-10-10'],
+    ['先早后晚', '2026-10-10', '2026-10-20'],
+  ])('%s：第二次 409 REHIRE_REQUIRES_LEAVE，无任何写入', async (_name, first, second) => {
+    const c = await world('occupied');
+    const left = await c.leftIntern('占用合成实习生');
+    const contract = { companyId: c.companyId, endDate: '2027-12-31' };
+    const base = (effectiveDate: string) => c.rehireBody(left.employee.id, { effectiveDate, contract });
+    await c.createOk(base(first), { ifMatch: (await c.w.session.getEmployee(left.employee.id)).revision });
+    const before = (await c.w.session.records(left.employee.id)).length;
+    const revision = (await c.w.session.getEmployee(left.employee.id)).revision;
+    const response = await c.create(base(second), { ifMatch: revision });
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect(await reasonOf(response)).toBe('REHIRE_REQUIRES_LEAVE');
+    expect(await c.w.session.records(left.employee.id)).toHaveLength(before);
+  });
+});
+
+describe('AC-IN-R2d4c-09 第 2 轮 P2-2：回执取自实际保存的合同，矛盾输入入口拒绝', () => {
+  it('请求、合同读回、回执三者的终止日一致', async () => {
+    const c = await world('end-consistent');
+    const receipt = await c.createOk(c.hireBody({ contract: formal(c, { endDate: '2027-06-30' }) }));
+    expect(receipt.contract.endDate).toBe('2027-06-30');
+    expect(await c.contracts()).toMatchObject([{ id: receipt.contract.id, endDate: '2027-06-30' }]);
+  });
+
+  it('termType = indefinite 却带终止日 → 400 INTERN_CONTRACT_TERM_CONFLICT，无写入', async () => {
+    const c = await world('end-indefinite');
+    const body = c.hireBody({ contract: formal(c, { termType: 'indefinite' }) });
+    const response = await c.create(body);
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await reasonOf(response)).toBe('INTERN_CONTRACT_TERM_CONFLICT');
+    expect(await c.employeesByCode(body.code as string)).toEqual([]);
+    expect(await c.contracts()).toEqual([]);
+  });
+
+  it('合同类型被租户设为无固定期限（合同服务会把终止日置空）→ 拒绝并整体回滚，不回填请求值', async () => {
+    const c = await world('end-type-indefinite');
+    await c.markIndefinite(c.typeId);
+    const body = c.hireBody({ contract: { typeId: c.typeId, companyId: c.companyId, endDate: '2027-09-30' } });
+    const response = await c.create(body);
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await reasonOf(response)).toBe('INTERN_CONTRACT_TERM_CONFLICT');
+    expect(await c.employeesByCode(body.code as string)).toEqual([]);
+    expect(await c.contracts()).toEqual([]);
+  });
+});
+
+describe('AC-IN-R2d4c-10 第 2 轮 P2-3：首次响应丢失后可经命令结果回查恢复到业务详情（F-120）', () => {
+  it('GET /commands/:id/result → succeeded，businessId 指向新建业务，详情可读', async () => {
+    const c = await world('recover');
+    const key = crypto.randomUUID();
+    const receipt = await c.createOk(c.hireBody({ contract: formal(c) }), { key });
+    const result = await c.commandResult(key);
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ status: 'succeeded', businessId: receipt.businessId, businessType: 'hire' });
+    const detail = await c.w.session.request('GET', `/businesses/${receipt.businessId}`);
+    expect(detail.status, await detail.clone().text()).toBe(200);
+  });
+
+  it('待入职（未来入职）同样可回查', async () => {
+    const c = await world('recover-pending');
+    const key = crypto.randomUUID();
+    const body = c.hireBody({
+      effectiveDate: '2026-10-20',
+      contract: { companyId: c.companyId, endDate: '2027-10-19' },
+    });
+    const receipt = await c.createOk(body, { key });
+    expect((await c.commandResult(key)).body).toMatchObject({ status: 'succeeded', businessId: receipt.businessId });
+  });
+});
+
+describe('AC-IN-R2d4c-11 第 2 轮 P2-4：匹配器返回的退休候选可完成重聘', () => {
+  it('rehire-matches 命中退休 → 一体保存成功，实际任职类型为退休后重聘，进“实习中”', async () => {
+    const c = await world('retired');
+    const retired = await c.retiredIntern('退休合成实习生');
+    const idNumber = `SYN${uniqueSuffix()}`;
+    await c.w.identify(retired.employee.id, 'id_card', idNumber);
+    const matched = await c.w.match({ idType: 'id_card', idNumber });
+    expect(((await matched.json()) as { candidate: { endKind: string } }).candidate.endKind).toBe('retirement');
+    const { revision } = await c.w.session.getEmployee(retired.employee.id);
+    const receipt = await c.createOk(c.rehireBody(retired.employee.id, { contract: formal(c) }), { ifMatch: revision });
+    expect(receipt).toMatchObject({ employeeId: retired.employee.id, kind: 'retire_rehire', view: 'interning' });
+    expect(await c.viewIds('interning')).toContain(retired.employee.id);
+  });
+
+  it('离职候选路径不回退：仍是 rehire', async () => {
+    const c = await world('left-still-rehire');
+    const left = await c.leftIntern('离职合成实习生');
+    const { revision } = await c.w.session.getEmployee(left.employee.id);
+    const receipt = await c.createOk(c.rehireBody(left.employee.id, { contract: formal(c) }), { ifMatch: revision });
+    expect(receipt.kind).toBe('rehire');
+  });
+});
+
+describe('AC-IN-R2d4c-12 第 2 轮 P2-5：终止日必须晚于起始日（与正式合同服务一致），相等边界入口拒绝', () => {
+  it.each([
+    ['今天入职、同日终止', '2026-10-01', '2026-10-01'],
+    ['未来入职、同日终止', '2026-10-20', '2026-10-20'],
+  ])('%s → 400 INTERN_CONTRACT_DATE_INVALID，写入前拒绝', async (_name, effectiveDate, endDate) => {
+    const c = await world('end-equal');
+    const body = c.hireBody({ effectiveDate, contract: formal(c, { endDate }) });
+    const response = await c.create(body);
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await reasonOf(response)).toBe('INTERN_CONTRACT_DATE_INVALID');
+    expect(await c.employeesByCode(body.code as string)).toEqual([]);
+  });
+
+  it.each([
+    ['今天入职、次日终止', '2026-10-01', '2026-10-02', 'interning'],
+    ['未来入职、次日终止', '2026-10-20', '2026-10-21', 'pendingEntry'],
+  ])('%s → 成功', async (_name, effectiveDate, endDate, view) => {
+    const c = await world('end-plus-one');
+    const contract = effectiveDate === '2026-10-01' ? formal(c, { endDate }) : { companyId: c.companyId, endDate };
+    const receipt = await c.createOk(c.hireBody({ effectiveDate, contract }));
+    expect(receipt).toMatchObject({ view, contract: { endDate } });
+  });
+});
