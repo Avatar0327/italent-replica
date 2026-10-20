@@ -4869,6 +4869,50 @@ export const GRAPH: Graph = {
     '#expectedRetirementDateOf',
     'packages/domain/src/employment/retirement.ts#deriveRetireType',
   ],
+  'apps/api/src/modules/employment/retirement-compute.ts#SWITCH_KEYS': [
+    'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_AUTO_EXPECTED_DATE_KEY',
+    'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_AUTO_FLEXIBLE_RANGE_KEY',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#activeRecord': [
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#applyRetirementRules': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/employment/errors.ts#EmploymentError',
+    '#RETIREMENT_RULE_REASON',
+    '#activeRecord',
+    '#personOf',
+    '#planExpected',
+    '#planFlexible',
+    'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
+    'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#personOf': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#planExpected': [
+    '#same',
+    'packages/domain/src/employment/retirement-rules.ts#resolveExpectedDate',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#planFlexible': [
+    '#same',
+    'packages/domain/src/employment/retirement-rules.ts#resolveFlexibleRange',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#readRetirementSwitch': [
+    '#SWITCH_KEYS',
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#retirementCandidates': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/retirement-compute.ts#systemContext': [
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
   'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval': [
     '#intentionCommandContext',
     '#lockIntentionRows',
@@ -5241,6 +5285,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/retirement-rules.ts#copyRetirementRule',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': [
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    '#visibleRetirementReceipt',
+    'apps/api/src/modules/employment/retirement-run.ts#parseRetirementRunBody',
+    'apps/api/src/modules/employment/retirement-run.ts#parseRunPurpose',
+    'apps/api/src/modules/employment/retirement-run.ts#runRetirementRulesNow',
+  ],
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': [
     'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
     'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
@@ -5260,6 +5315,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/retirement-rules.ts#parseRuleEnabled',
     'apps/api/src/modules/employment/retirement-rules.ts#setRetirementRuleEnabled',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#visibleRetirementReceipt': [
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#visibleEmployees',
   ],
   'apps/api/src/modules/employment/retirement-rules.ts#assertReferences': [
     'apps/api/src/modules/employment/auto-regularization-rules.ts#assertOrgsExist',
@@ -5295,6 +5353,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_RULE_LIMIT',
   ],
   'apps/api/src/modules/employment/retirement-rules.ts#listRetirementRules': ['#selectRules'],
+  'apps/api/src/modules/employment/retirement-rules.ts#loadRetirementRulesForRun': [
+    'apps/api/src/modules/employment/auto-regularization-rules.ts#expandRuleScopes',
+    '#selectRules',
+  ],
   'apps/api/src/modules/employment/retirement-rules.ts#lockRetirementRules': [
     'apps/api/src/advisory-lock.ts#advisoryLock',
     'apps/api/src/advisory-lock.ts#asUuid',
@@ -5349,6 +5411,25 @@ export const GRAPH: Graph = {
     '#listRetirementRules',
     '#lockRetirementRules',
     '#lockedRule',
+  ],
+  'apps/api/src/modules/employment/retirement-run.ts#cursorPosition': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/retirement-run.ts#parseRunPurpose': [
+    'apps/api/src/modules/employment/retirement-rules.ts#parseRulePurpose',
+  ],
+  'apps/api/src/modules/employment/retirement-run.ts#runRetirementRulesNow': [
+    'apps/api/src/modules/employment/retirement-compute.ts#applyRetirementRules',
+    'apps/api/src/modules/employment/retirement-compute.ts#collectRetirementOutcome',
+    'apps/api/src/modules/employment/retirement-compute.ts#readRetirementSwitch',
+    'apps/api/src/modules/employment/retirement-compute.ts#retirementCandidates',
+    'apps/api/src/modules/employment/retirement-compute.ts#systemContext',
+    'apps/api/src/modules/employment/retirement-rules.ts#loadRetirementRulesForRun',
+    '#cursorPosition',
+    '#issueCursor',
+    'apps/api/src/modules/employment/retirement-scheduler.ts#RETIREMENT_BATCH_LIMITS',
+    'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': [
     'apps/api/src/modules/employment/context.ts#readPageContext',

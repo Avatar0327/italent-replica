@@ -1,5 +1,5 @@
 {
-  "id": "7f55e9a8-5a4b-4894-9155-cc3a184fc20c",
+  "id": "2bf6a411-31a3-4931-8f5f-7e559521cf08",
   "prevId": "ebac6ab7-d814-4ccf-a48a-4405950bfe68",
   "version": "7",
   "dialect": "postgresql",
@@ -23342,7 +23342,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','exit_handover')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -24197,7 +24197,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','handover_work_owner','handover_hr_admin',\n        'handover_employee')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24229,7 +24229,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'handover_work_owner','handover_hr_admin','handover_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -59103,28 +59103,6 @@
         }
       },
       "indexes": {
-        "employment_blacklist_exit_request": {
-          "name": "employment_blacklist_exit_request",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exit_request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"employment_blacklist\".\"exit_request_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "employment_blacklist_active_employee": {
           "name": "employment_blacklist_active_employee",
           "columns": [
@@ -59192,6 +59170,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "employment_blacklist_exit_request": {
+          "name": "employment_blacklist_exit_request",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "exit_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"employment_blacklist\".\"exit_request_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -61481,102 +61481,66 @@
       },
       "isRLSEnabled": false
     },
-    "public.exit_handover_request_items": {
-      "name": "exit_handover_request_items",
+    "public.retirement_rule_daily_runs": {
+      "name": "retirement_rule_daily_runs",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "tenant_id": {
           "name": "tenant_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "request_id": {
-          "name": "request_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category": {
-          "name": "category",
+        "purpose": {
+          "name": "purpose",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "sequence_no": {
-          "name": "sequence_no",
-          "type": "integer",
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": true
         },
-        "todo_type": {
-          "name": "todo_type",
+        "state": {
+          "name": "state",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "form_ref": {
-          "name": "form_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "remark": {
-          "name": "remark",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "done": {
-          "name": "done",
-          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": "'running'"
         },
-        "done_at": {
-          "name": "done_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "done_by_user_id": {
-          "name": "done_by_user_id",
+        "position_employee_id": {
+          "name": "position_employee_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "handover_person": {
-          "name": "handover_person",
-          "type": "text",
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "revision": {
-          "name": "revision",
+        "attempts": {
+          "name": "attempts",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 1
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
+        "skipped_count": {
+          "name": "skipped_count",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": 0
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
@@ -61586,45 +61550,11 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "exit_handover_request_items_list": {
-          "name": "exit_handover_request_items_list",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sequence_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "exit_handover_request_items_tenant_id_tenants_id_fk": {
-          "name": "exit_handover_request_items_tenant_id_tenants_id_fk",
-          "tableFrom": "exit_handover_request_items",
+        "retirement_rule_daily_runs_tenant_id_tenants_id_fk": {
+          "name": "retirement_rule_daily_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_rule_daily_runs",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -61634,54 +61564,44 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "exit_handover_request_items_request_fk": {
-          "name": "exit_handover_request_items_request_fk",
-          "tableFrom": "exit_handover_request_items",
-          "tableTo": "exit_handover_requests",
-          "columnsFrom": [
-            "tenant_id",
-            "request_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "exit_handover_request_items_tenant_id_id_pk": {
-          "name": "exit_handover_request_items_tenant_id_id_pk",
+        "retirement_rule_daily_runs_pk": {
+          "name": "retirement_rule_daily_runs_pk",
           "columns": [
             "tenant_id",
-            "id"
+            "purpose",
+            "business_date"
           ]
         }
       },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "exit_handover_request_items_todo_type": {
-          "name": "exit_handover_request_items_todo_type",
-          "value": "\"exit_handover_request_items\".\"todo_type\" IN ('work_handover', 'other')"
+        "retirement_rule_daily_runs_purpose": {
+          "name": "retirement_rule_daily_runs_purpose",
+          "value": "\"retirement_rule_daily_runs\".\"purpose\" IN ('expected_date', 'flexible_range')"
         },
-        "exit_handover_request_items_revision": {
-          "name": "exit_handover_request_items_revision",
-          "value": "\"exit_handover_request_items\".\"revision\" > 0"
+        "retirement_rule_daily_runs_state": {
+          "name": "retirement_rule_daily_runs_state",
+          "value": "\"retirement_rule_daily_runs\".\"state\" IN ('running', 'done')"
+        },
+        "retirement_rule_daily_runs_attempts": {
+          "name": "retirement_rule_daily_runs_attempts",
+          "value": "\"retirement_rule_daily_runs\".\"attempts\" > 0 AND \"retirement_rule_daily_runs\".\"skipped_count\" >= 0"
         }
       },
       "isRLSEnabled": false
     },
-    "public.exit_handover_requests": {
-      "name": "exit_handover_requests",
+    "public.retirement_rule_run_cursors": {
+      "name": "retirement_rule_run_cursors",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
         "tenant_id": {
@@ -61690,54 +61610,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "exit_request_id": {
-          "name": "exit_request_id",
+        "user_id": {
+          "name": "user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "department_id": {
-          "name": "department_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "initiator_user_id": {
-          "name": "initiator_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
+        "purpose": {
+          "name": "purpose",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "end_reason": {
-          "name": "end_reason",
-          "type": "text",
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "approval_instance_id": {
-          "name": "approval_instance_id",
+        "position_employee_id": {
+          "name": "position_employee_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "command_id": {
           "name": "command_id",
@@ -61751,64 +61646,92 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "retirement_rule_run_cursors_tenant_id_tenants_id_fk": {
+          "name": "retirement_rule_run_cursors_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_rule_run_cursors",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "retirement_rule_run_cursors_tenant_id": {
+          "name": "retirement_rule_run_cursors_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "retirement_rule_run_cursors_purpose": {
+          "name": "retirement_rule_run_cursors_purpose",
+          "value": "\"retirement_rule_run_cursors\".\"purpose\" IN ('expected_date', 'flexible_range')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.retirement_rule_run_skips": {
+      "name": "retirement_rule_run_skips",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         },
-        "updated_at": {
-          "name": "updated_at",
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         }
       },
-      "indexes": {
-        "exit_handover_requests_live": {
-          "name": "exit_handover_requests_live",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exit_request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "exit_handover_requests_exit": {
-          "name": "exit_handover_requests_exit",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exit_request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "exit_handover_requests_tenant_id_tenants_id_fk": {
-          "name": "exit_handover_requests_tenant_id_tenants_id_fk",
-          "tableFrom": "exit_handover_requests",
+        "retirement_rule_run_skips_tenant_id_tenants_id_fk": {
+          "name": "retirement_rule_run_skips_tenant_id_tenants_id_fk",
+          "tableFrom": "retirement_rule_run_skips",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -61819,45 +61742,41 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "exit_handover_requests_exit_fk": {
-          "name": "exit_handover_requests_exit_fk",
-          "tableFrom": "exit_handover_requests",
-          "tableTo": "exit_requests",
+        "retirement_rule_run_skips_run_fk": {
+          "name": "retirement_rule_run_skips_run_fk",
+          "tableFrom": "retirement_rule_run_skips",
+          "tableTo": "retirement_rule_daily_runs",
           "columnsFrom": [
             "tenant_id",
-            "exit_request_id"
+            "purpose",
+            "business_date"
           ],
           "columnsTo": [
             "tenant_id",
-            "business_id"
+            "purpose",
+            "business_date"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "exit_handover_requests_tenant_id_id_pk": {
-          "name": "exit_handover_requests_tenant_id_id_pk",
+        "retirement_rule_run_skips_pk": {
+          "name": "retirement_rule_run_skips_pk",
           "columns": [
             "tenant_id",
-            "id"
+            "purpose",
+            "business_date",
+            "employee_id"
           ]
         }
       },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "exit_handover_requests_state": {
-          "name": "exit_handover_requests_state",
-          "value": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'terminated')"
-        },
-        "exit_handover_requests_end_reason": {
-          "name": "exit_handover_requests_end_reason",
-          "value": "(\"exit_handover_requests\".\"state\" = 'terminated') = (\"exit_handover_requests\".\"end_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"end_reason\", 'disapproved') IN ('disapproved', 'rejected', 'withdrawn', 'exit_cancelled')"
-        },
-        "exit_handover_requests_revision": {
-          "name": "exit_handover_requests_revision",
-          "value": "\"exit_handover_requests\".\"revision\" > 0"
+        "retirement_rule_run_skips_state": {
+          "name": "retirement_rule_run_skips_state",
+          "value": "\"retirement_rule_run_skips\".\"state\" IN ('pending', 'given_up')"
         }
       },
       "isRLSEnabled": false
