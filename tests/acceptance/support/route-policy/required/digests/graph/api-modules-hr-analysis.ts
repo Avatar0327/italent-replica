@@ -36,10 +36,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_FIXED_COLUMNS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
-  'apps/api/src/modules/hr-analysis/roster-csv.ts#assertExportable': [
+  'apps/api/src/modules/hr-analysis/roster-csv.ts#cell': ['#FORMULA_PREFIX'],
+  'apps/api/src/modules/hr-analysis/roster-csv.ts#exportLimitResponse': [
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_EXPORT_MAX_ROWS',
   ],
-  'apps/api/src/modules/hr-analysis/roster-csv.ts#cell': ['#FORMULA_PREFIX'],
   'apps/api/src/modules/hr-analysis/roster-csv.ts#rosterCsv': [
     '#BOM',
     '#cell',
@@ -81,6 +81,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/roster.ts#tenureYears',
     'packages/domain/src/personnel/tenure.ts#ageOn',
   ],
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#isoDate': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
   'apps/api/src/modules/hr-analysis/roster-routes.ts#parseQuery': ['#query'],
   'apps/api/src/modules/hr-analysis/roster-routes.ts#query': [
     '#isoDate',
@@ -105,7 +106,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': [
     'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton',
     'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess',
-    'apps/api/src/modules/hr-analysis/roster-csv.ts#assertExportable',
+    'apps/api/src/modules/hr-analysis/roster-csv.ts#exportLimitResponse',
     'apps/api/src/modules/hr-analysis/roster-csv.ts#rosterCsv',
     'apps/api/src/modules/hr-analysis/roster-query.ts#countRoster',
     'apps/api/src/modules/hr-analysis/roster-query.ts#listRoster',

@@ -540,7 +540,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/hr-analysis/roster-routes.ts': {
     'route:GET /api/tenant/hr-analysis/roster': '7627ba7c5dbd',
-    'route:GET /api/tenant/hr-analysis/roster/export': 'bd72a900bf3a',
+    'route:GET /api/tenant/hr-analysis/roster/export': '669b408981b8',
   },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
@@ -1980,7 +1980,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': 'b5e730b8501f',
   'apps/api/src/modules/hr-analysis/roster-query.ts#population': '931b893deaf9',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
-  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '5fb4c08e376d',
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '9f87c8ad7cca',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',
   'apps/api/src/modules/idp/access.ts#idpWriteContext': 'ad47dfbf76d3',
   'apps/api/src/modules/idp/access.ts#objectFields': 'f7ce614aaf23',
