@@ -212,6 +212,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   retireType: '退休类型',
   reEmployed: '是否同时返聘',
   expectedRetirementDate: '预计退休日期',
+  expectedRetirementConfirmed: '预计退休日期已核准',
+  earliestRetirementDate: '最早退休日期',
+  latestRetirementDate: '最晚退休日期',
+  flexibleRangeConfirmed: '弹性退休范围已核准',
   actualRetirementDate: '实际退休日期',
   // 5b 同时返聘（employment.retirement.rehired）
   rehireBusinessId: '返聘业务',

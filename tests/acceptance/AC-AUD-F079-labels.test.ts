@@ -22,6 +22,11 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['retirementEffectiveDate', '退休生效日期'],
     ['rehireContractId', '返聘合同'],
     ['initiatorUserId', '发起人'],
+    // R2-T04 BE-5c2：批处理写入的人事字段
+    ['expectedRetirementConfirmed', '预计退休日期已核准'],
+    ['earliestRetirementDate', '最早退休日期'],
+    ['latestRetirementDate', '最晚退休日期'],
+    ['flexibleRangeConfirmed', '弹性退休范围已核准'],
     // R2-T04 5d2 意向退休日期申请审计动作 retirement_intention.* 的变更内容
     ['intendedDate', '意向退休日期'],
     ['expectedDateSnapshot', '申请时预计退休日期'],
