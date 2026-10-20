@@ -7,6 +7,7 @@ import { lockKey, asUuid } from '../../advisory-lock.js';
 import {
   adminRecused,
   avoidSelfExceptionAdmin,
+  HANDOVER_FALLBACK_APPROVERS,
   type ApproverExpression,
   type Candidate,
   type ExceptionAdminChoice,
@@ -233,6 +234,28 @@ async function firstLevelOrg(tx: Tx, subject: RoutingSubject, orgId: string | nu
   const chain = await adminAncestors(tx, subject.tenantId, subject.asOf, orgId);
   const rootIndex = chain.indexOf(subject.tenantId);
   return rootIndex > 0 ? chain[rootIndex - 1]! : null;
+}
+
+/**
+ * 一个审批人表达式解析出的全部候选人（会签节点逐席使用）。普通表达式恰好一个；离职交接的两个取值在主取法取不到人时改取
+ * 本节点的兜底处理人（DEC-663，可多人）：只保留具备审批资格的人（已停用 / 已离职 / 正在停用的跳过），一个都没有仍返回
+ * 一个“空”候选人，由调用方按审批人为空处理（首节点不发起；中间节点转异常管理员）。
+ */
+export async function resolveCandidates(
+  tx: Tx,
+  subject: RoutingSubject,
+  expression: ApproverExpression,
+  fallbackUserIds: readonly string[] = [],
+): Promise<Candidate[]> {
+  const primary = await resolveCandidate(tx, subject, expression);
+  if (primary.userId || !HANDOVER_FALLBACK_APPROVERS.has(expression) || !fallbackUserIds.length) return [primary];
+  return memo(subject, `fallback:${expression}:${fallbackUserIds.join(',')}`, async () => {
+    const eligible: Candidate[] = [];
+    for (const userId of fallbackUserIds)
+      if (await isEligibleApprover(tx, subject, userId))
+        eligible.push({ userId, personId: await personOfUser(tx, subject.tenantId, userId) });
+    return eligible.length ? eligible : [primary];
+  });
 }
 
 export function resolveCandidate(tx: Tx, subject: RoutingSubject, expression: ApproverExpression): Promise<Candidate> {

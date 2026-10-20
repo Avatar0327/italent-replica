@@ -94,14 +94,22 @@ export function checkHandoverTrigger(value: unknown): HandoverTriggerCheck {
 
 // ---- BE-8b2 交接执行 ------------------------------------------------------------------------------------------------
 
-/** 交接申请状态：进行中 / 已完成 / 已终止（不同意、撤销离职、驳回、撤回）。“未发起”是没有交接申请时的展示状态。 */
-export const HANDOVER_REQUEST_STATES = ['in_progress', 'completed', 'terminated'] as const;
+/**
+ * 交接申请状态：进行中 / 已完成 / 已终止（不同意、撤销离职、驳回、撤回）/ 交接未发起（DEC-663：离职已批准，但工作交接取不到处理人，
+ * 持久记录等 HR 处理）。not_started 是根本没有交接记录时的展示状态（含档案直接离职）。
+ */
+export const HANDOVER_REQUEST_STATES = ['in_progress', 'completed', 'terminated', 'not_launched'] as const;
 export type HandoverRequestState = (typeof HANDOVER_REQUEST_STATES)[number];
 export type HandoverDisplayStatus = HandoverRequestState | 'not_started';
 
 /** 终止原因（exit_handover_requests.end_reason）。 */
 export const HANDOVER_END_REASONS = ['disapproved', 'rejected', 'withdrawn', 'exit_cancelled'] as const;
 export type HandoverEndReason = (typeof HANDOVER_END_REASONS)[number];
+/** 交接未发起的原因（exit_handover_requests.not_launched_reason）与给 HR 的提示文案。 */
+export const HANDOVER_NOT_LAUNCHED_HINTS = {
+  NO_HANDLER: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+} as const;
+export type HandoverNotLaunchedReason = keyof typeof HANDOVER_NOT_LAUNCHED_HINTS;
 /** 撤销离职终止交接的日志理由（B4 撤销端口）。 */
 export const HANDOVER_CANCEL_REASON = '离职撤销终止交接';
 

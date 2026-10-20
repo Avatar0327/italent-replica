@@ -9,6 +9,8 @@ import {
   avoidsSubjects,
   ENABLED_AVOID_SUBJECTS_RESULTS,
   hasExit,
+  HANDOVER_FALLBACK_APPROVERS,
+  HANDOVER_FALLBACK_LIMIT,
   HANDOVER_ONLY_APPROVERS,
   IDP_ONLY_APPROVERS,
   isCountersign,
@@ -71,9 +73,26 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if (type.adapter !== 'exit_handover' && handoverOnly.length) {
       violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
     }
+    violations.push(...fallbackViolations(node, type));
     const offerViolation = offerApproverViolation(node, type);
     if (offerViolation) violations.push(offerViolation);
   }
+  return violations;
+}
+
+/** DEC-663：兜底处理人只配在离职交接申请的会签交接节点上，且不重复、有上限。 */
+function fallbackViolations(node: ApprovalNode, type: ApprovalTypeDefinition): string[] {
+  const ids = node.fallbackUserIds ?? [];
+  if (!ids.length) return [];
+  const supported =
+    type.adapter === 'exit_handover' &&
+    isCountersign(node) &&
+    approverExpressionsOf(node).some((expression) => HANDOVER_FALLBACK_APPROVERS.has(expression));
+  if (!supported) return [`节点 ${node.key} 的兜底处理人只能配置在离职交接申请的会签交接节点上`];
+  const violations: string[] = [];
+  if (ids.length > HANDOVER_FALLBACK_LIMIT)
+    violations.push(`节点 ${node.key} 的兜底处理人最多 ${HANDOVER_FALLBACK_LIMIT} 人`);
+  if (new Set(ids).size !== ids.length) violations.push(`节点 ${node.key} 的兜底处理人重复`);
   return violations;
 }
 

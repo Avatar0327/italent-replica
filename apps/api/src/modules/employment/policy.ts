@@ -154,6 +154,8 @@ const HANDOVER_DETAIL_KEYS = [
   'employeeId',
   'status',
   'endReason',
+  'notLaunchedReason',
+  'hint',
   'approvalInstanceId',
   'revision',
   'items',

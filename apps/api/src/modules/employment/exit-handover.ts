@@ -2,13 +2,14 @@
  * 离职交接执行（R2 BE-8b2，B64 / B65，DM-R11 / DM-R13 / DM-R14，DEC-632；设计 R2-T03 §0 / §5.1 步骤 8 的 confirmed / cancelled 端口订阅方）。
  * - 自动发起：订阅 exitPostEffectHooks.onConfirmed（端口只对离职申请审批通过调用，直接离职不调用，B-59）。按 exit.handover_trigger 判断开关与
  *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。发起在保存点内：没有可用流程等
- *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批；首节点无人可发（无交接人且无直线经理）例外：
- *   409 EXIT_HANDOVER_FIRST_NODE_EMPTY，整个批准动作回滚（DEC-661）。同一离职最多一张进行中 / 已完成的交接
- *   （部分唯一索引兜底，重放返回已有的一张）。
+ *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批。工作交接节点按“交接人 → 直线经理 → 本节点兜底处理人”取人
+ *   （resolver.ts resolveCandidates）；三者都空时不发起，落一条持久的“交接未发起”记录（not_launched，原因 NO_HANDLER）并写审计，
+ *   离职批准照常通过（DEC-663，原站交接在离职审批通过后才发起，二者解耦）。其他事项交接取不到人沿用审批引擎的异常管理员机制。
+ *   同一离职最多一条进行中 / 已完成 / 未发起的交接记录（部分唯一索引兜底，重放返回已有的一条）。
  * - 办理：勾选“办理完成”即自动保存（tickHandoverItem，不点同意也生效、不推进节点）；只能改当前待办节点负责的类别
  *   （工作交接节点办“工作交接”类、其他事项交接节点办“其他”类）；“本人事项办完”只统计当前审批人本节点的事项。
  * - 交接未完成不阻止离职生效：本文件不读写离职状态，交接完成与否对离职生效没有影响（B64 本租户配置）。
- * - 撤销离职（onCancelled）：同事务终止进行中的交接并系统撤销审批实例（操作人记系统），已完成的不动。
+ * - 撤销离职（onCancelled）：同事务终止进行中 / 未发起的交接并系统撤销审批实例（操作人记系统），已完成的不动。
  * 锁序：员工 → 交接申请行 → 审批实例（与审批回调 exit-handover-adapter.ts 一致）。
  */
 import { randomUUID } from 'node:crypto';
@@ -16,6 +17,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   checkHandoverTrigger,
   HANDOVER_CANCEL_REASON,
+  HANDOVER_NOT_LAUNCHED_HINTS,
   HANDOVER_NODE_OF_TODO,
   HANDOVER_TRIGGER_DEFAULT,
   handoverLaunchDecision,
@@ -23,6 +25,7 @@ import {
   tenantLocalDate,
   type HandoverDisplayStatus,
   type HandoverEndReason,
+  type HandoverNotLaunchedReason,
   type HandoverTriggerSetting,
 } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
@@ -38,6 +41,7 @@ import { exitPostEffectHooks, type ExitCancelledEvent, type ExitConfirmedEvent }
 import { listHandoverItems } from './exit-handover-items.js';
 import {
   insertHandoverRequest,
+  insertNotLaunchedRequest,
   latestHandoverOfExit,
   linkHandoverInstance,
   listRequestItems,
@@ -55,6 +59,7 @@ const REQUEST_TYPE = 'exit-handover-request';
 
 export type LaunchResult =
   | { readonly outcome: 'launched' | 'exists'; readonly requestId: string }
+  | { readonly outcome: 'not_launched'; readonly requestId: string; readonly reason: string }
   | { readonly outcome: 'skipped' | 'failed'; readonly reason: string };
 
 async function auditHandover(
@@ -127,11 +132,8 @@ export async function launchExitHandover(
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
     const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
-    // 首节点无人可发（没有交接人也没有直线经理）：不兜底给别人，整个批准动作回滚，离职保持原状态，补人后可重新发起（DEC-661）
-    if (reason === 'APPROVAL_FIRST_NODE_EMPTY')
-      throw new AppError('CONFLICT', '未指定交接人且无直线经理，无法发起工作交接，请补充交接人后重新批准', {
-        reason: 'EXIT_HANDOVER_FIRST_NODE_EMPTY',
-      });
+    // 工作交接节点三者都空（交接人、直线经理、兜底处理人）：不发起，落“交接未发起”记录，离职批准照常通过（DEC-663）
+    if (reason === 'APPROVAL_FIRST_NODE_EMPTY') return recordNotLaunched(tx, ctx, event, initiatorUserId);
     await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
     return { outcome: 'failed', reason };
   }
@@ -140,6 +142,34 @@ export async function launchExitHandover(
 async function skip(tx: Tx, ctx: EmploymentContext, event: ExitConfirmedEvent, reason: string): Promise<LaunchResult> {
   await auditHandover(tx, ctx, 'skipped', 'exit-request', event.businessId, null, { reason });
   return { outcome: 'skipped', reason };
+}
+
+async function recordNotLaunched(
+  tx: Tx,
+  ctx: EmploymentContext,
+  event: ExitConfirmedEvent,
+  initiatorUserId: string,
+): Promise<LaunchResult> {
+  const current = await findCurrentRecord(tx, ctx.tenantId, event.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+  const id = randomUUID();
+  await insertNotLaunchedRequest(tx, {
+    id,
+    tenantId: ctx.tenantId,
+    exitRequestId: event.businessId,
+    employeeId: event.employeeId,
+    departmentId: current?.fields.departmentId ?? null,
+    initiatorUserId,
+    reason: 'NO_HANDLER',
+    commandId: ctx.commandId,
+    now: ctx.now,
+  });
+  await auditHandover(tx, ctx, 'not_launched', REQUEST_TYPE, id, null, {
+    exitRequestId: event.businessId,
+    employeeId: event.employeeId,
+    reason: 'NO_HANDLER',
+    hint: HANDOVER_NOT_LAUNCHED_HINTS.NO_HANDLER,
+  });
+  return { outcome: 'not_launched', requestId: id, reason: 'NO_HANDLER' };
 }
 
 async function createAndStart(
@@ -184,9 +214,9 @@ async function createAndStart(
 export async function terminateHandoverOnCancel(tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) {
   if (event.kind !== 'leave') return;
   const live = await liveHandoverOfExit(tx, ctx.tenantId, event.businessId);
-  if (!live || live.state !== 'in_progress') return;
+  if (!live || live.state === 'completed') return;
   const row = await loadHandoverRequest(tx, ctx.tenantId, live.id, true);
-  if (row.state !== 'in_progress') return;
+  if (row.state !== 'in_progress' && row.state !== 'not_launched') return;
   await moveHandoverRequest(tx, ctx, row, { state: 'terminated', endReason: 'exit_cancelled' });
   const active = await activeInstanceOf(tx, ctx.tenantId, 'exit_handover', row.id);
   if (active)
@@ -262,6 +292,9 @@ export interface HandoverDetail {
   readonly employeeId: string;
   readonly status: HandoverDisplayStatus;
   readonly endReason: HandoverEndReason | null;
+  /** 交接未发起的原因与给 HR 的提示（state = not_launched 时有值，DEC-663）。 */
+  readonly notLaunchedReason: HandoverNotLaunchedReason | null;
+  readonly hint: string | null;
   readonly approvalInstanceId: string | null;
   readonly revision: number;
   readonly items: readonly HandoverItemDetail[];
@@ -313,6 +346,8 @@ export async function handoverDetail(
     employeeId: row.employeeId,
     status: row.state,
     endReason: row.endReason,
+    notLaunchedReason: row.notLaunchedReason,
+    hint: row.notLaunchedReason ? HANDOVER_NOT_LAUNCHED_HINTS[row.notLaunchedReason] : null,
     approvalInstanceId: row.approvalInstanceId,
     revision: row.revision,
     items: items.map((item) => ({

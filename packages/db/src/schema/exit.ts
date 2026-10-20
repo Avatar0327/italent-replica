@@ -264,6 +264,7 @@ export const exitHandoverItems = pgTable(
 
 /**
  * 离职交接申请（R2 BE-8b2，B64，DM-R13）：独立申请表，业务单 = 交接申请，单表 + revision，不做版本链（交接不是任职记录）。
+ * 工作交接取不到处理人时落一条 not_launched 记录（DEC-663，无事项、无审批实例），等 HR 补人后处理。
  * 离职申请审批通过时由系统代发（发起人 = 员工本人账号）；同一离职至多一张进行中 / 已完成的（部分唯一索引兜住并发与重放）。
  * 终止原因：不同意 / 驳回 / 撤回 / 撤销离职。交接状态不回写离职状态（交接未完成不阻止离职生效）。
  */
@@ -279,6 +280,8 @@ export const exitHandoverRequests = pgTable(
     initiatorUserId: uuid('initiator_user_id').notNull(),
     state: text('state').notNull(),
     endReason: text('end_reason'),
+    /** 交接未发起的原因（state = not_launched 时必填，DEC-663）。 */
+    notLaunchedReason: text('not_launched_reason'),
     approvalInstanceId: uuid('approval_instance_id'),
     revision: integer('revision').notNull().default(1),
     commandId: text('command_id').notNull(),
@@ -294,9 +297,17 @@ export const exitHandoverRequests = pgTable(
     }),
     uniqueIndex('exit_handover_requests_live')
       .on(t.tenantId, t.exitRequestId)
-      .where(sql`${t.state} IN ('in_progress', 'completed')`),
+      .where(sql`${t.state} IN ('in_progress', 'completed', 'not_launched')`),
     index('exit_handover_requests_exit').on(t.tenantId, t.exitRequestId),
-    check('exit_handover_requests_state', sql`${t.state} IN ('in_progress', 'completed', 'terminated')`),
+    check(
+      'exit_handover_requests_state',
+      sql`${t.state} IN ('in_progress', 'completed', 'terminated', 'not_launched')`,
+    ),
+    check(
+      'exit_handover_requests_not_launched',
+      sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
+        AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER') IN ('NO_HANDLER')`,
+    ),
     check(
       'exit_handover_requests_end_reason',
       sql`(${t.state} = 'terminated') = (${t.endReason} IS NOT NULL)

@@ -18,6 +18,7 @@ import {
   type ApprovalTypeCode,
   type ApproverExpression,
   type ProcessDefinition,
+  type CountersignApprovalNode,
   type SingleApprovalNode,
 } from './types.js';
 
@@ -310,13 +311,28 @@ const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   }),
 }));
 
+/** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，resolver.ts resolveCandidates）。 */
+const anyOneNode = (
+  key: string,
+  name: string,
+  approver: ApproverExpression,
+  extra: Partial<SingleApprovalNode>,
+): CountersignApprovalNode => {
+  const { approver: _single, kind: _kind, ...rest } = node(key, name, approver, extra);
+  return { ...rest, kind: 'countersign', approvers: [approver], transitionRule: { type: 'any' } };
+};
 const HANDOVER_ACTIONS = { ...PRESET_ACTIONS, reject: false, jump: false, revoke: false } as const;
 const HANDOVER_NODES = [
-  { key: HANDOVER_NODE_KEYS.work, name: '工作交接', approver: 'handover_work_owner' },
-  { key: HANDOVER_NODE_KEYS.other, name: '其他事项交接', approver: 'handover_hr_admin' },
-  { key: HANDOVER_NODE_KEYS.employee, name: '员工确认', approver: 'handover_employee' },
-  { key: HANDOVER_NODE_KEYS.hrbp, name: 'HRBP办离职证明', approver: 'latest_record_department_hrbp' },
-] as const satisfies readonly { key: string; name: string; approver: ApproverExpression }[];
+  { key: HANDOVER_NODE_KEYS.work, name: '工作交接', approver: 'handover_work_owner', countersign: true },
+  { key: HANDOVER_NODE_KEYS.other, name: '其他事项交接', approver: 'handover_hr_admin', countersign: true },
+  { key: HANDOVER_NODE_KEYS.employee, name: '员工确认', approver: 'handover_employee', countersign: false },
+  {
+    key: HANDOVER_NODE_KEYS.hrbp,
+    name: 'HRBP办离职证明',
+    approver: 'latest_record_department_hrbp',
+    countersign: false,
+  },
+] as const satisfies readonly { key: string; name: string; approver: ApproverExpression; countersign: boolean }[];
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {
@@ -425,13 +441,17 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       description: '出厂预置：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明，发布前须配置异常管理员',
       priority: 0,
       ...standardCondition('exit_handover'),
-      nodes: HANDOVER_NODES.map((spec) =>
-        node(spec.key, spec.name, spec.approver, {
+      nodes: HANDOVER_NODES.map((spec) => {
+        const common = {
           formFields: [],
           exits: AGREE_OR_NOT,
           actions: { ...HANDOVER_ACTIONS, avoidSelf: spec.key !== HANDOVER_NODE_KEYS.employee },
-        }),
-      ),
+        };
+        // 两个交接节点是会签（任一人同意）：兜底处理人可多人（DEC-663）；兜底列表预置为空
+        return spec.countersign
+          ? anyOneNode(spec.key, spec.name, spec.approver, common)
+          : node(spec.key, spec.name, spec.approver, common);
+      }),
     }),
   },
   ...(

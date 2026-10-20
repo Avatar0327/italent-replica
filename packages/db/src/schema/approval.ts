@@ -155,6 +155,11 @@ export const approvalProcessNodes = pgTable(
     approverExpression: text('approver_expression'),
     /** F-003：会签节点的审批人表达式（按配置顺序逐人解析）；单人节点为空数组。 */
     approverExpressions: textArray('approver_expressions'),
+    /** R2 BE-8b2（DEC-663）：兜底处理人（用户 ID，可多人、缺省空），只用于离职交接申请的会签交接节点。 */
+    fallbackUserIds: uuid('fallback_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     /** F-003：出口动作（同意 / 不同意，DEC-144）；驳回是节点动作，不在其中。缺省只有同意。 */
     exits: text('exits')
       .array()

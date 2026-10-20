@@ -62,6 +62,12 @@ export const HANDOVER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(
   'handover_hr_admin',
   'handover_employee',
 ]);
+/** 兜底处理人只对这两个取值生效（主取法取不到人时的备选，resolver.ts resolveCandidates）。 */
+export const HANDOVER_FALLBACK_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
+  'handover_work_owner',
+  'handover_hr_admin',
+]);
+export const HANDOVER_FALLBACK_LIMIT = 20;
 export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
@@ -268,6 +274,11 @@ interface ApprovalNodeBase {
   readonly avoidSubjectsResult?: AvoidSubjectsResult;
   /** 出口动作（DEC-144）；缺省只有「同意」（DEFAULT_EXITS）。 */
   readonly exits?: readonly NodeExit[];
+  /**
+   * 兜底处理人（R2 BE-8b2，DEC-663，对应原站公共变量“离职交接流程-工作交接 / -其他事项交接”）：用户 ID 列表，可多人、可为空（缺省空）。
+   * 只用于离职交接申请的会签交接节点：主取法（交接人 → 直线经理 / 人事管理员）取不到人时，改派其中具备审批资格的人。
+   */
+  readonly fallbackUserIds?: readonly string[];
 }
 
 /** 单人审批节点：一个审批人表达式（R1-T07 起的节点；类型缺省即单人）。 */

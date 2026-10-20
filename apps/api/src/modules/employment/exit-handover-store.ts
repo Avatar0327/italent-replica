@@ -3,7 +3,7 @@
  * 业务规则（发起判断、办理权限、终止）在 exit-handover.ts，审批回调在 exit-handover-adapter.ts。
  */
 import { sql, type Tx } from '@italent/db';
-import type { HandoverEndReason, HandoverRequestState } from '@italent/domain';
+import type { HandoverEndReason, HandoverNotLaunchedReason, HandoverRequestState } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { HandoverItemView } from './exit-handover-items.js';
 import { rowsOf } from './record-store.js';
@@ -16,6 +16,7 @@ export interface HandoverRequestRow {
   readonly initiatorUserId: string;
   readonly state: HandoverRequestState;
   readonly endReason: HandoverEndReason | null;
+  readonly notLaunchedReason: HandoverNotLaunchedReason | null;
   readonly approvalInstanceId: string | null;
   readonly revision: number;
 }
@@ -35,7 +36,7 @@ export interface HandoverItemRow {
 
 const REQUEST_COLUMNS = sql`id, exit_request_id AS "exitRequestId", employee_id AS "employeeId",
   department_id AS "departmentId", initiator_user_id AS "initiatorUserId", state, end_reason AS "endReason",
-  approval_instance_id AS "approvalInstanceId", revision`;
+  not_launched_reason AS "notLaunchedReason", approval_instance_id AS "approvalInstanceId", revision`;
 
 export async function loadHandoverRequest(tx: Tx, tenantId: string, id: string, lock = false) {
   const [row] = rowsOf<HandoverRequestRow>(
@@ -98,7 +99,30 @@ export async function insertHandoverRequest(
       ${item.todoType}, ${item.title}, ${item.formRef}, ${item.remark}, ${now}::timestamptz, ${now}::timestamptz)`);
 }
 
-/** 状态迁移（revision + 1）；终止同时写原因。 */
+/** 交接未发起的持久记录（DEC-663）：没有事项、没有审批实例；至多一张（部分唯一索引兜底）。 */
+export async function insertNotLaunchedRequest(
+  tx: Tx,
+  input: {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly exitRequestId: string;
+    readonly employeeId: string;
+    readonly departmentId: string | null;
+    readonly initiatorUserId: string;
+    readonly reason: HandoverNotLaunchedReason;
+    readonly commandId: string;
+    readonly now: Date;
+  },
+) {
+  const now = input.now.toISOString();
+  await tx.execute(sql`INSERT INTO exit_handover_requests(id, tenant_id, exit_request_id, employee_id, department_id,
+    initiator_user_id, state, not_launched_reason, revision, command_id, created_at, updated_at)
+    VALUES (${input.id}::uuid, ${input.tenantId}, ${input.exitRequestId}::uuid, ${input.employeeId}::uuid,
+    ${input.departmentId}::uuid, ${input.initiatorUserId}::uuid, 'not_launched', ${input.reason}, 1,
+    ${input.commandId}, ${now}::timestamptz, ${now}::timestamptz)`);
+}
+
+/** 状态迁移（revision + 1）；终止同时写原因，离开 not_launched 时清掉未发起原因。 */
 export async function moveHandoverRequest(
   tx: Tx,
   ctx: { readonly tenantId: string; readonly commandId: string; readonly now: Date },
@@ -106,7 +130,7 @@ export async function moveHandoverRequest(
   next: { readonly state: HandoverRequestState; readonly endReason?: HandoverEndReason },
 ) {
   await tx.execute(sql`UPDATE exit_handover_requests SET state = ${next.state}, end_reason = ${next.endReason ?? null},
-    revision = revision + 1, command_id = ${ctx.commandId}, updated_at = ${ctx.now.toISOString()}::timestamptz
+    not_launched_reason = NULL, revision = revision + 1, command_id = ${ctx.commandId}, updated_at = ${ctx.now.toISOString()}::timestamptz
     WHERE tenant_id = ${ctx.tenantId} AND id = ${row.id}::uuid`);
 }
 
