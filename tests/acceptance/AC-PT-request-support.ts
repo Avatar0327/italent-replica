@@ -50,6 +50,10 @@ export interface WorldOptions {
   readonly editMode?: 'separate' | 'with_approve';
   /** 延长流程第 2 个节点改成会签（主职负责人 + 主职HRBP）：负责人为空时异常管理员占一席，替代人是 HRBP 时交接会合席（F-070）。 */
   readonly countersign?: boolean;
+  /** 新增流程最后一个节点改成会签（兼职部门负责人 + 兼职部门 HRBP），配合 noSideHead：负责人为空时异常管理员占一席（PT-7 合席落地）。 */
+  readonly lastCountersign?: boolean;
+  /** 兼职部门负责人为空：末节点转异常管理员。 */
+  readonly noSideHead?: boolean;
   /** 节点额外开放（表单字段 + 可编辑字段）的审批字段，用来分别覆盖“节点禁止编辑”与“适配器拒绝”两层。 */
   readonly extraEditable?: readonly string[];
   /** 三类流程的节点都开启加签（F-291 加签人不下发 form.edit）。 */
@@ -68,7 +72,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
     await w.person('兼职负责人', staff),
   ];
   await w.setOrgRoles(primary, { head: options.noPrimaryHead ? null : pHead.employeeId, hrbp: pHrbp.employeeId });
-  await w.setOrgRoles(side, { head: sHead.employeeId, hrbp: sHrbp.employeeId });
+  await w.setOrgRoles(side, { head: options.noSideHead ? null : sHead.employeeId, hrbp: sHrbp.employeeId });
   const worker = await w.person('兼职员工', primary);
   const tenantId = w.tenant.id;
   const external = options.externalExceptionAdmin
@@ -90,17 +94,27 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
             ? (external?.id ?? w.exceptionAdmin)
             : w.exceptionAdmin,
         nodes: preset.definition.nodes.map((preNode, index) => {
+          const lastNode = index === preset.definition.nodes.length - 1;
           const node =
-            options.countersign && installed.approvalType === 'part_time_extend' && index === 1
+            options.lastCountersign && installed.approvalType === 'part_time_add' && lastNode
               ? {
                   ...preNode,
                   kind: 'countersign' as const,
-                  key: 'joint',
-                  name: '主职联合会签',
-                  approvers: ['latest_record_department_head', 'latest_record_department_hrbp'] as const,
+                  key: 'side_joint',
+                  name: '兼职部门联合会签',
+                  approvers: ['record_department_head', 'record_department_hrbp'] as const,
                   transitionRule: { type: 'all' as const },
                 }
-              : preNode;
+              : options.countersign && installed.approvalType === 'part_time_extend' && index === 1
+                ? {
+                    ...preNode,
+                    kind: 'countersign' as const,
+                    key: 'joint',
+                    name: '主职联合会签',
+                    approvers: ['latest_record_department_head', 'latest_record_department_hrbp'] as const,
+                    transitionRule: { type: 'all' as const },
+                  }
+                : preNode;
           return {
             ...node,
             ...(options.editMode

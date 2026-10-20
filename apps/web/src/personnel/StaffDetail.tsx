@@ -1,4 +1,5 @@
 import { Avatar, Space } from 'antd';
+import type { ReactNode } from 'react';
 import { PERSONNEL_OBJECT } from '@italent/domain';
 import { DetailPage } from '../foundation/templates.js';
 import { ReadPanel } from './ReadPanel.js';
@@ -11,7 +12,16 @@ import { m } from './messages.js';
 import { EmployeePartTimes } from '../part-time/EmployeePartTimes.js';
 import { m as partTime } from '../part-time/messages.js';
 
-export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClose(): void }) {
+/** actions：业务模块挂在详情顶部的入口（如实习生，FE-R2d3），详情本身不变。 */
+export function StaffDetail({
+  employeeId,
+  onClose,
+  actions,
+}: {
+  employeeId: string;
+  onClose(): void;
+  actions?: ReactNode;
+}) {
   const result = useRead<Row>(`/api/tenant/personnel/employees/${encodeURIComponent(employeeId)}`);
   const permission = usePermissions(PERSONNEL_OBJECT);
   const row = result.data;
@@ -21,6 +31,7 @@ export function StaffDetail({ employeeId, onClose }: { employeeId: string; onClo
       open
       onClose={onClose}
       title={m.detail}
+      actions={actions}
       summary={
         <>
           <DecisionNote id="personnel-records" />

@@ -76,6 +76,9 @@ export function requestDto(
       dottedManagerId: version.dottedManagerId,
       employmentType: version.employmentType,
       employmentForm: version.employmentForm,
+      // 联动字段（§4.8，PT-7）：只新增申请有值；落地前只是申请上的意图，不代表组织上已经是负责人 / 下属已改
+      ...(version.isDepartmentHead !== null ? { isDepartmentHead: version.isDepartmentHead } : {}),
+      ...(version.addedSubordinateIds ? { addedSubordinateIds: version.addedSubordinateIds } : {}),
     } as Partial<PresetFields>,
     customFields: version.customFields,
     warnings: (extra.warnings ?? []).map((reason) => ({ reason })),

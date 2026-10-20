@@ -33,6 +33,9 @@ export interface PartTimeRequestVersion {
   readonly dottedManagerId: string | null;
   readonly employmentType: string | null;
   readonly employmentForm: string | null;
+  /** 联动（§4.8，PT-7）：草稿 / 审批中只保存，落地时才执行；延长 / 结束申请恒为 null。 */
+  readonly isDepartmentHead: boolean | null;
+  readonly addedSubordinateIds: readonly string[] | null;
   readonly startDate: string;
   readonly endDate: string | null;
   /** extend / end：创建时目标记录的当前结束日；add 为 null（PT-4c 使用）。 */
@@ -63,7 +66,8 @@ const VERSION_COLUMNS = sql`v.id AS "versionId", v.version_no AS "versionNo", v.
   v.position_id AS "positionId", v.post_id AS "postId",
   v.sequence_id AS "sequenceId", v.level_id AS "levelId", v.direct_manager_id AS "directManagerId",
   v.dotted_manager_id AS "dottedManagerId", v.employment_type AS "employmentType",
-  v.employment_form AS "employmentForm", v.start_date::text AS "startDate", v.end_date::text AS "endDate",
+  v.employment_form AS "employmentForm", v.is_department_head AS "isDepartmentHead",
+  v.added_subordinate_ids AS "addedSubordinateIds", v.start_date::text AS "startDate", v.end_date::text AS "endDate",
   v.original_end_date::text AS "originalEndDate", v.base_term_no AS "baseTermNo", v.remark,
   v.custom_fields AS "customFields"`;
 
@@ -84,6 +88,8 @@ function toRow(raw: RawRequest): PartTimeRequestRow {
     dottedManagerId: rest.dottedManagerId,
     employmentType: rest.employmentType,
     employmentForm: rest.employmentForm,
+    isDepartmentHead: rest.isDepartmentHead,
+    addedSubordinateIds: rest.addedSubordinateIds,
     startDate: rest.startDate,
     endDate: rest.endDate,
     originalEndDate: rest.originalEndDate,
@@ -164,13 +170,14 @@ async function insertVersion(
   await tx.execute(sql`
     INSERT INTO part_time_request_versions(id, tenant_id, employee_id, request_id, version_no, previous_version_id,
       command_id, service_type, department_id, position_id, post_id, sequence_id, level_id, direct_manager_id,
-      dotted_manager_id, employment_type, employment_form, start_date, end_date, original_end_date, base_term_no,
-      remark, custom_fields, created_at)
+      dotted_manager_id, employment_type, employment_form, is_department_head, added_subordinate_ids, start_date,
+      end_date, original_end_date, base_term_no, remark, custom_fields, created_at)
     VALUES (${id}, ${ctx.tenantId}, ${head.employeeId}, ${head.id}, ${versionNo}, ${previousVersionId},
       ${ctx.commandId}, ${payload.serviceType}, ${payload.departmentId}, ${payload.positionId}, ${payload.postId},
       ${payload.sequenceId}, ${payload.levelId}, ${payload.directManagerId}, ${payload.dottedManagerId},
-      ${payload.employmentType}, ${payload.employmentForm}, ${payload.startDate}, ${payload.endDate},
-      ${payload.originalEndDate}, ${payload.baseTermNo}, ${payload.remark},
+      ${payload.employmentType}, ${payload.employmentForm}, ${payload.isDepartmentHead},
+      ${payload.addedSubordinateIds && `{${payload.addedSubordinateIds.join(',')}}`}::uuid[], ${payload.startDate},
+      ${payload.endDate}, ${payload.originalEndDate}, ${payload.baseTermNo}, ${payload.remark},
       ${JSON.stringify(payload.customFields)}::jsonb, ${ctx.now.toISOString()}::timestamptz)
   `);
   return id;

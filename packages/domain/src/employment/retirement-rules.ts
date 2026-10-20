@@ -63,7 +63,7 @@ export interface RetirementRule {
   readonly priority: number;
   readonly sequenceNo: number;
   readonly ruleType: RetirementRuleType;
-  /** 预置法定规则（DEC-641①）：排在自建规则之后。 */
+  /** 预置法定规则（DEC-641①）：匹配时先于自建规则（DEC-646②）。 */
   readonly preset?: boolean;
   /** 适用组织，已按“包含下级”展开（调用方负责）。 */
   readonly scopeOrgIds: readonly string[];
@@ -105,25 +105,40 @@ function inScope(rule: RetirementRule, person: RetirementPerson): boolean {
 }
 
 /**
- * RT-R5：只看启用、purpose 相同的规则；自建规则先于预置规则，其内按组织范围 → 优先级升序 → 序号升序，
- * 命中第一条即停（DEC-641①：自建命中优先）。
+ * RT-R5：只看启用、purpose 相同的规则；预置法定规则先于自建规则，各自内部按组织范围 → 优先级升序 → 序号升序，
+ * 命中第一条即停（DEC-646②：法定优先）。返回“第一个命中的规则”；法定算不出时回落自建见 matchRules。
  */
 export function matchRule(
   rules: readonly RetirementRule[],
   person: RetirementPerson,
   purpose: RetirementRulePurpose = 'expected_date',
 ): RetirementRule | null {
+  return matchRules(rules, person, purpose)[0] ?? null;
+}
+
+/**
+ * 候选规则（DEC-646②）：预置法定规则中第一条命中者在前，自建规则中第一条命中者在后，最多两条；
+ * 调用方按序试算，第一条算得出的取用，法定命中但算不出（如女性个人身份为空）时回落自建。
+ */
+export function matchRules(
+  rules: readonly RetirementRule[],
+  person: RetirementPerson,
+  purpose: RetirementRulePurpose = 'expected_date',
+): RetirementRule[] {
   const ordered = rules
     .filter((rule) => rule.enabled && rule.purpose === purpose)
     .sort(
       (a, b) =>
-        Number(a.preset === true) - Number(b.preset === true) || a.priority - b.priority || a.sequenceNo - b.sequenceNo,
+        Number(b.preset === true) - Number(a.preset === true) || a.priority - b.priority || a.sequenceNo - b.sequenceNo,
     );
-  for (const rule of ordered) {
-    if (!inScope(rule, person)) continue;
-    if (rule.conditions.every((condition) => satisfies(condition, person))) return rule;
-  }
-  return null;
+  const hit = (preset: boolean) =>
+    ordered.find(
+      (rule) =>
+        (rule.preset === true) === preset &&
+        inScope(rule, person) &&
+        rule.conditions.every((condition) => satisfies(condition, person)),
+    );
+  return [hit(true), hit(false)].filter((rule): rule is RetirementRule => rule !== undefined);
 }
 
 /**
@@ -171,31 +186,36 @@ export function expectedDateByRule(
   return EXPECTED_FUNCTIONS[rule.expectedFunction ?? '']?.(person, facts) ?? null;
 }
 
-/** 按 purpose = expected_date 匹配并计算：无命中 → null（由调用方决定是否清空）；命中但算不出（缺出生日期等）→ date 为 null。 */
+/**
+ * 按 purpose = expected_date 匹配并计算（DEC-646②：法定优先）：法定规则命中且算得出就用它；法定未命中或算不出，
+ * 再试自建规则。都算不出 → 取第一个命中的规则、date 为 null（由调用方决定是否清空，DEC-646①）；无命中 → null。
+ */
 export function resolveExpectedDate(
   rules: readonly RetirementRule[],
   person: RetirementPerson,
   facts: RetirementFacts,
 ): { readonly rule: RetirementRule; readonly date: string | null } | null {
-  const rule = matchRule(rules, person, 'expected_date');
-  return rule && { rule, date: expectedDateByRule(rule, person, facts) };
+  const tried = matchRules(rules, person, 'expected_date').map((rule) => ({
+    rule,
+    date: expectedDateByRule(rule, person, facts),
+  }));
+  return tried.find((item) => item.date !== null) ?? tried[0] ?? null;
 }
 
 /**
  * 按 purpose = flexible_range 匹配并计算上下限：P 为空 → 上下限都空（RT-R6、A-20，与 normalizeRetirementRange 一致）；
  * 无命中 → null。弹性范围规则只选内置函数（DEC-640①），上下限各自空值由函数决定（如女性个人身份为空时最早留空）。
+ * 回落口径同预计退休日期（设计未写，按 DEC-646② 类推）：法定规则上下限不全为空就用它，否则再试自建。
  */
 export function resolveFlexibleRange(
   rules: readonly RetirementRule[],
   person: RetirementPerson,
   facts: RetirementFacts,
 ): { readonly rule: RetirementRule; readonly earliest: string | null; readonly latest: string | null } | null {
-  const rule = matchRule(rules, person, 'flexible_range');
-  if (!rule) return null;
-  if (!facts.expectedDate) return { rule, earliest: null, latest: null };
-  return {
+  const tried = matchRules(rules, person, 'flexible_range').map((rule) => ({
     rule,
-    earliest: EARLIEST_FUNCTIONS[rule.earliestFunction ?? '']?.(person, facts) ?? null,
-    latest: LATEST_FUNCTIONS[rule.latestFunction ?? '']?.(person, facts) ?? null,
-  };
+    earliest: facts.expectedDate ? (EARLIEST_FUNCTIONS[rule.earliestFunction ?? '']?.(person, facts) ?? null) : null,
+    latest: facts.expectedDate ? (LATEST_FUNCTIONS[rule.latestFunction ?? '']?.(person, facts) ?? null) : null,
+  }));
+  return tried.find((item) => item.earliest !== null || item.latest !== null) ?? tried[0] ?? null;
 }

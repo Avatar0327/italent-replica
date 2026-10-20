@@ -158,7 +158,7 @@ const RETIRE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', 
  * → 兼职部门负责人”，结束按 R2f1 / F-165③ 相反。HRBP 无人时转异常管理员（F-165③），首节点无人提交即报错（DEC-054）。
  * 三类节点都“同意时打开可编辑的业务表单”（结束 R2f1；新增 / 延长 F234A C9，DEC-629）：结束 / 延长可改结束日期与申请备注
  * （延长的新结束日期必填，A-14 / B-8）；新增可改兼职类型 / 结束日期 / 兼职部门 / 直线经理 / 职务 / 职级，必填兼职类型 / 开始日期 /
- * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”维持关闭到 PT-7（DEC-634 / PB-57）。
+ * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属不开（F234A C9 字段集，取最小集合）。
  * 开始日期的字段权限编码未定（§7.2 只登记 6 个新字段），表单暂不放。
  */
 const PART_TIME_FORM = [
@@ -167,12 +167,21 @@ const PART_TIME_FORM = [
   'postId',
   'levelId',
   'directManagerId',
+  'isDepartmentHead',
   'endDate',
   'requestRemark',
 ];
 /** 审批中可编辑的表单字段（F-249）：延长 / 结束只改结束日与备注；新增见上方注释。 */
 const PART_TIME_EDITABLE = {
-  part_time_add: ['partTimeType', 'endDate', 'departmentId', 'directManagerId', 'postId', 'levelId'],
+  part_time_add: [
+    'partTimeType',
+    'endDate',
+    'departmentId',
+    'directManagerId',
+    'postId',
+    'levelId',
+    'isDepartmentHead',
+  ],
   part_time_extend: ['endDate', 'requestRemark'],
   part_time_end: ['endDate', 'requestRemark'],
 } as const;

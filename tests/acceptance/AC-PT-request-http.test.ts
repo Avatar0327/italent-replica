@@ -2,7 +2,7 @@
  * BE-7 PT-4b 兼职新增申请公开入口（docs/08_设计/R2-T05_兼职设计.md §4.1 / §7.2 / §13.1，§9 PB-32 / PB-57 / PB-75）：
  * POST part-time-requests（requestType = add）与 GET / PATCH / submit / withdraw / revoke / DELETE 的 HTTP 全链路。
  * 开闸边界：延长 / 结束申请已随 PT-4c 开放（AC-PT-date-request-http）；
- * isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PB-57）。
+ * isDepartmentHead / addedSubordinateIds 自 PT-7 开放（PB-57 改正例，见 AC-PT-linkage-request）。
  * 权限（§7.2）：对象创建 / 更新 / 删除权 → 按钮 → 员工主职 + 兼职部门范围 → 字段写权；提交 / 撤回只允许原发起人（DEC-113）。
  * 日期框架：今天 2026-10-01，主职 2020-01-01 入职；审批走真实审批中心接口。
  */
@@ -23,7 +23,6 @@ const database = useTestDb();
 const TODAY = '2026-10-01';
 
 const world = (label: string) => requestWorld(database().db, `pt4b-${label}`);
-const linkage = { status: 400, code: 'VALIDATION_FAILED', reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE' };
 
 /** 经 HTTP 把新增申请建成草稿，返回读形状。 */
 async function draft(w: RequestWorld, patch: Record<string, unknown> = {}) {
@@ -113,21 +112,18 @@ describe('开闸边界：仍关闭的行为必须真关', () => {
     expect(response.status).toBe(400);
   });
 
-  it('PB-57：isDepartmentHead = true / 非空 addedSubordinateIds → 400 LINKAGE_NOT_AVAILABLE，创建与修改都无写入', async () => {
+  it('PB-57（PT-7 改正例）：联动人员不合格 → 400 TRANSFER_PERSON_NOT_ELIGIBLE，创建与修改都无写入', async () => {
     const w = await world('linkage');
     const api = w.http();
     const before = await w.writes();
-    for (const fields of [{ isDepartmentHead: true }, { addedSubordinateIds: [randomUUID()] }])
-      expect(await w.refusal(await api.create({ fields })), JSON.stringify(fields)).toMatchObject(linkage);
+    const ineligible = { status: 400, code: 'VALIDATION_FAILED', reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' };
+    const fields = { addedSubordinateIds: [randomUUID()] };
+    expect(await w.refusal(await api.create({ fields }))).toMatchObject(ineligible);
     expect(await w.writes()).toEqual(before);
 
     const created = await draft(w);
     const mid = await w.writes();
-    for (const fields of [{ isDepartmentHead: true }, { addedSubordinateIds: [randomUUID()] }])
-      expect(
-        await w.refusal(await api.patch(created.id, created.revision, { fields })),
-        JSON.stringify(fields),
-      ).toMatchObject(linkage);
+    expect(await w.refusal(await api.patch(created.id, created.revision, { fields }))).toMatchObject(ineligible);
     expect(await w.writes()).toEqual(mid);
     // 显式 false / 空数组不是联动请求，照常保存
     const saved = await w.ok(
