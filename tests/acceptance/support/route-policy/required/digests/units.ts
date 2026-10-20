@@ -358,7 +358,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
     'route:DELETE /retirement-rules/:id': '8de974e02097',
     'route:GET /retirement-identity-types': '81f057781643',
-    'route:GET /retirement-rules': '1dacbd1d213c',
+    'route:GET /retirement-rules': '6f863b4c24d4',
     'route:POST /retirement-rules': 'c0ccabb2ca46',
     'route:POST /retirement-rules/:id/copy': '012777f500a5',
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
@@ -1808,7 +1808,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '5f9e3e39dd73',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': '9c74e44bfb8b',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-identity-types': '4e944340ea36',
-  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': 'b2548100ed05',
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules': 'e9b54a0cf91a',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',

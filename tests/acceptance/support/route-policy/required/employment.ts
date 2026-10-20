@@ -3030,15 +3030,10 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a 预计退休日期规则与个人身份字典（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/retirement-rules': [
     ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
       [
-        at(
-          RETIREMENT_RULE,
-          'GET',
-          '/retirement-rules',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
+        at(RETIREMENT_RULE, 'GET', '/retirement-rules', "const ctx = await readContext(c, deps, 'object.view', 0)"),
         READ,
       ],
     ),

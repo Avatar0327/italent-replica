@@ -1996,7 +1996,6 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   ],
   'apps/api/src/modules/employment/retirement-routes.ts#KIND': ['9b1ff31a2f18', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/retirement-routes.ts#parseRetirementPatch': ['78e61d988843', '061cf1785e51'],
-  'apps/api/src/modules/employment/retirement-rule-routes.ts#SETTINGS': ['15a32ed0ba1c', '962a8dd9a03e'],
   'apps/api/src/modules/employment/retirement-rules.ts#AGE_KEYS': ['aa73d53d4dfb', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/retirement-rules.ts#COPY_SUFFIX': ['0117a914052f', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/retirement-rules.ts#FUNCTION_KEYS': ['29d10fc1c18c', 'e3b0c44298fc'],

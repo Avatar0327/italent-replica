@@ -630,14 +630,13 @@
     "all": {
       "status": 200
     },
-    "fieldQueries": [
-      "fields:TenantBase.EmploymentSettings"
-    ],
+    "fieldQueries": [],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
       "scope:data.scope.all:"
     ],
     "trace": [
-      "obj:TenantBase.EmploymentSettings:view"
+      "obj:TenantBase.EmploymentRecord:view"
     ]
   },
   "GET /api/tenant/employment/settings": {

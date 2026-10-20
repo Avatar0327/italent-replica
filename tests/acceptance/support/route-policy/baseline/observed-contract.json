@@ -4605,15 +4605,12 @@
       },
       "module": "employment",
       "primitives": {
-        "fieldsOut": [
-          "trimModuleResponse"
-        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentSettings:view"
+          "TenantBase.EmploymentRecord:view"
         ]
       }
     },
