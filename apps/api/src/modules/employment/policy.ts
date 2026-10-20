@@ -1672,6 +1672,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   'POST /retirements/:id/submit': exitTransition(RETIREMENT_BUTTONS.application),
   'POST /retirements/:id/withdraw': exitTransition(RETIREMENT_BUTTONS.application),
+  // ---- employment/retirement-routes.ts：R2-T04 BE-5a′ 撤销退休（设计 §6 / §12.1；与撤销离职同一个 cancelExit，按钮取 RetireCancel）----
+  // 权限链、范围、命令内复核（exitCommandGuard）、回执裁剪与 exits 对应入口一致；路径的业务类型与单据 kind 不一致一律 404
+  'POST /retirements/:id/cancel': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    guards: [LINKAGE],
+    scope: BUSINESS_WRITE,
+    fields: projector('employment.response', 'employment.exitCancelReceipt'),
+    write: employmentCommand(['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+    ...byId,
+  }),
+  'POST /retirements/:id/restore': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    scope: BUSINESS_WRITE,
+    fields: fixed(['error'], '固定拒绝：409 EXIT_RESTORE_NOT_SUPPORTED，没有业务响应'),
+    write: write('body', none('只读拒绝：没有命令事务，没有提交前足迹'), none('只读拒绝：没有业务响应')),
+    ...byId,
+  }),
+  'PATCH /retirements/cancellations/:id': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
+    scope: guardScope('employment.exitCancellation', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.exitCancellation'),
+    write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
+    ...byId,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
   // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
   // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective
@@ -1730,6 +1760,26 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: projector('employment.response', 'employment.exitDetail'),
+    ...byId,
+  }),
+  // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
+  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
+  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  'GET /retirements': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    scope: listScope('employment.visibility'),
+    fields: projector('employment.response', 'employment.retirementViews'),
+  }),
+  // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
+  'GET /retirements/:id': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: projector('employment.response', 'employment.retirementDetail'),
     ...byId,
   }),
   // ---- employment/exit-routes.ts：R2-T03 离职三个字典（设计 §2.1 / §4 / §9.1）-----------------------------------------
