@@ -1,0 +1,52 @@
+.intern-page {
+  padding: 20px;
+  background: #f5f7fa;
+  min-height: 100%;
+}
+.intern-page h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.intern-views {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.intern-views button {
+  flex: 1;
+  text-align: left;
+  min-height: 56px;
+  padding: 12px 18px;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #303640;
+}
+.intern-views button[aria-pressed='true'] {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.intern-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+.intern-toolbar {
+  margin-bottom: 12px;
+}
+.intern-toolbar .ant-select {
+  min-width: 200px;
+}
+.intern-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.intern-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
