@@ -121,4 +121,28 @@ describe('AC-PRM-F232 创建人子查询别名隔离', () => {
       ),
     ).toEqual([{ creator: creatorId }, { creator: otherCreatorId }, { creator: null }, { creator: null }]);
   });
+
+  it('AC-PRM-F232-06 同形查询保持 SQL 文本稳定，参数变化不产生新别名', () => {
+    const build = (id: string) =>
+      database()
+        .db.select({ creator: firstCreatorSql(tenantId, sql`${id}`, ACTION, 'target') })
+        .from(auditObjectCreators)
+        .toSQL();
+    const first = build(creatorId);
+    const second = build(otherCreatorId);
+    expect(first.sql).toBe(second.sql);
+    expect(first.params).not.toEqual(second.params);
+  });
+
+  it.each(['creator_meta_1', 'creator_meta_2', 'CREATOR_META_1'])(
+    'AC-PRM-F232-07 外层已占用层级别名 %s 时仍能关联目标',
+    async (alias) => {
+      const outer = sql.identifier(alias);
+      const creator = firstCreatorSql(sql`${outer}.tenant_id`, sql`${outer}.object_id`, ACTION, 'target');
+      expect(
+        await query(sql`SELECT ${creator} AS creator
+          FROM (VALUES (${tenantId}::uuid, ${creatorId}::text)) AS ${outer}(tenant_id, object_id)`),
+      ).toEqual([{ creator: creatorId }]);
+    },
+  );
 });
