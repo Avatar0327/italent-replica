@@ -77,6 +77,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#hasExit',
   ],
   'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED': [
+    '#FIELD_REQUIRED',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'packages/domain/src/approval/presets.ts#ASSESSMENT_ACTIONS': ['#PRESET_ACTIONS'],
