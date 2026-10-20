@@ -23,7 +23,9 @@ describe('AC-RT-14 互斥', () => {
     const x = await world('rt14-blacklist');
     const before = await x.stateOf(x.employee.id);
     const response = await x.postRehire(
-      x.rehireBody('2026-10-04', 'direct', x.rehirePlan(), { exit: { addToBlacklist: true } }),
+      x.rehireBody('2026-10-04', 'direct', x.rehirePlan(), {
+        exit: { addToBlacklist: true, blacklistReason: 'instability' },
+      }),
     );
     expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'RETIREMENT_REHIRE_BLACKLIST_CONFLICT' });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
@@ -31,7 +33,7 @@ describe('AC-RT-14 互斥', () => {
     const plain = await x.postRehire({
       mode: 'application',
       lastWorkDate: '2026-10-20',
-      exit: { addToBlacklist: true },
+      exit: { addToBlacklist: true, blacklistReason: 'instability' },
     });
     expect(plain.status, await plain.clone().text()).toBe(201);
   });
