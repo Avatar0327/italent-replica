@@ -6,7 +6,9 @@
 
 **技术栈**：TypeScript、Hono、Drizzle、PostgreSQL / PGlite、Vitest。
 
-## 03 已确认范围（#488 等决定答复）
+## 03 已确认范围
+
+依据：[03 在 #488 的答复](https://github.com/Avatar0327/italent-replica/pull/488#issuecomment-6290276530)。
 
 1. 来源为 `employment_probation_versions` 按 `tenant_id + business_id` 定位的独立版本链；
    派发补充中“最新 payload 版本”是前提错误，已作废。业务 revision 与试用期 `version_no` 是不同序列，
