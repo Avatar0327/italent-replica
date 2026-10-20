@@ -154,7 +154,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/,
       {
         unless: new RegExp(
-          `${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults|listRetirementIdentityTypes|listRetirementRules`,
+          `${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults|` +
+            'listRetirementIdentityTypes|listRetirementRules',
         ),
       },
     ],
