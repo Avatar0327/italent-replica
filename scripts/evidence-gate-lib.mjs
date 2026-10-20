@@ -21,110 +21,60 @@ export function taskIds(text) {
 // 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理
 const level = (text) => (/后续|落地后|恢复时|可后补/.test(text) ? '可后补' : '开工前');
 
-// 🟡 行放行 = 状态列拆出的**全部**子项逐项判定（DEC-431①，F-290 第 4 轮）：每个子项只有两种结果——
-// 整句命中“已取事实”或“可后补 / 已定口径”放行常量才算放行，其余（含任何否定 / 冲突 / 不确定表达）一律阻塞；
-// 整行还须有一处声明可后补或由 DEC 定口径。没有声明、零散的“可后补”字样、只提到 DEC 编号的写法都不放行。
-// 🔴 / □ 不适用，照旧按任务列判级。
-const HEAD = /^(?:剩余|其余|余下|未测部分)(?:（可后补）)?[：:]?/;
-// 冲突 / 否定 / 不确定表达：优先级高于一切白名单（已取事实原句常量除外，见 FACT_LITERALS）
-const CONFLICT =
-  /不可|不允许|不能|不得|不应|无法|仍须|须|必须|未完成|尚不确定|不确定|是否|待确认|待用户|待原站|待取证|可能|开工前|实现前|写代码前|阻塞|尚未|未[由按]|没有定论/;
-const NEGATION = /[不未无仍待]|是否|可能/; // 结构化“已取事实”里不得出现的字
-// 已取事实（结构化）：带完成标记、且全句没有上面的否定 / 待定字眼
-const DONE_FACT = /已取|已测|已读|已补|已恢复|已满足|补全|实测|只读|复查/;
-// 已取事实原句常量：逐句取自清单里 4 个由状态列放行的真实行（Q-M0-127 / 132 / 133 / 153）中无法用结构化规则表达的
-// 已取现状描述（带“不 / 未 / 无 / 没有”字，或没有完成标记）；整句（补测记录则为冒号后的尾部）相等才算，不做包含匹配。
-// 清单里这几行的原文改动后会不再命中、转为阻塞（保守），由真实清单放行集合的测试发现
-const FACT_LITERALS = new Set([
-  '已取证（待办按评价者去重、已完成者被拦、取消待办不使链接失效；被屏蔽者在进度明细标“已评价(被屏蔽)”、' +
-    '报告算未完成、报表整列消失；清空入口“重新作答”启用 / 停用均可、仅已评价行；转发三步向导与收件人取数）', // Q-M0-127
-  '已取证（W-667 用户亲手清除：不重发通知、旧报告失效；W-668 报表下载为 PNG 截图）', // Q-M0-127
-  '2026-10-08 晚 A5 只读（23 §9）：所属资源集合是系统字段、表单不显示、不可手选，' +
-    '分布在 分类 / 类别 / 级别 / 指标类型 / 指标 / 标准，层级、等级方案、发展通道和人才评定对象没有', // Q-M0-132
-  '所有对象都没有“向下公开”字段', // Q-M0-132
-  '评价表、评审组、评定活动的“所属组织”是必填手选（默认请选择）', // Q-M0-132
-  '小范围管理员可见全部类别与标准，不裁剪', // Q-M0-132
-  '子集入口 = 组织员工 → 人员子集 → 任职资格（A5 可见，无需改权限）', // Q-M0-133
-  'SW74 关 → 已有自动同步记录的编辑 / 删除立即置灰（追溯），手工记录不受影响', // Q-M0-133
-  '2026-10-10（25 §10.5，W-773～790）：过程提醒按页（点“下一页”时）判断，提交提醒判断整份', // Q-M0-153
-  '页面不显示秒数', // Q-M0-153
-  '约 1.2～1.5 秒/题、选项不同的作答，既不弹提醒也不被屏蔽（T1～T3）', // Q-M0-153
-  '耗时大概率按打开到提交的整段时间算', // Q-M0-153
-  '分母、按份 / 按页还没测出，脚本做不到明显低于 1 秒/题', // Q-M0-153
-  '复查（W-790）T3 约 1.47 秒/题未被屏蔽', // Q-M0-153
+// 放行只认“整条状态列规范化后逐字等于放行表里的一条”（F-290 第 5 轮，DEC-431①）：不做关键词 / 子串 / 正则判断，
+// 放行表之外的任何写法（含改了一个字、追加说明、新写法）一律阻塞。放行表 = 真实清单 / 登记册里当前由 DEC 已定或
+// 剩余可后补而放行的 20 行状态列原文（取自 main 708feef）。新的状态写法须人工把原文加进下面的常量并配测试；
+// 这几行原文被改动后会不再命中、转为阻塞（保守），由 AC-TOOL-F290 的真实清单放行集合测试发现。
+// 规范化：NFKC（全半角统一）并去掉所有空白。
+const norm = (text) => text.normalize('NFKC').replace(/\s+/g, '');
+const releasedSet = (entries) => new Set(entries.map(norm));
+
+// 取证清单（🟡 行）：Q-M0-127 / 132 / 133 / 153
+const RELEASED_EVIDENCE_STATUS = releasedSet([
+  // Q-M0-127：docs/07_M0/03_需取证清单.md 第 133 行
+  [
+    '🟡 2026-10-08 晚 写入实测（25 §10.3，DEC-315 ②，W-656～W-666）：①②③⑨⑩⑮⑲ 已取证（待办按评价者去重、已完成者被拦、',
+    '取消待办不使链接失效；被屏蔽者在进度明细标“已评价(被屏蔽)”、报告算未完成、报表整列消失；清空入口“重新作答”启用 / 停用均可、仅已评价行；转发三步向导与收',
+    '件人取数）；⑬⑭ 补全（标准版目录、异步生成 2 小时一次）；⑥⑦⑧ 早前已取证。⑪⑫⑱ 已取证（W-667 用户亲手清除：不重发通知、旧报告失效；W-668 ',
+    '报表下载为 PNG 截图）。**剩余（可后补）**：⑯ 本样本观察不到；④ 变量清单只取到待办和转发报告两种模板；⑤ 未测；**④ 10-09 补（25 §10',
+    '.4，W-692）**：邀请作答邮件 / 短信变量全集已取（含通用网址 ＋ 序列号 ＋ 密码作答方式）；⑤ 仍待启用中活动',
+  ].join(''),
+  // Q-M0-132：docs/07_M0/03_需取证清单.md 第 138 行
+  [
+    '🟡 2026-10-08 晚 A5 只读（23 §9）：所属资源集合是系统字段、表单不显示、不可手选，分布在 分类 / 类别 / 级别 / 指标类型 / 指标 ',
+    '/ 标准，层级、等级方案、发展通道和人才评定对象没有；所有对象都没有“向下公开”字段；评价表、评审组、评定活动的“所属组织”是必填手选（默认请选择）。**剩余（',
+    '可后补）**：下级能否看到 / 引用上级类别与标准，需小范围管理员账号；**残项 10-09 已补（23 §16）**：小范围管理员可见全部类别与标准，不裁剪',
+  ].join(''),
+  // Q-M0-133：docs/07_M0/03_需取证清单.md 第 139 行
+  [
+    '🟡 2026-10-08 晚（23 §10，W-677 / W-678，已恢复）：字段全集已取；子集入口 = 组织员工 → 人员子集 → 任职资格（A5 可见，',
+    '无需改权限）；**SW74 关 → 已有自动同步记录的编辑 / 删除立即置灰（追溯），手工记录不受影响**。剩余：员工自助能否改（无可用员工账号），可后补',
+  ].join(''),
+  // Q-M0-153：docs/07_M0/03_需取证清单.md 第 159 行
+  [
+    '🟡 2026-10-10（25 §10.5，W-773～790）：过程提醒按页（点“下一页”时）判断，提交提醒判断整份；页面不显示秒数；约 1.2～1.5 秒/',
+    '题、选项不同的作答，既不弹提醒也不被屏蔽（T1～T3）；耗时大概率按打开到提交的整段时间算；分母、按份 / 按页还没测出，脚本做不到明显低于 1 秒/题；复查（',
+    'W-790）T3 约 1.47 秒/题未被屏蔽；未测部分按设计口径定（DEC-392）',
+  ].join(''),
 ]);
-const FREE = '[^；;。，,不未无]'; // 自由文本槽位：不含分隔符与否定字
-// 声明类：自己就表示剩余事项可后补 / 由 DEC 定口径
-const DEFER_ITEMS = [
-  /^(?:可后补|后续补测?|落地后补)$/,
-  /^(?:[由按]\s*DEC-\d+\s*定口径|按设计口径定(?:（DEC-\d+）)?)$/, // Q-M0-153
-  new RegExp(`^${FREE}{1,30}（无可用${FREE}{1,10}）[，,]可后补$`), // Q-M0-133
-];
-// 描述类：只在整行已声明可后补时有效（Q-M0-127 / 132 的剩余清单）
-const DESCRIBE_ITEMS = [
-  /^未测$/,
-  /^本样本观察不到$/,
-  new RegExp(`^${FREE}{1,30}只取到${FREE}{1,30}$`),
-  new RegExp(`^仍待启用${FREE}{1,10}$`),
-  new RegExp(`^${FREE}{1,40}[，,]需${FREE}{1,20}账号$`),
-];
-// 补测记录“[残项] <月-日> 已补 / 补（来源）：尾部”：尾部也必须是已取事实（Q-M0-127 ④、Q-M0-132 残项）
-const SUPPLEMENT = /^(?:残项\s*)?\d{1,2}-\d{1,2}\s*已?补(?:（[^）]*）)?[：:](.+)$/;
 
-// 按 ；;。 与 ①～⑳ 拆子项；括号内不拆
-function splitItems(text) {
-  const items = [];
-  let cur = '';
-  let depth = 0;
-  for (const ch of text) {
-    if ('（('.includes(ch)) depth += 1;
-    if ('）)'.includes(ch)) depth = Math.max(0, depth - 1);
-    if (depth === 0 && (/[；;。]/.test(ch) || /[①-⑳]/.test(ch))) {
-      items.push(cur);
-      cur = '';
-    } else cur += ch;
-  }
-  items.push(cur);
-  return items
-    .map((x) =>
-      x
-        .replace(/\*\*/g, '')
-        .replace(/^[\s：:]+/, '')
-        .replace(/^🟡\s*/, '')
-        .trim(),
-    )
-    .filter(Boolean);
-}
-
-const isDoneFact = (text) =>
-  FACT_LITERALS.has(text) || (DONE_FACT.test(text) && !NEGATION.test(text) && !CONFLICT.test(text));
-
-// 返回 'defer'（声明类）/ 'ok'（已取事实或描述类）/ null（阻塞）
-function judgeItem(raw, state) {
-  let item = raw;
-  const head = HEAD.exec(item);
-  if (head) {
-    state.headSeen = true;
-    state.declared ||= /可后补/.test(head[0]);
-    item = item.slice(head[0].length).replace(/^[\s：:]+/, '');
-    if (!item) return 'ok';
-  }
-  if (FACT_LITERALS.has(item)) return 'ok';
-  if (CONFLICT.test(item)) return null;
-  const sup = SUPPLEMENT.exec(item);
-  if (sup) return isDoneFact(sup[1].trim()) ? 'ok' : null;
-  if (matchesAny(DEFER_ITEMS, item)) return state.headSeen ? 'defer' : null; // 声明必须在“剩余 / 未测部分”之后
-  if (matchesAny(DESCRIBE_ITEMS, item) || isDoneFact(item)) return 'ok';
-  return null;
-}
-const matchesAny = (list, item) => list.some((re) => re.test(item));
-
-function remainderDeferred(statusCell) {
-  const state = { declared: false, headSeen: false };
-  const verdicts = splitItems(statusCell).map((i) => judgeItem(i, state));
-  if (verdicts.length === 0 || verdicts.includes(null)) return false;
-  return state.declared || verdicts.includes('defer');
-}
+// 差异登记册：D-062～D-077（✅ 开头的行沿用原有的 ✅ 识别）
+const RELEASED_DECISION_STATUS = releasedSet([
+  // D-062：docs/00_状态/04_缺口冲突差异登记册.md 第 89 行
+  '已定（DEC-261 选③：结构化录入，保存时编译为 R3-T00 表达式）',
+  // D-063：docs/00_状态/04_缺口冲突差异登记册.md 第 90 行
+  '已定（DEC-318，可推翻）',
+  // D-064：docs/00_状态/04_缺口冲突差异登记册.md 第 91 行
+  '已关闭（DEC-352：查看照原站全员可见；写操作仍按管理单元，🟡）',
+  // D-065：docs/00_状态/04_缺口冲突差异登记册.md 第 92 行
+  '已定（DEC-355①，可推翻）',
+  // D-066、D-067、D-068、D-069、D-071、D-076、D-077：docs/00_状态/04_缺口冲突差异登记册.md 第 93、94、95、96、98、103、104 行
+  '已定（可推翻）',
+  // D-070、D-072、D-073、D-074：docs/00_状态/04_缺口冲突差异登记册.md 第 97、99、100、101 行
+  '已定（用户选定）',
+  // D-075：docs/00_状态/04_缺口冲突差异登记册.md 第 102 行
+  '已定',
+]);
 
 export function evidenceState(blocks, statusCell) {
   const st = /🔴/.test(statusCell)
@@ -134,12 +84,12 @@ export function evidenceState(blocks, statusCell) {
       : /✅/.test(statusCell)
         ? '✅'
         : '□ 未取证';
-  const deferred = st === '🟡 部分' && remainderDeferred(statusCell);
+  const deferred = st === '🟡 部分' && RELEASED_EVIDENCE_STATUS.has(norm(statusCell));
   return { st, level: deferred ? '可后补' : level(blocks) };
 }
 
-// 差异行：状态列以 ✅ / “已定” / “已关闭”开头视为已结；其余（含“待用户决定 / 待原站实测”和认不出的写法）仍拦
-export const decisionSettled = (statusCell) => /^(✅|已定|已关闭)/.test(statusCell.trim());
+// 差异行：✅ 视为已结；其余只有放行表里的状态原文放行（“待用户决定 / 待原站实测”和认不出的写法仍拦）
+export const decisionSettled = (statusCell) => /✅/.test(statusCell) || RELEASED_DECISION_STATUS.has(norm(statusCell));
 
 export function parseEvidence(markdown) {
   return markdown
