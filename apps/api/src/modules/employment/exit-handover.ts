@@ -50,7 +50,7 @@ import { findCurrentRecord } from './read-model.js';
 import { lockEmploymentEmployee, rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-const REQUEST_TYPE = 'exit_handover_request';
+const REQUEST_TYPE = 'exit-handover-request';
 
 export type LaunchResult =
   | { readonly outcome: 'launched' | 'exists'; readonly requestId: string }
@@ -356,7 +356,7 @@ export async function tickHandoverItem(
       tx,
       { ...ctx, actorUserId: ctx.userId },
       'item_done',
-      'exit_handover_request_item',
+      'exit-handover-request-item',
       itemId,
       { done: item.done },
       { done, requestId, nodeKey },

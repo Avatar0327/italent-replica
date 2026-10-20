@@ -59,6 +59,7 @@ export const GRAPH: Graph = {
     '#nodeShapeViolations',
     '#offerApproverViolation',
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
@@ -86,6 +87,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_FORM_FIELDS',
   ],
+  'packages/domain/src/approval/presets.ts#HANDOVER_ACTIONS': ['#PRESET_ACTIONS'],
+  'packages/domain/src/approval/presets.ts#HANDOVER_NODES': [
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
+  ],
   'packages/domain/src/approval/presets.ts#IDP_EMPLOYEE_ACTIONS': ['#IDP_ACTIONS'],
   'packages/domain/src/approval/presets.ts#IDP_TUTOR_ACTIONS': ['#IDP_ACTIONS'],
   'packages/domain/src/approval/presets.ts#LEAVE_FORM': ['packages/domain/src/employment/exit.ts#EXIT_FORM_FIELDS'],
@@ -100,6 +105,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
     '#AGREE_OR_NOT',
     '#ASSESSMENT_PRESETS',
+    '#HANDOVER_ACTIONS',
+    '#HANDOVER_NODES',
     '#HEAD_FIRST',
     '#HRBP_FIRST',
     '#IDP_EMPLOYEE_ACTIONS',
@@ -113,6 +120,7 @@ export const GRAPH: Graph = {
     '#node',
     '#partTimePreset',
     '#standardCondition',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
   ],
   'packages/domain/src/approval/presets.ts#RETIRE_FORM': [

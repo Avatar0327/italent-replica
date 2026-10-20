@@ -18,6 +18,8 @@ import { loadExitRequest } from './exit-gate.js';
 import type { EmploymentContext } from './types.js';
 
 const TYPE = APPROVAL_TYPES.exit_handover;
+/** 字段权限沿用任职记录对象；单独起名，让 F-039 基准能把本适配器的字段对象与意向退休申请区分开。 */
+const HANDOVER_OBJECT = TYPE.objectCode;
 const asEmployment = (ctx: ApprovalContext) => ctx as unknown as EmploymentContext;
 
 async function snapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<BusinessSnapshot> {
@@ -32,7 +34,7 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<Busin
     approvalType: 'exit_handover',
     businessType: 'exit_handover',
     businessId: id,
-    fieldObjectCode: TYPE.objectCode,
+    fieldObjectCode: HANDOVER_OBJECT,
     profileFields: [],
     subjectEmployeeId: row.employeeId,
     title: TYPE.name,

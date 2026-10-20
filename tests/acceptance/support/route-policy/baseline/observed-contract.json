@@ -3,6 +3,7 @@
     "approval.businessType": [
       "contract",
       "employment",
+      "exit_handover",
       "idp",
       "offer",
       "offer_batch",
@@ -4244,6 +4245,28 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exit-handover-requests/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "relation": [
+          "exit handover participant（isHandoverParticipant）"
+        ]
+      }
+    },
     "GET /api/tenant/employment/exits": {
       "edge": {
         "anonymous": {
@@ -4295,6 +4318,34 @@
         "domain": [
           "transfer.initiator"
         ],
+        "object": [
+          "readPageContext"
+        ],
+        "scope": [
+          "employment visibility",
+          "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/exits/:id/handover": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
         "object": [
           "readPageContext"
         ],
@@ -25624,6 +25675,34 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "relation": [
+          "exit handover assignee（tickHandoverItem）",
+          "exit handover participant（isHandoverParticipant）"
         ]
       }
     },
