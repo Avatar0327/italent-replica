@@ -272,7 +272,7 @@ describe('AC-RT-18 人事版本跨日取值（asOf 当日结束，租户时区�
     for (let i = 0; i < 7; i += 1) {
       const asOf = addDays('2026-10-12', i);
       for (const want of ['upcoming', 'overdue'] as const) {
-        const expected = NAMES.filter((who) => classify(asOf, P[who][i]) === want).map((who) => ids[who]);
+        const expected = NAMES.filter((who) => classify(asOf, P[who][i] ?? null) === want).map((who) => ids[who]);
         const actual = (await page(want, asOf)).map((item) => item.employeeId);
         expect([...actual].sort(), `${want} asOf=${asOf}`).toEqual([...expected].sort());
       }
