@@ -414,14 +414,27 @@ for (const [label, action] of [
 
 test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开与回查原单后仍锁定', async ({ page }) => {
   let writes = 0;
-  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/tenant/approval/tasks/*/approve', async (route) => {
     writes++;
+    await pending;
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await switchIdentity(page, '/approval');
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
   await page.getByRole('button', { name: button('保存') }).click();
+  // F-227：受控回执让加载态必然出现，定位不能依赖动画恰好结束。
+  try {
+    await expect.poll(() => writes).toBe(1);
+    await expect(page.getByRole('dialog').getByRole('img', { name: 'loading', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  } finally {
+    release();
+  }
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
   await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
   await page.getByRole('button', { name: button('取消') }).click();
