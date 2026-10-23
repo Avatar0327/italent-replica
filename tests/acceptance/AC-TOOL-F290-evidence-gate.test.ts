@@ -260,7 +260,7 @@ describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误�
     expect(released).toEqual(RELEASED_EVIDENCE);
   });
 
-  it('差异登记册：非 ✅ 开头而放行的恰为 D-062～D-077，仍待决的只有 D-057', () => {
+  it('AC-TOOL-F303：非 ✅ 放行仍为 D-062～D-077；✅ 中保留待复核的行列为待决', () => {
     const md = read(DECISION_MD);
     const open = parseDecisions(md).map((d) => d.id);
     const settledNotTicked = md
@@ -269,7 +269,7 @@ describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误�
       .map((l) => ({ id: /D-\d+/.exec(l)![0], st: cellsOf(l)[4]! }))
       .filter((d) => !open.includes(d.id) && !d.st.startsWith('✅'))
       .map((d) => d.id);
-    expect(open).toEqual(['D-057']);
+    expect(open).toEqual(['D-027', 'D-028', 'D-057']);
     expect(settledNotTicked).toEqual(RELEASED_DECISIONS);
   });
 });
