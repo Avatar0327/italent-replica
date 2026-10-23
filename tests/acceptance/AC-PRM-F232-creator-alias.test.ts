@@ -2,7 +2,6 @@
 import { randomUUID } from 'node:crypto';
 import { auditObjectCreators, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import type { SQL } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { firstCreatorSql } from '../../apps/api/src/modules/permission/scope-audit.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
@@ -67,7 +66,7 @@ beforeAll(async () => {
   );
 });
 
-async function query(statement: SQL) {
+async function query(statement: ReturnType<typeof sql>) {
   return withTenant(database().db, tenantId, async (tx) => {
     const result = await tx.execute(statement);
     return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { creator: string | null }[];
