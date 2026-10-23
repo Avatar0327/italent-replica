@@ -3130,6 +3130,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/part-time/linkage-participants.ts#hasRequestTables': [
     '#requestsReady',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3201,11 +3204,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_DEPARTMENT': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
   ],
+  'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_INSTITUTION': [
+    'apps/api/src/modules/employment/part-time/store.ts#currentInstitution',
+  ],
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_JOINS': [
     'apps/api/src/modules/employment/part-time/store.ts#latestSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#approvalCandidates': [
     '#REQUEST_DEPARTMENT',
+    '#REQUEST_INSTITUTION',
     '#REQUEST_JOINS',
     '#allOf',
     '#employeeColumns',
@@ -3270,6 +3277,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DEPARTMENT',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DIRECT_MANAGER',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_INSTITUTION',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_START',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeColumns',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeFrom',
@@ -3767,6 +3775,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#VERSION_COLUMNS': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
+    'apps/api/src/modules/employment/part-time/store.ts#currentInstitution',
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#appendRequestState': [
     '#bumpRequestRevision',
@@ -3787,6 +3796,10 @@ export const GRAPH: Graph = {
     '#insertEvent',
     '#insertVersion',
     '#loadPartTimeRequest',
+  ],
+  'apps/api/src/modules/employment/part-time/request-store.ts#insertVersion': [
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest': [
     '#VERSION_COLUMNS',
@@ -3941,6 +3954,7 @@ export const GRAPH: Graph = {
     '#multi',
     '#requestStates',
     'apps/api/src/modules/employment/part-time/view-sort.ts#SORT_FIELDS',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_SOURCES',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_TYPES',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
     'packages/domain/src/employment/part-time.ts#PART_TIME_EXPIRING_DAYS',
@@ -4050,6 +4064,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#writePartTimeEdit': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
     'apps/api/src/modules/employment/part-time/store.ts#bumpPartTimeRevision',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
@@ -4072,6 +4087,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#insertPartTimeRecord': [
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     '#insertTerm',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
