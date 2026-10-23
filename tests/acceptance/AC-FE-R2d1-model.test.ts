@@ -66,7 +66,7 @@ describe('AC-FE-R2d1 列表只读契约', () => {
     expect(cellValue(row, 'code', 'ongoing')).toBe('effective');
     expect(cellValue(row, 'positionId', 'ongoing')).toBe('position');
     expect(cellValue(row, 'institution', 'ongoing')).toBe('--');
-    expect(cellValue(row, 'pendingKind', 'expiring')).toBe('--');
+    expect(cellValue(row, 'pendingKind', 'expiring')).toBe('延长');
     expect(cellValue(row, 'kind', 'in_approval')).toBe('结束');
     expect(cellValue(row, 'approvalStatus', 'in_approval')).toBe('审批通过');
   });
