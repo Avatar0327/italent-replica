@@ -360,6 +360,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -389,6 +390,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -16624,6 +16628,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -16653,6 +16658,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -16689,6 +16697,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -16718,6 +16727,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"
@@ -16754,6 +16766,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -16783,6 +16796,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "precondition": [
           "transferBusinessContext"

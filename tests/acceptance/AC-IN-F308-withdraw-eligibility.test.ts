@@ -51,7 +51,7 @@ async function snapshot(w: InternWorld, businessId: string) {
   });
 }
 
-it('A 是原发起人：列表下发 withdraw，撤回回到草稿且同键重放成功', async () => {
+it('AC-IN-F308：A 是原发起人，列表下发 withdraw，撤回回到草稿且同键重放成功', async () => {
   const w = await internWorld(testDb().db, 'f308-owner');
   const person = await w.hire('F308原发起人', 'intern');
   const businessId = await w.applyRegularization(person.employee.id);
@@ -68,7 +68,7 @@ it('A 是原发起人：列表下发 withdraw，撤回回到草稿且同键重�
   expect(await replay.json()).toMatchObject({ id: businessId, status: 'draft' });
 });
 
-it('B 是同范围 HR、非发起人：写入仍 403 APPROVAL_NOT_INITIATOR，读口不下发 withdraw', async () => {
+it('AC-IN-F308：B 是同范围 HR、非发起人，写入仍 403 APPROVAL_NOT_INITIATOR，读口不下发 withdraw', async () => {
   const w = await internWorld(testDb().db, 'f308-other');
   const person = await w.hire('F308非发起人', 'intern');
   const businessId = await w.applyRegularization(person.employee.id);
@@ -86,7 +86,7 @@ it('B 是同范围 HR、非发起人：写入仍 403 APPROVAL_NOT_INITIATOR，�
   expect(after.availableActions).toEqual(['regularize', 'terminate', 'revoke']);
 });
 
-it('审批发起人与建单人不同时，以实际提交产生的审批实例为准', async () => {
+it('AC-IN-F308：审批发起人与建单人不同时，以实际提交产生的审批实例为准', async () => {
   const w = await internWorld(testDb().db, 'f308-submitter');
   const person = await w.hire('F308代建单', 'intern');
   const draft = await w.session.business(

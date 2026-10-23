@@ -72,6 +72,7 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 import {
   disclosePendingApplications,
   PendingApplicationError,
@@ -497,6 +498,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
               undefined,
               action === 'submit' ? {} : undefined,
             );
+            const denied = action === 'withdraw' && (await employmentWithdrawalFailure(tx, checked, id));
+            if (denied) throw denied;
             const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
             // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);

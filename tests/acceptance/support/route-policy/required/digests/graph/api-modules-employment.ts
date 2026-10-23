@@ -2776,19 +2776,19 @@ export const GRAPH: Graph = {
     '#rowActions',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/employment/intern-actions.ts#requireTransitionAccess': [
+  'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
-    '#TRANSITION_BUTTONS',
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
   ],
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': [
     'apps/api/src/modules/employment/context.ts#permits',
-    '#requireTransitionAccess',
+    '#requireRevokeAccess',
     'apps/api/src/modules/employment/intern-regularization.ts#regularizationBusiness',
     'apps/api/src/modules/employment/intern-termination.ts#internTerminationGate',
     'apps/api/src/modules/employment/replay-guard.ts#requireExitCommandAccess',
     'apps/api/src/modules/employment/replay-guard.ts#requireInternRegularizationAccess',
     'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
+    'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
   ],
   'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable': [
     '#assertNothingEndsInternshipAfter',
@@ -5411,6 +5411,7 @@ export const GRAPH: Graph = {
     '#routesToCancel',
     '#submitBody',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
+    'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
@@ -5884,6 +5885,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible': ['#visibleEmploymentRecords'],
   'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords': ['#employmentVisibilitySql'],
+  'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': [
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
+  ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     '#storedStatus',

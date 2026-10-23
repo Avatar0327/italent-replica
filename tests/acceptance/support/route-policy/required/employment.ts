@@ -584,13 +584,17 @@ const ROW_TERMINATE: Evidence[] = [
     'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
   ),
 ];
-const ROW_TRANSITION: Evidence[] = [
-  fn(INTERN_ACTIONS, 'rowActions', 'await permits(() => requireTransitionAccess(tx, update, item.id, action))'),
+const ROW_WITHDRAW: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', 'await employmentWithdrawalFailure(tx, update, item.id)'),
   fn(
-    INTERN_ACTIONS,
-    'requireTransitionAccess',
-    "await requireEmploymentWrite(scoped, 'update', {}, TRANSITION_BUTTONS[action])",
+    `${SRC}/employment/withdraw-eligibility.ts`,
+    'employmentWithdrawalFailure',
+    "await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Withdraw')",
   ),
+];
+const ROW_REVOKE: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', 'await permits(() => requireRevokeAccess(tx, update, item.id))'),
+  fn(INTERN_ACTIONS, 'requireRevokeAccess', "await requireEmploymentWrite(scoped, 'update', {}, 'Employment.Revoke')"),
 ];
 const rowActionObligations = (): Obligation[] => [
   rowAction(
@@ -616,10 +620,10 @@ const rowActionObligations = (): Obligation[] => [
   rowAction(
     `obj:${RECORD}:update`,
     ['objectOp:TenantBase.EmploymentRecord:update'],
-    [...ROW_TRANSITION, WRITE_CONTEXT, READ, WRITE_OBJECT],
+    [...ROW_WITHDRAW, ...ROW_REVOKE, WRITE_CONTEXT, READ, WRITE_OBJECT],
   ),
-  rowAction(`btn:${RECORD}#Employment.Withdraw@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
-  rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
+  rowAction(`btn:${RECORD}#Employment.Withdraw@detail`, [], [...ROW_WITHDRAW, WRITE_BUTTON, RECORD_CONST]),
+  rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_REVOKE, WRITE_BUTTON, RECORD_CONST]),
 ];
 
 // ---- F-268 兼职申请详情逐单 availableActions（part-time/request-actions.ts）：可选分支 requestActions ----
