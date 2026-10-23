@@ -446,6 +446,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#openRun',
     'apps/api/src/modules/approval/engine.ts#persistRun',
+    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#cancelPending',
     'packages/domain/src/approval/types.ts#revokeAllowed',
@@ -910,6 +911,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#initiatorActions': [
+    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
     'packages/domain/src/approval/types.ts#revokeAllowed',
   ],

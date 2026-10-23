@@ -41,7 +41,7 @@ async function world(label: string) {
   return x;
 }
 
-describe('AC-DM-01/02/07 真 PG 员工锁强制交错', () => {
+describe('F-305 / DEC-674、AC-DM-01/02 真 PG 员工锁强制交错', () => {
   itPg.each(['complete_first', 'cancel_first'] as const)('F-302 R1 P3 %s 撤销快照与落库状态一致', async (order) => {
     const x = await world(order);
     const { exitId, request, instanceId } = await x.launched();

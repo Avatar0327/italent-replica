@@ -1,6 +1,6 @@
 /** 审批实例、任务、日志的读写（全部在调用方的租户事务内，查询有界）。 */
 import { randomUUID } from 'node:crypto';
-import { sql, type Tx } from '@italent/db';
+import { activeApprovalInstanceCondition, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { actorOf, approvalError, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
@@ -161,7 +161,8 @@ export async function activeInstanceOf(
 ): Promise<InstanceRow | null> {
   const [row] = rowsOf(
     await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
-      AND business_type=${businessType} AND business_id=${businessId}::uuid AND status IN ('running','returned')
+      AND business_type=${businessType} AND business_id=${businessId}::uuid
+      AND ${activeApprovalInstanceCondition({ status: sql`status`, businessType: sql`business_type` })}
       FOR UPDATE`),
   );
   return row ? instanceOf(row) : null;

@@ -3,7 +3,7 @@
  * 流程是稳定对象 + 版本；已发布版本及其节点、条件、消息规则只读（迁移 0029 触发器），实例绑定版本 ID 即冻结快照（`14` §4）。
  * 所有表带 tenant_id 并强制 RLS；人员引用一律指向租户成员（账号）或任职员工主档。
  */
-import { sql } from 'drizzle-orm';
+import { sql, type SQLWrapper } from 'drizzle-orm';
 import {
   boolean,
   check,
@@ -319,6 +319,12 @@ export const approvalNodeMessageRules = pgTable(
   ],
 );
 
+/** DEC-674：交接驳回即业务终止，旧 returned 实例只读；其他业务仍占用原实例以便重提。查询与唯一索引共用。 */
+export function activeApprovalInstanceCondition(columns: { status: SQLWrapper; businessType: SQLWrapper }) {
+  return sql`(${columns.status} = 'running'
+    OR (${columns.status} = 'returned' AND ${columns.businessType} <> 'exit_handover'))`;
+}
+
 export const approvalInstances = pgTable(
   'approval_instances',
   {
@@ -355,7 +361,7 @@ export const approvalInstances = pgTable(
     unique('approval_instances_tenant_id').on(t.tenantId, t.id),
     uniqueIndex('approval_instances_active_business')
       .on(t.tenantId, t.businessType, t.businessId)
-      .where(sql`${t.status} IN ('running','returned')`),
+      .where(activeApprovalInstanceCondition(t)),
     index('approval_instances_initiator').on(t.tenantId, t.initiatorUserId, t.createdAt),
     index('approval_instances_business').on(t.tenantId, t.businessType, t.businessId, t.createdAt),
     foreignKey({

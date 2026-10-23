@@ -29,7 +29,14 @@ import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
-import { addSignAllowed, addSignLink, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
+import {
+  addSignAllowed,
+  addSignLink,
+  isActiveInstance,
+  retrievableTask,
+  urgeOpen,
+  votesInTransition,
+} from './rules.js';
 import { loadRecusalFacts } from './subjects.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
@@ -215,7 +222,7 @@ function initiatorActions({ instance, version }: DetailData): string[] {
   const actions: string[] = [];
   // DEC-318 K-39：撤回按当前节点的开关（isRevoke，缺省开启）
   const current = version.nodes.find((node) => node.key === instance.currentNodeKey);
-  if (['running', 'returned'].includes(instance.status) && (!current || revokeAllowed(current))) {
+  if (isActiveInstance(instance) && (!current || revokeAllowed(current))) {
     actions.push('withdraw');
   }
   // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9），
