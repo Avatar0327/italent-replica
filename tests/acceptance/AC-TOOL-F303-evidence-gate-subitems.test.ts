@@ -44,9 +44,7 @@ function runCli(evidence: string[], decisions: string[], targets = [TARGET]) {
 }
 
 function expectItem(out: string, file: string, line: number, id: string, item: string) {
-  expect(
-    out.split('\n').some((text) => text.includes(`${file}:${line}`) && text.includes(id) && text.includes(item)),
-  ).toBe(true);
+  expect(out.split('\n')).toContain(`    ${file}:${line}  ${id}  待决子项：${item}`);
 }
 
 const sources = [
@@ -89,7 +87,7 @@ describe.each(sources)('AC-TOOL-F303 $name：✅ 子项门禁', ({ file, id, run
 
   it.each([
     ['首子项待决', '✅ 待取证；②已完成', '✅ 待取证'],
-    ['括号内待决', '✅ 已取证（①已完成；②待原站实测）', '②待原站实测'],
+    ['括号内待决', '✅ 已取证（①已完成；②待原站实测）', '✅ 已取证（①已完成；②待原站实测）'],
     ['首部空白', '  ✅ 已取证；②待原站实测', '②待原站实测'],
     ['词间空白', '✅ 已取证；②待 原站 实测', '②待 原站 实测'],
     ['后补声明', '✅ 已取证；剩余可后补；②待取证', '②待取证'],
@@ -108,11 +106,61 @@ describe.each(sources)('AC-TOOL-F303 $name：✅ 子项门禁', ({ file, id, run
     '✅ ①已取证，②已实测。③已定（DEC-901）',
     '✅ ①已取证. ②已实测<br />③已定（DEC-901）',
     '✅ 已取证（待办按评价者去重）；②已确认待入职字段',
+    '✅ 已取证（入口(字段,回执)；错误提示）；②已完成',
+    '✅ 已取证(入口（字段、回执）;错误提示)；②已完成',
+    '✅ 已取证（入口、字段；②已完成',
+    '✅ 已取证)；②已完成',
   ])('完成状态 %s：退出 0，不列为待决', (status) => {
     const { code, out } = run(status);
     expect(code).toBe(0);
     expect(out).not.toContain(id);
     expect(out).not.toContain(`${file}:`);
+  });
+});
+
+describe.each(sources)('AC-TOOL-F303 $name：括号子项原文（P2-1）', ({ file, id, run }) => {
+  function expectDetails(status: string, items: string[]) {
+    const { code, out } = run(status);
+    expect(code).toBe(1);
+    expect(out.split('\n').filter((line) => line.includes('待决子项：'))).toEqual(
+      items.map((item) => `    ${file}:6  ${id}  待决子项：${item}`),
+    );
+  }
+
+  describe.each([
+    ['中文', '（', '）'],
+    ['英文', '(', ')'],
+  ])('%s括号', (_name, open, close) => {
+    it.each(SEPARATORS)('内部 %j 不切断原文，闭合后仍分别报告外部待决项', (separator) => {
+      const item = `②待实测${open}${['入口', '字段', '错误提示'].join(separator)}${close}`;
+      expectDetails(`✅ 已取证；${item}；③待定；④已完成`, [item, '③待定']);
+    });
+  });
+
+  it.each([
+    '②待实测（入口(字段, 错误提示；提示)、回执）',
+    '②已取证(入口（字段、②待原站实测；③已完成）, 提示)',
+    '②已取证（入口（字段、待实测）；回执）',
+    '②已取证(入口(字段,待取证);回执)',
+  ])('嵌套括号保留完整子项 %s，内部待决仍阻塞', (item) => {
+    expectDetails(`✅ 已取证；${item}；③待定；④已完成`, [item, '③待定']);
+  });
+
+  it.each([
+    '②待实测（入口、字段；③已完成',
+    '②已取证(入口,字段;③待取证',
+    '②待实测（入口(字段,错误提示)；③已完成',
+    '②待实测（入口,字段)；③已完成',
+    '②待实测(入口，字段）；③已完成',
+    '②待实测（入口(字段）；③待定)；④已完成',
+  ])('未闭合或错配括号保守保留到状态末尾：%s', (item) => {
+    expectDetails(`✅ 已取证；${item}`, [item]);
+  });
+
+  it.each(['）', ')'])('孤立右括号 %s 保留原文，不影响后续分项', (close) => {
+    const item = '②待实测（入口、字段）';
+    const last = `③待定${close}`;
+    expectDetails(`✅ 已取证${close}；${item}；${last}`, [item, last]);
   });
 });
 
