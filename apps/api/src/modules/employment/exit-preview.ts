@@ -58,7 +58,16 @@ export async function previewExit(
   if (regularization) blockers.push({ reason: 'EXIT_REGULARIZATION_IN_FLIGHT', ...regularization });
   const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
   // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列；条件在 SQL 里过滤（与生效时同一入口）
-  const voided = await voidCandidates(tx, ctx, employeeId, lastWorkDate);
+  const voided = await voidCandidates(
+    tx,
+    ctx,
+    employeeId,
+    lastWorkDate,
+    undefined,
+    kind === 'retirement'
+      ? { effectiveDate: dayAfter(lastWorkDate), reEmployed: rehire.reEmployed === true }
+      : undefined,
+  );
   const assessments = set?.assessments ?? [];
   // 确认清单超上限时不给令牌（不能确认被截断的集合）；上方 warnings 已提示 EXIT_APPLICATIONS_TOO_MANY（F-241）
   const ack = set && !set.tooMany ? set : null;

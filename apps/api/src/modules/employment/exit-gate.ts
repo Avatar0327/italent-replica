@@ -10,6 +10,7 @@
  */
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { buttonsOf, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
@@ -225,6 +226,8 @@ export const exceedsVoidLimit = (candidates: readonly unknown[]) => candidates.l
 
 /** 候选条件推进 SQL（过滤后再取上限），避免“先截断再剔除”漏掉真实超限（F-237）。 */
 export interface InFlightFilter {
+  /** 可信内部候选排除条件，在 LIMIT 之前应用；引用 b / p / s 的最新业务状态。 */
+  readonly excluding?: SQL;
   /** 只要还没落地成任职记录的。 */
   readonly unlanded?: boolean;
   readonly excludeId?: string;
@@ -263,6 +266,7 @@ export async function inFlightApplications(
         ${filter.landedEffectiveAfter ? sql`AND ${landed} AND p.effective_date > ${landedAfter}::date` : sql``}
         ${filter.excludeId ? sql`AND b.id<>${filter.excludeId}::uuid` : sql``}
         ${filter.approvedAfter ? sql`AND (s.state<>'approved' OR ${planned} > ${filter.approvedAfter}::date)` : sql``}
+        ${filter.excluding ? sql`AND NOT ${filter.excluding}` : sql``}
       ORDER BY planned, b.id LIMIT 1001`),
   );
 }

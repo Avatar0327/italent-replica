@@ -13,6 +13,7 @@ import { latestLinkage } from '../transfer/linkage/store.js';
 import { activationPredecessors, isRebuildBlocker, type PendingActivation } from './activation-store.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { rowsOf } from './record-store.js';
+import { rehireDependency } from './retire-rehire-eligibility.js';
 import type { EmploymentContext } from './types.js';
 
 function uuidList(value: unknown): string[] {
@@ -119,6 +120,11 @@ export async function blockingPredecessors(
 ): Promise<PendingActivation[]> {
   const blocking: PendingActivation[] = [];
   for (const item of before) {
+    // DEC-677：退休迟到后，返聘的原日期可能排在它前面；依赖方向仍是退休 → 返聘，不能互相挂起。
+    if (item.kind === 'retire_rehire') {
+      const dependency = await rehireDependency(tx, ctx.tenantId, item.id);
+      if (dependency?.retirementId === businessId && !dependency.invalidated) continue;
+    }
     if (item.reminderOnly || (await exemptsBlocker(tx, ctx, item, businessId))) continue;
     blocking.push(item);
   }
