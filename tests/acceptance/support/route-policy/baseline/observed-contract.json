@@ -17347,6 +17347,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()",
           "trimEmploymentResponse"
         ],
@@ -18839,6 +18840,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()",
           "trimEmploymentResponse"
         ],
