@@ -25,7 +25,7 @@ describe('AC-EXIT-F316 流程定义 HTTP 配置', () => {
       expect(policyOf(published.currentVersion!.nodes.find((node) => node.key === key)!)).toBe(policy);
       const draft = await view(await api(x, 'POST', `/${created.id}/versions`, published.revision, {}), 201);
       expect(policyOf(draft.latestVersion.nodes.find((node) => node.key === key)!)).toBe(policy);
-      // 旧客户端不认识新增字段，整份保存不能悄悄清除已配置的策略。
+      // DEC-402：整份保存省略策略就恢复 DEC-663 默认语义，不继承上一稿的显式配置。
       const input = inputOf(draft.latestVersion);
       const nodes = input.nodes.map((node) => {
         const copy: Record<string, unknown> = { ...node };
@@ -33,7 +33,7 @@ describe('AC-EXIT-F316 流程定义 HTTP 配置', () => {
         return copy;
       });
       const saved = await view(await api(x, 'PUT', `/${created.id}/draft`, draft.revision, { ...input, nodes }));
-      expect(policyOf(saved.latestVersion.nodes.find((node) => node.key === key)!)).toBe(policy);
+      expect(policyOf(saved.latestVersion.nodes.find((node) => node.key === key)!)).toBeUndefined();
       expect((await api(x, 'PUT', `/${created.id}/draft`, draft.revision, input)).status).toBe(409);
     });
   }
