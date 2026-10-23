@@ -1135,6 +1135,20 @@
       "when": 1792465018550,
       "tag": "0161_be5b_retirement_rehire",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1792771350203,
+      "tag": "0162_f314_rehire_dependency",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1792771705941,
+      "tag": "0163_f314_retirement_change_trigger",
+      "breakpoints": true
     }
   ]
 }

@@ -727,7 +727,10 @@ export const employmentActivationAttempts = pgTable(
       sql`(${t.outcome} = 'effective') = (${t.reason} IS NULL)
         AND (${t.outcome} = 'suspended') = (${t.blockedByBusinessId} IS NOT NULL)`,
     ),
-    check('employment_activation_attempts_trigger', sql`${t.trigger} IN ('scheduler', 'retry', 'approval')`),
+    check(
+      'employment_activation_attempts_trigger',
+      sql`${t.trigger} IN ('scheduler', 'retry', 'approval', 'retirement_change')`,
+    ),
     check('employment_activation_attempts_detail_object', sql`jsonb_typeof(${t.detail}) = 'object'`),
     check('employment_activation_attempts_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],

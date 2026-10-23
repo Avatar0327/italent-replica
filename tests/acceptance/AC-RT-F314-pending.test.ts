@@ -231,6 +231,19 @@ describe('AC-RT-F314 DEC-677 挂起与自动续办', () => {
     expect(await x.attempts(target.id)).toHaveLength(1);
   });
 
+  it('退休先迟到生效、返聘后批准：同样顺延到退休次日，保留人工计划日', async () => {
+    const x = await world('retired-before-approval');
+    const retirement = await x.submittedRetire('2026-10-15');
+    const target = await draft(x);
+    await submit(x, target);
+    await x.approve(retirement, '2026-10-20T02:00:00Z');
+    expect((await x.business(target.id)).status).toBe('in_review');
+    expect((await x.approve(target, '2026-10-22T02:00:00Z')).status).toBe('effective');
+    expect((await x.timeline()).at(-1)).toMatchObject({ kind: 'retire_rehire', start_date: '2026-10-21' });
+    expect((await x.versions(target.id)).at(-1)).toMatchObject({ effective_date: '2026-10-21', planned: '2026-10-18' });
+    expect(await x.audits(target.id, 'employment.retire_rehire.rescheduled')).toHaveLength(1);
+  });
+
   it.each(['cancel', 'reject', 'cancel-approved'] as const)(
     '尚未到期时退休 %s：不级联作废返聘，到期精确失败并进 HR 待办',
     async (action) => {
@@ -261,10 +274,28 @@ describe('AC-RT-F314 DEC-677 挂起与自动续办', () => {
       reason: VOIDED,
       detail: expect.objectContaining({ message: '关联退休已作废' }),
     });
+    expect((await x.audits(target.id, 'employment.activation.failed')).at(-1)?.after).toMatchObject({
+      trigger: 'retirement_change',
+      reason: VOIDED,
+    });
     if (action === 'cancel') await x.submittedRetire('2026-10-16');
     await x.runScheduler('2026-10-19T01:00:00Z');
     await failed(x, target.id);
     expect((await x.attempts(target.id)).filter((row) => row.outcome === 'failed')).toHaveLength(1);
+  });
+
+  it('HR 对关联退休作废的失败显式重试：记录本次失败尝试，不被挂起去重吞掉', async () => {
+    const x = await world('voided-retry');
+    const retirement = await x.submittedRetire('2026-10-15');
+    const target = await approved(x);
+    await cancel(x, retirement.id);
+    await x.runScheduler('2026-10-18T01:00:00Z');
+    const response = await x.retry(target, '2026-10-19T01:00:00Z');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      activation: { status: 'failed', failureReason: VOIDED, failureCount: 2 },
+    });
+    expect((await x.attempts(target.id)).map((row) => row.reason)).toEqual([VOIDED, VOIDED]);
   });
 
   it('退休预览和生效共用保留规则：保留后续返聘，其他申请仍作废', async () => {

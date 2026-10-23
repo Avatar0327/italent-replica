@@ -14,6 +14,7 @@ import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
+import { retireRehireActivationDecision } from './retire-rehire-eligibility.js';
 import {
   activationPredecessors,
   PREDECESSOR_FAILED,
@@ -44,6 +45,7 @@ import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js'
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
+  assertBusinessSequence,
   materializeEmploymentRecord,
   NEW_CYCLE_KINDS,
   requireSavedBusiness,
@@ -142,6 +144,8 @@ export async function transitionEmployment(
   // 调动业务的员工侧校验留在主函数里：F-039 按调用邻近度探测 transfer write，下沉一层会被判为口径变弱
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit') await assertRegularizationSubmittable(tx, ctx, business);
+  if (input.action === 'submit' && business.payload.kind === 'retire_rehire')
+    await assertBusinessSequence(tx, ctx, business.employeeId, business.payload);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
@@ -221,6 +225,11 @@ export async function transitionEmployment(
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  const rehireDecision = item && (await retireRehireActivationDecision(tx, ctx, item));
+  if (rehireDecision) {
+    await recordActivationAttempt(tx, ctx, item, { ...rehireDecision, trigger: 'approval' }, { bumpRevision: false });
+    return;
+  }
   const before = await blockingPredecessors(tx, ctx, predecessors, business.id);
   try {
     await postponeLateTransfer(tx, ctx, business);

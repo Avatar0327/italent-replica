@@ -97,6 +97,9 @@ export async function lateWindowBlockers(
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${business.employeeId}::uuid AND b.id<>${business.id}::uuid
       AND s.state IN ('draft','in_review','approved','rejected')
       AND NOT EXISTS (SELECT 1 FROM employment_records r WHERE r.tenant_id=b.tenant_id AND r.id=b.id)
+      -- DEC-677：依赖本退休的返聘会顺延到退休后，不能反过来阻塞退休的迟到落地。
+      AND NOT EXISTS (SELECT 1 FROM retire_rehire_dependencies d WHERE d.tenant_id=b.tenant_id
+        AND d.business_id=b.id AND d.retirement_id=${business.id}::uuid AND d.invalidated_at IS NULL)
       AND ${plannedOf}>=${planned}::date AND ${plannedOf}<${executionDate}::date
       AND (${plannedOf}>${planned}::date
         OR ${operationKey(ctx.tenantId, sql`b.id`)}>${operationKey(ctx.tenantId, sql`${business.id}::uuid`)})

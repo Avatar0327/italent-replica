@@ -1,4 +1,4 @@
-/** DEC-675 方案 C：在途退休不误生实习转正，退休生效后走现有退休返聘待入职。 */
+/** DEC-679：在途退休不误生实习转正，退休生效后走现有退休返聘待入职。 */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';

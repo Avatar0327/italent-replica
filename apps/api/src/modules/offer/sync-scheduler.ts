@@ -11,6 +11,7 @@ import { sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
+import { pendingRetirementBefore } from '../employment/retire-rehire-eligibility.js';
 import { readOfferSyncSetting, syncOfferWhenDue, type OfferSyncContext } from './sync.js';
 
 const DEFAULT_LIMIT = 200;
@@ -96,7 +97,8 @@ async function sweepTenant(
       : sql`true`;
   const internSkipped = setting.internConversion
     ? sql`true`
-    : sql`NOT (linked_employee_id IS NOT NULL AND ${activeInternLast})`;
+    : sql`NOT (linked_employee_id IS NOT NULL AND ${activeInternLast}
+        AND NOT ${pendingRetirementBefore(tenant.id, sql`offers.linked_employee_id`, sql`offers.planned_entry_date`)})`;
   // 先处理从未同步过的，再重试失败的（同一业务日失败只重试一次）：持续失败的 Offer 不会挤掉新到期的
   const passes = [
     sql`sync_status IS NULL`,
