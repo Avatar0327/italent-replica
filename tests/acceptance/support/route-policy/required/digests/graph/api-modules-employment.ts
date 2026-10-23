@@ -3210,9 +3210,11 @@ export const GRAPH: Graph = {
     '#allOf',
     '#employeeColumns',
     '#filterPredicates',
+    '#oneOf',
     '#primaryJoin',
     '#viewPredicate',
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#approvalItem': [
@@ -3226,8 +3228,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#filterPredicates': [
+    '#oneOf',
     'apps/api/src/modules/employment/part-time/store.ts#uuidArray',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+  ],
+  'apps/api/src/modules/employment/part-time/queries.ts#latestPendingJoin': [
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DEPARTMENT',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#listPartTimeView': [
     '#approvalCandidates',
@@ -3256,6 +3263,8 @@ export const GRAPH: Graph = {
     '#allOf',
     '#employeeColumns',
     '#filterPredicates',
+    '#latestPendingJoin',
+    '#oneOf',
     '#primaryJoin',
     '#viewPredicate',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DEPARTMENT',
@@ -3265,9 +3274,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/read.ts#partTimeColumns',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeFrom',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeVisible',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentSql',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeServiceStatusSql',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#viewPredicate': [
+    '#oneOf',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_START',
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeViewSql',
@@ -3806,8 +3819,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#parseViewQuery': [
     'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#MULTI_QUERY_KEYS',
     '#VIEW_QUERY_KEYS',
     '#viewQuery',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#sortable',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#partTimeFields': [
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
@@ -3815,6 +3830,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#receipt': [
     'apps/api/src/modules/employment/part-time/read.ts#loadPartTime',
+  ],
+  'apps/api/src/modules/employment/part-time/routes.ts#requestStates': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_STATES',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#requireViewableFilters': ['#FILTER_FIELDS'],
   'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': [
@@ -3920,6 +3938,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
     '#date',
     '#enabledQuery',
+    '#multi',
+    '#requestStates',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#SORT_FIELDS',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_TYPES',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
     'packages/domain/src/employment/part-time.ts#PART_TIME_EXPIRING_DAYS',
     'packages/domain/src/employment/part-time.ts#PART_TIME_VIEWS',
@@ -4033,6 +4055,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/employment/part-time/span-sql.ts#ended': ['#partTimeEmptySql'],
+  'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeServiceStatusSql': ['#ended'],
   'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeViewSql': [
     '#ended',
     '#partTimeCurrentSql',
@@ -4155,6 +4178,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/references.ts#validateEmploymentReferences',
     'apps/api/src/modules/job/validation.ts#invalid',
     'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks': ['#hooks'],
   'apps/api/src/modules/employment/personnel-reader.ts#ASSIGNMENT_COLUMNS': ['#INCUMBENT_COLUMNS'],
