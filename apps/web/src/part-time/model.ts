@@ -165,10 +165,21 @@ function expiringDays(filters: Filters, days: number, today?: string) {
   if (!today || !filters.endTo) return days;
   return Math.max(PART_TIME_EXPIRING_DAYS.min, dateDistance(today, filters.endTo));
 }
-// 用当前字段权重投影，撤权后旧筛选草稿不能继续进入请求；不从行中缺键推断整个列表的权限。
-export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
+// 对齐 routes.ts 的视图专属参数，字段权限与视图限制同时成立才可进入请求。
+const filterViews: Partial<Record<keyof Filters, View>> = {
+  serviceStatuses: 'all',
+  current: 'all',
+  pendingStatuses: 'expiring',
+  kinds: 'in_approval',
+  statuses: 'in_approval',
+  requestSources: 'in_approval',
+};
+export function allowedFilters(filters: Filters, allowed: Allowed, view?: View): Filters {
   return Object.fromEntries(
-    Object.entries(filters).filter(([key, val]) => val?.length && allowed(key as keyof Filters)),
+    Object.entries(filters).filter(([key, val]) => {
+      const field = key as keyof Filters;
+      return val?.length && allowed(field) && (!view || !filterViews[field] || filterViews[field] === view);
+    }),
   );
 }
 export function listPath(
@@ -181,7 +192,7 @@ export function listPath(
 ): string {
   const query = new URLSearchParams({ view, page: String(page), pageSize: '30' });
   if (view === 'expiring') query.set('days', String(expiringDays(filters, days, today)));
-  for (const [key, input] of Object.entries(filters)) {
+  for (const [key, input] of Object.entries(allowedFilters(filters, () => true, view))) {
     if (input && (key !== 'includeChildren' || filters.departmentId)) {
       if (Array.isArray(input)) input.forEach((value) => query.append(key, value));
       else query.set(key, input);

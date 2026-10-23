@@ -1,5 +1,4 @@
 import { Button, Pagination } from 'antd';
-import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../foundation/PageState.js';
 import { useToday } from '../contracts/references.js';
@@ -15,65 +14,44 @@ import { d } from './direct-messages.js';
 import type { Row } from './model.js';
 import { RequestEntries, NewRequestButton } from './RequestEntries.js';
 import { m } from './messages.js';
+import { useViewState } from './list-state.js';
 function useList() {
   const access = useDirectAccess();
-  const [checked, check] = useState<Row[]>([]);
-  const [direct, setDirect] = useState<string>();
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'ongoing';
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<Filters>({});
-  const [sort, setSort] = useState<Sort>();
-  const [drawer, setDrawer] = useState(false);
-  const [selected, select] = useState<Selection>();
+  const { state, patch, reset } = useViewState(view);
+  const { page, filters, sort } = state;
   const allowed = useFilterPermission();
   const canSort = useSortPermission(view);
   const projectedSort = sort && canSort(sort.sortBy) ? sort : undefined;
-  const projected = allowedFilters(filters, allowed);
+  const projected = allowedFilters(filters, allowed, view);
   const today = useToday();
   const result = useRead<ListResult>(listPath(view, page, projected, 30, projectedSort, today));
-  const switchView = (next: View) => {
-    setParams({ view: next });
-    setPage(1);
-    setFilters({});
-    setSort(undefined);
-    select(undefined);
-    check([]);
-    setDirect(undefined);
-  };
   return {
+    ...state,
     access,
-    checked,
-    check,
-    direct,
-    setDirect,
+    check: (checked: Row[]) => patch({ checked }),
+    setDirect: (direct?: string) => patch({ direct }),
     async refreshDirect() {
       await result.reload();
     },
-    view,
-    page,
-    setPage,
-    filters,
-    setFilters,
-    drawer,
-    setDrawer,
-    selected,
-    select,
+    setPage: (page: number) => patch({ page }),
+    setDrawer: (drawer: boolean) => patch({ drawer }),
+    select: (selected?: Selection) => patch({ selected }),
     allowed,
     canSort,
     sort: projectedSort,
     onSort(next?: Sort) {
-      setSort(next);
-      setPage(1);
-      check([]);
+      patch({ sort: next, page: 1, checked: [] });
     },
     projected,
     result,
-    switchView,
+    switchView(next: View) {
+      if (next === view) reset();
+      setParams({ view: next });
+    },
     applyFilters(next: Filters) {
-      setFilters(allowedFilters(next, allowed));
-      setPage(1);
-      check([]);
+      patch({ filters: allowedFilters(next, allowed, view), page: 1, checked: [] });
     },
   };
 }
@@ -124,7 +102,7 @@ export function PartTimeList() {
 }
 
 function ListCard({ state }: { state: State }) {
-  const { view, setPage, setFilters, setDrawer, select, result } = state;
+  const { view, setDrawer, select, result } = state;
   return (
     <section className="part-time-card">
       <div className="part-time-toolbar">
@@ -145,13 +123,7 @@ function ListCard({ state }: { state: State }) {
         )}
         <NewRequestButton />
         {hasAdvancedFilters(view) && <Button onClick={() => setDrawer(true)}>{m.filter}</Button>}
-        <Button
-          type="text"
-          onClick={() => {
-            setFilters({});
-            setPage(1);
-          }}
-        >
+        <Button type="text" onClick={() => state.applyFilters({})}>
           {m.reset}
         </Button>
         <Button onClick={result.refresh}>{m.refresh}</Button>
