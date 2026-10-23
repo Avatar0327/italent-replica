@@ -43,7 +43,9 @@ describe('AC-EXIT-F316 两节点 × 三选项 × 有人 / 无人', () => {
           expect(pending).toEqual([
             expect.objectContaining({ nodeKey: key === 'work_handover' ? 'other_handover' : 'employee_confirm' }),
           ]);
-          const tasks = await x.sqlRows(sql`SELECT id, assignee_user_id, status, origin FROM approval_tasks
+          const tasks = await x.sqlRows<{
+            id: string;
+          }>(sql`SELECT id, assignee_user_id, status, origin FROM approval_tasks
             WHERE tenant_id=${x.tenantId} AND instance_id=${run.instanceId}::uuid AND node_key=${key}`);
           expect(tasks).toEqual([
             expect.objectContaining({ assignee_user_id: null, status: 'approved', origin: 'no_assignee_approve' }),
@@ -66,6 +68,69 @@ describe('AC-EXIT-F316 两节点 × 三选项 × 有人 / 无人', () => {
 });
 
 describe('AC-EXIT-F316 默认与指定人员退回', () => {
+  it('DEC-678 自动同意是节点出口操作：自定义人数阈值不会把无人节点退回', async () => {
+    const x = await world(database().db, 'threshold');
+    await publish(
+      x,
+      definition(x, {
+        work_handover: {
+          emptyApproverPolicy: 'auto_approve',
+          transitionRule: {
+            type: 'custom',
+            rules: {
+              approve: { kind: 'count', value: 2 },
+              disagree: { kind: 'count', value: 1 },
+            },
+          },
+        },
+      }),
+    );
+    const run = await reach(x, 'work_handover', false);
+    expect((await x.pendingNode(run.instanceId))?.nodeKey).toBe('other_handover');
+    expect(await x.instanceStatus(run.instanceId)).toBe('running');
+  });
+
+  it('DEC-678 同节点仍有一个主处理人时，不因其他空表达式自动同意', async () => {
+    const x = await world(database().db, 'mixed');
+    await publish(
+      x,
+      definition(x, {
+        work_handover: {
+          emptyApproverPolicy: 'auto_approve',
+          approvers: ['handover_work_owner', 'record_department_hrbp'],
+        },
+      }),
+    );
+    const run = await reach(x, 'work_handover', false);
+    expect(await x.pendingTasks(run.instanceId)).toEqual([
+      expect.objectContaining({ nodeKey: 'work_handover', userId: x.hrbp.userId }),
+    ]);
+  });
+
+  it('DEC-097/678 下游空审批人自动同意不算人工处理，原审批人仍能取回', async () => {
+    const x = await world(database().db, 'retrieve', false);
+    const input = definition(x, { other_handover: { emptyApproverPolicy: 'auto_approve' } });
+    await publish(x, {
+      ...input,
+      nodes: input.nodes.map((node) =>
+        node.key === 'work_handover' ? { ...node, actions: { ...node.actions, retrieve: true } } : node,
+      ),
+    });
+    const run = await reach(x, 'work_handover', true);
+    const work = (await x.pendingNode(run.instanceId))!;
+    const approved = await x.decide(run.instanceId);
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    const current = (await x.pendingNode(run.instanceId))!;
+    expect(current.nodeKey).toBe('employee_confirm');
+    const retrieved = await x.api.request('POST', `/api/tenant/approval/tasks/${work.taskId}/retrieve`, {
+      ...x.tenantAs(work.userId),
+      ifMatch: current.revision,
+      body: {},
+    });
+    expect(retrieved.status, await retrieved.clone().text()).toBe(200);
+    expect((await x.pendingNode(run.instanceId))?.nodeKey).toBe('work_handover');
+  });
+
   for (const key of KEYS) {
     it.each([false, true])(`DEC-663 ${key} 未配置新字段，兜底有人=%s，行为保持`, async (hasFallback) => {
       const x = await world(database().db, `default-${key}-${hasFallback}`, false);

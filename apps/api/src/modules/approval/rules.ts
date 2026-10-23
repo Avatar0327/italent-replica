@@ -9,7 +9,7 @@ export function isActiveInstance(instance: Pick<InstanceRow, 'status' | 'busines
 }
 
 /** 系统自动处理的任务（自动同意 / 自动跳过 / 自审跳过），不算人工处理。 */
-const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip']);
+const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip', 'no_assignee_approve']);
 /**
  * 系统结束的任务也不算人工处理（P2-3）：会签节点流转后其余待办自动结束（ended）、同一人承接多席时多出的一席
  * （merged）。

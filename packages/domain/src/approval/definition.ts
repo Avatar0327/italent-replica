@@ -3,6 +3,7 @@
  */
 import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
+import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
 import {
   approverExpressionsOf,
   ASSESSMENT_ONLY_APPROVERS,
@@ -74,10 +75,26 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
       violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
     }
     violations.push(...fallbackViolations(node, type));
+    const emptyPolicy = emptyApproverPolicyViolation(node, type);
+    if (emptyPolicy) violations.push(emptyPolicy);
     const offerViolation = offerApproverViolation(node, type);
     if (offerViolation) violations.push(offerViolation);
   }
   return violations;
+}
+
+/** F-316 / DEC-678：按交接节点校验三选一，不把自动同意开放给其他审批业务。 */
+export function emptyApproverPolicyViolation(node: ApprovalNode, type: ApprovalTypeDefinition): string | null {
+  const policy = node.emptyApproverPolicy;
+  if (policy === undefined) return null;
+  const work = node.key === HANDOVER_NODE_KEYS.work;
+  const other = node.key === HANDOVER_NODE_KEYS.other;
+  if (type.adapter !== 'exit_handover' || !isCountersign(node) || (!work && !other))
+    return `节点 ${node.key} 的空审批人处理方式只能配置在离职交接的两个会签节点上`;
+  const allowed = work ? ['stop', 'auto_approve', 'specified'] : ['exception_admin', 'auto_approve', 'specified'];
+  if (!allowed.includes(policy)) return `节点 ${node.key} 的空审批人处理方式不合法`;
+  if (policy === 'auto_approve' && !hasExit(node, 'approve')) return `节点 ${node.key} 配置自动同意时必须有同意出口`;
+  return null;
 }
 
 /** DEC-663：兜底处理人只配在离职交接申请的会签交接节点上，且不重复、有上限。 */

@@ -56,6 +56,7 @@ export const GRAPH: Graph = {
     '#CUSTOM_FIELD',
     '#MAX_NODES',
     '#NODE_KEY',
+    '#emptyApproverPolicyViolation',
     '#fallbackViolations',
     '#nodeShapeViolations',
     '#offerApproverViolation',
@@ -63,6 +64,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
+  'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation': [
+    'packages/domain/src/approval/types.ts#hasExit',
+    'packages/domain/src/approval/types.ts#isCountersign',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
   'packages/domain/src/approval/definition.ts#fallbackViolations': [
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',

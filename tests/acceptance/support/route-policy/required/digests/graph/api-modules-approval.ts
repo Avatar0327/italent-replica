@@ -704,6 +704,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'packages/domain/src/approval/types.ts#isApprovalType',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#assertEmptyApproverPolicies': [
+    '#emptyPolicyError',
+    'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'apps/api/src/modules/approval/definition-input.ts#conditionItem': [
     '#text',
     'packages/domain/src/approval/types.ts#CONDITION_OPERATORS',
@@ -715,6 +720,13 @@ export const GRAPH: Graph = {
     '#node',
     '#optionalText',
     '#text',
+  ],
+  'apps/api/src/modules/approval/definition-input.ts#emptyApproverPolicy': [
+    '#emptyPolicyError',
+    'packages/domain/src/approval/types.ts#EMPTY_APPROVER_POLICIES',
+  ],
+  'apps/api/src/modules/approval/definition-input.ts#emptyPolicyError': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/definition-input.ts#exitRule': [
     'packages/domain/src/approval/types.ts#EXIT_RULE_KINDS',
@@ -729,6 +741,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#canonicalId',
     '#avoidSubjectsResult',
     '#codeList',
+    '#emptyApproverPolicy',
     '#messageRule',
     '#text',
     '#transitionRule',
@@ -744,6 +757,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definition-input.ts#toDefinition': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    '#assertEmptyApproverPolicies',
     '#nodeTypeViolations',
     '#toNode',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
@@ -859,6 +873,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#versionId': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#writeVersionContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/definition-input.ts#assertEmptyApproverPolicies',
     '#assertFallbackUsers',
     '#nodeTypeColumns',
     '#textArray',
@@ -989,7 +1004,6 @@ export const GRAPH: Graph = {
     '#noAssignee',
     '#seatOf',
     '#seatUser',
-    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
   ],
   'apps/api/src/modules/approval/engine.ts#currentRouting': [
     '#nodeIndex',
@@ -1009,10 +1023,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
   ],
   'apps/api/src/modules/approval/engine.ts#enterCountersign': [
+    '#assign',
+    '#autoProcess',
     '#countersignSeats',
+    '#noAssignee',
     '#recordSelfSkip',
     '#returnInstance',
     '#writeSeat',
+    'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#loadTasks',
     'packages/domain/src/approval/countersign.ts#countersignOutcome',
@@ -1170,6 +1188,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
+  'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers': [
+    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
+    'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
   'apps/api/src/modules/approval/handover.ts#assertTenantMember': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1381,11 +1404,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/resolver.ts#personOfUser': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidate': ['#memo', '#resolveFresh'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidates': [
+    '#resolveCandidate',
+    '#resolveFallbackCandidates',
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+  ],
+  'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates': [
     '#isEligibleApprover',
     '#memo',
     '#personOfUser',
-    '#resolveCandidate',
-    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
   ],
   'apps/api/src/modules/approval/resolver.ts#resolveFresh': [
     '#NOBODY',
