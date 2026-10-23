@@ -32,11 +32,34 @@ const releasedSet = (entries) => new Set(entries.map(norm));
 // F-303 点名的待实测 / 待取证 / 待定，加 F-290 已有待决写法（回归与历史 CONFLICT），不扩展其他同义词。
 const PENDING_STATUS = /待(?:实测|取证|定|确认|复核|用户|原站)/;
 const startsChecked = (statusCell) => /^✅/.test(statusCell.trim());
+// F-303 P2-1：标点与圈号只在括号外分项，避免诊断丢掉括号内的说明。
+function statusItems(statusCell) {
+  const items = [];
+  const closers = [];
+  let start = 0;
+  for (const match of statusCell.matchAll(/[()（）；;。，,、]|\.\s+|<br\s*\/?>|[①-⑳]/gi)) {
+    const token = match[0];
+    if (token === '(' || token === '（') {
+      closers.push(token === '(' ? ')' : '）');
+      continue;
+    }
+    if (token === ')' || token === '）') {
+      // 只闭合栈顶同类括号；孤立右括号保留原文，未闭合的左括号保守保留后续文字。
+      if (token === closers.at(-1)) closers.pop();
+      continue;
+    }
+    if (closers.length) continue;
+    items.push(statusCell.slice(start, match.index));
+    start = /[①-⑳]/.test(token) ? match.index : match.index + token.length;
+  }
+  items.push(statusCell.slice(start));
+  return items;
+}
+
 // 保留原文与圈号供定位；括号内的待决项同样检查，不能被外面的 ✅ 或后面的“已完成”覆盖。
 function checkedPendingItems(statusCell) {
   if (!startsChecked(statusCell)) return [];
-  return statusCell
-    .split(/[；;。，,、]|\.\s+|<br\s*\/?>|(?=[①-⑳])/i)
+  return statusItems(statusCell)
     .map((item) => item.trim())
     .filter((item) => PENDING_STATUS.test(norm(item)));
 }
