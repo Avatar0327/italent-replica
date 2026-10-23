@@ -1,14 +1,16 @@
 /**
  * 撤销离职的下游数据清单与探针端口（R2-T03 设计 §7.4，DEC-275①，DM-R5 / 原站 W-517）。
- * 清单固定四类，顺序固定：合同、职责转交、离职交接、薪资档案；合同与职责转交按 exit_effects 真实历史填充，离职交接（BE-8）与
- * 薪资档案（复刻中尚无薪资模块）默认 not_connected 占位。其他台账效果（被作废的在途任职申请、被撤回的合同申请、挂回的未来调动、
- * 编制预减收回）作为 additional 附加项列在四类之后。探针按 kind 登记，后续模块（BE-8、兼职 PT6b、F-140 改期）用
+ * 清单固定四类，顺序固定：合同、职责转交、离职交接、薪资档案；合同与职责转交按 exit_effects 真实历史填充，离职交接按关联交接单
+ * 填充（F-302），薪资档案（复刻中尚无薪资模块）默认 not_connected 占位。其他台账效果（被作废的在途任职申请、被撤回的合同申请、
+ * 挂回的未来调动、编制预减收回）作为 additional 附加项列在四类之后。探针按 kind 登记，后续模块（兼职 PT6b、F-140 改期）用
  * registerDownstreamProbe 接入或替换，不改本文件；入口签名 probeDownstream 保持稳定。
  * 目标按查看人裁剪（trimDownstream）：合同按合同对象查看权，任职业务 / 职责转交下属按 DEC-177 可见范围，不可见的只计 hiddenCount。
  */
 import { sql, type Tx } from '@italent/db';
-import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
+import { CONTRACT_OBJECT, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
+import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { batchDisclose } from './exit-gate.js';
+import { loadEmploymentBusiness } from './read-model.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { visibleEmploymentRecords } from './visibility.js';
@@ -104,10 +106,30 @@ const notConnected = (kind: string): DownstreamProbe => ({
   probe: async () => ({ status: 'not_connected', targets: [] }),
 });
 
+const HANDOVER_TARGET = 'exit-handover-request';
+
+/** F-302 / DM-R5：保存撤销前的交接快照；终止仍由同事务内的 onCancelled 钩子完成，已完成记录保留。 */
+const handoverProbe: DownstreamProbe = {
+  kind: 'handover',
+  async probe(tx, ctx, input) {
+    const requests = rowsOf<{ id: string; state: string }>(
+      await tx.execute(sql`SELECT id, state FROM exit_handover_requests
+        WHERE tenant_id=${ctx.tenantId} AND exit_request_id=${input.businessId}::uuid
+          AND employee_id=${input.employeeId}::uuid ORDER BY created_at, id`),
+    );
+    const targets = requests.map((row) => ({
+      type: HANDOVER_TARGET,
+      id: row.id,
+      detail: { stateBefore: row.state },
+    }));
+    return { status: targets.length ? 'found' : 'none', targets };
+  },
+};
+
 const probes = new Map<string, DownstreamProbe>([
   ['contract', ledgerProbe('contract', ['contract_terminated', 'contract_deleted'])],
   ['duty_transfer', ledgerProbe('duty_transfer', ['duty_transferred', 'duty_failed'])],
-  ['handover', notConnected('handover')],
+  ['handover', handoverProbe],
   ['payroll', notConnected('payroll')],
 ]);
 
@@ -166,12 +188,62 @@ async function allowed(ctx: EmploymentContext, resource: string) {
 
 const DEPARTMENT_SCOPED_TYPES = ['employment-business', 'employment-record', 'part-time-request'];
 
+/**
+ * 与 GET exits/:id/handover 同按父离职单的当前读权和 DEC-177 范围披露；使用用户维度取离职创建者，不能拿交接发起员工代替。
+ * 从当前租户记录解析父单，不信任台账内的权限坐标；只投影交接 ID 与可见的状态快照，不输出员工、部门或审批参与人。
+ */
+async function discloseHandovers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  targets: readonly DownstreamTarget[],
+  employeeId: string,
+): Promise<Map<string, DownstreamTarget>> {
+  const handovers = targets.filter((target) => target.type === HANDOVER_TARGET);
+  const result = new Map<string, DownstreamTarget>();
+  const objectCode = MODULE_OBJECTS.employmentRecord.code;
+  if (!handovers.length || !(await allowed(ctx, objectCode))) return result;
+  if (ctx.authorize && !(await ctx.authorize({ ...ctx, action: 'tenant.employment.read', resource: employeeId })))
+    return result;
+  const fields = ctx.authorize
+    ? await getModuleViewableFieldsInTransaction(
+        { authorize: ctx.authorize, clock: () => ctx.now },
+        ctx,
+        objectCode,
+        tx,
+      )
+    : undefined;
+  if (fields && !fields.has('id')) return result;
+  const ids = `{${handovers.map((target) => target.id).join(',')}}`;
+  const requests = rowsOf<{ id: string; exitId: string }>(
+    await tx.execute(sql`SELECT id, exit_request_id AS "exitId" FROM exit_handover_requests
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND id=ANY(${ids}::uuid[])`),
+  );
+  const visibleExits = new Set<string>();
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  for (const exitId of new Set(requests.map((row) => row.exitId))) {
+    const business = await loadEmploymentBusiness(tx, ctx.tenantId, exitId, today, ctx.scope);
+    if (business?.kind === 'leave') visibleExits.add(exitId);
+  }
+  const visibleIds = new Set(requests.filter((row) => visibleExits.has(row.exitId)).map((row) => row.id));
+  for (const target of handovers) {
+    if (!visibleIds.has(target.id)) continue;
+    const detail = !fields || fields.has('status') ? target.detail : undefined;
+    result.set(target.id, {
+      type: HANDOVER_TARGET,
+      id: target.id,
+      ...(detail ? { detail: { stateBefore: detail.stateBefore } } : {}),
+    });
+  }
+  return result;
+}
+
 /** 每个目标是否对查看人可见：合同类按合同对象查看权，任职业务按 DEC-177，职责转交按下属可见，编制按编制对象查看权。 */
 async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly DownstreamTarget[], employeeId: string) {
   const visible = new Map<string, boolean>();
   const key = (target: DownstreamTarget) => `${target.type}:${target.id}`;
   const contract = await allowed(ctx, CONTRACT_OBJECT);
   const capacity = await allowed(ctx, MODULE_OBJECTS.establishment.code);
+  const handovers = await discloseHandovers(tx, ctx, targets, employeeId);
   // 兼职申请（PT-6b，kind = 'part-time'）与任职业务同按 DEC-177 以所属部门判定；其余未知类型仍走失败即关
   const businesses = targets.filter((target) => DEPARTMENT_SCOPED_TYPES.includes(target.type));
   const shown = businesses.length
@@ -197,9 +269,10 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
     else if (target.type === 'establishment-capacity') visible.set(key(target), capacity);
     else if (target.type === 'transfer-linkage-item')
       visible.set(key(target), linkedVisible[linked.indexOf(target)] ?? false);
+    else if (target.type === HANDOVER_TARGET) visible.set(key(target), handovers.has(target.id));
     else visible.set(key(target), shownBusiness.has(target.id));
   }
-  return { visible, key };
+  return { visible, key, handovers };
 }
 
 /** 响应前按查看人裁剪：不可见的目标移除并计入 hiddenCount；可见目标不回传 employeeId / departmentId 等判定用字段。 */
@@ -210,12 +283,14 @@ export async function trimDownstream(
   employeeId: string,
 ): Promise<Downstream> {
   const all = [...downstream.items, ...downstream.additional].flatMap((entry) => entry.targets);
-  const { visible, key } = await visibleMap(tx, ctx, all, employeeId);
+  const { visible, key, handovers } = await visibleMap(tx, ctx, all, employeeId);
   const trim = <T extends { targets: readonly DownstreamTarget[] }>(entry: T) => {
     const shown = entry.targets.filter((target) => visible.get(key(target)));
     return {
       ...entry,
-      targets: shown.map(({ type, id, detail }) => ({ type, id, ...(detail ? { detail } : {}) })),
+      targets: shown.map(({ type, id, detail }) =>
+        type === HANDOVER_TARGET ? handovers.get(id)! : { type, id, ...(detail ? { detail } : {}) },
+      ),
       hiddenCount: entry.targets.length - shown.length,
     };
   };
