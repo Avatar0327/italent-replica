@@ -45,6 +45,8 @@ export const m = {
   includeChildren: '包含下级部门',
   days: '到期天数',
   rangeInvalid: '日期区间的起始日期不能晚于结束日期',
+  expiringRangeInvalid: '即将到期的结束日期不能超过租户今天起 365 天',
+  todayUnavailable: '租户业务日期不可用，请刷新后重试',
   choose: '请选择',
   fields: {
     name: '姓名',

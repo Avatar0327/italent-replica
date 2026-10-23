@@ -4,7 +4,7 @@ import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { type Choice } from '../foundation/selectors.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { RefSelect, usePeople, useToday } from '../contracts/references.js';
-import { object, personObject, rangeInvalid, sortable, type Allowed, type Filters, type View } from './model.js';
+import { object, personObject, filterError, sortable, type Allowed, type Filters, type View } from './model.js';
 import { refPaths } from './references.js';
 import { m } from './messages.js';
 export function useFilterPermission(): Allowed {
@@ -38,24 +38,23 @@ export function useSortPermission(view: View) {
 }
 export function FiltersDrawer({
   initial,
-  days,
   view,
   allowed: permission,
   onClose,
   onApply,
 }: {
   initial: Filters;
-  days: number;
   view: View;
   allowed: Allowed;
   onClose(): void;
-  onApply(filters: Filters, days: number): void;
+  onApply(filters: Filters): void;
 }) {
+  const today = useToday();
   const [draft, setDraft] = useState(initial);
   const allowed = (key: keyof Filters) => filterKeys(view, true).includes(key) && permission(key);
-  const [invalid, setInvalid] = useState(false);
+  const [invalid, setInvalid] = useState<string>();
   const set: DraftProps['set'] = (key, val) => {
-    setInvalid(false);
+    setInvalid(undefined);
     setDraft((old) => ({ ...old, [key]: val }));
   };
   return (
@@ -64,14 +63,15 @@ export function FiltersDrawer({
       onClose={onClose}
       onClear={() => {
         setDraft({});
-        setInvalid(false);
+        setInvalid(undefined);
       }}
       onApply={() => {
-        if (rangeInvalid(draft)) setInvalid(true);
-        else onApply({ ...draft, keyword: draft.keyword?.trim() || undefined }, days);
+        const error = filterError(view, draft, today);
+        setInvalid(error);
+        if (!error) onApply({ ...draft, keyword: draft.keyword?.trim() || undefined });
       }}
     >
-      {invalid && <Alert type="error" message={m.rangeInvalid} />}
+      {invalid && <Alert type="error" message={invalid} />}
       <div className="part-time-filters">
         <BasicFilters draft={draft} set={set} allowed={allowed} />
         <ReferenceFilters draft={draft} set={set} allowed={allowed} />
@@ -338,10 +338,10 @@ export function QuickFilters({
     ...(view === 'expiring' ? { endFrom: today, endTo: end?.toISOString().slice(0, 10) } : {}),
     ...initial,
   }));
-  const [invalid, setInvalid] = useState(false);
+  const [invalid, setInvalid] = useState<string>();
   const allowed = (key: keyof Filters) => filterKeys(view, false).includes(key) && permission(key);
   const set: DraftProps['set'] = (key, value) => {
-    setInvalid(false);
+    setInvalid(undefined);
     setDraft((old) => ({ ...old, [key]: value }));
   };
   return (
@@ -354,15 +354,16 @@ export function QuickFilters({
         {filterKeys(view, false).some(allowed) && (
           <Button
             onClick={() => {
-              if (rangeInvalid(draft)) setInvalid(true);
-              else onApply(draft);
+              const error = filterError(view, draft, today);
+              setInvalid(error);
+              if (!error) onApply(draft);
             }}
           >
             {m.apply}
           </Button>
         )}
       </div>
-      {invalid && <Alert type="error" message={m.rangeInvalid} />}
+      {invalid && <Alert type="error" message={invalid} />}
       {view === 'in_approval' &&
         Object.entries(initial)
           .filter(([key]) => permission(key as keyof Filters))

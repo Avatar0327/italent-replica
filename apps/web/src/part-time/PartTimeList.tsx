@@ -2,6 +2,7 @@ import { Button, Pagination } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../foundation/PageState.js';
+import { useToday } from '../contracts/references.js';
 import { FiltersDrawer, QuickFilters, hasAdvancedFilters, useFilterPermission, useSortPermission } from './Filters.js';
 import { allowedFilters, listPath, views, type Filters, type ListResult, type Sort, type View } from './model.js';
 import { PartTimeTable } from './PartTimeTable.js';
@@ -23,14 +24,14 @@ function useList() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
   const [sort, setSort] = useState<Sort>();
-  const [days, setDays] = useState(30);
   const [drawer, setDrawer] = useState(false);
   const [selected, select] = useState<Selection>();
   const allowed = useFilterPermission();
   const canSort = useSortPermission(view);
   const projectedSort = sort && canSort(sort.sortBy) ? sort : undefined;
   const projected = allowedFilters(filters, allowed);
-  const result = useRead<ListResult>(listPath(view, page, projected, days, projectedSort));
+  const today = useToday();
+  const result = useRead<ListResult>(listPath(view, page, projected, 30, projectedSort, today));
   const switchView = (next: View) => {
     setParams({ view: next });
     setPage(1);
@@ -54,8 +55,6 @@ function useList() {
     setPage,
     filters,
     setFilters,
-    days,
-    setDays,
     drawer,
     setDrawer,
     selected,
@@ -81,7 +80,7 @@ function useList() {
 type State = ReturnType<typeof useList>;
 export function PartTimeList() {
   const state = useList();
-  const { view, days, setDays, drawer, setDrawer, selected, select, allowed, projected, result, switchView } = state;
+  const { view, drawer, setDrawer, selected, select, allowed, projected, result, switchView } = state;
   return (
     <RequestEntries refresh={result.reload} saved={(id) => select({ id, request: true })}>
       <h1>{m.title}</h1>
@@ -103,13 +102,11 @@ export function PartTimeList() {
       {drawer && (
         <FiltersDrawer
           initial={projected}
-          days={days}
           view={view}
           allowed={allowed}
           onClose={() => setDrawer(false)}
-          onApply={(next, nextDays) => {
+          onApply={(next) => {
             state.applyFilters(next);
-            setDays(nextDays);
             setDrawer(false);
           }}
         />
@@ -127,7 +124,7 @@ export function PartTimeList() {
 }
 
 function ListCard({ state }: { state: State }) {
-  const { view, setPage, setFilters, setDays, setDrawer, select, result } = state;
+  const { view, setPage, setFilters, setDrawer, select, result } = state;
   return (
     <section className="part-time-card">
       <div className="part-time-toolbar">
@@ -153,7 +150,6 @@ function ListCard({ state }: { state: State }) {
           onClick={() => {
             setFilters({});
             setPage(1);
-            setDays(30);
           }}
         >
           {m.reset}

@@ -1,3 +1,4 @@
+import { PART_TIME_EXPIRING_DAYS } from '@italent/domain';
 import { m } from './messages.js';
 export const object = 'TenantBase.EmploymentRecord';
 export const personObject = 'TenantBase.Employee';
@@ -148,15 +149,38 @@ export function rangeInvalid(filters: Filters): boolean {
     (filters.endFrom && filters.endTo && filters.endFrom > filters.endTo)
   );
 }
+const dateDistance = (from: string, to: string) =>
+  (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000;
+
+export function filterError(view: View, filters: Filters, today?: string): string | undefined {
+  if (rangeInvalid(filters)) return m.rangeInvalid;
+  if (view !== 'expiring' || (!filters.endFrom && !filters.endTo)) return;
+  if (!today) return m.todayUnavailable;
+  if ([filters.endFrom, filters.endTo].some((date) => date && dateDistance(today, date) > PART_TIME_EXPIRING_DAYS.max))
+    return m.expiringRangeInvalid;
+}
+
+/** R2-T05 §6.1 / F234B D14：日期右端换算现有 days 契约，保留显式区间与视图窗口的交集。 */
+function expiringDays(filters: Filters, days: number, today?: string) {
+  if (!today || !filters.endTo) return days;
+  return Math.max(PART_TIME_EXPIRING_DAYS.min, dateDistance(today, filters.endTo));
+}
 // 用当前字段权重投影，撤权后旧筛选草稿不能继续进入请求；不从行中缺键推断整个列表的权限。
 export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
   return Object.fromEntries(
     Object.entries(filters).filter(([key, val]) => val?.length && allowed(key as keyof Filters)),
   );
 }
-export function listPath(view: View = 'ongoing', page = 1, filters: Filters = {}, days = 30, sort?: Sort): string {
+export function listPath(
+  view: View = 'ongoing',
+  page = 1,
+  filters: Filters = {},
+  days = 30,
+  sort?: Sort,
+  today?: string,
+): string {
   const query = new URLSearchParams({ view, page: String(page), pageSize: '30' });
-  if (view === 'expiring') query.set('days', String(days));
+  if (view === 'expiring') query.set('days', String(expiringDays(filters, days, today)));
   for (const [key, input] of Object.entries(filters)) {
     if (input && (key !== 'includeChildren' || filters.departmentId)) {
       if (Array.isArray(input)) input.forEach((value) => query.append(key, value));
