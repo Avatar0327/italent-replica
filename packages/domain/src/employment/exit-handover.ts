@@ -108,8 +108,17 @@ export type HandoverEndReason = (typeof HANDOVER_END_REASONS)[number];
 /** 交接未发起的原因（exit_handover_requests.not_launched_reason）与给 HR 的提示文案。 */
 export const HANDOVER_NOT_LAUNCHED_HINTS = {
   NO_HANDLER: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+  APPROVAL_PROCESS_NOT_MATCHED: '离职交接未发起：没有可用的离职交接流程，请配置后重新提交',
+  NO_INITIATOR_ACCOUNT: '离职交接未发起：员工没有可用发起账号，请补充后重新提交',
 } as const;
 export type HandoverNotLaunchedReason = keyof typeof HANDOVER_NOT_LAUNCHED_HINTS;
+/** DEC-674 / F305A：复用任职对象的独立详情按钮，对应原站 HandoverReSubmit。 */
+export const HANDOVER_RESUBMIT_BUTTON = {
+  code: 'Employment.HandoverReSubmit',
+  name: '重新提交交接',
+  level: 'detail',
+  requires: 'update',
+} as const;
 /** 撤销离职终止交接的日志理由（B4 撤销端口）。 */
 export const HANDOVER_CANCEL_REASON = '离职撤销终止交接';
 

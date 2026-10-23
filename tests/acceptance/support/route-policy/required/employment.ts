@@ -39,6 +39,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
 const BL = `${SRC}/employment/blacklist-routes.ts`;
 const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const HANDOVER_SERVICE = `${SRC}/employment/exit-handover.ts`;
+const HANDOVER_RESUBMIT = `${SRC}/employment/exit-handover-resubmit.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -2975,6 +2976,55 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DEC-632）-----------------------------------------
+  'POST /api/tenant/employment/exit-handover-requests/:id/resubmit': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'POST',
+          '/exit-handover-requests/:id/resubmit',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.HandoverReSubmit@detail`,
+      [],
+      [
+        at(HANDOVER, 'POST', '/exit-handover-requests/:id/resubmit', 'requireHandoverResubmit(tx, ctx, id)'),
+        fn(
+          HANDOVER_RESUBMIT,
+          'handoverResubmitGuard',
+          'requireHandoverResubmit(tx, await commandContext(tx, deps, ctx), id)',
+        ),
+        fn(HANDOVER_RESUBMIT, 'requireHandoverResubmit', 'HANDOVER_RESUBMIT_BUTTON.code'),
+        {
+          role: 'const',
+          unit: 'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON',
+          anchor: "code: 'Employment.HandoverReSubmit'",
+        },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverResubmit',
+      [],
+      [
+        fn(
+          HANDOVER_RESUBMIT,
+          'requireHandoverResubmit',
+          'requireBusinessWriteScope(tx, ctx.authorize!, ctx, row.exitRequestId, row.employeeId)',
+        ),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '原离职业务写范围与当前员工范围；范围外与不存在同一个 404',
+    ),
+  ],
   'GET /api/tenant/employment/exits/:id/handover': [
     recordView(at(HANDOVER, 'GET', '/exits/:id/handover', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],

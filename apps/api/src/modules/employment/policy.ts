@@ -56,6 +56,7 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
+  HANDOVER_RESUBMIT_BUTTON,
   RETIREMENT_BUTTONS,
   RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
@@ -2345,6 +2346,19 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DM-R13 / DM-R14，DEC-632）----------------------------
+  // F-305 / DEC-674：同单重新提交，入口与命令内复核对象 / 独立按钮 / 原离职单及员工范围。
+  'POST /exit-handover-requests/:id/resubmit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(HANDOVER_RESUBMIT_BUTTON.code, 'detail'),
+    scope: guardScope('employment.handoverResubmit', NF_HANDOVER),
+    fields: fixed(['requestId', 'status', 'revision', 'approvalInstanceId'], 'DEC-674 重新提交交接固定命令回执'),
+    write: write('body', 'exitHandover.resubmit', none('固定交接命令回执，before 复核原离职单与员工范围'), {
+      commandOnly: true,
+      preconditions: ['lockHandoverRequest', 'assertRevision', 'requireHandoverResubmit'],
+    }),
+    ...byId,
+  }),
   // 离职详情上的交接状态与事项：权限与范围同 GET /exits/:id（DEC-177，看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」）；
   // 没有交接申请 = status not_started（含档案直接离职，R2c）
   'GET /exits/:id/handover': object({

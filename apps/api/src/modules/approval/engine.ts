@@ -774,6 +774,16 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
 }
 
+/** DEC-674：HR 重新提交交接须匹配当前流程并新建实例，已终止的旧实例不复用、不改写。 */
+export async function startNewHandover(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
+  const request = { businessType: 'exit_handover', businessId } as const;
+  if (await activeInstanceOf(tx, ctx.tenantId, request.businessType, businessId))
+    throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '交接仍有活动审批实例');
+  const snapshot = await ADAPTERS.exit_handover.snapshot(tx, ctx, businessId);
+  return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
+}
+
 async function launch(
   tx: Tx,
   ctx: ApprovalContext,

@@ -163,7 +163,8 @@ describe('AC-DM-07 / F-305 同单重新提交', () => {
     expect((await x.decide(instanceId, 'disagree')).status).toBe(200);
     const old = () =>
       x.sqlRows(sql`SELECT
-      (SELECT to_jsonb(a) FROM approval_instances a WHERE tenant_id=${x.tenantId} AND id=${instanceId}::uuid) AS instance,
+      (SELECT to_jsonb(a) FROM approval_instances a
+        WHERE tenant_id=${x.tenantId} AND id=${instanceId}::uuid) AS instance,
       (SELECT jsonb_agg(t ORDER BY id) FROM approval_tasks t
         WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid) AS tasks,
       (SELECT jsonb_agg(l ORDER BY id) FROM approval_instance_logs l

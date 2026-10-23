@@ -1699,6 +1699,27 @@
       "admin:other_settings"
     ]
   },
+  "POST /api/tenant/employment/exit-handover-requests/:id/resubmit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b19ff8596413",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.HandoverReSubmit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/exits/:id/cancel": {
     "all": {
       "code": "NOT_FOUND",

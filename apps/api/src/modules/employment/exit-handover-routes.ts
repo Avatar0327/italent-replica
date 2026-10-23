@@ -17,6 +17,7 @@ import { authorizeInTransaction, trimModuleResponse } from '../permission/module
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
+  commandContext,
   jsonBody,
   readContext,
   readPageContext,
@@ -30,6 +31,7 @@ import { businessKind } from './exit-gate.js';
 import { exitHandoverStatus, handoverDetail, isHandoverParticipant, tickHandoverItem } from './exit-handover.js';
 import { deleteHandoverItem, listHandoverItems, parseHandoverItem, saveHandoverItem } from './exit-handover-items.js';
 import { loadHandoverRequest } from './exit-handover-store.js';
+import { handoverResubmitGuard, requireHandoverResubmit, resubmitExitHandover } from './exit-handover-resubmit.js';
 import { loadEmploymentBusiness } from './read-model.js';
 
 // 校验函数本身可以抛：未验证的取值给出明确提示，其余取值返回 false 走通用的“配置值不合法”
@@ -136,6 +138,25 @@ export function registerExitHandoverRoutes(router: Hono<TenantEnv>, deps: Tenant
  * 后两个不要求任职对象权限（审批人不一定有），身份由参与关系与待办决定，范围外与不存在同一个 404。
  */
 function registerHandoverExecutionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // DEC-674：详情级重新提交，If-Match 为交接 revision；空命令体，不复用编辑离职按钮。
+  router.post('/exit-handover-requests/:id/resubmit', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireHandoverResubmit(tx, ctx, id));
+    if (!z.strictObject({}).safeParse(await jsonBody(c)).success)
+      throw new AppError('VALIDATION_FAILED', '重新提交交接只接受空请求体');
+    const result = await runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input: {} },
+      guard: handoverResubmitGuard(deps, ctx, id),
+      execute: async (tx, commandId) => ({
+        status: 200,
+        body: await resubmitExitHandover(tx, { ...(await commandContext(tx, deps, ctx)), commandId }, id),
+      }),
+    });
+    c.header('ETag', `"${(result.body as { revision: number }).revision}"`);
+    return c.json(result.body, result.status);
+  });
   router.get('/exits/:id/handover', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');

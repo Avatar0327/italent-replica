@@ -1127,6 +1127,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/engine.ts#routingSubject': ['packages/domain/src/tenant-time.ts#tenantLocalDate'],
   'apps/api/src/modules/approval/engine.ts#seatOf': ['#exceptionAdminFor', '#hiddenForAuto', '#settleAssignee'],
   'apps/api/src/modules/approval/engine.ts#settleAssignee': ['#exceptionAdminFor'],
+  'apps/api/src/modules/approval/engine.ts#startNewHandover': [
+    'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#assertActorUsable',
+    '#launch',
+    '#matchProcess',
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+  ],
   'apps/api/src/modules/approval/engine.ts#startOrResume': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/context.ts#approvalError',
