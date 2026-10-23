@@ -1,22 +1,29 @@
 /**
  * F-293 / AC-RT-01 / 真 PG 交错 ④（退休设计 §13.3）：保留手工返聘两种顺序，补真实 Offer 写入口。
  * 先占住员工行锁，逐个确认请求已排队才放锁；PGlite 单连接不运行。业务拒绝断言机读原因，不能把 revision 冲突当成顺序校验。
+ * DEC-677 的申请挂起 / 退休后顺延 / 作废转失败由 AC-RT-F314-pending 覆盖；这里只验证直接返聘与 DEC-679 Offer 交错。
  */
 import './support/exit-gate-enforced.js';
-import { sql, withTenant, type Db, type Tx } from '@italent/db';
+import { pgErrorCode, sql, withTenant, type Db, type Tx } from '@italent/db';
+import { EMPLOYEE_STATUS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { RETIRE_REHIRE_REQUIRES_RETIREMENT } from '../../apps/api/src/modules/employment/retire-rehire-eligibility.js';
 import { exitActivator } from './AC-EXIT-activation-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { errorOf } from './AC-OF-BE14a-support.js';
-import { syncWorld, type SyncOffer } from './AC-OF-BE14b2-support.js';
+import { syncWorld, type SyncOffer, type SyncWorld } from './AC-OF-BE14b2-support.js';
 import { rehireWorld } from './AC-RT-rehire-support.js';
+import { rowsOf } from './support/f048.js';
 import { settledOrBlocked } from './support/pg-interleave.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => rehireWorld(database().db, label, TODAY);
+// 取自 offer/sync.ts 的 assertSyncPlanReady：该产品原因码尚未单独导出，测试不改产品导出契约。
+const OFFER_SYNC_AWAITING_RETIREMENT = 'OFFER_SYNC_AWAITING_RETIREMENT';
 
 const signal = () => {
   let resolve!: () => void;
@@ -28,6 +35,7 @@ const signal = () => {
 async function queueBehindEmployeeLock(
   x: { db: Db; session: { tenant: { id: string } }; employee: { id: string } },
   requests: readonly (() => Promise<unknown>)[],
+  inspectQueue?: () => Promise<void>,
 ) {
   const held = signal();
   const release = signal();
@@ -45,6 +53,7 @@ async function queueBehindEmployeeLock(
       running.push(started);
       expect(await settledOrBlocked(x.db, started, index + 1)).toBe('blocked');
     }
+    await inspectQueue?.();
   } finally {
     release.resolve();
     await Promise.allSettled([holder, ...running]);
@@ -96,10 +105,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         const manualResponse = (settled[order === '退休生效先' ? 1 : 0] as PromiseFulfilledResult<Response>).value;
         const text = await manualResponse.clone().text();
         expect(manualResponse.status, text).toBe(409);
-        // write-service.ts sequenceViolation：这里校验顺序拒绝，不校验中文文案。
         expect(await errorOf(manualResponse)).toMatchObject({
           code: 'CONFLICT',
-          details: { reason: 'RETIRE_REHIRE_REQUIRES_RETIREMENT' },
+          details: { reason: RETIRE_REHIRE_REQUIRES_RETIREMENT },
         });
         // 终态：退休生效，时间轴上恰有一条 retire_rehire，且就是退休扩展行记录的那条
         expect((await x.business(retire.id)).status).toBe('effective');
@@ -112,70 +120,164 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
   },
 );
 
-describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-01 / F-293 真实 Offer 与退休生效', () => {
-  it('设计 PG ④：Offer 先生成退休返聘，随后退休因顺序校验失败', async () => {
-    const w = await syncWorld(database().db, 'rt01-offer-first');
-    await installExitSeeds(w.db, w.tenant.id);
-    const employee = await w.internEmployee('合成退休返聘员工');
-    const current = await w.employment('GET', `/employees/${employee.id}`);
-    expect(current.status).toBe(200);
-    const { revision } = (await current.json()) as { revision: number };
-    const response = await w.employment('POST', `/retirements/employees/${employee.id}`, {
-      ifMatch: revision,
-      body: {
-        mode: 'direct',
-        lastWorkDate: '2026-10-25',
-        reEmployed: true,
-        rehire: { fields: { employType: 'internal', departmentId: w.department.id }, entry: { probation: false } },
-      },
-    });
-    expect(response.status, await response.clone().text()).toBe(201);
-    const retire = (await response.json()) as { id: string; status: string };
-    expect(retire.status).toBe('approved');
-
-    // Offer 的创建、关联、接受与同步全部经 HTTP 写入口；关闭自动同步以便把立即同步排入 PG 屏障。
-    await w.timing({ enabled: false });
-    const created = await w.social({
-      personalEmail: loginEmailOf(employee.id),
-      source: 'intern_conversion',
-      plannedEntryDate: '2026-10-27',
-      hasProbation: false,
-    });
-    const linked = await w.request('POST', `/${created.id}/link-employee`, {
-      ifMatch: created.revision,
-      body: { employeeId: employee.id },
-    });
-    expect(linked.status, await linked.clone().text()).toBe(200);
-    const offer = await w.accepted((await linked.json()) as SyncOffer);
-    expect(offer).toMatchObject({ linkedEmployeeId: employee.id, syncStatus: null });
-    const session = { tenant: w.tenant, user: w.user };
-    const activate = () => exitActivator(w.db, session)(retire.id, '2026-10-26');
-    const sync = () => w.sync(offer);
-    const settled = await queueBehindEmployeeLock({ db: w.db, session, employee }, [sync, activate]);
-    expect(
-      settled.every((result) => result.status === 'fulfilled'),
-      JSON.stringify(settled),
-    ).toBe(true);
-    const syncResponse = (settled[0] as PromiseFulfilledResult<Response>).value;
-    expect(syncResponse.status, await syncResponse.clone().text()).toBe(200);
-    const synced = (await syncResponse.json()) as SyncOffer;
-    const activation = (settled[1] as PromiseFulfilledResult<unknown>).value;
-    const records = await w.recordsOf(employee.id);
-    const kinds = records.map((record) => record.kind);
-    const evidence = JSON.stringify({
-      syncStatus: synced.syncStatus,
-      syncTarget: synced.syncTarget,
-      activation,
-      kinds,
-    });
-    expect(synced.syncStatus, evidence).toBe('success');
-    // retirement-rehire.ts 包装顺序拒绝；编排器落失败尝试，CONFLICT 对应 HTTP 409。
-    expect(activation, evidence).toMatchObject({
-      outcome: 'failed',
-      reason: 'RETIREMENT_REHIRE_FAILED',
-      detail: { code: 'CONFLICT', rule: 'RETIRE_REHIRE_REQUIRES_RETIREMENT' },
-    });
-    // 保留设计 §13.3 PG ④ 的产物要求；不能用实习转正冒充退休返聘，口径冲突交总编排决定。
-    expect(kinds, evidence).toEqual(['hire', 'retire_rehire']);
+/** 普通退休与独立 Offer 返聘：退休不自行生成返聘，唯一新周期必须来自真实 Offer 同步（DEC-679）。 */
+async function offerRetirementWorld(label: string) {
+  const w = await syncWorld(database().db, `rt01-${label}`);
+  await installExitSeeds(w.db, w.tenant.id);
+  const employee = await w.internEmployee('合成退休返聘员工');
+  const current = await w.employment('GET', `/employees/${employee.id}`);
+  expect(current.status).toBe(200);
+  const { revision } = (await current.json()) as { revision: number };
+  const response = await w.employment('POST', `/retirements/employees/${employee.id}`, {
+    ifMatch: revision,
+    body: { mode: 'direct', lastWorkDate: '2026-10-25' },
   });
+  expect(response.status, await response.clone().text()).toBe(201);
+  const retire = (await response.json()) as { id: string; status: string };
+  expect(retire.status).toBe('approved');
+
+  // 创建、关联、接受、同步都走 HTTP；自动同步关闭，接受时不提前抢员工锁做同步。
+  await w.timing({ enabled: false });
+  const created = await w.social({
+    personalEmail: loginEmailOf(employee.id),
+    plannedEntryDate: '2026-10-27',
+    hasProbation: false,
+  });
+  const linked = await w.request('POST', `/${created.id}/link-employee`, {
+    ifMatch: created.revision,
+    body: { employeeId: employee.id },
+  });
+  expect(linked.status, await linked.clone().text()).toBe(200);
+  const offer = await w.accepted((await linked.json()) as SyncOffer);
+  expect(offer).toMatchObject({
+    status: 'accepted',
+    linkedEmployeeId: employee.id,
+    syncStatus: null,
+    syncReason: null,
+    syncAttempts: 0,
+    pendingEntryBusinessId: null,
+  });
+  // 两个竞争操作均在退休日执行；GET 夹具仍可用固定 asOf 读取完整时间轴。
+  const api = tenantApi(w.db, { clock: () => new Date('2026-10-26T02:00:00Z') });
+  const sync = (target = offer) =>
+    api.request('POST', `/api/tenant/offers/${target.id}/sync`, {
+      user: w.user.id,
+      tenant: w.tenant.id,
+      ifMatch: target.revision,
+      body: {},
+    });
+  const session = { tenant: w.tenant, user: w.user };
+  const activate = () => exitActivator(w.db, session)(retire.id, '2026-10-26');
+  return { ...w, session, employee, retire, offer, sync, activate };
+}
+
+/** 排除并发退休自身，核对整个夹具租户没有新增人员、业务、任职版本、周期或待入职子表产物。 */
+async function offerProducts(w: Pick<SyncWorld, 'db' | 'tenant'>, retirementId: string) {
+  const tenantId = w.tenant.id;
+  return withTenant(w.db, tenantId, async (tx) => {
+    const [snapshot] = rowsOf<Record<string, string[]>>(
+      await tx.execute(sql`SELECT
+        ARRAY(SELECT id FROM employment_employees WHERE tenant_id=${tenantId} ORDER BY id) AS employees,
+        ARRAY(SELECT id FROM employment_business_objects WHERE tenant_id=${tenantId}
+          AND id<>${retirementId}::uuid ORDER BY id) AS businesses,
+        ARRAY(SELECT id FROM employment_payload_versions WHERE tenant_id=${tenantId}
+          AND business_id<>${retirementId}::uuid ORDER BY id) AS versions,
+        ARRAY(SELECT id FROM employment_records WHERE tenant_id=${tenantId}
+          AND id<>${retirementId}::uuid ORDER BY id) AS records,
+        ARRAY(SELECT id FROM employment_cycles WHERE tenant_id=${tenantId} ORDER BY id) AS cycles,
+        ARRAY(SELECT business_id FROM employment_pending_entry_contract
+          WHERE tenant_id=${tenantId} ORDER BY business_id) AS contracts,
+        ARRAY(SELECT business_id FROM employment_pending_entry_probation
+          WHERE tenant_id=${tenantId} ORDER BY business_id) AS probation`),
+    );
+    expect(snapshot).toBeDefined();
+    return snapshot!;
+  });
+}
+
+async function expectOfferRehire(w: Awaited<ReturnType<typeof offerRetirementWorld>>, response: Response) {
+  expect(response.status, await response.clone().text()).toBe(200);
+  const synced = (await response.json()) as SyncOffer;
+  expect(synced).toMatchObject({
+    syncStatus: 'success',
+    syncReason: null,
+    syncAttempts: 1,
+    syncTarget: 'pending_entry',
+    pendingEntryBusinessId: expect.any(String),
+    linkedEmployeeId: w.employee.id,
+  });
+  expect(await w.entries()).toEqual([
+    expect.objectContaining({
+      id: synced.pendingEntryBusinessId,
+      employeeId: w.employee.id,
+      effectiveDate: '2026-10-27',
+      employeeStatus: EMPLOYEE_STATUS.pendingEntry,
+    }),
+  ]);
+  expect(await w.record(synced.pendingEntryBusinessId!)).toMatchObject({
+    employeeId: w.employee.id,
+    kind: 'retire_rehire',
+  });
+  expect((await w.recordsOf(w.employee.id)).map((row) => [row.kind, row.effectiveDate])).toEqual([
+    ['hire', '2026-10-17'],
+    ['retirement', '2026-10-26'],
+    ['retire_rehire', '2026-10-27'],
+  ]);
+  const products = await offerProducts(w, w.retire.id);
+  const beforeRepeat = await w.read(synced.id);
+  const repeated = await w.sync(beforeRepeat);
+  expect(repeated.status, await repeated.clone().text()).toBe(200);
+  expect(await w.read(synced.id)).toEqual(beforeRepeat);
+  expect(await offerProducts(w, w.retire.id)).toEqual(products);
+}
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-01 / F-293 / DEC-679 真实 Offer 与退休生效', () => {
+  it.each(['Offer 同步先', '退休生效先'] as const)(
+    '员工锁后两种先后（%s）：退休前拒绝、退休后恰一笔返聘',
+    async (order) => {
+      const w = await offerRetirementWorld(order);
+      const beforeOffer = await w.read(w.offer.id);
+      const beforeProducts = await offerProducts(w, w.retire.id);
+      const sync = () => w.sync(w.offer);
+      const settled = await queueBehindEmployeeLock(
+        w,
+        order === 'Offer 同步先' ? [sync, w.activate] : [w.activate, sync],
+        async () => {
+          // 同步已持 Offer 锁但仍等员工锁：退休先排队时可先落地，并不产生第三种业务终态。
+          const lockError = await withTenant(w.db, w.tenant.id, (tx) =>
+            tx.execute(sql`SELECT id FROM offers WHERE tenant_id=${w.tenant.id}
+            AND id=${w.offer.id}::uuid FOR UPDATE NOWAIT`),
+          ).then(() => undefined, pgErrorCode);
+          expect(lockError).toBe('55P03');
+        },
+      );
+      expect(
+        settled.every((result) => result.status === 'fulfilled'),
+        JSON.stringify(settled),
+      ).toBe(true);
+      const syncResponse = (settled[order === 'Offer 同步先' ? 0 : 1] as PromiseFulfilledResult<Response>).value;
+      const activation = (settled[order === 'Offer 同步先' ? 1 : 0] as PromiseFulfilledResult<unknown>).value;
+      expect(activation).toMatchObject({ outcome: 'effective' });
+      const retirement = await w.employment('GET', `/businesses/${w.retire.id}`);
+      expect(retirement.status).toBe(200);
+      expect(await retirement.json()).toMatchObject({ status: 'effective' });
+
+      if (order === '退休生效先') {
+        await expectOfferRehire(w, syncResponse);
+        return;
+      }
+      expect(syncResponse.status, await syncResponse.clone().text()).toBe(409);
+      expect(await errorOf(syncResponse)).toMatchObject({
+        code: 'CONFLICT',
+        details: { reason: OFFER_SYNC_AWAITING_RETIREMENT },
+      });
+      // 手动同步在保存点外明确拒绝，整个命令回滚；只有自动同步才记录 Offer failed（F-314 §8.4）。
+      expect(await w.read(w.offer.id)).toEqual(beforeOffer);
+      expect(await offerProducts(w, w.retire.id)).toEqual(beforeProducts);
+      expect(await w.entries()).toEqual([]);
+      expect((await w.recordsOf(w.employee.id)).map((row) => row.kind)).toEqual(['hire', 'retirement']);
+      // 明确 409 后，待退休确已生效再显式重提；第一次没有产物，第二次只建一个 retire_rehire。
+      await expectOfferRehire(w, await w.sync(await w.read(w.offer.id)));
+    },
+  );
 });
