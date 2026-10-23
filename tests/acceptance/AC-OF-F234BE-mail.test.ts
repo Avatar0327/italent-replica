@@ -4,12 +4,12 @@
  * 纯文本段落，不返回 HTML；不展示发送时间 / 发送人 / 历史 / 投递状态。读权限同查看 Offer，字段按各自查看字段权裁剪。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { eq, offers, offerSendRecords, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { errorOf, offerRealWorld, offerWorld, type OfferWorld } from './AC-OF-BE14a-support.js';
-import { rowsOf, send } from './AC-OF-BE14b1-support.js';
+import { rowsOf, send, sendRecords } from './AC-OF-BE14b1-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -144,5 +144,171 @@ describe('F-234BE 查看 Offer 邮件', () => {
     expect(text).not.toContain('字段权候选人');
     expect(text).not.toContain(await departmentName(w, w.department.id));
     expect(text).toContain('--');
+  });
+});
+
+// F-299：固化 #479 R1 的四类只读探针；口径沿用 DEC-660 与派发补充，不引入新的产品行为。
+describe('AC-OF-F299 Offer 邮件读口补强', () => {
+  it('AC-OF-F299-01：跨租户 Offer / 发送记录由 withTenant 隔离，读口与不存在同形', async () => {
+    const reader = await offerRealWorld(testDb().db, 'mail-tenant-reader');
+    const owner = await offerWorld(testDb().db, 'mail-tenant-owner');
+    const local = await reader.social({ name: '本租户合成候选人' });
+    const foreign = await owner.social({ name: '他租户合成候选人' });
+    expect((await send(reader, local)).status).toBe(200);
+    expect((await send(owner, foreign, { cc: ['foreign-cc@example.com'] })).status).toBe(200);
+    const foreignMail = await mailOf(await owner.request('GET', `/${foreign.id}/mail`));
+    expect(foreignMail).toMatchObject({
+      offerId: foreign.id,
+      name: '他租户合成候选人',
+      recipient: foreign.personalEmail,
+      cc: ['foreign-cc@example.com'],
+      bcc: [],
+    });
+
+    // 故意只按对象 ID 查，验证租户角色的 RLS，而不是让测试自己的 tenant_id 条件遮住隔离回退。
+    await withTenant(reader.db, reader.tenant.id, async (tx) => {
+      expect(await tx.select().from(offers).where(eq(offers.id, foreign.id))).toEqual([]);
+      expect(await tx.select().from(offerSendRecords).where(eq(offerSendRecords.offerId, foreign.id))).toEqual([]);
+    });
+    const refused = await reader.real('GET', `/${foreign.id}/mail`);
+    const missing = await reader.real('GET', `/${randomUUID()}/mail`);
+    expect(refused.status).toBe(404);
+    expect(missing.status).toBe(404);
+    const expectedError = { error: { code: 'NOT_FOUND', message: 'Offer 不存在' } };
+    expect(await refused.json()).toEqual(expectedError);
+    expect(await missing.json()).toEqual(expectedError);
+    expect(await mailOf(await owner.request('GET', `/${foreign.id}/mail`))).toEqual(foreignMail);
+    expect(await mailOf(await reader.real('GET', `/${local.id}/mail`))).toMatchObject({
+      offerId: local.id,
+      name: '本租户合成候选人',
+      recipient: local.personalEmail,
+      cc: [],
+      bcc: [],
+    });
+  });
+
+  it('AC-OF-F299-02：同 created_at 由较大 ID 决胜，较早记录即使 ID 最大也不胜出', async () => {
+    const w = await offerWorld(testDb().db, 'mail-tie');
+    const offer = await w.social();
+    const ids = [randomUUID(), randomUUID(), randomUUID(), randomUUID()].sort();
+    const sameTime = new Date('2026-10-16T08:00:00.000Z');
+    // 胜出记录放在相同时间戳的中间，避免省略次级排序时恰巧按插入首条或末条通过。
+    const records = [
+      { id: ids[0]!, label: 'tie-low', createdAt: sameTime },
+      { id: ids[2]!, label: 'tie-winner', createdAt: sameTime },
+      { id: ids[1]!, label: 'tie-middle', createdAt: sameTime },
+      { id: ids[3]!, label: 'older-largest', createdAt: new Date('2026-10-15T08:00:00.000Z') },
+    ].map(({ id, label, createdAt }) => ({
+      id,
+      tenantId: w.tenant.id,
+      offerId: offer.id,
+      kind: 'resend',
+      recipient: `${label}@example.com`,
+      cc: [`${label}-cc@example.com`],
+      bcc: [`${label}-bcc@example.com`],
+      sentBy: w.user.id,
+      commandId: randomUUID(),
+      createdAt,
+    }));
+    await withTenant(w.db, w.tenant.id, (tx) => tx.insert(offerSendRecords).values(records));
+    await w.force(offer.id, 'status', 'sent');
+    expect(await mailOf(await w.request('GET', `/${offer.id}/mail`))).toMatchObject({
+      offerId: offer.id,
+      recipient: 'tie-winner@example.com',
+      cc: ['tie-winner-cc@example.com'],
+      bcc: ['tie-winner-bcc@example.com'],
+    });
+  });
+
+  it('AC-OF-F299-03：发送后编辑 Offer，姓名与正文取当前值，收件人 / 抄送 / 密送保留发送时值', async () => {
+    const w = await offerWorld(testDb().db, 'mail-current');
+    const offer = await w.social({
+      name: '发送时合成候选人',
+      personalEmail: 'before-edit@example.com',
+      appliedPosition: '发送时合成职位',
+      plannedEntryDate: '2026-11-01',
+      workPlace: '发送时合成园区',
+    });
+    const recipients = {
+      recipient: 'before-edit@example.com',
+      cc: ['history-cc@example.com'],
+      bcc: ['history-bcc@example.com'],
+    };
+    expect((await send(w, offer, { cc: recipients.cc, bcc: recipients.bcc })).status).toBe(200);
+    const before = await mailOf(await w.request('GET', `/${offer.id}/mail`));
+    expect(before.notice.paragraphs.slice(0, 5)).toEqual([
+      '发送时合成候选人：',
+      `您好！感谢您对我们的关注与信任，经综合评估，我们决定录用您，期待您加入${await departmentName(w, w.department.id)}。`,
+      '应聘职位：发送时合成职位。',
+      '预计入职日期：2026-11-01。',
+      '工作地点：发送时合成园区。',
+    ]);
+    const newDepartmentName = `编辑后合成部门${uniqueSuffix()}`;
+    const department = await w.seeder.request('POST', '/api/tenant/org/organizations', {
+      user: w.user.id,
+      tenant: w.tenant.id,
+      ifMatch: 0,
+      body: {
+        name: newDepartmentName,
+        parents: { admin: { parentId: w.tenant.id } },
+        establishedOn: '2026-01-01',
+      },
+    });
+    expect(department.status, await department.clone().text()).toBe(201);
+    const currentFields = {
+      name: '编辑后合成候选人',
+      personalEmail: 'after-edit@example.com',
+      departmentId: ((await department.json()) as { id: string }).id,
+      appliedPosition: '编辑后合成职位',
+      plannedEntryDate: '2026-12-01',
+      workPlace: '编辑后合成园区',
+    };
+    const edited = await w.request('PUT', `/${offer.id}`, {
+      ifMatch: (await w.get(offer.id)).revision,
+      body: { ...currentFields, syncPendingEntry: false },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect(await edited.json()).toMatchObject({ id: offer.id, ...currentFields });
+    const mail = await mailOf(await w.request('GET', `/${offer.id}/mail`));
+    expect(mail).toMatchObject({ offerId: offer.id, name: '编辑后合成候选人', ...recipients });
+    expect(mail.notice.paragraphs.slice(0, 5)).toEqual([
+      '编辑后合成候选人：',
+      `您好！感谢您对我们的关注与信任，经综合评估，我们决定录用您，期待您加入${newDepartmentName}。`,
+      '应聘职位：编辑后合成职位。',
+      '预计入职日期：2026-12-01。',
+      '工作地点：编辑后合成园区。',
+    ]);
+    expect(await sendRecords(w, offer.id)).toEqual([{ kind: 'send', status: 'pending', ...recipients }]);
+  });
+
+  it.each([
+    { field: 'appliedPosition', index: 2, hidden: '应聘职位：--。' },
+    { field: 'plannedEntryDate', index: 3, hidden: '预计入职日期：--。' },
+    { field: 'workPlace', index: 4, hidden: '工作地点：--。' },
+  ] as const)('AC-OF-F299-04：撤销 $field 查看权只裁对应正文，恢复后重新可见', async ({ field, index, hidden }) => {
+    const w = await offerRealWorld(testDb().db, `mail-field-${field}`);
+    const values = { appliedPosition: '合成测试职位', plannedEntryDate: '2026-12-15', workPlace: '合成工作园区' };
+    const offer = await w.social({ name: '正文裁剪合成候选人', ...values });
+    expect((await send(w, offer, { cc: ['body-cc@example.com'], bcc: ['body-bcc@example.com'] })).status).toBe(200);
+    const visible = await mailOf(await w.real('GET', `/${offer.id}/mail`));
+    expect(visible.notice.paragraphs.slice(0, 5)).toEqual([
+      '正文裁剪合成候选人：',
+      `您好！感谢您对我们的关注与信任，经综合评估，我们决定录用您，期待您加入${await departmentName(w, w.department.id)}。`,
+      '应聘职位：合成测试职位。',
+      '预计入职日期：2026-12-15。',
+      '工作地点：合成工作园区。',
+    ]);
+    await w.permitObject(MODULE_OBJECTS.offer, [field]);
+    const trimmed = await mailOf(await w.real('GET', `/${offer.id}/mail`));
+    expect(trimmed).toEqual({
+      ...visible,
+      notice: {
+        ...visible.notice,
+        paragraphs: visible.notice.paragraphs.map((paragraph, i) => (i === index ? hidden : paragraph)),
+      },
+    });
+    expect(JSON.stringify(trimmed)).not.toContain(values[field]);
+    await w.permitObject(MODULE_OBJECTS.offer);
+    expect(await mailOf(await w.real('GET', `/${offer.id}/mail`))).toEqual(visible);
   });
 });
