@@ -8,6 +8,7 @@ export const SORT_FIELDS = [
   'effectiveDate',
   'endDate',
   'departmentId',
+  'institutionId',
   'directManagerId',
   'postId',
 ] as const;
@@ -17,7 +18,7 @@ export interface ViewSort {
   readonly direction?: 'asc' | 'desc';
 }
 
-/** F234B B5：审批中的工号无排序；经理仅未开始 / 审批中，职务仅审批中。机构待 DEC-673 取证。 */
+/** F234B B5：审批中的工号无排序；经理仅未开始 / 审批中，职务仅审批中。机构按 F255A 六视图均可排序。 */
 export function sortable(view: PartTimeView, field: SortField): boolean {
   if (field === 'code') return view !== 'in_approval';
   if (field === 'directManagerId') return view === 'not_started' || view === 'in_approval';
@@ -27,6 +28,7 @@ export function sortable(view: PartTimeView, field: SortField): boolean {
 
 export interface ViewColumns {
   readonly department: SQL;
+  readonly institution: SQL;
   readonly serviceType: SQL;
   readonly start: SQL;
   readonly end: SQL;
@@ -48,6 +50,9 @@ export function viewOrder(
     return approval ? sql`${columns.start} DESC, q.created_at DESC, ${id}` : sql`${columns.start} DESC, ${id}`;
   }
   const ranks = {
+    institutionId: sql`(SELECT rank.sort_number FROM personnel_org_sort_ranks rank
+      WHERE rank.tenant_id=${tenantId} AND rank.org_id=${columns.institution}
+        AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`,
     departmentId: sql`(SELECT rank.sort_number FROM personnel_org_sort_ranks rank
       WHERE rank.tenant_id=${tenantId} AND rank.org_id=${columns.department}
         AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`,

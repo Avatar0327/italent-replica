@@ -49,11 +49,21 @@ export type Filters = Partial<
   >
 > &
   Partial<
-    Record<'employeeIds' | 'serviceTypes' | 'serviceStatuses' | 'pendingStatuses' | 'kinds' | 'statuses', string[]>
+    Record<
+      'employeeIds' | 'serviceTypes' | 'serviceStatuses' | 'pendingStatuses' | 'kinds' | 'statuses' | 'requestSources',
+      string[]
+    >
   >;
 export type Allowed = (key: keyof Filters) => boolean;
 export type SortKey =
-  'code' | 'serviceType' | 'effectiveDate' | 'endDate' | 'departmentId' | 'directManagerId' | 'postId';
+  | 'code'
+  | 'serviceType'
+  | 'effectiveDate'
+  | 'endDate'
+  | 'departmentId'
+  | 'institutionId'
+  | 'directManagerId'
+  | 'postId';
 export interface Sort {
   sortBy: SortKey;
   direction: 'asc' | 'desc';
@@ -62,14 +72,14 @@ export function sortable(view: View, key: string): key is SortKey {
   if (key === 'code') return view !== 'in_approval';
   if (key === 'directManagerId') return view === 'not_started' || view === 'in_approval';
   if (key === 'postId') return view === 'in_approval';
-  return ['serviceType', 'effectiveDate', 'endDate', 'departmentId'].includes(key);
+  return ['serviceType', 'effectiveDate', 'endDate', 'departmentId', 'institutionId'].includes(key);
 }
 const base = [
   'name',
   'code',
   'serviceType',
   'effectiveDate',
-  'institution',
+  'institutionId',
   'departmentId',
   'directManagerId',
   'postId',
@@ -91,7 +101,7 @@ export function columnKeys(view: View): string[] {
       return [...base.slice(0, 2), 'kind', ...base.slice(2), 'approvalStatus'];
   }
 }
-// F234B B5：保留取证列宽；机构口径仍待 DEC-673 取证。
+// F234B B5：保留取证列宽；机构按 F255A 保存时固化。
 export function columnWidth(view: View, key: string): number {
   if (key === 'operation') return view === 'ended' ? 84 : 164;
   const date = ['effectiveDate', 'endDate'].includes(key);
@@ -117,7 +127,7 @@ export function value(input: unknown): string {
   return typeof input === 'string' || typeof input === 'number' ? String(input) : m.missing;
 }
 export function cellValue(row: Row, key: string, view: View): string {
-  if (key === 'institution') return m.missing;
+  if (key === 'institution') return value(row.institutionId);
   if (key === 'pendingStatus') return m.statuses[String(row.pendingStatus)] ?? value(row.pendingStatus);
   if (key === 'pendingKind') return m.kinds[String(row.pendingKind)] ?? value(row.pendingKind);
   if (key === 'name' || key === 'code') return value(row.employee?.[key]);

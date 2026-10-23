@@ -242,6 +242,8 @@ export const employmentPayloadVersions = pgTable(
     selectedStaffId: uuid('selected_staff_id'),
     sourceRecordId: uuid('source_record_id'),
     sourceStaffId: uuid('source_staff_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     customFields: customFields(),
@@ -257,6 +259,7 @@ export const employmentPayloadVersions = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_payload_versions_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_payload_versions_tenant_id').on(t.tenantId, t.id),
     unique('employment_payload_versions_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_payload_versions_business_id').on(t.tenantId, t.employeeId, t.businessId, t.id),
@@ -391,6 +394,8 @@ export const employmentRecords = pgTable(
     serviceType: text('service_type').notNull().default('primary'),
     isInserted: boolean('is_inserted').notNull().default(false),
     inheritanceSourceId: uuid('inheritance_source_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     employType: text('employ_type').notNull(),
@@ -398,6 +403,7 @@ export const employmentRecords = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_records_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_records_tenant_id').on(t.tenantId, t.id),
     unique('employment_records_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_records_employee_staff').on(t.tenantId, t.employeeId, t.id, t.staffId),

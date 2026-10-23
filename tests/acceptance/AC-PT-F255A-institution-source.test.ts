@@ -158,8 +158,8 @@ describe('AC-PT-F255A 申请来源和边界', () => {
     }
     expect(MODULE_OBJECTS.employmentRecord.fields).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'institutionId' }),
-        expect.objectContaining({ code: 'requestSource' }),
+        expect.objectContaining({ code: 'institutionId', system: true }),
+        expect.objectContaining({ code: 'requestSource', system: true }),
       ]),
     );
   });

@@ -14,6 +14,7 @@ import {
   PART_TIME_VIEWS,
   PART_TIME_REQUEST_STATES,
   PART_TIME_REQUEST_TYPES,
+  PART_TIME_REQUEST_SOURCES,
   partTimePermissionFields,
   tenantLocalDate,
 } from '@italent/domain';
@@ -384,6 +385,7 @@ const viewQuery = z.object({
   pendingStatuses: multi(requestStates),
   kinds: multi(z.enum(PART_TIME_REQUEST_TYPES)),
   statuses: multi(requestStates),
+  requestSources: multi(z.enum(PART_TIME_REQUEST_SOURCES)),
 });
 const VIEW_QUERY_KEYS = Object.keys(viewQuery.shape);
 const MULTI_QUERY_KEYS = new Set([
@@ -393,6 +395,7 @@ const MULTI_QUERY_KEYS = new Set([
   'pendingStatuses',
   'kinds',
   'statuses',
+  'requestSources',
 ]);
 
 /** 日期区间首尾颠倒按非法处理（400）。 */
@@ -409,7 +412,7 @@ function parseViewQuery(c: Context<TenantEnv>) {
   if (
     ((query.serviceStatuses || query.current) && query.view !== 'all') ||
     (query.pendingStatuses && query.view !== 'expiring') ||
-    ((query.kinds || query.statuses) && query.view !== 'in_approval')
+    ((query.kinds || query.statuses || query.requestSources) && query.view !== 'in_approval')
   )
     throw new AppError('VALIDATION_FAILED', '该视图不支持此筛选');
   if (query.startFrom && query.startTo && query.startFrom > query.startTo)
@@ -448,6 +451,7 @@ const FILTER_FIELDS: Readonly<Record<keyof PartTimeViewFilter, { employee?: stri
   pendingStatuses: { employment: ['status'] },
   kinds: { employment: ['kind'] },
   statuses: { employment: ['status'] },
+  requestSources: { employment: ['requestSource'] },
 };
 
 function requireViewableFilters(filter: PartTimeViewFilter, show: Viewable) {

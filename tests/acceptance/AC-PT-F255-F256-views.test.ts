@@ -1,4 +1,4 @@
-/** F234B D2/D3、D5、D8～D13；DEC-673：机构与申请来源等取证，本单只读扩展。 */
+/** F234B D2/D3、D5、D8～D13；机构 / 申请来源由 F255A 用例补齐。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';

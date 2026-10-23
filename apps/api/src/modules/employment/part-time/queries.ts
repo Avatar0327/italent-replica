@@ -24,6 +24,7 @@ import {
   dto,
   PART_TIME_DEPARTMENT,
   PART_TIME_DIRECT_MANAGER,
+  PART_TIME_INSTITUTION,
   PART_TIME_END,
   PART_TIME_START,
   partTimeColumns,
@@ -33,7 +34,7 @@ import {
   type PartTimeRecordDto,
 } from './read.js';
 import { partTimeCurrentEndSql, partTimeCurrentSql, partTimeServiceStatusSql, partTimeViewSql } from './span-sql.js';
-import { currentDepartment, latestSnapshot, uuidArray } from './store.js';
+import { currentDepartment, currentInstitution, latestSnapshot, uuidArray } from './store.js';
 import { viewOrder, type ViewColumns, type ViewSort } from './view-sort.js';
 
 export interface PartTimeViewFilter {
@@ -55,6 +56,7 @@ export interface PartTimeViewFilter {
   readonly pendingStatuses?: readonly string[];
   readonly kinds?: readonly string[];
   readonly statuses?: readonly string[];
+  readonly requestSources?: readonly string[];
 }
 
 export interface PartTimeViewInput extends ViewSort {
@@ -83,6 +85,8 @@ export interface PartTimeApprovalItem extends Shared {
   readonly revision: number;
   readonly kind: PartTimeRequestType;
   readonly status: PartTimeRequestState;
+  readonly institutionId: string | null;
+  readonly requestSource: 'part_time';
   readonly initiator: string;
   readonly initiatorUserId: string;
   readonly processCode: string | null;
@@ -186,6 +190,7 @@ function shared(row: Record<string, unknown>): Shared {
 function recordCandidates(ctx: EmploymentContext, input: PartTimeViewInput, today: string): SQL {
   const columns = {
     department: PART_TIME_DEPARTMENT,
+    institution: PART_TIME_INSTITUTION,
     serviceType: sql`r.service_type`,
     start: PART_TIME_START,
     end: PART_TIME_END,
@@ -233,6 +238,8 @@ function latestPendingJoin(ctx: EmploymentContext): SQL {
 /** 申请的部门：新增取最新版本；延长 / 结束取目标兼职记录当前部门（§7.3A，同 request-store 读取口径）。 */
 const REQUEST_DEPARTMENT = sql`(CASE WHEN q.record_id IS NULL THEN v.department_id ELSE ${currentDepartment} END)`;
 
+const REQUEST_INSTITUTION = sql`CASE WHEN q.record_id IS NULL THEN v.institution_id ELSE ${currentInstitution} END`;
+
 const REQUEST_JOINS = sql`
   JOIN LATERAL (SELECT state FROM part_time_request_events
     WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY event_no DESC LIMIT 1) s ON true
@@ -244,6 +251,7 @@ const REQUEST_JOINS = sql`
 function approvalCandidates(ctx: EmploymentContext, input: PartTimeViewInput, today: string): SQL {
   const columns = {
     department: REQUEST_DEPARTMENT,
+    institution: REQUEST_INSTITUTION,
     serviceType: sql`v.service_type`,
     start: sql`v.start_date`,
     end: sql`v.end_date`,
@@ -252,6 +260,8 @@ function approvalCandidates(ctx: EmploymentContext, input: PartTimeViewInput, to
   };
   const where = filterPredicates(ctx.tenantId, input.filter, columns);
   if (input.filter.kinds) where.push(oneOf(sql`q.request_type`, input.filter.kinds));
+  // F255A：本表只有兼职页新增 / 延长 / 结束申请。调动与组织调整没有申请写路径，不冒充其来源。
+  if (input.filter.requestSources) where.push(oneOf(sql`'part_time'::text`, input.filter.requestSources));
   const visible = employmentVisibilitySql(ctx.scope, {
     employee: sql`q.employee_id`,
     department: REQUEST_DEPARTMENT,
@@ -260,7 +270,8 @@ function approvalCandidates(ctx: EmploymentContext, input: PartTimeViewInput, to
   return sql`
     SELECT q.id, q.employee_id, q.request_type, q.record_id, q.initiator, q.initiator_user_id, q.process_code,
       q.revision, q.created_at, s.state, v.version_no, v.service_type, ${REQUEST_DEPARTMENT} AS department_id,
-      v.position_id, v.post_id, v.sequence_id, v.level_id, v.direct_manager_id, v.dotted_manager_id,
+      ${REQUEST_INSTITUTION} AS institution_id, v.position_id, v.post_id, v.sequence_id, v.level_id,
+      v.direct_manager_id, v.dotted_manager_id,
       v.employment_type, v.employment_form, v.start_date::text AS start_date, v.end_date::text AS end_date,
       v.original_end_date::text AS original_end_date, v.remark, v.custom_fields,
       (CASE WHEN q.record_id IS NULL THEN v.start_date ELSE r.start_date END)::text AS span_start,
@@ -281,6 +292,8 @@ function approvalItem(row: Record<string, unknown>, today: string): PartTimeAppr
     id: String(row.id),
     employeeId: String(row.employee_id),
     revision: Number(row.revision),
+    institutionId: (row.institution_id as string | null) ?? null,
+    requestSource: 'part_time',
     kind: row.request_type as PartTimeRequestType,
     status: row.state as PartTimeRequestState,
     initiator: String(row.initiator),

@@ -2,7 +2,7 @@ import { Button, Pagination } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../foundation/PageState.js';
-import { FiltersDrawer, useFilterPermission, useSortPermission } from './Filters.js';
+import { FiltersDrawer, QuickFilters, hasAdvancedFilters, useFilterPermission, useSortPermission } from './Filters.js';
 import { allowedFilters, listPath, views, type Filters, type ListResult, type Sort, type View } from './model.js';
 import { PartTimeTable } from './PartTimeTable.js';
 import { PartTimeDetail, type Selection } from './PartTimeDetail.js';
@@ -137,7 +137,7 @@ export function PartTimeList() {
 }
 
 function ListCard({ state }: { state: State }) {
-  const { view, page, setPage, setFilters, setDays, setDrawer, select, result } = state;
+  const { view, setPage, setFilters, setDays, setDrawer, select, result } = state;
   return (
     <section className="part-time-card">
       <div className="part-time-toolbar">
@@ -157,7 +157,7 @@ function ListCard({ state }: { state: State }) {
           </Button>
         )}
         <NewRequestButton />
-        <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
+        {hasAdvancedFilters(view) && <Button onClick={() => setDrawer(true)}>{m.filter}</Button>}
         <Button
           type="text"
           onClick={() => {
@@ -170,6 +170,17 @@ function ListCard({ state }: { state: State }) {
         </Button>
         <Button onClick={result.refresh}>{m.refresh}</Button>
       </div>
+      <QuickFilters
+        key={`${view}/${JSON.stringify(state.projected)}`}
+        initial={state.projected}
+        view={view}
+        allowed={state.allowed}
+        onApply={(next) => {
+          setFilters(allowedFilters(next, state.allowed));
+          setPage(1);
+          state.check([]);
+        }}
+      />
       {result.error ? (
         <PageState kind="error" error={result.error} retry={result.refresh} />
       ) : (
@@ -200,17 +211,7 @@ function ListCard({ state }: { state: State }) {
             noScope={result.data?.hasDataPermission === false}
             onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
           />
-          <div className="part-time-pagination">
-            <span>{m.total(result.data?.total ?? 0)}</span>
-            <Pagination
-              current={page}
-              pageSize={30}
-              showSizeChanger={false}
-              total={result.data?.total ?? 0}
-              disabled={result.loading}
-              onChange={setPage}
-            />
-          </div>
+          <ListPagination state={state} />
         </>
       )}
     </section>
@@ -250,5 +251,22 @@ function DirectDialogs({ state }: { state: State }) {
         />
       )}
     </>
+  );
+}
+
+function ListPagination({ state }: { state: State }) {
+  const { page, setPage, result } = state;
+  return (
+    <div className="part-time-pagination">
+      <span>{m.total(result.data?.total ?? 0)}</span>
+      <Pagination
+        current={page}
+        pageSize={30}
+        showSizeChanger={false}
+        total={result.data?.total ?? 0}
+        disabled={result.loading}
+        onChange={setPage}
+      />
+    </div>
   );
 }

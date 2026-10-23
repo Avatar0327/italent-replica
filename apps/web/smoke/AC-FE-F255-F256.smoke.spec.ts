@@ -108,6 +108,7 @@ test('AC-FE-F256 即将到期显示关联申请、筛选状态；审批视图可
   await page.getByRole('button', { name: '审批中的兼职', exact: true }).click();
   await page.getByRole('button', { name: '高级筛选', exact: true }).click();
   drawer = page.getByRole('dialog', { name: '高级筛选' });
+  // F255A：来源有独立只读字段权，本夹具未授予时不显示。
   await expect(drawer.getByLabel('申请来源', { exact: true })).toHaveCount(0);
   await drawer.getByRole('combobox', { name: '申请类型', exact: true }).click();
   await page.getByTitle('延长', { exact: true }).click();

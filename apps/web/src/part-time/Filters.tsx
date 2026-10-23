@@ -1,9 +1,9 @@
-import { Alert, Checkbox, Input, InputNumber, Select } from 'antd';
+import { Alert, Button, Checkbox, Input, Select, Tag } from 'antd';
 import { useEffect, useState } from 'react';
 import { FilterDrawer } from '../foundation/FilterDrawer.js';
-import { PersonSelect, type Choice } from '../foundation/selectors.js';
+import { type Choice } from '../foundation/selectors.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { RefSelect, usePeople } from '../contracts/references.js';
+import { RefSelect, usePeople, useToday } from '../contracts/references.js';
 import { object, personObject, rangeInvalid, sortable, type Allowed, type Filters, type View } from './model.js';
 import { refPaths } from './references.js';
 import { m } from './messages.js';
@@ -26,6 +26,7 @@ export function useFilterPermission(): Allowed {
         pendingStatuses: 'status',
         statuses: 'status',
         kinds: 'kind',
+        requestSources: 'requestSource',
       }[key as string] ?? key;
     return employment.field(field).visible;
   };
@@ -39,7 +40,7 @@ export function FiltersDrawer({
   initial,
   days,
   view,
-  allowed,
+  allowed: permission,
   onClose,
   onApply,
 }: {
@@ -51,7 +52,7 @@ export function FiltersDrawer({
   onApply(filters: Filters, days: number): void;
 }) {
   const [draft, setDraft] = useState(initial);
-  const [nextDays, setDays] = useState(days);
+  const allowed = (key: keyof Filters) => filterKeys(view, true).includes(key) && permission(key);
   const [invalid, setInvalid] = useState(false);
   const set: DraftProps['set'] = (key, val) => {
     setInvalid(false);
@@ -67,12 +68,12 @@ export function FiltersDrawer({
       }}
       onApply={() => {
         if (rangeInvalid(draft)) setInvalid(true);
-        else onApply({ ...draft, keyword: draft.keyword?.trim() || undefined }, nextDays);
+        else onApply({ ...draft, keyword: draft.keyword?.trim() || undefined }, days);
       }}
     >
       {invalid && <Alert type="error" message={m.rangeInvalid} />}
       <div className="part-time-filters">
-        <BasicFilters draft={draft} set={set} allowed={allowed} days={nextDays} setDays={setDays} view={view} />
+        <BasicFilters draft={draft} set={set} allowed={allowed} />
         <ReferenceFilters draft={draft} set={set} allowed={allowed} />
         <StateFilters draft={draft} set={set} allowed={allowed} view={view} />
         <DateFilters draft={draft} set={set} allowed={allowed} />
@@ -82,35 +83,9 @@ export function FiltersDrawer({
 }
 
 type DraftProps = { draft: Filters; set<K extends keyof Filters>(key: K, value: Filters[K]): void; allowed: Allowed };
-function BasicFilters({
-  draft,
-  set,
-  allowed,
-  days,
-  setDays,
-  view,
-}: DraftProps & {
-  days: number;
-  setDays(days: number): void;
-  view: View;
-}) {
+function BasicFilters({ draft, set, allowed }: DraftProps) {
   return (
     <>
-      {view === 'expiring' && (
-        <label>
-          {m.days}
-          <InputNumber
-            aria-label={m.days}
-            min={1}
-            max={365}
-            precision={0}
-            value={days}
-            onChange={(next) => {
-              if (next) setDays(next);
-            }}
-          />
-        </label>
-      )}
       {allowed('employeeIds') && (
         <label>
           {m.people}
@@ -182,7 +157,7 @@ function PeopleFilter({ value, onChange }: { value: string[]; onChange(value: st
 }
 
 type StateField = {
-  key: 'serviceStatuses' | 'pendingStatuses' | 'kinds' | 'statuses';
+  key: 'serviceStatuses' | 'pendingStatuses' | 'kinds' | 'statuses' | 'requestSources';
   label: string | undefined;
   options: Record<string, string>;
   defaults: string[];
@@ -205,6 +180,7 @@ function stateFilters(view: View): StateField[] {
       return [
         { key: 'kinds', label: m.fields.kind, options: m.kinds, defaults: [] },
         { key: 'statuses', label: m.fields.approvalStatus, options: statuses, defaults: ['in_review'] },
+        { key: 'requestSources', label: m.fields.requestSource, options: m.requestSources, defaults: [] },
       ];
     default:
       return [];
@@ -223,8 +199,14 @@ function StateFilters({ draft, set, allowed, view }: DraftProps & { view: View }
                 allowClear
                 aria-label={label}
                 value={draft[field] ?? defaults}
-                onChange={(next: string[]) => set(field, next.length ? next : undefined)}
-                options={Object.entries(options).map(([value, label]) => ({ value, label }))}
+                onChange={(next: string[]) => {
+                  if (next.includes('*')) set(field, Object.keys(options));
+                  else set(field, next.length ? next : undefined);
+                }}
+                options={[
+                  ...(['requestSources', 'kinds'].includes(field) ? [{ value: '*', label: m.selectAll }] : []),
+                  ...Object.entries(options).map(([value, label]) => ({ value, label })),
+                ]}
               />
             </label>
           )
@@ -249,7 +231,6 @@ function StateFilters({ draft, set, allowed, view }: DraftProps & { view: View }
   );
 }
 function ReferenceFilters({ draft, set, allowed }: DraftProps) {
-  const people = usePeople();
   return (
     <>
       {allowed('departmentId') && (
@@ -271,16 +252,6 @@ function ReferenceFilters({ draft, set, allowed }: DraftProps) {
             {m.includeChildren}
           </Checkbox>
         </div>
-      )}
-      {allowed('directManagerId') && (
-        <label>
-          {m.fields.directManagerId}
-          <PersonSelect
-            load={people}
-            value={draft.directManagerId ? { value: draft.directManagerId, label: draft.directManagerId } : undefined}
-            onChange={(next) => set('directManagerId', next?.value)}
-          />
-        </label>
       )}
       {allowed('postId') && (
         <label>
@@ -333,4 +304,101 @@ function DateFilters({ draft, set, allowed }: DraftProps) {
       )}
     </>
   );
+}
+
+/** F255A 逐视图对照表：快捷 / 高级筛选各自保留取证字段。 */
+function filterKeys(view: View, advanced: boolean): (keyof Filters)[] {
+  const common: (keyof Filters)[] = ['employeeIds', 'serviceTypes', 'departmentId', 'includeChildren', 'postId'];
+  const start: (keyof Filters)[] = ['startFrom', 'startTo'];
+  const end: (keyof Filters)[] = ['endFrom', 'endTo'];
+  if (view === 'ongoing' || view === 'not_started') return advanced ? [] : [...common, ...start];
+  if (view === 'ended') return advanced ? [] : [...common, ...end];
+  if (view === 'expiring') return advanced ? [...common, ...end, 'pendingStatuses'] : end;
+  if (view === 'all')
+    return advanced ? [...common, ...start, ...end, 'serviceStatuses', 'current'] : ['serviceStatuses'];
+  return advanced ? [...common, ...start, ...end, 'kinds', 'statuses', 'requestSources'] : [];
+}
+export const hasAdvancedFilters = (view: View) => filterKeys(view, true).length > 0;
+
+export function QuickFilters({
+  initial,
+  view,
+  allowed: permission,
+  onApply,
+}: {
+  initial: Filters;
+  view: View;
+  allowed: Allowed;
+  onApply(filters: Filters): void;
+}) {
+  const today = useToday();
+  const end = today ? new Date(`${today}T00:00:00Z`) : undefined;
+  end?.setUTCDate(end.getUTCDate() + 30);
+  const [draft, setDraft] = useState<Filters>(() => ({
+    ...(view === 'expiring' ? { endFrom: today, endTo: end?.toISOString().slice(0, 10) } : {}),
+    ...initial,
+  }));
+  const [invalid, setInvalid] = useState(false);
+  const allowed = (key: keyof Filters) => filterKeys(view, false).includes(key) && permission(key);
+  const set: DraftProps['set'] = (key, value) => {
+    setInvalid(false);
+    setDraft((old) => ({ ...old, [key]: value }));
+  };
+  return (
+    <section aria-label={m.quick}>
+      <div className="part-time-filters part-time-quick">
+        <BasicFilters draft={draft} set={set} allowed={allowed} />
+        <ReferenceFilters draft={draft} set={set} allowed={allowed} />
+        <StateFilters draft={draft} set={set} allowed={allowed} view={view} />
+        <DateFilters draft={draft} set={set} allowed={allowed} />
+        {filterKeys(view, false).some(allowed) && (
+          <Button
+            onClick={() => {
+              if (rangeInvalid(draft)) setInvalid(true);
+              else onApply(draft);
+            }}
+          >
+            {m.apply}
+          </Button>
+        )}
+      </div>
+      {invalid && <Alert type="error" message={m.rangeInvalid} />}
+      {view === 'in_approval' &&
+        Object.entries(initial)
+          .filter(([key]) => permission(key as keyof Filters))
+          .map(([key, value]) => (
+            <Tag key={key} closable onClose={() => onApply({ ...initial, [key]: undefined })}>
+              {filterTag(key, value!)}
+            </Tag>
+          ))}
+    </section>
+  );
+}
+function filterTag(key: string, value: string | string[]) {
+  const names: Record<string, string | undefined> = {
+    employeeIds: m.people,
+    serviceTypes: m.fields.serviceType,
+    departmentId: m.fields.departmentId,
+    includeChildren: m.includeChildren,
+    postId: m.fields.postId,
+    kinds: m.fields.kind,
+    statuses: m.fields.approvalStatus,
+    requestSources: m.fields.requestSource,
+    startFrom: `${m.fields.effectiveDate}${m.from}`,
+    startTo: `${m.fields.effectiveDate}${m.to}`,
+    endFrom: `${m.fields.endDate}${m.from}`,
+    endTo: `${m.fields.endDate}${m.to}`,
+  };
+  const choices: Record<string, Record<string, string>> = {
+    requestSources: m.requestSources,
+    kinds: m.kinds,
+    statuses: m.statuses,
+    serviceTypes: m.serviceTypes,
+  };
+  let text: string;
+  if (key === 'includeChildren') text = value === 'true' ? m.yes : m.no;
+  else if (!Array.isArray(value)) text = value;
+  else if (choices[key]) text = value.map((v) => choices[key]![v]).join('、');
+  else text = m.selected(value.length);
+  return `${names[key] ?? key}：${text}`;
 }

@@ -3,7 +3,7 @@ import { setup, listRecord, fields } from './part-time-fixtures.js';
 
 const institutionId = '60000000-0000-4000-8000-000000000009';
 
-test('AC-FE-F255A 六视图显示机构存值并可排序，隐藏字段不发引用请求', async ({ page }) => {
+test('AC-FE-F255A 六视图显示机构存值并可排序', async ({ page }) => {
   await setup(page);
   await page.route('**/permission/me/objects/*', (route) =>
     route.fulfill({
