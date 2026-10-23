@@ -54,11 +54,8 @@ describe('AC-EXIT-F316 两个仿真入口复用运行策略', () => {
       `${mode} / %s：两个主取人为空，仿真与实际发起及节点去向一致`,
       async (scenario) => {
         const x = await world(database().db, `sim-${mode}-${scenario}`, false);
-        const policy = scenario.startsWith('default')
-          ? undefined
-          : scenario === 'specified_empty'
-            ? 'specified'
-            : scenario;
+        const explicit = scenario === 'specified_empty' ? 'specified' : scenario;
+        const policy = scenario.startsWith('default') ? undefined : explicit;
         const fallback = scenario === 'specified' || scenario === 'default_fallback';
         const process = await publish(
           x,

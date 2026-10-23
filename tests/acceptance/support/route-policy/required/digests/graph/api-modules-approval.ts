@@ -1189,10 +1189,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
+  'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
+  ],
   'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers': [
+    '#decideHandoverApprovers',
     'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
     'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
-    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
   'apps/api/src/modules/approval/handover.ts#assertTenantMember': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1790,8 +1794,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
   'apps/api/src/modules/approval/simulation.ts#decideVirtual': [
-    '#NOBODY',
-    '#candidateOf',
     '#managerOf',
     'packages/domain/src/approval/routing.ts#decideNode',
   ],
@@ -1802,13 +1804,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#preflight': [
     '#NOBODY',
-    '#decideVirtual',
     '#managerOf',
+    '#virtualDecisions',
     '#virtualFacts',
     'packages/domain/src/approval/routing.ts#adminRecused',
     'packages/domain/src/approval/routing.ts#avoidSelfExceptionAdmin',
     'packages/domain/src/approval/routing.ts#submitBlockers',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateByObject': [
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
@@ -1822,11 +1823,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateNodes': [
-    '#candidateOf',
     '#countersignSummary',
     '#simulatedSeats',
+    '#virtualDecisions',
     '#virtualFacts',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
     'packages/domain/src/approval/types.ts#nodeKindOf',
@@ -1840,7 +1840,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/conditions.ts#evaluateCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
-  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': ['#candidateOf', '#decideVirtual', '#describe'],
+  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': ['#describe'],
+  'apps/api/src/modules/approval/simulation.ts#virtualDecisions': [
+    'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers',
+    '#NOBODY',
+    '#candidateOf',
+    '#decideVirtual',
+    '#virtualCandidate',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+    'packages/domain/src/approval/types.ts#isCountersign',
+  ],
   'apps/api/src/modules/approval/simulation.ts#virtualFacts': ['packages/domain/src/approval/recusal.ts#recusalFacts'],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',

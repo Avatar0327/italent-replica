@@ -30,6 +30,7 @@ import {
 import { validIsoDate } from '../org/read-model.js';
 import { approvalError, type ApprovalContext } from './context.js';
 import { loadProcess, loadVersion, type VersionView } from './definitions.js';
+import { decideHandoverApprovers, type HandoverResolution, type ResolvedApprover } from './handover-empty.js';
 import { candidates, evaluate, noProcessMessage, originalSiteMatch, replicaMatch } from './matching.js';
 
 export interface SimulationData {
@@ -78,16 +79,61 @@ function candidateOf(expression: ApproverExpression, data: SimulationData, facts
 
 function decideVirtual(
   node: ApprovalNode,
-  expression: ApproverExpression,
+  candidate: Candidate,
   data: SimulationData,
   facts: RoutingFacts,
 ): NodeDecision {
-  const userId = candidateOf(expression, data, facts);
-  // 仿真只有虚拟账号，没有人员：候选一律按账号比较
-  const candidate: Candidate = userId ? { personId: null, userId, accountSource: true } : NOBODY;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return draft;
   return decideNode(node, candidate, facts, managerOf(data, candidate));
+}
+
+// 仿真只有虚拟账号，没有人员：候选一律按账号比较，不查询真实资格或账号绑定。
+const virtualCandidate = (userId: string | null): Candidate => ({ personId: null, userId, accountSource: true });
+
+function virtualDecisions(node: ApprovalNode, data: SimulationData, facts: RoutingFacts) {
+  const expressions = approverExpressionsOf(node);
+  const primary: ResolvedApprover[] = expressions.map((expression) => [
+    expression,
+    virtualCandidate(candidateOf(expression, data, facts)),
+  ]);
+  const resolved: HandoverResolution = isCountersign(node)
+    ? decideHandoverApprovers(node, primary, (node.fallbackUserIds ?? []).map(virtualCandidate))
+    : { kind: 'candidates', candidates: primary };
+  if (resolved.kind === 'candidates') {
+    return resolved.candidates.map(([expression, candidate]) => ({
+      expression,
+      candidate,
+      decision: decideVirtual(node, candidate, data, facts),
+    }));
+  }
+  // 只将共用判定的结果转成既有仿真输出，不在此重新解释策略或取人规则。
+  let decision: NodeDecision;
+  switch (resolved.kind) {
+    case 'auto_approve':
+      decision = {
+        kind: 'auto',
+        outcome: 'no_assignee_approve',
+        result: 'approve',
+        userId: null,
+        reason: '交接节点审批人为空，按配置自动同意',
+      };
+      break;
+    case 'stop':
+      decision = { kind: 'no_assignee', reason: '工作交接审批人为空，流程不再继续流转' };
+      break;
+    case 'exception_admin':
+      decision = {
+        kind: 'assign',
+        userId: facts.exceptionAdminUserId,
+        origin: 'exception_admin',
+        isExceptionAdmin: true,
+        selfSkippedUserId: null,
+        reason: '交接节点审批人为空，转异常管理员',
+      };
+      break;
+  }
+  return [{ expression: expressions[0]!, candidate: NOBODY, decision }];
 }
 
 function describe(decision: NodeDecision, version: VersionView, data: SimulationData, facts: RoutingFacts) {
@@ -160,35 +206,34 @@ function virtualFacts(ctx: ApprovalContext, version: VersionView, data: Simulati
 function preflight(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
   const facts = virtualFacts(ctx, version, data, 0);
   const node = version.nodes[0];
-  // 会签首节点逐人核验（F-003）：任一人为空即不可提交。
-  const decisions = node
-    ? approverExpressionsOf(node).map((expression) => decideVirtual(node, expression, data, facts))
-    : [];
+  // 先应用交接策略，再逐席预检；停住与默认首节点为空都不可提交。
+  const decisions = node ? virtualDecisions(node, data, facts).map((entry) => entry.decision) : [];
   const first = decisions.find((decision) => decision.kind === 'first_node_empty') ?? decisions[0];
   const admin: Candidate = version.exceptionAdminUserId
     ? { personId: null, userId: version.exceptionAdminUserId }
     : NOBODY;
   const choice = avoidSelfExceptionAdmin(admin, facts, adminRecused(admin, facts) ? managerOf(data, admin) : undefined);
-  return submitBlockers(choice, first).map((blocker) => blocker.message);
+  const blockers = submitBlockers(choice, first).map((blocker) => blocker.message);
+  const stopped = decisions.find((decision) => decision.kind === 'no_assignee');
+  if (stopped) blockers.unshift(stopped.reason);
+  return blockers;
 }
 
 type Outcome = ReturnType<typeof describe>;
 
 /** 与真实提交一致（F-003）：两个表达式解析为同一人、或落到同一接手人时只算一席。 */
 function simulatedSeats(
-  node: ApprovalNode,
-  expressions: readonly ApproverExpression[],
+  decisions: ReturnType<typeof virtualDecisions>,
   version: VersionView,
   data: SimulationData,
   facts: RoutingFacts,
 ) {
   const seats: (Outcome & { expression: ApproverExpression })[] = [];
   const candidates = new Set<string>();
-  for (const expression of expressions) {
-    const candidate = candidateOf(expression, data, facts);
-    if (candidate !== null && candidates.has(candidate)) continue;
-    if (candidate !== null) candidates.add(candidate);
-    const outcome = describe(decideVirtual(node, expression, data, facts), version, data, facts);
+  for (const { expression, candidate, decision } of decisions) {
+    if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
+    if (candidate.userId !== null) candidates.add(candidate.userId);
+    const outcome = describe(decision, version, data, facts);
     if (outcome.approverUserId && seats.some((seat) => seat.approverUserId === outcome.approverUserId)) continue;
     seats.push({ expression, ...outcome });
   }
@@ -198,7 +243,7 @@ const STATUS_RANK: Readonly<Record<string, number>> = { pass: 0, warning: 1, exc
 
 /** 会签节点的汇总（F-003）：状态取逐人结果中最严重的，审批人逐人列在 approvers 中。 */
 function countersignSummary(node: ApprovalNode, seats: readonly (Outcome & { expression: string })[]) {
-  if (!isCountersign(node)) {
+  if (!isCountersign(node) || seats[0]?.resolution === 'no_assignee_approve') {
     const { expression: _expression, ...single } = seats[0]!;
     return single;
   }
@@ -226,9 +271,9 @@ function simulateNodes(ctx: ApprovalContext, version: VersionView, data: Simulat
       approvedUserIds: approved,
       chainUserIds: approved,
     };
-    const expressions = approverExpressionsOf(node);
-    const seats = simulatedSeats(node, expressions, version, data, facts);
-    previous = [...new Set(expressions.flatMap((expression) => candidateOf(expression, data, facts) ?? []))];
+    const decisions = virtualDecisions(node, data, facts);
+    const seats = simulatedSeats(decisions, version, data, facts);
+    previous = [...new Set(decisions.flatMap(({ candidate }) => candidate.userId ?? []))];
     approved.push(...seats.flatMap((seat) => seat.approverUserId ?? []));
     const recipients = (recipient: ApprovalNode['messageRules'][number]['recipient']) =>
       recipient === 'owner'

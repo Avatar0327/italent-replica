@@ -508,9 +508,7 @@ function inheritRecusalSwitches(definition: ProcessDefinition, current: readonly
       avoidSelf: node.actions.avoidSelf ?? (before ? avoidsSelf(before) : false),
       avoidSubjects: node.actions.avoidSubjects ?? (before ? avoidsSubjects(before) : false),
     };
-    // F-316：旧客户端整体保存草稿时保留同键节点的显式策略；未配置节点仍不补默认值。
-    const emptyApproverPolicy = node.emptyApproverPolicy ?? before?.emptyApproverPolicy;
-    return { ...node, actions, ...(emptyApproverPolicy === undefined ? {} : { emptyApproverPolicy }) };
+    return { ...node, actions };
   });
   return { ...definition, nodes };
 }

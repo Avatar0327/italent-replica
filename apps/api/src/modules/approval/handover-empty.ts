@@ -2,6 +2,7 @@
 import type { Tx } from '@italent/db';
 import {
   HANDOVER_NODE_KEYS,
+  HANDOVER_FALLBACK_APPROVERS,
   type Candidate,
   type CountersignApprovalNode,
   type ApproverExpression,
@@ -20,18 +21,37 @@ export async function resolveHandoverApprovers(
   subject: RoutingSubject,
   node: CountersignApprovalNode,
 ): Promise<HandoverResolution> {
-  const policy = node.emptyApproverPolicy;
   const resolved: ResolvedApprover[] = [];
   for (const expression of node.approvers) {
-    const list = await resolveCandidates(tx, subject, expression, policy === undefined ? node.fallbackUserIds : []);
+    const list = await resolveCandidates(tx, subject, expression);
     for (const candidate of list) resolved.push([expression, candidate]);
   }
-  if (policy === undefined) return { kind: 'candidates', candidates: resolved };
+  const fallback = resolved.some(([, candidate]) => candidate.userId === null)
+    ? await resolveFallbackCandidates(tx, subject, node.fallbackUserIds ?? [])
+    : [];
+  return decideHandoverApprovers(node, resolved, fallback);
+}
+
+/** 运行与仿真共用的纯判定：运行传入资格过滤后的候选，仿真只传虚拟关系与配置中的账号。 */
+export function decideHandoverApprovers(
+  node: CountersignApprovalNode,
+  resolved: readonly ResolvedApprover[],
+  fallback: readonly Candidate[],
+): HandoverResolution {
+  const policy = node.emptyApproverPolicy;
+  if (policy === undefined) {
+    // DEC-663 未配置策略时，只有交接表达式逐项使用兜底名单。
+    const candidates = resolved.flatMap(([expression, candidate]): ResolvedApprover[] =>
+      candidate.userId === null && HANDOVER_FALLBACK_APPROVERS.has(expression) && fallback.length
+        ? fallback.map((person) => [expression, person])
+        : [[expression, candidate]],
+    );
+    return { kind: 'candidates', candidates };
+  }
   // 策略针对整个节点无人：已有主处理人时不追加兜底，也不为其他空表达式自动投票。
   const present = resolved.filter(([, candidate]) => candidate.userId !== null);
   if (present.length) return { kind: 'candidates', candidates: present };
   if (policy === 'specified') {
-    const fallback = await resolveFallbackCandidates(tx, subject, node.fallbackUserIds ?? []);
     if (fallback.length)
       return { kind: 'candidates', candidates: fallback.map((candidate) => [node.approvers[0]!, candidate]) };
     return { kind: node.key === HANDOVER_NODE_KEYS.work ? 'stop' : 'exception_admin' };
