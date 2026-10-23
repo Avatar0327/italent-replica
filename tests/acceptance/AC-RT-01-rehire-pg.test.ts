@@ -1,17 +1,17 @@
 /**
- * R2-T04 BE-5b / 真 PG 交错 ④（设计 §13.3）：同时返聘的退休生效 vs 同员工另一笔返聘写入。PGlite 单连接无法并发，只在设了
- * TEST_DATABASE_URL 时运行。交错同 AC-RT-05-activation-pg：持锁会话占住员工行锁，按固定先后启动请求，等恰有 N 个会话在等锁
- * （屏障）后才放锁。
- * 设计原文以“Offer 同步（退休返聘）”为另一笔写入；Offer 同步只会关联在职/已离职的实习生、普通 Offer 另建人员，无法与本员工的
- * 退休交错，所以这里用同一条顺序校验（write-service assertBusinessSequence，Offer 同步与通用入口共用）的另一个入口：
- * 通用 POST employees/:id/businesses kind=retire_rehire。串行后恰一笔返聘成立：
- * 退休生效先 → 手工返聘看到前一条已是返聘（在职），按既有规则 409；手工返聘先 → 退休尚未落地，顺序校验失败 409，退休随后生成返聘。
+ * F-293 / AC-RT-01 / 真 PG 交错 ④（退休设计 §13.3）：保留手工返聘两种顺序，补真实 Offer 写入口。
+ * 先占住员工行锁，逐个确认请求已排队才放锁；PGlite 单连接不运行。业务拒绝断言机读原因，不能把 revision 冲突当成顺序校验。
  */
 import './support/exit-gate-enforced.js';
-import { sql, withTenant, type Tx } from '@italent/db';
+import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { rehireWorld, type RehireWorld } from './AC-RT-rehire-support.js';
+import { exitActivator } from './AC-EXIT-activation-support.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
+import { loginEmailOf } from './AC-EMP-support.js';
+import { errorOf } from './AC-OF-BE14a-support.js';
+import { syncWorld, type SyncOffer } from './AC-OF-BE14b2-support.js';
+import { rehireWorld } from './AC-RT-rehire-support.js';
 import { settledOrBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
@@ -25,7 +25,10 @@ const signal = () => {
 };
 
 /** 先后启动的请求排在员工行锁后面：第 n 个请求发出后等恰有 n 个会话在等锁，全部排队后才放锁。 */
-async function queueBehindEmployeeLock(x: RehireWorld, requests: readonly (() => Promise<unknown>)[]) {
+async function queueBehindEmployeeLock(
+  x: { db: Db; session: { tenant: { id: string } }; employee: { id: string } },
+  requests: readonly (() => Promise<unknown>)[],
+) {
   const held = signal();
   const release = signal();
   const holder = withTenant(x.db, x.session.tenant.id, async (tx: Tx) => {
@@ -34,15 +37,18 @@ async function queueBehindEmployeeLock(x: RehireWorld, requests: readonly (() =>
     held.resolve();
     await release.promise;
   });
-  await held.promise;
   const running: Promise<unknown>[] = [];
-  for (const [index, request] of requests.entries()) {
-    const started = request();
-    running.push(started);
-    // 请求要么排到锁后，要么在拿锁前就被业务规则拒绝（结束）；两种都继续，终态断言兜底
-    await settledOrBlocked(x.db, started, index + 1);
+  try {
+    await Promise.race([held.promise, holder]);
+    for (const [index, request] of requests.entries()) {
+      const started = request();
+      running.push(started);
+      expect(await settledOrBlocked(x.db, started, index + 1)).toBe('blocked');
+    }
+  } finally {
+    release.resolve();
+    await Promise.allSettled([holder, ...running]);
   }
-  release.resolve();
   await holder;
   return Promise.allSettled(running);
 }
@@ -59,6 +65,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         // 调度入口对被占用的员工行是跳过（SKIP LOCKED），不排队；这里直接走编排器入口，它会等员工行锁
         const activate = () => x.activate(retire.id, '2026-10-16');
         const manual = async () => {
+          if (order === '退休生效先') {
+            // 先排到退休事务后，提交后再取 revision，避免旧版本的 409 遮住业务顺序原因。
+            await withTenant(x.db, x.session.tenant.id, (tx) =>
+              tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${x.session.tenant.id}
+                AND id=${x.employee.id}::uuid FOR NO KEY UPDATE`),
+            );
+          }
           const { revision } = await x.session.getEmployee(x.employee.id);
           return x.session.request('POST', `/employees/${x.employee.id}/businesses`, {
             ifMatch: revision,
@@ -83,7 +96,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         const manualResponse = (settled[order === '退休生效先' ? 1 : 0] as PromiseFulfilledResult<Response>).value;
         const text = await manualResponse.clone().text();
         expect(manualResponse.status, text).toBe(409);
-        expect(text).not.toContain('APPROVAL_CONCURRENT_CONFLICT');
+        // write-service.ts sequenceViolation：这里校验顺序拒绝，不校验中文文案。
+        expect(await errorOf(manualResponse)).toMatchObject({
+          code: 'CONFLICT',
+          details: { reason: 'RETIRE_REHIRE_REQUIRES_RETIREMENT' },
+        });
         // 终态：退休生效，时间轴上恰有一条 retire_rehire，且就是退休扩展行记录的那条
         expect((await x.business(retire.id)).status).toBe('effective');
         const timeline = await x.timeline();
@@ -94,3 +111,71 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     );
   },
 );
+
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-RT-01 / F-293 真实 Offer 与退休生效', () => {
+  it('设计 PG ④：Offer 先生成退休返聘，随后退休因顺序校验失败', async () => {
+    const w = await syncWorld(database().db, 'rt01-offer-first');
+    await installExitSeeds(w.db, w.tenant.id);
+    const employee = await w.internEmployee('合成退休返聘员工');
+    const current = await w.employment('GET', `/employees/${employee.id}`);
+    expect(current.status).toBe(200);
+    const { revision } = (await current.json()) as { revision: number };
+    const response = await w.employment('POST', `/retirements/employees/${employee.id}`, {
+      ifMatch: revision,
+      body: {
+        mode: 'direct',
+        lastWorkDate: '2026-10-25',
+        reEmployed: true,
+        rehire: { fields: { employType: 'internal', departmentId: w.department.id }, entry: { probation: false } },
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const retire = (await response.json()) as { id: string; status: string };
+    expect(retire.status).toBe('approved');
+
+    // Offer 的创建、关联、接受与同步全部经 HTTP 写入口；关闭自动同步以便把立即同步排入 PG 屏障。
+    await w.timing({ enabled: false });
+    const created = await w.social({
+      personalEmail: loginEmailOf(employee.id),
+      source: 'intern_conversion',
+      plannedEntryDate: '2026-10-27',
+      hasProbation: false,
+    });
+    const linked = await w.request('POST', `/${created.id}/link-employee`, {
+      ifMatch: created.revision,
+      body: { employeeId: employee.id },
+    });
+    expect(linked.status, await linked.clone().text()).toBe(200);
+    const offer = await w.accepted((await linked.json()) as SyncOffer);
+    expect(offer).toMatchObject({ linkedEmployeeId: employee.id, syncStatus: null });
+    const session = { tenant: w.tenant, user: w.user };
+    const activate = () => exitActivator(w.db, session)(retire.id, '2026-10-26');
+    const sync = () => w.sync(offer);
+    const settled = await queueBehindEmployeeLock({ db: w.db, session, employee }, [sync, activate]);
+    expect(
+      settled.every((result) => result.status === 'fulfilled'),
+      JSON.stringify(settled),
+    ).toBe(true);
+    const syncResponse = (settled[0] as PromiseFulfilledResult<Response>).value;
+    expect(syncResponse.status, await syncResponse.clone().text()).toBe(200);
+    const synced = (await syncResponse.json()) as SyncOffer;
+    const activation = (settled[1] as PromiseFulfilledResult<unknown>).value;
+    const records = await w.recordsOf(employee.id);
+    const kinds = records.map((record) => record.kind);
+    const evidence = JSON.stringify({
+      syncStatus: synced.syncStatus,
+      syncTarget: synced.syncTarget,
+      activation,
+      kinds,
+    });
+    expect(synced.syncStatus, evidence).toBe('success');
+    // retirement-rehire.ts 包装顺序拒绝；编排器落失败尝试，CONFLICT 对应 HTTP 409。
+    expect(activation, evidence).toMatchObject({
+      outcome: 'failed',
+      reason: 'RETIREMENT_REHIRE_FAILED',
+      detail: { code: 'CONFLICT', rule: 'RETIRE_REHIRE_REQUIRES_RETIREMENT' },
+    });
+    // 保留设计 §13.3 PG ④ 的产物要求；不能用实习转正冒充退休返聘，口径冲突交总编排决定。
+    expect(kinds, evidence).toEqual(['hire', 'retire_rehire']);
+  });
+});
