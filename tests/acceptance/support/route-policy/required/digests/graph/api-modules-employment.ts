@@ -5400,7 +5400,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/routes.ts#registerBusinessTransitions': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
     'apps/api/src/modules/employment/context.ts#readContext',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings',
@@ -5410,6 +5409,7 @@ export const GRAPH: Graph = {
     '#discloseDeletionBlock',
     '#routesToCancel',
     '#submitBody',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
     'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
     'apps/api/src/modules/job/context.ts#revision',
@@ -5777,6 +5777,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
   ],
+  'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
   'apps/api/src/modules/employment/transitions.ts#activateExitPort': [
     'apps/api/src/modules/employment/activation-store.ts#PREDECESSOR_FAILED',
     'apps/api/src/modules/employment/exit-activation.ts#activateExit',
@@ -5888,8 +5891,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': [
     'apps/api/src/modules/approval/store.ts#activeInstanceOf',
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
   ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': [

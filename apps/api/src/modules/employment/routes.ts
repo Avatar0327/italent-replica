@@ -72,6 +72,7 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { requireEmploymentTransitionWrite } from './transition-access.js';
 import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 import {
   disclosePendingApplications,
@@ -449,8 +450,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const ack = action === 'submit' ? await submitBody(c) : undefined;
-        const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
-        await requireEmploymentWrite(ctx, action === 'delete' ? 'delete' : 'update', {}, button);
+        await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
@@ -480,7 +480,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
                 authorize: async (tx, scoped) => {
                   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentWrite(scoped, action === 'delete' ? 'delete' : 'update', {}, button);
+                  await requireEmploymentTransitionWrite(scoped, action);
                 },
               }),
         };

@@ -2251,6 +2251,10 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness': ['c9a2f0520ae9', 'a99db06d36f8'],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['52536b1232ec', '3a918b2c451f'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': ['55e663f51fd5', 'd344b4d93a8a'],
+  'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
+    'd116cb0f2fcf',
+    '413b0e4e2c2a',
+  ],
   'apps/api/src/modules/employment/transitions.ts#ACTIONS': ['feaba95ca7c8', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/transitions.ts#STATE_AFTER': ['985203dd12d1', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/transitions.ts#activateExitPort': ['36efbe63dd1d', 'fe6d06c9eb30'],
@@ -2274,8 +2278,8 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible': ['49f92d8de8e5', '1f2b93249b6c'],
   'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords': ['6d6a6294a81f', '42012c52ac1a'],
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': [
-    '5778c95fa0c5',
-    '50cfa1244b1c',
+    '148a6020239b',
+    '573e99887edc',
   ],
   'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS': ['bc841326bb26', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': ['4646e95875a8', 'cdc57b7718bf'],

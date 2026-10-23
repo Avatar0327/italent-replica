@@ -2,8 +2,8 @@ import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { activeInstanceOf } from '../approval/store.js';
 import { approvalWithdrawalFailure } from '../approval/withdraw-eligibility.js';
-import { requireEmploymentWrite } from './context.js';
 import { requireBusinessWriteScope } from './replay-guard.js';
+import { requireEmploymentTransitionWrite } from './transition-access.js';
 import { transitionPermitted } from './transitions.js';
 import type { EmploymentContext } from './types.js';
 
@@ -17,7 +17,7 @@ export async function employmentWithdrawalFailure(
   businessId: string,
 ): Promise<AppError | undefined> {
   try {
-    await requireEmploymentWrite(ctx, 'update', {}, 'Employment.Withdraw');
+    await requireEmploymentTransitionWrite(ctx, 'withdraw');
     const business = await requireBusinessWriteScope(tx, ctx.authorize!, ctx, businessId);
     if (!transitionPermitted({ state: business.status, payload: business }, 'withdraw'))
       return new AppError('CONFLICT', '当前状态不允许此动作', { state: business.status, action: 'withdraw' });
