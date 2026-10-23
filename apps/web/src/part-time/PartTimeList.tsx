@@ -71,26 +71,17 @@ function useList() {
     projected,
     result,
     switchView,
+    applyFilters(next: Filters) {
+      setFilters(allowedFilters(next, allowed));
+      setPage(1);
+      check([]);
+    },
   };
 }
 type State = ReturnType<typeof useList>;
 export function PartTimeList() {
   const state = useList();
-  const {
-    view,
-    days,
-    setDays,
-    setPage,
-    setFilters,
-    drawer,
-    setDrawer,
-    selected,
-    select,
-    allowed,
-    projected,
-    result,
-    switchView,
-  } = state;
+  const { view, days, setDays, drawer, setDrawer, selected, select, allowed, projected, result, switchView } = state;
   return (
     <RequestEntries refresh={result.reload} saved={(id) => select({ id, request: true })}>
       <h1>{m.title}</h1>
@@ -117,9 +108,8 @@ export function PartTimeList() {
           allowed={allowed}
           onClose={() => setDrawer(false)}
           onApply={(next, nextDays) => {
-            setFilters(allowedFilters(next, allowed));
+            state.applyFilters(next);
             setDays(nextDays);
-            setPage(1);
             setDrawer(false);
           }}
         />
@@ -175,11 +165,7 @@ function ListCard({ state }: { state: State }) {
         initial={state.projected}
         view={view}
         allowed={state.allowed}
-        onApply={(next) => {
-          setFilters(allowedFilters(next, state.allowed));
-          setPage(1);
-          state.check([]);
-        }}
+        onApply={state.applyFilters}
       />
       {result.error ? (
         <PageState kind="error" error={result.error} retry={result.refresh} />
