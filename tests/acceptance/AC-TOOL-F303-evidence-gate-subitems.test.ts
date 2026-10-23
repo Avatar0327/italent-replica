@@ -11,6 +11,7 @@ const TARGET = 'R9-T01';
 const OTHER_TARGET = 'R9-T02';
 const EVIDENCE_MD = 'docs/07_M0/03_需取证清单.md';
 const DECISION_MD = 'docs/00_状态/04_缺口冲突差异登记册.md';
+const SEPARATORS = ['；', ';', '，', ',', '。', '. ', '、', '<br>', '<br/>', '<br />'];
 const dirs: string[] = [];
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
@@ -63,21 +64,28 @@ describe.each(sources)('AC-TOOL-F303 $name：✅ 子项门禁', ({ file, id, run
     },
   );
 
-  it.each(['；', ';', '，', ',', '。', '. ', '、', '<br>', '<br/>', '<br />', ''])(
-    '分隔符 %j：逐项输出多个待决项，后面的完成标记不能覆盖前面的待决项',
-    (separator) => {
-      const pending = '②待原站实测';
-      const undecided = '③待定';
-      const status = ['✅ ①已取证', pending, undecided, '④✅ 已完成'].join(separator);
-      const { code, out } = run(status);
-      expect(code).toBe(1);
-      expectItem(out, file, 6, id, pending);
-      expectItem(out, file, 6, id, undecided);
-      const details = out.split('\n').filter((line) => line.includes(`${file}:6`));
-      expect(details).toHaveLength(2);
-      expect(details.every((line) => !line.includes('已完成') && !line.includes('已取证'))).toBe(true);
-    },
-  );
+  it.each([...SEPARATORS, ''])('分隔符 %j：逐项输出多个待决项，后面的完成标记不能覆盖前面的待决项', (separator) => {
+    const pending = '②待原站实测';
+    const undecided = '③待定';
+    const status = ['✅ ①已取证', pending, undecided, '④✅ 已完成'].join(separator);
+    const { code, out } = run(status);
+    expect(code).toBe(1);
+    expectItem(out, file, 6, id, pending);
+    expectItem(out, file, 6, id, undecided);
+    const details = out.split('\n').filter((line) => line.includes(`${file}:6`));
+    expect(details).toHaveLength(2);
+    expect(details.every((line) => !line.includes('已完成') && !line.includes('已取证'))).toBe(true);
+  });
+
+  it.each(SEPARATORS)('没有圈号时仍按 %j 分隔，并只报告待决子项', (separator) => {
+    const { code, out } = run(['✅ 已取证', '待实测', '待定', '已完成'].join(separator));
+    expect(code).toBe(1);
+    expectItem(out, file, 6, id, '待实测');
+    expectItem(out, file, 6, id, '待定');
+    const details = out.split('\n').filter((line) => line.includes(`${file}:6`));
+    expect(details).toHaveLength(2);
+    expect(details.every((line) => !line.includes('已完成') && !line.includes('已取证'))).toBe(true);
+  });
 
   it.each([
     ['首子项待决', '✅ 待取证；②已完成', '✅ 待取证'],
