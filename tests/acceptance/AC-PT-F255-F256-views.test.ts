@@ -132,8 +132,12 @@ describe('AC-PT-F256 字段与筛选', () => {
     });
     const post = await w.ok<{ id: string }>(response, 201);
     const manager = await w.colleague('合成经理');
+    const first = await w.org(`前部门${uniqueSuffix()}`, {
+      establishedOn: '2024-01-01',
+      parents: { admin: { parentId: w.tenantId, sequence: 1 } },
+    });
     const a = await w.make({ startDate: '2026-11-01', fields: { postId: post.id, directManagerId: manager.id } });
-    const b = await w.make({ startDate: '2026-11-02' });
+    const b = await w.make({ startDate: '2026-11-02', fields: { departmentId: first.id } });
     expect(w.idsOf(await w.view('all', `&postId=${post.id}`))).toEqual([a.id]);
     expect(w.idsOf(await w.view('not_started', '&sortBy=directManagerId&direction=asc'))).toEqual([a.id, b.id]);
     const other = await w.org(`Z部门${uniqueSuffix()}`, {
