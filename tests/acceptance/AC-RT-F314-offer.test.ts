@@ -64,8 +64,8 @@ describe('AC-RT-F314 Offer 等退休生效', () => {
     expect(await w.entryOf(result)).toMatchObject({ employeeId: w.employee.id, employeeStatus: 1 });
   });
 
-  it('自动同步失败不影响接受，次日扫描在退休生效后可重试，无需新调度器', async () => {
-    const w = await setup('auto', true);
+  it.each([true, false])('自动失败不影响接受，次日退休生效后可重试（实习开关 %s）', async (on) => {
+    const w = await setup(`auto-${on}`, true, on);
     expect(w.accepted).toMatchObject({
       status: 'accepted',
       syncStatus: 'failed',
