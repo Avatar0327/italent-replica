@@ -200,9 +200,9 @@ test('AC-FE-R2d1-09 人员选择器替代姓名关键字输入', async ({ page }
   await page.getByRole('button', { name: '高级筛选', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: '高级筛选' });
   await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveCount(0);
-  await drawer.getByLabel('人员', { exact: true }).click();
+  await drawer.getByRole('combobox', { name: '人员', exact: true }).click();
   await page.getByTitle('合成兼职员工', { exact: true }).click();
-  await drawer.getByLabel('人员', { exact: true }).press('Escape');
+  await drawer.getByRole('combobox', { name: '人员', exact: true }).press('Escape');
   const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('employeeIds') === employee);
   await drawer.getByRole('button', { name: /^确\s*定$/ }).click();
   await read;

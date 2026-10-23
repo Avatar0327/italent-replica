@@ -5,7 +5,7 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { restricted } from './AC-PT-http-support.js';
-import { insertPartTimeRecord } from './AC-PT-support.js';
+import { insertPartTimeRecord, insertPartTimeRequest } from './AC-PT-support.js';
 import { viewsWorld, type ViewBody } from './AC-PT-views-support.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -136,13 +136,27 @@ describe('AC-PT-F256 字段与筛选', () => {
     const b = await w.make({ startDate: '2026-11-02' });
     expect(w.idsOf(await w.view('all', `&postId=${post.id}`))).toEqual([a.id]);
     expect(w.idsOf(await w.view('not_started', '&sortBy=directManagerId&direction=asc'))).toEqual([a.id, b.id]);
-    const other = await w.org(`Z部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
+    const other = await w.org(`Z部门${uniqueSuffix()}`, {
+      establishedOn: '2024-01-01',
+      parents: { admin: { parentId: w.tenantId, sequence: 1000 } },
+    });
     await w.moveSnapshot(a.id, other.id);
     expect((await w.view('all', `&postId=${post.id}`)).total).toBe(0);
-    const departmentOrder = await w.view('all', '&sortBy=departmentId&direction=asc');
-    expect(departmentOrder.total).toBe(2);
+    expect(w.idsOf(await w.view('all', '&sortBy=departmentId&direction=asc'))).toEqual([b.id, a.id]);
+    expect(w.idsOf(await w.view('all', '&sortBy=departmentId&direction=desc'))).toEqual([a.id, b.id]);
     const request = await w.seedRequest({ requestType: 'add' });
-    expect(w.idsOf(await w.view('in_approval', '&sortBy=postId&direction=asc'))).toEqual([request]);
+    const noPost = await w.seedRequest({ requestType: 'add', startDate: '2026-09-02' });
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`
+      INSERT INTO part_time_request_versions(id, tenant_id, employee_id, request_id, version_no, command_id,
+        service_type, department_id, start_date, post_id)
+      SELECT ${randomUUID()}, tenant_id, employee_id, request_id, 2, ${randomUUID()}, service_type,
+        department_id, start_date, ${post.id} FROM part_time_request_versions
+      WHERE tenant_id=${w.tenantId} AND request_id=${request} AND version_no=1`),
+    );
+    expect(w.idsOf(await w.view('in_approval'))).toEqual([noPost, request]);
+    for (const direction of ['asc', 'desc'])
+      expect(w.idsOf(await w.view('in_approval', `&sortBy=postId&direction=${direction}`))).toEqual([request, noPost]);
   });
 
   it('即将到期取最新未删除延长/结束申请，按该申请状态筛选而非任意历史状态', async () => {
@@ -166,9 +180,26 @@ describe('AC-PT-F256 字段与筛选', () => {
   it('审批视图默认审批中，可多选申请类型/审批状态，删除申请始终不可见', async () => {
     const w = await world('requests');
     const record = await w.seedPartTime({ endDate: '2026-10-20' });
-    const add = await w.seedRequest({ requestType: 'add' });
-    const extend = await w.seedRequest({ requestType: 'extend', recordId: record, state: 'rejected' });
-    const end = await w.seedRequest({ requestType: 'end', recordId: record, state: 'draft' });
+    const add = await w.seedRequest({
+      requestType: 'add',
+      startDate: '2026-09-03',
+      serviceType: 'expatriate',
+      endDate: '2026-10-02',
+    });
+    const extend = await w.seedRequest({
+      requestType: 'extend',
+      recordId: record,
+      state: 'rejected',
+      startDate: '2026-09-01',
+      endDate: '2026-10-30',
+    });
+    const end = await w.seedRequest({
+      requestType: 'end',
+      recordId: record,
+      state: 'draft',
+      startDate: '2026-09-02',
+      serviceType: 'secondment',
+    });
     await w.seedRequest({ requestType: 'add', state: 'deleted' });
     expect(w.idsOf(await w.view('in_approval'))).toEqual([add]);
     expect(w.idsOf(await w.view('in_approval', '&kinds=extend&statuses=rejected'))).toEqual([extend]);
@@ -176,6 +207,48 @@ describe('AC-PT-F256 字段与筛选', () => {
       w.idsOf(await w.view('in_approval', '&kinds=extend&kinds=end&statuses=rejected&statuses=draft')).sort(),
     ).toEqual([extend, end].sort());
     expect((await w.get('/part-times?view=in_approval&statuses=deleted')).status).toBe(400);
+    const states = '&statuses=in_review&statuses=rejected&statuses=draft';
+    for (const sortBy of ['effectiveDate', 'serviceType']) {
+      expect(w.idsOf(await w.view('in_approval', `${states}&sortBy=${sortBy}`))).toEqual([extend, end, add]);
+      expect(w.idsOf(await w.view('in_approval', `${states}&sortBy=${sortBy}&direction=desc`))).toEqual([
+        add,
+        end,
+        extend,
+      ]);
+    }
+    expect(w.idsOf(await w.view('in_approval', `${states}&sortBy=endDate`))).toEqual([add, extend, end]);
+    expect(
+      w.idsOf(await w.view('in_approval', `${states}&serviceTypes=secondment&employeeIds=${w.employeeId}`)),
+    ).toEqual([end]);
+  });
+
+  it('同一创建时刻以 ID 升序稳定选申请；新删除事件立即排除该申请', async () => {
+    const w = await world('request-tie');
+    const recordId = await w.seedPartTime({ endDate: '2026-10-20' });
+    const requests = await withTenant(w.db, w.tenantId, async (tx) => {
+      const result: { id: string; kind: 'extend' | 'end' }[] = [];
+      for (const kind of ['extend', 'end'] as const)
+        result.push({
+          kind,
+          id: await insertPartTimeRequest(tx, {
+            tenantId: w.tenantId,
+            employeeId: w.employeeId,
+            initiatorUserId: w.user.id,
+            departmentId: w.partTimeOrg.id,
+            recordId,
+            requestType: kind,
+          }),
+        });
+      return result.sort((a, b) => a.id.localeCompare(b.id));
+    });
+    expect((await w.view('expiring')).items[0]).toMatchObject({ pendingKind: requests[0]!.kind });
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`
+      INSERT INTO part_time_request_events(tenant_id, employee_id, request_id, version_id, state, event_no, command_id)
+      SELECT tenant_id, employee_id, request_id, version_id, 'deleted', 2, ${randomUUID()}
+      FROM part_time_request_events WHERE tenant_id=${w.tenantId} AND request_id=${requests[0]!.id} AND event_no=1`),
+    );
+    expect((await w.view('expiring')).items[0]).toMatchObject({ pendingKind: requests[1]!.kind });
   });
 
   it('数组中非法值、错视图筛选和超长人员数组不被静默忽略', async () => {

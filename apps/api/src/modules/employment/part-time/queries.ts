@@ -32,8 +32,9 @@ import {
   partTimeVisible,
   type PartTimeRecordDto,
 } from './read.js';
-import { partTimeCurrentEndSql, partTimeViewSql } from './span-sql.js';
+import { partTimeCurrentEndSql, partTimeCurrentSql, partTimeServiceStatusSql, partTimeViewSql } from './span-sql.js';
 import { currentDepartment, latestSnapshot, uuidArray } from './store.js';
+import { viewOrder, type ViewColumns, type ViewSort } from './view-sort.js';
 
 export interface PartTimeViewFilter {
   /** 姓名或工号包含，不区分大小写。 */
@@ -46,9 +47,17 @@ export interface PartTimeViewFilter {
   readonly endFrom?: string;
   readonly endTo?: string;
   readonly directManagerId?: string;
+  readonly employeeIds?: readonly string[];
+  readonly serviceTypes?: readonly string[];
+  readonly postId?: string;
+  readonly serviceStatuses?: readonly string[];
+  readonly current?: 'true' | 'false';
+  readonly pendingStatuses?: readonly string[];
+  readonly kinds?: readonly string[];
+  readonly statuses?: readonly string[];
 }
 
-export interface PartTimeViewInput {
+export interface PartTimeViewInput extends ViewSort {
   readonly view: PartTimeView;
   /** 即将到期的天数（1～365，默认 30）。 */
   readonly days: number;
@@ -60,6 +69,8 @@ interface Shared {
   readonly employee: { readonly code: string; readonly name: string };
   /** 员工当前主职部门；操作人看不到该主职记录时缺席。 */
   readonly primaryDepartmentId?: string;
+  readonly pendingKind?: PartTimeRequestType | null;
+  readonly pendingStatus?: PartTimeRequestState | null;
 }
 
 /** 记录视图的行：兼职记录读形状（与员工页签、详情同源）。 */
@@ -98,21 +109,21 @@ const iso = (value: string | Date) => new Date(value).toISOString();
 
 /** view → 谓词。记录视图的归属条件是 span-sql.ts 的 partTimeViewSql（domain inPartTimeView 的镜像）；审批中按申请最新状态。 */
 function viewPredicate(input: PartTimeViewInput, today: string): SQL {
-  if (input.view === 'in_approval') return sql`s.state='in_review'`;
+  if (input.view === 'in_approval')
+    return sql`s.state<>'deleted'
+    AND ${oneOf(sql`s.state`, input.filter.statuses ?? ['in_review'])}`;
   return partTimeViewSql(input.view, PART_TIME_START, PART_TIME_END, today, input.days);
 }
 
 // ---- 筛选 -----------------------------------------------------------------------------------------------------------
 
-interface FilterColumns {
-  readonly department: SQL;
-  readonly serviceType: SQL;
-  readonly start: SQL;
-  readonly end: SQL;
-  readonly directManager: SQL;
-}
+const oneOf = (column: SQL, values: readonly string[]) =>
+  sql`${column} = ANY(ARRAY[${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )}]::text[])`;
 
-function filterPredicates(tenantId: string, filter: PartTimeViewFilter, columns: FilterColumns): SQL[] {
+function filterPredicates(tenantId: string, filter: PartTimeViewFilter, columns: ViewColumns): SQL[] {
   const parts: SQL[] = [];
   if (filter.keyword) {
     const name = personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`);
@@ -127,6 +138,9 @@ function filterPredicates(tenantId: string, filter: PartTimeViewFilter, columns:
   if (filter.endFrom) parts.push(sql`${columns.end} >= ${filter.endFrom}::date`);
   if (filter.endTo) parts.push(sql`${columns.end} <= ${filter.endTo}::date`);
   if (filter.directManagerId) parts.push(sql`${columns.directManager}=${filter.directManagerId}::uuid`);
+  if (filter.employeeIds) parts.push(sql`e.id = ANY(${uuidArray(filter.employeeIds)})`);
+  if (filter.serviceTypes) parts.push(oneOf(columns.serviceType, filter.serviceTypes));
+  if (filter.postId) parts.push(sql`${columns.post}=${filter.postId}::uuid`);
   return parts;
 }
 
@@ -170,21 +184,50 @@ function shared(row: Record<string, unknown>): Shared {
 // ---- 候选集 ---------------------------------------------------------------------------------------------------------
 
 function recordCandidates(ctx: EmploymentContext, input: PartTimeViewInput, today: string): SQL {
-  const where = filterPredicates(ctx.tenantId, input.filter, {
+  const columns = {
     department: PART_TIME_DEPARTMENT,
     serviceType: sql`r.service_type`,
     start: PART_TIME_START,
     end: PART_TIME_END,
     directManager: PART_TIME_DIRECT_MANAGER,
-  });
+    post: sql`(CASE WHEN current_payload.body IS NULL THEN r.post_id::text
+      ELSE current_payload.body->>'post_id' END)::uuid`,
+  };
+  const where = filterPredicates(ctx.tenantId, input.filter, columns);
+  if (input.filter.serviceStatuses)
+    where.push(oneOf(partTimeServiceStatusSql(columns.start, columns.end, today), input.filter.serviceStatuses));
+  if (input.filter.current)
+    where.push(sql`${partTimeCurrentSql(columns.start, columns.end, today)} = ${input.filter.current === 'true'}`);
+  if (input.filter.pendingStatuses) where.push(oneOf(sql`pending.state`, input.filter.pendingStatuses));
+  const expiring = input.view === 'expiring';
   return sql`
     SELECT ${partTimeColumns()}, ${employeeColumns(ctx, sql`r.employee_id`)},
-      row_number() OVER (ORDER BY r.start_date DESC, r.id) AS ord
+      ${expiring ? sql`pending.request_type AS pending_kind, pending.state AS pending_status,` : sql``}
+      row_number() OVER (ORDER BY ${viewOrder(ctx.tenantId, today, input, columns)}) AS ord
     ${partTimeFrom(ctx)}
     JOIN employment_employees e ON e.tenant_id=r.tenant_id AND e.id=r.employee_id
     ${primaryJoin(ctx.tenantId, sql`r.employee_id`, today)}
+    ${expiring ? latestPendingJoin(ctx) : sql``}
     WHERE r.tenant_id=${ctx.tenantId} AND r.service_type <> 'primary' AND r.kind=${PART_TIME_KIND}
       AND ${viewPredicate(input, today)} AND ${allOf(where)} AND ${partTimeVisible(ctx)}`;
+}
+
+/** 最新未删除且当前可见的延长 / 结束申请；不把范围外申请通过记录列表间接披露。 */
+function latestPendingJoin(ctx: EmploymentContext): SQL {
+  const visible = employmentVisibilitySql(ctx.scope, {
+    employee: sql`pending_q.employee_id`,
+    department: PART_TIME_DEPARTMENT,
+    creator: sql`pending_q.initiator_user_id`,
+  });
+  return sql`LEFT JOIN LATERAL (
+    SELECT pending_q.request_type, state.state FROM part_time_requests pending_q
+    JOIN LATERAL (SELECT event.state FROM part_time_request_events event
+      WHERE event.tenant_id=pending_q.tenant_id AND event.request_id=pending_q.id
+      ORDER BY event.event_no DESC LIMIT 1) state ON true
+    WHERE pending_q.tenant_id=${ctx.tenantId} AND pending_q.record_id=r.id
+      AND pending_q.request_type IN ('extend','end') AND state.state<>'deleted' AND ${visible}
+    ORDER BY pending_q.created_at DESC, pending_q.id ASC LIMIT 1
+  ) pending ON true`;
 }
 
 /** 申请的部门：新增取最新版本；延长 / 结束取目标兼职记录当前部门（§7.3A，同 request-store 读取口径）。 */
@@ -199,13 +242,16 @@ const REQUEST_JOINS = sql`
   ${latestSnapshot}`;
 
 function approvalCandidates(ctx: EmploymentContext, input: PartTimeViewInput, today: string): SQL {
-  const where = filterPredicates(ctx.tenantId, input.filter, {
+  const columns = {
     department: REQUEST_DEPARTMENT,
     serviceType: sql`v.service_type`,
     start: sql`v.start_date`,
     end: sql`v.end_date`,
     directManager: sql`v.direct_manager_id`,
-  });
+    post: sql`v.post_id`,
+  };
+  const where = filterPredicates(ctx.tenantId, input.filter, columns);
+  if (input.filter.kinds) where.push(oneOf(sql`q.request_type`, input.filter.kinds));
   const visible = employmentVisibilitySql(ctx.scope, {
     employee: sql`q.employee_id`,
     department: REQUEST_DEPARTMENT,
@@ -221,7 +267,7 @@ function approvalCandidates(ctx: EmploymentContext, input: PartTimeViewInput, to
       (CASE WHEN q.record_id IS NULL THEN v.end_date
         ELSE ${partTimeCurrentEndSql(ctx.tenantId, sql`q.record_id`)} END)::text AS span_end,
       ${employeeColumns(ctx, sql`q.employee_id`)},
-      row_number() OVER (ORDER BY v.start_date DESC, q.created_at DESC, q.id) AS ord
+      row_number() OVER (ORDER BY ${viewOrder(ctx.tenantId, today, input, columns)}) AS ord
     FROM part_time_requests q
     ${REQUEST_JOINS}
     JOIN employment_employees e ON e.tenant_id=q.tenant_id AND e.id=q.employee_id
@@ -287,9 +333,17 @@ export async function listPartTimeView(
       ORDER BY page.ord`),
   );
   const present = rows.filter((row) => row.id);
-  const items = present.map((row) =>
-    input.view === 'in_approval' ? approvalItem(row, today) : { ...dto(row, today), ...shared(row) },
-  );
+  const items = present.map((row) => {
+    if (input.view === 'in_approval') return approvalItem(row, today);
+    const pending =
+      input.view === 'expiring'
+        ? {
+            pendingKind: (row.pending_kind as PartTimeRequestType | null) ?? null,
+            pendingStatus: (row.pending_status as PartTimeRequestState | null) ?? null,
+          }
+        : {};
+    return { ...dto(row, today), ...shared(row), ...pending };
+  });
   return { total: Number(rows[0]?.total ?? 0), items };
 }
 

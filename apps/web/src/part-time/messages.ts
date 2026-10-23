@@ -36,6 +36,8 @@ export const m = {
   total: (n: number) => `共 ${n} 条`,
   page: (n: number) => `第 ${n} 页`,
   keyword: '姓名 / 工号',
+  people: '人员',
+  peopleError: '人员候选读取失败，请重试',
   includeChildren: '包含下级部门',
   days: '到期天数',
   rangeInvalid: '日期区间的起始日期不能晚于结束日期',

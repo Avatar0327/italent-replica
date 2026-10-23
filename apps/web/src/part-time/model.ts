@@ -42,11 +42,28 @@ export type Filters = Partial<
     | 'startTo'
     | 'endFrom'
     | 'endTo'
-    | 'directManagerId',
+    | 'directManagerId'
+    | 'postId'
+    | 'current',
     string
   >
->;
+> &
+  Partial<
+    Record<'employeeIds' | 'serviceTypes' | 'serviceStatuses' | 'pendingStatuses' | 'kinds' | 'statuses', string[]>
+  >;
 export type Allowed = (key: keyof Filters) => boolean;
+export type SortKey =
+  'code' | 'serviceType' | 'effectiveDate' | 'endDate' | 'departmentId' | 'directManagerId' | 'postId';
+export interface Sort {
+  sortBy: SortKey;
+  direction: 'asc' | 'desc';
+}
+export function sortable(view: View, key: string): key is SortKey {
+  if (key === 'code') return view !== 'in_approval';
+  if (key === 'directManagerId') return view === 'not_started' || view === 'in_approval';
+  if (key === 'postId') return view === 'in_approval';
+  return ['serviceType', 'effectiveDate', 'endDate', 'departmentId'].includes(key);
+}
 const base = [
   'name',
   'code',
@@ -74,7 +91,7 @@ export function columnKeys(view: View): string[] {
       return [...base.slice(0, 2), 'kind', ...base.slice(2), 'approvalStatus'];
   }
 }
-// F234B B5：保留取证列宽；后补列仍占位，不拿其他字段拼出值（F-256）。
+// F234B B5：保留取证列宽；机构口径仍待 DEC-673 取证。
 export function columnWidth(view: View, key: string): number {
   if (key === 'operation') return view === 'ended' ? 84 : 164;
   const date = ['effectiveDate', 'endDate'].includes(key);
@@ -100,7 +117,9 @@ export function value(input: unknown): string {
   return typeof input === 'string' || typeof input === 'number' ? String(input) : m.missing;
 }
 export function cellValue(row: Row, key: string, view: View): string {
-  if (['institution', 'pendingStatus', 'pendingKind'].includes(key)) return m.missing;
+  if (key === 'institution') return m.missing;
+  if (key === 'pendingStatus') return m.statuses[String(row.pendingStatus)] ?? value(row.pendingStatus);
+  if (key === 'pendingKind') return m.kinds[String(row.pendingKind)] ?? value(row.pendingKind);
   if (key === 'name' || key === 'code') return value(row.employee?.[key]);
   if (key === 'current') {
     if (!row.partTimeView) return m.missing;
@@ -121,13 +140,22 @@ export function rangeInvalid(filters: Filters): boolean {
 }
 // 用当前字段权重投影，撤权后旧筛选草稿不能继续进入请求；不从行中缺键推断整个列表的权限。
 export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
-  return Object.fromEntries(Object.entries(filters).filter(([key, val]) => val && allowed(key as keyof Filters)));
+  return Object.fromEntries(
+    Object.entries(filters).filter(([key, val]) => val?.length && allowed(key as keyof Filters)),
+  );
 }
-export function listPath(view: View = 'ongoing', page = 1, filters: Filters = {}, days = 30): string {
+export function listPath(view: View = 'ongoing', page = 1, filters: Filters = {}, days = 30, sort?: Sort): string {
   const query = new URLSearchParams({ view, page: String(page), pageSize: '30' });
   if (view === 'expiring') query.set('days', String(days));
   for (const [key, input] of Object.entries(filters)) {
-    if (input && (key !== 'includeChildren' || filters.departmentId)) query.set(key, input);
+    if (input && (key !== 'includeChildren' || filters.departmentId)) {
+      if (Array.isArray(input)) input.forEach((value) => query.append(key, value));
+      else query.set(key, input);
+    }
+  }
+  if (sort) {
+    query.set('sortBy', sort.sortBy);
+    query.set('direction', sort.direction);
   }
   return `${apiRoot}/part-times?${query}`;
 }

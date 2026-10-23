@@ -2,8 +2,8 @@ import { Button, Pagination } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../foundation/PageState.js';
-import { FiltersDrawer, useFilterPermission } from './Filters.js';
-import { allowedFilters, listPath, views, type Filters, type ListResult, type View } from './model.js';
+import { FiltersDrawer, useFilterPermission, useSortPermission } from './Filters.js';
+import { allowedFilters, listPath, views, type Filters, type ListResult, type Sort, type View } from './model.js';
 import { PartTimeTable } from './PartTimeTable.js';
 import { PartTimeDetail, type Selection } from './PartTimeDetail.js';
 import { useRead } from './useRead.js';
@@ -22,16 +22,20 @@ function useList() {
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'ongoing';
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
+  const [sort, setSort] = useState<Sort>();
   const [days, setDays] = useState(30);
   const [drawer, setDrawer] = useState(false);
   const [selected, select] = useState<Selection>();
   const allowed = useFilterPermission();
+  const canSort = useSortPermission(view);
+  const projectedSort = sort && canSort(sort.sortBy) ? sort : undefined;
   const projected = allowedFilters(filters, allowed);
-  const result = useRead<ListResult>(listPath(view, page, projected, days));
+  const result = useRead<ListResult>(listPath(view, page, projected, days, projectedSort));
   const switchView = (next: View) => {
     setParams({ view: next });
     setPage(1);
     setFilters({});
+    setSort(undefined);
     select(undefined);
     check([]);
     setDirect(undefined);
@@ -57,6 +61,13 @@ function useList() {
     selected,
     select,
     allowed,
+    canSort,
+    sort: projectedSort,
+    onSort(next?: Sort) {
+      setSort(next);
+      setPage(1);
+      check([]);
+    },
     projected,
     result,
     switchView,
@@ -184,6 +195,7 @@ function ListCard({ state }: { state: State }) {
                 : undefined
             }
             view={view}
+            {...{ sort: state.sort, canSort: state.canSort, onSort: state.onSort }}
             loading={result.loading}
             noScope={result.data?.hasDataPermission === false}
             onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
