@@ -1,4 +1,4 @@
-/** AC-DM-01/02/07：F-305 幂等并发与 F-302 R1 P3 的最终完成 / 撤销快照回归。 */
+/** F-305 / DEC-674 幂等并发；AC-DM-01/02：F-302 R1 P3 的最终完成 / 撤销快照回归。 */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';

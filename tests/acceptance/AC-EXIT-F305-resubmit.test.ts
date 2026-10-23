@@ -1,4 +1,4 @@
-/** AC-DM-07 / F-305：DEC-663、DEC-674，HR 在同一交接单重新提交，失败不留下半套审批。 */
+/** F-305 / DEC-663、DEC-674：HR 在同一交接单重新提交，失败不留下半套审批。 */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -11,6 +11,7 @@ import {
   newVersion,
   publishProcess,
   replaceDraft,
+  type ProcessView,
 } from '../../apps/api/src/modules/approval/definitions.js';
 import { handoverWorld, TODAY, type HandoverWorld } from './AC-EXIT-handover-support.js';
 import { deniesObjectUpdate, isButton, revocable } from './support/revocable-rights.js';
@@ -93,6 +94,49 @@ async function repair(x: HandoverWorld, cause: Cause) {
   if (cause === 'APPROVAL_PROCESS_NOT_MATCHED') await x.publishHandoverProcess();
   if (cause === 'NO_INITIATOR_ACCOUNT') await x.applicantAccount(x.employee.id);
 }
+async function enableTerminationActions(x: HandoverWorld) {
+  const [process] = await x.sqlRows<{ id: string }>(sql`SELECT id FROM approval_processes
+    WHERE tenant_id=${x.tenantId} AND code='AAA_EXIT_HANDOVER'`);
+  const path = `/api/tenant/approval/processes/${process!.id}`;
+  const request = async (method: string, suffix: string, revision?: number, body?: unknown, status = 200) => {
+    const response = await x.api.request(method, path + suffix, {
+      ...x.tenantAs(x.processAdmin.id),
+      ifMatch: revision,
+      body,
+    });
+    expect(response.status, await response.clone().text()).toBe(status);
+    return (await response.json()) as ProcessView;
+  };
+  const current = await request('GET', '');
+  const draft = await request('POST', '/versions', current.revision, {}, 201);
+  const {
+    name,
+    groupName,
+    description,
+    priority,
+    isFallback,
+    exceptionAdminUserId,
+    urgeEnabled,
+    hideRecordsFromInitiator,
+    conditions,
+    nodes,
+  } = draft.latestVersion;
+  const changed = await request('PUT', '/draft', draft.revision, {
+    name,
+    groupName,
+    description,
+    priority,
+    isFallback,
+    exceptionAdminUserId,
+    urgeEnabled,
+    hideRecordsFromInitiator,
+    conditions,
+    nodes: nodes.map((node) =>
+      node.key === 'work_handover' ? { ...node, actions: { ...node.actions, reject: true, revoke: true } } : node,
+    ),
+  });
+  await request('POST', '/publish', changed.revision, {});
+}
 const options = (revision: number) => ({ ifMatch: revision, idempotencyKey: randomUUID(), body: {} });
 async function success(response: Response) {
   expect(response.status, await response.clone().text()).toBe(200);
@@ -108,7 +152,7 @@ async function snapshot(x: HandoverWorld) {
     (SELECT count(*) FROM audit_events WHERE tenant_id=${x.tenantId} AND action='exit_handover.resubmit') AS audits`);
 }
 
-describe('AC-DM-07 / F-305 同单重新提交', () => {
+describe('F-305 / DEC-674 同单重新提交', () => {
   it('DEC-674 独立详情按钮，默认授予任职模块人事身份', () => {
     expect(MODULE_OBJECTS.employmentRecord.buttons).toContainEqual({
       code: BUTTON,
@@ -156,13 +200,28 @@ describe('AC-DM-07 / F-305 同单重新提交', () => {
     expect(await snapshot(x)).toEqual(before);
   });
 
-  it('DEC-674 已终止重提使用新实例，旧实例、任务、日志原样保留且不能再审批', async () => {
-    const x = await world('terminated');
+  it.each([
+    ['disagree', 'disapproved', 'disapproved'],
+    ['reject', 'returned', 'rejected'],
+    ['withdraw', 'withdrawn', 'withdrawn'],
+  ] as const)('DEC-674 %s 终止后新建实例，旧实例、任务、日志只读且重放幂等', async (action, status, endReason) => {
+    const x = await world(`terminated-${action}`);
+    await enableTerminationActions(x);
     const { exitId, request, instanceId } = await x.launched();
     const oldTask = (await x.pendingNode(instanceId))!;
-    expect((await x.decide(instanceId, 'disagree')).status).toBe(200);
+    const stopped =
+      action === 'withdraw'
+        ? await x.api.request('POST', `/api/tenant/approval/instances/${instanceId}/withdraw`, {
+            ...x.tenantAs(x.leaverUserId),
+            ifMatch: oldTask.revision,
+            body: {},
+          })
+        : await x.decide(instanceId, action);
+    expect(stopped.status, await stopped.clone().text()).toBe(200);
+    expect(await x.instanceStatus(instanceId)).toBe(status);
+    expect(await x.requestRows(exitId)).toEqual([expect.objectContaining({ state: 'terminated', endReason })]);
     const old = () =>
-      x.sqlRows(sql`SELECT
+      x.sqlRows<{ instance: { revision: number }; tasks: unknown; logs: unknown }>(sql`SELECT
       (SELECT to_jsonb(a) FROM approval_instances a
         WHERE tenant_id=${x.tenantId} AND id=${instanceId}::uuid) AS instance,
       (SELECT jsonb_agg(t ORDER BY id) FROM approval_tasks t
@@ -171,21 +230,42 @@ describe('AC-DM-07 / F-305 同单重新提交', () => {
         WHERE tenant_id=${x.tenantId} AND instance_id=${instanceId}::uuid) AS logs`);
     const before = await old();
     const row = await rowOf(x, exitId);
-    const receipt = await success(await x.session.request('POST', pathOf(request.id), options(row.revision)));
+    const command = options(row.revision);
+    const receipt = await success(await x.session.request('POST', pathOf(request.id), command));
     expect(receipt.requestId).toBe(request.id);
     expect(receipt.approvalInstanceId).not.toBe(instanceId);
     expect(await x.requestRows(exitId)).toHaveLength(1);
     expect(await x.handoverInstanceCount()).toBe(2);
     expect(await old()).toEqual(before);
+    const after = await snapshot(x);
+    expect(await success(await x.session.request('POST', pathOf(request.id), command))).toEqual(receipt);
+    expect(await snapshot(x)).toEqual(after);
     const stale = await x.api.request('POST', `/api/tenant/approval/tasks/${oldTask.taskId}/approve`, {
       ...x.tenantAs(oldTask.userId),
-      ifMatch: oldTask.revision,
+      ifMatch: before[0]!.instance.revision,
       body: {},
     });
     expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: { details: { reason: 'APPROVAL_TASK_CLOSED' } } });
+    const detail = await x.api.request(
+      'GET',
+      `/api/tenant/approval/instances/${instanceId}`,
+      x.tenantAs(x.leaverUserId),
+    );
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({ status, actions: [] });
+    const oldWithdraw = await x.api.request('POST', `/api/tenant/approval/instances/${instanceId}/withdraw`, {
+      ...x.tenantAs(x.leaverUserId),
+      ifMatch: before[0]!.instance.revision,
+      body: {},
+    });
+    expect(oldWithdraw.status).toBe(409);
+    expect(await oldWithdraw.json()).toMatchObject({ error: { details: { reason: 'APPROVAL_CLOSED' } } });
     expect(await old()).toEqual(before);
+    expect(await snapshot(x)).toEqual(after);
     await x.approveAll(receipt.approvalInstanceId);
     expect((await rowOf(x, exitId)).state).toBe('completed');
+    expect(await old()).toEqual(before);
   });
 
   it.each(['in_progress', 'completed'] as const)('DEC-674 %s 新命令拒绝，原因码明确', async (state) => {
