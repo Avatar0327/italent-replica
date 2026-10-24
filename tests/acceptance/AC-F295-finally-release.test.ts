@@ -25,6 +25,64 @@ function cleanupStatement(file: string, marker: string): string {
   return matches.at(-1)!.getText(tree);
 }
 
+function callsiteTypeErrors(statement: string): string[] {
+  const support = readFileSync(new URL('./support/pg-interleave.ts', import.meta.url), 'utf8');
+  const tree = ts.createSourceFile('pg-interleave.ts', support, ts.ScriptTarget.Latest, true);
+  const contract = tree.statements
+    .filter(
+      (node) =>
+        (ts.isInterfaceDeclaration(node) && node.name.text === 'HeldLock') ||
+        (ts.isFunctionDeclaration(node) && node.name?.text === 'withRelease'),
+    )
+    .map((node) => node.getText(tree))
+    .join('\n');
+  const offers = readFileSync(new URL('./AC-OF-BE14b2-concurrency-pg.test.ts', import.meta.url), 'utf8');
+  const offerTree = ts.createSourceFile('offers.ts', offers, ts.ScriptTarget.Latest, true);
+  let requests = '';
+  const visit = (node: ts.Node) => {
+    if (ts.isVariableStatement(node) && node.getText(offerTree).includes('w.sync(target)')) {
+      requests = node.getText(offerTree);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(offerTree);
+  expect(requests).not.toBe('');
+  const file = '/f295-callsite-types.ts';
+  // 使用真实调用语句和真实 helper 契约，合成两种不同的返回类型；不加载整个业务依赖图。
+  const source = `${contract}
+    declare const plan: Promise<{ id: string }>;
+    declare const write: Promise<Response>;
+    declare function release(): void;
+    declare function testDb(): { db: unknown };
+    declare function waitForBlocked(db: unknown, count: number): Promise<void>;
+    declare const w: { send(id: string): Promise<Response>; sync(id: string): Promise<Response> };
+    declare const target: string;
+    async function probe() {
+      ${statement}
+      ${requests}
+      const [sent, synced] = await Promise.all(requests);
+      return [sent.status, synced.status];
+    }`;
+  const options: ts.CompilerOptions = {
+    strict: true,
+    noUncheckedIndexedAccess: true,
+    noEmit: true,
+    skipLibCheck: true,
+    target: ts.ScriptTarget.ES2023,
+    types: [],
+    lib: ['lib.es2023.d.ts', 'lib.dom.d.ts'],
+  };
+  const host = ts.createCompilerHost(options);
+  const readSource = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) =>
+    name === file
+      ? ts.createSourceFile(file, source, languageVersion, true)
+      : readSource(name, languageVersion, onError, shouldCreateNewSourceFile);
+  return ts
+    .getPreEmitDiagnostics(ts.createProgram([file], options, host))
+    .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+}
+
 function execute(statement: string, locals: Record<string, unknown>) {
   const code = ts.transpileModule(`(async () => { let a, b; ${statement} })()`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
@@ -49,6 +107,7 @@ function delayedFailure() {
 describe('AC-F295 finally 放行后的失败请求必须收束', () => {
   it('AC-F295-01 sync-plan 等待失败仍等 plan/write 都结束，保留原等待错误', async () => {
     const statement = cleanupStatement('./AC-SC-sync-plan.test.ts', 'await waitForBlocked(testDb().db, 1)');
+    expect(callsiteTypeErrors(statement), '异构请求登记与 Promise.all 元组结果必须通过严格类型检查').toEqual([]);
     const plan = delayedFailure();
     const write = delayedFailure();
     const failure = new Error('注入等待失败');
