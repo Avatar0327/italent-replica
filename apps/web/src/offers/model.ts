@@ -58,7 +58,9 @@ export function displayValue(row: OfferRow, label: string): string {
   const value = row[names[label] ?? field];
   if (value === null || value === undefined || value === '') return m.empty;
   if (Array.isArray(value)) return value.join('、') || m.empty;
-  return readEnums[field]?.[String(value)] ?? String(value);
+  const dictionary = readEnums[field];
+  if (dictionary) return Object.hasOwn(dictionary, String(value)) ? dictionary[String(value)]! : m.empty;
+  return String(value);
 }
 export function visibleColumn(label: string, visible: (field: string) => boolean, rows: OfferRow[]) {
   const field = fieldOf(label);

@@ -1,3 +1,5 @@
+import type { OfferApprovalStatus, OfferStatus, OfferSyncStatus, OfferType } from '@italent/domain';
+
 // 列序与列宽：派发附录 B2；菜单、弹窗文案按 R2a / R2e3～R2e6 截图。
 export const viewSpecs = [
   {
@@ -226,14 +228,19 @@ export const states = {
   rejected: '已拒绝offer',
   onboarded: '已入职offer',
   invalid: '失效offer',
-} as const;
-export const approvals = { unsubmitted: '未发起审批', approving: '审批中', approved: '审批通过' } as const;
+} as const satisfies Record<OfferStatus, string>;
+export const approvals = {
+  unsubmitted: '未发起审批',
+  approving: '审批中',
+  approved: '审批通过',
+  disapproved: '审批不通过',
+} as const satisfies Record<OfferApprovalStatus, string>;
 export const readEnums: Record<string, Readonly<Record<string, string>>> = {
   status: states,
-  approvalStatus: { ...approvals, rejected: '审批不通过' },
-  offerType: { social: '社招', campus: '校招', intern: '实习' },
+  approvalStatus: approvals,
+  offerType: { social: '社招', campus: '校招', intern: '实习' } satisfies Record<OfferType, string>,
   hasProbation: { true: '是', false: '否' },
-  syncStatus: { success: '成功', failed: '失败' },
+  syncStatus: { success: '成功', failed: '失败' } satisfies Record<OfferSyncStatus, string>,
 };
 export const actions = {
   approve: '发起Offer审批',
