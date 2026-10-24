@@ -1886,6 +1886,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/exit-downstream.ts#effectsOf': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#ledgerProbe': ['#effectsOf', '#ledgerTargets'],
@@ -1974,6 +1975,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
@@ -2039,6 +2041,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-handover-items.ts#listHandoverItems': [
     '#COLUMNS',
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ITEM_LIMIT',
   ],
@@ -2159,6 +2162,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
   'apps/api/src/modules/employment/exit-initiation.ts#touchesBlacklist': ['#BLACKLIST_DETAIL_KEYS'],
+  'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder': ['#EXIT_LIST_ORDER_KEYS'],
   'apps/api/src/modules/employment/exit-lock-plan.ts#exitDutySubordinates': [
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
@@ -2222,6 +2226,9 @@ export const GRAPH: Graph = {
     '#independent',
     '#on',
   ],
+  'apps/api/src/modules/employment/exit-queries.ts#EXIT_SORT_DEPENDENCIES': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+  ],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#LEAVE_SOURCE',
@@ -2244,9 +2251,11 @@ export const GRAPH: Graph = {
     '#viewPredicate',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadDetailParts': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     '#LEAVE_SOURCE',
     '#amount',
     '#candidates',
@@ -2256,6 +2265,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -2272,7 +2282,10 @@ export const GRAPH: Graph = {
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#trimWith': ['#trimNode'],
-  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
+  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+    '#EXIT_SORT_DEPENDENCIES',
+  ],
   'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion': [
     'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -5354,6 +5367,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-views.ts#billPredicate': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#candidates',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
@@ -5364,6 +5378,7 @@ export const GRAPH: Graph = {
     '#toRetirementItem',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementPersons': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     '#RETIREMENT_PERSON_DEPENDENCIES',
