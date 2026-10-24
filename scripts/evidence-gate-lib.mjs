@@ -56,12 +56,13 @@ function statusItems(statusCell) {
   return items;
 }
 
-// 保留原文与圈号供定位；括号内的待决项同样检查，不能被外面的 ✅ 或后面的“已完成”覆盖。
+// F-313：取证列任意位置的 ✅ 都可能触发放行，待决检查必须覆盖相同范围，含带前缀的状态。
+// 保留原文与圈号供定位；括号内待决及未完成标记不能被外面的 ✅ 或后面的“已完成”覆盖。
 function checkedPendingItems(statusCell) {
-  if (!startsChecked(statusCell)) return [];
+  if (!/✅/.test(statusCell)) return [];
   return statusItems(statusCell)
     .map((item) => item.trim())
-    .filter((item) => PENDING_STATUS.test(norm(item)));
+    .filter((item) => PENDING_STATUS.test(norm(item)) || /🟡|🔴/.test(item));
 }
 
 // 取证清单（🟡 行）：Q-M0-127 / 132 / 133 / 153
