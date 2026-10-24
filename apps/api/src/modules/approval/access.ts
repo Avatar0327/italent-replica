@@ -361,6 +361,7 @@ interface BusinessScopes {
   readonly contract: ModuleScope;
   readonly idp: ModuleScope;
   readonly offer: ModuleScope;
+  readonly orgAdjustment: ModuleScope;
 }
 
 async function businessScopes(resolve: (objectCode: string) => Promise<ModuleScope>): Promise<BusinessScopes> {
@@ -369,27 +370,44 @@ async function businessScopes(resolve: (objectCode: string) => Promise<ModuleSco
     contract: await resolve(CONTRACT_OBJECT),
     idp: await resolve(IDP_PLAN_OBJECT),
     offer: await resolve(OFFER_OBJECT),
+    orgAdjustment: await resolve(MODULE_OBJECTS.orgAdjustment.code),
   };
 }
 
 /**
  * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
- * 在范围内），Offer / Offer 批量审批按 Offer 对象（BE-14a3 P1-01 同类：offerPredicate 缺省同 predicate），其余（任职、
- * 员工子集）按任职记录。IDP、Offer 都不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
+ * 在范围内），Offer / Offer 批量审批按 Offer 对象（BE-14a3 P1-01 同类：offerPredicate 缺省同 predicate）。
+ * 组织调整按申请单对象的审批主体组织；其余（任职、员工子集）按任职记录。
+ * IDP、Offer 都不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
  */
 function perBusinessType(
   scopes: BusinessScopes,
   predicate: (scope: ModuleScope) => SQL,
   offerPredicate: (scope: ModuleScope) => SQL = predicate,
+  orgAdjustmentPredicate: (scope: ModuleScope) => SQL = predicate,
 ): SQL {
   return sql`((i.business_type='contract' AND ${predicate(scopes.contract)})
     OR (i.business_type='idp' AND ${predicate(scopes.idp)})
     OR (i.business_type IN ('offer','offer_batch') AND ${offerPredicate(scopes.offer)})
-    OR (i.business_type NOT IN ('contract','idp','offer','offer_batch') AND ${predicate(scopes.employment)}))`;
+    OR (i.business_type='org_adjustment' AND ${orgAdjustmentPredicate(scopes.orgAdjustment)})
+    OR (i.business_type NOT IN ('contract','idp','offer','offer_batch','org_adjustment')
+      AND ${predicate(scopes.employment)}))`;
+}
+
+/** R2-T08 §4.1 / §9.2：按申请单审批主体组织判断，业务头不存在或租户不一致时看全部也不能放行。 */
+function orgAdjustmentInstanceScopeSql(scope: ModuleScope): SQL {
+  const inScope = scopeSql(scope, { org: sql`a.approval_subject_org_id` });
+  return sql`EXISTS (SELECT 1 FROM org_adjustments a
+    WHERE a.tenant_id=i.tenant_id AND a.id=i.business_id AND ${inScope})`;
 }
 
 async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
-  return perBusinessType(await businessScopes(resolve), (scope) => instanceScopeSql(ctx, scope), offerInstanceScopeSql);
+  return perBusinessType(
+    await businessScopes(resolve),
+    (scope) => instanceScopeSql(ctx, scope),
+    offerInstanceScopeSql,
+    orgAdjustmentInstanceScopeSql,
+  );
 }
 
 /**

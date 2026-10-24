@@ -1121,6 +1121,13 @@
       "when": 1792480751233,
       "tag": "0159_be10a_org_adjustment",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1792821545738,
+      "tag": "0160_be10a2_org_adjustment_range",
+      "breakpoints": true
     }
   ]
 }

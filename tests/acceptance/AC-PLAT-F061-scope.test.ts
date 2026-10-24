@@ -98,14 +98,15 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     ).toEqual(DEC_415);
     // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）
     expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
-      ['TenantBase.Blacklist', 'TenantBase.ProbationAssessment', 'TenantBase.OrganizationApproval'].flatMap((targetCode) =>
-        DEC_415_BLACKLIST.map((profileCode) => ({
-          profileCode,
-          appCode: 'TenantBase',
-          targetKind: 'entity',
-          targetCode,
-          dec: 'DEC-415',
-        })),
+      ['TenantBase.Blacklist', 'TenantBase.ProbationAssessment', 'TenantBase.OrganizationApproval'].flatMap(
+        (targetCode) =>
+          DEC_415_BLACKLIST.map((profileCode) => ({
+            profileCode,
+            appCode: 'TenantBase',
+            targetKind: 'entity',
+            targetCode,
+            dec: 'DEC-415',
+          })),
       ),
     );
     expect(new Set(SEE_ALL_BACKFILL_APPROVED.map((a) => a.dec))).toEqual(

@@ -216,6 +216,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       31: 'd377733df73b381b',
       // claude/R2-BE-8b1-exit-blacklist（merge:main 定号，DEC-439④）
       32: 'fd09fce1ad5dde6d',
+      // BE-10a2：组织调整两对象与申请单看全部（占位，合并时定号）。
+      33: '7edfda2e82577b6d',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

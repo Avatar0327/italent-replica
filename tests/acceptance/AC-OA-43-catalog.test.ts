@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const MAIN = 'TenantBase.OrganizationApproval';
 const DETAIL = 'TenantBase.OrganizationApprovalDetail';
-const expected = {
+const expected: Record<string, string[][]> = {
   [MAIN]: [
     ['AddAdjustOrgApprovalBtn', 'list', 'create'],
     ['OrganizationApprovalDelete', 'list_row', 'update'],

@@ -42,8 +42,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 按合并结果统一定为 main + 1 并重算指纹、改写 AC-PLAT-F061-grants 的 HISTORY。这两行请保持单行字面量写法（脚本按行改写）。
  * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
-export const STANDARD_GRANT_VERSION = 32;
-export const STANDARD_GRANT_DIGEST = 'fd09fce1ad5dde6d';
+export const STANDARD_GRANT_VERSION = 33;
+export const STANDARD_GRANT_DIGEST = '7edfda2e82577b6d';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
@@ -79,6 +79,9 @@ export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
   // DEC-415：R2 BE-15b1 试用期考核（组织员工模块）给本模块的预置管理员
   approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.ProbationAssessment', 'DEC-415'),
   approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.ProbationAssessment', 'DEC-415'),
+  // R2-T08 BE-10a2、DEC-415：只给两管理员申请单看全部；明细跟随申请单，不设独立范围。
+  approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.OrganizationApproval', 'DEC-415'),
+  approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.OrganizationApproval', 'DEC-415'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.RiskLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.HealthLevel', 'DEC-384'),
   approve('standard_succession_admin', 'SuccessionAndDevelopment', 'entity', 'Succession.Population', 'DEC-384'),
