@@ -3,8 +3,13 @@ import { addSignerVotes, isCountersign, urgeAllowed, type AddSignType, type Appr
 import type { VersionView } from './definitions.js';
 import { OPEN_STATUSES, type InstanceRow, type TaskRow } from './store.js';
 
+/** DEC-674：交接驳回为终态，不再公布或执行撤回；与 DB 活动实例查询 / 唯一索引的生命周期保持一致。 */
+export function isActiveInstance(instance: Pick<InstanceRow, 'status' | 'businessType'>): boolean {
+  return instance.status === 'running' || (instance.status === 'returned' && instance.businessType !== 'exit_handover');
+}
+
 /** 系统自动处理的任务（自动同意 / 自动跳过 / 自审跳过），不算人工处理。 */
-const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip']);
+const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip', 'no_assignee_approve']);
 /**
  * 系统结束的任务也不算人工处理（P2-3）：会签节点流转后其余待办自动结束（ended）、同一人承接多席时多出的一席
  * （merged）。

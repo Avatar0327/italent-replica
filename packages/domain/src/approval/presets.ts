@@ -9,6 +9,7 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  */
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
+import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { RETIREMENT_INTENTION_FORM_FIELDS } from '../employment/retirement-intention.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
@@ -17,6 +18,7 @@ import {
   type ApprovalTypeCode,
   type ApproverExpression,
   type ProcessDefinition,
+  type CountersignApprovalNode,
   type SingleApprovalNode,
 } from './types.js';
 
@@ -125,6 +127,7 @@ type GenericType = Exclude<
   | 'offer'
   | 'offer_batch'
   | 'retirement_intention'
+  | 'exit_handover'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -308,6 +311,29 @@ const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   }),
 }));
 
+/** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，resolver.ts resolveCandidates）。 */
+const anyOneNode = (
+  key: string,
+  name: string,
+  approver: ApproverExpression,
+  extra: Partial<SingleApprovalNode>,
+): CountersignApprovalNode => {
+  const { approver: _single, kind: _kind, ...rest } = node(key, name, approver, extra);
+  return { ...rest, kind: 'countersign', approvers: [approver], transitionRule: { type: 'any' } };
+};
+const HANDOVER_ACTIONS = { ...PRESET_ACTIONS, reject: false, jump: false, revoke: false } as const;
+const HANDOVER_NODES = [
+  { key: HANDOVER_NODE_KEYS.work, name: '工作交接', approver: 'handover_work_owner', countersign: true },
+  { key: HANDOVER_NODE_KEYS.other, name: '其他事项交接', approver: 'handover_hr_admin', countersign: true },
+  { key: HANDOVER_NODE_KEYS.employee, name: '员工确认', approver: 'handover_employee', countersign: false },
+  {
+    key: HANDOVER_NODE_KEYS.hrbp,
+    name: 'HRBP办离职证明',
+    approver: 'latest_record_department_hrbp',
+    countersign: false,
+  },
+] as const satisfies readonly { key: string; name: string; approver: ApproverExpression; countersign: boolean }[];
+
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {
     presetKey: 'standard_transfer',
@@ -401,6 +427,31 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
           exits: AGREE_OR_NOT,
         }),
       ],
+    }),
+  },
+  {
+    // R2 BE-8b2（B64，R2c 节点结构）：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明，本类型兜底流程。办理页只有同意 / 不同意，
+    // 没有驳回 / 跳转 / 加签 / 转交（R2f2）；撤回关闭（发起人是员工本人，交接由系统代发）。审批人取值原站未验证，见 HANDOVER_ONLY_APPROVERS。
+    // 员工确认节点审批人就是本人，avoidSelf = false；其余节点按 DEC-332① 敏感且有重大影响，avoidSelf = true
+    presetKey: 'standard_exit_handover',
+    code: 'Standard_exit_handover',
+    approvalType: 'exit_handover',
+    definition: draft({
+      name: '标准离职交接申请流程',
+      description: '出厂预置：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('exit_handover'),
+      nodes: HANDOVER_NODES.map((spec) => {
+        const common = {
+          formFields: [],
+          exits: AGREE_OR_NOT,
+          actions: { ...HANDOVER_ACTIONS, avoidSelf: spec.key !== HANDOVER_NODE_KEYS.employee },
+        };
+        // 两个交接节点是会签（任一人同意）：兜底处理人可多人（DEC-663）；兜底列表预置为空
+        return spec.countersign
+          ? anyOneNode(spec.key, spec.name, spec.approver, common)
+          : node(spec.key, spec.name, spec.approver, common);
+      }),
     }),
   },
   ...(

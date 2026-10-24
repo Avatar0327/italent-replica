@@ -51,6 +51,7 @@ import {
   tenantAdminTakeover,
   type RoutingSubject,
 } from './resolver.js';
+import { resolveHandoverApprovers, type ResolvedApprover } from './handover-empty.js';
 import { freezeRunSubjects, recusalFactsOf } from './recusal.js';
 import { freezeSubjects } from './subjects.js';
 import {
@@ -173,6 +174,7 @@ function routingSubject(run: Run): RoutingSubject {
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
     tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
+    handoverEmployeeId: run.snapshot.handoverEmployeeId ?? null,
     cache: new Map(),
   };
 }
@@ -205,15 +207,21 @@ async function decide(
   node: ApprovalNode,
   expression: ApproverExpression,
   facts: RoutingFacts,
+  resolved?: Candidate,
 ) {
-  const candidate = await resolveCandidate(tx, subject, expression);
+  const candidate = resolved ?? (await resolveCandidate(tx, subject, expression));
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
 }
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
-const MECHANISMS = { same_skip: 'same', history_skip: 'history', subject_skip: 'subject' } as const;
+const MECHANISMS = {
+  same_skip: 'same',
+  history_skip: 'history',
+  subject_skip: 'subject',
+  no_assignee_approve: 'no_assignee',
+} as const;
 
 /**
  * 实际接手异常任务的人：流程上的异常管理员不可用（已停用、正在停用）时由租户管理员接管（DEC-098，回退人同样复核
@@ -458,12 +466,18 @@ interface SeatEntry {
  * §11.6，会签只有「同意」，DEC-106）都按人处理；首节点任一人为空即拒绝提交。被自审跳过的人另行留痕，即使其接替人
  * 与其他席位重合、该席被合并；被合并那一席的候选人留在保留的这一席上，下一节点按全部候选人比较（DEC-114，P2-4）。
  */
-async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode, entry: Entry) {
+async function countersignSeats(
+  tx: Tx,
+  run: Run,
+  node: CountersignApprovalNode,
+  entry: Entry,
+  resolved: readonly ResolvedApprover[],
+) {
   const seats: SeatEntry[] = [];
   const selfSkips: NodeDecision[] = [];
   const candidates = new Set<string>();
-  for (const expression of node.approvers) {
-    const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts);
+  for (const [expression, resolvedCandidate] of resolved) {
+    const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts, resolvedCandidate);
     if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
     if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
@@ -506,7 +520,47 @@ async function enterCountersign(
   entry: Entry,
   tasks: TaskRow[],
 ): Promise<EntryResult> {
-  const { seats, selfSkips } = await countersignSeats(tx, run, node, entry);
+  const resolved = await resolveHandoverApprovers(tx, entry.subject, node);
+  if (resolved.kind === 'stop') throw noAssignee(node.key, { reason: '工作交接审批人为空，流程不再继续流转' });
+  if (resolved.kind === 'auto_approve') {
+    // 节点级自动同意直接走同意出口，不伪造人员席位或受自定义会签人数阈值阻塞（DEC-678）。
+    tasks.push(
+      await autoProcess(
+        tx,
+        run,
+        node,
+        {
+          kind: 'auto',
+          outcome: 'no_assignee_approve',
+          result: 'approve',
+          userId: null,
+          reason: '交接节点审批人为空，按配置自动同意',
+        },
+        tasks,
+        entry.activationId,
+      ),
+    );
+    return 'next';
+  }
+  if (resolved.kind === 'exception_admin') {
+    await assign(
+      tx,
+      run,
+      node,
+      {
+        kind: 'assign',
+        userId: entry.facts.exceptionAdminUserId,
+        origin: 'exception_admin',
+        isExceptionAdmin: true,
+        selfSkippedUserId: null,
+        reason: '交接节点审批人为空，转异常管理员',
+      },
+      { ...entry, candidateUserId: null },
+    );
+    run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
+    return 'stay';
+  }
+  const { seats, selfSkips } = await countersignSeats(tx, run, node, entry, resolved.candidates);
   for (const skipped of selfSkips) await recordSelfSkip(tx, run, node.key, skipped, entry.activationId);
   const rules = exitRulesOf(node.transitionRule, nodeExits(node));
   const outcome = countersignOutcome(
@@ -611,7 +665,9 @@ async function autoProcess(
   const assigneeUserId = skip ? null : decision.userId;
   const status = skip ? 'skipped' : 'approved';
   const round = run.instance.round;
-  const taskId = await insertTask(tx, run.ctx, run.instance.id, {
+  const systemApproval = decision.outcome === 'no_assignee_approve';
+  const ctx = systemApproval ? { ...run.ctx, actorUserId: null } : run.ctx;
+  const taskId = await insertTask(tx, ctx, run.instance.id, {
     round,
     nodeKey: node.key,
     assigneeUserId,
@@ -622,9 +678,10 @@ async function autoProcess(
     activationId,
   });
   const mechanism = MECHANISMS[decision.outcome];
-  const detail = skip
-    ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
-    : { mechanism, userId: decision.userId, reason: decision.reason };
+  const detail =
+    skip || systemApproval
+      ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
+      : { mechanism, userId: decision.userId, reason: decision.reason };
   const event = skip ? 'skip' : 'auto_approve';
   await appendLog(tx, run.ctx, run.instance, { event, nodeKey: node.key, taskId, actorUserId: null, detail });
   if (!skip) await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', { id: taskId, assigneeUserId });
@@ -763,6 +820,16 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (latest) return resume(tx, ctx, latest.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
+  return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
+}
+
+/** DEC-674：HR 重新提交交接须匹配当前流程并新建实例，已终止的旧实例不复用、不改写。 */
+export async function startNewHandover(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
+  const request = { businessType: 'exit_handover', businessId } as const;
+  if (await activeInstanceOf(tx, ctx.tenantId, request.businessType, businessId))
+    throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '交接仍有活动审批实例');
+  const snapshot = await ADAPTERS.exit_handover.snapshot(tx, ctx, businessId);
   return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
 }
 
