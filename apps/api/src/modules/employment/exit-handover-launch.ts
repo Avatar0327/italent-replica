@@ -68,8 +68,13 @@ export async function automaticHandover(tx: Tx, ctx: EmploymentContext, id: stri
 }
 
 /** 新写入口和 ledgerExit.before 使用同一授权检查。 */
-export async function requireHandoverSubmit(tx: Tx, ctx: EmploymentContext, id: string) {
-  await requireEmploymentWrite(ctx, 'update', {}, HANDOVER_SUBMIT_BUTTON.code, undefined, { commandOnly: true });
+export async function requireHandoverSubmit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  button: string = HANDOVER_SUBMIT_BUTTON.code,
+) {
+  await requireEmploymentWrite(ctx, 'update', {}, button, undefined, { commandOnly: true });
   try {
     const business = await requireBusinessWriteScope(tx, ctx.authorize!, ctx, id);
     if (business.kind !== 'leave' || !(await loadExitRequest(tx, ctx.tenantId, id)))
@@ -81,7 +86,12 @@ export async function requireHandoverSubmit(tx: Tx, ctx: EmploymentContext, id: 
     throw error;
   }
 }
-export function handoverSubmitGuard(deps: TenantRouteDeps, ctx: EmploymentContext, id: string) {
+export function handoverSubmitGuard(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  id: string,
+  button: string = HANDOVER_SUBMIT_BUTTON.code,
+) {
   return scopedGuard({
     before: async (tx) => {
       const [owner] = rowsOf<{ employeeId: string }>(
@@ -92,7 +102,7 @@ export function handoverSubmitGuard(deps: TenantRouteDeps, ctx: EmploymentContex
       await lockEmploymentEmployee(tx, ctx, owner.employeeId);
       await tx.execute(sql`SELECT id FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid FOR UPDATE`);
-      await requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id);
+      await requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id, button);
     },
   });
 }
@@ -118,7 +128,13 @@ export async function submitExitHandover(tx: Tx, ctx: EmploymentContext, id: str
     ctx.userId,
   );
   if (!('requestId' in result)) throw new AppError('CONFLICT', '交接发起失败', { reason: result.reason });
-  return { exitRequestId: id, requestId: result.requestId, outcome: result.outcome, revision: locked.revision };
+  return {
+    exitRequestId: id,
+    requestId: result.requestId,
+    outcome: result.outcome,
+    revision: locked.revision,
+    ...('reason' in result ? { reason: result.reason } : {}),
+  };
 }
 
 /** 复用任职调度的员工批次、RLS、游标与 SKIP LOCKED；不建新调度器。 */

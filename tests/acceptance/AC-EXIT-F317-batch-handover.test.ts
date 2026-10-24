@@ -90,6 +90,7 @@ describe('AC-DM-09 / F-317 列表行与批量首次发起离职交接', () => {
     const failures = await x.sqlRows<{ actor: string; outcome: string; code: string }>(sql`
       SELECT actor_user_id AS actor, outcome, error_code AS code FROM audit_command_failures
       WHERE tenant_id=${x.tenantId} AND path='/api/tenant/employment/exits/handover/batch-submit'`);
+    expect(failures).toHaveLength(2);
     expect(failures).toEqual(
       expect.arrayContaining([
         { actor: x.session.user.id, outcome: 'business_failed', code: 'CONFLICT' },

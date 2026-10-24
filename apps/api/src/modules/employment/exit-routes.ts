@@ -19,6 +19,7 @@ import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
+import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -505,8 +506,9 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         : undefined;
       return listExitView(tx, ctx.tenantId, { view, page, filter: { ...filter, departmentIds }, show }, ctx.scope);
     });
+    const rowActions = await handoverRowActions(deps, ctx, items);
     return c.json({
-      items: items.map((item) => trimExit(item, show)),
+      items: items.map((item) => ({ ...trimExit(item, show), rowActions: rowActions.get(item.id) ?? [] })),
       total,
       page: page.page,
       pageSize: page.pageSize,

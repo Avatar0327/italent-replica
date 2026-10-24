@@ -1,9 +1,12 @@
 {
-  "reason": "F-250 / DEC-683、DEC-684：HR 首次发起交接详情按钮对齐原站编码，与重新提交分开授权",
+  "reason": "F-317：原站列表行与批量首次发起离职交接，仅 HR 三身份，前序版本 +1 占位",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list"
   ],
   "remove": []
 }

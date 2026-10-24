@@ -151,6 +151,19 @@ export const HANDOVER_SUBMIT_BUTTON = {
   level: 'detail',
   requires: 'update',
 } as const;
+/** F-317：原站列表行 / 列表批量编码，与详情首次发起独立授权。 */
+export const HANDOVER_ROW_SUBMIT_BUTTON = {
+  code: 'EmploymentRecrdLineOpDimissionHandoverApproval',
+  name: '发起离职交接',
+  level: 'list_row',
+  requires: 'update',
+} as const;
+export const HANDOVER_BATCH_SUBMIT_BUTTON = {
+  code: 'BatchDimissionHandoverApproval',
+  name: '批量发起离职交接',
+  level: 'list',
+  requires: 'update',
+} as const;
 /** 撤销离职终止交接的日志理由（B4 撤销端口）。 */
 export const HANDOVER_CANCEL_REASON = '离职撤销终止交接';
 

@@ -220,6 +220,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       33: '4474fb16dada04d5',
       // F-250 / DEC-683、DEC-684：HR 首次发起交接原站详情编码，前序 33 + 1 占位；合并时统一定号。
       34: 'f10d882e671c549e',
+      // F-317：列表行与批量首次发起按钮，前序 34 + 1 占位；合并窗口统一定号。
+      35: '1c319f9ac28fbbb6',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

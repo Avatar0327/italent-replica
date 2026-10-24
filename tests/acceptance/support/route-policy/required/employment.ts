@@ -40,6 +40,8 @@ const BL = `${SRC}/employment/blacklist-routes.ts`;
 const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const HANDOVER_SERVICE = `${SRC}/employment/exit-handover.ts`;
 const HANDOVER_LAUNCH = 'apps/api/src/modules/employment/exit-handover-launch.ts';
+const HANDOVER_LIST = `${SRC}/employment/exit-handover-list-routes.ts`;
+const HANDOVER_BATCH = `${SRC}/employment/exit-handover-batch.ts`;
 const HANDOVER_RESUBMIT = `${SRC}/employment/exit-handover-resubmit.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
@@ -172,6 +174,76 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
   at: evidence,
   ...(note ? { note } : {}),
 });
+
+/** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
+function handoverListSubmit(path: string, batch: boolean): Obligation[] {
+  const code = batch ? 'BatchDimissionHandoverApproval' : 'EmploymentRecrdLineOpDimissionHandoverApproval';
+  const name = batch ? 'HANDOVER_BATCH_SUBMIT_BUTTON' : 'HANDOVER_ROW_SUBMIT_BUTTON';
+  const level = batch ? 'list' : 'list_row';
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER_LIST,
+          'POST',
+          path,
+          batch
+            ? "const ctx = await readContext(c, deps, 'object.update')"
+            : "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#${code}@${level}`,
+      [],
+      [
+        at(HANDOVER_LIST, 'POST', path, `${name}.code`),
+        ...(batch
+          ? [fn(HANDOVER_BATCH, 'batchGuard', 'await requireEmploymentWrite')]
+          : [
+              at(
+                HANDOVER_LIST,
+                'POST',
+                path,
+                'guard: handoverSubmitGuard(deps, ctx, id, HANDOVER_ROW_SUBMIT_BUTTON.code)',
+              ),
+            ]),
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', "await requireEmploymentWrite(ctx, 'update', {}, button"),
+        { role: 'const', unit: `packages/domain/src/employment/exit-handover.ts#${name}`, anchor: `code: '${code}'` },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverSubmit',
+      [],
+      [
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+        ...(batch
+          ? [
+              fn(
+                HANDOVER_BATCH,
+                'submitHandoverBatch',
+                'guard: handoverSubmitGuard(deps, context, item.exitRequestId, batchButton)',
+              ),
+              fn(
+                HANDOVER_BATCH,
+                'visibleBatchReceipt',
+                'await requireHandoverSubmit(tx, scoped, receipt.exitRequestId, batchButton)',
+              ),
+            ]
+          : []),
+      ],
+      '逐项当前按钮、原离职业务和员工写范围；无权项只回显请求 ID',
+    ),
+  ];
+}
+
 /**
  * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支 receiptDisclosure，不参与准入（配置准入见 run 条目）。
  * 回执内容受任职记录查看权控制：visibleEmployees 先判 object.view（承接这一探测事实），再按数据范围逐人过滤；
@@ -2963,6 +3035,35 @@ export const EMPLOYMENT: RequiredTable = {
   'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
+    ...[
+      ob(
+        `obj:${RECORD}:update`,
+        [],
+        [at(EXIT, 'GET', '/exits', 'await handoverRowActions(deps, ctx, items)'), WRITE_OBJECT],
+      ),
+      ob(
+        `btn:${RECORD}#EmploymentRecrdLineOpDimissionHandoverApproval@list_row`,
+        [],
+        [
+          fn(
+            HANDOVER_BATCH,
+            'handoverRowActions',
+            'await requireHandoverSubmit(tx, scoped, item.id, HANDOVER_ROW_SUBMIT_BUTTON.code)',
+          ),
+          WRITE_BUTTON,
+        ],
+      ),
+      ob(
+        'guard:employment.handoverSubmit',
+        [],
+        [
+          fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+          BUSINESS_WRITE,
+          EMPLOYEE_IN_SCOPE,
+        ],
+      ),
+    ].map((entry) => ({ ...entry, purpose: 'disclosure:handoverRow' as const, need: NONE })),
+
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
     ob(
       'guard:employment.viewableFilters',
@@ -3000,7 +3101,7 @@ export const EMPLOYMENT: RequiredTable = {
         fn(
           HANDOVER_LAUNCH,
           'handoverSubmitGuard',
-          'requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id)',
+          'requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id, button)',
         ),
         fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'HANDOVER_SUBMIT_BUTTON.code'),
         {
@@ -3022,6 +3123,11 @@ export const EMPLOYMENT: RequiredTable = {
       '原离职业务写范围与当前员工范围；范围外与不存在同一个 404',
     ),
   ],
+  'POST /api/tenant/employment/exits/:id/handover/submit-from-list': handoverListSubmit(
+    '/exits/:id/handover/submit-from-list',
+    false,
+  ),
+  'POST /api/tenant/employment/exits/handover/batch-submit': handoverListSubmit('/exits/handover/batch-submit', true),
   'POST /api/tenant/employment/exit-handover-requests/:id/resubmit': [
     ob(
       `obj:${RECORD}:update`,

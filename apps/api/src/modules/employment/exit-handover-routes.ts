@@ -33,6 +33,7 @@ import { deleteHandoverItem, listHandoverItems, parseHandoverItem, saveHandoverI
 import { loadHandoverRequest } from './exit-handover-store.js';
 import { handoverSubmitGuard, requireHandoverSubmit, submitExitHandover } from './exit-handover-launch.js';
 import { handoverResubmitGuard, requireHandoverResubmit, resubmitExitHandover } from './exit-handover-resubmit.js';
+import { registerHandoverListRoutes } from './exit-handover-list-routes.js';
 import { loadEmploymentBusiness } from './read-model.js';
 
 // 校验函数本身可以抛：未验证的取值给出明确提示，其余取值返回 false 走通用的“配置值不合法”
@@ -157,6 +158,7 @@ function registerHandoverSubmitRoute(router: Hono<TenantEnv>, deps: TenantRouteD
 
 function registerHandoverExecutionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerHandoverSubmitRoute(router, deps);
+  registerHandoverListRoutes(router, deps);
   // DEC-674：详情级重新提交，If-Match 为交接 revision；空命令体，不复用编辑离职按钮。
   router.post('/exit-handover-requests/:id/resubmit', async (c) => {
     const id = uuidParam(c);
