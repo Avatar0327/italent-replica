@@ -1,6 +1,6 @@
 import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
 import { m } from './messages.js';
-// DEC-538：BE-14 未接线，按派发挂在任职应用；可见性仍取服务端 entryObjects。
+// 沿用 DEC-538 入口位置；F-298 列表 / 详情读取另由 Offer 对象权限控制。
 export const pages: ModulePages = {
   entries: [
     {

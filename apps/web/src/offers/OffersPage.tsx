@@ -12,31 +12,29 @@ export function OffersPage() {
   return (
     <Routes>
       <Route path=":id/mail" element={<OfferMailPage />} />
-      <Route path="*" element={<OfferDemoPage />} />
+      <Route path="*" element={<OfferReadPage />} />
     </Routes>
   );
 }
-function OfferDemoPage() {
+function OfferReadPage() {
   return (
     <div className="offers-page">
       <nav className="offer-links">
         <Link to="/offers">{m.back}</Link>
         <Link to="/offers/settings">{m.settings}</Link>
       </nav>
-      <Alert
-        showIcon
-        type="info"
-        message={
-          <>
-            <Tag color="gold">{m.demo}</Tag>
-            {m.notice}
-          </>
-        }
-      />
-      <DecisionNote id="offers" />
       <Routes>
         <Route index element={<OfferList />} />
-        <Route path="settings" element={<OfferSettings />} />
+        <Route
+          path="settings"
+          element={
+            <>
+              <Alert showIcon type="info" message={<Tag color="gold">{m.demo}</Tag>} />
+              <DecisionNote id="offers" />
+              <OfferSettings />
+            </>
+          }
+        />
         <Route path="*" element={<PageState kind="not-found" />} />
       </Routes>
     </div>

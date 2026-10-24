@@ -1,90 +1,117 @@
-import type { OfferExample, OfferState } from '../demo-stubs/offers.js';
-import { actions as a, approvals, m, states, viewSpecs } from './messages.js';
-export type View = (typeof viewSpecs)[number]['key'];
-export type DemoAction = 'transfer' | 'invalidate';
-export const pendingViews: View[] = ['pending', 'unsubmitted', 'approving', 'approved'];
-export function inView(row: OfferExample, view: View) {
-  if (view === 'all') return true;
-  if (['unsubmitted', 'approving', 'approved'].includes(view)) return row.state === 'pending' && row.approval === view;
-  return row.state === view;
+import { OFFER_VIEWS, type OfferRowAction } from '@italent/domain';
+import { ApiError } from '../foundation/client.js';
+import { actions as a, m, readEnums } from './messages.js';
+
+export const apiRoot = '/api/tenant/offers';
+export const object = 'TenantBase.Offer';
+export type View = string;
+export interface OfferRow {
+  id: string;
+  rowActions?: { primary: OfferRowAction[]; menu: OfferRowAction[] };
+  [field: string]: unknown;
 }
-export const canInvalidate = (r: OfferExample) =>
-  r.state === 'sent' || r.state === 'accepted' || (r.state === 'pending' && r.kind !== '实习');
-// 待发 / 已接受候选未实测：仅按规格34表展示；不执行转移，也不增加未验证的已入职候选。
-export const targets: Record<OfferState, OfferState[]> = {
-  pending: ['accepted', 'rejected'],
-  sent: ['pending', 'accepted', 'rejected'],
-  accepted: ['rejected'],
-  rejected: ['pending', 'accepted'],
-  onboarded: [],
-  invalid: [],
+export interface OfferListResult {
+  items: OfferRow[];
+  total: number;
+  hasDataPermission: boolean;
+}
+export type Filters = Record<string, { value: string; label: string }>;
+export const pendingViews = ['pending', 'unsubmitted', 'approving', 'approved'];
+const fields: Record<string, string> = {
+  ...Object.fromEntries(
+    OFFER_VIEWS.flatMap((v) => [...v.columns, ...v.filters]).flatMap((c) => (c.field ? [[c.label, c.field]] : [])),
+  ),
+  同步状态: 'syncStatus',
+  录用人员: 'name',
+  参加工作日期: 'workStartDate',
+  计划入职日期: 'plannedEntryDate',
+  招聘需求: 'recruitmentDemand',
+  最后投递渠道: 'channelName',
+  职务: 'postId',
+  是否有试用期: 'hasProbation',
+  转正前基本工资: 'salaryBeforeRegular',
+  转正后基本工资: 'salaryAfterRegular',
+  社保缴交基数: 'socialInsuranceBase',
+  公积金缴交基数: 'housingFundBase',
+  成本中心: 'costCenter',
+  期限类型: 'contractTermType',
+  '合同期限（月）': 'contractMonths',
+  终止日期: 'contractEndDate',
 };
-export function rowActions(row: OfferExample, view: View): { primary: string[]; menu: string[] } {
-  // R2e3 12：全部视图不固定操作列；已接受样本显示邮件，其余未验证状态仅保留查看。
-  if (view === 'all') {
-    if (row.state === 'pending')
-      return { primary: row.approval === 'approving' ? [a.view] : [a.edit, a.view], menu: [] };
-    return { primary: [row.state === 'accepted' ? a.mail : a.view], menu: [] };
-  }
-  if (row.state === 'pending') {
-    const menu = [
-      a.edit,
-      a.send,
-      m.transfer,
-      ...(canInvalidate(row) ? [m.invalidate] : []),
-      a.associate,
-      a.view,
-      a.remove,
-    ];
-    // DEC-533 / 派发B5：非实习待发失效不受审批状态限制，其余未验证子菜单不补造。
-    const invalidation = canInvalidate(row) ? [m.invalidate] : [];
-    if (row.approval === 'approving') return { primary: [a.remind, a.delegate, a.revoke], menu: invalidation };
-    if (row.approval === 'approved') return { primary: [a.edit], menu: invalidation };
-    return { primary: [a.approve], menu };
-  }
-  switch (row.state) {
-    case 'sent':
-      return { primary: [a.resend], menu: [a.sync, m.transfer, a.mail, m.invalidate, a.view] };
-    case 'accepted':
-      return { primary: [a.sync], menu: [m.transfer, a.mail, m.invalidate, a.sign, a.view] };
-    case 'rejected':
-      return { primary: [m.transfer], menu: [a.mail, a.view] };
-    case 'onboarded':
-      return { primary: [a.mail], menu: [a.sign, a.view] };
-    case 'invalid':
-      return { primary: [a.copy], menu: [a.mail, a.view] };
-  }
+export const filterFieldOf = (view: string, label: string) =>
+  OFFER_VIEWS.find((v) => v.key === view)?.filters.find((f) => f.label === label)?.field;
+export const fieldOf = (label: string) => fields[label];
+const names: Record<string, string> = {
+  录用部门: 'departmentName',
+  部门: 'departmentName',
+  组织全称: 'departmentFullName',
+  职位: 'positionName',
+  录用职位: 'positionName',
+  职务: 'postName',
+  Offer发送人: 'sentByName',
+  直线经理: 'directManagerName',
+};
+/** 名称只沿对应 ID 的可见性展示；缺键或 null 不回落到 UUID，也不拼接部门全称。 */
+export function displayValue(row: OfferRow, label: string): string {
+  const field = fieldOf(label);
+  if (!field || !Object.hasOwn(row, field)) return m.empty;
+  const value = row[names[label] ?? field];
+  if (value === null || value === undefined || value === '') return m.empty;
+  if (Array.isArray(value)) return value.join('、') || m.empty;
+  return readEnums[field]?.[String(value)] ?? String(value);
 }
-export function displayValue(row: OfferExample, field: string): string {
-  const values: Record<string, string | undefined> = {
-    姓名: row.name,
-    录用人员: row.name,
-    个人邮箱: row.email,
-    邮箱: row.email,
-    Offer类型: row.kind,
-    录用部门: row.department,
-    部门: row.department,
-    组织全称: row.department,
-    职位: row.post,
-    录用职位: row.post,
-    应聘职位: row.post,
-    职务: row.job,
-    预计入职日期: row.date,
-    拟入职日期: row.date,
-    入职日期: row.date,
-    计划入职日期: row.date,
-    offer状态: states[row.state],
-    审批状态: approvals[row.approval],
-    接受offer日期: row.acceptedDate,
-    拒绝offer日期: row.state === 'rejected' ? row.refusal?.date : undefined,
-    拒绝原因备注: row.state === 'rejected' ? row.refusal?.remark : undefined,
-    失效时间: row.invalidAt,
-  };
-  return values[field] ?? m.empty;
+export function visibleColumn(label: string, visible: (field: string) => boolean, rows: OfferRow[]) {
+  const field = fieldOf(label);
+  return !field || (visible(field) && (!rows.length || rows.some((row) => Object.hasOwn(row, field))));
 }
-export function filterOffers(rows: OfferExample[], view: View, filters: Record<string, string>) {
-  const fields = viewSpecs.find((v) => v.key === view)!.filters as readonly string[];
-  return rows.filter(
-    (r) => inView(r, view) && fields.every((f) => !filters[f] || displayValue(r, f).includes(filters[f]!)),
-  );
+export function listPath(view: View, page: number, filters: Filters = {}, pageSize = 15) {
+  const query = new URLSearchParams({ view, page: String(page), pageSize: String(pageSize) });
+  for (const [field, entry] of Object.entries(filters)) if (entry.value.trim()) query.set(field, entry.value.trim());
+  return `${apiRoot}?${query}`;
+}
+export function filterOptions(rows: OfferRow[], label: string) {
+  const field = fieldOf(label);
+  if (!field) return [];
+  return [
+    ...new Map(
+      rows.flatMap((row) => {
+        const value = row[field];
+        return typeof value === 'string' && value ? [[value, { value, label: displayValue(row, label) }] as const] : [];
+      }),
+    ).values(),
+  ];
+}
+export const actionLabels: Record<OfferRowAction, string> = {
+  submitApproval: a.approve,
+  edit: a.edit,
+  send: a.send,
+  transfer: m.transfer,
+  invalidate: m.invalidate,
+  linkIntern: a.associate,
+  view: a.view,
+  delete: a.remove,
+  resend: a.resend,
+  editSync: a.sync,
+  viewMail: a.mail,
+  sign: a.sign,
+  copy: a.copy,
+  urge: a.remind,
+  delegate: a.delegate,
+  revoke: a.revoke,
+};
+/** F-234 邮件读权同 Offer 查看权；后端 rowActions 尚未登记 viewMail，按已取证状态显示只读入口。 */
+export const canReadMail = (row: OfferRow) =>
+  ['sent', 'accepted', 'rejected', 'onboarded', 'invalid'].includes(String(row.status));
+export function readActions(row: OfferRow) {
+  const primary = row.rowActions?.primary.filter((key) => key in actionLabels) ?? [];
+  const menu = row.rowActions?.menu.filter((key) => key in actionLabels) ?? [];
+  if (canReadMail(row) && ![...primary, ...menu].includes('viewMail'))
+    (row.status === 'onboarded' ? primary : menu).push('viewMail');
+  return { primary, menu };
+}
+export const openMail = (id: string) => window.open(`/offers/${encodeURIComponent(id)}/mail`, '_blank', 'noopener');
+export function errorKind(error: unknown) {
+  return error instanceof ApiError && ['login', 'forbidden', 'not-found'].includes(error.kind)
+    ? (error.kind as 'login' | 'forbidden' | 'not-found')
+    : 'error';
 }

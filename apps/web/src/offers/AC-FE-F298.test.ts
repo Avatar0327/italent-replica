@@ -123,4 +123,30 @@ describe('AC-FE-F298 真实列表与详情', () => {
     );
     expect(allText()).not.toContain('合成社招甲');
   });
+  it('切换身份立即清旧列表，迟到响应不能带回旧身份数据', async () => {
+    await render();
+    expect(allText()).toContain(offerRow.name);
+    const old: ((value: Response) => void)[] = [];
+    response = () => new Promise((resolve) => old.push(resolve));
+    await render('second-reader');
+    expect(allText()).not.toContain(offerRow.name);
+    response = async () => Response.json(listFixture([{ ...offerRow, name: '合成新身份候选人' }]));
+    await render('third-reader');
+    await act(async () => old.forEach((resolve) => resolve(Response.json(listFixture([offerRow])))));
+    expect(allText()).toContain('合成新身份候选人');
+    expect(allText()).not.toContain(offerRow.name);
+  });
+  it.each([403, 404, 503])('详情读取 %s 不拿列表数据冒充详情', async (status) => {
+    await render();
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).endsWith(`/offers/${offerRow.id}`)
+        ? Promise.resolve(Response.json({ error: { code: 'READ_FAILED' } }, { status }))
+        : original(input, init),
+    );
+    await click(offerRow.name);
+    const detail = document.querySelector('.detail-drawer')!;
+    expect(detail.textContent).toContain(status === 403 ? ui.denied : status === 404 ? ui.missing : ui.failed);
+    expect(detail.textContent).not.toContain(offerRow.departmentName);
+  });
 });
