@@ -529,13 +529,12 @@ for (const status of ['approved', 'effective'] as const) {
 
 test('AC-FE-F285-18 定位未找到可重读，切换视图后迟到读取不覆盖用户选择', async ({ page }) => {
   const { created, submitted } = await application(page);
-  let reads = 0;
+  let hold = false;
   let release: (() => void) | undefined;
   await page.route('**/employment/interns?*', async (route) => {
     if (new URL(route.request().url()).searchParams.get('view') !== 'converting') return route.fallback();
-    reads += 1;
-    // 初次列表读取和定位都为空；用户重试定位时把响应延后到切换视图之后。
-    if (reads > 2)
+    // 初次列表读取和定位都为空；显式在用户重试时延后响应，不依赖 React 的挂载请求次数。
+    if (hold)
       await new Promise<void>((resolve) => {
         release = resolve;
       });
@@ -544,12 +543,51 @@ test('AC-FE-F285-18 定位未找到可重读，切换视图后迟到读取不覆
   await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
   await submit(page).click();
   await expect(page.getByText('申请已提交，当前可见列表中未找到，可重新读取。')).toBeVisible();
+  hold = true;
   await page.getByRole('button', { name: '重试定位', exact: true }).click();
   await expect.poll(() => !!release).toBe(true);
   await page.goBack();
   release!();
   await expect(page.getByRole('button', { name: '实习中', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText(/申请已提交，/)).toHaveCount(0);
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F285-19 打开员工详情停止后台定位，迟到结果不干扰后续操作', async ({ page }) => {
+  const { created, submitted } = await application(page);
+  let release: (() => void) | undefined;
+  await page.route('**/employment/interns?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.get('view') !== 'converting') return route.fallback();
+    const current = Number(query.get('page'));
+    const preceding = Array.from({ length: 30 }, (_, index) => ({
+      ...rows.converting,
+      effectiveDate: '2026-10-01',
+      id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      employeeId: `30000000-0000-4000-9000-${String(index + 1).padStart(12, '0')}`,
+    }));
+    if (current === 2)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await route.fulfill({
+      json: { items: current === 1 ? preceding : [rows.converting], page: current, pageSize: 30 },
+    });
+  });
+  await page.route('**/personnel/employees/30000000-0000-4000-9000-*', (route) =>
+    route.fulfill({
+      json: { id: new URL(route.request().url()).pathname.split('/').at(-1), name: '前置合成员工', revision: 1 },
+    }),
+  );
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect.poll(() => !!release).toBe(true);
+  await page.getByRole('button', { name: '查看详情', exact: true }).first().click();
+  // 响应仍在途，打开详情本身就应停止定位；不能等它自动翻页后才取消。
+  await expect(page.getByText('申请已提交，正在定位列表中的申请。')).toHaveCount(0);
+  release!();
+  await expect(page.getByText('第 1 页', { exact: true })).toBeVisible();
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
 });
