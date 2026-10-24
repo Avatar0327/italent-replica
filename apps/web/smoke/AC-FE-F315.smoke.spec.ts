@@ -298,3 +298,17 @@ test('AC-FE-F315-18 废弃流程只读；详情 403/404 有明确状态', async 
   }
   expect(state.writes).toHaveLength(0);
 });
+test('AC-FE-F315-19 配置字面值不按枚举翻译，枚举仍显示中文', async ({ page, baseURL }) => {
+  const state = await setup(page, baseURL!);
+  state.flow.latestVersion.conditions.items[0]!.value = 'approve';
+  state.flow.latestVersion.nodes[0]!.formFields = ['transfer'];
+  state.flow.latestVersion.nodes[0]!.messageRules[0]!.template = 'owner';
+  await openDetail(page);
+  await page.getByText('发起条件', { exact: true }).click();
+  await expect(page.getByRole('cell', { name: 'approve', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '等于', exact: true })).toBeVisible();
+  await page.getByText('其他节点配置（只读）', { exact: true }).first().click();
+  await expect(page.getByText('transfer', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'owner', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '到达节点', exact: true })).toBeVisible();
+});
