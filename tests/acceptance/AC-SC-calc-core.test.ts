@@ -20,7 +20,7 @@ import {
 } from '../../apps/api/src/modules/succession/calc-notifications.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 import { rowsOf } from './support/f048.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const now = new Date('2026-10-11T08:00:00Z');
@@ -511,11 +511,10 @@ describe('AC-SC-calc-core run 契约', () => {
       );
       await entered;
       const second = page(id);
-      try {
+      await withRelease(release, async (cleanup) => {
+        [first, second].forEach(cleanup.track);
         await waitForBlocked(db(), 1);
-      } finally {
-        release();
-      }
+      });
       expect(await Promise.all([first, second])).toEqual(['running', 'succeeded']);
       expect(await effects(id)).toBe(201);
     },
@@ -550,11 +549,10 @@ describe('AC-SC-calc-core run 契约', () => {
         )[0]!;
         return changeCalcRun(t, member.tenant.id, id, row.revision, 'abort', randomUUID(), now);
       });
-      try {
+      await withRelease(release, async (cleanup) => {
+        [first, abort].forEach(cleanup.track);
         await waitForBlocked(db(), 1);
-      } finally {
-        release();
-      }
+      });
       await Promise.all([first, abort]);
       expect(await page(id)).toBe('aborted');
       expect(await effects(id)).toBe(200);

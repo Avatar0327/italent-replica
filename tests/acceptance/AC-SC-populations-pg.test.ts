@@ -5,7 +5,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { configWorld } from './AC-SC-config-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 const testDb = useTestDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2a 真 PG 并发', () => {
   let w: Awaited<ReturnType<typeof configWorld>>;
@@ -31,11 +31,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2a 真 PG 并发'
     const request = (idempotencyKey: string) =>
       w.request('PUT', `/populations/${saved.id}`, { ifMatch: 1, body: { name: '并发修改' }, idempotencyKey });
     const requests = [request(key), request(sameKey ? key : randomUUID())];
-    try {
-      await waitForBlocked(w.db, 2);
-    } finally {
-      release();
-    }
+    await withRelease(
+      release,
+      async (cleanup) => {
+        [...requests, blocker].forEach(cleanup.track);
+        await waitForBlocked(w.db, 2);
+      },
+      [blocker],
+    );
     await blocker;
     const responses = await Promise.all(requests);
     expect(responses.map((response) => response.status).sort()).toEqual(sameKey ? [200, 200] : [200, 409]);

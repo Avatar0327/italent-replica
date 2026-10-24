@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { assertNoSyncBarrier } from '../../apps/api/src/modules/succession/sync-barrier.js';
 import { successionWorld, type SuccessionWorld } from './AC-SC-support.js';
 import { rowsOf } from './support/f048.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 let w: SuccessionWorld;
@@ -112,11 +112,10 @@ describe('AC-SC-sync-barrier', () => {
     });
     await acquired;
     const writing = update();
-    try {
+    await withRelease(release, async (cleanup) => {
+      [planning, writing].forEach(cleanup.track);
       await waitForBlocked(w.db, 1);
-    } finally {
-      release();
-    }
+    });
     await planning;
     const response = await writing;
     expect(response.status).toBe(409);

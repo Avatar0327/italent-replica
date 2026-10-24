@@ -6,6 +6,7 @@ import { linkHooks } from '../../apps/api/src/modules/survey360/links.js';
 import { resetCredentialConfig, rowsOf } from './AC-360-F076-support.js';
 import { issuedScene, loginOk, sessionCall } from './AC-360-F076-portal-support.js';
 import { blockedOrSettled, gate } from './AC-360-F076-lock-barrier.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 afterEach(() => {
@@ -31,11 +32,13 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-360-F076-36 会话与删除�
       idempotencyKey: command,
       body: { answers: [], suggestion: '不得保存' },
     });
-    try {
-      await blockedOrSettled(w.db, saving);
-    } finally {
-      held.release();
-    }
+    await withRelease(
+      () => held.release(),
+      async (cleanup) => {
+        [removing, saving].forEach(cleanup.track);
+        await blockedOrSettled(w.db, saving);
+      },
+    );
     expect((await removing).status).toBe(200);
     expect((await saving).status).toBe(404);
     const result = await withTenant(w.db, w.tenantId, async (tx) => ({

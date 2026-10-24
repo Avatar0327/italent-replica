@@ -10,7 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { retirementCancelWorld, type RetirementCancelWorld } from './AC-RT-cancel-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -39,15 +39,17 @@ async function queueBehind(x: RetirementCancelWorld, requests: (() => Promise<un
   const session = holder(x, (tx) => lockOrganizationSettings(tx, x.session.tenant.id));
   await session.held;
   const running: Promise<unknown>[] = [];
-  try {
-    for (const [index, request] of requests.entries()) {
-      running.push(request());
-      await waitForBlocked(x.db, index + 1);
-    }
-  } finally {
-    session.release();
-    await session.done;
-  }
+  await withRelease(
+    () => session.release(),
+    async (cleanup) => {
+      cleanup.track(session.done);
+      for (const [index, request] of requests.entries()) {
+        running.push(cleanup.track(request()));
+        await waitForBlocked(x.db, index + 1);
+      }
+    },
+    [session.done],
+  );
   return Promise.allSettled(running);
 }
 

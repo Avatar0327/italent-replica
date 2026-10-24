@@ -3,7 +3,7 @@ import { sql, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { successionWorld } from './AC-SC-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -41,11 +41,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats çœŸ PG å
         idempotencyKey,
       });
     const requests = [send(key), send(sameKey ? key : randomUUID())];
-    try {
-      await waitForBlocked(w.db, 2);
-    } finally {
-      release();
-    }
+    await withRelease(
+      release,
+      async (cleanup) => {
+        [...requests, blocker].forEach(cleanup.track);
+        await waitForBlocked(w.db, 2);
+      },
+      [blocker],
+    );
     await blocker;
     const responses = await Promise.all(requests);
     expect(responses.map((r) => r.status).sort()).toEqual(sameKey ? [200, 200] : [200, 409]);

@@ -1,5 +1,6 @@
 /** F-295：直接执行既有调用点的清理语句，注入等待失败与延迟拒绝，不复制被测 finally。 */
 import { readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { withRelease } from './support/pg-interleave.js';
@@ -28,7 +29,8 @@ function execute(statement: string, locals: Record<string, unknown>) {
   const code = ts.transpileModule(`(async () => { let a, b; ${statement} })()`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText;
-  return new Function(...Object.keys(locals), `return ${code}`)(...Object.values(locals)) as Promise<unknown>;
+  // 只执行当前仓库里选中的测试语句；隔离上下文只提供显式注入的夹具。
+  return new Script(code, { filename: 'f295-callsite-probe.js' }).runInNewContext(locals) as Promise<unknown>;
 }
 
 function delayedFailure() {

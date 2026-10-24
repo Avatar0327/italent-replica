@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { exitWorld, runner, type ExitWorld } from './AC-SC-02-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { rowsOf } from './support/f048.js';
-import { settledOrBlocked, waitForBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, waitForBlocked, withRelease } from './support/pg-interleave.js';
 import {
   SUCCESSION_CALC_KINDS,
   CalcBlocked,
@@ -149,12 +149,13 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
       const sweeping = w.page(barrier.handler);
       expect(await Promise.race([barrier.ready.then(() => true), sweeping.then(() => false)])).toBe(true);
       const ending = w.end();
-      let waiting: string;
-      try {
-        waiting = await settledOrBlocked(w.db, ending, 1);
-      } finally {
-        barrier.release();
-      }
+      const waiting = await withRelease(
+        () => barrier.release(),
+        async (cleanup) => {
+          [sweeping, ending].forEach(cleanup.track);
+          return await settledOrBlocked(w.db, ending, 1);
+        },
+      );
       const [status, response] = await Promise.all([sweeping, ending]);
       expect(waiting).toBe('blocked');
       expect(status).toBe('succeeded');
@@ -169,13 +170,12 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
     const release = await holdTarget(w, w.targets[1]!);
     const ending = w.end();
     let sweeping!: ReturnType<typeof w.page>;
-    try {
+    await withRelease(release, async (cleanup) => {
+      cleanup.track(ending);
       await waitForBlocked(w.db, 1);
-      sweeping = w.page();
+      sweeping = cleanup.track(w.page());
       await waitForBlocked(w.db, 2);
-    } finally {
-      await release();
-    }
+    });
     const [response, status] = await Promise.all([ending, sweeping]);
     expect(response.status, await response.clone().text()).toBe(200);
     expect(status).toBe('succeeded');
@@ -191,12 +191,13 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
       const sweeping = w.page(barrier.handler);
       expect(await Promise.race([barrier.ready.then(() => true), sweeping.then(() => false)])).toBe(true);
       const editing = w.edit();
-      let waiting: string;
-      try {
-        waiting = await settledOrBlocked(w.db, editing, 1);
-      } finally {
-        barrier.release();
-      }
+      const waiting = await withRelease(
+        () => barrier.release(),
+        async (cleanup) => {
+          [sweeping, editing].forEach(cleanup.track);
+          return await settledOrBlocked(w.db, editing, 1);
+        },
+      );
       const [status, response] = await Promise.all([sweeping, editing]);
       expect(waiting).toBe('blocked');
       expect(status).toBe('succeeded');
@@ -212,11 +213,13 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
     const sweeping = w.page(barrier.handler);
     expect(await Promise.race([barrier.ready.then(() => true), sweeping.then(() => false)])).toBe(true);
     const ending = w.end();
-    try {
-      await waitForBlocked(w.db, 1);
-    } finally {
-      barrier.release();
-    }
+    await withRelease(
+      () => barrier.release(),
+      async (cleanup) => {
+        [sweeping, ending].forEach(cleanup.track);
+        await waitForBlocked(w.db, 1);
+      },
+    );
     const [status, response] = await Promise.all([sweeping, ending]);
     expect(status).toBe('succeeded');
     expect(response.status).toBe(409);

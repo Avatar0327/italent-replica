@@ -13,7 +13,7 @@ import { rowsOf } from './support/f048.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 import { levelBody } from './AC-SC-levels-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 import { enableHealthRunner } from './AC-SC-07-health-support.js';
 import { waitHealthLock } from './AC-SC-07-health-lock-support.js';
 import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/succession/calc-worker.js';
@@ -266,11 +266,10 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
         action === 'assign'
           ? w.request('PUT', `/health-results/${h.org.id}`, { ifMatch: 0, body: { levelId } })
           : runCalcPage(w.db, w.tenant.id, workerId!, undefined, SC_NOW);
-      try {
+      await withRelease(release, async (cleanup) => {
+        [consuming, operation].forEach(cleanup.track);
         expect((await waitHealthLock(w.db, pid, 'org_settings')).query).toContain('org_settings');
-      } finally {
-        release();
-      }
+      });
       expect(await consuming).toMatchObject({ status: 'completed', result: 'succeeded' });
       const result = await operation;
       if (typeof result !== 'string') {
@@ -323,12 +322,10 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       const planning = planSyncRun(h.deps, h.input);
       await reached;
       const deletion = w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
-      let observed: string;
-      try {
-        observed = await settledOrBlocked(w.db, deletion, 1);
-      } finally {
-        release();
-      }
+      const observed = await withRelease(release, async (cleanup) => {
+        [planning, deletion].forEach(cleanup.track);
+        return await settledOrBlocked(w.db, deletion, 1);
+      });
       await planning;
       const response = await deletion;
       expect(observed).toBe('blocked');
@@ -357,15 +354,16 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       await entered;
       const deletion = w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
       let planning: ReturnType<typeof planSyncRun> | undefined;
-      try {
-        expect(await settledOrBlocked(w.db, deletion, 1)).toBe('blocked');
-        planning = planSyncRun(h.deps, h.input);
-        expect(await settledOrBlocked(w.db, planning, 2)).toBe('blocked');
-      } finally {
-        release();
-        await blocker;
-        await Promise.allSettled([deletion, planning]);
-      }
+      await withRelease(
+        release,
+        async (cleanup) => {
+          [deletion, blocker].forEach(cleanup.track);
+          expect(await settledOrBlocked(w.db, deletion, 1)).toBe('blocked');
+          planning = cleanup.track(planSyncRun(h.deps, h.input));
+          expect(await settledOrBlocked(w.db, planning, 2)).toBe('blocked');
+        },
+        [blocker],
+      );
       expect((await deletion).status).toBe(200);
       expect(await planning).toMatchObject({ status: 'executing' });
       expect(await consumeRun(h.deps, h.input)).toMatchObject({ status: 'completed', result: 'partial' });

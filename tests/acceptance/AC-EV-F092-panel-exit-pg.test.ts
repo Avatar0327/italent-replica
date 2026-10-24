@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exitWorld, rowsOf, type ExitWorld } from './AC-EV-F092-support.js';
 import { errorOf } from './AC-EV-support.js';
 import type * as EmploymentStore from '../../apps/api/src/modules/employment/record-store.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const barrier = vi.hoisted(() => ({
   key: '',
@@ -94,12 +95,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       finished = true;
       return r;
     });
-    try {
-      await waitsForLock(w.db, () => finished);
-    } finally {
-      release.resolve();
-      await Promise.all([leave, edit]);
-    }
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [leave, edit].forEach(cleanup.track);
+        await waitsForLock(w.db, () => finished);
+      },
+      [leave, edit],
+    );
     expect((await leave).status).toBe(201);
     expect((await edit).status).toBe(409);
     await w.expectMembers(g.id, [kept]);
@@ -130,12 +133,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       finished = true;
       return r;
     });
-    try {
-      await waitsForLock(w.db, () => finished);
-    } finally {
-      release.resolve();
-      await Promise.all([leave, edit]);
-    }
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [leave, edit].forEach(cleanup.track);
+        await waitsForLock(w.db, () => finished);
+      },
+      [leave, edit],
+    );
     expect((await edit).status).toBe(200);
     expect((await leave).status).toBe(201);
     await w.expectMembers(g.id, [added]);
@@ -168,12 +173,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       finished = true;
       return result;
     });
-    try {
-      await waitsForLock(w.db, () => finished);
-    } finally {
-      release.resolve();
-      await Promise.all([first, second]);
-    }
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [first, second].forEach(cleanup.track);
+        await waitsForLock(w.db, () => finished);
+      },
+      [first, second],
+    );
     const results = await Promise.all([first, second]);
     expect(results.reduce((total, result) => total + result.done, 0)).toBe(1);
     await w.expectMembers(g.id, []);
@@ -226,15 +233,19 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
       ]);
       w.setTime('2026-10-10T16:00:00Z');
       const worker = w.run();
-      try {
-        await workerReady.promise;
-        allowWriteLock.resolve();
-        await waitsForLock(w.db, () => finished);
-      } finally {
-        allowWriteLock.resolve();
-        allowWorkerFinish.resolve();
-        await Promise.all([worker, writing]);
-      }
+      await withRelease(
+        () => {
+          allowWriteLock.resolve();
+          allowWorkerFinish.resolve();
+        },
+        async (cleanup) => {
+          [worker, writing].forEach(cleanup.track);
+          await workerReady.promise;
+          allowWriteLock.resolve();
+          await waitsForLock(w.db, () => finished);
+        },
+        [worker, writing],
+      );
       const response = await writing;
       expect(response.status).toBe(400);
       expect(await errorOf(response)).toEqual({
@@ -276,13 +287,15 @@ async function crossMidnight<T>(
   const writing = action().finally(() => {
     finished = true;
   });
-  try {
-    await waitsForLock(w.db, () => finished);
-    w.setTime(midnight);
-  } finally {
-    release.resolve();
-    await Promise.all([blocker, writing]);
-  }
+  await withRelease(
+    () => release.resolve(),
+    async (cleanup) => {
+      [blocker, writing].forEach(cleanup.track);
+      await waitsForLock(w.db, () => finished);
+      w.setTime(midnight);
+    },
+    [blocker, writing],
+  );
   return writing;
 }
 
@@ -510,21 +523,23 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 第三轮锁后日�
     });
     await held.promise;
     const saves = [w.createGroup([a]), w.createGroup([b])];
-    try {
-      const deadline = Date.now() + 8000;
-      for (;;) {
-        const [row] = rowsOf<{ n: number }>(
-          await w.db.execute(sql`SELECT count(*)::int AS n
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [blocker, ...saves].forEach(cleanup.track);
+        const deadline = Date.now() + 8000;
+        for (;;) {
+          const [row] = rowsOf<{ n: number }>(
+            await w.db.execute(sql`SELECT count(*)::int AS n
           FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'`),
-        );
-        if (row!.n >= 2) break;
-        if (Date.now() >= deadline) throw new Error('两个请求未同时等待共享组锁');
-        await new Promise((done) => setTimeout(done, 10));
-      }
-    } finally {
-      release.resolve();
-      await Promise.all([blocker, ...saves]);
-    }
+          );
+          if (row!.n >= 2) break;
+          if (Date.now() >= deadline) throw new Error('两个请求未同时等待共享组锁');
+          await new Promise((done) => setTimeout(done, 10));
+        }
+      },
+      [blocker, ...saves],
+    );
     const fresh = await Promise.all(saves);
     for (const g of groups) {
       await w.expectMembers(g.id, []);

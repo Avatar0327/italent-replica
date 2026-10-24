@@ -2,7 +2,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { levelReferenceWorld } from './AC-SC-levels-reference-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2b P2-2 字段引用真 PG 交错', () => {
@@ -22,16 +22,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2b P2-2 字段引
     });
     await acquired;
     let first: Promise<Response> | undefined, second: Promise<Response> | undefined;
-    try {
-      first = referenceFirst ? w.reference() : w.fieldRequest('DELETE');
-      expect(await settledOrBlocked(w.db, first, 1)).toBe('blocked');
-      second = referenceFirst ? w.fieldRequest('DELETE') : w.reference();
-      expect(await settledOrBlocked(w.db, second, 2)).toBe('blocked');
-    } finally {
-      release();
-      await blocker;
-      await Promise.allSettled([first, second].filter((request) => request !== undefined));
-    }
+    await withRelease(
+      release,
+      async (cleanup) => {
+        cleanup.track(blocker);
+        first = cleanup.track(referenceFirst ? w.reference() : w.fieldRequest('DELETE'));
+        expect(await settledOrBlocked(w.db, first, 1)).toBe('blocked');
+        second = cleanup.track(referenceFirst ? w.fieldRequest('DELETE') : w.reference());
+        expect(await settledOrBlocked(w.db, second, 2)).toBe('blocked');
+      },
+      [blocker],
+    );
     const responses = await Promise.all([first!, second!]);
     expect(responses.map((response) => response.status)).toEqual(referenceFirst ? [201, 409] : [200, 400]);
     if (referenceFirst)

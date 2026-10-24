@@ -9,7 +9,7 @@ import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/successi
 import { defineCalcKinds, CalcObjectFailure } from '../../apps/api/src/modules/succession/calc-contract.js';
 import { rowsOf } from './support/f048.js';
 import { SUCCESSION_AUDIT } from '../../apps/api/src/modules/succession/audit-scope.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const now = new Date('2026-10-11T08:00:00Z');
@@ -289,11 +289,10 @@ describe('AC-SC-calc-runs / AC-SC-projection', () => {
       );
       await inside;
       const retry = request(tenantApi(db()), `/${id}/retry`, 'POST', Number(before.revision));
-      try {
+      await withRelease(release, async (cleanup) => {
+        [worker, retry].forEach(cleanup.track);
         await waitForBlocked(db(), 1);
-      } finally {
-        release();
-      }
+      });
       expect(await worker).toBe(status);
       const res = await retry;
       expect(res.status).toBe(409);

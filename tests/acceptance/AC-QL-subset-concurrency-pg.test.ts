@@ -11,6 +11,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { QL_BASE } from './AC-QL-support.js';
 import { subsetScene } from './AC-QL-subset-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -59,12 +60,14 @@ async function interleave(
     finished = true;
     return response;
   });
-  try {
-    await waitForLock(db, () => finished);
-  } finally {
-    release.resolve();
-    await holder;
-  }
+  await withRelease(
+    () => release.resolve(),
+    async (cleanup) => {
+      [pending, holder].forEach(cleanup.track);
+      await waitForLock(db, () => finished);
+    },
+    [holder],
+  );
   return pending;
 }
 
