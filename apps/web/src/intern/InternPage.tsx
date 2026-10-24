@@ -8,7 +8,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
-import { ApplicationLocation } from './ApplicationLocation.js';
+import { ApplicationLocation, useApplicationLocation } from './ApplicationLocation.js';
 import { InternDetail } from './InternDetail.js';
 import { m } from './messages.js';
 import {
@@ -54,7 +54,7 @@ function useInternList() {
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
-  const [location, locate] = useState<ApplicationDestination>();
+  const [location, locate] = useApplicationLocation(view);
   // 入口按行所属视图判定：选中时连同视图一起记下，切换视图的瞬间点到旧行也不会张冠李戴
   const [selected, select] = useState<{ view: InternView; row: Row }>();
   const allowed = useFilterPermission();
