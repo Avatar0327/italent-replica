@@ -81,7 +81,7 @@ function completeNode(node: unknown): node is ApprovalNode {
     )
   );
 }
-export function editableValues(version: VersionView): Values {
+export function editableValues(version: Pick<VersionView, 'nodes'>): Values {
   return Object.fromEntries(
     (version.nodes ?? []).flatMap((node) =>
       attributes.map((field) => [

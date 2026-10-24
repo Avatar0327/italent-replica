@@ -263,7 +263,7 @@ function useProcessCommand(process: ProcessView) {
   const admin = permissions.menus.some(
     (menu) => menu.key === 'settings' && menu.children?.some((child) => child.key === 'matrix.manage'),
   );
-  const action = process.latestVersion.status === 'draft' ? 'draft' : 'versions';
+  const action: 'draft' | 'versions' = process.latestVersion.status === 'draft' ? 'draft' : 'versions';
   const snapshotValues = (value: ProcessView) => ({ ...editableValues(value.latestVersion), $process: value });
   const read = async () => {
     const latest = await readProcess(api, process.id);
@@ -431,7 +431,7 @@ function NodeProperties({ nodes }: { nodes: readonly ApprovalNode[] | undefined 
         {nodes.map((node) => (
           <div key={node.key} hidden={node.key !== active.key}>
             {attributes.map((field) =>
-              editableValues({ nodes: [node] } as VersionView)[nodeField(node.key, field)] === undefined ? (
+              editableValues({ nodes: [node] })[nodeField(node.key, field)] === undefined ? (
                 <Form.Item key={field} label={m.fields[field]}>
                   {m.unread}
                 </Form.Item>
