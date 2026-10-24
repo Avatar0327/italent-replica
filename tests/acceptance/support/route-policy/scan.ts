@@ -649,12 +649,26 @@ function namespaceRefs(index: SourceIndex, file: string, text: string): { file: 
 }
 
 /**
+ * F-231：默认 6 保持冻结基准不变；深层守卫取证时可设 ROUTE_POLICY_SCAN_MAX_DEPTH=7 等。
+ * 只影响省略深度的调用，近闭包仍显式传 3。限制到 64 层以免误配导致扫描失控。
+ */
+export function scanMaxDepth(): number {
+  const raw = process.env.ROUTE_POLICY_SCAN_MAX_DEPTH;
+  if (raw === undefined) return 6;
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) > 64) {
+    throw new Error('ROUTE_POLICY_SCAN_MAX_DEPTH 必须是 0～64 的整数');
+  }
+  return Number(raw);
+}
+
+/**
  * 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。
+ * 深度从处理函数直接引用的定义（0）起算；循环沿用 visited 去重，显式 maxDepth 优先于环境配置。
  */
 export function closureText(
   index: SourceIndex,
   registration: StaticRegistration,
-  maxDepth = 6,
+  maxDepth = scanMaxDepth(),
   trace?: string[],
 ): string {
   const handlerText = registration.handlerText;
