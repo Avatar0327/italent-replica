@@ -3,6 +3,30 @@ import { PAGES } from '../../apps/web/src/foundation/routes.js';
 import { flowFixture, flowId, flowPermission } from './support/f315-fixture.js';
 
 describe('AC-FE-F315 流程设计器最小版', () => {
+  it('20 重读统一校验节点数量与有序 key/kind，属性修改仍可核对', async () => {
+    const { assertDraftStructure } = await import('../../apps/web/src/approval/designer/model.js');
+    const original = flowFixture().latestVersion;
+    const [first, second] = original.nodes;
+    const additions = [...original.nodes, { ...first!, key: 'extra' }];
+    const reordered = [second!, first!];
+    for (const nodes of [additions, reordered, original.nodes.slice(1)])
+      expect(() => assertDraftStructure(original, { ...original, nodes })).toThrow('流程版本或节点结构已变更');
+    const changedKind = {
+      ...first!,
+      kind: 'countersign' as const,
+      approvers: ['direct_manager'] as const,
+      transitionRule: { type: 'all' as const, rules: {} },
+    };
+    expect(() => assertDraftStructure(original, { ...original, nodes: [changedKind, second!] })).toThrow();
+    expect(() => assertDraftStructure(original, { ...original, id: 'replaced-version' })).toThrow();
+    expect(() => assertDraftStructure(original, { ...original, status: 'published' })).toThrow();
+    expect(() =>
+      assertDraftStructure(original, {
+        ...original,
+        nodes: original.nodes.map((node) => ({ ...node, name: '仅改属性', hideRecords: true })),
+      }),
+    ).not.toThrow();
+  });
   it('01 配置中心挂载真实页面，审批中心实例页保留', () => {
     expect(PAGES.configurations.find((page) => page.id === 'processes')?.page?.name).toBe('ProcessDesigner');
     expect(PAGES.apps.find((page) => page.id === 'approval')?.page?.name).toBe('ApprovalPage');

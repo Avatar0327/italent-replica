@@ -127,6 +127,59 @@ async function openDetail(page: Page) {
   await expect(page.getByRole('heading', { name: '设计器', exact: true })).toBeVisible();
 }
 
+for (const change of ['新增', '重排'] as const) {
+  test(`AC-FE-F315-21 冲突重读发现节点${change}时保留输入且不发第二次 PUT`, async ({ page, baseURL }) => {
+    const state = await setup(page, baseURL!);
+    state.mode = 'conflict';
+    await openDetail(page);
+    await page.getByRole('textbox', { name: '节点名称', exact: true }).fill('保留旧结构输入');
+    await page.getByRole('button', { name: '保存草稿', exact: true }).click();
+    await expect(page.getByRole('button', { name: kernel.reload, exact: true })).toBeVisible();
+    const nodes = state.flow.latestVersion.nodes;
+    state.flow = {
+      ...state.flow,
+      latestVersion: {
+        ...state.flow.latestVersion,
+        nodes: change === '新增' ? [...nodes, { ...nodes[0]!, key: 'extra', name: '新增审批' }] : [...nodes].reverse(),
+      },
+    };
+    await page.getByRole('button', { name: kernel.reload, exact: true }).click();
+    await expect(page.getByText('流程版本或节点结构已变更，请返回列表重新打开后核对。', { exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '节点名称', exact: true })).toHaveValue('保留旧结构输入');
+    await expect(page.getByRole('button', { name: kernel.confirm, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled();
+    expect(state.writes.map((write) => write.revision)).toEqual(['4']);
+    // 409 已确认失败；重新打开以新结构和新 revision 开始编辑，旧输入不会自动带入。
+    await page.getByRole('link', { name: '返回流程列表', exact: true }).click();
+    await page.getByRole('link', { name: '合成调动流程', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: '节点名称', exact: true })).not.toHaveValue('保留旧结构输入');
+    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeEnabled();
+    expect(state.writes).toHaveLength(1);
+  });
+}
+
+test('AC-FE-F315-22 未知结果退出重开后回查仍按原命令节点结构判断', async ({ page, baseURL }) => {
+  const state = await setup(page, baseURL!);
+  state.mode = 'unknown';
+  await openDetail(page);
+  await page.getByRole('textbox', { name: '节点名称', exact: true }).fill('原未知命令输入');
+  await page.getByRole('button', { name: '保存草稿', exact: true }).click();
+  await expect(page.getByText(kernel.unknown, { exact: true })).toBeVisible();
+  state.flow = {
+    ...state.flow,
+    revision: 5,
+    latestVersion: { ...state.flow.latestVersion, nodes: [...state.flow.latestVersion.nodes].reverse() },
+  };
+  await page.getByRole('link', { name: '返回流程列表', exact: true }).click();
+  await page.getByRole('link', { name: '合成调动流程', exact: true }).click();
+  await page.getByRole('button', { name: kernel.original, exact: true }).click();
+  await expect(page.getByText('流程版本或节点结构已变更，请返回列表重新打开后核对。', { exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: '流程节点' }).getByRole('button', { name: /上级审批/ }).click();
+  await expect(page.getByRole('textbox', { name: '节点名称', exact: true })).toHaveValue('原未知命令输入');
+  await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled();
+  expect(state.writes).toHaveLength(1);
+});
+
 test('AC-FE-F315-07 列表 → 详情 → 修改节点 → 保存 → 重读，使用完整定义及命令头', async ({ page, baseURL }) => {
   const state = await setup(page, baseURL!);
   await openDetail(page);
