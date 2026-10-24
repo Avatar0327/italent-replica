@@ -152,7 +152,7 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
       const waiting = await withRelease(
         () => barrier.release(),
         async (cleanup) => {
-          [sweeping, ending].forEach(cleanup.track);
+          [sweeping, ending].forEach((request) => cleanup.track<unknown>(request));
           return await settledOrBlocked(w.db, ending, 1);
         },
       );
@@ -194,7 +194,7 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
       const waiting = await withRelease(
         () => barrier.release(),
         async (cleanup) => {
-          [sweeping, editing].forEach(cleanup.track);
+          [sweeping, editing].forEach((request) => cleanup.track<unknown>(request));
           return await settledOrBlocked(w.db, editing, 1);
         },
       );
@@ -216,7 +216,7 @@ pg('AC-SC-02 多员工页与 A2 写入口交错（PG）', () => {
     await withRelease(
       () => barrier.release(),
       async (cleanup) => {
-        [sweeping, ending].forEach(cleanup.track);
+        [sweeping, ending].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 1);
       },
     );

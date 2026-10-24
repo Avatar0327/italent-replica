@@ -62,7 +62,7 @@ async function interleave(
   await withRelease(
     () => release.resolve(),
     async (cleanup) => {
-      [pending, holder].forEach(cleanup.track);
+      [pending, holder].forEach((request) => cleanup.track<unknown>(request));
       await waitForLock(db, () => finished);
     },
     [holder],

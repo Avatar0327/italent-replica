@@ -91,7 +91,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康�
       body: { levelId: nonempty ? levelId : null },
     });
     await withRelease(release, async (cleanup) => {
-      [worker, assign].forEach(cleanup.track);
+      [worker, assign].forEach((request) => cleanup.track<unknown>(request));
       const waiting = await waitHealthLock(w.db, blocker, 'org_settings');
       expect(waiting.query).toContain('org_settings');
       expect(waiting.locktype).toBe('transactionid');
@@ -225,7 +225,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P3 非空赋值
       await withRelease(
         release,
         async (cleanup) => {
-          [assign, holder].forEach(cleanup.track);
+          [assign, holder].forEach((request) => cleanup.track<unknown>(request));
           const targetWait = await waitHealthLock(w.db, blocker, 'succession_target_locks');
           expect(targetWait.query).toContain('FOR UPDATE');
           expect(targetWait.locktype).toBe('transactionid');

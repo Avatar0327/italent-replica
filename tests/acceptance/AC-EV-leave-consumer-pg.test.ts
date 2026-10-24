@@ -31,7 +31,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-consumer 真 PG', (
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [first, second].forEach(cleanup.track);
+        [first, second].forEach((request) => cleanup.track<unknown>(request));
         await vi.waitFor(
           async () => {
             const [waiting] = rowsOf<{ n: number }>(

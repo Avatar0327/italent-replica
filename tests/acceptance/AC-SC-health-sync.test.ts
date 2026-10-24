@@ -267,7 +267,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
           ? w.request('PUT', `/health-results/${h.org.id}`, { ifMatch: 0, body: { levelId } })
           : runCalcPage(w.db, w.tenant.id, workerId!, undefined, SC_NOW);
       await withRelease(release, async (cleanup) => {
-        [consuming, operation].forEach(cleanup.track);
+        [consuming, operation].forEach((request) => cleanup.track<unknown>(request));
         expect((await waitHealthLock(w.db, pid, 'org_settings')).query).toContain('org_settings');
       });
       expect(await consuming).toMatchObject({ status: 'completed', result: 'succeeded' });
@@ -323,7 +323,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       await reached;
       const deletion = w.request('DELETE', `/health-levels/${level.id}`, { ifMatch: level.revision });
       const observed = await withRelease(release, async (cleanup) => {
-        [planning, deletion].forEach(cleanup.track);
+        [planning, deletion].forEach((request) => cleanup.track<unknown>(request));
         return await settledOrBlocked(w.db, deletion, 1);
       });
       await planning;
@@ -357,7 +357,7 @@ describe('AC-SC-health-sync / AC-SC-07 D4', () => {
       await withRelease(
         release,
         async (cleanup) => {
-          [deletion, blocker].forEach(cleanup.track);
+          [deletion, blocker].forEach((request) => cleanup.track<unknown>(request));
           expect(await settledOrBlocked(w.db, deletion, 1)).toBe('blocked');
           planning = cleanup.track(planSyncRun(h.deps, h.input));
           expect(await settledOrBlocked(w.db, planning, 2)).toBe('blocked');

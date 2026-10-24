@@ -272,7 +272,7 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     await ready;
     const b = consumeRun(next.deps, next.input);
     await withRelease(release, async (cleanup) => {
-      [a, b].forEach(cleanup.track);
+      [a, b].forEach((request) => cleanup.track<unknown>(request));
       await waitForBlocked(testDb().db, 1);
     });
     await Promise.all([a, b]);
@@ -540,7 +540,7 @@ it.runIf(Boolean(process.env['TEST_DATABASE_URL']))(
       },
     });
     await withRelease(release, async (cleanup) => {
-      [plan, write].forEach(cleanup.track);
+      [plan, write].forEach((request) => cleanup.track<unknown>(request));
       await waitForBlocked(testDb().db, 1);
     });
     await plan;

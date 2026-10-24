@@ -34,7 +34,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2a 真 PG 并发'
     await withRelease(
       release,
       async (cleanup) => {
-        [...requests, blocker].forEach(cleanup.track);
+        [...requests, blocker].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 2);
       },
       [blocker],

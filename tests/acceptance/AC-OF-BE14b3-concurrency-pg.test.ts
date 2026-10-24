@@ -60,7 +60,7 @@ pg('F-219 被驳回批量单：并发删除 B × 失效 A', () => {
     const invalidation = w.invalidateRaw(ra);
     const both = Promise.all([removal, invalidation]);
     await withRelease(release, async (cleanup) => {
-      [removal, invalidation, both].forEach(cleanup.track);
+      [removal, invalidation, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       // 两个请求此刻都只在等批量单：Offer A、B 的行都还能被别人立即锁住（旧锁序里删除一侧已持有 B 的行锁，这里会 55P03）
       await withTenant(w.db, w.tenant.id, async (tx) => {
@@ -104,7 +104,7 @@ pg('联动 × 并发', () => {
     const invalidate = w.invalidate(offer, { reasonCode: 'candidate_gave_up' });
     const both = Promise.all([cancel, invalidate]);
     await withRelease(release, async (cleanup) => {
-      [cancel, invalidate, both].forEach(cleanup.track);
+      [cancel, invalidate, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await expectNoEntryLocksHeld(w, employeeId, entryId);
     });
@@ -134,7 +134,7 @@ pg('联动 × 并发', () => {
     });
     const both = Promise.all([complete, editing]);
     await withRelease(release, async (cleanup) => {
-      [complete, editing, both].forEach(cleanup.track);
+      [complete, editing, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await expectNoEntryLocksHeld(w, employeeId, entryId);
     });

@@ -35,7 +35,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-360-F076-36 会话与删除�
     await withRelease(
       () => held.release(),
       async (cleanup) => {
-        [removing, saving].forEach(cleanup.track);
+        [removing, saving].forEach((request) => cleanup.track<unknown>(request));
         await blockedOrSettled(w.db, saving);
       },
     );

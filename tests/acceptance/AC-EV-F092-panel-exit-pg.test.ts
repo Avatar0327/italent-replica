@@ -98,7 +98,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [leave, edit].forEach(cleanup.track);
+        [leave, edit].forEach((request) => cleanup.track<unknown>(request));
         await waitsForLock(w.db, () => finished);
       },
       [leave, edit],
@@ -136,7 +136,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [leave, edit].forEach(cleanup.track);
+        [leave, edit].forEach((request) => cleanup.track<unknown>(request));
         await waitsForLock(w.db, () => finished);
       },
       [leave, edit],
@@ -176,7 +176,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [first, second].forEach(cleanup.track);
+        [first, second].forEach((request) => cleanup.track<unknown>(request));
         await waitsForLock(w.db, () => finished);
       },
       [first, second],
@@ -239,7 +239,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 真 PG：离职 × �
           allowWorkerFinish.resolve();
         },
         async (cleanup) => {
-          [worker, writing].forEach(cleanup.track);
+          [worker, writing].forEach((request) => cleanup.track<unknown>(request));
           await workerReady.promise;
           allowWriteLock.resolve();
           await waitsForLock(w.db, () => finished);
@@ -290,7 +290,7 @@ async function crossMidnight<T>(
   await withRelease(
     () => release.resolve(),
     async (cleanup) => {
-      [blocker, writing].forEach(cleanup.track);
+      [blocker, writing].forEach((request) => cleanup.track<unknown>(request));
       await waitsForLock(w.db, () => finished);
       w.setTime(midnight);
     },
@@ -526,7 +526,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-F092 第三轮锁后日�
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [blocker, ...saves].forEach(cleanup.track);
+        [blocker, ...saves].forEach((request) => cleanup.track<unknown>(request));
         const deadline = Date.now() + 8000;
         for (;;) {
           const [row] = rowsOf<{ n: number }>(

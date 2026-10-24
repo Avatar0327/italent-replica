@@ -59,9 +59,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-02 离职与编辑
     const first = order === 'edit_first' ? edit() : exit();
     let second!: ReturnType<typeof edit> | ReturnType<typeof exit>;
     await withRelease(release, async (cleanup) => {
-      cleanup.track(first);
+      cleanup.track<unknown>(first);
       await waitForBlocked(w.db, 1);
-      second = order === 'edit_first' ? cleanup.track(exit()) : cleanup.track(edit());
+      second = order === 'edit_first' ? exit() : edit();
+      cleanup.track<unknown>(second);
       await waitForBlocked(w.db, 2);
     });
     const [a, b] = await Promise.all([first, second]);

@@ -46,7 +46,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-16 真 PG 持锁屏障',
     await withRelease(
       release,
       async (cleanup) => {
-        [blocked, blocker].forEach(cleanup.track);
+        [blocked, blocker].forEach((request) => cleanup.track<unknown>(request));
         await expect
           .poll(async () => {
             const [row] = rows<{ n: number }>(

@@ -512,7 +512,7 @@ describe('AC-SC-calc-core run 契约', () => {
       await entered;
       const second = page(id);
       await withRelease(release, async (cleanup) => {
-        [first, second].forEach(cleanup.track);
+        [first, second].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(db(), 1);
       });
       expect(await Promise.all([first, second])).toEqual(['running', 'succeeded']);
@@ -550,7 +550,7 @@ describe('AC-SC-calc-core run 契约', () => {
         return changeCalcRun(t, member.tenant.id, id, row.revision, 'abort', randomUUID(), now);
       });
       await withRelease(release, async (cleanup) => {
-        [first, abort].forEach(cleanup.track);
+        [first, abort].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(db(), 1);
       });
       await Promise.all([first, abort]);

@@ -126,7 +126,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-F091-reference-pg æ´»å
     await withRelease(
       () => gate.open(),
       async (cleanup) => {
-        [reference, disabling].forEach(cleanup.track);
+        [reference, disabling].forEach((request) => cleanup.track<unknown>(request));
         await expectLockWait(testDb().db);
       },
     );
@@ -157,7 +157,7 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-F091-reference-pg æ´»å
         race.active = false;
       },
       async (cleanup) => {
-        [disabling, reference].forEach(cleanup.track);
+        [disabling, reference].forEach((request) => cleanup.track<unknown>(request));
         await expectLockWait(testDb().db);
       },
     );

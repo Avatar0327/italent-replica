@@ -290,7 +290,7 @@ describe('AC-SC-calc-runs / AC-SC-projection', () => {
       await inside;
       const retry = request(tenantApi(db()), `/${id}/retry`, 'POST', Number(before.revision));
       await withRelease(release, async (cleanup) => {
-        [worker, retry].forEach(cleanup.track);
+        [worker, retry].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(db(), 1);
       });
       expect(await worker).toBe(status);

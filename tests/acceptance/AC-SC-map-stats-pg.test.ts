@@ -44,7 +44,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-map-stats çœŸ PG å
     await withRelease(
       release,
       async (cleanup) => {
-        [...requests, blocker].forEach(cleanup.track);
+        [...requests, blocker].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 2);
       },
       [blocker],

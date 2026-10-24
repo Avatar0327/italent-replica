@@ -109,10 +109,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送
     const target = await w.social();
     const other = await w.social();
     const releaseLock = await holdOfferLock(w, target.id);
-    const requests = [w.send(target), w.sync(target)];
+    const requests = [w.send(target), w.sync(target)] as const;
     const both = Promise.all(requests);
     await withRelease(releaseLock, async (cleanup) => {
-      [...requests, both].forEach(cleanup.track);
+      [...requests, both].forEach((request) => cleanup.track<unknown>(request));
       const peer = await w.send(other); // 另一份 Offer 的发送不受影响
       expect(peer.status, await peer.clone().text()).toBe(200);
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
@@ -133,10 +133,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送
     const employeeId = (await w.record(entryId)).employeeId;
     const current = await w.read(sent.id);
     const releaseLock = await holdOfferLock(w, sent.id);
-    const requests = [w.send(current), w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' })];
+    const requests = [w.send(current), w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' })] as const;
     const both = Promise.all(requests);
     await withRelease(releaseLock, async (cleanup) => {
-      [...requests, both].forEach(cleanup.track);
+      [...requests, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await withTenant(w.db, w.tenant.id, async (tx) => {
         await tx.execute(
@@ -183,7 +183,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
       await withRelease(
         release,
         async (cleanup) => {
-          [send, holder].forEach(cleanup.track);
+          [send, holder].forEach((request) => cleanup.track<unknown>(request));
           expect(await settledOrBlocked(w.db, send, 1)).toBe('blocked');
           await withTenant(w.db, w.tenant.id, async (tx) => {
             await tx.execute(sql`SET LOCAL lock_timeout = '300ms'`);

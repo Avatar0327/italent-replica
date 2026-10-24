@@ -159,7 +159,7 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [create, holder].forEach(cleanup.track);
+        [create, holder].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 1);
         locked = await lockedBySomeone(
           w,
@@ -195,7 +195,7 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     await withRelease(
       () => release.resolve(),
       async (cleanup) => {
-        [submit, holder].forEach(cleanup.track);
+        [submit, holder].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 1);
         requestLocked = await lockedBySomeone(
           w,

@@ -113,7 +113,7 @@ describe('AC-SC-sync-barrier', () => {
     await acquired;
     const writing = update();
     await withRelease(release, async (cleanup) => {
-      [planning, writing].forEach(cleanup.track);
+      [planning, writing].forEach((request) => cleanup.track<unknown>(request));
       await waitForBlocked(w.db, 1);
     });
     await planning;
