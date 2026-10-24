@@ -80,8 +80,7 @@ test('AC-FE-R2d4-02 命中离职人员默认否，选重聘以候选员工 revis
 test('AC-FE-R2d4-03 合同终止日为空时阻止提交', async ({ page }) => {
   const state = await setupCreate(page);
   await openCreate(page);
-  await fillCreate(page);
-  await dateInput(page, '合同协议终止日期').clear();
+  await fillCreate(page, false, false);
   await saveCreate(page).click();
   await expect(editor(page).getByText('请填写合同协议终止日期')).toBeVisible();
   expect(state.requests).toHaveLength(0);

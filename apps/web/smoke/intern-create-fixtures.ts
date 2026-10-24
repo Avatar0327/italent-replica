@@ -138,7 +138,7 @@ export async function dateCreate(page: Page, label: string, value: string) {
 export async function openCreate(page: Page) {
   await page.getByRole('button', { name: '新增实习生', exact: true }).click();
 }
-export async function fillCreate(page: Page, future = false) {
+export async function fillCreate(page: Page, future = false, withEnd = true) {
   await editor(page).getByLabel('姓名', { exact: true }).fill('合成新实习生');
   await editor(page).getByLabel('电子邮件', { exact: true }).fill('intern@example.com');
   await editor(page).getByLabel('工号', { exact: true }).fill('IN-NEW-001');
@@ -146,6 +146,6 @@ export async function fillCreate(page: Page, future = false) {
   await chooseCreate(page, '实习部门', '合成实习部门');
   await chooseCreate(page, '合同公司', '合成合同公司');
   if (!future) await chooseCreate(page, '合同类型', '合成实习协议');
-  await dateCreate(page, '合同协议终止日期', '2027-10-11');
+  if (withEnd) await dateCreate(page, '合同协议终止日期', '2027-10-11');
 }
 export const saveCreate = (page: Page) => editor(page).getByRole('button', { name: /保\s*存$/ });

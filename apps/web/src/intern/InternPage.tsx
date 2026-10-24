@@ -9,7 +9,7 @@ import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
 import { CreateIntern } from './CreateIntern.js';
-import { canCreatePerson } from './create-model.js';
+import { canCreatePerson, type CreateReceipt } from './create-model.js';
 import { c } from './create-messages.js';
 import { InternDetail } from './InternDetail.js';
 import { m } from './messages.js';
@@ -52,8 +52,6 @@ function useFilterPermission() {
 
 function InternList() {
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [creating, setCreating] = useState(false);
   const person = usePermissions(personObject);
   const createAllowed = canCreatePerson(person.snapshot.objects[personObject]);
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
@@ -69,6 +67,10 @@ function InternList() {
     setFilters({});
     select(undefined);
   };
+  const create = useInternCreation(() => {
+    switchView('interning');
+    result.refresh();
+  });
   const items = result.data?.items ?? [];
   return (
     <>
@@ -89,7 +91,7 @@ function InternList() {
             setPage(1);
           }}
           onRefresh={result.refresh}
-          onCreate={createAllowed ? () => setCreating(true) : undefined}
+          onCreate={createAllowed ? create.open : undefined}
         />
         {result.error ? (
           <PageState kind="error" error={result.error} retry={result.refresh} />
@@ -112,18 +114,7 @@ function InternList() {
           </Button>
         </div>
       </section>
-      <CreateIntern
-        open={creating}
-        onClose={() => setCreating(false)}
-        onDone={(receipt) => {
-          setCreating(false);
-          if (receipt.view === 'pendingEntry') navigate('/entries');
-          else {
-            switchView('interning');
-            result.refresh();
-          }
-        }}
-      />
+      <CreateIntern {...create.props} />
       {selected && (
         <InternDetail
           key={`${selected.view}/${selected.row.id}`}
@@ -238,4 +229,21 @@ function InternTable({
       ]}
     />
   );
+}
+
+function useInternCreation(onInterning: () => void) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  return {
+    open: () => setOpen(true),
+    props: {
+      open,
+      onClose: () => setOpen(false),
+      onDone(receipt: CreateReceipt) {
+        setOpen(false);
+        if (receipt.view === 'pendingEntry') navigate('/entries');
+        else onInterning();
+      },
+    },
+  };
 }

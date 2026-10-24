@@ -14,7 +14,7 @@ export function useCreateCommand() {
   const api = useApiClient();
   const post = useDirectApi();
   const running = useRef(false);
-  const [query, setQuery] = useState<{ busy?: boolean; message?: string; error?: unknown }>({});
+  const result = useResultQuery(form);
   const reload = () =>
     form.reread(async (id) => {
       const state = form.peek();
@@ -28,37 +28,7 @@ export function useCreateCommand() {
       ...form,
       reload: form.status === 'conflict' && form.state?.context?.kind === 'rehire' ? reload : undefined,
     },
-    query,
-    async queryResult() {
-      const id = form.peek()?.command?.id;
-      if (!id || query.busy) return;
-      setQuery({ busy: true });
-      try {
-        const result = await api.request<{
-          commandId: string;
-          status: string;
-          businessId?: string;
-          businessType?: string;
-          revision?: number;
-        }>(`/api/tenant/commands/${encodeURIComponent(id)}/result`);
-        if (result.commandId !== id || !['succeeded', 'failed'].includes(result.status))
-          throw new Error(c.invalidReceipt);
-        if (result.status === 'succeeded') {
-          if (!result.businessId || result.businessType !== form.peek()?.context?.kind
-            || !Number.isSafeInteger(result.revision) || result.revision! < 0)
-            throw new Error(c.invalidReceipt);
-          const business = await api.request<{ id: string; revision: number }>(
-            `${apiRoot}/businesses/${encodeURIComponent(result.businessId)}`,
-          );
-          if (business.id !== result.businessId || !Number.isSafeInteger(business.revision)
-            || business.revision < result.revision!)
-            throw new Error(c.invalidReceipt);
-          setQuery({ message: c.querySuccess });
-        } else setQuery({ message: c.queryRejected });
-      } catch (error) {
-        setQuery({ error });
-      }
-    },
+    ...result,
     async submit(values: Values, editableFields: string[], selected: Selected | undefined, pending: boolean) {
       if (running.current || form.locked) return;
       running.current = true;
@@ -101,10 +71,54 @@ export function useCreateCommand() {
         });
         if (outcome.status !== 'done') throw outcome.error;
         form.clear();
-        setQuery({});
         return receipt;
       } finally {
         running.current = false;
+      }
+    },
+  };
+}
+
+function useResultQuery(form: ReturnType<typeof useCommandForm>) {
+  const api = useApiClient();
+  const [query, setQuery] = useState<{ busy?: boolean; message?: string; error?: unknown }>({});
+  return {
+    query,
+    async queryResult() {
+      const id = form.peek()?.command?.id;
+      if (!id || query.busy) return;
+      setQuery({ busy: true });
+      try {
+        const result = await api.request<{
+          commandId: string;
+          status: string;
+          businessId?: string;
+          businessType?: string;
+          revision?: number;
+        }>(`/api/tenant/commands/${encodeURIComponent(id)}/result`);
+        if (result.commandId !== id || !['succeeded', 'failed'].includes(result.status))
+          throw new Error(c.invalidReceipt);
+        if (result.status === 'succeeded') {
+          if (
+            !result.businessId ||
+            result.businessType !== form.peek()?.context?.kind ||
+            !Number.isSafeInteger(result.revision) ||
+            result.revision! < 0
+          )
+            throw new Error(c.invalidReceipt);
+          const business = await api.request<{ id: string; revision: number }>(
+            `${apiRoot}/businesses/${encodeURIComponent(result.businessId)}`,
+          );
+          if (
+            business.id !== result.businessId ||
+            !Number.isSafeInteger(business.revision) ||
+            business.revision < result.revision!
+          )
+            throw new Error(c.invalidReceipt);
+          setQuery({ message: c.querySuccess });
+        } else setQuery({ message: c.queryRejected });
+      } catch (error) {
+        setQuery({ error });
       }
     },
   };
