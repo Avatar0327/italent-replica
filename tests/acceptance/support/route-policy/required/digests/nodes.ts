@@ -755,7 +755,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employee-self-service/transfer.ts#ownTransferPreview': ['1251dd2e1f1e', '78398667795d'],
   'apps/api/src/modules/employee-self-service/transfer.ts#previewLabels': ['e024a194d62a', '37fdef895d80'],
   'apps/api/src/modules/employment/activation-checks.ts#DEFAULT_ESTABLISHMENT_CHECKS': ['8a3f25698a73', '3fccb8943ada'],
-  'apps/api/src/modules/employment/activation-checks.ts#RULE_REJECTIONS': ['81b5555c11f6', '82583603a31b'],
+  'apps/api/src/modules/employment/activation-checks.ts#RULE_REJECTIONS': ['eba8784bde6b', '82583603a31b'],
   'apps/api/src/modules/employment/activation-checks.ts#activateMaterializedLinkage': ['65c6e733a971', 'dae9cf72dd49'],
   'apps/api/src/modules/employment/activation-checks.ts#activateWithJudgement': ['6206d765a754', '380de4172f80'],
   'apps/api/src/modules/employment/activation-checks.ts#activationFailureOf': ['fe4ed8d489cb', '583ee92c250c'],
