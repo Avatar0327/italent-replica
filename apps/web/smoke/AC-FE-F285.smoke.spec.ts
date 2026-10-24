@@ -44,6 +44,7 @@ async function application(page: Page) {
       probation: false,
       probationMonths: null,
       probationEndDate: null,
+      ...created.at(-1)?.body,
       ...state.values,
     });
   await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
