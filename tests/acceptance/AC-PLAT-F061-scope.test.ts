@@ -119,7 +119,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(47);
+    expect(unique.size).toBe(49);
   });
 
   it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码与批准清单逐项一致', () => {
