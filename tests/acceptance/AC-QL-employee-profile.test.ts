@@ -614,8 +614,8 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
     );
   });
 
-  it('DEC-683 首次发起交接独立授权：任职模块人事三身份默认有，员工与经理没有', () => {
-    const suffix = '/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail';
+  it('DEC-683 / DEC-684 原站详情首次发起交接独立授权：任职模块人事三身份默认有，员工与经理没有', () => {
+    const suffix = '/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail';
     expect(STANDARD_GRANT_CODES.filter((code) => code.endsWith(suffix)).sort()).toEqual(
       ['standard_hr_admin', 'standard_hr_specialist', 'standard_org_system_admin'].map((code) => `${code}${suffix}`),
     );

@@ -3,7 +3,7 @@ import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { runEmploymentActivations } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
-import { STANDARD_GRANT_CODES } from '@italent/domain';
+import { MODULE_OBJECTS, STANDARD_GRANT_CODES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -16,7 +16,7 @@ import { handoverWorld, TODAY, type HandoverWorld } from './AC-EXIT-handover-sup
 import { isButton, revocable } from './support/revocable-rights.js';
 
 const database = useTestDb();
-const BUTTON = 'Employment.HandoverSubmit';
+const BUTTON = 'EmploymentRecrdDetailDimissionHandoverApproval';
 const path = (id: string) => `/exits/${id}/handover/submit`;
 async function world(label: string, employType = 'internal') {
   const x = await handoverWorld(database().db, `f250-${label}`);
@@ -95,7 +95,13 @@ async function tick(x: HandoverWorld, at: string) {
 const command = (revision: number) => ({ ifMatch: revision, idempotencyKey: randomUUID(), body: {} });
 
 describe('AC-DM-09 / F-250 手工首次交接', () => {
-  it('独立详情按钮仅预置 HR 三身份，不扩大经理员工权限', () => {
+  it('DEC-684 原站详情按钮名称与编码对齐，仅预置 HR 三身份', () => {
+    expect(MODULE_OBJECTS.employmentRecord.buttons.find((button) => button.code === BUTTON)).toEqual({
+      code: BUTTON,
+      name: '发起离职交接',
+      level: 'detail',
+      requires: 'update',
+    });
     const suffix = `/TenantBase.EmploymentRecord/button:${BUTTON}@detail`;
     expect(STANDARD_GRANT_CODES.filter((code) => code.endsWith(suffix)).sort()).toEqual(
       ['standard_hr_admin', 'standard_hr_specialist', 'standard_org_system_admin'].map((code) => code + suffix),
