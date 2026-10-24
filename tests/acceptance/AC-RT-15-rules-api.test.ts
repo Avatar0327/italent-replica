@@ -444,6 +444,30 @@ describe('AC-RT-15 预计退休日期规则：行操作与审计', () => {
     const denyRead = tenantApi(w.db, { authorize: (request) => request.action !== 'object.view' });
     expect((await denyRead.request('GET', base, who)).status).toBe(403);
   });
+
+  // F-269（#443 R1，设计 R2-T04 §12.1）：规则是租户配置，读取对持任职记录查看权者开放，不要求任职设置配置对象查看权
+  it('读取只认任职记录查看权：仅有任职记录查看权（无任职设置配置权）200，两者都没有 403', async () => {
+    const w = await world('read-employment-only');
+    await w.created(w.body());
+    const who = { user: w.session.user.id, tenant: w.session.tenant.id };
+    const base = '/api/tenant/employment/retirement-rules';
+    const onlyEmployment = tenantApi(w.db, {
+      authorize: (request) =>
+        !(request.resource === 'TenantBase.EmploymentSettings') &&
+        !request.action.startsWith('tenant.employment.config'),
+    });
+    const ok = await onlyEmployment.request('GET', base, who);
+    expect(ok.status, await ok.clone().text()).toBe(200);
+    const items = ((await ok.json()) as { items: Rule[] }).items.filter((rule) => !rule.preset);
+    expect(items).toMatchObject([
+      { name: '干部男性 60 岁退休', retirementAgeYears: 60, conditions: expect.any(Array) },
+    ]);
+    const denyBoth = tenantApi(w.db, {
+      authorize: (request) =>
+        request.resource !== 'TenantBase.EmploymentSettings' && request.resource !== 'TenantBase.EmploymentRecord',
+    });
+    expect((await denyBoth.request('GET', base, who)).status).toBe(403);
+  });
 });
 
 describe('AC-RT-15 人事“个人身份”只能取字典启用编码（A-9）', () => {

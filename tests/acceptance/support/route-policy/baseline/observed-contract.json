@@ -4743,15 +4743,12 @@
       },
       "module": "employment",
       "primitives": {
-        "fieldsOut": [
-          "trimModuleResponse"
-        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
         ],
         "objectOp": [
-          "TenantBase.EmploymentSettings:view"
+          "TenantBase.EmploymentRecord:view"
         ]
       }
     },
@@ -6706,6 +6703,32 @@
         ],
         "object": [
           "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/:id/mail": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
           "objectContext"
         ],
         "scope": [
@@ -11840,11 +11863,18 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -12062,7 +12092,6 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -17119,6 +17148,9 @@
         "fieldsOut": [
           "employment runWrite()"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -17172,6 +17204,7 @@
         ],
         "scope": [
           "employment scope",
+          "employment visibility",
           "readContext（非配置对象）"
         ],
         "scopePoint": [
@@ -18528,7 +18561,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18574,7 +18606,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18702,6 +18733,50 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/retirement-rules/run": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "object.* 动作",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
+        ],
+        "scope": [
+          "resolveModuleScope"
         ]
       }
     },

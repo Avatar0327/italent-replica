@@ -7,6 +7,7 @@
  * C2（BE-14a2，transitions.ts）：转移两个入口各经 offerTransferCheck → button()（行级 / 列表级各一项）；失效经
  * offerOperationCheck(update)；转移表单与 OF-R3 发送判定只读，经 offerReadContext。
  * BE-14b1（send.ts）：发送 / 重发经 runOfferWrite + offerOperationCheck(update)。
+ * F-234BE（mail.ts）：查看 Offer 邮件只读，经 offerReadContext（object.view）+ loadOffer 的当前数据范围。
  */
 import { bound, NONE, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
@@ -16,6 +17,7 @@ const O = 'apps/api/src/modules/offer';
 const ROUTES = `${O}/routes.ts`;
 const TRANSITIONS = `${O}/transitions.ts`;
 const SEND = `${O}/send.ts`;
+const MAIL = `${O}/mail.ts`;
 const CTX = `${O}/context.ts`;
 const MRA = 'apps/api/src/modules/permission/module-route-access.ts';
 const OFFER = 'TenantBase.Offer';
@@ -295,6 +297,7 @@ export const OFFERS: RequiredTable = {
   ),
   [`GET ${BASE}/:id/transfer-form`]: readView('/:id/transfer-form', TRANSITIONS),
   [`GET ${BASE}/:id/send-check`]: readView('/:id/send-check', TRANSITIONS),
+  [`GET ${BASE}/:id/mail`]: readView('/:id/mail', MAIL),
   [`POST ${BASE}/:id/transfer`]: transferWrite(
     '/:id/transfer',
     { code: 'OfferLineOpStatusTransfer', level: 'list_row' },
