@@ -52,16 +52,14 @@ describe('AC-FE-F320 配置中心入口最小外壳', () => {
     ]);
   });
   it('04 流程挂载点由模块 pages.ts 汇入同一个页面注册表', () => {
-    expect(PAGES).toHaveProperty('configurations', [
-      {
-        id: 'processes',
-        label: '流程',
-        section: 'workflow',
-        access: { app: 'approval', objectCode: processObject },
-        path: '/config-center/workflow/processes',
-        module: 'approval',
-      },
-    ]);
+    expect(PAGES.configurations.find((route) => route.id === 'processes')).toMatchObject({
+      id: 'processes',
+      label: '流程',
+      section: 'workflow',
+      access: { app: 'approval', objectCode: processObject },
+      path: '/config-center/workflow/processes',
+      module: 'approval',
+    });
     expect(PAGES.apps.some((app) => String(app.id) === 'config-center')).toBe(false);
     expect(PAGES.ungated.has('/config-center/*')).toBe(false);
   });

@@ -40,6 +40,7 @@ test('AC-FE-F320-05 头像进入配置中心，目录展开、占位不可写、
   await expect(page.getByText('此配置页尚未开放', { exact: true })).toBeVisible();
   await page.reload();
   await expect(nav.getByRole('link', { name: '流程', exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('configuration-center.png'), fullPage: true });
   await nav.getByRole('link', { name: '数据源', exact: true }).click();
   await expect(page.getByRole('heading', { name: '数据源', exact: true })).toBeVisible();
   await expect(page.getByText('此配置页尚未开放', { exact: true })).toBeVisible();
@@ -82,4 +83,35 @@ test('AC-FE-F320-07 有权直达、大小写和编码路径、未知页及占位
     await page.goto(path);
     await expect(page.getByText(ui.missing, { exact: true })).toBeVisible();
   }
+});
+
+test('AC-FE-F320-12 后续模块挂载页及子路由，独立鉴权不借流程权限放行', async ({ page }) => {
+  await page.route(/\/src\/approval\/pages\.ts(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      'configurations: [',
+      `configurations: [{
+        id: 'synthetic-tasks', label: '合成任务配置', section: 'workflow',
+        access: { adminMenu: 'users.all' },
+        page: { Component: () => '合成配置页面内容' }
+      },`,
+    );
+    expect(body).toContain('synthetic-tasks');
+    await route.fulfill({ response, body });
+  });
+  let allowed = true;
+  await page.route('**/permission/me/snapshot', (route) =>
+    route.fulfill({ json: { ...withFlow(true), adminMenus: allowed ? snapshotFixture.adminMenus : [] } }),
+  );
+  await page.goto('/config-center/workflow/synthetic-tasks/detail');
+  await expect(page.getByText('合成配置页面内容', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('合成配置页面内容', { exact: true })).toBeVisible();
+  allowed = false;
+  await page.reload();
+  await expect(page.getByText(ui.denied, { exact: true })).toBeVisible();
+  await expect(page.getByText('合成配置页面内容', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '合成任务配置', exact: true })).toHaveCount(0);
+  await page.goto(flowPath);
+  await expect(page.getByRole('heading', { name: '流程', exact: true })).toBeVisible();
 });

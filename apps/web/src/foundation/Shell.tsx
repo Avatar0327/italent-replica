@@ -10,6 +10,7 @@ import { AppPages } from './AppPages.js';
 import { appRoute } from './routes.js';
 import { currentApp } from './menu-nav.js';
 import type { MenuNode } from './permission-snapshot.js';
+import { isConfigurationPath } from './configuration-registry.js';
 import { ui } from './messages.js';
 import { MenuIcon } from './ViewHeading.js';
 import { AppSwitch, MessageCenter, PersonalMenu } from './HeaderParts.js';
@@ -82,6 +83,7 @@ export function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { menus, loading, error, refresh } = usePermissions();
+  const configuration = isConfigurationPath(location.pathname);
   const active = appRoute(location.pathname);
   const items = sidebarItems(menus, active?.path, navigate);
   const parent = menus.find((menu) => menu.directory && menu.children?.some((child) => child.path === active?.path));
@@ -96,30 +98,32 @@ export function Shell() {
     <Layout className="app-shell">
       <Header />
       <Layout>
-        <Layout.Sider
-          width={200}
-          collapsedWidth={72}
-          collapsed={collapsed}
-          className="shell-sidebar"
-          aria-label={ui.apps}
-        >
-          <Menu
-            key={parent?.key ?? 'menus'}
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            defaultOpenKeys={openKey ? [openKey] : []}
-            items={items}
-            onClick={({ key }) => navigate(key)}
-          />
-          <Button
-            className="menu-collapse"
-            type="text"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? ui.expandMenu : ui.collapseMenu}
+        {!configuration && (
+          <Layout.Sider
+            width={200}
+            collapsedWidth={72}
+            collapsed={collapsed}
+            className="shell-sidebar"
+            aria-label={ui.apps}
           >
-            <span aria-hidden="true">{collapsed ? '⇥' : '⇤'}</span>
-          </Button>
-        </Layout.Sider>
+            <Menu
+              key={parent?.key ?? 'menus'}
+              mode="inline"
+              selectedKeys={[location.pathname]}
+              defaultOpenKeys={openKey ? [openKey] : []}
+              items={items}
+              onClick={({ key }) => navigate(key)}
+            />
+            <Button
+              className="menu-collapse"
+              type="text"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? ui.expandMenu : ui.collapseMenu}
+            >
+              <span aria-hidden="true">{collapsed ? '⇥' : '⇤'}</span>
+            </Button>
+          </Layout.Sider>
+        )}
         <Layout.Content className="shell-content">
           <DecisionNote id="foundation" />
           <div className="shell-workspace">
