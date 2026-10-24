@@ -27,6 +27,11 @@ const validObject = (item: { id?: string; revision?: number }) =>
   typeof item.id === 'string' && item.id !== '' && Number.isSafeInteger(item.revision) && (item.revision ?? -1) >= 0;
 export const views = INTERN_VIEWS.map((key) => ({ key, label: m.views[key] }));
 export type { InternView };
+/** 由本单写后详情的状态确定目的视图，列表定位不承担写结果确认。 */
+export interface ApplicationDestination {
+  id: string;
+  view: 'converting' | 'converted';
+}
 
 /** GET /interns 的条目（intern-views.ts InternViewItem），字段按可见字段裁剪后可能缺键。 */
 export interface Row {

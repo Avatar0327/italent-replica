@@ -13,6 +13,7 @@ import {
   interns,
   object,
   type Entry,
+  type ApplicationDestination,
   type InternView,
   type Row,
 } from './model.js';
@@ -29,12 +30,12 @@ export function InternDetail({
   view: InternView;
   row: Row;
   onClose(): void;
-  refresh(applicationId?: string): Promise<unknown>;
+  refresh(destination?: ApplicationDestination): Promise<unknown>;
 }) {
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
-  // 写后回读与列表刷新已在提交完成路径里确认（commands.tsx settle），这里只关闭表单与详情
+  // 写后回读已确认；申请列表定位由页面独立处理，这里只关闭表单与详情
   const done = () => {
     setOpen(undefined);
     onClose();

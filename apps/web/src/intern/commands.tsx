@@ -45,9 +45,10 @@ export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employee
 
 type Api = ReturnType<typeof useApiClient>;
 /** 读对象并核对标识与 revision（写后回读、申请单重读共用）。 */
-async function readObject(api: Api, path: string, id: string) {
-  const latest = await api.request<{ id?: unknown; revision?: unknown }>(path);
+async function readObject(api: Api, path: string, id: string, verify?: (latest: Values) => void) {
+  const latest = await api.request<Values>(path);
   if (latest.id !== id || !Number.isSafeInteger(latest.revision)) throw new Error(m.invalidReceipt);
+  verify?.(latest);
   return Number(latest.revision);
 }
 
@@ -144,7 +145,15 @@ export interface Send {
    * 回执校验：用实际提交的 command.revision；不符抛错，内核按结果未知锁定。
    * 返回写后回读的对象（路径、id、revision 下限）。
    */
-  accept(raw: Values, sent: number): { path: string; id: string; revision: number };
+  accept(
+    raw: Values,
+    sent: number,
+  ): {
+    path: string;
+    id: string;
+    revision: number;
+    verify?(latest: Values): void;
+  };
   /** 明确拒绝后重读；409 revision 冲突仍由内核展示差异、显式确认。 */
   rejected?(): Promise<void>;
 }
@@ -186,10 +195,11 @@ export function useInternCommand(
           editableFields,
           full: cmd.full,
           post: (raw) => post(send.path, 'POST', raw),
-          // 写后回读与列表刷新是提交完成的一部分：失败按结果未知锁定，恢复槽保持钉住（P2-2）
+          // 本单写后回读失败保持未知锁；申请的列表定位在确认命令后独立执行（F-285 P2-1）。
           settle: async (check) => {
             try {
-              if ((await readObject(api, check.path, check.id)) < check.revision) throw new Error(m.invalidReceipt);
+              if ((await readObject(api, check.path, check.id, check.verify)) < check.revision)
+                throw new Error(m.invalidReceipt);
               await refresh();
             } catch {
               throw new Error(m.unconfirmed);

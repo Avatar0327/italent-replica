@@ -1,14 +1,14 @@
 import { Button, Input, Space, Table } from 'antd';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { useApiClient } from '../foundation/Session.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
+import { ApplicationLocation } from './ApplicationLocation.js';
 import { InternDetail } from './InternDetail.js';
 import { m } from './messages.js';
 import {
@@ -21,6 +21,7 @@ import {
   personObject,
   views,
   type Filters,
+  type ApplicationDestination,
   type InternView,
   type ListResult,
   type Row,
@@ -48,31 +49,80 @@ function useFilterPermission() {
       : employment.field('departmentId').visible;
 }
 
-function InternList() {
-  const api = useApiClient();
+function useInternList() {
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
+  const [location, locate] = useState<ApplicationDestination>();
   // 入口按行所属视图判定：选中时连同视图一起记下，切换视图的瞬间点到旧行也不会张冠李戴
   const [selected, select] = useState<{ view: InternView; row: Row }>();
   const allowed = useFilterPermission();
   const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed)));
+  const refreshList = useRef(result.refresh);
+  refreshList.current = result.refresh;
   const switchView = (next: InternView) => {
     setParams({ view: next });
     setPage(1);
     setFilters({});
     select(undefined);
+    locate(undefined);
   };
   const items = result.data?.items ?? [];
-  const refresh = async (applicationId?: string) => {
-    if (!applicationId) return result.reload();
-    const { data, page } = await applicationView(api, applicationId);
-    setParams({ view: 'converting' });
+  const located = useCallback((page: number) => {
+    refreshList.current();
     setPage(page);
+    locate(undefined);
+  }, []);
+  const refresh = async (destination?: ApplicationDestination) => {
+    if (!destination) return result.reload();
+    setParams({ view: destination.view });
+    setPage(1);
     setFilters({});
-    return data;
+    locate(destination);
+    result.refresh();
   };
+  const changePage = (next: number) => {
+    locate(undefined);
+    setPage(next);
+  };
+  const applyFilters = (next: Filters) => {
+    changePage(1);
+    setFilters(next);
+  };
+  return {
+    view,
+    page,
+    changePage,
+    applyFilters,
+    location,
+    selected,
+    select,
+    allowed,
+    result,
+    items,
+    switchView,
+    located,
+    refresh,
+  };
+}
+
+function InternList() {
+  const {
+    view,
+    page,
+    changePage,
+    applyFilters,
+    location,
+    selected,
+    select,
+    allowed,
+    result,
+    items,
+    switchView,
+    located,
+    refresh,
+  } = useInternList();
   return (
     <>
       <h1>{m.title}</h1>
@@ -83,16 +133,11 @@ function InternList() {
           </button>
         ))}
       </nav>
+      {location && view === location.view && (
+        <ApplicationLocation key={location.id} destination={location} onLocated={located} />
+      )}
       <section className="intern-card">
-        <FilterBar
-          key={view}
-          allowed={allowed}
-          onApply={(next) => {
-            setFilters(next);
-            setPage(1);
-          }}
-          onRefresh={result.refresh}
-        />
+        <FilterBar key={view} allowed={allowed} onApply={applyFilters} onRefresh={result.refresh} />
         {result.error ? (
           <PageState kind="error" error={result.error} retry={result.refresh} />
         ) : (
@@ -105,11 +150,11 @@ function InternList() {
           />
         )}
         <div className="intern-pagination">
-          <Button disabled={page === 1 || result.loading} onClick={() => setPage(page - 1)}>
+          <Button disabled={page === 1 || result.loading} onClick={() => changePage(page - 1)}>
             {m.previous}
           </Button>
           <span>{m.page(page)}</span>
-          <Button disabled={items.length < pageSize || result.loading} onClick={() => setPage(page + 1)}>
+          <Button disabled={items.length < pageSize || result.loading} onClick={() => changePage(page + 1)}>
             {m.next}
           </Button>
         </div>
@@ -125,16 +170,6 @@ function InternList() {
       )}
     </>
   );
-}
-
-/** 以服务端视图成员关系确认提交结果，不按浏览器日期或本地状态将行挪入视图。 */
-async function applicationView(api: ReturnType<typeof useApiClient>, applicationId: string) {
-  for (let page = 1; page <= 100; page += 1) {
-    const data = await api.request<ListResult>(listPath('converting', page));
-    if (data.items.some((item) => item.id === applicationId)) return { data, page };
-    if (data.items.length < pageSize) break;
-  }
-  throw new Error(m.unconfirmed);
 }
 
 function FilterBar({

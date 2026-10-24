@@ -500,3 +500,56 @@ for (const readback of ['unavailable', 'draft'] as const) {
     expect(submitted).toHaveLength(1);
   });
 }
+
+for (const status of ['approved', 'effective'] as const) {
+  test(`AC-FE-F285-17 写后本单已${status}时按真实状态切换视图`, async ({ page }) => {
+    const { state, receipt, created, submitted } = await application(page);
+    const view = status === 'effective' ? 'converted' : 'converting';
+    await page.route(`**/employment/businesses/${applicationId}`, (route) =>
+      state.submitted ? route.fulfill({ json: receipt(status, 3) }) : route.fallback(),
+    );
+    await page.route('**/employment/interns?*', (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      return state.submitted && query.get('view') === view
+        ? route.fulfill({
+            json: { items: [{ ...rows[view], id: applicationId, state: status }], page: 1, pageSize: 30 },
+          })
+        : route.fallback();
+    });
+    await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+    await submit(page).click();
+    await expect(
+      page.getByRole('button', { name: status === 'effective' ? '已转正' : '实习转正中', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog(page)).toHaveCount(0);
+    expect(created).toHaveLength(1);
+    expect(submitted).toHaveLength(1);
+  });
+}
+
+test('AC-FE-F285-18 定位未找到可重读，切换视图后迟到读取不覆盖用户选择', async ({ page }) => {
+  const { created, submitted } = await application(page);
+  let reads = 0;
+  let release: (() => void) | undefined;
+  await page.route('**/employment/interns?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('view') !== 'converting') return route.fallback();
+    reads += 1;
+    // 初次列表读取和定位都为空；用户重试定位时把响应延后到切换视图之后。
+    if (reads > 2)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    await route.fulfill({ json: { items: [], page: 1, pageSize: 30, hasDataPermission: true } });
+  });
+  await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+  await submit(page).click();
+  await expect(page.getByText('申请已提交，当前可见列表中未找到，可重新读取。')).toBeVisible();
+  await page.getByRole('button', { name: '重试定位', exact: true }).click();
+  await expect.poll(() => !!release).toBe(true);
+  await page.goBack();
+  release!();
+  await expect(page.getByRole('button', { name: '实习中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/申请已提交，/)).toHaveCount(0);
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});

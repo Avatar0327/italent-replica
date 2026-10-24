@@ -39,16 +39,17 @@ import {
   regularizeBody,
   validateRegularize,
   type Row,
+  type ApplicationDestination,
 } from './model.js';
 
 export interface FormProps {
   row: Row;
   application?: boolean;
   onClose(): void;
-  /** 写入与写后读取都已确认：关闭表单与详情（列表已在提交完成路径里刷新，补证 R2d 换视图）。 */
+  /** 写入与本单回读已确认：关闭表单与详情。 */
   onDone(): void;
-  /** 写后刷新当前视图；失败按结果未知锁定（commands.tsx settle）。 */
-  refresh(applicationId?: string): Promise<unknown>;
+  /** 申请确认后切换视图并独立定位；其他操作刷新当前视图。 */
+  refresh(destination?: ApplicationDestination): Promise<unknown>;
 }
 const kind = 'intern_regularization';
 
@@ -128,6 +129,29 @@ function useRejectedRead(read: () => Promise<Latest>, refresh: FormProps['refres
   return { latest, readError, reading, reread };
 }
 
+/** intern-views：按写后本单的真实状态选择视图，不按浏览器日期推算。 */
+function applicationDestination(latest: Values, employeeId: string, id: string): ApplicationDestination {
+  if (latest.employeeId !== employeeId || latest.kind !== kind || latest.mode !== 'application')
+    throw new Error(m.invalidReceipt);
+  if (!['in_review', 'approved', 'effective'].includes(String(latest.status))) throw new Error(m.invalidReceipt);
+  return { id, view: latest.status === 'effective' ? 'converted' : 'converting' };
+}
+
+function submittedReadback(
+  receipt: Values,
+  id: string,
+  employeeId: string,
+  confirmed: (destination: ApplicationDestination) => void,
+) {
+  if (receipt.status !== 'in_review') throw new Error(m.invalidReceipt);
+  return {
+    path: slotKey(businesses, id),
+    id,
+    revision: Number(receipt.revision),
+    verify: (latest: Values) => confirmed(applicationDestination(latest, employeeId, id)),
+  };
+}
+
 function useRegularize({ row, application, onDone, refresh, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
   const saved = useInternDraft(employeeId);
@@ -141,7 +165,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
   const readCurrent = useRegularizeRead(employeeId, draft, read);
   const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: readCurrent };
   const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', () =>
-    application && !draft ? Promise.resolve() : refresh(draft?.id),
+    application ? Promise.resolve() : refresh(),
   );
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
@@ -161,6 +185,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
       const values = projectFields(draft ? form.getFieldsValue(true) : await form.validateFields(), editable);
       if (!draft) validateRegularize(values, editable);
       let created: { id: string; revision: number; values: Values } | undefined;
+      let destination: ApplicationDestination | undefined;
       // 第二步只发空请求体，但仍将只读字段交内核比较 / 回填，供冲突恢复核对本单最新值。
       const done = await cmd.submit(values, editable, {
         path: regularizePath(employeeId, application, draft),
@@ -168,7 +193,10 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
         accept: (raw, sent) => {
           const receipt = acceptBusiness(raw, { employeeId, kind, sent, id: draft?.id });
           if (application && receipt.mode !== 'application') throw new Error(m.invalidReceipt);
-          if (draft) return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
+          if (draft)
+            return submittedReadback(receipt, draft.id, employeeId, (latest) => {
+              destination = latest;
+            });
           if (application) {
             if (receipt.status !== 'draft') throw new Error(m.invalidReceipt);
             created = { id: String(receipt.id), revision: Number(receipt.revision), values };
@@ -183,7 +211,10 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
         saved.put(created);
         return;
       }
-      if (application) saved.put();
+      if (application) {
+        saved.put();
+        if (destination) void refresh(destination);
+      }
       void message.success(application ? m.success.apply : m.success.regularize);
       onDone();
     } catch (cause) {
