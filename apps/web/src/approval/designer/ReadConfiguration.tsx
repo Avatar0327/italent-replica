@@ -9,8 +9,10 @@ const display = (value: unknown): string => {
   if (value === null || value === '') return '—';
   if (typeof value === 'boolean') return value ? m.yes : m.no;
   if (Array.isArray(value)) return value.map(display).join('、') || m.none;
-  return m.values[String(value)] ?? String(value);
+  return String(value);
 };
+const displayEnum = (value: unknown): string =>
+  Array.isArray(value) ? value.map(displayEnum).join('、') || m.none : (m.values[String(value)] ?? display(value));
 export function Conditions({ version }: { version: VersionView }) {
   const permissions = usePermissions(processObject);
   if (!permissions.field('conditions').visible || !version.conditions) return null;
@@ -27,7 +29,7 @@ export function Conditions({ version }: { version: VersionView }) {
         dataSource={version.conditions.items}
         columns={[
           { title: m.conditionField, dataIndex: 'field', render: display },
-          { title: m.operator, dataIndex: 'operator', render: display },
+          { title: m.operator, dataIndex: 'operator', render: displayEnum },
           { title: m.value, dataIndex: 'value', render: display },
         ]}
       />
@@ -37,19 +39,19 @@ export function Conditions({ version }: { version: VersionView }) {
 export function OtherNodeProperties({ node }: { node: ApprovalNode }) {
   const properties: [string, unknown][] = [
     [m.same, node.sameAssigneeSkip],
-    [m.sameResult, node.sameAssigneeResult],
+    [m.sameResult, displayEnum(node.sameAssigneeResult)],
     [m.history, node.historySameAssigneeSkip],
-    [m.historyResult, node.historySameAssigneeResult],
+    [m.historyResult, displayEnum(node.historySameAssigneeResult)],
     [m.formFields, node.formFields],
     [m.editableFields, node.editableFields],
-    [m.editMode, node.editMode],
-    [m.resubmit, node.rejectResubmit],
-    [m.exits, node.exits],
+    [m.editMode, displayEnum(node.editMode)],
+    [m.resubmit, displayEnum(node.rejectResubmit)],
+    [m.exits, displayEnum(node.exits)],
   ];
   if (node.kind === 'countersign') {
-    properties.push([m.transition, node.transitionRule?.type]);
+    properties.push([m.transition, displayEnum(node.transitionRule?.type)]);
     for (const [exit, rule] of Object.entries(node.transitionRule?.rules ?? {}))
-      properties.push([`${m.transition} · ${display(exit)}`, `${display(rule.kind)} ${rule.value}`]);
+      properties.push([`${m.transition} · ${displayEnum(exit)}`, `${displayEnum(rule.kind)} ${rule.value}`]);
   }
   return (
     <details className="flow-read-config">
@@ -67,10 +69,10 @@ export function OtherNodeProperties({ node }: { node: ApprovalNode }) {
           pagination={false}
           dataSource={node.messageRules.map((rule, index) => ({ ...rule, key: String(index) }))}
           columns={[
-            { title: m.trigger, dataIndex: 'trigger', render: display },
+            { title: m.trigger, dataIndex: 'trigger', render: displayEnum },
             { title: m.template, dataIndex: 'template', render: display },
-            { title: m.channels, dataIndex: 'channels', render: display },
-            { title: m.recipient, dataIndex: 'recipient', render: display },
+            { title: m.channels, dataIndex: 'channels', render: displayEnum },
+            { title: m.recipient, dataIndex: 'recipient', render: displayEnum },
           ]}
         />
       ) : (

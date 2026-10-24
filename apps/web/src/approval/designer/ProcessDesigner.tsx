@@ -229,7 +229,7 @@ function Definition({ process, onSaved }: { process: ProcessView; onSaved(messag
 function VersionInfo({ process, version }: { process: ProcessView; version: VersionView }) {
   const permissions = usePermissions(processObject);
   const visible = (field: string, value: unknown) => (permissions.field(field).visible ? value : undefined);
-  const items = [
+  const items: [string, unknown][] = [
     [m.name, visible('name', version.name)],
     [m.code, visible('code', process.code)],
     [m.type, visible('approvalType', typeName(process.approvalType))],
