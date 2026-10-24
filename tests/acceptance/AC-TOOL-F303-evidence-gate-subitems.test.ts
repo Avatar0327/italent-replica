@@ -215,3 +215,105 @@ describe('AC-TOOL-F303 范围与兼容', () => {
     expectItem(out, DECISION_MD, 6, 'D-901', '②待原站实测');
   });
 });
+
+describe('AC-TOOL-F313 带前缀的取证状态', () => {
+  const prefixes = ['#30 ', '取证记录：', '①', '  #30  '];
+  const pendingWords = [
+    '待原站实测',
+    '待实测',
+    '待取证',
+    '待定',
+    '待用户决定',
+    '待确认',
+    '待复核',
+    '🟡 部分',
+    '🔴 未定论',
+  ];
+
+  function expectBlocked(status: string, items: string[], blocks = `${TARGET}（开工前）`) {
+    const { code, out } = runCli([evidenceRow(status, blocks)], []);
+    expect(code).toBe(1);
+    expect(out.split('\n')).toEqual([
+      '',
+      `== ${TARGET} ==`,
+      '⛔ 开工前须完成的取证 1 项：',
+      `  Q-M0-901  ${status.includes('🔴') ? '🔴 未定论' : '🟡 部分'}  合成取证内容`,
+      ...items.map((item) => `    ${EVIDENCE_MD}:6  Q-M0-901  待决子项：${item}`),
+      '',
+    ]);
+  }
+
+  describe.each(prefixes)('前缀 %j', (prefix) => {
+    it.each(pendingWords)('AC-TOOL-F313：%s 子项不能被前面的完成标记覆盖', (pending) => {
+      expectBlocked(`${prefix}✅ 已取证；②${pending}；③✅ 已完成`, [`②${pending}`]);
+    });
+
+    it('AC-TOOL-F313：全部完成才放行，待办和待入职不是取证状态', () => {
+      const { code, out } = runCli([evidenceRow(`${prefix}✅ 已取证（待办去重）；②已确认待入职字段`)], []);
+      expect(code).toBe(0);
+      expect(out.split('\n')).toEqual([
+        '',
+        `== ${TARGET} ==`,
+        '✅ 清单中没有挂在该任务上的未完成取证（新任务仍须先做开工前取证扫描）',
+        '',
+      ]);
+    });
+  });
+
+  it.each([...SEPARATORS, ''])('AC-TOOL-F313：分隔符 %j 复用原有分项入口，首尾待决均保留', (separator) => {
+    const items = ['#30 待取证', '②待原站实测'];
+    expectBlocked(['#30 待取证', '①✅ 已取证', '②待原站实测', '③✅ 已完成'].join(separator), items);
+  });
+
+  it.each([
+    '②待实测（入口(字段,错误提示)；回执）',
+    '②已取证(入口（字段、待原站实测）；回执)',
+    '②已取证（入口,字段)；③待实测',
+    '②待实测（入口、字段；③已完成',
+    '②已取证（🟡 部分；入口）',
+    `②${'合成检查内容'.repeat(15)}待 原站 实测`,
+  ])('AC-TOOL-F313：括号及长子项保持完整诊断：%s', (item) => {
+    expectBlocked(`#30 ✅ 已取证；${item}`, [item]);
+  });
+
+  it.each(['②待取证', '②🟡 部分', '②🔴 未定论'])(
+    'AC-TOOL-F313：任务列后补声明不能掩盖带前缀完成状态里的 %s',
+    (item) => {
+      expectBlocked(`#30 ✅ 已取证；剩余可后补；${item}`, [item], `${TARGET}（可后补）`);
+    },
+  );
+
+  it.each(['🟡 部分', '🔴 未定论'])('AC-TOOL-F313：无前缀的完成状态也必须检查 %s 子项', (item) => {
+    expectBlocked(`✅ 已取证；②${item}`, [`②${item}`]);
+    expect(decisionSettled(`✅ 已取证；②${item}`)).toBe(false);
+  });
+
+  it('AC-TOOL-F313：共享入口返回完整状态，差异行仍保持 F-290 开头检查契约', () => {
+    expect(evidenceState(`${TARGET}（可后补）`, '#30 ✅ 已取证；②待原站实测')).toEqual({
+      st: '🟡 部分',
+      level: '开工前',
+      pendingItems: ['②待原站实测'],
+    });
+    expect(decisionSettled('#30 ✅ 已取证；②已完成')).toBe(false);
+  });
+
+  it('AC-TOOL-F313：无参数完整报告前缀待决项，指定无关任务不误拦', () => {
+    const row = evidenceRow('#30 ✅ 已取证；②待原站实测');
+    const summary = runCli([row], [], []);
+    expect(summary.code).toBe(0);
+    expect(summary.out.split('\n')).toEqual([
+      '未完成取证 1 项（共 1 项）',
+      `  Q-M0-901  🟡 部分  [${TARGET}（开工前）]  合成取证内容`,
+      `    ${EVIDENCE_MD}:6  Q-M0-901  待决子项：②待原站实测`,
+      '',
+    ]);
+    const unrelated = runCli([row], [], [OTHER_TARGET]);
+    expect(unrelated.code).toBe(0);
+    expect(unrelated.out.split('\n')).toEqual([
+      '',
+      `== ${OTHER_TARGET} ==`,
+      '✅ 清单中没有挂在该任务上的未完成取证（新任务仍须先做开工前取证扫描）',
+      '',
+    ]);
+  });
+});
