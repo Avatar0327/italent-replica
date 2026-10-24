@@ -25,6 +25,7 @@ export const GRAPH: Graph = {
     '#businessScopes',
     '#instanceScopeSql',
     '#offerInstanceScopeSql',
+    '#orgAdjustmentInstanceScopeSql',
     '#perBusinessType',
   ],
   'apps/api/src/modules/approval/access.ts#hasButton': [
@@ -41,6 +42,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
   ],
   'apps/api/src/modules/approval/access.ts#offerInstanceScopeSql': [
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
+  'apps/api/src/modules/approval/access.ts#orgAdjustmentInstanceScopeSql': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
   'apps/api/src/modules/approval/access.ts#requireIdpOwnerRight': [
