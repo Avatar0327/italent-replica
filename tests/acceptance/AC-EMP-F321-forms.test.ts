@@ -1,3 +1,4 @@
+import { restricted } from './AC-PT-http-support.js';
 /** F-321：租户用工形式字典、任职与兼职引用、名称披露和劳务筛选。只用合成人员。 */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -179,6 +180,12 @@ it('AC-EMP-F321-05：劳务视图只纳入当前在职内部员工且类别=劳�
   await w.hire(forms.find((i) => i.name === '全日制用工方式')!.code);
   await w.hire(forms.find((i) => i.name === '外包人员')!.code);
   await w.hire(null);
+  const cleared = await w.hire(forms.find((i) => i.name === '劳务派遣')!.code);
+  const correction = await w.s.request('PATCH', `/records/${cleared.id}`, {
+    ifMatch: cleared.revision,
+    body: { fields: { employmentForm: null } },
+  });
+  expect(correction.status, await correction.clone().text()).toBe(200);
   const response = await w.s.request('GET', '/employees?view=labor');
   expect(response.status, await response.clone().text()).toBe(200);
   expect(((await response.json()) as { items: { id: string }[] }).items.map((i) => i.id)).toEqual([labor.employeeId]);
@@ -226,7 +233,7 @@ it('AC-EMP-F321-06：自建项仅本租户可选；跨租户不可读写、不�
     tx.execute(sql`
     SELECT id FROM employment_forms WHERE tenant_id=${a.s.tenant.id}`),
   );
-  expect(Array.isArray(rows) ? rows : rows.rows).toEqual([]);
+  expect(Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows).toEqual([]);
 });
 
 it('AC-EMP-F321-07：字段不可见时不披露派生名称；撤权后的配置命令重放拒绝', async () => {
@@ -234,7 +241,7 @@ it('AC-EMP-F321-07：字段不可见时不披露派生名称；撤权后的配�
   const form = (await w.list())[0]!;
   const hired = await w.hire(form.code);
   const api = tenantApi(w.db, {
-    authorize: (r) => r.action !== 'field.view' || !r.resource?.endsWith('#employmentForm'),
+    authorize: restricted({ fields: ['id', 'employeeId', 'departmentId', 'revision', 'effectiveDate'] }),
   });
   const detail = await api.request('GET', `/api/tenant/employment/records/${hired.id}`, {
     user: w.s.user.id,
@@ -242,6 +249,11 @@ it('AC-EMP-F321-07：字段不可见时不披露派生名称；撤权后的配�
   });
   expect(detail.status).toBe(200);
   expect(JSON.stringify(await detail.json())).not.toContain('employmentFormName');
+  const labor = await api.request('GET', '/api/tenant/employment/employees?view=labor', {
+    user: w.s.user.id,
+    tenant: w.s.tenant.id,
+  });
+  expect(labor.status).toBe(403);
   const key = randomUUID();
   expect(
     (

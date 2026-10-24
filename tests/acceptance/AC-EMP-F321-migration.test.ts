@@ -19,6 +19,9 @@ it('AC-EMP-F321-09：两个租户的主职 / 兼职载荷及申请迁移，未�
       for (const name of ['正式员工', '兼职人员', '劳务派遣', '不存在', ' 正式员工', null]) {
         const id = randomUUID();
         const payload = randomUUID();
+        const primary = name === '正式员工';
+        const kind = primary ? 'hire' : 'part_time';
+        const service = primary ? 'primary' : 'part_time';
         const cycle = randomUUID();
         const date = `202${targets.filter((i) => i.tenantId === s.tenant.id).length}-01-01`;
         await tx.execute(sql`INSERT INTO employment_cycles(id,tenant_id,employee_id,entry_date,entry_type,employ_type)
@@ -26,16 +29,24 @@ it('AC-EMP-F321-09：两个租户的主职 / 兼职载荷及申请迁移，未�
         await tx.execute(sql`INSERT INTO employment_business_objects(id,tenant_id,employee_id)
           VALUES (${id},${s.tenant.id},${e.id})`);
         await tx.execute(sql`INSERT INTO employment_payload_versions
-          (id,tenant_id,employee_id,business_id,version_no,kind,mode,effective_date,form_id,employment_form)
-          VALUES (${payload},${s.tenant.id},${e.id},${id},1,'part_time','direct',${date},'part_time',${name})`);
+          (id,tenant_id,employee_id,business_id,version_no,kind,mode,effective_date,form_id,
+           employment_form,employee_status)
+          VALUES (${payload},${s.tenant.id},${e.id},${id},1,${kind},'direct',${date},'part_time',${name},3)`);
         await tx.execute(sql`INSERT INTO employment_records
-          (id,tenant_id,employee_id,payload_version_id,staff_id,entry_date,kind,start_date,service_type,employment_form)
-          VALUES (${id},${s.tenant.id},${e.id},${payload},${cycle},${date},'part_time',${date},'part_time',${name})`);
+          (id,tenant_id,employee_id,payload_version_id,staff_id,entry_date,kind,start_date,service_type,
+           employment_form,employee_status,employ_type)
+          VALUES (${id},${s.tenant.id},${e.id},${payload},${cycle},${date},${kind},${date},
+            ${service},${name},3,'internal')`);
+        if (primary)
+          await tx.execute(sql`INSERT INTO employment_timeline
+          (tenant_id,employee_id,record_id,staff_id,start_date,sort_order,valid_during)
+          VALUES (${s.tenant.id},${e.id},${id},${cycle},${date},1,daterange(${date}::date,NULL,'[)'))`);
         await tx.execute(sql`INSERT INTO part_time_requests
           (id,tenant_id,employee_id,request_type,initiator,initiator_user_id)
           VALUES (${id},${s.tenant.id},${e.id},'add','hr',${s.user.id})`);
         await tx.execute(sql`INSERT INTO part_time_request_versions
-          (id,tenant_id,employee_id,request_id,version_no,command_id,service_type,department_id,start_date,employment_form)
+          (id,tenant_id,employee_id,request_id,version_no,command_id,service_type,department_id,
+           start_date,employment_form)
           VALUES (${payload},${s.tenant.id},${e.id},${id},1,${randomUUID()},'part_time',${org.id},${date},${name})`);
         targets.push({ tenantId: s.tenant.id, id, value: name });
       }
@@ -48,6 +59,7 @@ it('AC-EMP-F321-09：两个租户的主职 / 兼职载荷及申请迁移，未�
         await tx.execute(sql`
         SELECT code FROM employment_forms WHERE tenant_id=${target.tenantId} AND name=${target.value}`),
       );
+      if (['正式员工', '兼职人员', '劳务派遣'].includes(target.value ?? '')) expect(form?.code).toBeTruthy();
       for (const [table, key] of [
         ['employment_records', 'id'],
         ['employment_payload_versions', 'business_id'],
