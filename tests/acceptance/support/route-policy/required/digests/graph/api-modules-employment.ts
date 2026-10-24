@@ -1131,7 +1131,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#trimEmploymentResponse': [
     '#EMPLOYMENT_OBJECT',
     '#visiblePreviousRecords',
-    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
+    '#withEmploymentFormNames',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
     'apps/api/src/modules/transfer/response-disclosure.ts#trimEmploymentManagerReferences',
@@ -1139,6 +1139,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#visiblePreviousRecords': [
     '#previousCreators',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+  ],
+  'apps/api/src/modules/employment/context.ts#withEmploymentFormNames': [
+    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
   ],
   'apps/api/src/modules/employment/context.ts#withReplayRecheck': [
     '#commandContext',
@@ -5559,6 +5562,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /employees': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#queryDate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',

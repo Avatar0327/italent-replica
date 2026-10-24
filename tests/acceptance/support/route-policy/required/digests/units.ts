@@ -1904,7 +1904,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:GET /businesses/:id': '48dc476a7bf1',
   'apps/api/src/modules/employment/routes.ts#route:GET /completion-todos': 'bbaea3cee59b',
   'apps/api/src/modules/employment/routes.ts#route:GET /custom-fields': 'c0b485875cf0',
-  'apps/api/src/modules/employment/routes.ts#route:GET /employees': 'a64ed1f12f41',
+  'apps/api/src/modules/employment/routes.ts#route:GET /employees': '2b70f681b2e8',
   'apps/api/src/modules/employment/routes.ts#route:GET /employees/:id': 'a1d110f8eec9',
   'apps/api/src/modules/employment/routes.ts#route:GET /employees/:id/records': '8f531fca19fd',
   'apps/api/src/modules/employment/routes.ts#route:GET /records/:id': '0984bf8c7af7',
