@@ -3,7 +3,7 @@ import { act, createElement as h } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OFFER_VIEWS } from '@italent/domain';
+import { OFFER_APPROVAL_STATUSES, OFFER_VIEWS } from '@italent/domain';
 import { SessionProvider } from '../foundation/Session.js';
 import { PermissionsProvider } from '../foundation/Permissions.js';
 import { ui } from '../foundation/messages.js';
@@ -71,6 +71,22 @@ afterEach(async () => {
 });
 
 describe('AC-FE-F298 真实列表与详情', () => {
+  it.each(OFFER_APPROVAL_STATUSES)('待发与全部列表将审批状态 %s 显示为中文', async (status) => {
+    row.approvalStatus = status;
+    const labels = { unsubmitted: '未发起审批', approving: '审批中', approved: '审批通过', disapproved: '审批不通过' };
+    const approvalCell = () => {
+      const index = [...document.querySelectorAll('th')].findIndex((node) => node.textContent === '审批状态');
+      expect(index).toBeGreaterThanOrEqual(0);
+      return document.querySelector(`tr[data-row-key="${offerRow.id}"]`)?.querySelectorAll('td')[index]?.textContent;
+    };
+    await render();
+    expect(approvalCell()).toBe(labels[status]);
+    const allTab = document.querySelector<HTMLButtonElement>('button[aria-label="全部Offer"]');
+    expect(allTab).not.toBeNull();
+    await act(async () => allTab!.click());
+    expect(approvalCell()).toBe(labels[status]);
+  });
+
   it('列表显示服务端名称，点姓名用真实 ID 重读详情，六类名称不回落 UUID', async () => {
     await render();
     expect(allText()).toContain(offerRow.name);
