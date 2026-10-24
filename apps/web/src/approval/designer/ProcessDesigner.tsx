@@ -7,7 +7,7 @@ import { useApiClient, useSession } from '../../foundation/Session.js';
 import { usePermissions } from '../../foundation/Permissions.js';
 import { PageState } from '../../foundation/PageState.js';
 import { ApiError, rejectionMessage } from '../../foundation/client.js';
-import { createFormStore, type Values } from '../../foundation/forms/store.js';
+import { createFormStore, type Latest, type Values } from '../../foundation/forms/store.js';
 import { FormCommands, useDraftRefill, type CommandForm } from '../../foundation/forms/useCommandForm.js';
 import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
 import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
@@ -19,6 +19,7 @@ import {
   root,
   processObject,
   buildDraft,
+  assertDraftStructure,
   completeDefinition,
   editableValues,
   editAccess,
@@ -265,18 +266,11 @@ function useProcessCommand(process: ProcessView) {
   );
   const action: 'draft' | 'versions' = process.latestVersion.status === 'draft' ? 'draft' : 'versions';
   const snapshotValues = (value: ProcessView) => ({ ...editableValues(value.latestVersion), $process: value });
-  const read = async () => {
+  const read = async (): Promise<Latest> => {
     const latest = await readProcess(api, process.id);
-    if (
-      action === 'draft' &&
-      (latest.latestVersion.id !== process.latestVersion.id ||
-        latest.latestVersion.status !== 'draft' ||
-        !completeDefinition(latest.latestVersion) ||
-        process.latestVersion.nodes.some(
-          (node) => !latest.latestVersion.nodes.some((next) => next.key === node.key && next.kind === node.kind),
-        ))
-    )
-      throw new Error(m.versionChanged);
+    // 冲突重读与未知回查共用；退出重开后仍与原命令基线比较，不能被新详情的结构替换。
+    const original = (command.form.state?.baseline.$process as ProcessView | undefined) ?? process;
+    if (original.latestVersion.status === 'draft') assertDraftStructure(original.latestVersion, latest.latestVersion);
     return { id: latest.id, revision: latest.revision, values: snapshotValues(latest) };
   };
   const command = useConflictCommand(

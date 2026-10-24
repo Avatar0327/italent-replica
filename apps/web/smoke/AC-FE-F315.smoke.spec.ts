@@ -174,7 +174,10 @@ test('AC-FE-F315-22 未知结果退出重开后回查仍按原命令节点结构
   await page.getByRole('link', { name: '合成调动流程', exact: true }).click();
   await page.getByRole('button', { name: kernel.original, exact: true }).click();
   await expect(page.getByText('流程版本或节点结构已变更，请返回列表重新打开后核对。', { exact: true })).toBeVisible();
-  await page.getByRole('navigation', { name: '流程节点' }).getByRole('button', { name: /上级审批/ }).click();
+  await page
+    .getByRole('navigation', { name: '流程节点' })
+    .getByRole('button', { name: /上级审批/ })
+    .click();
   await expect(page.getByRole('textbox', { name: '节点名称', exact: true })).toHaveValue('原未知命令输入');
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled();
   expect(state.writes).toHaveLength(1);

@@ -93,6 +93,20 @@ export function editableValues(version: Pick<VersionView, 'nodes'>): Values {
     ),
   );
 }
+/** P2-1：旧输入只允许恢复到相同版本的有序节点结构；属性变化交给表单内核核对。 */
+export function assertDraftStructure(original: VersionView, latest: VersionView): void {
+  if (
+    latest.id !== original.id ||
+    latest.status !== 'draft' ||
+    !completeDefinition(latest) ||
+    !Array.isArray(original.nodes) ||
+    latest.nodes.length !== original.nodes.length ||
+    latest.nodes.some(
+      (node, index) => node.key !== original.nodes[index]?.key || node.kind !== original.nodes[index]?.kind,
+    )
+  )
+    throw new Error(m.versionChanged);
+}
 export function buildDraft(version: VersionView, edited: Values): ProcessDefinition {
   if (!completeDefinition(version)) throw new ApiError(422, 'INCOMPLETE_DEFINITION', 'fields', m.invalid);
   const allowed = new Set(Object.keys(editableValues(version)));
