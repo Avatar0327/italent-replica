@@ -228,7 +228,7 @@ function handoverListSubmit(path: string, batch: boolean): Obligation[] {
           ? [
               fn(
                 HANDOVER_BATCH,
-                'submitHandoverBatch',
+                'runHandoverBatch',
                 'guard: handoverSubmitGuard(deps, context, item.exitRequestId, batchButton)',
               ),
               fn(

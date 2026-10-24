@@ -259,7 +259,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-handover-batch.ts': {
     batchGuard: '8f0ebe7f3c4f',
     handoverRowActions: '1e404092c176',
-    submitHandoverBatch: 'ce3603a3628f',
+    runHandoverBatch: '2a3223c9b73e',
     visibleBatchReceipt: '35b9ebc74020',
   },
   'apps/api/src/modules/employment/exit-handover-launch.ts': {
@@ -1809,7 +1809,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
   'apps/api/src/modules/employment/exit-handover-batch.ts#batchGuard': '47659727261c',
   'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions': 'd5fce766c2f9',
-  'apps/api/src/modules/employment/exit-handover-batch.ts#submitHandoverBatch': '1a6291704dde',
+  'apps/api/src/modules/employment/exit-handover-batch.ts#runHandoverBatch': '7d1ba027343a',
   'apps/api/src/modules/employment/exit-handover-batch.ts#visibleBatchReceipt': '051734cc581e',
   'apps/api/src/modules/employment/exit-handover-launch.ts#handoverSubmitGuard': 'f55cdf5a099e',
   'apps/api/src/modules/employment/exit-handover-launch.ts#requireHandoverSubmit': '41727b23d94a',

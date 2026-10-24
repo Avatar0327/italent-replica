@@ -2,7 +2,13 @@
 import { createHash } from 'node:crypto';
 import { RevisionConflictError, withTenant } from '@italent/db';
 import { HANDOVER_BATCH_SUBMIT_BUTTON, HANDOVER_ROW_SUBMIT_BUTTON } from '@italent/domain';
-import { isDefiniteFailure } from '../../audit/failures.js';
+import {
+  classifyCommandFailure,
+  CommandFailureError,
+  failureResponse,
+  isDefiniteFailure,
+  recordCommandFailure,
+} from '../../audit/failures.js';
 import { commandHash, replayAfterFailure, runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -56,6 +62,30 @@ export async function submitHandoverBatch(
 ): Promise<CommandResult> {
   if (key === undefined) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', '写请求必须携带 Idempotency-Key');
   if (!/^[A-Za-z0-9:_-]{1,100}$/.test(key)) throw new AppError('VALIDATION_FAILED', 'Idempotency-Key 格式不合法');
+  try {
+    return await runHandoverBatch(deps, ctx, key, fingerprint, items);
+  } catch (error) {
+    // 子命令可能已独立提交；裸回查 / 裁剪连接错误不能视为整批确定失败。
+    // runCommand 已分类的执行失败仍沿用其分类（含 storage_unwritable）。
+    const failure = classifyCommandFailure(error, 'commit');
+    // 内部键审计设置的 request-wide failureRecorded 不能替代客户端原键的失败归属。
+    await recordCommandFailure(deps.db, ctx, key, failure);
+    const response = failureResponse(error, failure, key);
+    if (response instanceof CommandFailureError) {
+      // 存储不可写也明确给出原批次恢复键；不改变共享执行器的响应契约。
+      Object.assign(response.details as object, { commandId: key });
+    }
+    throw response;
+  }
+}
+
+async function runHandoverBatch(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  key: string,
+  fingerprint: unknown,
+  items: readonly HandoverBatchItem[],
+): Promise<CommandResult> {
   const guard = batchGuard(deps, ctx);
   // 先持久固定整批内容。即使进程在第一个子项后退出，换内容也必须在任何新业务写入前拒绝。
   await runCommand(deps.db, ctx, {

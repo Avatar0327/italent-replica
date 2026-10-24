@@ -2083,7 +2083,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-handover-store.ts#latestHandoverOfExit',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ROW_SUBMIT_BUTTON',
   ],
-  'apps/api/src/modules/employment/exit-handover-batch.ts#submitHandoverBatch': [
+  'apps/api/src/modules/employment/exit-handover-batch.ts#runHandoverBatch': [
     'apps/api/src/modules/employment/context.ts#commandContext',
     '#batchButton',
     '#batchGuard',
@@ -2092,6 +2092,12 @@ export const GRAPH: Graph = {
     '#visibleBatchReceipt',
     'apps/api/src/modules/employment/exit-handover-launch.ts#handoverSubmitGuard',
     'apps/api/src/modules/employment/exit-handover-launch.ts#submitExitHandover',
+  ],
+  'apps/api/src/modules/employment/exit-handover-batch.ts#submitHandoverBatch': [
+    'apps/api/src/audit/failures.ts#CommandFailureError',
+    'apps/api/src/audit/failures.ts#failureResponse',
+    'apps/api/src/audit/failures.ts#recordCommandFailure',
+    '#runHandoverBatch',
   ],
   'apps/api/src/modules/employment/exit-handover-batch.ts#visibleBatchReceipt': [
     'apps/api/src/modules/employment/context.ts#commandContext',
