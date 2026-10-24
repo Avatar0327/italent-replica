@@ -4,7 +4,7 @@
  * （DEC-503）。写命令一律经 runCommand 的 ledgerExit + CommandGuard.before：首次、重放、失败回查都按当前权限复核（#199）。
  */
 import { pgErrorCode, type Tx } from '@italent/db';
-import { OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
+import { OFFER_NAME_FIELDS, OFFER_OBJECT, type ButtonLevel } from '@italent/domain';
 import type { Context } from 'hono';
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
@@ -171,10 +171,20 @@ export async function trimOffer(deps: TenantRouteDeps, ctx: OfferContext, body: 
   if (Array.isArray(value.items)) {
     const rows = value.items as Record<string, unknown>[];
     const trimmed = await trimModuleResponse(deps, ctx, OFFER_OBJECT, rows);
-    return { ...value, items: trimmed.map((row, index) => ({ ...row, ...protocolKeys(rows[index]!) })) };
+    return { ...value, items: trimmed.map((row, index) => readableNames(rows[index]!, row ?? {})) };
   }
   if (value.deleted === true) return value;
-  return { ...(await trimModuleResponse(deps, ctx, OFFER_OBJECT, value)), ...protocolKeys(value) };
+  return readableNames(value, await trimModuleResponse(deps, ctx, OFFER_OBJECT, value));
+}
+
+/** 名称只随裁剪后仍可见的 ID 返回，不能通过单独授予派生字段名绕过 ID 字段权。 */
+function readableNames(source: Record<string, unknown>, trimmed: Record<string, unknown>) {
+  const result = { ...trimmed, ...protocolKeys(source) };
+  for (const [name, id] of Object.entries(OFFER_NAME_FIELDS)) {
+    delete result[name];
+    if (Object.hasOwn(trimmed, id) && Object.hasOwn(source, name)) result[name] = source[name];
+  }
+  return result;
 }
 
 /** 行操作、转移表单的可选目标、发送判定结果是接口协议数据，不是对象字段，不按字段查看权裁剪（BE-14a2）。 */
