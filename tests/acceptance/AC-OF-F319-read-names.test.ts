@@ -6,6 +6,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { offerRealWorld, offerWorld, type OfferWorld } from './AC-OF-BE14a-support.js';
 import { rowsOf, send } from './AC-OF-BE14b1-support.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const nameFields = {
@@ -115,6 +116,23 @@ describe('AC-OF-F319 只读关联名称', () => {
     }
   });
 
+  it('按租户日期跨 UTC 日界取名，同日多个版本按版本号取最新', async () => {
+    const w = await offerWorld(testDb().db, 'names-date');
+    const { offer, names } = await seedNames(w);
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO org_versions
+      (tenant_id, org_id, version_no, code, name, full_name, start_date)
+      VALUES (${w.tenant.id}, ${w.department.id}, 4, 'F319-DEPT', '同日最新部门', '合成集团/同日最新部门',
+        '2026-10-17')`),
+    );
+    const api = tenantApi(w.db, { clock: () => new Date('2026-10-16T16:30:00.000Z') });
+    const expected = { ...names, departmentName: '同日最新部门', departmentFullName: '合成集团/同日最新部门' };
+    const as = { user: w.user.id, tenant: w.tenant.id };
+    expect(await bodyOf(await api.request('GET', `/api/tenant/offers/${offer.id}`, as))).toMatchObject(expected);
+    const list = await bodyOf(await api.request('GET', '/api/tenant/offers?view=all', as));
+    expect((list.items as unknown[])[0]).toMatchObject(expected);
+  });
+
   it('空关联 / 不存在的发送人 / 无名称版本的主数据返回 null，不回落成 ID', async () => {
     const w = await offerWorld(testDb().db, 'names-missing');
     const offer = await w.intern();
@@ -156,7 +174,7 @@ describe('AC-OF-F319 只读关联名称', () => {
     expect(JSON.stringify(list)).not.toContain(other.user.displayName);
   });
 
-  it('筛选继续提交 ID 并返回 label；视图区分组织全称的显示字段，不将名称当查询 ID', async () => {
+  it('筛选继续提交 ID 并返回配套名称；现有视图筛选字段保持兼容', async () => {
     const w = await offerWorld(testDb().db, 'names-filters');
     const { offer, ids, names } = await seedNames(w);
     for (const field of ['departmentId', 'positionId', 'postId'] as const) {
@@ -170,31 +188,45 @@ describe('AC-OF-F319 只读关联名称', () => {
     const unsubmitted = (views.items as { key: string; columns: unknown[]; filters: unknown[] }[]).find(
       (view) => view.key === 'unsubmitted',
     )!;
-    expect(unsubmitted.columns).toContainEqual(
-      expect.objectContaining({
-        label: '组织全称',
-        field: 'departmentId',
-        displayField: 'departmentFullName',
-      }),
-    );
-    expect(unsubmitted.filters).toContainEqual({
-      label: '部门',
-      field: 'departmentId',
-      displayField: 'departmentName',
-    });
-    expect(unsubmitted.filters).toContainEqual({ label: '职位', field: 'positionId', displayField: 'positionName' });
-    expect(unsubmitted.filters).toContainEqual({ label: '职务', field: 'postId', displayField: 'postName' });
+    expect(unsubmitted.filters).toContainEqual({ label: '部门', field: 'departmentId' });
+    expect(unsubmitted.filters).toContainEqual({ label: '职位', field: 'positionId' });
+    expect(unsubmitted.filters).toContainEqual({ label: '职务', field: 'postId' });
+    // 现有视图没有发送人 / 经理筛选入口，本单只补读名称，不新增筛选行为。
+    const filters = (views.items as { filters: { field: string | null }[] }[]).flatMap((view) => view.filters);
+    expect(filters.some((filter) => filter.field === 'sentBy' || filter.field === 'directManagerId')).toBe(false);
   });
 
   it('一页 1 / 30 条实际 SQL 次数相同，名称读取不逐行增长', async () => {
     const w = await offerWorld(testDb().db, 'names-batch');
     const { offer, names } = await seedNames(w);
-    await withTenant(w.db, w.tenant.id, (tx) =>
-      tx.execute(sql`INSERT INTO offers
-      (tenant_id, entry, name, department_id, position_id, post_id, sent_by, direct_manager_id, created_by)
-      SELECT tenant_id, entry, name, department_id, position_id, post_id, sent_by, direct_manager_id, created_by
-      FROM offers CROSS JOIN generate_series(1, 29) WHERE id = ${offer.id}`),
-    );
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      for (let index = 0; index < 29; index++) {
+        const departmentId = randomUUID();
+        const postId = randomUUID();
+        const positionId = randomUUID();
+        const managerId = randomUUID();
+        await tx.execute(sql`INSERT INTO org_objects(id, tenant_id) VALUES (${departmentId}, ${w.tenant.id})`);
+        await tx.execute(sql`INSERT INTO org_versions
+          (tenant_id, org_id, version_no, code, name, full_name, start_date)
+          VALUES (${w.tenant.id}, ${departmentId}, 1, ${departmentId}, ${names.departmentName},
+            ${names.departmentFullName}, '2026-01-01')`);
+        await tx.execute(sql`INSERT INTO job_post_objects(id, tenant_id) VALUES (${postId}, ${w.tenant.id})`);
+        await tx.execute(sql`INSERT INTO job_post_versions
+          (tenant_id, object_id, version_no, code, name, start_date)
+          VALUES (${w.tenant.id}, ${postId}, 1, ${postId}, ${names.postName}, '2026-01-01')`);
+        await tx.execute(sql`INSERT INTO job_position_objects(id, tenant_id) VALUES (${positionId}, ${w.tenant.id})`);
+        await tx.execute(sql`INSERT INTO job_position_versions
+          (tenant_id, object_id, version_no, code, name, start_date, org_id, post_id)
+          VALUES (${w.tenant.id}, ${positionId}, 1, ${positionId}, ${names.positionName}, '2026-01-01',
+            ${departmentId}, ${postId})`);
+        await tx.execute(sql`INSERT INTO employment_employees(id, tenant_id, code, name)
+          VALUES (${managerId}, ${w.tenant.id}, ${managerId}, ${names.directManagerName})`);
+        await tx.execute(sql`INSERT INTO offers
+          (tenant_id, entry, name, department_id, position_id, post_id, sent_by, direct_manager_id, created_by)
+          SELECT tenant_id, entry, name, ${departmentId}, ${positionId}, ${postId}, sent_by, ${managerId}, created_by
+          FROM offers WHERE id = ${offer.id}`);
+      }
+    });
     const counts: number[] = [];
     for (const size of [1, 30]) {
       const capture = recordStatements(w.db);
@@ -203,6 +235,12 @@ describe('AC-OF-F319 只读关联名称', () => {
         expect(list.total).toBe(30);
         expect(list.items).toHaveLength(size);
         for (const row of list.items) expect(row).toMatchObject(names);
+        const nameQueries = capture.statements.filter((query) =>
+          /FROM "?(org_versions|job_position_versions|job_post_versions|employment_employees|tenant_member_accounts)/.test(
+            query,
+          ),
+        );
+        expect(nameQueries).toHaveLength(5);
         counts.push(capture.statements.length);
       } finally {
         capture.stop();
@@ -210,7 +248,7 @@ describe('AC-OF-F319 只读关联名称', () => {
     }
     expect(counts[1]).toBe(counts[0]);
     expect(counts[1]).toBeLessThan(40);
-    console.info('F319 HTTP 列表 SQL 次数（含事务 / 授权；1、30 条）', counts);
+    process.stdout.write(`F319 HTTP 列表 SQL 次数（含事务 / 授权；1、30 条）：${counts.join(' / ')}\n`);
     const [role] = rowsOf<{ name: string; superuser: boolean; bypass: boolean }>(
       await w.db.execute(sql`SELECT current_user AS name, rolsuper AS superuser, rolbypassrls AS bypass
         FROM pg_roles WHERE rolname = current_user`),

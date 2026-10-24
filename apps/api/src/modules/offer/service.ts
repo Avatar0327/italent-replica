@@ -54,6 +54,7 @@ import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertOfferRevision, requireOfferInScope, type OfferContext } from './context.js';
 import { requireEnabledOfferReason } from './dictionaries.js';
 import { currentEntryIds } from './entry-link.js';
+import { withOfferNames } from './read-names.js';
 import { requireQuotaConfirmed } from './establishment.js';
 import { cancelLinkedEntry, deleteLinkedEntry, pushEditToEntry, readOfferLinkageSetting } from './linkage.js';
 import type { OfferPush } from './linkage.js';
@@ -550,7 +551,8 @@ function withActions(row: OfferRow, allowed: OfferActionFilter, current?: Readon
 export async function offerDetail(tx: Tx, ctx: OfferContext, id: string, allowed: OfferActionFilter) {
   const row = await loadOffer(tx, ctx, id);
   const current = await currentEntryIds(tx, ctx.tenantId, [row]);
-  const [dto] = await withApprovalProgress(tx, ctx.tenantId, [withActions(row, allowed, current)]);
+  const named = await withOfferNames(tx, ctx, [withActions(row, allowed, current)]);
+  const [dto] = await withApprovalProgress(tx, ctx.tenantId, named);
   return dto!;
 }
 
@@ -592,7 +594,11 @@ export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuer
     .limit(query.limit)
     .offset(query.offset);
   const current = await currentEntryIds(tx, ctx.tenantId, rows);
-  const items = rows.map((row) => withActions(row, allowed, current));
+  const items = await withOfferNames(
+    tx,
+    ctx,
+    rows.map((row) => withActions(row, allowed, current)),
+  );
   return { total: count!.total, items: await withApprovalProgress(tx, ctx.tenantId, items) };
 }
 
