@@ -3,7 +3,7 @@
  * 流程是稳定对象 + 版本；已发布版本及其节点、条件、消息规则只读（迁移 0029 触发器），实例绑定版本 ID 即冻结快照（`14` §4）。
  * 所有表带 tenant_id 并强制 RLS；人员引用一律指向租户成员（账号）或任职员工主档。
  */
-import { sql } from 'drizzle-orm';
+import { sql, type SQLWrapper } from 'drizzle-orm';
 import {
   boolean,
   check,
@@ -155,6 +155,11 @@ export const approvalProcessNodes = pgTable(
     approverExpression: text('approver_expression'),
     /** F-003：会签节点的审批人表达式（按配置顺序逐人解析）；单人节点为空数组。 */
     approverExpressions: textArray('approver_expressions'),
+    /** R2 BE-8b2（DEC-663）：兜底处理人（用户 ID，可多人、缺省空），只用于离职交接申请的会签交接节点。 */
+    fallbackUserIds: uuid('fallback_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     /** F-003：出口动作（同意 / 不同意，DEC-144）；驳回是节点动作，不在其中。缺省只有同意。 */
     exits: text('exits')
       .array()
@@ -170,6 +175,8 @@ export const approvalProcessNodes = pgTable(
     disagreeRuleKind: text('disagree_rule_kind'),
     disagreeRuleValue: numeric('disagree_rule_value', { precision: 5, scale: 2 }),
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
+    /** F-316：NULL 保留未配置语义与旧兜底行为；显式值随流程版本冻结。 */
+    emptyApproverPolicy: text('empty_approver_policy'),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
     /** DEC-106：相同 / 历史相同审批人自动处理的结果「同意」/「跳过」。 */
@@ -227,10 +234,20 @@ export const approvalProcessNodes = pgTable(
       sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
         'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',
-        'approval_subject_first_level_org_head','assessment_employee')`,
+        'approval_subject_first_level_org_head','assessment_employee','handover_work_owner','handover_hr_admin',
+        'handover_employee')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
+    check(
+      'approval_nodes_empty_approver',
+      sql`${t.emptyApproverPolicy} IS NULL OR (
+      ${t.nodeType} = 'countersign' AND (
+        (${t.nodeKey} = 'work_handover' AND ${t.emptyApproverPolicy} IN ('stop','auto_approve','specified')) OR
+        (${t.nodeKey} = 'other_handover' AND ${t.emptyApproverPolicy} IN ('exception_admin','auto_approve','specified'))
+      ) AND (${t.emptyApproverPolicy} <> 'auto_approve' OR 'approve' = ANY(${t.exits}))
+    )`,
+    ),
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
@@ -247,7 +264,8 @@ export const approvalProcessNodes = pgTable(
           AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
             'record_department_head','record_department_hrbp','record_first_level_org_head',
             'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',
-            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee']::text[]
+            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',
+            'handover_work_owner','handover_hr_admin','handover_employee']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
     check(
@@ -312,6 +330,12 @@ export const approvalNodeMessageRules = pgTable(
   ],
 );
 
+/** DEC-674：交接驳回即业务终止，旧 returned 实例只读；其他业务仍占用原实例以便重提。查询与唯一索引共用。 */
+export function activeApprovalInstanceCondition(columns: { status: SQLWrapper; businessType: SQLWrapper }) {
+  return sql`(${columns.status} = 'running'
+    OR (${columns.status} = 'returned' AND ${columns.businessType} <> 'exit_handover'))`;
+}
+
 export const approvalInstances = pgTable(
   'approval_instances',
   {
@@ -348,7 +372,7 @@ export const approvalInstances = pgTable(
     unique('approval_instances_tenant_id').on(t.tenantId, t.id),
     uniqueIndex('approval_instances_active_business')
       .on(t.tenantId, t.businessType, t.businessId)
-      .where(sql`${t.status} IN ('running','returned')`),
+      .where(activeApprovalInstanceCondition(t)),
     index('approval_instances_initiator').on(t.tenantId, t.initiatorUserId, t.createdAt),
     index('approval_instances_business').on(t.tenantId, t.businessType, t.businessId, t.createdAt),
     foreignKey({
@@ -375,7 +399,7 @@ export const approvalInstances = pgTable(
     check(
       'approval_instances_business_type',
       sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review','part_time',
-        'offer','offer_batch','probation_assessment','retirement_intention')`,
+        'offer','offer_batch','probation_assessment','retirement_intention','exit_handover')`,
     ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],

@@ -427,6 +427,21 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
+  "GET /api/tenant/employment/exit-handover-requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b19ff8596413",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/employment/exits": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -443,6 +458,26 @@
     ]
   },
   "GET /api/tenant/employment/exits/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/exits/:id/handover": {
     "all": {
       "code": "NOT_FOUND",
       "error": "bea36a2d464b",
@@ -1664,6 +1699,27 @@
       "admin:other_settings"
     ]
   },
+  "POST /api/tenant/employment/exit-handover-requests/:id/resubmit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b19ff8596413",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.HandoverReSubmit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/exits/:id/cancel": {
     "all": {
       "code": "NOT_FOUND",
@@ -2602,6 +2658,21 @@
     "trace": [
       "admin:other_settings"
     ]
+  },
+  "PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "424fa0de9b5d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
   },
   "PUT /api/tenant/employment/exits/dictionaries/:dict/:id": {
     "all": {

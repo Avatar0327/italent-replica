@@ -91,3 +91,63 @@ export function checkHandoverTrigger(value: unknown): HandoverTriggerCheck {
     },
   };
 }
+
+// ---- BE-8b2 交接执行 ------------------------------------------------------------------------------------------------
+
+/**
+ * 交接申请状态：进行中 / 已完成 / 已终止（不同意、撤销离职、驳回、撤回）/ 交接未发起（DEC-663：离职已批准，但工作交接取不到处理人，
+ * 持久记录等 HR 处理）。not_started 是根本没有交接记录时的展示状态（含档案直接离职）。
+ */
+export const HANDOVER_REQUEST_STATES = ['in_progress', 'completed', 'terminated', 'not_launched'] as const;
+export type HandoverRequestState = (typeof HANDOVER_REQUEST_STATES)[number];
+export type HandoverDisplayStatus = HandoverRequestState | 'not_started';
+
+/** 终止原因（exit_handover_requests.end_reason）。 */
+export const HANDOVER_END_REASONS = ['disapproved', 'rejected', 'withdrawn', 'exit_cancelled'] as const;
+export type HandoverEndReason = (typeof HANDOVER_END_REASONS)[number];
+/** 交接未发起的原因（exit_handover_requests.not_launched_reason）与给 HR 的提示文案。 */
+export const HANDOVER_NOT_LAUNCHED_HINTS = {
+  NO_HANDLER: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+  APPROVAL_PROCESS_NOT_MATCHED: '离职交接未发起：没有可用的离职交接流程，请配置后重新提交',
+  NO_INITIATOR_ACCOUNT: '离职交接未发起：员工没有可用发起账号，请补充后重新提交',
+} as const;
+export type HandoverNotLaunchedReason = keyof typeof HANDOVER_NOT_LAUNCHED_HINTS;
+/** DEC-674 / F305A：复用任职对象的独立详情按钮，对应原站 HandoverReSubmit。 */
+export const HANDOVER_RESUBMIT_BUTTON = {
+  code: 'Employment.HandoverReSubmit',
+  name: '重新提交交接',
+  level: 'detail',
+  requires: 'update',
+} as const;
+/** 撤销离职终止交接的日志理由（B4 撤销端口）。 */
+export const HANDOVER_CANCEL_REASON = '离职撤销终止交接';
+
+/** 交接流程四个节点（R2c B64）：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明。 */
+export const HANDOVER_NODE_KEYS = {
+  work: 'work_handover',
+  other: 'other_handover',
+  employee: 'employee_confirm',
+  hrbp: 'hrbp_certificate',
+} as const;
+
+/** 事项由哪个节点办理：工作交接节点只办“工作交接”类，其他事项交接节点只办“其他”类（员工确认 / HRBP 节点没有事项）。 */
+export const HANDOVER_NODE_OF_TODO: Readonly<Record<HandoverTodoType, string>> = {
+  work_handover: HANDOVER_NODE_KEYS.work,
+  other: HANDOVER_NODE_KEYS.other,
+};
+
+export type HandoverLaunchDecision = 'launch' | 'disabled' | 'past_last_work_date';
+
+/**
+ * 审批通过时是否自动发起（B65，DM-R13）：开关关 → 不发起；“包含最后工作日早于审批通过日期的人员”未勾选且最后工作日早于
+ * 审批通过当天（租户日）→ 不发起。发起方式 / 发起人 b1 已限定为已验证的唯一取值。
+ */
+export function handoverLaunchDecision(
+  setting: Pick<HandoverTriggerSetting, 'enabled' | 'includePastLastWorkDate'>,
+  facts: { readonly lastWorkDate: string | null; readonly approvedOn: string },
+): HandoverLaunchDecision {
+  if (!setting.enabled) return 'disabled';
+  if (!setting.includePastLastWorkDate && facts.lastWorkDate !== null && facts.lastWorkDate < facts.approvedOn)
+    return 'past_last_work_date';
+  return 'launch';
+}

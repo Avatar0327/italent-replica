@@ -41,6 +41,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
+    'PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId',
     'PATCH /api/tenant/employment/businesses/:id',
     'PATCH /api/tenant/employment/pending-entries/:id',
     'PATCH /api/tenant/employment/records/:id',

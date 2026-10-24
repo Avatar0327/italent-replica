@@ -53,7 +53,7 @@ import {
 import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
-import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
+import { addSignAllowed, isActiveInstance, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
 import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
@@ -773,8 +773,7 @@ export async function withdraw(
   const run = fromBusiness ? await openRun(tx, ctx, instanceId) : await openOwn(tx, ctx, instanceId);
   if (run.instance.initiatorUserId !== ctx.userId)
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
-  if (!['running', 'returned'].includes(run.instance.status))
-    throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
+  if (!isActiveInstance(run.instance)) throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
   // DEC-318 K-39：撤回是节点开关（原站 isRevoke，缺省开启），按当前节点判断
   const current = run.version.nodes.find((node) => node.key === run.instance.currentNodeKey);
   if (!fromBusiness && current && !revokeAllowed(current)) {
@@ -807,7 +806,7 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 export async function revokeBySystem(tx: Tx, ctx: ApprovalContext, instanceId: string, reason: string): Promise<void> {
   const run = await openRun(tx, ctx, instanceId);
   // 终态幂等：openRun 已锁实例，只有未结束的实例才撤销；已终止 / 已通过 / 已驳回等直接成功返回，不写日志、审计，不推进版本
-  if (!['running', 'returned'].includes(run.instance.status)) return;
+  if (!isActiveInstance(run.instance)) return;
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
   await appendLog(tx, ctx, run.instance, { event: 'system_revoke', actorUserId: null, detail: { comment: reason } });

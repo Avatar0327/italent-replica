@@ -5,7 +5,10 @@ import {
   CONDITION_OPERATORS,
   definitionViolations,
   EDIT_MODES,
+  EMPTY_APPROVER_POLICIES,
+  emptyApproverPolicyViolation,
   EXIT_RULE_KINDS,
+  HANDOVER_FALLBACK_LIMIT,
   isApprovalType,
   MESSAGE_CHANNELS,
   MESSAGE_RECIPIENTS,
@@ -28,6 +31,26 @@ import { approvalError, canonicalId } from './context.js';
 const text = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 const codeList = z.array(z.string().min(1).max(100)).max(200);
+
+const emptyApproverPolicy = z
+  .unknown()
+  .transform((value) => {
+    const parsed = z.enum(EMPTY_APPROVER_POLICIES).safeParse(value);
+    if (!parsed.success) throw emptyPolicyError('空审批人处理方式不合法');
+    return parsed.data;
+  })
+  .optional();
+
+const emptyPolicyError = (message: string) =>
+  approvalError('APPROVAL_EMPTY_APPROVER_POLICY_INVALID', 'APPROVAL_EMPTY_APPROVER_POLICY_INVALID', message);
+
+/** 新建、草稿保存、内部版本复制统一校验（非法配置 422，F-316）。 */
+export function assertEmptyApproverPolicies(definition: ProcessDefinition, type: ApprovalTypeCode) {
+  for (const node of definition.nodes) {
+    const violation = emptyApproverPolicyViolation(node, APPROVAL_TYPES[type]);
+    if (violation) throw emptyPolicyError(violation);
+  }
+}
 
 const messageRule = z.strictObject({
   trigger: z.enum(MESSAGE_TRIGGERS),
@@ -76,6 +99,10 @@ const node = z.strictObject({
    * 入台账的同一请求重放时指纹不同、误报 409（DEC-067；PR #135 第 1 轮审查 P2）。actions.avoidSubjects 同理。
    */
   avoidSubjectsResult: avoidSubjectsResult.optional(),
+  /** DEC-663：兜底处理人（用户 ID，可多人、可为空）；不给不补缺省值，只在离职交接申请的会签交接节点上有意义。 */
+  fallbackUserIds: z.array(z.uuid().transform(canonicalId)).max(HANDOVER_FALLBACK_LIMIT).optional(),
+  // 不补默认值，保留旧请求的命令指纹与未配置时的取人行为（DEC-067 / DEC-663）。
+  emptyApproverPolicy,
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
@@ -183,6 +210,7 @@ export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): Pr
     },
     nodes: input.nodes.map(toNode),
   };
+  assertEmptyApproverPolicies(definition, type);
   // F-048 R3-01 / DEC-331⑤：多主体回避开关与命中动作给出各自的机读原因（设计 §3.1、§14）
   const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
   if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);

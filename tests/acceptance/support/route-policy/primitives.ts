@@ -228,6 +228,13 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['instanceOfTask', call('instanceOfTask'), NEAR],
     ['currentAssignee（assertOpen / openTask）', calls('assertOpen', 'openTask'), NEAR],
     ['retrievable（retrievableTask）', call('retrievableTask'), NEAR],
+    // 离职交接（BE-8b2）：参与人 = 发起人员工本人或该审批实例上有任务的审批人；办理 = 当前待办节点负责的类别（exit-handover.ts）
+    [
+      'exit handover participant（isHandoverParticipant）',
+      call('isHandoverParticipant'),
+      { near: true, modules: ['employment'] },
+    ],
+    ['exit handover assignee（tickHandoverItem）', call('tickHandoverItem'), { near: true, modules: ['employment'] }],
     // IDP 执行人：当前阶段在办待办人 + 节点按钮（plan-access.ts requireExecutor）
     ['idp executor（requireExecutor）', call('requireExecutor'), { near: true, modules: ['idp'] }],
     [

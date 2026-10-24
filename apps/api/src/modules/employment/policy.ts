@@ -56,6 +56,7 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
+  HANDOVER_RESUBMIT_BUTTON,
   RETIREMENT_BUTTONS,
   RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
@@ -79,6 +80,7 @@ import {
   BAD_REQUEST,
   button,
   buttonOnly,
+  commandWrite,
   denied,
   EMPTY_LIST,
   fixed,
@@ -92,6 +94,7 @@ import {
   own,
   pointScope,
   projector,
+  relation,
   seeAll,
   shape,
   write,
@@ -121,6 +124,8 @@ const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
 const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
 const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
 const NF_INTENTION = denied(404, 'NOT_FOUND', '意向退休申请不存在');
+const NF_HANDOVER = denied(404, 'NOT_FOUND', '离职交接申请不存在');
+const F_HANDOVER_NOT_ASSIGNEE = denied(403, 'FORBIDDEN', 'EXIT_HANDOVER_NOT_ASSIGNEE');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -142,6 +147,22 @@ const LINKAGE = 'employment.linkage';
 const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
+/** BE-8b2 离职交接的三个固定回执形状（exit-handover.ts 的 exitHandoverStatus / handoverDetail / tickHandoverItem）。 */
+const HANDOVER_STATUS_KEYS = ['status', 'request'] as const;
+const HANDOVER_DETAIL_KEYS = [
+  'id',
+  'exitRequestId',
+  'employeeId',
+  'status',
+  'endReason',
+  'notLaunchedReason',
+  'hint',
+  'approvalInstanceId',
+  'revision',
+  'items',
+  'mine',
+] as const;
+const HANDOVER_TICK_KEYS = ['item', 'mine'] as const;
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
 const RETIREMENT_IDENTITY_TYPE_KEYS = EXIT_DICTIONARY_KEYS;
@@ -2321,6 +2342,52 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.assessment'),
     write: write('body', 'assessment.update', none('返回后按考核对象字段查看权投影'), {
       preconditions: ['requireEmployeeInScope', 'assertAssessmentRevision'],
+    }),
+    ...byId,
+  }),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DM-R13 / DM-R14，DEC-632）----------------------------
+  // F-305 / DEC-674：同单重新提交，入口与命令内复核对象 / 独立按钮 / 原离职单及员工范围。
+  'POST /exit-handover-requests/:id/resubmit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(HANDOVER_RESUBMIT_BUTTON.code, 'detail'),
+    scope: guardScope('employment.handoverResubmit', NF_HANDOVER),
+    fields: fixed(['requestId', 'status', 'revision', 'approvalInstanceId'], 'DEC-674 重新提交交接固定命令回执'),
+    write: write('body', 'exitHandover.resubmit', none('固定交接命令回执，before 复核原离职单与员工范围'), {
+      commandOnly: true,
+      preconditions: ['lockHandoverRequest', 'assertRevision', 'requireHandoverResubmit'],
+    }),
+    ...byId,
+  }),
+  // 离职详情上的交接状态与事项：权限与范围同 GET /exits/:id（DEC-177，看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」）；
+  // 没有交接申请 = status not_started（含档案直接离职，R2c）
+  'GET /exits/:id/handover': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: fixed(HANDOVER_STATUS_KEYS, 'DEC-632 交接状态与事项固定键，事项内容来自交接事项设置快照'),
+    ...byId,
+  }),
+  // 交接申请详情：参与人（发起人员工本人 / 该审批实例上有任务的审批人）可读，不要求任职对象权限（审批人不一定有）；
+  // 非参与人与不存在同一个 404「离职交接申请不存在」；items[].editable 标出查看人当前可办理的事项
+  'GET /exit-handover-requests/:id': relation({
+    relation: 'exitHandover.participant',
+    target: { param: 'id' },
+    denied: NF_HANDOVER,
+    fields: fixed(HANDOVER_DETAIL_KEYS, 'DEC-632 交接申请详情固定键'),
+    ...byId,
+  }),
+  // 勾选 / 取消勾选“办理完成”自动保存：If-Match = 事项 revision；body 严格 { done }（400）；非参与人 404；交接已结束 409
+  // EXIT_HANDOVER_NOT_IN_PROGRESS；查看人没有当前待办 403 EXIT_HANDOVER_NOT_ASSIGNEE；事项不属当前节点 403
+  // EXIT_HANDOVER_ITEM_NOT_OWNED；revision 不一致 409；值未变不写。审计 exit_handover.item_done
+  'PUT /exit-handover-requests/:id/items/:itemId': relation({
+    relation: 'exitHandover.assignee',
+    target: { param: 'id' },
+    denied: F_HANDOVER_NOT_ASSIGNEE,
+    fields: fixed(HANDOVER_TICK_KEYS, 'DEC-632 办理回执固定键'),
+    write: commandWrite('exitHandover.tick', none('固定形状回执，不是任职对象'), {
+      preconditions: ['lockHandoverRequest', 'assertRevision'],
     }),
     ...byId,
   }),
