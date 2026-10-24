@@ -11837,11 +11837,18 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -17116,6 +17123,9 @@
         "fieldsOut": [
           "employment runWrite()"
         ],
+        "guard": [
+          "employment.linkage"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -17169,6 +17179,7 @@
         ],
         "scope": [
           "employment scope",
+          "employment visibility",
           "readContext（非配置对象）"
         ],
         "scopePoint": [
@@ -17650,6 +17661,64 @@
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/interns": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button",
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.importRowOperation"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:create",
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },

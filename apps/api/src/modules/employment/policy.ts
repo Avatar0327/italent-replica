@@ -1004,6 +1004,41 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.internViews'),
   }),
+  // 新增实习生一体写入（BE-R2d4c，DEC-662）：If-Match 必填（新增 0，重聘 = 候选人员当前 revision）；body 严格（400）：kind =
+  // hire（code + name + loginEmail，建档并绑定用户）| rehire（employeeId = rehire-matches 候选，不再建档），contract 必填且终止日必填、
+  // 不早于入职日（400 INTERN_CONTRACT_DATE_INVALID）；用工类型固定实习（填别的 400）。权限同 POST /employees：人员对象新增权 +
+  // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
+  // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
+  // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
+  // 任一步失败整体回滚，同命令 ID 重放返回首个结果。回执是固定形状，不经任职字段裁剪
+  'POST /interns': all(
+    [
+      object({
+        object: EMPLOYEE,
+        operation: 'create',
+        button: button('Employee.Create', 'list'),
+        scope: seeAll(NF_DATA),
+        fields: noFields('人员新增权只判对象与按钮；回执不含人员字段'),
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'create',
+        button: button('Employment.Create', 'detail'),
+        scope: guardScope('employment.scope', NF_DATA),
+        fields: noFields('回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不含任职字段'),
+      }),
+    ],
+    projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
+    {
+      guards: [LINKAGE, 'employment.entryContract'],
+      write: employmentWrite(
+        'body.fields+customFields',
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract'] },
+      ),
+      ...byId,
+    },
+  ),
   // 直接实习转正：If-Match 必填；body 严格（合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
   // 看全部的写别名；requireEmploymentWrite('create', 实际写入字段, Employment.Create)；requireEmploymentScope（人员 + 目标部门）；
   // 命令内 internRegularizationGuard 按当前授权重过；非在职实习生 409 NOT_INTERN、有审批中转正申请 409
@@ -1047,13 +1082,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     byId,
   ),
   // 直接新增：不要求 If-Match（新建对象）；body 严格；requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；人员 + 兼职
-  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead = true / 非空 addedSubordinateIds
-  // → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放
+  // （字段写权沿用 body.fields 判定，不新增授权项；联动人员 / 组织写范围的复核登记 employment.linkage，DEC-178）：
+  // 保存时校验联动人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件；不触发向后更新（AC-FWD-11）
   'POST /employees/:id/part-times': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button(PART_TIME_BUTTONS.direct, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1071,13 +1107,13 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 编辑兼职（PT-3c，§5.1 + 直接修改结束日期）：readContext(object.update, If-Match 必填)；body 严格（400）；requirePartTimeWriteAccess：
   // 目标存在与兼职部门（改部门时含新部门）requireScopedEmploymentObject（写入口径 404「兼职记录不存在」）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeEdit（403）；命令内 partTimeWriteGuard 三个出口重过；命令内 editPartTime 锁 + 版本 + 周期边界 + E-4 +
-  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；不触发向后更新（AC-FWD-11）
   'PATCH /part-times/:recordId': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button(PART_TIME_BUTTONS.edit, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_PART_TIME),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1111,8 +1147,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 新建（草稿，或 submit = true 建完直接提交）：requestType = add ——
   // readContext(object.create)；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
   // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
-  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
+  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
   // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；
   // requirePartTimeWriteAccess（同
   // 编辑兼职）：目标兼职与其兼职部门写入口径范围（404「兼职记录不存在」）→ 对象更新权 + endDate / requestRemark 字段写权 +
@@ -1147,7 +1183,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
   // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
-  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；linkage 两字段同新建
+  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；联动两字段同新建（保存并校验，不执行）
   'PATCH /part-time-requests/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
