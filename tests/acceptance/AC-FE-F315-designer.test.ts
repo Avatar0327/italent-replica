@@ -8,8 +8,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(PAGES.apps.find((page) => page.id === 'approval')?.page?.name).toBe('ApprovalPage');
   });
   it('02 仅改节点属性，保留其他节点、条件、规则与所有未编辑配置', async () => {
-    const { buildDraft, completeDefinition, editableValues, editAccess, acceptProcessReceipt, nodeField } =
-      await import('../../apps/web/src/approval/designer/model.js');
+    const { buildDraft, nodeField } = await import('../../apps/web/src/approval/designer/model.js');
     const flow = flowFixture();
     const before = structuredClone(flow.latestVersion);
     const body = buildDraft(flow.latestVersion, { [nodeField('manager', 'name')]: '上级审核' });
@@ -22,8 +21,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(body.nodes[0]?.noAssignee).toBe('exception_admin');
   });
   it('03 冲突按节点属性合并到最新回执，不覆盖未改字段', async () => {
-    const { buildDraft, completeDefinition, editableValues, editAccess, acceptProcessReceipt, nodeField } =
-      await import('../../apps/web/src/approval/designer/model.js');
+    const { buildDraft, editableValues, nodeField } = await import('../../apps/web/src/approval/designer/model.js');
     const flow = flowFixture();
     const values = editableValues(flow.latestVersion);
     expect(values[nodeField('manager', 'name')]).toBe('上级审批');
@@ -36,8 +34,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(() => buildDraft(flow.latestVersion, { [nodeField('manager', 'noAssignee')]: 'none' })).toThrow();
   });
   it('04 裁剪的定义不可整份保存，非法属性与空名称不可提交', async () => {
-    const { buildDraft, completeDefinition, editableValues, editAccess, acceptProcessReceipt, nodeField } =
-      await import('../../apps/web/src/approval/designer/model.js');
+    const { buildDraft, completeDefinition, nodeField } = await import('../../apps/web/src/approval/designer/model.js');
     const version = flowFixture().latestVersion;
     expect(completeDefinition(version)).toBe(true);
     for (const field of ['conditions', 'nodes', 'hideRecordsFromInitiator', 'exceptionAdminUserId']) {
@@ -51,8 +48,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(() => buildDraft(version, { [nodeField('manager', 'name')]: '   ' })).toThrow();
   });
   it('05 导航和对象按钮不代替流程管理员能力，字段/操作/按钮独立控制', async () => {
-    const { buildDraft, completeDefinition, editableValues, editAccess, acceptProcessReceipt, nodeField } =
-      await import('../../apps/web/src/approval/designer/model.js');
+    const { editAccess } = await import('../../apps/web/src/approval/designer/model.js');
     expect(editAccess(flowPermission, false, 'update')).toBe(false);
     expect(editAccess(flowPermission, true, 'update')).toBe(true);
     expect(editAccess({ ...flowPermission, editableFields: [] }, true, 'update')).toBe(false);
@@ -61,8 +57,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(editAccess(undefined, true, 'update')).toBe(false);
   });
   it('06 成功回执按真实命令 revision、原单 ID、草稿状态验证', async () => {
-    const { buildDraft, completeDefinition, editableValues, editAccess, acceptProcessReceipt, nodeField } =
-      await import('../../apps/web/src/approval/designer/model.js');
+    const { acceptProcessReceipt } = await import('../../apps/web/src/approval/designer/model.js');
     const value = flowFixture();
     expect(acceptProcessReceipt(value, flowId, 3).revision).toBe(4);
     expect(() => acceptProcessReceipt(value, flowId, 4)).toThrow();
@@ -71,5 +66,17 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     expect(() =>
       acceptProcessReceipt({ ...value, latestVersion: { ...value.latestVersion, status: 'published' } }, flowId, 3),
     ).toThrow();
+  });
+  it('14 保存载荷通过现有后端白名单解析，未编辑配置逐项保留', async () => {
+    const { buildDraft, nodeField } = await import('../../apps/web/src/approval/designer/model.js');
+    const { definitionSchema, toDefinition } = await import('../../apps/api/src/modules/approval/definition-input.js');
+    const flow = flowFixture();
+    const body = buildDraft(flow.latestVersion, {
+      [nodeField('manager', 'name')]: '新名称',
+      [nodeField('hr', 'actions.transfer')]: false,
+    });
+    expect(toDefinition(definitionSchema.parse(body), 'transfer')).toEqual(body);
+    expect(body.nodes[1]?.actions.transfer).toBe(false);
+    expect(body.conditions).toEqual(flow.latestVersion.conditions);
   });
 });
