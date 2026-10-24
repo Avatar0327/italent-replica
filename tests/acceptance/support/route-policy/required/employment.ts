@@ -6,7 +6,7 @@
  * requireTransferSource / transferBusinessContext → requireManagerBusinessSource；直接调动 requireDirectTransfer；业务写范围
  * authorizeBusinessWrite；直接操作范围 requireScopedEmploymentObject（DEC-193）；联动 requireLinkedEmploymentRecord（DEC-178）。
  */
-import { bound, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
+import { bound, guardScope, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const SRC = 'apps/api/src/modules';
@@ -3062,7 +3062,19 @@ export const EMPLOYMENT: RequiredTable = {
           EMPLOYEE_IN_SCOPE,
         ],
       ),
-    ].map((entry) => ({ ...entry, purpose: 'disclosure:handoverRow' as const, need: NONE })),
+    ].map((entry) => ({
+      ...entry,
+      purpose: 'disclosure:handoverRow' as const,
+      need: guardScope('employment.handoverSubmit'),
+      at: [
+        ...entry.at,
+        {
+          role: 'scope' as const,
+          unit: `${HANDOVER_LAUNCH}#requireHandoverSubmit`,
+          anchor: 'await requireEmployeeInScope(tx, ctx, business.employeeId)',
+        },
+      ],
+    })),
 
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
     ob(

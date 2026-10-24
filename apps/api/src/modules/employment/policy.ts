@@ -802,15 +802,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     guards: ['employment.viewableFilters'],
-    optional: {
-      handoverRow: object({
-        object: EMPLOYMENT,
-        operation: 'update',
-        button: button(HANDOVER_ROW_SUBMIT_BUTTON.code, 'list_row'),
-        scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
-        fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
-      }),
-    },
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.employeeList'),
   }),
@@ -1042,15 +1033,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     guards: ['employment.viewableFilters'],
-    optional: {
-      handoverRow: object({
-        object: EMPLOYMENT,
-        operation: 'update',
-        button: button(HANDOVER_ROW_SUBMIT_BUTTON.code, 'list_row'),
-        scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
-        fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
-      }),
-    },
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.internViews'),
   }),
@@ -1282,15 +1264,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     guards: ['employment.viewableFilters'],
-    optional: {
-      handoverRow: object({
-        object: EMPLOYMENT,
-        operation: 'update',
-        button: button(HANDOVER_ROW_SUBMIT_BUTTON.code, 'list_row'),
-        scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
-        fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
-      }),
-    },
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.partTimeViews'),
   }),
@@ -2414,6 +2387,12 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: button(HANDOVER_BATCH_SUBMIT_BUTTON.code, 'list'),
     scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
     fields: fixed(['items'], 'F-317 逐项固定回执，当前权限投影后返回'),
+    rows: {
+      path: 'items[*]',
+      target: { body: 'items[*].exitRequestId' },
+      fields: none('离职 ID 与 revision 是命令控制项，不写任职字段'),
+      batch: 'receipt',
+    },
     write: write('body', 'exitHandover.batchSubmit', none('逐项 before 和汇总回放后重新验权；无权项隐藏旧回执'), {
       commandOnly: true,
       ledger: 'perItem',

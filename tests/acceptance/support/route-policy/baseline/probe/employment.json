@@ -1762,6 +1762,27 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/exits/:id/handover/submit-from-list": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/exits/:id/restore": {
     "all": {
       "code": "NOT_FOUND",
@@ -1891,6 +1912,22 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "POST /api/tenant/employment/exits/handover/batch-submit": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4d2080fecf28",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#BatchDimissionHandoverApproval@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/interns/:id/regularize": {

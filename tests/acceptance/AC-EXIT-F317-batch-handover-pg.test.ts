@@ -27,7 +27,7 @@ async function world(label: string) {
   return { ...x, targets };
 }
 
-describe('F-317 真 PG 单 worker 强制交错', () => {
+describe('AC-DM-09 / F-317 真 PG 单 worker 强制交错', () => {
   itPg('第二项等员工锁时第一项已独立提交；同键并发最终回执相同且每项仅一个流程 / 审计', async () => {
     const x = await world('independent');
     const [a, b] = x.targets;

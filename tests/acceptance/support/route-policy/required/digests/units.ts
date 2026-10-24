@@ -256,9 +256,19 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-gate.ts': {
     requireExitPermission: 'd3c36096e66e',
   },
+  'apps/api/src/modules/employment/exit-handover-batch.ts': {
+    batchGuard: '8f0ebe7f3c4f',
+    handoverRowActions: '1e404092c176',
+    submitHandoverBatch: 'ce3603a3628f',
+    visibleBatchReceipt: '35b9ebc74020',
+  },
   'apps/api/src/modules/employment/exit-handover-launch.ts': {
-    handoverSubmitGuard: 'c53d85268c29',
-    requireHandoverSubmit: '17fd9a6a521c',
+    handoverSubmitGuard: 'd6043f98cd0f',
+    requireHandoverSubmit: 'bc7059d45934',
+  },
+  'apps/api/src/modules/employment/exit-handover-list-routes.ts': {
+    'route:POST /exits/:id/handover/submit-from-list': '660efc07ab40',
+    'route:POST /exits/handover/batch-submit': 'd9f8a3b01176',
   },
   'apps/api/src/modules/employment/exit-handover-resubmit.ts': {
     handoverResubmitGuard: 'f773c56bf49d',
@@ -285,7 +295,7 @@ export const DIGESTS: Digests = {
     requireCancellationOwner: '0e97dc3e0849',
     requirePreviewButton: '2e3cd7610bb0',
     requireViewableExitFilters: 'd9eaf946ef06',
-    'route:GET /exits': '6ec815503d59',
+    'route:GET /exits': 'a31f5f52dd0e',
     'route:GET /exits/:id': '89a1e0b41dc6',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
     'route:PATCH /exits/:id': '4680d83c58be',
@@ -1520,7 +1530,9 @@ export const DIGESTS: Digests = {
     PROBATION_ASSESSMENT_OBJECT: 'a7ea04177ed2',
   },
   'packages/domain/src/employment/exit-handover.ts': {
+    HANDOVER_BATCH_SUBMIT_BUTTON: 'c4f52053874e',
     HANDOVER_RESUBMIT_BUTTON: '3704cff4549f',
+    HANDOVER_ROW_SUBMIT_BUTTON: '176f724a622d',
     HANDOVER_SUBMIT_BUTTON: '73cdf26a2a98',
   },
   'packages/domain/src/evaluation/catalog.ts': {
@@ -1795,8 +1807,16 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': '7a8b25e5e52e',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': '589484677a4f',
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
-  'apps/api/src/modules/employment/exit-handover-launch.ts#handoverSubmitGuard': 'a5ad63cce398',
-  'apps/api/src/modules/employment/exit-handover-launch.ts#requireHandoverSubmit': '0e0d8679b396',
+  'apps/api/src/modules/employment/exit-handover-batch.ts#batchGuard': '47659727261c',
+  'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions': 'd5fce766c2f9',
+  'apps/api/src/modules/employment/exit-handover-batch.ts#submitHandoverBatch': '1a6291704dde',
+  'apps/api/src/modules/employment/exit-handover-batch.ts#visibleBatchReceipt': '051734cc581e',
+  'apps/api/src/modules/employment/exit-handover-launch.ts#handoverSubmitGuard': 'f55cdf5a099e',
+  'apps/api/src/modules/employment/exit-handover-launch.ts#requireHandoverSubmit': '41727b23d94a',
+  'apps/api/src/modules/employment/exit-handover-list-routes.ts#route:POST /exits/:id/handover/submit-from-list':
+    'fe9c1a43d1b8',
+  'apps/api/src/modules/employment/exit-handover-list-routes.ts#route:POST /exits/handover/batch-submit':
+    '47b3c523af7a',
   'apps/api/src/modules/employment/exit-handover-resubmit.ts#handoverResubmitGuard': 'f4ab0bc1697d',
   'apps/api/src/modules/employment/exit-handover-resubmit.ts#requireHandoverResubmit': 'd0300ff2bc4f',
   'apps/api/src/modules/employment/exit-handover-routes.ts#registerExitHandoverRoutes': 'e25383b018a5',
@@ -1817,7 +1837,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#requireCancellationOwner': '44be2bbd2835',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd02e97716898',
   'apps/api/src/modules/employment/exit-routes.ts#requireViewableExitFilters': 'e90182a03729',
-  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': '50739a69f5d6',
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': '3c3f07ba8dff',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': '98d718056344',
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': 'f2d7229ace36',
   'apps/api/src/modules/employment/exit-routes.ts#route:PATCH /exits/:id': 'c5d0ade5ff6c',
@@ -2721,7 +2741,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_BATCH_SUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON': 'e3b0c44298fc',
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_ROW_SUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': 'df0c34def8ab',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': 'aa3bf6d1c73d',
