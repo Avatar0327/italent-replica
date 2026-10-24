@@ -298,22 +298,24 @@ test('AC-FE-F285-09 403资格拒绝显示服务端原因并重读列表，不在
   await expect(dialog(page).getByRole('radio', { name: '否', exact: true })).toBeChecked();
 });
 
-test('AC-FE-F285-10 审批提交成功但视图回读失败，关闭重开不重发', async ({ page }) => {
+test('AC-FE-F285-10 本单已确认提交，列表失败只需重试定位，不锁定也不重发写命令', async ({ page }) => {
   const { created, submitted } = await application(page);
+  let unavailable = true;
   await page.route('**/employment/interns?*', (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: 'UNAVAILABLE', message: '列表暂不可用' } },
-    }),
+    unavailable
+      ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '列表暂不可用' } } })
+      : route.fallback(),
   );
   await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
   await submit(page).click();
-  await expect(dialog(page).getByText(/当前表单已锁定/)).toBeVisible();
-  await dialog(page)
-    .getByRole('button', { name: /取\s*消/ })
-    .click();
-  await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
-  await expect(submit(page)).toBeDisabled();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.getByText('申请已提交，列表定位失败，请重试读取。')).toBeVisible();
+  unavailable = false;
+  await page.getByRole('button', { name: '重试定位', exact: true }).click();
+  await expect(page.getByRole('cell', { name: '审批中', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '查看详情', exact: true }).click();
+  await expect(page.getByRole('button', { name: /撤\s*回/ })).toBeEnabled();
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
 });
@@ -424,5 +426,77 @@ for (const mode of ['none', 'trimmed'] as const) {
     await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
     await expect(dialog(page).getByRole('radio', { name: '是', exact: true })).not.toBeChecked();
     await expect(submit(page)).toBeDisabled();
+  });
+}
+
+for (const targetPage of [100, 101]) {
+  test(`AC-FE-F285-15 第${targetPage}页申请已提交：切换视图并独立继续定位`, async ({ page }) => {
+    const { state, created, submitted } = await application(page);
+    const seen: number[] = [];
+    await page.route('**/employment/interns?*', (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      const current = Number(query.get('page'));
+      const converting = query.get('view') === 'converting';
+      if (converting) seen.push(current);
+      const preceding = Array.from({ length: 30 }, (_, index) => {
+        const serial = String((current - 1) * 30 + index + 1).padStart(12, '0');
+        return {
+          ...rows.converting,
+          effectiveDate: '2026-10-01',
+          employeeId: `30000000-0000-4000-9000-${serial}`,
+          id: `90000000-0000-4000-8000-${serial}`,
+        };
+      });
+      return route.fulfill({
+        json: {
+          items: converting
+            ? current === targetPage
+              ? [{ ...rows.converting, effectiveDate: '2026-10-16', revision: state.revision }]
+              : preceding
+            : [rows.interning],
+          page: current,
+          pageSize: 30,
+          hasDataPermission: true,
+        },
+      });
+    });
+    await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+    await submit(page).click();
+    await expect.poll(() => Math.max(...seen)).toBe(100);
+    expect(state.submitted).toBe(true);
+    expect(created).toHaveLength(1);
+    expect(submitted).toHaveLength(1);
+    // 旧实现第 101 页必须在这里判红：写入及本单回读成功，最终视图却仍停留在实习中。
+    await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog(page)).toHaveCount(0);
+    if (targetPage === 101) await page.getByRole('button', { name: '继续定位', exact: true }).click();
+    await expect(page.getByText(`第 ${targetPage} 页`, { exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: '审批中', exact: true })).toHaveCount(1);
+    await page.getByRole('button', { name: '查看详情', exact: true }).click();
+    await expect(page.getByRole('button', { name: /撤\s*回/ })).toBeEnabled();
+    expect(created).toHaveLength(1);
+    expect(submitted).toHaveLength(1);
+  });
+}
+
+for (const readback of ['unavailable', 'draft'] as const) {
+  test(`AC-FE-F285-16 本单回读${readback}不能确认写入，关闭重开仍锁定`, async ({ page }) => {
+    const { state, created, submitted, receipt } = await application(page);
+    await page.route(`**/employment/businesses/${applicationId}`, (route) => {
+      if (!state.submitted) return route.fallback();
+      return readback === 'unavailable'
+        ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '本单暂不可读' } } })
+        : route.fulfill({ json: receipt('draft', state.revision) });
+    });
+    await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+    await submit(page).click();
+    await expect(dialog(page).getByText(/当前表单已锁定/)).toBeVisible();
+    await dialog(page)
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+    await expect(submit(page)).toBeDisabled();
+    expect(created).toHaveLength(1);
+    expect(submitted).toHaveLength(1);
   });
 }
