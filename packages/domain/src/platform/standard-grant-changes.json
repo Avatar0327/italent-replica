@@ -1,9 +1,9 @@
 {
-  "reason": "F-305 / DEC-674：任职记录新增详情级重新提交交接按钮，任职模块预置人事身份默认授予；不新增对象或数据范围",
+  "reason": "F-250 / DEC-683：新增 HR 首次发起交接详情按钮，与重新提交分开授权",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail"
   ],
   "remove": []
 }

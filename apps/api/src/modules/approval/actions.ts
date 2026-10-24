@@ -272,6 +272,10 @@ export async function approveTask(
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
   // DEC-095：加签人依次审批，前加签全部同意后回到原审批人，后加签全部完成才离开本节点；会签按流转规则结算。
+  if (run.instance.businessType === 'employment') {
+    const { automaticHandover } = await import('../employment/exit-handover-launch.js');
+    await automaticHandover(tx, ctx, run.instance.businessId, 'on_node_approved', task.nodeKey);
+  }
   await continueAfterApproval(tx, run, task);
   run.events.push('approval.task.approved');
   await persistRun(tx, run, outcomeAction(run));

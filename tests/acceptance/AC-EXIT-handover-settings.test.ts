@@ -2,8 +2,8 @@
  * R2 BE-8b1 / B64 B65：离职交接设置（只存设置，不发起交接、不发催办；执行归 BE-8b2）。
  * - 离职交接事项（DEC-266③、规格 30 第 182 行）：事项类别、序号、待办类别（工作交接 / 其他）、待办事项、事项办理表单（文本或表单标识）、
  *   备注；没有适用人群和负责人；不预置原站 30 项，不做复制。
- * - 交接发起规则（DEC-266③、DEC-632）：租户设置项 exit.handover_trigger；发起方式只接受“审批通过后自动发起”，
- *   其他方式 400 并提示“未验证、后补”；发起人只有“员工本人”。
+ * - 交接发起规则（DEC-266③、DEC-632）：租户设置项 exit.handover_trigger；F-250 / DEC-683 接入全部发起方式，
+ *   未验证的发起人仍提示“未验证、后补”；发起人只有“员工本人”。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -146,18 +146,17 @@ describe('B65 交接发起规则设置（exit.handover_trigger）', () => {
     expect(await saved.json()).toMatchObject({ value: next, source: 'tenant', revision: 1 });
   });
 
-  it.each(['on_submit', 'on_node_approved', 'days_before_last_work_date'])(
-    '发起方式 %s 未验证：400，提示“未验证、后补”',
-    async (method) => {
-      const w = await settingsWorld(`trigger-method-${method}`);
-      const response = await w.put({ ...valid, method });
-      expect(response.status).toBe(400);
-      const body = await error(response);
-      expect(body.code).toBe('VALIDATION_FAILED');
-      expect(body.message).toContain('未验证、后补');
-      expect((await (await w.read()).json()) as { source: string }).toMatchObject({ source: 'system' });
-    },
-  );
+  it.each([
+    { method: 'manual' },
+    { method: 'on_submit' },
+    { method: 'on_node_approved', nodeKey: 'review' },
+    { method: 'days_before_last_work_date', daysBeforeLastWorkDate: 10 },
+  ])('DEC-683 发起方式 $method 可保存', async (patch) => {
+    const w = await settingsWorld(`trigger-method-${patch.method}`);
+    const response = await w.put({ ...valid, ...patch });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({ value: { ...valid, ...patch }, revision: 1 });
+  });
 
   it('发起人只有员工本人；其余取值、未知字段、越界天数一律 400', async () => {
     const w = await settingsWorld('trigger-invalid');
@@ -166,6 +165,10 @@ describe('B65 交接发起规则设置（exit.handover_trigger）', () => {
       'text',
       null,
       { ...valid, method: 'unknown' },
+      { ...valid, method: 'on_node_approved' },
+      { ...valid, method: 'on_node_approved', nodeKey: '' },
+      { ...valid, method: 'days_before_last_work_date' },
+      { ...valid, method: 'days_before_last_work_date', daysBeforeLastWorkDate: -1 },
       { ...valid, extra: 1 },
       { ...valid, enabled: 'yes' },
       { ...valid, remind: { ...valid.remind, daysBeforeLastWorkDate: -1 } },

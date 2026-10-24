@@ -2346,6 +2346,18 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DM-R13 / DM-R14，DEC-632）----------------------------
+  'POST /exits/:id/handover/submit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('Employment.HandoverSubmit', 'detail'),
+    scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
+    fields: fixed(['exitRequestId', 'requestId', 'outcome', 'revision'], 'DEC-683 首次发起交接固定回执'),
+    write: write('body', 'exitHandover.submit', none('固定回执，before 复核离职单与员工写范围'), {
+      commandOnly: true,
+      preconditions: ['lockEmploymentBusiness', 'assertRevision', 'requireHandoverSubmit'],
+    }),
+    ...byId,
+  }),
   // F-305 / DEC-674：同单重新提交，入口与命令内复核对象 / 独立按钮 / 原离职单及员工范围。
   'POST /exit-handover-requests/:id/resubmit': object({
     object: EMPLOYMENT,

@@ -1741,6 +1741,27 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/exits/:id/handover/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.HandoverSubmit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
   "POST /api/tenant/employment/exits/:id/restore": {
     "all": {
       "code": "NOT_FOUND",

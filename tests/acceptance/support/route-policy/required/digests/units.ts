@@ -256,6 +256,10 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/exit-gate.ts': {
     requireExitPermission: 'd3c36096e66e',
   },
+  'apps/api/src/modules/employment/exit-handover-launch.ts': {
+    handoverSubmitGuard: 'c53d85268c29',
+    requireHandoverSubmit: '17fd9a6a521c',
+  },
   'apps/api/src/modules/employment/exit-handover-resubmit.ts': {
     handoverResubmitGuard: 'f773c56bf49d',
     requireHandoverResubmit: '43a07b7ef5ce',
@@ -268,6 +272,7 @@ export const DIGESTS: Digests = {
     'route:GET /exits/:id/handover': '97f05b204c39',
     'route:POST /exit-handover-items': 'a6dc7f6af758',
     'route:POST /exit-handover-requests/:id/resubmit': '892cb3bd934b',
+    'route:POST /exits/:id/handover/submit': '95e47055721f',
     'route:PUT /exit-handover-items/:id': '207ece2e458f',
     'route:PUT /exit-handover-requests/:id/items/:itemId': 'd772a466a7aa',
   },
@@ -1516,6 +1521,7 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/employment/exit-handover.ts': {
     HANDOVER_RESUBMIT_BUTTON: '3704cff4549f',
+    HANDOVER_SUBMIT_BUTTON: '5b492e4acdd7',
   },
   'packages/domain/src/evaluation/catalog.ts': {
     EVALUATION_OBJECTS: '457be8d0f949',
@@ -1789,6 +1795,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': '7a8b25e5e52e',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': '589484677a4f',
   'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission': 'cdfa06966e5b',
+  'apps/api/src/modules/employment/exit-handover-launch.ts#handoverSubmitGuard': 'a5ad63cce398',
+  'apps/api/src/modules/employment/exit-handover-launch.ts#requireHandoverSubmit': '0e0d8679b396',
   'apps/api/src/modules/employment/exit-handover-resubmit.ts#handoverResubmitGuard': 'f4ab0bc1697d',
   'apps/api/src/modules/employment/exit-handover-resubmit.ts#requireHandoverResubmit': 'd0300ff2bc4f',
   'apps/api/src/modules/employment/exit-handover-routes.ts#registerExitHandoverRoutes': 'e25383b018a5',
@@ -1799,6 +1807,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:POST /exit-handover-items': '841423377692',
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:POST /exit-handover-requests/:id/resubmit':
     '4dfbd3c305d0',
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:POST /exits/:id/handover/submit': '114ed19b0cb1',
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:PUT /exit-handover-items/:id': '4137d84f8448',
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:PUT /exit-handover-requests/:id/items/:itemId':
     'e6b97d5ea60d',
@@ -2713,6 +2722,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON': 'e3b0c44298fc',
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS': 'df0c34def8ab',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>analysis': 'aa3bf6d1c73d',
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>career': 'f61a329bd6fd',

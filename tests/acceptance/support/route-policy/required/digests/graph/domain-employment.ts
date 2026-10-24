@@ -45,6 +45,19 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO': ['#HANDOVER_NODE_KEYS'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_TODO_TYPE_CODES': ['#HANDOVER_TODO_TYPES'],
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_TRIGGER_DEFAULT': [
+    '#HANDOVER_VERIFIED_INITIATOR',
+    '#HANDOVER_VERIFIED_METHOD',
+  ],
+  'packages/domain/src/employment/exit-handover.ts#checkHandoverTrigger': [
+    '#HANDOVER_METHODS',
+    '#HANDOVER_VERIFIED_INITIATOR',
+    '#UNVERIFIED_INITIATORS',
+    '#hasExactKeys',
+    '#isDays',
+    '#isRecord',
+  ],
+  'packages/domain/src/employment/exit-handover.ts#isDays': ['#HANDOVER_REMIND_DAYS_MAX'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': [
     '#closed',
     '#compareApplications',

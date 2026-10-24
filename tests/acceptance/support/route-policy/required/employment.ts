@@ -39,6 +39,7 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
 const BL = `${SRC}/employment/blacklist-routes.ts`;
 const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const HANDOVER_SERVICE = `${SRC}/employment/exit-handover.ts`;
+const HANDOVER_LAUNCH = 'apps/api/src/modules/employment/exit-handover-launch.ts';
 const HANDOVER_RESUBMIT = `${SRC}/employment/exit-handover-resubmit.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
@@ -2976,6 +2977,51 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DEC-632）-----------------------------------------
+  'POST /api/tenant/employment/exits/:id/handover/submit': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'POST',
+          '/exits/:id/handover/submit',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.HandoverSubmit@detail`,
+      [],
+      [
+        at(HANDOVER, 'POST', '/exits/:id/handover/submit', 'requireHandoverSubmit(tx, ctx, id)'),
+        fn(
+          HANDOVER_LAUNCH,
+          'handoverSubmitGuard',
+          'requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id)',
+        ),
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'HANDOVER_SUBMIT_BUTTON.code'),
+        {
+          role: 'const',
+          unit: 'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON',
+          anchor: "code: 'Employment.HandoverSubmit'",
+        },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverSubmit',
+      [],
+      [
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '原离职业务写范围与当前员工范围；范围外与不存在同一个 404',
+    ),
+  ],
   'POST /api/tenant/employment/exit-handover-requests/:id/resubmit': [
     ob(
       `obj:${RECORD}:update`,

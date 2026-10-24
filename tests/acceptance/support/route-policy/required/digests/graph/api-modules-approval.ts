@@ -193,6 +193,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#closeTask',
     'apps/api/src/modules/approval/store.ts#loadTasks',
+    'apps/api/src/modules/employment/exit-handover-launch.ts#automaticHandover',
   ],
   'apps/api/src/modules/approval/actions.ts#assertAddSignType': [
     'apps/api/src/modules/approval/context.ts#approvalError',

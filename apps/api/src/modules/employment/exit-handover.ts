@@ -21,7 +21,6 @@ import {
   HANDOVER_NOT_LAUNCHED_HINTS,
   HANDOVER_NODE_OF_TODO,
   HANDOVER_TRIGGER_DEFAULT,
-  handoverLaunchDecision,
   EXIT_HANDOVER_TRIGGER_KEY,
   tenantLocalDate,
   type HandoverDisplayStatus,
@@ -88,12 +87,12 @@ export async function auditHandover(
   });
 }
 
-async function readTrigger(tx: Tx, tenantId: string): Promise<HandoverTriggerSetting> {
+export async function readTrigger(tx: Tx, tenantId: string): Promise<HandoverTriggerSetting> {
   const checked = checkHandoverTrigger((await readEffectiveSetting(tx, tenantId, EXIT_HANDOVER_TRIGGER_KEY)).value);
   return checked.ok ? checked.value : HANDOVER_TRIGGER_DEFAULT;
 }
 
-async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise<string | null> {
+export async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise<string | null> {
   const [row] = rowsOf<{ lastWorkDate: string | null }>(
     await tx.execute(sql`SELECT last_work_date::text AS "lastWorkDate" FROM employment_payload_versions
       WHERE tenant_id = ${tenantId} AND business_id = ${exitId}::uuid ORDER BY version_no DESC LIMIT 1`),
@@ -125,24 +124,31 @@ export async function launchExitHandover(
   event: ExitConfirmedEvent,
 ): Promise<LaunchResult> {
   if (event.kind !== 'leave' || event.mode !== 'application') return { outcome: 'skipped', reason: 'NOT_APPLICABLE' };
+  const { automaticHandover } = await import('./exit-handover-launch.js');
+  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed');
+}
+
+/** F-250：各入口共用创建与审批执行；调用方持员工锁并判定触发资格。 */
+export async function createExitHandover(
+  tx: Tx,
+  ctx: EmploymentContext,
+  event: ExitConfirmedEvent,
+  actorUserId: string | null = null,
+): Promise<LaunchResult> {
+  const auditContext = { ...ctx, actorUserId };
   const live = await liveHandoverOfExit(tx, ctx.tenantId, event.businessId);
   if (live) return { outcome: 'exists', requestId: live.id };
-  const decision = handoverLaunchDecision(await readTrigger(tx, ctx.tenantId), {
-    lastWorkDate: await lastWorkDateOf(tx, ctx.tenantId, event.businessId),
-    approvedOn: tenantLocalDate(ctx.now, ctx.timezone),
-  });
-  if (decision !== 'launch') return { outcome: 'skipped', reason: decision.toUpperCase() };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
-  if (!initiatorUserId) return recordNotLaunched(tx, ctx, event, null, 'NO_INITIATOR_ACCOUNT');
+  if (!initiatorUserId) return recordNotLaunched(tx, auditContext, event, null, 'NO_INITIATOR_ACCOUNT');
   try {
     // 保存点：业务拒绝（没有可用流程、首节点无审批人……）整体回退，只留痕，不拖垮离职审批
-    return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId));
+    return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId, actorUserId));
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
     const recoverable = handoverNotLaunchedReason(error);
-    if (recoverable) return recordNotLaunched(tx, ctx, event, initiatorUserId, recoverable);
+    if (recoverable) return recordNotLaunched(tx, auditContext, event, initiatorUserId, recoverable);
     const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
-    await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
+    await auditHandover(tx, auditContext, 'launch_failed', 'exit-request', event.businessId, null, { reason });
     return { outcome: 'failed', reason };
   }
 }
@@ -190,6 +196,7 @@ async function createAndStart(
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
   initiatorUserId: string,
+  actorUserId: string | null,
 ): Promise<LaunchResult> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const current = await findCurrentRecord(tx, ctx.tenantId, event.employeeId, today);
@@ -208,12 +215,12 @@ async function createAndStart(
   });
   // 动态加载：审批引擎经 ADAPTERS 反向依赖本模块的适配器（同意向退休申请的做法）
   const { startOrResume } = await import('../approval/engine.js');
-  const instance = await startOrResume(tx, handoverLaunchContext(ctx, initiatorUserId), {
+  const instance = await startOrResume(tx, handoverLaunchContext(ctx, initiatorUserId, actorUserId), {
     businessType: 'exit_handover',
     businessId: id,
   });
   await linkHandoverInstance(tx, ctx.tenantId, id, instance.id);
-  await auditHandover(tx, ctx, 'launch', REQUEST_TYPE, id, null, {
+  await auditHandover(tx, { ...ctx, actorUserId }, 'launch', REQUEST_TYPE, id, null, {
     exitRequestId: event.businessId,
     employeeId: event.employeeId,
     initiatorUserId,
