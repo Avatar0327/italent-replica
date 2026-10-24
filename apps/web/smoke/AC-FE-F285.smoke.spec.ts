@@ -591,3 +591,59 @@ test('AC-FE-F285-19 打开员工详情停止后台定位，迟到结果不干扰
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
 });
+
+for (const action of ['视图', '筛选', '翻页', '后退前进'] as const) {
+  test(`AC-FE-F285-20 ${action}取消定位任务，迟到响应和历史导航不恢复扫描`, async ({ page }) => {
+    const { created, submitted } = await application(page);
+    const reads: number[] = [];
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/employment/interns?*', async (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      if (query.get('view') !== 'converting') return route.fallback();
+      const current = Number(query.get('page'));
+      reads.push(current);
+      const preceding = Array.from({ length: 30 }, (_, index) => ({
+        ...rows.converting,
+        effectiveDate: '2026-10-01',
+        id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        employeeId: `30000000-0000-4000-9000-${String(index + 1).padStart(12, '0')}`,
+      }));
+      if (current === 2) await pending;
+      await route.fulfill({
+        json: { items: current === 1 ? preceding : [rows.converting], page: current, pageSize: 30 },
+      });
+    });
+    await dialog(page).getByRole('radio', { name: '否', exact: true }).check();
+    await submit(page).click();
+    await expect.poll(() => reads.includes(2)).toBe(true);
+    if (action === '视图') await page.getByRole('button', { name: '实习中', exact: true }).click();
+    if (action === '筛选') {
+      await page.getByRole('textbox', { name: '姓名 / 工号', exact: true }).fill('合成筛选');
+      await page.getByRole('button', { name: /查\s*询/ }).click();
+    }
+    if (action === '翻页') await page.getByRole('button', { name: '下一页', exact: true }).click();
+    if (action === '后退前进') await page.goBack();
+    await expect(page.getByText(/申请已提交，/)).toHaveCount(0);
+    release();
+    if (action === '后退前进') {
+      await expect(page.getByRole('button', { name: '实习中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      const beforeForward = reads.length;
+      await page.goForward();
+      await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      // 等正常列表读取及迟到响应落定，防止“尚未翻页”造成阴性断言假绿。
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByText('第 1 页', { exact: true })).toBeVisible();
+      expect(reads.slice(beforeForward)).toEqual([1]);
+    }
+    await expect(page.getByText(action === '翻页' ? '第 2 页' : '第 1 页', { exact: true })).toBeVisible();
+    await expect(page.getByText(/申请已提交，/)).toHaveCount(0);
+    expect(created).toHaveLength(1);
+    expect(submitted).toHaveLength(1);
+  });
+}
