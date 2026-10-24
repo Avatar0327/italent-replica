@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, type RetirementBillView, type RetirementPersonView } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator } from './context.js';
+import { exitListOrder } from './exit-list-order.js';
 import {
   exitCandidates,
   EXIT_RESPONSE_DEPENDENCIES,
@@ -135,7 +136,7 @@ export async function listRetirementBills(
   scope: EmploymentScope | undefined,
 ) {
   const rule = BILL_SORT[input.view];
-  const order = rule.anyOf.some(input.show.employment) ? rule.order : sql`b.id`;
+  const order = rule.anyOf.some(input.show.employment) ? rule.order : exitListOrder('businessId').order;
   const { rows, total } = await pageOfCandidates<RetirementRow>(
     tx,
     exitCandidates(tenantId, scope, [billPredicate(input.view, input.at)], order, RETIREMENT_SOURCE),
@@ -258,7 +259,9 @@ export async function listRetirementPersons(
   scope: EmploymentScope | undefined,
 ) {
   // 看不到 P 的人不能借排序反推 P：改用员工 ID 稳定排序（同离职视图的排序回退）
-  const order = input.show.employee('expectedRetirementDate') ? sql`pv.expected_retirement_date, e.id` : sql`e.id`;
+  const order = input.show.employee('expectedRetirementDate')
+    ? exitListOrder('retirementPersons').order
+    : exitListOrder('employeeId').order;
   const { rows, total } = await pageOfCandidates<Record<string, unknown>>(
     tx,
     personCandidates(tenantId, scope, input, order),
