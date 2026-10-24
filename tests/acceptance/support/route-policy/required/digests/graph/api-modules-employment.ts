@@ -5401,6 +5401,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_RULE_PURPOSES',
   ],
   'apps/api/src/modules/employment/retirement-rules.ts#replaceConditions': [
+    'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms',
     '#arrayOf',
     'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_CONDITION_FIELDS',
   ],

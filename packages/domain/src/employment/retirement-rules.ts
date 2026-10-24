@@ -105,7 +105,7 @@ export interface RetirementPerson {
 
 function satisfies(condition: RetirementCondition, person: RetirementPerson): boolean {
   const value = person[condition.fieldCode];
-  return value != null && condition.values.includes(value);
+  return typeof value === 'string' && condition.values.includes(value);
 }
 
 function inScope(rule: RetirementRule, person: RetirementPerson): boolean {
