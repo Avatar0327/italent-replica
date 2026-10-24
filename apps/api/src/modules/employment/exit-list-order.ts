@@ -4,6 +4,10 @@ type OrderKey = readonly [column: string, direction: 'ASC' | 'DESC'];
 
 /** F-224：列表实际次序键的唯一声明；不接受调用方提供的 SQL 或请求参数。 */
 export const EXIT_LIST_ORDER_KEYS = {
+  inFlightApplications: [
+    ['planned', 'ASC'],
+    ['b.id', 'ASC'],
+  ],
   in_progress: [
     ['p.last_work_date', 'ASC'],
     ['b.id', 'ASC'],
