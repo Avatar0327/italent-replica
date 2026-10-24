@@ -10,6 +10,7 @@ import {
 import { EXIT_LIST_ORDER_KEYS, exitListOrder } from '../../apps/api/src/modules/employment/exit-list-order.js';
 import { listHandoverItems } from '../../apps/api/src/modules/employment/exit-handover-items.js';
 import { probeDownstream } from '../../apps/api/src/modules/employment/exit-downstream.js';
+import { inFlightApplications } from '../../apps/api/src/modules/employment/exit-gate.js';
 import { listRetirementBills, listRetirementPersons } from '../../apps/api/src/modules/employment/retirement-views.js';
 
 type Key = readonly [column: string, direction: 'ASC' | 'DESC'];
@@ -133,6 +134,10 @@ describe('AC-DM-F224 排序守卫覆盖实际执行的次序键', () => {
 });
 
 const OTHER_EXPECTED = {
+  inFlightApplications: [
+    ['planned', 'ASC'],
+    ['b.id', 'ASC'],
+  ],
   businessId: [['b.id', 'ASC']],
   retirementPersons: [
     ['pv.expected_retirement_date', 'ASC'],
@@ -169,6 +174,30 @@ function lastOrder(statement: string): Key[] {
 }
 
 describe('AC-DM-F224 同类列表使用单一入口，原次序逐键不变', () => {
+  it('AC-DM-F224 离职预览在途申请的实际入口、受控描述与逐键基准一致', async () => {
+    const statements = await capture((tx) =>
+      inFlightApplications(
+        tx,
+        {
+          tenantId: '合成租户',
+          userId: '合成用户',
+          timezone: 'Asia/Shanghai',
+          now: new Date('2026-10-01T00:00:00Z'),
+          commandId: '合成命令',
+          expectedRevision: 1,
+        },
+        '合成员工',
+        ['transfer'],
+        ['approving', 'approved'],
+      ),
+    );
+    expect(statements).toHaveLength(1);
+    const actual = lastOrder(statements[0]!);
+    expect(actual, '预览清单必须保留计划日升序、业务 ID 升序').toEqual(OTHER_EXPECTED.inFlightApplications);
+    expect(EXIT_LIST_ORDER_KEYS, '预览实际次序键必须纳入统一受控描述').toHaveProperty('inFlightApplications', actual);
+    expect(statements[0]).toMatch(/LIMIT 1001\s*$/);
+  });
+
   it('AC-DM-F224 全部受控描述及生成结果精确匹配原排序（不漏登记末位键）', () => {
     expect(EXIT_LIST_ORDER_KEYS).toEqual({ ...EXPECTED, ...OTHER_EXPECTED });
     for (const name of Object.keys(EXIT_LIST_ORDER_KEYS) as (keyof typeof EXIT_LIST_ORDER_KEYS)[]) {
