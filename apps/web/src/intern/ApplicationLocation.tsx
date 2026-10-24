@@ -41,7 +41,7 @@ export function ApplicationLocation({
       }
     };
     void read();
-    // 切换视图、筛选或手动翻页后取消定位；迟到的读取不得覆盖用户的新选择。
+    // 切换视图、筛选、手动翻页或打开详情后取消定位；迟到的读取不得覆盖用户的新选择。
     return () => controller.abort();
   }, [api, destination, request, onLocated]);
   const messages = { more: m.locateMore, failed: m.locateFailed, missing: m.locateMissing };

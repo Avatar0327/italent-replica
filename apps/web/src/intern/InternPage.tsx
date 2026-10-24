@@ -90,6 +90,10 @@ function useInternList() {
     changePage(1);
     setFilters(next);
   };
+  const open = (row: Row) => {
+    locate(undefined);
+    select({ view, row });
+  };
   return {
     view,
     page,
@@ -97,7 +101,8 @@ function useInternList() {
     applyFilters,
     location,
     selected,
-    select,
+    close: () => select(undefined),
+    open,
     allowed,
     result,
     items,
@@ -115,7 +120,8 @@ function InternList() {
     applyFilters,
     location,
     selected,
-    select,
+    close,
+    open,
     allowed,
     result,
     items,
@@ -146,7 +152,7 @@ function InternList() {
             rows={items}
             loading={result.loading}
             noScope={result.data?.hasDataPermission === false}
-            onOpen={(row) => select({ view, row })}
+            onOpen={open}
           />
         )}
         <div className="intern-pagination">
@@ -164,7 +170,7 @@ function InternList() {
           key={`${selected.view}/${selected.row.id}`}
           view={selected.view}
           row={selected.row}
-          onClose={() => select(undefined)}
+          onClose={close}
           refresh={refresh}
         />
       )}
