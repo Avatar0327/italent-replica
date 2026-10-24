@@ -47,12 +47,9 @@ function interrupt(x: HandoverWorld, key: string, firstExitId: string, stage: St
     }
     const value = await transact(...args);
     const body = (value as { body?: { batchCommandId?: string; exitRequestId?: string; items?: unknown[] } })?.body;
-    const target =
-      stage === 'manifest' || stage === 'aggregate-read'
-        ? body?.batchCommandId === key
-        : stage === 'child'
-          ? body?.exitRequestId === firstExitId
-          : Array.isArray(body?.items);
+    let target = Array.isArray(body?.items);
+    if (stage === 'manifest' || stage === 'aggregate-read') target = body?.batchCommandId === key;
+    else if (stage === 'child') target = body?.exitRequestId === firstExitId;
     if (!committed && target) {
       committed = true;
       nextReadFails = true;
@@ -110,7 +107,13 @@ describe('AC-DM-09 / F-317 P2-1 原始批次键的统一故障出口（PG / PGli
         reason: 'RESULT_UNKNOWN',
         commandId: init.idempotencyKey,
       });
-      const counts = stage === 'manifest' || stage === 'aggregate-read' ? [0, 0] : stage === 'child' ? [1, 0] : [1, 1];
+      const counts = {
+        manifest: [0, 0],
+        child: [1, 0],
+        aggregate: [1, 1],
+        'aggregate-read': [0, 0],
+        'visibility-read': [1, 1],
+      }[stage];
       for (const [index, exit] of exits.entries()) {
         expect(await x.requestRows(exit.id)).toHaveLength(counts[index]!);
       }
