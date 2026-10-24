@@ -74,6 +74,7 @@ export const m = {
   invalidMonths: '试用期(月)必须为1～6的整数',
   invalidEnd: '预计试用结束日期不得早于实习转正日期',
   draftCreated: '申请已保存，继续提交同一申请；已保存的字段只读。',
+  latestValues: '服务端最新值',
   rereadFailed: '重读失败，请重试读取后再提交。',
   success: {
     regularize: '实习转正成功',

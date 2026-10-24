@@ -15,7 +15,7 @@ import { m } from './messages.js';
 export const object = 'TenantBase.EmploymentRecord';
 export const personObject = 'TenantBase.Employee';
 export const apiRoot = '/api/tenant/employment';
-/** 恢复槽集合（slot.ts）：三个入口都按员工 id 落在这里，申请单的提交 / 撤回 / 撤销按申请 id 落在 businesses。 */
+/** 恢复槽集合（slot.ts）：同一员工的直接操作及申请提交 / 撤回 / 撤销共用员工 id，防止换入口绕开未知锁。 */
 export const interns = `${apiRoot}/interns`;
 export const businesses = `${apiRoot}/businesses`;
 export const pageSize = 30;

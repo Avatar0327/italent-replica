@@ -34,6 +34,7 @@ import {
   object,
   openingValues,
   probationChanges,
+  probationFields,
   regularizeFieldErrors,
   regularizeBody,
   validateRegularize,
@@ -94,7 +95,8 @@ function useRegularizeRead(employeeId: string, draft: ApplicationDraft | undefin
       id: employeeId,
       revision: Number(latest.revision),
       values: {
-        // 当前详情不返回试用期控制项，不能把本地输入冒充最新值（#486 待决定）。
+        // F-306：与 revision 同一快照的本单值；不借用原输入，不推算未保存的结束日。
+        ...projectFields(latest, probationFields),
         ...projectFields(
           latest.fields as Values | undefined,
           formFields.filter((field) => !controlFields.includes(field) && field !== 'effectiveDate'),
@@ -106,13 +108,16 @@ function useRegularizeRead(employeeId: string, draft: ApplicationDraft | undefin
 }
 
 function useRejectedRead(read: () => Promise<Latest>, refresh: FormProps['refresh']) {
+  const [latest, setLatest] = useState<Latest>();
   const [readError, setReadError] = useState(false);
   const [reading, setReading] = useState(false);
   const reread = async () => {
+    setLatest(undefined);
     setReading(true);
     try {
-      await read();
+      const latest = await read();
       await refresh();
+      setLatest(latest);
       setReadError(false);
     } catch {
       setReadError(true);
@@ -120,7 +125,7 @@ function useRejectedRead(read: () => Promise<Latest>, refresh: FormProps['refres
       setReading(false);
     }
   };
-  return { readError, reading, reread };
+  return { latest, readError, reading, reread };
 }
 
 function useRegularize({ row, application, onDone, refresh, opening, read }: EditorProps) {
@@ -132,7 +137,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
   const permission = permissions.snapshot.objects[object];
   const editable = editableFields(formFields, permission);
   const [form] = Form.useForm();
-  const [baseline] = useState(() => draft?.values ?? opening.values);
+  const baseline = draft?.values ?? opening.values;
   const readCurrent = useRegularizeRead(employeeId, draft, read);
   const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: readCurrent };
   const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', () =>
@@ -140,7 +145,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
   );
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
-  const { readError, reading, reread } = useRejectedRead(readCurrent, refresh);
+  const { latest, readError, reading, reread } = useRejectedRead(readCurrent, refresh);
   const locked =
     cmd.disabled ||
     reading ||
@@ -148,20 +153,18 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
     !permission?.dataOperations.create ||
     !permissions.can('Employment.Create') ||
     (application && (!permission?.dataOperations.update || !permissions.can('Employment.Submit')));
+  const body = application ? applicationBody : regularizeBody;
   const submit = async () => {
     if (locked) return;
     setError(undefined);
     try {
-      const values = draft?.values ?? projectFields(await form.validateFields(), editable);
+      const values = projectFields(draft ? form.getFieldsValue(true) : await form.validateFields(), editable);
       if (!draft) validateRegularize(values, editable);
       let created: { id: string; revision: number; values: Values } | undefined;
-      const done = await cmd.submit(draft ? {} : values, draft ? [] : editable, {
-        path: draft
-          ? `${slotKey(businesses, draft.id)}/submit`
-          : application
-            ? `${employeePath(employeeId)}/businesses`
-            : `${slotKey(interns, employeeId)}/regularize`,
-        body: draft ? () => ({}) : application ? applicationBody : regularizeBody,
+      // 第二步只发空请求体，但仍将只读字段交内核比较 / 回填，供冲突恢复核对本单最新值。
+      const done = await cmd.submit(values, editable, {
+        path: regularizePath(employeeId, application, draft),
+        body: draft ? () => ({}) : body,
         accept: (raw, sent) => {
           const receipt = acceptBusiness(raw, { employeeId, kind, sent, id: draft?.id });
           if (application && receipt.mode !== 'application') throw new Error(m.invalidReceipt);
@@ -195,13 +198,13 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
       void submit();
     }
   });
-  return { form, baseline, permission, editable, cmd, error, locked, submit, draft, readError, reread };
+  return { form, baseline, permission, editable, cmd, error, locked, submit, draft, latest, readError, reread };
 }
 
 function RegularizeEditor(props: EditorProps) {
   const { row, onClose } = props;
   const state = useRegularize(props);
-  const { form, baseline, permission, editable, cmd, error, locked, submit, draft, readError, reread } = state;
+  const { form, baseline, permission, editable, cmd, error, locked, submit, draft, latest, readError, reread } = state;
   const probation = Form.useWatch('probation', form) === true;
   const footer = (
     <Space>
@@ -231,6 +234,9 @@ function RegularizeEditor(props: EditorProps) {
       <CommandStatus submission={cmd.form} labels={m.labels} />
       {draft && <Alert type="info" message={m.draftCreated} />}
       {readError && <ReadFailure reread={reread} />}
+      {props.application && cmd.form.status === 'rejected' && latest && (
+        <LatestReadback latest={latest} draft={!!draft} />
+      )}
       {!!error && !cmd.form.state?.error && <Alert type="error" showIcon message={rejectionMessage(error)} />}
       <EmployeeSection row={row} />
       <FormLock locked={locked || !!draft}>
@@ -271,6 +277,36 @@ function RegularizeEditor(props: EditorProps) {
         </Form>
       </FormLock>
     </Modal>
+  );
+}
+
+function regularizePath(employeeId: string, application?: boolean, draft?: ApplicationDraft) {
+  if (draft) return `${slotKey(businesses, draft.id)}/submit`;
+  if (application) return `${employeePath(employeeId)}/businesses`;
+  return `${slotKey(interns, employeeId)}/regularize`;
+}
+
+/** 明确拒绝不改原输入；单独展示重读结果。创建前没有本单试用期，不能把默认值称为服务端值。 */
+function LatestReadback({ latest, draft }: { latest: Latest; draft: boolean }) {
+  const fields = draft
+    ? formFields
+    : formFields.filter((key) => !controlFields.includes(key) && key !== 'effectiveDate');
+  const display = (key: string) => {
+    const value = latest.values[key];
+    if (value === undefined || value === null) return m.missing;
+    if (typeof value === 'boolean') return value ? m.yes : m.no;
+    if (refPaths[key]) return <NameOf path={refPaths[key]!} id={String(value)} />;
+    return String(value);
+  };
+  return (
+    <section aria-label={m.latestValues}>
+      <Descriptions
+        title={m.latestValues}
+        size="small"
+        column={2}
+        items={fields.map((key) => ({ key, label: m.labels[key], children: display(key) }))}
+      />
+    </section>
   );
 }
 

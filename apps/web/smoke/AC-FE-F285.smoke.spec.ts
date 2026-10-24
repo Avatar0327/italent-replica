@@ -391,3 +391,37 @@ test('AC-FE-F285-13 两步提交冲突恢复核对最新试用期，未保存结
   expect(submitted.map((item) => item.revision)).toEqual(['1', '3']);
   expect(submitted.every((item) => Object.keys(item.body).length === 0)).toBe(true);
 });
+
+for (const mode of ['none', 'trimmed'] as const) {
+  test(`AC-FE-F285-14-${mode} 冲突回读为空或裁剪时，不复活原试用期输入`, async ({ page }) => {
+    const { receipt } = await application(page);
+    await page.route(`**/employment/businesses/${applicationId}`, (route) => {
+      const latest: Record<string, unknown> = {
+        ...receipt('draft', 3),
+        probation: false,
+        probationMonths: null,
+        probationEndDate: null,
+      };
+      if (mode === 'trimmed') {
+        for (const key of ['probation', 'probationMonths', 'probationEndDate']) delete latest[key];
+      }
+      return route.fulfill({ json: latest });
+    });
+    await page.route(`**/employment/businesses/${applicationId}/submit`, (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '草稿版本冲突' } } }),
+    );
+    await month(page);
+    await submit(page).click();
+    await expect(dialog(page).getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+    await expect(dialog(page).getByRole('radio', { name: '是', exact: true })).not.toBeChecked();
+    if (mode === 'none') await expect(dialog(page).getByRole('radio', { name: '否', exact: true })).toBeChecked();
+    else await expect(dialog(page).getByRole('radio', { name: '否', exact: true })).not.toBeChecked();
+    await expect(field(page, '试用期(月)')).toHaveCount(0);
+    await dialog(page)
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
+    await expect(dialog(page).getByRole('radio', { name: '是', exact: true })).not.toBeChecked();
+    await expect(submit(page)).toBeDisabled();
+  });
+}
