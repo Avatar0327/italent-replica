@@ -34,11 +34,21 @@ async function application(page: Page) {
   const fixture = await setup(page);
   const created: ReturnType<typeof posted>[] = [];
   const submitted: ReturnType<typeof posted>[] = [];
-  const state = { submitted: false, revision: 1 };
+  const state = { submitted: false, revision: 1, values: {} as Record<string, unknown> };
   const receipt = (status: string, revision: number) =>
-    business('intern_regularization', { id: applicationId, status, revision, mode: 'application' });
+    business('intern_regularization', {
+      id: applicationId,
+      status,
+      revision,
+      mode: 'application',
+      probation: false,
+      probationMonths: null,
+      probationEndDate: null,
+      ...state.values,
+    });
   await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
     created.push(posted(route.request()));
+    state.values = created.at(-1)!.body;
     fixture.server.employeeRevision = employeeRevision + 1;
     return route.fulfill({ status: 201, json: receipt('draft', 1) });
   });
@@ -331,4 +341,53 @@ test('AC-FE-F285-11 提交审批409重读同一草稿，核对后按草稿新rev
   await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(submitted.map((item) => item.revision)).toEqual(['1', '3']);
   expect(created).toHaveLength(1);
+});
+
+for (const status of [403, 409, 422]) {
+  test(`AC-FE-F285-12-${status} 明确拒绝保留原输入，并显示本单真实试用期回读`, async ({ page }) => {
+    const { state, receipt, created } = await application(page);
+    await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+      // F-306：本单最新版本，不能用原输入或员工当前试用期冒充。
+      state.values = { ...state.values, probationMonths: 2, probationEndDate: '2026-12-20' };
+      return route.fulfill(rejection(status, 'BUSINESS_REJECTED', '服务端明确拒绝本次提交'));
+    });
+    await month(page);
+    await date(page, '预计试用结束日期', '2026-11-20');
+    await submit(page).click();
+    await expect(dialog(page).getByText('服务端明确拒绝本次提交').first()).toBeVisible();
+    await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('2026-11-20');
+    const latest = dialog(page).getByRole('region', { name: '服务端最新值' });
+    await expect(latest.getByText('2026-12-20', { exact: true })).toBeVisible();
+    await expect(latest.getByText('2', { exact: true })).toBeVisible();
+    expect(receipt('draft', 1).probation).toBe(true);
+    expect(created).toHaveLength(1);
+    await expect(submit(page)).toBeEnabled();
+  });
+}
+
+test('AC-FE-F285-13 两步提交冲突恢复核对最新试用期，未保存结束日不推算', async ({ page }) => {
+  const { state, submitted, receipt } = await application(page);
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    submitted.push(posted(route.request()));
+    state.revision = 3;
+    state.values = { ...state.values, probationMonths: 2, probationEndDate: null };
+    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '草稿版本冲突' } } });
+  });
+  await month(page);
+  await submit(page).click();
+  await expect(dialog(page).getByRole('button', { name: '已核对差异，继续编辑' })).toBeVisible();
+  await expect(dialog(page).getByRole('row').filter({ hasText: '试用期(月)' })).toBeVisible();
+  await expect(field(page, '试用期(月)').getByText('2个月', { exact: true })).toBeVisible();
+  await expect(field(page, '预计试用结束日期').locator('input')).toHaveValue('');
+  await dialog(page).getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  await page.route(`**/employment/businesses/${applicationId}/submit`, (route) => {
+    submitted.push(posted(route.request()));
+    state.submitted = true;
+    state.revision = 4;
+    return route.fulfill({ json: receipt('in_review', 4) });
+  });
+  await submit(page).click();
+  await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(submitted.map((item) => item.revision)).toEqual(['1', '3']);
+  expect(submitted.every((item) => Object.keys(item.body).length === 0)).toBe(true);
 });
