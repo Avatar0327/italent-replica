@@ -54,9 +54,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-risk 真 PG 清除
         release,
         async (cleanup) => {
           cleanup.track(blocker);
-          a = cleanup.track(action(first!));
+          a = cleanup.track<unknown>(action(first!));
           expect(await settledOrBlocked(handle.db, a, 1)).toBe('blocked');
-          b = cleanup.track(action(second!));
+          b = cleanup.track<unknown>(action(second!));
           expect(await settledOrBlocked(handle.db, b, 2)).toBe('blocked');
         },
         [blocker],
