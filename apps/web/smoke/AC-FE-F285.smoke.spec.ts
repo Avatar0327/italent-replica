@@ -35,7 +35,7 @@ async function application(page: Page) {
   const created: ReturnType<typeof posted>[] = [];
   const submitted: ReturnType<typeof posted>[] = [];
   const state = { submitted: false, revision: 1, values: {} as Record<string, unknown> };
-  const receipt = (status: string, revision: number) =>
+  const receipt = (status: string, revision: number): Record<string, unknown> =>
     business('intern_regularization', {
       id: applicationId,
       status,
