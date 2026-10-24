@@ -1,11 +1,11 @@
 /** AC-TOOL-F303：✅ 开头也逐子项检查；用合成文档运行真实 CLI，验证阻塞与定位。 */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { decisionSettled, evidenceState } from '../../scripts/evidence-gate-lib.mjs';
+import { decisionSettled, evidenceState, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
 
 const TARGET = 'R9-T01';
 const OTHER_TARGET = 'R9-T02';
@@ -314,6 +314,52 @@ describe('AC-TOOL-F313 带前缀的取证状态', () => {
       `== ${OTHER_TARGET} ==`,
       '✅ 清单中没有挂在该任务上的未完成取证（新任务仍须先做开工前取证扫描）',
       '',
+    ]);
+  });
+});
+
+describe('AC-TOOL-F313 DEC-684⑦ 真实文档对账', () => {
+  const evidence = parseEvidence(readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8'));
+
+  it.each([
+    ['Q-M0-33', '✅', '可后补'],
+    ['Q-M0-84', '✅', '可后补'],
+    ['Q-M0-108', '🟡 部分', '可后补'],
+    ['Q-M0-109', '🟡 部分', '可后补'],
+  ])('AC-TOOL-F313：%s 区分已结案与未实测后补，均不再新增阻塞', (id, st, level) => {
+    const row = evidence.find((entry) => entry.id === id);
+    expect(row && { st: row.st, level: row.level, pendingItems: row.pendingItems }).toEqual({
+      st,
+      level,
+      pendingItems: [],
+    });
+  });
+
+  it('AC-TOOL-F313：仅解除四条对账记录，其他开工前阻塞集合保持不变', () => {
+    expect(evidence.filter((row) => row.st !== '✅' && row.level === '开工前').map((row) => row.id)).toEqual([
+      'Q-M0-31',
+      'Q-M0-105',
+      'Q-M0-107',
+      'Q-M0-112',
+      'Q-M0-114',
+      'Q-M0-115',
+      'Q-M0-117',
+      'Q-M0-118',
+      'Q-M0-120',
+      'Q-M0-121',
+      'Q-M0-122',
+      'Q-M0-123',
+      'Q-M0-134',
+      'Q-M0-145',
+      'Q-M0-148',
+      'Q-M0-162',
+      'Q-M0-165',
+      'Q-M0-166',
+      'Q-M0-172',
+      'Q-M0-173',
+      'Q-M0-174',
+      'Q-M0-175',
+      'Q-M0-176',
     ]);
   });
 });
