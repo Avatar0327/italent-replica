@@ -54,6 +54,7 @@ import type { TenantContext } from '../tenant-context.js';
 import { adminScope } from '../modules/approval/access.js';
 import { employmentCreator } from '../modules/employment/context.js';
 import { partTimeRecordCreator, partTimeRequestCreator } from '../modules/employment/part-time/creator-sql.js';
+import { INTENTION_AUDIT_TYPE, intentionCreator } from '../modules/employment/retirement-intention-store.js';
 import { employmentVisibilitySql } from '../modules/employment/visibility.js';
 import {
   getModuleViewableFields,
@@ -537,6 +538,8 @@ const RULES: readonly Rule[] = [
   transferLinkageRule(),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.record, partTimeRecordCreator),
   partTimeRule(PART_TIME_AUDIT_OBJECTS.request, partTimeRequestCreator),
+  // F-278 意向退休申请：写入时显式归属员工 + 申请时部门快照（部门不可改），与兼职申请同一入口，创建人 = 申请发起人
+  partTimeRule(INTENTION_AUDIT_TYPE, intentionCreator),
   {
     // R2 BE-15b1 试用期考核：写入时显式归属考核对象与其创建时的主职部门，按人员 / 部门维度判断（与考核列表同一口径，
     // 没有“使用用户”维度）；自评、评价、转正意见等字段按考核对象的字段权限裁剪
@@ -837,6 +840,7 @@ interface ConfigFields {
 const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_settings: { code: 'TenantBase.EmploymentSettings' },
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
+  employment_form: { code: 'TenantBase.EmploymentSettings' },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },

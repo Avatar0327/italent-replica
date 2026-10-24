@@ -4186,6 +4186,31 @@
         ]
       }
     },
+    "GET /api/tenant/employment/employment-forms": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ]
+      }
+    },
     "GET /api/tenant/employment/entry-email-rules": {
       "edge": {
         "anonymous": {
@@ -12066,7 +12091,6 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -17225,6 +17249,46 @@
         ]
       }
     },
+    "POST /api/tenant/employment/employment-forms": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:create"
+        ]
+      }
+    },
     "POST /api/tenant/employment/exit-handover-items": {
       "edge": {
         "anonymous": {
@@ -18536,7 +18600,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18582,7 +18645,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -25601,6 +25663,46 @@
         ],
         "scopePoint": [
           "employment point"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/employment-forms/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "object": [
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },
