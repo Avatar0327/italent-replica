@@ -2993,7 +2993,7 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     ob(
-      `btn:${RECORD}#Employment.HandoverSubmit@detail`,
+      `btn:${RECORD}#EmploymentRecrdDetailDimissionHandoverApproval@detail`,
       [],
       [
         at(HANDOVER, 'POST', '/exits/:id/handover/submit', 'requireHandoverSubmit(tx, ctx, id)'),
@@ -3006,7 +3006,7 @@ export const EMPLOYMENT: RequiredTable = {
         {
           role: 'const',
           unit: 'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON',
-          anchor: "code: 'Employment.HandoverSubmit'",
+          anchor: "code: 'EmploymentRecrdDetailDimissionHandoverApproval'",
         },
         WRITE_BUTTON,
       ],

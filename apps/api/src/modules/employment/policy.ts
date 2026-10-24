@@ -2349,7 +2349,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'POST /exits/:id/handover/submit': object({
     object: EMPLOYMENT,
     operation: 'update',
-    button: button('Employment.HandoverSubmit', 'detail'),
+    button: button('EmploymentRecrdDetailDimissionHandoverApproval', 'detail'),
     scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
     fields: fixed(['exitRequestId', 'requestId', 'outcome', 'revision'], 'DEC-683 首次发起交接固定回执'),
     write: write('body', 'exitHandover.submit', none('固定回执，before 复核离职单与员工写范围'), {

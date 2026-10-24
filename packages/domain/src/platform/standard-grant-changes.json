@@ -1,9 +1,9 @@
 {
-  "reason": "F-250 / DEC-683：新增 HR 首次发起交接详情按钮，与重新提交分开授权",
+  "reason": "F-250 / DEC-683、DEC-684：HR 首次发起交接详情按钮对齐原站编码，与重新提交分开授权",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.HandoverSubmit@detail"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail"
   ],
   "remove": []
 }

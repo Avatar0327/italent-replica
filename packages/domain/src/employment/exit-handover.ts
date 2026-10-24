@@ -144,10 +144,10 @@ export const HANDOVER_RESUBMIT_BUTTON = {
   level: 'detail',
   requires: 'update',
 } as const;
-/** DEC-683：HR 首次发起独立于重新提交；编码待 F-317 原站取证后对齐。 */
+/** DEC-684：详情按钮采用原站完整编码，不追加命名空间；独立于 F-305 重新提交。 */
 export const HANDOVER_SUBMIT_BUTTON = {
-  code: 'Employment.HandoverSubmit',
-  name: '发起交接',
+  code: 'EmploymentRecrdDetailDimissionHandoverApproval',
+  name: '发起离职交接',
   level: 'detail',
   requires: 'update',
 } as const;

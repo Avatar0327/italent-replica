@@ -6590,7 +6590,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_REMARK_MAX': ['ac399c5c8600', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_REMIND_DAYS_MAX': ['9697a644cf5d', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON': ['3704cff4549f', 'e3b0c44298fc'],
-  'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON': ['5b492e4acdd7', 'e3b0c44298fc'],
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON': ['73cdf26a2a98', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_TITLE_MAX': ['c7bfafb43b6a', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_TODO_TYPES': ['12ee709d15d4', 'e3b0c44298fc'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_TODO_TYPE_CODES': ['5367b8a2b9e3', '754489180dc5'],

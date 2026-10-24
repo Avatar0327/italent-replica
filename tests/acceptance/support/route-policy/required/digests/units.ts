@@ -1521,7 +1521,7 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/employment/exit-handover.ts': {
     HANDOVER_RESUBMIT_BUTTON: '3704cff4549f',
-    HANDOVER_SUBMIT_BUTTON: '5b492e4acdd7',
+    HANDOVER_SUBMIT_BUTTON: '73cdf26a2a98',
   },
   'packages/domain/src/evaluation/catalog.ts': {
     EVALUATION_OBJECTS: '457be8d0f949',

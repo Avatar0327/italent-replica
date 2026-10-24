@@ -1758,7 +1758,7 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "btn:TenantBase.EmploymentRecord#Employment.HandoverSubmit@detail",
+      "btn:TenantBase.EmploymentRecord#EmploymentRecrdDetailDimissionHandoverApproval@detail",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
