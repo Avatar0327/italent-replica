@@ -1,10 +1,12 @@
 /** F-317：列表首次发起交接；合成数据、普通角色、逐项事务与原批次恢复。 */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { sql } from '@italent/db';
 import { MODULE_OBJECTS, STANDARD_GRANT_CODES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as commandRunner from '../../apps/api/src/commands.js';
+import { AppError } from '../../apps/api/src/errors.js';
 import { handoverWorld, type HandoverWorld } from './AC-EXIT-handover-support.js';
 import { isButton, revocable } from './support/revocable-rights.js';
 
@@ -85,6 +87,32 @@ describe('AC-DM-09 / F-317 列表行与批量首次发起离职交接', () => {
     expect(audit).toHaveLength(2);
     expect(audit.every((item) => item.actor === x.session.user.id)).toBe(true);
     expect(audit.map((item) => item.id)).toContain(result.items[0]!.requestId);
+    const failures = await x.sqlRows<{ actor: string; outcome: string; code: string }>(sql`
+      SELECT actor_user_id AS actor, outcome, error_code AS code FROM audit_command_failures
+      WHERE tenant_id=${x.tenantId} AND path='/api/tenant/employment/exits/handover/batch-submit'`);
+    expect(failures).toEqual(
+      expect.arrayContaining([
+        { actor: x.session.user.id, outcome: 'business_failed', code: 'CONFLICT' },
+        { actor: x.session.user.id, outcome: 'business_failed', code: 'FORBIDDEN' },
+      ]),
+    );
+  });
+  it('未发起项给出真实原因，保留 HR 审计且不阻断下一项', async () => {
+    const x = await world('not-launched');
+    const a = await exit(x);
+    const b = await exit(x);
+    await x.unbindAccount((await x.business(a.id)).employeeId);
+    const init = batch([a, b]);
+    const result = await receipts(await x.session.request('POST', batchPath, init));
+    expect(result.items[0]).toMatchObject({
+      exitRequestId: a.id,
+      outcome: 'not_launched',
+      reason: 'NO_INITIATOR_ACCOUNT',
+    });
+    expect(result.items[1]?.outcome).toBe('launched');
+    expect(await receipts(await x.session.request('POST', batchPath, init))).toEqual(result);
+    const [row] = await x.requestRows(a.id);
+    expect(await x.auditActions(row!.id, 'exit_handover.not_launched')).toHaveLength(1);
   });
   it('列表行单人发起成功，同行重放幂等，撤销行按钮后首次与重放均拒绝', async () => {
     const x = await world('row');
@@ -143,18 +171,27 @@ describe('AC-DM-09 / F-317 列表行与批量首次发起离职交接', () => {
     const a = await exit(x);
     const b = await exit(x);
     const init = batch([a]);
-    const result = await receipts(await x.session.request('POST', batchPath, init));
-    // 模拟所有子项已提交、汇总命令尚未落库的恢复点；仅删测试租户自己的汇总台账。
-    await withTenant(x.db, x.tenantId, (tx) =>
-      tx.execute(sql`DELETE FROM command_ledger
-      WHERE tenant_id=${x.tenantId} AND command_id=${init.idempotencyKey}`),
-    );
+    // 在真实子事务完成后、汇总事务开始前注入中断；不删除或绕过不可变命令台账权限。
+    const original = commandRunner.runCommand;
+    const interrupted = vi.spyOn(commandRunner, 'runCommand').mockImplementation((db, ctx, cmd) => {
+      if (cmd.id === init.idempotencyKey) throw new AppError('SERVICE_UNAVAILABLE', '合成中断');
+      return original(db, ctx, cmd);
+    });
+    try {
+      expect((await x.session.request('POST', batchPath, init)).status).toBe(503);
+    } finally {
+      interrupted.mockRestore();
+    }
+    const [created] = await x.requestRows(a.id);
+    expect(created).toBeDefined();
     const changed = await x.session.request('POST', batchPath, {
       ...batch([b, a]),
       idempotencyKey: init.idempotencyKey,
     });
     expect(changed.status).toBe(409);
     expect(await x.requestRows(b.id)).toEqual([]);
+    const result = await receipts(await x.session.request('POST', batchPath, init));
+    expect(result.items[0]?.requestId).toBe(created!.id);
     expect(await receipts(await x.session.request('POST', batchPath, init))).toEqual(result);
     expect(await x.requestRows(a.id)).toHaveLength(1);
   });
