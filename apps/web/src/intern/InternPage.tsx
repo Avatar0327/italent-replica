@@ -1,6 +1,6 @@
 import { Button, Input, Space, Table } from 'antd';
 import { useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
@@ -8,6 +8,9 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
+import { CreateIntern } from './CreateIntern.js';
+import { canCreatePerson } from './create-model.js';
+import { c } from './create-messages.js';
 import { InternDetail } from './InternDetail.js';
 import { m } from './messages.js';
 import {
@@ -49,6 +52,10 @@ function useFilterPermission() {
 
 function InternList() {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const person = usePermissions(personObject);
+  const createAllowed = canCreatePerson(person.snapshot.objects[personObject]);
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
@@ -82,6 +89,7 @@ function InternList() {
             setPage(1);
           }}
           onRefresh={result.refresh}
+          onCreate={createAllowed ? () => setCreating(true) : undefined}
         />
         {result.error ? (
           <PageState kind="error" error={result.error} retry={result.refresh} />
@@ -104,6 +112,18 @@ function InternList() {
           </Button>
         </div>
       </section>
+      <CreateIntern
+        open={creating}
+        onClose={() => setCreating(false)}
+        onDone={(receipt) => {
+          setCreating(false);
+          if (receipt.view === 'pendingEntry') navigate('/entries');
+          else {
+            switchView('interning');
+            result.refresh();
+          }
+        }}
+      />
       {selected && (
         <InternDetail
           key={`${selected.view}/${selected.row.id}`}
@@ -121,15 +141,22 @@ function FilterBar({
   allowed,
   onApply,
   onRefresh,
+  onCreate,
 }: {
   allowed: (key: keyof Filters) => boolean;
   onApply(filters: Filters): void;
   onRefresh(): void;
+  onCreate?: () => void;
 }) {
   const [draft, setDraft] = useState<Filters>({});
   const apply = (next: Filters) => onApply(allowedFilters({ ...next, keyword: next.keyword?.trim() }, allowed));
   return (
     <Space className="intern-toolbar" wrap>
+      {onCreate && (
+        <Button type="primary" onClick={onCreate}>
+          {c.title}
+        </Button>
+      )}
       {allowed('keyword') && (
         <Input
           allowClear

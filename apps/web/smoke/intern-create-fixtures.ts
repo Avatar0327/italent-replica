@@ -122,8 +122,15 @@ export async function chooseCreate(page: Page, label: string, text: string) {
     .getByText(text, { exact: true })
     .click();
 }
+export const dateInput = (page: Page, label: string) =>
+  editor(page)
+    .locator('.ant-form-item')
+    .filter({
+      has: page.locator('.ant-form-item-label').getByText(label, { exact: true }),
+    })
+    .getByRole('textbox');
 export async function dateCreate(page: Page, label: string, value: string) {
-  const input = editor(page).getByLabel(label, { exact: true });
+  const input = dateInput(page, label);
   await input.fill(value);
   await input.press('Enter');
   await editor(page).locator('.ant-modal-title').click();

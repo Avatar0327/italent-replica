@@ -13,6 +13,7 @@ import {
   sent,
   setupCreate,
   dateCreate,
+  dateInput,
 } from './intern-create-fixtures.js';
 
 // B38 / A48 / IN-R1：夹具是 POST /interns 的真实回执，而非 EmploymentBusiness。
@@ -27,8 +28,11 @@ test('AC-FE-R2d4-01 无匹配新增一次保存人员任职合同，回执后刷
   });
   await editor(page).getByLabel('证件类型', { exact: true }).fill('id_card');
   await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-NEW');
-  await editor(page).getByRole('button', { name: '校验', exact: true }).click();
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
   await expect(editor(page).getByText('未匹配到离职 / 退休人员')).toBeVisible();
+  await editor(page).screenshot({ path: test.info().outputPath('intern-create.png') });
   await saveCreate(page).click();
   await expect(editor(page)).toHaveCount(0);
   expect(matches).toEqual([{ idType: 'id_card', idNumber: 'SYNTHETIC-NEW' }]);
@@ -58,7 +62,9 @@ test('AC-FE-R2d4-02 命中离职人员默认否，选重聘以候选员工 revis
   await fillCreate(page);
   await editor(page).getByLabel('证件类型', { exact: true }).fill('id_card');
   await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-OLD');
-  await editor(page).getByRole('button', { name: '校验', exact: true }).click();
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
   const match = page.getByRole('dialog', { name: '重聘提示', exact: true });
   await expect(match.getByText('OLD-001')).toBeVisible();
   await expect(match.getByText('2026-09-30')).toBeVisible();
@@ -75,7 +81,7 @@ test('AC-FE-R2d4-03 合同终止日为空时阻止提交', async ({ page }) => {
   const state = await setupCreate(page);
   await openCreate(page);
   await fillCreate(page);
-  await editor(page).getByLabel('合同协议终止日期', { exact: true }).clear();
+  await dateInput(page, '合同协议终止日期').clear();
   await saveCreate(page).click();
   await expect(editor(page).getByText('请填写合同协议终止日期')).toBeVisible();
   expect(state.requests).toHaveLength(0);
@@ -147,7 +153,9 @@ test('AC-FE-R2d4-07 重聘409先重读候选版本，确认后保留输入用新
   await fillCreate(page);
   await editor(page).getByLabel('证件类型', { exact: true }).fill('id_card');
   await editor(page).getByLabel('证件号码', { exact: true }).fill('SYN-RELOAD');
-  await editor(page).getByRole('button', { name: '校验', exact: true }).click();
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
   await page
     .getByRole('dialog', { name: '重聘提示', exact: true })
     .getByRole('button', { name: '按重聘入职', exact: true })
@@ -155,7 +163,7 @@ test('AC-FE-R2d4-07 重聘409先重读候选版本，确认后保留输入用新
   await saveCreate(page).click();
   await editor(page).getByRole('button', { name: '重读最新版本', exact: true }).click();
   await editor(page).getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
-  await expect(editor(page).getByLabel('合同协议终止日期', { exact: true })).toHaveValue('2027-10-11');
+  await expect(dateInput(page, '合同协议终止日期')).toHaveValue('2027-10-11');
   await saveCreate(page).click();
   await expect(editor(page)).toHaveCount(0);
   expect(state.requests.map((request) => request.revision)).toEqual(['5', '6']);
@@ -174,7 +182,9 @@ test('AC-FE-R2d4-08 退休或结束类型裁剪不开放按重聘入职，缺省
   await openCreate(page);
   await editor(page).getByLabel('证件类型', { exact: true }).fill('id_card');
   await editor(page).getByLabel('证件号码', { exact: true }).fill('SYN-RETIRE');
-  await editor(page).getByRole('button', { name: '校验', exact: true }).click();
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
   const match = page.getByRole('dialog', { name: '重聘提示', exact: true });
   await expect(match.getByRole('button', { name: '按重聘入职' })).toBeDisabled();
   await expect(match.getByText('请通过入职管理的“离职 / 退休再入职”办理。')).toBeVisible();
@@ -207,5 +217,139 @@ test('AC-FE-R2d4-10 合同终止日必须晚于开始日；切换未来日期不
   await dateCreate(page, '合同协议终止日期', '2026-10-12');
   await saveCreate(page).click();
   await expect(editor(page).getByText('合同终止日期必须晚于实习开始日期')).toBeVisible();
+  expect(state.requests).toHaveLength(0);
+});
+
+test('AC-FE-R2d4-11 写成功后重读403仍未知锁定，按原命令查询不重发', async ({ page }) => {
+  const state = await setupCreate(page);
+  await page.route('**/employment/businesses/*', (route) =>
+    route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '当前不可读取' } } }),
+  );
+  await openCreate(page);
+  await fillCreate(page);
+  await saveCreate(page).click();
+  await expect(editor(page).getByRole('button', { name: '查询本次命令结果' })).toBeVisible();
+  await expect(saveCreate(page)).toBeDisabled();
+  const queries: string[] = [];
+  await page.route('**/commands/*/result', (route) => {
+    queries.push(route.request().url());
+    return route.fulfill({
+      json: {
+        commandId: state.requests[0]!.id,
+        status: 'failed',
+        commandType: 'POST /api/tenant/employment/interns',
+        businessId: null,
+        businessType: null,
+        revision: null,
+        httpStatus: 400,
+        completedAt: '2026-10-12T12:00:00Z',
+      },
+    });
+  });
+  await editor(page).getByRole('button', { name: '查询本次命令结果' }).click();
+  await expect(editor(page).getByText('命令已被拒绝，请核对原因；当前未确认表单继续保持只读。')).toBeVisible();
+  expect(queries[0]).toContain(state.requests[0]!.id);
+  expect(state.requests).toHaveLength(1);
+});
+
+test('AC-FE-R2d4-12 选择否仍以新增提交，原证件校验结果不能跨证件沿用', async ({ page }) => {
+  const state = await setupCreate(page);
+  await page.route('**/employment/rehire-matches', (route) => route.fulfill({ json: { matched: true, candidate } }));
+  await openCreate(page);
+  await fillCreate(page);
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-OLD');
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
+  await page
+    .getByRole('dialog', { name: '重聘提示', exact: true })
+    .getByRole('button', { name: '否，保持新增' })
+    .click();
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-CHANGED');
+  await saveCreate(page).click();
+  await expect(editor(page).getByText('请先填写完整证件信息并完成校验')).toBeVisible();
+  expect(state.requests).toHaveLength(0);
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
+  await page
+    .getByRole('dialog', { name: '重聘提示', exact: true })
+    .getByRole('button', { name: '否，保持新增' })
+    .click();
+  await saveCreate(page).click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(state.requests[0]!.body.kind).toBe('hire');
+  expect(state.requests[0]!.body).not.toHaveProperty('employeeId');
+});
+
+test('AC-FE-R2d4-13 候选重读失败保留冲突锁，禁止直接重提', async ({ page }) => {
+  const state = await setupCreate(page);
+  let missing = false;
+  await page.route('**/employment/rehire-matches', (route) =>
+    route.fulfill({ json: missing ? { matched: false } : { matched: true, candidate } }),
+  );
+  await page.route('**/employment/interns', (route) => {
+    state.requests.push(sent(route.request()));
+    missing = true;
+    return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+  });
+  await openCreate(page);
+  await fillCreate(page);
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-OLD');
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
+  await page.getByRole('dialog', { name: '重聘提示', exact: true }).getByRole('button', { name: '按重聘入职' }).click();
+  await saveCreate(page).click();
+  await editor(page).getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await expect(editor(page).getByText('读取失败，输入已保留，请重新读取。')).toBeVisible();
+  await expect(saveCreate(page)).toBeDisabled();
+  expect(state.requests).toHaveLength(1);
+});
+
+test('AC-FE-R2d4-14 较早证件匹配晚返回时不能覆盖新输入', async ({ page }) => {
+  await setupCreate(page);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requested = false;
+  await page.route('**/employment/rehire-matches', async (route) => {
+    requested = true;
+    await held;
+    await route.fulfill({ json: { matched: true, candidate } });
+  });
+  await openCreate(page);
+  await fillCreate(page);
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-FIRST');
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
+  await expect.poll(() => requested).toBe(true);
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-SECOND');
+  release();
+  await saveCreate(page).click();
+  await expect(editor(page).getByText('请先填写完整证件信息并完成校验')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '重聘提示', exact: true })).toHaveCount(0);
+});
+
+test('AC-FE-R2d4-15 裁剪结束类型保守禁止重聘，必填合同字段无编辑权不能发送', async ({ page }) => {
+  const state = await setupCreate(page, { hidden: ['endDate'] });
+  await page.route('**/employment/rehire-matches', (route) =>
+    route.fulfill({ json: { matched: true, candidate: { employeeId: employee } } }),
+  );
+  await openCreate(page);
+  await editor(page).getByLabel('姓名', { exact: true }).fill('合成实习生');
+  await editor(page).getByLabel('电子邮件', { exact: true }).fill('intern@example.com');
+  await editor(page).getByLabel('工号', { exact: true }).fill('SYN-CUT');
+  await editor(page).getByLabel('证件号码', { exact: true }).fill('SYNTHETIC-CUT');
+  await editor(page)
+    .getByRole('button', { name: /校\s*验/ })
+    .click();
+  const match = page.getByRole('dialog', { name: '重聘提示', exact: true });
+  await expect(match.getByRole('button', { name: '按重聘入职' })).toBeDisabled();
+  await match.getByRole('button', { name: '否，保持新增' }).click();
+  await expect(dateInput(page, '合同协议终止日期')).toHaveCount(0);
+  await saveCreate(page).click();
   expect(state.requests).toHaveLength(0);
 });
