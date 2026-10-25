@@ -45,7 +45,38 @@ export function assertProbationTerms(entry: EntryOptions): void {
     });
 }
 
+/**
+ * 实习转正的试用期口径（直接转正与转正申请共用，DEC-647）：是否有试用期必填；有试用期必须填试用期(月)——转正没有
+ * 办理入职那样的补填环节；无试用期不能带月数 / 预计结束日。预计结束日不传按月数推算，由 saveEntryProbation 统一处理。
+ */
+export function isRegularizationProbationValid(
+  entry: Pick<EntryOptions, 'probation' | 'probationMonths' | 'probationEndDate'>,
+): boolean {
+  if (entry.probation === undefined) return false;
+  return entry.probation
+    ? entry.probationMonths !== undefined
+    : entry.probationMonths === undefined && entry.probationEndDate === undefined;
+}
+
+/** 实习转正申请受理试用期三项（DEC-647）；直接转正走专用入口（intern-regularization.ts），不经通用入口的控制项。 */
+function assertInternRegularizationEntry(input: NormalizedEmploymentInput, entry: EntryOptions | undefined): void {
+  if (input.mode !== 'application') {
+    if (entry)
+      throw new AppError('VALIDATION_FAILED', '实习转正只有申请可以提供是否有试用期，直接转正请使用实习转正入口');
+    return;
+  }
+  // 与直接转正同一规则：是否有试用期必填，整体缺失也拒绝（DEC-402 不保留兼容分叉）
+  if (entry?.pendingEntry) throw new AppError('VALIDATION_FAILED', '待入职只属于入职类业务，实习转正不能添加待入职');
+  if (entry?.probation === undefined)
+    throw new AppError('VALIDATION_FAILED', '实习转正申请必须填写是否有试用期', { reason: 'PROBATION_REQUIRED' });
+  if (!isRegularizationProbationValid(entry))
+    throw new AppError('VALIDATION_FAILED', '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息', {
+      reason: 'PROBATION_MONTHS_REQUIRED',
+    });
+}
+
 export function assertEntryOptionsAllowed(input: NormalizedEmploymentInput, entry: EntryOptions | undefined): void {
+  if (input.kind === 'intern_regularization') return assertInternRegularizationEntry(input, entry);
   if (!entry) return;
   if (!NEW_CYCLE_KINDS.includes(input.kind))
     throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供待入职 / 是否有试用期');

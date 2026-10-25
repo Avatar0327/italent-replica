@@ -216,6 +216,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       31: 'd377733df73b381b',
       // claude/R2-BE-8b1-exit-blacklist（merge:main 定号，DEC-439④）
       32: 'fd09fce1ad5dde6d',
+      // F-325：日工资标准仅默认授予组织员工模块管理员（占位，合并时 main + 1）
+      33: 'ceb6bdd3c8e556a9',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

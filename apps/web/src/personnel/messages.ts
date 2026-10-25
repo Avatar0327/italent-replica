@@ -57,6 +57,7 @@ export const m = {
   referenceHint: '关联对象暂以可见 ID 展示，名称解析待后端补充。',
   recordCount: (n: number) => `本页 ${n} 条记录`,
   labels: {
+    dailyWageStandard: '日工资标准',
     name: '员工姓名',
     code: '员工ID',
     gender: '性别',

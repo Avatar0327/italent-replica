@@ -62,6 +62,7 @@ function versionSourceCheck(name: string, t: { sourceType: AnyPgColumn; sourceId
 }
 function employeeFields() {
   return {
+    dailyWageStandard: numeric('daily_wage_standard'),
     name: text('name'),
     displayName: text('display_name'),
     engName: text('eng_name'),
@@ -153,6 +154,12 @@ export const personnelEmployeeVersions = pgTable(
       foreignColumns: [t.tenantId, t.employeeId, t.id],
     }),
     check('personnel_employee_revision_positive', sql`${t.revision} > 0`),
+    // DEC-685①：不设 numeric 的 scale typmod，避免超精度值在 CHECK 前被数据库静默舍入。
+    check(
+      'personnel_employee_daily_wage_valid',
+      sql`${t.dailyWageStandard} >= 0 AND ${t.dailyWageStandard} < 1000000000000
+        AND scale(${t.dailyWageStandard}) <= 2`,
+    ),
   ],
 );
 export const personnelAttachments = pgTable(

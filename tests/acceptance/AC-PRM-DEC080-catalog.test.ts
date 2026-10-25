@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { trimModuleResponse } from '../../apps/api/src/modules/permission/module-access.js';
-import { decide, MODULE_OBJECTS, ObjectCatalog, type PermissionSubject } from '@italent/domain';
+import {
+  decide,
+  PERSONNEL_OBJECT,
+  PERSONNEL_OBJECTS,
+  MODULE_OBJECTS,
+  ObjectCatalog,
+  type PermissionSubject,
+} from '@italent/domain';
 
 describe('DEC-080 real module catalogs and fail-closed writes', () => {
+  it('AC-PER-F325 日工资标准登记为可独立授予编辑权的档案字段', () => {
+    const object = PERSONNEL_OBJECTS.find((item) => item.code === PERSONNEL_OBJECT)!;
+    expect(object.fields.filter((field) => field.code === 'dailyWageStandard')).toEqual([
+      { code: 'dailyWageStandard', system: false },
+    ]);
+  });
+
   it('AC-PRM-DEC080 F-222：Offer 批量审批单只登记原站 B1/B2 的两个详情页不同意按钮', () => {
     expect(MODULE_OBJECTS.offerBatchApproval.buttons).toEqual([
       { code: 'PartDisAgree', level: 'detail', requires: 'update' },

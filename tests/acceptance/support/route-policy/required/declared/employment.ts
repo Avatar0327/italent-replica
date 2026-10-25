@@ -38,6 +38,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'POST /api/tenant/employment/retirement-rules/:id/copy',
     'PUT /api/tenant/employment/retirement-rules/:id',
     'PUT /api/tenant/employment/retirement-rules/:id/enabled',
+    'POST /api/tenant/employment/retirement-rules/run',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [

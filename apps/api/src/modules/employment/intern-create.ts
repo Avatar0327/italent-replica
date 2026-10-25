@@ -21,6 +21,12 @@ import {
   scopedGuard,
   EMPLOYEE_OBJECT,
 } from './context.js';
+import {
+  planInternProfile,
+  requireInternProfileAccess,
+  writeInternProfile,
+  type InternProfilePlan,
+} from './intern-profile.js';
 import { createEmployee, employeeName } from './employees.js';
 import { entryContractSchema, generateEntryContract, requireContractCreateAccess } from './entry-contract.js';
 import { lockEmploymentEmployee } from './record-store.js';
@@ -45,6 +51,7 @@ export const internCreateInput = z
     fields: z.record(z.string(), z.unknown()).default({}),
     customFields: z.record(z.string(), z.unknown()).default({}),
     contract: internContract,
+    profile: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((input, ctx) => {
     const rehire = input.kind === 'rehire';
@@ -79,6 +86,7 @@ export interface InternCreateReceipt {
   /** 服务端判定的视图归属：入职已生效 = interning；未来入职 = pendingEntry（待入职列表）。 */
   readonly view: 'interning' | 'pendingEntry';
   readonly contract: InternContractSummary;
+  readonly profile?: Record<string, unknown>;
 }
 
 /** 解析后的写入计划：入口鉴权、命令内复核与执行共用同一份，不各自再算一遍。 */
@@ -89,6 +97,7 @@ export interface InternCreatePlan {
   readonly business: NormalizedEmploymentInput;
   /** 入职日在租户今天之后：走待入职通道。 */
   readonly pending: boolean;
+  readonly profile: InternProfilePlan;
 }
 
 const PENDING_CONTRACT_KEYS = ['endDate', 'companyId'];
@@ -121,7 +130,13 @@ export function planInternCreate(ctx: EmploymentContext, input: InternCreateInpu
     fields: { ...input.fields, employType: 'intern' },
     customFields: input.customFields,
   };
-  return { input, request, business: normalizeEmploymentInput(ctx, request), pending };
+  return {
+    input,
+    request,
+    business: normalizeEmploymentInput(ctx, request),
+    pending,
+    profile: planInternProfile(input.profile ?? {}),
+  };
 }
 
 /** 入口与命令内复核共用的权限判定：人员新增权（看全部，DEC-121）+ 任职新增权与字段权；合同权限另在命令内复核。 */
@@ -156,9 +171,14 @@ export function internCreateGuard(
       const scopedEmployee = await commandContext(tx, deps, employeeCtx);
       const scoped = await commandContext(tx, deps, ctx);
       await requireInternCreateWrite(scopedEmployee, scoped, plan);
+      await requireInternProfileAccess(tx, deps, scoped, plan.profile, plan.input.employeeId);
       if (plan.pending) return;
       const owner = { employeeId: plan.input.employeeId ?? null, effectiveDate: plan.input.effectiveDate };
       await requireContractCreateAccess(tx, deps, scoped, owner, plan.input.contract);
+    },
+    replayed: async (tx, result) => {
+      const receipt = result.body as InternCreateReceipt;
+      if (receipt.employeeId) await requireInternProfileAccess(tx, deps, ctx, plan.profile, receipt.employeeId);
     },
   });
 }
@@ -206,6 +226,7 @@ export async function createInternEntry(
     { ...business, kind },
     entry ? { entry } : {},
   );
+  const profile = await writeInternProfile(tx, deps, context, plan.profile, employeeId);
   // 入职必须有登录账号（DEC-140）：与 POST /employees/:id/businesses 同一端口，缺邮箱整体回滚
   await provisionEmployeeUser(tx, context, {
     employeeId,
@@ -220,6 +241,7 @@ export async function createInternEntry(
     employeeId,
     businessId: created.id,
     kind: created.kind as InternCreateReceipt['kind'],
+    ...(profile ? { profile } : {}),
   };
   const { contract, effectiveDate } = input;
   if (pending)

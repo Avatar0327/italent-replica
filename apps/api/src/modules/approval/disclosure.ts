@@ -72,12 +72,16 @@ async function adminCovers(tx: Tx, tenantId: string, instanceId: string, scope: 
   return Boolean(row);
 }
 
-/** 参与人（发起人、任一任务的审批人）或范围内的流程管理员才能打开详情；其余一律按不存在处理。 */
+/**
+ * 参与人（发起人、任一任务的审批人）或范围内的流程管理员才能打开详情；其余一律按不存在处理。
+ * withLogs=false：历史分页另取完整日志（只补一次操作人姓名，F-264），这里不读近期日志，`logs` 为空。
+ */
 export async function readDetail(
   tx: Tx,
   ctx: ApprovalContext,
   instanceId: string,
   viewer: Viewer,
+  withLogs = true,
 ): Promise<DetailData> {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
   await assertCanOpen(tx, ctx, instance, viewer);
@@ -94,7 +98,7 @@ export async function readDetail(
     snapshot: await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId),
     tasks: displayWindow(allTasks),
     allTasks,
-    logs: await loadLogs(tx, ctx.tenantId, instanceId),
+    logs: withLogs ? await loadLogs(tx, ctx.tenantId, instanceId) : [],
     showOriginals: setting.value === true,
     admin,
     recusal: await loadRecusalFacts(tx, ctx.tenantId, instance),

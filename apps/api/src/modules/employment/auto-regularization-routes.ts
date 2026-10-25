@@ -218,7 +218,7 @@ export async function visibleRunReceipt(deps: TenantRouteDeps, ctx: EmploymentCo
   };
 }
 
-async function visibleEmployees(deps: TenantRouteDeps, ctx: EmploymentContext, ids: readonly string[]) {
+export async function visibleEmployees(deps: TenantRouteDeps, ctx: EmploymentContext, ids: readonly string[]) {
   const visible = new Set<string>();
   if (!ids.length) return visible;
   const tenant = { tenantId: ctx.tenantId, userId: ctx.userId, timezone: ctx.timezone };

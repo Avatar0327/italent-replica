@@ -304,6 +304,15 @@ const RUN_RECEIPT_DISCLOSURE = object({
   ),
 });
 
+/** 退休规则立即执行回执的人员披露（BE-5c2）：同上，逐人条目是固定键（员工、规则、写入的人事字段名、失败原因），不含日期值。 */
+const RETIREMENT_RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(['employeeId', 'ruleId', 'fields', 'reason'], 'BE-5c2：退休规则立即执行回执的逐人固定键'),
+});
+
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
 /** tab=pending（默认）：approval/queries.ts listTodos（本人为待办人 assignee_user_id）。 */
 const TODO_PENDING_KEYS = [
@@ -1010,7 +1019,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
   // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
   // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
-  // 任一步失败整体回滚，同命令 ID 重放返回首个结果。回执是固定形状，不经任职字段裁剪
+  // F-322：profile 普通字段经档案更新权，教育经子集创建权，均在命令事务复核；资料回执按当前档案查看权裁剪。
+  // 任一步失败整体回滚，同命令 ID 不重复写入；没有 profile 时保持原回执。
   'POST /interns': all(
     [
       object({
@@ -1030,12 +1040,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
     {
-      guards: [LINKAGE, 'employment.entryContract'],
+      guards: [LINKAGE, 'employment.entryContract', 'employment.internProfile'],
       write: employmentWrite(
         'body.fields+customFields',
-        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject'],
-        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract'] },
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireInternProfileAccess'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract', 'profile'] },
       ),
+      optional: {
+        profile: object({
+          object: 'TenantBase.EmployeeInformation',
+          operation: 'view',
+          button: noButton('资料回执按当前档案查看权披露'),
+          scope: pointScope({ derived: 'employment.internProfile' }, 'personnel.employee', denied(404, 'NOT_FOUND')),
+          fields: projector('employment.internProfile', 'personnel.employee'),
+        }),
+      },
       ...byId,
     },
   ),
@@ -2137,6 +2156,31 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'),
         { commandOnly: true, preconditions: ['assertRevision'] },
       ),
+    },
+  ),
+  // 立即执行（R2-T04 §9.2，BE-5c2）：?purpose= 必填（expected_date / flexible_range），body 严格 { cursor? }（上次回执的 next，
+  // 随机句柄，绑定租户 × 操作人 × 用途 × 业务日，其余 400 RETIREMENT_RUN_CURSOR_INVALID）；对应自动计算开关关闭 400
+  // RETIREMENT_AUTO_DISABLED；一次最多一页，按规则适用组织扫描（系统批次提前执行，不叠加操作人数据范围），经人事写端口写入
+  // （审计 personnel.retirement_rule，actor = 系统）；回执逐人固定键，按操作人当前任职范围裁剪（首次与重放同一出口）
+  'POST /retirement-rules/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织；这里的范围是回执的人员披露
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RETIREMENT_RUN_RECEIPT_DISCLOSURE },
+      write: write('body', 'config.audited:retirement_rule_run', none('配置对象无范围，回执只含员工 / 规则 ID'), {
+        commandOnly: true,
+        preconditions: ['assertRevision'],
+      }),
     },
   ),
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a / 5c1b 预计退休日期与弹性范围规则、个人身份字典（R2-T04 §9.1，DEC-640 / 641）----
