@@ -417,7 +417,7 @@ function NodeProperties({ nodes }: { nodes: readonly ApprovalNode[] | undefined 
             {
               key: 'approver',
               label: m.approver,
-              children: approvers?.map((code) => m.expressions[code] ?? text(code)).join('、') ?? m.unread,
+              children: approvers?.map((code) => m.expressions[code.value] ?? text(code.value)).join('、') ?? m.unread,
             },
           ]}
         />

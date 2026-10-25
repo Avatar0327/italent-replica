@@ -14,7 +14,7 @@ describe('AC-FE-F315 流程设计器最小版', () => {
     const changedKind = {
       ...first!,
       kind: 'countersign' as const,
-      approvers: ['direct_manager'] as const,
+      approvers: [{ type: 'object_field', value: 'direct_manager' }] as const,
       transitionRule: { type: 'all' as const, rules: {} },
     };
     expect(() => assertDraftStructure(original, { ...original, nodes: [changedKind, second!] })).toThrow();

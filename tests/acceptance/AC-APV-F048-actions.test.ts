@@ -201,11 +201,14 @@ describe('T4 #13～#16：激活 / 回到原审批人 / 会签返回 / 会签重�
         {
           key: 'cs',
           kind: 'countersign',
-          approvers: ['record_department_head', 'record_department_hrbp'],
+          approvers: [
+            { type: 'department', value: 'record_department_head' },
+            { type: 'department', value: 'record_department_hrbp' },
+          ],
           transitionRule: { type: 'any' },
           actions: { addSign: true, retrieve: true },
         },
-        { key: 'last', approver: 'latest_record_department_head' },
+        { key: 'last', approver: { type: 'department', value: 'latest_record_department_head' } },
       ],
     });
     let view = await submitted(w, s);

@@ -88,14 +88,16 @@ describe('DEC-103：重提一律沿用原实例与原流程版本', () => {
         code,
         priority,
         conditions: { items: [{ no: 1, field: 'record.departmentId', operator: 'in_org_tree', value: org }] },
-        nodes: [{ key: 'in_head', approver: 'record_department_head' }],
+        nodes: [{ key: 'in_head', approver: { type: 'department', value: 'record_department_head' } }],
       });
     const first = await byDepartment('BY_TO', 2, s.to);
     await byDepartment('BY_OTHER', 1, other);
     const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
     let view = await w.submit(draft);
     expect(view).toMatchObject({ processId: first.id, versionNo: 1 });
-    await publishNextVersion(w, first, [{ key: 'v2_node', approver: 'record_department_hrbp' }]);
+    await publishNextVersion(w, first, [
+      { key: 'v2_node', approver: { type: 'department', value: 'record_department_hrbp' } },
+    ]);
     view = await w.json(await w.taskAction(s.inHead.userId, current(view).id, 'reject', view.revision));
     const patched = await patchBusiness(w, draft.id, { departmentId: other });
     await w.json(await w.submitRaw(patched));
@@ -121,7 +123,9 @@ describe('DEC-103：重提一律沿用原实例与原流程版本', () => {
       ifMatch: business.revision,
     });
     expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
-    await publishNextVersion(w, process, [{ key: 'v2_node', approver: 'record_department_hrbp' }]);
+    await publishNextVersion(w, process, [
+      { key: 'v2_node', approver: { type: 'department', value: 'record_department_hrbp' } },
+    ]);
     const patched = await patchBusiness(w, draft.id, { place: '新地点' });
     const otherHr = await w.member('其他 HR');
     const denied = await w.submitRaw(patched, otherHr);
@@ -216,7 +220,13 @@ describe('DEC-105：员工子集变更不做审批中编辑', () => {
     await w.publishedProcess({
       approvalType: 'personnel_change',
       conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-      nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'] }],
+      nodes: [
+        {
+          key: 'head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['school'],
+        },
+      ],
     });
     const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
     const record = await w.json<{ id: string; revision: number }>(
@@ -254,12 +264,17 @@ describe('DEC-106：相同 / 历史相同审批人自动处理的结果', () => 
     await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head' },
-        { key: 'in_head', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
-        { key: 'in_hrbp', approver: 'record_department_hrbp' },
+        { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+        {
+          key: 'in_head',
+          approver: { type: 'department', value: 'record_department_head' },
+          sameAssigneeSkip: true,
+          sameAssigneeResult: 'skip',
+        },
+        { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
         {
           key: 'again',
-          approver: 'record_department_head',
+          approver: { type: 'department', value: 'record_department_head' },
           historySameAssigneeSkip: true,
           historySameAssigneeResult: 'approve',
         },
@@ -312,7 +327,14 @@ describe('DEC-106：相同 / 历史相同审批人自动处理的结果', () => 
         approvalType: 'transfer',
         exceptionAdminUserId: w.exceptionAdmin,
         conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-        nodes: [{ key: 'n', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'reject' }],
+        nodes: [
+          {
+            key: 'n',
+            approver: { type: 'department', value: 'record_department_head' },
+            sameAssigneeSkip: true,
+            sameAssigneeResult: 'reject',
+          },
+        ],
       },
     });
     expect(response.status).toBe(400);

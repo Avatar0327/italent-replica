@@ -23,14 +23,14 @@ describe('AC-TRF-11 / AC-TRF-12 审批中编辑', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'place', 'effectiveDate'],
           editableFields: ['place'],
           editMode: 'separate',
         },
         {
           key: 'in_head',
-          approver: 'record_department_head',
+          approver: { type: 'department', value: 'record_department_head' },
           formFields: ['departmentId', 'place', 'remarks'],
           editableFields: ['remarks'],
           editMode: 'with_approve',
@@ -86,7 +86,13 @@ describe('AC-TRF-21 审批详情页显示原信息（租户开关，出厂开）
     const w = await approvalWorld(database().db, 'apv-original');
     const s = await transferScene(w);
     await w.publishedProcess({
-      nodes: [{ key: 'out_head', approver: 'latest_record_department_head', formFields: ['departmentId', 'place'] }],
+      nodes: [
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['departmentId', 'place'],
+        },
+      ],
     });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     const shown = await w.detail(view.id, s.outHead.userId);
@@ -106,7 +112,9 @@ describe('AC-TRF-05 / AC-TRF-06 审批通过 ≠ 生效', () => {
   it('生效日在未来：审批通过后保持「审批通过」，不生成任职记录', async () => {
     const w = await approvalWorld(database().db, 'apv-future');
     const s = await transferScene(w);
-    await w.publishedProcess({ nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }] });
+    await w.publishedProcess({
+      nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
+    });
     const draft = await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-20' });
     const view = await w.submit(draft);
     const done = await w.json<InstanceView>(

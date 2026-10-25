@@ -194,14 +194,17 @@ describe('AC-APV（补）F-067 / DEC-358① 例外目标的失败响应与普通
       key: 'set_goals',
       name: '会签制定目标',
       kind: 'countersign',
-      approvers: ['idp_employee', 'idp_tutor'],
+      approvers: [
+        { type: 'object_field', value: 'idp_employee' },
+        { type: 'object_field', value: 'idp_tutor' },
+      ],
       transitionRule: { type: 'all' },
       actions: { avoidSelf: false, reject: false, jump: true, revoke: false },
     };
     const approve = {
       key: 'approve_plan',
       name: '审批发展计划',
-      approver: 'idp_tutor',
+      approver: { type: 'object_field', value: 'idp_tutor' },
       actions: { avoidSelf: false, reject: true, rejectToPrevious: true, jump: true, revoke: false },
     };
     const s = await scene('f067-mn-fail-assignee', mentorOf, { planNodes: [countersign, approve] });

@@ -46,7 +46,7 @@ const TYPES = [
 ] as const;
 
 const typeOf = (code: string) => (APPROVAL_TYPES as Record<string, (typeof APPROVAL_TYPES)[ApprovalTypeCode]>)[code];
-const approverOf = (node: ApprovalNode) => ('approver' in node ? node.approver : null);
+const approverOf = (node: ApprovalNode) => ('approver' in node ? node.approver.value : null);
 
 async function constraint(name: string) {
   const result = (await testDb().db.execute(
@@ -97,8 +97,12 @@ describe('AC-PT-contract BE-7 PT-1 审批类型与表达式（§1.5）', () => {
     await w.setOrgRoles(s.from, { head: s.outHead.employeeId, hrbp: outHrbp.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'primary_hrbp', name: '主职部门HRBP', approver: 'latest_record_department_hrbp' },
-        { key: 'in_hrbp', name: '调入部门HRBP', approver: 'record_department_hrbp' },
+        {
+          key: 'primary_hrbp',
+          name: '主职部门HRBP',
+          approver: { type: 'department', value: 'latest_record_department_hrbp' },
+        },
+        { key: 'in_hrbp', name: '调入部门HRBP', approver: { type: 'department', value: 'record_department_hrbp' } },
       ],
     });
     const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
@@ -119,7 +123,7 @@ describe('AC-PT-contract BE-7 PT-1 审批类型与表达式（§1.5）', () => {
         {
           key: 'pt_head',
           name: '兼职部门负责人',
-          approver: 'record_department_head',
+          approver: { type: 'department', value: 'record_department_head' },
           formFields: ['endDate', 'requestRemark', 'departmentId'],
           editableFields: ['endDate', 'requestRemark'],
           editMode: 'with_approve',

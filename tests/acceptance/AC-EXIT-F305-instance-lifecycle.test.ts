@@ -11,7 +11,9 @@ const database = useTestDb();
 it('DEC-103 普通任职 returned 仍为活动实例，唯一索引拒绝另起实例，重提复用原实例', async () => {
   const w = await approvalWorld(database().db, 'f305-employment-returned');
   const scene = await transferScene(w);
-  await w.publishedProcess({ nodes: [{ key: 'in_head', approver: 'record_department_head' }] });
+  await w.publishedProcess({
+    nodes: [{ key: 'in_head', approver: { type: 'department', value: 'record_department_head' } }],
+  });
   const draft = await w.application(scene.subject.employeeId, { departmentId: scene.to });
   const initial = await w.submit(draft);
   const task = initial.tasks.find((candidate) => candidate.status === 'pending')!;

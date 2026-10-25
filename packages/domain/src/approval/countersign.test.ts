@@ -35,7 +35,7 @@ const base = {
 const single = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   key: 'single',
   name: '单人',
-  approver: 'record_department_head',
+  approver: { type: 'department', value: 'record_department_head' },
   ...base,
   ...extra,
 });
@@ -44,7 +44,10 @@ const joint = (extra: Partial<CountersignApprovalNode> = {}): CountersignApprova
   key: 'joint',
   name: '会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
   transitionRule: { type: 'any' },
   ...base,
   ...extra,
@@ -171,7 +174,16 @@ describe('会签节点的定义校验', () => {
   });
   it('审批人不能为空或重复', () => {
     expect(violations(joint({ approvers: [] }))).toHaveLength(1);
-    expect(violations(joint({ approvers: ['record_department_head', 'record_department_head'] }))).toHaveLength(1);
+    expect(
+      violations(
+        joint({
+          approvers: [
+            { type: 'department', value: 'record_department_head' },
+            { type: 'department', value: 'record_department_head' },
+          ],
+        }),
+      ),
+    ).toHaveLength(1);
   });
   it('自定义规则须逐个出口动作给出一行：整数 ≥1，百分比在 (0, 100] 且最多两位小数；预设不接受逐行规则', () => {
     const custom = (rules: object, exits: CountersignApprovalNode['exits'] = ['approve', 'disagree']) =>

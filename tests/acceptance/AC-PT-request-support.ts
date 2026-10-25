@@ -100,7 +100,10 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
                   kind: 'countersign' as const,
                   key: 'side_joint',
                   name: '兼职部门联合会签',
-                  approvers: ['record_department_head', 'record_department_hrbp'] as const,
+                  approvers: [
+                    { type: 'department', value: 'record_department_head' },
+                    { type: 'department', value: 'record_department_hrbp' },
+                  ] as const,
                   transitionRule: { type: 'all' as const },
                 }
               : options.countersign && installed.approvalType === 'part_time_extend' && index === 1
@@ -109,7 +112,10 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
                     kind: 'countersign' as const,
                     key: 'joint',
                     name: '主职联合会签',
-                    approvers: ['latest_record_department_head', 'latest_record_department_hrbp'] as const,
+                    approvers: [
+                      { type: 'department', value: 'latest_record_department_head' },
+                      { type: 'department', value: 'latest_record_department_hrbp' },
+                    ] as const,
                     transitionRule: { type: 'all' as const },
                   }
                 : preNode;

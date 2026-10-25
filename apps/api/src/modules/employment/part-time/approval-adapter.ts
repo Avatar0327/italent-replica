@@ -171,6 +171,7 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
     approvalType,
     businessType: 'part_time',
     businessId: requestId,
+    businessDate: version.startDate,
     fieldObjectCode: MODULE_OBJECTS.employmentRecord.code,
     profileFields: PROFILE_FORM_FIELDS,
     subjectEmployeeId: request.employeeId,

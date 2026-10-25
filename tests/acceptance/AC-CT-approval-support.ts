@@ -38,7 +38,7 @@ export async function approvalContractWorld(db: Db, label: string, options: { om
               ...preset.definition.nodes[0]!,
               ...(options.omitAvoidSelf ? { actions: withoutAvoidSelf } : {}),
               kind: 'single',
-              approver: 'owner',
+              approver: { type: 'custom_variable', value: 'owner' },
               exits: ['approve', 'disagree'],
             },
           ],

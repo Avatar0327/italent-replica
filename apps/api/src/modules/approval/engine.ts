@@ -1,3 +1,4 @@
+import { resolveSource, previousApproved } from './source-resolver.js';
 /**
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
  * 审批人为空、自审、相同 / 历史相同审批人跳过；遇到需人工审批的节点即停下等待。
@@ -27,7 +28,7 @@ import {
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
-  type ApproverExpression,
+  type ApproverSource,
   type Candidate,
   type CountersignApprovalNode,
   type NodeDecision,
@@ -47,7 +48,6 @@ import {
   isAssignable,
   memo,
   personOfUser,
-  resolveCandidate,
   tenantAdminTakeover,
   type RoutingSubject,
 } from './resolver.js';
@@ -169,6 +169,7 @@ function routingSubject(run: Run): RoutingSubject {
   return {
     tenantId: run.ctx.tenantId,
     asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone),
+    businessDate: run.snapshot.businessDate,
     initiatorUserId: run.instance.initiatorUserId,
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
@@ -205,11 +206,18 @@ async function decide(
   tx: Tx,
   subject: RoutingSubject,
   node: ApprovalNode,
-  expression: ApproverExpression,
+  expression: ApproverSource,
   facts: RoutingFacts,
   resolved?: Candidate,
 ) {
-  const candidate = resolved ?? (await resolveCandidate(tx, subject, expression));
+  const candidates = resolved ? [resolved] : await resolveSource(tx, subject, expression);
+  if (candidates.length > 1)
+    throw approvalError(
+      'APPROVAL_SOURCE_INVALID',
+      'APPROVAL_SINGLE_SOURCE_MULTIPLE',
+      '单人节点解析出多名审批人，请使用会签节点',
+    );
+  const candidate = candidates[0]!;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
@@ -374,7 +382,17 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
   const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
-    const entry: Entry = { subject, facts: routingFacts(run, tasks, i, recusal), activationId: randomUUID() };
+    const previousKey = i > 0 ? run.version.nodes[i - 1]!.key : null;
+    const currentSubject = {
+      ...subject,
+      previousApprovedUserIds: previousApproved(effectiveHistory(tasks, run.instance), previousKey),
+      samplingSeed: `${run.instance.id}:${run.instance.round}:${run.instance.historyFromSeq}:${node.key}`,
+    };
+    const entry: Entry = {
+      subject: currentSubject,
+      facts: routingFacts(run, tasks, i, recusal),
+      activationId: randomUUID(),
+    };
     const result = isCountersign(node)
       ? await enterCountersign(tx, run, node, entry, tasks)
       : await enterSingle(tx, run, node, entry, tasks);

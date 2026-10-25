@@ -26,7 +26,7 @@ async function scene(label: string, editMode: 'separate' | 'with_approve') {
     nodes: [
       {
         key: 'out_head',
-        approver: 'latest_record_department_head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
         formFields: ['lastWorkDate', 'effectiveDate', 'exitTypeCode', 'actualLeaveDate'],
         editableFields: ['exitTypeCode', 'actualLeaveDate'],
         editMode,

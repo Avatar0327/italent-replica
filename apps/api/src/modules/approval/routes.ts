@@ -397,6 +397,7 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
 /** 仿真只收虚拟数据（清单 7）：审批人关系、直线经理、组织上下级都由输入给出，不接受真实员工标识去查库。 */
 const simulationData = z.strictObject({
   values: z.record(z.string().max(100), z.union([z.string().max(500), z.null()])),
+  sourceRelations: z.record(z.string().max(250), z.array(userIdInput).max(200)).optional(),
   relations: z.partialRecord(z.enum(APPROVER_EXPRESSIONS), userIdInput.nullable()).optional(),
   managers: z
     .record(z.uuid(), userIdInput.nullable())

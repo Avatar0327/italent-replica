@@ -32,7 +32,9 @@ async function scene(label: string) {
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'] }],
+    nodes: [
+      { key: 'head', approver: { type: 'department', value: 'latest_record_department_head' }, formFields: ['school'] },
+    ],
   });
   const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
   const record = await w.json<{ id: string; revision: number }>(

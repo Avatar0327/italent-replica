@@ -23,7 +23,9 @@ import {
   revokeAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
-  type ApproverExpression,
+  type ApproverSource,
+  approverSourcesOf,
+  approverSourceViolations,
   type ConditionItem,
   type ExitRule,
   type ExitRules,
@@ -148,10 +150,10 @@ function transitionRuleOf(row: Row, exits: readonly NodeExit[]): TransitionRule 
 /** 节点类型与审批人（F-003）：单人节点一个表达式，会签节点逐人解析的表达式列表与流转规则。 */
 function approversOf(row: Row, exits: readonly NodeExit[]) {
   if (row.node_type !== 'countersign')
-    return { kind: 'single' as const, approver: row.approver_expression as ApproverExpression };
+    return { kind: 'single' as const, approver: row.approver_expression as ApproverSource };
   return {
     kind: 'countersign' as const,
-    approvers: row.approver_expressions as ApproverExpression[],
+    approvers: row.approver_expressions as ApproverSource[],
     transitionRule: transitionRuleOf(row, exits),
   };
 }
@@ -166,6 +168,9 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
     // DEC-663：兜底处理人只在配置了才回显（缺省空不增加字段，不改其他节点的回显形状）
     ...(Array.isArray(row.fallback_user_ids) && row.fallback_user_ids.length
       ? { fallbackUserIds: row.fallback_user_ids as string[] }
+      : {}),
+    ...(Array.isArray(row.empty_approver_sources) && row.empty_approver_sources.length
+      ? { emptyApproverSources: row.empty_approver_sources as ApproverSource[] }
       : {}),
     noAssignee: row.no_assignee_policy as ApprovalNode['noAssignee'],
     ...(typeof row.empty_approver_policy === 'string'
@@ -304,7 +309,13 @@ export async function listProcesses(
 /** 节点类型相关的列（F-003）：会签的自定义审批方式逐行落库，预设只存类型（DEC-144）。 */
 function nodeTypeColumns(node: ApprovalNode) {
   if (!isCountersign(node)) {
-    return { type: 'single', approver: node.approver, approvers: [] as string[], rule: null, custom: {} as ExitRules };
+    return {
+      type: 'single',
+      approver: node.approver,
+      approvers: [] as ApproverSource[],
+      rule: null,
+      custom: {} as ExitRules,
+    };
   }
   const custom = node.transitionRule.type === 'custom' ? (node.transitionRule.rules ?? {}) : {};
   return {
@@ -360,6 +371,19 @@ async function writeVersionContent(
   }
   for (const [index, node] of definition.nodes.entries()) {
     await assertFallbackUsers(tx, tenantId, node);
+    const sources = [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])];
+    const [violation] = approverSourceViolations(node, APPROVAL_TYPES[type]);
+    if (violation) throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_DEFINITION_INVALID', violation);
+    try {
+      await assertFallbackUsers(tx, tenantId, {
+        ...node,
+        fallbackUserIds: [...new Set(sources.filter((s) => s.type === 'specified').map((s) => s.value))],
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'VALIDATION_FAILED')
+        throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
+      throw error;
+    }
     const typed = nodeTypeColumns(node);
     const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes
@@ -369,9 +393,10 @@ async function writeVersionContent(
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
        edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
        reject_comment_required,hide_records,reject_resubmit_mode,avoid_self,allow_revoke,allow_reject_previous,
-       allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids,empty_approver_policy)
-      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
-        ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
+       allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids,empty_approver_policy,empty_approver_sources)
+      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},
+        ${typed.approver ? JSON.stringify(typed.approver) : null}::jsonb,
+        ${JSON.stringify(typed.approvers)}::jsonb,${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
         ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
         ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
@@ -380,7 +405,7 @@ async function writeVersionContent(
         ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)},${revokeAllowed(node)},
         ${rejectToPreviousAllowed(node)},${jumpAllowed(node)},${avoidsSubjects(node)},
         ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT},${uuidArray(node.fallbackUserIds ?? [])},
-        ${node.emptyApproverPolicy ?? null})`);
+        ${node.emptyApproverPolicy ?? null},${JSON.stringify(node.emptyApproverSources ?? [])}::jsonb)`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

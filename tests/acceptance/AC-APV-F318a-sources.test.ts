@@ -30,10 +30,16 @@ describe('AC-APV-F318a 来源统一模型', () => {
       }),
       201,
     );
-    expect(created.latestVersion.nodes).toMatchObject(nodes);
+    const expected = {
+      approvers: nodes[0]!.approvers,
+      emptyApproverPolicy: 'specified',
+      emptyApproverSources: nodes[0]!.emptyApproverSources,
+    };
+    expect(created.latestVersion.nodes).toMatchObject([expected]);
+    expect(created.latestVersion.nodes[0]!.fallbackUserIds ?? []).toEqual([]);
     const published = await view(await api(x, 'POST', `/${created.id}/publish`, created.revision, {}));
     const draft = await view(await api(x, 'POST', `/${created.id}/versions`, published.revision, {}), 201);
-    expect(draft.latestVersion.nodes).toMatchObject(nodes);
+    expect(draft.latestVersion.nodes).toMatchObject([expected]);
   });
 
   it('F-326 与 F-318c 未开放值给出明确的 422 原因', async () => {

@@ -29,7 +29,7 @@ export function flowFixture(): ProcessView {
         key,
         name: index ? '人事审批' : '上级审批',
         kind: 'single',
-        approver: 'direct_manager',
+        approver: { type: 'object_field', value: 'direct_manager' },
         exits: ['approve'],
         noAssignee: 'exception_admin',
         sameAssigneeSkip: false,

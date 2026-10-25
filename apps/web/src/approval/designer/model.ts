@@ -46,9 +46,10 @@ function completeNode(node: unknown): node is ApprovalNode {
   if (!record(node) || !record(node.actions)) return false;
   const kind =
     node.kind === 'single'
-      ? typeof node.approver === 'string'
+      ? record(node.approver) && typeof node.approver.type === 'string' && typeof node.approver.value === 'string'
       : node.kind === 'countersign' &&
-        strings(node.approvers) &&
+        Array.isArray(node.approvers) &&
+        node.approvers.every((s: unknown) => record(s) && typeof s.type === 'string' && typeof s.value === 'string') &&
         record(node.transitionRule) &&
         typeof node.transitionRule.type === 'string' &&
         record(node.transitionRule.rules);
