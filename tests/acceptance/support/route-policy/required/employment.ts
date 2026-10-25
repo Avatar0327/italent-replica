@@ -687,7 +687,7 @@ function exitBusinessCommand(
       `btn:${RECORD}#${anchor}@detail`,
       [],
       [
-        call(unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : GUARD_ANCHOR[unit]),
+        call(unit === 'route' ? 'guard: exitEditGuard(deps, ctx, gate, id)' : GUARD_ANCHOR[unit]),
         guard,
         EXIT_PERMISSION,
         WRITE_BUTTON,
