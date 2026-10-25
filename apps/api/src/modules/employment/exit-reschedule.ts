@@ -16,12 +16,14 @@ import {
   assertNoRegularizationInFlight,
   checkPendingTransferAck,
   disclose,
+  exitSourceOf,
   loadExitRequest,
   requireExitPermission,
   saveAck,
 } from './exit-gate.js';
 import { lockExitOrganizationResources, lockOtherBusinessHeads } from './exit-void-applications.js';
 import { normalizeEmploymentInput } from './fields.js';
+import { confirmInFlightRegularizations } from './intern-termination.js';
 import {
   bumpEmploymentBusiness,
   insertEmploymentRow,
@@ -175,7 +177,14 @@ async function prepareReschedule(
         })),
       )),
     });
-  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, change.lastWorkDate!);
+  // DEC-593：来源跟随原单；结束实习改期仍须复用在途转正确认，不能只豁免 §8B。
+  const source = exitSourceOf(business.payload.mode, business.payload.changeType);
+  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, change.lastWorkDate!, source);
+  if (source === 'free_direct')
+    await confirmInFlightRegularizations(tx, ctx, business.employeeId, {
+      endDate: change.lastWorkDate!,
+      confirmed: options.confirmed,
+    });
   const ack = await checkPendingTransferAck(
     tx,
     ctx,
