@@ -125,6 +125,7 @@ export const GRAPH: Graph = {
     '#employeeAttributes',
     '#employeeDto',
     '#employeeJoins',
+    '#employeeProfile',
     'apps/api/src/modules/personnel/store.ts#rows',
   ],
   'apps/api/src/modules/personnel/employee-read.ts#readTenure': [
@@ -140,6 +141,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#insert',
     'apps/api/src/modules/personnel/store.ts#lockPerson',
     'apps/api/src/modules/personnel/store.ts#rows',
+    'apps/api/src/modules/personnel/validation.ts#normalizeDailyWageStandard',
     'apps/api/src/modules/personnel/validation.ts#normalizeRetirementRange',
     'apps/api/src/modules/personnel/validation.ts#validateDates',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
@@ -166,6 +168,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/employee-read.ts#employeeAttributes',
     'apps/api/src/modules/personnel/employee-read.ts#employeeDto',
     'apps/api/src/modules/personnel/employee-read.ts#employeeJoins',
+    'apps/api/src/modules/personnel/employee-read.ts#employeeProfile',
     'apps/api/src/modules/personnel/store.ts#rows',
   ],
   'apps/api/src/modules/personnel/lists.ts#listFieldVisibility': [
@@ -509,7 +512,7 @@ export const GRAPH: Graph = {
     '#parseFields',
     'packages/domain/src/personnel/fields.ts#EMPLOYEE_FIELDS',
   ],
-  'apps/api/src/modules/personnel/validation.ts#fieldSchema': ['#isoDate'],
+  'apps/api/src/modules/personnel/validation.ts#fieldSchema': ['#isoDate', '#normalizeDailyWageStandard'],
   'apps/api/src/modules/personnel/validation.ts#parseFields': ['#fieldSchema', '#parse'],
   'apps/api/src/modules/personnel/validation.ts#subsetInput': [
     '#parseFields',
