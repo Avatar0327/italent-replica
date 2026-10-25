@@ -1,4 +1,8 @@
-/** F-140b1：未生效离职人工改期的唯一编排入口（设计 §3.2；DEC-687 / 688）。 */
+/** F-140：离职人工改期的唯一编排入口（设计 §3.2；DEC-687 / 688）。 */
+import { repositionExit } from './exit-reposition.js';
+import { replaceExit } from './exit-replacement.js';
+import type { Downstream } from './exit-downstream.js';
+import type { EmploymentBusiness } from './types.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { addDays, tenantLocalDate } from '@italent/domain';
@@ -10,7 +14,7 @@ import { activateExit } from './exit-activation.js';
 import { pendingActivations, recordActivationAttempt, type PendingActivation } from './activation-store.js';
 import { loadOccupancy, assertOccupancyChange } from './exit-cancel-intervals.js';
 import { runExitReplannedHooks } from './exit-confirmation.js';
-import { probeRescheduleDownstream } from './exit-downstream.js';
+import { effectiveRescheduleHints, probeRescheduleDownstream } from './exit-downstream.js';
 import {
   assertActualLeaveDate,
   assertNoRegularizationInFlight,
@@ -89,7 +93,7 @@ export async function rescheduleExit(
   business: LockedEmploymentBusiness,
   patch: EmploymentBusinessPatch,
   options: RescheduleOptions = {},
-) {
+): Promise<(Downstream & { successor?: EmploymentBusiness }) | null> {
   await requireExitPermission(ctx, 'update', {
     employeeId: business.employeeId,
     business,
@@ -98,10 +102,15 @@ export async function rescheduleExit(
   });
   const change = await exitDateChange(tx, ctx, business, patch);
   if (!change) return null;
-  if (business.payload.kind !== 'leave' || !['draft', 'rejected', 'in_review', 'approved'].includes(business.state))
+  if (
+    business.payload.kind !== 'leave' ||
+    !['draft', 'rejected', 'in_review', 'approved', 'effective'].includes(business.state)
+  )
     throw new AppError('VALIDATION_FAILED', '当前状态不支持离职改期', { reason: 'EXIT_DATE_IMMUTABLE' });
   const { queue, ack, today } = await prepareReschedule(tx, ctx, business, change, options);
   const occupancy = await loadOccupancy(tx, ctx, business.employeeId);
+  if (business.state === 'effective')
+    return rescheduleEffectiveExit(tx, ctx, business, change, options, { queue, ack, today }, occupancy);
   const next = await writeManualExitPlan(tx, ctx, business, change);
   await saveAck(tx, ctx, business.id, ack);
   await assertOccupancyChange(tx, ctx, business.employeeId, business.id, occupancy, options.confirmed === true);
@@ -130,6 +139,49 @@ export async function rescheduleExit(
 }
 
 type DateChange = NonNullable<Awaited<ReturnType<typeof exitDateChange>>>;
+
+async function rescheduleEffectiveExit(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  change: DateChange,
+  options: RescheduleOptions,
+  { queue, ack, today }: Awaited<ReturnType<typeof prepareReschedule>>,
+  occupancy: Awaited<ReturnType<typeof loadOccupancy>>,
+) {
+  const result =
+    change.effectiveDate <= today
+      ? await repositionExit(tx, ctx, business, change)
+      : await replaceExit(tx, ctx, business, change, ack);
+  await assertOccupancyChange(tx, ctx, business.employeeId, business.id, occupancy, options.confirmed === true);
+  await replanAttempts(tx, ctx, business, queue, {
+    fromPlanned: change.oldPlan,
+    toPlanned: change.effectiveDate,
+    versionNo: result.next.versionNo,
+  });
+  await runExitReplannedHooks(tx, ctx, {
+    tenantId: ctx.tenantId,
+    employeeId: business.employeeId,
+    businessId: result.successor?.id ?? business.id,
+    fromPlanned: change.oldPlan,
+    toPlanned: change.effectiveDate,
+    versionNo: result.next.versionNo,
+    ...(result.successor ? { supersedesBusinessId: business.id } : {}),
+  });
+  const downstream = await probeRescheduleDownstream(
+    tx,
+    ctx,
+    business.employeeId,
+    business.id,
+    addDays(change.oldPlan, -1),
+    change.lastWorkDate!,
+  );
+  downstream.items.push(
+    ...result.hints,
+    ...(await effectiveRescheduleHints(tx, ctx, business.employeeId, business.id)),
+  );
+  return { ...downstream, ...(result.successor ? { successor: result.successor } : {}) };
+}
 
 async function prepareReschedule(
   tx: Tx,

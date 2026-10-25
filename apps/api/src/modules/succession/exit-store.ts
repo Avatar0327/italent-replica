@@ -1,14 +1,21 @@
 /** §5.4 / DEC-343：任职已持员工锁；目标锁 → 记录行。台账与继任变更均复用上游事务。 */
 import { and, eq, sql, successionExitApplications as applications, type Tx } from '@italent/db';
-import { isTerminatingRecord, TERMINATING_KIND_LABELS, tenantLocalDate } from '@italent/domain';
+import { isTerminatingRecord, TERMINATING_KIND_LABELS, tenantLocalDate, SUCCESSION_OBJECTS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
-import { scopeAllows, type ModuleScope } from '../permission/module-access.js';
+import {
+  scopeAllows,
+  resolveModuleScopeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  type ModuleScope,
+} from '../permission/module-access.js';
 import {
   registerEmployeeStatusHooks,
   type EmployeeStatusHooks,
   type EmployeeStatusHookContext,
 } from '../employment/status-hooks.js';
+import { listRecordRows } from './record-read.js';
+import { registerDownstreamVisibility, type DownstreamItem } from '../employment/exit-downstream.js';
 import { lockTargets } from './record-write.js';
 import { rowsOf } from './read-sql.js';
 import { CalcObjectFailure } from './calc-contract.js';
@@ -17,6 +24,7 @@ export type ExitApplication = typeof applications.$inferSelect;
 type ExitContext = EmployeeStatusHookContext;
 interface ExitRow {
   id: string;
+  successor_employee_id: string;
   succession_type: 'org' | 'position';
   target_org_id: string | null;
   target_position_id: string | null;
@@ -84,7 +92,7 @@ export async function applyExit(
   const endReason =
     TERMINATING_KIND_LABELS[exitRecord?.kind as keyof typeof TERMINATING_KIND_LABELS] ?? TERMINATING_KIND_LABELS.leave;
   for (const row of active) {
-    const endDate = leaveDate < row.start_date ? row.start_date : leaveDate;
+    const endDate = exitEndDate(leaveDate, row.start_date);
     const before = {
       endDate: row.end_date,
       endSource: row.end_source,
@@ -132,6 +140,71 @@ export async function applyExit(
   return ended.length;
 }
 
+/** 半开区间：使用任职生效日 E，不另算一次最后工作日；开始日晚于 E 时结束为空区间。 */
+export const exitEndDate = (leaveDate: string, startDate: string) => (leaveDate < startDate ? startDate : leaveDate);
+
+async function followRescheduledExit(tx: Tx, ctx: ExitContext, recordId: string, leaveDate: string) {
+  const [application] = await tx.select().from(applications).where(key(ctx.tenantId, recordId));
+  if (!application || application.source === 'delete_revert') return [];
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const ids = application.endedRecordIds;
+  await lockExitTargets(tx, ctx, ids);
+  const hints: DownstreamItem[] = [];
+  for (const row of await records(tx, ctx.tenantId, ids, today, true)) {
+    if (row.deleted_at) continue;
+    const expected = exitEndDate(leaveDate, row.start_date);
+    // DEC-690：目标锁覆盖普通新增 / 编辑 / 同步；查邻接行后再锁行，不用日期猜自动结束来源。
+    const [next] = rowsOf<{ id: string; start: string }>(
+      await tx.execute(sql`
+      SELECT id, start_date::text AS start FROM succession_records
+      WHERE tenant_id=${ctx.tenantId}::uuid AND succession_type=${row.succession_type}
+        AND COALESCE(target_org_id,target_position_id)=${row.target_org_id ?? row.target_position_id}::uuid
+        AND successor_employee_id=${row.successor_employee_id}::uuid AND id<>${row.id}::uuid
+        AND deleted_at IS NULL AND start_date>=${row.start_date}::date
+        AND (start_date<end_date OR id=ANY(${idsSql(ids)}))
+      ORDER BY start_date,id LIMIT 1 FOR UPDATE`),
+    );
+    const endDate = next && next.start < expected ? next.start : expected;
+    await tx.execute(sql`UPDATE succession_records SET end_date=${endDate}::date,
+      revision=revision+1, updated_at=${ctx.now.toISOString()}::timestamptz, updated_by=${ctx.userId}::uuid
+      WHERE tenant_id=${ctx.tenantId}::uuid AND id=${row.id}::uuid`);
+    await recordAudit(tx, {
+      tenantId: ctx.tenantId,
+      actorUserId: auditActor(ctx.userId),
+      objectType: 'Succession.Record',
+      objectId: row.id,
+      action: 'succession.record.update',
+      commandId: ctx.commandId,
+      occurredAt: ctx.now,
+      before: { endDate: row.end_date, revision: row.revision },
+      after: { endDate, revision: row.revision + 1, exitRecordId: recordId },
+      scope: { orgId: row.anchor_org },
+    });
+    if (endDate !== expected)
+      hints.push({
+        kind: 'succession',
+        status: 'found',
+        hiddenCount: 0,
+        targets: [
+          {
+            type: 'succession-record',
+            id: row.id,
+            detail: {
+              successionType: row.succession_type,
+              targetId: row.target_org_id ?? row.target_position_id,
+              expectedEndDate: expected,
+              actualEndDate: endDate,
+              adjacentRecordId: next!.id,
+              message: '未能完全跟随、已截至下一条开始前，请人工核对',
+            },
+          },
+        ],
+      });
+  }
+  await tx.update(applications).set({ leaveDate }).where(key(ctx.tenantId, recordId));
+  return hints;
+}
+
 export const successionExitHooks: EmployeeStatusHooks = {
   async onRecordMaterialized(tx, ctx, event) {
     if (!isTerminatingRecord(event.kind, event.employeeStatus)) return;
@@ -168,10 +241,30 @@ export const successionExitHooks: EmployeeStatusHooks = {
       .set({ source: 'delete_revert', candidateRecordIds: [] })
       .where(key(ctx.tenantId, event.recordId));
   },
-  async onRecordRescheduled() {
-    // DEC-440：改期口径见 F-096；未生效候选由 sweep 读取当前时间轴日期，自然到期。
+  async onRecordRescheduled(tx, ctx, { before, after }) {
+    if (before.kind !== 'leave' || after.recordId !== before.recordId) return;
+    return followRescheduledExit(tx, ctx, before.recordId, after.effectiveDate);
   },
 };
 export function installSuccessionExitHooks() {
   registerEmployeeStatusHooks('succession', successionExitHooks);
+  registerDownstreamVisibility('succession-record', async (tx, ctx, target) => {
+    if (!ctx.authorize) return true;
+    const code = SUCCESSION_OBJECTS.record.code;
+    if (!(await ctx.authorize({ ...ctx, action: 'object.view', resource: code }))) return false;
+    const deps = { authorize: ctx.authorize, clock: () => ctx.now };
+    const fields = await getModuleViewableFieldsInTransaction(deps, ctx, code, tx);
+    if (fields && ['startDate', 'endDate', 'targetOrgId', 'targetPositionId'].some((field) => !fields.has(field)))
+      return false;
+    const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, code);
+    const today = tenantLocalDate(ctx.now, ctx.timezone);
+    const ids = [target.id, String(target.detail?.adjacentRecordId)];
+    const visible = await listRecordRows(
+      tx,
+      { ...ctx, today, asOf: today, scope },
+      { status: 'all', ids },
+      { limit: 2, offset: 0 },
+    );
+    return visible.rows.length === 2;
+  });
 }

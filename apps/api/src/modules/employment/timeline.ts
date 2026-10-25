@@ -327,7 +327,8 @@ export async function reattachFutureTransfers(
 ): Promise<ReattachedTransfer[]> {
   const detached = rowsOf<{ recordId: string; staffId: string; from: string }>(
     await tx.execute(sql`
-    SELECT x.target_id::text AS "recordId", r.staff_id::text AS "staffId", x.detail->'window'->>'from' AS "from"
+    SELECT DISTINCT x.target_id::text AS "recordId", r.staff_id::text AS "staffId",
+      x.detail->'window'->>'from' AS "from"
     FROM exit_effects x JOIN employment_records r ON r.tenant_id=x.tenant_id AND r.id=x.target_id
     WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${leaveBusinessId}::uuid AND x.employee_id=${employeeId}::uuid
       AND x.kind='future_transfer_detached' AND x.phase='effective' AND x.target_type='employment-record'
@@ -335,7 +336,7 @@ export async function reattachFutureTransfers(
       -- 被摘下后又被 HR 删除的调动（墓碑）不再挂回：它没有时间轴行是正确的最终状态
       AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d
         WHERE d.tenant_id=x.tenant_id AND d.record_id=x.target_id)
-    ORDER BY x.detail->'window'->>'from', x.id`),
+    ORDER BY "from", "recordId"`),
   );
   for (const item of detached)
     await insertEmploymentTimeline(tx, ctx, employeeId, item.recordId, item.staffId, item.from);

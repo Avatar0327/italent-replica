@@ -225,7 +225,7 @@ describe('F-140b1 未生效改期与重新入队', () => {
     },
   );
 
-  it('F-11：通用 approved 改期、已生效离职改期仍拒绝且无业务写入', async () => {
+  it('F-11：通用业务入口对 approved / effective 改期仍拒绝且无写入', async () => {
     const x = await world('f11');
     const leave = await x.directLeave('2026-10-15');
     let before = await x.stateOf(x.employee.id);
@@ -241,7 +241,14 @@ describe('F-140b1 未生效改期与重新入队', () => {
     await x.runScheduler('2026-10-16T01:00:00Z');
     before = await x.stateOf(x.employee.id);
     at(x, '2026-10-17');
-    expect(await x.reason(await patch(x, leave.id, '2026-10-29'))).toMatchObject({
+    expect(
+      await x.reason(
+        await x.session.request('PATCH', `/businesses/${leave.id}`, {
+          ifMatch: (await x.business(leave.id)).revision,
+          body: { lastWorkDate: '2026-10-29' },
+        }),
+      ),
+    ).toMatchObject({
       status: 400,
       reason: 'EXIT_DATE_IMMUTABLE',
     });
@@ -579,12 +586,12 @@ describe('F-140b1 事务与边界', () => {
     expect(observed).toContain('involuntary');
   });
 
-  it('F-11 已生效的仅生效日改动仍返回原日期不可改原因', async () => {
+  it('F-11 已生效离职的通用业务入口仍拒绝改日期', async () => {
     const x = await world('immutable-effective-only');
     const leave = await x.directLeave('2026-10-15');
     await x.runScheduler('2026-10-16T01:00:00Z');
     const before = await x.stateOf(x.employee.id);
-    const response = await x.session.request('PATCH', `/exits/${leave.id}`, {
+    const response = await x.session.request('PATCH', `/businesses/${leave.id}`, {
       ifMatch: (await x.business(leave.id)).revision,
       body: { effectiveDate: '2026-10-30' },
     });

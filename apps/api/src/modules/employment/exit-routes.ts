@@ -284,7 +284,7 @@ function registerExitChanges(
   deps: TenantRouteDeps,
   authorizeBusinessWrite: BusinessWriteGuard,
 ) {
-  // F-140b1：未生效改期与扩展字段同事务；审批中的单另需审批管理员按钮，已生效日期仍拒绝
+  // F-140：日期与扩展字段同事务；审批中的单另需审批管理员按钮，已生效走重定位 / 替代
   router.patch('/exits/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
@@ -301,7 +301,11 @@ function registerExitChanges(
       {
         guard: exitEditGuard(deps, ctx, gate, id),
         project: async (body) => {
-          const { downstreamHints, ...business } = body as { downstreamHints?: Downstream; employeeId: string };
+          const { downstreamHints, successor, ...business } = body as {
+            downstreamHints?: Downstream;
+            employeeId: string;
+            successor?: object;
+          };
           const trimmed = (await trimEmploymentResponse(deps, ctx, business)) as object;
           if (!downstreamHints) return trimmed;
           const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
@@ -309,6 +313,7 @@ function registerExitChanges(
           );
           return {
             ...trimmed,
+            ...(successor ? { successor: await trimEmploymentResponse(deps, ctx, successor) } : {}),
             downstreamHints: {
               items: visible.items.filter((item) => item.status === 'found'),
               probes: visible.items.map(({ kind, status }) => ({ kind, status })),

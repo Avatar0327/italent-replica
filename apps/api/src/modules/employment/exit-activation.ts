@@ -271,7 +271,7 @@ async function recordEffectiveCorrection(
 }
 
 /** §5.8：摘下同周期排在离职之后的已落地调动；台账记原窗口（B4 撤销时按它挂回），审计提示 HR。 */
-async function detachAndRecord(
+export async function detachAndRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,

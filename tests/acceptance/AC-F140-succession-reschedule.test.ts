@@ -1,5 +1,10 @@
 /** DEC-689 / 690：真实离职 → 自动结束 → 人工改期；继任历史数据为合成夹具。 */
 import './support/exit-gate-enforced.js';
+import { randomUUID } from 'node:crypto';
+import { sql } from '@italent/db';
+import { registerEmployeeStatusHooks } from '../../apps/api/src/modules/employment/status-hooks.js';
+import { lockTargets } from '../../apps/api/src/modules/succession/record-write.js';
+import { waitForBlocked } from './support/pg-interleave.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { tenantApi } from './support/tenant-api.js';
@@ -94,4 +99,56 @@ describe('F-140b2 继任结束日跟随', () => {
     expect((await w.read(id)).end_date).toBe('2026-10-26');
     expect(await w.read(unrelated)).toEqual(before);
   });
+  it('订阅方存储失败时，已经执行的继任跟随和审计整体回滚', async () => {
+    const { w, id, leave } = await fixture('rollback');
+    const before = await w.read(id);
+    registerEmployeeStatusHooks(`zz-f140b2-${id}`, {
+      async onRecordRescheduled(_tx, _ctx, change) {
+        if (change.before.recordId === leave.id) throw new Error('合成后续订阅失败');
+      },
+    });
+    const current = await (await w.requestEmployment('GET', `/businesses/${leave.id}`)).json();
+    const response = await w.requestEmployment('PATCH', `/exits/${leave.id}`, {
+      ifMatch: current.revision,
+      body: { lastWorkDate: '2026-10-25' },
+    });
+    expect(response.status).toBe(500);
+    expect(await w.read(id)).toEqual(before);
+  });
+
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+    'PG：并发新增先持目标锁，改期等锁后读取新邻接并截断成功',
+    async () => {
+      const { w, id, employee, patch } = await fixture('concurrent-next');
+      let held!: () => void, release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const nextId = randomUUID();
+      const holder = w.asTenant(async (tx) => {
+        await lockTargets(tx, w.tenant.id, [{ kind: 'position', id: w.targetPosition.id }]);
+        held();
+        await released;
+        await tx.execute(sql`INSERT INTO succession_records
+        (id,tenant_id,succession_type,target_position_id,successor_employee_id,
+          start_date,end_date,created_by,updated_by)
+        VALUES (${nextId}::uuid,${w.tenant.id}::uuid,'position',${w.targetPosition.id}::uuid,
+          ${employee.id}::uuid,'2026-10-20','2026-10-30',${w.user.id}::uuid,${w.user.id}::uuid)`);
+      });
+      await ready;
+      const changing = patch('2026-10-25');
+      try {
+        await waitForBlocked(database().db, 1);
+      } finally {
+        release();
+      }
+      await holder;
+      const result = await changing;
+      expect((await w.read(id)).end_date).toBe('2026-10-20');
+      expect(JSON.stringify(result.downstreamHints)).toContain(nextId);
+    },
+  );
 });

@@ -248,7 +248,8 @@ export async function updateExitFields(
     throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
-  const mayReschedule = kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved'].includes(business.state);
+  const mayReschedule =
+    kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved', 'effective'].includes(business.state);
   const changing = mayReschedule && (await exitDateChange(tx, ctx, business, patch.dates));
   // 薄扩展字段按本次新日期校验；人工版本及重新入队仍只由 rescheduleExit 编排。
   const validationBusiness = changing
@@ -310,5 +311,7 @@ export async function updateExitFields(
     await refreshBusinessVersion(tx, ctx, 'employment', businessId);
   }
   const saved = await requireSavedBusiness(tx, ctx, businessId);
-  return downstream ? { ...saved, downstreamHints: downstream } : saved;
+  if (!downstream) return saved;
+  const { successor, ...downstreamHints } = downstream;
+  return { ...saved, ...(successor ? { successor } : {}), downstreamHints };
 }

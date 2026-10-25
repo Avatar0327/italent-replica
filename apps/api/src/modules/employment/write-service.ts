@@ -84,6 +84,8 @@ interface SelectedEmploymentCycle {
 }
 
 export interface CreateEmploymentOptions {
+  /** F-140 替代复制已校验快照；恢复段与整体 ΔO / ΔP 在改期编排中重验。 */
+  readonly rescheduledExit?: true;
   readonly withEstablishment?: boolean;
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
@@ -126,20 +128,7 @@ export async function createEmploymentBusiness(
   // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
   if (normalized.kind === 'regularization' && normalized.mode === 'direct' && !options.generatedByAssessment)
     await assertProbationProcessesIdle(tx, ctx, { employeeId: employee.id, action: 'regularize' });
-  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
-    ? undefined
-    : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
-  const inherited = await prepareInheritance(tx, ctx, {
-    ...normalized,
-    employeeId: employee.id,
-    staffId: selected?.cycle.id,
-  });
-  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
-  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
-    staffId: selected?.cycle.id ?? '',
-    predecessor: selected?.predecessor ?? null,
-  });
-  await validatePreparedEmployment(tx, ctx, employee.id, normalized.kind, prepared, effective.fields);
+  const { selected, prepared, effective } = await prepareCreatedEmployment(tx, ctx, employee.id, normalized, options);
   const id = await initializeEmploymentBusiness(
     tx,
     ctx,
@@ -186,6 +175,39 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+async function prepareCreatedEmployment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  normalized: ReturnType<typeof normalizeEmploymentInput>,
+  options: CreateEmploymentOptions,
+) {
+  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
+    ? undefined
+    : await selectEmploymentCycle(tx, ctx, employeeId, normalized);
+  const inherited = await prepareInheritance(tx, ctx, {
+    ...normalized,
+    employeeId: employeeId,
+    staffId: selected?.cycle.id,
+  });
+  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  await validatePreparedEmployment(
+    tx,
+    ctx,
+    employeeId,
+    normalized.kind,
+    prepared,
+    effective.fields,
+    undefined,
+    options.rescheduledExit === true && normalized.kind === 'leave',
+  );
+  return { selected, prepared, effective };
 }
 
 /** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */
@@ -657,10 +679,18 @@ export async function validateTransferReposition(
     beforeOrder: position.order,
   });
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
-  await validateNewEmploymentReferences(tx, ctx, record.fields, payload.effectiveDate, {
-    employeeId: business.employeeId,
-    window: windowBefore(payload.effectiveDate, next),
-  });
+  await validateNewEmploymentReferences(
+    tx,
+    ctx,
+    record.fields,
+    payload.effectiveDate,
+    {
+      employeeId: business.employeeId,
+      window: windowBefore(payload.effectiveDate, next),
+    },
+    false,
+    isExitKind(payload.kind),
+  );
 }
 
 interface MaterializeOptions {
@@ -918,6 +948,7 @@ async function validatePreparedEmployment(
   prepared: PreparedInheritance,
   effectiveFields: PresetFields,
   existing?: LockedEmploymentBusiness,
+  terminatingSnapshot = false,
 ) {
   assertRequiredTransferFields(kind, prepared.formSnapshot, { ...effectiveFields });
   if (kind === 'transfer')
@@ -939,6 +970,7 @@ async function validatePreparedEmployment(
     prepared.effectiveDate,
     reporting,
     NEW_CYCLE_KINDS.includes(kind),
+    terminatingSnapshot,
   );
 }
 
