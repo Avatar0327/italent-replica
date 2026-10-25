@@ -1,12 +1,12 @@
 /** F-261 / DEC-684：只经真实离退休、改期与调度入口验证账号生命周期。 */
 import './support/exit-gate-enforced.js';
-import { getUser, setUserStatus, sql } from '@italent/db';
+import { getUser, setUserStatus, grantMembership, revokeMembership, sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
 import { rehireWorld } from './AC-RT-rehire-support.js';
-import { cmd } from './support/tenant-api.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const world = (label: string) => downstreamWorld(database().db, `f261-${label}`);
@@ -45,6 +45,22 @@ async function cancel(x: World, id: string) {
 }
 
 describe('F-261 默认生效与账号关联', () => {
+  it('源租户成员关系先撤销时，离职仍停用绑定的全局账号，另一租户不能继续登录', async () => {
+    const x = await world('revoked-source');
+    const y = await world('revoked-other');
+    const user = await account(x);
+    await grantMembership(database().db, {
+      tenantId: y.session.tenant.id, userId: user.id, expectedRevision: 0,
+    }, cmd());
+    await revokeMembership(database().db, {
+      tenantId: x.session.tenant.id, userId: user.id, expectedRevision: 1,
+    }, cmd());
+    const leave = await create(x);
+    await x.runScheduler('2026-10-16T02:00:00Z');
+    expect((await x.business(leave.id)).status).toBe('effective');
+    expect((await account(x)).status).toBe('disabled');
+  });
+
   it('默认提前停用关闭；未来离职不影响账号，生效后全局停用，重复调度幂等，关联完整保留', async () => {
     const x = await world('default');
     const before = await account(x);
@@ -136,13 +152,49 @@ describe('AC-DM-04 提前停用', () => {
     );
     expect((await account(x)).status).toBe(inReview ? 'disabled' : 'active');
     if (!inReview) {
-      await x.approve(leave, '2026-10-06T11:02:00Z');
+      const [task] = await x.sqlRows<{ id: string; userId: string; revision: number }>(sql`
+        SELECT t.id,t.assignee_user_id AS "userId",i.revision FROM approval_tasks t
+        JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+        WHERE t.tenant_id=${x.session.tenant.id} AND i.business_id=${leave.id}::uuid AND t.status='pending'`);
+      const api = tenantApi(database().db, { clock: () => new Date('2026-10-06T11:02:00Z') });
+      await ok(
+        await api.request('POST', `/api/tenant/approval/tasks/${task!.id}/approve`, {
+          tenant: x.session.tenant.id,
+          user: task!.userId,
+          ifMatch: task!.revision,
+          body: {},
+        }),
+      );
       expect((await account(x)).status).toBe('disabled');
     }
   });
 });
 
 describe('AC-DM-05 自动停用来源与真实改期', () => {
+  it('实际离岗日基准改晚也恢复；同一账号恢复后再次通过租户认证', async () => {
+    const x = await world('actual-replan');
+    await configure(x);
+    x.setNow('2026-10-06T11:01:00Z');
+    const user = await account(x);
+    const leave = await create(x, '2026-10-20', 'direct', { actualLeaveDate: '2026-10-06' });
+    expect((await account(x)).status).toBe('disabled');
+    const api = tenantApi(database().db);
+    const authenticate = () =>
+      api.request('GET', '/api/tenant/employment/exit-account/tasks', {
+        tenant: x.session.tenant.id,
+        user: user.id,
+      });
+    expect((await authenticate()).status).toBe(401);
+    await ok(
+      await x.session.request('PATCH', `/exits/${leave.id}`, {
+        ifMatch: (await x.business(leave.id)).revision,
+        body: { actualLeaveDate: '2026-10-18' },
+      }),
+    );
+    expect((await account(x)).status).toBe('active');
+    expect((await authenticate()).status).toBe(200);
+  });
+
   it.each([false, true])('未生效改晚：手工再次停用=%s，仅恢复仍由本规则停用的账号', async (manual) => {
     const x = await world(`replan-${manual}`);
     await configure(x, { ...early, basis: 'last_work_date' });

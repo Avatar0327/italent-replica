@@ -13,6 +13,7 @@ import {
   type InstanceView,
 } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
+import { runEmploymentActivations } from '../../apps/api/src/modules/employment/activation-scheduler.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -90,6 +91,13 @@ describe('F-261 保护及重试', () => {
     const task = await taskOf(f);
     expect(task).toMatchObject({ status: 'blocked', reason: 'APPROVAL_EXCEPTION_ADMIN_HANDOVER_REQUIRED' });
     expect(task.recipientUserIds).toEqual(expect.arrayContaining([f.w.hr.id, f.admin]));
+    for (const userId of [f.w.hr.id, f.admin]) {
+      const inbox = await ok(await f.w.request(userId, 'GET', `${EMP}/exit-account/tasks`));
+      expect(inbox.items).toEqual(expect.arrayContaining([expect.objectContaining({ businessId: f.leave.id })]));
+    }
+    await runEmploymentActivations(f.w.db, cmd(), { tenantId: f.w.tenant.id }, { clock: f.w.clock });
+    expect(await taskOf(f)).toEqual(task);
+
     const api = tenantApi(f.w.db, { clock: f.w.clock, authorize: (r) => r.action !== 'admin.user_manage' });
     const rejected = await api.request('POST', `${EMP}/exit-account/tasks/${f.leave.id}/retry`, {
       ...f.w.as(f.w.hr.id),

@@ -57,7 +57,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-261 PG 锁交错', () 
     expect((await changing).status).toBe(200);
     await scheduling;
     expect((await getUser(x.db, userId))!.status).toBe('active');
-    expect((await x.business(leave.id)).lastWorkDate).toBe('2026-10-20');
+    expect((await x.business(leave.id)).effectiveDate).toBe('2026-10-21');
   });
   it('两个调度同时过点：账号只更新一次，任务同一条，重复运行无新增副作用', async () => {
     const { x, userId, leave } = await scene('two');
