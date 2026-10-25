@@ -299,6 +299,7 @@ async function exitGateFor(
       ...target,
       deleting: input.action === 'delete',
       ...(input.cancelling ? { cancelling: true } : {}),
+      ...(input.cancelling && input.restoreUntil ? { rescheduling: true as const } : {}),
     });
   else if (input.action === 'activate') await requireExitGate(tx, ctx, 'retry', target);
   return { row };

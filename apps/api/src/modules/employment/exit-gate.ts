@@ -81,6 +81,8 @@ export interface ExitGateTarget {
   readonly deleting?: boolean;
   /** cancel：来自离职撤销入口（cancelExit）；通用 revoke / delete 不带它，对离职单 409 USE_EXIT_CANCEL。 */
   readonly cancelling?: boolean;
+  /** F-140：仅替代内核传入；仍校验编辑权，不把内部撤销误当成用户独立撤销。 */
+  readonly rescheduling?: true;
   /** 离职扩展行（门禁内部加载；submit / withdraw 按发起方式取按钮）。 */
   readonly row?: typeof exitRequests.$inferSelect;
   /** 审批编辑 / 编辑并同意：权限由审批中心按节点规则负责，本门禁只判日期。 */
@@ -146,6 +148,7 @@ function permissionSpec(operation: ExitOperation, target: ExitGateTarget): Permi
         ? { op: 'update', payload: {}, buttons: [BUTTON.application] }
         : null;
     case 'cancel':
+      if (target.rescheduling) return { op: 'update', payload: {}, buttons: [BUTTON.edit] };
       return { op: target.deleting ? 'delete' : 'update', payload: {}, buttons: [BUTTON.cancel] };
     case 'retry':
       // RetryActivation 与 Dimission 的交集
