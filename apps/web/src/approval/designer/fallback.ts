@@ -1,5 +1,6 @@
 import {
   APPROVAL_TYPES,
+  expressionValue,
   HANDOVER_FALLBACK_APPROVERS,
   HANDOVER_FALLBACK_LIMIT,
   type ApprovalNode,
@@ -11,7 +12,10 @@ export function supportsFallback(node: ApprovalNode, approvalType?: string): boo
     APPROVAL_TYPES[approvalType as keyof typeof APPROVAL_TYPES]?.adapter === 'exit_handover' &&
     node.kind === 'countersign' &&
     Array.isArray(node.approvers) &&
-    node.approvers.some((value) => HANDOVER_FALLBACK_APPROVERS.has(value))
+    node.approvers.some((source) => {
+      const value = expressionValue(source);
+      return value !== null && HANDOVER_FALLBACK_APPROVERS.has(value);
+    })
   );
 }
 export function fallbackError(value: unknown): string | undefined {
