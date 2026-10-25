@@ -24,6 +24,9 @@ async function setup(page: Page, baseURL: string, writable = true) {
     route.fulfill({
       json: {
         ...snapshotFixture,
+        apps: snapshotFixture.apps.map((app) =>
+          app.app === 'approval' ? { ...app, entryObjects: ['TenantBase.ApprovalProcess'] } : app,
+        ),
         adminMenus: [
           ...snapshotFixture.adminMenus,
           { code: 'matrix.manage', path: '流程矩阵/矩阵管理', implemented: false, editable: false },
@@ -84,6 +87,7 @@ const save = (page: Page) => page.getByRole('button', { name: '保存草稿', ex
 test('AC-FE-F304-04 两节点回显、选择增删、保存重读；其他节点隐藏', async ({ page, baseURL }) => {
   const state = await setup(page, baseURL!);
   await page.goto(path);
+  await expect(page.getByRole('heading', { name: '设计器', exact: true })).toBeVisible();
   await expect(page.getByText(/合成人员1/).first()).toBeVisible();
   await pick(page);
   await save(page);
