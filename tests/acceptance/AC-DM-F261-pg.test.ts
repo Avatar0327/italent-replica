@@ -30,6 +30,7 @@ async function scene(label: string) {
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-261 PG 锁交错', () => {
   it('人工重试与调度写回交错：账号停用凭据不可丢，随后撤销仍能恢复', async () => {
     const { x, userId, leave } = await scene('retry-race');
+    x.setNow('2026-10-06T11:00:00Z');
     const task = await (await x.session.request('GET', `/exit-account/tasks/${leave.id}`)).json();
     const held = signal(),
       release = signal();
