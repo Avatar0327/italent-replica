@@ -121,11 +121,15 @@ async function settle(
   commandId: string,
   automatic: boolean,
 ) {
+  const hasDue = plan.some((f) => f.due);
   for (const f of plan) {
     const t = f.task;
-    const status = settledStatus(f, user);
+    // 其他到期任务仍阻止启用时保留恢复请求；账号被人工改过 revision 则不再认领。
+    const waitingRestore =
+      t.restoreRequested && user.status === 'disabled' && t.autoRevision === user.revision && hasDue;
+    const status = !f.due && waitingRestore ? 'pending' : settledStatus(f, user);
     const autoRevision = automatic && user.status === 'disabled' && f.due ? user.revision : t.autoRevision;
-    const restoreRequested = t.restoreRequested && f.due;
+    const restoreRequested = t.restoreRequested && (f.due || waitingRestore);
     if (status === t.status && autoRevision === t.autoRevision && restoreRequested === t.restoreRequested) continue;
     await inTenant(f.tenant.id, async (tx) => {
       const saved = await saveTask(tx, context(f, now, commandId), t, {
