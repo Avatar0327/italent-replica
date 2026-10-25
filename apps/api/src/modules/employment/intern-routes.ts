@@ -33,6 +33,7 @@ import {
   planInternCreate,
   requireInternCreateWrite,
 } from './intern-create.js';
+import { projectInternProfile } from './intern-profile.js';
 import { internRegularizationInput, regularizationFields, regularizeIntern } from './intern-regularization.js';
 import { internTerminationInput, terminateIntern } from './intern-termination.js';
 import { listInternView, type InternViewItem } from './intern-views.js';
@@ -119,7 +120,7 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
 /**
  * 新增实习生一体写入（BE-R2d4c）：建档 / 重聘 + 实习任职 + 合同协议同一命令事务。权限同 POST /employees（人员新增权 + 看全部，
  * DEC-121）叠加任职新增权与字段权；合同对象权限在命令内复核（首次 / 重放 / 回查）。重聘的 If-Match 是候选人员当前 revision，
- * 新增为 0。回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不走任职字段裁剪。
+ * 新增为 0。固定回执保留人员 / 业务 ID、合同摘要及视图归属；资料快照按当前档案权限独立裁剪。
  */
 function registerInternCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/interns', async (c) => {
@@ -134,7 +135,10 @@ function registerInternCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       input,
       async (tx, context) => ({ status: 201, body: await createInternEntry(tx, deps, context, plan) }),
-      { guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body },
+      {
+        guard: internCreateGuard(deps, employeeCtx, ctx, plan),
+        project: (body) => projectInternProfile(deps, ctx, body),
+      },
     );
   });
 }

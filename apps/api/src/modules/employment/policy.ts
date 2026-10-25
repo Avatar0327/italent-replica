@@ -1019,7 +1019,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
   // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
   // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
-  // 任一步失败整体回滚，同命令 ID 重放返回首个结果。回执是固定形状，不经任职字段裁剪
+  // F-322：profile 普通字段经档案更新权，教育经子集创建权，均在命令事务复核；资料回执按当前档案查看权裁剪。
+  // 任一步失败整体回滚，同命令 ID 不重复写入；没有 profile 时保持原回执。
   'POST /interns': all(
     [
       object({
@@ -1039,12 +1040,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
     {
-      guards: [LINKAGE, 'employment.entryContract'],
+      guards: [LINKAGE, 'employment.entryContract', 'employment.internProfile'],
       write: employmentWrite(
         'body.fields+customFields',
-        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject'],
-        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract'] },
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireInternProfileAccess'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract', 'profile'] },
       ),
+      optional: {
+        profile: object({
+          object: 'TenantBase.EmployeeInformation',
+          operation: 'view',
+          button: noButton('资料回执按当前档案查看权披露'),
+          scope: pointScope({ derived: 'employment.internProfile' }, 'personnel.employee', denied(404, 'NOT_FOUND')),
+          fields: projector('employment.internProfile', 'personnel.employee'),
+        }),
+      },
       ...byId,
     },
   ),

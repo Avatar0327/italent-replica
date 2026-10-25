@@ -23,6 +23,7 @@ const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const INTERN_CREATE = `${SRC}/employment/intern-create.ts`;
+const INTERN_PROFILE = `${SRC}/employment/intern-profile.ts`;
 const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
 const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
@@ -1941,7 +1942,7 @@ export const EMPLOYMENT: RequiredTable = {
             INTERN,
             'POST',
             '/interns',
-            '{ guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body }',
+            '{ guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => projectInternProfile(deps, ctx, body) }',
           ),
           fn(
             INTERN_CREATE,
@@ -1974,6 +1975,74 @@ export const EMPLOYMENT: RequiredTable = {
           ],
         ),
         purpose: 'when:employment.entryContract',
+      },
+      ob(
+        'guard:employment.internProfile',
+        [],
+        [
+          fn(
+            INTERN_CREATE,
+            'internCreateGuard',
+            'await requireInternProfileAccess(tx, deps, scoped, plan.profile, plan.input.employeeId)',
+          ),
+          fn(
+            INTERN_PROFILE,
+            'requireInternProfileAccess',
+            'await authorize(authorizer, access, operation, payload, operation)',
+          ),
+          fn(INTERN_PROFILE, 'writeInternProfile', 'await requireInternProfileAccess(tx, deps, ctx, plan, employeeId)'),
+        ],
+        '条件准入：有普通资料时校验档案更新权，有教育三项时校验教育新增权；两者各自检查字段、按钮和范围',
+      ),
+      ...[
+        'obj:TenantBase.EmployeeInformation:update',
+        'btn:TenantBase.EmployeeInformation#update@detail',
+        'obj:TenantBase.Education:create',
+        'btn:TenantBase.Education#create@list',
+      ].map((perm) => ({
+        ...ob(
+          perm,
+          ['object:object.* 动作', 'button:buttonResource', 'button:object.button'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'requireInternProfileAccess',
+              'await authorize(authorizer, access, operation, payload, operation)',
+            ),
+            fn(
+              `${SRC}/personnel/access.ts`,
+              'authorize',
+              'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+            ),
+          ],
+        ),
+        purpose: 'when:employment.internProfile' as const,
+      })),
+      {
+        ...ob(
+          'obj:TenantBase.EmployeeInformation:view',
+          ['object:object.* 动作'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              "if (!(await authorizer({ ...ctx, action: 'object.view', resource: PERSONNEL_OBJECT }))) return base",
+            ),
+            {
+              role: 'scope' as const,
+              unit: `${INTERN_PROFILE}#projectInternProfile`,
+              anchor:
+                'await requirePerson(tx, { ...ctx, objectCode: PERSONNEL_OBJECT, scope }, String(receipt.employeeId))',
+            },
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              'const visible = await getModuleViewableFieldsInTransaction(deps, ctx, PERSONNEL_OBJECT, tx)',
+            ),
+          ],
+        ),
+        purpose: 'disclosure:profile' as const,
+        need: { scope: 'point' as const, locator: 'personnel.employee' },
       },
       linkage(fn(INTERN_CREATE, 'createInternEntry', 'const created = await createEmploymentBusiness(')),
     ],

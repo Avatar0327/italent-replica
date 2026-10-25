@@ -2782,6 +2782,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract',
     '#pendingEntry',
     '#resolveEmployee',
+    'apps/api/src/modules/employment/intern-profile.ts#writeInternProfile',
     'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
     'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
   ],
@@ -2793,6 +2794,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#scopedGuard',
     'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess',
     '#requireInternCreateWrite',
+    'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess',
   ],
   'apps/api/src/modules/employment/intern-create.ts#internCreateInput': ['#internContract'],
   'apps/api/src/modules/employment/intern-create.ts#pendingEntry': [
@@ -2801,6 +2803,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-create.ts#planInternCreate': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
     '#PENDING_CONTRACT_KEYS',
+    'apps/api/src/modules/employment/intern-profile.ts#planInternProfile',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite': [
@@ -2831,6 +2834,37 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-eligibility.ts#resolveInFlightRegularization': [
     'apps/api/src/modules/employment/exit-void-applications.ts#voidSupersededRegularizations',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/intern-profile.ts#planInternProfile': [
+    '#EDUCATION_FIELDS',
+    '#PROFILE_FIELDS',
+    'apps/api/src/modules/personnel/validation.ts#employeeInput',
+    'apps/api/src/modules/personnel/validation.ts#subsetInput',
+  ],
+  'apps/api/src/modules/employment/intern-profile.ts#projectInternProfile': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/personnel/access.ts#requirePerson',
+    'apps/api/src/modules/personnel/access.ts#trimWithFields',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
+  'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': [
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/personnel/access.ts#authorize',
+    'apps/api/src/modules/personnel/access.ts#requirePerson',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+    'packages/domain/src/personnel/fields.ts#SUBSETS',
+  ],
+  'apps/api/src/modules/employment/intern-profile.ts#writeInternProfile': [
+    '#EDUCATION_FIELDS',
+    '#PROFILE_FIELDS',
+    '#requireInternProfileAccess',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/personnel/employee-read.ts#readEmployee',
+    'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
+    'apps/api/src/modules/personnel/subsets.ts#saveSubset',
   ],
   'apps/api/src/modules/employment/intern-regularization.ts#confirmEstablishment': [
     'apps/api/src/modules/establishment/employment-check.ts#employmentEstablishmentAssessment',
@@ -2869,6 +2903,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/intern-create.ts#internCreateInput',
     'apps/api/src/modules/employment/intern-create.ts#planInternCreate',
     'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite',
+    'apps/api/src/modules/employment/intern-profile.ts#projectInternProfile',
     'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': [
