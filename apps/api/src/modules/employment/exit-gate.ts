@@ -372,7 +372,7 @@ export async function regularizationBlocker(
 }
 
 /** §8B → 409 EXIT_REGULARIZATION_IN_FLIGHT。 */
-async function assertNoRegularizationInFlight(
+export async function assertNoRegularizationInFlight(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
@@ -466,7 +466,7 @@ export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, empl
   };
 }
 
-async function checkPendingTransferAck(
+export async function checkPendingTransferAck(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,

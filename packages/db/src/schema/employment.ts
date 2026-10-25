@@ -721,7 +721,10 @@ export const employmentActivationAttempts = pgTable(
     }),
     index('employment_activation_attempts_employee').on(t.tenantId, t.employeeId, t.businessId),
     check('employment_activation_attempts_number_positive', sql`${t.attemptNo} > 0`),
-    check('employment_activation_attempts_outcome', sql`${t.outcome} IN ('effective', 'failed', 'suspended')`),
+    check(
+      'employment_activation_attempts_outcome',
+      sql`${t.outcome} IN ('effective', 'failed', 'suspended', 'replanned')`,
+    ),
     check(
       'employment_activation_attempts_reason',
       sql`(${t.outcome} = 'effective') = (${t.reason} IS NULL)

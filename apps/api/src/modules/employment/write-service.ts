@@ -1,3 +1,4 @@
+import { exitDateChange, lockExitForEdit, rescheduleExit } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
@@ -250,12 +251,24 @@ export async function updateEmploymentBusiness(
   ctx: EmploymentContext,
   id: string,
   input: EmploymentBusinessPatch,
-  options: { readonly approvalEdit?: boolean } = {},
+  options: { readonly approvalEdit?: boolean; readonly pendingTransferAck?: string; readonly confirmed?: boolean } = {},
 ): Promise<EmploymentBusiness> {
-  const patch = normalizeBusinessPatch(input);
-  const business = await lockEmploymentBusiness(tx, ctx, id);
+  const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
+  let patch = businessPatch;
+  const business = await lockExitForEdit(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  // R2-T03 §4A / §7.2：离职 / 退休的日期创建后不可改，判定在权限链之后、状态检查与任何写入之前；审批编辑与编辑并同意同路
+  // 通用入口只放开草稿 / 驳回，以及审批中心授权的在审编辑；approved 只能走离职专用入口。
+  if (
+    business.payload.kind === 'leave' &&
+    (['draft', 'rejected'].includes(business.state) || (business.state === 'in_review' && options.approvalEdit)) &&
+    (await exitDateChange(tx, ctx, business, patch))
+  ) {
+    await rescheduleExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+    const { lastWorkDate: _last, effectiveDate: _effective, ...remaining } = patch;
+    patch = remaining;
+    if (!Object.keys(patch).length) return requireSavedBusiness(tx, ctx, id);
+  }
+  // 未开放的离职入口与退休日期保留原拒绝（F-140b1 / DEC-687）。
   if (isExitKind(business.payload.kind))
     await requireExitGate(tx, ctx, 'update', {
       employeeId: business.employeeId,
@@ -309,7 +322,7 @@ export async function updateEmploymentBusiness(
     ctx,
     business.employeeId,
     id,
-    business.revision,
+    before.versionNo + 1,
     normalized,
     prepared,
     before.id,

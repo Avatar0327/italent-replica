@@ -15,7 +15,7 @@ import { rowsOf } from './record-store.js';
 import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { BusinessKind, EmploymentContext, EmploymentScope } from './types.js';
 
-export type ActivationOutcome = 'effective' | 'failed' | 'suspended';
+export type ActivationOutcome = 'effective' | 'failed' | 'suspended' | 'replanned';
 export type ActivationTrigger = 'scheduler' | 'retry' | 'approval';
 /** DEC-112：因前序业务失败挂起。 */
 export const PREDECESSOR_FAILED = 'PREDECESSOR_FAILED';
@@ -297,6 +297,7 @@ export async function recordActivationAttempt(
 }
 
 export interface ActivationSummary {
+  readonly details?: Record<string, unknown>;
   readonly status: 'pending' | ActivationOutcome;
   readonly failureCount: number;
   readonly failureReason: string | null;
@@ -316,10 +317,11 @@ export async function activationSummary(
     reason: string | null;
     blockedBy: string | null;
     failures: number;
+    detail: Record<string, unknown>;
     lastAttemptAt: string | Date | null;
   }>(
     await tx.execute(sql`
-    SELECT last.outcome, last.reason, last.blocked_by_business_id AS "blockedBy", last.created_at AS "lastAttemptAt",
+    SELECT last.outcome, last.reason, last.detail, last.blocked_by_business_id AS "blockedBy", last.created_at AS "lastAttemptAt",
       (SELECT count(*)::int FROM employment_activation_attempts f
         WHERE f.tenant_id=${tenantId} AND f.business_id=${businessId}::uuid AND f.outcome='failed') AS failures
     FROM (SELECT 1) seed LEFT JOIN LATERAL (
@@ -330,18 +332,20 @@ export async function activationSummary(
   `),
   );
   const failureCount = Number(row?.failures ?? 0);
-  const lastAttemptAt = row?.lastAttemptAt ? new Date(row.lastAttemptAt).toISOString() : null;
+  const lastAttemptAt =
+    row?.outcome !== 'replanned' && row?.lastAttemptAt ? new Date(row.lastAttemptAt).toISOString() : null;
   if (state === 'approved') {
     const open = row?.outcome === 'failed' || row?.outcome === 'suspended' ? row.outcome : null;
     return {
       status: open ?? 'pending',
+      ...(open === 'failed' && row?.reason === 'EXIT_LATER_RECORD_EXISTS' ? { details: row.detail } : {}),
       failureCount,
       failureReason: open ? row!.reason : null,
       blockedByBusinessId: open === 'suspended' ? row!.blockedBy : null,
       lastAttemptAt,
     };
   }
-  if (state !== 'effective' || !row?.outcome) return null;
+  if (state !== 'effective' || !row?.outcome || row.outcome === 'replanned') return null;
   return {
     status: row.outcome,
     failureCount,
@@ -370,6 +374,7 @@ export async function listActivationTodos(
   page: { readonly limit: number; readonly offset: number },
   scope: EmploymentScope | undefined,
   timezone: string,
+  userId?: string,
 ): Promise<ActivationTodo[]> {
   const department = sql`COALESCE(p.department_id, current_record.department_id)`;
   const scopeFilter = employmentScopePredicate(
@@ -388,10 +393,11 @@ export async function listActivationTodos(
     blockedBy: string | null;
     failures: number;
     failedAt: string | Date;
+    detail: Record<string, unknown>;
   }>(
     await tx.execute(sql`
     SELECT b.id, b.employee_id AS "employeeId", p.kind, p.effective_date::text AS "effectiveDate",
-      a.outcome, a.reason, a.blocked_by_business_id AS "blockedBy", a.created_at AS "failedAt",
+      a.outcome, a.reason, a.detail, a.blocked_by_business_id AS "blockedBy", a.created_at AS "failedAt",
       (SELECT count(*)::int FROM employment_activation_attempts f
         WHERE f.tenant_id=b.tenant_id AND f.business_id=b.id AND f.outcome='failed') AS failures
     FROM employment_business_objects b
@@ -408,6 +414,8 @@ export async function listActivationTodos(
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
     WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
       AND a.outcome IN ('failed','suspended') AND ${scopeFilter}
+      AND (a.reason<>'EXIT_LATER_RECORD_EXISTS' OR ${userId ?? null}::uuid IS NULL
+        OR a.detail->>'recipientUserId'=${userId ?? null})
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );
@@ -418,6 +426,7 @@ export async function listActivationTodos(
     effectiveDate: row.effectiveDate,
     activation: {
       status: row.outcome,
+      ...(row.reason === 'EXIT_LATER_RECORD_EXISTS' ? { details: row.detail } : {}),
       failureCount: Number(row.failures),
       failureReason: row.reason,
       blockedByBusinessId: row.outcome === 'suspended' ? row.blockedBy : null,

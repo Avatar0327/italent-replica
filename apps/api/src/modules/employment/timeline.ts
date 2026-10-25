@@ -270,6 +270,7 @@ export async function detachFutureTransfers(
   ctx: EmploymentContext,
   employeeId: string,
   leaveRecordId: string,
+  candidateIds?: readonly string[],
 ): Promise<DetachedTransferWindow[]> {
   const [leave] = rowsOf<TimelinePoint>(
     await tx.execute(sql`
@@ -282,7 +283,9 @@ export async function detachFutureTransfers(
     SELECT t.record_id AS "recordId", t.start_date::text AS "from", upper(t.valid_during)::text AS "to"
     FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.staff_id=${leave.staffId}::uuid
-      AND r.kind='transfer' AND employment_follows(${ctx.tenantId}::uuid, ${leaveRecordId}::uuid, r.id)
+      AND r.kind='transfer'
+      AND ${candidateIds === undefined ? sql`true` : sql`r.id=ANY(${`{${candidateIds.join(',')}}`}::uuid[])`}
+      AND employment_follows(${ctx.tenantId}::uuid, ${leaveRecordId}::uuid, r.id)
     ORDER BY t.start_date,t.sort_order`),
   );
   if (!detached.length) return [];

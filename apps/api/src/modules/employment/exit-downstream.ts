@@ -6,6 +6,7 @@
  * registerDownstreamProbe 接入或替换，不改本文件；入口签名 probeDownstream 保持稳定。
  * 目标按查看人裁剪（trimDownstream）：合同按合同对象查看权，任职业务 / 职责转交下属按 DEC-177 可见范围，不可见的只计 hiddenCount。
  */
+import { tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
 import { batchDisclose } from './exit-gate.js';
@@ -220,4 +221,28 @@ export async function trimDownstream(
     };
   };
   return { items: downstream.items.map(trim) as DownstreamItem[], additional: downstream.additional.map(trim) };
+}
+
+/** 改期按方向检查旧最后工作日上的数据，未连接探针保留状态，不伪造命中（DM-R7）。 */
+export async function probeRescheduleDownstream(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  before: string,
+  after: string,
+): Promise<Downstream> {
+  const kinds = ['payroll', 'social_insurance'];
+  if (after > before) kinds.push('leave_balance', 'compensatory_leave', 'parental_leave');
+  if (after > before && after > tenantLocalDate(ctx.now, ctx.timezone)) kinds.push('duty_transfer');
+  const items: DownstreamItem[] = [];
+  for (const kind of kinds) {
+    const result = await (probes.get(kind) ?? notConnected(kind)).probe(tx, ctx, {
+      employeeId,
+      businessId,
+      lastWorkDate: before,
+    });
+    items.push({ kind, ...result, hiddenCount: 0 });
+  }
+  return { items, additional: [] };
 }

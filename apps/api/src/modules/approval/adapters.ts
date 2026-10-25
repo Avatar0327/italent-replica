@@ -8,7 +8,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
 import { lockEstablishment } from '../establishment/store.js';
-import { lockExitOrganizationResources } from '../employment/exit-void-applications.js';
+import { lockExitOrganizationResources, lockOtherBusinessHeads } from '../employment/exit-void-applications.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
@@ -355,9 +355,12 @@ const employmentAdapter: BusinessAdapter = {
     // 是否可能推进业务由 mayAdvanceBusiness 统一判断（手动交接 / 成员撤销接管只在可能合席时取，F-070）。
     else if (
       (owner.kind === 'leave' || owner.kind === 'retirement') &&
-      (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom))
+      (owner.kind === 'leave' || (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom)))
     ) {
-      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
+      if (owner.kind === 'leave') await lockOtherBusinessHeads(tx, ctx, owner.employee_id, businessId);
+      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId, {
+        establishment: owner.kind === 'leave',
+      });
     }
   },
   /**
@@ -476,17 +479,18 @@ const employmentAdapter: BusinessAdapter = {
   },
   async edit(tx, ctx, id, input) {
     await requireExitApprovalEdit(tx, ctx, id, input);
-    // R2-T03 §4B：离职扩展字段（如补齐离职类型）写离职扩展行，其余任职字段照旧；日期与当前值不同两条路都 400
+    // R2-T03 §4B / F-140：扩展字段写薄扩展行，日期变更与任职字段共用改期编排。
     const { exit, employment, datesOnly } = splitExitEdit(input);
     if (!Object.keys(exit).length || !datesOnly) {
       const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
       await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(employment), {
         approvalEdit: true,
+        ...ctx.exitReschedule,
       });
     }
     if (Object.keys(exit).length) {
       const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-      const patch = parseExitPatch(datesOnly ? { ...employment, ...exit } : exit);
+      const patch = parseExitPatch({ ...(datesOnly ? { ...employment, ...exit } : exit), ...ctx.exitReschedule });
       const kind = (await businessKind(tx, ctx.tenantId, id)) === 'retirement' ? 'retirement' : 'leave';
       if (kind === 'retirement') assertRetirementFields(patch.fields);
       await updateExitFields(tx, { ...ctx, expectedRevision }, id, patch, { approvalEdit: true, kind });

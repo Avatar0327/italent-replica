@@ -202,10 +202,14 @@ function editableInput(node: ApprovalNode, fields: Row, viewable: ReadonlySet<st
   return fields;
 }
 
-async function applyEdit(tx: Tx, scene: TaskScene, fields: Row): Promise<void> {
+async function applyEdit(
+  tx: Tx, scene: TaskScene, fields: Row, confirmation?: ApprovalContext['exitReschedule'],
+): Promise<void> {
   const { run, task } = scene;
   const adapter = ADAPTERS[run.instance.businessType];
-  await adapter.edit(tx, run.ctx, run.instance.businessId, fields);
+  if (confirmation && run.snapshot.approvalType !== 'leave')
+    throw approvalError('VALIDATION_FAILED', 'EXIT_CONFIRMATION_NOT_APPLICABLE', '改期确认只适用于离职审批');
+  await adapter.edit(tx, { ...run.ctx, exitReschedule: confirmation }, run.instance.businessId, fields);
   // 【编辑并同意】随后推进节点：路由部门必须取编辑后的业务单，不能沿用打开任务时的快照。
   run.snapshot = await adapter.snapshot(tx, run.ctx, run.instance.businessId);
   run.instance = { ...run.instance, businessVersion: run.snapshot.version };
@@ -229,6 +233,7 @@ async function auditTask(tx: Tx, run: Run, action: string, before: Row, after: R
 }
 
 export interface DecisionInput {
+  readonly exitReschedule?: ApprovalContext['exitReschedule'];
   readonly taskId: string;
   readonly comment: string | null;
   readonly fields?: Row;
@@ -252,7 +257,7 @@ export async function approveTask(
     if (node.editMode !== 'with_approve')
       throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点不支持编辑与同意合一');
     assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
-    await applyEdit(tx, scene, editableInput(node, input.fields, viewable));
+    await applyEdit(tx, scene, editableInput(node, input.fields, viewable), input.exitReschedule);
     assertNotBlindAfterEdit(run, viewable);
   }
   await closeTask(tx, ctx, task.id, 'approved', input.comment);
@@ -678,7 +683,7 @@ async function delegate(
 export async function editTask(
   tx: Tx,
   ctx: ApprovalContext,
-  input: { taskId: string; fields: Row },
+  input: { taskId: string; fields: Row; exitReschedule?: ApprovalContext['exitReschedule'] },
   viewable: ReadonlySet<string> | undefined,
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
@@ -687,7 +692,7 @@ export async function editTask(
   if (scene.node.editMode !== 'separate')
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点没有独立的编辑按钮');
   assertNotAddSigner(await loadTasks(tx, ctx.tenantId, scene.run.instance.id), scene.task);
-  await applyEdit(tx, scene, editableInput(scene.node, input.fields, viewable));
+  await applyEdit(tx, scene, editableInput(scene.node, input.fields, viewable), input.exitReschedule);
   assertNotBlindAfterEdit(scene.run, viewable);
   await persistRun(tx, scene.run, 'approval.task.edit');
   return ok(scene.run);

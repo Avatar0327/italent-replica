@@ -200,7 +200,8 @@ export async function requireEmploymentWrite(
   if (operation === 'delete') {
     await requirePermission(ctx.authorize, { ...ctx, action: 'object.delete', resource: objectCode });
   } else {
-    const { fields, customFields, ...metadata } = payload as Record<string, unknown>;
+    const { fields, customFields, pendingTransferAck: _ack, confirmed: _confirmed, ...metadata } =
+      payload as Record<string, unknown>;
     const actual = {
       ...metadata,
       ...(fields as Record<string, unknown> | undefined),
@@ -239,6 +240,25 @@ export async function trimEmploymentResponse(
 ): Promise<unknown> {
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
+  // DEC-507：即使字段全可见，也要按当前范围裁剪历史失败清单；首次 / 重放 / 待办共用。
+  const projectFailures = async (input: unknown): Promise<unknown> => {
+    if (Array.isArray(input)) return Promise.all(input.map(projectFailures));
+    if (!input || typeof input !== 'object') return input;
+    const row = { ...(input as Record<string, unknown>) };
+    if (row.items) row.items = await projectFailures(row.items);
+    const activation = row.activation as { failureReason?: string; details?: Record<string, unknown> } | undefined;
+    if (activation?.failureReason === 'EXIT_LATER_RECORD_EXISTS' && activation.details) {
+      const { projectExitFailureDetails } = await import('./exit-later-records.js');
+      row.activation = {
+        ...activation,
+        details: await withTenant(deps.db, ctx.tenantId, (tx) =>
+          projectExitFailureDetails(tx, ctx, activation.details!, viewable),
+        ),
+      };
+    }
+    return row;
+  };
+  value = await projectFailures(value);
   if (viewable === undefined) return value;
   const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {

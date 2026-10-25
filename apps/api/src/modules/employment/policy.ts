@@ -887,7 +887,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
       'assertRevision',
       'requireEmployeeTransferBusiness',
       'requireScopedEmploymentObject',
-    ]),
+    ], { controls: ['pendingTransferAck', 'confirmed'] }),
     ...byId,
   }),
   // ---- employment/routes.ts registerBusinessTransitions（router.on）：命令式按钮 ---------------------------------------
@@ -1632,8 +1632,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // 编辑离职：If-Match 必填；body = 离职扩展字段 + 可选日期（400）；写入口径 404「任职业务不存在」，不是离职单 404；
-  // DimissionEdit，审批中的单另需审批管理员按钮 adminIntervene（B-65a）；日期与当前值不同 400 EXIT_DATE_IMMUTABLE（§7.2）
+  // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
+  // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(
     [
       object({
@@ -1653,7 +1653,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate'], {
+        controls: ['pendingTransferAck', 'confirmed'],
+      }),
       ...byId,
     },
   ),

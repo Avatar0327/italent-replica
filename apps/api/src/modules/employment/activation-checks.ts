@@ -36,6 +36,7 @@ export interface ActivationFailure {
     /** 离职生效主链（exit-activation.ts）：顺延后在职段跨过部门停用日、顺延后重验转正在途；已落地未来调动被离职摘下（§5.8）。 */
     | 'EMPLOYMENT_DEPARTMENT_DISABLED'
     | 'EXIT_REGULARIZATION_IN_FLIGHT'
+    | 'EXIT_LATER_RECORD_EXISTS'
     | 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER';
   readonly detail: Record<string, unknown>;
 }
