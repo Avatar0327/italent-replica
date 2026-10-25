@@ -1614,8 +1614,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
   ],
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/context.ts#readContext',
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     '#receipt',
   ],
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks/:id': [
