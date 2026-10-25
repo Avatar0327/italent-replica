@@ -91,16 +91,20 @@ describe('F-261 保护及重试', () => {
     const authorize = () => true;
     registerScopeProvider(authorize, {
       scope: async () => ({ ...EMPTY_SCOPE, hasDataPermission: true }),
-      authorize: async () => true, fields: async () => new Set<string>(),
+      authorize: async () => true,
+      fields: async () => new Set<string>(),
     });
     const api = tenantApi(f.w.db, { clock: f.w.clock, authorize });
     const read = (id: string) => api.request('GET', `${EMP}/exit-account/tasks/${id}`, f.w.as(f.w.hr.id));
-    const denied = await read(f.leave.id), missing = await read(randomUUID());
+    const denied = await read(f.leave.id),
+      missing = await read(randomUUID());
     expect(denied.status).toBe(404);
     expect(missing.status).toBe(404);
     expect(await denied.json()).toEqual(await missing.json());
-    expect(await ok(await api.request('GET', `${EMP}/exit-account/tasks`, f.w.as(f.w.hr.id))))
-      .toEqual({ items: [], nextCursor: null });
+    expect(await ok(await api.request('GET', `${EMP}/exit-account/tasks`, f.w.as(f.w.hr.id)))).toEqual({
+      items: [],
+      nextCursor: null,
+    });
   });
 
   it('停用账号权限独立于任职查看权：账号管理员可重试，回执不泄露员工资料', async () => {

@@ -45,6 +45,48 @@ const businessFk = (name: string, t: Record<'tenantId' | 'employeeId' | 'busines
     ],
   });
 
+/** DEC-684：租户级提前停用配置。默认关闭；指定时刻使用租户时区。 */
+export const exitAccountSettings = pgTable('exit_account_settings', {
+  tenantId: tenant().primaryKey(),
+  earlyEnabled: boolean('early_enabled').notNull().default(false),
+  basis: text('basis'),
+  time: text('time'),
+  inReview: boolean('in_review').notNull().default(false),
+  revision: integer('revision').notNull().default(0),
+});
+
+/** 离退休事务只登记任务；全局账号事务负责执行并回写，停用失败不能撤回任职生效。 */
+export const exitAccountTasks = pgTable(
+  'exit_account_tasks',
+  {
+    tenantId: tenant(),
+    businessId: uuid('business_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    handlerUserId: uuid('handler_user_id'),
+    status: text('status').notNull().default('pending'),
+    reason: text('reason'),
+    attempts: integer('attempts').notNull().default(0),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    restoreRequested: boolean('restore_requested').notNull().default(false),
+    autoRevision: integer('auto_revision'),
+    recipientUserIds: uuid('recipient_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    businessFk('exit_account_tasks_business_fk', t),
+    index('exit_account_tasks_user').on(t.tenantId, t.userId, t.businessId),
+    check(
+      'exit_account_tasks_status',
+      sql`${t.status} IN ('pending','disabled','blocked','restored','skipped','failed')`,
+    ),
+  ],
+);
+
 /** 离职扩展行：与任职业务 1:1（照 transfer_requests）；可改的只有非日期业务字段（列级授权见迁移）。 */
 export const exitRequests = pgTable(
   'exit_requests',

@@ -830,7 +830,70 @@ function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
   ];
 }
 
+const ACCOUNT = `${SRC}/employment/exit-account-routes.ts`;
+const accountSettings = (method: string): Obligation =>
+  ob(
+    'admin:other_settings',
+    ['admin:tenant.employment.configuration'],
+    [
+      at(ACCOUNT, method, '/exit-account/settings', "'tenant.employment.configuration.write'"),
+      READ,
+      {
+        role: 'const',
+        unit: 'packages/domain/src/permission/module-actions.ts#actions',
+        anchor: "'tenant.employment.configuration.write': tenantConfiguration",
+      },
+    ],
+  );
+const accountScope = ob(
+  'guard:employment.scope',
+  [],
+  [fn(ACCOUNT, 'readScopedAccountTask', 'await requireEmployeeInScope(tx, ctx, task.employeeId)'), EMPLOYEE_IN_SCOPE],
+);
+const accountRead = (call: Evidence): Obligation =>
+  ob(
+    `obj:${RECORD}:view`,
+    ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
+    [call, READ, RECORD_CONST],
+  );
 export const EMPLOYMENT: RequiredTable = {
+  'GET /api/tenant/employment/exit-account/settings': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          ACCOUNT,
+          'GET',
+          '/exit-account/settings',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+        { role: 'const', unit: `${ACCOUNT}#settingsObject`, anchor: "'TenantBase.EmploymentSettings'" },
+      ],
+    ),
+  ],
+  'PUT /api/tenant/employment/exit-account/settings': [accountSettings('PUT')],
+  'GET /api/tenant/employment/exit-account/tasks': [
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'GET /api/tenant/employment/exit-account/tasks/:id': [
+    accountScope,
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks/:id', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'POST /api/tenant/employment/exit-account/tasks/:id/retry': [
+    ob(
+      'admin:user_manage',
+      ['admin:admin.*'],
+      [
+        fn(
+          ACCOUNT,
+          'retry',
+          "await requirePermission(authorizeInTransaction(deps.authorize, tx), { ...ctx, action: 'admin.user_manage' })",
+        ),
+      ],
+    ),
+  ],
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
   'GET /api/tenant/employment/transfers/self': [
     recordView(at(TRF, 'GET', '/transfers/self', "const ctx = await readPageContext(c, deps, 'detail')")),

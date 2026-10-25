@@ -13,6 +13,7 @@ import { loadExitRequest } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { loadRetirementRequest } from './retirement-application.js';
 import type { EmploymentContext } from './types.js';
+import { queueExitAccount } from './exit-account-store.js';
 
 export interface ExitConfirmedEvent {
   readonly businessId: string;
@@ -115,6 +116,7 @@ export interface ConfirmedExit {
 export async function confirmExit(tx: Tx, ctx: EmploymentContext, business: ConfirmedExit) {
   const exit = await loadExitRequest(tx, ctx.tenantId, business.id);
   if (!exit) return;
+  await queueExitAccount(tx, ctx, business.id);
   // R 一经写入不再改变（迟到顺延、重试都不改），已有 R 说明预减与端口订阅已执行过
   if (!exit.preReleaseDate) await registerPreRelease(tx, ctx, business);
   // approval_passed 时机的职责转交（§5.7）：生效日 = 批准 / 保存当天；联动执行行保证至多执行一次

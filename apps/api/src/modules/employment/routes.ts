@@ -114,6 +114,8 @@ import { installPartTime } from './part-time/install.js';
 import { registerPartTimeRequestRoutes } from './part-time/request-routes.js';
 import { registerPartTimeRoutes } from './part-time/routes.js';
 import { isRegularizationEntryKind } from './regularization.js';
+import { installExitAccount } from './exit-account-hooks.js';
+import { registerExitAccountRoutes } from './exit-account-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -126,6 +128,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   });
   // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
   installPartTime();
+  installExitAccount();
+  registerExitAccountRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);

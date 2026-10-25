@@ -9,7 +9,8 @@ import { partTimeLinkageParticipants } from './part-time/linkage-participants.js
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-const SETTING = 'italent.transfer_employee_locks';
+// DEC-142：全局账号命令会依次进入多个租户，持锁记录也必须按租户隔离。
+const settingKey = (tenantId: string) => `italent.transfer_employee_locks_${tenantId.replaceAll('-', '')}`;
 const array = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 async function participants(
@@ -70,7 +71,7 @@ async function acquire(
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
   const planned = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
   const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
   );
   const held: string[] = setting?.value ? (JSON.parse(setting.value) as string[]) : [];
   const needed = planned.filter((id) => !held.includes(id));
@@ -95,7 +96,7 @@ async function acquire(
     if (actual.some((id) => !all.includes(id)))
       throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   }
-  await tx.execute(sql`SELECT set_config(${SETTING},${JSON.stringify(all)},true)`);
+  await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
   // 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。
   if (planned.length > 1)
     await tx.execute(sql`
@@ -137,7 +138,9 @@ export const lockTransferParticipants = (
  */
 export async function assertEmployeeLocksHeld(tx: Tx, ids: readonly string[]): Promise<void> {
   const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+    await tx.execute(
+      sql`SELECT current_setting('italent.transfer_employee_locks_' || replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
+    ),
   );
   const held = new Set<string>(setting?.value ? (JSON.parse(setting.value) as string[]) : []);
   const missing = ids.map((id) => id.toLowerCase()).filter((id) => !held.has(id));

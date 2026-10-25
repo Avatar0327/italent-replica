@@ -68,6 +68,7 @@ import {
   type NormalizedEmploymentInput,
   type PresetFields,
 } from './types.js';
+import { queueExitAccount } from './exit-account-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -659,6 +660,8 @@ export async function appendEmploymentState(
     undefined,
     meta,
   );
+  if (business.payload.kind === 'leave' || business.payload.kind === 'retirement')
+    await queueExitAccount(tx, ctx, business.id, state === 'deleted' || state === 'voided');
 }
 
 async function cycleForMaterialization(

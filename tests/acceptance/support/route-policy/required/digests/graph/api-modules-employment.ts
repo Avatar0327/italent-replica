@@ -1590,6 +1590,64 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
+  'apps/api/src/modules/employment/exit-account-routes.ts#accountTaskInTenant': [
+    'apps/api/src/modules/employment/exit-account-store.ts#taskKey',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#readScopedAccountTask': [
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    '#accountTaskInTenant',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#retry': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    '#accountTaskInTenant',
+    '#retryReceipt',
+    'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/settings': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    '#receipt',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks/:id': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#readScopedAccountTask',
+    '#receipt',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/exit-account-routes.ts#route:PUT /exit-account/settings': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#settingsObject',
+    'apps/api/src/modules/employment/exit-account-store.ts#accountSettingBody',
+    'apps/api/src/modules/employment/exit-account-store.ts#saveAccountSettings',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+  ],
+  'apps/api/src/modules/employment/exit-account-store.ts#auditTask': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+  ],
+  'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount': [
+    '#auditTask',
+    '#taskKey',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings': ['#defaultAccountSettings'],
+  'apps/api/src/modules/employment/exit-account-store.ts#saveAccountSettings': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+  ],
+  'apps/api/src/modules/employment/exit-account-store.ts#saveTask': ['#auditTask', '#taskKey'],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
     'apps/api/src/modules/employment/activation-checks.ts#activationFailureOf',
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
@@ -1686,6 +1744,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-application.ts#createExitApplication': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-activation.ts#activateIfDue',
     '#columnValues',
     '#dutyTransferTiming',
@@ -1729,6 +1788,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': [
     'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     '#SETTLED',
     '#columnValues',
     '#withBlacklist',
@@ -1845,6 +1905,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
   ],
   'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit': [
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     '#registerPreRelease',
     'apps/api/src/modules/employment/exit-duty-transfer.ts#runExitDutyTransfer',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
@@ -6041,14 +6102,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#acquire': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#SETTING',
     '#array',
     '#employeeExists',
     '#participants',
+    '#settingKey',
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#SETTING',
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#employeeExists': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -6177,6 +6237,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentState': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [

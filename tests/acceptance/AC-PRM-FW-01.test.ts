@@ -350,7 +350,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(new Set(fullPaths).size).toBe(fullPaths.length);
   });
 
-  it('8 条中间件按最终路径登记（根 3、租户 2、项目写边界 1、平台 2）', () => {
+  it('9 条中间件按最终路径登记（根 3、租户 3、项目写边界 1、平台 2）', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
     expect(manifest.middleware.map((m) => m.paths)).toEqual([
       ['/*'],
@@ -358,6 +358,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
       ['/*'],
       ['/api/tenant/*'],
       ['/api/tenant/*'],
+      ['/api/tenant/*'], // F-261：业务提交后消费账号任务
       ['/api/tenant/talent-review/projects/:id/*'],
       ['/api/platform/*'],
       ['/api/platform/*'],

@@ -43,6 +43,7 @@ import { authorizeLinkageWrite } from '../transfer/linkage/access.js';
 import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input.js';
 import { appendLinkageVersion } from '../transfer/linkage/store.js';
 import { validateLinkage } from '../transfer/linkage/validation.js';
+import { queueExitAccount } from './exit-account-store.js';
 
 export type { ExitInitiation } from './exit-initiation.js';
 
@@ -175,6 +176,7 @@ export async function createExitApplication(
   // 转交计划须先写联动版本，再进 confirmed：approval_passed 时机的转交读的就是这个版本（§5.7）
   if (duty?.dutyTransfer) await saveDutyTransfer(tx, ctx, business, duty);
   // 直接离职保存即进入 confirmed 阶段（§3.1：编制预减 R；不自动发起交接 DM-R14），最后工作日已过则同事务生效（§5.3）
+  await queueExitAccount(tx, ctx, business.id);
   if (input.mode !== 'direct') return withAckWarnings(tx, ctx, business);
   await confirmExit(tx, ctx, { ...business, mode: 'direct', kind });
   const activation = await activateIfDue(tx, ctx, business.id);
@@ -322,6 +324,7 @@ export async function updateExitFields(
     const { refreshBusinessVersion } = await import('../approval/engine.js');
     await refreshBusinessVersion(tx, ctx, 'employment', businessId);
   }
+  await queueExitAccount(tx, ctx, businessId, patch.fields.actualLeaveDate !== undefined);
   const saved = await requireSavedBusiness(tx, ctx, businessId);
   if (!downstream) return saved;
   const { successor, ...downstreamHints } = downstream;

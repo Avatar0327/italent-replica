@@ -424,7 +424,41 @@ const exitTransition = (code: string = EXIT_BUTTONS.application) =>
     ...byId,
   });
 
+const ACCOUNT_SETTINGS_FIELDS = fixed(['revision', 'earlyEnabled', 'basis', 'time', 'inReview'], 'DEC-684');
+const ACCOUNT_TASK_FIELDS = fixed(
+  ['items', 'nextCursor', 'businessId', 'employeeId', 'status', 'reason', 'revision', 'attempts', 'recipientUserIds'],
+  'DEC-684',
+);
+const accountTaskView = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('待办查询无需业务按钮'),
+  scope: guardScope('employment.scope', denied(404, 'NOT_FOUND', '账号处理任务不存在')),
+  fields: ACCOUNT_TASK_FIELDS,
+});
+
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
+  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'PUT /exit-account/settings': admin('other_settings', {
+    alias: 'tenant.employment.configuration.write',
+    fields: ACCOUNT_SETTINGS_FIELDS,
+    write: write(none('严格配置 DTO'), 'config.audited:employment_settings', none('租户配置无人员范围'), {
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+  'GET /exit-account/tasks': { ...accountTaskView, scope: listScope('employment.accountTasks') },
+  'GET /exit-account/tasks/:id': { ...accountTaskView, ...byId },
+  'POST /exit-account/tasks/:id/retry': admin('user_manage', {
+    ...byId,
+    fields: fixed(['businessId', 'status', 'revision'], 'DEC-684：账号权限回执不含员工资料'),
+    write: write(none('原任务重试，空请求体'), none('账号管理能力；任务限定当前租户'), none('固定最小回执'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+
   // ---- transfer/routes.ts registerPersonalEntry：本人调动入口 ------------------------------------------------------
   // requireTransferButton(employee) 先查 Transfer.Self；绑定员工缺失 → 403「当前用户未绑定员工」；requireTransferSource
   // (employee) 再按绑定本人为源员工判范围（范围外 404「员工不存在」）；items 固定 id / name / code / revision，不按字段权裁剪

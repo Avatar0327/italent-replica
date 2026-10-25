@@ -33,6 +33,7 @@ import { EmploymentError } from './errors.js';
 import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
+import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
 
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
@@ -89,6 +90,7 @@ export async function runEmploymentActivations(
   const runs: EmploymentActivationRun[] = [];
   for await (const tenant of activeTenants(db, normalized.tenantId)) {
     runs.push(await sweepTenant(db, meta, tenant, now, normalized));
+    await drainExitAccounts(db, tenant.id, now);
   }
   const result: EmploymentActivationRunResult = { runs };
   return runPlatformCommand(db, meta, RUN_OPERATION, normalized, async (ctx) => {
@@ -237,12 +239,14 @@ export function startEmploymentActivationScheduler(
         running = null;
       });
   };
+  const accounts = startExitAccountScheduler(db, { clock, onError, intervalMs });
   const timer = setInterval(tick, intervalMs);
   tick();
   return {
     async stop() {
       clearInterval(timer);
       await running;
+      await accounts.stop();
     },
   };
 }
