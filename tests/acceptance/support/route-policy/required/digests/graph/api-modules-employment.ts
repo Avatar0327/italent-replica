@@ -2307,11 +2307,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-queries.ts#trimWith': ['#trimNode'],
   'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
+  'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
+  ],
   'apps/api/src/modules/employment/exit-replacement.ts#copyRemainingDuties': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/transfer-locks.ts#assertEmployeeLocksHeld',
     'apps/api/src/modules/transfer/linkage/store.ts#appendLinkageVersion',
-    'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
   ],
   'apps/api/src/modules/employment/exit-replacement.ts#replaceExit': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -5958,6 +5963,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants': ['#acquire'],
   'apps/api/src/modules/employment/transfer-locks.ts#participants': [
+    'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties',
     'apps/api/src/modules/employment/part-time/linkage-participants.ts#partTimeLinkageParticipants',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
