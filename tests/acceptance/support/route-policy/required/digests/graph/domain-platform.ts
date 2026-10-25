@@ -83,6 +83,7 @@ export const GRAPH: Graph = {
     '#SUCCESSION_PROFILES',
     '#full',
     '#readOnly',
+    '#withoutDailyWage',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_APP',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_APP',
@@ -103,5 +104,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],
   'packages/domain/src/platform/standard-presets.ts#succession': [
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#withoutDailyWage': [
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
 };

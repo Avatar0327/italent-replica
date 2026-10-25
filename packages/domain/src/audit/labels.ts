@@ -211,7 +211,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // R2-T04 退休（审计动作 retirement.* / employment.retirement.*）
   retireType: '退休类型',
   reEmployed: '是否同时返聘',
+  dailyWageStandard: '日工资标准',
   expectedRetirementDate: '预计退休日期',
+  expectedRetirementConfirmed: '预计退休日期已核准',
+  earliestRetirementDate: '最早退休日期',
+  latestRetirementDate: '最晚退休日期',
+  flexibleRangeConfirmed: '弹性退休范围已核准',
   actualRetirementDate: '实际退休日期',
   // R2 BE-5d2 意向退休日期申请
   intendedDate: '意向退休日期',

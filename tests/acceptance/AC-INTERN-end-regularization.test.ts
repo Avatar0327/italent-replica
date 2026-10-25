@@ -85,7 +85,7 @@ describe('AC-INTERN-end-10 DEC-593④ 结束实习遇转正审批中：先确认
     const intern = await w.hire('草稿合成实习生', 'intern');
     const draft = await w.session.business(
       intern.employee.id,
-      { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-20', fields: {} },
+      { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-20', fields: {}, probation: false },
       await w.revision(intern.employee.id),
     );
     await w.terminateOk(intern.employee.id, END);
@@ -266,7 +266,13 @@ describe('AC-INTERN-end-14 DEC-593③③ 直接实习转正自动作废在途转
     const { intern, applicationId } = await reviewing(w, '二次申请合成实习生');
     const response = await w.session.request('POST', `/employees/${intern.employee.id}/businesses`, {
       ifMatch: await w.revision(intern.employee.id),
-      body: { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-25', fields: {} },
+      body: {
+        kind: 'intern_regularization',
+        mode: 'application',
+        effectiveDate: '2026-10-25',
+        fields: {},
+        probation: false,
+      },
     });
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
