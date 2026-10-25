@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
+import { queueExitAccount } from '../employment/exit-account-store.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
@@ -109,6 +110,8 @@ export interface BusinessAdapter {
    */
   lock(tx: Tx, ctx: ApprovalContext, businessId: string, reassignFrom?: string): Promise<void>;
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
+  /** 实例推进的同事务出口；包括只改任务/实例、尚未改变业务状态的办理。不得在这里更新全局账号。 */
+  persisted?(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<void>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
@@ -469,6 +472,11 @@ const employmentAdapter: BusinessAdapter = {
       version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
       processCode,
     };
+  },
+  async persisted(tx, ctx, snapshot) {
+    // F-261 P2-1：即使业务仍在审批中，也统一关联当前命令，留给提交后消费/调度回查。
+    if (!['leave', 'retirement'].includes(snapshot.approvalType)) return;
+    await queueExitAccount(tx, ctx, snapshot.businessId);
   },
   approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),

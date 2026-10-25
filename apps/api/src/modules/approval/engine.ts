@@ -154,6 +154,7 @@ export async function persistRun(tx: Tx, run: Run, action: string, created = fal
       revision: saved.revision,
     });
   }
+  await ADAPTERS[saved.businessType].persisted?.(tx, run.ctx, run.snapshot);
   return saved;
 }
 

@@ -1,6 +1,5 @@
 /** F-261 P2-1：审批只推进实例时，也须在请求返回前按 DM-R9 消费到期账号任务。 */
 import './support/exit-gate-enforced.js';
-import { bootstrapTenantAdmin } from '@italent/api';
 import { getUser } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -250,19 +249,19 @@ describe('AC-DM-04 审批推进即时停用', () => {
     await account(x, false);
   });
 
-  it('本人可审批配置：过点抄送触发停用并接管其本单待办，不因内部接管重复入队回滚', async () => {
+  it('本人可审批配置：办理人的账号停用不改写已提交的成功回执', async () => {
     const x = await scene('self-takeover', true, [
       { ...first, actions: { ...first.actions, avoidSelf: false } },
       second,
     ]);
-    await bootstrapTenantAdmin(x.w.db, { tenantId: x.w.tenant.id, userId: x.w.exceptionAdmin }, cmd());
     const own = await x.submit(x.s.outHead.employeeId);
     expect(pending(x, own).assigneeUserId).toBe(x.s.outHead.userId);
     x.past();
     await action(x, 'cc', { userIds: [x.s.inHead.userId] }, own);
     await account(x, true, x.s.outHead.userId);
     const next = await x.w.detail(own.id);
-    expect(pending(x, next)).toMatchObject({ origin: 'handover', assigneeUserId: x.w.exceptionAdmin });
+    // 全局停用沿用 DEC-123 既有异常待办接管范围；普通待办不在本次返工扩展。
+    expect(pending(x, next)).toMatchObject({ origin: 'resolved', assigneeUserId: x.s.outHead.userId });
   });
 
   it('现有合同批量同意拒绝离职任务，不误推进或消费；离退休没有独立批量入口', async () => {

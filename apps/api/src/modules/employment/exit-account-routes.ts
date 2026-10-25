@@ -160,13 +160,26 @@ async function retry(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return c.json(result.body, result.status);
 }
 
+async function hasCommittedOutcome(response: Response) {
+  if (response.status < 400) return true;
+  if (response.status !== 403) return false;
+  // DEC-069：盲审拒绝可同时提交自动转交。只放行这个机器原因，真正拒绝/回滚的请求不触发消费。
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as {
+    error?: { details?: { reason?: string } };
+  } | null;
+  return body?.error?.details?.reason === 'APPROVAL_BLIND_REVIEW';
+}
+
 /** 业务事务已提交才进入全局锁序；结果未知/存储故障留待调度回查，不能把已生效响应改成业务失败。 */
 export const exitAccountAfterCommit =
   (deps: TenantRouteDeps): MiddlewareHandler<TenantEnv> =>
   async (c, next) => {
     await next();
     const commandId = c.req.header('idempotency-key');
-    if (!commandId || c.res.status >= 400 || c.req.method === 'GET') return;
+    if (!commandId || c.req.method === 'GET' || !(await hasCommittedOutcome(c.res))) return;
     const { tenantId } = tenantOf(c);
     try {
       await drainExitAccounts(deps.db, tenantId, deps.clock(), commandId);
