@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { approverSource } from '@italent/domain';
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { fallbackFixture } from '../../../tests/acceptance/support/f304-fixture.js';
 import { flowId, flowPermission } from '../../../tests/acceptance/support/f315-fixture.js';
@@ -145,7 +146,7 @@ for (const changed of ['不变', '删除', '不再支持兜底'])
     await expect(page.getByRole('button', { name: kernel.reload, exact: true })).toBeVisible();
     if (changed === '删除') state.flow.latestVersion.nodes = state.flow.latestVersion.nodes.slice(1);
     if (changed === '不再支持兜底')
-      Object.assign(state.flow.latestVersion.nodes[0]!, { approvers: ['direct_manager'] });
+      Object.assign(state.flow.latestVersion.nodes[0]!, { approvers: [approverSource('direct_manager')] });
     await page.getByRole('button', { name: kernel.reload, exact: true }).click();
     if (changed !== '不变') {
       await expect(

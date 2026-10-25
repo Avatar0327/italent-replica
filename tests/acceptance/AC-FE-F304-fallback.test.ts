@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HANDOVER_FALLBACK_LIMIT } from '@italent/domain';
+import { approverSource, HANDOVER_FALLBACK_LIMIT } from '@italent/domain';
 import {
   buildDraft,
   editableValues,
@@ -44,7 +44,26 @@ describe('AC-FE-F304 兜底属性进入既有表单内核', () => {
     const body = buildDraft(latest, { [nodeField('work_handover', 'fallbackUserIds')]: [id] }, flow.approvalType);
     expect(body.nodes[1]?.name).toBe('其他人改名');
     expect(() => assertDraftStructure(flow.latestVersion, { ...latest, nodes: latest.nodes.slice(1) })).toThrow();
-    Object.assign(latest.nodes[0]!, { approvers: ['direct_manager'] });
+    Object.assign(latest.nodes[0]!, { approvers: [approverSource('direct_manager')] });
     expect(() => assertDraftStructure(flow.latestVersion, latest)).toThrow();
+  });
+  it('04 F-318a 来源类型和值共同决定兜底资格，空人来源与兜底人员独立保留', () => {
+    const flow = fallbackFixture();
+    const original = flow.latestVersion;
+    const field = nodeField('work_handover', 'fallbackUserIds');
+    const emptyApproverSources = [{ type: 'specified', value: id }];
+    Object.assign(original.nodes[0]!, { emptyApproverPolicy: 'specified', emptyApproverSources });
+    const latest = structuredClone(original);
+    expect(() => assertDraftStructure(original, latest)).not.toThrow();
+    expect(buildDraft(latest, { [field]: [id] }, flow.approvalType).nodes[0]).toMatchObject({
+      emptyApproverPolicy: 'specified',
+      emptyApproverSources,
+      fallbackUserIds: [id],
+    });
+    Object.assign(latest.nodes[0]!, {
+      approvers: [{ type: 'custom_variable', value: 'handover_work_owner' }],
+    });
+    expect(editableValues(latest, flow.approvalType)).not.toHaveProperty(field);
+    expect(() => assertDraftStructure(original, latest)).toThrow();
   });
 });
