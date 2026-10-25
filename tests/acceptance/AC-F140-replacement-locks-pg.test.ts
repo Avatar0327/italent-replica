@@ -1,5 +1,5 @@
 import './support/exit-gate-enforced.js';
-import { sql, withTenant } from '@italent/db';
+import { withTenant } from '@italent/db';
 import { randomUUID } from 'node:crypto';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 
 const database = useTestDb();
-it.runIf(Boolean(process.env.TEST_DATABASE_URL))('P2-2：替代预锁失败职责下属，与其真实调动创建串行收敛', async () => {
+it.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-140b2 P2-2：替代预锁失败职责下属，与其真实调动创建串行收敛', async () => {
   const x = await downstreamWorld(database().db, 'review-f140-approval-duty-race');
   await x.useTiming('approval_passed');
   const receiver = await x.peer('合成接收人');
@@ -58,8 +58,8 @@ it.runIf(Boolean(process.env.TEST_DATABASE_URL))('P2-2：替代预锁失败职�
   });
   // 尽早消费拒绝，避免测试框架把确定性的 DB 死锁当成未处理 Promise。
   const movingResult = moving.then(
-    (value) => ({ ok: true, value }),
-    (error) => ({ ok: false, error }),
+    (value) => ({ ok: true as const, value }),
+    (error) => ({ ok: false as const, error }),
   );
   await held;
   const replacing = x.session.request('PATCH', `/exits/${draft.id}`, {

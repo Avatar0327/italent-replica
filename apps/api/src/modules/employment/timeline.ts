@@ -314,8 +314,8 @@ export interface ReattachedTransfer {
 }
 
 /**
- * 离职设计 §5.8 / §7.1：撤销已生效离职后，把离职落地时摘下的未来调动按台账窗口挂回原位（B4）。
- * 必须在离职自己的时间轴行已移除之后调用；按原窗口起点升序逐条走与落地同一个插入入口（insertEmploymentTimeline，
+ * 离职设计 §5.8 / §7.1：撤销已生效离职后，把离职落地时摘下的未来调动按当前实际日挂回（B4 / F-140b2）。
+ * 必须在离职自己的时间轴行已移除之后调用；台账只确定记录集合，按最新实际日起点升序逐条走同一插入入口（insertEmploymentTimeline，
  * 同日先后按原计划日 / 操作序号），前一条的区间随之接到第一个挂回的调动。台账只追加，不改；已在时间轴上的目标跳过（幂等）。
  * 返回挂回后的最终窗口，供调用方按最终窗口做恢复守卫。调用方已持员工锁。
  */
@@ -327,15 +327,19 @@ export async function reattachFutureTransfers(
 ): Promise<ReattachedTransfer[]> {
   const detached = rowsOf<{ recordId: string; staffId: string; from: string }>(
     await tx.execute(sql`
-    SELECT DISTINCT x.target_id::text AS "recordId", r.staff_id::text AS "staffId",
-      x.detail->'window'->>'from' AS "from"
-    FROM exit_effects x JOIN employment_records r ON r.tenant_id=x.tenant_id AND r.id=x.target_id
-    WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${leaveBusinessId}::uuid AND x.employee_id=${employeeId}::uuid
-      AND x.kind='future_transfer_detached' AND x.phase='effective' AND x.target_type='employment-record'
-      AND NOT EXISTS (SELECT 1 FROM employment_timeline t WHERE t.tenant_id=x.tenant_id AND t.record_id=x.target_id)
+    SELECT r.id::text AS "recordId", r.staff_id::text AS "staffId",
+      COALESCE((SELECT p.effective_date FROM employment_payload_versions p
+        WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+        ORDER BY p.version_no DESC LIMIT 1), r.start_date)::text AS "from"
+    FROM employment_records r
+    WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${employeeId}::uuid
+      AND EXISTS (SELECT 1 FROM exit_effects x WHERE x.tenant_id=r.tenant_id AND x.target_id=r.id
+        AND x.business_id=${leaveBusinessId}::uuid AND x.employee_id=r.employee_id
+        AND x.kind='future_transfer_detached' AND x.phase='effective' AND x.target_type='employment-record')
+      AND NOT EXISTS (SELECT 1 FROM employment_timeline t WHERE t.tenant_id=r.tenant_id AND t.record_id=r.id)
       -- 被摘下后又被 HR 删除的调动（墓碑）不再挂回：它没有时间轴行是正确的最终状态
       AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones d
-        WHERE d.tenant_id=x.tenant_id AND d.record_id=x.target_id)
+        WHERE d.tenant_id=r.tenant_id AND d.record_id=r.id)
     ORDER BY "from", "recordId"`),
   );
   for (const item of detached)

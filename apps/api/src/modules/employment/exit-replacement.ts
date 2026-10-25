@@ -2,6 +2,8 @@
 import { exitRequests, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { auditEmployment } from './context.js';
+import { remainingExitDuties } from './exit-replacement-plan.js';
+import { assertEmployeeLocksHeld } from './transfer-locks.js';
 import { cancelExit } from './exit-cancel.js';
 import { confirmExit } from './exit-confirmation.js';
 import { EXIT_GATE_PASS, loadExitRequest, type AckRecord } from './exit-gate.js';
@@ -12,7 +14,7 @@ import {
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { appendEmploymentState, createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
-import { appendLinkageVersion, latestLinkage } from '../transfer/linkage/store.js';
+import { appendLinkageVersion } from '../transfer/linkage/store.js';
 import type { EmploymentContext } from './types.js';
 import type { DownstreamItem } from './exit-downstream.js';
 
@@ -92,30 +94,13 @@ export async function replaceExit(
 
 /** 成功项按整条前单链排除；失败项保留失败证据但改为 superseded，使原重试端口自然拒绝。 */
 async function copyRemainingDuties(tx: Tx, ctx: EmploymentContext, old: LockedEmploymentBusiness, successorId: string) {
-  const linkage = await latestLinkage(tx, ctx.tenantId, old.id);
-  if (!linkage?.options.dutyTransfer) return;
-  const succeeded = rowsOf<{
-    subordinateId: string | null;
-    relation: string | null;
-    orgId: string | null;
-    role: string | null;
-  }>(
-    await tx.execute(sql`WITH RECURSIVE chain AS (
-      SELECT business_id,supersedes_business_id FROM exit_requests WHERE tenant_id=${ctx.tenantId}
-        AND business_id=${old.id}::uuid
-      UNION ALL SELECT r.business_id,r.supersedes_business_id FROM exit_requests r JOIN chain c
-        ON r.business_id=c.supersedes_business_id WHERE r.tenant_id=${ctx.tenantId}
-    ) SELECT i.subordinate_id::text AS "subordinateId",i.relation,i.org_id::text AS "orgId",i.org_role AS role
-      FROM transfer_linkage_items i JOIN chain c ON c.business_id=i.business_id
-      WHERE i.tenant_id=${ctx.tenantId} AND i.status='succeeded'`),
+  const remaining = await remainingExitDuties(tx, ctx.tenantId, old.id);
+  if (!remaining) return;
+  const { linkage, dutyTransfer } = remaining;
+  await assertEmployeeLocksHeld(
+    tx,
+    dutyTransfer.subordinates.map((d) => d.employeeId),
   );
-  const duties = linkage.options.dutyTransfer;
-  const dutyTransfer = {
-    subordinates: duties.subordinates.filter(
-      (d) => !succeeded.some((s) => s.subordinateId === d.employeeId && s.relation === d.relation),
-    ),
-    orgRoles: duties.orgRoles.filter((d) => !succeeded.some((s) => s.orgId === d.orgId && s.role === d.role)),
-  };
   const replaced = rowsOf<{ id: string }>(
     await tx.execute(sql`UPDATE transfer_linkage_items
     SET status='superseded',revision=revision+1 WHERE tenant_id=${ctx.tenantId} AND business_id=${old.id}::uuid

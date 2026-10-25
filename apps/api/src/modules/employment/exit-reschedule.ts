@@ -48,13 +48,17 @@ export interface RescheduleOptions {
 
 /** 先取齐参与员工闭包，再取本单；审批入口已经取齐时复用同一锁计划。 */
 export async function lockExitForEdit(tx: Tx, ctx: EmploymentContext, businessId: string) {
-  const [owner] = rowsOf<{ employeeId: string }>(
+  const [owner] = rowsOf<{ employeeId: string; isExit: boolean }>(
     await tx.execute(sql`
-    SELECT employee_id AS "employeeId" FROM employment_business_objects
+    SELECT employee_id AS "employeeId", EXISTS (
+      SELECT 1 FROM exit_requests e WHERE e.tenant_id=b.tenant_id AND e.business_id=b.id
+    ) AS "isExit" FROM employment_business_objects b
     WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
   );
   if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
-  await lockTransferParticipants(tx, ctx, owner.employeeId);
+  await lockTransferParticipants(tx, ctx, owner.employeeId, [], {
+    rescheduledExitId: owner.isExit ? businessId : undefined,
+  });
   return lockEmploymentBusiness(tx, ctx, businessId);
 }
 

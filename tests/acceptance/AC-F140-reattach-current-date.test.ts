@@ -6,7 +6,7 @@ import { cancelWorld } from './AC-EXIT-cancel-support.js';
 
 const database = useTestDb();
 it.each(['reposition', 'replace', 'cancel'])(
-  'P2-1：调动顺延后再次摘挂，%s 只挂回一次且保留最新实际日',
+  'F-140b2 P2-1：调动顺延后再次摘挂，%s 只挂回一次且保留最新实际日',
   async (operation) => {
     const x = await cancelWorld(database().db, 'f140-current-date');
     const transfer = await x.directTransfer(x.to, '2026-10-25');
