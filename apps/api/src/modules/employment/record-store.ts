@@ -201,9 +201,12 @@ export async function insertEmploymentRow(
   table: string,
   input: Record<string, unknown>,
   status?: VersionStatus,
+  manualPlan = false,
 ): Promise<void> {
   if (!TABLES.has(table)) throw new TypeError('非任职模块写入表');
-  const values = VERSION_TABLES.has(table) ? versionValues(input, status) : input;
+  const values = VERSION_TABLES.has(table)
+    ? { ...versionValues(input, status), ...(table === 'employment_payload_versions' ? { manualPlan } : {}) }
+    : input;
   const keys = Object.keys(values).filter((key) => values[key] !== undefined);
   const columns = sql.join(
     keys.map((key) => sql.identifier(key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`))),
@@ -232,6 +235,12 @@ export async function insertEmploymentRow(
 
 function versionValues(input: Record<string, unknown>, status?: VersionStatus): Record<string, unknown> {
   // 人工计划生效日只由插入触发器按“人工版本取本版本日期、派生版本沿用上一版本”写入（迁移 0130，F-140 约束 2）。
-  const { employeeStatus: _status, entryStatus: _entry, plannedEffectiveDate: _planned, ...values } = input;
+  const {
+    employeeStatus: _status,
+    entryStatus: _entry,
+    plannedEffectiveDate: _planned,
+    manualPlan: _manual,
+    ...values
+  } = input;
   return status ? { ...values, employeeStatus: status.employeeStatus, entryStatus: status.entryStatus } : values;
 }

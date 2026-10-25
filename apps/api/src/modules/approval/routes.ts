@@ -211,7 +211,7 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
   const page = pageQuery(c);
   const viewer = await viewerOf(deps, ctx);
   const { data, rows } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const detail = await readDetail(tx, ctx, instanceId, viewer);
+    const detail = await readDetail(tx, ctx, instanceId, viewer, false);
     const items =
       kind === 'tasks'
         ? await pageTasks(tx, ctx.tenantId, instanceId, page)
@@ -500,7 +500,10 @@ const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const decision = z.strictObject({ comment, fields: fields.optional() });
+  const exitReschedule = z
+    .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
+    .optional();
+  const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -512,7 +515,12 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const taskId = uuidParam(c);
       const input = await parseBody(c, decision);
       const viewable = await fieldRights(c, deps, taskId, input.fields);
-      const request = { taskId, comment: input.comment ?? null, ...(input.fields ? { fields: input.fields } : {}) };
+      const request = {
+        taskId,
+        comment: input.comment ?? null,
+        ...(input.fields ? { fields: input.fields } : {}),
+        ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+      };
       const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
       return respondOutcome(c, deps, result);
     });
@@ -558,9 +566,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/tasks/:id/edit', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
-    const input = await parseBody(c, z.strictObject({ fields }));
+    const input = await parseBody(c, z.strictObject({ fields, exitReschedule }));
     const viewable = await fieldRights(c, deps, taskId, input.fields);
-    const request = { taskId, fields: input.fields };
+    const request = {
+      taskId,
+      fields: input.fields,
+      ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+    };
     const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
     return respondOutcome(c, deps, result);
   });

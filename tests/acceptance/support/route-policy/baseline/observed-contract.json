@@ -11638,6 +11638,7 @@
         ],
         "guard": [
           "employment.businessWrite",
+          "employment.linkage",
           "transfer.source"
         ],
         "object": [
@@ -11653,7 +11654,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -11696,10 +11696,12 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -11711,7 +11713,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -12066,7 +12067,6 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -12109,7 +12109,8 @@
           "employment runWrite()"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -12121,7 +12122,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -18536,7 +18536,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18582,7 +18581,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]

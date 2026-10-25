@@ -51,6 +51,7 @@ export const exitRequests = pgTable(
   {
     tenantId: tenant(),
     businessId: uuid('business_id').notNull(),
+    supersedesBusinessId: uuid('supersedes_business_id'),
     employeeId: uuid('employee_id').notNull(),
     /** 离职所属任职周期（employment_cycles.id），创建时等于载荷 selectedStaffId，此后不变（§2.1）。 */
     staffId: uuid('staff_id').notNull(),
@@ -89,6 +90,16 @@ export const exitRequests = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.businessId] }),
     businessFk('exit_requests_business_fk', t),
+    foreignKey({
+      name: 'exit_requests_supersedes_fk',
+      columns: [t.tenantId, t.employeeId, t.supersedesBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    unique('exit_requests_one_successor').on(t.tenantId, t.supersedesBusinessId),
     foreignKey({
       name: 'exit_requests_cycle_fk',
       columns: [t.tenantId, t.employeeId, t.staffId],

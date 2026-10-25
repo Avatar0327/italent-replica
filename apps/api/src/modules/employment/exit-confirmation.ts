@@ -58,11 +58,30 @@ export interface ExitCancelledEvent {
 type CancelledHook = (tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) => Promise<void>;
 const cancelledHooks: CancelledHook[] = [];
 
+/** F-140：人工计划变更的唯一事务出口；后继关系留给 b2，账号处理留给 F-261。 */
+export interface ExitReplannedEvent {
+  readonly tenantId: string;
+  readonly employeeId: string;
+  readonly businessId: string;
+  readonly fromPlanned: string;
+  readonly toPlanned: string;
+  readonly versionNo: number;
+  readonly supersedesBusinessId?: string;
+}
+type ReplannedHook = (tx: Tx, ctx: EmploymentContext, event: ExitReplannedEvent) => Promise<void>;
+const replannedHooks: ReplannedHook[] = [];
+export async function runExitReplannedHooks(tx: Tx, ctx: EmploymentContext, event: ExitReplannedEvent) {
+  for (const hook of replannedHooks) await hook(tx, ctx, event);
+}
+
 /**
  * 离职后续任务端口（设计 §0 / §5.1 步骤 8）：confirmed 在审批通过 / 直接离职保存时调用（DM-R14 交接自动发起，BE-8）；
  * effective 在离职落地后调用（自动加黑 BE-8、账号停用另行任务）。订阅方在同一事务内处理，失败即整单回滚；默认没有订阅方。
  */
 export const exitPostEffectHooks = {
+  onReplanned(hook: ReplannedHook): void {
+    replannedHooks.push(hook);
+  },
   onConfirmed(hook: ConfirmedHook): void {
     confirmedHooks.push(hook);
   },

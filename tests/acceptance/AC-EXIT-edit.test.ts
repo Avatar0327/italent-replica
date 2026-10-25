@@ -1,8 +1,6 @@
 /**
- * R2-T03 B2b / AC-DM-33 B-86（DEC-499 / 设计 §7.2）：编辑离职 PATCH exits/:id 只改非日期字段；最后工作日 / 生效日与当前值
- * 不同 → 400 EXIT_DATE_IMMUTABLE（draft / in_review / rejected / approved / effective 五种状态），且无任何业务写入、
- * 同键重放同一拒绝；无 DimissionEdit 先得 403。记录编辑 / 批量编辑 / 导入编辑行对离职记录沿用 main 的
- * RECORD_DATE_IMMUTABLE，整批回滚。B-65a：in_review 单的 HR PATCH 另需审批管理员按钮（adminIntervene）。
+ * AC-DM-33 B-86 / F-140：专用离职入口开放日期编辑，已生效改到未来走替代。
+ * 记录 / 批量 / 导入入口仍 RECORD_DATE_IMMUTABLE；权限、原输入和同键重放继续验收。
  */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
@@ -53,30 +51,27 @@ async function fiveStates(w: GateWorld) {
 }
 
 describe('AC-DM-33 B-86 PATCH exits/:id 五种状态', () => {
-  it('改最后工作日或生效日：400 EXIT_DATE_IMMUTABLE，前后读取逐项相等，同键重放同一拒绝', async () => {
+  it('F-140：五种状态改期成功且可重放；已生效替代产生唯一后继', async () => {
     const w = await gateWorld(database().db, 'edit-dates');
     for (const { state, business } of await fiveStates(w)) {
-      expect(business.status).toBe(state);
-      const before = await w.stateOf(business.employeeId);
-      for (const patch of [
-        { lastWorkDate: '2026-09-25' },
-        { effectiveDate: '2026-10-30', exitTypeCode: 'involuntary' },
-      ]) {
-        const key = randomUUID();
-        const send = () =>
-          w.session.request('PATCH', `/exits/${business.id}`, {
-            ifMatch: business.revision,
-            body: patch,
-            idempotencyKey: key,
-          });
-        for (const attempt of [await send(), await send()])
-          expect(await w.reason(attempt), `${state} ${JSON.stringify(patch)}`).toMatchObject({
-            status: 400,
-            code: 'VALIDATION_FAILED',
-            reason: 'EXIT_DATE_IMMUTABLE',
-          });
-      }
-      expect(await w.stateOf(business.employeeId), state).toEqual(before);
+      const key = randomUUID();
+      const send = () =>
+        w.session.request('PATCH', `/exits/${business.id}`, {
+          ifMatch: business.revision,
+          body: { lastWorkDate: '2026-10-25', effectiveDate: '2026-10-26', exitTypeCode: 'involuntary' },
+          idempotencyKey: key,
+        });
+      const response = await send();
+      expect(response.status, await response.clone().text()).toBe(200);
+      const result = await response.json();
+      const replay = await send();
+      expect(replay.status, await replay.clone().text()).toBe(200);
+      expect(await replay.json()).toEqual(result);
+      if (state === 'effective') {
+        expect(await w.business(business.id)).toMatchObject({ status: 'deleted' });
+        expect(result.successor).toMatchObject({ status: 'approved', effectiveDate: '2026-10-26' });
+        expect(await w.exitRow(result.successor.id)).toMatchObject({ exit_type_code: 'involuntary' });
+      } else expect(await w.business(business.id)).toMatchObject({ status: state, effectiveDate: '2026-10-26' });
     }
   });
 

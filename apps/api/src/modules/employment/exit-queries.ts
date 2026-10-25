@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
+import { activationSummary } from './activation-store.js';
 import { employmentCreator } from './context.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { checkPage, rowsOf } from './read-model.js';
@@ -113,6 +114,7 @@ export interface ExitItem {
   /** 审批通过但生效失败 / 挂起的标记（最近一次生效尝试）；其余为 null。 */
   readonly activation: {
     readonly status: 'failed' | 'suspended';
+    readonly details?: Record<string, unknown>;
     readonly reason: string | null;
     readonly blockedByBusinessId: string | null;
   } | null;
@@ -445,8 +447,14 @@ export async function loadExitDetail(
   const { extension: ext, versions, events, instance, effects } = await loadDetailParts(tx, tenantId, id);
   const counted = (kind: string) =>
     effects.filter((effect) => effect.kind === kind).reduce((sum, effect) => sum + Number(effect.count), 0);
+  const item = toItem(row);
+  const failure =
+    item.activation?.reason === 'EXIT_LATER_RECORD_EXISTS'
+      ? await activationSummary(tx, tenantId, id, row.status)
+      : null;
   return {
-    ...toItem(row),
+    ...item,
+    ...(failure?.details && item.activation ? { activation: { ...item.activation, details: failure.details } } : {}),
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
@@ -543,6 +551,18 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   'activation.status': on('activation'),
   'activation.reason': on('activation'),
   'activation.blockedByBusinessId': on('activation'),
+  'activation.details': on('activation'),
+  'activation.details.title': on('activation'),
+  'activation.details.message': on('lastWorkDate'),
+  'activation.details.hiddenCount': on('activation'),
+  'activation.details.actions': on('activation'),
+  'activation.details.actions[]': on('activation'),
+  'activation.details.records': on('activation'),
+  'activation.details.records[]': on('activation'),
+  'activation.details.records[].docId': on('id'),
+  'activation.details.records[].docNo': on('id'),
+  'activation.details.records[].bizType': on('kind'),
+  'activation.details.records[].effectiveDate': on('effectiveDate'),
   // 撤销信息：case 由撤销前状态决定（设计 §7.1 四种撤销情形与撤销前状态一一对应），跟随 status
   cancellation: independent('有无撤销记录由撤销视图的归属决定（视图名是显式查询参数，设计 §3.2 DM-R5）；叶子各有规则'),
   'cancellation.id': on('id'),

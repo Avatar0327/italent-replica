@@ -73,6 +73,8 @@ export interface EmploymentTransitionInput {
    * USE_EXIT_CANCEL，不留绕过 §6B 的删除路径（设计 §4 / §18.1 末段）。
    */
   readonly cancelling?: true;
+  /** F-140 替代：恢复守卫以同事务后继离职的最终生效日截止。 */
+  readonly restoreUntil?: string;
 }
 
 /** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），到期生效由 R1-T08 定时任务经 activate 端口落地。 */
@@ -182,7 +184,7 @@ export async function transitionEmployment(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true);
+    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
@@ -297,6 +299,7 @@ async function exitGateFor(
       ...target,
       deleting: input.action === 'delete',
       ...(input.cancelling ? { cancelling: true } : {}),
+      ...(input.cancelling && input.restoreUntil ? { rescheduling: true as const } : {}),
     });
   else if (input.action === 'activate') await requireExitGate(tx, ctx, 'retry', target);
   return { row };
@@ -339,6 +342,7 @@ async function deleteEmploymentBusiness(
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   exitCancel = false,
+  restoreUntil?: string,
 ): Promise<{ id: string; kind: string; date: string } | null> {
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
@@ -380,7 +384,8 @@ async function deleteEmploymentBusiness(
     if (record) {
       const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
-      if (point && exitCancel) previous = await restoreAfterExitDeletion(tx, ctx, record, business, point);
+      if (point && exitCancel)
+        previous = await restoreAfterExitDeletion(tx, ctx, record, business, point, restoreUntil);
       else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
         const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);

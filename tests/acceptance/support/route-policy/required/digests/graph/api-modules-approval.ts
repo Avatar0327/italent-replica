@@ -170,6 +170,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/actions.ts#applyEdit': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/store.ts#appendLog',
   ],
   'apps/api/src/modules/approval/actions.ts#approveTask': [
@@ -510,6 +511,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
+    'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -1293,7 +1295,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/notifications.ts#recipientOf': [
     'apps/api/src/modules/approval/resolver.ts#userOfPerson',
   ],
-  'apps/api/src/modules/approval/queries.ts#listAdminLogs': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
+  'apps/api/src/modules/approval/queries.ts#listAdminLogs': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#iso',
+    'apps/api/src/modules/approval/store.ts#withActorNames',
+  ],
   'apps/api/src/modules/approval/queries.ts#listInstances': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
   'apps/api/src/modules/approval/queries.ts#listNotifications': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -1835,6 +1841,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#RECENT',
     '#logOf',
+    '#withActorNames',
   ],
   'apps/api/src/modules/approval/store.ts#loadTasks': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -1842,7 +1849,11 @@ export const GRAPH: Graph = {
     '#taskOf',
   ],
   'apps/api/src/modules/approval/store.ts#logOf': ['#iso'],
-  'apps/api/src/modules/approval/store.ts#pageLogs': ['apps/api/src/modules/approval/context.ts#rowsOf', '#logOf'],
+  'apps/api/src/modules/approval/store.ts#pageLogs': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#logOf',
+    '#withActorNames',
+  ],
   'apps/api/src/modules/approval/store.ts#pageTasks': ['apps/api/src/modules/approval/context.ts#rowsOf', '#taskOf'],
   'apps/api/src/modules/approval/store.ts#resumableInstanceOf': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -1854,6 +1865,7 @@ export const GRAPH: Graph = {
     '#auditTask',
   ],
   'apps/api/src/modules/approval/store.ts#taskOf': ['#iso'],
+  'apps/api/src/modules/approval/store.ts#withActorNames': ['apps/api/src/audit/query.ts#operatorNames'],
   'apps/api/src/modules/approval/subjects.ts#freezeSubjects': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#auditApproval',
