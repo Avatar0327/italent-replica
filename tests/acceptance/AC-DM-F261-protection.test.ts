@@ -1,5 +1,7 @@
 /** F-261 / DEC-098、123、142、684：保护不回滚离职；逐租户接管及授权重试。 */
 import './support/exit-gate-enforced.js';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { getUser, grantMembership, permissionUserPersonLinks, sql, withTenant } from '@italent/db';
@@ -84,13 +86,32 @@ async function retry(f: Awaited<ReturnType<typeof scene>>, key = randomUUID()) {
 }
 
 describe('F-261 保护及重试', () => {
+  it('范围外任务与不存在返回相同 404；被指定接收人撤掉范围后列表仍为空', async () => {
+    const f = await scene('scope');
+    const authorize = () => true;
+    registerScopeProvider(authorize, {
+      scope: async () => ({ ...EMPTY_SCOPE, hasDataPermission: true }),
+      authorize: async () => true, fields: async () => new Set<string>(),
+    });
+    const api = tenantApi(f.w.db, { clock: f.w.clock, authorize });
+    const read = (id: string) => api.request('GET', `${EMP}/exit-account/tasks/${id}`, f.w.as(f.w.hr.id));
+    const denied = await read(f.leave.id), missing = await read(randomUUID());
+    expect(denied.status).toBe(404);
+    expect(missing.status).toBe(404);
+    expect(await denied.json()).toEqual(await missing.json());
+    expect(await ok(await api.request('GET', `${EMP}/exit-account/tasks`, f.w.as(f.w.hr.id))))
+      .toEqual({ items: [], nextCursor: null });
+  });
+
   it('停用账号权限独立于任职查看权：账号管理员可重试，回执不泄露员工资料', async () => {
     const f = await scene('account-capability');
     await handover(f.w, f.w.exceptionAdmin);
     const task = await taskOf(f);
     const api = tenantApi(f.w.db, { clock: f.w.clock, authorize: (r) => r.action === 'admin.user_manage' });
     const response = await api.request('POST', `${EMP}/exit-account/tasks/${f.leave.id}/retry`, {
-      ...f.w.as(f.w.hr.id), ifMatch: task.revision, body: {},
+      ...f.w.as(f.w.hr.id),
+      ifMatch: task.revision,
+      body: {},
     });
     const receipt = await ok(response);
     expect(receipt.employeeId).toBeUndefined();
