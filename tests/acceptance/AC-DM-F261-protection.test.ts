@@ -84,6 +84,19 @@ async function retry(f: Awaited<ReturnType<typeof scene>>, key = randomUUID()) {
 }
 
 describe('F-261 保护及重试', () => {
+  it('停用账号权限独立于任职查看权：账号管理员可重试，回执不泄露员工资料', async () => {
+    const f = await scene('account-capability');
+    await handover(f.w, f.w.exceptionAdmin);
+    const task = await taskOf(f);
+    const api = tenantApi(f.w.db, { clock: f.w.clock, authorize: (r) => r.action === 'admin.user_manage' });
+    const response = await api.request('POST', `${EMP}/exit-account/tasks/${f.leave.id}/retry`, {
+      ...f.w.as(f.w.hr.id), ifMatch: task.revision, body: {},
+    });
+    const receipt = await ok(response);
+    expect(receipt.employeeId).toBeUndefined();
+    expect((await getUser(f.w.db, f.w.exceptionAdmin))!.status).toBe('disabled');
+  });
+
   it('仍为流程异常管理员：离职已生效、账号仍有效，原因持久化、HR 与预置管理员收到同一待办；无权重试被拒', async () => {
     const f = await scene('blocked');
     expect(f.leave.status).toBe('effective');

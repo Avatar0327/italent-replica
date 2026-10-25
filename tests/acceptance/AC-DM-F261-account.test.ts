@@ -49,12 +49,24 @@ describe('F-261 默认生效与账号关联', () => {
     const x = await world('revoked-source');
     const y = await world('revoked-other');
     const user = await account(x);
-    await grantMembership(database().db, {
-      tenantId: y.session.tenant.id, userId: user.id, expectedRevision: 0,
-    }, cmd());
-    await revokeMembership(database().db, {
-      tenantId: x.session.tenant.id, userId: user.id, expectedRevision: 1,
-    }, cmd());
+    await grantMembership(
+      database().db,
+      {
+        tenantId: y.session.tenant.id,
+        userId: user.id,
+        expectedRevision: 0,
+      },
+      cmd(),
+    );
+    await revokeMembership(
+      database().db,
+      {
+        tenantId: x.session.tenant.id,
+        userId: user.id,
+        expectedRevision: 1,
+      },
+      cmd(),
+    );
     const leave = await create(x);
     await x.runScheduler('2026-10-16T02:00:00Z');
     expect((await x.business(leave.id)).status).toBe('effective');
@@ -193,6 +205,9 @@ describe('AC-DM-05 自动停用来源与真实改期', () => {
     );
     expect((await account(x)).status).toBe('active');
     expect((await authenticate()).status).toBe(200);
+    await x.runScheduler('2026-10-18T11:00:00Z');
+    expect((await account(x)).status).toBe('disabled');
+    expect((await x.business(leave.id)).status).toBe('approved');
   });
 
   it.each([false, true])('未生效改晚：手工再次停用=%s，仅恢复仍由本规则停用的账号', async (manual) => {
