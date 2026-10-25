@@ -1938,12 +1938,7 @@ export const EMPLOYMENT: RequiredTable = {
         'guard:employment.entryContract',
         [],
         [
-          at(
-            INTERN,
-            'POST',
-            '/interns',
-            '{ guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => projectInternProfile(deps, ctx, body) }',
-          ),
+          at(INTERN, 'POST', '/interns', 'guard: internCreateGuard(deps, employeeCtx, ctx, plan)'),
           fn(
             INTERN_CREATE,
             'internCreateGuard',

@@ -207,7 +207,7 @@ describe('AC-IN-F322 全字段一体写入', () => {
     if (first) await c.w.leave(first.employeeId, '2026-09-20');
     const before = await stored(c);
     const patch = { contract: { ...contract(c), typeId: randomUUID() }, profile: profile() };
-    const body = first ? c.rehireBody(first.employeeId, patch) : c.hireBody(patch);
+    const body: Record<string, unknown> = first ? c.rehireBody(first.employeeId, patch) : c.hireBody(patch);
     const result = await c.create(body, { ifMatch: first ? await c.w.revision(first.employeeId) : 0 });
     expect(result.status, await result.clone().text()).toBe(400);
     expect(await result.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
