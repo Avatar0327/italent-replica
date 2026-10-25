@@ -127,16 +127,18 @@ async function settle(
     const autoRevision = automatic && user.status === 'disabled' && f.due ? user.revision : t.autoRevision;
     const restoreRequested = t.restoreRequested && f.due;
     if (status === t.status && autoRevision === t.autoRevision && restoreRequested === t.restoreRequested) continue;
-    await inTenant(f.tenant.id, (tx) =>
-      saveTask(tx, context(f, now, commandId), t, {
+    await inTenant(f.tenant.id, async (tx) => {
+      const saved = await saveTask(tx, context(f, now, commandId), t, {
         status,
         autoRevision,
         restoreRequested,
         reason: null,
         recipientUserIds: [],
         attempts: automatic ? t.attempts + 1 : t.attempts,
-      }),
-    );
+      });
+      // 人工重试不取员工锁，可能更新任务版本；凭据丢写时必须连同全局停用一起回滚。
+      if (automatic && !saved) throw new AppError('REVISION_CONFLICT', '账号任务已变化，请重试');
+    });
   }
 }
 async function members(db: Db, userId: string) {
