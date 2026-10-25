@@ -889,7 +889,7 @@ export const EMPLOYMENT: RequiredTable = {
         fn(
           ACCOUNT,
           'retry',
-          "await requirePermission(authorizeInTransaction(deps.authorize, tx), { ...ctx, action: 'admin.user_manage' })",
+          "requirePermission(authorizeInTransaction(deps.authorize, tx), { ...ctx, action: 'admin.user_manage' })",
         ),
       ],
     ),

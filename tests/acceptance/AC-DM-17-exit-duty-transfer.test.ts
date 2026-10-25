@@ -172,7 +172,8 @@ describe('transfer-locks participants 纳入 kind = leave 的转交下属（§5.
         await lockTransferParticipants(tx, ctx, x.employee.id);
         const [row] = rowsOf<{ value: string }>(
           await tx.execute(
-            sql`SELECT current_setting('italent.transfer_employee_locks_' || replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
+            sql`SELECT current_setting('italent.transfer_employee_locks_' ||
+              replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
           ),
         );
         return (JSON.parse(row!.value) as string[]).sort();

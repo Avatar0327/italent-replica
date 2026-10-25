@@ -168,7 +168,8 @@ async function fail(db: Db, plan: readonly Fact[], now: Date, commandId: string,
       const admins = rowsOf<{ id: string }>(
         await tx.execute(sql`SELECT DISTINCT a.user_id AS id FROM permission_admins a
         JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.status='active'
-        WHERE a.tenant_id=${f.tenant.id} AND a.status='active' AND a.role IN ('tenant_admin','system_admin','employee_admin')`),
+        WHERE a.tenant_id=${f.tenant.id} AND a.status='active'
+          AND a.role IN ('tenant_admin','system_admin','employee_admin')`),
       );
       const recipients = [
         ...new Set([...admins.map((a) => a.id), ...(f.task.handlerUserId ? [f.task.handlerUserId] : [])]),

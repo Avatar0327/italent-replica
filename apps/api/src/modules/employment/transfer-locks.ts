@@ -139,7 +139,8 @@ export const lockTransferParticipants = (
 export async function assertEmployeeLocksHeld(tx: Tx, ids: readonly string[]): Promise<void> {
   const [setting] = rowsOf<{ value: string | null }>(
     await tx.execute(
-      sql`SELECT current_setting('italent.transfer_employee_locks_' || replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
+      sql`SELECT current_setting('italent.transfer_employee_locks_' ||
+        replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
     ),
   );
   const held = new Set<string>(setting?.value ? (JSON.parse(setting.value) as string[]) : []);

@@ -23,7 +23,7 @@ import {
 import { auditEmployment } from './context.js';
 import { handleContractsOnExitEffective } from './exit-contract-effects.js';
 import { runExitDutyTransfer } from './exit-duty-transfer.js';
-import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { runExitEffectiveHooks, type ExitActivationSource } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
 // 离职生效写黑名单（BE-8b1）同样订阅 effective 端口
@@ -446,7 +446,7 @@ async function runSteps(
     undefined,
     { employeeId: business.employeeId },
   );
-  const event: ExitEffectiveEvent = {
+  await runExitEffectiveHooks(tx, ctx, {
     businessId: business.id,
     employeeId: business.employeeId,
     source,
@@ -454,8 +454,7 @@ async function runSteps(
     effectiveDate: late.effectiveDate,
     kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
     reEmployed: retirement?.reEmployed === true,
-  };
-  await runExitEffectiveHooks(tx, ctx, event);
+  });
   // 审批落地由调用命令统一递增一次业务 revision；调度 / 重试 / 内部入口在这里递增
   if (trigger !== 'approval') await bumpEmploymentBusiness(tx, ctx, business);
   return late;
