@@ -11638,6 +11638,7 @@
         ],
         "guard": [
           "employment.businessWrite",
+          "employment.linkage",
           "transfer.source"
         ],
         "object": [
@@ -11653,7 +11654,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -11713,7 +11713,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -12123,7 +12122,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],

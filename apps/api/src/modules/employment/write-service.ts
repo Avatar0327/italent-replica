@@ -128,7 +128,29 @@ export async function createEmploymentBusiness(
   // 29 PB-R9：直接转正即“提交”，有转正流程在审批中时拒绝；申请在提交时判（transitions.ts）
   if (normalized.kind === 'regularization' && normalized.mode === 'direct' && !options.generatedByAssessment)
     await assertProbationProcessesIdle(tx, ctx, { employeeId: employee.id, action: 'regularize' });
-  const { selected, prepared, effective } = await prepareCreatedEmployment(tx, ctx, employee.id, normalized, options);
+  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
+    ? undefined
+    : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
+  const inherited = await prepareInheritance(tx, ctx, {
+    ...normalized,
+    employeeId: employee.id,
+    staffId: selected?.cycle.id,
+  });
+  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  await validatePreparedEmployment(
+    tx,
+    ctx,
+    employee.id,
+    normalized.kind,
+    prepared,
+    effective.fields,
+    undefined,
+    options.rescheduledExit === true && normalized.kind === 'leave',
+  );
   const id = await initializeEmploymentBusiness(
     tx,
     ctx,
@@ -159,15 +181,7 @@ export async function createEmploymentBusiness(
     options.changeType ?? defaultChangeType(normalized.kind),
     entryStatusFor(normalized.kind, options.entry),
   );
-  const business: LockedEmploymentBusiness = {
-    id,
-    employeeId: employee.id,
-    revision: 1,
-    employee,
-    payload,
-    state: normalized.mode === 'direct' ? (gatedDirect ? 'approved' : 'effective') : 'draft',
-    eventNo: 0,
-  };
+  const business = initialBusiness(employee, payload, gatedDirect);
   if (normalized.mode === 'direct' && !gatedDirect) await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
   await bumpEmploymentEmployee(tx, ctx, employee);
@@ -177,37 +191,22 @@ export async function createEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
-async function prepareCreatedEmployment(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  normalized: ReturnType<typeof normalizeEmploymentInput>,
-  options: CreateEmploymentOptions,
-) {
-  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
-    ? undefined
-    : await selectEmploymentCycle(tx, ctx, employeeId, normalized);
-  const inherited = await prepareInheritance(tx, ctx, {
-    ...normalized,
-    employeeId: employeeId,
-    staffId: selected?.cycle.id,
-  });
-  const prepared = options.positionManagerDerivation ? withPositionManagerDerivation(inherited) : inherited;
-  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
-    staffId: selected?.cycle.id ?? '',
-    predecessor: selected?.predecessor ?? null,
-  });
-  await validatePreparedEmployment(
-    tx,
-    ctx,
-    employeeId,
-    normalized.kind,
-    prepared,
-    effective.fields,
-    undefined,
-    options.rescheduledExit === true && normalized.kind === 'leave',
-  );
-  return { selected, prepared, effective };
+/** 初始业务头纯装配；继承与引用门禁仍在创建入口直接调用，保留 F-039 的强制调用点。 */
+function initialBusiness(
+  employee: LockedEmploymentBusiness['employee'],
+  payload: EmploymentPayloadRow,
+  gatedDirect: boolean,
+): LockedEmploymentBusiness {
+  const directState = gatedDirect ? 'approved' : 'effective';
+  return {
+    id: payload.businessId,
+    employeeId: employee.id,
+    revision: 1,
+    employee,
+    payload,
+    state: payload.mode === 'direct' ? directState : 'draft',
+    eventNo: 0,
+  };
 }
 
 /** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */

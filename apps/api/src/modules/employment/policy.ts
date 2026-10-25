@@ -877,7 +877,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION],
+    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION, LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentWrite(
