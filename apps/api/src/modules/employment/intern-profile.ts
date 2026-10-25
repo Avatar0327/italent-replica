@@ -1,6 +1,6 @@
 /** F-322 / DEC-685：实习一体写入复用档案与教育子集端口，不直接改系统反写列。 */
 import { withTenant, type Tx } from '@italent/db';
-import { PERSONNEL_OBJECT, SUBSETS } from '@italent/domain';
+import { PERSONNEL_OBJECT, SUBSETS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { authorize, requirePerson, trimWithFields } from '../personnel/access.js';
@@ -15,6 +15,7 @@ import {
   resolveModuleScopeInTransaction,
 } from '../permission/module-access.js';
 import type { EmploymentContext } from './types.js';
+import { personnelCreationScope } from '../permission/scope-resolver.js';
 
 const PROFILE_FIELDS = [
   'backupMail',
@@ -79,7 +80,14 @@ export async function requireInternProfileAccess(
       : []),
   ];
   for (const { objectCode, operation, payload } of writes) {
-    const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode);
+    let scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode);
+    // DEC-082：创建人规则只授予旧记录读写权，教育新增仍须落在当前管理范围内。
+    if (operation === 'create')
+      scope = await personnelCreationScope(
+        tx,
+        { ...ctx, appCode: 'TenantBase', asOf: tenantLocalDate(ctx.now, ctx.timezone) },
+        scope,
+      );
     const access = { ...ctx, authorizer, objectCode, scope };
     await authorize(authorizer, access, operation, payload, operation);
     if (!scope.hasDataPermission) throw new AppError('NOT_FOUND', '人员不存在');

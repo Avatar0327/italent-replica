@@ -1555,7 +1555,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/intern-profile.ts#PROFILE_FIELDS': ['9bd2b2a44ebb', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/intern-profile.ts#planInternProfile': ['97f6f749cc79', '9bba92f5bd89'],
   'apps/api/src/modules/employment/intern-profile.ts#projectInternProfile': ['cd33bec12806', '1a8466187a8e'],
-  'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': ['29efdc3a821c', '8483fdfd6c2d'],
+  'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': ['c6f7ec85f8ba', 'f0ab7d8fde10'],
   'apps/api/src/modules/employment/intern-profile.ts#writeInternProfile': ['b96a478273f8', 'af833cdde450'],
   'apps/api/src/modules/employment/intern-regularization.ts#confirmEstablishment': ['213e44e28574', '958842d7625a'],
   'apps/api/src/modules/employment/intern-regularization.ts#id': ['7b72cdc3c3b4', 'fa363758b0fe'],

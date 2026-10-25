@@ -2852,10 +2852,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope',
     'apps/api/src/modules/personnel/access.ts#authorize',
     'apps/api/src/modules/personnel/access.ts#requirePerson',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
     'packages/domain/src/personnel/fields.ts#SUBSETS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/intern-profile.ts#writeInternProfile': [
     '#EDUCATION_FIELDS',

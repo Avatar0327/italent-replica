@@ -1986,8 +1986,14 @@ export const EMPLOYMENT: RequiredTable = {
             'await authorize(authorizer, access, operation, payload, operation)',
           ),
           fn(INTERN_PROFILE, 'writeInternProfile', 'await requireInternProfileAccess(tx, deps, ctx, plan, employeeId)'),
+          fn(INTERN_PROFILE, 'requireInternProfileAccess', 'scope = await personnelCreationScope('),
+          fn(
+            `${SRC}/permission/scope-resolver.ts`,
+            'personnelCreationScope',
+            "current.terms.map((term) => (term.dimension === 'using_user' ? managed : term))",
+          ),
         ],
-        '条件准入：有普通资料时校验档案更新权，有教育三项时校验教育新增权；两者各自检查字段、按钮和范围',
+        '条件准入：普通资料校验档案更新权；教育新增经 DEC-082 创建范围转换；两者各自检查字段、按钮和范围',
       ),
       ...[
         'obj:TenantBase.EmployeeInformation:update',

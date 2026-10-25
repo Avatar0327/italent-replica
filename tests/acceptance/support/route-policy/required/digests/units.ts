@@ -296,7 +296,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/intern-profile.ts': {
     projectInternProfile: 'cd33bec12806',
-    requireInternProfileAccess: '29efdc3a821c',
+    requireInternProfileAccess: 'c6f7ec85f8ba',
     writeInternProfile: 'b96a478273f8',
   },
   'apps/api/src/modules/employment/intern-routes.ts': {
@@ -816,6 +816,9 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/permission/person-links/:userId': '4d205e744765',
     'route:GET /api/tenant/permission/profiles/:id/data-scopes/:appCode': '8576c6a11120',
     'route:PUT /api/tenant/permission/profiles/:id/data-scopes/:appCode': '98a81ddee6e6',
+  },
+  'apps/api/src/modules/permission/scope-resolver.ts': {
+    personnelCreationScope: '09a8e48eaf60',
   },
   'apps/api/src/modules/permission/user-routes.ts': {
     CAPABILITY: 'd88cc26e2f8a',
@@ -1815,7 +1818,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/intern-create.ts#internCreateGuard': '2d3e2d020414',
   'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite': '3bd6ef83b493',
   'apps/api/src/modules/employment/intern-profile.ts#projectInternProfile': '1a8466187a8e',
-  'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': '8483fdfd6c2d',
+  'apps/api/src/modules/employment/intern-profile.ts#requireInternProfileAccess': 'f0ab7d8fde10',
   'apps/api/src/modules/employment/intern-profile.ts#writeInternProfile': 'af833cdde450',
   'apps/api/src/modules/employment/intern-routes.ts#requireViewableInternFilters': 'f5174f751364',
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': '5303f3cf7210',
@@ -2209,6 +2212,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'beeb4e6297b4',
   'apps/api/src/modules/permission/scope-policy-routes.ts#route:PUT /api/tenant/permission/profiles/:id/data-scopes/:appCode':
     'eb81822d3f87',
+  'apps/api/src/modules/permission/scope-resolver.ts#personnelCreationScope': 'f265096ec1b2',
   'apps/api/src/modules/permission/user-routes.ts#CAPABILITY': 'e3b0c44298fc',
   'apps/api/src/modules/permission/user-routes.ts#lifecycleRequest': '9c5c8f50d1c3',
   'apps/api/src/modules/permission/user-routes.ts#route:GET /api/tenant/permission/users': '2c93a6fc4682',

@@ -102,6 +102,10 @@ async function fixture() {
     });
   const snapshot = () =>
     withTenant(db, tenant.id, async (tx) => ({
+      employment: rows(await tx.execute(sql`SELECT * FROM employment_records ORDER BY id`)),
+      timeline: rows(await tx.execute(sql`SELECT * FROM employment_timeline ORDER BY record_id`)),
+      contracts: rows(await tx.execute(sql`SELECT * FROM contract_records ORDER BY id`)),
+      portfolios: rows(await tx.execute(sql`SELECT * FROM contract_portfolios ORDER BY id`)),
       education: rows(await tx.execute(sql`SELECT * FROM personnel_education ORDER BY id`)),
       educationVersions: rows(
         await tx.execute(sql`SELECT * FROM personnel_education_versions ORDER BY record_id,revision`),
