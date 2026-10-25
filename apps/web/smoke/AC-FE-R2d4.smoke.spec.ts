@@ -39,6 +39,7 @@ test('AC-FE-R2d4-01 无匹配新增一次保存人员任职合同，回执后刷
   expect(state.requests).toHaveLength(1);
   expect(state.requests[0]!.body).toEqual({
     kind: 'hire',
+    profile: { idType: 'id_card', idNumber: 'SYNTHETIC-NEW' },
     name: '合成新实习生',
     code: 'IN-NEW-001',
     loginEmail: 'intern@example.com',

@@ -47,6 +47,19 @@ export async function setupCreate(page: Page, options: { noCreate?: boolean; hid
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
     const fields = [
+      'backupMail',
+      'mobilePhone',
+      'gender',
+      'birthday',
+      'engName',
+      'idType',
+      'idNumber',
+      'dailyWageStandard',
+      'educationLevel',
+      'school',
+      'major',
+      'isHighestEducation',
+      'isMainMajor',
       'name',
       'code',
       'effectiveDate',
@@ -68,7 +81,7 @@ export async function setupCreate(page: Page, options: { noCreate?: boolean; hid
         dataOperations: { read: true, create: true, update: true },
         viewableFields: fields.filter((field) => !options.hidden?.includes(field)),
         editableFields: fields.filter((field) => !options.hidden?.includes(field)),
-        buttons: [...(options.noCreate ? [] : ['Employee.Create']), 'Employment.Create', 'create'].flatMap(
+        buttons: [...(options.noCreate ? [] : ['Employee.Create']), 'Employment.Create', 'create', 'update'].flatMap(
           (buttonCode) => ['detail', 'list'].map((level) => ({ buttonCode, level })),
         ),
       },
