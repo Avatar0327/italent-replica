@@ -11696,10 +11696,12 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -12108,7 +12110,8 @@
           "employment runWrite()"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",

@@ -321,7 +321,8 @@ export async function activationSummary(
     lastAttemptAt: string | Date | null;
   }>(
     await tx.execute(sql`
-    SELECT last.outcome, last.reason, last.detail, last.blocked_by_business_id AS "blockedBy", last.created_at AS "lastAttemptAt",
+    SELECT last.outcome, last.reason, last.detail, last.blocked_by_business_id AS "blockedBy",
+      last.created_at AS "lastAttemptAt",
       (SELECT count(*)::int FROM employment_activation_attempts f
         WHERE f.tenant_id=${tenantId} AND f.business_id=${businessId}::uuid AND f.outcome='failed') AS failures
     FROM (SELECT 1) seed LEFT JOIN LATERAL (

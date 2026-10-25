@@ -340,6 +340,20 @@ async function syncActualRetirementDate(
   );
 }
 
+async function followingTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  exit: ExitRow,
+  planned: string,
+  date: string,
+) {
+  if (business.payload.kind !== 'leave') return undefined;
+  const following = await exitFollowingRecords(tx, ctx, business, exit.staffId, date);
+  assertNoLaterExitRecords(following, planned, date, exit.initiatorUserId);
+  return following.filter((row) => row.bizType === 'transfer').map((row) => row.docId);
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -371,11 +385,7 @@ async function runSteps(
   if (business.payload.changeType === 'intern_end')
     await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
   // DEC-507 步骤 0d：先检查同一插入位置之后的集合，再分流；失败连顺延版本一起回滚。
-  const following =
-    business.payload.kind === 'leave'
-      ? await exitFollowingRecords(tx, ctx, business, exit.staffId, late.effectiveDate)
-      : undefined;
-  if (following) assertNoLaterExitRecords(following, planned, late.effectiveDate, exit.initiatorUserId);
+  const detachable = await followingTransfers(tx, ctx, business, exit, planned, late.effectiveDate);
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
@@ -383,12 +393,7 @@ async function runSteps(
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
-  const detached = await detachAndRecord(
-    tx,
-    ctx,
-    business,
-    following?.filter((row) => row.bizType === 'transfer').map((row) => row.docId),
-  );
+  const detached = await detachAndRecord(tx, ctx, business, detachable);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
     tx,

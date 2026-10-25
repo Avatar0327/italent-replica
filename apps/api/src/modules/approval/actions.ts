@@ -203,7 +203,10 @@ function editableInput(node: ApprovalNode, fields: Row, viewable: ReadonlySet<st
 }
 
 async function applyEdit(
-  tx: Tx, scene: TaskScene, fields: Row, confirmation?: ApprovalContext['exitReschedule'],
+  tx: Tx,
+  scene: TaskScene,
+  fields: Row,
+  confirmation?: ApprovalContext['exitReschedule'],
 ): Promise<void> {
   const { run, task } = scene;
   const adapter = ADAPTERS[run.instance.businessType];

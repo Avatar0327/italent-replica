@@ -1,4 +1,4 @@
-import { exitDateChange, lockExitForEdit, rescheduleExit } from './exit-reschedule.js';
+import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
@@ -41,7 +41,6 @@ import {
   bumpEmploymentBusiness,
   bumpEmploymentEmployee,
   insertEmploymentRow,
-  lockEmploymentBusiness,
   lockEmploymentEmployee,
   rowsOf,
   type EmploymentPayloadRow,
@@ -246,28 +245,33 @@ async function initializeEmploymentBusiness(
   return id;
 }
 
-export async function updateEmploymentBusiness(
+async function replanEditableExit(
   tx: Tx,
   ctx: EmploymentContext,
-  id: string,
-  input: EmploymentBusinessPatch,
-  options: { readonly approvalEdit?: boolean; readonly pendingTransferAck?: string; readonly confirmed?: boolean } = {},
-): Promise<EmploymentBusiness> {
-  const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
-  let patch = businessPatch;
-  const business = await lockExitForEdit(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
+  business: LockedEmploymentBusiness,
+  patch: EmploymentBusinessPatch,
+  options: RescheduleOptions,
+) {
   // 通用入口只放开草稿 / 驳回，以及审批中心授权的在审编辑；approved 只能走离职专用入口。
   if (
     business.payload.kind === 'leave' &&
     (['draft', 'rejected'].includes(business.state) || (business.state === 'in_review' && options.approvalEdit)) &&
     (await exitDateChange(tx, ctx, business, patch))
   ) {
-    await rescheduleExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+    await rescheduleExit(tx, ctx, business, patch, options);
     const { lastWorkDate: _last, effectiveDate: _effective, ...remaining } = patch;
-    patch = remaining;
-    if (!Object.keys(patch).length) return requireSavedBusiness(tx, ctx, id);
+    return Object.keys(remaining).length ? remaining : null;
   }
+  return patch;
+}
+
+async function requireUnchangedExitDates(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  patch: EmploymentBusinessPatch,
+  options: RescheduleOptions,
+) {
   // 未开放的离职入口与退休日期保留原拒绝（F-140b1 / DEC-687）。
   if (isExitKind(business.payload.kind))
     await requireExitGate(tx, ctx, 'update', {
@@ -276,6 +280,23 @@ export async function updateEmploymentBusiness(
       patch,
       approvalEdit: options.approvalEdit === true,
     });
+}
+
+export async function updateEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+  options: RescheduleOptions = {},
+): Promise<EmploymentBusiness> {
+  const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
+  let patch = businessPatch;
+  const business = await lockExitForEdit(tx, ctx, id);
+  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
+  const remaining = await replanEditableExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+  if (remaining === null) return requireSavedBusiness(tx, ctx, id);
+  patch = remaining;
+  await requireUnchangedExitDates(tx, ctx, business, patch, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });

@@ -153,22 +153,27 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
     });
     expect(w.pending(await w.detail(instance.id))).toHaveLength(0);
   });
-  it.each(['separate', 'with_approve'] as const)('F-140 审批 %s：确认控制项与字段分开，409 后可携新令牌重提', async (editMode) => {
-    const { w, s, draft, instance, task } = await scene(`ack-${editMode}`, editMode);
-    await w.publishedProcess({ nodes: [{ key: 'transfer', approver: 'latest_record_department_head' }] });
-    await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-20' }));
-    const action = editMode === 'separate' ? 'edit' : 'approve';
-    const fields = { lastWorkDate: '2026-10-29' };
-    const denied = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, { fields });
-    expect(denied.status, await denied.clone().text()).toBe(409);
-    const rejection = await denied.json();
-    expect(rejection.error.details.reason).toBe('EXIT_PENDING_TRANSFER_ACK_REQUIRED');
-    expect((await w.detail(instance.id)).revision).toBe(instance.revision);
-    const ok = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, {
-      fields, exitReschedule: { pendingTransferAck: rejection.error.details.ackToken },
-    });
-    expect(ok.status, await ok.clone().text()).toBe(200);
-    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-30' });
-  });
-
+  it.each(['separate', 'with_approve'] as const)(
+    'F-140 审批 %s：确认控制项与字段分开，409 后可携新令牌重提',
+    async (editMode) => {
+      const { w, s, draft, instance, task } = await scene(`ack-${editMode}`, editMode);
+      await w.publishedProcess({ nodes: [{ key: 'transfer', approver: 'latest_record_department_head' }] });
+      await w.submit(
+        await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-20' }),
+      );
+      const action = editMode === 'separate' ? 'edit' : 'approve';
+      const fields = { lastWorkDate: '2026-10-29' };
+      const denied = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, { fields });
+      expect(denied.status, await denied.clone().text()).toBe(409);
+      const rejection = await denied.json();
+      expect(rejection.error.details.reason).toBe('EXIT_PENDING_TRANSFER_ACK_REQUIRED');
+      expect((await w.detail(instance.id)).revision).toBe(instance.revision);
+      const ok = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, {
+        fields,
+        exitReschedule: { pendingTransferAck: rejection.error.details.ackToken },
+      });
+      expect(ok.status, await ok.clone().text()).toBe(200);
+      expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-30' });
+    },
+  );
 });

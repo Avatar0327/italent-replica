@@ -60,7 +60,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-140b1 PG 改期锁交�
     expect(versions.map((row) => row.planned)).toEqual(['2026-10-16', '2026-10-30', '2026-10-25']);
     expect(versions.map((row) => row.version_no)).toEqual([1, 2, 3]);
     const events = await x.audits(leave.id, 'employment.leave.replanned');
-    expect(events.at(-1)!.before).toMatchObject({ plannedEffectiveDate: '2026-10-30' });
+    expect(events).toHaveLength(2);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        before: { plannedEffectiveDate: '2026-10-30' },
+        after: { plannedEffectiveDate: '2026-10-25', versionNo: 3 },
+      }),
+    );
   });
 
   it('改期先持锁时调度跳过；释放后只按新日期执行', async () => {
@@ -96,7 +102,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-140b1 PG 改期锁交�
   it('调度先持锁生效：等待中的改期按新 revision 拒绝，不覆盖已生效状态', async () => {
     const x = await downstreamWorld(database().db, 'f140-pg-scheduler-first');
     const leave = await x.directLeave('2026-10-15');
-    const held = signal(), release = signal();
+    const held = signal(),
+      release = signal();
     const { exitPostEffectHooks } = await import('../../apps/api/src/modules/employment/exit-confirmation.js');
     exitPostEffectHooks.onEffective(async (_tx, _ctx, event) => {
       if (event.businessId !== leave.id) return;
@@ -106,16 +113,23 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-140b1 PG 改期锁交�
     const scheduled = x.runScheduler('2026-10-16T01:00:00Z');
     let changing: Promise<Response> | undefined;
     try {
-      await Promise.race([held.promise, scheduled.then(() => { throw new Error('调度未进入生效出口'); })]);
+      await Promise.race([
+        held.promise,
+        scheduled.then(() => {
+          throw new Error('调度未进入生效出口');
+        }),
+      ]);
       changing = x.session.request('PATCH', `/exits/${leave.id}`, {
-        ifMatch: leave.revision, body: { lastWorkDate: '2026-10-29' },
+        ifMatch: leave.revision,
+        body: { lastWorkDate: '2026-10-29' },
       });
       await waitForBlocked(x.db, 1);
-    } finally { release.resolve(); }
+    } finally {
+      release.resolve();
+    }
     expect(await scheduled).toMatchObject({ activated: [leave.id] });
     expect(await x.reason(await changing!)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     expect(await x.stateOfBusiness(leave.id)).toBe('effective');
     expect((await x.versions(leave.id)).map((v) => v.planned)).toEqual(['2026-10-16']);
   });
-
 });

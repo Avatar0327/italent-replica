@@ -2768,11 +2768,15 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
+    linkage(
+      at(EXIT, 'PATCH', '/exits/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140b1：共用编辑服务的改期分支可进入生效联动；仅未生效离职改期可达，退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],
       [
-        at(EXIT, 'PATCH', '/exits/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        at(EXIT, 'PATCH', '/exits/:id', 'guard: exitEditGuard(deps, ctx, gate, id)'),
         fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
@@ -2853,6 +2857,10 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'PATCH /api/tenant/employment/retirements/:id': [
     ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),
+    linkage(
+      at(RETIRE, 'PATCH', '/retirements/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140b1：共用编辑服务的改期分支可进入生效联动；仅未生效离职改期可达，退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],

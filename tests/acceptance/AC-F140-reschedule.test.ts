@@ -584,10 +584,10 @@ describe('F-140b1 事务与边界', () => {
     await x.runScheduler('2026-10-16T01:00:00Z');
     const before = await x.stateOf(x.employee.id);
     const response = await x.session.request('PATCH', `/exits/${leave.id}`, {
-      ifMatch: (await x.business(leave.id)).revision, body: { effectiveDate: '2026-10-30' },
+      ifMatch: (await x.business(leave.id)).revision,
+      body: { effectiveDate: '2026-10-30' },
     });
     expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
     expect((await x.stateOf(x.employee.id)).businesses).toEqual(before.businesses);
   });
-
 });

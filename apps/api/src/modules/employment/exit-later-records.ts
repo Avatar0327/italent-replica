@@ -79,7 +79,8 @@ export async function projectExitFailureDetails(
   );
   const candidates = rowsOf<{ id: string; employeeId: string; departmentId: string | null; effectiveDate: string }>(
     await tx.execute(sql`
-    SELECT id, employee_id AS "employeeId", department_id AS "departmentId", start_date::text AS "effectiveDate" FROM employment_records
+    SELECT id, employee_id AS "employeeId", department_id AS "departmentId", start_date::text AS "effectiveDate"
+    FROM employment_records
     WHERE tenant_id=${ctx.tenantId} AND id IN (${ids})`),
   );
   const employeeId = candidates[0]?.employeeId;

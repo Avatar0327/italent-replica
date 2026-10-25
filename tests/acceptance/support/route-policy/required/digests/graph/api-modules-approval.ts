@@ -170,6 +170,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/actions.ts#applyEdit': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/store.ts#appendLog',
   ],
   'apps/api/src/modules/approval/actions.ts#approveTask': [
@@ -510,6 +511,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
+    'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',

@@ -248,19 +248,20 @@ export async function updateExitFields(
     throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
-  const changing = kind === 'leave' && (await exitDateChange(tx, ctx, business, patch.dates));
-  const downstream = changing
-    ? await rescheduleExit(tx, ctx, business, patch.dates, {
-        ...patch,
-        ...options,
-        actualLeaveDate: patch.fields.actualLeaveDate,
-      })
-    : null;
+  const mayReschedule = kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved'].includes(business.state);
+  const changing = mayReschedule && (await exitDateChange(tx, ctx, business, patch.dates));
+  // 薄扩展字段按本次新日期校验；人工版本及重新入队仍只由 rescheduleExit 编排。
+  const validationBusiness = changing
+    ? {
+        ...business,
+        payload: { ...business.payload, lastWorkDate: changing.lastWorkDate, effectiveDate: changing.effectiveDate },
+      }
+    : business;
   await requireExitGate(tx, ctx, 'update', {
     employeeId: business.employeeId,
     kind,
-    business,
-    patch: changing ? {} : patch.dates,
+    business: validationBusiness,
+    patch: patch.dates,
     payload: patch.fields,
     ...(options.approvalEdit ? { approvalEdit: true } : {}),
   });
@@ -275,9 +276,9 @@ export async function updateExitFields(
   await assertHandoverEmployee(tx, ctx, patch.fields.handoverEmployeeId);
   // 加黑三项与 addToBlacklist 合并校验（创建同一入口）：生效日取计划生效日，“是”改“否”清掉旧值
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
-  const values = columnValues(withBlacklist(patch.fields, row, planned));
+  const values = columnValues(withBlacklist(patch.fields, row, changing ? changing.effectiveDate : planned));
   if (!Object.keys(values).length && !changing) {
-    if (kind === 'leave' && Object.keys(patch.dates).length) return requireSavedBusiness(tx, ctx, businessId);
+    if (mayReschedule && Object.keys(patch.dates).length) return requireSavedBusiness(tx, ctx, businessId);
     throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   }
   if (Object.keys(values).length) {
@@ -300,6 +301,8 @@ export async function updateExitFields(
       { employeeId: business.employeeId },
     );
   }
+  // R6 的生效订阅方必须看到本次扩展字段；后续任何门禁失败都回滚整个命令。
+  const downstream = changing ? await rescheduleExit(tx, ctx, business, patch.dates, { ...patch, ...options }) : null;
   // HR 编辑审批中的单（#388 P2-1）：离职字段进了审批版本，同事务让在途实例记下新版本并推进 revision，旧审批页面随即 409；
   // 审批编辑自己会在审批命令里刷新版本，这里不重复推进
   if (business.state === 'in_review' && !options.approvalEdit) {

@@ -98,6 +98,44 @@ export async function rescheduleExit(
   if (!change) return null;
   if (business.payload.kind !== 'leave' || !['draft', 'rejected', 'in_review', 'approved'].includes(business.state))
     throw new AppError('VALIDATION_FAILED', '当前状态不支持离职改期', { reason: 'EXIT_DATE_IMMUTABLE' });
+  const { queue, ack, today } = await prepareReschedule(tx, ctx, business, change, options);
+  const occupancy = await loadOccupancy(tx, ctx, business.employeeId);
+  const next = await writeManualExitPlan(tx, ctx, business, change);
+  await saveAck(tx, ctx, business.id, ack);
+  await assertOccupancyChange(tx, ctx, business.employeeId, business.id, occupancy, options.confirmed === true);
+  const detail = { fromPlanned: change.oldPlan, toPlanned: change.effectiveDate, versionNo: next.versionNo };
+  await replanAttempts(tx, ctx, business, queue, detail);
+  if (business.state === 'approved' && change.effectiveDate <= today)
+    await activateExit(tx, { ...ctx, expectedRevision: business.revision }, business.id, { trigger: 'approval' });
+  await runExitReplannedHooks(tx, ctx, {
+    tenantId: ctx.tenantId,
+    employeeId: business.employeeId,
+    businessId: business.id,
+    fromPlanned: change.oldPlan,
+    toPlanned: change.effectiveDate,
+    versionNo: next.versionNo,
+  });
+  return business.state === 'approved'
+    ? probeRescheduleDownstream(
+        tx,
+        ctx,
+        business.employeeId,
+        business.id,
+        addDays(change.oldPlan, -1),
+        change.lastWorkDate!,
+      )
+    : null;
+}
+
+type DateChange = NonNullable<Awaited<ReturnType<typeof exitDateChange>>>;
+
+async function prepareReschedule(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  change: DateChange,
+  options: RescheduleOptions,
+) {
   const exit = await loadExitRequest(tx, ctx.tenantId, business.id);
   if (!exit) throw new AppError('NOT_FOUND', '离职单不存在');
   const [cycle] = rowsOf<{ entryDate: string }>(
@@ -146,7 +184,15 @@ export async function rescheduleExit(
     options.pendingTransferAck,
     null,
   );
-  const occupancy = await loadOccupancy(tx, ctx, business.employeeId);
+  return { queue, ack, today };
+}
+
+async function writeManualExitPlan(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  change: DateChange,
+) {
   const previous = business.payload;
   const next = {
     ...previous,
@@ -167,8 +213,6 @@ export async function rescheduleExit(
   });
   business.payload = next;
   await bumpEmploymentBusiness(tx, ctx, business);
-  await saveAck(tx, ctx, business.id, ack);
-  await assertOccupancyChange(tx, ctx, business.employeeId, business.id, occupancy, options.confirmed === true);
   await auditEmployment(
     tx,
     ctx,
@@ -178,7 +222,16 @@ export async function rescheduleExit(
     { plannedEffectiveDate: change.oldPlan },
     { plannedEffectiveDate: change.effectiveDate, versionNo: next.versionNo },
   );
-  const detail = { fromPlanned: change.oldPlan, toPlanned: change.effectiveDate, versionNo: next.versionNo };
+  return next;
+}
+
+async function replanAttempts(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  queue: readonly PendingActivation[],
+  detail: { fromPlanned: string; toPlanned: string; versionNo: number },
+) {
   for (const item of queue) {
     const reset =
       item.id === business.id
@@ -201,24 +254,4 @@ export async function rescheduleExit(
         { bumpRevision: item.id !== business.id },
       );
   }
-  if (business.state === 'approved' && change.effectiveDate <= today)
-    await activateExit(tx, { ...ctx, expectedRevision: business.revision }, business.id, { trigger: 'approval' });
-  await runExitReplannedHooks(tx, ctx, {
-    tenantId: ctx.tenantId,
-    employeeId: business.employeeId,
-    businessId: business.id,
-    fromPlanned: change.oldPlan,
-    toPlanned: change.effectiveDate,
-    versionNo: next.versionNo,
-  });
-  return business.state === 'approved'
-    ? probeRescheduleDownstream(
-        tx,
-        ctx,
-        business.employeeId,
-        business.id,
-        addDays(change.oldPlan, -1),
-        change.lastWorkDate!,
-      )
-    : null;
 }
