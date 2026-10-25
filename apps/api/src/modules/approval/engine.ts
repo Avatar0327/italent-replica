@@ -404,13 +404,13 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
 /** 进入节点的结果：继续下一节点 / 停在本节点等待人工处理 / 实例已退回发起人。 */
 type EntryResult = 'next' | 'stay' | 'returned';
 
-function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey, ...extra });
+function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey });
 }
 
 /** DEC-318 K-38：节点“无操作”且审批人为空——拒绝本次推进，流程停在原节点（不转异常管理员）。 */
-function noAssignee(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey, ...extra });
+function noAssignee(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey });
 }
 
 /** 单人审批节点：需人工审批即停下；相同 / 历史相同审批人自动处理后继续下一节点。 */
@@ -496,8 +496,8 @@ async function countersignSeats(
   const candidates = new Set<string>();
   for (const [expression, resolvedCandidate] of resolved) {
     const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts, resolvedCandidate);
-    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
-    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
+    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision);
+    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision);
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);

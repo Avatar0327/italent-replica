@@ -2,6 +2,7 @@
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
+import { uniqueSuffix } from './support/unique.js';
 import { describe, expect, it } from 'vitest';
 import { api, definition, view, world } from './AC-EXIT-F316-support.js';
 
@@ -25,7 +26,7 @@ describe('AC-APV-F318a 来源统一模型', () => {
       await api(x, 'POST', '', 0, {
         ...input,
         nodes,
-        code: `F318a_${randomUUID().replaceAll('-', '')}`,
+        code: `F318a_${uniqueSuffix()}`,
         approvalType: 'exit_handover',
       }),
       201,
@@ -60,7 +61,7 @@ describe('AC-APV-F318a 来源统一模型', () => {
     ]) {
       const response = await api(x, 'POST', '', 0, {
         ...input,
-        code: `F318a_${randomUUID().replaceAll('-', '')}`,
+        code: `F318a_${uniqueSuffix()}`,
         approvalType: 'exit_handover',
         nodes: [{ ...input.nodes[0], approvers: [source(type, randomUUID())] }],
       });
@@ -79,7 +80,7 @@ describe('AC-APV-F318a 来源统一模型', () => {
     for (const approvers of [[source('specified', other.workOwner.userId)], ['handover_work_owner']]) {
       const response = await api(x, 'POST', '', 0, {
         ...input,
-        code: `F318a_${randomUUID().replaceAll('-', '')}`,
+        code: `F318a_${uniqueSuffix()}`,
         approvalType: 'exit_handover',
         nodes: [{ ...input.nodes[0], approvers }],
       });

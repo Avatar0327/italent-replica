@@ -1,7 +1,7 @@
 /** DEC-686①：依赖 F-304 对同一 assertFallbackUsers 的收紧，不在 F-318a 复制校验。 */
-import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { uniqueSuffix } from './support/unique.js';
 import { expect, it } from 'vitest';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
 
@@ -32,7 +32,7 @@ it.each(['external', 'departed'] as const)('指定人员保存拒绝 %s（F-304 
   const response = await w.request(w.hr.id, 'POST', '/api/tenant/approval/processes', {
     ifMatch: 0,
     body: {
-      code: `F318a_${randomUUID().replaceAll('-', '')}`,
+      code: `F318a_${uniqueSuffix()}`,
       approvalType: 'transfer',
       name: '合成来源流程',
       nodes: [{ key: 'one', approver: { type: 'specified', value: s.manager.userId } }],
