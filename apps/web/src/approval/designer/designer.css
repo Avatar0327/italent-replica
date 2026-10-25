@@ -75,3 +75,24 @@
   color: var(--shell-primary);
   padding: 8px 0;
 }
+
+.flow-source-group {
+  margin: 16px 0;
+}
+.flow-source-row {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  margin-bottom: 8px;
+}
+.flow-source-row > .ant-select {
+  width: 175px;
+  flex-shrink: 0;
+}
+.flow-source-value {
+  flex: 1;
+  min-width: 160px;
+}
+.flow-source-value > .ant-select {
+  width: 100%;
+}

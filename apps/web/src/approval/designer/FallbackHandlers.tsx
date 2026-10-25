@@ -7,6 +7,7 @@ import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { fallbackError, supportsFallback } from './fallback.js';
 import { m } from './messages.js';
+import { s } from './source-messages.js';
 
 const endpoint = '/api/tenant/approval/designer/person-candidates';
 type Person = { userId: string; name: string; code: string; departmentName: string | null };
@@ -30,22 +31,12 @@ export function FallbackHandlers({ node, approvalType }: { node: ApprovalNode; a
         },
       ]}
     >
-      <FallbackValue />
+      <DesignerPeople />
     </Form.Item>
   );
 }
-/** 只适配账号 ID 与标签；选择交互复用 PersonSelect，提交状态由外层 FormLock / F-315 内核管理。 */
-function FallbackValue({
-  value = [],
-  onChange,
-  id,
-}: {
-  value?: string[];
-  onChange?: (value: string[]) => void;
-  id?: string;
-}) {
+export function useDesignerPeople(value: readonly string[]) {
   const api = useApiClient();
-  const lock = useFormLock();
   const key = JSON.stringify(value);
   const [read, setRead] = useState<{ key: string; choices: Choice[]; failed: boolean }>();
   const [attempt, retry] = useState(0);
@@ -56,16 +47,45 @@ function FallbackValue({
       setRead({ key, choices: [], failed: false });
       return;
     }
-    void api
-      .request<Result>(`${endpoint}?${new URLSearchParams({ userIds: ids.join(',') })}`, { signal: controller.signal })
-      .then((result) => {
-        if (!controller.signal.aborted) setRead({ key, choices: result.items.map(choice), failed: false });
+    const read = async () => {
+      const choices: Choice[] = [];
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const result = await api.request<Result>(
+          `${endpoint}?${new URLSearchParams({ userIds: ids.slice(offset, offset + 100).join(',') })}`,
+          { signal: controller.signal },
+        );
+        choices.push(...result.items.map(choice));
+      }
+      return choices;
+    };
+    void read()
+      .then((choices) => {
+        if (!controller.signal.aborted) setRead({ key, choices, failed: false });
       })
       .catch(() => {
         if (!controller.signal.aborted) setRead({ key, choices: [], failed: true });
       });
     return () => controller.abort();
   }, [api, key, attempt]);
+  return { known: read?.key === key ? read : undefined, retry: () => retry(attempt + 1) };
+}
+/** 只适配账号 ID 与标签；选择交互复用 PersonSelect，提交状态由外层 FormLock / F-315 内核管理。 */
+export function DesignerPeople({
+  value = [],
+  onChange,
+  id,
+  multiple = true,
+  label = m.fallback,
+}: {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  id?: string;
+  multiple?: boolean;
+  label?: string;
+}) {
+  const api = useApiClient();
+  const lock = useFormLock();
+  const { known, retry } = useDesignerPeople(value);
   const load = useCallback(
     async (keyword: string, signal: AbortSignal): Promise<Choice[]> => {
       const items: Choice[] = [];
@@ -81,34 +101,37 @@ function FallbackValue({
     },
     [api],
   );
-  const known = read?.key === key ? read : undefined;
   const expired = !!known && !known.failed && value.some((userId) => !known.choices.some((c) => c.value === userId));
   const selected = value.map(
     (userId) =>
       known?.choices.find((c) => c.value === userId) ?? {
         value: userId,
-        label: `${userId}${known && !known.failed ? ` · ${m.fallbackExpired}` : ''}`,
+        label: known && !known.failed ? m.fallbackExpired : s.personUnavailable,
       },
   );
   return (
     <>
       <PersonSelect
-        multiple
         id={id}
-        label={m.fallback}
-        value={selected}
+        label={label}
         load={load}
         disabled={lock.disabled}
-        onChange={lock.guard((next) => onChange?.(next.map((item) => item.value)))}
+        {...(multiple
+          ? {
+              multiple: true as const,
+              value: selected,
+              onChange: lock.guard((next: Choice[]) => onChange?.(next.map((item) => item.value))),
+            }
+          : {
+              multiple: false as const,
+              value: selected[0],
+              onChange: lock.guard((next: Choice | undefined) => onChange?.(next ? [next.value] : [])),
+            })}
       />
-      {fallbackError(value) && <Alert type="error" message={fallbackError(value)} />}
+      {multiple && fallbackError(value) && <Alert type="error" message={fallbackError(value)} />}
       {expired && <Alert type="warning" message={m.fallbackRemove} />}
       {known?.failed && (
-        <Alert
-          type="warning"
-          message={m.fallbackReadFailed}
-          action={<Button onClick={() => retry(attempt + 1)}>{m.refresh}</Button>}
-        />
+        <Alert type="warning" message={m.fallbackReadFailed} action={<Button onClick={retry}>{m.refresh}</Button>} />
       )}
     </>
   );

@@ -5,6 +5,7 @@ import type { ObjectPermission } from '../../foundation/permission-model.js';
 import type { Values } from '../../foundation/forms/store.js';
 import { supportsFallback, fallbackError } from './fallback.js';
 import { m } from './messages.js';
+import { sourceFields, sourceInputError, sourceShape, sourcesShape } from './sources.js';
 
 export type { ProcessView, VersionView, ProcessSummary } from '../../../../api/src/modules/approval/definitions.js';
 export const base = '/api/tenant/approval/processes';
@@ -47,15 +48,15 @@ function completeNode(node: unknown): node is ApprovalNode {
   if (!record(node) || !record(node.actions)) return false;
   const kind =
     node.kind === 'single'
-      ? record(node.approver) && typeof node.approver.type === 'string' && typeof node.approver.value === 'string'
+      ? sourceShape(node.approver)
       : node.kind === 'countersign' &&
-        Array.isArray(node.approvers) &&
-        node.approvers.every((s: unknown) => record(s) && typeof s.type === 'string' && typeof s.value === 'string') &&
+        sourcesShape(node.approvers) &&
         record(node.transitionRule) &&
         typeof node.transitionRule.type === 'string' &&
         record(node.transitionRule.rules);
   return (
     !!kind &&
+    (node.emptyApproverSources === undefined || sourcesShape(node.emptyApproverSources)) &&
     (node.fallbackUserIds === undefined || strings(node.fallbackUserIds)) &&
     [
       'key',
@@ -87,14 +88,15 @@ function completeNode(node: unknown): node is ApprovalNode {
 export function editableValues(version: Pick<VersionView, 'nodes'>, approvalType?: string): Values {
   return Object.fromEntries(
     (version.nodes ?? []).flatMap((node) =>
-      [...attributes, ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])].map((field) => [
-        nodeField(node.key, field),
-        nodeValue(node, field),
-      ]),
+      [...attributes, ...sourceFields(node), ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])].map(
+        (field) => [nodeField(node.key, field), nodeValue(node, field)],
+      ),
     ),
   );
 }
 function nodeValue(node: ApprovalNode, field: string) {
+  if (field === 'emptyApproverSources') return structuredClone(node.emptyApproverSources ?? []);
+  if (field === 'approver' || field === 'approvers') return structuredClone(node[field as keyof ApprovalNode]);
   if (field === 'fallbackUserIds') return Array.isArray(node.fallbackUserIds) ? [...node.fallbackUserIds] : [];
   if (field.startsWith('actions.')) return node.actions?.[field.slice(8) as keyof ApprovalNode['actions']];
   return node[field as keyof ApprovalNode];
@@ -111,6 +113,7 @@ export function assertDraftStructure(original: VersionView, latest: VersionView)
       (node, index) =>
         node.key !== original.nodes[index]?.key ||
         node.kind !== original.nodes[index]?.kind ||
+        (node.emptyApproverPolicy === 'specified') !== (original.nodes[index]?.emptyApproverPolicy === 'specified') ||
         supportsFallback(node, 'exit_handover') !== supportsFallback(original.nodes[index]!, 'exit_handover'),
     )
   )
@@ -122,6 +125,12 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
   for (const [field, value] of Object.entries(edited)) {
     const issue = field.endsWith(':fallbackUserIds') ? fallbackError(value) : undefined;
     if (issue) throw new ApiError(422, 'INVALID_NODE_PROPERTY', 'fields', issue);
+    const node = version.nodes.find((item) => sourceFields(item).some((name) => nodeField(item.key, name) === field));
+    if (node) {
+      const error = sourceInputError(value, node, approvalType, field.endsWith(':emptyApproverSources'));
+      if (error) throw new ApiError(422, 'INVALID_NODE_PROPERTY', 'fields', error);
+      continue;
+    }
     let valid = typeof value === 'boolean';
     if (field.endsWith(':fallbackUserIds')) valid = !issue;
     else if (field.endsWith(':name'))
@@ -135,7 +144,11 @@ export function buildDraft(version: VersionView, edited: Values, approvalType?: 
     nodes: definition.nodes.map((node) => {
       const values: Record<string, unknown> = { ...node };
       const actions = { ...node.actions };
-      for (const field of [...attributes, ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])]) {
+      for (const field of [
+        ...attributes,
+        ...sourceFields(node),
+        ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : []),
+      ]) {
         const key = nodeField(node.key, field);
         if (!(key in edited)) continue;
         if (field.startsWith('actions.')) Object.assign(actions, { [field.slice(8)]: edited[key] });

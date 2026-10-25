@@ -7,25 +7,28 @@ const editor = (page: Page, empty = false) =>
   page
     .getByRole('group', { name: empty ? '审批人为空时 → 指定人员' : '审批人来源', exact: true })
     .filter({ visible: true });
+async function openSelect(input: Locator) {
+  await input.focus();
+  await input.press('ArrowDown');
+}
 async function choose(page: Page, group: Locator, type: string, value?: string, index = 0) {
-  await group.getByRole('combobox', { name: '来源类型', exact: true }).nth(index).click();
+  await openSelect(group.getByRole('combobox', { name: '来源类型', exact: true }).nth(index));
   await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: type }).click();
   if (value) {
-    await group
-      .getByRole('combobox', { name: type === '指定人员' ? '指定人员' : '来源值', exact: true })
-      .nth(index)
-      .click();
+    await openSelect(
+      group.getByRole('combobox', { name: type === '指定人员' ? '指定人员' : '来源值', exact: true }).nth(index),
+    );
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: value }).click();
     await page.keyboard.press('Escape');
   }
 }
 const save = (page: Page) => page.getByRole('button', { name: '保存草稿', exact: true }).click();
 
-test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 灰显和 F-318c 待开放', async ({ page, baseURL }) => {
+test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 灰显和 F-318c 待开放', async ({ page, baseURL }, testInfo) => {
   const state = await setupSources(page, baseURL!);
   await page.goto(sourcePath);
   const group = editor(page);
-  await group.getByRole('combobox', { name: '来源类型', exact: true }).click();
+  await openSelect(group.getByRole('combobox', { name: '来源类型', exact: true }));
   for (const label of ['公共变量 · 暂不支持', '应用变量 · 暂不支持', '审批矩阵 · 暂不支持', '业务组织 · 待开放']) {
     await expect(page.locator('.ant-select-item-option').filter({ hasText: label })).toHaveClass(/disabled/);
   }
@@ -33,6 +36,8 @@ test('AC-FE-F318b-07 交接选上一节点审批人保存，F-326 灰显和 F-31
   await choose(page, group, '上下文变量', '上一节点审批人');
   await save(page);
   await expect(page.getByText('草稿已保存', { exact: true })).toBeVisible();
+  await editor(page).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('source-cascade.png'), fullPage: true });
   expect(state.writes[0]?.body.nodes[0]).toMatchObject({
     approvers: [{ type: 'context_variable', value: 'previous_approved' }],
   });
@@ -83,7 +88,8 @@ test('AC-FE-F318b-10 409 重读保留级联编辑并取最新未编辑字段', a
   await choose(page, editor(page), '指定人员', sourcePeople[0]!.name);
   await save(page);
   await page.getByRole('button', { name: kernel.reload, exact: true }).click();
-  await expect(page.getByText(sourcePeople[0]!.userId, { exact: false })).toHaveCount(0);
+  await expect(page.getByText(sourcePeople[0]!.userId, { exact: false }).filter({ visible: true })).toHaveCount(0);
+  await expect(page.getByRole('table').getByText(/来源合成人员2 · SOURCE2 · 合成部门/)).toBeVisible();
   await page.getByRole('button', { name: kernel.confirm, exact: true }).click();
   await expect(editor(page).getByText(new RegExp(sourcePeople[0]!.name))).toBeVisible();
   await save(page);
@@ -109,7 +115,7 @@ for (const mode of ['unknown', 'bad-receipt'])
     await page.getByRole('button', { name: kernel.original, exact: true }).click();
     await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled();
     expect(state.writes).toHaveLength(1);
-    await expect(page.getByText(sourcePeople[0]!.userId, { exact: false })).toHaveCount(0);
+    await expect(page.getByText(sourcePeople[0]!.userId, { exact: false }).filter({ visible: true })).toHaveCount(0);
   });
 
 test('AC-FE-F318b-12 无编辑权限只读，人员显示姓名工号部门，不显示 UUID', async ({ page, baseURL }) => {
@@ -120,7 +126,22 @@ test('AC-FE-F318b-12 无编辑权限只读，人员显示姓名工号部门，�
   await page.goto(sourcePath);
   await expect(editor(page).getByRole('combobox', { name: '来源类型', exact: true })).toBeDisabled();
   await expect(editor(page).getByText(/来源合成人员1 · SOURCE1 · 合成部门/)).toBeVisible();
-  await expect(page.getByText(sourcePeople[0]!.userId, { exact: false })).toHaveCount(0);
+  await expect(page.getByText(sourcePeople[0]!.userId, { exact: false }).filter({ visible: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0);
   expect(state.writes).toHaveLength(0);
 });
+
+for (const message of ['暂不支持，后补 F-326', '该来源待 F-318c 开放']) {
+  test(`AC-FE-F318b-16 服务端 422 ${message} 就地提示且保留来源`, async ({ page, baseURL }) => {
+    const state = await setupSources(page, baseURL!, true);
+    state.mode = '422';
+    state.rejection = message;
+    await page.goto(sourcePath);
+    await choose(page, editor(page), '上下文变量', '上一节点审批人');
+    await save(page);
+    await expect(page.getByText(message, { exact: true })).toBeVisible();
+    await expect(editor(page).getByText('上一节点审批人', { exact: true })).toBeVisible();
+    await expect(editor(page).getByRole('combobox', { name: '来源类型', exact: true })).toBeEnabled();
+    expect(state.writes).toHaveLength(1);
+  });
+}

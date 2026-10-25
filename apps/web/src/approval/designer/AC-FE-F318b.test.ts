@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { APPROVAL_TYPES, APPROVER_SOURCE_TYPES, approverSourceViolations, type ApproverSource } from '@italent/domain';
+import {
+  APPROVAL_TYPES,
+  APPROVER_SOURCE_TYPES,
+  exitRulesOf,
+  approverSourceViolations,
+  type ApproverSource,
+} from '@italent/domain';
 import { flowFixture } from '../../../../../tests/acceptance/support/f315-fixture.js';
 import { fallbackFixture } from '../../../../../tests/acceptance/support/f304-fixture.js';
-import { buildDraft, completeDefinition, editableValues, nodeField, acceptProcessReceipt, assertDraftStructure } from './model.js';
+import {
+  buildDraft,
+  completeDefinition,
+  editableValues,
+  nodeField,
+  acceptProcessReceipt,
+  assertDraftStructure,
+} from './model.js';
 import { ApiError } from '../../foundation/client.js';
 import { createFormStore, isLocked } from '../../foundation/forms/store.js';
 
@@ -148,5 +161,42 @@ describe('AC-FE-F318b 来源级联', () => {
     Object.assign(latest.nodes[0]!, { emptyApproverPolicy: 'stop', emptyApproverSources: [] });
     expect(() => assertDraftStructure(original, latest)).toThrow('流程版本或节点结构已变更');
   });
-
+  it('14 保存载荷符合真实后端解析，101 个指定来源不在客户端截断', async () => {
+    const { definitionSchema, toDefinition } = await import('../../../../api/src/modules/approval/definition-input.js');
+    const flow = fallbackFixture();
+    Object.assign(flow.latestVersion.nodes[0]!, { emptyApproverPolicy: 'specified' });
+    for (const node of flow.latestVersion.nodes)
+      if (node.kind === 'countersign')
+        Object.assign(node, {
+          transitionRule: {
+            ...node.transitionRule,
+            rules: exitRulesOf(node.transitionRule, node.exits ?? ['approve']),
+          },
+        });
+    const sources = Array.from({ length: 101 }, (_, i) => ({
+      type: 'specified',
+      value: `a6000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    }));
+    const body = buildDraft(
+      flow.latestVersion,
+      {
+        [nodeField('work_handover', 'approvers')]: sources,
+        [nodeField('work_handover', 'emptyApproverSources')]: [person],
+      },
+      flow.approvalType,
+    );
+    expect(toDefinition(definitionSchema.parse(body), 'exit_handover')).toEqual(body);
+    expect(body.nodes[0]).toMatchObject({ approvers: sources, emptyApproverSources: [person] });
+  });
+  it('15 F-326 / F-318c 伪造值与未知审批类型不能提交；无权保持只读', async () => {
+    const { editAccess } = await import('./model.js');
+    const { flowPermission } = await import('../../../../../tests/acceptance/support/f315-fixture.js');
+    const flow = flowFixture();
+    for (const type of ['public_variable', 'application_variable', 'matrix', 'department', 'job']) {
+      expect(() => buildDraft(flow.latestVersion, { [field]: { type, value: 'new-value' } }, 'transfer')).toThrow();
+    }
+    expect(() => buildDraft(flow.latestVersion, { [field]: person }, 'unknown')).toThrow();
+    expect(editAccess({ ...flowPermission, editableFields: [] }, true, 'update')).toBe(false);
+    expect(editAccess({ ...flowPermission, dataOperations: { read: true } }, true, 'update')).toBe(false);
+  });
 });

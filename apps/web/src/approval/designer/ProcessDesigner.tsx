@@ -10,7 +10,7 @@ import { ApiError, rejectionMessage } from '../../foundation/client.js';
 import { createFormStore, type Latest, type Values } from '../../foundation/forms/store.js';
 import { FormCommands, useDraftRefill, type CommandForm } from '../../foundation/forms/useCommandForm.js';
 import { useConflictCommand } from '../../foundation/forms/ConflictCommands.js';
-import { CommandStatus } from '../../foundation/forms/CommandStatus.js';
+import { SourceCommandStatus } from './SourceCommandStatus.js';
 import { FormLock, LockedField } from '../../foundation/forms/FormLock.js';
 import { readProcess, readProcesses, writeProcess } from './api.js';
 import {
@@ -32,6 +32,9 @@ import { m } from './messages.js';
 import { useRead } from './useRead.js';
 import { Conditions, OtherNodeProperties } from './ReadConfiguration.js';
 import { FallbackHandlers } from './FallbackHandlers.js';
+import { ApproverSources } from './ApproverSources.js';
+import { sourceFields } from './sources.js';
+import { s } from './source-messages.js';
 import './designer.css';
 
 // 模块切换不能丢失未知命令；内核按租户 + 身份 + 稳定流程 ID 隔离恢复槽（DEC-464、F-142）。
@@ -306,6 +309,10 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
     (nodesVisible ? (version.nodes ?? []) : []).flatMap((node) => [
       ...attributes.map((field) => [nodeField(node.key, field), `${node.name} · ${m.fields[field]}`]),
       [nodeField(node.key, 'fallbackUserIds'), `${node.name} · ${m.fallback}`],
+      ...sourceFields(node).map((field) => [
+        nodeField(node.key, field),
+        `${node.name} · ${field === 'emptyApproverSources' ? s.empty : s.main}`,
+      ]),
     ]),
   );
   const submit = async () => {
@@ -343,7 +350,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
       <Conditions version={version} />
       <Alert className="flow-note" type="info" message={action === 'draft' ? m.draftHint : m.publishedHint} />
       {!writable && <p className="flow-muted">{m.restricted}</p>}
-      <CommandStatus submission={submission} labels={labels} />
+      <SourceCommandStatus submission={submission} labels={labels} />
       {submission.state?.readError instanceof Error && submission.state.readError.message === m.versionChanged && (
         <Alert type="warning" message={m.versionChanged} />
       )}
@@ -392,7 +399,6 @@ function NodeProperties({ nodes, approvalType }: { nodes: readonly ApprovalNode[
   if (!nodes) return <Alert type="info" message={m.missingNodes} />;
   if (!nodes.length) return <Alert type="info" message={m.emptyNodes} />;
   const active = nodes.find((node) => node.key === selected) ?? nodes[0]!;
-  const approvers = active.kind === 'countersign' ? active.approvers : [active.approver];
   return (
     <div className="flow-node-layout">
       <nav className="flow-nodes" aria-label={m.nodes}>
@@ -422,16 +428,13 @@ function NodeProperties({ nodes, approvalType }: { nodes: readonly ApprovalNode[
                 ({ countersign: m.countersign, single: m.single } as Record<string, string>)[active.kind ?? ''] ??
                 m.unread,
             },
-            {
-              key: 'approver',
-              label: m.approver,
-              children: approvers?.map((code) => m.expressions[code.value] ?? text(code.value)).join('、') ?? m.unread,
-            },
           ]}
         />
         {/* 全部节点字段保持挂载，切换节点不丢未提交输入；只隐藏非当前节点。 */}
         {nodes.map((node) => (
           <div key={node.key} hidden={node.key !== active.key}>
+            <ApproverSources node={node} approvalType={approvalType} />
+            <ApproverSources node={node} approvalType={approvalType} empty />
             <FallbackHandlers node={node} approvalType={approvalType} />
             {attributes.map((field) =>
               editableValues({ nodes: [node] })[nodeField(node.key, field)] === undefined ? (
