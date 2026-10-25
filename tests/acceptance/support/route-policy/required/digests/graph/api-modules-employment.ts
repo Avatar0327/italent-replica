@@ -2060,6 +2060,7 @@ export const GRAPH: Graph = {
     '#TYPE',
     'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#unsupported': [
