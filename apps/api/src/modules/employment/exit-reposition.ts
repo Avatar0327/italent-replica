@@ -12,13 +12,14 @@ import { reattachFutureTransfers } from './timeline.js';
 import { detachAndRecord } from './exit-activation.js';
 import { personnelHooks } from './personnel-hooks.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
+import type { DownstreamItem } from './exit-downstream.js';
 
 export async function repositionExit(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   change: { oldPlan: string; effectiveDate: string; lastWorkDate: string | null },
-) {
+): Promise<{ next: LockedEmploymentBusiness['payload']; hints: DownstreamItem[]; successor: undefined }> {
   const before = await loadEmploymentRecord(tx, ctx.tenantId, business.id, business.payload.effectiveDate);
   if (!before) throw new AppError('CONFLICT', '离职任职记录不在时间轴上');
   if (change.effectiveDate < before.effectiveDate) {

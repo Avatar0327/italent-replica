@@ -61,11 +61,12 @@ describe('F-140b2 继任结束日跟随', () => {
   });
 
   it.each([
-    ['2026-10-25', true],
-    ['2026-10-19', false],
-  ] as const)('DEC-690：改至 %s，截断=%s', async (last, clipped) => {
+    ['2026-10-25', true, '2026-10-30'],
+    ['2026-10-19', false, '2026-10-30'],
+    ['2026-10-25', true, '2026-10-20'],
+  ] as const)('DEC-690：改至 %s，截断=%s（邻接结束 %s）', async (last, clipped, endDate) => {
     const { w, employee, id, patch } = await fixture(`clip-${last}`);
-    const next = await w.seedRecord(employee.id, 'position', { startDate: '2026-10-20', endDate: '2026-10-30' });
+    const next = await w.seedRecord(employee.id, 'position', { startDate: '2026-10-20', endDate });
     const nextBefore = await w.read(next);
     const result = await patch(last);
     expect((await w.read(id)).end_date).toBe('2026-10-20');

@@ -1,5 +1,5 @@
 /**
- * AC-DM-33 B-86 / F-140b1：未生效离职开放日期编辑，已生效保持拒绝。
+ * AC-DM-33 B-86 / F-140：专用离职入口开放日期编辑，已生效改到未来走替代。
  * 记录 / 批量 / 导入入口仍 RECORD_DATE_IMMUTABLE；权限、原输入和同键重放继续验收。
  */
 import './support/exit-gate-enforced.js';
@@ -51,10 +51,9 @@ async function fiveStates(w: GateWorld) {
 }
 
 describe('AC-DM-33 B-86 PATCH exits/:id 五种状态', () => {
-  it('未生效四种状态改期成功且可重放；已生效仍拒绝且无写入', async () => {
+  it('F-140：五种状态改期成功且可重放；已生效替代产生唯一后继', async () => {
     const w = await gateWorld(database().db, 'edit-dates');
     for (const { state, business } of await fiveStates(w)) {
-      const before = await w.stateOf(business.employeeId);
       const key = randomUUID();
       const send = () =>
         w.session.request('PATCH', `/exits/${business.id}`, {
@@ -62,13 +61,17 @@ describe('AC-DM-33 B-86 PATCH exits/:id 五种状态', () => {
           body: { lastWorkDate: '2026-10-25', effectiveDate: '2026-10-26', exitTypeCode: 'involuntary' },
           idempotencyKey: key,
         });
-      for (const response of [await send(), await send()]) {
-        if (state === 'effective')
-          expect(await w.reason(response)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
-        else expect(response.status, await response.clone().text()).toBe(200);
-      }
-      if (state === 'effective') expect(await w.stateOf(business.employeeId)).toEqual(before);
-      else expect(await w.business(business.id)).toMatchObject({ status: state, effectiveDate: '2026-10-26' });
+      const response = await send();
+      expect(response.status, await response.clone().text()).toBe(200);
+      const result = await response.json();
+      const replay = await send();
+      expect(replay.status, await replay.clone().text()).toBe(200);
+      expect(await replay.json()).toEqual(result);
+      if (state === 'effective') {
+        expect(await w.business(business.id)).toMatchObject({ status: 'deleted' });
+        expect(result.successor).toMatchObject({ status: 'approved', effectiveDate: '2026-10-26' });
+        expect(await w.exitRow(result.successor.id)).toMatchObject({ exit_type_code: 'involuntary' });
+      } else expect(await w.business(business.id)).toMatchObject({ status: state, effectiveDate: '2026-10-26' });
     }
   });
 

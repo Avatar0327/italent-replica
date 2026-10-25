@@ -161,7 +161,6 @@ async function followRescheduledExit(tx: Tx, ctx: ExitContext, recordId: string,
         AND COALESCE(target_org_id,target_position_id)=${row.target_org_id ?? row.target_position_id}::uuid
         AND successor_employee_id=${row.successor_employee_id}::uuid AND id<>${row.id}::uuid
         AND deleted_at IS NULL AND start_date>=${row.start_date}::date
-        AND (start_date<end_date OR id=ANY(${idsSql(ids)}))
       ORDER BY start_date,id LIMIT 1 FOR UPDATE`),
     );
     const endDate = next && next.start < expected ? next.start : expected;
