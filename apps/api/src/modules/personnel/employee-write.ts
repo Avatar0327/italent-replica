@@ -4,7 +4,7 @@ import { EMPLOYEE_FIELDS, PERSONNEL_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { audit, assertRevision, camel, insert, lockPerson, rows, type PersonnelContext, type Row } from './store.js';
 import { requireEnabledIdentityTypes } from './identity-types.js';
-import { normalizeRetirementRange, validateDates } from './validation.js';
+import { normalizeDailyWageStandard, normalizeRetirementRange, validateDates } from './validation.js';
 import { validateAttachments } from './attachments.js';
 
 export async function employeeSnapshot(tx: Tx, ctx: PersonnelContext, employeeId: string) {
@@ -30,6 +30,9 @@ export async function appendEmployee(
     EMPLOYEE_FIELDS.map((f) => [f.code, previous?.[f.code] ?? (f.code === 'name' ? person.name : null)]),
   );
   const after = { ...before, ...patch };
+  // 所有可信写入与 HTTP 写入共用金额边界，审计中的新值与数据库中的规范值一致。
+  if (Object.hasOwn(patch, 'dailyWageStandard'))
+    after.dailyWageStandard = normalizeDailyWageStandard(patch.dailyWageStandard);
   after.displayName = after.engName ? `${after.name}（${after.engName}）` : after.name;
   validateDates(after);
   normalizeRetirementRange(after, patch);

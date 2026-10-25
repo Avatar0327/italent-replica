@@ -190,7 +190,7 @@ describe('AC-PER-F325 日工资标准（DEC-685① / DEC-687③）', () => {
     const rows = await withTenant(w.db, other.tenant.id, (tx) =>
       tx.execute(sql`SELECT id FROM personnel_employee_versions WHERE employee_id=${w.employee.id}::uuid`),
     );
-    expect(Array.isArray(rows) ? rows : rows.rows).toHaveLength(0);
+    expect(Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows).toHaveLength(0);
     expect(await w.stored()).toEqual(before);
   });
 

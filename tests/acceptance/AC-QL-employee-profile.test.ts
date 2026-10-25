@@ -610,14 +610,21 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
   // DEC-439④：version 在合并时由 pnpm merge:main 统一定为 main + 1，不再在测试里钉“合并进来的 main 版本 / 指纹”快照
   // （那份快照在下一个改授权项编码的 PR 合并后必然失效，正是串行队列反复撞号的来源）。递增与历史由 AC-PLAT-F061-grants 守，
   // 本 PR 增删了哪些编码由 AC-PLAT-F061-grants 的动态基线（分叉点编码 + 声明清单，F-097）守。
-  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；指纹与编码一致，version 不低于含模板复制按钮的 18（AC-QL-employee-profile）', () => {
+  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；指纹与编码一致，version 不低于含日工资标准字段的 33（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
       expect(STANDARD_GRANT_CODES).toContain(buttonCode(EMP, RECORD, button));
     expect(STANDARD_GRANT_CODES).toContain(pageButtonCode);
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/${PAGES}/op:view`);
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/app:Qualification`);
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(18);
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(33);
+    // F-325：仅模块两类管理员获得工资字段，员工默认身份保持不变。
+    expect(STANDARD_GRANT_CODES.filter((code) => code.includes('/field:dailyWageStandard:')).sort()).toEqual([
+      'standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit',
+      'standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view',
+      'standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit',
+      'standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view',
+    ]);
     // B7b 新增的项目人才标准引用字段、B6b 新增的模板复制按钮都在编码集合里
     expect(STANDARD_GRANT_CODES.some((code) => code.includes('/TalentReview.Project/field:criterionId:'))).toBe(true);
     expect(STANDARD_GRANT_CODES.some((code) => code.endsWith('/TalentReview.Template/button:copy@list'))).toBe(true);

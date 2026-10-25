@@ -45,6 +45,8 @@ export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee
   r.current_employee_status AS employee_status,r.current_entry_status AS entry_status,
   ${sortRankColumns},person_rank.order_code,
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
+/** numeric 在 JSON 中默认成为数字；先转 text，确保列表与详情都不经 JS 浮点数。 */
+export const employeeProfile = sql`to_jsonb(v)||jsonb_build_object('daily_wage_standard',v.daily_wage_standard::text)`;
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const profile = (row.profile ?? {}) as Row;
   const dto = camel(profile);
@@ -66,7 +68,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
 }
 export async function readEmployee(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [row] = rows(
-    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},${employeeProfile} AS profile
     FROM employment_employees e ${employeeJoins(ctx)}
     WHERE e.tenant_id=${ctx.tenantId} AND e.id=${employeeId}::uuid LIMIT 1`),
   );
