@@ -5,6 +5,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { seedLegacyOrgDeactivation } from './AC-TRF-activation-support.js';
 import { cancelWorld } from './AC-EXIT-cancel-support.js';
+import { denyButtons } from './AC-EXIT-gate-support.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { registerEmployeeStatusHooks } from '../../apps/api/src/modules/employment/status-hooks.js';
 import { exitPostEffectHooks } from '../../apps/api/src/modules/employment/exit-confirmation.js';
@@ -92,6 +93,45 @@ describe('F-140b2 已生效离职', () => {
     expect(rows).toEqual([{ previous: leave.id, r: '2026-11-05' }]);
     expect(calls).toEqual([]);
     expect(await x.runScheduler('2026-11-21T02:00:00Z')).toMatchObject({ activated: [next.id] });
+  });
+
+  it('F-10：替代只要求离职编辑权；独立撤销仍要求撤销权', async () => {
+    const { x, leave } = await setup('edit-only');
+    const revision = (await x.business(leave.id)).revision;
+    const before = await x.stateOf(x.employee.id);
+    const noEdit = x.restricted(denyButtons('Employment.DimissionEdit'));
+    expect(
+      (
+        await noEdit('PATCH', `/exits/${leave.id}`, {
+          ifMatch: revision,
+          body: { lastWorkDate: '2026-11-20' },
+        })
+      ).status,
+    ).toBe(403);
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
+    const editOnly = x.restricted(
+      (request) =>
+        request.action !== 'object.delete' &&
+        request.action !== 'object.create' &&
+        denyButtons('Employment.DimissionCancel')(request),
+    );
+    const result = await success(
+      await editOnly('PATCH', `/exits/${leave.id}`, {
+        ifMatch: revision,
+        body: { lastWorkDate: '2026-11-20' },
+      }),
+    );
+    expect(result.successor).toMatchObject({ status: 'approved', effectiveDate: '2026-11-21' });
+    const after = await x.stateOf(x.employee.id);
+    expect(
+      (
+        await editOnly('POST', `/exits/${result.successor.id}/cancel`, {
+          ifMatch: result.successor.revision,
+          body: { reason: '合成独立撤销' },
+        })
+      ).status,
+    ).toBe(403);
+    expect(await x.stateOf(x.employee.id)).toEqual(after);
   });
 
   it('F-13：订阅失败回滚人工版本、时间轴和审计', async () => {
