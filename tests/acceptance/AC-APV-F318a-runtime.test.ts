@@ -40,12 +40,13 @@ describe('AC-APV-F318a 运行', () => {
           key: 'first',
           kind: 'countersign',
           approvers: [specified(s.outHead.userId), specified(s.inHead.userId)],
+          actions: { transfer: true },
           transitionRule: { type: 'all' },
         },
         {
           key: 'second',
           kind: 'countersign',
-          approvers: [previous, specified(s.outHead.userId)],
+          approvers: [previous, specified(s.inHead.userId)],
           transitionRule: { type: 'all' },
         },
       ],
@@ -70,7 +71,13 @@ describe('AC-APV-F318a 运行', () => {
     instance = await w.submit(await w.business(business.id));
     expect(w.pending(instance).every((task) => task.round === 2)).toBe(true);
     expect(w.pending(instance).every((task) => task.nodeKey === 'first')).toBe(true);
-    for (const actor of [s.outHead.userId, s.inHead.userId]) {
+    const handingOver = w.pending(instance).find((task) => task.assigneeUserId === s.outHead.userId)!;
+    instance = await w.json<InstanceView>(
+      await w.taskAction(s.outHead.userId, handingOver.id, 'transfer', instance.revision, {
+        toUserId: s.inHrbp.userId,
+      }),
+    );
+    for (const actor of [s.inHrbp.userId, s.inHead.userId]) {
       const task = w.pending(instance).find((t) => t.assigneeUserId === actor)!;
       instance = await w.json<InstanceView>(await w.taskAction(actor, task.id, 'approve', instance.revision));
     }
@@ -79,7 +86,7 @@ describe('AC-APV-F318a 运行', () => {
         .pending(instance)
         .map((t) => t.assigneeUserId)
         .sort(),
-    ).toEqual([s.outHead.userId, s.inHead.userId].sort());
+    ).toEqual([s.inHrbp.userId, s.inHead.userId].sort());
   });
 
   it('转交后上一节点只带实际接手同意者，不带被转交人', async () => {
@@ -141,6 +148,12 @@ describe('AC-APV-F318a 运行', () => {
       expect((await resolveSource(tx, context, { type: 'custom_variable', value: 'owner' }))[0]!.userId).toBe(w.hr.id);
       expect((await resolveSource(tx, context, specified(randomUUID())))[0]!.userId).toBeNull();
     });
+    await w.publishedProcess({
+      nodes: [{ key: 'business_manager', approver: { type: 'object_field', value: 'business_record_direct_manager' } }],
+    });
+    const request = await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-08-01' });
+    const instance = await w.submit(request);
+    expect(w.pending(instance).map((task) => task.assigneeUserId)).toEqual([s.manager.userId]);
     const foreign = await approvalWorld(db().db, 'f318a-foreign');
     await withTenant(w.db, foreign.tenant.id, async (tx) => {
       const outside = { ...context, tenantId: foreign.tenant.id };
