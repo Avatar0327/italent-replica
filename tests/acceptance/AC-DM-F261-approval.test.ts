@@ -90,6 +90,13 @@ async function action(x: Scene, name: string, body = {}, view = x.view, actor = 
   );
 }
 
+function taskInput(kind: string, other: string) {
+  if (kind.startsWith('add-')) return { type: kind.slice(4), userIds: [other] };
+  if (kind === 'transfer') return { toUserId: other };
+  if (kind === 'cc') return { userIds: [other] };
+  return { toNodeKey: 'second' };
+}
+
 describe('AC-DM-04 审批推进即时停用', () => {
   it.each([false, true])('两节点普通同意，审批中开关=%s；先断言 HTTP 结果，再调度', async (inReview) => {
     const x = await scene(`intermediate-${inReview}`, inReview);
@@ -204,13 +211,7 @@ describe('AC-DM-04 审批推进即时停用', () => {
       const other = await x.w.member('合成接手人');
       x.past();
       const name = kind.startsWith('add-') ? 'add-sign' : kind;
-      const body = kind.startsWith('add-')
-        ? { type: kind.slice(4), userIds: [other] }
-        : kind === 'transfer'
-          ? { toUserId: other }
-          : kind === 'cc'
-            ? { userIds: [other] }
-            : { toNodeKey: 'second' };
+      const body = taskInput(kind, other);
       const next = await action(x, name, body);
       expect(next.status).toBe('running');
       expect((await x.w.business(x.view.businessId)).status).toBe('in_review');
@@ -251,10 +252,13 @@ describe('AC-DM-04 审批推进即时停用', () => {
     const x = await scene(kind);
     const other = x.s.inHead.userId;
     x.past();
-    const body =
-      kind === 'admin-jump'
-        ? { kind: 'jump', toNodeKey: 'second', reason: '合成干预原因' }
-        : { taskId: pending(x).id, toUserId: other, reason: '合成改派原因', ...(kind === 'reassign' ? { kind } : {}) };
+    const delegation = {
+      taskId: pending(x).id,
+      toUserId: other,
+      reason: '合成改派原因',
+      ...(kind === 'reassign' ? { kind } : {}),
+    };
+    const body = kind === 'admin-jump' ? { kind: 'jump', toNodeKey: 'second', reason: '合成干预原因' } : delegation;
     const next = await x.w.json<InstanceView>(
       await x.w.instanceAction(
         x.w.exceptionAdmin,
