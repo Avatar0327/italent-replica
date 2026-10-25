@@ -1,4 +1,4 @@
-import { resolveSource, limitSources } from './source-resolver.js';
+import { resolveSource } from './source-resolver.js';
 /** F-316 / DEC-678：交接节点取人和空审批人三选一的唯一分支；旧定义保留 DEC-663 兜底链。 */
 import type { Tx } from '@italent/db';
 import {
@@ -36,15 +36,7 @@ export async function resolveHandoverApprovers(
   const fallback = resolved.some(([, candidate]) => candidate.userId === null)
     ? await resolveFallbackCandidates(tx, subject, node.fallbackUserIds ?? [])
     : [];
-  const result = decideHandoverApprovers(
-    node,
-    limitSources(resolved, subject.samplingSeed ?? node.key),
-    fallback,
-    limitSources(specified, `${subject.samplingSeed ?? node.key}:empty`),
-  );
-  return result.kind === 'candidates'
-    ? { ...result, candidates: limitSources(result.candidates, subject.samplingSeed ?? node.key) }
-    : result;
+  return decideHandoverApprovers(node, resolved, fallback, specified);
 }
 
 /** 运行与仿真共用的纯判定：运行传入资格过滤后的候选，仿真只传虚拟关系与配置中的账号。 */

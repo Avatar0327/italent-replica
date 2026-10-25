@@ -1,4 +1,4 @@
-import { limitSources } from './source-resolver.js';
+import { limitApprovers } from './source-resolver.js';
 /**
  * 流程仿真（DEC-036，`14` §9.3）：只用虚拟数据——审批人关系（表达式 → 账号）、直线经理、组织上下级都由仿真输入给出，
  * 不读取真实人员、组织负责人或账号绑定，只有仿真权限的人拿不到范围外的真实关系（PR #35 第二轮清单 7）。
@@ -112,12 +112,7 @@ function virtualDecisions(node: ApprovalNode, data: SimulationData, facts: Routi
     virtualSources(source, data, facts).map((candidate): ResolvedApprover => [source, candidate]),
   );
   const resolved: HandoverResolution = isCountersign(node)
-    ? decideHandoverApprovers(
-        node,
-        limitSources(primary, node.key),
-        (node.fallbackUserIds ?? []).map(virtualCandidate),
-        limitSources(specified, `${node.key}:empty`),
-      )
+    ? decideHandoverApprovers(node, primary, (node.fallbackUserIds ?? []).map(virtualCandidate), specified)
     : { kind: 'candidates', candidates: primary };
   if (resolved.kind === 'candidates') {
     if (!isCountersign(node) && resolved.candidates.length > 1)
@@ -126,7 +121,7 @@ function virtualDecisions(node: ApprovalNode, data: SimulationData, facts: Routi
         'APPROVAL_SOURCE_INVALID',
         '单人节点解析出多名审批人，请使用会签节点',
       );
-    return limitSources(resolved.candidates, node.key).map(([expression, candidate]) => ({
+    return resolved.candidates.map(([expression, candidate]) => ({
       expression,
       candidate,
       decision: decideVirtual(node, candidate, data, facts),
@@ -252,6 +247,7 @@ function simulatedSeats(
   version: VersionView,
   data: SimulationData,
   facts: RoutingFacts,
+  seed: string,
 ) {
   const seats: (Outcome & { expression: ApproverSource })[] = [];
   const candidates = new Set<string>();
@@ -262,7 +258,7 @@ function simulatedSeats(
     if (outcome.approverUserId && seats.some((seat) => seat.approverUserId === outcome.approverUserId)) continue;
     seats.push({ expression, ...outcome });
   }
-  return seats;
+  return limitApprovers(seats, (seat) => seat.approverUserId, seed);
 }
 const STATUS_RANK: Readonly<Record<string, number>> = { pass: 0, warning: 1, exception: 2 };
 
@@ -299,7 +295,7 @@ function simulateNodes(ctx: ApprovalContext, version: VersionView, data: Simulat
       chainUserIds: approved,
     };
     const decisions = virtualDecisions(node, data, facts);
-    const seats = simulatedSeats(decisions, version, data, facts);
+    const seats = simulatedSeats(decisions, version, data, facts, node.key);
     previous = [...new Set(decisions.flatMap(({ candidate }) => candidate.userId ?? []))];
     previousApproved = seats
       .filter((seat) => ['resolved', 'self_skip_manager', 'exception_admin'].includes(seat.resolution))

@@ -58,18 +58,13 @@ export async function resolveSource(tx: Tx, subject: RoutingSubject, source: App
   const candidates = await resolver(tx, subject, source);
   return candidates.length ? candidates : [nobody];
 }
-export type ResolvedSource = readonly [ApproverSource, Candidate];
 /** 抽样种子绑定实例/轮次/节点；相同命令预检与实际派单重复计算一致，台账回放不重新抽人。 */
-export function limitSources(items: readonly ResolvedSource[], seed: string): ResolvedSource[] {
+export function limitApprovers<T>(items: readonly T[], key: (item: T) => string | null, seed: string): T[] {
   let state = createHash('sha256').update(seed).digest().readUInt32LE(0) || 1;
-  return sampleApprovers(
-    items,
-    ([, candidate]) => candidate.userId,
-    () => {
-      state ^= state << 13;
-      state ^= state >>> 17;
-      state ^= state << 5;
-      return (state >>> 0) / 4294967296;
-    },
-  );
+  return sampleApprovers(items, key, () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  });
 }

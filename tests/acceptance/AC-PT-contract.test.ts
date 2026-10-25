@@ -84,10 +84,12 @@ describe('AC-PT-contract BE-7 PT-1 审批类型与表达式（§1.5）', () => {
     expect(approvalTypeOfBusiness('part_time')).toBeNull();
   });
 
-  it('审批人表达式加“主职部门 HRBP”，节点两处 CHECK 都接受', async () => {
+  it('“主职部门 HRBP”仍是命名值，节点 CHECK 改为唯一的结构化来源约束', async () => {
     expect(APPROVER_EXPRESSIONS).toContain('latest_record_department_hrbp');
-    expect(await constraint('approval_nodes_approver')).toContain("'latest_record_department_hrbp'");
-    expect(await constraint('approval_nodes_approvers')).toContain("'latest_record_department_hrbp'");
+    expect(await constraint('approval_nodes_approver')).toBe('');
+    const shape = await constraint('approval_nodes_approvers');
+    expect(shape).toContain('jsonb_typeof(approver_expression)');
+    expect(shape).toContain('jsonb_array_length(approver_expressions)');
   });
 
   it('latest_record_department_hrbp 取流程主体当前主职部门的 HRBP（与调入部门 HRBP 不同人）', async () => {

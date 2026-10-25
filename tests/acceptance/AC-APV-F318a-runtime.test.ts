@@ -4,7 +4,11 @@ import { withTenant } from '@italent/db';
 import { effectiveHistory, type ApproverSource } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { limitSources, previousApproved, resolveSource } from '../../apps/api/src/modules/approval/source-resolver.js';
+import {
+  limitApprovers,
+  previousApproved,
+  resolveSource,
+} from '../../apps/api/src/modules/approval/source-resolver.js';
 import type { TaskRow } from '../../apps/api/src/modules/approval/store.js';
 import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
 
@@ -187,11 +191,11 @@ describe('AC-APV-F318a 运行', () => {
       const id = randomUUID();
       return [specified(id), { userId: id, personId: null }] as const;
     });
-    const sampled = limitSources([...items, ...items], 'instance:round:node');
+    const sampled = limitApprovers([...items, ...items], ([, c]) => c.userId, 'instance:round:node');
     expect(sampled).toHaveLength(100);
     expect(new Set(sampled.map(([, c]) => c.userId)).size).toBe(100);
-    expect(sampled).toEqual(limitSources([...items, ...items], 'instance:round:node'));
+    expect(sampled).toEqual(limitApprovers([...items, ...items], ([, c]) => c.userId, 'instance:round:node'));
     expect(sampled).not.toEqual(items.slice(0, 100));
-    expect(sampled).not.toEqual(limitSources(items, 'different-instance'));
+    expect(sampled).not.toEqual(limitApprovers(items, ([, c]) => c.userId, 'different-instance'));
   });
 });

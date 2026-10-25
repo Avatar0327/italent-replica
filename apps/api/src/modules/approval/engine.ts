@@ -1,4 +1,4 @@
-import { resolveSource, previousApproved } from './source-resolver.js';
+import { resolveSource, previousApproved, limitApprovers } from './source-resolver.js';
 /**
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
  * 审批人为空、自审、相同 / 历史相同审批人跳过；遇到需人工审批的节点即停下等待。
@@ -506,7 +506,11 @@ async function countersignSeats(
     if (!same) seats.push({ seat, mergedCandidateUserIds: [] });
     else if (candidate.userId !== null) same.mergedCandidateUserIds.push(candidate.userId);
   }
-  return { seats, selfSkips };
+  // DEC-686：回避、空人兜底可能改变最终账号集合，先合并席位再统一随机取 100。
+  return {
+    seats: limitApprovers(seats, ({ seat }) => seatUser(seat), entry.subject.samplingSeed ?? node.key),
+    selfSkips,
+  };
 }
 
 async function seatOf(
