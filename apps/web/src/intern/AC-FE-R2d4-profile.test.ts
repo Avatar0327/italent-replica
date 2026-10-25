@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '../foundation/client.js';
+import { createFormStore } from '../foundation/forms/store.js';
+import { projectFields } from '../foundation/forms/values.js';
+import { profileAccess, providedFields, retainProfileClears } from './create-profile.js';
 import { acceptCreateReceipt, createBody, docKey, validateCreate } from './create-model.js';
 
 const base = {
@@ -103,5 +107,62 @@ describe('AC-FE-R2d4 / DEC-684⑧ 员工资料一体写入', () => {
       ...(visible === undefined ? {} : { profile: visible }),
     };
     expect(acceptCreateReceipt(receipt, createBody({ ...base, ...profile }, undefined, false), 0)).toEqual(receipt);
+  });
+});
+
+describe('资料投影与权限边界', () => {
+  it('未触碰证件类型默认值与未填字段不被公共投影变成清空；显式清空保留', () => {
+    const values = { ...base, idType: 'id_card', idNumber: undefined, backupMail: undefined, engName: '' };
+    const fields = providedFields(values, Object.keys(values), ['engName']);
+    expect(createBody(projectFields(values, fields), selected, false).profile).toEqual({ engName: null });
+    expect(providedFields(values, Object.keys(values), ['idType'])).toContain('idType');
+  });
+  it('档案更新权与教育创建权分别控制；教育不使用人员反写字段的编辑权', () => {
+    const profile = {
+      objectCode: 'TenantBase.EmployeeInformation',
+      dataOperations: { update: true },
+      viewableFields: ['backupMail'],
+      editableFields: ['backupMail'],
+      buttons: [{ buttonCode: 'update', level: 'detail' }],
+    };
+    const education = {
+      objectCode: 'TenantBase.Education',
+      dataOperations: { create: true },
+      viewableFields: ['school'],
+      editableFields: ['school', 'isHighestEducation', 'isMainMajor'],
+      buttons: [{ buttonCode: 'create', level: 'list' }],
+    };
+    expect(profileAccess(profile, education)('backupMail').editable).toBe(true);
+    expect(profileAccess(profile, education)('lastSchool').editable).toBe(true);
+    expect(profileAccess(undefined, education)('backupMail').visible).toBe(false);
+    expect(profileAccess(profile, { ...education, editableFields: ['school'] })('lastSchool').editable).toBe(false);
+    expect(profileAccess({ ...profile, buttons: [] }, education)('backupMail').editable).toBe(false);
+  });
+  it('409 重读后显式清空仍在同一内核草稿，不被空基线当成未填写丢弃', async () => {
+    const store = createFormStore();
+    const values = { backupMail: null, engName: '', mobilePhone: 'SYNTHETIC-PHONE' };
+    await store.submit('new', {
+      values,
+      baseline: {},
+      editableFields: Object.keys(values),
+      revision: 5,
+      businessId: 'employee',
+      send: async () => {
+        throw new ApiError(409, 'REVISION_CONFLICT', 'conflict', '合成版本冲突');
+      },
+    });
+    await store.reread('new', async () => ({
+      id: 'employee',
+      revision: 6,
+      values: retainProfileClears(store.get('new')!.values, store.get('new')!.baseline),
+    }));
+    store.confirm('new');
+    const state = store.get('new')!;
+    expect(state.revision).toBe(6);
+    expect(createBody(state.values, selected, false).profile).toEqual({
+      backupMail: null,
+      engName: null,
+      mobilePhone: 'SYNTHETIC-PHONE',
+    });
   });
 });

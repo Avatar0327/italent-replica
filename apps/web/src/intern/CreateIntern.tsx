@@ -11,6 +11,7 @@ import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
 import { refPaths } from '../part-time/references.js';
 import { object, personObject } from './model.js';
+import { educationObject, profileObject, providedFields } from './create-profile.js';
 import { c } from './create-messages.js';
 import { m } from './messages.js';
 import { createAccess, docKey, validateCreate, type CreateReceipt } from './create-model.js';
@@ -23,7 +24,9 @@ function useEditor(onDone: (receipt: CreateReceipt) => void) {
   const person = usePermissions(personObject).snapshot.objects[personObject];
   const employment = usePermissions(object).snapshot.objects[object];
   const contract = usePermissions(contractObject).snapshot.objects[contractObject];
-  const access = createAccess(person, employment, contract);
+  const profile = usePermissions(profileObject).snapshot.objects[profileObject];
+  const education = usePermissions(educationObject).snapshot.objects[educationObject];
+  const access = createAccess(person, employment, contract, profile, education);
   const today = useToday();
   const date = Form.useWatch('effectiveDate', form) as string | undefined;
   // 此比较仅控制接口允许填写的合同字段；目标视图始终按服务端回执。
@@ -56,11 +59,16 @@ function useEditor(onDone: (receipt: CreateReceipt) => void) {
     setError(undefined);
     try {
       const all = await form.validateFields();
-      const values = projectFields(all, editable);
+      const provided = providedFields(
+        all,
+        editable,
+        names.filter((name) => form.isFieldTouched(name)),
+      );
+      const values = projectFields(all, provided);
       if (String(all.idNumber ?? '').trim() && (!match.checked || match.key !== docKey(all)))
         throw new Error(c.matchRequired);
       validateCreate(values, editable, !!selected, pending);
-      const receipt = await cmd.submit(values, editable, selected, pending);
+      const receipt = await cmd.submit(values, provided, selected, pending);
       if (!receipt) return;
       match.reset();
       form.resetFields();
@@ -89,7 +97,7 @@ function renderFields(access: Editor['access']) {
         label={c.labels[name]}
         rules={[
           ...(required ? [{ required: true, message: m.required(c.labels[name]!) }] : []),
-          ...(name === 'loginEmail' ? [{ type: 'email' as const, message: c.invalidEmail }] : []),
+          ...(['loginEmail', 'backupMail'].includes(name) ? [{ type: 'email' as const, message: c.invalidEmail }] : []),
         ]}
       >
         <LockedField disabled={!permission.editable}>{control}</LockedField>
@@ -197,8 +205,18 @@ function CreateFields({ editor }: { editor: Editor }) {
           input('name', true)
         )}
         {input('loginEmail', !selected)}
+        {input('backupMail')}
+        {input('mobilePhone')}
         {input('idType')}
         {input('idNumber')}
+        {input('gender')}
+        {field('birthday', <TenantDatePicker />)}
+        {input('lastSchool')}
+        {input('major')}
+        {input('educationLevel')}
+        {input('engName')}
+        {field('dailyWageStandard', <Input inputMode="decimal" aria-label={c.labels.dailyWageStandard} />)}
+        {field('graduateDate', <TenantDatePicker />)}
       </div>
       <Space>
         <Button disabled={locked || match.busy} loading={match.busy} onClick={() => void check()}>
@@ -207,7 +225,6 @@ function CreateFields({ editor }: { editor: Editor }) {
         <span>{selected ? c.selected : c.newHire}</span>
         {match.checked && !match.candidate && <span>{c.noMatch}</span>}
       </Space>
-      <p>{c.employeeNote}</p>
       <h3>{c.employment}</h3>
       <div className="intern-form-grid">
         {field('effectiveDate', <TenantDatePicker />, true)}

@@ -59,6 +59,11 @@ test('AC-FE-R2d4-profile-01 新增全资料同一命令写入，裁剪回执正�
     .getByRole('button', { name: /校\s*验/ })
     .click();
   await expect(editor(page).getByText('未匹配到离职 / 退休人员')).toBeVisible();
+  await editor(page)
+    .locator('.ant-modal-body')
+    .evaluate((element) => {
+      element.scrollTop = 0;
+    });
   await editor(page).screenshot({ path: test.info().outputPath('intern-full-profile.png') });
   await saveCreate(page).click();
   await expect(editor(page)).toHaveCount(0);

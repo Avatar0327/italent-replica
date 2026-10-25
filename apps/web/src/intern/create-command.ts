@@ -6,6 +6,7 @@ import { useDirectApi } from '../part-time/direct-api.js';
 import { apiRoot, interns, listPath } from './model.js';
 import { acceptCreateReceipt, createBody, type CreateReceipt, type Selected } from './create-model.js';
 import { readCandidate } from './RehireCheck.js';
+import { retainProfileClears } from './create-profile.js';
 import { c } from './create-messages.js';
 
 /** 固定页面恢复槽：新增、选择候选、换视图均不换槽，未确认时不能另发命令。 */
@@ -21,7 +22,7 @@ export function useCreateCommand() {
       if (!id || !state || state.context?.kind !== 'rehire') throw new Error(c.matchFailed);
       const latest = await readCandidate(api, state.values, id);
       // 这些字段是本次新任职的草稿，没有可从旧离职任职继承的基线；只刷新候选员工的版本。
-      return { id, revision: latest.revision, values: state.baseline };
+      return { id, revision: latest.revision, values: retainProfileClears(state.values, state.baseline) };
     });
   return {
     form: {

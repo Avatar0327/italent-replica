@@ -32,6 +32,35 @@ export const sent = (request: Request) => ({
   revision: request.headers()['if-match'],
   id: request.headers()['idempotency-key'],
 });
+const fields = [
+  'backupMail',
+  'mobilePhone',
+  'gender',
+  'birthday',
+  'engName',
+  'idType',
+  'idNumber',
+  'dailyWageStandard',
+  'educationLevel',
+  'school',
+  'major',
+  'isHighestEducation',
+  'isMainMajor',
+  'name',
+  'code',
+  'effectiveDate',
+  'employType',
+  'departmentId',
+  'positionId',
+  'directManagerId',
+  'dottedManagerId',
+  'kind',
+  'companyId',
+  'typeId',
+  'endDate',
+  'termType',
+  'termMonths',
+];
 export async function setupCreate(page: Page, options: { noCreate?: boolean; hidden?: string[] } = {}) {
   const state = { revision: 5, saved: false, reads: [] as string[], requests: [] as ReturnType<typeof sent>[] };
   await page.route('**/permission/me/snapshot', (route) =>
@@ -46,35 +75,7 @@ export async function setupCreate(page: Page, options: { noCreate?: boolean; hid
   );
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
-    const fields = [
-      'backupMail',
-      'mobilePhone',
-      'gender',
-      'birthday',
-      'engName',
-      'idType',
-      'idNumber',
-      'dailyWageStandard',
-      'educationLevel',
-      'school',
-      'major',
-      'isHighestEducation',
-      'isMainMajor',
-      'name',
-      'code',
-      'effectiveDate',
-      'employType',
-      'departmentId',
-      'positionId',
-      'directManagerId',
-      'dottedManagerId',
-      'kind',
-      'companyId',
-      'typeId',
-      'endDate',
-      'termType',
-      'termMonths',
-    ];
+
     return route.fulfill({
       json: {
         objectCode,

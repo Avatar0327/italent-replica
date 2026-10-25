@@ -81,7 +81,7 @@ describe('AC-FE-R2d4 B38 / A48 实际新增契约', () => {
     expect(() => validateCreate(draft, editable, false, false)).toThrow();
     expect(createAccess(permission, undefined, permission).allowed).toBe(false);
   });
-  it('未来日期丢弃正式合同草稿字段，证件仅用于匹配，重聘不创建第二个人员', () => {
+  it('未来日期丢弃正式合同草稿字段，证件不占用顶层键，重聘不创建第二个人员', () => {
     const body = createBody({ ...values, termType: 'fixed', termMonths: 12 }, selected, true);
     expect(body.contract).toEqual({ companyId: values.companyId, endDate: values.endDate });
     expect(body).toMatchObject({ kind: 'rehire', employeeId, fields: { employType: 'intern' } });

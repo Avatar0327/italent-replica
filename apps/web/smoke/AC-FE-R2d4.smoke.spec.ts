@@ -120,6 +120,7 @@ test('AC-FE-R2d4-05 断网关闭重开仍只读，不能换证件或换视图绕
   });
   await openCreate(page);
   await fillCreate(page);
+  await editor(page).getByLabel('日工资标准', { exact: true }).fill('250.00');
   await saveCreate(page).click();
   await expect(saveCreate(page)).toBeDisabled();
   await editor(page)
@@ -130,6 +131,8 @@ test('AC-FE-R2d4-05 断网关闭重开仍只读，不能换证件或换视图绕
   await expect(saveCreate(page)).toBeDisabled();
   await expect(editor(page).getByLabel('证件号码', { exact: true })).toBeDisabled();
   expect(state.requests).toHaveLength(1);
+  await expect(editor(page).getByLabel('日工资标准', { exact: true })).toHaveValue('250.00');
+  await expect(editor(page).getByLabel('日工资标准', { exact: true })).toBeDisabled();
 });
 
 test('AC-FE-R2d4-06 无 Employee.Create 不显示入口', async ({ page }) => {
@@ -152,6 +155,9 @@ test('AC-FE-R2d4-07 重聘409先重读候选版本，确认后保留输入用新
   await openCreate(page);
   await fillCreate(page);
   await editor(page).getByLabel('证件类型', { exact: true }).fill('id_card');
+  await editor(page).getByLabel('个人邮箱', { exact: true }).fill('conflict@example.com');
+  await editor(page).getByLabel('其他语言姓名', { exact: true }).fill('清空测试');
+  await editor(page).getByLabel('其他语言姓名', { exact: true }).fill('');
   await editor(page).getByLabel('证件号码', { exact: true }).fill('SYN-RELOAD');
   await editor(page)
     .getByRole('button', { name: /校\s*验/ })
@@ -167,6 +173,8 @@ test('AC-FE-R2d4-07 重聘409先重读候选版本，确认后保留输入用新
   await saveCreate(page).click();
   await expect(editor(page)).toHaveCount(0);
   expect(state.requests.map((request) => request.revision)).toEqual(['5', '6']);
+  expect(state.requests[1]!.body.profile).toEqual(state.requests[0]!.body.profile);
+  expect(state.requests[1]!.body.profile).toMatchObject({ backupMail: 'conflict@example.com', engName: null });
 });
 
 test('AC-FE-R2d4-08 退休或结束类型裁剪不开放按重聘入职，缺省字段显示占位', async ({ page }) => {

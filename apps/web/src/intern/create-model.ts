@@ -1,6 +1,7 @@
 import { ApiError } from '../foundation/client.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { isBlank, type Values } from '../foundation/forms/values.js';
+import { createProfile, profileAccess, profileFields, validateProfile } from './create-profile.js';
 import { c } from './create-messages.js';
 
 export interface Candidate extends Values {
@@ -18,19 +19,28 @@ export interface Selected {
 }
 export const employmentFields = ['effectiveDate', 'departmentId', 'positionId', 'directManagerId', 'dottedManagerId'];
 export const contractFields = ['companyId', 'endDate', 'typeId', 'termType', 'termMonths'];
-export const controlFields = ['loginEmail', 'idType', 'idNumber'];
+export const controlFields = ['loginEmail'];
 export const docKey = (v: Values) => JSON.stringify([String(v.idType ?? '').trim(), String(v.idNumber ?? '').trim()]);
 export function canCreatePerson(p?: ObjectPermission) {
   return p?.dataOperations.create === true && canButton(p, 'Employee.Create', 'detail');
 }
-export function createAccess(person?: ObjectPermission, employment?: ObjectPermission, contract?: ObjectPermission) {
+export function createAccess(
+  person?: ObjectPermission,
+  employment?: ObjectPermission,
+  contract?: ObjectPermission,
+  profile?: ObjectPermission,
+  education?: ObjectPermission,
+) {
   const permission = (name: string) => {
     if (['name', 'code'].includes(name)) return person;
     if (contractFields.includes(name)) return contract;
     return employment;
   };
-  const field = (name: string) =>
-    controlFields.includes(name) ? { visible: true, editable: true } : fieldAccess(permission(name), name);
+  const profileField = profileAccess(profile, education);
+  const field = (name: string) => {
+    if (profileFields.includes(name)) return profileField(name);
+    return controlFields.includes(name) ? { visible: true, editable: true } : fieldAccess(permission(name), name);
+  };
   return {
     field,
     allowed:
@@ -44,9 +54,11 @@ export function createAccess(person?: ObjectPermission, employment?: ObjectPermi
 }
 const present = (v: Values, keys: readonly string[]) =>
   Object.fromEntries(keys.filter((key) => !isBlank(v[key])).map((key) => [key, v[key]]));
-/** 严格匹配 BE-R2d4c：证件仅查询，不混入写入；未来合同只接受两项。 */
+/** 严格匹配 BE-R2d4c：F-322 profile 同一事务写入；未来合同只接受两项。 */
 export function createBody(v: Values, selected: Selected | undefined, pending: boolean): Values {
+  const profile = createProfile(v);
   return {
+    ...(Object.keys(profile).length ? { profile } : {}),
     kind: selected ? 'rehire' : 'hire',
     ...(selected ? { employeeId: selected.candidate.employeeId } : present(v, ['name', 'code'])),
     ...present(v, ['loginEmail', 'effectiveDate']),
@@ -61,6 +73,7 @@ export function createBody(v: Values, selected: Selected | undefined, pending: b
   };
 }
 export function validateCreate(v: Values, editable: readonly string[], rehire: boolean, pending: boolean) {
+  validateProfile(v);
   const required = [
     'effectiveDate',
     'departmentId',
@@ -76,6 +89,7 @@ export function validateCreate(v: Values, editable: readonly string[], rehire: b
     throw new ApiError(400, 'VALIDATION_FAILED', 'fields', c.invalidDate);
 }
 export interface CreateReceipt {
+  profile?: Values;
   id: string;
   businessId: string;
   employeeId: string;
