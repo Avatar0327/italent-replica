@@ -206,12 +206,11 @@ describe('AC-IN-F322 全字段一体写入', () => {
     const first = rehire ? await create(c, profile(), { effectiveDate: '2026-09-01' }) : undefined;
     if (first) await c.w.leave(first.employeeId, '2026-09-20');
     const before = await stored(c);
-    await c.markIndefinite(c.typeId);
-    const patch = { contract: contract(c), profile: profile() };
+    const patch = { contract: { ...contract(c), typeId: randomUUID() }, profile: profile() };
     const body = first ? c.rehireBody(first.employeeId, patch) : c.hireBody(patch);
     const result = await c.create(body, { ifMatch: first ? await c.w.revision(first.employeeId) : 0 });
     expect(result.status, await result.clone().text()).toBe(400);
-    expect(await result.json()).toMatchObject({ error: { details: { reason: 'INTERN_CONTRACT_TERM_CONFLICT' } } });
+    expect(await result.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
     expect(await stored(c)).toEqual(before);
     if (!first) expect(await c.employeesByCode(body.code as string)).toEqual([]);
   });
@@ -313,6 +312,27 @@ describe('AC-IN-F322 权限、范围及回执', () => {
     edit = false;
     expect((await call('POST', 'employment/interns', body, 0, key)).status).toBe(403);
     expect(await stored(c)).toEqual(before);
+  });
+
+  it.each(['scope', 'object'])('仅教育输入：档案 %s 不可查看时省略资料回执，不能提交后返回拒绝', async (denial) => {
+    const c = await world();
+    const authorize: Authorizer = (q) =>
+      !(denial === 'object' && q.resource === PERSONNEL_OBJECT && q.action === 'object.view');
+    registerScopeProvider(authorize, {
+      scope: async ({ objectCode }) => ({
+        ...EMPTY_SCOPE,
+        all: denial !== 'scope' || objectCode !== PERSONNEL_OBJECT,
+        hasDataPermission: denial !== 'scope' || objectCode !== PERSONNEL_OBJECT,
+      }),
+      authorize: async (q) => authorize(q),
+      fields: async () => new Set(['educationLevel', 'lastSchool', 'major']),
+    });
+    const res = await c.createAs(authorize, c.hireBody({ contract: contract(c), profile: { lastSchool: '合成学校' } }));
+    expect(res.status, await res.clone().text()).toBe(201);
+    const receipt = (await res.json()) as { employeeId: string; profile?: object };
+    expect(receipt).not.toHaveProperty('profile');
+    expect(await read(c, receipt.employeeId)).toMatchObject({ lastSchool: '合成学校' });
+    expect((await stored(c)).education).toHaveLength(1);
   });
 
   it.each([PERSONNEL_OBJECT, educationObject])('独立对象 %s 空数据范围拒绝，不以任职看全部绕过', async (object) => {
