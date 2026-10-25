@@ -131,6 +131,36 @@ describe('AC-DM-04 审批推进即时停用', () => {
     await account(x, true);
   });
 
+  it('异常管理员批量交接：在途离职单仍审批中，原任务关联交接命令并即时消费', async () => {
+    const x = await scene('exception-handover');
+    const restricted = tenantApi(x.w.db, {
+      clock: x.w.clock,
+      authorize: (request) => !(request.userId === x.s.outHead.userId && request.action === 'data.scope.all'),
+    });
+    expect(
+      (
+        await restricted.request('POST', `${BASE}/tasks/${pending(x).id}/approve`, {
+          ...x.w.as(x.s.outHead.userId),
+          ifMatch: x.view.revision,
+          body: {},
+        })
+      ).status,
+    ).toBe(403);
+    expect(pending(x, await x.w.detail(x.view.id)).assigneeUserId).toBe(x.w.exceptionAdmin);
+    await account(x, false);
+    x.past();
+    const receipt = await x.w.json<{ tasks: number }>(
+      await x.w.request(x.s.manager.userId, 'POST', `${BASE}/exception-admins/handover`, {
+        ifMatch: 0,
+        body: { fromUserId: x.w.exceptionAdmin, toUserId: x.s.inHead.userId },
+      }),
+    );
+    expect(receipt.tasks).toBe(1);
+    expect(pending(x, await x.w.detail(x.view.id)).assigneeUserId).toBe(x.s.inHead.userId);
+    expect((await x.w.business(x.view.businessId)).status).toBe('in_review');
+    await account(x, true);
+  });
+
   it.each(['all', 'custom', 'any'] as const)('会签规则 %s：未达条件或流转到下一节点均即时停用', async (type) => {
     const x = await scene(`joint-${type}`, true, [
       {
