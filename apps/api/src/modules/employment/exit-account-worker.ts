@@ -105,6 +105,14 @@ function desired(plan: readonly Fact[], user: User): 'active' | 'disabled' | nul
     return 'active';
   return null;
 }
+function settledStatus(f: Fact, user: User) {
+  if (f.due && user.status === 'disabled') return 'disabled';
+  if (!f.due && f.task.restoreRequested) {
+    if (!f.terminal) return 'pending';
+    return user.status === 'active' ? 'restored' : 'skipped';
+  }
+  return f.terminal ? 'skipped' : f.task.status;
+}
 async function settle(
   inTenant: EnterTenant,
   plan: readonly Fact[],
@@ -115,18 +123,7 @@ async function settle(
 ) {
   for (const f of plan) {
     const t = f.task;
-    const status =
-      f.due && user.status === 'disabled'
-        ? 'disabled'
-        : !f.due && t.restoreRequested
-          ? !f.terminal
-            ? 'pending'
-            : user.status === 'active'
-              ? 'restored'
-              : 'skipped'
-          : f.terminal
-            ? 'skipped'
-            : t.status;
+    const status = settledStatus(f, user);
     const autoRevision = automatic && user.status === 'disabled' && f.due ? user.revision : t.autoRevision;
     const restoreRequested = t.restoreRequested && f.due;
     if (status === t.status && autoRevision === t.autoRevision && restoreRequested === t.restoreRequested) continue;

@@ -31,6 +31,9 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
     type: 'date',
     migration: 'employment_planned_effective_date',
   },
+  // F-261 叠在 F-140b 上：当前任职写入与离职读取已依赖人工计划、替代来源两列。
+  { table: 'employment_payload_versions', column: 'manual_plan', type: 'boolean', migration: 'ancient_nitro' },
+  { table: 'exit_requests', column: 'supersedes_business_id', type: 'uuid', migration: 'ancient_nitro' },
 ];
 
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);
