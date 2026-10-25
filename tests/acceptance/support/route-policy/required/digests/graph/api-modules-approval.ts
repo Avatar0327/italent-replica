@@ -699,6 +699,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
   ],
   'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1910,6 +1911,9 @@ export const GRAPH: Graph = {
     '#nobody',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
   ],
+  'apps/api/src/modules/approval/source-resolver.ts#previousApproved': [
+    'apps/api/src/modules/approval/task-history.ts#actualApprovals',
+  ],
   'apps/api/src/modules/approval/source-resolver.ts#resolveSource': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#nobody',
@@ -2024,4 +2028,5 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/subjects.ts#unknownSubject': [
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
+  'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrievedApprovals'],
 };
