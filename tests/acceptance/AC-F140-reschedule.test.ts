@@ -214,7 +214,8 @@ describe('F-140b1 未生效改期与重新入队', () => {
           ? await x.createdLeave(x.employee.id, leaveBody('2026-10-15', 'application', { exitTypeCode: 'voluntary' }))
           : await x.submittedLeave('2026-10-15');
       if (state === 'rejected') await x.rejectInReview(leave.id);
-      await changed(x, leave.id, '2026-10-08', '2026-10-29');
+      const result = await changed(x, leave.id, '2026-10-08', '2026-10-29');
+      expect(result).not.toHaveProperty('downstreamHints');
       expect((await x.versions(leave.id)).at(-1)!.planned).toBe('2026-10-30');
       expect(await x.stateOfBusiness(leave.id)).toBe(state);
       if (state === 'in_review') {
