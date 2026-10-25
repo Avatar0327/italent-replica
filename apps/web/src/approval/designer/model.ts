@@ -3,6 +3,7 @@ import type { ProcessView, VersionView } from '../../../../api/src/modules/appro
 import { ApiError } from '../../foundation/client.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
 import type { Values } from '../../foundation/forms/store.js';
+import { supportsFallback, fallbackError } from './fallback.js';
 import { m } from './messages.js';
 
 export type { ProcessView, VersionView, ProcessSummary } from '../../../../api/src/modules/approval/definitions.js';
@@ -54,6 +55,7 @@ function completeNode(node: unknown): node is ApprovalNode {
         record(node.transitionRule.rules);
   return (
     !!kind &&
+    (node.fallbackUserIds === undefined || strings(node.fallbackUserIds)) &&
     [
       'key',
       'name',
@@ -81,17 +83,20 @@ function completeNode(node: unknown): node is ApprovalNode {
     )
   );
 }
-export function editableValues(version: Pick<VersionView, 'nodes'>): Values {
+export function editableValues(version: Pick<VersionView, 'nodes'>, approvalType?: string): Values {
   return Object.fromEntries(
     (version.nodes ?? []).flatMap((node) =>
-      attributes.map((field) => [
+      [...attributes, ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])].map((field) => [
         nodeField(node.key, field),
-        field.startsWith('actions.')
-          ? node.actions?.[field.slice(8) as keyof ApprovalNode['actions']]
-          : node[field as keyof ApprovalNode],
+        nodeValue(node, field),
       ]),
     ),
   );
+}
+function nodeValue(node: ApprovalNode, field: string) {
+  if (field === 'fallbackUserIds') return Array.isArray(node.fallbackUserIds) ? [...node.fallbackUserIds] : [];
+  if (field.startsWith('actions.')) return node.actions?.[field.slice(8) as keyof ApprovalNode['actions']];
+  return node[field as keyof ApprovalNode];
 }
 /** P2-1：旧输入只允许恢复到相同版本的有序节点结构；属性变化交给表单内核核对。 */
 export function assertDraftStructure(original: VersionView, latest: VersionView): void {
@@ -102,18 +107,24 @@ export function assertDraftStructure(original: VersionView, latest: VersionView)
     !Array.isArray(original.nodes) ||
     latest.nodes.length !== original.nodes.length ||
     latest.nodes.some(
-      (node, index) => node.key !== original.nodes[index]?.key || node.kind !== original.nodes[index]?.kind,
+      (node, index) =>
+        node.key !== original.nodes[index]?.key ||
+        node.kind !== original.nodes[index]?.kind ||
+        supportsFallback(node, 'exit_handover') !== supportsFallback(original.nodes[index]!, 'exit_handover'),
     )
   )
     throw new Error(m.versionChanged);
 }
-export function buildDraft(version: VersionView, edited: Values): ProcessDefinition {
+export function buildDraft(version: VersionView, edited: Values, approvalType?: string): ProcessDefinition {
   if (!completeDefinition(version)) throw new ApiError(422, 'INCOMPLETE_DEFINITION', 'fields', m.invalid);
-  const allowed = new Set(Object.keys(editableValues(version)));
+  const allowed = new Set(Object.keys(editableValues(version, approvalType)));
   for (const [field, value] of Object.entries(edited)) {
-    const valid = field.endsWith(':name')
-      ? typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 100
-      : typeof value === 'boolean';
+    const issue = field.endsWith(':fallbackUserIds') ? fallbackError(value) : undefined;
+    if (issue) throw new ApiError(422, 'INVALID_NODE_PROPERTY', 'fields', issue);
+    let valid = typeof value === 'boolean';
+    if (field.endsWith(':fallbackUserIds')) valid = !issue;
+    else if (field.endsWith(':name'))
+      valid = typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 100;
     if (!allowed.has(field) || !valid) throw new ApiError(422, 'INVALID_NODE_PROPERTY', 'fields', m.invalid);
   }
   // 剔除版本元数据；未编辑配置取最新完整回执，不从最初打开时的版本复制。
@@ -123,7 +134,7 @@ export function buildDraft(version: VersionView, edited: Values): ProcessDefinit
     nodes: definition.nodes.map((node) => {
       const values: Record<string, unknown> = { ...node };
       const actions = { ...node.actions };
-      for (const field of attributes) {
+      for (const field of [...attributes, ...(supportsFallback(node, approvalType) ? ['fallbackUserIds'] : [])]) {
         const key = nodeField(node.key, field);
         if (!(key in edited)) continue;
         if (field.startsWith('actions.')) Object.assign(actions, { [field.slice(8)]: edited[key] });

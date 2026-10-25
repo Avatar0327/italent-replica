@@ -31,6 +31,7 @@ import {
 import { m } from './messages.js';
 import { useRead } from './useRead.js';
 import { Conditions, OtherNodeProperties } from './ReadConfiguration.js';
+import { FallbackHandlers } from './FallbackHandlers.js';
 import './designer.css';
 
 // 模块切换不能丢失未知命令；内核按租户 + 身份 + 稳定流程 ID 隔离恢复槽（DEC-464、F-142）。
@@ -265,7 +266,10 @@ function useProcessCommand(process: ProcessView) {
     (menu) => menu.key === 'settings' && menu.children?.some((child) => child.key === 'matrix.manage'),
   );
   const action: 'draft' | 'versions' = process.latestVersion.status === 'draft' ? 'draft' : 'versions';
-  const snapshotValues = (value: ProcessView) => ({ ...editableValues(value.latestVersion), $process: value });
+  const snapshotValues = (value: ProcessView) => ({
+    ...editableValues(value.latestVersion, value.approvalType),
+    $process: value,
+  });
   const read = async (): Promise<Latest> => {
     const latest = await readProcess(api, process.id);
     // 冲突重读与未知回查共用；退出重开后仍与原命令基线比较，不能被新详情的结构替换。
@@ -296,12 +300,13 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
   const { api, command, submission, full, version, writable, action, nodesVisible } = useProcessCommand(process);
   const [form] = Form.useForm();
   const [localError, setLocalError] = useState<unknown>();
-  const editable = writable && action === 'draft' ? Object.keys(editableValues(version)) : [];
+  const editable = writable && action === 'draft' ? Object.keys(editableValues(version, full.approvalType)) : [];
   useDraftRefill(submission, editable, form);
   const labels = Object.fromEntries(
-    (nodesVisible ? (version.nodes ?? []) : []).flatMap((node) =>
-      attributes.map((field) => [nodeField(node.key, field), `${node.name} · ${m.fields[field]}`]),
-    ),
+    (nodesVisible ? (version.nodes ?? []) : []).flatMap((node) => [
+      ...attributes.map((field) => [nodeField(node.key, field), `${node.name} · ${m.fields[field]}`]),
+      [nodeField(node.key, 'fallbackUserIds'), `${node.name} · ${m.fallback}`],
+    ]),
   );
   const submit = async () => {
     if (!writable || submission.locked || submission.blocked) return;
@@ -310,7 +315,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
     try {
       values = action === 'draft' ? ((await form.validateFields()) as Values) : {};
       // 本地校验在进入内核前完成；send 中的失败只能代表请求结果。
-      if (action === 'draft') buildDraft(version, values);
+      if (action === 'draft') buildDraft(version, values, full.approvalType);
     } catch (error) {
       if (error instanceof Error) setLocalError(error);
       return;
@@ -322,7 +327,7 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
         send: async ({ edited, command: request }) => {
           await writeProcess(api, process.id, action, {
             ...request,
-            body: action === 'draft' ? buildDraft(version, edited) : {},
+            body: action === 'draft' ? buildDraft(version, edited, full.approvalType) : {},
           });
           return { id: process.id };
         },
@@ -343,9 +348,9 @@ function LatestVersion({ process, onSaved }: { process: ProcessView; onSaved(mes
         <Alert type="warning" message={m.versionChanged} />
       )}
       {!!localError && !submission.state?.error && <Alert type="error" message={rejectionMessage(localError)} />}
-      <Form form={form} layout="vertical" initialValues={editableValues(version)}>
+      <Form form={form} layout="vertical" initialValues={editableValues(version, process.approvalType)}>
         <FormLock locked={!writable || action !== 'draft' || submission.locked || !!submission.blocked}>
-          <NodeProperties nodes={nodesVisible ? version.nodes : undefined} />
+          <NodeProperties nodes={nodesVisible ? version.nodes : undefined} approvalType={full.approvalType} />
         </FormLock>
       </Form>
       {writable && (
@@ -371,15 +376,18 @@ function ReadOnlyVersion({ process, version }: { process: ProcessView; version: 
       <VersionInfo process={process} version={version} />
       <Conditions version={version} />
       <Tag>{m.readOnly}</Tag>
-      <Form layout="vertical" initialValues={editableValues(version)}>
+      <Form layout="vertical" initialValues={editableValues(version, process.approvalType)}>
         <FormLock locked>
-          <NodeProperties nodes={permission?.viewableFields.includes('nodes') ? version.nodes : undefined} />
+          <NodeProperties
+            nodes={permission?.viewableFields.includes('nodes') ? version.nodes : undefined}
+            approvalType={process.approvalType}
+          />
         </FormLock>
       </Form>
     </>
   );
 }
-function NodeProperties({ nodes }: { nodes: readonly ApprovalNode[] | undefined }) {
+function NodeProperties({ nodes, approvalType }: { nodes: readonly ApprovalNode[] | undefined; approvalType: string }) {
   const [selected, setSelected] = useState<string>();
   if (!nodes) return <Alert type="info" message={m.missingNodes} />;
   if (!nodes.length) return <Alert type="info" message={m.emptyNodes} />;
@@ -424,6 +432,7 @@ function NodeProperties({ nodes }: { nodes: readonly ApprovalNode[] | undefined 
         {/* 全部节点字段保持挂载，切换节点不丢未提交输入；只隐藏非当前节点。 */}
         {nodes.map((node) => (
           <div key={node.key} hidden={node.key !== active.key}>
+            <FallbackHandlers node={node} approvalType={approvalType} />
             {attributes.map((field) =>
               editableValues({ nodes: [node] })[nodeField(node.key, field)] === undefined ? (
                 <Form.Item key={field} label={m.fields[field]}>

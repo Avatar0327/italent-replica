@@ -44,5 +44,7 @@ describe('AC-FE-F304 兜底属性进入既有表单内核', () => {
     const body = buildDraft(latest, { [nodeField('work_handover', 'fallbackUserIds')]: [id] }, flow.approvalType);
     expect(body.nodes[1]?.name).toBe('其他人改名');
     expect(() => assertDraftStructure(flow.latestVersion, { ...latest, nodes: latest.nodes.slice(1) })).toThrow();
+    Object.assign(latest.nodes[0]!, { approvers: ['direct_manager'] });
+    expect(() => assertDraftStructure(flow.latestVersion, latest)).toThrow();
   });
 });
