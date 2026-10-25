@@ -45,6 +45,34 @@ async function cancel(x: World, id: string) {
 }
 
 describe('F-261 默认生效与账号关联', () => {
+  it('DEC-142 两租户先后到点：仍有到期离职时暂缓恢复，最后一个撤销后保留的恢复请求生效', async () => {
+    const x = await world('restore-owner');
+    const y = await world('restore-other');
+    await configure(x);
+    await configure(y);
+    const user = await account(x);
+    await grantMembership(
+      database().db,
+      { tenantId: y.session.tenant.id, userId: user.id, expectedRevision: 0 },
+      cmd(),
+    );
+    // 业务开始前将两个合成员工夹具绑定为同一全局账号；后续业务过程不更改关联。
+    await y.sqlRows(sql`DELETE FROM permission_user_person_links
+      WHERE tenant_id=${y.session.tenant.id} AND employee_id=${y.employee.id}::uuid`);
+    await y.sqlRows(sql`INSERT INTO permission_user_person_links (tenant_id,user_id,employee_id)
+      VALUES (${y.session.tenant.id},${user.id}::uuid,${y.employee.id}::uuid)`);
+    const first = await create(x, '2026-10-06');
+    await x.runScheduler('2026-10-06T11:00:00Z');
+    expect((await getUser(x.db, user.id))!.status).toBe('disabled');
+    x.setNow('2026-10-06T11:00:00Z');
+    y.setNow('2026-10-06T11:00:00Z');
+    const second = await create(y, '2026-10-06');
+    await changeDate(x, first.id, '2026-10-20');
+    expect((await getUser(x.db, user.id))!.status).toBe('disabled');
+    await cancel(y, second.id);
+    expect((await getUser(x.db, user.id))!.status).toBe('active');
+  });
+
   it('源租户成员关系先撤销时，离职仍停用绑定的全局账号，另一租户不能继续登录', async () => {
     const x = await world('revoked-source');
     const y = await world('revoked-other');
