@@ -185,7 +185,8 @@ describe('F-140b1 未生效改期与重新入队', () => {
     const result = await changed(x, leave.id, '2026-10-20', '2026-10-29');
     expect(result.activation).toMatchObject({ status: 'pending', failureReason: null });
     expect(await x.todos()).toEqual([]);
-    if (entry === 'scheduler') expect(await x.runScheduler('2026-10-30T01:00:00Z')).toMatchObject({ activated: [leave.id] });
+    if (entry === 'scheduler')
+      expect(await x.runScheduler('2026-10-30T01:00:00Z')).toMatchObject({ activated: [leave.id] });
     else {
       expect((await x.retry(leave, '2026-10-29T01:00:00Z')).status).toBe(409);
       expect((await x.retry(leave, '2026-10-30T01:00:00Z')).status).toBe(200);
@@ -496,7 +497,10 @@ describe('F-140b1 事务与边界', () => {
     const x = await world('suspended-exception');
     const leave = await x.directLeave('2026-10-15');
     const transfer = await x.transferIn('approved', '2026-10-20');
-    expect(await x.runScheduler('2026-11-01T01:00:00Z')).toMatchObject({ failed: [leave.id], suspended: [transfer.id] });
+    expect(await x.runScheduler('2026-11-01T01:00:00Z')).toMatchObject({
+      failed: [leave.id],
+      suspended: [transfer.id],
+    });
     at(x, '2026-11-01');
     const before = await x.stateOf(x.employee.id);
     const token = await ack(x, leave.id, '2026-10-17');
@@ -510,9 +514,11 @@ describe('F-140b1 事务与边界', () => {
     const x = await world('generic-ack');
     const leave = await x.createdLeave(x.employee.id, leaveBody('2026-10-15'));
     await x.transferIn('in_review', '2026-10-20');
-    const send = (extra = {}) => x.session.request('PATCH', `/businesses/${leave.id}`, {
-      ifMatch: leave.revision, body: { lastWorkDate: '2026-10-29', ...extra },
-    });
+    const send = (extra = {}) =>
+      x.session.request('PATCH', `/businesses/${leave.id}`, {
+        ifMatch: leave.revision,
+        body: { lastWorkDate: '2026-10-29', ...extra },
+      });
     const failure = await x.reason(await send());
     expect(failure).toMatchObject({ status: 409, reason: 'EXIT_PENDING_TRANSFER_ACK_REQUIRED' });
     const response = await send({ pendingTransferAck: failure.ackToken });
@@ -531,20 +537,57 @@ describe('F-140b1 事务与边界', () => {
   it('Q-5 effective 分支：关联的已落地调动标为 replanned 后详情没有旧失败标记', async () => {
     const x = await world('effective-summary');
     const employee = await x.session.getEmployee(x.employee.id);
-    const transfer = await x.session.business(x.employee.id, {
-      kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-25', fields: { departmentId: x.to.id },
-    }, employee.revision);
+    const transfer = await x.session.business(
+      x.employee.id,
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-10-25',
+        fields: { departmentId: x.to.id },
+      },
+      employee.revision,
+    );
     const leave = await x.directLeave('2026-10-15');
     const ctx = context(x, '2026-10-06');
     await withTenant(x.db, ctx.tenantId, async (tx) => {
       const item = (await pendingActivations(tx, ctx, x.employee.id)).find((row) => row.id === transfer.id)!;
-      await recordActivationAttempt(tx, ctx, item, { outcome: 'failed', trigger: 'scheduler', reason: 'REBUILD_REQUIRED',
-        detail: { blockers: [{ id: leave.id }] } });
+      await recordActivationAttempt(tx, ctx, item, {
+        outcome: 'failed',
+        trigger: 'scheduler',
+        reason: 'REBUILD_REQUIRED',
+        detail: { blockers: [{ id: leave.id }] },
+      });
     });
     await changed(x, leave.id, '2026-10-08', '2026-10-29');
     expect(await latest(x, transfer.id)).toMatchObject({ outcome: 'replanned' });
     expect((await x.business(transfer.id)).activation).toBeNull();
     expect(await x.todos()).toEqual([]);
+  });
+  it('F-140 混合编辑：立即生效的订阅方必须看到本次扩展字段', async () => {
+    const x = await world('mixed-fields');
+    const leave = await x.directLeave('2026-11-19');
+    const { exitPostEffectHooks } = await import('../../apps/api/src/modules/employment/exit-confirmation.js');
+    let observed: unknown;
+    exitPostEffectHooks.onEffective(async (tx, ctx, event) => {
+      if (event.businessId !== leave.id) return;
+      const rows = await tx.execute(sql`SELECT exit_type_code FROM exit_requests
+        WHERE tenant_id=${ctx.tenantId} AND business_id=${leave.id}::uuid`);
+      observed = JSON.stringify(rows);
+    });
+    await changed(x, leave.id, '2026-11-01', '2026-10-29', { exitTypeCode: 'involuntary' });
+    expect(observed).toContain('involuntary');
+  });
+
+  it('F-11 已生效的仅生效日改动仍返回原日期不可改原因', async () => {
+    const x = await world('immutable-effective-only');
+    const leave = await x.directLeave('2026-10-15');
+    await x.runScheduler('2026-10-16T01:00:00Z');
+    const before = await x.stateOf(x.employee.id);
+    const response = await x.session.request('PATCH', `/exits/${leave.id}`, {
+      ifMatch: (await x.business(leave.id)).revision, body: { effectiveDate: '2026-10-30' },
+    });
+    expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+    expect((await x.stateOf(x.employee.id)).businesses).toEqual(before.businesses);
   });
 
 });
