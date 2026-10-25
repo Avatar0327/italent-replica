@@ -13,17 +13,17 @@ import { findCurrentRecord } from '../employment/read-model.js';
 import { approvalError } from './context.js';
 import { candidateOf, resolveCandidate, resolveFallbackCandidates, type RoutingSubject } from './resolver.js';
 import type { TaskRow } from './store.js';
+import { actualApprovals } from './task-history.js';
 
 /** 调用方先按有效轮次裁剪；只认上一节点最后一次激活的人工同意，转交旧任务/跳过不算。 */
 export function previousApproved(tasks: readonly TaskRow[], nodeKey: string | null): string[] {
   const previous = tasks.filter((task) => task.nodeKey === nodeKey);
   const activation = previous.at(-1)?.activationId;
-  const automatic = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip', 'no_assignee_approve']);
   return [
     ...new Set(
-      previous
-        .filter((task) => task.activationId === activation && task.status === 'approved' && !automatic.has(task.origin))
-        .flatMap((task) => task.assigneeUserId ?? []),
+      actualApprovals(previous.filter((task) => task.activationId === activation)).flatMap(
+        (task) => task.assigneeUserId ?? [],
+      ),
     ),
   ];
 }
