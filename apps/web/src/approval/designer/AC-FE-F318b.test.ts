@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { APPROVAL_TYPES, APPROVER_SOURCE_TYPES, approverSourceViolations, type ApproverSource } from '@italent/domain';
 import { flowFixture } from '../../../../../tests/acceptance/support/f315-fixture.js';
 import { fallbackFixture } from '../../../../../tests/acceptance/support/f304-fixture.js';
-import { buildDraft, completeDefinition, editableValues, nodeField, acceptProcessReceipt } from './model.js';
+import { buildDraft, completeDefinition, editableValues, nodeField, acceptProcessReceipt, assertDraftStructure } from './model.js';
 import { ApiError } from '../../foundation/client.js';
 import { createFormStore, isLocked } from '../../foundation/forms/store.js';
 
@@ -110,7 +110,7 @@ describe('AC-FE-F318b 来源级联', () => {
       businessId: flow.id,
       patchOnly: true,
       send: async () => {
-        throw new ApiError(409, 'REVISION_CONFLICT');
+        throw new ApiError(409, 'REVISION_CONFLICT', 'conflict', '版本冲突');
       },
     };
     await store.submit('flow', input);
@@ -127,6 +127,7 @@ describe('AC-FE-F318b 来源级联', () => {
       },
     });
     const command = store.get('unknown')?.command?.id;
+    expect(command).toBeTruthy();
     store.clear('unknown');
     expect(isLocked(store.get('unknown'))).toBe(true);
     await store.submit('unknown', { ...input, values: baseline });
@@ -134,10 +135,18 @@ describe('AC-FE-F318b 来源级联', () => {
     await store.submit('rejected', {
       ...input,
       send: async () => {
-        throw new ApiError(422, 'APPROVAL_SOURCE_INVALID');
+        throw new ApiError(422, 'APPROVAL_SOURCE_INVALID', 'fields', '审批人来源无效');
       },
     });
     expect(store.get('rejected')?.values[field]).toEqual(person);
     expect(isLocked(store.get('rejected'))).toBe(false);
   });
+  it('13 409 空人策略改变时拦截恢复，避免静默丢掉已编辑来源', () => {
+    const original = fallbackFixture().latestVersion;
+    Object.assign(original.nodes[0]!, { emptyApproverPolicy: 'specified', emptyApproverSources: [person] });
+    const latest = structuredClone(original);
+    Object.assign(latest.nodes[0]!, { emptyApproverPolicy: 'stop', emptyApproverSources: [] });
+    expect(() => assertDraftStructure(original, latest)).toThrow('流程版本或节点结构已变更');
+  });
+
 });
