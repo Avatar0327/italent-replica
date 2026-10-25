@@ -34,8 +34,8 @@ ALTER TABLE exit_account_settings ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE exit_account_settings FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY tenant_isolation ON exit_account_settings USING (tenant_id=current_setting('app.tenant_id')::uuid)
-  WITH CHECK (tenant_id=current_setting('app.tenant_id')::uuid);
+CREATE POLICY tenant_isolation ON exit_account_settings USING (tenant_id=current_tenant_id())
+  WITH CHECK (tenant_id=current_tenant_id());
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON exit_account_settings TO app_user;
 
@@ -44,7 +44,7 @@ ALTER TABLE exit_account_tasks ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE exit_account_tasks FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY tenant_isolation ON exit_account_tasks USING (tenant_id=current_setting('app.tenant_id')::uuid)
-  WITH CHECK (tenant_id=current_setting('app.tenant_id')::uuid);
+CREATE POLICY tenant_isolation ON exit_account_tasks USING (tenant_id=current_tenant_id())
+  WITH CHECK (tenant_id=current_tenant_id());
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON exit_account_tasks TO app_user;
