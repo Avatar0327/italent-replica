@@ -78,6 +78,27 @@ describe('AC-APV-F318a 运行', () => {
     ).toEqual([s.outHead.userId, s.inHead.userId].sort());
   });
 
+  it('转交后上一节点只带实际接手同意者，不带被转交人', async () => {
+    const w = await approvalWorld(db().db, 'f318a-transferred');
+    const s = await transferScene(w);
+    await w.publishedProcess({
+      nodes: [
+        { key: 'first', approver: specified(s.outHead.userId), actions: { transfer: true } },
+        { key: 'second', kind: 'countersign', approvers: [previous], transitionRule: { type: 'all' } },
+      ],
+    });
+    let instance = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    instance = await w.json<InstanceView>(
+      await w.taskAction(s.outHead.userId, w.pending(instance)[0]!.id, 'transfer', instance.revision, {
+        toUserId: s.inHead.userId,
+      }),
+    );
+    instance = await w.json<InstanceView>(
+      await w.taskAction(s.inHead.userId, w.pending(instance)[0]!.id, 'approve', instance.revision),
+    );
+    expect(w.pending(instance).map((t) => [t.nodeKey, t.assigneeUserId])).toEqual([['second', s.inHead.userId]]);
+  });
+
   it('业务日主职经理与今天最新主职经理不同，按指定业务日解析且租户隔离', async () => {
     const w = await approvalWorld(db().db, 'f318a-date');
     const s = await transferScene(w);
@@ -115,6 +136,15 @@ describe('AC-APV-F318a 运行', () => {
       );
       expect((await resolveSource(tx, context, { type: 'custom_variable', value: 'owner' }))[0]!.userId).toBe(w.hr.id);
       expect((await resolveSource(tx, context, specified(randomUUID())))[0]!.userId).toBeNull();
+    });
+    const foreign = await approvalWorld(db().db, 'f318a-foreign');
+    await withTenant(w.db, foreign.tenant.id, async (tx) => {
+      const outside = { ...context, tenantId: foreign.tenant.id };
+      expect((await resolveSource(tx, outside, specified(s.manager.userId)))[0]!.userId).toBeNull();
+      expect(
+        (await resolveSource(tx, outside, { type: 'object_field', value: 'business_record_direct_manager' }))[0]!
+          .userId,
+      ).toBeNull();
     });
   });
 

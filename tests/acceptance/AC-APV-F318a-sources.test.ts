@@ -45,7 +45,19 @@ describe('AC-APV-F318a 来源统一模型', () => {
   it('F-326 与 F-318c 未开放值给出明确的 422 原因', async () => {
     const x = await world(database().db, 'unsupported-sources');
     const input = definition(x);
-    for (const type of ['public_variable', 'application_variable', 'matrix', 'department', 'job', 'identity']) {
+    for (const type of [
+      'public_variable',
+      'application_variable',
+      'matrix',
+      'department',
+      'business_org',
+      'profit_center',
+      'reserve4',
+      'reserve5',
+      'position',
+      'job',
+      'identity',
+    ]) {
       const response = await api(x, 'POST', '', 0, {
         ...input,
         code: `F318a_${randomUUID().replaceAll('-', '')}`,
