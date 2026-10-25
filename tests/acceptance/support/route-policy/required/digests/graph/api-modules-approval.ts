@@ -782,8 +782,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definitions.ts#assertFallbackUsers': [
     'apps/api/src/modules/approval/context.ts#approvalError',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#uuidArray',
+    'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
   ],
   'apps/api/src/modules/approval/definitions.ts#assertUniquePriority': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -897,6 +896,21 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#rejectAllowed',
     'packages/domain/src/approval/types.ts#rejectToPreviousAllowed',
     'packages/domain/src/approval/types.ts#revokeAllowed',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#currentDate': [
+    'apps/api/src/audit/request-context.ts#currentAuditRequest',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#currentDate',
+    'apps/api/src/modules/employment/org-people.ts#activeEmployees',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople': ['#eligibleDesignerPeople'],
+  'apps/api/src/modules/approval/designer-people.ts#querySchema': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
@@ -1518,6 +1532,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/definitions.ts#newVersion',
     'apps/api/src/modules/approval/definitions.ts#publishProcess',
     'apps/api/src/modules/approval/definitions.ts#replaceDraft',
+    'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
+    'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
     '#command',
     '#processResponse',
     '#readCtx',
@@ -1580,6 +1596,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/queries.ts#listAdminLogs',
     '#readCtx',
     'apps/api/src/modules/job/context.ts#pageQuery',
+  ],
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/person-candidates': [
+    'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
+    'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
+    '#readCtx',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
     'apps/api/src/modules/approval/queries.ts#listInstances',

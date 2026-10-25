@@ -60,6 +60,7 @@ import {
   withdraw,
   type Outcome,
 } from './actions.js';
+import { designerPeopleQuery, listDesignerPeople } from './designer-people.js';
 import { ADAPTERS } from './adapters.js';
 import { approvalError, canonicalId, type ApprovalContext, type FieldAccess } from './context.js';
 import { approvalTypeOf, createSchema, definitionSchema, toDefinition } from './definition-input.js';
@@ -291,6 +292,12 @@ function registerHooks(deps: TenantRouteDeps) {
 }
 
 function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/designer/person-candidates', async (c) => {
+    const ctx = readCtx(c, deps);
+    await requireProcessButton(deps, ctx, 'update');
+    const query = designerPeopleQuery(c.req.query());
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerPeople(tx, ctx.tenantId, query)));
+  });
   router.get('/types', async (c) => {
     await requireProcessView(deps, tenantCtx(c));
     return c.json({ items: Object.values(APPROVAL_TYPES) });

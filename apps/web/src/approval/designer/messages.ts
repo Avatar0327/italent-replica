@@ -1,4 +1,12 @@
 export const m = {
+  fallback: '兜底处理人',
+  fallbackInvalid: '兜底处理人必须是有效的用户账号',
+  fallbackDuplicate: '兜底处理人不能重复',
+  fallbackLimit: (limit: number) => `兜底处理人最多 ${limit} 人`,
+  fallbackExpired: '已失效',
+  fallbackRemove: '已选人员已失效，请移除后重新选择。',
+  fallbackReadFailed: '已选人员读取失败，请重试；原选择已保留。',
+  fallbackTooMany: '候选人员较多，请输入更精确的姓名或工号。',
   title: '流程',
   designer: '设计器',
   list: '返回流程列表',

@@ -378,6 +378,9 @@ const ADMIN_LOG_KEYS = [
 
 export const APPROVAL_POLICIES = defineTable('approval', {
   // ---- registerProcessRoutes：流程定义（DEC-102）------------------------------------------------------------------
+  'GET /designer/person-candidates': admin('process_matrix', {
+    fields: fixed(['userId', 'name', 'code', 'departmentId', 'departmentName'], 'DEC-686① / DEC-135'),
+  }),
   'GET /types': processView(DICTIONARY, DICTIONARY),
   // status 非法值 .catch('active')，不报错
   'GET /processes': processView(PROCESS_ALL, PROCESS_SHAPE),

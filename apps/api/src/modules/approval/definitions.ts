@@ -44,6 +44,7 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
+import { eligibleDesignerPeople } from './designer-people.js';
 import { isAssignable } from './resolver.js';
 import { assertEmptyApproverPolicies } from './definition-input.js';
 
@@ -335,19 +336,16 @@ const uuidArray = (ids: readonly string[]) =>
       )}]::uuid[]`
     : sql`'{}'::uuid[]`;
 
-/** DEC-663：兜底处理人必须是本租户的有效成员（写入时复核；审批资格在每次取人时再复核）。 */
+/** DEC-686①：兜底处理人与设计器候选共用在职内部员工及有效账号校验；运行时取人仍独立复核。 */
 async function assertFallbackUsers(tx: Tx, tenantId: string, node: ApprovalNode) {
   const ids = node.fallbackUserIds ?? [];
   if (!ids.length) return;
-  const found = rowsOf<{ user_id: string }>(
-    await tx.execute(sql`SELECT user_id FROM tenant_memberships WHERE tenant_id=${tenantId}
-      AND status='active' AND user_id = ANY(${uuidArray(ids)})`),
-  );
+  const found = await eligibleDesignerPeople(tx, tenantId, { userIds: ids, limit: ids.length, offset: 0 });
   if (found.length !== new Set(ids).size)
     throw approvalError(
       'VALIDATION_FAILED',
       'APPROVAL_FALLBACK_USER_INVALID',
-      `节点 ${node.key} 的兜底处理人包含不是本租户有效成员的用户`,
+      `节点 ${node.key} 的兜底处理人须为本租户在职且有有效登录账号的内部员工`,
     );
 }
 
