@@ -507,6 +507,7 @@ export const GRAPH: Graph = {
     '#transferProcessCode',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
@@ -1081,6 +1082,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#loadInstance',
   ],
   'apps/api/src/modules/approval/engine.ts#persistRun': [
+    'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/context.ts#auditApproval',
     'apps/api/src/modules/approval/context.ts#emitOutbox',
     '#instanceAudit',

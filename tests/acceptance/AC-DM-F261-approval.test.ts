@@ -3,7 +3,7 @@ import './support/exit-gate-enforced.js';
 import { getUser } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, transferScene, permissionAdmin, type NodeInput, type InstanceView } from './AC-APV-support.js';
+import { approvalWorld, transferScene, type NodeInput, type InstanceView } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { runEmploymentActivations } from '../../apps/api/src/modules/employment/activation-scheduler.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
