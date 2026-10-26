@@ -1,7 +1,7 @@
-import { approverSourcesOf, expressionValue, sourceKey, sourceViolation } from './sources.js';
 /**
  * 流程定义校验：保存草稿时做结构校验；发布时再做 DEC-018 / DEC-054 规则校验（REQ-APV-001 R4/R5、REQ-APV-002 R6）。
  */
+import { approverSourcesOf, expressionValue, relationSource, sourceKey, sourceViolation } from './sources.js';
 import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
 import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
@@ -76,7 +76,7 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
     const invalid = sourceViolation(source);
     if (invalid) violations.push(invalid);
     if (
-      source.value === 'business_record_direct_manager' &&
+      (source.value === 'business_record_direct_manager' || relationSource(source)) &&
       !['employment', 'part_time', 'exit_handover'].includes(type.adapter)
     )
       violations.push('该审批类型没有任职申请业务日');

@@ -53,15 +53,41 @@ export function expressionValue(source: ApproverSource): ApproverExpression | nu
   const value = source.value as ApproverExpression;
   return APPROVER_EXPRESSIONS.includes(value) && EXPRESSION_SOURCE_TYPES[value] === source.type ? value : null;
 }
+/** DEC-691：引用值沿用唯一 type + value 模型，后缀只在相应来源中有效。 */
+export const RELATION_SOURCE_TYPES = [
+  'department',
+  'business_org',
+  'profit_center',
+  'reserve4',
+  'reserve5',
+  'position',
+  'job',
+] as const;
+export type RelationSourceType = (typeof RELATION_SOURCE_TYPES)[number];
+export const SOURCE_DIMENSIONS = {
+  department: 'admin',
+  business_org: 'business',
+  profit_center: 'product',
+  reserve4: 'reserve4',
+  reserve5: 'reserve5',
+} as const;
+export function relationSource(source: ApproverSource) {
+  if (!RELATION_SOURCE_TYPES.includes(source.type as RelationSourceType)) return null;
+  const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::(descendants|relative))?$/.exec(
+    source.value,
+  );
+  if (!match) return null;
+  const type = source.type as RelationSourceType;
+  const dimension = SOURCE_DIMENSIONS[type as keyof typeof SOURCE_DIMENSIONS];
+  const mode = match[2] ?? 'self';
+  if ((mode === 'descendants' && !dimension) || (mode === 'relative' && type !== 'job')) return null;
+  return { type, id: match[1]!, mode, dimension };
+}
 export function sourceViolation(source: ApproverSource): string | null {
   if (['public_variable', 'application_variable', 'matrix'].includes(source.type)) return '暂不支持，后补 F-326';
   if (expressionValue(source)) return null;
-  if (
-    ['department', 'business_org', 'profit_center', 'reserve4', 'reserve5', 'position', 'job', 'identity'].includes(
-      source.type,
-    )
-  )
-    return '该来源待 F-318c 开放';
+  if (relationSource(source)) return null;
+  if (source.type === 'identity') return '该来源待 F-318c 开放（身份 c2）';
   if (
     source.type === 'specified' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(source.value)

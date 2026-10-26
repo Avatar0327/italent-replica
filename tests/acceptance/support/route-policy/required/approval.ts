@@ -235,6 +235,9 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
 });
 
 export const APPROVAL: RequiredTable = {
+  'GET /api/tenant/approval/designer/source-candidates': [
+    processWrite(route('GET', '/designer/source-candidates', "await requireProcessButton(deps, ctx, 'update')")),
+  ],
   'GET /api/tenant/approval/designer/person-candidates': [
     processWrite(route('GET', '/designer/person-candidates', "await requireProcessButton(deps, ctx, 'update')")),
   ],

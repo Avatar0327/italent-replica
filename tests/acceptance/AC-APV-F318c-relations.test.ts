@@ -32,7 +32,7 @@ describe('AC-APV-F318c 业务日关系解析', () => {
     await w.setOrgRoles(w.root, { head: null });
     expect(await resolved(w, source('department', leaf))).toEqual([]);
   });
-  it('D2 负责人当前不合格则向上，不绕过外部成员 / 离职 / 无账号资格', async () => {
+  it('D2 负责人当前不合格则向上，不绕过外部成员 / 无账号资格', async () => {
     const w = await relationWorld(database().db, 'c-eligibility');
     await withTenant(w.db, w.tenant.id, (tx) =>
       tx.execute(sql`DELETE FROM permission_user_person_links
@@ -48,6 +48,20 @@ describe('AC-APV-F318c 业务日关系解析', () => {
       WHERE tenant_id=${w.tenant.id} AND employee_id=${w.head.employeeId}`),
     );
     expect(await resolved(w, source('department', w.child))).toEqual([]);
+  });
+  it('D7 历史负责人现已离职仍排除，继续向上找实时合格账号', async () => {
+    const w = await relationWorld(database().db, 'c-departed');
+    const employee = await w.json<{ revision: number }>(
+      await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${w.near.employeeId}`),
+    );
+    await w.json(
+      await w.request(w.hr.id, 'POST', `/api/tenant/employment/employees/${w.near.employeeId}/businesses`, {
+        ifMatch: employee.revision,
+        body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-01', fields: {} },
+      }),
+      201,
+    );
+    expect(await resolved(w, source('department', w.child), '2026-08-01')).toEqual([w.head.userId]);
   });
   it.each([
     ['business_org', 'business'],
@@ -71,6 +85,10 @@ describe('AC-APV-F318c 业务日关系解析', () => {
     expect(await resolved(w, source('department', w.root), '2026-08-01')).toEqual([w.head.userId]);
     expect(await resolved(w, source('department', w.root), '2026-10-01')).toEqual([w.near.userId]);
     expect(await resolved(w, source('department', w.root), '1900-01-01')).toEqual([]);
+    await w.setOrgRoles(w.child, { head: null });
+    await orgVersion(w, w.child, { startDate: '2026-09-01' }, { admin: w.staff });
+    expect(await resolved(w, source('department', w.child), '2026-08-01')).toEqual([w.head.userId]);
+    expect(await resolved(w, source('department', w.child), '2026-10-01')).toEqual([]);
   });
   it('D3 职位 / 普通职务取全部当日主职；历史与最新不同；D4 停用不回退旧启用版', async () => {
     const w = await relationWorld(database().db, 'c-job-date');

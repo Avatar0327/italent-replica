@@ -1,3 +1,4 @@
+import { assertSourceReferences } from './source-reference.js';
 /**
  * 流程定义与版本（REQ-APV-001）：草稿可整体替换；发布后只读，只能“编辑最新版本”生成新草稿；废弃移出可用列表。
  * 发布校验见 publishViolations（DEC-018 / DEC-054）；出厂预置见 PRESET_PROCESSES（DEC-018）。
@@ -382,6 +383,7 @@ async function writeVersionContent(
         throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
       throw error;
     }
+    await assertSourceReferences(tx, tenantId, sources);
     const typed = nodeTypeColumns(node);
     const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes

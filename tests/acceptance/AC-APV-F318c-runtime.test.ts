@@ -2,7 +2,7 @@
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { relationWorld, source, job, resolved } from './AC-APV-F318c-support.js';
+import { relationWorld, source, job, resolved, orgVersion } from './AC-APV-F318c-support.js';
 import { world, definition, publish, reach } from './AC-EXIT-F316-support.js';
 
 const database = useTestDb();
@@ -72,6 +72,26 @@ describe('AC-APV-F318c 引擎接线', () => {
     expect(ids.every((id) => users.includes(id!))).toBe(true);
     expect(w.pending(await w.detail(instance.id)).map((t) => t.assigneeUserId)).toEqual(ids);
   }, 120_000);
+  it('空人指定策略可独立配置组织来源，复用同一解析出口', async () => {
+    const x = await world(database().db, 'c-empty-relation');
+    const org = await x.session.org('合成空人候选组织', { establishedOn: '2025-01-01' });
+    await orgVersion({ db: x.db, tenant: { id: x.tenantId } }, org.id, { personInChargeId: x.hrbp.employeeId });
+    const input = definition(x, {
+      work_handover: {
+        approvers: [source('department', x.tenantId)],
+        emptyApproverPolicy: 'specified',
+        fallbackUserIds: [],
+      },
+    });
+    input.nodes = input.nodes.map((node) =>
+      node.key === 'work_handover' ? { ...node, emptyApproverSources: [source('department', org.id)] } : node,
+    );
+    await publish(x, input);
+    const run = await reach(x, 'work_handover', false);
+    expect(await x.pendingTasks(run.instanceId)).toEqual([
+      expect.objectContaining({ nodeKey: 'work_handover', userId: x.hrbp.userId }),
+    ]);
+  });
   for (const policy of ['stop', 'auto_approve', 'specified', 'exception_admin'] as const) {
     it(`新组织来源为空仍进入 F-316 ${policy}，指定人员单独保存`, async () => {
       const x = await world(database().db, `c-empty-${policy}`);

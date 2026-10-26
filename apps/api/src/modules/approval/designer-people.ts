@@ -41,9 +41,9 @@ async function currentDate(tx: Tx) {
 export async function eligibleDesignerPeople(
   tx: Tx,
   tenantId: string,
-  query: { userIds?: readonly string[]; keyword?: string; limit: number; offset: number },
+  query: { userIds?: readonly string[]; keyword?: string; limit: number; offset: number; asOf?: string },
 ): Promise<DesignerPerson[]> {
-  const asOf = await currentDate(tx);
+  const asOf = query.asOf ?? (await currentDate(tx));
   const pattern = `%${(query.keyword ?? '').replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
   const ids = query.userIds ? sql`AND l.user_id = ANY(${`{${query.userIds.join(',')}}`}::uuid[])` : sql``;
   return rowsOf<DesignerPerson>(

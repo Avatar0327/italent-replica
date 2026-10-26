@@ -24,7 +24,7 @@ export async function relationWorld(db: Db, label: string) {
 export type RelationWorld = Awaited<ReturnType<typeof relationWorld>>;
 
 export async function orgVersion(
-  w: ApprovalWorld,
+  w: { db: Db; tenant: { id: string } },
   id: string,
   patch: Partial<typeof orgVersions.$inferInsert> = {},
   parents?: Record<string, string | null>,
