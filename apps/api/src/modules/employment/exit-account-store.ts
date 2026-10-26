@@ -1,9 +1,10 @@
 /** DM-R9 / DEC-684：离退休事务中的持久任务出口；此处绝不取账号锁或改账号状态。 */
-import { and, eq, exitAccountSettings, exitAccountTasks, sql, type Tx } from '@italent/db';
+import { afterTransactionCommit, and, eq, exitAccountSettings, exitAccountTasks, sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { assertRevision, auditEmployment } from './context.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
+import { drainExitAccounts } from './exit-account-worker.js';
 
 export type AccountTask = typeof exitAccountTasks.$inferSelect;
 export const accountSettingBody = z
@@ -84,6 +85,13 @@ export async function queueExitAccount(tx: Tx, ctx: EmploymentContext, businessI
     })
     .returning();
   if (after) await auditTask(tx, ctx, before ?? null, after);
+  consumeAccountAfterCommit(tx, ctx, businessId);
+}
+/** 只消费当前事务实际登记的任务及命令，不从 HTTP 请求键猜测平台派生命令键。 */
+export function consumeAccountAfterCommit(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  afterTransactionCommit(tx, `exit-account:${ctx.tenantId}:${businessId}:${ctx.commandId}`, (db) =>
+    drainExitAccounts(db, ctx.tenantId, ctx.now, ctx.commandId, businessId),
+  );
 }
 export async function auditTask(tx: Tx, ctx: EmploymentContext, before: AccountTask | null, after: AccountTask) {
   await auditEmployment(

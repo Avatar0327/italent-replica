@@ -1,6 +1,6 @@
 /** F-261：配置、持久待办及原任务授权重试；每次台账重放均按当前权限再判。 */
 import { and, eq, exitAccountTasks, sql, withTenant, type Tx } from '@italent/db';
-import type { Hono, Context, MiddlewareHandler } from 'hono';
+import type { Hono, Context } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
 import { runCommand } from '../../commands.js';
@@ -20,13 +20,13 @@ import {
 } from './context.js';
 import {
   accountSettingBody,
+  consumeAccountAfterCommit,
   readAccountSettings,
   saveAccountSettings,
   saveTask,
   taskKey,
   type AccountTask,
 } from './exit-account-store.js';
-import { drainExitAccounts } from './exit-account-worker.js';
 import type { EmploymentContext } from './types.js';
 
 const settingsObject = 'TenantBase.EmploymentSettings';
@@ -154,36 +154,9 @@ async function retry(c: Context<TenantEnv>, deps: TenantRouteDeps) {
         commandId,
       });
       if (!after) throw new AppError('REVISION_CONFLICT', '账号处理任务已变化');
+      consumeAccountAfterCommit(tx, { ...ctx, commandId }, id);
       return { status: 200, body: retryReceipt(after) };
     },
   });
   return c.json(result.body, result.status);
 }
-
-async function hasCommittedOutcome(response: Response) {
-  if (response.status < 400) return true;
-  if (response.status !== 403) return false;
-  // DEC-069：盲审拒绝可同时提交自动转交。只放行这个机器原因，真正拒绝/回滚的请求不触发消费。
-  const body = (await response
-    .clone()
-    .json()
-    .catch(() => null)) as {
-    error?: { details?: { reason?: string } };
-  } | null;
-  return body?.error?.details?.reason === 'APPROVAL_BLIND_REVIEW';
-}
-
-/** 业务事务已提交才进入全局锁序；结果未知/存储故障留待调度回查，不能把已生效响应改成业务失败。 */
-export const exitAccountAfterCommit =
-  (deps: TenantRouteDeps): MiddlewareHandler<TenantEnv> =>
-  async (c, next) => {
-    await next();
-    const commandId = c.req.header('idempotency-key');
-    if (!commandId || c.req.method === 'GET' || !(await hasCommittedOutcome(c.res))) return;
-    const { tenantId } = tenantOf(c);
-    try {
-      await drainExitAccounts(deps.db, tenantId, deps.clock(), commandId);
-    } catch {
-      console.error(JSON.stringify({ type: 'exit-account.pending-recovery', tenantId, commandId }));
-    }
-  };

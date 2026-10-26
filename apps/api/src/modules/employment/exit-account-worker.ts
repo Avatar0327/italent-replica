@@ -231,7 +231,7 @@ async function processUser(db: Db, userId: string, now: Date, origin: TenantRow)
 }
 
 /** 命令提交后按本命令即时消费；调度按租户键集分页补偿。blocked 只由授权的人工重试解锁。 */
-export async function drainExitAccounts(db: Db, tenantId: string, now: Date, commandId?: string) {
+export async function drainExitAccounts(db: Db, tenantId: string, now: Date, commandId?: string, businessId?: string) {
   let after: string | null = null;
   const processed = new Set<string>();
   let origin: TenantRow | undefined;
@@ -245,6 +245,7 @@ export async function drainExitAccounts(db: Db, tenantId: string, now: Date, com
             eq(exitAccountTasks.tenantId, tenantId),
             sql`(${exitAccountTasks.status} IN ('pending','failed') OR ${exitAccountTasks.restoreRequested})`,
             commandId ? eq(exitAccountTasks.commandId, commandId) : sql`true`,
+            businessId ? eq(exitAccountTasks.businessId, businessId) : sql`true`,
             after ? sql`${exitAccountTasks.businessId}>${after}::uuid` : sql`true`,
           ),
         )

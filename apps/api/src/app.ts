@@ -39,7 +39,6 @@ import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
 import { assertFormulaBindingCapabilities } from './modules/talent-review/formula-binding-capabilities.js';
 import { resolveFormulaIdBinding } from './modules/talent-review/formula-binding-switch.js';
-import { exitAccountAfterCommit } from './modules/employment/exit-account-routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -167,7 +166,6 @@ function createTenantRouter(db: Db, deps: AppDeps, formulaIdBinding: boolean): H
   useMiddleware(router, '/api/tenant/*', tenantContext(db, deps.identity ?? denyAllIdentity), 'tenantContext');
   // 身份与租户确认后，兜底记录执行器之前被拒绝的写命令（R1-T16 第二轮 P2-7）
   useMiddleware(router, '/api/tenant/*', captureCommandFailures(db), 'captureCommandFailures');
-  useMiddleware(router, '/api/tenant/*', exitAccountAfterCommit(routeDeps), 'exitAccountAfterCommit');
   for (const register of [...TENANT_MODULES, ...(deps.tenantRoutes ?? [])]) register(router, routeDeps);
   return router;
 }
