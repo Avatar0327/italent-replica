@@ -152,7 +152,7 @@ it.each([
   ['remove', false],
   ['system', true],
   ['system', false],
-] as const)('%s 接管：审批中开关 %s，提交后立即消费并支持同键重放', async (kind, enabled) => {
+] as const)('AC-DM-F261：%s 接管：审批中开关 %s，提交后立即消费并支持同键重放', async (kind, enabled) => {
   const x = await takeoverScene(`takeover-${kind}-${enabled}`, enabled);
   const invoke = await takeover(x, kind);
   x.past();
@@ -167,7 +167,7 @@ it.each([
   await runEmploymentActivations(x.w.db, cmd(), { tenantId: x.w.tenant.id }, { clock: x.w.clock });
   await account(x, enabled);
 });
-it('复用原提交命令键的无权/异路径请求，不消费原任务', async () => {
+it('AC-DM-F261：复用原提交命令键的无权/异路径请求，不消费原任务', async () => {
   const x = await scene('review-command-conflict');
   const [task] = await withTenant(x.w.db, x.w.tenant.id, async (tx) =>
     rows<{ commandId: string }>(
@@ -186,7 +186,7 @@ it('复用原提交命令键的无权/异路径请求，不消费原任务', asy
   await account(x, false);
 });
 
-it('调动中间与末节点推进不生成离退休账号任务', async () => {
+it('AC-DM-F261：调动中间与末节点推进不生成离退休账号任务', async () => {
   const w = await approvalWorld(database().db, 'review-transfer-no-account');
   const s = await transferScene(w);
   await w.publishedProcess({ nodes: [first, second] });
@@ -207,44 +207,47 @@ it('调动中间与末节点推进不生成离退休账号任务', async () => {
   }
 });
 
-it.runIf(Boolean(process.env.TEST_DATABASE_URL))('系统接管与调度锁交错：提交后再消费，不递归争用旧事务锁', async () => {
-  const x = await takeoverScene('takeover-lock');
-  const invoke = await takeover(x, 'system');
-  x.past();
-  let release!: () => void, held!: () => void;
-  const ready = new Promise<void>((r) => {
-    held = r;
-  });
-  const gate = new Promise<void>((r) => {
-    release = r;
-  });
-  const holder = withTenant(x.w.db, x.w.tenant.id, async (tx) => {
-    await tx.execute(sql`SELECT 1 FROM exit_account_tasks
+it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
+  'AC-DM-F261：系统接管与调度锁交错：提交后再消费，不递归争用旧事务锁',
+  async () => {
+    const x = await takeoverScene('takeover-lock');
+    const invoke = await takeover(x, 'system');
+    x.past();
+    let release!: () => void, held!: () => void;
+    const ready = new Promise<void>((r) => {
+      held = r;
+    });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const holder = withTenant(x.w.db, x.w.tenant.id, async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM exit_account_tasks
       WHERE tenant_id=${x.w.tenant.id} AND business_id=${x.view.businessId}::uuid FOR UPDATE`);
-    held();
-    await gate;
-  });
-  await ready;
-  const taking = invoke();
-  let scheduling: Promise<unknown> | undefined;
-  try {
-    expect(await settledOrBlocked(x.w.db, taking, 1)).toBe('blocked');
-    scheduling = runEmploymentActivations(x.w.db, cmd(), { tenantId: x.w.tenant.id }, { clock: x.w.clock });
-    expect(await settledOrBlocked(x.w.db, scheduling, 2)).toBe('blocked');
-  } finally {
-    release();
-  }
-  await holder;
-  await taking;
-  await scheduling;
-  await account(x, true);
-  const saved = await getUser(x.w.db, x.s.subject.userId);
-  await invoke();
-  expect(await getUser(x.w.db, x.s.subject.userId)).toEqual(saved);
-});
+      held();
+      await gate;
+    });
+    await ready;
+    const taking = invoke();
+    let scheduling: Promise<unknown> | undefined;
+    try {
+      expect(await settledOrBlocked(x.w.db, taking, 1)).toBe('blocked');
+      scheduling = runEmploymentActivations(x.w.db, cmd(), { tenantId: x.w.tenant.id }, { clock: x.w.clock });
+      expect(await settledOrBlocked(x.w.db, scheduling, 2)).toBe('blocked');
+    } finally {
+      release();
+    }
+    await holder;
+    await taking;
+    await scheduling;
+    await account(x, true);
+    const saved = await getUser(x.w.db, x.s.subject.userId);
+    await invoke();
+    expect(await getUser(x.w.db, x.s.subject.userId)).toEqual(saved);
+  },
+);
 
 it.each(['commit', 'rollback', 'savepoint-rollback', 'parent-rollback'] as const)(
-  '结构守护：queueExitAccount 的 %s 只由根事务实际提交决定是否消费',
+  'AC-DM-F261：结构守护：queueExitAccount 的 %s 只由根事务实际提交决定是否消费',
   async (mode) => {
     const x = await scene(`transaction-${mode}`);
     x.past();

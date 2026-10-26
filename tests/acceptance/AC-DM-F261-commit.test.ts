@@ -4,7 +4,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it, vi } from 'vitest';
 
 const database = useTestDb();
-it('F-261：消费者引出的已提交任务排在当前消费后，不递归重入', async () => {
+it('AC-DM-F261：消费者引出的已提交任务排在当前消费后，不递归重入', async () => {
   const db = database().db;
   const events: string[] = [];
   await withPlatform(db, async (tx) => {
@@ -26,7 +26,7 @@ it('F-261：消费者引出的已提交任务排在当前消费后，不递归�
   expect(events).toEqual(['committing', 'first-start', 'second-transaction', 'first-end', 'second']);
 });
 
-it('F-261：消费者故障保留已提交结果并继续其他任务，同事务同键只消费一次', async () => {
+it('AC-DM-F261：消费者故障保留已提交结果并继续其他任务，同事务同键只消费一次', async () => {
   const events: string[] = [];
   const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   try {
@@ -56,7 +56,7 @@ it('F-261：消费者故障保留已提交结果并继续其他任务，同事�
   }
 });
 
-it('F-261：事务提交后不能再登记，失败保存点不覆盖父事务已登记的同键任务', async () => {
+it('AC-DM-F261：事务提交后不能再登记，失败保存点不覆盖父事务已登记的同键任务', async () => {
   let closed!: Tx;
   const events: string[] = [];
   await withPlatform(database().db, async (tx) => {
