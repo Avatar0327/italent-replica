@@ -104,6 +104,10 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/active-tenants.ts#activeTenants': [
+    '#TENANT_PAGE',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks': ['#hooks'],
   'apps/api/src/modules/employment/approval-hooks.ts#hooks': ['#unavailable'],
   'apps/api/src/modules/employment/assessment-access.ts#assessmentCommandContext': [
@@ -1603,6 +1607,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#jsonBody',
     '#accountTaskInTenant',
     '#retryReceipt',
+    'apps/api/src/modules/employment/exit-account-store.ts#consumeAccountAfterCommit',
     'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -1638,8 +1643,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-account-store.ts#auditTask': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
+  'apps/api/src/modules/employment/exit-account-store.ts#consumeAccountAfterCommit': [
+    'apps/api/src/modules/employment/exit-account-worker.ts#drainExitAccounts',
+  ],
   'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount': [
     '#auditTask',
+    '#consumeAccountAfterCommit',
     '#taskKey',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -1649,6 +1658,37 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
   ],
   'apps/api/src/modules/employment/exit-account-store.ts#saveTask': ['#auditTask', '#taskKey'],
+  'apps/api/src/modules/employment/exit-account-worker.ts#context': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
+  'apps/api/src/modules/employment/exit-account-worker.ts#drainExitAccounts': ['#processUser'],
+  'apps/api/src/modules/employment/exit-account-worker.ts#facts': [
+    'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
+    '#timeIn',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-account-worker.ts#fail': [
+    'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
+    '#context',
+    '#reasonOf',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-account-worker.ts#members': [
+    'apps/api/src/modules/employment/active-tenants.ts#activeTenants',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-account-worker.ts#processUser': [
+    '#desired',
+    '#facts',
+    '#fail',
+    '#members',
+    '#reasonOf',
+    '#settle',
+  ],
+  'apps/api/src/modules/employment/exit-account-worker.ts#settle': [
+    'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
+    '#context',
+    '#settledStatus',
+  ],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
     'apps/api/src/modules/employment/activation-checks.ts#activationFailureOf',
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',

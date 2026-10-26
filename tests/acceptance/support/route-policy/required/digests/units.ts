@@ -256,7 +256,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employment/exit-account-routes.ts': {
     readScopedAccountTask: 'b2d95a016a31',
-    retry: '9e5821ef97ef',
+    retry: '5641408ad911',
     'route:GET /exit-account/settings': '3ae02ebe8921',
     'route:GET /exit-account/tasks': 'b319948ca238',
     'route:GET /exit-account/tasks/:id': 'd19d511eb311',
@@ -1789,7 +1789,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/complete': '7a8b25e5e52e',
   'apps/api/src/modules/employment/entry-routes.ts#route:POST /pending-entries/:id/postpone': '589484677a4f',
   'apps/api/src/modules/employment/exit-account-routes.ts#readScopedAccountTask': 'c31756f60f54',
-  'apps/api/src/modules/employment/exit-account-routes.ts#retry': 'faada7fed2e1',
+  'apps/api/src/modules/employment/exit-account-routes.ts#retry': 'e2cc21e1e6e5',
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/settings': '71aa94428a03',
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks': 'f1b59197390f',
   'apps/api/src/modules/employment/exit-account-routes.ts#route:GET /exit-account/tasks/:id': '4fa00a4d779b',
