@@ -62,7 +62,14 @@ describe('AC-APV-F318c 维度成员全链路', () => {
         const person = await w.person(`合成业务日${date}`, w.child);
         const business = await w.application(person.employeeId, { departmentId: w.staff }, { effectiveDate: date });
         const response = await w.submitRaw(business);
-        expect.soft(response.status).toBe(belongs ? 200 : 422);
+        expect.soft(response.status).toBe(belongs ? 200 : 409);
+        if (!belongs) {
+          expect.soft((await response.clone().json()).error).toMatchObject({
+            code: 'CONFLICT',
+            details: { reason: 'APPROVAL_FIRST_NODE_EMPTY' },
+          });
+          expect.soft(await w.instanceOfAll(business.id)).toEqual([]);
+        }
         if (response.status === 200) {
           const run = await w.instanceOf(business.id);
           expect.soft(w.pending(run).map((task) => task.assigneeUserId)).toEqual(belongs ? [w.head.userId] : []);
