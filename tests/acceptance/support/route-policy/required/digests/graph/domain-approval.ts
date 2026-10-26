@@ -48,6 +48,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/definition.ts#approverSourceViolations': [
     '#offerApproverViolation',
     'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#relationSource',
     'packages/domain/src/approval/sources.ts#sourceViolation',
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
@@ -206,7 +207,8 @@ export const GRAPH: Graph = {
     '#EXPRESSION_SOURCE_TYPES',
     'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
   ],
-  'packages/domain/src/approval/sources.ts#sourceViolation': ['#expressionValue'],
+  'packages/domain/src/approval/sources.ts#relationSource': ['#RELATION_SOURCE_TYPES', '#SOURCE_DIMENSIONS'],
+  'packages/domain/src/approval/sources.ts#sourceViolation': ['#expressionValue', '#relationSource'],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_DETAIL_VIEW': ['#NO_MODEL', '#form', '#later'],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS': ['#TRANSFER_DETAIL_VIEW'],
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [

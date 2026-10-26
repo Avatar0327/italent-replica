@@ -5,12 +5,14 @@ import { readOrgSettings } from '../org/settings.js';
 import { approvalError, rowsOf } from './context.js';
 
 type Dimension = (typeof SOURCE_DIMENSIONS)[keyof typeof SOURCE_DIMENSIONS];
-export const sourceDimension = (type: RelationSourceType) => SOURCE_DIMENSIONS[type as keyof typeof SOURCE_DIMENSIONS];
+export const sourceDimension = (type: RelationSourceType) =>
+  type in SOURCE_DIMENSIONS ? SOURCE_DIMENSIONS[type as keyof typeof SOURCE_DIMENSIONS] : undefined;
 export async function dimensionEnabled(tx: Tx, tenantId: string, dimension: Dimension | undefined) {
   return !dimension || (await readOrgSettings(tx, tenantId)).enabledDimensions.includes(dimension);
 }
 export function sourceTable(type: RelationSourceType) {
-  return sourceDimension(type) ? 'org_objects' : type === 'position' ? 'job_position_objects' : 'job_post_objects';
+  if (sourceDimension(type)) return 'org_objects';
+  return type === 'position' ? 'job_position_objects' : 'job_post_objects';
 }
 export async function assertSourceReferences(tx: Tx, tenantId: string, sources: readonly ApproverSource[]) {
   for (const source of sources) {

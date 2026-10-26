@@ -78,7 +78,7 @@ export function relationSource(source: ApproverSource) {
   );
   if (!match) return null;
   const type = source.type as RelationSourceType;
-  const dimension = SOURCE_DIMENSIONS[type as keyof typeof SOURCE_DIMENSIONS];
+  const dimension = type in SOURCE_DIMENSIONS ? SOURCE_DIMENSIONS[type as keyof typeof SOURCE_DIMENSIONS] : undefined;
   const mode = match[2] ?? 'self';
   if ((mode === 'descendants' && !dimension) || (mode === 'relative' && type !== 'job')) return null;
   return { type, id: match[1]!, mode, dimension };

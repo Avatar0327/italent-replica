@@ -1,6 +1,7 @@
 /** DEC-691：真实 HTTP 派单、主职排除兼职、最终合席与 F-316 空人出口。 */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
+import { sql, withTenant } from '@italent/db';
 import { describe, expect, it } from 'vitest';
 import { relationWorld, source, job, resolved, orgVersion } from './AC-APV-F318c-support.js';
 import { world, definition, publish, reach } from './AC-EXIT-F316-support.js';
@@ -87,6 +88,33 @@ describe('AC-APV-F318c 引擎接线', () => {
       node.key === 'work_handover' ? { ...node, emptyApproverSources: [source('department', org.id)] } : node,
     );
     await publish(x, input);
+    const run = await reach(x, 'work_handover', false);
+    expect(await x.pendingTasks(run.instanceId)).toEqual([
+      expect.objectContaining({ nodeKey: 'work_handover', userId: x.hrbp.userId }),
+    ]);
+  });
+  it('D8 已保存预留来源关闭后不影响其它来源，不为该空来源追加自动票', async () => {
+    const x = await world(database().db, 'c-reserve-closed');
+    const org = await x.session.org('合成预留来源', { establishedOn: '2025-01-01' });
+    await orgVersion({ db: x.db, tenant: { id: x.tenantId } }, org.id, {
+      personInChargeId: x.workOwner.employeeId,
+    });
+    const enabled = (value: boolean) =>
+      withTenant(x.db, x.tenantId, (tx) =>
+        tx.execute(sql`UPDATE org_settings SET reserve4_enabled=${value} WHERE tenant_id=${x.tenantId}`),
+      );
+    await enabled(true);
+    await publish(
+      x,
+      definition(x, {
+        work_handover: {
+          approvers: [source('reserve4', org.id), source('specified', x.hrbp.userId)],
+          emptyApproverPolicy: 'auto_approve',
+          fallbackUserIds: [],
+        },
+      }),
+    );
+    await enabled(false);
     const run = await reach(x, 'work_handover', false);
     expect(await x.pendingTasks(run.instanceId)).toEqual([
       expect.objectContaining({ nodeKey: 'work_handover', userId: x.hrbp.userId }),
