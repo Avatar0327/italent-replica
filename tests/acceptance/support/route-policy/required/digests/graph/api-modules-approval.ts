@@ -1924,12 +1924,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#dimensionEnabled',
+    '#orgDimensionMember',
     '#sourceTable',
     'packages/domain/src/approval/sources.ts#relationSource',
   ],
   'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled': [
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
   ],
+  'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#orgDimensionMember'],
   'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
     'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
   ],
