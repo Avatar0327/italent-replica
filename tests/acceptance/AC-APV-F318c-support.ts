@@ -27,7 +27,7 @@ export async function orgVersion(
   w: { db: Db; tenant: { id: string } },
   id: string,
   patch: Partial<typeof orgVersions.$inferInsert> = {},
-  parents?: Record<string, string | null>,
+  parents?: Record<string, string | null | undefined>,
 ) {
   await withTenant(w.db, w.tenant.id, async (tx) => {
     const [old] = await tx
@@ -42,7 +42,10 @@ export async function orgVersion(
       .values({ ...old!, ...patch, id: versionId, versionNo: old!.versionNo + 1, previousVersionId: old!.id });
     const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
     const all = new Map(links.map((l) => [l.dimension as string, l.parentOrgId]));
-    for (const [key, value] of Object.entries(parents ?? {})) all.set(key, value);
+    for (const [key, value] of Object.entries(parents ?? {})) {
+      if (value === undefined) all.delete(key);
+      else all.set(key, value);
+    }
     await tx.insert(orgHierarchyLinks).values(
       [...all].map(([dimension, parentOrgId]) => ({
         tenantId: w.tenant.id,

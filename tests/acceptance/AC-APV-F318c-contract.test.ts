@@ -41,6 +41,8 @@ describe('AC-APV-F318c 保存及候选契约', () => {
     for (const type of ['reserve4', 'reserve5', 'business_org', 'profit_center'] as const) {
       expect((await save(w, [source(type, w.root)])).status).toBe(422);
       await dimensions(w);
+      const dimension = type === 'business_org' ? 'business' : type === 'profit_center' ? 'product' : type;
+      await orgVersion(w, w.root, {}, { [dimension]: w.tenant.id });
       expect((await save(w, [source(type, w.root)])).status).toBe(201);
       await dimensions(w, false);
       expect(await resolved(w, source(type, w.root))).toEqual([]);

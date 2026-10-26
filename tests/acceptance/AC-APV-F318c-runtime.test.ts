@@ -104,6 +104,7 @@ describe('AC-APV-F318c 引擎接线', () => {
         tx.execute(sql`UPDATE org_settings SET reserve4_enabled=${value} WHERE tenant_id=${x.tenantId}`),
       );
     await enabled(true);
+    await orgVersion({ db: x.db, tenant: { id: x.tenantId } }, org.id, {}, { reserve4: x.tenantId });
     await publish(
       x,
       definition(x, {
