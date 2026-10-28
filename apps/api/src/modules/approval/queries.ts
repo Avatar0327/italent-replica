@@ -2,6 +2,7 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { rowsOf } from './context.js';
+import { withActorNames } from './store.js';
 
 export interface Page {
   readonly limit: number;
@@ -103,13 +104,16 @@ export async function listAdminLogs(
         ${filter.adminSelfTransfer === undefined ? sql`` : sql`AND l.admin_self_transfer=${filter.adminSelfTransfer}`}
       ORDER BY l.created_at DESC,l.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
-  return rows.map((row) => ({
-    instanceId: String(row.instance_id),
-    event: String(row.event),
-    nodeKey: (row.node_key as string | null) ?? null,
-    actorUserId: (row.actor_user_id as string | null) ?? null,
-    adminSelfTransfer: Boolean(row.admin_self_transfer),
-    detail: row.detail as Record<string, unknown>,
-    createdAt: iso(row.created_at),
-  }));
+  return withActorNames(
+    tx,
+    rows.map((row) => ({
+      instanceId: String(row.instance_id),
+      event: String(row.event),
+      nodeKey: (row.node_key as string | null) ?? null,
+      actorUserId: (row.actor_user_id as string | null) ?? null,
+      adminSelfTransfer: Boolean(row.admin_self_transfer),
+      detail: row.detail as Record<string, unknown>,
+      createdAt: iso(row.created_at),
+    })),
+  );
 }

@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as assessment from '../../apps/api/src/modules/employment/assessment.js';
 import * as guard from '../../apps/api/src/modules/employment/probation-guard.js';
 import { autoAssessmentWorld, type AutoAssessmentWorld } from './AC-PB-BE15b2-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const DAY = '2026-10-01T01:00:00.000Z';
@@ -93,11 +93,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 手工�
     const w = await world('race-assess-manual-first');
     const person = await w.probationer('手工先办员工');
     const b = pauseManualHoldingLock();
-    const manual = w.launchRaw('probation', [person]);
-    await b.reached;
-    const skipped = await w.batch(DAY);
-    expect(skipped).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
-    b.release();
+    const { manual } = await withRelease(b.release, async (run) => {
+      const pending = run.track(w.launchRaw('probation', [person]));
+      await b.reached;
+      const skipped = await w.batch(DAY);
+      expect(skipped).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
+      return { manual: pending };
+    });
     expect(await manualOutcome(await manual)).toBe('succeeded');
     const retried = await w.batch(DAY);
     expect(retried).toMatchObject({ ran: true, launched: [], errors: [] });
@@ -110,11 +112,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 手工�
     const w = await world('race-assess-auto-first');
     const person = await w.probationer('自动先办员工');
     const b = pauseAutoHoldingLock();
-    const batch = w.batch(DAY);
-    await b.reached;
-    const manual = w.launchRaw('probation', [person]);
-    await waitForBlocked(w.db, 1);
-    b.release();
+    const { batch, manual } = await withRelease(b.release, async (hold) => {
+      const batching = hold.track(w.batch(DAY));
+      await b.reached;
+      const pending = hold.track(w.launchRaw('probation', [person]));
+      await waitForBlocked(w.db, 1);
+      return { batch: batching, manual: pending };
+    });
     const run = await batch;
     expect(run).toMatchObject({ ran: true, failed: [], errors: [] });
     expect(run.launched.map((item) => item.employeeId)).toEqual([person.employeeId]);
@@ -130,10 +134,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 手工�
     const w = await world('race-reg-manual-first');
     const person = await w.probationer('手工转正先办员工');
     const b = pauseManualHoldingLock();
-    const manual = w.regularizeRaw(person, 'direct', '2026-10-01');
-    await b.reached;
-    expect(await w.batch(DAY)).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
-    b.release();
+    const { manual } = await withRelease(b.release, async (run) => {
+      const pending = run.track(w.regularizeRaw(person, 'direct', '2026-10-01'));
+      await b.reached;
+      expect(await w.batch(DAY)).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
+      return { manual: pending };
+    });
     expect(await manualOutcome(await manual)).toBe('succeeded');
     expect(await w.batch(DAY)).toMatchObject({ launched: [], failed: [], errors: [] });
     expect(await w.assessmentsOf(person.employeeId)).toEqual([]);
@@ -143,11 +149,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 手工�
     const w = await world('race-reg-auto-first');
     const person = await w.probationer('自动先办转正员工');
     const b = pauseAutoHoldingLock();
-    const batch = w.batch(DAY);
-    await b.reached;
-    const manual = w.regularizeRaw(person, 'direct', '2026-10-01');
-    await waitForBlocked(w.db, 1);
-    b.release();
+    const { batch, manual } = await withRelease(b.release, async (hold) => {
+      const batching = hold.track(w.batch(DAY));
+      await b.reached;
+      const pending = hold.track(w.regularizeRaw(person, 'direct', '2026-10-01'));
+      await waitForBlocked(w.db, 1);
+      return { batch: batching, manual: pending };
+    });
     expect((await batch).launched.map((item) => item.employeeId)).toEqual([person.employeeId]);
     expect(await manualOutcome(await manual)).toBe('stale-revision');
     expect(await manualOutcome(await w.regularizeRaw(person, 'direct', '2026-10-01'))).toBe('process-in-review');
@@ -160,10 +168,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 立即�
     const w = await world('race-run-now-first');
     const person = await w.probationer('立即执行先办员工');
     const b = pauseAutoHoldingLock();
-    const now = w.runNow();
-    await b.reached;
-    expect(await w.batch(DAY)).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
-    b.release();
+    const { now } = await withRelease(b.release, async (run) => {
+      const pending = run.track(w.runNow());
+      await b.reached;
+      expect(await w.batch(DAY)).toMatchObject({ ran: true, skippedLocked: 1, launched: [], failed: [], errors: [] });
+      return { now: pending };
+    });
     const response = await now;
     expect(response.status, await response.clone().text()).toBe(200);
     expect(((await response.json()) as { launched: unknown[] }).launched).toHaveLength(1);
@@ -175,11 +185,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('自动批次 × 立即�
     const w = await world('race-batch-first');
     const person = await w.probationer('批次先办员工');
     const b = pauseAutoHoldingLock();
-    const batch = w.batch(DAY);
-    await b.reached;
-    const now = w.runNow();
-    await waitForBlocked(w.db, 1);
-    b.release();
+    const { batch, now } = await withRelease(b.release, async (hold) => {
+      const batching = hold.track(w.batch(DAY));
+      await b.reached;
+      const pending = hold.track(w.runNow());
+      await waitForBlocked(w.db, 1);
+      return { batch: batching, now: pending };
+    });
     expect((await batch).launched).toHaveLength(1);
     const response = await now;
     expect(response.status, await response.clone().text()).toBe(200);
