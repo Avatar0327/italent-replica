@@ -35,8 +35,17 @@ export async function previewExit(
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string,
-  retirementView?: ExitViewable,
+  retirementView: ExitViewable,
 ) {
+  // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
+  if (
+    retirementView === null ||
+    typeof retirementView !== 'object' ||
+    typeof retirementView.employee !== 'function' ||
+    typeof retirementView.employment !== 'function'
+  ) {
+    throw new Error('previewExit 必须显式传入有效的 retirementView');
+  }
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
   if (leaves.length)
@@ -57,15 +66,12 @@ export async function previewExit(
   return {
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
-    // 退休（传了查看人的字段可见性）另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行），
-    // 与退休详情 / 列表同一张路径表裁剪（F-266）
-    ...(retirementView
-      ? trimWith(
-          RETIREMENT_RESPONSE_DEPENDENCIES,
-          await retirementPreview(tx, ctx, employeeId, lastWorkDate),
-          retirementView,
-        )
-      : {}),
+    // R2-T04 §3.1：P 与退休类型按详情 / 列表同一张路径表裁剪（F-266）；离职入口显式传空可见性（F-301）。
+    ...trimWith(
+      RETIREMENT_RESPONSE_DEPENDENCIES,
+      await retirementPreview(tx, ctx, employeeId, lastWorkDate),
+      retirementView,
+    ),
     blockers,
     ack: ack
       ? {
