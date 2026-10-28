@@ -45,15 +45,31 @@ export async function assertSourceReferences(tx: Tx, tenantId: string, sources: 
   }
 }
 
-/** 先选该业务日最新版本；停用 / 失效仍保留父链供向上穿越，未来版本不参与。 */
-export function orgReferenceRows(tenantId: string, asOf: string, dimension: Dimension) {
+/** DEC-696：先按生效日选规范版本，再借最近成员版本的边；不把已被同日修订撤销的边复活。 */
+function historicalParent(tenantId: string, asOf: string, dimension: Dimension) {
+  return sql`SELECT link.parent_org_id FROM (
+    SELECT DISTINCT ON (start_date) id,start_date FROM org_versions
+    WHERE tenant_id=${tenantId} AND org_id=v.org_id AND start_date<=${asOf}::date
+    ORDER BY start_date DESC,version_no DESC
+  ) canonical JOIN org_hierarchy_links link ON link.tenant_id=${tenantId}
+    AND link.version_id=canonical.id AND link.dimension=${dimension}
+  ORDER BY canonical.start_date DESC LIMIT 1`;
+}
+/** 候选只读当日成员；运行可加载退出节点作祖先跳板，不能用它作种子、后代或取负责人。 */
+export function orgReferenceRows(tenantId: string, asOf: string, dimension: Dimension, traverseExited = false) {
+  const member = orgDimensionMember(tenantId, dimension);
+  const history = traverseExited && dimension !== 'admin';
+  const parent = history
+    ? sql`CASE WHEN ${member} THEN h.parent_org_id ELSE past.parent_org_id END`
+    : sql`h.parent_org_id`;
   return sql`SELECT v.org_id AS id,v.name,(v.enabled AND v.stop_date>=${asOf}::date) AS enabled,
-      h.parent_org_id AS parent_id,v.person_in_charge_id AS head_id
+      ${parent} AS parent_id,v.person_in_charge_id AS head_id,${member} AS member
     FROM (SELECT DISTINCT ON (org_id) * FROM org_versions
       WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date
       ORDER BY org_id,start_date DESC,version_no DESC) v
     LEFT JOIN org_hierarchy_links h ON h.tenant_id=v.tenant_id AND h.version_id=v.id AND h.dimension=${dimension}
-    WHERE ${orgDimensionMember(tenantId, dimension)}`;
+    ${history ? sql`LEFT JOIN LATERAL (${historicalParent(tenantId, asOf, dimension)}) past ON NOT (${member})` : sql``}
+    WHERE ${traverseExited ? sql`true` : member}`;
 }
 export function jobReferenceRows(tenantId: string, asOf: string, type: 'position' | 'job') {
   const table = sql.identifier(type === 'position' ? 'job_position_versions' : 'job_post_versions');

@@ -5,7 +5,7 @@ import { findCurrentRecord } from '../employment/read-model.js';
 import { loadJobObject } from '../job/read-model.js';
 import { eligibleDesignerPeople } from './designer-people.js';
 import { rowsOf } from './context.js';
-import { candidateOf, memo, type RoutingSubject } from './resolver.js';
+import { candidateOf, memo, type OrganizationSourceDiagnostic, type RoutingSubject } from './resolver.js';
 import { dimensionEnabled, orgReferenceRows } from './source-reference.js';
 
 type Reference = NonNullable<ReturnType<typeof relationSource>>;
@@ -14,6 +14,7 @@ interface OrgLink {
   parent_id: string | null;
   head_id: string | null;
   enabled: boolean;
+  member: boolean;
   seed: boolean;
 }
 
@@ -27,27 +28,34 @@ async function orgGraph(
 ) {
   return rowsOf<OrgLink>(
     await tx.execute(sql`WITH RECURSIVE graph AS (
-      ${orgReferenceRows(subject.tenantId, subject.businessDate!, dimension)}
+      ${orgReferenceRows(subject.tenantId, subject.businessDate!, dimension, true)}
     ), seeds(id) AS (
-      SELECT id FROM graph WHERE id=${root}::uuid
-      UNION SELECT g.id FROM graph g JOIN seeds s ON g.parent_id=s.id WHERE ${descendants}
+      SELECT id FROM graph WHERE member AND id=${root}::uuid
+      UNION SELECT g.id FROM graph g JOIN seeds s ON g.parent_id=s.id WHERE ${descendants} AND g.member
     ), ancestors(id) AS (
       SELECT id FROM seeds UNION SELECT g.parent_id FROM graph g JOIN ancestors a ON g.id=a.id
-      WHERE g.parent_id IS NOT NULL
+      WHERE g.parent_id IS NOT NULL AND g.id<>${subject.tenantId}::uuid
     ) SELECT g.*, EXISTS(SELECT 1 FROM seeds s WHERE s.id=g.id) AS seed
       FROM graph g JOIN ancestors a ON a.id=g.id ORDER BY g.id`),
   );
 }
-function* ancestors(graph: Map<string, OrgLink>, start: string) {
+function* ancestors(
+  graph: Map<string, OrgLink>,
+  start: string,
+  tenantRoot: string,
+): Generator<OrgLink, Exclude<OrganizationSourceDiagnostic['reason'], 'resolved'>> {
   const seen = new Set<string>();
   let id: string | null = start;
-  while (id && !seen.has(id)) {
+  while (id) {
+    if (seen.has(id)) return 'cycle';
     seen.add(id);
     const node: OrgLink | undefined = graph.get(id);
-    if (!node) return;
+    if (!node) return 'broken_chain';
     yield node;
+    if (id === tenantRoot) return 'root_empty';
     id = node.parent_id;
   }
+  return 'broken_chain';
 }
 /** 共用 F-304 在职内部账号判定与 F-318a 派单闸；不改变旧固定表达式资格语义。 */
 async function eligiblePerson(tx: Tx, subject: RoutingSubject, personId: string | null): Promise<Candidate | null> {
@@ -70,12 +78,21 @@ async function organization(tx: Tx, subject: RoutingSubject, ref: Reference): Pr
   const graph = new Map(links.map((node) => [node.id, node]));
   const found = new Map<string, Candidate>();
   for (const start of links.filter((node) => node.seed)) {
-    for (const node of ancestors(graph, start.id)) {
+    const skippedOrgIds: string[] = [];
+    const path = ancestors(graph, start.id, subject.tenantId);
+    let step = path.next();
+    for (; !step.done; step = path.next()) {
+      const node = step.value;
+      if (!node.member) {
+        skippedOrgIds.push(node.id);
+        continue;
+      }
       const candidate = node.enabled ? await eligiblePerson(tx, subject, node.head_id) : null;
       if (!candidate?.userId) continue;
       found.set(candidate.userId, candidate);
       break;
     }
+    subject.sourceDiagnostics?.({ startId: start.id, skippedOrgIds, reason: step.done ? step.value : 'resolved' });
   }
   return [...found.values()];
 }
@@ -120,7 +137,7 @@ async function jobHolders(tx: Tx, subject: RoutingSubject, ref: Reference): Prom
   if (!record?.fields.departmentId) return [];
   const links = await orgGraph(tx, subject, record.fields.departmentId, 'admin', false);
   const graph = new Map(links.map((node) => [node.id, node]));
-  for (const node of ancestors(graph, record.fields.departmentId)) {
+  for (const node of ancestors(graph, record.fields.departmentId, subject.tenantId)) {
     if (!node.enabled) continue;
     for (const person of people.filter((person) => person.department_id === node.id)) {
       const candidate = await eligiblePerson(tx, subject, person.employee_id);
