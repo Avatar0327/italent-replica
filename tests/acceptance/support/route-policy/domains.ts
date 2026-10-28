@@ -305,7 +305,12 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
         evidence(
           'call',
           PART_TIME_REQUEST_ROUTE,
-          'buttons: body.submit ? ACTION_BUTTONS.submit : [PART_TIME_BUTTONS.application]',
+          'buttons: body.submit ? REQUEST_ACTION_ACCESS.submit.buttons : REQUEST_ACTION_ACCESS.edit.buttons',
+        ),
+        evidence(
+          'const',
+          `${MODULES}/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS`,
+          "edit: { operation: 'update', buttons: [PART_TIME_BUTTONS.application] }",
         ),
         evidence(
           'const',
