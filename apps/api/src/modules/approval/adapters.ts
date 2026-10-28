@@ -14,6 +14,7 @@ import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
+import { orgAdjustmentAdapter } from '../org-adjustment/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
 import { retirementIntentionAdapter } from '../employment/retirement-intention-adapter.js';
@@ -70,6 +71,7 @@ export type BusinessType =
   | 'offer'
   | 'offer_batch'
   | 'probation_assessment'
+  | 'org_adjustment'
   | 'retirement_intention'
   | 'exit_handover';
 
@@ -624,6 +626,8 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   offer_batch: offerBatchAdapter,
   // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
   probation_assessment: assessmentAdapter,
+  // R2-T08 BE-10a：组织调整（业务单 = 组织调整申请单），BE-10a 为占位，BE-10c 接入真适配器
+  org_adjustment: orgAdjustmentAdapter,
   // R2 BE-5d2：意向退休日期申请（业务单 = 意向申请；通过只记录，不写人事字段，A-6）
   retirement_intention: retirementIntentionAdapter,
   // R2 BE-8b2：离职交接申请（业务单 = 交接申请；通过只置已完成，不改离职状态）

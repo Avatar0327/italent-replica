@@ -232,8 +232,8 @@ export const approvalProcessNodes = pgTable(
       sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
         'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',
-        'approval_subject_first_level_org_head','assessment_employee','handover_work_owner','handover_hr_admin',
-        'handover_employee')`,
+        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',
+        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
@@ -254,6 +254,7 @@ export const approvalProcessNodes = pgTable(
             'record_department_head','record_department_hrbp','record_first_level_org_head',
             'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',
             'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',
+            'approval_subject_org_hrbp','approval_subject_org_head',
             'handover_work_owner','handover_hr_admin','handover_employee']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
@@ -382,7 +383,7 @@ export const approvalInstances = pgTable(
     check(
       'approval_instances_business_type',
       sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review','part_time',
-        'offer','offer_batch','probation_assessment','retirement_intention','exit_handover')`,
+        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')`,
     ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
