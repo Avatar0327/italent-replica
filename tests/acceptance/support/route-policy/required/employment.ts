@@ -178,18 +178,13 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
  * 回执内容受任职记录查看权控制：visibleEmployees 先判 object.view（承接这一探测事实），再按数据范围逐人过滤；
  * 首次返回与同键重放都经 runWrite 的投影出口 visibleRunReceipt。
  */
-const runReceiptDisclosure = (file: string, path: string): Obligation => ({
+const runReceiptDisclosure = (file: string, path: string, project = 'visibleRunReceipt'): Obligation => ({
   perm: `obj:${RECORD}:view`,
   purpose: 'disclosure:receiptDisclosure',
   need: list('employment.runReceipt'),
   facts: ['object:object.* 动作'],
   at: [
-    at(
-      file,
-      'POST',
-      path,
-      '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) }',
-    ),
+    at(file, 'POST', path, `{ guard: ruleGuard(deps, ctx, {}), project: (body) => ${project}(deps, ctx, body) }`),
     fn(
       AUTO_REG,
       'visibleEmployees',
@@ -3350,6 +3345,40 @@ export const EMPLOYMENT: RequiredTable = {
         'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
       ),
     ),
+  ],
+  /**
+   * 退休规则立即执行（BE-5c2）：同自动转正的准入与披露——准入只认配置写，回执经 visibleRetirementReceipt → visibleEmployees
+   * 按操作人当前的任职记录查看权与数据范围逐人过滤；写入走人事写端口（appendEmployee），不经转正 / 调动入口，无联动校验。
+   */
+  'POST /api/tenant/employment/retirement-rules/run': [
+    ...withObjectWriteFact(
+      withNeeds(
+        configWriteBase(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          'update',
+          at(
+            RETIREMENT_RULE,
+            'POST',
+            '/retirement-rules/run',
+            "await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings'",
+          ),
+        ),
+        {
+          'admin:other_settings': bound(NONE),
+          'obj:TenantBase.EmploymentSettings:update': bound(list('employment.runReceipt'), [
+            at(
+              RETIREMENT_RULE,
+              'POST',
+              '/retirement-rules/run',
+              '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRetirementReceipt(deps, ctx, body) }',
+            ),
+            ...SCOPE_AT['employment.runReceipt'],
+          ]),
+        },
+      ),
+    ),
+    runReceiptDisclosure(RETIREMENT_RULE, '/retirement-rules/run', 'visibleRetirementReceipt'),
   ],
   // ---- employment/auto-assessment-routes.ts：R2 BE-15b2 自动发起考核规则与立即执行（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/auto-assessment-rules': [

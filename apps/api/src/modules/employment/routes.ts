@@ -593,10 +593,11 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, action: 'retry-activation' },
       async (tx, context) => {
-        // 离职的生效重试权限为 RetryActivation 且 Dimission 的交集（§4A）
+        // 离职 / 退休的生效重试权限为 RetryActivation 与本类型直接办理按钮的交集（§4A；退休为 Retire，F-265）
         if (exit)
           await requireExitGate(tx, context, 'retry', {
             employeeId: current.employeeId,
+            kind: current.kind,
             business: await lockEmploymentBusiness(tx, context, id),
           });
         await retryActivation(tx, context, id, current.employeeId);
@@ -604,7 +605,13 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       },
       {
         guard: exit
-          ? exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id })
+          ? exitCommandGuard(
+              deps,
+              ctx,
+              'retry',
+              { employeeId: current.employeeId, kind: current.kind },
+              { businessId: id },
+            )
           : sameOrderScopeGuard(deps, ctx, {
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),
