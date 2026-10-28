@@ -62,7 +62,8 @@ describe('AC-APV-F318c DEC-696 历史接续', () => {
         await w.request(
           w.hr.id,
           'GET',
-          `/api/tenant/approval/designer/source-candidates?type=${type}&asOf=2026-10-01&ids=${w.root}&includeInactive=true`,
+          `/api/tenant/approval/designer/source-candidates?type=${type}` +
+            `&asOf=2026-10-01&ids=${w.root}&includeInactive=true`,
         ),
       );
       expect(candidates.items).toEqual([]);
