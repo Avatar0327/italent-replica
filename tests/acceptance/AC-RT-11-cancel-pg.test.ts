@@ -58,7 +58,8 @@ const response = (settled: PromiseSettledResult<unknown>) => (settled as Promise
 describe.runIf(live)('AC-RT-11-cancel-pg ③ 组织停用 vs 撤销 approved 退休（恰一方成功）', () => {
   /** 退休 E = 10-21 已批准，A 的停用 10-22 起（按 §6A.1 允许：approved 退休从 E 起不计占用）。 */
   async function scene(label: string) {
-    const x = await retirementCancelWorld(database().db, label, TODAY);
+    // 要停用调出部门：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织）。
+    const x = await retirementCancelWorld(database().db, label, TODAY, { capacity: false });
     const retire = await x.directRetire('2026-10-20');
     const revision = (await x.business(retire.id)).revision;
     const cancel = () => x.cancelRetire(retire.id, { reason: '撤销' }, { ifMatch: revision });

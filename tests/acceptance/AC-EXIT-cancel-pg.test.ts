@@ -20,6 +20,8 @@ import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => cancelWorld(database().db, label, TODAY);
+/** 要停用调出部门的场景：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织）。 */
+const worldToDisable = (label: string) => cancelWorld(database().db, label, TODAY, { capacity: false });
 const live = Boolean(process.env.TEST_DATABASE_URL);
 
 const signal = () => {
@@ -142,7 +144,7 @@ describe.runIf(live)('AC-EXIT-cancel-pg ② 撤销 vs 定时生效', () => {
 describe.runIf(live)('AC-EXIT-cancel-pg ⑤ 组织停用 vs 撤销 approved 离职（恰一方成功）', () => {
   /** 离职 E = 10-21 已批准，A 的停用 10-22 起（按 §6A.1 允许：approved 离职从 E 起不计占用）。 */
   async function scene(label: string) {
-    const x = await world(label);
+    const x = await worldToDisable(label);
     const leave = await x.directLeave('2026-10-20');
     const revision = (await x.business(leave.id)).revision;
     const cancel = () => x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision });
