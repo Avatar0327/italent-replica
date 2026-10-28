@@ -63,8 +63,8 @@ async function snapshot(tx: Tx, tenantId: string) {
       SELECT 'record' AS t, to_jsonb(r) - 'employee_status' - 'entry_status' AS body FROM employment_records r
       WHERE r.tenant_id=${tenantId}
       UNION ALL
-      -- 迁移 0130（F-140）在之后新增人工计划生效日列，升级前不存在，不属于本回填比较范围
-      SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date'
+      -- F-140 后续新增人工计划生效日与人工快照标记列，升级前不存在，不属于本回填比较范围
+      SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date' - 'manual_plan'
       FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId}
       ORDER BY 1, 2`),
