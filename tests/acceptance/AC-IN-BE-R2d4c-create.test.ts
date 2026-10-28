@@ -41,7 +41,9 @@ describe('AC-IN-R2d4c-01 新增实习生（入职日今天）：人员 + 任职 
     expect(await c.viewIds('interning')).toContain(receipt.employeeId);
     const [record] = await c.w.session.records(receipt.employeeId);
     expect(record).toMatchObject({ id: receipt.businessId, kind: 'hire' });
-    expect(await c.w.view('interning')).toMatchObject([{ employeeId: receipt.employeeId, employType: 'intern' }]);
+    expect(await c.w.view('interning')).toMatchObject([
+      { employeeId: receipt.employeeId, employType: 'intern', availableActions: ['regularize', 'terminate'] },
+    ]);
   });
 
   it('入职日早于今天：同样写正式合同，起始日 = 入职日', async () => {
