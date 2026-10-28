@@ -9,6 +9,7 @@ import { AVATAR_POLICIES } from './modules/avatar/policy.js';
 import { COMMAND_RESULT_POLICIES } from './modules/command-result/policy.js';
 import { EVALUATION_POLICIES } from './modules/evaluation/policy.js';
 import { ESTABLISHMENT_POLICIES } from './modules/establishment/policy.js';
+import { HR_ANALYSIS_POLICIES } from './modules/hr-analysis/policy.js';
 import { IDP_POLICIES } from './modules/idp/policy.js';
 import { JOB_POLICIES } from './modules/job/policy.js';
 import { ORG_POLICIES } from './modules/org/policy.js';
@@ -36,6 +37,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     JOB_POLICIES,
     ESTABLISHMENT_POLICIES,
     PERSONNEL_POLICIES,
+    HR_ANALYSIS_POLICIES,
     AUDIT_POLICIES,
     TALENT_POLICIES,
     IDP_POLICIES,

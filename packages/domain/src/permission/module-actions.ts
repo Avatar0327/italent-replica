@@ -308,6 +308,13 @@ export const MODULE_OBJECTS = {
       // R2 BE-15b2 自动发起试用期考核规则（B58）也挂在这里：考核类型、入职后天数（考核名称 = name，其余沿用上面的）
       'assessmentType',
       'daysAfterEntry',
+      // R2 BE-8b1 离职交接事项（B64，DEC-266③）也挂在这里：事项类别、序号、待办类别、待办事项、办理表单、备注（没有适用人群与负责人）
+      'category',
+      'sequenceNo',
+      'todoType',
+      'title',
+      'formRef',
+      'remark',
     ],
     crud,
     ['operatorUserId'],
@@ -340,6 +347,9 @@ export const MODULE_OBJECTS = {
     ],
     ['blacklistDate', 'source', 'status', 'removedAt'],
   ),
+  // BE-12a 人事分析 - 时点员工花名册（规格 35 §2.2）：功能权只有“查看”和列表级“导出”按钮；数据范围与字段权复用
+  // 员工档案（EmployeeInformation）、任职记录、合同三个对象，所以这个对象本身没有业务字段，asOf 只是请求参数
+  hrRoster: object('HrRoster', ['asOf'], [button('export', 'list')]),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',

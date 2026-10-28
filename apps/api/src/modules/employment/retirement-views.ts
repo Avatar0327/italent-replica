@@ -1,7 +1,7 @@
 /**
  * R2-T04 BE-5d1 退休五视图与详情的读取（docs/08_设计/R2-T04_退休设计.md §10）。
  * 即将退休 / 过期未退休按员工取行（人事 P 在 asOf 时已知的最新版本 + asOf 当天主职时间轴 + 当前周期的退休单），
- * 退休中 / 已完成 / 全部按退休单取行；离职视图的候选集、分页、字段裁剪都复用 exit-queries.ts（DEC-431①），
+ * 退休中 / 已完成 / 全部 / 撤销按退休单取行；离职视图的候选集、分页、字段裁剪都复用 exit-queries.ts（DEC-431①），
  * 这里只加退休的谓词、列与响应路径。所有视图在分页前叠加 employmentVisibilitySql（DEC-177）。
  * asOf 是业务有效日：状态、载荷、时间轴都取查询时的当前数据，只有“已提交 / 已存在”与人事版本按 asOf 当日结束（租户时区）折算。
  */
@@ -24,6 +24,7 @@ import {
   type ExitDetail,
   type ExitRow,
   type ExitViewable,
+  viewPredicate,
 } from './exit-queries.js';
 import { personnelHooks } from './personnel-hooks.js';
 import type { EmploymentScope, PageQuery } from './types.js';
@@ -54,8 +55,12 @@ export const RETIREMENT_SOURCE: CandidateSource = {
     ${SUBMITTED_AT_JOIN}`,
 };
 
+/** 撤销视图（设计第 357 行）：额外取值，不计入五视图常量；行集合与排序沿用离职撤销视图（#432），只按 kind 限定退休。 */
+export const RETIREMENT_CANCELLED_VIEW = 'cancelled';
+export type RetirementListedBillView = RetirementBillView | typeof RETIREMENT_CANCELLED_VIEW;
+
 /** 谓词表（§10.2）：processing = 流程中，或 effective 且 E′ > asOf 且已提交；completed = effective 且 E′ ≤ asOf。 */
-export function billPredicate(view: RetirementBillView, at: RetirementAsOf): SQL {
+export function billPredicate(view: RetirementListedBillView, at: RetirementAsOf): SQL {
   const end = dayEnd(at);
   switch (view) {
     case 'processing':
@@ -65,6 +70,9 @@ export function billPredicate(view: RetirementBillView, at: RetirementAsOf): SQL
       return sql`s.state='effective' AND p.effective_date<=${at.asOf}::date`;
     case 'all':
       return sql`b.created_at < ${end}`;
+    case RETIREMENT_CANCELLED_VIEW:
+      // 不按 asOf 过滤（同离职撤销视图）：撤销记录只增不删，撤销是已发生的事实
+      return viewPredicate('cancellations');
   }
 }
 
@@ -73,6 +81,7 @@ const BILL_SORT = {
   processing: EXIT_SORT_DEPENDENCIES.in_progress,
   completed: EXIT_SORT_DEPENDENCIES.completed,
   all: EXIT_SORT_DEPENDENCIES.all,
+  cancelled: EXIT_SORT_DEPENDENCIES.cancellations,
 } as const;
 
 interface RetirementRow extends ExitRow {
@@ -130,7 +139,7 @@ export async function listRetirementBills(
   tx: Tx,
   tenantId: string,
   input: {
-    readonly view: RetirementBillView;
+    readonly view: RetirementListedBillView;
     readonly at: RetirementAsOf;
     readonly page: PageQuery;
     readonly show: ExitViewable;

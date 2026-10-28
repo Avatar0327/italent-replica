@@ -3,7 +3,7 @@
  * 开放 POST employees/:id/part-times/preview、POST employees/:id/part-times、GET employees/:id/part-times、
  * GET part-times/:recordId；编辑、批量结束、申请入口、六视图已随后续批次开放（PT-5 起 GET part-times?view= 见
  * AC-PT-06-views）。新增只调内部服务 createPartTime，
- * 路由层不另写校验或写库逻辑；isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE。
+ * 路由层不另写校验或写库逻辑；isDepartmentHead / addedSubordinateIds 自 PT-7 开放（见 AC-PT-linkage-http）。
  * 预览带出默认值（直线经理 = 兼职部门在开始日的负责人、职务序列按 DEC-107；不带出职位，B-6）并做与新增同一套校验，不写库。
  */
 import { randomUUID } from 'node:crypto';
@@ -91,21 +91,13 @@ describe('POST employees/:id/part-times 新增（保存即落地）', () => {
     expect(created.warnings).toEqual([{ reason: 'PART_TIME_SPANS_PENDING_EXIT' }]);
   });
 
-  it('PB-57：isDepartmentHead = true / 非空 addedSubordinateIds → 400 PART_TIME_LINKAGE_NOT_AVAILABLE，无写入', async () => {
+  it('PB-57（PT-7 改正例）：联动字段不再 400；下属不存在 → 400 TRANSFER_PERSON_NOT_ELIGIBLE，无写入；显式关闭 / 空数组照常保存', async () => {
     const w = await world('http-create-linkage');
     const before = await w.writes();
-    for (const fields of [{ isDepartmentHead: true }, { addedSubordinateIds: [randomUUID()] }]) {
-      const failed = await w.refusal(await w.post({ fields }));
-      expect(failed).toMatchObject({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-        reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
-      });
-    }
-    const preview = await w.refusal(await w.preview({ fields: { isDepartmentHead: true } }));
-    expect(preview.reason).toBe('PART_TIME_LINKAGE_NOT_AVAILABLE');
+    const failed = await w.refusal(await w.post({ fields: { addedSubordinateIds: [randomUUID()] } }));
+    expect(failed).toMatchObject({ status: 400, code: 'VALIDATION_FAILED', reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
     expect(await w.writes()).toEqual(before);
-    // 显式关闭 / 空数组不是联动，照常保存
+    // 显式关闭 / 空数组不是联动，照常保存（联动成功路径见 AC-PT-linkage-http）
     await w.ok(await w.post({ fields: { isDepartmentHead: false, addedSubordinateIds: [] } }), 201);
   });
 

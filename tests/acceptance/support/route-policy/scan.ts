@@ -549,6 +549,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['job', '/api/tenant/job', [path.join(modules, 'job')]],
     ['establishment', '/api/tenant/establishment', [path.join(modules, 'establishment')]],
     ['personnel', '/api/tenant/personnel', [path.join(modules, 'personnel')]],
+    ['hr-analysis', '/api/tenant/hr-analysis', [path.join(modules, 'hr-analysis')]],
     ['audit', '/api/tenant/audit', [path.join(API_SRC, 'audit')]],
     // 业务模块的平台接口在平台前缀之下，须排在 platform 之前（先匹配先得）
     ['succession-platform', '/api/platform/succession', ['succession', 'platform'].map((d) => path.join(modules, d))],

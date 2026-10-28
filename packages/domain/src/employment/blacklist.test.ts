@@ -3,6 +3,7 @@ import {
   BLACKLIST_REASONS,
   type BlacklistRuleFacts,
   blacklistBlockedMessage,
+  exitMonthExpiryDate,
   isBlacklistEffective,
   matchBlacklistRule,
 } from './blacklist.js';
@@ -62,5 +63,15 @@ describe('离职自动加黑规则匹配（多条命中取优先级数字最小�
     };
     expect(matchBlacklistRule([both], { exitCount: 3, orgChain: [ORG] })).toBeNull();
     expect(matchBlacklistRule([both], { exitCount: 4, orgChain: [ORG] })?.id).toBe('both');
+  });
+});
+
+describe('离职当月期限的截止日（DEC-630）', () => {
+  it('= 离职生效日所在自然月的最后一天，含闰年二月与月末当天', () => {
+    expect(exitMonthExpiryDate('2026-10-06')).toBe('2026-10-31');
+    expect(exitMonthExpiryDate('2026-10-31')).toBe('2026-10-31');
+    expect(exitMonthExpiryDate('2026-02-01')).toBe('2026-02-28');
+    expect(exitMonthExpiryDate('2028-02-10')).toBe('2028-02-29');
+    expect(exitMonthExpiryDate('2026-12-15')).toBe('2026-12-31');
   });
 });
