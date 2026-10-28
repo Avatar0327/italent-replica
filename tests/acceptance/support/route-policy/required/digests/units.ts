@@ -40,7 +40,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
-    readDetail: '7f9e384aa276',
+    readDetail: '91e0bfb1a88f',
   },
   'apps/api/src/modules/approval/node-actions.ts': {
     retrieveTask: '649138642c42',
@@ -55,7 +55,7 @@ export const DIGESTS: Digests = {
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
-    respondHistory: 'ffb2db620d20',
+    respondHistory: '9bab67d00813',
     'route:GET /admin-logs': 'ca4d3201d9b0',
     'route:GET /instances': 'f66cdd697241',
     'route:GET /notifications': '7e11cf9c0c2e',
@@ -203,7 +203,7 @@ export const DIGESTS: Digests = {
     'route:POST /auto-regularization/run': 'b99798a886bf',
     'route:PUT /auto-regularization-rules/:id': '7d8ee2c6797a',
     'route:PUT /auto-regularization-rules/:id/enabled': '5e3092aadae1',
-    visibleEmployees: '311254d756ec',
+    visibleEmployees: '3837643e5dc4',
     writeContext: 'a154208ec77b',
   },
   'apps/api/src/modules/employment/blacklist-routes.ts': {
@@ -377,7 +377,7 @@ export const DIGESTS: Digests = {
     loadVisibleIntention: 'fcea8ae3db97',
   },
   'apps/api/src/modules/employment/retirement-intention.ts': {
-    createIntention: '1bc5ad0bda27',
+    createIntention: '5c4cea444719',
     guardedRow: '015f7233832e',
   },
   'apps/api/src/modules/employment/retirement-routes.ts': {
@@ -387,7 +387,7 @@ export const DIGESTS: Digests = {
     'route:POST /retirements/:id/cancel': 'c98a4f57dd10',
     'route:POST /retirements/:id/restore': 'f6e8af58d15c',
     'route:POST /retirements/employees/:id': '12d7c444346e',
-    'route:POST /retirements/employees/:id/preview': '022bd1464611',
+    'route:POST /retirements/employees/:id/preview': '1ad0cb1f7a56',
   },
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
     'route:DELETE /retirement-rules/:id': '8de974e02097',
@@ -395,6 +395,7 @@ export const DIGESTS: Digests = {
     'route:GET /retirement-rules': '6f863b4c24d4',
     'route:POST /retirement-rules': 'c0ccabb2ca46',
     'route:POST /retirement-rules/:id/copy': '012777f500a5',
+    'route:POST /retirement-rules/run': 'bc894d79ebb5',
     'route:PUT /retirement-rules/:id': 'd25b53a2a63a',
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
@@ -422,7 +423,7 @@ export const DIGESTS: Digests = {
     'route:GET /settings': '88817bb26d28',
     'route:PATCH /businesses/:id': 'ab99da6e93b1',
     'route:PATCH /records/:id': 'e0515127d27b',
-    'route:POST /businesses/:id/activation/retry': '32d2c57dd45f',
+    'route:POST /businesses/:id/activation/retry': 'aeaf6005346f',
     'route:POST /custom-fields': '2e57bc5326ab',
     'route:POST /employees': '2791ed53c87c',
     'route:POST /employees/:id/businesses': '04fd86639382',
@@ -537,6 +538,20 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/evaluation/store.ts': {
     requireOwnerOrg: 'e9b77971c7e3',
+  },
+  'apps/api/src/modules/hr-analysis/roster-access.ts': {
+    CONTRACT_OBJECT: '76ce5952c0a8',
+    RECORD_OBJECT: '681652578035',
+    ROSTER_OBJECT: '8de8f6aea0b4',
+    requireExportButton: 'd538719feb46',
+    rosterAccess: '1b9e1d248af1',
+  },
+  'apps/api/src/modules/hr-analysis/roster-query.ts': {
+    population: '6aab8654bd9b',
+  },
+  'apps/api/src/modules/hr-analysis/roster-routes.ts': {
+    'route:GET /api/tenant/hr-analysis/roster': '7627ba7c5dbd',
+    'route:GET /api/tenant/hr-analysis/roster/export': '669b408981b8',
   },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
@@ -695,6 +710,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/offer/identity.ts': {
     visibleRehireHint: 'eae042f2e171',
+  },
+  'apps/api/src/modules/offer/mail.ts': {
+    'route:GET /:id/mail': 'c8955e286092',
   },
   'apps/api/src/modules/offer/routes.ts': {
     listFilters: '42b1c3365896',
@@ -1864,7 +1882,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-intention-routes.ts#route:POST /retirement-intentions/employees/:id':
     '87d5b8962599',
   'apps/api/src/modules/employment/retirement-intention-store.ts#loadVisibleIntention': '5ecd63342ae1',
-  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '6c28dfaf5b67',
+  'apps/api/src/modules/employment/retirement-intention.ts#createIntention': '1e373858e5db',
   'apps/api/src/modules/employment/retirement-intention.ts#guardedRow': '493240f1ef38',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
@@ -1872,12 +1890,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': '036e2608dd5f',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/restore': 'b30c105cf038',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id': 'b6c0539e33f4',
-  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '5f9e3e39dd73',
+  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '5d2937b70693',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': '9c74e44bfb8b',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-identity-types': '4e944340ea36',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules': 'e9b54a0cf91a',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/:id/copy': 'afdb0064b9f4',
+  'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': '83a9d7934f65',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
@@ -1978,6 +1997,14 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#CONTRACT_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#RECORD_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': '962a8dd9a03e',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': '30576ab5fbab',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': 'b5e730b8501f',
+  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '931b893deaf9',
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
+  'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '9f87c8ad7cca',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',
   'apps/api/src/modules/idp/access.ts#idpWriteContext': 'ad47dfbf76d3',
   'apps/api/src/modules/idp/access.ts#objectFields': 'f7ce614aaf23',
@@ -2097,6 +2124,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/context.ts#runDictionaryWrite': 'f8f96c185984',
   'apps/api/src/modules/offer/context.ts#runOfferWrite': '4a7852e97599',
   'apps/api/src/modules/offer/identity.ts#visibleRehireHint': 'e85641d69f28',
+  'apps/api/src/modules/offer/mail.ts#route:GET /:id/mail': '6084450135a6',
   'apps/api/src/modules/offer/routes.ts#listFilters': '04fc9285a9ff',
   'apps/api/src/modules/offer/routes.ts#route:DELETE /:id': '5a7e2c628c52',
   'apps/api/src/modules/offer/routes.ts#route:GET /': '451b08a57af6',

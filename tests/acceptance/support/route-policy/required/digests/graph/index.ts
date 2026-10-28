@@ -12,6 +12,7 @@ import { GRAPH as api_modules_employee_self_service } from './api-modules-employ
 import { GRAPH as api_modules_employment } from './api-modules-employment.js';
 import { GRAPH as api_modules_establishment } from './api-modules-establishment.js';
 import { GRAPH as api_modules_evaluation } from './api-modules-evaluation.js';
+import { GRAPH as api_modules_hr_analysis } from './api-modules-hr-analysis.js';
 import { GRAPH as api_modules_idp } from './api-modules-idp.js';
 import { GRAPH as api_modules_job } from './api-modules-job.js';
 import { GRAPH as api_modules_offer } from './api-modules-offer.js';
@@ -34,6 +35,7 @@ import { GRAPH as domain_contracts } from './domain-contracts.js';
 import { GRAPH as domain_employment } from './domain-employment.js';
 import { GRAPH as domain_evaluation } from './domain-evaluation.js';
 import { GRAPH as domain_expression } from './domain-expression.js';
+import { GRAPH as domain_hr_analysis } from './domain-hr-analysis.js';
 import { GRAPH as domain_idp } from './domain-idp.js';
 import { GRAPH as domain_offer } from './domain-offer.js';
 import { GRAPH as domain_permission } from './domain-permission.js';
@@ -57,6 +59,7 @@ export const GRAPH: Graph = {
   ...api_modules_employment,
   ...api_modules_establishment,
   ...api_modules_evaluation,
+  ...api_modules_hr_analysis,
   ...api_modules_idp,
   ...api_modules_job,
   ...api_modules_offer,
@@ -79,6 +82,7 @@ export const GRAPH: Graph = {
   ...domain_employment,
   ...domain_evaluation,
   ...domain_expression,
+  ...domain_hr_analysis,
   ...domain_idp,
   ...domain_offer,
   ...domain_permission,
