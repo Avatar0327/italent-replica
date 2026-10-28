@@ -220,7 +220,11 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
       const writeAction =
         actions.find(([, a]) => a.kind === 'object' && a.operation === 'update')?.[0] ?? 'object.update';
       const resource = object.code;
-      const fields = [object.fields.find((field) => !field.system)!.code];
+      // R2-T08 §9.2：明细仅有系统字段；显式空字段集仍须经过数据操作开关校验。
+      const fields = object.fields
+        .filter((field) => !field.system)
+        .slice(0, 1)
+        .map((field) => field.code);
       const viewer: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, false)] };
       const editor: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, true)] };
       const outside: PermissionSubject = {
@@ -232,6 +236,12 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
       expect(decide(editor, { action: writeAction, resource }, catalog), writeAction).toBe(false);
       expect(decide(editor, { action: writeAction, resource, fields }, catalog), writeAction).toBe(true);
       expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
+      for (const field of object.fields.filter((field) => field.system)) {
+        expect(
+          decide(editor, { action: writeAction, resource, fields: [field.code] }, catalog),
+          `${resource}.${field.code}`,
+        ).toBe(false);
+      }
     }
   });
 
