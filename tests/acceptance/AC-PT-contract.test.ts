@@ -25,9 +25,17 @@ import { approvalWorld, transferScene } from './AC-APV-support.js';
 
 const testDb = useTestDb();
 
-/** F-249 / DEC-629：节点“编辑并同意”可改的字段；新增不含 isDepartmentHead（DEC-634 / PB-57）、薪资、工号、开始日期。 */
+/** F-249 / DEC-629：节点“编辑并同意”可改的字段；新增含 isDepartmentHead（DEC-634，随 PT-7 开放），不含新增下属（F234A C9）、薪资、工号、开始日期。 */
 const EDITABLE = {
-  part_time_add: ['partTimeType', 'endDate', 'departmentId', 'directManagerId', 'postId', 'levelId'],
+  part_time_add: [
+    'partTimeType',
+    'endDate',
+    'departmentId',
+    'directManagerId',
+    'postId',
+    'levelId',
+    'isDepartmentHead',
+  ],
   part_time_extend: ['endDate', 'requestRemark'],
   part_time_end: ['endDate', 'requestRemark'],
 };
