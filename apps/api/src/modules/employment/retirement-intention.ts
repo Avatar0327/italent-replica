@@ -64,7 +64,13 @@ async function retirementFacts(tx: Tx, ctx: EmploymentContext, employeeId: strin
 
 /** 员工当前在职（主职任职的人员状态），返回当前任职记录供取任职周期与部门快照。 */
 async function employedRecord(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+  return assertEmployed(await currentRecordOf(tx, ctx, employeeId));
+}
+
+const currentRecordOf = (tx: Tx, ctx: EmploymentContext, employeeId: string) =>
+  findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+
+function assertEmployed(current: Awaited<ReturnType<typeof currentRecordOf>>) {
   if (!current || !RETIREMENT_INTENTION_EMPLOYED_STATUSES.includes(current.employeeStatus))
     throw conflict('RETIREMENT_INTENTION_NOT_EMPLOYED', '只有当前在职的员工可以提出意向退休日期申请');
   return current;
@@ -108,10 +114,13 @@ export async function createIntention(
   input: IntentionCreateInput,
   initiation: IntentionRow['initiator'] = 'hr',
 ): Promise<IntentionRow> {
-  await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
-  const current = await employedRecord(tx, ctx, employeeId);
-  const departmentId = current.fields.departmentId ?? null;
+  // F-289：先判本单范围，再比 revision 与在职，范围外无论 revision 对错一律 404（不回显员工当前 revision）
+  const employee = await lockEmploymentEmployee(tx, ctx, employeeId);
+  const found = await currentRecordOf(tx, ctx, employeeId);
+  const departmentId = found?.fields.departmentId ?? null;
   await requireIntentionWriteScope(tx, ctx, { employeeId, departmentId, initiatorUserId: ctx.userId });
+  assertRevision(ctx.expectedRevision, employee.revision);
+  const current = assertEmployed(found);
   if (await openIntentionOf(tx, ctx.tenantId, employeeId))
     throw conflict('RETIREMENT_INTENTION_IN_PROGRESS', '该员工已有未办结的意向退休日期申请');
   const snapshots = await checkedSnapshots(tx, ctx, employeeId, input.intendedDate);

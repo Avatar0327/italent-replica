@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { revokeGrant } from '../../apps/api/src/modules/permission/grants.js';
 import { listBalances, listSeats } from '../../apps/api/src/modules/permission/licenses.js';
 import { addMember, createProfile, grant, makeGrantable, seedPermissionWorld } from './AC-PRM-support.js';
+import { withHeldLock } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -54,24 +55,22 @@ describe.skipIf(!realPostgres)('并发撤销同一用户的两条同类授权（
       commandId: randomUUID(),
     });
 
-    let revokedA!: () => void;
-    let release!: () => void;
-    const revokedASignal = new Promise<void>((resolve) => (revokedA = resolve));
-    const gate = new Promise<void>((resolve) => (release = resolve));
     // A 撤销完成但未提交：持有许可锁、A 行锁，以及名额改记到 B 时对 B 行的外键共享锁
-    const revokingA = withTenant(db, world.tenant.id, async (tx) => {
-      await revokeGrant(tx, write(), { grantId: grantA.id, expectedRevision: grantA.revision });
-      revokedA();
-      await gate;
-    });
-    await revokedASignal;
-
-    const revokingB = withTenant(db, world.tenant.id, (tx) =>
-      revokeGrant(tx, write(), { grantId: grantB.id, expectedRevision: grantB.revision }),
+    const { revokingB, blockedOn } = await withHeldLock(
+      {
+        run: (fn) => withTenant(db, world.tenant.id, fn),
+        take: (tx) => revokeGrant(tx, write(), { grantId: grantA.id, expectedRevision: grantA.revision }),
+      },
+      async (lock) => {
+        const pending = lock.track(
+          withTenant(db, world.tenant.id, (tx) =>
+            revokeGrant(tx, write(), { grantId: grantB.id, expectedRevision: grantB.revision }),
+          ),
+        );
+        return { revokingB: pending, blockedOn: await waitForBlocked(db, 1) };
+      },
     );
-    expect(await waitForBlocked(db, 1)).toEqual(['advisory']);
-    release();
-    await revokingA;
+    expect(blockedOn).toEqual(['advisory']);
     expect(await revokingB).toMatchObject({ id: grantB.id, status: 'revoked' });
 
     const after = await withTenant(db, world.tenant.id, async (tx) => ({
