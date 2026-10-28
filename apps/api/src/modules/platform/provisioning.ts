@@ -205,6 +205,8 @@ async function publishPresetProcesses(tx: Tx, { tenant, input, now, meta }: Scop
   const published: ProvisionResult['processes'] = [];
   for (const installed of await installPresets(tx, ctx)) {
     const preset = PRESET_PROCESSES.find((p) => p.presetKey === installed.presetKey)!;
+    // 取人口径是推断的预置（组织调整，DEC-644 A-2）只装草稿，由租户确认节点审批人后自行发布
+    if (preset.publishOnProvision === false) continue;
     const definition = { ...preset.definition, exceptionAdminUserId: input.exceptionAdminUserId };
     const draft = await replaceDraft(tx, { ...ctx, expectedRevision: installed.revision }, installed.id, definition);
     const process = await publishProcess(tx, { ...ctx, expectedRevision: draft.revision }, installed.id);
