@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
-import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -156,17 +156,19 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     await held.promise;
     const create = w.http().createDate({ requestType: 'extend', recordId: record, endDate: '2026-12-31' });
     let locked = false;
-    try {
-      await waitForBlocked(w.db, 1);
-      locked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM employment_business_objects
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [create, holder].forEach((request) => cleanup.track<unknown>(request));
+        await waitForBlocked(w.db, 1);
+        locked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM employment_business_objects
           WHERE tenant_id=${w.tenant.id} AND id=${record}::uuid FOR UPDATE NOWAIT`,
-      );
-    } finally {
-      release.resolve();
-      await holder;
-    }
+        );
+      },
+      [holder],
+    );
     expect((await create).status).toBe(201);
     expect(locked, '创建已过员工锁、正等组织锁时，目标兼职记录的业务头应已被锁住').toBe(true);
   });
@@ -190,22 +192,24 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     const submit = api.act(created.id, 'submit', created.revision);
     let requestLocked = false;
     let recordLocked = false;
-    try {
-      await waitForBlocked(w.db, 1);
-      requestLocked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM part_time_requests
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [submit, holder].forEach((request) => cleanup.track<unknown>(request));
+        await waitForBlocked(w.db, 1);
+        requestLocked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM part_time_requests
           WHERE tenant_id=${w.tenant.id} AND id=${created.id}::uuid FOR UPDATE NOWAIT`,
-      );
-      recordLocked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM employment_business_objects
+        );
+        recordLocked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM employment_business_objects
           WHERE tenant_id=${w.tenant.id} AND id=${record}::uuid FOR UPDATE NOWAIT`,
-      );
-    } finally {
-      release.resolve();
-      await holder;
-    }
+        );
+      },
+      [holder],
+    );
     expect((await submit).status).toBe(200);
     expect(requestLocked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
     expect(recordLocked, '提交已过员工锁、正等组织锁时，目标兼职记录头应已被锁住').toBe(true);
