@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type DbHandle, migrationsFolder, sql, withTenant } from '@italent/db';
 import { describe, expect, it } from 'vitest';
-import { PRE_UPGRADE_SHIMS } from './pre-upgrade-shims.js';
+import { PRE_UPGRADE_SHIMS, PRE_UPGRADE_TABLE_SHIMS } from './pre-upgrade-shims.js';
 import { createTestDb } from './test-db.js';
 
 const journal = JSON.parse(readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')) as {
@@ -39,6 +39,29 @@ describe('升级前兼容垫片（migrateBefore 夹具）', () => {
       expect(Array.isArray(result) ? result : (result as { rows: unknown[] }).rows).toEqual([]);
     } finally {
       await handle.close();
+    }
+  });
+
+  it('F-306：每张登记表对应唯一真实建表迁移，全部列名和类型与正式表一致', async () => {
+    const full = await createTestDb();
+    try {
+      const types = await columnTypes(full);
+      expect(new Set(PRE_UPGRADE_TABLE_SHIMS.map((s) => s.table)).size).toBe(PRE_UPGRADE_TABLE_SHIMS.length);
+      for (const shim of PRE_UPGRADE_TABLE_SHIMS) {
+        expect(journal.entries.filter((e) => e.tag.endsWith(`_${shim.migration}`))).toHaveLength(1);
+        const statement = migrationSql(shim.migration)
+          .split('--> statement-breakpoint')
+          .find((s) => s.trimStart().startsWith(`CREATE TABLE "${shim.table}" (`));
+        expect(statement, shim.table).toBeDefined();
+        const names = [...types.keys()].filter((name) => name.startsWith(`${shim.table}.`)).sort();
+        expect(shim.columns.map((c) => `${shim.table}.${c.name}`).sort()).toEqual(names);
+        for (const column of shim.columns) {
+          expect(statement).toContain(`"${column.name}" ${column.type}`);
+          expect(types.get(`${shim.table}.${column.name}`)).toBe(column.type);
+        }
+      }
+    } finally {
+      await full.close();
     }
   });
 
