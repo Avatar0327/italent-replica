@@ -210,10 +210,14 @@ function kindRule(name: string, kind: AnyPgColumn) {
 /**
  * “变动类型”（原站与业务类型、异动类型并列的分类，W-416）。职位变更同步直线经理写入“职位调整”（F-006）；
  * 实习转正写入“实习转正”（BE-6a，R2f B41 / 31 Q-M0-122 ④）；结束实习写入“实习结束”（BE-6b，R2d B41）。
+ * 审批路径的组织调整写入“组织调整”（R2-T08 DEC-526①）；直接改组织路径仍为空（DEC-137）。
  * 其余业务与存量记录没有原站依据，保持空值，不回填。
  */
 function changeTypeRule(name: string, changeType: AnyPgColumn) {
-  return check(name, sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end')`);
+  return check(
+    name,
+    sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')`,
+  );
 }
 
 export const employmentPayloadVersions = pgTable(
@@ -541,6 +545,10 @@ export const employmentOutbox = pgTable(
     index('employment_outbox_tenant_created').on(t.tenantId, t.createdAt, t.id),
     index('employment_outbox_employee_created').on(t.tenantId, t.employeeId, t.createdAt),
     index('employment_outbox_business_created').on(t.tenantId, t.businessId, t.createdAt),
+    // 兼职联动待执行事件（R2-T05 §4.8，PT-7）：定时生效逐租户扫描开始日已到的未办结联动，锁规划按员工取其下属，都只走这个小索引
+    index('employment_outbox_part_time_linkage_pending')
+      .on(t.tenantId, t.employeeId, t.businessId)
+      .where(sql`${t.eventType} = 'employment.part_time.linkage.pending'`),
     check('employment_outbox_object_nonempty', sql`btrim(${t.objectType}) <> ''`),
     check('employment_outbox_event_nonempty', sql`btrim(${t.eventType}) <> ''`),
     check('employment_outbox_payload_object', sql`jsonb_typeof(${t.payload}) = 'object'`),

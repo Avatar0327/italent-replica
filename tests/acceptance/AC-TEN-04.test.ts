@@ -190,15 +190,22 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
   });
 
   it('标准流程覆盖全部审批类型、已发布、带发起条件（或显式兜底），异常管理员为开通时指定的人', async () => {
-    expect(result.processes.map((p) => p.approvalType).sort()).toEqual(Object.keys(APPROVAL_TYPES).sort());
+    // R2-T08 BE-10a（DEC-644 A-2）：组织调整的预置取人口径是推断，只装草稿、不随开通发布，租户自行确认后发布
+    const unpublished = ['org_adjustment'];
+    expect(result.processes.map((p) => p.approvalType).sort()).toEqual(
+      Object.keys(APPROVAL_TYPES)
+        .filter((type) => !unpublished.includes(type))
+        .sort(),
+    );
     const list = await api.request('GET', '/api/tenant/approval/processes', asAdmin);
     expect(list.status).toBe(200);
     const summaries = ((await list.json()) as { items: { id: string; presetKey: string | null }[] }).items;
-    expect(summaries).toHaveLength(result.processes.length);
+    expect(summaries).toHaveLength(result.processes.length + unpublished.length);
     for (const summary of summaries) {
       expect(summary.presetKey).toMatch(/^standard_/);
       const detail = await api.request('GET', `/api/tenant/approval/processes/${summary.id}`, asAdmin);
       const process = (await detail.json()) as {
+        approvalType: string;
         currentVersion: {
           status: string;
           isFallback: boolean;
@@ -206,6 +213,10 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
           conditions: { items: unknown[] };
         } | null;
       };
+      if (unpublished.includes(process.approvalType)) {
+        expect(process.currentVersion).toBeNull();
+        continue;
+      }
       expect(process.currentVersion?.status).toBe('published');
       expect(process.currentVersion?.exceptionAdminUserId).toBe(exceptionAdmin.id);
       expect(process.currentVersion!.isFallback || process.currentVersion!.conditions.items.length > 0).toBe(true);

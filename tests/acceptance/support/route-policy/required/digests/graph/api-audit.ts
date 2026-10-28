@@ -313,6 +313,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRecordCreator',
     'apps/api/src/modules/employment/part-time/creator-sql.ts#partTimeRequestCreator',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#INTENTION_AUDIT_TYPE',
+    'apps/api/src/modules/employment/retirement-intention-store.ts#intentionCreator',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'apps/api/src/modules/idp/access.ts#IDP_AUDIT_ACTIONS',
     'apps/api/src/modules/idp/access.ts#IDP_ORG_OBJECTS',
