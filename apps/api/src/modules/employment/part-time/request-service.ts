@@ -268,9 +268,13 @@ function assertAction(request: PartTimeRequestRow, action: PartTimeRequestAction
   return next;
 }
 
+/** 是否原发起人（写入口的 assertInitiator 与读口下发动作共用）。 */
+export const isRequestInitiator = (request: PartTimeRequestRow, ctx: Pick<EmploymentContext, 'userId'>) =>
+  request.initiatorUserId === ctx.userId;
+
 /** 提交（含驳回后重提）只允许原发起人（DEC-113）；当前权限复核在路由层（PT-4b）。 */
 function assertInitiator(request: PartTimeRequestRow, ctx: EmploymentContext) {
-  if (request.initiatorUserId !== ctx.userId)
+  if (!isRequestInitiator(request, ctx))
     throw new AppError('FORBIDDEN', '只有原发起人可以操作该兼职申请', { reason: PART_TIME_ERRORS.notInitiator });
 }
 

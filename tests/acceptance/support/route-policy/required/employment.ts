@@ -22,9 +22,12 @@ const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
+const INTERN_ACTIONS = `${SRC}/employment/intern-actions.ts`;
+const EXIT_GATE = `${SRC}/employment/exit-gate.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
 const PART_TIME_GUARD = `${SRC}/employment/part-time/replay-guard.ts`;
 const PART_TIME_REQUEST = `${SRC}/employment/part-time/request-routes.ts`;
+const PART_TIME_REQUEST_ACTIONS = `${SRC}/employment/part-time/request-actions.ts`;
 const PART_TIME_REQUEST_SERVICE = `${SRC}/employment/part-time/request-service.ts`;
 const PART_TIME_VALIDATION = `${SRC}/employment/part-time/validation.ts`;
 const PART_TIME_LINKAGE = `${SRC}/employment/part-time/linkage.ts`;
@@ -174,18 +177,13 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
  * 回执内容受任职记录查看权控制：visibleEmployees 先判 object.view（承接这一探测事实），再按数据范围逐人过滤；
  * 首次返回与同键重放都经 runWrite 的投影出口 visibleRunReceipt。
  */
-const runReceiptDisclosure = (file: string, path: string): Obligation => ({
+const runReceiptDisclosure = (file: string, path: string, project = 'visibleRunReceipt'): Obligation => ({
   perm: `obj:${RECORD}:view`,
   purpose: 'disclosure:receiptDisclosure',
   need: list('employment.runReceipt'),
   facts: ['object:object.* 动作'],
   at: [
-    at(
-      file,
-      'POST',
-      path,
-      '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRunReceipt(deps, ctx, body) }',
-    ),
+    at(file, 'POST', path, `{ guard: ruleGuard(deps, ctx, {}), project: (body) => ${project}(deps, ctx, body) }`),
     fn(
       AUTO_REG,
       'visibleEmployees',
@@ -540,6 +538,114 @@ function partTimeRequestWrite(
     directOperation(access),
   ];
 }
+// ---- F-283 实习列表逐行 availableActions（intern-actions.ts）：可选分支 rowActions，只决定响应里的动作码，不参与准入 ----
+// 对每行跑转正 / 结束实习 / 撤回 / 撤销写入口的同一组判定；没有对应对象操作权（readContext 403）时该类动作不下发
+const ROW_ACTIONS_CALL = at(
+  INTERN,
+  'GET',
+  '/interns',
+  "const actions = await internRowActions(c, deps, ctx, view, items, show.employment('status'))",
+);
+const WRITE_CONTEXT: Evidence = {
+  role: 'impl',
+  unit: `${CTX}#tryWriteContext`,
+  anchor: 'return await readContext(c, deps, action)',
+};
+const rowAction = (perm: string, facts: readonly string[], evidence: readonly Evidence[]): Obligation => ({
+  perm,
+  purpose: 'disclosure:rowActions',
+  need: NONE,
+  facts,
+  at: [ROW_ACTIONS_CALL, ...evidence],
+});
+const ROW_REGULARIZE: Evidence[] = [
+  fn(
+    INTERN_ACTIONS,
+    'rowActions',
+    'await permits(() => requireInternRegularizationAccess(tx, create, item.employeeId, business))',
+  ),
+  fn(
+    REPLAY,
+    'requireInternRegularizationAccess',
+    "await requireEmploymentWrite(scoped, 'create', business, 'Employment.Create')",
+  ),
+];
+const ROW_TERMINATE: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', "await permits(() => requireExitCommandAccess(tx, create, 'create', gate, {}))"),
+  fn(REPLAY, 'requireExitCommandAccess', 'await requireExitPermission(scoped, operation, target)'),
+  fn(
+    EXIT_GATE,
+    'requireExitPermission',
+    'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
+  ),
+];
+const ROW_TRANSITION: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', 'await permits(() => requireTransitionAccess(tx, update, item.id, action))'),
+  fn(
+    INTERN_ACTIONS,
+    'requireTransitionAccess',
+    "await requireEmploymentWrite(scoped, 'update', {}, TRANSITION_BUTTONS[action])",
+  ),
+];
+const rowActionObligations = (): Obligation[] => [
+  rowAction(
+    `obj:${RECORD}:create`,
+    [
+      'objectOp:TenantBase.EmploymentRecord:create',
+      'object:object.* 动作',
+      'scope:employment scope',
+      'scopePoint:employment point',
+    ],
+    [...ROW_REGULARIZE, WRITE_CONTEXT, READ, WRITE_OBJECT],
+  ),
+  rowAction(
+    `btn:${RECORD}#Employment.Create@detail`,
+    ['button:requireEmploymentWrite(按钮)'],
+    [...ROW_REGULARIZE, WRITE_BUTTON, RECORD_CONST],
+  ),
+  rowAction(
+    `btn:${RECORD}#Employment.Dimission@detail`,
+    ['domain:employment.exitMode', 'domain:transfer.initiator'],
+    [...ROW_TERMINATE, WRITE_BUTTON, RECORD_CONST],
+  ),
+  rowAction(
+    `obj:${RECORD}:update`,
+    ['objectOp:TenantBase.EmploymentRecord:update'],
+    [...ROW_TRANSITION, WRITE_CONTEXT, READ, WRITE_OBJECT],
+  ),
+  rowAction(`btn:${RECORD}#Employment.Withdraw@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
+  rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
+];
+
+// ---- F-268 兼职申请详情逐单 availableActions（part-time/request-actions.ts）：可选分支 requestActions ----
+const REQUEST_ACTIONS_CALL = at(
+  PART_TIME_REQUEST,
+  'GET',
+  '/part-time-requests/:id',
+  'await availableRequestActions(c, deps, ctx.tenantId, id)',
+);
+const REQUEST_ACTION_ACCESS_AT: Evidence[] = [
+  fn(
+    PART_TIME_REQUEST_ACTIONS,
+    'availableRequestActions',
+    'await permits(() => requirePartTimeRequestAccess(tx, scoped, requestActionTarget(requestId, action)))',
+  ),
+  ...ACCESS_CHAIN('requirePartTimeRequestAccess'),
+];
+const requestAction = (perm: string, facts: readonly string[], evidence: readonly Evidence[]): Obligation => ({
+  perm,
+  purpose: 'disclosure:requestActions',
+  need: NONE,
+  facts,
+  at: [REQUEST_ACTIONS_CALL, ...REQUEST_ACTION_ACCESS_AT, ...evidence],
+});
+const requestActionObligations = (): Obligation[] => [
+  requestAction(`obj:${RECORD}:update`, ['object:object.* 动作'], [WRITE_CONTEXT, READ, WRITE_OBJECT]),
+  requestAction(`btn:${RECORD}#Employment.PartTimeApproval@detail`, [], [WRITE_BUTTON, RECORD_CONST]),
+  requestAction(`obj:${RECORD}:delete`, [], [WRITE_CONTEXT, READ, WRITE_DELETE]),
+  requestAction(`btn:${RECORD}#Employment.Delete@detail`, [], [WRITE_BUTTON, RECORD_CONST]),
+  requestAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [WRITE_BUTTON, RECORD_CONST]),
+];
 // ---- R2-T03 B4 撤销离职（exit-routes.ts registerExitCancel / runExitCancel）；R2-T04 5a′ 撤销退休同一套 ----
 interface CancelEntry {
   readonly file: string;
@@ -1778,10 +1884,11 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.viewableFilters',
       [],
       [
-        at(INTERN, 'GET', '/interns', 'requireViewableInternFilters(filter, await viewableIn(deps, ctx))'),
+        at(INTERN, 'GET', '/interns', 'requireViewableInternFilters(filter, show)'),
         fn(INTERN, 'requireViewableInternFilters', "if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
       ],
     ),
+    ...rowActionObligations(),
   ],
   'POST /api/tenant/employment/interns/:id/regularize': [
     ob(
@@ -2024,6 +2131,7 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(
       at(PART_TIME_REQUEST, 'GET', '/part-time-requests/:id', "const ctx = await readPageContext(c, deps, 'detail')"),
     ),
+    ...requestActionObligations(),
   ],
   // PT-5 / F-255：readPageContext(list) + 筛选与显式排序字段须可见，否则 403；范围谓词在 queries.ts 分页前过滤
   'GET /api/tenant/employment/part-times': [
@@ -3227,6 +3335,40 @@ export const EMPLOYMENT: RequiredTable = {
         'async (tx, context) => ({ status: 200, body: await runAutoRegularizationNow(tx, context, cursor) })',
       ),
     ),
+  ],
+  /**
+   * 退休规则立即执行（BE-5c2）：同自动转正的准入与披露——准入只认配置写，回执经 visibleRetirementReceipt → visibleEmployees
+   * 按操作人当前的任职记录查看权与数据范围逐人过滤；写入走人事写端口（appendEmployee），不经转正 / 调动入口，无联动校验。
+   */
+  'POST /api/tenant/employment/retirement-rules/run': [
+    ...withObjectWriteFact(
+      withNeeds(
+        configWriteBase(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          'update',
+          at(
+            RETIREMENT_RULE,
+            'POST',
+            '/retirement-rules/run',
+            "await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings'",
+          ),
+        ),
+        {
+          'admin:other_settings': bound(NONE),
+          'obj:TenantBase.EmploymentSettings:update': bound(list('employment.runReceipt'), [
+            at(
+              RETIREMENT_RULE,
+              'POST',
+              '/retirement-rules/run',
+              '{ guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRetirementReceipt(deps, ctx, body) }',
+            ),
+            ...SCOPE_AT['employment.runReceipt'],
+          ]),
+        },
+      ),
+    ),
+    runReceiptDisclosure(RETIREMENT_RULE, '/retirement-rules/run', 'visibleRetirementReceipt'),
   ],
   // ---- employment/auto-assessment-routes.ts：R2 BE-15b2 自动发起考核规则与立即执行（同自动转正规则，配置写入口 writeContext）--
   'GET /api/tenant/employment/auto-assessment-rules': [

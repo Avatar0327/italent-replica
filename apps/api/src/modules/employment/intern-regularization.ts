@@ -8,6 +8,7 @@ import { PROBATION_MONTHS_MAX, PROBATION_MONTHS_MIN } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { employmentEstablishmentAssessment } from '../establishment/employment-check.js';
+import { isRegularizationProbationValid } from './entry-options.js';
 import type { EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { createEmploymentBusiness } from './write-service.js';
 
@@ -29,17 +30,29 @@ export const internRegularizationInput = z
     probationEndDate: z.iso.date().optional(),
     confirmed: z.boolean().optional(),
   })
-  .refine(
-    (input) =>
-      input.probation
-        ? input.probationMonths !== undefined
-        : input.probationMonths === undefined && input.probationEndDate === undefined,
-    { message: '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息', path: ['probationMonths'] },
-  );
+  .refine(isRegularizationProbationValid, {
+    message: '有试用期时必须填写试用期(月)；无试用期时不能填写试用期信息',
+    path: ['probationMonths'],
+  });
 export type InternRegularizationInput = z.infer<typeof internRegularizationInput>;
 
+type RegularizationFieldsInput = Pick<
+  InternRegularizationInput,
+  'departmentId' | 'positionId' | 'directManagerId' | 'dottedManagerId'
+>;
+
+/** 直接转正写入的任职业务载荷：字段写权限按它校验（入口、命令内复核、读口下发动作共用）。 */
+export function regularizationBusiness(input: RegularizationFieldsInput & { readonly effectiveDate: string }) {
+  return {
+    kind: 'intern_regularization' as const,
+    mode: 'direct' as const,
+    effectiveDate: input.effectiveDate,
+    fields: regularizationFields(input),
+  };
+}
+
 /** 写入的任职字段（字段写权限、数据范围都按它校验）：部门 + 请求里给出的职位 / 汇报关系。 */
-export function regularizationFields(input: InternRegularizationInput): Partial<PresetFields> {
+export function regularizationFields(input: RegularizationFieldsInput): Partial<PresetFields> {
   const { departmentId, positionId, directManagerId, dottedManagerId } = input;
   const given = Object.entries({ positionId, directManagerId, dottedManagerId }).filter(([, v]) => v !== undefined);
   return { departmentId, ...Object.fromEntries(given) };
