@@ -68,8 +68,8 @@ import { PART_TIME_FIELD_KEYS, normalizeBatchEnd, type EditPartTimeInput } from 
 
 export const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 /**
- * 兼职表单可填的预置字段（§4.2）：沿用任职预置字段的校验，部门必填；isDepartmentHead / addedSubordinateIds 先接收，
- * PT-7 之前由服务层拒绝 true / 非空（§4.8，400 PART_TIME_LINKAGE_NOT_AVAILABLE），不静默丢弃。
+ * 兼职表单可填的预置字段（§4.2）：沿用任职预置字段的校验，部门必填；isDepartmentHead / addedSubordinateIds 自 PT-7 开放
+ * （§4.8）：服务层保存时校验联动人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件。
  */
 const partTimeFields = presetFieldsSchema
   .pick({

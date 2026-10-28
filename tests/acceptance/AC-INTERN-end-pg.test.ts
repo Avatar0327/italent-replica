@@ -11,35 +11,33 @@ import { describe, expect, it } from 'vitest';
 import { endWorld, type EndWorld } from './AC-INTERN-end-support.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { tenantApi } from './support/tenant-api.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 
 /** 测试会话持住员工行锁，依次发出 first / second（各自确认已在锁上等待），放锁后等两者结束。 */
 async function interleave<A, B>(w: EndWorld, employeeId: string, first: () => Promise<A>, second: () => Promise<B>) {
-  let release!: () => void;
-  let locked!: () => void;
-  const hold = new Promise<void>((done) => (release = done));
-  const held = new Promise<void>((done) => (locked = done));
-  const holder = withTenant(w.db, w.tenantId, async (tx) => {
-    await tx.execute(sql`SELECT 1 FROM employment_employees WHERE tenant_id=${w.tenantId}
-      AND id=${employeeId}::uuid FOR NO KEY UPDATE`);
-    locked();
-    await hold;
-  });
-  await held;
   const settle = <T>(run: () => Promise<T>) =>
     run().then(
       (value) => ({ value }),
       (error: unknown) => ({ error }),
     );
-  const firstResult = settle(first);
-  await waitForBlocked(w.db, 1);
-  const secondResult = settle(second);
-  await waitForBlocked(w.db, 2);
-  release();
-  await holder;
-  return { first: await firstResult, second: await secondResult };
+  const pending = await withHeldLock(
+    {
+      run: (fn) => withTenant(w.db, w.tenantId, fn),
+      take: (tx) =>
+        tx.execute(sql`SELECT 1 FROM employment_employees WHERE tenant_id=${w.tenantId}
+          AND id=${employeeId}::uuid FOR NO KEY UPDATE`),
+    },
+    async (lock) => {
+      const firstResult = lock.track(settle(first));
+      await waitForBlocked(w.db, 1);
+      const secondResult = lock.track(settle(second));
+      await waitForBlocked(w.db, 2);
+      return { firstResult, secondResult };
+    },
+  );
+  return { first: await pending.firstResult, second: await pending.secondResult };
 }
 
 const codeOf = (outcome: object) => ((outcome as { error?: unknown }).error as { code?: string } | undefined)?.code;
@@ -121,31 +119,32 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-INTERN-end-pg 结束�
    * 作废请求若在取组织锁之前就发了站内消息（成员行 KEY SHARE），两边成环，PG 判死锁（40P01）。
    */
   async function orgLockedThenMemberLocked<T>(w: EndWorld, request: () => Promise<T>) {
-    let release!: () => void;
-    let held!: () => void;
-    const hold = new Promise<void>((done) => (release = done));
-    const locked = new Promise<void>((done) => (held = done));
     let memberLocked: unknown;
-    const holder = withTenant(w.db, w.tenantId, async (tx) => {
-      await lockOrganizationSettings(tx, w.tenantId);
-      held();
-      await hold;
-      try {
-        await tx.execute(sql`SELECT 1 FROM tenant_memberships WHERE tenant_id=${w.tenantId}
-          AND user_id=${w.session.user.id}::uuid FOR UPDATE`);
-      } catch (error) {
-        memberLocked = error;
-      }
-    });
-    await locked;
-    const running = request().then(
-      (value) => ({ value }),
-      (error: unknown) => ({ error }),
+    const running = await withHeldLock(
+      {
+        run: (fn) => withTenant(w.db, w.tenantId, fn),
+        take: (tx) => lockOrganizationSettings(tx, w.tenantId),
+        afterRelease: async (tx) => {
+          try {
+            await tx.execute(sql`SELECT 1 FROM tenant_memberships WHERE tenant_id=${w.tenantId}
+              AND user_id=${w.session.user.id}::uuid FOR UPDATE`);
+          } catch (error) {
+            memberLocked = error;
+          }
+        },
+      },
+      async (lock) => {
+        const pending = lock.track(
+          request().then(
+            (value) => ({ value }),
+            (error: unknown) => ({ error }),
+          ),
+        );
+        await waitForBlocked(w.db, 1);
+        return { pending }; // 包一层：直接返回 promise 会在放锁前就等请求，请求等锁、锁等请求
+      },
     );
-    await waitForBlocked(w.db, 1);
-    release();
-    await holder;
-    return { result: await running, memberLocked };
+    return { result: await running.pending, memberLocked };
   }
 
   it('锁序：直接转正作废在途申请时先取组织锁再发消息——与“组织锁 → 成员行”路径交错不死锁，两边都成功', async () => {

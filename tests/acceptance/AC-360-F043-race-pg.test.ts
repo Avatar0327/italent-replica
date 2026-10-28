@@ -16,9 +16,10 @@ import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandProbe } from '../../apps/api/src/modules/survey360/context.js';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
-import { hire, scene, type SyncPage } from './AC-360-F043-support.js';
+import { hire, rename, scene, type SyncPage } from './AC-360-F043-support.js';
 import { EMP_TODAY, loginEmailOf } from './AC-EMP-support.js';
 import { expectWaitingOnLock } from './support/f061.js';
+import { orderedEmployeePair } from './support/ordered-employee-pair.js';
 
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 const testDb = useTestDb();
@@ -241,10 +242,29 @@ describe.skipIf(!realPostgres)('F-043 第 3 轮 P2-1 命令执行中撤空管理
 describe.skipIf(!realPostgres)('F-043 第 3 轮 P2-2 同步与调动的员工锁顺序一致（真 PG）', () => {
   it('同步新建乙、刷新甲之间，调动甲并把乙列为新增下属 → 不死锁：调动等同步提交后成功，同步照常完成', async () => {
     const s = await scene(testDb().db, 'f043t4', false);
-    // 甲 = 已挂接且有待同步变化的员工；乙 = 尚未同步的新员工，员工 ID 排在甲之后
-    const jia = s.inside;
-    let yi = await hire(s.w, '新员工乙', s.orgA, s.manager.id);
-    while (yi.id < jia.id) yi = await hire(s.w, '新员工乙', s.orgA, s.manager.id);
+    // 先建档并分配 UUID 顺序，再让甲入职 / 同步 / 改名，最后让乙入职，确保乙仍是待新建的同步对象。
+    const { worker: jia, subordinate: yi } = await orderedEmployeePair(
+      await s.w.session.employee('合成候选甲'),
+      () => s.w.session.employee('合成候选乙'),
+      (employee) => employee.id,
+      'above',
+    );
+    expect(jia.id < yi.id).toBe(true);
+    const hireSelected = (employee: typeof jia) =>
+      s.w.session.business(
+        employee.id,
+        {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2025-01-01',
+          fields: { departmentId: s.orgA, directManagerId: s.manager.id },
+        },
+        employee.revision,
+      );
+    await hireSelected(jia);
+    await s.w.ok(s.w.request('POST', '/people/sync', { body: {} }));
+    await rename(s.w, jia.id, '合成甲待同步新名');
+    await hireSelected(yi);
     let transfer: Promise<Response> | undefined;
     onceFor(jia.id, async () => {
       const employee = await s.w.session.getEmployee(jia.id);

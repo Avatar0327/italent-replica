@@ -304,6 +304,15 @@ const RUN_RECEIPT_DISCLOSURE = object({
   ),
 });
 
+/** 退休规则立即执行回执的人员披露（BE-5c2）：同上，逐人条目是固定键（员工、规则、写入的人事字段名、失败原因），不含日期值。 */
+const RETIREMENT_RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(['employeeId', 'ruleId', 'fields', 'reason'], 'BE-5c2：退休规则立即执行回执的逐人固定键'),
+});
+
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
 /** tab=pending（默认）：approval/queries.ts listTodos（本人为待办人 assignee_user_id）。 */
 const TODO_PENDING_KEYS = [
@@ -1047,13 +1056,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     byId,
   ),
   // 直接新增：不要求 If-Match（新建对象）；body 严格；requireEmploymentWrite('create', 实际写入字段, Employment.PartTime)；人员 + 兼职
-  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead = true / 非空 addedSubordinateIds
-  // → 400 PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门 requireEmploymentScope；命令内 partTimeCreateGuard 三个出口按当前授权重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放
+  // （字段写权沿用 body.fields 判定，不新增授权项；联动人员 / 组织写范围的复核登记 employment.linkage，DEC-178）：
+  // 保存时校验联动人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件；不触发向后更新（AC-FWD-11）
   'POST /employees/:id/part-times': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button(PART_TIME_BUTTONS.direct, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1071,13 +1081,13 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 编辑兼职（PT-3c，§5.1 + 直接修改结束日期）：readContext(object.update, If-Match 必填)；body 严格（400）；requirePartTimeWriteAccess：
   // 目标存在与兼职部门（改部门时含新部门）requireScopedEmploymentObject（写入口径 404「兼职记录不存在」）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeEdit（403）；命令内 partTimeWriteGuard 三个出口重过；命令内 editPartTime 锁 + 版本 + 周期边界 + E-4 +
-  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；不触发向后更新（AC-FWD-11）
+  // 部门可用性与引用；开始日期 / 任职类型改值、结束日置空 → 400；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；不触发向后更新（AC-FWD-11）
   'PATCH /part-times/:recordId': object({
     object: EMPLOYMENT,
     operation: 'update',
     button: button(PART_TIME_BUTTONS.edit, 'detail'),
-    guards: [DIRECT_OPERATION],
+    guards: [DIRECT_OPERATION, LINKAGE],
     scope: guardScope('employment.scope', NF_PART_TIME),
     fields: RESPONSE,
     write: employmentWrite(
@@ -1111,8 +1121,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 新建（草稿，或 submit = true 建完直接提交）：requestType = add ——
   // readContext(object.create)；body 严格（400）；requirePartTimeCreateAccess：员工主职 + 兼职部门范围（404）→
   // 对象创建权 + 实际写入字段（含 requestRemark）的创建权 + Employment.PartTimeApproval（403）；建并提交另要 Employment.Submit（条件分支，
-  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead = true / 非空 addedSubordinateIds → 400
-  // PART_TIME_LINKAGE_NOT_AVAILABLE（PT-7 才开）；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
+  // 探针默认体不带 submit）；命令内 partTimeCreateGuard 三个出口重过；isDepartmentHead / addedSubordinateIds 自 PT-7 开放，
+  // 只对本次新出现的联动校验并办理；没有匹配的流程 / 首节点无审批人 → 整单回滚（DEC-017 / 054）。
   // requestType = extend / end（PT-4c）同路径另走 createDateRequestRoute：readContext(object.update)；
   // requirePartTimeWriteAccess（同
   // 编辑兼职）：目标兼职与其兼职部门写入口径范围（404「兼职记录不存在」）→ 对象更新权 + endDate / requestRemark 字段写权 +
@@ -1147,7 +1157,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 修改草稿 / 驳回中的申请：If-Match = 申请头 revision（缺 400、不符 409）；body 严格（400）；requirePartTimeRequestAccess：申请存在
   // （404「兼职申请不存在」）→ 员工主职与申请部门（改部门时含新部门）requireScopedEmploymentObject（404）→ 对象更新权 + 实际改动字段
   // 的写权 + Employment.PartTimeApproval（403）；命令内 partTimeRequestGuard 重过；锁内状态（409 PART_TIME_REQUEST_STATE_INVALID）、
-  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；linkage 两字段同新建
+  // D-1～D-10 与周期边界由 updateRequest（新增 D-1～D-10；延长 E-1～E-6 / 结束 T-1～T-4） 判，越界当次拒绝不留版本；联动两字段同新建（保存并校验，不执行）
   'PATCH /part-time-requests/:id': object({
     object: EMPLOYMENT,
     operation: 'update',
@@ -1785,9 +1795,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
-  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
-  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
-  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
+  // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一语句；
+  // 任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
   'GET /retirements': object({
     object: EMPLOYMENT,
     operation: 'view',
@@ -2101,6 +2113,31 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'),
         { commandOnly: true, preconditions: ['assertRevision'] },
       ),
+    },
+  ),
+  // 立即执行（R2-T04 §9.2，BE-5c2）：?purpose= 必填（expected_date / flexible_range），body 严格 { cursor? }（上次回执的 next，
+  // 随机句柄，绑定租户 × 操作人 × 用途 × 业务日，其余 400 RETIREMENT_RUN_CURSOR_INVALID）；对应自动计算开关关闭 400
+  // RETIREMENT_AUTO_DISABLED；一次最多一页，按规则适用组织扫描（系统批次提前执行，不叠加操作人数据范围），经人事写端口写入
+  // （审计 personnel.retirement_rule，actor = 系统）；回执逐人固定键，按操作人当前任职范围裁剪（首次与重放同一出口）
+  'POST /retirement-rules/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织；这里的范围是回执的人员披露
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RETIREMENT_RUN_RECEIPT_DISCLOSURE },
+      write: write('body', 'config.audited:retirement_rule_run', none('配置对象无范围，回执只含员工 / 规则 ID'), {
+        commandOnly: true,
+        preconditions: ['assertRevision'],
+      }),
     },
   ),
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a / 5c1b 预计退休日期与弹性范围规则、个人身份字典（R2-T04 §9.1，DEC-640 / 641）----

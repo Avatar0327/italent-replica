@@ -1,0 +1,41 @@
+{
+  "GET /api/tenant/hr-analysis/roster": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentContract",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view",
+      "obj:TenantBase.EmploymentContract:view",
+      "obj:TenantBase.EmploymentRecord:view",
+      "obj:TenantBase.HrRoster:view"
+    ]
+  },
+  "GET /api/tenant/hr-analysis/roster/export": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentContract",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "btn:TenantBase.HrRoster#export@list",
+      "obj:TenantBase.EmployeeInformation:view",
+      "obj:TenantBase.EmploymentContract:view",
+      "obj:TenantBase.EmploymentRecord:view",
+      "obj:TenantBase.HrRoster:view"
+    ]
+  }
+}
