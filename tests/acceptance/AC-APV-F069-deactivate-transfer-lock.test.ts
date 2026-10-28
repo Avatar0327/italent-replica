@@ -28,7 +28,7 @@ import { describe, expect, it } from 'vitest';
 import { approvalWorld, TRANSFER_NODES, transferScene } from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
 import { NODES, pendingOf, rowsOf } from './support/f048.js';
-import { settledOrBlocked, waitForBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -151,41 +151,49 @@ describe.runIf(realPostgres)(
       const f = await reactivationScene('f069-reactivate');
       const { w } = f;
       // 屏障 B(账号行 FOR SHARE)挡住停用的账号锁;屏障 M(成员行)让重新激活停在“已持账号行 SHARE、等成员行”。
-      const accountHold = hold(w.db, null, sql`SELECT id FROM users WHERE id=${f.source.id}::uuid FOR SHARE`);
-      await accountHold.ready;
-      const memberHold = hold(
+      // 三道屏障都由 withHeldLock 收束:任何一步抛错都无条件放锁(F-282);被屏障挡住的请求统一登记在最外层 B 上。
+      const accountHold = holdSpec(w.db, null, sql`SELECT id FROM users WHERE id=${f.source.id}::uuid FOR SHARE`);
+      const memberHold = holdSpec(
         w.db,
         w.tenant.id,
         sql`SELECT id FROM tenant_memberships
         WHERE tenant_id=${w.tenant.id} AND user_id=${f.source.id}::uuid FOR UPDATE`,
       );
-      await memberHold.ready;
-      const regranted = outcomeOf(f.regrant());
-      await waitForBlocked(w.db, 1);
-      // 此刻 U 在 R 的成员关系仍是已撤销:预取扫描跳过 R;停用排在账号锁上(等 B 与重新激活的 SHARE)
-      const disabled = f.disable();
-      await waitForBlocked(w.db, 2);
-      await memberHold.release();
-      expect(await regranted).toBe('ok');
-      // R 的前置节点同意:U 又是有效成员,调动异常待办自然派到 U 名下
-      const approved = await w.taskAction(f.s.outHead.userId, f.pendingTaskId, 'approve', f.view.revision);
-      expect(approved.status, await approved.clone().text()).toBe(200);
-      expect(pendingOf(await w.detail(f.view.id))).toEqual([expect.objectContaining({ assigneeUserId: f.source.id })]);
-      // 屏障 G 停住修复前的第二轮接管(它第一步就取 U 在 R 的派单闸)
-      const gateHold = hold(
+      const gateHold = holdSpec(
         w.db,
         w.tenant.id,
         sql`SELECT pg_advisory_xact_lock(hashtextextended(
         'approval-assignee:' || ${w.tenant.id}::uuid::text || ':' || ${f.source.id}::uuid::text, 0))`,
       );
-      await gateHold.ready;
-      await accountHold.release();
-      // 修复前:停用已持账号行锁,停在 R 的派单闸;修复后:账号锁到手即发现 R 未被预取,立即回滚
-      await settledOrBlocked(w.db, disabled, 1);
-      const hired = f.hireWithSource();
-      // 修复前:入职持 R 的组织锁,等停用持有的账号行;放行后停用取 R 的组织锁成环(40P01)
-      await settledOrBlocked(w.db, hired, 2);
-      await gateHold.release();
+      const { disabled, hired } = await withHeldLock(accountHold, async (account) => {
+        const { regranted, disabled } = await withHeldLock(memberHold, async (member) => {
+          const regranted = account.track(outcomeOf(f.regrant()));
+          await waitForBlocked(w.db, 1);
+          // 此刻 U 在 R 的成员关系仍是已撤销:预取扫描跳过 R;停用排在账号锁上(等 B 与重新激活的 SHARE)
+          const disabled = account.track(f.disable());
+          await waitForBlocked(w.db, 2);
+          await member.release();
+          return { regranted, disabled };
+        });
+        expect(await regranted).toBe('ok');
+        // R 的前置节点同意:U 又是有效成员,调动异常待办自然派到 U 名下
+        const approved = await w.taskAction(f.s.outHead.userId, f.pendingTaskId, 'approve', f.view.revision);
+        expect(approved.status, await approved.clone().text()).toBe(200);
+        expect(pendingOf(await w.detail(f.view.id))).toEqual([
+          expect.objectContaining({ assigneeUserId: f.source.id }),
+        ]);
+        // 屏障 G 停住修复前的第二轮接管(它第一步就取 U 在 R 的派单闸)
+        const { hiring } = await withHeldLock(gateHold, async () => {
+          await account.release();
+          // 修复前:停用已持账号行锁,停在 R 的派单闸;修复后:账号锁到手即发现 R 未被预取,立即回滚
+          await settledOrBlocked(w.db, disabled, 1);
+          const hiring = account.track(f.hireWithSource());
+          // 修复前:入职持 R 的组织锁,等停用持有的账号行;放行后停用取 R 的组织锁成环(40P01)
+          await settledOrBlocked(w.db, hiring, 2);
+          return { hiring }; // 包一层:直接返回 promise 会在放锁前就等入职
+        });
+        return { disabled, hired: hiring };
+      });
       expect(await disabled).toBeInstanceOf(RevisionConflictError);
       const response = await hired;
       expect(response.status, await response.clone().text()).toBe(201);
@@ -207,25 +215,11 @@ function outcomeOf(command: Promise<unknown>): Promise<unknown> {
   );
 }
 
-/** 长事务屏障:执行一条加锁语句后一直持有,直到 release;tenantId 为 null 时用平台角色(可读 users)。 */
-function hold(db: Parameters<typeof withTenant>[0], tenantId: string | null, statement: ReturnType<typeof sql>) {
-  let release!: () => void;
-  let ready!: () => void;
-  const released = new Promise<void>((resolve) => (release = resolve));
-  const readied = new Promise<void>((resolve) => (ready = resolve));
-  const run = async (tx: Tx) => {
-    await tx.execute(statement);
-    ready();
-    await released;
-  };
-  const done = tenantId === null ? withPlatform(db, run) : withTenant(db, tenantId, run);
-  void done.catch(() => ready());
+/** 长事务屏障的规格:执行一条加锁语句后一直持有,直到 withHeldLock 放行;tenantId 为 null 时用平台角色(可读 users)。 */
+function holdSpec(db: Parameters<typeof withTenant>[0], tenantId: string | null, statement: ReturnType<typeof sql>) {
   return {
-    ready: readied,
-    release: async () => {
-      release();
-      await done;
-    },
+    run: <R>(fn: (tx: Tx) => Promise<R>) => (tenantId === null ? withPlatform(db, fn) : withTenant(db, tenantId, fn)),
+    take: (tx: Tx) => tx.execute(statement),
   };
 }
 

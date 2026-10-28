@@ -18,7 +18,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { listRetirementIdentityTypes } from '../personnel/identity-types.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
-import { ruleGuard, writeContext } from './auto-regularization-routes.js';
+import { ruleGuard, visibleEmployees, writeContext } from './auto-regularization-routes.js';
 import { jsonBody, readContext, requireEmploymentWrite, runWrite, uuidParam } from './context.js';
 import {
   copyRetirementRule,
@@ -30,6 +30,13 @@ import {
   saveRetirementRule,
   setRetirementRuleEnabled,
 } from './retirement-rules.js';
+import {
+  parseRetirementRunBody,
+  parseRunPurpose,
+  runRetirementRulesNow,
+  type RetirementRunReceipt,
+} from './retirement-run.js';
+import type { EmploymentContext } from './types.js';
 
 registerSettingValidator(RETIREMENT_AUTO_EXPECTED_DATE_KEY, isRetirementSwitchValue);
 registerSettingValidator(RETIREMENT_AUTO_FLEXIBLE_RANGE_KEY, isRetirementSwitchValue);
@@ -71,6 +78,7 @@ export function registerRetirementRuleRoutes(router: Hono<TenantEnv>, deps: Tena
     );
   });
   registerRuleRowActions(router, deps);
+  registerRunNow(router, deps);
   router.get('/retirement-identity-types', async (c) => {
     const ctx = await readContext(c, deps, 'object.view', 0);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listRetirementIdentityTypes(tx, ctx.tenantId));
@@ -124,4 +132,38 @@ function registerRuleRowActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       { guard: ruleGuard(deps, ctx, {}), project: (body) => body },
     );
   });
+}
+
+/**
+ * 立即执行（R2-T04 §9.2）：POST /retirement-rules/run?purpose=，body 严格 { cursor? }。权限同规则维护；
+ * 回执按操作人当前的任职范围逐人裁剪（首次与同键重放同一出口），续跑句柄不含员工信息，原样返回。
+ */
+function registerRunNow(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/retirement-rules/run', async (c) => {
+    const ctx = await writeContext(c, deps);
+    const purpose = parseRunPurpose(c.req.query('purpose'));
+    const { cursor } = parseRetirementRunBody(await jsonBody(c));
+    await requireEmploymentWrite(ctx, 'update', {}, undefined, 'TenantBase.EmploymentSettings', {
+      commandOnly: true,
+    });
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      { action: 'retirement-rule-run', purpose, cursor },
+      async (tx, context) => ({ status: 200, body: await runRetirementRulesNow(tx, context, purpose, cursor) }),
+      { guard: ruleGuard(deps, ctx, {}), project: (body) => visibleRetirementReceipt(deps, ctx, body) },
+    );
+  });
+}
+
+async function visibleRetirementReceipt(deps: TenantRouteDeps, ctx: EmploymentContext, body: unknown) {
+  const receipt = body as RetirementRunReceipt;
+  const ids = [...new Set([...receipt.updated, ...receipt.failed].map((item) => item.employeeId))];
+  const visible = await visibleEmployees(deps, ctx, ids);
+  return {
+    ...receipt,
+    updated: receipt.updated.filter((item) => visible.has(item.employeeId)),
+    failed: receipt.failed.filter((item) => visible.has(item.employeeId)),
+  };
 }
