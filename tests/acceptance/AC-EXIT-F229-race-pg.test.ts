@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as assessmentStore from '../../apps/api/src/modules/employment/assessment-store.js';
 import * as writeService from '../../apps/api/src/modules/employment/write-service.js';
 import { assessmentExitWorld, EFFECTIVE_DAY, type AssessmentExitWorld } from './AC-EXIT-F229-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const world = (label: string) => assessmentExitWorld(database().db, label);
@@ -64,12 +64,15 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-229 离职生效与考
       }
       return original(...args);
     });
-    const approving = x.taskAction(task.assigneeUserId, task.id, 'approve', revision, {});
-    await enteredOnce;
-    const activating = x.activate(leave.id, EFFECTIVE_DAY);
-    await waitForBlocked(x.db, 1);
-    resume();
-    const [approved, activated] = await Promise.all([approving, activating]);
+    // 门在被 mock 的回调里（审批请求自己持员工锁）：等待失败时也要放门并收束两个请求（F-282）
+    const requests = await withRelease(resume, async (run) => {
+      const approving = run.track(x.taskAction(task.assigneeUserId, task.id, 'approve', revision, {}));
+      await enteredOnce;
+      const activating = run.track(x.activate(leave.id, EFFECTIVE_DAY));
+      await waitForBlocked(x.db, 1);
+      return [approving, activating] as const;
+    });
+    const [approved, activated] = await Promise.all(requests);
     expect(approved.status, await approved.clone().text()).toBe(200);
     expect(activated).toMatchObject({ outcome: 'effective' });
     expect((await x.get(assessmentId)).status).toBe('approved');
@@ -96,12 +99,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-229 离职生效与考
       await released;
       return original(...args);
     });
-    const activating = x.activate(leave.id, EFFECTIVE_DAY);
-    await enteredOnce;
-    const approving = x.taskAction(task.assigneeUserId, task.id, 'approve', revision, {});
-    await waitForBlocked(x.db, 1);
-    resume();
-    const [activated, approved] = await Promise.all([activating, approving]);
+    const requests = await withRelease(resume, async (run) => {
+      const activating = run.track(x.activate(leave.id, EFFECTIVE_DAY));
+      await enteredOnce;
+      const approving = run.track(x.taskAction(task.assigneeUserId, task.id, 'approve', revision, {}));
+      await waitForBlocked(x.db, 1);
+      return [activating, approving] as const;
+    });
+    const [activated, approved] = await Promise.all(requests);
     expect(activated).toMatchObject({ outcome: 'effective' });
     // 审批请求带的是生效前读到的实例 revision；拿到员工锁后实例已被取消、revision 已变：版本冲突，不是死锁转换
     await expectBusinessRejection(approved, { code: 'REVISION_CONFLICT' });

@@ -123,9 +123,11 @@ pg('联动 × 并发', () => {
   it('办理入职 × 编辑并同步：都先等 Offer 锁；放开后无死锁，Offer 终态与待入职一致', async () => {
     const { w, offer, entryId, employeeId } = await entrySetup('cc-complete-edit');
     const before = await deadlocks(w.db);
+    // 先读版本号再持锁：持锁后到 try 之间不能有会抛错的 await，否则 finally 不会执行、Offer 行锁不放（F-282）
+    const entryRevision = await w.businessRevision(entryId);
     const release = await holdOffer(w, offer.id);
     const complete = w.employment('POST', `/pending-entries/${entryId}/complete`, {
-      ifMatch: await w.businessRevision(entryId),
+      ifMatch: entryRevision,
       body: { probation: false },
     });
     const editing = w.request('PUT', `/${offer.id}`, {

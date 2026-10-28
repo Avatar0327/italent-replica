@@ -2344,9 +2344,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
     '#asRows',
     '#rehirePreview',
+    'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
     'apps/api/src/modules/employment/retirement-application.ts#previewRetirement',
+    'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_RESPONSE_DEPENDENCIES',
   ],
   'apps/api/src/modules/employment/exit-preview.ts#rehirePreview': [
     'apps/api/src/modules/employment/retirement-rehire.ts#previewRehire',
@@ -5469,6 +5471,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-routes.ts#day',
     'apps/api/src/modules/employment/exit-routes.ts#parse',
     'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton',
+    'apps/api/src/modules/employment/exit-routes.ts#viewableIn',
     '#KIND',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
@@ -5678,6 +5681,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['#FALLBACK_UPCOMING_DAYS'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': [
     'apps/api/src/modules/employment/exit-routes.ts#day',
+    'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_CANCELLED_VIEW',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_UPCOMING_DAYS',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_VIEWS',
   ],
@@ -5692,7 +5696,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES',
     'apps/api/src/modules/employment/exit-queries.ts#on',
   ],
-  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': ['#dayEnd'],
+  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': [
+    'apps/api/src/modules/employment/exit-queries.ts#viewPredicate',
+    '#RETIREMENT_CANCELLED_VIEW',
+    '#dayEnd',
+  ],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [
     'apps/api/src/modules/employment/exit-queries.ts#candidates',
