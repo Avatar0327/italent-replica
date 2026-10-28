@@ -1931,7 +1931,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled': [
     'apps/api/src/modules/org/settings.ts#readOrgSettings',
   ],
-  'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#orgDimensionMember'],
+  'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#historicalParent', '#orgDimensionMember'],
   'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
     'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
   ],
