@@ -109,4 +109,25 @@ describe('F-266 退休预览按字段查看权裁剪 P 与退休类型', () => {
       effectiveDate: '2026-10-16',
     });
   });
+
+  it('AC-RT-F301 离职入口显式传入空可见性，仍不返回退休字段且只读不写', async () => {
+    const x = await world('f301-exit-preview');
+    await x.setExpectedRetirement('2026-10-20');
+    const before = await x.stateCounts();
+    const dates = await x.retirementDates();
+    const response = await x.session.request('POST', `/exits/employees/${x.employee.id}/preview`, {
+      body: { lastWorkDate: '2026-10-15' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('expectedRetirementDate');
+    expect(body).not.toHaveProperty('retireType');
+    expect(body).toMatchObject({ lastWorkDate: '2026-10-15', effectiveDate: '2026-10-16', blockers: [], ack: null });
+    expect(body.warnings).toEqual([
+      { reason: 'EXIT_APPLICATIONS_TO_VOID', items: [], hiddenCount: 0 },
+      { reason: 'EXIT_FUTURE_TRANSFER_LANDED', items: [], hiddenCount: 0 },
+    ]);
+    expect(await x.stateCounts()).toEqual(before);
+    expect(await x.retirementDates()).toEqual(dates);
+  });
 });

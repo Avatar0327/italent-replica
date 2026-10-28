@@ -5,13 +5,13 @@
  * - PB-55：组织停用 vs 新增兼职 —— 组织锁串行：兼职先提交，停用在锁后统计到它 → 409；停用统计完后兼职再提交，
  *   等待者在锁内复查部门停用 → 400，不会漏计。
  */
-import { withTenant, type Db, type Tx } from '@italent/db';
+import { withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as partTimeStore from '../../apps/api/src/modules/employment/part-time/store.js';
 import { createPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
 import { serviceWorld, type ServiceWorld } from './AC-PT-service-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock, withRelease } from './support/pg-interleave.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -25,23 +25,11 @@ function signal() {
   return { promise, resolve };
 }
 
-/** 在租户事务里执行 work，停在提交之前直到 release；返回提交结果（成功 undefined，失败为错误）。 */
-function holdThen(db: Db, tenantId: string, work: (tx: Tx) => Promise<unknown>) {
-  const held = signal();
-  const release = signal();
-  const done = withTenant(db, tenantId, async (tx) => {
-    await work(tx);
-    held.resolve();
-    await release.promise;
-  }).then(
-    () => undefined,
-    (error: unknown) => {
-      held.resolve();
-      return error;
-    },
-  );
-  return { held: held.promise, release: release.resolve, done };
-}
+/** 租户事务里执行 take 后停在提交之前，直到 withHeldLock 放行；take 失败会让 withHeldLock 直接抛出。 */
+const holding = (w: ServiceWorld, take: (tx: Tx) => Promise<unknown>) => ({
+  run: <R>(fn: (tx: Tx) => Promise<R>) => withTenant(w.db, w.tenantId, fn),
+  take,
+});
 
 const create = (w: ServiceWorld, tx: Tx, patch: Parameters<ServiceWorld['create']>[0]) =>
   createPartTime(tx, w.context(), {
@@ -55,12 +43,14 @@ const create = (w: ServiceWorld, tx: Tx, patch: Parameters<ServiceWorld['create'
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-concurrency-pg 兼职写入真 PG 交错', () => {
   it('PB-53：同员工并发新增两条外派 —— 后到者等员工行锁，先到者提交后被拒，恰一条成功', async () => {
     const w = await serviceWorld(database().db, 'pt-pg-exclusive');
-    const first = holdThen(w.db, w.tenantId, (tx) => create(w, tx, { serviceType: 'expatriate' }));
-    await first.held;
-    const second = w.rejection({ serviceType: 'secondment', startDate: '2026-09-10' });
-    await waitForBlocked(w.db, 1);
-    first.release();
-    expect(await first.done).toBeUndefined();
+    const { second } = await withHeldLock(
+      holding(w, (tx) => create(w, tx, { serviceType: 'expatriate' })),
+      async (lock) => {
+        const pending = lock.track(w.rejection({ serviceType: 'secondment', startDate: '2026-09-10' }));
+        await waitForBlocked(w.db, 1);
+        return { second: pending };
+      },
+    );
     const error = await second;
     expect(w.reason(error)).toBe('PART_TIME_EXCLUSIVE_TYPE_EXISTS');
     expect(await w.writes()).toMatchObject({ records: 2 });
@@ -69,12 +59,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-concurrency-pg 兼职写�
   it('PB-55：兼职先提交（持组织锁）→ 停用在锁后统计到它，409，组织仍启用', async () => {
     const w = await serviceWorld(database().db, 'pt-pg-org-first');
     const org = await w.org(`并发部门${uniqueSuffix()}`, { establishedOn: '2024-01-01' });
-    const writer = holdThen(w.db, w.tenantId, (tx) => create(w, tx, { departmentId: org.id }));
-    await writer.held;
-    const disable = w.disableOrg(org, '2026-10-02');
-    await waitForBlocked(w.db, 1);
-    writer.release();
-    expect(await writer.done).toBeUndefined();
+    const { disable } = await withHeldLock(
+      holding(w, (tx) => create(w, tx, { departmentId: org.id })),
+      async (lock) => {
+        const pending = lock.track(w.disableOrg(org, '2026-10-02'));
+        await waitForBlocked(w.db, 1);
+        return { disable: pending };
+      },
+    );
     const response = await disable;
     expect(response.status, await response.clone().text()).toBe(409);
     expect(await response.json()).toMatchObject({ error: { details: { reason: 'ORG_SUBTREE_NOT_EMPTY' } } });
@@ -93,11 +85,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-concurrency-pg 兼职写�
       await release.promise;
       return counted;
     });
-    const disable = w.disableOrg(org, '2026-10-02');
-    await reached.promise;
-    const writer = w.rejection({ departmentId: org.id, startDate: '2026-10-01' });
-    await waitForBlocked(w.db, 1);
-    release.resolve();
+    // 门在被 mock 的统计函数里（停用请求自己持组织锁）：失败时也要放门，否则停用事务挂住（F-282）
+    const { disable, writer } = await withRelease(release.resolve, async (lock) => {
+      const disabling = lock.track(w.disableOrg(org, '2026-10-02'));
+      await reached.promise;
+      const writing = lock.track(w.rejection({ departmentId: org.id, startDate: '2026-10-01' }));
+      await waitForBlocked(w.db, 1);
+      return { disable: disabling, writer: writing };
+    });
     const response = await disable;
     expect(response.status, await response.clone().text()).toBe(200);
     const error = await writer;
