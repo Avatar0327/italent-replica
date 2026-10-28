@@ -663,11 +663,10 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       const running = consumeRun(h.deps, h.input);
       await ready;
       const deleting = w.request('DELETE', `/records/${h.oldId}`, { ifMatch: 1 });
-      try {
+      await withRelease(release, async (cleanup) => {
+        [running, deleting].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 1);
-      } finally {
-        release();
-      }
+      });
       expect(await running).toMatchObject({ status: 'blocked' });
       const response = await deleting;
       expect(response.status).toBe(409);
