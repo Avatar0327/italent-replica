@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type DbHandle, migrationsFolder, sql } from '@italent/db';
+import { type DbHandle, migrationsFolder, sql, withTenant } from '@italent/db';
 import { describe, expect, it } from 'vitest';
 import { PRE_UPGRADE_SHIMS } from './pre-upgrade-shims.js';
 import { createTestDb } from './test-db.js';
@@ -27,6 +27,21 @@ async function columnTypes(handle: DbHandle): Promise<Map<string, string>> {
 }
 
 describe('升级前兼容垫片（migrateBefore 夹具）', () => {
+  it('F-306：0140 之前的旧库也能执行当前申请详情读取的试用期查询', async () => {
+    const handle = await createTestDb({ migrateBefore: '_approval_subjects' });
+    try {
+      const result = await withTenant(handle.db, '00000000-0000-4000-8000-000000000001', (tx) =>
+        tx.execute(sql`SELECT has_probation, months, expected_end_date
+          FROM employment_probation_versions
+          WHERE tenant_id='00000000-0000-4000-8000-000000000001'::uuid
+          ORDER BY version_no DESC LIMIT 1`),
+      );
+      expect(Array.isArray(result) ? result : (result as { rows: unknown[] }).rows).toEqual([]);
+    } finally {
+      await handle.close();
+    }
+  });
+
   it('每一行都对应一条真实迁移里的 ADD COLUMN，且类型与完整迁移后的列一致', async () => {
     const full = await createTestDb();
     try {
