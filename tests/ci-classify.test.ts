@@ -111,7 +111,7 @@ describe('scripts/ci-classify.sh', () => {
     expect(classify({ EVENT_NAME: 'pull_request', BASE_REF: '' })).toBe('mode=light');
   });
 
-  it('DEC-458：关闭重开 PR（reopened）带 queue-head 标签走完整模式，不带标签仍轻量', () => {
+  it('DEC-458 / DEC-694②：兼容手工 reopened，带 queue-head 仍完整，不带标签仍轻量', () => {
     testMerge(main, codeOffMain);
     const reopened = { EVENT_NAME: 'pull_request', EVENT_ACTION: 'reopened', BASE_REF: 'main' };
     expect(classify({ ...reopened, QUEUE_HEAD: 'true' })).toBe('mode=full');
@@ -135,7 +135,7 @@ describe('scripts/ci-classify.sh', () => {
     const labeled = { EVENT_NAME: 'pull_request', EVENT_ACTION: 'labeled', BASE_REF: 'main' };
     for (const head of [codeOffMain, docsOffMain]) {
       testMerge(main, head);
-      for (const label of ['reviewed', 'Queue-Head', '']) {
+      for (const label of ['reviewed', 'queue-head-extra', '']) {
         for (const queued of ['true', 'false']) {
           expect(classify({ ...labeled, EVENT_LABEL: label, QUEUE_HEAD: queued })).toBe('mode=light');
         }

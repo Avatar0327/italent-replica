@@ -16,8 +16,9 @@ function job(id: string): string {
 
 function scalar(body: string, key: string, indent: number): string {
   const match = new RegExp(`^ {${indent}}${key}: (.*)(?:\\n((?: {${indent + 2}}.*\\n)*))?`, 'm').exec(body);
-  if (!match) throw new Error(`未找到 ${key}`);
-  return match[1] === '>-' ? (match[2] ?? '').trim().replace(/\s*\n\s*/g, ' ') : match[1];
+  const value = match?.[1];
+  if (value === undefined) throw new Error(`未找到 ${key}`);
+  return value === '>-' ? (match?.[2] ?? '').trim().replace(/\s*\n\s*/g, ' ') : value;
 }
 
 function context(action = 'labeled', label = 'queue-head', mode = 'full', event = 'pull_request', draft = false) {
@@ -29,7 +30,7 @@ function context(action = 'labeled', label = 'queue-head', mode = 'full', event 
       event: { action, label: { name: label }, pull_request: { number: 330, draft } },
     },
     needs: { changes: { outputs: { mode }, result: mode ? 'success' : 'skipped' } },
-    matrix: { node: 24 },
+    matrix: { node: 24, shard: 1 },
     always: () => true,
     format: (template: string, ...args: unknown[]) => template.replace(/\{(\d+)\}/g, (_, i) => String(args[+i])),
   };
@@ -53,7 +54,7 @@ function group(ctx = context()): string {
 }
 
 function aggregate(id: string, env: Record<string, string>): number | null {
-  const script = /        run: \|\n((?:          .*\n|\n)*)/.exec(job(id))?.[1];
+  const script = / {8}run: \|\n((?: {10}.*\n|\n)*)/.exec(job(id))?.[1];
   if (!script) throw new Error(`未找到 ${id} 汇总脚本`);
   return spawnSync('bash', ['-c', script.replace(/^ {10}/gm, '')], {
     env: { ...process.env, ...env },
@@ -68,9 +69,12 @@ describe('AC-CI-F330 labeled 触发与隔离', () => {
     expect(workflow).toContain('cancel-in-progress: true');
     expect(enabled('changes')).toBe(true);
     expect(checkNames()).toEqual(required);
+    expect(render(scalar(job('changes'), 'name', 4))).toBe('classify changes');
+    expect(render(scalar(job('light'), 'name', 4))).toBe('light checks (lint / typecheck / build / unit, Node 24)');
+    expect(render(scalar(job('check-shards'), 'name', 4))).toBe('test (PGlite, Node 24, shard 1/5)');
   });
 
-  it.each(['reviewed', 'Queue-Head', ''])('DEC-694②：其他标签 %s 隔离且所有入口跳过，不占必需检查名', (label) => {
+  it.each(['reviewed', 'queue-head-extra', ''])('DEC-694②：其他标签 %s 隔离且所有入口跳过，不占必需检查名', (label) => {
     const ignored = context('labeled', label, '');
     expect(group(ignored)).not.toBe(group());
     const next = context('labeled', label, '');
@@ -78,6 +82,16 @@ describe('AC-CI-F330 labeled 触发与隔离', () => {
     expect(group(next)).not.toBe(group(ignored));
     for (const id of ['changes', 'check', 'test-pg']) expect(enabled(id, ignored)).toBe(false);
     for (const name of checkNames(ignored)) expect(required).not.toContain(name);
+    for (const id of [
+      'changes',
+      'light',
+      'check-shards',
+      'test-pg-shards',
+      'test-pg-app-role-shards',
+      'test-pg-race',
+    ]) {
+      expect(render(scalar(job(id), 'name', 4), ignored)).not.toBe(render(scalar(job(id), 'name', 4)));
+    }
     // 其余 job 依赖 changes 的成功，不能带 always() 绕过已跳过的分类 job。
     for (const id of ['light', 'check-shards', 'test-pg-shards', 'test-pg-app-role-shards', 'test-pg-race']) {
       expect(scalar(job(id), 'needs', 4)).toBe('changes');
