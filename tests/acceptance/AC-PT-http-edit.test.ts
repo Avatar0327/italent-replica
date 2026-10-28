@@ -206,18 +206,12 @@ describe('A-9 / PB-57 / 请求体与并发', () => {
     expect(await w.writes()).toEqual(before);
   });
 
-  it('PB-57：联动字段 true / 非空 → 400 PART_TIME_LINKAGE_NOT_AVAILABLE；false / [] 是无操作', async () => {
+  it('PB-57（PT-7 改正例）：联动人员不合格 → 400 整单回滚；false / [] 是无操作（联动成功路径见 AC-PT-linkage-http）', async () => {
     const { w, patch } = await editWorld('edit-linkage');
     const before = await w.writes();
-    for (const fields of [
-      { isDepartmentHead: true },
-      { addedSubordinateIds: ['00000000-0000-4000-8000-000000000002'] },
-    ])
-      expect(await w.refusal(await patch({ fields }))).toMatchObject({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-        reason: 'PART_TIME_LINKAGE_NOT_AVAILABLE',
-      });
+    expect(
+      await w.refusal(await patch({ fields: { addedSubordinateIds: ['00000000-0000-4000-8000-000000000002'] } })),
+    ).toMatchObject({ status: 400, code: 'VALIDATION_FAILED', reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
     expect(await w.writes()).toEqual(before);
     expect(await w.ok(await patch({ fields: { isDepartmentHead: false, addedSubordinateIds: [] } }))).toMatchObject({
       revision: 1,
