@@ -3,22 +3,32 @@
  * 只在设了 TEST_DATABASE_URL 时运行：批量结束与单条编辑同一兼职 —— 后到者在员工行锁上真实等待，先到者提交后锁内比对
  * revision 失败，恰一方成功、失败方整批无写入；两个批量结束以相反条目顺序交错也不死锁（同一员工两条记录，以及跨两名员工，F-235②）。
  */
+import type * as Crypto from 'node:crypto';
 import { withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { batchEndPartTimes, editPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
 import { readPartTimeRecords } from '../../apps/api/src/modules/employment/part-time/store.js';
 import { httpWorld } from './AC-PT-http-support.js';
 import { waitForBlocked } from './support/pg-interleave.js';
+import { orderedEmployeePair } from './support/ordered-employee-pair.js';
+
+// F-334：仅在造兼职记录期间固定前缀，保留其余随机位，保证读取顺序与员工锁序相反。
+const uuidPrefix = vi.hoisted(() => ({ value: '' }));
+vi.mock('node:crypto', async (original) => {
+  const actual = await original<typeof Crypto>();
+  return {
+    ...actual,
+    randomUUID: () => {
+      const id = actual.randomUUID();
+      return uuidPrefix.value ? uuidPrefix.value + id.slice(8) : id;
+    },
+  };
+});
 
 const database = useTestDb();
 
-interface CreatedRecord {
-  readonly id: string;
-  readonly employeeId: string;
-  readonly revision: number;
-}
 const endDate = '2026-12-31';
 
 function signal() {
@@ -115,24 +125,25 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
    */
   it('两个批量结束跨两名员工、相反顺序交错：首个员工锁后交错，无 40P01，后到者 409 REVISION_CONFLICT', async () => {
     const w = await httpWorld(database().db, 'batch-pg-cross-employee');
-    const colleague = await w.colleague('跨员工兼职');
-    const [lowEmployee, highEmployee] = [w.employeeId, colleague.id].sort();
-    // 读取顺序 = 记录 ID 升序（store.ts partTimeRows），与员工 UUID 无关：夹具补建记录，直到
-    // 较大员工的某条记录 ID 小于较小员工的某条记录 ID —— 这样不排序时读到的员工顺序恰是降序，与锁序相反
-    const created = { low: [] as CreatedRecord[], high: [] as CreatedRecord[] };
-    const make = async (side: 'low' | 'high') =>
-      created[side].push(await w.create({ employeeId: side === 'low' ? lowEmployee! : highEmployee!, endDate }));
-    const pick = () => ({
-      low: created.low.reduce((a, b) => (a.id > b.id ? a : b)),
-      high: created.high.reduce((a, b) => (a.id < b.id ? a : b)),
-    });
-    await make('low');
-    await make('high');
-    for (let round = 0; round < 40 && pick().high.id > pick().low.id; round++) {
-      await make('low');
-      await make('high');
-    }
-    const { low, high } = pick();
+    const { worker, subordinate } = await orderedEmployeePair(
+      await w.getEmployee(w.employeeId),
+      () => w.colleague('跨员工兼职'),
+      (person) => person.id,
+      'above',
+    );
+    const [lowEmployee, highEmployee] = [worker.id, subordinate.id];
+    const make = async (employeeId: string, prefix: string) => {
+      uuidPrefix.value = prefix;
+      try {
+        return await w.create({ employeeId, endDate });
+      } finally {
+        uuidPrefix.value = '';
+      }
+    };
+    // partTimeRows 按记录 ID 升序读取：大员工对应小记录，恰好反转员工锁序，无需重试。
+    const low = await make(lowEmployee, 'eeeeeeee');
+    const high = await make(highEmployee, '11111111');
+    expect(lowEmployee < highEmployee && high.id < low.id).toBe(true);
     // 前提：本请求的真实读取结果按员工 UUID 降序（读取顺序 ≠ 锁序），“仅删 .sort()”才会改变加锁顺序
     const readOrder = await withTenant(w.db, w.tenantId, async (tx) =>
       (await readPartTimeRecords(tx, w.context(), [low.id, high.id])).map((row) => row.employeeId),
