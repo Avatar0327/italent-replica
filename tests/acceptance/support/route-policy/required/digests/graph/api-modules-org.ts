@@ -441,6 +441,9 @@ export const GRAPH: Graph = {
     '#invalid',
     'packages/domain/src/contracts/org-hierarchy.ts#ORG_DIMENSIONS',
   ],
+  'apps/api/src/modules/org/write-service.ts#assertNoEstablishmentToEnd': [
+    'apps/api/src/modules/establishment/capacity-exists.ts#hasCapacityFrom',
+  ],
   'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople': [
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
     '#objectKey',
@@ -507,6 +510,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/validation.ts#validateHierarchy',
     '#appendVersion',
     '#assertEstablishedOnUnchanged',
+    '#assertNoEstablishmentToEnd',
     '#assertRevision',
     '#audit',
     '#disableDescendants',
