@@ -30,6 +30,7 @@ import {
   requirePreviewButton,
   runExitCancel,
   transitionBody,
+  viewableIn,
 } from './exit-routes.js';
 import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
@@ -67,7 +68,8 @@ function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps
     const ctx = await readContext(c, deps, 'object.view', 0, id);
     const { lastWorkDate } = parse(z.strictObject({ lastWorkDate: day }), await jsonBody(c));
     await requirePreviewButton(deps, ctx, KIND);
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, KIND)));
+    const show = await viewableIn(deps, ctx);
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, show)));
   });
   // 新建（HR 端，退休申请 / 直接退休）：与通用入口同一申请服务与门禁；不要求 Employment.Create
   router.post('/retirements/employees/:id', async (c) => {
