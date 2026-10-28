@@ -304,6 +304,15 @@ const RUN_RECEIPT_DISCLOSURE = object({
   ),
 });
 
+/** 退休规则立即执行回执的人员披露（BE-5c2）：同上，逐人条目是固定键（员工、规则、写入的人事字段名、失败原因），不含日期值。 */
+const RETIREMENT_RUN_RECEIPT_DISCLOSURE = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('回执披露只取任职记录查看权与数据范围'),
+  scope: listScope('employment.runReceipt'),
+  fields: fixed(['employeeId', 'ruleId', 'fields', 'reason'], 'BE-5c2：退休规则立即执行回执的逐人固定键'),
+});
+
 // ---- 经理待办固定键（§3.5；manager-routes.ts registerManagerTodos）----------------------------------------------------
 /** tab=pending（默认）：approval/queries.ts listTodos（本人为待办人 assignee_user_id）。 */
 const TODO_PENDING_KEYS = [
@@ -1786,9 +1795,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
-  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
-  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
-  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
+  // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一语句；
+  // 任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
   'GET /retirements': object({
     object: EMPLOYMENT,
     operation: 'view',
@@ -2102,6 +2113,31 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         none('配置对象无范围，回执只含员工 / 规则 / 业务 ID'),
         { commandOnly: true, preconditions: ['assertRevision'] },
       ),
+    },
+  ),
+  // 立即执行（R2-T04 §9.2，BE-5c2）：?purpose= 必填（expected_date / flexible_range），body 严格 { cursor? }（上次回执的 next，
+  // 随机句柄，绑定租户 × 操作人 × 用途 × 业务日，其余 400 RETIREMENT_RUN_CURSOR_INVALID）；对应自动计算开关关闭 400
+  // RETIREMENT_AUTO_DISABLED；一次最多一页，按规则适用组织扫描（系统批次提前执行，不叠加操作人数据范围），经人事写端口写入
+  // （审计 personnel.retirement_rule，actor = 系统）；回执逐人固定键，按操作人当前任职范围裁剪（首次与重放同一出口）
+  'POST /retirement-rules/run': all(
+    [
+      admin('other_settings', { alias: 'tenant.employment.configuration.write', fields: SETTINGS_FIELDS }),
+      object({
+        object: SETTINGS,
+        operation: 'update',
+        button: noButton('配置对象无按钮：requireEmploymentWrite 只查 object.update（命令式空字段集合）'),
+        // 准入只认配置写（配置对象无数据范围），办理按规则适用组织；这里的范围是回执的人员披露
+        scope: listScope('employment.runReceipt'),
+        fields: SETTINGS_FIELDS,
+      }),
+    ],
+    SETTINGS_FIELDS,
+    {
+      optional: { receiptDisclosure: RETIREMENT_RUN_RECEIPT_DISCLOSURE },
+      write: write('body', 'config.audited:retirement_rule_run', none('配置对象无范围，回执只含员工 / 规则 ID'), {
+        commandOnly: true,
+        preconditions: ['assertRevision'],
+      }),
     },
   ),
   // ---- employment/retirement-rule-routes.ts：R2 BE-5c1a / 5c1b 预计退休日期与弹性范围规则、个人身份字典（R2-T04 §9.1，DEC-640 / 641）----

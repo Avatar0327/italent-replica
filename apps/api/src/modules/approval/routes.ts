@@ -211,7 +211,7 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
   const page = pageQuery(c);
   const viewer = await viewerOf(deps, ctx);
   const { data, rows } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const detail = await readDetail(tx, ctx, instanceId, viewer);
+    const detail = await readDetail(tx, ctx, instanceId, viewer, false);
     const items =
       kind === 'tasks'
         ? await pageTasks(tx, ctx.tenantId, instanceId, page)
