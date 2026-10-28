@@ -1364,7 +1364,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-occupancy-store.ts#loadExitStates': ['1a7627f37df1', '53a67c8a5029'],
   'apps/api/src/modules/employment/exit-occupancy-store.ts#uuidArray': ['d4eff94fcae0', '7a645dc8391f'],
   'apps/api/src/modules/employment/exit-preview.ts#asRows': ['1d9f76242832', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/exit-preview.ts#previewExit': ['53a8f569d5c4', '7b8024358abc'],
+  'apps/api/src/modules/employment/exit-preview.ts#previewExit': ['8ae84d6e769d', 'b1f74d8b351e'],
   'apps/api/src/modules/employment/exit-projection.ts#assertExtendedEmploymentAvailable': [
     '51ffea00ff97',
     'ed5c56420b11',
