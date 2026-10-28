@@ -1,6 +1,7 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
- * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
+ * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）；
+ * 例外：组织调整预置取人口径是推断（DEC-644 A-2），只装草稿、不随开通发布（publishOnProvision）。
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
  * §8.3，开关按 §11.10 更正）与 TransferDetailView 已交付字段（§11.2，DEC-118）预置；离职按 §8.5 取证的
  * “直接上级 → HR 访谈”结构，直接上级取最新生效主职任职的直线经理（DEC-230）；
@@ -25,6 +26,8 @@ export interface PresetProcess {
   readonly code: string;
   readonly approvalType: ApprovalTypeCode;
   readonly definition: ProcessDefinition;
+  /** 租户开通时是否随异常管理员一并发布；缺省发布。false = 只装草稿，由租户确认节点审批人后自行发布。 */
+  readonly publishOnProvision?: false;
 }
 
 /**
@@ -124,6 +127,7 @@ type GenericType = Exclude<
   | 'part_time_end'
   | 'offer'
   | 'offer_batch'
+  | 'org_adjustment'
   | 'retirement_intention'
 >;
 function genericPreset(type: GenericType): PresetProcess {
@@ -156,7 +160,7 @@ const RETIRE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', 
  * → 兼职部门负责人”，结束按 R2f1 / F-165③ 相反。HRBP 无人时转异常管理员（F-165③），首节点无人提交即报错（DEC-054）。
  * 三类节点都“同意时打开可编辑的业务表单”（结束 R2f1；新增 / 延长 F234A C9，DEC-629）：结束 / 延长可改结束日期与申请备注
  * （延长的新结束日期必填，A-14 / B-8）；新增可改兼职类型 / 结束日期 / 兼职部门 / 直线经理 / 职务 / 职级，必填兼职类型 / 开始日期 /
- * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属不开（F234A C9 字段集，取最小集合）。
+ * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属只读展示、不开编辑（F234A C9 字段集，取最小集合；F-280）。
  * 开始日期的字段权限编码未定（§7.2 只登记 6 个新字段），表单暂不放。
  */
 const PART_TIME_FORM = [
@@ -166,6 +170,7 @@ const PART_TIME_FORM = [
   'levelId',
   'directManagerId',
   'isDepartmentHead',
+  'addedSubordinateIds',
   'endDate',
   'requestRemark',
 ];
@@ -270,6 +275,33 @@ const OFFER_PRESETS: readonly PresetProcess[] = [
     }),
   },
 ];
+
+/**
+ * 组织调整审批（R2-T08 §4.2，DEC-526②）：HRBPLeader 审批 → HR 负责人审批两个节点，表单即类型 formFields 全部编码。
+ * 两节点取人“审批主体组织的 HRBP / 负责人”是推断，非原站事实（DEC-644 A-2）：复刻组织只有负责人、HRBP 两个角色字段，
+ * 不把它们自动等同原站的两个审批角色。因此预置只是可改草稿，不随租户开通发布（publishOnProvision: false），
+ * 租户自行确认节点审批人后再发布。审批人为空按 DEC-054 / 098 既有口径（节点无人转异常管理员）。
+ */
+const ORG_ADJUSTMENT_PRESET: PresetProcess = {
+  presetKey: 'standard_organization_process',
+  code: 'StandardOrganizationProcess',
+  approvalType: 'org_adjustment',
+  publishOnProvision: false,
+  definition: draft({
+    name: '标准组织调整流程',
+    description: '出厂预置草稿：审批主体组织的 HRBP → 负责人（取人口径为推断，非原站事实），租户确认后发布',
+    priority: 0,
+    ...standardCondition('org_adjustment'),
+    nodes: [
+      node('hrbp_leader', 'HRBPLeader审批', 'approval_subject_org_hrbp', {
+        formFields: APPROVAL_TYPES.org_adjustment.formFields,
+      }),
+      node('hr_head', 'HR负责人审批', 'approval_subject_org_head', {
+        formFields: APPROVAL_TYPES.org_adjustment.formFields,
+      }),
+    ],
+  }),
+};
 
 /**
  * 试用期考核两类审批（BE-15b1，29 PB-R3，DEC-094 草稿）：员工自评 → 经理评价（节点结构取 PB-R3 “一般为”）。
@@ -408,7 +440,6 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       'regularization',
       'intern_regularization',
       'hire',
-      'org_adjustment',
       'add_employee',
       'contract_create',
       'contract_renew',
@@ -511,4 +542,5 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
   },
   ...OFFER_PRESETS,
   ...ASSESSMENT_PRESETS,
+  ORG_ADJUSTMENT_PRESET,
 ];

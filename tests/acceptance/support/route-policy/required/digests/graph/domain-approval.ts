@@ -58,6 +58,7 @@ export const GRAPH: Graph = {
     '#NODE_KEY',
     '#nodeShapeViolations',
     '#offerApproverViolation',
+    '#orgAdjustmentApproverViolation',
     'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
@@ -70,6 +71,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/definition.ts#offerApproverViolation': [
     'packages/domain/src/approval/types.ts#OFFER_APPROVERS',
     'packages/domain/src/approval/types.ts#OFFER_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
+  'packages/domain/src/approval/definition.ts#orgAdjustmentApproverViolation': [
+    'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_APPROVERS',
+    'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_ONLY_APPROVERS',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#publishViolations': [
@@ -96,6 +102,12 @@ export const GRAPH: Graph = {
     '#standardCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
+  'packages/domain/src/approval/presets.ts#ORG_ADJUSTMENT_PRESET': [
+    '#draft',
+    '#node',
+    '#standardCondition',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'packages/domain/src/approval/presets.ts#PRESET_ACTIONS': ['#PRESET_RECUSAL'],
   'packages/domain/src/approval/presets.ts#PRESET_PROCESSES': [
     '#AGREE_OR_NOT',
@@ -106,6 +118,7 @@ export const GRAPH: Graph = {
     '#IDP_TUTOR_ACTIONS',
     '#LEAVE_FORM',
     '#OFFER_PRESETS',
+    '#ORG_ADJUSTMENT_PRESET',
     '#PRESET_ACTIONS',
     '#RETIRE_FORM',
     '#draft',
@@ -175,6 +188,7 @@ export const GRAPH: Graph = {
     '#LEAVE_CONDITION_FIELDS',
     '#OFFER_BATCH_TYPE',
     '#OFFER_TYPE',
+    '#ORG_ADJUSTMENT_TYPE',
     '#PERSONNEL_CONDITION_FIELDS',
     '#assessmentType',
     '#contractType',
@@ -202,6 +216,11 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/types.ts#OFFER_TYPE': [
     'packages/domain/src/offer/rules.ts#OFFER_FIELDS',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+  ],
+  'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_TYPE': [
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_FORM_FIELDS',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_PROCESS_CODE',
   ],
   'packages/domain/src/approval/types.ts#approvalTypeOfBusiness': [
     '#APPROVAL_TYPES',
