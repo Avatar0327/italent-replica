@@ -697,6 +697,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/offer/identity.ts': {
     visibleRehireHint: 'eae042f2e171',
   },
+  'apps/api/src/modules/offer/mail.ts': {
+    'route:GET /:id/mail': 'c8955e286092',
+  },
   'apps/api/src/modules/offer/routes.ts': {
     listFilters: '42b1c3365896',
     'route:DELETE /:id': '70bd751dda9f',
@@ -2099,6 +2102,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/context.ts#runDictionaryWrite': 'f8f96c185984',
   'apps/api/src/modules/offer/context.ts#runOfferWrite': '4a7852e97599',
   'apps/api/src/modules/offer/identity.ts#visibleRehireHint': 'e85641d69f28',
+  'apps/api/src/modules/offer/mail.ts#route:GET /:id/mail': '6084450135a6',
   'apps/api/src/modules/offer/routes.ts#listFilters': '04fc9285a9ff',
   'apps/api/src/modules/offer/routes.ts#route:DELETE /:id': '5a7e2c628c52',
   'apps/api/src/modules/offer/routes.ts#route:GET /': '451b08a57af6',
