@@ -42,6 +42,7 @@ import {
   type PartTimeRequestTarget,
   type PartTimeWriteTarget,
 } from './replay-guard.js';
+import { availableRequestActions, REQUEST_ACTION_ACCESS, requestActionTarget } from './request-actions.js';
 import { loadPartTimeRequestDetail, loadRequestReceipt } from './request-read.js';
 import {
   createAddRequest,
@@ -82,12 +83,6 @@ type CreateDateBody = z.infer<typeof createDateRequestSchema>;
 const patchRequestSchema = editSchema.extend({ requestRemark: remark });
 type PatchRequestBody = z.infer<typeof patchRequestSchema>;
 
-/** 申请动作 → 按钮：与创建同一按钮 + Employment.Submit / Withdraw / Delete 的组合；HR 撤销只要 Employment.Revoke（§7.2）。 */
-const ACTION_BUTTONS = {
-  submit: [PART_TIME_BUTTONS.application, 'Employment.Submit'],
-  withdraw: [PART_TIME_BUTTONS.application, 'Employment.Withdraw'],
-  revoke: ['Employment.Revoke'],
-} as const;
 const ACTIONS = { submit: submitRequest, withdraw: withdrawRequest, revoke: revokeRequest } as const;
 
 /** 字段写权的载荷：新增兼职的字段 + 申请备注（requestRemark 是任职记录权限目录里的可授编辑字段）。 */
@@ -168,7 +163,7 @@ function registerRequestCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       employeeId: body.employeeId,
       business: createBusiness(body),
       departmentId: body.fields.departmentId,
-      buttons: body.submit ? ACTION_BUTTONS.submit : [PART_TIME_BUTTONS.application],
+      buttons: body.submit ? REQUEST_ACTION_ACCESS.submit.buttons : REQUEST_ACTION_ACCESS.edit.buttons,
     };
     await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeCreateAccess(tx, ctx, target));
     return runWrite(
@@ -249,7 +244,7 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       requestId: id,
       operation: 'update',
       business: patchBusiness(body),
-      buttons: [PART_TIME_BUTTONS.application],
+      buttons: REQUEST_ACTION_ACCESS.edit.buttons,
       ...(body.fields?.departmentId ? { departmentId: body.fields.departmentId } : {}),
     };
     await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeRequestAccess(tx, ctx, target));
@@ -270,12 +265,7 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     router.post(`/part-time-requests/:id/${action}`, async (c) => {
       const id = uuidParam(c);
       const ctx = await readContext(c, deps, 'object.update', revision(c));
-      const target: PartTimeRequestTarget = {
-        requestId: id,
-        operation: 'update',
-        business: {},
-        buttons: ACTION_BUTTONS[action],
-      };
+      const target = requestActionTarget(id, action);
       await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeRequestAccess(tx, ctx, target));
       return runWrite(
         c,
@@ -296,12 +286,7 @@ function registerRequestChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   router.delete('/part-time-requests/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.delete', revision(c));
-    const target: PartTimeRequestTarget = {
-      requestId: id,
-      operation: 'delete',
-      business: {},
-      buttons: [PART_TIME_BUTTONS.application, 'Employment.Delete'],
-    };
+    const target = requestActionTarget(id, 'delete');
     await withTenant(deps.db, ctx.tenantId, (tx) => requirePartTimeRequestAccess(tx, ctx, target));
     return runWrite(
       c,
@@ -327,8 +312,11 @@ function registerRequestRead(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     if (!detail) throw notFound();
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
     const { primary, employee, ...request } = detail;
+    const trimmed = (await trimEmploymentResponse(deps, ctx, request)) as object;
     return c.json({
-      ...((await trimEmploymentResponse(deps, ctx, request)) as object),
+      ...trimmed,
+      // F-268：逐单可用动作（写入口同一组判定，request-actions.ts）；状态字段对当前操作人不可见时不下发，避免动作集合泄露状态
+      availableActions: 'status' in trimmed ? await availableRequestActions(c, deps, ctx.tenantId, id) : [],
       primary: primary ? await trimEmploymentResponse(deps, ctx, primary) : null,
       employee: await trimModuleResponse(deps, ctx, EMPLOYEE_OBJECT, employee),
     });
