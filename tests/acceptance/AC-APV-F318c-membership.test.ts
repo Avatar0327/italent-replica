@@ -77,7 +77,7 @@ describe('AC-APV-F318c 维度成员全链路', () => {
       }
     });
 
-    it(`${type} 保留租户根、历史停用引用；后代和父链都不借用缺维度的组织`, async () => {
+    it(`${type} 保留租户根、历史停用引用；退出节点只借历史边，不恢复成员`, async () => {
       const w = await relationWorld(database().db, `membership-tree-${type}`);
       await dimensions(w);
       await w.setOrgRoles(w.tenant.id, { head: w.head.employeeId });
@@ -92,11 +92,11 @@ describe('AC-APV-F318c 维度成员全链路', () => {
       // 行政后代 staff 未加入该维度，其负责人不应混入 descendants。
       await orgVersion(w, w.staff, { personInChargeId: w.near.employeeId }, { admin: w.root });
       expect(await resolved(w, source(type, w.root, ':descendants'))).toEqual([w.head.userId]);
-      // 新版本退出维度，不影响历史引用保存；当前父链不能穿过已不属于维度的普通组织。
+      // DEC-696：已退出中间组织只借历史边到租户根，不能成为候选或 descendants 的所选根。
       await orgVersion(w, w.root, { startDate: '2026-09-01' }, { [dimension]: undefined });
       expect.soft((await save(w, [source(type, w.root)])).status).toBe(201);
       expect.soft(await resolved(w, source(type, w.child), '2026-08-01')).toEqual([w.head.userId]);
-      expect.soft(await resolved(w, source(type, w.child))).toEqual([]);
+      expect.soft(await resolved(w, source(type, w.child))).toEqual([w.head.userId]);
       expect.soft(await resolved(w, source(type, w.root, ':descendants'))).toEqual([]);
     });
   }
