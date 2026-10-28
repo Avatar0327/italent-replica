@@ -7,6 +7,7 @@ import { completionCandidates, remindCompletion } from '../transfer/completion.j
  * 跨过租户本地午夜后的第一次运行即落地，保证生效日当天业务开始前完成。
  * - 只经平台路径触发：遍历租户读平台表，落地时逐员工切到租户路径（withTenant + RLS），租户接口上没有触发入口；
  * - 多实例：每名员工一个事务，先 FOR UPDATE SKIP LOCKED 锁员工行，被其他实例持有就跳过，锁内重读状态，不重复生效；
+ * - 兼职联动（PT-7）：开始日已到的待执行“是否部门负责人 / 新增下属”随员工事务一并办理，已办结的不重复；
  * - 有界：每个租户每次最多处理 limit 名员工，返回续跑游标；运维补跑同样经此入口（平台命令 ID 幂等、平台审计留痕）。
  */
 import {
@@ -26,7 +27,9 @@ import { activateDueBusinesses } from './activation-service.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
 import { runAutoAssessmentSlot } from './auto-assessment-scheduler.js';
 import { runAutoRegularizationSlot } from './auto-regularization-scheduler.js';
+import { runRetirementSlot } from './retirement-scheduler.js';
 import { EmploymentError } from './errors.js';
+import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -135,6 +138,8 @@ async function sweepTenant(
         if (lock !== 'acquired') return lock;
         const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
         await remindCompletion(tx, ctx, employeeId);
+        // PT-7（兼职设计 §4.8）：开始日已到的兼职“是否部门负责人 / 新增下属”联动，与调动联动同一员工事务、同一闭包锁
+        await runDuePartTimeLinkage(tx, ctx, employeeId);
         return outcome;
       });
       if (outcome === 'busy') run.skippedLocked += 1;
@@ -192,6 +197,8 @@ async function dueEmployees(
       expectedRevision: 0,
     })}) c
       WHERE (${cursor}::uuid IS NULL OR c."employeeId">${cursor}::uuid)
+    UNION SELECT "employeeId" FROM (${dueLinkageEmployees(tenantId, businessDate)}) l
+      WHERE (${cursor}::uuid IS NULL OR l."employeeId"::uuid>${cursor}::uuid)
     ORDER BY 1 LIMIT ${limit}
   `),
   );
@@ -259,4 +266,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
   await runAutoRegularizationSlot(db, slot, clock, onError);
   // BE-15b2（DEC-539①）：自动发起考核的每日批次接在自动转正之后（先转正，再按入职天数发起考核）
   await runAutoAssessmentSlot(db, slot, clock, onError);
+  // BE-5c2（R2-T04 §9.2）：预计退休日期 / 弹性范围的每日批次，预计日期先于弹性范围
+  await runRetirementSlot(db, slot, clock, onError);
 }

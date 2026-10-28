@@ -8,7 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { endWorld } from './AC-INTERN-end-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 
@@ -33,34 +33,29 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-F257 直接转正锁�
         ON CONFLICT DO NOTHING`),
     );
 
-    let release!: () => void;
-    let held!: () => void;
-    const hold = new Promise<void>((done) => (release = done));
-    const locked = new Promise<void>((done) => (held = done));
-    const holder = withTenant(w.db, w.tenantId, async (tx) => {
-      await tx.execute(sql`SELECT 1 FROM approval_instances WHERE tenant_id=${w.tenantId}::uuid
-        AND id=${instance!.id}::uuid FOR UPDATE`);
-      held();
-      await hold;
-    });
-    await locked;
-    const request = w.regularize(intern.employee.id, {
-      effectiveDate: '2026-10-16',
-      departmentId: w.org.id,
-      probation: false,
-    });
-    await waitForBlocked(w.db, 1);
-
-    let probeError: unknown;
-    try {
-      await withTenant(w.db, w.tenantId, (tx) =>
-        tx.execute(sql`SELECT 1 FROM establishment_settings WHERE tenant_id=${w.tenantId}::uuid FOR UPDATE NOWAIT`),
-      );
-    } catch (error) {
-      probeError = error;
-    }
-    release();
-    await holder;
+    const { request, probeError } = await withHeldLock(
+      {
+        run: (fn) => withTenant(w.db, w.tenantId, fn),
+        take: (tx) =>
+          tx.execute(sql`SELECT 1 FROM approval_instances WHERE tenant_id=${w.tenantId}::uuid
+            AND id=${instance!.id}::uuid FOR UPDATE`),
+      },
+      async (lock) => {
+        const pending = lock.track(
+          w.regularize(intern.employee.id, { effectiveDate: '2026-10-16', departmentId: w.org.id, probation: false }),
+        );
+        await waitForBlocked(w.db, 1);
+        let error: unknown;
+        try {
+          await withTenant(w.db, w.tenantId, (tx) =>
+            tx.execute(sql`SELECT 1 FROM establishment_settings WHERE tenant_id=${w.tenantId}::uuid FOR UPDATE NOWAIT`),
+          );
+        } catch (caught) {
+          error = caught;
+        }
+        return { request: pending, probeError: error };
+      },
+    );
     const response = await request;
     expect(response.status, await response.clone().text()).toBe(201);
     expect(lockNotAvailable(probeError), '请求等实例锁时编制锁应已先取得').toBe(true);

@@ -391,12 +391,15 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '相比人事管理员除去了设置菜单',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    // R2-T08 §9.2：本批仅给两预置管理员扩权，专员不自动获得新对象。
+    // DEC-415（BE-12a）、R2-T08 §9.2：花名册与组织调整仅给两预置管理员，专员不自动扩权。
     objects: BUSINESS_OBJECTS.filter(
       (o) =>
-        ![APPROVAL_PROCESS_OBJECT, MODULE_OBJECTS.orgAdjustment.code, MODULE_OBJECTS.orgAdjustmentDetail.code].includes(
-          o.code,
-        ),
+        ![
+          APPROVAL_PROCESS_OBJECT,
+          MODULE_OBJECTS.hrRoster.code,
+          MODULE_OBJECTS.orgAdjustment.code,
+          MODULE_OBJECTS.orgAdjustmentDetail.code,
+        ].includes(o.code),
     ).map(full),
     hr: true,
   },
