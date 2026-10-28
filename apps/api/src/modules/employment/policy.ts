@@ -1795,9 +1795,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
-  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
-  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
-  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
+  // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一语句；
+  // 任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
   'GET /retirements': object({
     object: EMPLOYMENT,
     operation: 'view',

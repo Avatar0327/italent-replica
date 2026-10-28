@@ -5340,6 +5340,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['#FALLBACK_UPCOMING_DAYS'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': [
     'apps/api/src/modules/employment/exit-routes.ts#day',
+    'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_CANCELLED_VIEW',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_UPCOMING_DAYS',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_VIEWS',
   ],
@@ -5354,7 +5355,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES',
     'apps/api/src/modules/employment/exit-queries.ts#on',
   ],
-  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': ['#dayEnd'],
+  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': [
+    'apps/api/src/modules/employment/exit-queries.ts#viewPredicate',
+    '#RETIREMENT_CANCELLED_VIEW',
+    '#dayEnd',
+  ],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [
     'apps/api/src/modules/employment/exit-queries.ts#candidates',
