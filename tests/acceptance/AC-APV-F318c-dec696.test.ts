@@ -1,11 +1,12 @@
 /** DEC-695/696：历史边只供退出中间节点跳转；候选、成员、当前负责人均不恢复。 */
 import './support/exit-gate-enforced.js';
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import type { ApproverSource } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { resolveSource } from '../../apps/api/src/modules/approval/source-resolver.js';
 import { dimensions, orgVersion, relationWorld, resolved, source, type RelationWorld } from './AC-APV-F318c-support.js';
+import { definition, publish, reach, world } from './AC-EXIT-F316-support.js';
 
 const database = useTestDb();
 const extensions = [
@@ -188,4 +189,37 @@ describe('AC-APV-F318c DEC-696 历史接续', () => {
       expect(await w.instanceOfAll(business.id)).toEqual([]);
     });
   }
+  it('F-316 指定空人来源同样跳过退出节点；上级也无人时走原自动同意策略', async () => {
+    for (const empty of [false, true]) {
+      const x = await world(database().db, `h1-handover-${empty}`);
+      const w = { db: x.db, tenant: { id: x.tenantId } };
+      const top = await x.session.org('合成历史上级', { establishedOn: '2025-01-01' });
+      const middle = await x.session.org('合成已退出节点', { establishedOn: '2025-01-01' });
+      const leaf = await x.session.org('合成仍在维度节点', { establishedOn: '2025-01-01' });
+      await withTenant(x.db, x.tenantId, (tx) =>
+        tx.execute(sql`
+        UPDATE org_settings SET business_enabled=true WHERE tenant_id=${x.tenantId}`),
+      );
+      await orgVersion(w, top.id, { personInChargeId: empty ? null : x.hrbp.employeeId }, { business: x.tenantId });
+      await orgVersion(w, middle.id, { personInChargeId: x.workOwner.employeeId }, { business: top.id });
+      await orgVersion(w, leaf.id, {}, { business: middle.id });
+      await orgVersion(w, middle.id, { startDate: '2026-09-01' }, { business: undefined });
+      const input = definition(x, {
+        work_handover: {
+          approvers: [source(empty ? 'business_org' : 'department', empty ? leaf.id : x.tenantId)],
+          emptyApproverPolicy: empty ? 'auto_approve' : 'specified',
+          fallbackUserIds: [],
+        },
+      });
+      if (!empty)
+        input.nodes = input.nodes.map((node) =>
+          node.key === 'work_handover' ? { ...node, emptyApproverSources: [source('business_org', leaf.id)] } : node,
+        );
+      await publish(x, input);
+      const run = await reach(x, 'work_handover', false);
+      const tasks = await x.pendingTasks(run.instanceId);
+      if (empty) expect(tasks[0]?.nodeKey).toBe('other_handover');
+      else expect(tasks).toEqual([expect.objectContaining({ nodeKey: 'work_handover', userId: x.hrbp.userId })]);
+    }
+  });
 });
