@@ -57,6 +57,7 @@ import {
   withoutButton,
   type World,
 } from './support/f061.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -580,42 +581,48 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
     const w = await legacyWorld(testDb().db, 'f061t20c', missing);
     const profileId = w.profileIds.get(TR)!;
     const pause = pauseBeforeScopeLock();
-    try {
-      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
-      await pause.reached;
-      expect(await identityRowLocked(w, profileId)).toBe(true);
-      const filling = runBackfill(w);
-      await expectWaitingOnLock(w.db, filling);
-      pause.release.open();
-      expect((await saving).status).toBe(200);
-      const installed = grantsInstalled(await filling);
-      expect(installed).not.toContain(seeAllCode(APPROVED[0]!));
-      expect(installed).toContain(seeAllCode(APPROVED[1]!));
-    } finally {
-      scopeLockProbe.beforeScopeLock = undefined;
-      pause.release.open();
-    }
+    await withRelease(
+      () => {
+        scopeLockProbe.beforeScopeLock = undefined;
+        pause.release.open();
+      },
+      async (cleanup) => {
+        const saving = cleanup.track(closeScope(w, profileId, APPROVED[0]!, 0));
+        await pause.reached;
+        expect(await identityRowLocked(w, profileId)).toBe(true);
+        const filling = cleanup.track(runBackfill(w));
+        await expectWaitingOnLock(w.db, filling);
+        pause.release.open();
+        expect((await saving).status).toBe(200);
+        const installed = grantsInstalled(await filling);
+        expect(installed).not.toContain(seeAllCode(APPROVED[0]!));
+        expect(installed).toContain(seeAllCode(APPROVED[1]!));
+      },
+    );
   });
 
   it('交错点在“已持身份行锁、尚未取范围锁”之间（回补一侧）：身份行已被锁住，租户保存看全部在身份行上等待，之后按范围 revision 409', async () => {
     const w = await legacyWorld(testDb().db, 'f061t20d', missing);
     const profileId = w.profileIds.get(TR)!;
     const pause = pauseBeforeScopeLock();
-    try {
-      const filling = runBackfill(w);
-      await pause.reached;
-      expect(await identityRowLocked(w, profileId)).toBe(true);
-      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
-      await expectWaitingOnLock(w.db, saving);
-      pause.release.open();
-      expect(grantsInstalled(await filling)).toContain(seeAllCode(APPROVED[0]!));
-      const res = await saving;
-      expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
-    } finally {
-      scopeLockProbe.beforeScopeLock = undefined;
-      pause.release.open();
-    }
+    await withRelease(
+      () => {
+        scopeLockProbe.beforeScopeLock = undefined;
+        pause.release.open();
+      },
+      async (cleanup) => {
+        const filling = cleanup.track(runBackfill(w));
+        await pause.reached;
+        expect(await identityRowLocked(w, profileId)).toBe(true);
+        const saving = cleanup.track(closeScope(w, profileId, APPROVED[0]!, 0));
+        await expectWaitingOnLock(w.db, saving);
+        pause.release.open();
+        expect(grantsInstalled(await filling)).toContain(seeAllCode(APPROVED[0]!));
+        const res = await saving;
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
+      },
+    );
   });
 
   it('回补先提交：租户按范围 revision 0 保存返回 409，刷新后（revision 1）可关闭', async () => {
