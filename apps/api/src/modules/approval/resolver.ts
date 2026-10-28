@@ -282,6 +282,12 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
     case 'initiator_direct_manager':
       // 申请人（发起人）的直接上级，与 direct_manager（流程主体）同一取法（DEC-230）
       return directManagerOf(tx, subject, { personId: null, userId: subject.initiatorUserId });
+    // R2-T08 §4.2（DEC-644 A-2）：组织调整适配器把审批主体组织放在 recordDepartmentId；“取审批主体组织的 HRBP / 负责人”是
+    // 推断，非原站事实，预置是可改草稿。类型限制见 ORG_ADJUSTMENT_APPROVERS，其他业务选不到这两项
+    case 'approval_subject_org_hrbp':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'hrbp'));
+    case 'approval_subject_org_head':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
     case 'approval_subject_first_level_org_head': {
       const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
       return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));

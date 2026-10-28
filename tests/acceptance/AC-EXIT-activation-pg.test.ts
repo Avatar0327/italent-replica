@@ -18,29 +18,17 @@ import type { EmploymentContext } from '../../apps/api/src/modules/employment/ty
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { queueBehind, waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
 type World = Awaited<ReturnType<typeof downstreamWorld>>;
 
-const signal = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
-};
-
-/** 持锁会话：在一个事务里执行 lock 后等放行才提交。返回放行函数与结束 promise。 */
-function holder(x: World, lock: (tx: Tx) => Promise<unknown>) {
-  const held = signal();
-  const release = signal();
-  const done = withTenant(x.db, x.session.tenant.id, async (tx) => {
-    await lock(tx);
-    held.resolve();
-    await release.promise;
-  });
-  return { held: held.promise, release: release.resolve, done };
-}
+/** 持锁会话：租户事务里执行 take 后等 withHeldLock 放行才提交（无条件收束，F-282）。 */
+const holding = (x: World, take: (tx: Tx) => Promise<unknown>) => ({
+  run: <R>(fn: (tx: Tx) => Promise<R>) => withTenant(x.db, x.session.tenant.id, fn),
+  take,
+});
 
 const lockEmployee =
   (x: World, employeeId = x.employee.id) =>
@@ -48,23 +36,9 @@ const lockEmployee =
     tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${x.session.tenant.id}
     AND id=${employeeId}::uuid FOR NO KEY UPDATE`);
 
-/** 先后启动的请求排在同一把锁后面：第 n 个请求发出后等恰有 n 个会话在等锁，全部排队后才放锁。 */
-async function queueBehind(
-  x: World,
-  lock: (tx: Tx) => Promise<unknown>,
-  requests: readonly (() => Promise<unknown>)[],
-) {
-  const session = holder(x, lock);
-  await session.held;
-  const running: Promise<unknown>[] = [];
-  for (const [index, request] of requests.entries()) {
-    running.push(request());
-    await waitForBlocked(x.db, index + 1);
-  }
-  session.release();
-  await session.done;
-  return Promise.allSettled(running);
-}
+/** 先后启动的请求排在同一把锁后面（共用 queueBehind）。 */
+const queued = (x: World, lock: (tx: Tx) => Promise<unknown>, requests: readonly (() => Promise<unknown>)[]) =>
+  queueBehind(holding(x, lock), x.db, requests);
 
 /** NOWAIT 探针：该审批实例行此刻能否被另一个会话锁住。 */
 async function lockable(x: World, instanceId: string) {
@@ -106,7 +80,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
       const transferApproval = () => approveTransfer(x, review.id);
       const requests = order === '离职先' ? [leaveApproval, transferApproval] : [transferApproval, leaveApproval];
 
-      const settled = await queueBehind(x, lockEmployee(x), requests);
+      const settled = await queued(x, lockEmployee(x), requests);
 
       expect(
         settled.every((result) => result.status === 'fulfilled'),
@@ -154,7 +128,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
   });
   /** 调度器对一名员工做的全部事（锁员工闭包 + 按队列逐条生效），做完不提交，持有员工行锁。 */
   const schedulerHolder = (x: World) =>
-    holder(x, async (tx) => {
+    holding(x, async (tx) => {
       const ctx = contextAt(x, 0);
       await lockTransferParticipants(tx, ctx, x.employee.id);
       await activateDueBusinesses(tx, ctx, x.employee.id, 'scheduler');
@@ -165,16 +139,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
   it('调度先、HR 重试排在其后：重试带调度前的 revision，放锁后 409 REVISION_CONFLICT，不盲重试；终态 = 只有调度', async () => {
     const { x, transfer, leave } = await sceneS('pg-scheduler-then-retry');
     const stale = (await x.business(transfer.id)).revision;
-    const session = schedulerHolder(x);
-    await session.held;
-    x.session.setNow('2026-10-18T03:00:00Z');
-    const retrying = x.session.request('POST', `/businesses/${transfer.id}/activation/retry`, {
-      ifMatch: stale,
-      body: {},
+    const { retrying } = await withHeldLock(schedulerHolder(x), async (lock) => {
+      x.session.setNow('2026-10-18T03:00:00Z');
+      const pending = lock.track(
+        x.session.request('POST', `/businesses/${transfer.id}/activation/retry`, { ifMatch: stale, body: {} }),
+      );
+      await waitForBlocked(x.db, 1);
+      return { retrying: pending };
     });
-    await waitForBlocked(x.db, 1);
-    session.release();
-    await session.done;
     expect(await x.reason(await retrying)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     expect(await outcomes(x, [transfer.id, leave.id])).toEqual([
       ['failed:REBUILD_REQUIRED'],
@@ -185,12 +157,11 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
 
   it('调度先、离职审批落地排在其后：审批动作成功，落地因前序失败记 suspended（trigger = approval），不越过 T', async () => {
     const { x, transfer, leave } = await sceneS('pg-scheduler-then-approval', true);
-    const session = schedulerHolder(x);
-    await session.held;
-    const approving = x.approve(leave, '2026-10-18T03:00:00Z');
-    await waitForBlocked(x.db, 1);
-    session.release();
-    await session.done;
+    const { approving } = await withHeldLock(schedulerHolder(x), async (lock) => {
+      const pending = lock.track(x.approve(leave, '2026-10-18T03:00:00Z'));
+      await waitForBlocked(x.db, 1);
+      return { approving: pending };
+    });
     expect((await approving).status).toBe('approved');
     expect((await x.attempts(transfer.id)).map((row) => row.reason)).toEqual(['REBUILD_REQUIRED']);
     expect((await x.attempts(leave.id)).map((row) => [row.outcome, row.blocked_by_business_id])).toEqual([
@@ -206,13 +177,18 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
       suspended: [leave.id],
     });
     const revision = (await x.business(transfer.id)).revision;
-    const session = holder(x, async (tx) => {
-      await retryActivation(tx, contextAt(x, revision), transfer.id, x.employee.id);
-    });
-    await session.held;
-    expect(await x.runScheduler('2026-10-18T04:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
-    session.release();
-    await session.done;
+    await withHeldLock(
+      holding(x, async (tx) => {
+        await retryActivation(tx, contextAt(x, revision), transfer.id, x.employee.id);
+      }),
+      async () => {
+        expect(await x.runScheduler('2026-10-18T04:00:00Z')).toMatchObject({
+          activated: [],
+          failed: [],
+          suspended: [],
+        });
+      },
+    );
     expect(await x.runScheduler('2026-10-18T05:00:00Z')).toMatchObject({ activated: [], failed: [], suspended: [] });
     expect(await outcomes(x, [transfer.id, leave.id])).toEqual([
       ['failed:REBUILD_REQUIRED', 'failed:REBUILD_REQUIRED'],
@@ -236,7 +212,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EXIT-activation-pg �
       const retry = (id: string) => () =>
         x.session.request('POST', `/businesses/${id}/activation/retry`, { ifMatch: revisions.get(id)!, body: {} });
       const [first, second] = order === 'T 先' ? [transfer.id, leave.id] : [leave.id, transfer.id];
-      const settled = await queueBehind(x, lockEmployee(x), [retry(first), retry(second)]);
+      const settled = await queued(x, lockEmployee(x), [retry(first), retry(second)]);
       const responses = new Map(
         [first, second].map((id, index) => [id, (settled[index] as PromiseFulfilledResult<Response>).value]),
       );
@@ -271,14 +247,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     const orgLock = (x: World) => (tx: Tx) => lockOrganizationSettings(tx, x.session.tenant.id);
 
     async function expectOrderedBehindOrgLock(x: World, instanceIds: readonly string[], start: () => Promise<unknown>) {
-      const session = holder(x, orgLock(x));
-      await session.held;
-      const running = start();
-      await waitForBlocked(x.db, 1);
-      // 生效事务在等组织锁：此刻它不得已持有任何审批实例锁（否则与“组织锁 → 审批实例”的其他路径成环）
-      for (const id of instanceIds) expect(await lockable(x, id), `实例 ${id} 不应被生效事务持有`).toBe(true);
-      session.release();
-      await session.done;
+      const { running } = await withHeldLock(holding(x, orgLock(x)), async (lock) => {
+        const pending = lock.track(start());
+        await waitForBlocked(x.db, 1);
+        // 生效事务在等组织锁：此刻它不得已持有任何审批实例锁（否则与“组织锁 → 审批实例”的其他路径成环）
+        for (const id of instanceIds) expect(await lockable(x, id), `实例 ${id} 不应被生效事务持有`).toBe(true);
+        return { running: pending };
+      });
       return running;
     }
 

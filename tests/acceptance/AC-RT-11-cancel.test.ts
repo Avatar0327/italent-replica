@@ -15,6 +15,8 @@ import { retirementCancelWorld } from './AC-RT-cancel-support.js';
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => retirementCancelWorld(database().db, label, TODAY);
+/** 要停用调出部门的用例：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织）。 */
+const worldToDisable = (label: string) => retirementCancelWorld(database().db, label, TODAY, { capacity: false });
 
 describe('AC-RT-11 未办结的退休（process_voided）', () => {
   it('草稿：删除；审批中 / 已驳回：作废并取消审批实例；审计 kind = retirement', async () => {
@@ -120,7 +122,7 @@ describe('AC-RT-11 撤销已生效的退休（record_deleted_reinstated）：人
 
 describe('AC-RT-11 §6B 区间变化统一校验（与离职同一函数）', () => {
   it('撤销 approved 退休：A 排定 10-22 停用（E = 10-21 之后）→ 409 EMPLOYMENT_DEPARTMENT_DISABLED，无写入', async () => {
-    const x = await world('rt11-disabled');
+    const x = await worldToDisable('rt11-disabled');
     const retire = await x.directRetire('2026-10-20');
     expect((await x.disable(x.from, '2026-10-22')).status).toBe(200);
     const before = await x.stateOf(x.employee.id);
@@ -138,7 +140,7 @@ describe('AC-RT-11 §6B 区间变化统一校验（与离职同一函数）', ()
   });
 
   it('撤销已生效退休恢复在职：A 在退休后排定 10-10 停用 → 409，仍 effective', async () => {
-    const x = await world('rt11-disabled-effective');
+    const x = await worldToDisable('rt11-disabled-effective');
     const retire = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
     expect((await x.disable(x.from, '2026-10-10')).status).toBe(200);
 
