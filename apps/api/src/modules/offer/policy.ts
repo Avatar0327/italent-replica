@@ -231,6 +231,16 @@ export const OFFER_POLICIES = defineTable('offers', {
     scope: point,
     fields: shape('offer.sendCheck'),
   }),
+  // 查看 Offer 邮件（F-234BE）：最近一条发送记录 + 当前 Offer 行；无发送记录 404 OFFER_MAIL_NOT_SENT；收件人 / 抄送 / 密送按
+  // personalEmail 查看字段权（无权为 null），正文字段各按自己的查看字段权（无权为“--”）；不新增授权项
+  'GET /:id/mail': object({
+    ...byId,
+    object: OFFER,
+    operation: 'view',
+    button: noButton('只读'),
+    scope: point,
+    fields: shape('offer.mail'),
+  }),
   'POST /:id/transfer': transfer(ROW_TRANSFER),
   'POST /:id/toolbar-transfer': transfer(TOOLBAR_TRANSFER),
   // 发送 / 重发（OF-R5）：待发按 OF-R3 判定、已发直接重发；超编（弱 / 强控）先 409 CONFIRMATION_REQUIRED，带 confirmed 重提；
