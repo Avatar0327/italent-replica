@@ -867,7 +867,18 @@ const ITEM_SAMPLE = {
   batchId: null,
   revision: 1,
   createdAt: '',
-  activation: { status: 'failed', reason: null, blockedByBusinessId: null },
+  activation: {
+    status: 'failed',
+    reason: null,
+    blockedByBusinessId: null,
+    details: {
+      title: '离职暂无法生效',
+      message: '',
+      hiddenCount: 0,
+      actions: ['查看记录', '关闭'],
+      records: [{ docId: '', docNo: '', bizType: 'regularization', effectiveDate: '2026-10-20' }],
+    },
+  },
   cancellation: { id: '', reason: '', case: '', stateBefore: '', revision: 1, createdAt: '' },
 } satisfies ExitItem;
 const DETAIL_SAMPLE = {
