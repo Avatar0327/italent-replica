@@ -21,7 +21,9 @@ import {
   regularizationBlocker,
   type InFlight,
 } from './exit-gate.js';
+import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
+import { RETIREMENT_RESPONSE_DEPENDENCIES } from './retirement-views.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
 
@@ -33,7 +35,7 @@ export async function previewExit(
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string,
-  kind: 'leave' | 'retirement' = 'leave',
+  retirementView?: ExitViewable,
 ) {
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
@@ -55,8 +57,15 @@ export async function previewExit(
   return {
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
-    // 退休另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行）
-    ...(kind === 'retirement' ? await retirementPreview(tx, ctx, employeeId, lastWorkDate) : {}),
+    // 退休（传了查看人的字段可见性）另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行），
+    // 与退休详情 / 列表同一张路径表裁剪（F-266）
+    ...(retirementView
+      ? trimWith(
+          RETIREMENT_RESPONSE_DEPENDENCIES,
+          await retirementPreview(tx, ctx, employeeId, lastWorkDate),
+          retirementView,
+        )
+      : {}),
     blockers,
     ack: ack
       ? {
