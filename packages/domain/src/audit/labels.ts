@@ -217,6 +217,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // R2-T04 退休（审计动作 retirement.* / employment.retirement.*）
   retireType: '退休类型',
   reEmployed: '是否同时返聘',
+  dailyWageStandard: '日工资标准',
   expectedRetirementDate: '预计退休日期',
   expectedRetirementConfirmed: '预计退休日期已核准',
   earliestRetirementDate: '最早退休日期',
@@ -242,6 +243,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   partTimeType: '任职类型',
   endDate: '结束日期',
   originalEndDate: '原定结束日期',
+  institutionId: '兼职机构',
+  requestSource: '申请来源',
   requestRemark: '申请备注',
   serviceStatus: '任职状态',
   isStoreManager: '是否店长',

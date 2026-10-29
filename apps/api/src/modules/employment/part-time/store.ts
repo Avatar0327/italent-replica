@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import { PART_TIME_KIND, type PartTimeServiceType, type PartTimeTermSource } from '@italent/domain';
 import { insertEmploymentRow, rowsOf } from '../record-store.js';
 import type { EmploymentContext, PresetFields } from '../types.js';
+import { partTimeInstitution } from './institution.js';
 import { partTimeCurrentEndSql, partTimeEmptySql } from './span-sql.js';
 
 /** 兼职记录的当前状态（当前期的结束日、当前部门取最新快照）。 */
@@ -28,11 +29,13 @@ export interface PartTimeRecordRow {
 
 /** 记录的当前部门：被编辑改过的以最新快照载荷为准（同 employment/org-people.ts 的口径）。 */
 export const latestSnapshot = sql`LEFT JOIN LATERAL (
-    SELECT p.id, p.department_id FROM employment_payload_versions p
+    SELECT p.id, p.department_id, p.institution_id FROM employment_payload_versions p
     WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id AND p.is_record_snapshot
     ORDER BY p.version_no DESC LIMIT 1
   ) latest ON true`;
 export const currentDepartment = sql`CASE WHEN latest.id IS NULL THEN r.department_id ELSE latest.department_id END`;
+
+export const currentInstitution = sql`CASE WHEN latest.id IS NULL THEN r.institution_id ELSE latest.institution_id END`;
 
 interface PartTimeFilter {
   readonly employeeId?: string;
@@ -127,10 +130,11 @@ export async function insertPartTimeRecord(
   tx: Tx,
   ctx: EmploymentContext,
   input: NewPartTimeRecord,
-): Promise<{ readonly id: string; readonly payloadVersionId: string }> {
+): Promise<{ readonly id: string; readonly payloadVersionId: string; readonly institutionId: string }> {
   const id = randomUUID();
   const payloadVersionId = randomUUID();
   const { tenantId } = ctx;
+  const institutionId = await partTimeInstitution(tx, tenantId, input.fields.departmentId!, input.startDate);
   const createdAt = ctx.now.toISOString();
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
@@ -141,6 +145,7 @@ export async function insertPartTimeRecord(
   });
   await insertEmploymentRow(tx, 'employment_payload_versions', {
     ...input.fields,
+    institutionId,
     id: payloadVersionId,
     tenantId,
     employeeId: input.employeeId,
@@ -171,6 +176,7 @@ export async function insertPartTimeRecord(
   });
   await insertEmploymentRow(tx, 'employment_records', {
     ...input.fields,
+    institutionId,
     id,
     tenantId,
     employeeId: input.employeeId,
@@ -195,7 +201,7 @@ export async function insertPartTimeRecord(
     source: 'create',
     sourceId: input.sourceId ?? null,
   });
-  return { id, payloadVersionId };
+  return { id, payloadVersionId, institutionId };
 }
 
 interface NewTerm {

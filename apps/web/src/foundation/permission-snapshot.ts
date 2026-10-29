@@ -2,8 +2,9 @@ import { APP_OBJECT_DIRECTORY } from '@italent/domain';
 import type { buildPermissionSnapshot } from '../../../api/src/modules/permission/me-snapshot.js';
 import { ApiError, type ApiClient } from './client.js';
 import type { ObjectPermission } from './permission-model.js';
+import { visibleConfigurationPages } from './configuration-registry.js';
 import { isEntry } from './page-registry.js';
-import { MENU_ROUTES, type AppRoute, type MenuRoute } from './routes.js';
+import { PAGES, MENU_ROUTES, type AppRoute, type MenuRoute } from './routes.js';
 
 // 只引用后端推导类型，运行时不打包 API 或数据库代码。
 export type ServerSnapshot = Awaited<ReturnType<typeof buildPermissionSnapshot>>;
@@ -17,12 +18,14 @@ export interface MenuNode {
   directory?: boolean;
 }
 export interface PermissionSnapshot {
+  configurationPages?: readonly string[];
   objects: Record<string, ObjectPermission>;
   menus: MenuNode[];
   scope: { status: 'unavailable' | 'ready'; items: ServerSnapshot['scope'] };
   source: 'server';
 }
 export const emptyPermissions: PermissionSnapshot = {
+  configurationPages: [],
   objects: {},
   menus: [],
   scope: { status: 'unavailable', items: [] },
@@ -90,6 +93,7 @@ export async function loadSnapshot(api: ApiClient, signal: AbortSignal) {
   const snapshot: PermissionSnapshot = {
     objects,
     menus,
+    configurationPages: visibleConfigurationPages(PAGES.configurations, response),
     scope: { status: 'ready', items: response.scope },
     source: 'server',
   };

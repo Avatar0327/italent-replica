@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, user, employee, snapshotFixture } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
@@ -436,7 +437,7 @@ for (const [label, action] of [
     await page.getByRole('button', { name: button(label!) }).click();
     if (action === 'transfer') await page.getByLabel('转交给（账号编号）').fill(user);
     const listed = page.waitForRequest((request) => request.url().includes('/approval/todos?'));
-    await page.getByRole('button', { name: button('保存') }).click();
+    await actionButton(page, '保存').click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await listed;
     await expect(page.getByRole('heading', { name: '待处理', exact: true })).toBeVisible();
@@ -454,16 +455,29 @@ for (const [label, action] of [
 
 test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开与回查原单后仍锁定', async ({ page }) => {
   let writes = 0;
-  await page.route('**/api/tenant/approval/tasks/*/approve', (route) => {
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/tenant/approval/tasks/*/approve', async (route) => {
     writes++;
+    await pending;
     return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } });
   });
   await switchIdentity(page, '/approval');
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
-  await page.getByRole('button', { name: button('保存') }).click();
+  await actionButton(page, '保存').click();
+  // F-227：受控回执让加载态必然出现，定位不能依赖动画恰好结束。
+  try {
+    await expect.poll(() => writes).toBe(1);
+    await expect(page.getByRole('dialog').getByRole('img', { name: 'loading', exact: true })).toBeVisible();
+    await expect(actionButton(page, '保存')).toBeDisabled();
+  } finally {
+    release();
+  }
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
-  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  await expect(actionButton(page, '保存')).toBeDisabled();
   await page.getByRole('button', { name: button('取消') }).click();
   await expect(page.getByText('本单有未确认的“同意”操作，请打开核对结果；确认前不能发起其他操作。')).toBeVisible();
   for (const other of ['驳回', '转交', '撤销'])
@@ -472,9 +486,9 @@ test('AC-FE-R1c-07 结果未知锁定：不能重提或换动作，关闭重开�
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
-  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await actionButton(page, '回查原单').click();
   await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
-  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  await expect(actionButton(page, '保存')).toBeDisabled();
   expect(writes).toBe(1);
 });
 
@@ -488,9 +502,9 @@ test('AC-FE-R1c-07c DEC-502①(a) 回执 revision 未超过本次提交按结果
   await switchIdentity(page, '/approval');
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
-  await page.getByRole('button', { name: button('保存') }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toBeVisible();
-  await expect(page.getByRole('button', { name: button('保存') })).toBeDisabled();
+  await expect(actionButton(page, '保存')).toBeDisabled();
   expect(writes).toBe(1);
 });
 
@@ -512,13 +526,13 @@ test('AC-FE-R1c-07b 版本冲突与结果未知分开：重读最新版本后按
   await openTodo(page);
   await page.getByRole('button', { name: button('同意') }).click();
   await page.getByLabel('审批意见').fill('合成审批意见');
-  await page.getByRole('button', { name: button('保存') }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
   await expect(page.getByText('处理中 / 结果待确认。当前表单已锁定，请勿重新创建命令。')).toHaveCount(0);
-  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(page, '重读最新版本').click();
   await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(page.getByLabel('审批意见')).toHaveValue('合成审批意见');
-  await page.getByRole('button', { name: button('保存') }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(revisions).toEqual(['4', '5']);
 });

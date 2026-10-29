@@ -28,6 +28,7 @@ export interface PartTimeRecordDto {
   readonly entryDate: string;
   readonly kind: typeof PART_TIME_KIND;
   readonly serviceType: string;
+  readonly institutionId: string | null;
   /** 兼职开始日期（沿用任职记录的 effectiveDate 编码，字段权限同任职记录对象）。 */
   readonly effectiveDate: string;
   /** 期限链当前期的结束日期；没有结束日期为 null。 */
@@ -54,6 +55,7 @@ export function dto(row: Record<string, unknown>, today: string): PartTimeRecord
     effectiveDate: span.startDate,
     endDate: span.endDate,
     revision: Number(row.revision),
+    institutionId: (current.institution_id as string | null) ?? null,
     fields: snapshotFields(current),
     customFields: current.custom_fields as CustomFields,
     serviceStatus: partTimeServiceStatus(span, today),
@@ -72,6 +74,8 @@ export const PART_TIME_DEPARTMENT = sql`(CASE WHEN current_payload.body IS NULL 
 export const PART_TIME_POSITION = sql`(CASE WHEN current_payload.body IS NULL THEN r.position_id::text
   ELSE current_payload.body->>'position_id' END)::uuid`;
 /** 当前直线经理，口径同 PART_TIME_DEPARTMENT。 */
+export const PART_TIME_INSTITUTION = sql`(CASE WHEN current_payload.body IS NULL THEN r.institution_id::text
+  ELSE current_payload.body->>'institution_id' END)::uuid`;
 export const PART_TIME_DIRECT_MANAGER = sql`(CASE WHEN current_payload.body IS NULL THEN r.direct_manager_id::text
   ELSE current_payload.body->>'direct_manager_id' END)::uuid`;
 

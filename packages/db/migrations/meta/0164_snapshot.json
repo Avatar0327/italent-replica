@@ -1,5 +1,5 @@
 {
-  "id": "86077378-8048-4cad-a239-03f92cc3b96b",
+  "id": "9f2d00bf-d020-425d-b252-0fc0a626eabd",
   "prevId": "452f498b-870d-4d1a-b063-723523626b4c",
   "version": "7",
   "dialect": "postgresql",
@@ -11170,6 +11170,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -11486,6 +11492,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_payload_versions_institution_fk": {
+          "name": "employment_payload_versions_institution_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -12008,6 +12029,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -12229,6 +12256,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_institution_fk": {
+          "name": "employment_records_institution_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -59991,6 +60033,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -60148,6 +60196,21 @@
             "tenant_id",
             "employee_id",
             "request_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_institution_fk": {
+          "name": "part_time_request_versions_institution_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -62408,6 +62471,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "scope_note": {
+          "name": "scope_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "content": {
           "name": "content",
           "type": "text",
@@ -62634,6 +62703,10 @@
         "org_adjustments_subject": {
           "name": "org_adjustments_subject",
           "value": "btrim(\"org_adjustments\".\"subject\") <> '' AND char_length(\"org_adjustments\".\"subject\") <= 100"
+        },
+        "org_adjustments_scope_note": {
+          "name": "org_adjustments_scope_note",
+          "value": "char_length(COALESCE(\"org_adjustments\".\"scope_note\", '')) <= 500"
         },
         "org_adjustments_content": {
           "name": "org_adjustments_content",
@@ -63039,118 +63112,6 @@
           "value": "\"exit_handover_requests\".\"revision\" > 0"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.org_adjustment_range_orgs": {
-      "name": "org_adjustment_range_orgs",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "adjustment_id": {
-          "name": "adjustment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "org_adjustment_range_org": {
-          "name": "org_adjustment_range_org",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "org_adjustment_range_orgs_tenant_id_tenants_id_fk": {
-          "name": "org_adjustment_range_orgs_tenant_id_tenants_id_fk",
-          "tableFrom": "org_adjustment_range_orgs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_range_adjustment_fk": {
-          "name": "org_adjustment_range_adjustment_fk",
-          "tableFrom": "org_adjustment_range_orgs",
-          "tableTo": "org_adjustments",
-          "columnsFrom": [
-            "tenant_id",
-            "adjustment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_range_org_fk": {
-          "name": "org_adjustment_range_org_fk",
-          "tableFrom": "org_adjustment_range_orgs",
-          "tableTo": "org_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "org_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk": {
-          "name": "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk",
-          "columns": [
-            "tenant_id",
-            "adjustment_id",
-            "org_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

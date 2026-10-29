@@ -220,8 +220,12 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       33: 'ce9992a23cfc6fc6',
       // R2 BE-12b：新增只读对象 TenantBase.HrDashboard（人事看板 查看）及管理员看全部（版本占位，合并时按 main + 1 定号）
       34: '317a95a6b957b4e9',
+      // F255A：机构存值 / 申请来源只读字段，版本占位，恢复后由 03 合 main 定号
+      35: 'eeae8e14155ed823',
+      // F-325：日工资标准仅默认授予组织员工模块管理员（占位，合并时 main + 1）
+      36: 'ec8ed8d7ea948c06',
       // BE-10a2：组织调整两对象与申请单看全部（占位，合并时定号）。
-      35: 'fc7b7f7576abe341',
+      37: 'af83d59e6a2c0208',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
