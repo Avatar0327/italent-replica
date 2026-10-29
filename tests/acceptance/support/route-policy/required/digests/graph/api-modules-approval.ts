@@ -189,9 +189,7 @@ export const GRAPH: Graph = {
     '#openTask',
     '#outcomeAction',
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
-    'apps/api/src/modules/approval/add-sign.ts#assertNotAddSigner',
     'apps/api/src/modules/approval/add-sign.ts#continueAfterApproval',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#persistRun',
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
     'apps/api/src/modules/approval/store.ts#appendLog',
@@ -209,7 +207,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/actions.ts#assertApprovalEdit': [
     'apps/api/src/modules/approval/context.ts#approvalError',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+    'apps/api/src/modules/approval/edit-surface.ts#editBlocker',
   ],
   'apps/api/src/modules/approval/actions.ts#assertExit': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -309,12 +307,15 @@ export const GRAPH: Graph = {
     '#editableInput',
     '#ok',
     '#openTask',
-    'apps/api/src/modules/approval/add-sign.ts#assertNotAddSigner',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#persistRun',
     'apps/api/src/modules/approval/store.ts#loadTasks',
   ],
-  'apps/api/src/modules/approval/actions.ts#editableInput': ['apps/api/src/modules/approval/context.ts#approvalError'],
+  'apps/api/src/modules/approval/actions.ts#editableInput': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/edit-surface.ts#editableKeys',
+    'apps/api/src/modules/approval/edit-surface.ts#isBlank',
+    'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED',
+  ],
   'apps/api/src/modules/approval/actions.ts#jumpTask': [
     '#assertOpen',
     '#auditTask',
@@ -878,13 +879,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
+    'apps/api/src/modules/approval/edit-surface.ts#editSurface',
     'apps/api/src/modules/approval/rules.ts#addSignAllowed',
     'apps/api/src/modules/approval/rules.ts#addSignLink',
     'apps/api/src/modules/approval/rules.ts#retrievableTask',
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     'packages/domain/src/approval/recusal.ts#nodeRecusal',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/approval/types.ts#hasExit',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#jumpAllowed',
@@ -943,6 +944,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/disclosure.ts#visibleTasks': [
     '#recordsHidden',
     'packages/domain/src/approval/policies.ts#visibleWhenHidden',
+  ],
+  'apps/api/src/modules/approval/edit-surface.ts#editBlocker': [
+    'apps/api/src/modules/approval/rules.ts#addSignLink',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/approval/edit-surface.ts#editSurface': [
+    '#editBlocker',
+    '#editableKeys',
+    'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED',
+    'packages/domain/src/approval/types.ts#hasExit',
   ],
   'apps/api/src/modules/approval/engine.ts#advanceFrom': [
     '#complete',
