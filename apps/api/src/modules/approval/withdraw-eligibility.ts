@@ -13,8 +13,7 @@ export function approvalWithdrawalFailure(
 ): AppError | undefined {
   if (instance.initiatorUserId !== userId)
     return approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
-  if (!isActiveInstance(instance))
-    return approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
+  if (!isActiveInstance(instance)) return approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
   if (!fromBusiness && current && !revokeAllowed(current))
     return approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点未开启撤回');
   return undefined;
