@@ -136,7 +136,8 @@ async function ccNodeOf(tx: Tx, tenantId: string, instanceId: string, userId: st
 }
 
 /** 查看人作为审批人参与过的任务（被自审跳过只是留痕，不算参与，C-非3）。 */
-function ownTasks(data: Pick<DetailData, 'allTasks'>, userId: string): TaskRow[] {
+type RecordTask = Pick<TaskRow, 'assigneeUserId' | 'origin' | 'nodeKey'>;
+function ownTasks<T extends RecordTask>(data: { readonly allTasks: readonly T[] }, userId: string): T[] {
   return data.allTasks.filter(
     (task) => task.assigneeUserId === userId && task.origin !== 'self_skip' && task.origin !== 'subject_skip',
   );
@@ -275,7 +276,14 @@ export const COMMENT_NOTICE = '审批意见默认对所有能查看本单的人�
  * 开关，或查看人是发起人且开始节点勾选了开关，即隐藏审批记录与沟通。不是审批人的人（被抄送人、范围内管理员）
  * 不受限制。
  */
-type RecordScope = Pick<DetailData, 'instance' | 'version' | 'allTasks'>;
+interface RecordScope {
+  readonly instance: Pick<InstanceRow, 'initiatorUserId'>;
+  readonly version: {
+    readonly hideRecordsFromInitiator: boolean;
+    readonly nodes: readonly Pick<ApprovalNode, 'key' | 'hideRecords'>[];
+  };
+  readonly allTasks: readonly RecordTask[];
+}
 export function recordsHidden(data: RecordScope, userId: string): boolean {
   const participated = new Set(ownTasks(data, userId).map((task) => task.nodeKey));
   return recordsHiddenFor({
@@ -283,6 +291,47 @@ export function recordsHidden(data: RecordScope, userId: string): boolean {
     isInitiator: data.instance.initiatorUserId === userId,
     hideFromInitiator: data.version.hideRecordsFromInitiator,
   });
+}
+
+/** 管理员日志只读本页实例的隐藏判定事实；按冻结版本及全部历史参与节点判断，不加载业务表单或操作人姓名。 */
+export async function visibleRecordInstances(tx: Tx, tenantId: string, userId: string, instanceIds: string[]) {
+  if (!instanceIds.length) return new Set<string>();
+  const rows = rowsOf<{
+    id: string;
+    initiator_user_id: string;
+    hide_records_from_initiator: boolean;
+    participation: { nodeKey: string; origin: TaskRow['origin']; hideRecords: boolean }[];
+  }>(
+    await tx.execute(sql`SELECT i.id,i.initiator_user_id,v.hide_records_from_initiator,
+        COALESCE((SELECT jsonb_agg(DISTINCT jsonb_build_object(
+          'nodeKey',t.node_key,'origin',t.origin,'hideRecords',n.hide_records))
+          FROM approval_tasks t
+          JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id
+            AND n.version_id=i.version_id AND n.node_key=t.node_key
+          WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id AND t.assignee_user_id=${userId}::uuid
+        ),'[]'::jsonb) AS participation
+      FROM approval_instances i
+      JOIN approval_process_versions v ON v.tenant_id=i.tenant_id AND v.id=i.version_id
+      WHERE i.tenant_id=${tenantId} AND i.id=ANY(${`{${instanceIds.join(',')}}`}::uuid[])`),
+  );
+  return new Set(
+    rows
+      .filter(
+        (row) =>
+          !recordsHidden(
+            {
+              instance: { initiatorUserId: row.initiator_user_id },
+              version: {
+                hideRecordsFromInitiator: row.hide_records_from_initiator,
+                nodes: row.participation.map((task) => ({ key: task.nodeKey, hideRecords: task.hideRecords })),
+              },
+              allTasks: row.participation.map((task) => ({ ...task, assigneeUserId: userId })),
+            },
+            userId,
+          ),
+      )
+      .map((row) => row.id),
+  );
 }
 
 /** 记录被隐藏时，已处理的任务（含本人的，连同意见）一律不返回，只保留当前待办（DEC-115）。 */
