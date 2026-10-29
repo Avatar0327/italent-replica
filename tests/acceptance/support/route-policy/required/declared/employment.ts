@@ -4,10 +4,11 @@ import type { ModuleDeclared } from '../../module-declared.js';
 export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   /** R1c：含 ≥2 个准入承载节点的备选的端点（需要 need 登记） */
   multiCarrierAdmission: [
+    'POST /api/tenant/employment/employment-forms',
+    'PUT /api/tenant/employment/employment-forms/:id',
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
-    'POST /api/tenant/employment/interns',
     'POST /api/tenant/employment/probation-results',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/entry-email-rules',
@@ -39,10 +40,11 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/retirement-rules/:id',
     'PUT /api/tenant/employment/retirement-rules/:id/enabled',
     'POST /api/tenant/employment/retirement-rules/run',
+    'POST /api/tenant/employment/interns',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
-    'PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId',
+    'PUT /api/tenant/employment/employment-forms/:id',
     'PATCH /api/tenant/employment/businesses/:id',
     'PATCH /api/tenant/employment/pending-entries/:id',
     'PATCH /api/tenant/employment/records/:id',
@@ -78,6 +80,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/employees/:id/probation',
     'PUT /api/tenant/employment/probation-results/:id',
+    'PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId',
   ],
   /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
   selectorSites: [

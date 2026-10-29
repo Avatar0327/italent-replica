@@ -31,7 +31,7 @@ async function fixture(conditions = false, inclusive = false) {
     maintenanceMode: inclusive ? 'both' : 'local',
     startDate: '2026-01-01',
     occupancyRanges: [
-      { employmentType: 'internal', ...(conditions ? { conditions: { employmentForm: ['正式'] } } : {}) },
+      { employmentType: 'internal', ...(conditions ? { conditions: { employmentForm: ['regular'] } } : {}) },
     ],
   });
   expect(schemeResponse.status).toBe(201);
@@ -73,7 +73,7 @@ it('F-017 冻结表单 absent 字段按前驱继承后参与控编条件', async
   const person = await w.hired();
   const updated = await w.session.request('PATCH', `/records/${person.hire.id}`, {
     ifMatch: person.hire.revision,
-    body: { fields: { employmentForm: '正式' } },
+    body: { fields: { employmentForm: 'regular' } },
   });
   expect(updated.status).toBe(200);
   const configured = await w.request('PUT', 'employment/transfers/forms/f017-absent', {
@@ -91,7 +91,7 @@ it('F-017 冻结表单 absent 字段按前驱继承后参与控编条件', async
   const other = await w.hired();
   const revised = await w.session.request('PATCH', `/records/${other.hire.id}`, {
     ifMatch: other.hire.revision,
-    body: { fields: { employmentForm: '正式' } },
+    body: { fields: { employmentForm: 'regular' } },
   });
   expect(revised.status).toBe(200);
   const rejected = await w.save(other.employee.id, w.to.id);
@@ -153,7 +153,7 @@ it('F-017 向后更新条件字段也检查编制；DEC-015 导入编辑保留�
     ).status,
   ).toBe(200);
   const before = await w.business(person.hire.id);
-  const patch = { fields: { employmentForm: '正式' } };
+  const patch = { fields: { employmentForm: 'regular' } };
   const blocked = await w.session.request('PATCH', `/records/${person.hire.id}`, {
     ifMatch: before.revision,
     body: patch,
@@ -169,7 +169,7 @@ it('F-017 向后更新条件字段也检查编制；DEC-015 导入编辑保留�
   expect(await imported.json()).toMatchObject({
     warnings: [{ businessId: future.id, reason: 'ESTABLISHMENT_EXCEEDED' }],
   });
-  expect((await w.business(future.id)).fields.employmentForm).toBe('正式');
+  expect((await w.business(future.id)).fields.employmentForm).toBe('regular');
 });
 it('F-017 同员工同日在后申请调出后，审批在前调入不能虚占编制', async () => {
   const w = await fixture();
