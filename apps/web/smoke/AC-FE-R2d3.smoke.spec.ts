@@ -173,7 +173,7 @@ test('AC-FE-R2d3-04 结束实习：在途转正确认、显示取消待入职开
   expect(sent[1]!.key).not.toBe(sent[0]!.key);
 });
 
-test('AC-FE-R2d3-05 DEC-647：实习中 / 实习转正中详情都不渲染“实习转正申请”，直接转正照常', async ({ page }) => {
+test('AC-FE-R2d3-05 DEC-647 / F-285：实习中开放申请，实习转正中不重复申请，直接转正照常', async ({ page }) => {
   await setup(page);
   const applications: string[] = [];
   page.on('request', (request) => {
@@ -182,7 +182,7 @@ test('AC-FE-R2d3-05 DEC-647：实习中 / 实习转正中详情都不渲染“�
   await openDetail(page, 'interning');
   await expect(page.getByRole('button', { name: '实习转正', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '结束实习', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '实习转正申请', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '实习转正申请', exact: true })).toBeVisible();
   await expect(page.getByRole('row').getByRole('button', { name: '实习转正申请' })).toHaveCount(0);
   await page.getByRole('dialog', { name: '员工档案' }).getByRole('button', { name: '关闭' }).click();
   await openDetail(page, 'converting');

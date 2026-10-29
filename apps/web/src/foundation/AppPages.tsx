@@ -6,6 +6,7 @@ import { PageErrorBoundary, PageState } from './PageState.js';
 import { usePermissions } from './Permissions.js';
 import { useSession } from './Session.js';
 import { ListPage } from './templates.js';
+import { isConfigurationPath } from './configuration-registry.js';
 import { ui } from './messages.js';
 
 // 页面由各模块 pages.ts 自带登记（F-125），这里只装配；应用页一律包一层 div，子路由仅 legacy 时包。
@@ -40,11 +41,14 @@ export function AppPages() {
   if (!session.tenantId) return <PageState kind="login" />;
   if (permission.loading) return <PageState kind="loading" />;
   if (permission.error) return <PageState kind="error" error={permission.error} retry={permission.refresh} />;
+  const configuration = isConfigurationPath(location.pathname);
+  if (configuration && !permission.snapshot.configurationPages?.length)
+    return <PageState kind="forbidden" refresh={permission.refresh} />;
   const active = appRoute(location.pathname);
   const path = routePath(location.pathname);
-  if (!path || (!active && !path.ungated)) return <PageState kind="not-found" />;
+  if (!path || (!active && !path.ungated && !configuration)) return <PageState kind="not-found" />;
   const visible = permission.menus.flatMap((menu) => (menu.directory ? (menu.children ?? []) : [menu]));
-  if (!path.ungated && !visible.some((menu) => menu.key === active?.id))
+  if (!configuration && !path.ungated && !visible.some((menu) => menu.key === active?.id))
     return <PageState kind="forbidden" refresh={permission.refresh} />;
   return (
     <PageErrorBoundary key={`${session.tenantId}/${session.identityKey}/${location.pathname}`}>

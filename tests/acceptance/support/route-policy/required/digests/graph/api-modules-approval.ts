@@ -935,6 +935,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#recordsHiddenFor',
   ],
   'apps/api/src/modules/approval/disclosure.ts#viewerNode': ['#ownTasks'],
+  'apps/api/src/modules/approval/disclosure.ts#visibleRecordInstances': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#recordsHidden',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#visibleTasks': [
     '#recordsHidden',
     'packages/domain/src/approval/policies.ts#visibleWhenHidden',
@@ -1310,6 +1314,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/queries.ts#listAdminLogs': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/disclosure.ts#visibleRecordInstances',
     '#iso',
     'apps/api/src/modules/approval/store.ts#withActorNames',
   ],

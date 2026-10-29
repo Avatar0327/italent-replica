@@ -20,6 +20,7 @@ import { currentEmploymentCycle } from './cycles.js';
 import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
+import { exitListOrder } from './exit-list-order.js';
 import { rowsOf } from './record-store.js';
 import { assertNoLiveRehire } from './retirement-application.js';
 import { plannedEffectiveDate } from './timeline.js';
@@ -266,7 +267,7 @@ export async function inFlightApplications(
         ${filter.landedEffectiveAfter ? sql`AND ${landed} AND p.effective_date > ${landedAfter}::date` : sql``}
         ${filter.excludeId ? sql`AND b.id<>${filter.excludeId}::uuid` : sql``}
         ${filter.approvedAfter ? sql`AND (s.state<>'approved' OR ${planned} > ${filter.approvedAfter}::date)` : sql``}
-      ORDER BY planned, b.id LIMIT 1001`),
+      ORDER BY ${exitListOrder('inFlightApplications').order} LIMIT 1001`),
   );
 }
 

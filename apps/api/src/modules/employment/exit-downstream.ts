@@ -8,6 +8,7 @@
  */
 import { tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
+import { exitListOrder } from './exit-list-order.js';
 import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
 import { batchDisclose } from './exit-gate.js';
 import { rowsOf } from './record-store.js';
@@ -81,7 +82,7 @@ async function effectsOf(tx: Tx, ctx: EmploymentContext, businessId: string): Pr
       EXISTS (SELECT 1 FROM employment_timeline tl
         WHERE tl.tenant_id=x.tenant_id AND tl.record_id=x.target_id) AS "onTimeline"
     FROM exit_effects x WHERE x.tenant_id=${ctx.tenantId} AND x.business_id IN (SELECT business_id FROM chain)
-    ORDER BY x.created_at, x.id`),
+    ORDER BY ${exitListOrder('effectTargets').order}`),
   );
 }
 

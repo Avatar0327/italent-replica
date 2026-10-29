@@ -173,6 +173,31 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#canDisclose': [
+    'apps/api/src/modules/approval/access.ts#instanceScopeSql',
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    '#DETAIL_FIELDS',
+    '#visible',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflict': [
+    '#GENERIC_MESSAGE',
+    '#canDisclose',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt': [
+    '#discloseAssessmentConflict',
+    '#isConflict',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#isConflict': ['#REASON'],
   'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPES',
   ],
@@ -1129,6 +1154,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllowsInTransaction',
   ],
   'apps/api/src/modules/employment/context.ts#runWrite': [
+    'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt',
     '#commandContext',
     '#isScopedGuard',
     '#trimEmploymentResponse',
@@ -2018,6 +2044,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/exit-downstream.ts#effectiveRescheduleHints': ['#probeDownstream'],
   'apps/api/src/modules/employment/exit-downstream.ts#effectsOf': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#ledgerProbe': ['#effectsOf', '#ledgerTargets'],
@@ -2117,6 +2144,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
@@ -2209,6 +2237,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-handover-items.ts#listHandoverItems': [
     '#COLUMNS',
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ITEM_LIMIT',
   ],
@@ -2511,6 +2540,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder': ['#EXIT_LIST_ORDER_KEYS'],
   'apps/api/src/modules/employment/exit-lock-plan.ts#exitDutySubordinates': [
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
@@ -2580,6 +2610,9 @@ export const GRAPH: Graph = {
     '#independent',
     '#on',
   ],
+  'apps/api/src/modules/employment/exit-queries.ts#EXIT_SORT_DEPENDENCIES': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+  ],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#LEAVE_SOURCE',
@@ -2602,10 +2635,12 @@ export const GRAPH: Graph = {
     '#viewPredicate',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadDetailParts': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail': [
     'apps/api/src/modules/employment/activation-store.ts#activationSummary',
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     '#LEAVE_SOURCE',
     '#amount',
     '#candidates',
@@ -2615,6 +2650,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -2631,7 +2667,10 @@ export const GRAPH: Graph = {
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#trimWith': ['#trimNode'],
-  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
+  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+    '#EXIT_SORT_DEPENDENCIES',
+  ],
   'apps/api/src/modules/employment/exit-replacement-plan.ts#remainingExitDuties': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/transfer/linkage/store.ts#latestLinkage',
@@ -6044,6 +6083,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#candidates',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
@@ -6054,6 +6094,7 @@ export const GRAPH: Graph = {
     '#toRetirementItem',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementPersons': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     '#RETIREMENT_PERSON_DEPENDENCIES',
