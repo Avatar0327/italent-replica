@@ -3,7 +3,7 @@
  * 在临时 git 仓库里按 GitHub 的方式造“测试合并提交”（HEAD^1 = base 分支头、HEAD^2 = PR 头）再调用脚本。
  * 重点（第 2 轮 P2-1）：从功能分支切出、只加文档的 PR，目标分支是功能分支时不得判 docs；
  * 把目标分支改成 main 后同一个头提交仍不能拿到“纯文档”绿灯。
- * DEC-458：队首完整运行由队列关闭再重开 PR 触发（reopened 的 pull_request 运行，带 queue-head 标签）。
+ * DEC-694②：队首完整运行由添加 queue-head 标签触发，其他 labeled 事件不得进入完整或纯文档模式。
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -111,7 +111,7 @@ describe('scripts/ci-classify.sh', () => {
     expect(classify({ EVENT_NAME: 'pull_request', BASE_REF: '' })).toBe('mode=light');
   });
 
-  it('DEC-458：关闭重开 PR（reopened）带 queue-head 标签走完整模式，不带标签仍轻量', () => {
+  it('DEC-458 / DEC-694②：兼容手工 reopened，带 queue-head 仍完整，不带标签仍轻量', () => {
     testMerge(main, codeOffMain);
     const reopened = { EVENT_NAME: 'pull_request', EVENT_ACTION: 'reopened', BASE_REF: 'main' };
     expect(classify({ ...reopened, QUEUE_HEAD: 'true' })).toBe('mode=full');
@@ -121,15 +121,38 @@ describe('scripts/ci-classify.sh', () => {
     expect(classify({ ...reopened, QUEUE_HEAD: 'true' })).toBe('mode=docs');
   });
 
-  it('DEC-458：ci.yml 监听 reopened，queue-head 取自 pull_request 事件里的标签', () => {
+  it('DEC-694②：labeled queue-head 遵守 full / docs / 非 main light 的既有口径', () => {
+    const labeled = { EVENT_NAME: 'pull_request', EVENT_ACTION: 'labeled', EVENT_LABEL: 'queue-head' };
+    testMerge(main, codeOffMain);
+    expect(classify({ ...labeled, BASE_REF: 'main', QUEUE_HEAD: 'true' })).toBe('mode=full');
+    expect(classify({ ...labeled, BASE_REF: 'main', QUEUE_HEAD: 'false' })).toBe('mode=light');
+    expect(classify({ ...labeled, BASE_REF: 'feature', QUEUE_HEAD: 'true' })).toBe('mode=light');
+    testMerge(main, docsOffMain);
+    expect(classify({ ...labeled, BASE_REF: 'main', QUEUE_HEAD: 'true' })).toBe('mode=docs');
+  });
+
+  it('DEC-694②：其他 labeled 即使已有 queue-head 或只有文档，也不报告 full / docs', () => {
+    const labeled = { EVENT_NAME: 'pull_request', EVENT_ACTION: 'labeled', BASE_REF: 'main' };
+    for (const head of [codeOffMain, docsOffMain]) {
+      testMerge(main, head);
+      for (const label of ['reviewed', 'queue-head-extra', '']) {
+        for (const queued of ['true', 'false']) {
+          expect(classify({ ...labeled, EVENT_LABEL: label, QUEUE_HEAD: queued })).toBe('mode=light');
+        }
+      }
+    }
+  });
+
+  it('DEC-694②：ci.yml 监听 labeled，queue-head 仍取自 pull_request 事件里的标签', () => {
     const yml = readFileSync(CI_YML, 'utf8');
     const types = /pull_request:\n(?:\s*#.*\n)*\s*types: \[([^\]]*)\]/
       .exec(yml)?.[1]
       ?.split(',')
       .map((t) => t.trim());
     expect(types).toEqual(expect.arrayContaining(['opened', 'synchronize', 'reopened', 'ready_for_review']));
-    // 不监听 labeled：只打标签不触发运行，必须关闭重开或推送
-    expect(types).not.toContain('labeled');
+    expect(types).toContain('labeled');
+    expect(yml).toContain('EVENT_ACTION: ${{ github.event.action }}');
+    expect(yml).toContain('EVENT_LABEL: ${{ github.event.label.name }}');
     expect(yml).toContain("QUEUE_HEAD: ${{ contains(github.event.pull_request.labels.*.name, 'queue-head') }}");
     expect(yml).toContain('BASE_REF: ${{ github.base_ref }}');
   });

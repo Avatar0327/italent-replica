@@ -508,6 +508,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/entry-link.ts#currentEntryIds',
     'apps/api/src/modules/offer/read-names.ts#withOfferNames',
     '#TEXT_FILTERS',
+    '#offerViewConditions',
     '#withActions',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],

@@ -7,13 +7,13 @@
  * - 目标兼职记录头锁与申请头锁：上面几组竞争都先被员工行锁串行化，区分不出这两把锁是否存在；所以另让创建 / 提交停在组织校验阶段
  *   （已过员工锁、未写状态），用观察连接对记录头 / 申请头 NOWAIT 取锁，必须 55P03；去掉对应锁则 NOWAIT 取到锁、用例变红。
  */
-import { sql } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -29,25 +29,8 @@ function signal() {
   return { promise, resolve };
 }
 
-/** 在租户事务里执行 work，停在提交之前直到 release；返回提交结果（成功 undefined，失败为错误）。 */
-function holdThen(w: RequestWorld, work: Parameters<RequestWorld['run']>[0]) {
-  const held = signal();
-  const release = signal();
-  const done = w
-    .run(async (tx) => {
-      await work(tx);
-      held.resolve();
-      await release.promise;
-    })
-    .then(
-      () => undefined,
-      (error: unknown) => {
-        held.resolve();
-        return error;
-      },
-    );
-  return { held: held.promise, release: release.resolve, done };
-}
+/** 租户事务里执行 take 后停在提交之前，直到 withHeldLock 放行；take 失败会让 withHeldLock 直接抛出。 */
+const holding = (w: RequestWorld, take: (tx: Tx) => Promise<unknown>) => ({ run: w.run, take });
 
 const requestCount = (w: RequestWorld, recordId: string) =>
   w.run(async (tx) => {
@@ -89,16 +72,20 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
   it('E-4：A 先建延长申请（持员工行锁、未提交），B 的结束申请在锁上等待；放行后 B 得 PART_TIME_REQUEST_IN_PROGRESS，恰一个申请头', async () => {
     const w = await requestWorld(database().db, 'pt4c-pg-two-requests');
     const record = await w.seedRecord();
-    const a = holdThen(w, (tx) =>
-      import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
-        createDateRequest(tx, w.context(), { requestType: 'extend', recordId: record, endDate: '2026-12-31' }),
+    const { b } = await withHeldLock(
+      holding(w, (tx) =>
+        import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
+          createDateRequest(tx, w.context(), { requestType: 'extend', recordId: record, endDate: '2026-12-31' }),
+        ),
       ),
+      async (lock) => {
+        const pending = lock.track(
+          w.http().createDate({ requestType: 'end', recordId: record, endDate: '2026-09-20' }),
+        );
+        await waitForBlocked(w.db, 1);
+        return { b: pending };
+      },
     );
-    await a.held;
-    const b = w.http().createDate({ requestType: 'end', recordId: record, endDate: '2026-09-20' });
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
     const loser = await w.refusal(await b);
     expect(loser).toMatchObject({ status: 409, code: 'CONFLICT', reason: 'PART_TIME_REQUEST_IN_PROGRESS' });
     expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
@@ -108,19 +95,23 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
   it('PB-41：A 先建结束申请（未提交），B 直接改结束日期（PATCH part-times）在锁上等待；放行后 409 PART_TIME_REQUEST_IN_PROGRESS，期限不变', async () => {
     const w = await requestWorld(database().db, 'pt4c-pg-direct-edit');
     const record = await w.seedRecord({ endDate: '2026-10-31' });
-    const a = holdThen(w, (tx) =>
-      import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
-        createDateRequest(tx, w.context(), { requestType: 'end', recordId: record, endDate: '2026-09-20' }),
+    const { b } = await withHeldLock(
+      holding(w, (tx) =>
+        import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
+          createDateRequest(tx, w.context(), { requestType: 'end', recordId: record, endDate: '2026-09-20' }),
+        ),
       ),
+      async (lock) => {
+        const pending = lock.track(
+          w.request(w.hr.id, 'PATCH', `${EMPLOYMENT}/part-times/${record}`, {
+            ifMatch: 1,
+            body: { endDate: '2026-11-30' },
+          }),
+        );
+        await waitForBlocked(w.db, 1);
+        return { b: pending };
+      },
     );
-    await a.held;
-    const b = w.request(w.hr.id, 'PATCH', `${EMPLOYMENT}/part-times/${record}`, {
-      ifMatch: 1,
-      body: { endDate: '2026-11-30' },
-    });
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
     const loser = await w.refusal(await b);
     expect(loser).toMatchObject({ status: 409, code: 'CONFLICT', reason: 'PART_TIME_REQUEST_IN_PROGRESS' });
     expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
@@ -130,18 +121,22 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
   it('PB-41：A 先建延长申请（未提交），B 批量结束同一兼职在锁上等待；放行后 409 PART_TIME_REQUEST_IN_PROGRESS，整批无写入', async () => {
     const w = await requestWorld(database().db, 'pt4c-pg-batch-end');
     const record = await w.seedRecord({ endDate: '2026-10-31' });
-    const a = holdThen(w, (tx) =>
-      import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
-        createDateRequest(tx, w.context(), { requestType: 'extend', recordId: record, endDate: '2026-12-31' }),
+    const { b } = await withHeldLock(
+      holding(w, (tx) =>
+        import('../../apps/api/src/modules/employment/part-time/request-service.js').then(({ createDateRequest }) =>
+          createDateRequest(tx, w.context(), { requestType: 'extend', recordId: record, endDate: '2026-12-31' }),
+        ),
       ),
+      async (lock) => {
+        const pending = lock.track(
+          w.request(w.hr.id, 'POST', `${EMPLOYMENT}/part-times/batch-end`, {
+            body: { items: [{ recordId: record, revision: 1 }], endDate: '2026-10-15' },
+          }),
+        );
+        await waitForBlocked(w.db, 1);
+        return { b: pending };
+      },
     );
-    await a.held;
-    const b = w.request(w.hr.id, 'POST', `${EMPLOYMENT}/part-times/batch-end`, {
-      body: { items: [{ recordId: record, revision: 1 }], endDate: '2026-10-15' },
-    });
-    await waitForBlocked(w.db, 1);
-    a.release();
-    expect(await a.done).toBeUndefined();
     const loser = await w.refusal(await b);
     expect(loser).toMatchObject({ status: 409, code: 'CONFLICT', reason: 'PART_TIME_REQUEST_IN_PROGRESS' });
     expect(`${loser.code} ${loser.reason ?? ''}`).not.toMatch(CONCURRENT_CODES);
@@ -161,17 +156,19 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     await held.promise;
     const create = w.http().createDate({ requestType: 'extend', recordId: record, endDate: '2026-12-31' });
     let locked = false;
-    try {
-      await waitForBlocked(w.db, 1);
-      locked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM employment_business_objects
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [create, holder].forEach((request) => cleanup.track<unknown>(request));
+        await waitForBlocked(w.db, 1);
+        locked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM employment_business_objects
           WHERE tenant_id=${w.tenant.id} AND id=${record}::uuid FOR UPDATE NOWAIT`,
-      );
-    } finally {
-      release.resolve();
-      await holder;
-    }
+        );
+      },
+      [holder],
+    );
     expect((await create).status).toBe(201);
     expect(locked, '创建已过员工锁、正等组织锁时，目标兼职记录的业务头应已被锁住').toBe(true);
   });
@@ -195,22 +192,24 @@ describe.skipIf(!realPostgres)('AC-PT-date-request-pg 延长 / 结束申请真 P
     const submit = api.act(created.id, 'submit', created.revision);
     let requestLocked = false;
     let recordLocked = false;
-    try {
-      await waitForBlocked(w.db, 1);
-      requestLocked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM part_time_requests
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [submit, holder].forEach((request) => cleanup.track<unknown>(request));
+        await waitForBlocked(w.db, 1);
+        requestLocked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM part_time_requests
           WHERE tenant_id=${w.tenant.id} AND id=${created.id}::uuid FOR UPDATE NOWAIT`,
-      );
-      recordLocked = await lockedBySomeone(
-        w,
-        sql`SELECT id FROM employment_business_objects
+        );
+        recordLocked = await lockedBySomeone(
+          w,
+          sql`SELECT id FROM employment_business_objects
           WHERE tenant_id=${w.tenant.id} AND id=${record}::uuid FOR UPDATE NOWAIT`,
-      );
-    } finally {
-      release.resolve();
-      await holder;
-    }
+        );
+      },
+      [holder],
+    );
     expect((await submit).status).toBe(200);
     expect(requestLocked, '提交已过员工锁、正等组织锁时，申请头应已被锁住').toBe(true);
     expect(recordLocked, '提交已过员工锁、正等组织锁时，目标兼职记录头应已被锁住').toBe(true);

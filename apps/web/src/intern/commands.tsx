@@ -1,28 +1,54 @@
 import { Modal } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, type CommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Latest } from '../foundation/forms/store.js';
 import { projectFields, sameValue, type Values } from '../foundation/forms/values.js';
-import { useApiClient } from '../foundation/Session.js';
+import { useApiClient, useSession } from '../foundation/Session.js';
 import { useDirectApi } from '../part-time/direct-api.js';
 import { m } from './messages.js';
 import { apiRoot, businesses, confirmationOf, type Confirmation } from './model.js';
 
 /** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开后仍在。 */
 export function InternCommands({ children }: { children: ReactNode }) {
-  return <FormCommands>{children}</FormCommands>;
+  const [drafts, setDrafts] = useState<Record<string, ApplicationDraft | undefined>>({});
+  return (
+    <Drafts.Provider value={{ drafts, put: (key, draft) => setDrafts((old) => ({ ...old, [key]: draft })) }}>
+      <FormCommands>{children}</FormCommands>
+    </Drafts.Provider>
+  );
+}
+
+export interface ApplicationDraft {
+  id: string;
+  revision: number;
+  values: Values;
+}
+const Drafts = createContext<
+  | {
+      drafts: Record<string, ApplicationDraft | undefined>;
+      put(key: string, draft: ApplicationDraft | undefined): void;
+    }
+  | undefined
+>(undefined);
+/** 两步申请已确认创建的草稿按会话、员工保留；第二步失败不得重新创建。 */
+export function useInternDraft(employeeId: string) {
+  const context = useContext(Drafts)!;
+  const session = useSession();
+  const key = JSON.stringify([session.tenantId, session.identityKey, employeeId]);
+  return { draft: context.drafts[key], put: (draft?: ApplicationDraft) => context.put(key, draft) };
 }
 
 export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employees`, employeeId);
 
 type Api = ReturnType<typeof useApiClient>;
 /** 读对象并核对标识与 revision（写后回读、申请单重读共用）。 */
-async function readObject(api: Api, path: string, id: string) {
-  const latest = await api.request<{ id?: unknown; revision?: unknown }>(path);
+async function readObject(api: Api, path: string, id: string, verify?: (latest: Values) => void) {
+  const latest = await api.request<Values>(path);
   if (latest.id !== id || !Number.isSafeInteger(latest.revision)) throw new Error(m.invalidReceipt);
+  verify?.(latest);
   return Number(latest.revision);
 }
 
@@ -119,7 +145,17 @@ export interface Send {
    * 回执校验：用实际提交的 command.revision；不符抛错，内核按结果未知锁定。
    * 返回写后回读的对象（路径、id、revision 下限）。
    */
-  accept(raw: Values, sent: number): { path: string; id: string; revision: number };
+  accept(
+    raw: Values,
+    sent: number,
+  ): {
+    path: string;
+    id: string;
+    revision: number;
+    verify?(latest: Values): void;
+  };
+  /** 明确拒绝后重读；409 revision 冲突仍由内核展示差异、显式确认。 */
+  rejected?(): Promise<void>;
 }
 /**
  * 一个提交点（resource + 对象 id + 动作）：409 冲突、结果未知、明确拒绝都交内核；服务端要求二次确认时
@@ -159,10 +195,11 @@ export function useInternCommand(
           editableFields,
           full: cmd.full,
           post: (raw) => post(send.path, 'POST', raw),
-          // 写后回读与列表刷新是提交完成的一部分：失败按结果未知锁定，恢复槽保持钉住（P2-2）
+          // 本单写后回读失败保持未知锁；申请的列表定位在确认命令后独立执行（F-285 P2-1）。
           settle: async (check) => {
             try {
-              if ((await readObject(api, check.path, check.id)) < check.revision) throw new Error(m.invalidReceipt);
+              if ((await readObject(api, check.path, check.id, check.verify)) < check.revision)
+                throw new Error(m.invalidReceipt);
               await refresh();
             } catch {
               throw new Error(m.unconfirmed);
@@ -171,6 +208,13 @@ export function useInternCommand(
           onConfirmation,
         });
         return true;
+      } catch (error) {
+        const status = (error as { status?: number } | undefined)?.status;
+        if (status && [403, 409, 422].includes(status)) {
+          if ((error as { code?: string }).code === 'REVISION_CONFLICT') await cmd.form.reload?.();
+          else await send.rejected?.();
+        }
+        throw error;
       } finally {
         running.current = false;
       }

@@ -169,6 +169,31 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#canDisclose': [
+    'apps/api/src/modules/approval/access.ts#instanceScopeSql',
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    '#DETAIL_FIELDS',
+    '#visible',
+    'apps/api/src/modules/employment/assessment-store.ts#requireAssessmentInScope',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflict': [
+    '#GENERIC_MESSAGE',
+    '#canDisclose',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt': [
+    '#discloseAssessmentConflict',
+    '#isConflict',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+  ],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#isConflict': ['#REASON'],
   'apps/api/src/modules/employment/assessment-in-flight.ts#assessmentVoidNotice': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_TYPES',
   ],
@@ -1121,6 +1146,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#scopeAllowsInTransaction',
   ],
   'apps/api/src/modules/employment/context.ts#runWrite': [
+    'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflictReceipt',
     '#commandContext',
     '#isScopedGuard',
     '#trimEmploymentResponse',
@@ -1135,6 +1161,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
     'apps/api/src/modules/transfer/response-disclosure.ts#trimEmploymentManagerReferences',
   ],
+  'apps/api/src/modules/employment/context.ts#tryWriteContext': ['#readContext'],
   'apps/api/src/modules/employment/context.ts#visiblePreviousRecords': [
     '#previousCreators',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
@@ -1390,9 +1417,8 @@ export const GRAPH: Graph = {
     '#contractContext',
     '#contractFields',
   ],
-  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': [
+  'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess': [
     'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/contracts/context.ts#checkFields',
     'apps/api/src/modules/contracts/context.ts#checkOperationScope',
     '#contractContext',
@@ -1400,6 +1426,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/contracts/rules.ts#contractAction',
     'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#requireContractCreateAccess',
   ],
   'apps/api/src/modules/employment/entry-email-routes.ts#route:GET /entry-email-rules': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -1568,18 +1598,18 @@ export const GRAPH: Graph = {
     '#prepareEntryAction',
     'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard',
   ],
+  'apps/api/src/modules/employment/entry-views.ts#entryViewPredicate': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
+  ],
   'apps/api/src/modules/employment/entry-views.ts#listEntryView': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
-    '#viewPredicate',
+    '#entryViewPredicate',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
-  ],
-  'apps/api/src/modules/employment/entry-views.ts#viewPredicate': [
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
-    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/errors.ts#EmploymentError': ['#EMPLOYMENT_STATUS'],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
@@ -1886,6 +1916,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/exit-downstream.ts#effectsOf': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#ledgerProbe': ['#effectsOf', '#ledgerTargets'],
@@ -1974,6 +2005,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
@@ -2023,6 +2055,33 @@ export const GRAPH: Graph = {
     '#isOverLimitAck',
     '#loadExitRequest',
   ],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#HANDOVER_OBJECT': ['#TYPE'],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#TYPE': [
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#exitHandoverAdapter': [
+    '#asEmployment',
+    '#settle',
+    '#snapshot',
+    '#unsupported',
+    'apps/api/src/modules/employment/exit-handover.ts#lockHandoverRequest',
+  ],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#settle': [
+    '#asEmployment',
+    'apps/api/src/modules/employment/exit-handover.ts#settleHandoverFromApproval',
+  ],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#snapshot': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
+    '#HANDOVER_OBJECT',
+    '#TYPE',
+    'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-handover-adapter.ts#unsupported': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
   'apps/api/src/modules/employment/exit-handover-items.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     '#HANDOVER_ITEM_AUDIT_TYPE',
@@ -2039,6 +2098,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-handover-items.ts#listHandoverItems': [
     '#COLUMNS',
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ITEM_LIMIT',
   ],
@@ -2080,9 +2140,27 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-handover-items.ts#saveHandoverItem',
     '#SETTINGS',
     '#itemGuard',
+    '#registerHandoverExecutionRoutes',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
+  'apps/api/src/modules/employment/exit-handover-routes.ts#registerHandoverExecutionRoutes': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-gate.ts#businessKind',
+    '#tickBody',
+    'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
+    'apps/api/src/modules/employment/exit-handover.ts#exitHandoverStatus',
+    'apps/api/src/modules/employment/exit-handover.ts#handoverDetail',
+    'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant',
+    'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:DELETE /exit-handover-items/:id': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
@@ -2096,6 +2174,22 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-handover-items.ts#listHandoverItems',
     '#SETTINGS',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:GET /exit-handover-requests/:id': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
+    'apps/api/src/modules/employment/exit-handover.ts#handoverDetail',
+    'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:GET /exits/:id/handover': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-gate.ts#businessKind',
+    'apps/api/src/modules/employment/exit-handover.ts#exitHandoverStatus',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-routes.ts#route:POST /exit-handover-items': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -2113,6 +2207,70 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-handover-items.ts#saveHandoverItem',
     '#itemGuard',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/exit-handover-routes.ts#route:PUT /exit-handover-requests/:id/items/:itemId': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    '#tickBody',
+    'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
+    'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant',
+    'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover-store.ts#latestHandoverOfExit': [
+    '#REQUEST_COLUMNS',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest': [
+    '#REQUEST_COLUMNS',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#auditHandover': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/employment/exit-handover.ts#exitHandoverStatus': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#latestHandoverOfExit',
+    '#handoverDetail',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#handoverDetail': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems',
+    '#mineOf',
+    '#pendingNodeOf',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NOT_LAUNCHED_HINTS',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#lockHandoverRequest': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#mineOf': [
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#pendingNodeOf': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#settleHandoverFromApproval': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#moveHandoverRequest',
+    '#REQUEST_TYPE',
+    '#auditHandover',
+    '#lockHandoverRequest',
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems',
+    '#auditHandover',
+    '#isHandoverParticipant',
+    '#lockHandoverRequest',
+    '#mineOf',
+    '#pendingNodeOf',
+    '#refuse',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#applyInitiationSubset': [
     '#HR_ONLY',
@@ -2159,6 +2317,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions': ['#exitOptionsSchema'],
   'apps/api/src/modules/employment/exit-initiation.ts#touchesBlacklist': ['#BLACKLIST_DETAIL_KEYS'],
+  'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder': ['#EXIT_LIST_ORDER_KEYS'],
   'apps/api/src/modules/employment/exit-lock-plan.ts#exitDutySubordinates': [
     'apps/api/src/modules/transfer/linkage/input.ts#dutySubordinateIds',
     'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage',
@@ -2193,9 +2352,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
     '#asRows',
+    'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
     'apps/api/src/modules/employment/retirement-application.ts#previewRetirement',
+    'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_RESPONSE_DEPENDENCIES',
   ],
   'apps/api/src/modules/employment/exit-projection.ts#assertExtendedEmploymentAvailable': [
     '#clipAt',
@@ -2222,6 +2383,9 @@ export const GRAPH: Graph = {
     '#independent',
     '#on',
   ],
+  'apps/api/src/modules/employment/exit-queries.ts#EXIT_SORT_DEPENDENCIES': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+  ],
   'apps/api/src/modules/employment/exit-queries.ts#candidates': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     '#LEAVE_SOURCE',
@@ -2244,9 +2408,11 @@ export const GRAPH: Graph = {
     '#viewPredicate',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadDetailParts': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     '#LEAVE_SOURCE',
     '#amount',
     '#candidates',
@@ -2256,6 +2422,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -2272,7 +2439,10 @@ export const GRAPH: Graph = {
     '#trimNode',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#trimWith': ['#trimNode'],
-  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': ['#EXIT_SORT_DEPENDENCIES'],
+  'apps/api/src/modules/employment/exit-queries.ts#viewOrder': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
+    '#EXIT_SORT_DEPENDENCIES',
+  ],
   'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion': [
     'apps/api/src/modules/employment/deletion-guards.ts#assertRestoredPredecessor',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
@@ -2774,6 +2944,62 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
   ],
+  'apps/api/src/modules/employment/intern-actions.ts#internRowActions': [
+    'apps/api/src/modules/employment/context.ts#tryWriteContext',
+    '#rowActions',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+  ],
+  'apps/api/src/modules/employment/intern-actions.ts#rowActions': [
+    'apps/api/src/modules/employment/context.ts#permits',
+    '#requireRevokeAccess',
+    'apps/api/src/modules/employment/intern-regularization.ts#regularizationBusiness',
+    'apps/api/src/modules/employment/intern-termination.ts#internTerminationGate',
+    'apps/api/src/modules/employment/replay-guard.ts#requireExitCommandAccess',
+    'apps/api/src/modules/employment/replay-guard.ts#requireInternRegularizationAccess',
+    'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
+    'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#createInternEntry': [
+    'apps/api/src/modules/employment/employees.ts#employeeName',
+    'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract',
+    '#pendingEntry',
+    '#resolveEmployee',
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+    'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internContract': [
+    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internCreateGuard': [
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess',
+    '#requireInternCreateWrite',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internCreateInput': ['#internContract'],
+  'apps/api/src/modules/employment/intern-create.ts#pendingEntry': [
+    'apps/api/src/modules/contracts/configuration.ts#verifyIds',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#planInternCreate': [
+    'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    '#PENDING_CONTRACT_KEYS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#resolveEmployee': [
+    'apps/api/src/modules/employment/employees.ts#createEmployee',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord',
+    'apps/api/src/modules/employment/write-service.ts#sequenceViolation',
+  ],
   'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable': [
     '#assertNothingEndsInternshipAfter',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
@@ -2801,6 +3027,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MAX',
     'packages/domain/src/employment/probation.ts#PROBATION_MONTHS_MIN',
   ],
+  'apps/api/src/modules/employment/intern-regularization.ts#regularizationBusiness': ['#regularizationFields'],
   'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern': [
     '#confirmEstablishment',
     '#regularizationFields',
@@ -2809,6 +3036,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-routes.ts#route:GET /interns': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-actions.ts#internRowActions',
     '#requireViewableInternFilters',
     '#trimInternItems',
     '#viewFilter',
@@ -2818,6 +3046,19 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/intern.ts#INTERN_VIEWS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-create.ts#createInternEntry',
+    'apps/api/src/modules/employment/intern-create.ts#internCreateGuard',
+    'apps/api/src/modules/employment/intern-create.ts#internCreateInput',
+    'apps/api/src/modules/employment/intern-create.ts#planInternCreate',
+    'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite',
+    'apps/api/src/modules/job/context.ts#revision',
+  ],
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -2826,7 +3067,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
     'apps/api/src/modules/employment/intern-regularization.ts#internRegularizationInput',
-    'apps/api/src/modules/employment/intern-regularization.ts#regularizationFields',
+    'apps/api/src/modules/employment/intern-regularization.ts#regularizationBusiness',
     'apps/api/src/modules/employment/intern-regularization.ts#regularizeIntern',
     'apps/api/src/modules/employment/replay-guard.ts#internRegularizationGuard',
     'apps/api/src/modules/job/context.ts#revision',
@@ -2837,6 +3078,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-termination.ts#internTerminationGate',
     'apps/api/src/modules/employment/intern-termination.ts#internTerminationInput',
     'apps/api/src/modules/employment/intern-termination.ts#terminateIntern',
     'apps/api/src/modules/employment/replay-guard.ts#exitCommandGuard',
@@ -2860,7 +3102,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
     '#pick',
     '#trimProbation',
-    '#viewableIn',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#trimProbation': ['#PROBATION_FIELDS'],
   'apps/api/src/modules/employment/intern-routes.ts#viewableIn': [
@@ -3135,6 +3376,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/part-time/linkage-participants.ts#hasRequestTables': [
     '#requestsReady',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -3206,18 +3450,24 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_DEPARTMENT': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
   ],
+  'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_INSTITUTION': [
+    'apps/api/src/modules/employment/part-time/store.ts#currentInstitution',
+  ],
   'apps/api/src/modules/employment/part-time/queries.ts#REQUEST_JOINS': [
     'apps/api/src/modules/employment/part-time/store.ts#latestSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#approvalCandidates': [
     '#REQUEST_DEPARTMENT',
+    '#REQUEST_INSTITUTION',
     '#REQUEST_JOINS',
     '#allOf',
     '#employeeColumns',
     '#filterPredicates',
+    '#oneOf',
     '#primaryJoin',
     '#viewPredicate',
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#approvalItem': [
@@ -3231,8 +3481,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#filterPredicates': [
+    '#oneOf',
     'apps/api/src/modules/employment/part-time/store.ts#uuidArray',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
+  ],
+  'apps/api/src/modules/employment/part-time/queries.ts#latestPendingJoin': [
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DEPARTMENT',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#listPartTimeView': [
     '#approvalCandidates',
@@ -3261,18 +3516,25 @@ export const GRAPH: Graph = {
     '#allOf',
     '#employeeColumns',
     '#filterPredicates',
+    '#latestPendingJoin',
+    '#oneOf',
     '#primaryJoin',
     '#viewPredicate',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DEPARTMENT',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_DIRECT_MANAGER',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',
+    'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_INSTITUTION',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_START',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeColumns',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeFrom',
     'apps/api/src/modules/employment/part-time/read.ts#partTimeVisible',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentSql',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeServiceStatusSql',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
   ],
   'apps/api/src/modules/employment/part-time/queries.ts#viewPredicate': [
+    '#oneOf',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_START',
     'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeViewSql',
@@ -3369,6 +3631,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/replay-guard.ts#requireWriteButtons': [
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
+  'apps/api/src/modules/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
+  ],
+  'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions': [
+    'apps/api/src/modules/employment/context.ts#permits',
+    'apps/api/src/modules/employment/context.ts#tryWriteContext',
+    'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    '#INITIATOR_ONLY',
+    '#MACHINE_ACTION',
+    '#REQUEST_ACTIONS',
+    '#REQUEST_ACTION_ACCESS',
+    '#requestActionTarget',
+    'apps/api/src/modules/employment/part-time/request-service.ts#isRequestInitiator',
+    'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest',
+    'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState',
+  ],
+  'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget': ['#REQUEST_ACTION_ACCESS'],
   'apps/api/src/modules/employment/part-time/request-read.ts#landedRecordId': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -3389,9 +3668,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-service.ts#revokeRequest',
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
     'apps/api/src/modules/employment/part-time/request-service.ts#withdrawRequest',
-  ],
-  'apps/api/src/modules/employment/part-time/request-routes.ts#ACTION_BUTTONS': [
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#DATE_BUTTONS': [
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
@@ -3453,17 +3729,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeRequestGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget',
     '#receipt',
     'apps/api/src/modules/employment/part-time/request-service.ts#deleteRequest',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:GET /part-time-requests/:id': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#availableRequestActions',
     'apps/api/src/modules/employment/part-time/request-read.ts#loadPartTimeRequestDetail',
     'apps/api/src/modules/employment/part-time/request-service.ts#notFound',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -3476,6 +3753,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-routes.ts#parse',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeRequestGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS',
     '#patchBusiness',
     '#patchInput',
     '#patchRequestSchema',
@@ -3483,7 +3761,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/request-service.ts#updateRequest',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -3492,7 +3769,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-routes.ts#parse',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeCreateGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeCreateAccess',
-    '#ACTION_BUTTONS',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS',
     '#approvalFields',
     '#createBusiness',
     '#createDateRequestRoute',
@@ -3502,15 +3779,14 @@ export const GRAPH: Graph = {
     '#receipt',
     'apps/api/src/modules/employment/part-time/request-service.ts#createAddRequest',
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
-    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_BUTTONS',
   ],
   'apps/api/src/modules/employment/part-time/request-routes.ts#route:POST /part-time-requests/:id/revoke': [
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeRequestGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget',
     '#ACTIONS',
-    '#ACTION_BUTTONS',
     '#approvalFields',
     '#receipt',
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
@@ -3522,8 +3798,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeRequestGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget',
     '#ACTIONS',
-    '#ACTION_BUTTONS',
     '#approvalFields',
     '#receipt',
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
@@ -3535,8 +3811,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#partTimeRequestGuard',
     'apps/api/src/modules/employment/part-time/replay-guard.ts#requirePartTimeRequestAccess',
+    'apps/api/src/modules/employment/part-time/request-actions.ts#requestActionTarget',
     '#ACTIONS',
-    '#ACTION_BUTTONS',
     '#approvalFields',
     '#receipt',
     'apps/api/src/modules/employment/part-time/request-service.ts#submitRequest',
@@ -3548,6 +3824,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-request.ts#nextPartTimeRequestState',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#assertInitiator': [
+    '#isRequestInitiator',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/request-service.ts#assertNoDateLinkage': [
@@ -3759,6 +4036,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#VERSION_COLUMNS': [
     'apps/api/src/modules/employment/part-time/store.ts#currentDepartment',
+    'apps/api/src/modules/employment/part-time/store.ts#currentInstitution',
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#appendRequestState': [
     '#bumpRequestRevision',
@@ -3779,6 +4057,10 @@ export const GRAPH: Graph = {
     '#insertEvent',
     '#insertVersion',
     '#loadPartTimeRequest',
+  ],
+  'apps/api/src/modules/employment/part-time/request-store.ts#insertVersion': [
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#loadPartTimeRequest': [
     '#VERSION_COLUMNS',
@@ -3811,8 +4093,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#parseViewQuery': [
     'apps/api/src/modules/employment/entry-routes.ts#parse',
+    '#MULTI_QUERY_KEYS',
     '#VIEW_QUERY_KEYS',
     '#viewQuery',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#sortable',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#partTimeFields': [
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
@@ -3820,6 +4104,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#receipt': [
     'apps/api/src/modules/employment/part-time/read.ts#loadPartTime',
+  ],
+  'apps/api/src/modules/employment/part-time/routes.ts#requestStates': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_STATES',
   ],
   'apps/api/src/modules/employment/part-time/routes.ts#requireViewableFilters': ['#FILTER_FIELDS'],
   'apps/api/src/modules/employment/part-time/routes.ts#route:GET /employees/:id/part-times': [
@@ -3925,6 +4212,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
     '#date',
     '#enabledQuery',
+    '#multi',
+    '#requestStates',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#SORT_FIELDS',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_SOURCES',
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_REQUEST_TYPES',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
     'packages/domain/src/employment/part-time.ts#PART_TIME_EXPIRING_DAYS',
     'packages/domain/src/employment/part-time.ts#PART_TIME_VIEWS',
@@ -4033,11 +4325,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#writePartTimeEdit': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     'apps/api/src/modules/employment/part-time/store.ts#appendPartTimeTerm',
     'apps/api/src/modules/employment/part-time/store.ts#bumpPartTimeRevision',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
   ],
   'apps/api/src/modules/employment/part-time/span-sql.ts#ended': ['#partTimeEmptySql'],
+  'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeServiceStatusSql': ['#ended'],
   'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeViewSql': [
     '#ended',
     '#partTimeCurrentSql',
@@ -4054,6 +4348,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/store.ts#insertPartTimeRecord': [
+    'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     '#insertTerm',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_KIND',
@@ -4160,6 +4455,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/references.ts#validateEmploymentReferences',
     'apps/api/src/modules/job/validation.ts#invalid',
     'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder': [
+    'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks': ['#hooks'],
   'apps/api/src/modules/employment/personnel-reader.ts#ASSIGNMENT_COLUMNS': ['#INCUMBENT_COLUMNS'],
@@ -4314,23 +4612,26 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
   'apps/api/src/modules/employment/probation-views.ts#listProbationView': [
-    'apps/api/src/modules/employment/context.ts#employmentCreator',
-    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
-    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
-    '#filterPredicate',
     '#organizationsOf',
-    '#probationInfo',
-    '#viewPredicate',
-    'apps/api/src/modules/employment/probation.ts#cycleRegularization',
+    '#probationViewRows',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
-    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/probation-views.ts#organizationsOf': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/probation-views.ts#probationInfo': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/probation-views.ts#probationViewRows': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
+    '#filterPredicate',
+    '#probationInfo',
+    '#viewPredicate',
+    'apps/api/src/modules/employment/probation.ts#cycleRegularization',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/employment/probation-views.ts#viewPredicate': [
@@ -4643,12 +4944,9 @@ export const GRAPH: Graph = {
     '#requireObjectUpdate',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#internRegularizationGuard': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#commandContext',
-    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
+    '#requireInternRegularizationAccess',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#pendingActionGuard': [
     'apps/api/src/modules/employment/context.ts#commandContext',
@@ -4682,6 +4980,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     '#requireBusinessWriteScope',
   ],
+  'apps/api/src/modules/employment/replay-guard.ts#requireExitCommandAccess': [
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
+    '#requireExitScope',
+  ],
   'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/exit-gate.ts#businessState',
@@ -4695,6 +4997,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
     '#requireBusinessWriteScope',
+  ],
+  'apps/api/src/modules/employment/replay-guard.ts#requireInternRegularizationAccess': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#requireObjectUpdate': [
     'apps/api/src/authorization.ts#requirePermission',
@@ -5128,6 +5436,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-routes.ts#day',
     'apps/api/src/modules/employment/exit-routes.ts#parse',
     'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton',
+    'apps/api/src/modules/employment/exit-routes.ts#viewableIn',
     '#KIND',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
@@ -5337,6 +5646,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['#FALLBACK_UPCOMING_DAYS'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': [
     'apps/api/src/modules/employment/exit-routes.ts#day',
+    'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_CANCELLED_VIEW',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_UPCOMING_DAYS',
     'packages/domain/src/employment/retirement-views.ts#RETIREMENT_VIEWS',
   ],
@@ -5351,9 +5661,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-queries.ts#EXIT_RESPONSE_DEPENDENCIES',
     'apps/api/src/modules/employment/exit-queries.ts#on',
   ],
-  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': ['#dayEnd'],
+  'apps/api/src/modules/employment/retirement-views.ts#RETIREMENT_SOURCE': ['#SUBMITTED_AT_JOIN'],
+  'apps/api/src/modules/employment/retirement-views.ts#billPredicate': [
+    'apps/api/src/modules/employment/exit-queries.ts#viewPredicate',
+    '#RETIREMENT_CANCELLED_VIEW',
+    '#dayEnd',
+  ],
   'apps/api/src/modules/employment/retirement-views.ts#blockedByBill': ['#dayEnd'],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementBills': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#candidates',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
@@ -5364,6 +5680,7 @@ export const GRAPH: Graph = {
     '#toRetirementItem',
   ],
   'apps/api/src/modules/employment/retirement-views.ts#listRetirementPersons': [
+    'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/exit-queries.ts#pageOfCandidates',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     '#RETIREMENT_PERSON_DEPENDENCIES',
@@ -5447,7 +5764,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/routes.ts#registerBusinessTransitions': [
     'apps/api/src/modules/employment/approval-hooks.ts#employmentApprovalHooks',
     'apps/api/src/modules/employment/context.ts#readContext',
-    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings',
@@ -5457,7 +5773,9 @@ export const GRAPH: Graph = {
     '#discloseDeletionBlock',
     '#routesToCancel',
     '#submitBody',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
     'apps/api/src/modules/employment/transitions.ts#transitionEmployment',
+    'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
@@ -5823,6 +6141,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#array',
   ],
+  'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': [
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
   'apps/api/src/modules/employment/transitions.ts#activateExitPort': [
     'apps/api/src/modules/employment/activation-store.ts#PREDECESSOR_FAILED',
     'apps/api/src/modules/employment/exit-activation.ts#activateExit',
@@ -5849,9 +6170,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/transitions.ts#assertRegularizationSubmittable': [
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
   ],
-  'apps/api/src/modules/employment/transitions.ts#assertTransition': [
-    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
-  ],
+  'apps/api/src/modules/employment/transitions.ts#assertTransition': ['#transitionPermitted'],
   'apps/api/src/modules/employment/transitions.ts#auditDeletedRecord': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#deletionSnapshot',
@@ -5924,12 +6243,22 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/late-execution.ts#resolveLateExecution',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/transitions.ts#transitionPermitted': [
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
+  ],
   'apps/api/src/modules/employment/types.ts#emptyPresetFields': ['#PRESET_FIELD_NAMES'],
   'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
   'apps/api/src/modules/employment/visibility.ts#isEmploymentRecordVisible': ['#visibleEmploymentRecords'],
   'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords': ['#employmentVisibilitySql'],
+  'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': [
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite',
+    'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
+  ],
   'apps/api/src/modules/employment/write-service.ts#appendEmploymentPayload': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     '#storedStatus',
@@ -5940,7 +6269,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
     'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#latestTimelineRecord',
     '#sequenceViolation',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
@@ -6006,6 +6335,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#insertNewEmploymentCycle': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',

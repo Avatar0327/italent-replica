@@ -26,8 +26,16 @@ import {
   uuidParam,
 } from './context.js';
 import { parse } from './entry-routes.js';
-import { internRegularizationInput, regularizationFields, regularizeIntern } from './intern-regularization.js';
-import { internTerminationInput, terminateIntern } from './intern-termination.js';
+import {
+  createInternEntry,
+  internCreateGuard,
+  internCreateInput,
+  planInternCreate,
+  requireInternCreateWrite,
+} from './intern-create.js';
+import { internRowActions } from './intern-actions.js';
+import { internRegularizationInput, regularizationBusiness, regularizeIntern } from './intern-regularization.js';
+import { internTerminationGate, internTerminationInput, terminateIntern } from './intern-termination.js';
 import { listInternView, type InternViewItem } from './intern-views.js';
 import { matchRehire, rehireMatchInput } from './rehire-match.js';
 import { exitCommandGuard, internRegularizationGuard } from './replay-guard.js';
@@ -40,17 +48,13 @@ const viewFilter = z.strictObject({
 
 export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerInternViews(router, deps);
+  registerInternCreate(router, deps);
   router.post('/interns/:id/regularize', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const input = parse(internRegularizationInput, await jsonBody(c));
     // 字段写权限按实际写入的任职字段校验，口径同通用新增
-    const business = {
-      kind: 'intern_regularization',
-      mode: 'direct',
-      effectiveDate: input.effectiveDate,
-      fields: regularizationFields(input),
-    };
+    const business = regularizationBusiness(input);
     await requireEmploymentWrite(ctx, 'create', business, 'Employment.Create');
     requireEmploymentScope(ctx, id, input.departmentId);
     return runWrite(
@@ -67,15 +71,7 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const input = parse(internTerminationInput, await jsonBody(c));
-    const gate = {
-      employeeId: id,
-      initiation: 'hr' as const,
-      mode: 'direct' as const,
-      lastWorkDate: input.endDate,
-      exit: {},
-      payload: { fields: {}, customFields: {} },
-      changeType: 'intern_end' as const,
-    };
+    const gate = internTerminationGate(id, input.endDate);
     return runWrite(
       c,
       deps,
@@ -108,6 +104,29 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
   });
 }
 
+/**
+ * 新增实习生一体写入（BE-R2d4c）：建档 / 重聘 + 实习任职 + 合同协议同一命令事务。权限同 POST /employees（人员新增权 + 看全部，
+ * DEC-121）叠加任职新增权与字段权；合同对象权限在命令内复核（首次 / 重放 / 回查）。重聘的 If-Match 是候选人员当前 revision，
+ * 新增为 0。回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不走任职字段裁剪。
+ */
+function registerInternCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/interns', async (c) => {
+    const employeeCtx = await readContext(c, deps, 'object.create', 0, undefined, EMPLOYEE_OBJECT);
+    const input = parse(internCreateInput, await jsonBody(c));
+    const ctx = await readContext(c, deps, 'object.create', revision(c), input.employeeId);
+    const plan = planInternCreate(ctx, input);
+    await requireInternCreateWrite(employeeCtx, ctx, plan);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({ status: 201, body: await createInternEntry(tx, deps, context, plan) }),
+      { guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body },
+    );
+  });
+}
+
 const pick = (shown: (field: string) => boolean, values: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(values).filter(([field]) => shown(field)));
 
@@ -132,7 +151,8 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const view = parse(z.enum(INTERN_VIEWS), c.req.query('view'));
     const filter = parse(viewFilter, { departmentId: c.req.query('departmentId'), keyword: c.req.query('keyword') });
     const page = pageQuery(c);
-    requireViewableInternFilters(filter, await viewableIn(deps, ctx));
+    const show = await viewableIn(deps, ctx);
+    requireViewableInternFilters(filter, show);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listInternView(
         tx,
@@ -141,8 +161,11 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         ctx.scope,
       ),
     );
+    // F-283：逐行可用动作（写入口同一组判定，intern-actions.ts），在字段裁剪之后附上，不受字段裁剪影响
+    const actions = await internRowActions(c, deps, ctx, view, items, show.employment('status'));
+    const trimmed = await trimInternItems(deps, ctx, items, show);
     return c.json({
-      items: await trimInternItems(deps, ctx, items),
+      items: trimmed.map((item, index) => ({ ...item, availableActions: actions[index] })),
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: ctx.scope?.hasDataPermission ?? true,
@@ -175,8 +198,12 @@ function trimProbation(probation: InternViewItem['probation'], shown: (field: st
 }
 
 /** 业务状态 state 按任职记录 status 字段、姓名 / 工号按人员对象、试用期按上面逐项裁剪（同类位置统一在这里）。 */
-async function trimInternItems(deps: TenantRouteDeps, ctx: EmploymentContext, items: readonly InternViewItem[]) {
-  const show = await viewableIn(deps, ctx);
+async function trimInternItems(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  items: readonly InternViewItem[],
+  show: Viewable,
+) {
   const records = items.map(({ name: _name, code: _code, state: _state, probation: _probation, ...record }) => record);
   const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
   return trimmed.map((record, index) => {
