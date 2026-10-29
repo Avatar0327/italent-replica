@@ -902,7 +902,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#DETAIL_FIELDS': ['641273c80872', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#GENERIC_MESSAGE': ['c141f3040fe9', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#REASON': ['1c31ed4cbaa9', 'e3b0c44298fc'],
-  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#canDisclose': ['3708ca94111b', 'f475f2b9e661'],
+  'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#canDisclose': ['fac7d8a534bf', 'd875e0b0236e'],
   'apps/api/src/modules/employment/assessment-conflict-disclosure.ts#discloseAssessmentConflict': [
     '9c3495f48a0b',
     '1a9f6fdf7b97',
