@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { IDP_OBJECTS } from '../../../packages/domain/src/idp/catalog.js';
 import { test, expect, user } from './fixtures.js';
@@ -462,8 +463,8 @@ test('AC-FE-R3d2-21 冲突重读后子流程缺字段、整组只读：冲突前
   await sub.getByLabel('名称').fill('合成制定阶段（草稿）');
   await sub.getByRole('button', { name: /确\s*定/ }).click();
   await form.getByRole('button', { name: /保\s*存/ }).click();
-  await expect(form.getByRole('button', { name: '重读最新版本', exact: true })).toBeVisible();
-  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await expect(actionButton(form, '重读最新版本')).toBeVisible();
+  await actionButton(form, '重读最新版本').click();
   await expect(form.getByText(FIELDS_HIDDEN)).toBeVisible();
   // 整组只读后子流程表格回到最新记录；内核差异表仍列出“我的修改”供核对，那是 JSON 单元格，不计入
   await expect(form.getByRole('cell', { name: '合成制定阶段', exact: true })).toBeVisible();
@@ -504,7 +505,7 @@ test('AC-FE-R3d2-22 两次冲突、子流程先缺字段后恢复且服务端新
   const sub = page.getByRole('dialog', { name: '子流程' });
   await sub.getByLabel('名称').fill('合成制定阶段（草稿）');
   await sub.getByRole('button', { name: /确\s*定/ }).click();
-  const reread = form.getByRole('button', { name: '重读最新版本', exact: true });
+  const reread = actionButton(form, '重读最新版本');
   const confirm = form.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
   await form.getByRole('button', { name: /保\s*存/ }).click();
   await reread.click();

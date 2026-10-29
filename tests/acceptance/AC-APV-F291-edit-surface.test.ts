@@ -6,7 +6,6 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { editSurface } from '../../apps/api/src/modules/approval/edit-surface.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
 import {
   approvalWorld,
@@ -134,6 +133,8 @@ describe('F-291 不下发的情形', () => {
   });
 
   it('员工信息类（approvalEdit=false）、editMode=none、查看人对可编辑字段全无查看权：不下发', async () => {
+    // 先由 API 夹具初始化审批模块，避免单独加载编辑规则时提前进入审批存储的循环依赖。
+    const { editSurface } = await import('../../apps/api/src/modules/approval/edit-surface.js');
     const node = { editMode: 'with_approve', editableFields: ['place'] } as never;
     const mine = { id: 't1' } as never;
     const given = (approvalType: string, nodeOverride: object = {}, viewable?: ReadonlySet<string>) =>

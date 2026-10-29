@@ -9,7 +9,6 @@ import {
   instanceRecusal,
   jumpAllowed,
   rejectToPreviousAllowed,
-  revokeAllowed,
   blindReviewFields,
   EXIT_LABELS,
   hasExit,
@@ -57,6 +56,7 @@ import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
 import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
+import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
@@ -799,15 +799,9 @@ export async function withdraw(
 ): Promise<Outcome> {
   // 业务入口撤回只跳过重复的业务状态迁移，不跳过“仅发起人”校验（清单 10）。
   const run = fromBusiness ? await openRun(tx, ctx, instanceId) : await openOwn(tx, ctx, instanceId);
-  if (run.instance.initiatorUserId !== ctx.userId)
-    throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
-  if (!['running', 'returned'].includes(run.instance.status))
-    throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
-  // DEC-318 K-39：撤回是节点开关（原站 isRevoke，缺省开启），按当前节点判断
   const current = run.version.nodes.find((node) => node.key === run.instance.currentNodeKey);
-  if (!fromBusiness && current && !revokeAllowed(current)) {
-    throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点未开启撤回');
-  }
+  const denied = approvalWithdrawalFailure(run.instance, ctx.userId, current, fromBusiness);
+  if (denied) throw denied;
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'withdrawn', currentNodeKey: null };
   if (!fromBusiness) await ADAPTERS[run.instance.businessType].withdrawn(tx, ctx, run.instance.businessId);
