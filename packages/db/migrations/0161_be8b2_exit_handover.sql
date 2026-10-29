@@ -52,18 +52,19 @@ CREATE INDEX "exit_handover_request_items_list" ON "exit_handover_request_items"
 CREATE UNIQUE INDEX "exit_handover_requests_live" ON "exit_handover_requests" USING btree ("tenant_id","exit_request_id") WHERE "exit_handover_requests"."state" IN ('in_progress', 'completed');--> statement-breakpoint
 CREATE INDEX "exit_handover_requests_exit" ON "exit_handover_requests" USING btree ("tenant_id","exit_request_id");--> statement-breakpoint
 ALTER TABLE "approval_instances" ADD CONSTRAINT "approval_instances_business_type" CHECK ("approval_instances"."business_type" IN ('employment','personnel_change','contract','idp','talent_review','part_time',
-        'offer','offer_batch','probation_assessment','retirement_intention','exit_handover'));--> statement-breakpoint
+        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approver" CHECK ("approval_process_nodes"."approver_expression" IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
         'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',
-        'approval_subject_first_level_org_head','assessment_employee','handover_work_owner','handover_hr_admin',
-        'handover_employee'));--> statement-breakpoint
+        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',
+        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approvers" CHECK (CASE WHEN "approval_process_nodes"."node_type" = 'countersign'
         THEN "approval_process_nodes"."approver_expression" IS NULL AND cardinality("approval_process_nodes"."approver_expressions") BETWEEN 1 AND 8
           AND "approval_process_nodes"."approver_expressions" <@ ARRAY['owner','direct_manager','latest_record_department_head',
             'record_department_head','record_department_hrbp','record_first_level_org_head',
             'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',
             'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',
+            'approval_subject_org_hrbp','approval_subject_org_head',
             'handover_work_owner','handover_hr_admin','handover_employee']::text[]
         ELSE "approval_process_nodes"."approver_expression" IS NOT NULL AND cardinality("approval_process_nodes"."approver_expressions") = 0 END);--> statement-breakpoint
 -- R2 BE-8b2（B64）：离职交接申请的租户隔离与授权。业务表不给 DELETE；交接申请创建后只有状态、终止原因、审批实例、
