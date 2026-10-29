@@ -887,6 +887,7 @@ export const GRAPH: Graph = {
     '#nodeTypeColumns',
     '#textArray',
     '#uuidArray',
+    'apps/api/src/modules/approval/source-reference.ts#assertSourceReferences',
     'packages/domain/src/approval/definition.ts#approverSourceViolations',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
     'packages/domain/src/approval/sources.ts#approverSourcesOf',
@@ -914,6 +915,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople': ['#eligibleDesignerPeople'],
   'apps/api/src/modules/approval/designer-people.ts#querySchema': [
     'apps/api/src/modules/approval/context.ts#canonicalId',
+  ],
+  'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
+    'apps/api/src/modules/approval/source-reference.ts#jobReferenceRows',
+    'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
+    'apps/api/src/modules/approval/source-reference.ts#sourceDimension',
+  ],
+  'apps/api/src/modules/approval/designer-sources.ts#querySchema': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+    'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
@@ -1537,6 +1552,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/definitions.ts#replaceDraft',
     'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
     'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
+    'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
+    'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
     '#command',
     '#processResponse',
     '#readCtx',
@@ -1604,6 +1621,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/access.ts#requireProcessButton',
     'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
     'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
+    '#readCtx',
+  ],
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/source-candidates': [
+    'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
+    'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
     '#readCtx',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
@@ -1899,6 +1922,51 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/sources.ts#sourceKey',
   ],
+  'apps/api/src/modules/approval/source-reference.ts#assertSourceReferences': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#dimensionEnabled',
+    '#orgDimensionMember',
+    '#sourceTable',
+    'packages/domain/src/approval/sources.ts#relationSource',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled': [
+    'apps/api/src/modules/org/settings.ts#readOrgSettings',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#historicalParent', '#orgDimensionMember'],
+  'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
+    'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#sourceTable': ['#sourceDimension'],
+  'apps/api/src/modules/approval/source-relations.ts#eligiblePerson': [
+    'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
+    'apps/api/src/modules/approval/resolver.ts#candidateOf',
+    'apps/api/src/modules/approval/resolver.ts#memo',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#jobHolders': [
+    '#ancestors',
+    '#eligiblePerson',
+    '#jobPeople',
+    '#orgGraph',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/job/read-model.ts#loadJobObject',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#jobPeople': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/source-relations.ts#orgGraph': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#organization': [
+    'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
+    '#ancestors',
+    '#eligiblePerson',
+    '#orgGraph',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#resolveRelation': [
+    '#jobHolders',
+    '#organization',
+    'packages/domain/src/approval/sources.ts#relationSource',
+  ],
   'apps/api/src/modules/approval/source-resolver.ts#fixed': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/resolver.ts#resolveCandidate',
@@ -1924,8 +1992,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/source-resolver.ts#resolvers': [
     'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    'apps/api/src/modules/approval/source-relations.ts#resolveRelation',
     '#fixed',
     '#objectField',
+    'packages/domain/src/approval/sources.ts#expressionValue',
   ],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',

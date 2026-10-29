@@ -1,4 +1,5 @@
 /** DEC-686：类型登记负责取人，回避/空人/会签仍由既有路由负责。 */
+import { resolveRelation } from './source-relations.js';
 import { createHash } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import {
@@ -45,7 +46,14 @@ const objectField: Resolver = async (tx, subject, source) => {
 const resolvers: Partial<Record<ApproverSourceType, Resolver>> = {
   custom_variable: fixed,
   object_field: objectField,
-  department: fixed,
+  department: (tx, subject, source) =>
+    expressionValue(source) ? fixed(tx, subject, source) : resolveRelation(tx, subject, source),
+  business_org: resolveRelation,
+  profit_center: resolveRelation,
+  reserve4: resolveRelation,
+  reserve5: resolveRelation,
+  position: resolveRelation,
+  job: resolveRelation,
   identity: fixed,
   specified: (tx, subject, source) => resolveFallbackCandidates(tx, subject, [source.value]),
   context_variable: (tx, subject) => resolveFallbackCandidates(tx, subject, subject.previousApprovedUserIds ?? []),

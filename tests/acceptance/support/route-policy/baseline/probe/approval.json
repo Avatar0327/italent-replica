@@ -24,6 +24,18 @@
       "admin:process_matrix"
     ]
   },
+  "GET /api/tenant/approval/designer/source-candidates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "b90615e93758",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
   "GET /api/tenant/approval/instances": {
     "all": {
       "status": 200

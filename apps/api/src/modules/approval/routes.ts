@@ -2,6 +2,7 @@
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
+import { designerSourcesQuery, listDesignerSources } from './designer-sources.js';
 import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
 import {
   pgErrorCode,
@@ -294,6 +295,12 @@ function registerHooks(deps: TenantRouteDeps) {
 }
 
 function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/designer/source-candidates', async (c) => {
+    const ctx = readCtx(c, deps);
+    await requireProcessButton(deps, ctx, 'update');
+    const query = designerSourcesQuery(c.req.query());
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerSources(tx, ctx.tenantId, query)));
+  });
   router.get('/designer/person-candidates', async (c) => {
     const ctx = readCtx(c, deps);
     await requireProcessButton(deps, ctx, 'update');

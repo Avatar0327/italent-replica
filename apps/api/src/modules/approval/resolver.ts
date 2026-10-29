@@ -32,6 +32,14 @@ export interface RoutingSubject {
   readonly handoverEmployeeId?: string | null;
   /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
+  /** 内部诊断，不进入响应/日志：源关系中的组织标识不能借 reason 文案绕过组织披露权限。 */
+  readonly sourceDiagnostics?: (entry: OrganizationSourceDiagnostic) => void;
+}
+
+export interface OrganizationSourceDiagnostic {
+  readonly startId: string;
+  readonly skippedOrgIds: readonly string[];
+  readonly reason: 'resolved' | 'root_empty' | 'broken_chain' | 'cycle';
 }
 
 /** 资格判定只需要租户与业务日期（查询缓存可选）。 */
