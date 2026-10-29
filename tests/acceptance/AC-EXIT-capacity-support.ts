@@ -9,7 +9,11 @@ import { tenantApi } from './support/tenant-api.js';
 
 const TODAY = '2026-10-06';
 
-export async function capacityWorld(db: Db, label: string, today = TODAY) {
+/**
+ * capacity=false：不给调出 / 调入部门建编制。要停用这两个部门的用例用它——F-296 在 11e 前拒绝直接停用含编制的组织，
+ * 这类用例关心的是停用与离职 / 退休的并发与校验，编制不是它们的前置。
+ */
+export async function capacityWorld(db: Db, label: string, today = TODAY, options: { capacity?: boolean } = {}) {
   const x = await downstreamWorld(db, label, today);
   const api = tenantApi(x.db, { clock: () => new Date(`${today}T01:00:00Z`) });
   const establishment = async (path: string, body: object) => {
@@ -22,20 +26,22 @@ export async function capacityWorld(db: Db, label: string, today = TODAY) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string };
   };
-  const scheme = await establishment('/schemes', {
-    name: '预减验收方案',
-    periodType: 'annual',
-    maintenanceMode: 'local',
-    startDate: '2026-01-01',
-  });
-  for (const org of [x.from, x.to])
-    await establishment('/capacities', {
-      orgId: org.id,
-      schemeId: scheme.id,
-      periodStart: '2026-01-01',
-      localCapacity: 1,
-      strictControl: true,
+  if (options.capacity !== false) {
+    const scheme = await establishment('/schemes', {
+      name: '预减验收方案',
+      periodType: 'annual',
+      maintenanceMode: 'local',
+      startDate: '2026-01-01',
     });
+    for (const org of [x.from, x.to])
+      await establishment('/capacities', {
+        orgId: org.id,
+        schemeId: scheme.id,
+        periodStart: '2026-01-01',
+        localCapacity: 1,
+        strictControl: true,
+      });
+  }
   const other = await x.session.org('无编制部门', { establishedOn: '2026-01-01' });
   /** 另一个人（在无编制部门入职），用来向有编制的部门调入。 */
   async function newcomer(name: string) {
