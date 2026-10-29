@@ -3,7 +3,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { levelBody, levelKinds, levelsWorld } from './AC-SC-levels-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2b 真 PG 锁交错', () => {
@@ -25,16 +25,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC B2b 真 PG 锁交�
     });
     await acquired;
     let a: Promise<Response> | undefined, b: Promise<Response> | undefined;
-    try {
-      a = first();
-      expect(await settledOrBlocked(w.db, a, 1)).toBe('blocked');
-      b = second();
-      expect(await settledOrBlocked(w.db, b, 2)).toBe('blocked');
-    } finally {
-      release();
-      await blocker;
-      await Promise.allSettled([a, b].filter((request) => request !== undefined));
-    }
+    await withRelease(
+      release,
+      async (cleanup) => {
+        cleanup.track(blocker);
+        a = cleanup.track(first());
+        expect(await settledOrBlocked(w.db, a, 1)).toBe('blocked');
+        b = cleanup.track(second());
+        expect(await settledOrBlocked(w.db, b, 2)).toBe('blocked');
+      },
+      [blocker],
+    );
     return await Promise.all([a!, b!]);
   }
   it.each(levelKinds.flatMap((kind) => [true, false].map((sameKey) => ({ kind, sameKey }))))(

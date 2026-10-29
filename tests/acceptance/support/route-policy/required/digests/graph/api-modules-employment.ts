@@ -1391,9 +1391,8 @@ export const GRAPH: Graph = {
     '#contractContext',
     '#contractFields',
   ],
-  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': [
+  'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess': [
     'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/contracts/context.ts#checkFields',
     'apps/api/src/modules/contracts/context.ts#checkOperationScope',
     '#contractContext',
@@ -1401,6 +1400,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/contracts/rules.ts#contractAction',
     'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/employment/entry-contract.ts#requireEntryContractAccess': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#requireContractCreateAccess',
   ],
   'apps/api/src/modules/employment/entry-email-routes.ts#route:GET /entry-email-rules': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -2921,6 +2924,43 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/replay-guard.ts#requireInternRegularizationAccess',
     'apps/api/src/modules/employment/transitions.ts#transitionPermitted',
   ],
+  'apps/api/src/modules/employment/intern-create.ts#createInternEntry': [
+    'apps/api/src/modules/employment/employees.ts#employeeName',
+    'apps/api/src/modules/employment/entry-contract.ts#generateEntryContract',
+    '#pendingEntry',
+    '#resolveEmployee',
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+    'apps/api/src/modules/permission/user-provisioning.ts#provisionEmployeeUser',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internContract': [
+    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internCreateGuard': [
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#scopedGuard',
+    'apps/api/src/modules/employment/entry-contract.ts#requireContractCreateAccess',
+    '#requireInternCreateWrite',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#internCreateInput': ['#internContract'],
+  'apps/api/src/modules/employment/intern-create.ts#pendingEntry': [
+    'apps/api/src/modules/contracts/configuration.ts#verifyIds',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#planInternCreate': [
+    'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
+    '#PENDING_CONTRACT_KEYS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentScope',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+  ],
+  'apps/api/src/modules/employment/intern-create.ts#resolveEmployee': [
+    'apps/api/src/modules/employment/employees.ts#createEmployee',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord',
+    'apps/api/src/modules/employment/write-service.ts#sequenceViolation',
+  ],
   'apps/api/src/modules/employment/intern-eligibility.ts#assertInternEndable': [
     '#assertNothingEndsInternshipAfter',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
@@ -2966,6 +3006,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#pageQuery',
     'packages/domain/src/employment/intern.ts#INTERN_VIEWS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/entry-routes.ts#parse',
+    'apps/api/src/modules/employment/intern-create.ts#createInternEntry',
+    'apps/api/src/modules/employment/intern-create.ts#internCreateGuard',
+    'apps/api/src/modules/employment/intern-create.ts#internCreateInput',
+    'apps/api/src/modules/employment/intern-create.ts#planInternCreate',
+    'apps/api/src/modules/employment/intern-create.ts#requireInternCreateWrite',
+    'apps/api/src/modules/job/context.ts#revision',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#route:POST /interns/:id/regularize': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -6118,7 +6171,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
     'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#latestTimelineRecord',
     '#sequenceViolation',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
@@ -6184,6 +6237,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#insertNewEmploymentCycle': [
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#latestTimelineRecord': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',

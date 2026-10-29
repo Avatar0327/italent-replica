@@ -2,14 +2,16 @@ import { type DbHandle, sql } from '@italent/db';
 
 /**
  * 升级类测试（createTestDb 的 migrateBefore）的升级前兼容垫片：升级前夹具用**当前代码**（API、台账）写数据，
- * 而当前代码已经依赖更新迁移才加的列，旧结构的库上就会报 column does not exist。真实升级先跑完全部迁移再启动新代码
+ * 而当前代码已经依赖更新迁移才加的列或表，旧结构就会报 column / relation does not exist。真实升级先跑完全部迁移再启动新代码
  * （docs/06_部署 §迁移），不存在这个窗口，所以这是测试夹具的问题，不改迁移、不改业务代码。
  *
  * 做法（单一入口，各升级测试文件不各写一份）：
  * - 升级前阶段：对登记表里“库里还没有”的列临时 ADD COLUMN（可空，类型与正式迁移一致）；
  * - 第一次 `handle.migrate()` 之前先把自己加的列 DROP 掉，再由正式迁移用不带 IF NOT EXISTS 的 ADD COLUMN 加回；
  * - 库里已有的列（migrateBefore 切在它的迁移之后）不动，也不会被删。
- * 新迁移给“当前代码在升级前夹具里会读写的表”加列时，在这里追加一行；`test-db.test.ts` 核对每一行都对应一条真实迁移。
+ * - 缺失的登记表临时建最小列结构，保留租户隔离及 SELECT / INSERT 权限；首次 migrate 前 DROP，再由正式迁移建回。
+ * - 仅撤除本句柄添加的对象；临时表中的夹具数据不进入正式迁移，已有正式表及其数据不动。
+ * 新依赖集中登记在这里；测试核对登记对应真实迁移，升级后结构与完整迁移一致。
  */
 export interface PreUpgradeShim {
   readonly table: string;
@@ -33,6 +35,35 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   },
 ];
 
+export interface PreUpgradeTableShim {
+  readonly table: string;
+  readonly migration: string;
+  /** 最小结构只声明列名和正式类型，不提前模拟后续迁移的业务约束。 */
+  readonly columns: readonly { readonly name: string; readonly type: string }[];
+}
+
+export const PRE_UPGRADE_TABLE_SHIMS: readonly PreUpgradeTableShim[] = [
+  {
+    table: 'employment_probation_versions',
+    migration: 'be3_probation',
+    columns: [
+      { name: 'id', type: 'uuid' },
+      { name: 'tenant_id', type: 'uuid' },
+      { name: 'employee_id', type: 'uuid' },
+      { name: 'business_id', type: 'uuid' },
+      { name: 'version_no', type: 'integer' },
+      { name: 'previous_version_id', type: 'uuid' },
+      { name: 'has_probation', type: 'boolean' },
+      { name: 'start_date', type: 'date' },
+      { name: 'months', type: 'smallint' },
+      { name: 'expected_end_date', type: 'date' },
+      { name: 'source', type: 'text' },
+      { name: 'command_id', type: 'text' },
+      { name: 'created_at', type: 'timestamp with time zone' },
+    ],
+  },
+];
+
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);
 
 async function existingColumns(handle: DbHandle): Promise<Set<string>> {
@@ -46,24 +77,38 @@ async function existingColumns(handle: DbHandle): Promise<Set<string>> {
   return new Set(rows.map((row) => `${row.table_name}.${row.column_name}`));
 }
 
-/** 补上缺的垫片列，并让第一次 migrate 先撤掉它们；没有缺的列时原样返回句柄。 */
+/** 补上缺的垫片对象，并让第一次 migrate 先撤掉它们；不改变已有正式对象。 */
 export async function withPreUpgradeShims(handle: DbHandle): Promise<DbHandle> {
   const present = await existingColumns(handle);
   const tables = new Set([...present].map((key) => key.split('.')[0]));
   const added = PRE_UPGRADE_SHIMS.filter((s) => tables.has(s.table) && !present.has(`${s.table}.${s.column}`));
-  for (const s of added) {
-    await handle.db.execute(sql`ALTER TABLE ${ident(s.table)} ADD COLUMN ${ident(s.column)} ${sql.raw(s.type)}`);
-  }
-  if (!added.length) return handle;
+  const addedTables = PRE_UPGRADE_TABLE_SHIMS.filter((s) => !tables.has(s.table));
+  if (!added.length && !addedTables.length) return handle;
+  await handle.db.transaction(async (tx) => {
+    for (const s of addedTables) {
+      const columns = s.columns.map((column) => sql`${ident(column.name)} ${sql.raw(column.type)}`);
+      await tx.execute(sql`CREATE TABLE ${ident(s.table)} (${sql.join(columns, sql`, `)})`);
+      await tx.execute(sql`SELECT enable_tenant_isolation(${s.table}::regclass)`);
+      await tx.execute(sql`GRANT SELECT, INSERT ON ${ident(s.table)} TO app_user`);
+    }
+    for (const s of added) {
+      await tx.execute(sql`ALTER TABLE ${ident(s.table)} ADD COLUMN ${ident(s.column)} ${sql.raw(s.type)}`);
+    }
+  });
   let pending = true;
   return {
     ...handle,
     async migrate(folder) {
       if (pending) {
+        await handle.db.transaction(async (tx) => {
+          for (const s of added) {
+            await tx.execute(sql`ALTER TABLE ${ident(s.table)} DROP COLUMN ${ident(s.column)}`);
+          }
+          for (const s of [...addedTables].reverse()) {
+            await tx.execute(sql`DROP TABLE ${ident(s.table)}`);
+          }
+        });
         pending = false;
-        for (const s of added) {
-          await handle.db.execute(sql`ALTER TABLE ${ident(s.table)} DROP COLUMN ${ident(s.column)}`);
-        }
       }
       return handle.migrate(folder);
     },

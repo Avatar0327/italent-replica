@@ -3,6 +3,7 @@ import { useTestDb } from '@italent/testkit';
 import type * as ReferenceLocks from '../../apps/api/src/modules/evaluation/reference-locks.js';
 import { describe, expect, it, vi } from 'vitest';
 import { activityFixtures, activityWorld } from './AC-EV-activity-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const race = vi.hoisted(() => ({ armed: false, arrived: 0, release: () => {}, gate: Promise.resolve() }));
 vi.mock('../../apps/api/src/modules/evaluation/reference-locks.js', async (original) => {
@@ -31,26 +32,32 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-flow-base-pg', () => {
       race.release = resolve;
     });
     race.armed = true;
-    try {
-      const results = await Promise.all(
-        [a, b].map((item) =>
-          w.setup.request('POST', `/api/tenant/evaluation/activities/${item.id}/publish`, {
-            ...w.asAdmin,
-            ifMatch: 1,
-            body: {},
-          }),
-        ),
-      );
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-      expect(JSON.stringify(await results.find((r) => r.status === 409)!.json())).toContain('ACTIVITY_SCOPE_DUPLICATE');
-      expect((await Promise.all([a, b].map((item) => w.adminRead(item.id)))).map((row) => row.status).sort()).toEqual([
-        'draft',
-        'published',
-      ]);
-      expect(race.arrived).toBe(2);
-    } finally {
-      race.armed = false;
-      race.release();
-    }
+    await withRelease(
+      () => {
+        race.armed = false;
+        race.release();
+      },
+      async (cleanup) => {
+        const results = await Promise.all(
+          [a, b].map((item) =>
+            cleanup.track(
+              w.setup.request('POST', `/api/tenant/evaluation/activities/${item.id}/publish`, {
+                ...w.asAdmin,
+                ifMatch: 1,
+                body: {},
+              }),
+            ),
+          ),
+        );
+        expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+        expect(JSON.stringify(await results.find((r) => r.status === 409)!.json())).toContain(
+          'ACTIVITY_SCOPE_DUPLICATE',
+        );
+        expect((await Promise.all([a, b].map((item) => w.adminRead(item.id)))).map((row) => row.status).sort()).toEqual(
+          ['draft', 'published'],
+        );
+        expect(race.arrived).toBe(2);
+      },
+    );
   });
 });

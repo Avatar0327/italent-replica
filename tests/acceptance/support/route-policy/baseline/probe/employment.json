@@ -1851,6 +1851,21 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "POST /api/tenant/employment/interns": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "192279e97f94",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Employee/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Employee:create"
+    ]
+  },
   "POST /api/tenant/employment/interns/:id/regularize": {
     "all": {
       "code": "VALIDATION_FAILED",

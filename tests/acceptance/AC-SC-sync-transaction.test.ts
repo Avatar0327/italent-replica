@@ -7,6 +7,7 @@ import { seedTenantWithMember } from './support/tenant-api.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 let member: Awaited<ReturnType<typeof seedTenantWithMember>>;
@@ -126,11 +127,10 @@ it('AC-SC-sync-transaction 替身证明只在 SQL 事务成功后对其他事务
     await gate;
   });
   await ready;
-  try {
+  await withRelease(release, async (cleanup) => {
+    cleanup.track(work);
     expect(await port.transaction((tx) => port.getPageCommit(tx, { ...key, pageCommandId }))).toBeNull();
-  } finally {
-    release();
-  }
+  });
   await work;
   expect(await port.transaction((tx) => port.getPageCommit(tx, { ...key, pageCommandId }))).toMatchObject({
     kind: 'plan',

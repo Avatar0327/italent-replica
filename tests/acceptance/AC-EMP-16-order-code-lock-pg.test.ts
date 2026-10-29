@@ -3,6 +3,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 import { rows } from '../../apps/api/src/modules/personnel/store.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-16 真 PG 持锁屏障', () => {
@@ -42,37 +43,40 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-16 真 PG 持锁屏障',
         idempotencyKey: 'timeout-then-retry',
       });
     const blocked = request();
-    try {
-      await expect
-        .poll(async () => {
-          const [row] = rows<{ n: number }>(
-            await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
+    await withRelease(
+      release,
+      async (cleanup) => {
+        [blocked, blocker].forEach((request) => cleanup.track<unknown>(request));
+        await expect
+          .poll(async () => {
+            const [row] = rows<{ n: number }>(
+              await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
           WHERE datname=current_database() AND wait_event_type='Lock'`),
+            );
+            return row?.n;
+          })
+          .toBe(1);
+        const readable = await api.request('GET', '/api/tenant/personnel/order-code/settings', as);
+        expect(readable.status).toBe(200);
+        expect(await readable.json()).toMatchObject({ revision: 1 });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timed = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('重算没有按锁等待上限退出')), 8000);
+          });
+          expect((await Promise.race([blocked, timed])).status).toBe(503);
+        } finally {
+          clearTimeout(timer);
+        }
+        await withTenant(db, tenant.id, async (tx) => {
+          expect(rows(await tx.execute(sql`SELECT * FROM personnel_order_runs`))).toEqual([]);
+          expect(rows(await tx.execute(sql`SELECT * FROM audit_events WHERE action='personnel.order.run'`))).toEqual(
+            [],
           );
-          return row?.n;
-        })
-        .toBe(1);
-      const readable = await api.request('GET', '/api/tenant/personnel/order-code/settings', as);
-      expect(readable.status).toBe(200);
-      expect(await readable.json()).toMatchObject({ revision: 1 });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const timed = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('重算没有按锁等待上限退出')), 8000);
         });
-        expect((await Promise.race([blocked, timed])).status).toBe(503);
-      } finally {
-        clearTimeout(timer);
-      }
-      await withTenant(db, tenant.id, async (tx) => {
-        expect(rows(await tx.execute(sql`SELECT * FROM personnel_order_runs`))).toEqual([]);
-        expect(rows(await tx.execute(sql`SELECT * FROM audit_events WHERE action='personnel.order.run'`))).toEqual([]);
-      });
-    } finally {
-      release();
-      await blocker;
-      await blocked;
-    }
+      },
+      [blocker, blocked],
+    );
     expect((await request()).status).toBe(200);
   });
 });
