@@ -24,10 +24,16 @@ describe('预置草稿（DEC-094，PB-R3）', () => {
     expect(
       nodes.map((n) => [n.key, 'approver' in n && n.approver, n.editMode, n.editableFields, n.actions.avoidSelf]),
     ).toEqual([
-      ['self_evaluation', 'assessment_employee', 'with_approve', ['selfEvaluation'], false],
+      [
+        'self_evaluation',
+        { type: 'object_field', value: 'assessment_employee' },
+        'with_approve',
+        ['selfEvaluation'],
+        false,
+      ],
       [
         'manager_review',
-        'direct_manager',
+        { type: 'object_field', value: 'direct_manager' },
         'with_approve',
         ['managerRating', 'regularizationOpinion', 'regularizationDate'],
         true,

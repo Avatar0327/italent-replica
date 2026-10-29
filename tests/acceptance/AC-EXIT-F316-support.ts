@@ -25,7 +25,21 @@ export function definition(x: HandoverWorld, patches: Partial<Record<Key, Record
   return {
     ...preset.definition,
     exceptionAdminUserId: x.exceptionAdmin.id,
-    nodes: preset.definition.nodes.map((node) => ({ ...node, ...patches[node.key as Key] })),
+    nodes: preset.definition.nodes.map((node) => {
+      const patch = patches[node.key as Key];
+      return {
+        ...node,
+        ...patch,
+        ...(patch?.emptyApproverPolicy === 'specified'
+          ? {
+              emptyApproverSources: ((patch.fallbackUserIds ?? []) as string[]).map((value) => ({
+                type: 'specified' as const,
+                value,
+              })),
+            }
+          : {}),
+      };
+    }),
   };
 }
 

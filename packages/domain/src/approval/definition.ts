@@ -1,3 +1,4 @@
+import { approverSourcesOf, expressionValue, sourceKey, sourceViolation } from './sources.js';
 /**
  * 流程定义校验：保存草稿时做结构校验；发布时再做 DEC-018 / DEC-054 规则校验（REQ-APV-001 R4/R5、REQ-APV-002 R6）。
  */
@@ -62,28 +63,44 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
       violations.push(`节点 ${node.key}：${type.name}审批不支持审批中编辑（DEC-105）`);
     }
     violations.push(...nodeShapeViolations(node));
-    const idpOnly = approverExpressionsOf(node).filter((expression) => IDP_ONLY_APPROVERS.has(expression));
-    if (type.adapter !== 'idp' && idpOnly.length) {
-      violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
-    }
-    const assessmentOnly = approverExpressionsOf(node).filter((expression) =>
-      ASSESSMENT_ONLY_APPROVERS.has(expression),
-    );
-    if (type.adapter !== 'probation_assessment' && assessmentOnly.length) {
-      violations.push(`节点 ${node.key} 的审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核审批`);
-    }
-    const handoverOnly = approverExpressionsOf(node).filter((expression) => HANDOVER_ONLY_APPROVERS.has(expression));
-    if (type.adapter !== 'exit_handover' && handoverOnly.length) {
-      violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
-    }
+    violations.push(...approverSourceViolations(node, type));
     violations.push(...fallbackViolations(node, type));
     const emptyPolicy = emptyApproverPolicyViolation(node, type);
     if (emptyPolicy) violations.push(emptyPolicy);
-    const offerViolation = offerApproverViolation(node, type);
-    if (offerViolation) violations.push(offerViolation);
     const orgAdjustmentViolation = orgAdjustmentApproverViolation(node, type);
     if (orgAdjustmentViolation) violations.push(orgAdjustmentViolation);
   }
+  return violations;
+}
+
+/** 来源与审批类型的约束独立返回，接口统一使用 422。 */
+export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeDefinition): string[] {
+  const violations: string[] = [];
+  for (const source of [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])]) {
+    const invalid = sourceViolation(source);
+    if (invalid) violations.push(invalid);
+    if (
+      source.value === 'business_record_direct_manager' &&
+      !['employment', 'part_time', 'exit_handover'].includes(type.adapter)
+    )
+      violations.push('该审批类型没有任职申请业务日');
+  }
+  if (node.emptyApproverSources?.length && node.emptyApproverPolicy !== 'specified')
+    violations.push('空人候选只能用于指定人员策略');
+  const idpOnly = approverExpressionsOf(node).filter((expression) => IDP_ONLY_APPROVERS.has(expression));
+  if (type.adapter !== 'idp' && idpOnly.length) {
+    violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
+  }
+  const assessmentOnly = approverExpressionsOf(node).filter((expression) => ASSESSMENT_ONLY_APPROVERS.has(expression));
+  if (type.adapter !== 'probation_assessment' && assessmentOnly.length) {
+    violations.push(`节点 ${node.key} 的审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核审批`);
+  }
+  const handoverOnly = approverExpressionsOf(node).filter((expression) => HANDOVER_ONLY_APPROVERS.has(expression));
+  if (type.adapter !== 'exit_handover' && handoverOnly.length) {
+    violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
+  }
+  const offerViolation = offerApproverViolation(node, type);
+  if (offerViolation) violations.push(offerViolation);
   return violations;
 }
 
@@ -108,7 +125,7 @@ function fallbackViolations(node: ApprovalNode, type: ApprovalTypeDefinition): s
   const supported =
     type.adapter === 'exit_handover' &&
     isCountersign(node) &&
-    approverExpressionsOf(node).some((expression) => HANDOVER_FALLBACK_APPROVERS.has(expression));
+    approverSourcesOf(node).some((source) => HANDOVER_FALLBACK_APPROVERS.has(expressionValue(source)!));
   if (!supported) return [`节点 ${node.key} 的兜底处理人只能配置在离职交接申请的会签交接节点上`];
   const violations: string[] = [];
   if (ids.length > HANDOVER_FALLBACK_LIMIT)
@@ -145,7 +162,8 @@ function nodeShapeViolations(node: ApprovalNode): string[] {
   if (new Set(exits).size !== exits.length) violations.push(`节点 ${node.key} 的出口动作重复`);
   if (!isCountersign(node)) return violations;
   if (!node.approvers.length) violations.push(`会签节点 ${node.key} 至少需要一个审批人`);
-  if (new Set(node.approvers).size !== node.approvers.length) violations.push(`会签节点 ${node.key} 的审批人重复`);
+  if (new Set(node.approvers.map(sourceKey)).size !== node.approvers.length)
+    violations.push(`会签节点 ${node.key} 的审批人重复`);
   // DEC-106：自动处理的「跳过」仅单人审批节点可选（`14` §11.6），会签节点只能自动「同意」。
   if (node.sameAssigneeResult === 'skip' || node.historySameAssigneeResult === 'skip') {
     violations.push(`会签节点 ${node.key} 的相同 / 历史相同审批人自动处理结果只能为「同意」（DEC-106）`);

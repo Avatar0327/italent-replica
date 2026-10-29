@@ -30,7 +30,7 @@ describe('P1-1 审批详情与盲审：嵌套合同字段按合同对象、范�
       nodes: [
         {
           key: 'review',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate', 'isChangeContract', 'contractChange'],
           editableFields: [],
         },

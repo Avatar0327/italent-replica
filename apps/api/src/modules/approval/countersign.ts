@@ -31,6 +31,7 @@ import {
 import { notifyTodo } from './notifications.js';
 import { canTake } from './recusal.js';
 import { votesInTransition } from './rules.js';
+import { withoutRetrievedApprovals } from './task-history.js';
 import {
   appendLog,
   endOpenTasks,
@@ -51,8 +52,7 @@ export function activationOf(tasks: readonly TaskRow[], task: TaskRow): TaskRow[
  * （DEC-097）。
  */
 function votingTasks(activation: readonly TaskRow[]): TaskRow[] {
-  const retrieved = new Set(activation.filter((task) => task.origin === 'retrieve').map((task) => task.parentTaskId));
-  return activation.filter((task) => !retrieved.has(task.id) && votesInTransition(activation, task));
+  return withoutRetrievedApprovals(activation).filter((task) => votesInTransition(activation, task));
 }
 
 /**

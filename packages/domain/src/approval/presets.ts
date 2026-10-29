@@ -1,3 +1,4 @@
+import { approverSource } from './sources.js';
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
  * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）；
@@ -58,7 +59,7 @@ const node = (key: string, name: string, approver: ApproverExpression, extra: Pa
   ({
     key,
     name,
-    approver,
+    approver: approverSource(approver),
     noAssignee: 'exception_admin',
     sameAssigneeSkip: false,
     historySameAssigneeSkip: false,
@@ -343,7 +344,7 @@ const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   }),
 }));
 
-/** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，resolver.ts resolveCandidates）。 */
+/** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，handover-empty.ts resolveHandoverApprovers）。 */
 const anyOneNode = (
   key: string,
   name: string,
@@ -351,7 +352,7 @@ const anyOneNode = (
   extra: Partial<SingleApprovalNode>,
 ): CountersignApprovalNode => {
   const { approver: _single, kind: _kind, ...rest } = node(key, name, approver, extra);
-  return { ...rest, kind: 'countersign', approvers: [approver], transitionRule: { type: 'any' } };
+  return { ...rest, kind: 'countersign', approvers: [approverSource(approver)], transitionRule: { type: 'any' } };
 };
 const HANDOVER_ACTIONS = { ...PRESET_ACTIONS, reject: false, jump: false, revoke: false } as const;
 const HANDOVER_NODES = [

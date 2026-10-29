@@ -79,6 +79,7 @@ export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
   readonly businessType: BusinessType;
   readonly businessId: string;
+  readonly businessDate?: string;
   /** 字段权限所在对象：最小披露与盲审都按该对象的可查看字段判断（DEC-057 / DEC-058）。 */
   readonly fieldObjectCode: string;
   /** 表单带出的员工档案只读字段（DEC-122 性别、年龄）：值在 values 中，按员工信息对象的字段查看权裁剪。 */
@@ -443,6 +444,7 @@ const employmentAdapter: BusinessAdapter = {
     return {
       approvalType,
       businessType: 'employment',
+      businessDate: business.effectiveDate,
       businessId,
       fieldObjectCode: type.objectCode,
       profileFields: PROFILE_FORM_FIELDS,

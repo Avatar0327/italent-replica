@@ -17,7 +17,7 @@ it('编辑并同意：迟到落地区间内有草稿申请 → 流程通过、�
     nodes: [
       {
         key: 'out_head',
-        approver: 'latest_record_department_head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
         formFields: ['departmentId', 'place', 'remarks', 'effectiveDate'],
         editableFields: ['remarks'],
         editMode: 'with_approve',

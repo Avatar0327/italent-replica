@@ -84,7 +84,10 @@ describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
   for (const type of types) {
     it(`${APPROVAL_TYPES[type].name}：不传开关 → avoidSelf / avoidSubjects 均为 false，命中动作为「跳过」`, async () => {
       const w = await approvalWorld(database().db, `f048-default-${type}`);
-      const created = await w.json<Process>(await createRaw(w, type, [{ key: 'n1', approver: 'owner' }]), 201);
+      const created = await w.json<Process>(
+        await createRaw(w, type, [{ key: 'n1', approver: { type: 'custom_variable', value: 'owner' } }]),
+        201,
+      );
       expect(nodeOf(created, 'n1')).toMatchObject({
         actions: { avoidSelf: false, avoidSubjects: false },
         avoidSubjectsResult: 'skip',
@@ -104,7 +107,7 @@ describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
         await w.request(w.hr.id, 'POST', `${BASE}/processes`, {
           ifMatch: 0,
           body: {
-            ...body('transfer', [{ key: 'owner_node', approver: 'owner' }]),
+            ...body('transfer', [{ key: 'owner_node', approver: { type: 'custom_variable', value: 'owner' } }]),
             exceptionAdminUserId: w.exceptionAdmin,
             conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
           },
@@ -124,7 +127,9 @@ describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
     const w = await approvalWorld(database().db, 'f048-legacy-frozen');
     const s = await transferScene(w);
     const created = await w.createProcess({
-      nodes: [{ key: 'owner_node', approver: 'owner', actions: { avoidSelf: false } }],
+      nodes: [
+        { key: 'owner_node', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: false } },
+      ],
     });
     // 可信夹具（连接角色直写）：模拟迁移前写入、列值为 true 的节点（迁移只改列缺省值，不改存量行）
     await patchDraftNodes(w, created.id, sql`avoid_self=true`);
@@ -141,8 +146,8 @@ describe('T11 草稿整份替换与新版本', () => {
     const w = await approvalWorld(database().db, 'f048-draft-inherit');
     const created = await w.createProcess({
       nodes: [
-        { key: 'a', approver: 'owner', actions: { avoidSelf: true } },
-        { key: 'b', approver: 'record_department_head', actions: { avoidSelf: true } },
+        { key: 'a', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: true } },
+        { key: 'b', approver: { type: 'department', value: 'record_department_head' }, actions: { avoidSelf: true } },
       ],
     });
     const replaced = await w.json<Process>(
@@ -153,9 +158,13 @@ describe('T11 草稿整份替换与新版本', () => {
           exceptionAdminUserId: w.exceptionAdmin,
           conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
           nodes: [
-            { key: 'a', approver: 'owner' },
-            { key: 'b', approver: 'record_department_head', actions: { avoidSelf: false } },
-            { key: 'c', approver: 'record_department_hrbp' },
+            { key: 'a', approver: { type: 'custom_variable', value: 'owner' } },
+            {
+              key: 'b',
+              approver: { type: 'department', value: 'record_department_head' },
+              actions: { avoidSelf: false },
+            },
+            { key: 'c', approver: { type: 'department', value: 'record_department_hrbp' } },
           ],
         },
       }),
@@ -169,8 +178,8 @@ describe('T11 草稿整份替换与新版本', () => {
     const w = await approvalWorld(database().db, 'f048-new-version');
     const published = await w.publishedProcess({
       nodes: [
-        { key: 'a', approver: 'owner', actions: { avoidSelf: true } },
-        { key: 'b', approver: 'record_department_head', actions: { avoidSelf: false } },
+        { key: 'a', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: true } },
+        { key: 'b', approver: { type: 'department', value: 'record_department_head' }, actions: { avoidSelf: false } },
       ],
     });
     const next = await w.json<Process>(
@@ -183,13 +192,22 @@ describe('T11 草稿整份替换与新版本', () => {
   });
 });
 
-const COUNTERSIGN = { key: 'cs', kind: 'countersign', approvers: ['owner', 'record_department_head'] } as const;
+const COUNTERSIGN = {
+  key: 'cs',
+  kind: 'countersign',
+  approvers: [
+    { type: 'custom_variable', value: 'owner' },
+    { type: 'department', value: 'record_department_head' },
+  ],
+} as const;
 
 describe('T11 PR-2 放开 avoidSubjects：单人且有「同意」出口的节点可开启，其余 400 UNSUPPORTED', () => {
   it('新建流程在单人节点开启 avoidSubjects → 201，回显显式 true', async () => {
     const w = await approvalWorld(database().db, 'f048-enabled-create');
     const created = await w.json<Process>(
-      await createRaw(w, 'transfer', [{ key: 'n1', approver: 'owner', actions: { avoidSubjects: true } }]),
+      await createRaw(w, 'transfer', [
+        { key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSubjects: true } },
+      ]),
       201,
     );
     expect(nodeOf(created, 'n1').actions.avoidSubjects).toBe(true);
@@ -199,7 +217,12 @@ describe('T11 PR-2 放开 avoidSubjects：单人且有「同意」出口的节�
     const w = await approvalWorld(database().db, 'f048-unsupported-create');
     for (const node of [
       { ...COUNTERSIGN, actions: { avoidSubjects: true } },
-      { key: 'n1', approver: 'owner', exits: ['disagree'], actions: { avoidSubjects: true } },
+      {
+        key: 'n1',
+        approver: { type: 'custom_variable', value: 'owner' },
+        exits: ['disagree'],
+        actions: { avoidSubjects: true },
+      },
     ]) {
       const response = await createRaw(w, 'transfer', [node]);
       expect(await reasonOf(response)).toMatchObject({
@@ -214,7 +237,9 @@ describe('T11 PR-2 放开 avoidSubjects：单人且有「同意」出口的节�
 
   it('草稿替换在会签节点开启 → 400，草稿前后不变', async () => {
     const w = await approvalWorld(database().db, 'f048-unsupported-draft');
-    const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    const created = await w.createProcess({
+      nodes: [{ key: 'a', approver: { type: 'custom_variable', value: 'owner' } }],
+    });
     const before = await getProcess(w, created.id);
     const response = await w.request(w.hr.id, 'PUT', `${BASE}/processes/${created.id}/draft`, {
       ifMatch: created.revision,
@@ -284,7 +309,9 @@ describe('T11 DEC-331⑤：命中动作只启用「跳过」', () => {
   for (const result of ['approve', 'disagree', 'exit:custom_action']) {
     it(`avoidSubjectsResult=${result} → 400 APPROVAL_AVOID_SUBJECTS_RESULT_UNSUPPORTED`, async () => {
       const w = await approvalWorld(database().db, `f048-result-${result.replace(':', '-')}`);
-      const response = await createRaw(w, 'transfer', [{ key: 'n1', approver: 'owner', avoidSubjectsResult: result }]);
+      const response = await createRaw(w, 'transfer', [
+        { key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, avoidSubjectsResult: result },
+      ]);
       expect(await reasonOf(response)).toMatchObject({
         status: 400,
         code: 'VALIDATION_FAILED',
@@ -295,7 +322,9 @@ describe('T11 DEC-331⑤：命中动作只启用「跳过」', () => {
 
   it('不在契约内的取值 → 400 VALIDATION_FAILED（格式错误）', async () => {
     const w = await approvalWorld(database().db, 'f048-result-bogus');
-    const response = await createRaw(w, 'transfer', [{ key: 'n1', approver: 'owner', avoidSubjectsResult: 'bogus' }]);
+    const response = await createRaw(w, 'transfer', [
+      { key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, avoidSubjectsResult: 'bogus' },
+    ]);
     expect(await reasonOf(response)).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
   });
 });

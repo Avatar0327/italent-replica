@@ -32,17 +32,17 @@ export function OrgTreeSelect({
     />
   );
 }
-export function PersonSelect({
-  load,
-  value,
-  onChange,
-  disabled,
-}: {
+type PersonSelectProps = {
   load(query: string, signal: AbortSignal): Promise<Choice[]>;
-  value?: Choice;
-  onChange?: (value: Choice | undefined) => void;
   disabled?: boolean;
-}) {
+  id?: string;
+  label?: string;
+} & (
+  | { multiple: true; value?: Choice[]; onChange?: (value: Choice[]) => void }
+  | { multiple?: false; value?: Choice; onChange?: (value: Choice | undefined) => void }
+);
+export function PersonSelect(props: PersonSelectProps) {
+  const { load, value, disabled, id, label } = props;
   const session = useSession();
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<Choice[]>([]);
@@ -76,18 +76,23 @@ export function PersonSelect({
   if (failed) emptyText = ui.failed;
   return (
     <Select
+      id={id}
+      mode={props.multiple ? 'multiple' : undefined}
       showSearch
       labelInValue
       allowClear
       filterOption={false}
       value={value}
-      onChange={onChange}
+      onChange={(next: Choice | Choice[] | undefined) => {
+        if (props.multiple) props.onChange?.(Array.isArray(next) ? next : []);
+        else props.onChange?.(Array.isArray(next) ? undefined : next);
+      }}
       className="full-width-selector"
       onSearch={setQuery}
       loading={loading}
       disabled={disabled}
       options={options}
-      aria-label={ui.person}
+      aria-label={label ?? ui.person}
       placeholder={ui.searchPerson}
       notFoundContent={emptyText}
     />

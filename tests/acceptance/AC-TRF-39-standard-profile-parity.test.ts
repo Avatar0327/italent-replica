@@ -94,7 +94,9 @@ async function fixture(label: string, withIdentity: boolean): Promise<Fixture> {
   const api = tenantApi(database().db, { authorize: undefined, clock: world.clock });
   const admin = await permissionAdmin(world);
   const department = await world.org('合成部门');
-  await world.publishedProcess({ nodes: [{ key: 'owner_review', approver: 'owner' }] });
+  await world.publishedProcess({
+    nodes: [{ key: 'owner_review', approver: { type: 'custom_variable', value: 'owner' } }],
+  });
   let profileId = '';
   if (withIdentity) {
     const write = { tenantId: world.tenant.id, actorUserId: null, now: new Date(), commandId: randomUUID() };

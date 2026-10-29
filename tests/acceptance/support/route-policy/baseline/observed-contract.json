@@ -3163,6 +3163,28 @@
         ]
       }
     },
+    "GET /api/tenant/approval/designer/person-candidates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "approval",
+      "primitives": {
+        "admin": [
+          "requireProcessButton"
+        ]
+      }
+    },
     "GET /api/tenant/approval/instances": {
       "edge": {
         "anonymous": {
