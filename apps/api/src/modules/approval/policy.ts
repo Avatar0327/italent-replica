@@ -366,7 +366,16 @@ const INSTANCE_KEYS = [
   'revision',
   'createdAt',
 ];
-const ADMIN_LOG_KEYS = ['instanceId', 'event', 'nodeKey', 'actorUserId', 'adminSelfTransfer', 'detail', 'createdAt'];
+const ADMIN_LOG_KEYS = [
+  'instanceId',
+  'event',
+  'nodeKey',
+  'actorUserId',
+  'actorName',
+  'adminSelfTransfer',
+  'detail',
+  'createdAt',
+];
 
 export const APPROVAL_POLICIES = defineTable('approval', {
   // ---- registerProcessRoutes：流程定义（DEC-102）------------------------------------------------------------------
