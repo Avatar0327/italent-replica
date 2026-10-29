@@ -3853,7 +3853,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/permission/schemas.ts#profileBody': ['f7a2803dc5bd', '7704849a8ab3'],
   'apps/api/src/modules/permission/scope-audit.ts#creatorOf': ['040b12ae1c68', '18a4deec0bbb'],
   'apps/api/src/modules/permission/scope-audit.ts#creatorSql': ['95c868ebe246', '97ef85502794'],
-  'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql': ['9b486c8a8f1b', '11f326016f03'],
+  'apps/api/src/modules/permission/scope-audit.ts#firstCreatorSql': ['999e28a59866', '069e498a9994'],
   'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope': ['f194b33c7bc1', 'e3b0c44298fc'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#MAX_SCOPE_IDS': ['a18a1b2ae94f', 'e3b0c44298fc'],
   'apps/api/src/modules/permission/scope-hierarchy.ts#expandScopeOrgSet': ['5c06891a9890', 'bdafd97a5e75'],
