@@ -109,8 +109,8 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   posts = [];
   responseStatus = 200;
-  responseCode = 'APPROVAL_FIELD_NOT_EDITABLE';
-  errorDetails = undefined;
+  responseCode = 'FORBIDDEN';
+  errorDetails = { reason: 'APPROVAL_FIELD_NOT_EDITABLE', fields: ['endDate'] };
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -221,12 +221,20 @@ describe('AC-FE-F267 字段复用和恢复边界', () => {
       postId: 'synthetic-post',
       levelId: 'synthetic-level',
     };
-    detail.form.edit!.fields = Object.entries(values).map(([key, value]) => ({ key, value, required: false }));
+    detail.form.edit!.fields = Object.entries(values).map(([key, value]) => ({
+      key,
+      value,
+      required: ['partTimeType', 'departmentId'].includes(key),
+    }));
+    // F-291 新增节点还下发该键；本片控件范围之外，沿 DEC-655 只读兜底且不回传。
+    detail.form.edit!.fields.push({ key: 'isDepartmentHead', required: false, value: false });
     await render(detail);
     await click('同意');
     for (const label of ['兼职类型', '结束日期', '兼职部门', '兼职直线经理', '兼职职务', '职级'])
       expect(input(label), label).not.toBeNull();
     expect(dialog().querySelectorAll('[role="combobox"]')).toHaveLength(5);
+    expect(dialog().textContent).toContain('是否部门负责人');
+    expect(input('是否部门负责人')).toBeNull();
     await click('保存');
     expect(posts[0]?.body).toEqual({ fields: values, comment: null });
   });
@@ -240,9 +248,11 @@ describe('AC-FE-F267 字段复用和恢复边界', () => {
     await click('保存');
     expect(posts[0]?.body).toEqual({ fields: { endDate: '2026-12-31', requestRemark: '合成结束理由' }, comment: null });
   });
-  it.each([409, 422])('%i 明确业务拒绝保留输入且不锁死', async (status) => {
+  it.each([400, 409, 422])('%i 明确业务拒绝保留输入且不锁死', async (status) => {
     responseStatus = status;
-    responseCode = status === 409 ? 'APPROVAL_EDIT_MODE' : 'VALIDATION_FAILED';
+    responseCode = status === 409 ? 'CONFLICT' : 'VALIDATION_FAILED';
+    if (status === 409) errorDetails = { reason: 'APPROVAL_EDIT_MODE' };
+    if (status === 400) errorDetails = { reason: 'APPROVAL_FIELD_REQUIRED', field: 'endDate' };
     if (status === 422) errorDetails = [{ path: ['fields', 'endDate'], message: '合成日期校验原因' }];
     await render(fixture());
     await click('同意');
