@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { activeApprovalInstanceCondition, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import { operatorNames } from '../../audit/query.js';
 import { AppError } from '../../errors.js';
 import { actorOf, approvalError, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
@@ -424,25 +425,36 @@ export async function appendLog(tx: Tx, ctx: ApprovalContext, instance: Instance
     FROM approval_instance_logs WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid`);
 }
 
+/**
+ * F-264 / DEC-656：日志补操作人姓名（账号显示名，与审计 operatorNames 同源，整批只查一次）。系统动作（操作人为空）
+ * 姓名为空，前端显示“系统”。三处出口（详情、历史分页、管理员日志）共用；能看到这条日志才能看到姓名，隐藏由调用方裁掉日志。
+ */
+export async function withActorNames<T extends { actorUserId: string | null }>(tx: Tx, logs: readonly T[]) {
+  const nameOf = await operatorNames(tx, logs);
+  return logs.map((log) => ({ ...log, actorName: log.actorUserId === null ? null : nameOf(log).name }));
+}
+
 /** X-19：详情默认展示最新的若干条日志（按时间正序），完整历史分页读取（pageLogs）。 */
 export async function loadLogs(tx: Tx, tenantId: string, instanceId: string) {
-  return rowsOf(
+  const rows = rowsOf(
     await tx.execute(sql`SELECT * FROM (
         SELECT * FROM approval_instance_logs WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
         ORDER BY seq DESC LIMIT ${RECENT}
       ) recent ORDER BY seq`),
-  ).map(logOf);
+  );
+  return withActorNames(tx, rows.map(logOf));
 }
 
 /** 完整日志分页（最新在前）。 */
 export async function pageLogs(tx: Tx, tenantId: string, instanceId: string, page: { limit: number; offset: number }) {
-  return rowsOf(
+  const rows = rowsOf(
     await tx.execute(sql`SELECT * FROM approval_instance_logs WHERE tenant_id=${tenantId}
       AND instance_id=${instanceId}::uuid ORDER BY seq DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
-  ).map(logOf);
+  );
+  return withActorNames(tx, rows.map(logOf));
 }
 
-export type LogView = ReturnType<typeof logOf>;
+export type LogView = ReturnType<typeof logOf> & { actorName: string | null };
 
 function logOf(row: Row) {
   return {

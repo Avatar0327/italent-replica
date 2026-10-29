@@ -1035,7 +1035,79 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     guards: ['employment.viewableFilters'],
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.internViews'),
+    // F-283 逐行 availableActions（intern-actions.ts）：对每行跑转正 / 结束实习 / 撤回 / 撤销写入口的同一组判定，只决定响应里
+    // 的动作码，不参与准入；无对应对象操作权（readContext 的 403）时该类动作不下发，其余错误照常抛出
+    optional: {
+      rowActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'create',
+            button: button('Employment.Create', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 regularize / terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button(EXIT_BUTTONS.direct, 'detail'),
+            scope: noScope('只判按钮：员工范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button('Employment.Withdraw', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 withdraw / revoke'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：业务范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
+  // 新增实习生一体写入（BE-R2d4c，DEC-662）：If-Match 必填（新增 0，重聘 = 候选人员当前 revision）；body 严格（400）：kind =
+  // hire（code + name + loginEmail，建档并绑定用户）| rehire（employeeId = rehire-matches 候选，不再建档），contract 必填且终止日必填、
+  // 不早于入职日（400 INTERN_CONTRACT_DATE_INVALID）；用工类型固定实习（填别的 400）。权限同 POST /employees：人员对象新增权 +
+  // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
+  // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
+  // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
+  // 任一步失败整体回滚，同命令 ID 重放返回首个结果。回执是固定形状，不经任职字段裁剪
+  'POST /interns': all(
+    [
+      object({
+        object: EMPLOYEE,
+        operation: 'create',
+        button: button('Employee.Create', 'list'),
+        scope: seeAll(NF_DATA),
+        fields: noFields('人员新增权只判对象与按钮；回执不含人员字段'),
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'create',
+        button: button('Employment.Create', 'detail'),
+        scope: guardScope('employment.scope', NF_DATA),
+        fields: noFields('回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不含任职字段'),
+      }),
+    ],
+    projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
+    {
+      guards: [LINKAGE, 'employment.entryContract'],
+      write: employmentWrite(
+        'body.fields+customFields',
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract'] },
+      ),
+      ...byId,
+    },
+  ),
   // 直接实习转正：If-Match 必填；body 严格（合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
   // 看全部的写别名；requireEmploymentWrite('create', 实际写入字段, Employment.Create)；requireEmploymentScope（人员 + 目标部门）；
   // 命令内 internRegularizationGuard 按当前授权重过；非在职实习生 409 NOT_INTERN、有审批中转正申请 409
@@ -1253,6 +1325,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: pointScope({ param: 'id' }, 'employment.partTimeRequest', NF_PART_TIME_REQUEST),
     fields: projector('employment.response', 'employment.partTimeRequest'),
     ...byId,
+    // F-268 逐单 availableActions（part-time/request-actions.ts）：对改 / 提交 / 删除 / 撤回 / 撤销各跑写入口的同一个
+    // requirePartTimeRequestAccess（对象操作权 + 申请类型按钮 + 写入口径范围），只决定响应里的动作码，不参与准入
+    optional: {
+      requestActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button(PART_TIME_BUTTONS.application, 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 edit / submit / withdraw'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'delete',
+            button: button('Employment.Delete', 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 delete'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：申请范围已由上面两项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
   // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，
   // 不回退到 all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType /
@@ -1827,9 +1929,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
-  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
-  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
-  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
+  // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一语句；
+  // 任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
   'GET /retirements': object({
     object: EMPLOYMENT,
     operation: 'view',

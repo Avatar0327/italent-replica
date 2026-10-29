@@ -71,6 +71,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
+  // org-adjustment/approval-adapter.ts：R2-T08 BE-10a 占位，BE-10c 接入真适配器前任何回调 409
+  org_adjustment: 'ORG_ADJUSTMENT_NOT_AVAILABLE',
 };
 
 function sourceFiles(dir: string): string[] {
@@ -305,7 +307,12 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
         evidence(
           'call',
           PART_TIME_REQUEST_ROUTE,
-          'buttons: body.submit ? ACTION_BUTTONS.submit : [PART_TIME_BUTTONS.application]',
+          'buttons: body.submit ? REQUEST_ACTION_ACCESS.submit.buttons : REQUEST_ACTION_ACCESS.edit.buttons',
+        ),
+        evidence(
+          'const',
+          `${MODULES}/employment/part-time/request-actions.ts#REQUEST_ACTION_ACCESS`,
+          "edit: { operation: 'update', buttons: [PART_TIME_BUTTONS.application] }",
         ),
         evidence(
           'const',

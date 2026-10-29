@@ -2,6 +2,7 @@
 # CI 模式判定（DEC-344 纯文档、DEC-454① 轻量 / 完整），供 .github/workflows/ci.yml 的 changes job 调用，
 # 回归测试见 tests/ci-classify.test.ts。
 # 输入（环境变量）：EVENT_NAME（github.event_name）、BASE_REF（PR 目标分支）、QUEUE_HEAD（PR 是否带 queue-head 标签，true/false）。
+# 另接收 EVENT_ACTION / EVENT_LABEL（github.event.action / github.event.label.name），用于忽略无关 labeled。
 # pull_request 时在 GitHub 测试合并提交上运行：HEAD^1 是 base，diff HEAD^1 HEAD 即 PR 相对 base 的完整改动。
 # 输出：stdout 最后一行 mode=docs|light|full（ci.yml 追加到 GITHUB_OUTPUT）；改动文件清单打到 stderr。
 #   docs  纯文档：必需检查以必需名称快速通过；只有目标分支是 main 才可能（见下）
@@ -10,11 +11,20 @@
 set -euo pipefail
 
 EVENT_NAME="${EVENT_NAME:-}"
+EVENT_ACTION="${EVENT_ACTION:-}"
+EVENT_LABEL="${EVENT_LABEL:-}"
 BASE_REF="${BASE_REF:-}"
 QUEUE_HEAD="${QUEUE_HEAD:-false}"
 
 if [ "$EVENT_NAME" != pull_request ]; then
   echo "mode=full"
+  exit 0
+fi
+
+# DEC-694②：workflow 已隔离并跳过无关 labeled；脚本也保守返回 light，不能借已有标签或纯文档放行。
+if [ "$EVENT_ACTION" = labeled ] && [ "$EVENT_LABEL" != queue-head ]; then
+  echo "无关 labeled 事件：不报告完整或纯文档检查" >&2
+  echo "mode=light"
   exit 0
 fi
 

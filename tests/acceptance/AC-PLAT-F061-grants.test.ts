@@ -216,12 +216,12 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       31: 'd377733df73b381b',
       // claude/R2-BE-8b1-exit-blacklist（merge:main 定号，DEC-439④）
       32: 'fd09fce1ad5dde6d',
+      // R2 BE-12a：新增人事分析 - 时点员工花名册对象（TenantBase.HrRoster，查看 + 导出按钮），标准版系统管理员 / 人事管理员（DEC-415；版本占位，合并时按 main + 1 定号）
+      33: 'ce9992a23cfc6fc6',
       // F-305 / DEC-674：重新提交交接独立详情按钮，本地以前序 32 + 1 占位，合并窗口统一定号。
-      33: '4474fb16dada04d5',
       // F-250 / DEC-683、DEC-684：HR 首次发起交接原站详情编码，前序 33 + 1 占位；合并时统一定号。
-      34: 'f10d882e671c549e',
       // F-317：列表行与批量首次发起按钮，前序 34 + 1 占位；合并窗口统一定号。
-      35: '1c319f9ac28fbbb6',
+      34: '4de093e1e8d805d9',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

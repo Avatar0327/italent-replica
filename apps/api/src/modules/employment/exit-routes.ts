@@ -197,7 +197,11 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readContext(c, deps, 'object.view', 0, id);
     const { lastWorkDate } = parse(z.strictObject({ lastWorkDate: day }), await jsonBody(c));
     await requirePreviewButton(deps, ctx);
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate)));
+    // 离职预览不披露退休字段；显式传空可见性，避免共享预览入口依赖省略参数（F-301）。
+    const retirementView: ExitViewable = { employee: () => false, employment: () => false };
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, retirementView)),
+    );
   });
   // 新建（HR 端，离职申请 / 直接离职）：与通用入口同一申请服务与门禁；不要求 Employment.Create
   router.post('/exits/employees/:id', async (c) => {

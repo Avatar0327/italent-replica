@@ -1,6 +1,6 @@
 {
-  "id": "452f498b-870d-4d1a-b063-723523626b4c",
-  "prevId": "7f55e9a8-5a4b-4894-9155-cc3a184fc20c",
+  "id": "7f55e9a8-5a4b-4894-9155-cc3a184fc20c",
+  "prevId": "39d8168a-3083-48da-83f2-5f402e70c083",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11779,7 +11779,7 @@
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')"
         },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
@@ -12489,7 +12489,7 @@
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end')"
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')"
         },
         "employment_records_service_type": {
           "name": "employment_records_service_type",
@@ -23342,7 +23342,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','exit_handover')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -23914,13 +23914,6 @@
           "notNull": true,
           "default": "'{}'::text[]"
         },
-        "fallback_user_ids": {
-          "name": "fallback_user_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        },
         "exits": {
           "name": "exits",
           "type": "text[]",
@@ -24204,7 +24197,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','handover_work_owner','handover_hr_admin',\n        'handover_employee')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',\n        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24236,7 +24229,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'handover_work_owner','handover_hr_admin','handover_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'approval_subject_org_hrbp','approval_subject_org_head',\n            'handover_work_owner','handover_hr_admin','handover_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -61788,6 +61781,878 @@
       },
       "isRLSEnabled": false
     },
+    "public.org_adjustment_org_items": {
+      "name": "org_adjustment_org_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment_id": {
+          "name": "adjustment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjust_type": {
+          "name": "adjust_type",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_org_id": {
+          "name": "target_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_version_id": {
+          "name": "base_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_org_revision": {
+          "name": "base_org_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cascaded_from_item_id": {
+          "name": "cascaded_from_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "short_name": {
+          "name": "short_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_org_id": {
+          "name": "parent_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_item_id": {
+          "name": "parent_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "level": {
+          "name": "level",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "half_level": {
+          "name": "half_level",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "update_descendant_levels": {
+          "name": "update_descendant_levels",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "person_in_charge_id": {
+          "name": "person_in_charge_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hrbp_id": {
+          "name": "hrbp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "add_employment": {
+          "name": "add_employment",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transfer_old_head_subordinates": {
+          "name": "transfer_old_head_subordinates",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adjust_new_head_manager": {
+          "name": "adjust_new_head_manager",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_head_manager_id": {
+          "name": "new_head_manager_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sync_establishment": {
+          "name": "sync_establishment",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deactivation_establishment_mode": {
+          "name": "deactivation_establishment_mode",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "establishment_transfer_amount": {
+          "name": "establishment_transfer_amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_transfer": {
+          "name": "batch_transfer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transfer_to_org_id": {
+          "name": "transfer_to_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transfer_to_item_id": {
+          "name": "transfer_to_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_staged": {
+          "name": "is_staged",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "old_custom_fields": {
+          "name": "old_custom_fields",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_custom_fields": {
+          "name": "new_custom_fields",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_org_id": {
+          "name": "created_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "executed_version_id": {
+          "name": "executed_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_result": {
+          "name": "execution_result",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_reason": {
+          "name": "execution_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_message": {
+          "name": "execution_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exec_phase": {
+          "name": "exec_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "employment_cursor": {
+          "name": "employment_cursor",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employment_done": {
+          "name": "employment_done",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "employment_failed": {
+          "name": "employment_failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "org_adjustment_org_items_created_org": {
+          "name": "org_adjustment_org_items_created_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"org_adjustment_org_items\".\"created_org_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_adjustment_org_items_tenant_id_tenants_id_fk": {
+          "name": "org_adjustment_org_items_tenant_id_tenants_id_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_adjustment_fk": {
+          "name": "org_adjustment_org_items_adjustment_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_adjustments",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_cascade_fk": {
+          "name": "org_adjustment_org_items_cascade_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_adjustment_org_items",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id",
+            "cascaded_from_item_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "adjustment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_parent_item_fk": {
+          "name": "org_adjustment_org_items_parent_item_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_adjustment_org_items",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id",
+            "parent_item_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "adjustment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_transfer_item_fk": {
+          "name": "org_adjustment_org_items_transfer_item_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_adjustment_org_items",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id",
+            "transfer_to_item_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "adjustment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_target_fk": {
+          "name": "org_adjustment_org_items_target_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_parent_org_fk": {
+          "name": "org_adjustment_org_items_parent_org_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "parent_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_transfer_org_fk": {
+          "name": "org_adjustment_org_items_transfer_org_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "transfer_to_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_created_org_fk": {
+          "name": "org_adjustment_org_items_created_org_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "created_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_base_version_fk": {
+          "name": "org_adjustment_org_items_base_version_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "base_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_executed_version_fk": {
+          "name": "org_adjustment_org_items_executed_version_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "org_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "executed_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_head_fk": {
+          "name": "org_adjustment_org_items_head_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "person_in_charge_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_hrbp_fk": {
+          "name": "org_adjustment_org_items_hrbp_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "hrbp_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_org_items_new_manager_fk": {
+          "name": "org_adjustment_org_items_new_manager_fk",
+          "tableFrom": "org_adjustment_org_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "new_head_manager_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "org_adjustment_org_items_tenant_item": {
+          "name": "org_adjustment_org_items_tenant_item",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "adjustment_id",
+            "id"
+          ]
+        },
+        "org_adjustment_org_items_seq": {
+          "name": "org_adjustment_org_items_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "adjustment_id",
+            "seq"
+          ]
+        },
+        "org_adjustment_org_items_target": {
+          "name": "org_adjustment_org_items_target",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "adjustment_id",
+            "target_org_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "org_adjustment_org_items_type": {
+          "name": "org_adjustment_org_items_type",
+          "value": "\"org_adjustment_org_items\".\"adjust_type\" IN (1, 2, 3)"
+        },
+        "org_adjustment_org_items_target_shape": {
+          "name": "org_adjustment_org_items_target_shape",
+          "value": "(\"org_adjustment_org_items\".\"adjust_type\" = 1) = (\"org_adjustment_org_items\".\"target_org_id\" IS NULL)"
+        },
+        "org_adjustment_org_items_seq_positive": {
+          "name": "org_adjustment_org_items_seq_positive",
+          "value": "\"org_adjustment_org_items\".\"seq\" > 0"
+        },
+        "org_adjustment_org_items_level": {
+          "name": "org_adjustment_org_items_level",
+          "value": "\"org_adjustment_org_items\".\"level\" IS NULL OR \"org_adjustment_org_items\".\"level\" BETWEEN 1 AND 10"
+        },
+        "org_adjustment_org_items_half_level": {
+          "name": "org_adjustment_org_items_half_level",
+          "value": "\"org_adjustment_org_items\".\"half_level\" IS NULL OR \"org_adjustment_org_items\".\"half_level\" IN (1, 2)"
+        },
+        "org_adjustment_org_items_deactivation_mode": {
+          "name": "org_adjustment_org_items_deactivation_mode",
+          "value": "\"org_adjustment_org_items\".\"deactivation_establishment_mode\" IS NULL OR \"org_adjustment_org_items\".\"deactivation_establishment_mode\" IN (1, 2)"
+        },
+        "org_adjustment_org_items_parent_exclusive": {
+          "name": "org_adjustment_org_items_parent_exclusive",
+          "value": "\"org_adjustment_org_items\".\"parent_org_id\" IS NULL OR \"org_adjustment_org_items\".\"parent_item_id\" IS NULL"
+        },
+        "org_adjustment_org_items_transfer_exclusive": {
+          "name": "org_adjustment_org_items_transfer_exclusive",
+          "value": "\"org_adjustment_org_items\".\"transfer_to_org_id\" IS NULL OR \"org_adjustment_org_items\".\"transfer_to_item_id\" IS NULL"
+        },
+        "org_adjustment_org_items_amount": {
+          "name": "org_adjustment_org_items_amount",
+          "value": "\"org_adjustment_org_items\".\"establishment_transfer_amount\" IS NULL OR \"org_adjustment_org_items\".\"establishment_transfer_amount\" >= 0"
+        },
+        "org_adjustment_org_items_result": {
+          "name": "org_adjustment_org_items_result",
+          "value": "\"org_adjustment_org_items\".\"execution_result\" IS NULL OR \"org_adjustment_org_items\".\"execution_result\" IN (1, 2)"
+        },
+        "org_adjustment_org_items_phase": {
+          "name": "org_adjustment_org_items_phase",
+          "value": "\"org_adjustment_org_items\".\"exec_phase\" IN (0, 1, 2)"
+        },
+        "org_adjustment_org_items_progress": {
+          "name": "org_adjustment_org_items_progress",
+          "value": "\"org_adjustment_org_items\".\"employment_done\" >= 0 AND \"org_adjustment_org_items\".\"employment_failed\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.org_adjustments": {
+      "name": "org_adjustments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_note": {
+          "name": "scope_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approval_subject_org_id": {
+          "name": "approval_subject_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approval_status": {
+          "name": "approval_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "execution_status": {
+          "name": "execution_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "execution_note": {
+          "name": "execution_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_volume": {
+          "name": "data_volume",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "success_count": {
+          "name": "success_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failure_count": {
+          "name": "failure_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "executed_at": {
+          "name": "executed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "org_adjustments_subject_org": {
+          "name": "org_adjustments_subject_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approval_subject_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effective_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "org_adjustments_status": {
+          "name": "org_adjustments_status",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approval_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_adjustments_tenant_id_tenants_id_fk": {
+          "name": "org_adjustments_tenant_id_tenants_id_fk",
+          "tableFrom": "org_adjustments",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustments_subject_org_fk": {
+          "name": "org_adjustments_subject_org_fk",
+          "tableFrom": "org_adjustments",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "approval_subject_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustments_creator_fk": {
+          "name": "org_adjustments_creator_fk",
+          "tableFrom": "org_adjustments",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "org_adjustments_tenant_id": {
+          "name": "org_adjustments_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "org_adjustments_tenant_code": {
+          "name": "org_adjustments_tenant_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "org_adjustments_approval_status": {
+          "name": "org_adjustments_approval_status",
+          "value": "\"org_adjustments\".\"approval_status\" IN (0, 1, 2, 3, 4, 5, 6)"
+        },
+        "org_adjustments_execution_status": {
+          "name": "org_adjustments_execution_status",
+          "value": "\"org_adjustments\".\"execution_status\" IN (1, 2, 3)"
+        },
+        "org_adjustments_subject": {
+          "name": "org_adjustments_subject",
+          "value": "btrim(\"org_adjustments\".\"subject\") <> '' AND char_length(\"org_adjustments\".\"subject\") <= 100"
+        },
+        "org_adjustments_scope_note": {
+          "name": "org_adjustments_scope_note",
+          "value": "char_length(COALESCE(\"org_adjustments\".\"scope_note\", '')) <= 500"
+        },
+        "org_adjustments_content": {
+          "name": "org_adjustments_content",
+          "value": "char_length(COALESCE(\"org_adjustments\".\"content\", '')) <= 2000"
+        },
+        "org_adjustments_counts": {
+          "name": "org_adjustments_counts",
+          "value": "\"org_adjustments\".\"data_volume\" >= 0 AND \"org_adjustments\".\"success_count\" >= 0 AND \"org_adjustments\".\"failure_count\" >= 0"
+        },
+        "org_adjustments_revision_positive": {
+          "name": "org_adjustments_revision_positive",
+          "value": "\"org_adjustments\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.exit_handover_request_items": {
       "name": "exit_handover_request_items",
       "schema": "",
@@ -62033,12 +62898,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "not_launched_reason": {
-          "name": "not_launched_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "approval_instance_id": {
           "name": "approval_instance_id",
           "type": "uuid",
@@ -62091,7 +62950,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'not_launched')",
+          "where": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -62162,11 +63021,7 @@
       "checkConstraints": {
         "exit_handover_requests_state": {
           "name": "exit_handover_requests_state",
-          "value": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'terminated', 'not_launched')"
-        },
-        "exit_handover_requests_not_launched": {
-          "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
+          "value": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'terminated')"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",

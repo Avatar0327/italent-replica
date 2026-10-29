@@ -746,7 +746,7 @@
   "GET /api/tenant/employment/retirements": {
     "all": {
       "code": "VALIDATION_FAILED",
-      "error": "bd9be66aec67",
+      "error": "ce19bef64bb8",
       "status": 400
     },
     "fieldQueries": [],
@@ -1928,6 +1928,21 @@
     "trace": [
       "btn:TenantBase.EmploymentRecord#BatchDimissionHandoverApproval@list",
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/interns": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "192279e97f94",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Employee/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.Employee:create"
     ]
   },
   "POST /api/tenant/employment/interns/:id/regularize": {

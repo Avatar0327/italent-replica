@@ -7,6 +7,7 @@
       "idp",
       "offer",
       "offer_batch",
+      "org_adjustment",
       "part_time",
       "personnel_change",
       "probation_assessment",
@@ -4400,14 +4401,30 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
+        "domain": [
+          "employment.exitMode",
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "trimEmploymentResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create",
+          "TenantBase.EmploymentRecord:update"
+        ],
         "scope": [
+          "employment scope",
           "readPageContext"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -4436,13 +4453,18 @@
           "trimModuleResponse"
         ],
         "object": [
+          "object.* 动作",
           "readPageContext"
         ],
         "scope": [
+          "employment scope",
           "employment visibility",
           "readPageContext",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -6013,6 +6035,62 @@
         ]
       }
     },
+    "GET /api/tenant/hr-analysis/roster": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
+    "GET /api/tenant/hr-analysis/roster/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
     "GET /api/tenant/idp/approval-processes": {
       "edge": {
         "anonymous": {
@@ -6754,6 +6832,32 @@
         ],
         "object": [
           "object.* 动作",
+          "objectContext"
+        ],
+        "scope": [
+          "creator scope",
+          "requestScope"
+        ]
+      }
+    },
+    "GET /api/tenant/offers/:id/mail": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "offers",
+      "primitives": {
+        "object": [
           "objectContext"
         ],
         "scope": [
@@ -12117,7 +12221,6 @@
           "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -17872,6 +17975,64 @@
         ]
       }
     },
+    "POST /api/tenant/employment/interns": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button",
+          "requireEmploymentWrite(按钮)"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "employment.importRowOperation"
+        ],
+        "fieldsIn": [
+          "checkFields",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:create",
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
     "POST /api/tenant/employment/interns/:id/regularize": {
       "edge": {
         "anonymous": {
@@ -18744,7 +18905,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
@@ -18790,7 +18950,6 @@
         ],
         "scope": [
           "checkScope",
-          "employment visibility",
           "readContext（非配置对象）",
           "scope.all"
         ]
