@@ -26,6 +26,7 @@ import { firstCreatorSql } from '../permission/scope-audit.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
 import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
 import { recordAudit } from '../../audit/record.js';
+import { discloseAssessmentConflictReceipt } from './assessment-conflict-disclosure.js';
 import { isEmploymentRecordVisible, visibleEmploymentRecords } from './visibility.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
@@ -506,9 +507,8 @@ export async function runWrite(
     );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const body = options.project
-    ? await options.project(result.body)
-    : await trimEmploymentResponse(deps, ctx, result.body);
+  const disclosed = await discloseAssessmentConflictReceipt(deps, ctx, result.body);
+  const body = options.project ? await options.project(disclosed) : await trimEmploymentResponse(deps, ctx, disclosed);
   return c.json(body, result.status);
 }
 

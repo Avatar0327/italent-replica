@@ -563,14 +563,21 @@ export interface OfferListQuery {
 
 const TEXT_FILTERS = new Set(['name', 'personalEmail', 'mobile', 'idNumber', 'appliedPosition', 'workPlace']);
 
+/** 视图自己的状态 / 审批子状态条件；Offer 列表与人事看板（BE-12b）共用。 */
+export function offerViewConditions(view: Pick<OfferView, 'statuses' | 'approvalStatus'>): SQL[] {
+  const conditions: SQL[] = [];
+  if (view.statuses) conditions.push(sql`${offers.status} = ANY(${`{${view.statuses.join(',')}}`})`);
+  if (view.approvalStatus) conditions.push(sql`${offers.approvalStatus} = ${view.approvalStatus}`);
+  return conditions;
+}
+
 /** 列表按视图的状态 / 审批子状态、筛选条件与数据范围在 SQL 中过滤，范围谓词先于分页。 */
 export async function listOffers(tx: Tx, ctx: OfferContext, query: OfferListQuery, allowed: OfferActionFilter) {
   const conditions: SQL[] = [
     sql`${offers.tenantId} = ${ctx.tenantId}`,
     scopeSql(ctx.scope, { org: sql`${offers.departmentId}`, creator: sql`${offers.createdBy}` }),
   ];
-  if (query.view.statuses) conditions.push(sql`${offers.status} = ANY(${`{${query.view.statuses.join(',')}}`})`);
-  if (query.view.approvalStatus) conditions.push(sql`${offers.approvalStatus} = ${query.view.approvalStatus}`);
+  conditions.push(...offerViewConditions(query.view));
   for (const [field, value] of Object.entries(query.filters)) {
     const column = (offers as unknown as Record<string, AnyColumn>)[field]!;
     conditions.push(

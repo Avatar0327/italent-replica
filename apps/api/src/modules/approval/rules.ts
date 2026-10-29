@@ -1,12 +1,11 @@
 /** 审批动作的判定规则（纯函数）：详情公布的动作与命令执行共用同一套计算，避免“公布了却执行不了”（X-15 / X-16）。 */
 import { addSignerVotes, isCountersign, urgeAllowed, type AddSignType, type ApprovalNode } from '@italent/domain';
 import type { VersionView } from './definitions.js';
-import { OPEN_STATUSES, type InstanceRow, type TaskRow } from './store.js';
+import type { InstanceRow, TaskRow } from './store.js';
+import { OPEN_STATUSES } from './task-state.js';
 
-/** DEC-674：交接驳回为终态，不再公布或执行撤回；与 DB 活动实例查询 / 唯一索引的生命周期保持一致。 */
-export function isActiveInstance(instance: Pick<InstanceRow, 'status' | 'businessType'>): boolean {
-  return instance.status === 'running' || (instance.status === 'returned' && instance.businessType !== 'exit_handover');
-}
+// 撤回资格需要独立加载此纯函数，避免引入本文件经 store 建立的运行时依赖环。
+export { isActiveInstance } from './instance-state.js';
 
 /** 系统自动处理的任务（自动同意 / 自动跳过 / 自审跳过），不算人工处理。 */
 const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip', 'no_assignee_approve']);

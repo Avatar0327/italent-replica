@@ -4,8 +4,8 @@
  * - regularize（POST interns/:id/regularize）：实习中 / 实习转正中的行 → requireInternRegularizationAccess（新增权 + Employment.Create
  *   + 转正必填字段的写权 + 员工范围）；目标部门读口还不知道，只判员工范围，部门范围留给写入口；
  * - terminate（POST interns/:id/terminate）：同视图 → requireExitCommandAccess（员工范围 + 直接离职权限链）；
- * - withdraw / revoke（POST businesses/:id/{动作}）：实习转正中的审批中单据 → 状态机 transitionPermitted + 更新权 + 同名按钮 +
- *   业务写入口径范围。写入口对非离职单没有“原发起人”校验，读口同样不加。
+ * - withdraw：employmentWithdrawalFailure 与写入口共用状态、更新权、按钮、业务范围及审批原发起人资格（F-308）；
+ * - revoke：状态机 transitionPermitted + 更新权 + 同名按钮 + 业务写入口径范围，不限发起人。
  * 只判权限、视图归属与状态；超编确认、在途转正确认、结束日冲突等业务校验仍由写入口判。
  * 单据状态字段对当前操作人不可见时不下发撤回 / 撤销（动作集合不泄露状态）。
  */
@@ -25,19 +25,13 @@ import {
 } from './replay-guard.js';
 import { transitionPermitted } from './transitions.js';
 import type { EmploymentContext } from './types.js';
+import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 
 /** 下发顺序固定：转正 → 结束实习 → 撤回 → 撤销。 */
 export type InternAction = 'regularize' | 'terminate' | 'withdraw' | 'revoke';
 
-const TRANSITION_BUTTONS = { withdraw: 'Employment.Withdraw', revoke: 'Employment.Revoke' } as const;
-
-async function requireTransitionAccess(
-  tx: Tx,
-  scoped: EmploymentContext,
-  businessId: string,
-  action: keyof typeof TRANSITION_BUTTONS,
-) {
-  await requireEmploymentWrite(scoped, 'update', {}, TRANSITION_BUTTONS[action]);
+async function requireRevokeAccess(tx: Tx, scoped: EmploymentContext, businessId: string) {
+  await requireEmploymentWrite(scoped, 'update', {}, 'Employment.Revoke');
   await requireBusinessWriteScope(tx, scoped.authorize!, scoped, businessId);
 }
 
@@ -65,13 +59,10 @@ async function rowActions(
     if (await permits(() => requireExitCommandAccess(tx, create, 'create', gate, {}))) offered.push('terminate');
   }
   if (update && stateVisible && view === 'converting') {
+    if (!(await employmentWithdrawalFailure(tx, update, item.id))) offered.push('withdraw');
     const business = { state: item.state, payload: { mode: 'application', kind: item.kind } } as const;
-    for (const action of ['withdraw', 'revoke'] as const)
-      if (
-        transitionPermitted(business, action) &&
-        (await permits(() => requireTransitionAccess(tx, update, item.id, action)))
-      )
-        offered.push(action);
+    if (transitionPermitted(business, 'revoke') && (await permits(() => requireRevokeAccess(tx, update, item.id))))
+      offered.push('revoke');
   }
   return offered;
 }

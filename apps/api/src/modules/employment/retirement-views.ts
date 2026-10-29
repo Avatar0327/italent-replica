@@ -9,6 +9,7 @@ import { sql, type Tx } from '@italent/db';
 import { EMPLOYEE_STATUS, type RetirementBillView, type RetirementPersonView } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { employmentCreator } from './context.js';
+import { exitListOrder } from './exit-list-order.js';
 import {
   exitCandidates,
   EXIT_RESPONSE_DEPENDENCIES,
@@ -42,14 +43,17 @@ const dayEnd = ({ asOf, timezone }: RetirementAsOf): SQL =>
 
 // ---- 退休单行（退休中 / 已完成 / 全部）--------------------------------------------------------------------------------
 
+/** “首个 in_review / approved 事件”的时间（已提交的事实依据，别名 sub）；人事看板的离职 / 调动 / 转正在途同用。 */
+export const SUBMITTED_AT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
+      WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id AND ev.state IN ('in_review','approved')) sub ON true`;
+
 /** 退休单在离职候选集之上的追加：退休扩展行与“首个 in_review / approved 事件”的时间（已提交的事实依据）。 */
 export const RETIREMENT_SOURCE: CandidateSource = {
   kind: 'retirement',
   columns: sql`rr.retire_type AS "retireType", rr.re_employed AS "reEmployed",
       rr.expected_retirement_date::text AS "expectedRetirementDate", sub.at AS "submittedAt",`,
   joins: sql`LEFT JOIN retirement_requests rr ON rr.tenant_id=x.tenant_id AND rr.business_id=x.business_id
-    LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
-      WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id AND ev.state IN ('in_review','approved')) sub ON true`,
+    ${SUBMITTED_AT_JOIN}`,
 };
 
 /** 撤销视图（设计第 357 行）：额外取值，不计入五视图常量；行集合与排序沿用离职撤销视图（#432），只按 kind 限定退休。 */
@@ -57,7 +61,7 @@ export const RETIREMENT_CANCELLED_VIEW = 'cancelled';
 export type RetirementListedBillView = RetirementBillView | typeof RETIREMENT_CANCELLED_VIEW;
 
 /** 谓词表（§10.2）：processing = 流程中，或 effective 且 E′ > asOf 且已提交；completed = effective 且 E′ ≤ asOf。 */
-function billPredicate(view: RetirementListedBillView, at: RetirementAsOf): SQL {
+export function billPredicate(view: RetirementListedBillView, at: RetirementAsOf): SQL {
   const end = dayEnd(at);
   switch (view) {
     case 'processing':
@@ -144,7 +148,7 @@ export async function listRetirementBills(
   scope: EmploymentScope | undefined,
 ) {
   const rule = BILL_SORT[input.view];
-  const order = rule.anyOf.some(input.show.employment) ? rule.order : sql`b.id`;
+  const order = rule.anyOf.some(input.show.employment) ? rule.order : exitListOrder('businessId').order;
   const { rows, total } = await pageOfCandidates<RetirementRow>(
     tx,
     exitCandidates(tenantId, scope, [billPredicate(input.view, input.at)], order, RETIREMENT_SOURCE),
@@ -267,7 +271,9 @@ export async function listRetirementPersons(
   scope: EmploymentScope | undefined,
 ) {
   // 看不到 P 的人不能借排序反推 P：改用员工 ID 稳定排序（同离职视图的排序回退）
-  const order = input.show.employee('expectedRetirementDate') ? sql`pv.expected_retirement_date, e.id` : sql`e.id`;
+  const order = input.show.employee('expectedRetirementDate')
+    ? exitListOrder('retirementPersons').order
+    : exitListOrder('employeeId').order;
   const { rows, total } = await pageOfCandidates<Record<string, unknown>>(
     tx,
     personCandidates(tenantId, scope, input, order),

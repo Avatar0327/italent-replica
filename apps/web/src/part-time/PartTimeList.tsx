@@ -1,9 +1,9 @@
 import { Button, Pagination } from 'antd';
-import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { PageState } from '../foundation/PageState.js';
-import { FiltersDrawer, useFilterPermission } from './Filters.js';
-import { allowedFilters, listPath, views, type Filters, type ListResult, type View } from './model.js';
+import { useToday } from '../contracts/references.js';
+import { FiltersDrawer, QuickFilters, hasAdvancedFilters, useFilterPermission, useSortPermission } from './Filters.js';
+import { allowedFilters, listPath, views, type Filters, type ListResult, type Sort, type View } from './model.js';
 import { PartTimeTable } from './PartTimeTable.js';
 import { PartTimeDetail, type Selection } from './PartTimeDetail.js';
 import { useRead } from './useRead.js';
@@ -14,72 +14,51 @@ import { d } from './direct-messages.js';
 import type { Row } from './model.js';
 import { RequestEntries, NewRequestButton } from './RequestEntries.js';
 import { m } from './messages.js';
+import { useViewState } from './list-state.js';
 function useList() {
   const access = useDirectAccess();
-  const [checked, check] = useState<Row[]>([]);
-  const [direct, setDirect] = useState<string>();
   const [params, setParams] = useSearchParams();
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'ongoing';
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<Filters>({});
-  const [days, setDays] = useState(30);
-  const [drawer, setDrawer] = useState(false);
-  const [selected, select] = useState<Selection>();
+  const { state, patch, reset } = useViewState(view);
+  const { page, filters, sort } = state;
   const allowed = useFilterPermission();
-  const projected = allowedFilters(filters, allowed);
-  const result = useRead<ListResult>(listPath(view, page, projected, days));
-  const switchView = (next: View) => {
-    setParams({ view: next });
-    setPage(1);
-    setFilters({});
-    select(undefined);
-    check([]);
-    setDirect(undefined);
-  };
+  const canSort = useSortPermission(view);
+  const projectedSort = sort && canSort(sort.sortBy) ? sort : undefined;
+  const projected = allowedFilters(filters, allowed, view);
+  const today = useToday();
+  const result = useRead<ListResult>(listPath(view, page, projected, 30, projectedSort, today));
   return {
+    ...state,
     access,
-    checked,
-    check,
-    direct,
-    setDirect,
+    check: (checked: Row[]) => patch({ checked }),
+    setDirect: (direct?: string) => patch({ direct }),
     async refreshDirect() {
       await result.reload();
     },
-    view,
-    page,
-    setPage,
-    filters,
-    setFilters,
-    days,
-    setDays,
-    drawer,
-    setDrawer,
-    selected,
-    select,
+    setPage: (page: number) => patch({ page }),
+    setDrawer: (drawer: boolean) => patch({ drawer }),
+    select: (selected?: Selection) => patch({ selected }),
     allowed,
+    canSort,
+    sort: projectedSort,
+    onSort(next?: Sort) {
+      patch({ sort: next, page: 1, checked: [] });
+    },
     projected,
     result,
-    switchView,
+    switchView(next: View) {
+      if (next === view) reset();
+      setParams({ view: next });
+    },
+    applyFilters(next: Filters) {
+      patch({ filters: allowedFilters(next, allowed, view), page: 1, checked: [] });
+    },
   };
 }
 type State = ReturnType<typeof useList>;
 export function PartTimeList() {
   const state = useList();
-  const {
-    view,
-    days,
-    setDays,
-    setPage,
-    setFilters,
-    drawer,
-    setDrawer,
-    selected,
-    select,
-    allowed,
-    projected,
-    result,
-    switchView,
-  } = state;
+  const { view, drawer, setDrawer, selected, select, allowed, projected, result, switchView } = state;
   return (
     <RequestEntries refresh={result.reload} saved={(id) => select({ id, request: true })}>
       <h1>{m.title}</h1>
@@ -101,14 +80,11 @@ export function PartTimeList() {
       {drawer && (
         <FiltersDrawer
           initial={projected}
-          days={days}
           view={view}
           allowed={allowed}
           onClose={() => setDrawer(false)}
-          onApply={(next, nextDays) => {
-            setFilters(allowedFilters(next, allowed));
-            setDays(nextDays);
-            setPage(1);
+          onApply={(next) => {
+            state.applyFilters(next);
             setDrawer(false);
           }}
         />
@@ -126,7 +102,7 @@ export function PartTimeList() {
 }
 
 function ListCard({ state }: { state: State }) {
-  const { view, page, setPage, setFilters, setDays, setDrawer, select, result } = state;
+  const { view, setDrawer, select, result } = state;
   return (
     <section className="part-time-card">
       <div className="part-time-toolbar">
@@ -146,19 +122,19 @@ function ListCard({ state }: { state: State }) {
           </Button>
         )}
         <NewRequestButton />
-        <Button onClick={() => setDrawer(true)}>{m.filter}</Button>
-        <Button
-          type="text"
-          onClick={() => {
-            setFilters({});
-            setPage(1);
-            setDays(30);
-          }}
-        >
+        {hasAdvancedFilters(view) && <Button onClick={() => setDrawer(true)}>{m.filter}</Button>}
+        <Button type="text" onClick={() => state.applyFilters({})}>
           {m.reset}
         </Button>
         <Button onClick={result.refresh}>{m.refresh}</Button>
       </div>
+      <QuickFilters
+        key={`${view}/${JSON.stringify(state.projected)}`}
+        initial={state.projected}
+        view={view}
+        allowed={state.allowed}
+        onApply={state.applyFilters}
+      />
       {result.error ? (
         <PageState kind="error" error={result.error} retry={result.refresh} />
       ) : (
@@ -184,21 +160,12 @@ function ListCard({ state }: { state: State }) {
                 : undefined
             }
             view={view}
+            {...{ sort: state.sort, canSort: state.canSort, onSort: state.onSort }}
             loading={result.loading}
             noScope={result.data?.hasDataPermission === false}
             onOpen={(row) => select({ id: row.id, request: view === 'in_approval' })}
           />
-          <div className="part-time-pagination">
-            <span>{m.total(result.data?.total ?? 0)}</span>
-            <Pagination
-              current={page}
-              pageSize={30}
-              showSizeChanger={false}
-              total={result.data?.total ?? 0}
-              disabled={result.loading}
-              onChange={setPage}
-            />
-          </div>
+          <ListPagination state={state} />
         </>
       )}
     </section>
@@ -238,5 +205,22 @@ function DirectDialogs({ state }: { state: State }) {
         />
       )}
     </>
+  );
+}
+
+function ListPagination({ state }: { state: State }) {
+  const { page, setPage, result } = state;
+  return (
+    <div className="part-time-pagination">
+      <span>{m.total(result.data?.total ?? 0)}</span>
+      <Pagination
+        current={page}
+        pageSize={30}
+        showSizeChanger={false}
+        total={result.data?.total ?? 0}
+        disabled={result.loading}
+        onChange={setPage}
+      />
+    </div>
   );
 }
