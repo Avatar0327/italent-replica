@@ -5,7 +5,8 @@
  * 未实现的状态（B3 生效、B4 撤销）在本批由测试直接写状态事件 / 撤销记录造数，视图对没有数据的状态返回空集。
  */
 import './support/exit-gate-enforced.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, type UUID } from 'node:crypto';
+import type * as Crypto from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
@@ -22,8 +23,21 @@ import {
   type ExitItem,
 } from '../../apps/api/src/modules/employment/exit-queries.js';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
+
+// F-334：排序样本用固定前缀，其他 UUID 仍用真实随机源；每次造数结束立即恢复。
+const uuidPrefix = vi.hoisted(() => ({ value: '' }));
+vi.mock('node:crypto', async (original) => {
+  const actual = await original<typeof Crypto>();
+  return {
+    ...actual,
+    randomUUID: (): UUID => {
+      const id = actual.randomUUID();
+      return (uuidPrefix.value ? uuidPrefix.value + id.slice(8) : id) as UUID;
+    },
+  };
+});
 
 const database = useTestDb();
 type Api = GateWorld['session']['request'];
@@ -540,24 +554,25 @@ const descending = (keyOf: (id: string) => string) => (a: Row, b: Row) =>
 const descendingThenIdDesc = (keyOf: (id: string) => string) => (a: Row, b: Row) =>
   keyOf(b.id).localeCompare(keyOf(a.id)) || byId(b, a);
 
-/**
- * 造到“id 升序的顺序”不等于任何有权用户会看到的完整顺序为止（id 是随机 UUID，保证参照记录能区分两种排序）；
- * 判断用与 SQL 一致的完整比较器（含 id 次序键），不是只比主键。
- */
+/** 固定三条记录 ID 递增；调用方的日期 / 创建时间排列保证有权排序与 ID 排序不同。 */
 async function distinguishable(
   make: (day: string) => Promise<Row>,
   days: string[],
   designed: (a: Row, b: Row) => number,
 ) {
   const made: Row[] = [];
-  for (let index = 0; index < 12; index += 1) {
-    made.push(await make(days[index % days.length]!));
-    if (made.length < 3) continue;
-    const blind = [...made].sort(byId).map((item) => item.id);
-    const sighted = [...made].sort(designed).map((item) => item.id);
-    if (JSON.stringify(blind) !== JSON.stringify(sighted)) return made.map((item) => item.id);
+  for (const [index, prefix] of ['11111111', '22222222', '33333333'].entries()) {
+    uuidPrefix.value = prefix;
+    try {
+      made.push(await make(days[index % days.length]!));
+    } finally {
+      uuidPrefix.value = '';
+    }
   }
-  throw new Error('造不出可区分的排序样本');
+  const blind = [...made].sort(byId).map((item) => item.id);
+  const sighted = [...made].sort(designed).map((item) => item.id);
+  expect(blind).not.toEqual(sighted);
+  return made.map((item) => item.id);
 }
 
 describe('AC-DM-19 默认排序不泄露隐藏字段的先后（第 2 轮 P2-2）', () => {

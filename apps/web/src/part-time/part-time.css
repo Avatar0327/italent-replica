@@ -78,3 +78,9 @@
   grid-template-columns: 1fr 1fr;
   gap: 0 24px;
 }
+
+.part-time-quick {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: end;
+  margin-bottom: 16px;
+}

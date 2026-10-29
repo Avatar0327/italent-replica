@@ -43,6 +43,7 @@ export const GRAPH: Graph = {
   'packages/domain/src/employment/employee-status.ts#isTerminatingRecord': ['#TERMINATING_RECORD_STATUS'],
   'packages/domain/src/employment/entry-email.ts#EMAIL_PREFIX_FIELD_CODES': ['#EMAIL_PREFIX_FIELDS'],
   'packages/domain/src/employment/entry-email.ts#normalizeEmailDomain': ['#DOMAIN_PATTERN'],
+  'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO': ['#HANDOVER_NODE_KEYS'],
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_TODO_TYPE_CODES': ['#HANDOVER_TODO_TYPES'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': [
     '#closed',
