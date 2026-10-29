@@ -16,7 +16,8 @@ const system = [
 // R2 BE-8a：离职自动加黑规则也挂在任职设置对象上（规则写入按这些字段授权，同离职字典 / 入职邮箱规则）；
 // R2 BE-15a：自动转正规则同样挂在这里（includeSubordinates / mode / daysBefore / initiatorType / probationResult）；
 // R2 BE-15b2：自动发起考核规则同样（assessmentType / daysAfterEntry）；
-// R2 BE-8b1：离职交接事项同样（category / sequenceNo / todoType / title / formRef / remark）
+// R2 BE-8b1：离职交接事项同样（category / sequenceNo / todoType / title / formRef / remark）；
+// F-321：用工形式字典同样（effectiveDate / expiryDate，category / remark 沿用已有字段）。
 const settingsFields = [
   'allowDirectTransfer',
   'assessmentType',
@@ -28,8 +29,10 @@ const settingsFields = [
   'daysBefore',
   'description',
   'displayOrder',
+  'effectiveDate',
   'enabled',
   'entryEmailRules',
+  'expiryDate',
   'formRef',
   'includeSubordinates',
   'initiatorType',

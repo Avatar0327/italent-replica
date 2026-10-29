@@ -1,3 +1,4 @@
+import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -33,6 +34,7 @@ import {
   requireScopedEmploymentObject,
   trimEmploymentResponse,
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
 } from './context.js';
 import { createEmployee, employeeName, getEmployee, listEmployees } from './employees.js';
 import { EmploymentError } from './errors.js';
@@ -147,6 +149,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
   registerRetirementRuleRoutes(module, deps);
+  registerEmploymentFormRoutes(module, deps);
   registerRetirementIntentionRoutes(module, deps);
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
@@ -188,6 +191,12 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list', undefined, EMPLOYEE_OBJECT);
     const page = pageQuery(c);
     await requireViewableFilters(deps, ctx, ['employeeStatus', 'entryStatus'], (key) => c.req.query(key));
+    const view = parse(z.literal('labor').optional(), c.req.query('view'));
+    if (view === 'labor') {
+      const visible = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
+      if (visible && ['employmentForm', 'employType', 'employeeStatus'].some((key) => !visible.has(key)))
+        throw new AppError('FORBIDDEN', '劳务视图筛选字段不可查看');
+    }
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listEmployees(
         tx,
@@ -195,6 +204,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         queryDate(c, ctx),
         page,
         {
+          view,
           code: c.req.query('code'),
           name: c.req.query('name'),
           status: parse(z.enum(['pending', 'employed', 'left', 'retired']).optional(), c.req.query('status')),
