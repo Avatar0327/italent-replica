@@ -47,6 +47,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/definition.ts#approverSourceViolations': [
     '#offerApproverViolation',
+    '#orgAdjustmentApproverViolation',
     'packages/domain/src/approval/sources.ts#approverSourcesOf',
     'packages/domain/src/approval/sources.ts#relationSource',
     'packages/domain/src/approval/sources.ts#sourceViolation',
@@ -70,7 +71,6 @@ export const GRAPH: Graph = {
     '#emptyApproverPolicyViolation',
     '#fallbackViolations',
     '#nodeShapeViolations',
-    '#orgAdjustmentApproverViolation',
   ],
   'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation': [
     'packages/domain/src/approval/types.ts#hasExit',
@@ -96,9 +96,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#orgAdjustmentApproverViolation': [
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_APPROVERS',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_ONLY_APPROVERS',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#publishViolations': [
     '#avoidSubjectsViolations',
