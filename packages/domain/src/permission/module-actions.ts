@@ -346,6 +346,9 @@ export const MODULE_OBJECTS = {
     ],
     ['blacklistDate', 'source', 'status', 'removedAt'],
   ),
+  // BE-12a 人事分析 - 时点员工花名册（规格 35 §2.2）：功能权只有“查看”和列表级“导出”按钮；数据范围与字段权复用
+  // 员工档案（EmployeeInformation）、任职记录、合同三个对象，所以这个对象本身没有业务字段，asOf 只是请求参数
+  hrRoster: object('HrRoster', ['asOf'], [button('export', 'list')]),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',

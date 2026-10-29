@@ -6,9 +6,9 @@ name: merge main (cloud)
 #  2. 按解析时的头提交检出全历史，跑 pnpm merge:main（合入 origin/main、生成物冲突取 main 后重算、迁移改号）；
 #     业务冲突时 job 判红，冲突清单写进运行摘要，须人工处理（本机 pnpm merge:main / --continue）；
 #  3. 给 PR 打 queue-head 标签（标明队首），复核后有新提交就推回 PR 分支（不强推）。
-# 本流程不触发完整 CI（DEC-458）：默认 GITHUB_TOKEN 的推送、打标签、关闭 / 重开都不触发工作流（GitHub 防递归）；
+# 本流程不触发完整 CI（DEC-458 / DEC-694②）：默认 GITHUB_TOKEN 的推送、打标签不触发工作流（GitHub 防递归）；
 # workflow_dispatch 派发的 ci.yml 运行不关联 PR，分支保护不认其结果。完整 CI 由队列脚本用自己的 gh 身份
-# 关闭再重开 PR，触发带 queue-head 标签的 pull_request（reopened）运行，见 docs/08_设计/DEC-430_生成物合并后重算.md §6。
+# 移除已有 queue-head 后重新添加，触发 pull_request（labeled）完整运行（F-330）。
 # GITHUB_TOKEN 没有 workflows 权限：合并提交改动 .github/workflows/ 时推送前判红，改在本机合并（兜底路径）。
 on:
   workflow_dispatch:
@@ -160,7 +160,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
           REPO: ${{ github.repository }}
-        # 队列随后关闭 / 重开 PR 时，reopened 事件带着这个标签，ci.yml 判为完整模式
+        # 队列随后用自己的 gh 身份移除再添加标签，触发 labeled 完整运行（DEC-694②）
         run: |
           set -euo pipefail
           gh label create queue-head --repo "$REPO" --force --color B60205 \
@@ -184,7 +184,7 @@ jobs:
           if [ "$head" = "$HEAD0" ]; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             echo "无新提交，不推送（PR 头 \`$head\`）" >> "$GITHUB_STEP_SUMMARY"
-            echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后关闭再重开 PR，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"
+            echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后移除已有 queue-head 再添加，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # GITHUB_TOKEN 没有 workflows 权限，推不了改动 .github/workflows/ 的提交
@@ -201,4 +201,4 @@ jobs:
           git push origin "HEAD:refs/heads/$BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "已推送 \`$head\` 到 \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后关闭再重开 PR，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "下一步（队列脚本）：确认 PR 头为 \`$head\` 后移除已有 queue-head 再添加，触发完整 CI" >> "$GITHUB_STEP_SUMMARY"

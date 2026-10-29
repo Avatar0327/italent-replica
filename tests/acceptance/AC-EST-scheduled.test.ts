@@ -1,7 +1,7 @@
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { transferFixture } from './AC-EST-support.js';
+import { forceDisableOrg, transferFixture } from './AC-EST-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -74,13 +74,7 @@ describe('AC-EST DEC-052 定时生效再次校验编制并可重试', () => {
     const { db } = testDb();
     const fixture = await transferFixture(db, `est-inactive-${stage}`, { targetCount: 5 });
     const submitted = await fixture.apply('submitted');
-    const disabled = await tenantApi(db).request('PATCH', `/api/tenant/org/organizations/${fixture.target.id}`, {
-      user: fixture.user.id,
-      tenant: fixture.tenant.id,
-      ifMatch: fixture.target.revision,
-      body: { effectiveDate: '2026-10-02', enabled: false },
-    });
-    expect(disabled.status).toBe(200);
+    await forceDisableOrg(db, fixture.tenant.id, fixture.target.id, '2026-10-02');
     fixture.advanceTo(new Date('2026-10-02T01:00:00Z'));
     const released = await fixture.apply(stage, submitted.revision);
     expect(released).toMatchObject({ status: stage, reserveIn: false, reserveOut: false });
@@ -95,14 +89,7 @@ describe('AC-EST DEC-052 定时生效再次校验编制并可重试', () => {
     const submitted = await fixture.apply('submitted');
     const approved = await fixture.apply('approved', submitted.revision);
     const api = tenantApi(db);
-    const disable = await api.request('PATCH', `/api/tenant/org/organizations/${fixture.target.id}`, {
-      user: fixture.user.id,
-      tenant: fixture.tenant.id,
-      ifMatch: fixture.target.revision,
-      body: { effectiveDate: '2026-10-02', enabled: false },
-    });
-    expect(disable.status).toBe(200);
-    const disabled = (await disable.json()) as { revision: number };
+    const disabled = { revision: await forceDisableOrg(db, fixture.tenant.id, fixture.target.id, '2026-10-02') };
     fixture.advanceTo(new Date('2026-10-02T01:00:00Z'));
     const failed = await fixture.apply('effective', approved.revision);
     expect(failed).toMatchObject({ status: 'failed', attempts: 1, failureReason: 'TARGET_ORG_DISABLED' });

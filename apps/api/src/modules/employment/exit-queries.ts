@@ -182,7 +182,7 @@ export async function resolveDepartmentIds(
 }
 
 /** 视图谓词只读最新状态与撤销记录，三个主视图之外的状态（作废 / 删除 / 不同意）只在“全部”里。 */
-function viewPredicate(view: ExitView): SQL {
+export function viewPredicate(view: ExitView): SQL {
   switch (view) {
     case 'in_progress':
       return sql`s.state IN ('draft','in_review','approved','rejected')`;

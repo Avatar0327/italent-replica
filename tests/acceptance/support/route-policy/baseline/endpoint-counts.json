@@ -8,9 +8,10 @@
     "employment": 155,
     "establishment": 16,
     "evaluation": 34,
+    "hr-analysis": 2,
     "idp": 58,
     "job": 14,
-    "offers": 20,
+    "offers": 21,
     "org": 14,
     "permission": 44,
     "personnel": 18,
@@ -29,5 +30,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 784
+  "total": 787
 }

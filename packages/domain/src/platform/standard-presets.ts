@@ -384,7 +384,10 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '相比人事管理员除去了设置菜单',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => o.code !== APPROVAL_PROCESS_OBJECT).map(full),
+    // DEC-415：时点花名册（BE-12a）导出全员档案，只给本模块的预置管理员，人事专员不预置
+    objects: BUSINESS_OBJECTS.filter(
+      (o) => o.code !== APPROVAL_PROCESS_OBJECT && o.code !== MODULE_OBJECTS.hrRoster.code,
+    ).map(full),
     hr: true,
   },
   {

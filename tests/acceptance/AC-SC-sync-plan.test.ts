@@ -10,7 +10,7 @@ import { createPermissionAuthorizer } from '../../apps/api/src/modules/permissio
 import { overrideSetting } from '../../apps/api/src/modules/tenant-settings/service.js';
 import { syncFixture, FX } from './support/sync-port-contract.js';
 import { rowsOf } from './support/f048.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC-support.js';
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 
@@ -271,11 +271,10 @@ describe('AC-SC-03-04-sync D1b 首次计划', () => {
     const a = consumeRun(first.deps, first.input);
     await ready;
     const b = consumeRun(next.deps, next.input);
-    try {
+    await withRelease(release, async (cleanup) => {
+      [a, b].forEach((request) => cleanup.track<unknown>(request));
       await waitForBlocked(testDb().db, 1);
-    } finally {
-      release();
-    }
+    });
     await Promise.all([a, b]);
     expect(secondBegin).not.toHaveBeenCalled();
     expect(await batch(next.input.runId)).toMatchObject({ status: 'waiting' });
@@ -540,11 +539,10 @@ it.runIf(Boolean(process.env['TEST_DATABASE_URL']))(
         startDate: SC_TODAY,
       },
     });
-    try {
+    await withRelease(release, async (cleanup) => {
+      [plan, write].forEach((request) => cleanup.track<unknown>(request));
       await waitForBlocked(testDb().db, 1);
-    } finally {
-      release();
-    }
+    });
     await plan;
     const response = await write;
     expect(response.status).toBe(409);
