@@ -75,8 +75,9 @@ describe('AC-OA-13 DEC-697 双向来源', () => {
       value === 'approval_subject_org_hrbp' ? hrbp.userId : head.userId,
     ]);
     const legacy = await withTenant(db().db, w.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE approval_process_nodes SET approver_expression=${JSON.stringify(value)}::jsonb
-        WHERE tenant_id=${w.tenant.id} AND version_id=${view.latestVersion.id}::uuid`),
+      tx.execute(sql`INSERT INTO approval_process_nodes
+        (tenant_id,version_id,node_key,seq,name,approver_expression)
+        VALUES (${w.tenant.id},${view.latestVersion.id}::uuid,'legacy',2,'合成旧格式',${JSON.stringify(value)}::jsonb)`),
     ).then(
       () => null,
       (error: unknown) => `${String(error)} ${String((error as { cause?: unknown }).cause)}`,

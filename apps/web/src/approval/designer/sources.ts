@@ -80,7 +80,8 @@ export function sourceOptions(node: ApprovalNode, approvalType?: string) {
     if (pending.has(type)) children.push({ value: '$pending', label: s.newValue, disabled: true, status: 'pending' });
     const enabled =
       type === 'specified'
-        ? !!APPROVAL_TYPES[approvalType as keyof typeof APPROVAL_TYPES]
+        ? // 只探测来源类型能力，不查询或提交此占位 ID；与实际选择后的领域校验同源（DEC-697）。
+          sourceAllowed({ type: 'specified', value: '00000000-0000-0000-0000-000000000000' }, node, approvalType)
         : children.some((option) => !option.disabled);
     let status: Status = 'restricted';
     if (unsupported.has(type)) status = 'unsupported';

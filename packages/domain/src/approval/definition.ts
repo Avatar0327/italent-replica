@@ -67,8 +67,6 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     violations.push(...fallbackViolations(node, type));
     const emptyPolicy = emptyApproverPolicyViolation(node, type);
     if (emptyPolicy) violations.push(emptyPolicy);
-    const orgAdjustmentViolation = orgAdjustmentApproverViolation(node, type);
-    if (orgAdjustmentViolation) violations.push(orgAdjustmentViolation);
   }
   return violations;
 }
@@ -101,6 +99,8 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
   }
   const offerViolation = offerApproverViolation(node, type);
   if (offerViolation) violations.push(offerViolation);
+  const orgAdjustmentViolation = orgAdjustmentApproverViolation(node, type);
+  if (orgAdjustmentViolation) violations.push(orgAdjustmentViolation);
   return violations;
 }
 
@@ -146,12 +146,17 @@ function offerApproverViolation(node: ApprovalNode, type: ApprovalTypeDefinition
 
 /** R2-T08 §4.2：组织调整只用白名单取值（ORG_ADJUSTMENT_APPROVERS）；“审批主体组织”两个取值不用于其他类型。 */
 function orgAdjustmentApproverViolation(node: ApprovalNode, type: ApprovalTypeDefinition): string | null {
-  const expressions = approverExpressionsOf(node);
-  const wrong =
-    type.adapter === 'org_adjustment'
-      ? expressions.filter((expression) => !ORG_ADJUSTMENT_APPROVERS.has(expression))
-      : expressions.filter((expression) => ORG_ADJUSTMENT_ONLY_APPROVERS.has(expression));
-  return wrong.length ? `节点 ${node.key} 的审批人 ${wrong.join('、')} 不能用于${type.name}审批` : null;
+  // DEC-697：结构迁移不能把非命名来源放进原三项白名单；空人候选也遵守类型归属。
+  const sources = [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])];
+  const wrong = sources.filter((source) => {
+    const expression = expressionValue(source);
+    return type.adapter === 'org_adjustment'
+      ? !expression || !ORG_ADJUSTMENT_APPROVERS.has(expression)
+      : expression !== null && ORG_ADJUSTMENT_ONLY_APPROVERS.has(expression);
+  });
+  return wrong.length
+    ? `节点 ${node.key} 的审批人 ${wrong.map((source) => source.value).join('、')} 不能用于${type.name}审批`
+    : null;
 }
 
 /** F-003：出口动作与会签节点的结构（审批人逐人解析，流转规则见 DEC-144）。 */

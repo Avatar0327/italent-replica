@@ -40,6 +40,8 @@ export const s = {
   values: {
     business_record_direct_manager: '任职记录 → 直线经理（申请业务日有效主职）',
     previous_approved: '上一节点审批人',
+    approval_subject_org_hrbp: '审批主体组织 HRBP',
+    approval_subject_org_head: '审批主体组织负责人',
     handover_work_owner: '离职交接 → 工作交接人',
     handover_hr_admin: '离职交接 → 人事管理员',
     handover_employee: '离职交接 → 员工本人',

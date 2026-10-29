@@ -37,6 +37,9 @@ export const EXPRESSION_SOURCE_TYPES: Readonly<Record<ApproverExpression, Approv
   initiator_direct_manager: 'object_field',
   approval_subject_first_level_org_head: 'department',
   assessment_employee: 'object_field',
+  // DEC-697：与 F-318a 既定迁移的命名值编码一致，保留审批主体组织取人含义。
+  approval_subject_org_hrbp: 'object_field',
+  approval_subject_org_head: 'object_field',
   handover_work_owner: 'object_field',
   handover_hr_admin: 'identity',
   handover_employee: 'object_field',
