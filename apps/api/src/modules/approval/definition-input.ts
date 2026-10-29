@@ -6,6 +6,7 @@ import {
   definitionViolations,
   EDIT_MODES,
   EXIT_RULE_KINDS,
+  HANDOVER_FALLBACK_LIMIT,
   isApprovalType,
   MESSAGE_CHANNELS,
   MESSAGE_RECIPIENTS,
@@ -76,6 +77,8 @@ const node = z.strictObject({
    * 入台账的同一请求重放时指纹不同、误报 409（DEC-067；PR #135 第 1 轮审查 P2）。actions.avoidSubjects 同理。
    */
   avoidSubjectsResult: avoidSubjectsResult.optional(),
+  /** DEC-663：兜底处理人（用户 ID，可多人、可为空）；不给不补缺省值，只在离职交接申请的会签交接节点上有意义。 */
+  fallbackUserIds: z.array(z.uuid().transform(canonicalId)).max(HANDOVER_FALLBACK_LIMIT).optional(),
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
