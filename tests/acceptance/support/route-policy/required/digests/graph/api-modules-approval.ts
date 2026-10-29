@@ -443,12 +443,11 @@ export const GRAPH: Graph = {
     '#ok',
     '#openOwn',
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#openRun',
     'apps/api/src/modules/approval/engine.ts#persistRun',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#cancelPending',
-    'packages/domain/src/approval/types.ts#revokeAllowed',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#HELD_STATUSES': [
     'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
@@ -471,6 +470,7 @@ export const GRAPH: Graph = {
     '#personnelAdapter',
     'apps/api/src/modules/contracts/adapter.ts#contractAdapter',
     'apps/api/src/modules/employment/assessment-approval-adapter.ts#assessmentAdapter',
+    'apps/api/src/modules/employment/exit-handover-adapter.ts#exitHandoverAdapter',
     'apps/api/src/modules/employment/part-time/approval-adapter.ts#partTimeAdapter',
     'apps/api/src/modules/employment/retirement-intention-adapter.ts#retirementIntentionAdapter',
     'apps/api/src/modules/idp/approval-adapter.ts#idpAdapter',
@@ -725,6 +725,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#MESSAGE_TRIGGERS',
   ],
   'apps/api/src/modules/approval/definition-input.ts#node': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
     '#avoidSubjectsResult',
     '#codeList',
     '#messageRule',
@@ -733,6 +734,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
     'packages/domain/src/approval/types.ts#AUTO_RESULTS',
     'packages/domain/src/approval/types.ts#EDIT_MODES',
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_LIMIT',
     'packages/domain/src/approval/types.ts#NODE_EXITS',
     'packages/domain/src/approval/types.ts#NODE_KINDS',
     'packages/domain/src/approval/types.ts#NO_ASSIGNEE_POLICIES',
@@ -755,6 +757,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#assertExceptionAdminMember': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/resolver.ts#isAssignable',
+  ],
+  'apps/api/src/modules/approval/definitions.ts#assertFallbackUsers': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#uuidArray',
   ],
   'apps/api/src/modules/approval/definitions.ts#assertUniquePriority': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -851,8 +858,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#versionId': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#writeVersionContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    '#assertFallbackUsers',
     '#nodeTypeColumns',
     '#textArray',
+    '#uuidArray',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
     'packages/domain/src/approval/types.ts#DEFAULT_AVOID_SUBJECTS_RESULT',
     'packages/domain/src/approval/types.ts#avoidsSelf',
@@ -902,7 +911,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/disclosure.ts#initiatorActions': [
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
-    'packages/domain/src/approval/types.ts#revokeAllowed',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
@@ -978,6 +987,7 @@ export const GRAPH: Graph = {
     '#noAssignee',
     '#seatOf',
     '#seatUser',
+    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
   ],
   'apps/api/src/modules/approval/engine.ts#currentRouting': [
     '#nodeIndex',
@@ -1343,6 +1353,15 @@ export const GRAPH: Graph = {
     '#assigneeGate',
   ],
   'apps/api/src/modules/approval/resolver.ts#firstLevelOrg': ['#adminAncestors'],
+  'apps/api/src/modules/approval/resolver.ts#handoverHrAdmin': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#HR_ADMIN_PROFILE',
+    '#HR_ADMIN_SCAN',
+    '#NOBODY',
+    '#isEligibleApprover',
+    '#personOfUser',
+  ],
+  'apps/api/src/modules/approval/resolver.ts#handoverWorkOwner': ['#candidateOf', '#directManagerOf'],
   'apps/api/src/modules/approval/resolver.ts#isActiveAccount': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#isAssignable': ['#enterAssigneeGate', '#isActiveAccount'],
   'apps/api/src/modules/approval/resolver.ts#isEligibleApprover': ['#departed', '#isAssignable', '#personOfUser'],
@@ -1355,11 +1374,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/resolver.ts#orgRole': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#personOfUser': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidate': ['#memo', '#resolveFresh'],
+  'apps/api/src/modules/approval/resolver.ts#resolveCandidates': [
+    '#isEligibleApprover',
+    '#memo',
+    '#personOfUser',
+    '#resolveCandidate',
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+  ],
   'apps/api/src/modules/approval/resolver.ts#resolveFresh': [
     '#NOBODY',
     '#candidateOf',
     '#directManagerOf',
     '#firstLevelOrg',
+    '#handoverHrAdmin',
+    '#handoverWorkOwner',
     '#isEligibleApprover',
     '#orgRole',
     '#personOfUser',
@@ -1884,5 +1912,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/subjects.ts#unknownSubject': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+  ],
+  'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'packages/domain/src/approval/types.ts#revokeAllowed',
   ],
 };

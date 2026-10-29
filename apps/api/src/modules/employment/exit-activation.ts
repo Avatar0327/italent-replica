@@ -27,6 +27,8 @@ import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEve
 import './exit-void-assessments.js';
 // 离职生效写黑名单（BE-8b1）同样订阅 effective 端口
 import './exit-blacklist.js';
+// 交接自动发起（BE-8b2，DM-R14）订阅 onConfirmed、撤销离职终止交接订阅 onCancelled，随入口一起加载
+import './exit-handover.js';
 import {
   exitSourceOf,
   isExitKind,
