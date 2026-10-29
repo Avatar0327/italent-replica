@@ -16,6 +16,7 @@ import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
+import { drainExitHandoverRetries } from './exit-handover-retry.js';
 import { readAccountSettings, saveTask, type AccountTask } from './exit-account-store.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
@@ -232,6 +233,11 @@ async function processUser(db: Db, userId: string, now: Date, origin: TenantRow)
 
 /** 命令提交后按本命令即时消费；调度按租户键集分页补偿。blocked 只由授权的人工重试解锁。 */
 export async function drainExitAccounts(db: Db, tenantId: string, now: Date, commandId?: string, businessId?: string) {
+  await drainAccountTasks(db, tenantId, now, commandId, businessId);
+  await drainExitHandoverRetries(db, tenantId, now);
+}
+
+async function drainAccountTasks(db: Db, tenantId: string, now: Date, commandId?: string, businessId?: string) {
   let after: string | null = null;
   const processed = new Set<string>();
   let origin: TenantRow | undefined;

@@ -1660,7 +1660,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-account-store.ts#saveTask': ['#auditTask', '#taskKey'],
   'apps/api/src/modules/employment/exit-account-worker.ts#context': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
-  'apps/api/src/modules/employment/exit-account-worker.ts#drainExitAccounts': ['#processUser'],
+  'apps/api/src/modules/employment/exit-account-worker.ts#drainAccountTasks': ['#processUser'],
+  'apps/api/src/modules/employment/exit-account-worker.ts#drainExitAccounts': [
+    '#drainAccountTasks',
+    'apps/api/src/modules/employment/exit-handover-retry.ts#drainExitHandoverRetries',
+  ],
   'apps/api/src/modules/employment/exit-account-worker.ts#facts': [
     'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
     '#timeIn',
@@ -2226,6 +2230,33 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ITEM_LIMIT',
   ],
+  'apps/api/src/modules/employment/exit-handover-retry.ts#consume': [
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    '#receipt',
+    '#unfinished',
+    'apps/api/src/modules/employment/exit-handover.ts#launchExitHandover',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover-retry.ts#drainExitHandoverRetries': [
+    '#BATCH',
+    '#EVENT',
+    '#consume',
+    '#receipt',
+    '#unfinished',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
+  ],
+  'apps/api/src/modules/employment/exit-handover-retry.ts#queueExitHandoverRetry': [
+    '#EVENT',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/exit-handover-retry.ts#receipt': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/exit-handover-routes.ts#SETTINGS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
@@ -2331,11 +2362,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-handover-store.ts#liveHandoverOfExit': ['#latestHandoverOfExit'],
   'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest': [
     '#REQUEST_COLUMNS',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-handover.ts#auditHandover': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/employment/exit-handover.ts#createAndStart': [
+    'apps/api/src/modules/approval/engine.ts#startOrResume',
+    'apps/api/src/modules/employment/exit-handover-items.ts#listHandoverItems',
+    'apps/api/src/modules/employment/exit-handover-store.ts#insertHandoverRequest',
+    'apps/api/src/modules/employment/exit-handover-store.ts#linkHandoverInstance',
+    '#REQUEST_TYPE',
+    '#auditHandover',
+    '#launchContext',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/exit-handover.ts#exitHandoverStatus': [
     'apps/api/src/modules/employment/exit-handover-store.ts#latestHandoverOfExit',
     '#handoverDetail',
@@ -2350,6 +2393,24 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-handover.ts#lastWorkDateOf': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#launchExitHandover': [
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    'apps/api/src/modules/employment/exit-handover-retry.ts#queueExitHandoverRetry',
+    'apps/api/src/modules/employment/exit-handover-store.ts#liveHandoverOfExit',
+    '#NO_HANDLER_REASONS',
+    '#auditHandover',
+    '#createAndStart',
+    '#lastWorkDateOf',
+    '#readTrigger',
+    '#recordNotLaunched',
+    '#skip',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
+    'packages/domain/src/employment/exit-handover.ts#handoverLaunchDecision',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/exit-handover.ts#lockHandoverRequest': [
     'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
@@ -2360,6 +2421,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-handover.ts#pendingNodeOf': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-handover.ts#readTrigger': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/employment/exit-handover.ts#EXIT_HANDOVER_TRIGGER_KEY',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_TRIGGER_DEFAULT',
+    'packages/domain/src/employment/exit-handover.ts#checkHandoverTrigger',
+  ],
+  'apps/api/src/modules/employment/exit-handover.ts#recordNotLaunched': [
+    'apps/api/src/modules/employment/exit-handover-store.ts#insertNotLaunchedRequest',
+    '#REQUEST_TYPE',
+    '#auditHandover',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NOT_LAUNCHED_HINTS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/exit-handover.ts#settleHandoverFromApproval': [
     'apps/api/src/modules/employment/exit-handover-store.ts#moveHandoverRequest',
     '#REQUEST_TYPE',
@@ -2367,6 +2442,7 @@ export const GRAPH: Graph = {
     '#lockHandoverRequest',
     'apps/api/src/system-actor.ts#SYSTEM_USER_ID',
   ],
+  'apps/api/src/modules/employment/exit-handover.ts#skip': ['#auditHandover'],
   'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
     'apps/api/src/modules/employment/exit-handover-store.ts#listRequestItems',
