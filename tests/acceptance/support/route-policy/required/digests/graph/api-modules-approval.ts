@@ -444,13 +444,11 @@ export const GRAPH: Graph = {
     '#ok',
     '#openOwn',
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#openRun',
     'apps/api/src/modules/approval/engine.ts#persistRun',
-    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#cancelPending',
-    'packages/domain/src/approval/types.ts#revokeAllowed',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#HELD_STATUSES': [
     'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
@@ -968,9 +966,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#disclosedFieldNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#initiatorActions': [
-    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
-    'packages/domain/src/approval/types.ts#revokeAllowed',
+    'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
@@ -2101,4 +2098,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrievedApprovals'],
+  'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
+    'packages/domain/src/approval/types.ts#revokeAllowed',
+  ],
 };

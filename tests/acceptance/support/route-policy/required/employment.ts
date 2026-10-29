@@ -13,6 +13,7 @@ const SRC = 'apps/api/src/modules';
 const EMP = `${SRC}/employment/routes.ts`;
 const CTX = `${SRC}/employment/context.ts`;
 const REPLAY = `${SRC}/employment/replay-guard.ts`;
+const TRANSITION_ACCESS = `${SRC}/employment/transition-access.ts`;
 const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
@@ -330,14 +331,19 @@ function entryUpdate(path: string, linkageCall?: Evidence, method = 'POST'): Obl
 function transition(action: 'submit' | 'withdraw' | 'revoke' | 'delete'): Obligation[] {
   const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
   const op = action === 'delete' ? 'delete' : 'update';
-  const write = fn(EMP, 'registerBusinessTransitions', 'await requireEmploymentWrite( ctx,');
+  const write = fn(EMP, 'registerBusinessTransitions', 'await requireEmploymentTransitionWrite(ctx, action)');
+  const access = fn(
+    TRANSITION_ACCESS,
+    'requireEmploymentTransitionWrite',
+    'await requireEmploymentWrite(ctx, operation, {}, button)',
+  );
   const out: Obligation[] = [
     ob(
       `obj:${RECORD}:${op}`,
       ['object:readContext(object.*)', 'object:object.* 动作'],
-      [TRANSITIONS, READ, write, op === 'delete' ? WRITE_DELETE : WRITE_OBJECT, RECORD_CONST],
+      [TRANSITIONS, READ, write, access, op === 'delete' ? WRITE_DELETE : WRITE_OBJECT, RECORD_CONST],
     ),
-    ob(`btn:${RECORD}#${button}@detail`, [], [write, WRITE_BUTTON, RECORD_CONST]),
+    ob(`btn:${RECORD}#${button}@detail`, [], [write, access, WRITE_BUTTON, RECORD_CONST]),
     businessWrite(fn(EMP, 'registerBusinessTransitions', 'await authorizeBusinessWrite(deps, ctx, id)')),
     ob(
       'guard:transfer.source',
@@ -656,13 +662,18 @@ const ROW_TERMINATE: Evidence[] = [
     'await requireEmploymentWrite(ctx, spec.op, spec.payload, button, undefined, options)',
   ),
 ];
-const ROW_TRANSITION: Evidence[] = [
-  fn(INTERN_ACTIONS, 'rowActions', 'await permits(() => requireTransitionAccess(tx, update, item.id, action))'),
+const ROW_WITHDRAW: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', 'await employmentWithdrawalFailure(tx, update, item.id)'),
   fn(
-    INTERN_ACTIONS,
-    'requireTransitionAccess',
-    "await requireEmploymentWrite(scoped, 'update', {}, TRANSITION_BUTTONS[action])",
+    `${SRC}/employment/withdraw-eligibility.ts`,
+    'employmentWithdrawalFailure',
+    "await requireEmploymentTransitionWrite(ctx, 'withdraw')",
   ),
+  fn(TRANSITION_ACCESS, 'requireEmploymentTransitionWrite', 'await requireEmploymentWrite(ctx, operation, {}, button)'),
+];
+const ROW_REVOKE: Evidence[] = [
+  fn(INTERN_ACTIONS, 'rowActions', 'await permits(() => requireRevokeAccess(tx, update, item.id))'),
+  fn(INTERN_ACTIONS, 'requireRevokeAccess', "await requireEmploymentWrite(scoped, 'update', {}, 'Employment.Revoke')"),
 ];
 const rowActionObligations = (): Obligation[] => [
   rowAction(
@@ -688,10 +699,10 @@ const rowActionObligations = (): Obligation[] => [
   rowAction(
     `obj:${RECORD}:update`,
     ['objectOp:TenantBase.EmploymentRecord:update'],
-    [...ROW_TRANSITION, WRITE_CONTEXT, READ, WRITE_OBJECT],
+    [...ROW_WITHDRAW, ...ROW_REVOKE, WRITE_CONTEXT, READ, WRITE_OBJECT],
   ),
-  rowAction(`btn:${RECORD}#Employment.Withdraw@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
-  rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_TRANSITION, WRITE_BUTTON, RECORD_CONST]),
+  rowAction(`btn:${RECORD}#Employment.Withdraw@detail`, [], [...ROW_WITHDRAW, WRITE_BUTTON, RECORD_CONST]),
+  rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_REVOKE, WRITE_BUTTON, RECORD_CONST]),
 ];
 
 // ---- F-268 兼职申请详情逐单 availableActions（part-time/request-actions.ts）：可选分支 requestActions ----
@@ -2345,7 +2356,7 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     ...requestActionObligations(),
   ],
-  // PT-5 兼职六视图：readPageContext(list) + 筛选字段须可见（requireViewableFilters，否则 403）；范围谓词在 queries.ts 分页前过滤
+  // PT-5 / F-255：readPageContext(list) + 筛选与显式排序字段须可见，否则 403；范围谓词在 queries.ts 分页前过滤
   'GET /api/tenant/employment/part-times': [
     recordView(at(PART_TIME, 'GET', '/part-times', "const ctx = await readPageContext(c, deps, 'list')")),
     ob(
@@ -2354,6 +2365,7 @@ export const EMPLOYMENT: RequiredTable = {
       [
         at(PART_TIME, 'GET', '/part-times', 'requireViewableFilters('),
         fn(PART_TIME, 'requireViewableFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+        at(PART_TIME, 'GET', '/part-times', "throw new AppError('FORBIDDEN', '排序字段不可查看')"),
       ],
     ),
   ],

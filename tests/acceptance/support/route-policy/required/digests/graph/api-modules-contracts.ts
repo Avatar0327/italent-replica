@@ -201,6 +201,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/contracts/list-query.ts#orderClause',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
+  'apps/api/src/modules/contracts/queries.ts#expiredUnrenewedContract': ['#successorExists'],
+  'apps/api/src/modules/contracts/queries.ts#expiringContract': ['#successorExists'],
   'apps/api/src/modules/contracts/queries.ts#inReviewRequests': [
     'apps/api/src/modules/contracts/list-query.ts#filterPredicate',
     'apps/api/src/modules/contracts/list-query.ts#orderClause',
@@ -228,7 +230,7 @@ export const GRAPH: Graph = {
     '#viewPredicate',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
   ],
-  'apps/api/src/modules/contracts/queries.ts#viewPredicate': ['#successorExists'],
+  'apps/api/src/modules/contracts/queries.ts#viewPredicate': ['#expiredUnrenewedContract', '#expiringContract'],
   'apps/api/src/modules/contracts/recovery.ts#cancelFailedRequest': [
     'apps/api/src/modules/approval/actions.ts#cancel',
     'apps/api/src/modules/approval/context.ts#rowsOf',

@@ -242,6 +242,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   partTimeType: '任职类型',
   endDate: '结束日期',
   originalEndDate: '原定结束日期',
+  institutionId: '兼职机构',
+  requestSource: '申请来源',
   requestRemark: '申请备注',
   serviceStatus: '任职状态',
   isStoreManager: '是否店长',

@@ -160,12 +160,13 @@ export async function activeInstanceOf(
   tenantId: string,
   businessType: BusinessType,
   businessId: string,
+  lock = true,
 ): Promise<InstanceRow | null> {
   const [row] = rowsOf(
     await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
       AND business_type=${businessType} AND business_id=${businessId}::uuid
       AND ${activeApprovalInstanceCondition({ status: sql`status`, businessType: sql`business_type` })}
-      FOR UPDATE`),
+      ${lock ? sql`FOR UPDATE` : sql``}`),
   );
   return row ? instanceOf(row) : null;
 }

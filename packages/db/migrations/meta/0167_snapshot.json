@@ -1,6 +1,6 @@
 {
-  "id": "67486e33-767c-4812-bb5d-8e374c8b07c7",
-  "prevId": "281d7ead-ec58-4963-996d-75bf908c5ab9",
+  "id": "281d7ead-ec58-4963-996d-75bf908c5ab9",
+  "prevId": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11170,6 +11170,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -11486,6 +11492,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_payload_versions_institution_fk": {
+          "name": "employment_payload_versions_institution_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -12008,6 +12029,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -12229,6 +12256,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_institution_fk": {
+          "name": "employment_records_institution_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -23903,16 +23945,16 @@
         },
         "approver_expression": {
           "name": "approver_expression",
-          "type": "jsonb",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
         "approver_expressions": {
           "name": "approver_expressions",
-          "type": "jsonb",
+          "type": "text[]",
           "primaryKey": false,
           "notNull": true,
-          "default": "'[]'::jsonb"
+          "default": "'{}'::text[]"
         },
         "fallback_user_ids": {
           "name": "fallback_user_ids",
@@ -23970,13 +24012,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "empty_approver_sources": {
-          "name": "empty_approver_sources",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         },
         "same_assignee_skip": {
           "name": "same_assignee_skip",
@@ -24215,6 +24250,10 @@
           "name": "approval_nodes_avoid_subjects_result",
           "value": "\"approval_process_nodes\".\"avoid_subjects_result\" IN ('skip')"
         },
+        "approval_nodes_approver": {
+          "name": "approval_nodes_approver",
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',\n        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee')"
+        },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
           "value": "\"approval_process_nodes\".\"no_assignee_policy\" IN ('exception_admin','none')"
@@ -24245,7 +24284,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND jsonb_typeof(\"approval_process_nodes\".\"approver_expressions\") = 'array'\n          AND jsonb_array_length(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 200\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND jsonb_typeof(\"approval_process_nodes\".\"approver_expression\") = 'object'\n          AND \"approval_process_nodes\".\"approver_expressions\" = '[]'::jsonb END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'approval_subject_org_hrbp','approval_subject_org_head',\n            'handover_work_owner','handover_hr_admin','handover_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -60004,6 +60043,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -60161,6 +60206,21 @@
             "tenant_id",
             "employee_id",
             "request_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_institution_fk": {
+          "name": "part_time_request_versions_institution_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
