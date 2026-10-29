@@ -40,6 +40,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/retirement-rules/:id',
     'PUT /api/tenant/employment/retirement-rules/:id/enabled',
     'POST /api/tenant/employment/retirement-rules/run',
+    'POST /api/tenant/employment/interns',
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
@@ -79,6 +80,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/employees/:id/probation',
     'PUT /api/tenant/employment/probation-results/:id',
+    'PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId',
   ],
   /** 声明里的 map 型动态选择器位置“端点 × 位置”（AC-PRM-FW-02 选择器绑定） */
   selectorSites: [

@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 // F-127b：合同类型 / 续签规则 / 合同设置保存与规则删除，审批中行内催办 / 转交 / 撤销（接口全部为合成桩）。
 import { test, expect, user } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
@@ -214,7 +215,7 @@ test('AC-FE-R2a-17 催办结果未知锁定本行催办，不自动重发', asyn
 test('AC-FE-R2a-17c 催办回执不是本流程时按结果未知锁定，不提示成功', async ({ page }) => {
   const writes = await approvals(page, () => ({ json: { id: requestId, revision: 4 } }));
   await row(page, '催办').click();
-  await expect(page.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+  await expect(actionButton(page, '回查原单')).toBeVisible();
   await expect(row(page, '催办')).toBeDisabled();
   await expect(page.getByText('已催办', { exact: true })).toHaveCount(0);
   expect(writes).toHaveLength(1);
@@ -228,7 +229,7 @@ test('AC-FE-R2a-17b 催办结果未知的锁存在页面层：切换视图再回
   await expect(row(page, '催办')).toHaveCount(0);
   await page.getByRole('button', { name: '审批中合同协议', exact: true }).click();
   await expect(row(page, '催办')).toBeDisabled();
-  await expect(page.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+  await expect(actionButton(page, '回查原单')).toBeVisible();
   expect(writes).toHaveLength(1);
 });
 
@@ -283,7 +284,7 @@ async function staleOnce(page: Page, read: string, write: string, row: { revisio
   return writes;
 }
 const resolve = async (scope: Locator) => {
-  await scope.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(scope, '重读最新版本').click();
   await scope.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
 };
 const tableEdit = (page: Page) => page.locator('.ant-table').getByRole('button', named('编辑')).click();
@@ -355,7 +356,7 @@ test('AC-FE-R2a-20 类型启停冲突后可重读、核对、重提', async ({ p
   await table.getByRole('button', named('停用')).click();
   await page.getByRole('tooltip').getByRole('button', named('确定')).click();
   await expect.poll(() => writes.length).toBe(2);
-  await expect(table.getByRole('button', { name: '重读最新版本', exact: true })).toHaveCount(0);
+  await expect(actionButton(table, '重读最新版本')).toHaveCount(0);
   expect(writes.map(({ revision, body }) => [revision, body])).toEqual([
     [String(typeRow.revision), { code: typeRow.code, name: typeRow.name, enabled: false }],
     [String(typeRow.revision + 1), { code: typeRow.code, name: typeRow.name, enabled: false }],

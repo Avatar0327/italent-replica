@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Locator, Page, Request } from '@playwright/test';
 import { expect, mapPreferences, snapshotFixture, user } from './fixtures.js';
 
@@ -283,9 +284,7 @@ export function watchErrors(page: Page) {
   });
   return errors;
 }
-// antd 会在两个汉字的按钮文字中间插空格（“新 建”），按钮名按字间可有空白匹配。
-export const button = (page: Page | Locator, name: string) =>
-  page.getByRole('button', { name: new RegExp(`^${[...name].join('\\s*')}$`) });
+export { actionButton as button } from './action-button.js';
 /** 选好演示身份并等顶栏应用导航就绪（明确的就绪条件），之后由调用方只导航一次。 */
 export async function openShell(page: Page) {
   await page.goto('/succession');
@@ -339,11 +338,7 @@ export async function choose(page: Page, scope: Locator, label: string, option: 
   await scope.locator('.ant-form-item').filter({ has: combobox }).locator('.ant-select-selector').click();
   await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByTitle(option).click();
 }
-/**
- * 保存按钮：antd 的 loading 图标离场动画在无头浏览器里可能停住，图标名“loading”会留在可访问名里，
- * 所以按“以保存结尾”定位，是否仍在提交看 ant-btn-loading 类。
- */
-export const save = (scope: Locator) => scope.getByRole('button', { name: /保\s*存$/ });
+export const save = (scope: Locator) => actionButton(scope, '保存');
 /** 冲突提示出现后，等提交收尾（不再转圈、被冲突锁住）再操作，避免抢在提交状态落定之前点击。 */
 export async function settledConflict(scope: Locator) {
   await expect(scope.getByRole('button', { name: '重读最新版本' })).toBeVisible();

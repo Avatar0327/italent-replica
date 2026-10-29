@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, user } from './fixtures.js';
 
 // 本机多工作区并行，单项上限留给冷启动；不使用重试掩盖功能错误。
@@ -147,7 +148,7 @@ test('AC-FE-R3b-06 只读权限不能看到新建、编辑、发布；隐藏字�
   await expect(page.getByRole('button', { name: '新建评定活动', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: ev.name, exact: true }).click();
   await expect(page.getByRole('button', { name: /编\s*辑/, exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '发布活动', exact: true })).toHaveCount(0);
+  await expect(actionButton(page, '发布活动')).toHaveCount(0);
 });
 
 test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重放', async ({ page }) => {
@@ -174,7 +175,7 @@ test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重
     return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
   });
   await page.getByRole('button', { name: ev.name, exact: true }).click();
-  await page.getByRole('button', { name: '发布活动', exact: true }).click();
+  await actionButton(page, '发布活动').click();
   await page.getByRole('button', { name: /确\s*定/, exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('刷新');
   const publish = page.getByRole('button', { name: /发布活动$/ });
