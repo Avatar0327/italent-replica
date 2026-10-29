@@ -70,6 +70,14 @@ export async function installProbationSeeds(db: Db, tenantId: string): Promise<v
       { tenantId, actorUserId: null, now: new Date(), commandId: `probation-seed-${randomUUID()}` },
       { modules: ['employment-probation'] },
     );
+    const forms = await tx.execute(sql`SELECT to_regclass('employment_forms') IS NOT NULL AS ready`);
+    const [formsReady] = (Array.isArray(forms) ? forms : (forms as { rows: unknown[] }).rows) as { ready: boolean }[];
+    if (formsReady?.ready)
+      await installMissingSeeds(
+        tx,
+        { tenantId, actorUserId: null, now: new Date(), commandId: `forms-seed-${randomUUID()}` },
+        { modules: ['employment-forms'] },
+      );
   });
 }
 

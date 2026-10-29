@@ -1,3 +1,4 @@
+import { validateEmploymentForm } from '../employment-forms.js';
 /**
  * 兼职申请的持久化（docs/08_设计/R2-T05_兼职设计.md §1.4 / §2.2）：申请头 + 载荷版本 + 状态事件三张表。
  * 头只改 revision，载荷版本与状态事件只追加；“原定结束日期”“提交时目标期号”在版本里，不被实际失效日覆盖。
@@ -172,6 +173,7 @@ async function insertVersion(
   previousVersionId: string | null,
   payload: RequestPayload,
 ): Promise<string> {
+  await validateEmploymentForm(tx, ctx.tenantId, payload.employmentForm);
   const id = randomUUID();
   const [previous] = rowsOf<{ department: string; start: string; institution: string | null }>(
     await tx.execute(sql`SELECT department_id AS department, start_date::text AS start, institution_id AS institution

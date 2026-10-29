@@ -1,6 +1,6 @@
 {
-  "id": "7e5a20a1-42d2-4f95-b337-164527c64bb2",
-  "prevId": "a9ab5128-07eb-435e-8c4e-5dca653f1ffe",
+  "id": "a9ab5128-07eb-435e-8c4e-5dca653f1ffe",
+  "prevId": "906c9bf0-f0ad-4ef6-92c3-bf60134cfbeb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11742,6 +11742,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "employment_payload_versions_form_fk": {
+          "name": "employment_payload_versions_form_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -12469,6 +12484,21 @@
           "columnsTo": [
             "tenant_id",
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_form_fk": {
+          "name": "employment_records_form_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -60359,6 +60389,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "part_time_request_versions_form_fk": {
+          "name": "part_time_request_versions_form_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -63188,55 +63233,100 @@
       },
       "isRLSEnabled": false
     },
-    "public.exit_account_settings": {
-      "name": "exit_account_settings",
+    "public.employment_forms": {
+      "name": "employment_forms",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "tenant_id": {
           "name": "tenant_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
-        "early_enabled": {
-          "name": "early_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "basis": {
-          "name": "basis",
+        "code": {
+          "name": "code",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "time": {
-          "name": "time",
-          "type": "text",
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
         },
-        "in_review": {
-          "name": "in_review",
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": true
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "revision": {
           "name": "revision",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "exit_account_settings_tenant_id_tenants_id_fk": {
-          "name": "exit_account_settings_tenant_id_tenants_id_fk",
-          "tableFrom": "exit_account_settings",
+        "employment_forms_tenant_id_tenants_id_fk": {
+          "name": "employment_forms_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_forms",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -63249,175 +63339,41 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.exit_account_tasks": {
-      "name": "exit_account_tasks",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "handler_user_id": {
-          "name": "handler_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "restore_requested": {
-          "name": "restore_requested",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "auto_revision": {
-          "name": "auto_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recipient_user_ids": {
-          "name": "recipient_user_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        }
-      },
-      "indexes": {
-        "exit_account_tasks_user": {
-          "name": "exit_account_tasks_user",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "exit_account_tasks_tenant_id_tenants_id_fk": {
-          "name": "exit_account_tasks_tenant_id_tenants_id_fk",
-          "tableFrom": "exit_account_tasks",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "exit_account_tasks_business_fk": {
-          "name": "exit_account_tasks_business_fk",
-          "tableFrom": "exit_account_tasks",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "exit_account_tasks_tenant_id_business_id_pk": {
-          "name": "exit_account_tasks_tenant_id_business_id_pk",
+      "uniqueConstraints": {
+        "employment_forms_tenant_id": {
+          "name": "employment_forms_tenant_id",
+          "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
-            "business_id"
+            "id"
+          ]
+        },
+        "employment_forms_tenant_code": {
+          "name": "employment_forms_tenant_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
           ]
         }
       },
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "exit_account_tasks_status": {
-          "name": "exit_account_tasks_status",
-          "value": "\"exit_account_tasks\".\"status\" IN ('pending','disabled','blocked','restored','skipped','failed')"
+        "employment_forms_category": {
+          "name": "employment_forms_category",
+          "value": "\"employment_forms\".\"category\" IN (1,2,3,4)"
+        },
+        "employment_forms_nonempty": {
+          "name": "employment_forms_nonempty",
+          "value": "btrim(\"employment_forms\".\"code\") <> '' AND btrim(\"employment_forms\".\"name\") <> ''"
+        },
+        "employment_forms_dates": {
+          "name": "employment_forms_dates",
+          "value": "\"employment_forms\".\"effective_date\" <= \"employment_forms\".\"expiry_date\""
+        },
+        "employment_forms_revision_order": {
+          "name": "employment_forms_revision_order",
+          "value": "\"employment_forms\".\"revision\" > 0 AND \"employment_forms\".\"display_order\" >= 0"
         }
       },
       "isRLSEnabled": false

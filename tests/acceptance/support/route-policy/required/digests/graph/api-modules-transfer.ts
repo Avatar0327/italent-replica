@@ -594,6 +594,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/transfer/preview.ts#visiblePartTimes': ['#PART_TIME_FIELD_CODES'],
   'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields': [
+    'packages/domain/src/transfer/required.ts#TRANSFER_REQUIRED_REASON',
     'packages/domain/src/transfer/required.ts#missingTransferRequiredFields',
   ],
   'apps/api/src/modules/transfer/response-disclosure.ts#managerCode': ['#MANAGERS'],

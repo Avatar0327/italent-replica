@@ -1166,6 +1166,7 @@ export const GRAPH: Graph = {
     '#EMPLOYMENT_OBJECT',
     '#projectActivationFailures',
     '#visiblePreviousRecords',
+    '#withEmploymentFormNames',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
     'apps/api/src/modules/transfer/response-disclosure.ts#trimEmploymentManagerReferences',
@@ -1174,6 +1175,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/context.ts#visiblePreviousRecords': [
     '#previousCreators',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+  ],
+  'apps/api/src/modules/employment/context.ts#withEmploymentFormNames': [
+    'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
   ],
   'apps/api/src/modules/employment/context.ts#withReplayRecheck': [
     '#commandContext',
@@ -1352,6 +1356,52 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_CODES',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS_CODES',
   ],
+  'apps/api/src/modules/employment/employment-form-routes.ts#route:GET /employment-forms': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/employment-forms.ts#listEmploymentForms',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/employment/employment-forms.ts#EMPLOYMENT_FORM_CATEGORIES',
+  ],
+  'apps/api/src/modules/employment/employment-form-routes.ts#route:POST /employment-forms': [
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/employment-forms.ts#parseEmploymentForm',
+    'apps/api/src/modules/employment/employment-forms.ts#saveEmploymentForm',
+  ],
+  'apps/api/src/modules/employment/employment-form-routes.ts#route:PUT /employment-forms/:id': [
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#ruleGuard',
+    'apps/api/src/modules/employment/auto-regularization-routes.ts#writeContext',
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    'apps/api/src/modules/employment/employment-forms.ts#parseEmploymentForm',
+    'apps/api/src/modules/employment/employment-forms.ts#saveEmploymentForm',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/employment-forms.ts#audit': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/employment/employment-forms.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
+  'apps/api/src/modules/employment/employment-forms.ts#inputSchema': ['#date'],
+  'apps/api/src/modules/employment/employment-forms.ts#listEmploymentForms': ['#LIMIT', '#columns'],
+  'apps/api/src/modules/employment/employment-forms.ts#lock': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
+  'apps/api/src/modules/employment/employment-forms.ts#parseEmploymentForm': ['#inputSchema'],
+  'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms': ['#LIMIT'],
+  'apps/api/src/modules/employment/employment-forms.ts#saveEmploymentForm': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    '#LIMIT',
+    '#audit',
+    '#columns',
+    '#listEmploymentForms',
+    '#lock',
+    '#parseEmploymentForm',
+    'apps/api/src/system-actor.ts#auditActor',
+  ],
+  'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#requireEnabledEmploymentForms'],
   'apps/api/src/modules/employment/entry-actions.ts#assertRemark': [
     'packages/domain/src/employment/entry.ts#ENTRY_REMARK_MAX',
   ],
@@ -4398,6 +4448,7 @@ export const GRAPH: Graph = {
     '#loadPartTimeRequest',
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#insertVersion': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
     'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -5087,6 +5138,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness': ['#bumpEmploymentEmployee'],
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['#camelCase'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
     '#ARRAY_COLUMNS',
     '#JSON_COLUMNS',
     '#TABLES',
@@ -5130,6 +5182,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/reporting-cycle.ts#insertedWindow',
   ],
   'apps/api/src/modules/employment/references.ts#validateEmploymentReferences': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     '#validatePositionRanges',
     'apps/api/src/modules/employment/reporting-cycle.ts#assertNoReportingCycle',
@@ -5153,6 +5206,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/validation.ts#requiredJob',
   ],
   'apps/api/src/modules/employment/references.ts#validateTerminatingReferences': [
+    'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     '#JOB_REFERENCES',
     'apps/api/src/modules/job/read-model.ts#latestJobObject',
@@ -6238,6 +6292,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /employees': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/context.ts#queryDate',
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
@@ -6245,6 +6300,7 @@ export const GRAPH: Graph = {
     '#parse',
     '#requireViewableFilters',
     'apps/api/src/modules/job/context.ts#pageQuery',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
   'apps/api/src/modules/employment/routes.ts#route:GET /employees/:id': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',

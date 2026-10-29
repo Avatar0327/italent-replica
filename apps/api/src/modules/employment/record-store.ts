@@ -1,3 +1,4 @@
+import { validateEmploymentForm } from './employment-forms.js';
 import { isUuid, sql, type Tx } from '@italent/db';
 import { PART_TIME_KIND } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -205,6 +206,7 @@ export async function insertEmploymentRow(
   status?: VersionStatus,
   manualPlan = false,
 ): Promise<void> {
+  if (VERSION_TABLES.has(table)) await validateEmploymentForm(tx, String(input.tenantId), input.employmentForm);
   if (!TABLES.has(table)) throw new TypeError('非任职模块写入表');
   const values = VERSION_TABLES.has(table)
     ? { ...versionValues(input, status), ...(table === 'employment_payload_versions' ? { manualPlan } : {}) }

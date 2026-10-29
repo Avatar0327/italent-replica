@@ -2985,6 +2985,49 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  'GET /api/tenant/employment/employment-forms': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          `${SRC}/employment/employment-form-routes.ts`,
+          'GET',
+          '/employment-forms',
+          "await requirePermission(deps.authorize, { ...ctx, action: 'object.view', " +
+            "resource: 'TenantBase.EmploymentRecord'",
+        ),
+        {
+          role: 'impl',
+          unit: 'apps/api/src/authorization.ts#requirePermission',
+          anchor: "if (!(await authorizer(request))) throw new AppError('FORBIDDEN'",
+        },
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/employment-forms', 'create'],
+        ['PUT', '/employment-forms/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            `${SRC}/employment/employment-form-routes.ts`,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', input, undefined, 'TenantBase.EmploymentSettings'`,
+          ),
+        ),
+      ),
+    ]),
+  ),
   'GET /api/tenant/employment/probation-results': [
     ob(
       `obj:${RECORD}:view`,
