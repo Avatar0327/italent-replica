@@ -72,6 +72,16 @@ const ASSESSMENT_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.probationAssessment.code,
 };
 
+/**
+ * DEC-415：人事分析 - 人事看板（R2 BE-12b）是组织员工模块的只读新对象，看全部同样默认给本模块的预置管理员（标准版系统管理员、
+ * 人事管理员）；人事专员不是管理员，不预置，其看板按数据范围统计。
+ */
+const HR_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.hrDashboard.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -104,6 +114,11 @@ const CONFIG_OBJECTS = new Set<string>([
   MODULE_OBJECTS.contractSettings.code,
   MODULE_OBJECTS.contractRules.code,
 ]);
+
+/** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */
+const READ_ONLY_OBJECTS = new Set<string>([MODULE_OBJECTS.hrDashboard.code]);
+const grant = (definition: ObjectDefinition) =>
+  READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
 
 const BUSINESS_OBJECTS: readonly ObjectDefinition[] = [
   ...Object.values(MODULE_OBJECTS).filter((o) => !CONFIG_OBJECTS.has(o.code)),
@@ -369,9 +384,9 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '拥有组织员工的所有业务功能的权限',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(full),
+    objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL],
   },
   {
     code: 'standard_hr_admin',
@@ -379,9 +394,9 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '人事管理员',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(full),
+    objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象
@@ -390,7 +405,10 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '相比人事管理员除去了设置菜单',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => o.code !== APPROVAL_PROCESS_OBJECT).map((o) => withoutDailyWage(full(o))),
+    // DEC-415：时点花名册（BE-12a）导出全员档案，只给本模块的预置管理员，人事专员不预置
+    objects: BUSINESS_OBJECTS.filter(
+      (o) => o.code !== APPROVAL_PROCESS_OBJECT && o.code !== MODULE_OBJECTS.hrRoster.code,
+    ).map((o) => withoutDailyWage(grant(o))),
     hr: true,
   },
   {

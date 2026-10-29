@@ -285,6 +285,9 @@ export const MODULE_OBJECTS = {
       'autoPopulate',
       // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
       'entryEmailRules',
+      // F-321：用工形式生效 / 失效日期（类别、备注沿用已有字段）。
+      'effectiveDate',
+      'expiryDate',
       // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
       'code',
       'name',
@@ -319,6 +322,10 @@ export const MODULE_OBJECTS = {
     crud,
     ['operatorUserId'],
   ),
+  // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
+  // 看全部默认给本模块的预置管理员（DEC-415）
+  // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
+  hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(
@@ -343,6 +350,9 @@ export const MODULE_OBJECTS = {
     ],
     ['blacklistDate', 'source', 'status', 'removedAt'],
   ),
+  // BE-12a 人事分析 - 时点员工花名册（规格 35 §2.2）：功能权只有“查看”和列表级“导出”按钮；数据范围与字段权复用
+  // 员工档案（EmployeeInformation）、任职记录、合同三个对象，所以这个对象本身没有业务字段，asOf 只是请求参数
+  hrRoster: object('HrRoster', ['asOf'], [button('export', 'list')]),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',

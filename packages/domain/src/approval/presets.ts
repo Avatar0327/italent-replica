@@ -1,6 +1,7 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
- * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
+ * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）；
+ * 例外：组织调整预置取人口径是推断（DEC-644 A-2），只装草稿、不随开通发布（publishOnProvision）。
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
  * §8.3，开关按 §11.10 更正）与 TransferDetailView 已交付字段（§11.2，DEC-118）预置；离职按 §8.5 取证的
  * “直接上级 → HR 访谈”结构，直接上级取最新生效主职任职的直线经理（DEC-230）；
@@ -9,7 +10,10 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  */
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
+import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
+import { PART_TIME_ERRORS } from '../employment/part-time-constants.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import { TRANSFER_REQUIRED_FIELDS, TRANSFER_REQUIRED_REASON } from '../transfer/required.js';
 import { RETIREMENT_INTENTION_FORM_FIELDS } from '../employment/retirement-intention.js';
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
 import {
@@ -17,6 +21,7 @@ import {
   type ApprovalTypeCode,
   type ApproverExpression,
   type ProcessDefinition,
+  type CountersignApprovalNode,
   type SingleApprovalNode,
 } from './types.js';
 
@@ -25,6 +30,8 @@ export interface PresetProcess {
   readonly code: string;
   readonly approvalType: ApprovalTypeCode;
   readonly definition: ProcessDefinition;
+  /** 租户开通时是否随异常管理员一并发布；缺省发布。false = 只装草稿，由租户确认节点审批人后自行发布。 */
+  readonly publishOnProvision?: false;
 }
 
 /**
@@ -124,7 +131,9 @@ type GenericType = Exclude<
   | 'part_time_end'
   | 'offer'
   | 'offer_batch'
+  | 'org_adjustment'
   | 'retirement_intention'
+  | 'exit_handover'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -156,7 +165,7 @@ const RETIRE_FORM = ['lastWorkDate', 'effectiveDate', 'departmentId', 'postId', 
  * → 兼职部门负责人”，结束按 R2f1 / F-165③ 相反。HRBP 无人时转异常管理员（F-165③），首节点无人提交即报错（DEC-054）。
  * 三类节点都“同意时打开可编辑的业务表单”（结束 R2f1；新增 / 延长 F234A C9，DEC-629）：结束 / 延长可改结束日期与申请备注
  * （延长的新结束日期必填，A-14 / B-8）；新增可改兼职类型 / 结束日期 / 兼职部门 / 直线经理 / 职务 / 职级，必填兼职类型 / 开始日期 /
- * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属不开（F234A C9 字段集，取最小集合）。
+ * 兼职部门由业务校验把关。薪资、工号、开始日期不开；“是否部门负责人”随 PT-7 开放（DEC-634）；新增下属只读展示、不开编辑（F234A C9 字段集，取最小集合；F-280）。
  * 开始日期的字段权限编码未定（§7.2 只登记 6 个新字段），表单暂不放。
  */
 const PART_TIME_FORM = [
@@ -166,6 +175,7 @@ const PART_TIME_FORM = [
   'levelId',
   'directManagerId',
   'isDepartmentHead',
+  'addedSubordinateIds',
   'endDate',
   'requestRemark',
 ];
@@ -183,6 +193,19 @@ const PART_TIME_EDITABLE = {
   part_time_extend: ['endDate', 'requestRemark'],
   part_time_end: ['endDate', 'requestRemark'],
 } as const;
+const FIELD_REQUIRED = 'APPROVAL_FIELD_REQUIRED';
+/**
+ * 审批中编辑的必填字段 → 拒收空值的机器可读原因（F-291）：详情下发 required 与命令侧 editableInput 拒收空值共用这一张表。
+ * 兼职新增必填兼职类型 / 兼职部门（开始日期不可编辑）；延长 / 结束必填结束日期，沿用业务侧同名原因；调动沿用 DEC-165
+ * 的新部门必填（transfer/required.ts）。其余类型没有“空值当次拒收”的命令侧规则；考核的转正日期随转正意见条件必填
+ * （PB-R4 / R5），取决于同一次提交里的意见，无法静态标注，由命令侧 ASSESSMENT_DATE_REQUIRED 把关。
+ */
+export const APPROVAL_EDIT_REQUIRED: Partial<Record<ApprovalTypeCode, Readonly<Record<string, string>>>> = {
+  part_time_add: { partTimeType: FIELD_REQUIRED, departmentId: FIELD_REQUIRED },
+  part_time_extend: { endDate: PART_TIME_ERRORS.endDateRequired },
+  part_time_end: { endDate: PART_TIME_ERRORS.endDateRequired },
+  transfer: Object.fromEntries(TRANSFER_REQUIRED_FIELDS.map((field) => [field, TRANSFER_REQUIRED_REASON])),
+};
 const PART_TIME_NODES = {
   primaryHrbp: ['primary_hrbp', '主职部门HRBP', 'latest_record_department_hrbp'],
   primaryHead: ['primary_head', '主职部门负责人', 'latest_record_department_head'],
@@ -272,6 +295,33 @@ const OFFER_PRESETS: readonly PresetProcess[] = [
 ];
 
 /**
+ * 组织调整审批（R2-T08 §4.2，DEC-526②）：HRBPLeader 审批 → HR 负责人审批两个节点，表单即类型 formFields 全部编码。
+ * 两节点取人“审批主体组织的 HRBP / 负责人”是推断，非原站事实（DEC-644 A-2）：复刻组织只有负责人、HRBP 两个角色字段，
+ * 不把它们自动等同原站的两个审批角色。因此预置只是可改草稿，不随租户开通发布（publishOnProvision: false），
+ * 租户自行确认节点审批人后再发布。审批人为空按 DEC-054 / 098 既有口径（节点无人转异常管理员）。
+ */
+const ORG_ADJUSTMENT_PRESET: PresetProcess = {
+  presetKey: 'standard_organization_process',
+  code: 'StandardOrganizationProcess',
+  approvalType: 'org_adjustment',
+  publishOnProvision: false,
+  definition: draft({
+    name: '标准组织调整流程',
+    description: '出厂预置草稿：审批主体组织的 HRBP → 负责人（取人口径为推断，非原站事实），租户确认后发布',
+    priority: 0,
+    ...standardCondition('org_adjustment'),
+    nodes: [
+      node('hrbp_leader', 'HRBPLeader审批', 'approval_subject_org_hrbp', {
+        formFields: APPROVAL_TYPES.org_adjustment.formFields,
+      }),
+      node('hr_head', 'HR负责人审批', 'approval_subject_org_head', {
+        formFields: APPROVAL_TYPES.org_adjustment.formFields,
+      }),
+    ],
+  }),
+};
+
+/**
  * 试用期考核两类审批（BE-15b1，29 PB-R3，DEC-094 草稿）：员工自评 → 经理评价（节点结构取 PB-R3 “一般为”）。
  * 两个节点都开 “编辑并同意”（审批中可编辑，同意按钮关联编辑）：员工节点只开放自评，经理节点开放评价、转正意见与
  * 转正日期。考核结论决定转正与否，属敏感信息且有重大影响（DEC-332①），经理评价节点显式 avoidSelf = true；员工自评节点
@@ -307,6 +357,29 @@ const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
     ],
   }),
 }));
+
+/** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，resolver.ts resolveCandidates）。 */
+const anyOneNode = (
+  key: string,
+  name: string,
+  approver: ApproverExpression,
+  extra: Partial<SingleApprovalNode>,
+): CountersignApprovalNode => {
+  const { approver: _single, kind: _kind, ...rest } = node(key, name, approver, extra);
+  return { ...rest, kind: 'countersign', approvers: [approver], transitionRule: { type: 'any' } };
+};
+const HANDOVER_ACTIONS = { ...PRESET_ACTIONS, reject: false, jump: false, revoke: false } as const;
+const HANDOVER_NODES = [
+  { key: HANDOVER_NODE_KEYS.work, name: '工作交接', approver: 'handover_work_owner', countersign: true },
+  { key: HANDOVER_NODE_KEYS.other, name: '其他事项交接', approver: 'handover_hr_admin', countersign: true },
+  { key: HANDOVER_NODE_KEYS.employee, name: '员工确认', approver: 'handover_employee', countersign: false },
+  {
+    key: HANDOVER_NODE_KEYS.hrbp,
+    name: 'HRBP办离职证明',
+    approver: 'latest_record_department_hrbp',
+    countersign: false,
+  },
+] as const satisfies readonly { key: string; name: string; approver: ApproverExpression; countersign: boolean }[];
 
 export const PRESET_PROCESSES: readonly PresetProcess[] = [
   {
@@ -403,12 +476,36 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       ],
     }),
   },
+  {
+    // R2 BE-8b2（B64，R2c 节点结构）：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明，本类型兜底流程。办理页只有同意 / 不同意，
+    // 没有驳回 / 跳转 / 加签 / 转交（R2f2）；撤回关闭（发起人是员工本人，交接由系统代发）。审批人取值原站未验证，见 HANDOVER_ONLY_APPROVERS。
+    // 员工确认节点审批人就是本人，avoidSelf = false；其余节点按 DEC-332① 敏感且有重大影响，avoidSelf = true
+    presetKey: 'standard_exit_handover',
+    code: 'Standard_exit_handover',
+    approvalType: 'exit_handover',
+    definition: draft({
+      name: '标准离职交接申请流程',
+      description: '出厂预置：工作交接 → 其他事项交接 → 员工确认 → HRBP办离职证明，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('exit_handover'),
+      nodes: HANDOVER_NODES.map((spec) => {
+        const common = {
+          formFields: [],
+          exits: AGREE_OR_NOT,
+          actions: { ...HANDOVER_ACTIONS, avoidSelf: spec.key !== HANDOVER_NODE_KEYS.employee },
+        };
+        // 两个交接节点是会签（任一人同意）：兜底处理人可多人（DEC-663）；兜底列表预置为空
+        return spec.countersign
+          ? anyOneNode(spec.key, spec.name, spec.approver, common)
+          : node(spec.key, spec.name, spec.approver, common);
+      }),
+    }),
+  },
   ...(
     [
       'regularization',
       'intern_regularization',
       'hire',
-      'org_adjustment',
       'add_employee',
       'contract_create',
       'contract_renew',
@@ -511,4 +608,5 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
   },
   ...OFFER_PRESETS,
   ...ASSESSMENT_PRESETS,
+  ORG_ADJUSTMENT_PRESET,
 ];

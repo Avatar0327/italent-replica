@@ -19,6 +19,7 @@ import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { assertRevision } from './context.js';
+import { exitListOrder } from './exit-list-order.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -60,7 +61,7 @@ export async function listHandoverItems(tx: Tx, tenantId: string, itemId?: strin
   return rowsOf<HandoverItemView>(
     await tx.execute(sql`SELECT ${COLUMNS} FROM exit_handover_items WHERE tenant_id = ${tenantId}
       ${itemId ? sql`AND id = ${itemId}::uuid` : sql``}
-      ORDER BY sequence_no, created_at, id LIMIT ${HANDOVER_ITEM_LIMIT}`),
+      ORDER BY ${exitListOrder('handoverItems').order} LIMIT ${HANDOVER_ITEM_LIMIT}`),
   );
 }
 

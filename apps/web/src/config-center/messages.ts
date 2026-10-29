@@ -1,0 +1,21 @@
+export const configurationUi = {
+  title: '配置中心',
+  navigation: '配置中心目录',
+  application: '组织员工',
+  flow: '流程',
+  pending: '此配置页尚未开放',
+  pendingHint: '当前仅提供导航占位，暂不支持配置操作。',
+  sections: {
+    business: '业务系统配置',
+    workflow: '流程任务管理',
+    objects: '对象设置',
+    data: '数据源',
+    templates: '模板管理',
+    identity: '身份优先级',
+    canvas: '鲁班画布',
+    pages: '应用页面管理',
+    application: '应用配置',
+    'employee-detail': '员工详情页配置',
+    initialization: '数据初始化',
+  },
+} as const;

@@ -1,3 +1,4 @@
+import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -33,6 +34,7 @@ import {
   requireScopedEmploymentObject,
   trimEmploymentResponse,
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
 } from './context.js';
 import { createEmployee, employeeName, getEmployee, listEmployees } from './employees.js';
 import { EmploymentError } from './errors.js';
@@ -72,6 +74,8 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { requireEmploymentTransitionWrite } from './transition-access.js';
+import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 import {
   disclosePendingApplications,
   PendingApplicationError,
@@ -145,6 +149,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
   registerRetirementRuleRoutes(module, deps);
+  registerEmploymentFormRoutes(module, deps);
   registerRetirementIntentionRoutes(module, deps);
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
@@ -186,6 +191,12 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list', undefined, EMPLOYEE_OBJECT);
     const page = pageQuery(c);
     await requireViewableFilters(deps, ctx, ['employeeStatus', 'entryStatus'], (key) => c.req.query(key));
+    const view = parse(z.literal('labor').optional(), c.req.query('view'));
+    if (view === 'labor') {
+      const visible = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
+      if (visible && ['employmentForm', 'employType', 'employeeStatus'].some((key) => !visible.has(key)))
+        throw new AppError('FORBIDDEN', '劳务视图筛选字段不可查看');
+    }
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listEmployees(
         tx,
@@ -193,6 +204,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         queryDate(c, ctx),
         page,
         {
+          view,
           code: c.req.query('code'),
           name: c.req.query('name'),
           status: parse(z.enum(['pending', 'employed', 'left', 'retired']).optional(), c.req.query('status')),
@@ -448,8 +460,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const ack = action === 'submit' ? await submitBody(c) : undefined;
-        const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
-        await requireEmploymentWrite(ctx, action === 'delete' ? 'delete' : 'update', {}, button);
+        await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
@@ -479,7 +490,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
                 authorize: async (tx, scoped) => {
                   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentWrite(scoped, action === 'delete' ? 'delete' : 'update', {}, button);
+                  await requireEmploymentTransitionWrite(scoped, action);
                 },
               }),
         };
@@ -497,6 +508,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
               undefined,
               action === 'submit' ? {} : undefined,
             );
+            const denied = action === 'withdraw' && (await employmentWithdrawalFailure(tx, checked, id));
+            if (denied) throw denied;
             const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
             // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
@@ -590,10 +603,11 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, action: 'retry-activation' },
       async (tx, context) => {
-        // 离职的生效重试权限为 RetryActivation 且 Dimission 的交集（§4A）
+        // 离职 / 退休的生效重试权限为 RetryActivation 与本类型直接办理按钮的交集（§4A；退休为 Retire，F-265）
         if (exit)
           await requireExitGate(tx, context, 'retry', {
             employeeId: current.employeeId,
+            kind: current.kind,
             business: await lockEmploymentBusiness(tx, context, id),
           });
         await retryActivation(tx, context, id, current.employeeId);
@@ -601,7 +615,13 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       },
       {
         guard: exit
-          ? exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id })
+          ? exitCommandGuard(
+              deps,
+              ctx,
+              'retry',
+              { employeeId: current.employeeId, kind: current.kind },
+              { businessId: id },
+            )
           : sameOrderScopeGuard(deps, ctx, {
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),

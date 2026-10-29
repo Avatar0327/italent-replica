@@ -1,7 +1,7 @@
 import type { PageResult } from '../foundation/client.js';
 
 export type ApprovalView = 'pending' | 'completed' | 'initiated';
-export type ApprovalAction = 'approve' | 'disagree' | 'reject' | 'transfer' | 'withdraw';
+export type ApprovalAction = 'approve' | 'disagree' | 'reject' | 'transfer' | 'withdraw' | 'edit';
 export interface ApprovalRow {
   id: string;
   title: string;
@@ -17,7 +17,16 @@ export interface ApprovalDetail extends ApprovalRow {
   actions: string[];
   recordsHidden: boolean;
   commentNotice?: string;
-  form: { values: Record<string, unknown>; originals?: Record<string, unknown> };
+  form: {
+    values: Record<string, unknown>;
+    originals?: Record<string, unknown>;
+    /** DEC-655 / F-291：仅当前本人可办理节点下发，字段与必填由服务端裁定。 */
+    edit?: {
+      taskId: string;
+      mode: 'with_approve' | 'separate';
+      fields: Array<{ key: string; required: boolean; value: unknown }>;
+    };
+  };
   tasks: {
     id: string;
     nodeName: string;
@@ -34,6 +43,7 @@ export interface ApprovalLog {
   nodeKey?: string | null;
   taskId?: string | null;
   actorUserId?: string | null;
+  actorName?: string | null;
   /** 事件自身的明细；意见在 detail.comment（后端 appendLog）。 */
   detail?: Record<string, unknown>;
   createdAt: string;

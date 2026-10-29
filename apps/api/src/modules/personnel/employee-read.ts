@@ -6,8 +6,8 @@ import { AppError } from '../../errors.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 import { avatarSql } from '../avatar/references.js';
 
-export function employeeJoins(ctx: PersonnelContext): SQL {
-  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+/** 人员 / 任职 / 职务属性的“按日取值”唯一入口：personnel 列表固定取租户今天，时点花名册（BE-12a）传 asOf。 */
+export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.now, ctx.timezone)): SQL {
   return sql`
     LEFT JOIN LATERAL (SELECT v.* FROM personnel_employee_versions v
       WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY revision DESC LIMIT 1) v ON true

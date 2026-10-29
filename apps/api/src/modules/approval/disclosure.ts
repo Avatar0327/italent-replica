@@ -6,12 +6,10 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
-  APPROVAL_TYPES,
   instanceRecusal,
   jumpAllowed,
   nodeRecusal,
   rejectToPreviousAllowed,
-  revokeAllowed,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -26,10 +24,12 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
+import { editSurface, type EditSurface } from './edit-surface.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { addSignAllowed, addSignLink, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
+import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { loadRecusalFacts } from './subjects.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
@@ -136,7 +136,8 @@ async function ccNodeOf(tx: Tx, tenantId: string, instanceId: string, userId: st
 }
 
 /** 查看人作为审批人参与过的任务（被自审跳过只是留痕，不算参与，C-非3）。 */
-function ownTasks(data: Pick<DetailData, 'allTasks'>, userId: string): TaskRow[] {
+type RecordTask = Pick<TaskRow, 'assigneeUserId' | 'origin' | 'nodeKey'>;
+function ownTasks<T extends RecordTask>(data: { readonly allTasks: readonly T[] }, userId: string): T[] {
   return data.allTasks.filter(
     (task) => task.assigneeUserId === userId && task.origin !== 'self_skip' && task.origin !== 'subject_skip',
   );
@@ -168,9 +169,15 @@ function pick(source: Readonly<Row>, fields: readonly string[]): Row {
 }
 
 /** 详情公布的动作与命令执行共用同一套判定（rules.ts），不公布执行不了的动作（X-15 / X-16 / F14 / F16）。 */
-function actionsFor(data: DetailData, userId: string, blind: boolean): string[] {
+function actionsFor(
+  data: DetailData,
+  userId: string,
+  blind: boolean,
+  viewable: ReadonlySet<string> | undefined,
+): { actions: string[]; edit: EditSurface | null } {
   const { instance, version, allTasks } = data;
   const actions: string[] = [];
+  let edit: EditSurface | null = null;
   const running = instance.status === 'running';
   const mine = allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
@@ -201,27 +208,35 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (decide && jumpAllowed(node) && !addSignLink(allTasks, mine)) actions.push('jump');
     if (!recused && (node.actions.transfer || mine.isExceptionAdmin)) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
-    // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。
-    const editable = APPROVAL_TYPES[data.snapshot.approvalType].approvalEdit && !addSignLink(allTasks, mine);
-    if (decide && node.editMode === 'separate' && editable) actions.push('edit');
+    // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。F-291：独立编辑按钮与
+    // 详情下发的 form.edit 同一判定（edit-surface.ts），交集为空（查看人看不到任何可编辑字段）时都不公布。
+    if (decide) {
+      edit = editSurface({
+        approvalType: data.snapshot.approvalType,
+        node,
+        tasks: allTasks,
+        mine,
+        values: data.snapshot.values,
+        viewable,
+      });
+      if (edit?.mode === 'separate') actions.push('edit');
+    }
     if (!recused && node.actions.copySend) actions.push('cc');
   }
   const retrievable = retrievableTask(instance, version, allTasks, userId);
   if (retrievable && !recusedOn(retrievable)) actions.push('retrieve');
-  if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data));
+  if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data, userId));
   // DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的申请，不公布管理员转交 / 干预。
   if (running && !instanceHit && data.admin.transfer) actions.push('adminTransfer');
   if (running && !instanceHit && data.admin.intervene) actions.push('adminIntervene');
-  return actions;
+  return { actions, edit };
 }
 
-function initiatorActions({ instance, version }: DetailData): string[] {
+function initiatorActions({ instance, version }: DetailData, userId: string): string[] {
   const actions: string[] = [];
   // DEC-318 K-39：撤回按当前节点的开关（isRevoke，缺省开启）
   const current = version.nodes.find((node) => node.key === instance.currentNodeKey);
-  if (['running', 'returned'].includes(instance.status) && (!current || revokeAllowed(current))) {
-    actions.push('withdraw');
-  }
+  if (!approvalWithdrawalFailure(instance, userId, current)) actions.push('withdraw');
   // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9），
   // 发展计划驳回或撤回后由所有者沿原实例重提（DEC-318 K-39）。
   const sameInstance = ['personnel_change', 'idp'].includes(instance.businessType);
@@ -235,6 +250,12 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
   const disclosed = disclosedFields(data, userId, viewable);
+  const { actions, edit } = actionsFor(
+    data,
+    userId,
+    blindReviewFields(snapshot.changedFields, viewable).length > 0,
+    viewable,
+  );
   const fields = [...disclosed];
   // DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。
   if (instance.status === 'approved' && disclosed.has('effectiveDate'))
@@ -264,8 +285,13 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     logs: hidden ? [] : data.logs.map((log) => projectLog(log, disclosed)),
     recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
-    form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
-    actions: [...new Set(actionsFor(data, userId, blindReviewFields(snapshot.changedFields, viewable).length > 0))],
+    form: {
+      nodeKey: node?.key ?? null,
+      values: pick(snapshot.values, fields),
+      ...originals,
+      ...(edit ? { edit } : {}),
+    },
+    actions: [...new Set(actions)],
   };
 }
 
@@ -277,7 +303,14 @@ export const COMMENT_NOTICE = '审批意见默认对所有能查看本单的人�
  * 开关，或查看人是发起人且开始节点勾选了开关，即隐藏审批记录与沟通。不是审批人的人（被抄送人、范围内管理员）
  * 不受限制。
  */
-type RecordScope = Pick<DetailData, 'instance' | 'version' | 'allTasks'>;
+interface RecordScope {
+  readonly instance: Pick<InstanceRow, 'initiatorUserId'>;
+  readonly version: {
+    readonly hideRecordsFromInitiator: boolean;
+    readonly nodes: readonly Pick<ApprovalNode, 'key' | 'hideRecords'>[];
+  };
+  readonly allTasks: readonly RecordTask[];
+}
 export function recordsHidden(data: RecordScope, userId: string): boolean {
   const participated = new Set(ownTasks(data, userId).map((task) => task.nodeKey));
   return recordsHiddenFor({
@@ -285,6 +318,47 @@ export function recordsHidden(data: RecordScope, userId: string): boolean {
     isInitiator: data.instance.initiatorUserId === userId,
     hideFromInitiator: data.version.hideRecordsFromInitiator,
   });
+}
+
+/** 管理员日志只读本页实例的隐藏判定事实；按冻结版本及全部历史参与节点判断，不加载业务表单或操作人姓名。 */
+export async function visibleRecordInstances(tx: Tx, tenantId: string, userId: string, instanceIds: string[]) {
+  if (!instanceIds.length) return new Set<string>();
+  const rows = rowsOf<{
+    id: string;
+    initiator_user_id: string;
+    hide_records_from_initiator: boolean;
+    participation: { nodeKey: string; origin: TaskRow['origin']; hideRecords: boolean }[];
+  }>(
+    await tx.execute(sql`SELECT i.id,i.initiator_user_id,v.hide_records_from_initiator,
+        COALESCE((SELECT jsonb_agg(DISTINCT jsonb_build_object(
+          'nodeKey',t.node_key,'origin',t.origin,'hideRecords',n.hide_records))
+          FROM approval_tasks t
+          JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id
+            AND n.version_id=i.version_id AND n.node_key=t.node_key
+          WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id AND t.assignee_user_id=${userId}::uuid
+        ),'[]'::jsonb) AS participation
+      FROM approval_instances i
+      JOIN approval_process_versions v ON v.tenant_id=i.tenant_id AND v.id=i.version_id
+      WHERE i.tenant_id=${tenantId} AND i.id=ANY(${`{${instanceIds.join(',')}}`}::uuid[])`),
+  );
+  return new Set(
+    rows
+      .filter(
+        (row) =>
+          !recordsHidden(
+            {
+              instance: { initiatorUserId: row.initiator_user_id },
+              version: {
+                hideRecordsFromInitiator: row.hide_records_from_initiator,
+                nodes: row.participation.map((task) => ({ key: task.nodeKey, hideRecords: task.hideRecords })),
+              },
+              allTasks: row.participation.map((task) => ({ ...task, assigneeUserId: userId })),
+            },
+            userId,
+          ),
+      )
+      .map((row) => row.id),
+  );
 }
 
 /** 记录被隐藏时，已处理的任务（含本人的，连同意见）一律不返回，只保留当前待办（DEC-115）。 */

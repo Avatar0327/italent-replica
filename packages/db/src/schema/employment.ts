@@ -1,3 +1,4 @@
+import { employmentForms } from './employment-forms.js';
 /**
  * 任职业务的不可变快照与独立日期投影（R1-T05；07 §1–3、15 §1–2）。
  * 草稿、审批事件和生效记录分开保存；当前状态按租户业务日期从投影派生。
@@ -150,6 +151,7 @@ function presetFields() {
 }
 
 interface PresetColumns {
+  readonly employmentForm: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
   readonly departmentId: AnyPgColumn;
   readonly positionId: AnyPgColumn;
@@ -166,6 +168,11 @@ interface PresetColumns {
 
 function presetRules(name: string, t: PresetColumns): PgTableExtraConfigValue[] {
   return [
+    foreignKey({
+      name: `${name}_form_fk`,
+      columns: [t.tenantId, t.employmentForm],
+      foreignColumns: [employmentForms.tenantId, employmentForms.code],
+    }),
     reference(`${name}_department_fk`, t.tenantId, t.departmentId, orgObjects),
     reference(`${name}_position_fk`, t.tenantId, t.positionId, jobPositionObjects),
     reference(`${name}_post_fk`, t.tenantId, t.postId, jobPostObjects),
@@ -210,10 +217,14 @@ function kindRule(name: string, kind: AnyPgColumn) {
 /**
  * “变动类型”（原站与业务类型、异动类型并列的分类，W-416）。职位变更同步直线经理写入“职位调整”（F-006）；
  * 实习转正写入“实习转正”（BE-6a，R2f B41 / 31 Q-M0-122 ④）；结束实习写入“实习结束”（BE-6b，R2d B41）。
+ * 审批路径的组织调整写入“组织调整”（R2-T08 DEC-526①）；直接改组织路径仍为空（DEC-137）。
  * 其余业务与存量记录没有原站依据，保持空值，不回填。
  */
 function changeTypeRule(name: string, changeType: AnyPgColumn) {
-  return check(name, sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end')`);
+  return check(
+    name,
+    sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')`,
+  );
 }
 
 export const employmentPayloadVersions = pgTable(
@@ -242,6 +253,8 @@ export const employmentPayloadVersions = pgTable(
     selectedStaffId: uuid('selected_staff_id'),
     sourceRecordId: uuid('source_record_id'),
     sourceStaffId: uuid('source_staff_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     customFields: customFields(),
@@ -257,6 +270,7 @@ export const employmentPayloadVersions = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_payload_versions_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_payload_versions_tenant_id').on(t.tenantId, t.id),
     unique('employment_payload_versions_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_payload_versions_business_id').on(t.tenantId, t.employeeId, t.businessId, t.id),
@@ -391,6 +405,8 @@ export const employmentRecords = pgTable(
     serviceType: text('service_type').notNull().default('primary'),
     isInserted: boolean('is_inserted').notNull().default(false),
     inheritanceSourceId: uuid('inheritance_source_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     employType: text('employ_type').notNull(),
@@ -398,6 +414,7 @@ export const employmentRecords = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_records_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_records_tenant_id').on(t.tenantId, t.id),
     unique('employment_records_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_records_employee_staff').on(t.tenantId, t.employeeId, t.id, t.staffId),

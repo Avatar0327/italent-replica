@@ -101,6 +101,11 @@ export function parseEmploymentInput(value: unknown): NormalizedEmploymentInput 
   const parsed = businessSchema.safeParse(value);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '任职业务字段不合法', parsed.error.issues);
   const input = parsed.data;
+  // R2-T08 §4.1：组织调整的审批路径只走组织调整申请单（DEC-526②），通用任职入口不再接 application 方式
+  if (input.kind === 'org_adjustment' && input.mode === 'application')
+    throw new AppError('VALIDATION_FAILED', '组织调整申请请在组织调整申请单中发起', {
+      reason: 'ORG_ADJUSTMENT_KIND_RESERVED',
+    });
   let effectiveDate = input.effectiveDate;
   if (input.kind === 'leave' || input.kind === 'retirement') {
     if (!input.lastWorkDate) throw new AppError('VALIDATION_FAILED', '离职或退休必须填写最后工作日');
