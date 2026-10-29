@@ -7,6 +7,8 @@
  */
 import {
   APPROVAL_TYPES,
+  approverSource,
+  type ApproverExpression,
   approvalTypeOfBusiness,
   ORG_ADJUSTMENT_FORM_FIELDS,
   ORG_ADJUSTMENT_OBJECT_CODE,
@@ -73,8 +75,8 @@ describe('预置流程（§4.2，DEC-644 A-2：取人口径是推断，可改草
     ]);
     expect(definition.isFallback).toBe(false);
     expect(definition.nodes.map((n) => [n.key, n.name, 'approver' in n && n.approver])).toEqual([
-      ['hrbp_leader', 'HRBPLeader审批', 'approval_subject_org_hrbp'],
-      ['hr_head', 'HR负责人审批', 'approval_subject_org_head'],
+      ['hrbp_leader', 'HRBPLeader审批', { type: 'object_field', value: 'approval_subject_org_hrbp' }],
+      ['hr_head', 'HR负责人审批', { type: 'object_field', value: 'approval_subject_org_head' }],
     ]);
     for (const node of definition.nodes) {
       expect(node.formFields).toEqual(ORG_ADJUSTMENT_FORM_FIELDS);
@@ -90,14 +92,14 @@ describe('预置流程（§4.2，DEC-644 A-2：取人口径是推断，可改草
 });
 
 describe('审批人表达式的类型限制（§4.2）', () => {
-  const process = (approvalType: string, approver: string) => ({
+  const process = (approvalType: string, approver: ApproverExpression) => ({
     code: `OA13_${approvalType}_${uniqueSuffix()}`,
     name: '合成流程',
     approvalType,
     exceptionAdminUserId: null,
     isFallback: true,
     conditions: { items: [] },
-    nodes: [{ key: 'n1', approver }],
+    nodes: [{ key: 'n1', approver: approverSource(approver) }],
   });
 
   it('两个新表达式只用于组织调整；组织调整也不能用任职记录类取值', async () => {
@@ -114,14 +116,14 @@ describe('审批人表达式的类型限制（§4.2）', () => {
       ['org_adjustment', 'idp_tutor'],
     ] as const) {
       expect(await reason(await post(process(type, approver))), `${type}/${approver}`).toEqual([
-        400,
+        422,
         'APPROVAL_DEFINITION_INVALID',
       ]);
     }
-    for (const approver of ['approval_subject_org_hrbp', 'approval_subject_org_head', 'owner']) {
+    for (const approver of ['approval_subject_org_hrbp', 'approval_subject_org_head', 'owner'] as const) {
       const created = await post({
         ...process('org_adjustment', approver),
-        nodes: [{ key: 'n1', approver, formFields: ['subject'] }],
+        nodes: [{ key: 'n1', approver: approverSource(approver), formFields: ['subject'] }],
       });
       expect(created.status, approver).toBe(201);
     }
