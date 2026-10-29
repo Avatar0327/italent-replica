@@ -1,14 +1,10 @@
 {
-  "reason": "F255A / DEC-673：兼职机构存值与申请来源增加只读字段授权；不新增对象、按钮或数据范围",
+  "reason": "F-325 / DEC-685①：日工资标准仅默认授予组织员工模块的标准版系统管理员和人事管理员",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:requestSource:view"
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view",
+    "standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view",
+    "standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit"
   ],
   "remove": []
 }

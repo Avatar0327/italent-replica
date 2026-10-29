@@ -19,7 +19,7 @@ import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permiss
 import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
 import { IDP_APP, IDP_OBJECTS, type IdpObject } from '../idp/catalog.js';
-import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
+import { PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { QUALIFICATION_APP, QUALIFICATION_OBJECTS, QUALIFICATION_PAGES } from '../qualification/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
@@ -144,6 +144,12 @@ function readOnly(definition: ObjectDefinition): ObjectPermission {
     fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
     buttons: [],
   };
+}
+
+/** F-325 / DEC-685①：新工资字段仅默认授予所属模块管理员，不随全字段模板扩给专员或经理。 */
+function withoutDailyWage(permission: ObjectPermission): ObjectPermission {
+  if (permission.objectCode !== PERSONNEL_OBJECT) return permission;
+  return { ...permission, fields: permission.fields.filter((f) => f.fieldCode !== 'dailyWageStandard') };
 }
 
 /** 指定数据操作与按钮（按钮编码，含全部级别）；字段全部可见、非系统字段可编辑。 */
@@ -402,7 +408,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     // DEC-415：时点花名册（BE-12a）导出全员档案，只给本模块的预置管理员，人事专员不预置
     objects: BUSINESS_OBJECTS.filter(
       (o) => o.code !== APPROVAL_PROCESS_OBJECT && o.code !== MODULE_OBJECTS.hrRoster.code,
-    ).map(grant),
+    ).map((o) => withoutDailyWage(grant(o))),
     hr: true,
   },
   {
@@ -446,7 +452,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '经理若要查看并使用组织人事产品的经理自助端功能，须对此身份配置相应权限',
     licenseType: null,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map(readOnly),
+    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map((o) => withoutDailyWage(readOnly(o))),
     hr: false,
   },
   // DEC-280①②：三类内置 360 身份，由企业管理员在“用户授权”里授予；不消耗许可，数据范围不预置
