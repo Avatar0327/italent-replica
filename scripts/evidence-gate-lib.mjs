@@ -21,13 +21,49 @@ export function taskIds(text) {
 // 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理
 const level = (text) => (/后续|落地后|恢复时|可后补/.test(text) ? '可后补' : '开工前');
 
-// 放行只认“整条状态列规范化后逐字等于放行表里的一条”（F-290 第 5 轮，DEC-431①）：不做关键词 / 子串 / 正则判断，
+// 非 ✅ 状态放行只认“整条状态列规范化后逐字等于放行表里的一条”（F-290 第 5 轮，DEC-431①），
 // 放行表之外的任何写法（含改了一个字、追加说明、新写法）一律阻塞。放行表 = 真实清单 / 登记册里当前由 DEC 已定或
 // 剩余可后补而放行的 20 行状态列原文（取自 main 708feef）。新的状态写法须人工把原文加进下面的常量并配测试；
 // 这几行原文被改动后会不再命中、转为阻塞（保守），由 AC-TOOL-F290 的真实清单放行集合测试发现。
 // 规范化：NFKC（全半角统一）并去掉所有空白。
 const norm = (text) => text.normalize('NFKC').replace(/\s+/g, '');
 const releasedSet = (entries) => new Set(entries.map(norm));
+
+// F-303 点名的待实测 / 待取证 / 待定，加 F-290 已有待决写法（回归与历史 CONFLICT），不扩展其他同义词。
+const PENDING_STATUS = /待(?:实测|取证|定|确认|复核|用户|原站)/;
+const startsChecked = (statusCell) => /^✅/.test(statusCell.trim());
+// F-303 P2-1：标点与圈号只在括号外分项，避免诊断丢掉括号内的说明。
+function statusItems(statusCell) {
+  const items = [];
+  const closers = [];
+  let start = 0;
+  for (const match of statusCell.matchAll(/[()（）；;。，,、]|\.\s+|<br\s*\/?>|[①-⑳]/gi)) {
+    const token = match[0];
+    if (token === '(' || token === '（') {
+      closers.push(token === '(' ? ')' : '）');
+      continue;
+    }
+    if (token === ')' || token === '）') {
+      // 只闭合栈顶同类括号；孤立右括号保留原文，未闭合的左括号保守保留后续文字。
+      if (token === closers.at(-1)) closers.pop();
+      continue;
+    }
+    if (closers.length) continue;
+    items.push(statusCell.slice(start, match.index));
+    start = /[①-⑳]/.test(token) ? match.index : match.index + token.length;
+  }
+  items.push(statusCell.slice(start));
+  return items;
+}
+
+// F-313：取证列任意位置的 ✅ 都可能触发放行，待决检查必须覆盖相同范围，含带前缀的状态。
+// 保留原文与圈号供定位；括号内待决及未完成标记不能被外面的 ✅ 或后面的“已完成”覆盖。
+function checkedPendingItems(statusCell) {
+  if (!/✅/.test(statusCell)) return [];
+  return statusItems(statusCell)
+    .map((item) => item.trim())
+    .filter((item) => PENDING_STATUS.test(norm(item)) || /🟡|🔴/.test(item));
+}
 
 // 取证清单（🟡 行）：Q-M0-127 / 132 / 133 / 153
 const RELEASED_EVIDENCE_STATUS = releasedSet([
@@ -58,7 +94,7 @@ const RELEASED_EVIDENCE_STATUS = releasedSet([
   ].join(''),
 ]);
 
-// 差异登记册：D-062～D-077（✅ 开头的行沿用原有的 ✅ 识别）
+// 差异登记册：D-062～D-077（✅ 开头的行另查待决子项）
 const RELEASED_DECISION_STATUS = releasedSet([
   // D-062：docs/00_状态/04_缺口冲突差异登记册.md 第 89 行
   '已定（DEC-261 选③：结构化录入，保存时编译为 R3-T00 表达式）',
@@ -77,51 +113,71 @@ const RELEASED_DECISION_STATUS = releasedSet([
 ]);
 
 export function evidenceState(blocks, statusCell) {
+  const pendingItems = checkedPendingItems(statusCell);
   const st = /🔴/.test(statusCell)
     ? '🔴 未定论'
-    : /🟡/.test(statusCell)
+    : /🟡/.test(statusCell) || pendingItems.length > 0
       ? '🟡 部分'
       : /✅/.test(statusCell)
         ? '✅'
         : '□ 未取证';
   const deferred = st === '🟡 部分' && RELEASED_EVIDENCE_STATUS.has(norm(statusCell));
-  return { st, level: deferred ? '可后补' : level(blocks) };
+  // ✅ 中明确待决的子项须阻塞；其余状态保留 F-290 / F-271 的后补口径。
+  if (pendingItems.length) return { st, level: '开工前', pendingItems };
+  return { st, level: deferred ? '可后补' : level(blocks), pendingItems };
 }
 
-// 差异行：✅ 须在状态列开头（去掉首部空白后）才算已结；其余只有放行表里的状态原文放行（“待用户决定 / 待原站实测”和认不出的写法仍拦）
+// 差异行：✅ 须在开头且每个子项都无待决才算已结；其余继续整列精确匹配。
 export const decisionSettled = (statusCell) =>
-  /^✅/.test(statusCell.trim()) || RELEASED_DECISION_STATUS.has(norm(statusCell));
+  (startsChecked(statusCell) && checkedPendingItems(statusCell).length === 0) ||
+  RELEASED_DECISION_STATUS.has(norm(statusCell));
 
-export function parseEvidence(markdown) {
-  return markdown
-    .split('\n')
-    .filter((l) => /^\| Q-M0-\d+/.test(l))
-    .map((l) => {
-      const c = cells(l);
-      return { id: c[0], what: c[2], blocks: c[4], tasks: taskIds(c[4]), ...evidenceState(c[4], c[5]) };
-    });
+export function parseEvidence(markdown, file = 'docs/07_M0/03_需取证清单.md') {
+  return markdown.split('\n').flatMap((l, index) => {
+    if (!/^\| Q-M0-\d+/.test(l)) return [];
+    const c = cells(l);
+    return [
+      {
+        id: c[0],
+        what: c[2],
+        blocks: c[4],
+        tasks: taskIds(c[4]),
+        file,
+        line: index + 1,
+        ...evidenceState(c[4], c[5]),
+      },
+    ];
+  });
 }
 
-export function parseDecisions(markdown) {
+export function parseDecisions(markdown, file = 'docs/00_状态/04_缺口冲突差异登记册.md') {
   return markdown
     .split('\n')
-    .filter((l) => /^\| \*\*D-\d+\*\*/.test(l))
-    .map((l) => {
+    .flatMap((l, index) => {
+      if (!/^\| \*\*D-\d+\*\*/.test(l)) return [];
       const c = cells(l);
       // 只认显式写明的“影响任务：R1-T03、F-007”；行里顺带提到的任务号不算范围（PR #46 Codex 审查 P2）
       const scope = /影响任务[：:]\s*([^|；;。]+)/.exec(l);
-      return {
-        id: c[0].replace(/\*/g, ''),
-        what: c[1],
-        diff: c[2],
-        st: c[4] ?? '',
-        tasks: scope ? taskIds(scope[1]) : null,
-      };
+      return [
+        {
+          id: c[0].replace(/\*/g, ''),
+          what: c[1],
+          diff: c[2],
+          st: c[4] ?? '',
+          tasks: scope ? taskIds(scope[1]) : null,
+          file,
+          line: index + 1,
+          pendingItems: checkedPendingItems(c[4] ?? ''),
+        },
+      ];
     })
     .filter((d) => !decisionSettled(d.st));
 }
 
 const clip = (s, n = 70) => (s.length > n ? s.slice(0, n) + '…' : s);
+// 子项不截断，避免待决词在长说明尾部时诊断再次漏掉。
+const pendingDetails = (row) =>
+  row.pendingItems.map((item) => `    ${row.file}:${row.line}  ${row.id}  待决子项：${item}`);
 
 /** 返回要打印的行与退出码：有“开工前”未完成项或待决差异（且指定了目标）时为 1。 */
 export function gateReport(evidence, decisions, targets) {
@@ -130,7 +186,7 @@ export function gateReport(evidence, decisions, targets) {
   if (targets.length === 0) {
     const open = evidence.filter((e) => e.st !== '✅');
     out.push(`未完成取证 ${open.length} 项（共 ${evidence.length} 项）`);
-    for (const e of open) out.push(`  ${e.id}  ${e.st}  [${e.blocks}]  ${clip(e.what)}`);
+    for (const e of open) out.push(`  ${e.id}  ${e.st}  [${e.blocks}]  ${clip(e.what)}`, ...pendingDetails(e));
   } else {
     for (const t of targets) {
       const hits = evidence.filter((e) => e.tasks.has(t) && e.st !== '✅');
@@ -140,11 +196,11 @@ export function gateReport(evidence, decisions, targets) {
       if (must.length) {
         blocked = true;
         out.push(`⛔ 开工前须完成的取证 ${must.length} 项：`);
-        for (const e of must) out.push(`  ${e.id}  ${e.st}  ${clip(e.what)}`);
+        for (const e of must) out.push(`  ${e.id}  ${e.st}  ${clip(e.what)}`, ...pendingDetails(e));
       }
       if (later.length) {
         out.push(`⚠️ 可先按暂定口径开发、合并后补的取证 ${later.length} 项：`);
-        for (const e of later) out.push(`  ${e.id}  ${e.st}  ${clip(e.what)}`);
+        for (const e of later) out.push(`  ${e.id}  ${e.st}  ${clip(e.what)}`, ...pendingDetails(e));
       }
       if (!hits.length) out.push('✅ 清单中没有挂在该任务上的未完成取证（新任务仍须先做开工前取证扫描）');
     }
@@ -155,7 +211,7 @@ export function gateReport(evidence, decisions, targets) {
   if (relevant.length) {
     blocked = blocked || targets.length > 0;
     out.push(`\n待用户决定 / 待原站实测的差异 ${relevant.length} 项（开工前确认是否涉及本任务）：`);
-    for (const d of relevant) out.push(`  ${d.id}  ${clip(d.st, 20)}  ${clip(d.what)}`);
+    for (const d of relevant) out.push(`  ${d.id}  ${clip(d.st, 20)}  ${clip(d.what)}`, ...pendingDetails(d));
   }
   return { lines: out, exitCode: blocked ? 1 : 0 };
 }
