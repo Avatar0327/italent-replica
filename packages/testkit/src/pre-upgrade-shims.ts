@@ -31,6 +31,8 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
     type: 'date',
     migration: 'employment_planned_effective_date',
   },
+  // F-255：当前离职夹具查询兼职最新快照，旧库也需临时具备该查询读取的机构列。
+  { table: 'employment_payload_versions', column: 'institution_id', type: 'uuid', migration: 'gray_firestar' },
 ];
 
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);
