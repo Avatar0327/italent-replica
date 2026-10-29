@@ -253,14 +253,19 @@ describe('F-290 CLI 回归：第 3～5 轮全部复现写法阻塞、退出码 1
 });
 
 describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误放）', () => {
-  it('取证清单：由状态列放行的恰为 Q-M0-127 / 132 / 133 / 153', () => {
-    const released = parseEvidence(read(EVIDENCE_MD))
+  it('AC-TOOL-F312：Q-M0-01 / 52 已闭合，非 ✅ 的后补放行集合不变', () => {
+    const evidence = parseEvidence(read(EVIDENCE_MD));
+    const reconciledPending = evidence
+      .filter((e) => ['Q-M0-01', 'Q-M0-52'].includes(e.id) && e.st !== '✅')
+      .map((e) => e.id);
+    expect(reconciledPending).toEqual([]);
+    const released = evidence
       .filter((e) => e.level === '可后补' && !/后续|落地后|恢复时|可后补/.test(e.blocks))
       .map((e) => e.id);
     expect(released).toEqual(RELEASED_EVIDENCE);
   });
 
-  it('差异登记册：非 ✅ 开头而放行的恰为 D-062～D-077，仍待决的只有 D-057', () => {
+  it('AC-TOOL-F312：D-027 / 028 / 057 已决，非 ✅ 放行仍为 D-062～D-077', () => {
     const md = read(DECISION_MD);
     const open = parseDecisions(md).map((d) => d.id);
     const settledNotTicked = md
@@ -269,7 +274,7 @@ describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误�
       .map((l) => ({ id: /D-\d+/.exec(l)![0], st: cellsOf(l)[4]! }))
       .filter((d) => !open.includes(d.id) && !d.st.startsWith('✅'))
       .map((d) => d.id);
-    expect(open).toEqual(['D-057']);
+    expect(open).toEqual([]);
     expect(settledNotTicked).toEqual(RELEASED_DECISIONS);
   });
 });
