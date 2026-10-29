@@ -1,6 +1,12 @@
 {
-  "reason": "F-317：原站列表行与批量首次发起离职交接，仅 HR 三身份，前序版本 +1 占位",
+  "reason": "列车 B1：汇总 F-305 重新提交、F-250 详情首次发起、F-317 列表行与批量首次发起授权，供合入 main 后动态基线核对",
   "add": [
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
+    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
     "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
     "standard_org_system_admin/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list",
     "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
