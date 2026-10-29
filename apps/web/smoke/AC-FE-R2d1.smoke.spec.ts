@@ -48,22 +48,21 @@ test('AC-FE-R2d1-01 默认、六视图列序、分页、申请类型和只读边
   expect(writes).toEqual([]);
 });
 
-test('AC-FE-R2d1-02 days 与日期范围校验', async ({ page }) => {
+test('AC-FE-R2d1-02 即将到期结束日期范围校验', async ({ page }) => {
   await setup(page);
   await page.getByRole('button', { name: '即将到期', exact: true }).click();
   await page.getByRole('button', { name: '高级筛选', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: '高级筛选' });
-  await drawer.getByLabel('到期天数', { exact: true }).fill('7');
-  await drawer.getByLabel('兼职开始日期起', { exact: true }).fill('2026-10-20');
-  await drawer.getByLabel('兼职开始日期止', { exact: true }).fill('2026-10-01');
+  await drawer.getByLabel('兼职结束日期起', { exact: true }).fill('2026-10-20');
+  await drawer.getByLabel('兼职结束日期止', { exact: true }).fill('2026-10-01');
   await drawer.getByRole('button', { name: /^确\s*定$/ }).click();
   await expect(drawer.getByText('日期区间的起始日期不能晚于结束日期')).toBeVisible();
-  await drawer.getByLabel('兼职开始日期止', { exact: true }).fill('2026-10-30');
-  const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('days') === '7');
+  await drawer.getByLabel('兼职结束日期止', { exact: true }).fill('2026-10-30');
+  const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('endTo') === '2026-10-30');
   await drawer.getByRole('button', { name: /^确\s*定$/ }).click();
   const query = new URL((await read).url()).searchParams;
-  expect(query.get('startFrom')).toBe('2026-10-20');
-  expect(query.get('startTo')).toBe('2026-10-30');
+  expect(query.get('endFrom')).toBe('2026-10-20');
+  expect(query.get('endTo')).toBe('2026-10-30');
 });
 
 test('AC-FE-R2d1-03 缺键保留行，全部按服务端视图成员判否', async ({ page }) => {
@@ -138,8 +137,7 @@ test('AC-FE-R2d1-06 字段无查看权时不出现筛选，也不解析被裁剪
   );
   await page.reload();
   await expect(page.getByRole('button', { name: '查看详情', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
-  const drawer = page.getByRole('dialog', { name: '高级筛选' });
+  const drawer = page.getByRole('region', { name: '快捷筛选' });
   await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveCount(0);
   await expect(drawer.getByLabel('兼职部门', { exact: true })).toHaveCount(0);
   await expect(drawer.locator('input')).toHaveCount(0);
@@ -184,13 +182,25 @@ test('AC-FE-R2d1-08 审批中行直读申请接口；无入口权时菜单隐藏
   await expect(page.getByRole('heading', { name: '兼职管理', exact: true })).toHaveCount(0);
 });
 
-test('AC-FE-R2d1-09 姓名关键字可逐字输入空格，提交保持内部空格', async ({ page }) => {
+test('AC-FE-R2d1-09 人员选择器替代姓名关键字输入', async ({ page }) => {
   await setup(page);
-  await page.getByRole('button', { name: '高级筛选', exact: true }).click();
-  const drawer = page.getByRole('dialog', { name: '高级筛选' });
-  await drawer.getByLabel('姓名 / 工号', { exact: true }).pressSequentially('Demo Person');
-  await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveValue('Demo Person');
-  const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('keyword') === 'Demo Person');
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        dataOperations: { read: true },
+        viewableFields: ['employeeId', 'name', 'code'],
+        editableFields: [],
+        buttons: [],
+      },
+    }),
+  );
+  await page.reload();
+  const drawer = page.getByRole('region', { name: '快捷筛选' });
+  await expect(drawer.getByLabel('姓名 / 工号', { exact: true })).toHaveCount(0);
+  await drawer.getByRole('combobox', { name: '人员', exact: true }).click();
+  await page.getByTitle('合成兼职员工', { exact: true }).click();
+  await drawer.getByRole('combobox', { name: '人员', exact: true }).press('Escape');
+  const read = page.waitForRequest((r) => new URL(r.url()).searchParams.get('employeeIds') === employee);
   await drawer.getByRole('button', { name: /^确\s*定$/ }).click();
   await read;
 });
