@@ -36,8 +36,23 @@ export const internRegularizationInput = z
   });
 export type InternRegularizationInput = z.infer<typeof internRegularizationInput>;
 
+type RegularizationFieldsInput = Pick<
+  InternRegularizationInput,
+  'departmentId' | 'positionId' | 'directManagerId' | 'dottedManagerId'
+>;
+
+/** 直接转正写入的任职业务载荷：字段写权限按它校验（入口、命令内复核、读口下发动作共用）。 */
+export function regularizationBusiness(input: RegularizationFieldsInput & { readonly effectiveDate: string }) {
+  return {
+    kind: 'intern_regularization' as const,
+    mode: 'direct' as const,
+    effectiveDate: input.effectiveDate,
+    fields: regularizationFields(input),
+  };
+}
+
 /** 写入的任职字段（字段写权限、数据范围都按它校验）：部门 + 请求里给出的职位 / 汇报关系。 */
-export function regularizationFields(input: InternRegularizationInput): Partial<PresetFields> {
+export function regularizationFields(input: RegularizationFieldsInput): Partial<PresetFields> {
   const { departmentId, positionId, directManagerId, dottedManagerId } = input;
   const given = Object.entries({ positionId, directManagerId, dottedManagerId }).filter(([, v]) => v !== undefined);
   return { departmentId, ...Object.fromEntries(given) };

@@ -12,7 +12,7 @@ import { successionWorld, SC_NOW, SC_TODAY, type SuccessionWorld } from './AC-SC
 import { syncTestTransaction } from './AC-SC-sync-support.js';
 import { SyncPortError } from '../../apps/api/src/modules/talent-review/sync-port.js';
 import * as audit from '../../apps/api/src/audit/record.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 
@@ -603,31 +603,38 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
         }),
       });
       const before = await h.records();
-      let release!: () => void, holding!: Promise<void>;
+      // 持锁事务由被测流程在“计划提交后”的钩子里启动：门先建好（钩子晚于放行触发也不会挂住），
+      // 钩子里开的持锁事务登记进 holders，由 withRelease 无条件放门并等它结束（F-282）
+      let openGate!: () => void;
+      const gate = new Promise<void>((r) => {
+        openGate = r;
+      });
+      const holders: Promise<unknown>[] = [];
       afterPlanCommit(h, async () => {
         let locked!: () => void;
         const ready = new Promise<void>((r) => {
           locked = r;
         });
-        const gate = new Promise<void>((r) => {
-          release = r;
-        });
-        holding = w.asTenant(async (tx) => {
-          await tx.execute(sql`SELECT 1 FROM succession_target_locks WHERE tenant_id=${w.tenant.id}::uuid
+        holders.push(
+          w.asTenant(async (tx) => {
+            await tx.execute(sql`SELECT 1 FROM succession_target_locks WHERE tenant_id=${w.tenant.id}::uuid
           AND target_kind='org' AND target_id=${h.org.id}::uuid FOR UPDATE`);
-          locked();
-          await gate;
-        });
+            locked();
+            await gate;
+          }),
+        );
         await ready;
       });
-      const running = consumeRun(h.deps, h.input);
-      try {
-        await waitForBlocked(w.db, 1);
-        covers = false;
-      } finally {
-        release?.();
-      }
-      await holding;
+      const { running } = await withRelease(
+        openGate,
+        async (lock) => {
+          const pending = lock.track(consumeRun(h.deps, h.input));
+          await waitForBlocked(w.db, 1);
+          covers = false;
+          return { running: pending };
+        },
+        holders,
+      );
       expect(await running).toMatchObject({ status: 'completed', result: 'partial' });
       expect(await h.records()).toEqual(before);
       expect((await h.outcomes()).find((r) => r.rowKind === 'target')).toMatchObject({
@@ -656,11 +663,10 @@ describe('AC-SC-03-04-sync D2 执行与终结', () => {
       const running = consumeRun(h.deps, h.input);
       await ready;
       const deleting = w.request('DELETE', `/records/${h.oldId}`, { ifMatch: 1 });
-      try {
+      await withRelease(release, async (cleanup) => {
+        [running, deleting].forEach((request) => cleanup.track<unknown>(request));
         await waitForBlocked(w.db, 1);
-      } finally {
-        release();
-      }
+      });
       expect(await running).toMatchObject({ status: 'blocked' });
       const response = await deleting;
       expect(response.status).toBe(409);

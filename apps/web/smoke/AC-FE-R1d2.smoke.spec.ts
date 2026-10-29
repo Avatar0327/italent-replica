@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, snapshotFixture, user } from './fixtures.js';
 
 import { menus, settingsFixtures } from './settings-fixtures.js';
@@ -93,13 +94,13 @@ test('AC-FE-R1d2 新用户校验后保存，409 不盲重试', async ({ page }) 
   await page.goto('/settings/menu/users.external');
   await page.getByRole('button', { name: /^新\s*增$/ }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(dialog, '保存').click();
   await expect(dialog.getByText('请填写此项').first()).toBeVisible();
   expect(writes).toHaveLength(0);
   await dialog.getByLabel('姓名', { exact: true }).fill('合成用户乙');
   await dialog.getByLabel('联系邮箱').fill('user-b@example.com');
   await dialog.getByLabel('业务身份').fill('顾问');
-  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(dialog, '保存').click();
   await expect(dialog.getByRole('alert')).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]!.body).toEqual({
@@ -126,10 +127,7 @@ test('AC-PRM-03/14 共享范围从空值读取，保存携带当前 revision', a
   await page.getByRole('button', { name: '查询数据范围', exact: true }).click();
   await expect(page.getByText('默认管理单元（空范围）', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^编\s*辑$/ }).click();
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: /^保\s*存$/ })
-    .click();
+  await actionButton(page.getByRole('dialog'), '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ body: { kind: 'default' }, revision: '6' }]);
 });

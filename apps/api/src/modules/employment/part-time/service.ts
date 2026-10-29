@@ -40,6 +40,7 @@ import {
   queuePartTimeLinkage,
   validatePartTimeLinkage,
 } from './linkage.js';
+import { partTimeInstitution } from './institution.js';
 import { partTimeNotFound } from './read.js';
 import {
   appendPartTimeTerm,
@@ -133,7 +134,7 @@ export async function insertCheckedPartTime(
   options: { readonly sourceId?: string } = {},
 ) {
   const { cycle, fields, custom } = checked;
-  const { id, payloadVersionId } = await insertPartTimeRecord(tx, ctx, {
+  const { id, payloadVersionId, institutionId } = await insertPartTimeRecord(tx, ctx, {
     employeeId,
     staffId: cycle.staffId,
     entryDate: cycle.entryDate,
@@ -156,6 +157,7 @@ export async function insertCheckedPartTime(
       ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
       // DEC-019：自定义字段展开成 custom:<id> 进审计快照与 outbox（同主职落地审计约定）
       ...Object.fromEntries(Object.entries(custom.customFields).map(([id, value]) => [`custom:${id}`, value])),
+      institutionId,
       serviceType: normalized.serviceType,
       startDate: normalized.startDate,
       endDate: normalized.endDate,
@@ -328,10 +330,19 @@ async function writePartTimeEdit(
     );
   }
   if (changes.length) {
+    const institutionId =
+      plan.fields.departmentId === row.departmentId
+        ? payload.institutionId
+        : await partTimeInstitution(tx, ctx.tenantId, plan.fields.departmentId!, row.startDate);
+    if (institutionId !== payload.institutionId)
+      changes = [
+        ...changes,
+        { field: 'institutionId', before: payload.institutionId ?? null, after: institutionId ?? null },
+      ];
     const next = await appendForwardPayload(
       tx,
       ctx,
-      payload,
+      { ...payload, institutionId },
       { fields: plan.fields, customFields },
       row.id,
       true,

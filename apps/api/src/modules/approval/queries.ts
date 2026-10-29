@@ -2,6 +2,8 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { rowsOf } from './context.js';
+import { visibleRecordInstances } from './disclosure.js';
+import { withActorNames } from './store.js';
 
 export interface Page {
   readonly limit: number;
@@ -91,6 +93,7 @@ export async function listInstances(
 export async function listAdminLogs(
   tx: Tx,
   tenantId: string,
+  userId: string,
   scope: SQL,
   filter: { adminSelfTransfer?: boolean },
   page: Page,
@@ -103,13 +106,22 @@ export async function listAdminLogs(
         ${filter.adminSelfTransfer === undefined ? sql`` : sql`AND l.admin_self_transfer=${filter.adminSelfTransfer}`}
       ORDER BY l.created_at DESC,l.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
-  return rows.map((row) => ({
-    instanceId: String(row.instance_id),
-    event: String(row.event),
-    nodeKey: (row.node_key as string | null) ?? null,
-    actorUserId: (row.actor_user_id as string | null) ?? null,
-    adminSelfTransfer: Boolean(row.admin_self_transfer),
-    detail: row.detail as Record<string, unknown>,
-    createdAt: iso(row.created_at),
-  }));
+  // DEC-115 / DEC-656：与详情 / 历史同源，隐藏整条记录后再补姓名；分页窗口沿用历史接口的裁剪方式。
+  const visible = await visibleRecordInstances(tx, tenantId, userId, [
+    ...new Set(rows.map((row) => String(row.instance_id))),
+  ]);
+  return withActorNames(
+    tx,
+    rows
+      .filter((row) => visible.has(String(row.instance_id)))
+      .map((row) => ({
+        instanceId: String(row.instance_id),
+        event: String(row.event),
+        nodeKey: (row.node_key as string | null) ?? null,
+        actorUserId: (row.actor_user_id as string | null) ?? null,
+        adminSelfTransfer: Boolean(row.admin_self_transfer),
+        detail: row.detail as Record<string, unknown>,
+        createdAt: iso(row.created_at),
+      })),
+  );
 }
