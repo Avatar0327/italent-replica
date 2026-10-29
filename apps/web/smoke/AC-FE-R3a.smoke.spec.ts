@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, user, snapshotFixture } from './fixtures.js';
 
 const rows = [
@@ -154,9 +155,9 @@ test('AC-FE-R3a 编辑按当前详情 revision 提交，仅发送改动字段', 
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.goto('/qualification?view=categories');
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await actionButton(page, '编辑').click();
   await page.getByLabel('名称', { exact: true }).fill('更新后的合成类别');
-  await page.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ body: { name: '更新后的合成类别' }, revision: '1', key: expect.any(String) }]);
 });
@@ -178,7 +179,7 @@ test('AC-FE-R3a 无按钮权限隐藏新建和编辑，隐藏字段不生成列�
   await page.goto('/qualification?view=levels');
   await expect(page.getByRole('heading', { name: '任职级别', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^新\s*建$/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
+  await expect(actionButton(page, '编辑')).toHaveCount(0);
   await expect(page.getByRole('columnheader', { name: '编码' })).toHaveCount(0);
 });
 
@@ -239,7 +240,7 @@ test('AC-FE-R3a 新建标准提交选定级别与指标网格，不发送空白�
     await choice.press('Enter');
     await page.getByLabel('名称', { exact: true }).click();
   }
-  await page.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body).toEqual({
     name: '合成任职标准',
@@ -284,7 +285,7 @@ test('AC-FE-R3a 人才标准引用潜力指标时不提供权重与目标输入'
     await page.getByLabel('名称', { exact: true }).click();
   }
   await expect(page.getByRole('dialog').getByRole('spinbutton')).toHaveCount(0);
-  await page.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(body?.dimensions).toEqual([{ dimensionId: rows[0]!.id }]);
 });
@@ -316,15 +317,15 @@ for (const changeName of [false, true]) {
     await page.goto('/staff');
     await page.getByLabel('切换演示身份').selectOption(user);
     await page.goto('/qualification?view=levels');
-    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await actionButton(page, '编辑').click();
     const layer = page.getByLabel('层级', { exact: true });
     await expect(page.locator('.ant-form-item').filter({ has: layer })).toContainText('合成配置');
     await page.locator('.ant-form-item').filter({ has: layer }).locator('.ant-select-clear').click();
     if (changeName) await page.getByLabel('名称', { exact: true }).fill('改名后的级别');
-    await page.getByRole('button', { name: /^保\s*存$/ }).click();
+    await actionButton(page, '保存').click();
     await expect.poll(() => body).toEqual([changeName ? { name: '改名后的级别', layerId: null } : { layerId: null }]);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await actionButton(page, '编辑').click();
     await expect(page.getByLabel('层级', { exact: true })).toHaveValue('');
   });
 }

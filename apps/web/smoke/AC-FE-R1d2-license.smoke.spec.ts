@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, user } from './fixtures.js';
 import { rows, settingsFixtures } from './settings-fixtures.js';
 
@@ -27,7 +28,7 @@ for (const [licenseType, balance] of [
     await dialog.getByLabel('用户编号', { exact: true }).fill(user);
     await dialog.getByRole('combobox').click();
     await page.getByText('合成人事身份 (DEMO_HR)', { exact: true }).click();
-    await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+    await actionButton(dialog, '保存').click();
     await expect(dialog).toHaveCount(0);
     await expect(page.locator('.ant-table-tbody').getByText(user, { exact: true })).toBeVisible();
     const warning = page.getByRole('alert').filter({ hasText: '授权已成功，但许可超额' });
@@ -53,7 +54,7 @@ test('AC-PRM-09 普通授权成功不显示超额提醒', async ({ page }) => {
   await dialog.getByLabel('用户编号', { exact: true }).fill(user);
   await dialog.getByRole('combobox').click();
   await page.getByText('合成人事身份 (DEMO_HR)', { exact: true }).click();
-  await dialog.getByRole('button', { name: /^保\s*存$/ }).click();
+  await actionButton(dialog, '保存').click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('alert').filter({ hasText: '授权已成功，但许可超额' })).toHaveCount(0);
 });
