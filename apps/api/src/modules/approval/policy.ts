@@ -183,7 +183,10 @@ const editRights = { ...taskObject, guards: ['approval.fieldRights'] };
 /** 同意 / 不同意 / 驳回：body.fields 可选，字段集合与盲审可见集由 fieldRights 算（routes.ts 461–471 行）。 */
 const decision = (preconditions: readonly string[]) =>
   taskAction({ guard: 'approval.fieldRights' }, preconditions, editRights);
-/** openTask（openRun + 当前审批人）→ assertOpen（revision / pending / 业务版本）；后四项仅 body.fields 非空时执行。 */
+/**
+ * openTask（openRun + 当前审批人）→ assertOpen（revision / pending / 业务版本）；后三项仅 body.fields 非空时执行
+ * （assertApprovalEdit 含 editMode 与加签人检查，F-291）。
+ */
 const APPROVE = [
   'openTask',
   'openRun',
@@ -193,7 +196,6 @@ const APPROVE = [
   'blindReview',
   'assertNotRecused',
   'assertApprovalEdit',
-  'assertNotAddSigner',
   'editableInput',
   'assertNotBlindAfterEdit',
 ];
@@ -265,7 +267,6 @@ const EDIT = [
   'assertOpen',
   'assertNotRecused',
   'assertApprovalEdit',
-  'assertNotAddSigner',
   'editableInput',
   'assertNotBlindAfterEdit',
 ];
