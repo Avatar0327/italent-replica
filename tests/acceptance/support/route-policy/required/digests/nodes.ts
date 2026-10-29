@@ -1954,7 +1954,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/read-model.ts#findCurrentRecord': ['e0b3958dc44f', '521f0de9145a'],
   'apps/api/src/modules/employment/read-model.ts#findPredecessor': ['5718a9061494', 'ebd6c3560bbf'],
   'apps/api/src/modules/employment/read-model.ts#listEmploymentRecords': ['d2a475103047', '5e782f4f24b2'],
-  'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness': ['68d5f910df4d', '559f8c2829a1'],
+  'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness': ['14a01662639c', 'da05ba74df0c'],
   'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord': ['eb98b31edb45', '521f0de9145a'],
   'apps/api/src/modules/employment/read-model.ts#record': ['f31cf72580e1', 'c134e440db41'],
   'apps/api/src/modules/employment/read-model.ts#recordsQuery': ['f504ca985ff5', '0f6a10a9c44a'],
