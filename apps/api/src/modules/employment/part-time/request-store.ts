@@ -17,7 +17,8 @@ import {
 } from '@italent/domain';
 import { rowsOf } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
-import { currentDepartment, latestSnapshot, uuidArray } from './store.js';
+import { partTimeInstitution } from './institution.js';
+import { currentDepartment, currentInstitution, latestSnapshot, uuidArray } from './store.js';
 
 /** 申请载荷（版本）：预置字段与兼职记录同一组（§1.1），日期与备注是申请自己的。 */
 export interface PartTimeRequestVersion {
@@ -25,6 +26,7 @@ export interface PartTimeRequestVersion {
   readonly versionNo: number;
   readonly serviceType: PartTimeServiceType;
   readonly departmentId: string | null;
+  readonly institutionId: string | null;
   readonly positionId: string | null;
   readonly postId: string | null;
   readonly sequenceId: string | null;
@@ -63,6 +65,7 @@ export interface PartTimeRequestRow {
 // 部门：新增申请取最新版本；延长 / 结束申请取目标兼职记录的当前部门（§7.2 / §7.3A：读取时取当前值，范围 / 审计 / 重放都据此判）
 const VERSION_COLUMNS = sql`v.id AS "versionId", v.version_no AS "versionNo", v.service_type AS "serviceType",
   CASE WHEN q.record_id IS NULL THEN v.department_id ELSE ${currentDepartment} END AS "departmentId",
+  CASE WHEN q.record_id IS NULL THEN v.institution_id ELSE ${currentInstitution} END AS "institutionId",
   v.position_id AS "positionId", v.post_id AS "postId",
   v.sequence_id AS "sequenceId", v.level_id AS "levelId", v.direct_manager_id AS "directManagerId",
   v.dotted_manager_id AS "dottedManagerId", v.employment_type AS "employmentType",
@@ -80,6 +83,7 @@ function toRow(raw: RawRequest): PartTimeRequestRow {
     versionNo: Number(rest.versionNo),
     serviceType: rest.serviceType,
     departmentId: rest.departmentId,
+    institutionId: rest.institutionId,
     positionId: rest.positionId,
     postId: rest.postId,
     sequenceId: rest.sequenceId,
@@ -156,7 +160,9 @@ export interface NewRequestHead {
   readonly processCode: string | null;
 }
 
-export type RequestPayload = Omit<PartTimeRequestVersion, 'id' | 'versionNo'>;
+export type RequestPayload = Omit<PartTimeRequestVersion, 'id' | 'versionNo' | 'institutionId'> & {
+  readonly institutionId?: string | null;
+};
 
 async function insertVersion(
   tx: Tx,
@@ -167,13 +173,24 @@ async function insertVersion(
   payload: RequestPayload,
 ): Promise<string> {
   const id = randomUUID();
+  const [previous] = rowsOf<{ department: string; start: string; institution: string | null }>(
+    await tx.execute(sql`SELECT department_id AS department, start_date::text AS start, institution_id AS institution
+      FROM part_time_request_versions WHERE tenant_id=${ctx.tenantId} AND id=${previousVersionId}::uuid`),
+  );
+  const unchanged = previous?.department === payload.departmentId && previous?.start === payload.startDate;
+  const institutionId =
+    payload.institutionId ??
+    (unchanged ? previous.institution : undefined) ??
+    (await partTimeInstitution(tx, ctx.tenantId, payload.departmentId!, payload.startDate));
   await tx.execute(sql`
     INSERT INTO part_time_request_versions(id, tenant_id, employee_id, request_id, version_no, previous_version_id,
-      command_id, service_type, department_id, position_id, post_id, sequence_id, level_id, direct_manager_id,
+      command_id, service_type, institution_id, department_id, position_id, post_id, sequence_id, level_id,
+      direct_manager_id,
       dotted_manager_id, employment_type, employment_form, is_department_head, added_subordinate_ids, start_date,
       end_date, original_end_date, base_term_no, remark, custom_fields, created_at)
     VALUES (${id}, ${ctx.tenantId}, ${head.employeeId}, ${head.id}, ${versionNo}, ${previousVersionId},
-      ${ctx.commandId}, ${payload.serviceType}, ${payload.departmentId}, ${payload.positionId}, ${payload.postId},
+      ${ctx.commandId}, ${payload.serviceType}, ${institutionId}, ${payload.departmentId},
+      ${payload.positionId}, ${payload.postId},
       ${payload.sequenceId}, ${payload.levelId}, ${payload.directManagerId}, ${payload.dottedManagerId},
       ${payload.employmentType}, ${payload.employmentForm}, ${payload.isDepartmentHead},
       ${payload.addedSubordinateIds && `{${payload.addedSubordinateIds.join(',')}}`}::uuid[], ${payload.startDate},

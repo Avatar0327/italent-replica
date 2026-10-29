@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 // R2-T03 FE2b：离职类型 / 离职原因 / 离职去向三个字典设置页（接口全部为合成桩，形态按 exit-dictionaries.ts）。
 import { test, expect, user } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
@@ -174,7 +175,7 @@ test('AC-DM-31-FE2b-03 改名遇版本冲突：重读核对差异后按最新版
   await item(edit, '名称').getByRole('textbox').fill('本人改名');
   await edit.getByRole('button', save).click();
   await expect(edit.getByText('版本冲突：输入已保留')).toBeVisible();
-  await edit.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(edit, '重读最新版本').click();
   await expect(edit.locator('.ant-table')).toContainText('他人改名');
   await edit.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
   await expect(item(edit, '名称').getByRole('textbox')).toHaveValue('本人改名');

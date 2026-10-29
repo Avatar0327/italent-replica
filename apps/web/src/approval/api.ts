@@ -1,7 +1,7 @@
 import { ApiError, newCommand, type ApiClient, type PageRequest } from '../foundation/client.js';
 import { completedExamples } from '../demo-stubs/approval.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
-import { messages as m } from './messages.js';
+import { detailText as d, messages as m } from './messages.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalList, ApprovalLog, ApprovalRow, ApprovalView } from './types.js';
 
 const base = '/api/tenant/approval';
@@ -42,6 +42,10 @@ export async function approvalList(
 export function logComment(log: ApprovalLog): string | null {
   const comment = log.detail?.comment;
   return typeof comment === 'string' && comment.trim() ? comment : null;
+}
+/** DEC-656：姓名仅取日志下发值；系统判定沿用 F-248FE，未下发姓名不补 ID。 */
+export function logActor(log: ApprovalLog): string | null {
+  return log.actorUserId === null ? d.systemActor : (log.actorName ?? null);
 }
 export const readApproval = (api: ApiClient, id: string, signal?: AbortSignal) =>
   api.request<ApprovalDetail>(`${base}/instances/${encodeURIComponent(id)}`, { signal });

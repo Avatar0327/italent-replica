@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { capture, item, named, pickDate, save, type Write } from './contracts-fixtures.js';
@@ -128,7 +129,7 @@ for (const code of ['REVISION_CONFLICT', 'CONFLICT'])
     await item(dialog, '备注').getByRole('textbox').fill('我的合成说明');
     await dialog.getByRole('button', save).click();
     await expect(dialog.getByRole('button', save)).toBeDisabled();
-    await dialog.getByRole('button', named('重读最新版本')).click();
+    await actionButton(dialog, '重读最新版本').click();
     await dialog.getByRole('button', named('已核对差异，继续编辑')).click();
     if (code === 'CONFLICT') {
       await expect(dialog.getByRole('button', save)).toBeDisabled();
@@ -163,7 +164,7 @@ for (const failure of ['network', 'receipt', 'read'])
       );
     let dialog = await openCancel(page);
     await dialog.getByRole('button', save).click();
-    await expect(dialog.getByRole('button', named('回查原单'))).toBeVisible();
+    await expect(actionButton(dialog, '回查原单')).toBeVisible();
     await expect(dialog.getByRole('button', save)).toBeDisabled();
     await dialog.getByRole('button', named('取消')).click();
     failRead = false;
@@ -175,7 +176,7 @@ for (const failure of ['network', 'receipt', 'read'])
     } else {
       await tab(page, '全部待入职').click();
       dialog = await openCancel(page);
-      await dialog.getByRole('button', named('回查原单')).click();
+      await actionButton(dialog, '回查原单').click();
       await expect(dialog).toContainText('原单当前值');
       await expect(item(dialog, '备注').getByRole('textbox')).toBeDisabled();
     }
