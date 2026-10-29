@@ -1435,7 +1435,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/exit-handover-retry.ts#BATCH': ['a092ce608141', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-handover-retry.ts#EVENT': ['aca6349455d9', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/exit-handover-retry.ts#consume': ['bfa70a4fc395', 'a7e6da5203ed'],
-  'apps/api/src/modules/employment/exit-handover-retry.ts#drainExitHandoverRetries': ['2df148c5cd72', '11b224032511'],
+  'apps/api/src/modules/employment/exit-handover-retry.ts#drainExitHandoverRetries': ['e84ecb0f6459', '11b224032511'],
   'apps/api/src/modules/employment/exit-handover-retry.ts#queueExitHandoverRetry': ['74bac9bcb0ea', '4c041e44101b'],
   'apps/api/src/modules/employment/exit-handover-retry.ts#receipt': ['e6b03819d799', 'ba4b546d09bd'],
   'apps/api/src/modules/employment/exit-handover-retry.ts#unfinished': ['95c367e0068d', '7a645dc8391f'],

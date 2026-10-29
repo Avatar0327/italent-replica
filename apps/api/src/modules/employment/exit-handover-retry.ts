@@ -104,7 +104,8 @@ export async function drainExitHandoverRetries(db: Db, tenantId: string, now: Da
     const items: Retry[] = await withTenant(db, tenantId, async (tx) =>
       rowsOf<Retry>(
         await tx.execute(sql`
-      SELECT o.id, o.employee_id AS "employeeId", o.business_id AS "businessId", o.payload->>'approvedOn' AS "approvedOn"
+      SELECT o.id, o.employee_id AS "employeeId", o.business_id AS "businessId",
+        o.payload->>'approvedOn' AS "approvedOn"
       FROM employment_outbox o WHERE o.tenant_id=${tenantId} AND o.event_type=${EVENT} AND ${unfinished}
         AND (${after}::uuid IS NULL OR o.id>${after}::uuid) ORDER BY o.id LIMIT ${BATCH}`),
       ),
