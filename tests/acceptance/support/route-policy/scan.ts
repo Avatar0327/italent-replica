@@ -567,6 +567,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['avatar', '/api/tenant/account', [path.join(modules, 'avatar')]],
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
     ['command-result', '/api/tenant/commands', [path.join(modules, 'command-result')]],
+    ['hr-dashboard', '/api/tenant/analytics/hr-dashboard', [path.join(modules, 'analytics')]],
   ];
   const hit = table.find(([, prefix]) => fullPath === prefix || fullPath.startsWith(prefix + '/'));
   return hit

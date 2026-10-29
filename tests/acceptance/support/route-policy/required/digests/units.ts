@@ -16,6 +16,11 @@ export const DIGESTS: Digests = {
   'apps/api/src/authorization.ts': {
     requirePermission: '697f511a2e1f',
   },
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
+    dashboardContext: '01da30826e17',
+    'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
+    'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
+  },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
     adminScope: '175ed4b1418f',
@@ -1537,6 +1542,9 @@ export const DIGESTS: Digests = {
     transferBusinessContext: 'd205bb16e2c5',
     transferTargetContext: '70902a7725a9',
   },
+  'packages/domain/src/analytics/hr-dashboard.ts': {
+    HR_DASHBOARD_OBJECT: 'fd210121ca03',
+  },
   'packages/domain/src/contracts/rules.ts': {
     CONTRACT_OBJECT: 'e22987935f65',
     contractAction: '213e0434171f',
@@ -1641,6 +1649,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes/:id': '4a5d1edd24bd',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/operation-logs': 'e453470a6384',
   'apps/api/src/authorization.ts#requirePermission': 'de23424a7b48',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '15f5d8c90a73',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
+    '980851c99aab',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
@@ -2753,6 +2765,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/service.ts#requireTransferWrite': '27b94794f43d',
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': 'c7b31c61e80d',
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': '1f7f71f7d487',
+  'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
