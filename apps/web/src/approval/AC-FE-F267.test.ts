@@ -260,7 +260,9 @@ describe('AC-FE-F267 字段复用和恢复边界', () => {
     await click('保存');
     expect(input('新结束日期').value).toBe('2026-12-31');
     expect(button('保存').disabled).toBe(false);
-    expect(dialog().textContent).toContain(status === 422 ? '合成日期校验原因' : '本节点不可编辑此字段');
+    await vi.waitFor(() =>
+      expect(dialog().textContent).toContain(status === 422 ? '合成日期校验原因' : '本节点不可编辑此字段'),
+    );
   });
   it('结果未知关闭重开仍锁定输入，不产生第二条命令', async () => {
     responseStatus = 0;

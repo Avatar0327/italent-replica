@@ -110,7 +110,8 @@ export function approvalFailure(error: unknown): unknown {
     error.status,
     error.code,
     error.kind,
-    error.code === 'APPROVAL_FIELD_NOT_EDITABLE' ? (error.serverMessage ?? m.fieldNotEditable) : error.message,
+    // F-291 的业务原因在 details.reason；顶层 code 是 FORBIDDEN，不能拿它匹配业务原因。
+    error.status === 403 ? (error.serverMessage ?? m.fieldNotEditable) : error.message,
     {
       message: error.serverMessage,
       details: error.fieldErrors.flatMap(({ name, errors }) =>
