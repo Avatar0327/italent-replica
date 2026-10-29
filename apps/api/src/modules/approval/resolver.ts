@@ -7,6 +7,7 @@ import { lockKey, asUuid } from '../../advisory-lock.js';
 import {
   adminRecused,
   avoidSelfExceptionAdmin,
+  HANDOVER_FALLBACK_APPROVERS,
   type ApproverExpression,
   type Candidate,
   type ExceptionAdminChoice,
@@ -25,6 +26,8 @@ export interface RoutingSubject {
   readonly recordDepartmentId: string | null;
   /** 发展计划的指导人（审批人表达式 idp_tutor，R3-T07）。 */
   readonly tutorEmployeeId?: string | null;
+  /** 离职交接申请的工作交接人（审批人表达式 handover_work_owner，R2 BE-8b2）。 */
+  readonly handoverEmployeeId?: string | null;
   /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
 }
@@ -233,6 +236,28 @@ async function firstLevelOrg(tx: Tx, subject: RoutingSubject, orgId: string | nu
   return rootIndex > 0 ? chain[rootIndex - 1]! : null;
 }
 
+/**
+ * 一个审批人表达式解析出的全部候选人（会签节点逐席使用）。普通表达式恰好一个；离职交接的两个取值在主取法取不到人时改取
+ * 本节点的兜底处理人（DEC-663，可多人）：只保留具备审批资格的人（已停用 / 已离职 / 正在停用的跳过），一个都没有仍返回
+ * 一个“空”候选人，由调用方按审批人为空处理（首节点不发起；中间节点转异常管理员）。
+ */
+export async function resolveCandidates(
+  tx: Tx,
+  subject: RoutingSubject,
+  expression: ApproverExpression,
+  fallbackUserIds: readonly string[] = [],
+): Promise<Candidate[]> {
+  const primary = await resolveCandidate(tx, subject, expression);
+  if (primary.userId || !HANDOVER_FALLBACK_APPROVERS.has(expression) || !fallbackUserIds.length) return [primary];
+  return memo(subject, `fallback:${expression}:${fallbackUserIds.join(',')}`, async () => {
+    const eligible: Candidate[] = [];
+    for (const userId of fallbackUserIds)
+      if (await isEligibleApprover(tx, subject, userId))
+        eligible.push({ userId, personId: await personOfUser(tx, subject.tenantId, userId) });
+    return eligible.length ? eligible : [primary];
+  });
+}
+
 export function resolveCandidate(tx: Tx, subject: RoutingSubject, expression: ApproverExpression): Promise<Candidate> {
   return memo(subject, `candidate:${expression}`, () => resolveFresh(tx, subject, expression));
 }
@@ -282,11 +307,48 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
     case 'initiator_direct_manager':
       // 申请人（发起人）的直接上级，与 direct_manager（流程主体）同一取法（DEC-230）
       return directManagerOf(tx, subject, { personId: null, userId: subject.initiatorUserId });
+    // R2-T08 §4.2（DEC-644 A-2）：组织调整适配器把审批主体组织放在 recordDepartmentId；“取审批主体组织的 HRBP / 负责人”是
+    // 推断，非原站事实，预置是可改草稿。类型限制见 ORG_ADJUSTMENT_APPROVERS，其他业务选不到这两项
+    case 'approval_subject_org_hrbp':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'hrbp'));
+    case 'approval_subject_org_head':
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
     case 'approval_subject_first_level_org_head': {
       const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
       return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));
     }
+    // R2 BE-8b2（B64，原站未验证，取保守做法）：只用于离职交接申请，类型限制见 HANDOVER_ONLY_APPROVERS
+    case 'handover_work_owner':
+      return handoverWorkOwner(tx, subject);
+    case 'handover_hr_admin':
+      return handoverHrAdmin(tx, subject);
+    case 'handover_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
   }
+}
+
+/** 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）。 */
+async function handoverWorkOwner(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  const owner = await candidateOf(tx, subject, subject.handoverEmployeeId ?? null);
+  if (owner.userId) return owner;
+  return directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
+}
+
+const HR_ADMIN_PROFILE = 'standard_hr_admin';
+const HR_ADMIN_SCAN = 200;
+
+/** 其他事项交接：人事管理员角色（标准身份 standard_hr_admin 的有效授权），按授权先后取第一个具备审批资格的人。 */
+async function handoverHrAdmin(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  const grants = rowsOf<{ user_id: string }>(
+    await tx.execute(sql`SELECT g.user_id FROM permission_grants g
+      JOIN permission_profiles p ON p.tenant_id=g.tenant_id AND p.id=g.profile_id
+      WHERE g.tenant_id=${subject.tenantId} AND g.status='active' AND p.code=${HR_ADMIN_PROFILE}
+      ORDER BY g.created_at, g.id LIMIT ${HR_ADMIN_SCAN}`),
+  );
+  for (const { user_id: userId } of grants)
+    if (await isEligibleApprover(tx, subject, userId))
+      return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+  return NOBODY;
 }
 
 /** DEC-230 / DEC-068：直接上级与自审回避共用最新生效主职任职上的直线经理。 */

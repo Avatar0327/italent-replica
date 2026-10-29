@@ -38,7 +38,13 @@ import {
 } from './record-store.js';
 import { isDetachedRecord, loadPlannedEffectiveDate, removeEmploymentTimeline } from './timeline.js';
 import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
-import type { EmploymentBusiness, EmploymentContext, EmploymentRecord, EmploymentState } from './types.js';
+import type {
+  BusinessKind,
+  EmploymentBusiness,
+  EmploymentContext,
+  EmploymentRecord,
+  EmploymentState,
+} from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
@@ -311,7 +317,11 @@ function assertExitHrFields(row: { exitTypeCode: string | null }) {
     });
 }
 
-function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {
+/** 状态机：这份业务（模式 / 类型 / 状态）此刻允许哪些动作（写入口 assertTransition 与读口下发动作共用）。 */
+export function transitionPermitted(
+  business: { readonly state: string; readonly payload: { readonly mode: string; readonly kind: BusinessKind } },
+  action: EmploymentTransitionInput['action'],
+): boolean {
   const permitted = {
     // DEC-053：驳回后在同一申请上修改并重提，或撤回为草稿。
     submit: business.payload.mode === 'application' && ['draft', 'rejected'].includes(business.state),
@@ -330,7 +340,12 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
       (business.payload.mode === 'application' || isExitKind(business.payload.kind)) && business.state === 'approved',
     delete: ['draft', 'rejected', 'disapproved', 'voided', 'approved', 'effective'].includes(business.state),
   };
-  if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
+  return permitted[action];
+}
+
+function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {
+  if (!transitionPermitted(business, action))
+    throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
 /** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */

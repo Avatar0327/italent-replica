@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 // F-127b：A9～A12 合同表单、类型 / 规则 / 设置保存、审批中行内操作（接口全部为合成桩）。
 import { test, expect } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
@@ -141,7 +142,7 @@ for (const op of ['create', 'change', 'renew', 'terminate'] as const) {
     await form.getByRole('button', save).click();
     await expect(form).toContainText('处理中 / 结果待确认');
     await expect(form.getByRole('button', save)).toBeDisabled();
-    if (op !== 'create') await expect(form.getByRole('button', { name: '回查原单', exact: true })).toBeVisible();
+    if (op !== 'create') await expect(actionButton(form, '回查原单')).toBeVisible();
     expect(writes).toHaveLength(2);
     expect(writes[0]!.command).not.toBe(writes[1]!.command);
   });
@@ -157,7 +158,7 @@ for (const op of ['change', 'renew', 'terminate'] as const) {
     );
     await fill(form, op);
     await form.getByRole('button', save).click();
-    await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+    await actionButton(form, '重读最新版本').click();
     await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
     await form.getByRole('button', save).click();
     await expect(form).toHaveCount(0);

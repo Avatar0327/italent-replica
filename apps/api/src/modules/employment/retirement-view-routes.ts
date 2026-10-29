@@ -1,7 +1,7 @@
 /**
  * R2-T04 BE-5d1 退休五视图与详情路由（设计 §10、§12.1 5d1 行）。权限链同离职视图（exit-routes.ts registerExitViews）：
  * 任职记录查看权（readPageContext）→ 分页前 DEC-177 范围过滤 → 字段按任职记录 / 人员对象字段权裁剪。
- * view=cancelled（撤销的退休记录）随 5a′（#452）合入后再放开，此前与其他非法 view 同样返回 400。
+ * view=cancelled（撤销的退休记录，F-277）是五视图之外的额外取值：沿用离职撤销视图（#432）的形态，不按 asOf 过滤。
  */
 import {
   RETIREMENT_UPCOMING_DAYS,
@@ -24,13 +24,14 @@ import {
   listRetirementBills,
   listRetirementPersons,
   loadRetirementDetail,
+  RETIREMENT_CANCELLED_VIEW,
   trimRetirementDetail,
 } from './retirement-views.js';
 
 const FALLBACK_UPCOMING_DAYS = 30;
 
 const viewQuery = z.object({
-  view: z.enum(RETIREMENT_VIEWS),
+  view: z.enum([...RETIREMENT_VIEWS, RETIREMENT_CANCELLED_VIEW]),
   asOf: day.optional(),
   upcomingDays: z
     .string()
