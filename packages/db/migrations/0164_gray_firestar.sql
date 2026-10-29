@@ -1,0 +1,6 @@
+ALTER TABLE "employment_payload_versions" ADD COLUMN "institution_id" uuid;--> statement-breakpoint
+ALTER TABLE "employment_records" ADD COLUMN "institution_id" uuid;--> statement-breakpoint
+ALTER TABLE "part_time_request_versions" ADD COLUMN "institution_id" uuid;--> statement-breakpoint
+ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_institution_fk" FOREIGN KEY ("tenant_id","institution_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_institution_fk" FOREIGN KEY ("tenant_id","institution_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "part_time_request_versions" ADD CONSTRAINT "part_time_request_versions_institution_fk" FOREIGN KEY ("tenant_id","institution_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;

@@ -121,6 +121,7 @@ export function requestView(
 function snapshotOf(request: PartTimeRequestRow): Record<string, unknown> {
   const { version } = request;
   const preset = {
+    institutionId: version.institutionId,
     departmentId: version.departmentId,
     positionId: version.positionId,
     postId: version.postId,
@@ -329,6 +330,7 @@ async function datePayload(
   const fields = snapshotFields(row!.body);
   return {
     serviceType: target.serviceType as PartTimeServiceType,
+    institutionId: (row!.body.institution_id as string | null) ?? null,
     departmentId: target.departmentId,
     positionId: fields.positionId,
     postId: fields.postId,

@@ -7,6 +7,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'GET /api/tenant/employment/transfers/employees/:id/contracts',
     'POST /api/tenant/employment/custom-fields',
     'POST /api/tenant/employment/exits/dictionaries/:dict',
+    'POST /api/tenant/employment/interns',
     'POST /api/tenant/employment/probation-results',
     'PUT /api/tenant/employment/custom-fields/:id/inheritance',
     'PUT /api/tenant/employment/entry-email-rules',
@@ -41,6 +42,7 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
   ],
   /** 状态码相同、错误体不同，由实际行为证明非法标识声明适用的端点 */
   sameStatusInvalidId: [
+    'PUT /api/tenant/employment/exit-handover-requests/:id/items/:itemId',
     'PATCH /api/tenant/employment/businesses/:id',
     'PATCH /api/tenant/employment/pending-entries/:id',
     'PATCH /api/tenant/employment/records/:id',

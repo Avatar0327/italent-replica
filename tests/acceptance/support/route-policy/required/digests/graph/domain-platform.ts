@@ -48,6 +48,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#HR_DASHBOARD_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#IDP_PROFILES': [
     'packages/domain/src/idp/catalog.ts#IDP_APP',
     'packages/domain/src/idp/catalog.ts#IDP_OBJECTS',
@@ -69,6 +73,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_APP',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#READ_ONLY_OBJECTS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES': [
     'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
@@ -78,11 +85,13 @@ export const GRAPH: Graph = {
     '#BUSINESS_OBJECTS',
     '#CORE_HR',
     '#EMPLOYEE_PROFILE',
+    '#HR_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',
     '#MANAGER_OBJECTS',
     '#QUALIFICATION_PROFILES',
     '#SUCCESSION_PROFILES',
     '#full',
+    '#grant',
     '#readOnly',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_APP',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES',
@@ -101,6 +110,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/succession/catalog.ts#SUCCESSION_CONFIG_OBJECTS',
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#grant': ['#READ_ONLY_OBJECTS', '#full', '#readOnly'],
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],
   'packages/domain/src/platform/standard-presets.ts#succession': [
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',

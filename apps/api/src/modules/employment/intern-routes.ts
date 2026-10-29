@@ -26,6 +26,13 @@ import {
   uuidParam,
 } from './context.js';
 import { parse } from './entry-routes.js';
+import {
+  createInternEntry,
+  internCreateGuard,
+  internCreateInput,
+  planInternCreate,
+  requireInternCreateWrite,
+} from './intern-create.js';
 import { internRowActions } from './intern-actions.js';
 import { internRegularizationInput, regularizationBusiness, regularizeIntern } from './intern-regularization.js';
 import { internTerminationGate, internTerminationInput, terminateIntern } from './intern-termination.js';
@@ -41,6 +48,7 @@ const viewFilter = z.strictObject({
 
 export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerInternViews(router, deps);
+  registerInternCreate(router, deps);
   router.post('/interns/:id/regularize', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
@@ -93,6 +101,29 @@ export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
       ...pick(ended, { endKind, lastWorkDate, departmentId }),
     };
     return c.json({ matched: true, candidate: { ...fixed, ...visible } });
+  });
+}
+
+/**
+ * 新增实习生一体写入（BE-R2d4c）：建档 / 重聘 + 实习任职 + 合同协议同一命令事务。权限同 POST /employees（人员新增权 + 看全部，
+ * DEC-121）叠加任职新增权与字段权；合同对象权限在命令内复核（首次 / 重放 / 回查）。重聘的 If-Match 是候选人员当前 revision，
+ * 新增为 0。回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不走任职字段裁剪。
+ */
+function registerInternCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/interns', async (c) => {
+    const employeeCtx = await readContext(c, deps, 'object.create', 0, undefined, EMPLOYEE_OBJECT);
+    const input = parse(internCreateInput, await jsonBody(c));
+    const ctx = await readContext(c, deps, 'object.create', revision(c), input.employeeId);
+    const plan = planInternCreate(ctx, input);
+    await requireInternCreateWrite(employeeCtx, ctx, plan);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, context) => ({ status: 201, body: await createInternEntry(tx, deps, context, plan) }),
+      { guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body },
+    );
   });
 }
 
