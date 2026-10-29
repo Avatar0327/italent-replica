@@ -6,7 +6,8 @@
 import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { type Approvals, planWorld, type PlanView } from './AC-IDP-plan-support.js';
+import { type Approvals, planWorld } from './AC-IDP-plan-support.js';
+import { orderedEmployeePair } from './support/ordered-employee-pair.js';
 
 const testDb = useTestDb();
 
@@ -101,24 +102,31 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T07 IDP 计划执行 
     );
     const tutor = { tutorRole: 'other', tutorEmployeeId: loner.employeeId };
     // 固定“员工排序与计划排序相反”（第 3 轮 P3）：旧实现按员工 → 实例顺序逐单锁计划，会先锁较大的计划，必然变红。
-    // 计划 ID 随机，先建未开始的候选计划（不产生审批实例），直到员工 ID 较小者有一份计划 ID 更大的计划
-    const [first, second] = [w.employee, w.outsider].sort((a, b) => (a.employeeId < b.employeeId ? -1 : 1));
-    const candidates = { first: [] as PlanView[], second: [] as PlanView[] };
-    let pair: [PlanView, PlanView] | undefined;
-    for (let round = 0; !pair && round < 40; round++) {
-      candidates.first.push(await w.createPlan(tutor, w.hrUser, first));
-      candidates.second.push(await w.createPlan(tutor, w.hrUser, second));
-      const big = candidates.first.find((a) => candidates.second.some((b) => b.id < a.id));
-      if (big) pair = [big, candidates.second.find((b) => b.id < big.id)!];
-    }
-    expect(pair).toBeTruthy();
-    const [high, low] = [pair![0].id, pair![1].id];
-    expect(first!.employeeId < second!.employeeId && low < high).toBe(true);
+    const { worker: first, subordinate: second } = await orderedEmployeePair(
+      w.employee,
+      async () => w.outsider,
+      (person) => person.employeeId,
+      'above',
+    );
+    const { worker: highPlan, subordinate: lowPlan } = await orderedEmployeePair(
+      await w.createPlan(tutor, w.hrUser, first),
+      () => w.createPlan(tutor, w.hrUser, second),
+      (plan) => plan.id,
+      'below',
+    );
+    const [high, low] = [highPlan.id, lowPlan.id];
+    expect(first.employeeId < second.employeeId && low < high).toBe(true);
+    // F-334：未开始的计划还没有审批实例；可信夹具按已知计划 ID 分配员工，固定逆序后才启动真实审批。
     for (const [plan, person] of [
-      [pair![0], first!],
-      [pair![1], second!],
+      [highPlan, first],
+      [lowPlan, second],
     ] as const) {
-      await w.submit(await w.start(plan), 1, person.userId);
+      await withTenant(db, w.tenant.id, (tx) =>
+        tx.execute(sql`UPDATE idp_plans SET employee_id = ${person.employeeId}::uuid WHERE id = ${plan.id}::uuid`),
+      );
+      const assigned = await w.readPlan(plan.id);
+      expect(assigned.employeeId).toBe(person.employeeId);
+      await w.submit(await w.start(assigned), 1, person.userId);
     }
     const admin = await w.member('交接操作人');
     const successor = await w.member('新异常管理员');

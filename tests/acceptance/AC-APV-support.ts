@@ -174,6 +174,8 @@ export interface LogView {
   readonly event: string;
   readonly nodeKey: string | null;
   readonly actorUserId: string | null;
+  /** F-264：账号显示名；系统动作为 null。 */
+  readonly actorName?: string | null;
   readonly adminSelfTransfer: boolean;
   readonly detail: Record<string, unknown>;
 }

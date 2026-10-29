@@ -5,6 +5,9 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/establishment/capacity-exists.ts#hasCapacityFrom': [
+    'apps/api/src/modules/establishment/store.ts#rowsOf',
+  ],
   'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],

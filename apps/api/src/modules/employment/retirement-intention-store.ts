@@ -13,6 +13,12 @@ import type { EmploymentContext } from './types.js';
 
 export const INTENTION_AUDIT_TYPE = 'retirement-intention';
 
+/** 审计查看的创建人（使用用户维度）：申请发起人，同兼职申请口径（F-278）。intentionId 为 uuid 表达式。 */
+export function intentionCreator(tenantId: string, intentionId: SQL): SQL {
+  return sql`(SELECT q.initiator_user_id FROM retirement_intentions q
+    WHERE q.tenant_id=${tenantId} AND q.id=${intentionId})`;
+}
+
 export interface IntentionRow {
   readonly id: string;
   readonly employeeId: string;

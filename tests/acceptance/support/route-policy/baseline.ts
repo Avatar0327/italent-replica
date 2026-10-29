@@ -14,7 +14,7 @@ import { domainConstants } from './domains.js';
 import { objectFacts } from './objects.js';
 import { scanPrimitives } from './primitives.js';
 import { probeEdges } from './probe.js';
-import { closureText, indexSources, matchRegistrations, moduleDirs, scanRegistrations } from './scan.js';
+import { closureText, indexSources, matchRegistrations, moduleDirs, scanMaxDepth, scanRegistrations } from './scan.js';
 
 export type { ObservedContract, ObservedRoute } from './contract.js';
 
@@ -44,6 +44,7 @@ export async function observeContract(
   api: ReturnType<typeof tenantApi>,
   manifest: RouteManifest,
 ): Promise<ObservedContract> {
+  const maxDepth = scanMaxDepth();
   const index = indexSources();
   const registrations = scanRegistrations(index);
   const edges = await probeEdges(db, api, manifest);
@@ -53,8 +54,8 @@ export async function observeContract(
     const localPath = subApp ? route.path.slice(prefix.length) || '/' : route.path;
     const hits = matchRegistrations(registrations, route.method, localPath, dirs);
     if (!hits.length) throw new Error(`静态注册扫描找不到 ${route.method} ${route.path}（${localPath}）`);
-    // 深闭包（6 层）供准入类维度；近闭包（3 层）供命令内前提 / 字段提取 / 范围 / 复核等更贴近处理函数的维度
-    const deep = hits.map((hit) => closureText(index, hit, 6)).join('\n');
+    // 深闭包默认 6 层（F-231 可配置）；近闭包固定 3 层，维持命令内前提 / 字段 / 范围等维度的口径。
+    const deep = hits.map((hit) => closureText(index, hit, maxDepth)).join('\n');
     const near = hits.map((hit) => closureText(index, hit, 3)).join('\n');
     const key = `${route.method} ${route.path}`;
     const edge = edges[key];

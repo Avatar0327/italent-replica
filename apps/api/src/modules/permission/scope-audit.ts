@@ -1,5 +1,6 @@
 import { and, auditObjectCreators, eq, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import type { ModuleScope } from './module-access.js';
 
 export const hasCreatorScope = (scope: ModuleScope) =>
@@ -14,16 +15,21 @@ export function creatorSql(tenantId: string, id: SQL, action: string, objectType
 }
 
 /**
- * 创建人子查询的唯一构造点：对象 id 表达式由调用方给出，常是外层查询的列（如 a.employee_id、r.id）。子查询用专属别名
- * creator_meta，不能再用 a / b / r 这类外层常见别名，否则内层遮住外层列，PostgreSQL 报 42703（BE-15b1 第 3 轮 P2-1）。
- * tenant 可以是租户 ID 参数，也可以是外层的租户列表达式。
+ * 创建人子查询的公共构造函数（编制重放 establishment-replay.ts 仍保留独立内联查询）。
+ * 对象 id 与 tenant 均可引用外层列；避开输入表达式已有的层级别名，防止嵌套时遮蔽外层，造成 42703 或静默错绑
+ * （BE-15b1 第 3 轮 P2-1、F-232）。tenant 也可以直接传租户 ID 参数。
  */
 export function firstCreatorSql(tenant: string | SQL, objectId: SQL, action: string, objectType?: string): SQL {
-  const type = objectType ? sql`AND creator_meta.object_type=${objectType}` : sql``;
-  return sql`(SELECT creator_meta.creator_user_id FROM audit_object_creators creator_meta
-    WHERE creator_meta.tenant_id=${tenant} AND creator_meta.object_id=${objectId}::text
-    AND creator_meta.action=${action} ${type}
-    ORDER BY creator_meta.created_at LIMIT 1)`;
+  // 只检查 SQL 文本、不检查绑定值；稳定后缀保留同形查询的预备语句复用，避免随机别名。
+  const inputSql = new PgDialect().sqlToQuery(sql`${tenant} ${objectId}`).sql.toLowerCase();
+  let level = 1;
+  while (inputSql.includes(`creator_meta_${level}`)) level += 1;
+  const meta = sql.identifier(`creator_meta_${level}`);
+  const type = objectType ? sql`AND ${meta}.object_type=${objectType}` : sql``;
+  return sql`(SELECT ${meta}.creator_user_id FROM audit_object_creators ${meta}
+    WHERE ${meta}.tenant_id=${tenant} AND ${meta}.object_id=${objectId}::text
+    AND ${meta}.action=${action} ${type}
+    ORDER BY ${meta}.created_at LIMIT 1)`;
 }
 
 export async function creatorOf(tx: Tx, tenantId: string, id: string, action: string, objectType: string) {

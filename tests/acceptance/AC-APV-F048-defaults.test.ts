@@ -314,7 +314,8 @@ describe('T11 DEC-332①：预置按业务敏感度显式取值（设计 §3.3�
       const collective = item.approvalType === 'talent_review_result';
       for (const node of process.latestVersion.nodes) {
         // BE-15b1：考核的员工自评节点由考核对象本人处理（同 IDP 的填写节点），经理评价节点照 DEC-332① 开启
-        const selfFill = idp || node.key === 'self_evaluation';
+        // BE-8b2：离职交接的员工确认节点同样由离职员工本人处理
+        const selfFill = idp || node.key === 'self_evaluation' || node.key === 'employee_confirm';
         expect(node.actions, `${item.approvalType}.${node.key}`).toMatchObject({
           avoidSelf: !selfFill,
           avoidSubjects: collective,

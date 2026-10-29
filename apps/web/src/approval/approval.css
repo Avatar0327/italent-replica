@@ -185,6 +185,11 @@
 }
 
 /* 审批详情 */
+.approval-log-actor {
+  margin-inline-end: 4px;
+  color: #33383d;
+  font-size: 12px;
+}
 .approval-detail-page,
 .approval-detail {
   display: flex;

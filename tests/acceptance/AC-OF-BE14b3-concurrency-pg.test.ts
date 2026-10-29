@@ -9,7 +9,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { offerApprovalWorld, type OfferView } from './AC-OF-BE14a3-support.js';
 import { syncWorld, type SyncWorld } from './AC-OF-BE14b2-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -59,15 +59,14 @@ pg('F-219 被驳回批量单：并发删除 B × 失效 A', () => {
     const removal = w.request(w.applicant.userId, 'DELETE', `/api/tenant/offers/${rb.id}`, { ifMatch: rb.revision });
     const invalidation = w.invalidateRaw(ra);
     const both = Promise.all([removal, invalidation]);
-    try {
+    await withRelease(release, async (cleanup) => {
+      [removal, invalidation, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       // 两个请求此刻都只在等批量单：Offer A、B 的行都还能被别人立即锁住（旧锁序里删除一侧已持有 B 的行锁，这里会 55P03）
       await withTenant(w.db, w.tenant.id, async (tx) => {
         await tx.execute(sql`SELECT id FROM offers WHERE id IN (${ra.id}::uuid, ${rb.id}::uuid) FOR UPDATE NOWAIT`);
       });
-    } finally {
-      await release();
-    }
+    });
     const [deleted, invalidated] = await both;
     expect([deleted.status, invalidated.status].every((status) => status === 200 || status === 409)).toBe(true);
     expect([deleted.status, invalidated.status]).toContain(200);
@@ -104,12 +103,11 @@ pg('联动 × 并发', () => {
     const cancel = w.entryAction(entryId, 'cancel', {});
     const invalidate = w.invalidate(offer, { reasonCode: 'candidate_gave_up' });
     const both = Promise.all([cancel, invalidate]);
-    try {
+    await withRelease(release, async (cleanup) => {
+      [cancel, invalidate, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await expectNoEntryLocksHeld(w, employeeId, entryId);
-    } finally {
-      await release();
-    }
+    });
     const [cancelled, invalidated] = await both;
     expect([cancelled.status, invalidated.status].every((status) => [200, 404, 409].includes(status))).toBe(true);
     expect(await deadlocks(w.db)).toBe(before);
@@ -123,9 +121,11 @@ pg('联动 × 并发', () => {
   it('办理入职 × 编辑并同步：都先等 Offer 锁；放开后无死锁，Offer 终态与待入职一致', async () => {
     const { w, offer, entryId, employeeId } = await entrySetup('cc-complete-edit');
     const before = await deadlocks(w.db);
+    // 先读版本号再持锁：持锁后到 try 之间不能有会抛错的 await，否则 finally 不会执行、Offer 行锁不放（F-282）
+    const entryRevision = await w.businessRevision(entryId);
     const release = await holdOffer(w, offer.id);
     const complete = w.employment('POST', `/pending-entries/${entryId}/complete`, {
-      ifMatch: await w.businessRevision(entryId),
+      ifMatch: entryRevision,
       body: { probation: false },
     });
     const editing = w.request('PUT', `/${offer.id}`, {
@@ -133,12 +133,11 @@ pg('联动 × 并发', () => {
       body: { plannedEntryDate: '2026-12-01', syncPendingEntry: true },
     });
     const both = Promise.all([complete, editing]);
-    try {
+    await withRelease(release, async (cleanup) => {
+      [complete, editing, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await expectNoEntryLocksHeld(w, employeeId, entryId);
-    } finally {
-      await release();
-    }
+    });
     const [completed, edited] = await both;
     expect([completed.status, edited.status].every((status) => [200, 404, 409].includes(status))).toBe(true);
     expect(await deadlocks(w.db)).toBe(before);

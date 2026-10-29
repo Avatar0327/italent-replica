@@ -26,6 +26,7 @@ import { firstCreatorSql } from '../permission/scope-audit.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
 import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
 import { recordAudit } from '../../audit/record.js';
+import { discloseAssessmentConflictReceipt } from './assessment-conflict-disclosure.js';
 import { isEmploymentRecordVisible, visibleEmploymentRecords } from './visibility.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
@@ -70,6 +71,34 @@ export async function readContext(
     return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
   }
   return result;
+}
+
+/**
+ * 读口判定“当前操作人能不能用某个写动作”（F-268 / F-283，DEC-431①）：写入口的上下文（同一次 readContext，对象操作 + 写入口径
+ * 范围）。没有该对象操作权返回 undefined；其他错误照常抛出。
+ */
+export async function tryWriteContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  action: 'object.create' | 'object.update' | 'object.delete',
+): Promise<EmploymentContext | undefined> {
+  try {
+    return await readContext(c, deps, action);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'FORBIDDEN') return undefined;
+    throw error;
+  }
+}
+
+/** 写入口的权限 / 范围判定（会抛 403 / 404）是否通过；读口下发动作时与写入口跑同一个判定，其他错误照常抛出。 */
+export async function permits(check: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await check();
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && (error.code === 'FORBIDDEN' || error.code === 'NOT_FOUND')) return false;
+    throw error;
+  }
 }
 
 /** 员工在 ctx 数据范围内（范围外与不存在同一个 404）；返回创建人（使用用户维度用）。入口与命令内复核共用。 */
@@ -478,9 +507,8 @@ export async function runWrite(
     );
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const body = options.project
-    ? await options.project(result.body)
-    : await trimEmploymentResponse(deps, ctx, result.body);
+  const disclosed = await discloseAssessmentConflictReceipt(deps, ctx, result.body);
+  const body = options.project ? await options.project(disclosed) : await trimEmploymentResponse(deps, ctx, disclosed);
   return c.json(body, result.status);
 }
 

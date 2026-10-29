@@ -10,6 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { type GradeSchemeView, qualificationWorld, type StandardView } from './AC-QL-support.js';
 import { uniqueSuffix } from './support/unique.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -58,12 +59,14 @@ async function interleave(
     finished = true;
     return response;
   });
-  try {
-    await waitForLock(db, () => finished);
-  } finally {
-    release.resolve();
-    await holder;
-  }
+  await withRelease(
+    () => release.resolve(),
+    async (cleanup) => {
+      [pending, holder].forEach((request) => cleanup.track<unknown>(request));
+      await waitForLock(db, () => finished);
+    },
+    [holder],
+  );
   return pending;
 }
 

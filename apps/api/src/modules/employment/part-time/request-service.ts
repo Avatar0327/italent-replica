@@ -38,14 +38,10 @@ import {
   type RequestPayload,
 } from './request-store.js';
 import { partTimeNotFound } from './read.js';
+import { assertLinkageLocksHeld, linkageOf } from './linkage.js';
 import { checkNewPartTime, insertCheckedPartTime, type CreatePartTimeInput } from './service.js';
 import { appendPartTimeTerm, lockPartTimeRecords, readPartTimeRecords, type PartTimeRecordRow } from './store.js';
-import {
-  assertNoLinkage,
-  normalizeNewPartTime,
-  requirePartTimeRecordScope,
-  type NormalizedPartTime,
-} from './validation.js';
+import { normalizeNewPartTime, requirePartTimeRecordScope, type NormalizedPartTime } from './validation.js';
 
 export interface AddRequestInput extends CreatePartTimeInput {
   /** 发起方式：self / manager 入口由 F-020 做（DEC-200 / 283），服务层预留；缺省 hr。 */
@@ -67,7 +63,7 @@ export interface DateRequestInput {
   readonly endDate: string;
   readonly initiator?: PartTimeInitiator;
   readonly remark?: string | null;
-  /** PT-7 前不受理：true / 非空一律拒绝（同新增），显式 false / 空数组放行。 */
+  /** 延长 / 结束申请不带联动（A-14 只改结束日期与备注）：true / 非空一律拒绝，显式 false / 空数组放行。 */
   readonly isDepartmentHead?: boolean | null;
   readonly addedSubordinateIds?: readonly string[] | null;
 }
@@ -125,6 +121,7 @@ export function requestView(
 function snapshotOf(request: PartTimeRequestRow): Record<string, unknown> {
   const { version } = request;
   const preset = {
+    institutionId: version.institutionId,
     departmentId: version.departmentId,
     positionId: version.positionId,
     postId: version.postId,
@@ -134,6 +131,8 @@ function snapshotOf(request: PartTimeRequestRow): Record<string, unknown> {
     dottedManagerId: version.dottedManagerId,
     employmentType: version.employmentType,
     employmentForm: version.employmentForm,
+    isDepartmentHead: version.isDepartmentHead,
+    addedSubordinateIds: version.addedSubordinateIds,
   };
   return {
     state: request.state,
@@ -184,6 +183,8 @@ function inputOf(request: PartTimeRequestRow): CreatePartTimeInput {
     dottedManagerId: version.dottedManagerId,
     employmentForm: version.employmentForm,
     employmentType: version.employmentType,
+    isDepartmentHead: version.isDepartmentHead,
+    addedSubordinateIds: version.addedSubordinateIds,
     customFields: version.customFields,
   };
 }
@@ -214,6 +215,8 @@ function payloadOf(
     dottedManagerId: fields.dottedManagerId,
     employmentType: fields.employmentType,
     employmentForm: fields.employmentForm,
+    isDepartmentHead: fields.isDepartmentHead,
+    addedSubordinateIds: fields.addedSubordinateIds,
     startDate: normalized.startDate,
     endDate: normalized.endDate,
     originalEndDate: null,
@@ -265,9 +268,13 @@ function assertAction(request: PartTimeRequestRow, action: PartTimeRequestAction
   return next;
 }
 
+/** 是否原发起人（写入口的 assertInitiator 与读口下发动作共用）。 */
+export const isRequestInitiator = (request: PartTimeRequestRow, ctx: Pick<EmploymentContext, 'userId'>) =>
+  request.initiatorUserId === ctx.userId;
+
 /** 提交（含驳回后重提）只允许原发起人（DEC-113）；当前权限复核在路由层（PT-4b）。 */
 function assertInitiator(request: PartTimeRequestRow, ctx: EmploymentContext) {
-  if (request.initiatorUserId !== ctx.userId)
+  if (!isRequestInitiator(request, ctx))
     throw new AppError('FORBIDDEN', '只有原发起人可以操作该兼职申请', { reason: PART_TIME_ERRORS.notInitiator });
 }
 
@@ -323,6 +330,7 @@ async function datePayload(
   const fields = snapshotFields(row!.body);
   return {
     serviceType: target.serviceType as PartTimeServiceType,
+    institutionId: (row!.body.institution_id as string | null) ?? null,
     departmentId: target.departmentId,
     positionId: fields.positionId,
     postId: fields.postId,
@@ -332,6 +340,8 @@ async function datePayload(
     dottedManagerId: fields.dottedManagerId,
     employmentType: fields.employmentType,
     employmentForm: fields.employmentForm,
+    isDepartmentHead: null,
+    addedSubordinateIds: null,
     startDate: target.startDate,
     endDate,
     originalEndDate: target.endDate,
@@ -350,7 +360,7 @@ export async function createDateRequest(
   ctx: EmploymentContext,
   input: DateRequestInput,
 ): Promise<PartTimeRequestView> {
-  assertNoLinkage(input);
+  assertNoDateLinkage(input);
   const endDate = businessDate(input.endDate);
   const remark = assertRemark(input.remark);
   const [owner] = await readPartTimeRecords(tx, ctx, [input.recordId]);
@@ -416,9 +426,23 @@ async function rewriteVersion(
   return requestView(updated, { warnings: checked.warnings });
 }
 
-/** 延长 / 结束申请的可改键：结束日期与备注；联动两字段先按 PT-7 前一律拒绝的口径判（显式 false / 空数组放行，不是联动请求）。 */
+/** 延长 / 结束申请不带联动：两字段 true / 非空 → 400 PART_TIME_FIELD_NOT_EDITABLE（显式 false / 空数组不是联动请求，放行）。 */
+function assertNoDateLinkage(input: {
+  readonly isDepartmentHead?: boolean | null;
+  readonly addedSubordinateIds?: readonly string[] | null;
+}): void {
+  const field =
+    input.isDepartmentHead === true ? 'isDepartmentHead' : input.addedSubordinateIds?.length && 'addedSubordinateIds';
+  if (field)
+    throw new AppError('VALIDATION_FAILED', '延长 / 结束申请只能修改结束日期与备注', {
+      reason: PART_TIME_ERRORS.fieldNotEditable,
+      field,
+    });
+}
+
+/** 延长 / 结束申请的可改键：结束日期与备注；联动两字段同上只放行 false / 空数组。 */
 function datePatch(patch: AddRequestPatch): { readonly endDate?: string | null; readonly remark?: string | null } {
-  assertNoLinkage(patch);
+  assertNoDateLinkage(patch);
   for (const key of Object.keys(patch))
     if (!['endDate', 'remark', 'isDepartmentHead', 'addedSubordinateIds'].includes(key))
       throw new AppError('VALIDATION_FAILED', '延长 / 结束申请只能修改结束日期与备注', {
@@ -673,9 +697,14 @@ async function landAddRequest(
   approved: PartTimeRequestRow,
 ): Promise<string> {
   const normalized = normalizeNewPartTime(inputOf(approved));
-  const checked = await checkNewPartTime(tx, ctx, employee, normalized, approved.id);
-  const record = await insertCheckedPartTime(tx, ctx, employee.id, normalized, checked, { sourceId: approved.id });
-  return record.id;
+  // 记录、联动（负责人 / 下属）在同一保存点：联动在落地时被业务拒绝则整体回滚，申请作废，不留半套记录（§4.8）
+  return tx.transaction(async (savepoint) => {
+    const checked = await checkNewPartTime(savepoint, ctx, employee, normalized, approved.id);
+    const record = await insertCheckedPartTime(savepoint, ctx, employee.id, normalized, checked, {
+      sourceId: approved.id,
+    });
+    return record.id;
+  });
 }
 
 /**
@@ -721,6 +750,9 @@ export async function landApprovedRequest(tx: Tx, ctx: EmploymentContext, reques
   if (request.state !== 'in_review') return;
   const approved = await appendRequestState(tx, ctx, request, assertAction(request, 'approve'));
   await auditRequest(tx, ctx, 'part_time.request.approved', approved, ...stateChange(request, approved));
+  // 落地只重入、复核：联动闭包（本人 + 申请下属 + 规划里原有的下属）已在 adapter lock 经联动单一规划入口取齐，这里断言在集合内，
+  // 不在就抛内部错误（开发期暴露），绝不在持组织锁之后补锁（§7.1）
+  if (request.requestType === 'add') await assertLinkageLocksHeld(tx, employee.id, linkageOf(request.version));
   const voidLanding = (reason: 'landing_rejected' | 'changed_since_submit') =>
     voidPartTimeRequest(tx, ctx, approved, {
       reason,

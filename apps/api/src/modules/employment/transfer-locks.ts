@@ -4,6 +4,7 @@
  */
 import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { partTimeLinkageParticipants } from './part-time/linkage-participants.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -32,8 +33,10 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
           AND r.business_id=b.id AND p.kind IN ('leave','retirement'))
     `),
     );
+    // PT-7：兼职联动（待执行 + 审批中的新增申请）的下属也在闭包里，所有入口按同一 UUID 升序取锁（兼职设计 §4.8 / §7.1）
+    const linkage = (await partTimeLinkageParticipants(tx, ctx.tenantId, [...ids])).map((list) => ({ ids: list }));
     const size = ids.size;
-    rows.forEach((row) => row.ids?.forEach((id) => ids.add(id)));
+    [...rows, ...linkage].forEach((row) => row.ids?.forEach((id) => ids.add(id)));
     if (ids.size > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '调动联动参与人员超过处理上限');
     if (ids.size === size) return [...ids].sort();
   }
@@ -113,6 +116,20 @@ export const lockTransferParticipants = (
   extra: readonly string[] = [],
   options: { skipLocked?: boolean } = {},
 ): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options.skipLocked === true);
+
+/**
+ * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取
+ * 组织锁的事务成环）。不在集合内说明某条入口没经 lockTransferParticipants 规划完整参与者——抛内部错误，开发期即暴露，不静默补锁。
+ */
+export async function assertEmployeeLocksHeld(tx: Tx, ids: readonly string[]): Promise<void> {
+  const [setting] = rowsOf<{ value: string | null }>(
+    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+  );
+  const held = new Set<string>(setting?.value ? (JSON.parse(setting.value) as string[]) : []);
+  const missing = ids.map((id) => id.toLowerCase()).filter((id) => !held.has(id));
+  if (missing.length)
+    throw new Error(`联动参与者未在预锁集合内（入口须先经 lockLinkageParticipants 规划）：${missing.join(',')}`);
+}
 
 /** 审批适配器须在实例锁之前调用；批量交接会签合席可推进业务，批次须先锁整个参与员工闭包。 */
 export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, businessId: string) {

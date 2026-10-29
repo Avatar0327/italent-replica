@@ -11,6 +11,7 @@ import {
 import { EV_BASE, errorOf, ok } from './AC-EV-support.js';
 import { FORMS, type FormView } from './AC-EV-form-support.js';
 import type * as Conditions from '../../apps/api/src/modules/evaluation/conditions.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const readRace = vi.hoisted(() => ({
   target: '',
@@ -151,17 +152,21 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-conditions / AC-EV-for
     });
     await ready.promise;
     let edit: Promise<Response> | undefined;
-    try {
-      edit = w.setup.request('PATCH', `${EV_BASE}${FORMS}/${form.id}`, {
-        ...w.asAdmin,
-        ifMatch: form.revision,
-        body: { fullScore: 90 },
-      });
-      await waitForActivityLock();
-    } finally {
-      release.open();
-      await writer;
-    }
+    await withRelease(
+      () => release.open(),
+      async (cleanup) => {
+        cleanup.track(writer);
+        edit = cleanup.track(
+          w.setup.request('PATCH', `${EV_BASE}${FORMS}/${form.id}`, {
+            ...w.asAdmin,
+            ifMatch: form.revision,
+            body: { fullScore: 90 },
+          }),
+        );
+        await waitForActivityLock();
+      },
+      [writer],
+    );
     const response = await edit!;
     expect(response.status).toBe(409);
     expect((await errorOf(response)).reason).toBe('FORM_LOCKED');

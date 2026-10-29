@@ -7,6 +7,7 @@ import { registerInUse } from '../../apps/api/src/modules/evaluation/usage.js';
 import type * as FormService from '../../apps/api/src/modules/evaluation/form-service.js';
 import { formOperator, FORMS, formWorld, type FormView, type FormWorld } from './AC-EV-form-support.js';
 import { errorOf, ok } from './AC-EV-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const race = vi.hoisted(() => ({
   active: false,
@@ -122,11 +123,13 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-F091-reference-pg æ´»å
     const reference = addReference(f, ready.open, gate.promise);
     await ready.promise;
     const disabling = disable(f);
-    try {
-      await expectLockWait(testDb().db);
-    } finally {
-      gate.open();
-    }
+    await withRelease(
+      () => gate.open(),
+      async (cleanup) => {
+        [reference, disabling].forEach((request) => cleanup.track<unknown>(request));
+        await expectLockWait(testDb().db);
+      },
+    );
     await reference;
     const response = await disabling;
     expect(response.status, await response.clone().text()).toBe(409);
@@ -148,12 +151,16 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('AC-EV-F091-reference-pg æ´»å
       () => null,
       (error: unknown) => error,
     );
-    try {
-      await expectLockWait(testDb().db);
-    } finally {
-      gate.open();
-      race.active = false;
-    }
+    await withRelease(
+      () => {
+        gate.open();
+        race.active = false;
+      },
+      async (cleanup) => {
+        [disabling, reference].forEach((request) => cleanup.track<unknown>(request));
+        await expectLockWait(testDb().db);
+      },
+    );
     const response = await disabling;
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await reference).toMatchObject({ code: 'VALIDATION_FAILED', details: { reason: 'REFERENCE_DISABLED' } });

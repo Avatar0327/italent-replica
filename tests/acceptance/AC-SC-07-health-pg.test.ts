@@ -9,6 +9,7 @@ import { enqueueCalcRun, runCalcPage } from '../../apps/api/src/modules/successi
 import { createHealthHandler } from '../../apps/api/src/modules/succession/health-worker.js';
 import { createInMemoryTalentReviewSyncPort } from '../../apps/api/src/modules/talent-review/sync-port-memory.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useHealthDb();
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康度交错', () => {
@@ -89,13 +90,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 真 PG 健康�
       ifMatch: 0,
       body: { levelId: nonempty ? levelId : null },
     });
-    try {
+    await withRelease(release, async (cleanup) => {
+      [worker, assign].forEach((request) => cleanup.track<unknown>(request));
       const waiting = await waitHealthLock(w.db, blocker, 'org_settings');
       expect(waiting.query).toContain('org_settings');
       expect(waiting.locktype).toBe('transactionid');
-    } finally {
-      release();
-    }
+    });
     expect(await worker).toBe('succeeded');
     const rejected = await assign;
     expect(rejected.status).toBe(409);
@@ -222,18 +222,20 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-07 P3 非空赋值
       const blocker = await ready;
       const assign = w.request('PUT', `/health-results/${org.id}`, { ifMatch: 0, body: { levelId } });
       let worker: ReturnType<typeof runCalcPage> | undefined;
-      try {
-        const targetWait = await waitHealthLock(w.db, blocker, 'succession_target_locks');
-        expect(targetWait.query).toContain('FOR UPDATE');
-        expect(targetWait.locktype).toBe('transactionid');
-        worker = runCalcPage(w.db, w.tenant.id, runId, [createHealthHandler(kind)], SC_NOW);
-        const settingsWait = await waitHealthLock(w.db, targetWait.pid, 'org_settings');
-        expect(settingsWait.query).toContain('org_settings');
-        expect(settingsWait.pid).not.toBe(targetWait.pid);
-      } finally {
-        release();
-        await holder;
-      }
+      await withRelease(
+        release,
+        async (cleanup) => {
+          [assign, holder].forEach((request) => cleanup.track<unknown>(request));
+          const targetWait = await waitHealthLock(w.db, blocker, 'succession_target_locks');
+          expect(targetWait.query).toContain('FOR UPDATE');
+          expect(targetWait.locktype).toBe('transactionid');
+          worker = cleanup.track(runCalcPage(w.db, w.tenant.id, runId, [createHealthHandler(kind)], SC_NOW));
+          const settingsWait = await waitHealthLock(w.db, targetWait.pid, 'org_settings');
+          expect(settingsWait.query).toContain('org_settings');
+          expect(settingsWait.pid).not.toBe(targetWait.pid);
+        },
+        [holder],
+      );
       const assigned = await assign;
       expect(assigned.status).toBe(200);
       expect(await assigned.json()).toMatchObject({ levelId, levelName: '手工健康', method: 'manual', revision: 1 });

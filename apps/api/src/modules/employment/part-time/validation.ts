@@ -40,6 +40,9 @@ export const PART_TIME_FIELD_KEYS = [
   'employmentType',
 ] as const;
 export type PartTimeFieldKey = (typeof PART_TIME_FIELD_KEYS)[number];
+/** 联动字段（§4.8，PT-7）：保存在记录上，保存 / 落地 / 到期时按 linkage.ts 执行。 */
+export const PART_TIME_LINKAGE_KEYS = ['isDepartmentHead', 'addedSubordinateIds'] as const;
+export type PartTimeLinkageKey = (typeof PART_TIME_LINKAGE_KEYS)[number];
 
 export interface NewPartTimeInput extends Partial<Pick<PresetFields, PartTimeFieldKey>> {
   readonly employeeId: string;
@@ -48,7 +51,7 @@ export interface NewPartTimeInput extends Partial<Pick<PresetFields, PartTimeFie
   readonly endDate?: string | null;
   readonly departmentId: string;
   readonly customFields?: Readonly<Record<string, unknown>>;
-  /** PT-7 前不接受（§4.8）：给 true / 非空数组一律拒绝，不留“记录说是负责人、组织上不是”的半套状态。 */
+  /** 联动（§4.8，PT-7）：保存时校验人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件。 */
   readonly isDepartmentHead?: boolean | null;
   readonly addedSubordinateIds?: readonly string[] | null;
 }
@@ -59,7 +62,7 @@ export interface NormalizedPartTime {
   readonly startDate: string;
   readonly endDate: string | null;
   readonly departmentId: string;
-  readonly fields: Pick<PresetFields, PartTimeFieldKey | 'departmentId'>;
+  readonly fields: Pick<PresetFields, PartTimeFieldKey | PartTimeLinkageKey | 'departmentId'>;
   readonly customFields: Readonly<Record<string, unknown>>;
   readonly explicitFieldCodes: readonly string[];
 }
@@ -71,12 +74,10 @@ const endBeforeStart = () =>
     field: 'endDate',
   });
 
-/** PT-7 前不接受负责人 / 新增下属（§4.8）：新增与编辑共用，给 true / 非空数组一律拒绝，不静默丢弃。 */
-export function assertNoLinkage(input: Pick<NewPartTimeInput, 'isDepartmentHead' | 'addedSubordinateIds'>): void {
-  if (input.isDepartmentHead === true || input.addedSubordinateIds?.length)
-    throw new AppError('VALIDATION_FAILED', '兼职暂不支持设置部门负责人或新增下属', {
-      reason: PART_TIME_ERRORS.linkageNotAvailable,
-    });
+/** 新增下属的存储形态：去重（保持给出顺序）、空数组等同未给（null），新增与编辑共用。 */
+export function normalizeSubordinates(ids: readonly string[] | null | undefined): readonly string[] | null {
+  const unique = [...new Set((ids ?? []).map((id) => id.toLowerCase()))];
+  return unique.length ? unique : null;
 }
 
 /** D-1 与结构校验：全部是纯判断，无 IO；失败时尚未取任何锁、也没有任何写入。 */
@@ -88,12 +89,15 @@ export function normalizeNewPartTime(input: NewPartTimeInput): NormalizedPartTim
   const startDate = businessDate(input.startDate);
   const endDate = input.endDate == null ? null : businessDate(input.endDate);
   if (endDate !== null && endDate < startDate) throw endBeforeStart();
-  assertNoLinkage(input);
-  const fields = Object.fromEntries(PART_TIME_FIELD_KEYS.map((key) => [key, input[key] ?? null])) as Pick<
-    PresetFields,
-    PartTimeFieldKey
-  >;
-  const given = PART_TIME_FIELD_KEYS.filter((key) => input[key] != null);
+  const fields = {
+    ...(Object.fromEntries(PART_TIME_FIELD_KEYS.map((key) => [key, input[key] ?? null])) as Pick<
+      PresetFields,
+      PartTimeFieldKey
+    >),
+    isDepartmentHead: input.isDepartmentHead ?? null,
+    addedSubordinateIds: normalizeSubordinates(input.addedSubordinateIds),
+  };
+  const given = Object.entries(fields).flatMap(([key, value]) => (value != null ? [key] : []));
   return {
     employeeId: input.employeeId,
     serviceType: input.serviceType,
@@ -236,8 +240,12 @@ export interface EditPartTimeInput extends Partial<Pick<PresetFields, PartTimeFi
   readonly addedSubordinateIds?: readonly string[] | null;
 }
 
-export type EditableFieldKey = PartTimeFieldKey | 'departmentId';
-export const EDITABLE_FIELD_KEYS: readonly EditableFieldKey[] = [...PART_TIME_FIELD_KEYS, 'departmentId'];
+export type EditableFieldKey = PartTimeFieldKey | PartTimeLinkageKey | 'departmentId';
+export const EDITABLE_FIELD_KEYS: readonly EditableFieldKey[] = [
+  ...PART_TIME_FIELD_KEYS,
+  ...PART_TIME_LINKAGE_KEYS,
+  'departmentId',
+];
 
 export interface PartTimeEditPlan {
   /** 编辑后的结束日期（无变化时即当前值）。 */
@@ -245,12 +253,26 @@ export interface PartTimeEditPlan {
   readonly endChanged: boolean;
   /** 合入改动后的预置字段整组。 */
   readonly fields: PresetFields;
-  readonly changes: readonly { field: EditableFieldKey; before: string | null; after: string | null }[];
+  readonly changes: readonly {
+    field: EditableFieldKey;
+    before: string | boolean | readonly string[] | null;
+    after: string | boolean | readonly string[] | null;
+  }[];
+}
+
+/** 编辑里的字段取值：新增下属按存储形态归一；是否部门负责人 false 与未设等价（不是联动请求，不算改动）。 */
+function editedValue(key: EditableFieldKey, value: unknown) {
+  if (key === 'addedSubordinateIds') return normalizeSubordinates(value as readonly string[] | null | undefined);
+  return (value ?? null) as string | boolean | null;
+}
+function sameValue(key: EditableFieldKey, a: unknown, b: unknown): boolean {
+  if (key === 'isDepartmentHead') return (a === true) === (b === true);
+  return JSON.stringify(editedValue(key, a)) === JSON.stringify(editedValue(key, b));
 }
 
 /**
  * 编辑的纯规划（无 IO）：开始日期 / 任职类型改成别的值 → 400（A-9，同值是无操作）；结束日期不能置空（仅当已有结束日）、
- * 不能早于开始日期（T-1）；联动字段 PT-7 前拒绝。调用方在员工行锁与记录头锁内传入锁内读到的当前值。
+ * 不能早于开始日期（T-1）；联动字段（PT-7）比较时归一，是否执行联动由 linkage.ts 按改动判。调用方在员工行锁与记录头锁内传入锁内读到的当前值。
  */
 export function planPartTimeEdit(
   row: Pick<PartTimeRecordRow, 'startDate' | 'serviceType' | 'endDate'>,
@@ -263,7 +285,6 @@ export function planPartTimeEdit(
     throw immutable(PART_TIME_ERRORS.dateImmutable, '兼职开始日期创建后不可修改', 'startDate');
   if (input.serviceType !== undefined && input.serviceType !== row.serviceType)
     throw immutable(PART_TIME_ERRORS.typeImmutable, '兼职类型创建后不可修改', 'partTimeType');
-  assertNoLinkage(input);
   let endDate = row.endDate;
   if (input.endDate === null && row.endDate !== null)
     throw new AppError('VALIDATION_FAILED', '结束日期不能置空', {
@@ -275,9 +296,9 @@ export function planPartTimeEdit(
     if (endDate < row.startDate) throw endBeforeStart();
   }
   if (Object.hasOwn(input, 'departmentId') && !input.departmentId) throw invalid('departmentId', '兼职部门不能为空');
-  const changes = EDITABLE_FIELD_KEYS.filter((key) => Object.hasOwn(input, key) && input[key] !== current[key]).map(
-    (key) => ({ field: key, before: current[key] as string | null, after: (input[key] ?? null) as string | null }),
-  );
+  const changes = EDITABLE_FIELD_KEYS.filter(
+    (key) => Object.hasOwn(input, key) && !sameValue(key, input[key], current[key]),
+  ).map((key) => ({ field: key, before: current[key] ?? null, after: editedValue(key, input[key]) }));
   return {
     endDate,
     endChanged: endDate !== row.endDate,

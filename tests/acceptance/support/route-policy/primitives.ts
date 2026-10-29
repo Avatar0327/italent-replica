@@ -146,6 +146,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['employment visibility', calls('visibleEmploymentRecords', 'employmentVisibilitySql'), NEAR],
     ['auditViewer', call('auditViewer')],
     ['manager team', call('inTeam'), NEAR],
+    // 退休规则读取（F-269）同口径：租户配置，无组织 / 人员字段
     // 离职字典 / 试用结果字典读取（R2-T03 §9.1、BE-3）：持任职记录查看权即可读，字典无组织字段，只用上下文、不按范围过滤
     // （listExitDictionary / listProbationResults）
     [
@@ -153,7 +154,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/,
       {
         unless: new RegExp(
-          `${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults|listRetirementIdentityTypes`,
+          `${CONFIG_OBJECTS.source}|listExitDictionary|listProbationResults|` +
+            'listRetirementIdentityTypes|listRetirementRules',
         ),
       },
     ],
@@ -226,6 +228,13 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['instanceOfTask', call('instanceOfTask'), NEAR],
     ['currentAssignee（assertOpen / openTask）', calls('assertOpen', 'openTask'), NEAR],
     ['retrievable（retrievableTask）', call('retrievableTask'), NEAR],
+    // 离职交接（BE-8b2）：参与人 = 发起人员工本人或该审批实例上有任务的审批人；办理 = 当前待办节点负责的类别（exit-handover.ts）
+    [
+      'exit handover participant（isHandoverParticipant）',
+      call('isHandoverParticipant'),
+      { near: true, modules: ['employment'] },
+    ],
+    ['exit handover assignee（tickHandoverItem）', call('tickHandoverItem'), { near: true, modules: ['employment'] }],
     // IDP 执行人：当前阶段在办待办人 + 节点按钮（plan-access.ts requireExecutor）
     ['idp executor（requireExecutor）', call('requireExecutor'), { near: true, modules: ['idp'] }],
     [
