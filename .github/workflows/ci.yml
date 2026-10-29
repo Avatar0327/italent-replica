@@ -6,7 +6,7 @@ name: CI
 #         目标分支不是 main 的 PR 一律 light（DEC-454① 第 2 轮 P2-1，判定在 scripts/ci-classify.sh）；
 #   light 在途 PR（DEC-454①）：只跑轻量检查 job（lint / typecheck / build / 纯函数单测，约 4 分钟），
 #         两个必需检查改名为“待队首运行”报告，必需检查本身保持“等待中”，PR 合不进去；
-#   full  队首 PR（带 queue-head 标签的 pull_request 运行，队列关闭再重开 PR 触发）、push 到 main、每周定时、手动触发：完整测试，
+#   full  队首 PR（打 queue-head 标签触发的 pull_request 运行）、push 到 main、每周定时、手动触发：完整测试，
 #         两个汇总 job 以必需检查名报告，要求轻量检查与全部分片成功
 # - 纯文档判定：PR 相对 base 的完整改动文件必须全部是文档——任意目录的 *.md，或 docs/ reference/ .claude/ 下的
 #   图片（png jpg jpeg gif svg webp）与纯文本资料（txt tsv）；其余扩展名（py mjs js ts json yml sh html 等）
@@ -53,7 +53,7 @@ on:
       - '.github/**'
   pull_request:
     # 不能加 paths-ignore：整条流程不触发会让必需检查永远挂起（DEC-344）
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   schedule:
     - cron: '0 1 * * 1' # 每周一 09:00（北京时间）
   workflow_dispatch:
@@ -67,13 +67,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # 无关标签独占运行组：即使 job 全跳过，也不能取消同 PR 正在运行的完整 CI（DEC-694②）。
+  group: >-
+    ci-${{ github.event_name == 'pull_request' && github.event.action == 'labeled'
+    && github.event.label.name != 'queue-head' && format('ignored-label-{0}', github.run_id)
+    || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   changes:
-    name: classify changes
-    if: github.event.pull_request.draft != true
+    name: >-
+      ${{ format('{0}classify changes',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '') }}
+    # 无关 labeled 不分配 runner；汇总 job 也必须跳过并改名，见下方。
+    if: >-
+      github.event.pull_request.draft != true &&
+      (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'queue-head')
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     outputs:
@@ -89,10 +99,12 @@ jobs:
       - id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name }}
           # 目标分支不是 main 的 PR 永远 light（DEC-454① 第 2 轮 P2-1，见脚本注释）
           BASE_REF: ${{ github.base_ref }}
-          # DEC-454① / DEC-458：合并队列给队首 PR 打 queue-head 标签，再关闭、重开 PR；带这个标签的 pull_request 运行
-          # （reopened / synchronize 等）跑完整测试。workflow_dispatch 运行不关联 PR，分支保护不认，不用来放行合并
+          # DEC-694②：给队首 PR 打 queue-head 标签触发 labeled；重触发先去标签再添加。
+          # 已带标签的 synchronize 等事件仍跑完整测试；workflow_dispatch 不关联 PR，不用来放行合并。
           QUEUE_HEAD: ${{ contains(github.event.pull_request.labels.*.name, 'queue-head') }}
         run: |
           set -euo pipefail
@@ -105,7 +117,7 @@ jobs:
           echo "mode=$mode" | tee -a "$GITHUB_OUTPUT"
           case "$mode" in
             docs) note="纯文档：必需检查快速通过" ;;
-            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（queue-head 标签 + 关闭重开 PR）后跑完整测试" ;;
+            light) note="在途 PR：只跑轻量检查，必需检查保持等待，排到队首（打 queue-head 标签触发）后跑完整测试" ;;
             full) note="完整测试" ;;
           esac
           echo "::notice title=CI 模式::$mode（$note）"
@@ -140,7 +152,10 @@ jobs:
   # 轻量检查：在途 PR 的唯一测试 job，完整模式下也跑（承担原第 1 片的 lint / typecheck / build，与分片并行）。
   # 单测只挑不碰数据库、秒级的部分：packages/domain（lint 禁止 IO 的纯业务规则）与 merge:main 纯函数，本地约 15 秒
   light:
-    name: light checks (lint / typecheck / build / unit, Node ${{ matrix.node }})
+    name: >-
+      ${{ format('{0}light checks (lint / typecheck / build / unit, Node {1})',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '', matrix.node) }}
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode != 'docs'
     runs-on: ubuntu-24.04
@@ -164,11 +179,16 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       # 完整模式下这些单测已在分片里，不重复跑
-      - run: pnpm test packages/domain/ tests/merge-main.test.ts tests/ci-classify.test.ts
+      - run: >-
+          pnpm test packages/domain/ tests/merge-main.test.ts tests/ci-classify.test.ts
+          tests/acceptance/AC-CI-F330-labeled.test.ts
         if: needs.changes.outputs.mode == 'light'
 
   check-shards:
-    name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/5)
+    name: >-
+      ${{ format('{0}test (PGlite, Node {1}, shard {2}/5)',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '', matrix.node, matrix.shard) }}
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
@@ -206,13 +226,18 @@ jobs:
   # - 只有分类成功判为 light 时才换成“待队首运行”的名称：PR 头提交上就没有这个名称的检查结果，
   #   分支保护显示“等待中”，PR 合不进去，直到队首的完整运行在同一提交上以必需名称报告成功。
   # 不能用 if 跳过本 job 代替改名：被 if 跳过的 job 报 skipped，分支保护会当作通过。
+  # 无关 labeled 则先换成专用非必需名，再跳过（分类输出为空也不能使用必需名，DEC-694②）。
   check:
     name: >-
-      ${{ needs.changes.outputs.mode == 'light'
+      ${{ github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && 'PGlite 忽略无关标签（F-330）'
+      || needs.changes.outputs.mode == 'light'
       && format('PGlite 完整测试待队首运行（Node {0}，DEC-454）', matrix.node)
       || format('lint / typecheck / test (PGlite, Node {0})', matrix.node) }}
     needs: [changes, light, check-shards]
-    if: always() && github.event.pull_request.draft != true
+    if: >-
+      always() && github.event.pull_request.draft != true &&
+      (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'queue-head')
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     strategy:
@@ -252,7 +277,10 @@ jobs:
           esac
 
   test-pg-shards:
-    name: test (PostgreSQL 16, shard ${{ matrix.shard }}/5)
+    name: >-
+      ${{ format('{0}test (PostgreSQL 16, shard {1}/5)',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '', matrix.shard) }}
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
@@ -306,7 +334,10 @@ jobs:
   # 作业名保留 “shard”：合并队列脚本按名称里的 shard / race 判定完整 CI 与真红。
   # 不跑 F-043 race（已由 test-pg-race 覆盖，且并发用例与角色无关）；超时与分片数同 test-pg-shards。
   test-pg-app-role-shards:
-    name: test (PostgreSQL 16 app_owner, shard ${{ matrix.shard }}/5)
+    name: >-
+      ${{ format('{0}test (PostgreSQL 16 app_owner, shard {1}/5)',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '', matrix.shard) }}
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
@@ -349,7 +380,10 @@ jobs:
           GRANT_BASE_REV: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
 
   test-pg-race:
-    name: test (PostgreSQL 16, F-043 race)
+    name: >-
+      ${{ format('{0}test (PostgreSQL 16, F-043 race)',
+      github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && '忽略无关标签 / ' || '') }}
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
@@ -381,11 +415,15 @@ jobs:
   # 必需检查 2；改名规则与 check job 相同（轻量模式不以必需名称报告）
   test-pg:
     name: >-
-      ${{ needs.changes.outputs.mode == 'light'
+      ${{ github.event_name == 'pull_request' && github.event.action == 'labeled'
+      && github.event.label.name != 'queue-head' && 'PostgreSQL 忽略无关标签（F-330）'
+      || needs.changes.outputs.mode == 'light'
       && 'PostgreSQL 完整测试待队首运行（DEC-454）'
       || 'test (PostgreSQL 16)' }}
     needs: [changes, test-pg-shards, test-pg-app-role-shards, test-pg-race]
-    if: always() && github.event.pull_request.draft != true
+    if: >-
+      always() && github.event.pull_request.draft != true &&
+      (github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'queue-head')
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

@@ -1,0 +1,28 @@
+{
+  "GET /api/tenant/analytics/hr-dashboard": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrDashboard/TenantBase.HrDashboard.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrDashboard:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-dashboard/indicators/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrDashboard/TenantBase.HrDashboard.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrDashboard:view"
+    ]
+  }
+}
