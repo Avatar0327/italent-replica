@@ -1,6 +1,11 @@
 import type { AppId } from '@italent/domain';
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { matchRoutes } from 'react-router';
+import {
+  collectConfigurations,
+  type ConfigurationPageDeclaration,
+  type ConfigurationRoute,
+} from './configuration-registry.js';
 import type { ui } from './messages.js';
 import type { MenuNode, ServerSnapshot } from './permission-snapshot.js';
 
@@ -66,6 +71,7 @@ export interface MenuExtensionDeclaration {
   readonly children: (snapshot: ServerSnapshot, route: AppRoute) => MenuNode[];
 }
 export interface ModulePages {
+  readonly configurations?: readonly ConfigurationPageDeclaration[];
   readonly apps?: readonly AppPageDeclaration[];
   readonly menus?: readonly MenuExtensionDeclaration[];
   readonly entries?: readonly EntryPageDeclaration[];
@@ -85,6 +91,7 @@ export type EntryRoute = Omit<EntryPageDeclaration, 'legacy' | 'children'> &
 export type MenuRoute = AppRoute | EntryRoute;
 export type SubRoute = Omit<SubRouteDeclaration, 'legacy'> & Owned;
 export interface PageRegistry {
+  readonly configurations: readonly ConfigurationRoute[];
   /** 被隔离子项的路径，仅供诊断和守卫识别其别名，不挂载页面或授予权限。 */
   readonly rejectedPaths: readonly string[];
   readonly apps: readonly AppRoute[];
@@ -213,6 +220,9 @@ export function collectPages(modules: Record<string, unknown>, appIds: readonly 
     claim(paths, '路径', mountPath(entry), entry.module);
   }
   return {
+    configurations: collectConfigurations(
+      found.map(({ module, pages }) => ({ module, configurations: pages.configurations })),
+    ),
     rejectedPaths: [...rejected].map((child) => `${child.path}/*`),
     apps: appRoutes,
     entries,

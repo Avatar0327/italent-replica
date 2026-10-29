@@ -17,6 +17,7 @@ export const ui = {
   noMessages: '暂无新消息',
   identity: '当前身份',
   account: '个人设置',
+  applicationConfiguration: '应用配置',
   notes: '注释',
   demo: '演示数据',
   demoTenant: '演示科技有限公司',
