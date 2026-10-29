@@ -6,7 +6,17 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
 import { useBusinessRead, useInternCommand } from './commands.js';
 import { m } from './messages.js';
-import { acceptBusiness, businesses, entriesFor, object, type Entry, type InternView, type Row } from './model.js';
+import {
+  acceptBusiness,
+  businesses,
+  entriesFor,
+  interns,
+  object,
+  type Entry,
+  type ApplicationDestination,
+  type InternView,
+  type Row,
+} from './model.js';
 import { RegularizeForm } from './RegularizeForm.js';
 import { TerminateForm } from './TerminateForm.js';
 
@@ -20,12 +30,12 @@ export function InternDetail({
   view: InternView;
   row: Row;
   onClose(): void;
-  refresh(): Promise<unknown>;
+  refresh(destination?: ApplicationDestination): Promise<unknown>;
 }) {
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
-  // 写后回读与列表刷新已在提交完成路径里确认（commands.tsx settle），这里只关闭表单与详情
+  // 写后回读已确认；申请列表定位由页面独立处理，这里只关闭表单与详情
   const done = () => {
     setOpen(undefined);
     onClose();
@@ -34,7 +44,10 @@ export function InternDetail({
   const actions = (
     <Space wrap>
       {entries
-        .filter((entry): entry is 'regularize' | 'terminate' => entry === 'regularize' || entry === 'terminate')
+        .filter(
+          (entry): entry is 'regularize' | 'apply' | 'terminate' =>
+            entry === 'regularize' || entry === 'apply' || entry === 'terminate',
+        )
         .map((entry) => (
           <Button key={entry} type={entry === 'regularize' ? 'primary' : 'default'} onClick={() => setOpen(entry)}>
             {m.entries[entry]}
@@ -51,6 +64,7 @@ export function InternDetail({
     <>
       <StaffDetail employeeId={row.employeeId!} onClose={onClose} actions={actions} />
       {open === 'regularize' && <RegularizeForm {...form} />}
+      {open === 'apply' && <RegularizeForm {...form} application />}
       {open === 'terminate' && <TerminateForm {...form} />}
     </>
   );
@@ -69,8 +83,14 @@ function ApplicationAction({
   refresh(): Promise<unknown>;
 }) {
   const read = useBusinessRead(row.id);
-  const target = { id: row.id, revision: row.revision, baseline: {}, read };
-  const cmd = useInternCommand(businesses, target, action, refresh);
+  // 与申请第二步共用员工恢复槽；提交结果未知时撤回 / 撤销也不能绕开锁。
+  const target = {
+    id: row.employeeId!,
+    revision: row.revision,
+    baseline: {},
+    read: async () => ({ ...(await read()), id: row.employeeId! }),
+  };
+  const cmd = useInternCommand(interns, target, `${action}/${row.id}`, refresh);
   const run = async () => {
     try {
       const done = await cmd.submit({}, [], {

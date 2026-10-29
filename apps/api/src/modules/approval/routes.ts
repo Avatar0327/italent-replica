@@ -482,7 +482,14 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const flag = c.req.query('adminSelfTransfer');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listAdminLogs(tx, ctx.tenantId, scopeSql, flag === undefined ? {} : { adminSelfTransfer: flag === 'true' }, page),
+      listAdminLogs(
+        tx,
+        ctx.tenantId,
+        ctx.userId,
+        scopeSql,
+        flag === undefined ? {} : { adminSelfTransfer: flag === 'true' },
+        page,
+      ),
     );
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });

@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect } from './fixtures.js';
 import { activity, ev, id, setupR3b } from './r3b-fixtures.js';
 
@@ -29,8 +30,8 @@ for (const kind of ['survey360', 'evaluation'] as const) {
     await form.getByRole('button', save).click();
     if (kind === 'survey360')
       await expect(form.getByRole('textbox', { name: /名称$/, exact: true })).toHaveValue('我的未保存名称');
-    await expect(form.getByRole('button', { name: '重读最新版本', exact: true })).toBeVisible();
-    await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+    await expect(actionButton(form, '重读最新版本')).toBeVisible();
+    await actionButton(form, '重读最新版本').click();
     await expect(form).toContainText('他人名称');
     await expect(form).toContainText('我的未保存名称');
     expect(requests).toHaveLength(1);

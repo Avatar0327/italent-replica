@@ -1,7 +1,7 @@
 import { revokeAllowed, type ApprovalNode } from '@italent/domain';
 import type { AppError } from '../../errors.js';
 import { approvalError } from './context.js';
-import { isActiveInstance } from './rules.js';
+import { isActiveInstance } from './instance-state.js';
 import type { InstanceRow } from './store.js';
 
 /** AC-TRF-28 / F-308：业务入口、审批入口与动作披露共用；业务入口仍不受节点撤回开关限制。 */
