@@ -2,7 +2,7 @@
 import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { exitWorld, runner, type ExitWorld } from './AC-SC-02-support.js';
 
 const testDb = useTestDb();
@@ -58,13 +58,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-02 离职与编辑
           });
     const first = order === 'edit_first' ? edit() : exit();
     let second!: ReturnType<typeof edit> | ReturnType<typeof exit>;
-    try {
+    await withRelease(release, async (cleanup) => {
+      cleanup.track<unknown>(first);
       await waitForBlocked(w.db, 1);
       second = order === 'edit_first' ? exit() : edit();
+      cleanup.track<unknown>(second);
       await waitForBlocked(w.db, 2);
-    } finally {
-      await release();
-    }
+    });
     const [a, b] = await Promise.all([first, second]);
     const editResult = (order === 'edit_first' ? a : b) as Response;
     expect(editResult.status, await editResult.clone().text()).toBe(order === 'edit_first' ? 200 : 409);
@@ -89,24 +89,25 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-02 离职与编辑
       body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-10-01' },
     });
     let added!: Promise<Response>;
-    try {
+    await withRelease(release, async (cleanup) => {
+      cleanup.track(exit);
       await waitForBlocked(w.db, 1);
       const { tenantApi } = await import('./support/tenant-api.js');
       const api = tenantApi(w.db, { clock: () => new Date('2026-10-02T01:00:00Z') });
-      added = api.request('POST', '/api/tenant/succession/records', {
-        user: w.user.id,
-        tenant: w.tenant.id,
-        body: {
-          successionType: 'org',
-          targetOrgId: w.targetOrg.id,
-          successorEmployeeId: e.id,
-          startDate: '2026-10-01',
-        },
-      });
+      added = cleanup.track(
+        api.request('POST', '/api/tenant/succession/records', {
+          user: w.user.id,
+          tenant: w.tenant.id,
+          body: {
+            successionType: 'org',
+            targetOrgId: w.targetOrg.id,
+            successorEmployeeId: e.id,
+            startDate: '2026-10-01',
+          },
+        }),
+      );
       await waitForBlocked(w.db, 2);
-    } finally {
-      await release();
-    }
+    });
     expect((await exit).status).toBe(201);
     const rejected = await added;
     expect(rejected.status).toBe(400);

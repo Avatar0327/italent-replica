@@ -113,7 +113,8 @@ describe('平台运营层：接口边界、停用 / 启用、许可发放', () =
       expect(reopened.status).toBe(200);
       const processes = await api.request('GET', '/api/tenant/approval/processes', asA);
       expect(processes.status).toBe(200);
-      expect(((await processes.json()) as { items: unknown[] }).items).toHaveLength(a.processes.length);
+      // 组织调整预置只装草稿、不随开通发布（DEC-644 A-2），不在 a.processes 里，但仍在流程列表中
+      expect(((await processes.json()) as { items: unknown[] }).items).toHaveLength(a.processes.length + 1);
 
       const events = await withPlatform(db, (tx) =>
         tx

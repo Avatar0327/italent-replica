@@ -292,10 +292,10 @@ describe('AC-RT-18 五视图固定夹具（asOf = 10-15，N = 30）', () => {
     expect(ids(after[RETIREMENT_VIEWS.indexOf('overdue')]!)).toContain(who);
   });
 
-  it('非法参数 400：未知 view / cancelled（5a′ 合入前）/ asOf 格式 / upcomingDays 越界', async () => {
+  it('非法参数 400：未知 view / 大小写不符的 Cancelled / asOf 格式 / upcomingDays 越界', async () => {
     for (const query of [
       '?view=bogus',
-      '?view=cancelled',
+      '?view=Cancelled',
       '',
       '?view=all&asOf=2026-13-40',
       '?view=all&asOf=20261015',
