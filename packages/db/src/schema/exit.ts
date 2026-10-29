@@ -65,6 +65,10 @@ export const exitRequests = pgTable(
     whereaboutsCode: text('whereabouts_code'),
     handoverEmployeeId: uuid('handover_employee_id'),
     addToBlacklist: boolean('add_to_blacklist').notNull().default(false),
+    /** 加黑三项（DM-R2，R2f B68）：只在 addToBlacklist 时有值；有效截止日期空 = 永久。离职生效时由 BE-8b1 写入黑名单。 */
+    blacklistExpiryDate: day('blacklist_expiry_date'),
+    blacklistReason: text('blacklist_reason'),
+    blacklistNote: text('blacklist_note'),
     compensationAmount: numeric('compensation_amount', { precision: 14, scale: 2 }),
     nonCompeteAmount: numeric('non_compete_amount', { precision: 14, scale: 2 }),
     lastPayDate: day('last_pay_date'),
@@ -115,6 +119,14 @@ export const exitRequests = pgTable(
         AND coalesce(${t.taxPeriod}, '2000-01') ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`,
     ),
     check('exit_requests_tax_year', sql`${t.taxYear} IS NULL OR ${t.taxYear} BETWEEN 1900 AND 9999`),
+    check(
+      'exit_requests_blacklist',
+      sql`(${t.addToBlacklist} OR (${t.blacklistExpiryDate} IS NULL AND ${t.blacklistReason} IS NULL
+          AND ${t.blacklistNote} IS NULL))
+        AND (${t.blacklistReason} IS NULL
+          OR ${t.blacklistReason} IN ('major_violation', 'integrity', 'instability', 'resignation', 'other'))
+        AND coalesce(char_length(${t.blacklistNote}), 0) <= 500`,
+    ),
   ],
 );
 
@@ -214,5 +226,127 @@ export const exitCancellations = pgTable(
     ),
     check('exit_cancellations_reason', sql`btrim(${t.reason}) <> ''`),
     check('exit_cancellations_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * 离职交接事项设置（BE-8b1，B64；DEC-266③）：事项类别、序号、待办类别、待办事项、事项办理表单、备注。
+ * 没有适用人群与负责人（办理人由交接流程会签节点决定，归 BE-8b2）；不预置原站 30 项。
+ */
+export const exitHandoverItems = pgTable(
+  'exit_handover_items',
+  {
+    id: id(),
+    tenantId: tenant(),
+    category: text('category').notNull(),
+    sequenceNo: integer('sequence_no').notNull(),
+    todoType: text('todo_type').notNull(),
+    title: text('title').notNull(),
+    /** 事项办理表单：只存文本或表单标识，不接表单引擎。 */
+    formRef: text('form_ref'),
+    remark: text('remark'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    unique('exit_handover_items_tenant_id').on(t.tenantId, t.id),
+    index('exit_handover_items_list').on(t.tenantId, t.sequenceNo, t.createdAt, t.id),
+    check('exit_handover_items_category', sql`btrim(${t.category}) <> '' AND char_length(${t.category}) <= 50`),
+    check('exit_handover_items_sequence', sql`${t.sequenceNo} >= 1`),
+    check('exit_handover_items_todo_type', sql`${t.todoType} IN ('work_handover', 'other')`),
+    check('exit_handover_items_title', sql`btrim(${t.title}) <> '' AND char_length(${t.title}) <= 200`),
+    check('exit_handover_items_form', sql`${t.formRef} IS NULL OR char_length(${t.formRef}) <= 200`),
+    check('exit_handover_items_remark', sql`${t.remark} IS NULL OR char_length(${t.remark}) <= 500`),
+    check('exit_handover_items_revision_positive', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * 离职交接申请（R2 BE-8b2，B64，DM-R13）：独立申请表，业务单 = 交接申请，单表 + revision，不做版本链（交接不是任职记录）。
+ * 工作交接取不到处理人时落一条 not_launched 记录（DEC-663，无事项、无审批实例），等 HR 补人后处理。
+ * 离职申请审批通过时由系统代发（发起人 = 员工本人账号）；同一离职至多一张进行中 / 已完成的（部分唯一索引兜住并发与重放）。
+ * 终止原因：不同意 / 驳回 / 撤回 / 撤销离职。交接状态不回写离职状态（交接未完成不阻止离职生效）。
+ */
+export const exitHandoverRequests = pgTable(
+  'exit_handover_requests',
+  {
+    id: uuid('id').notNull(),
+    tenantId: tenant(),
+    exitRequestId: uuid('exit_request_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    /** 发起时员工主职部门快照：审批路由（部门 HRBP）取它。 */
+    departmentId: uuid('department_id'),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    state: text('state').notNull(),
+    endReason: text('end_reason'),
+    /** 交接未发起的原因（state = not_launched 时必填，DEC-663）。 */
+    notLaunchedReason: text('not_launched_reason'),
+    approvalInstanceId: uuid('approval_instance_id'),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    foreignKey({
+      name: 'exit_handover_requests_exit_fk',
+      columns: [t.tenantId, t.exitRequestId],
+      foreignColumns: [exitRequests.tenantId, exitRequests.businessId],
+    }),
+    uniqueIndex('exit_handover_requests_live')
+      .on(t.tenantId, t.exitRequestId)
+      .where(sql`${t.state} IN ('in_progress', 'completed', 'not_launched')`),
+    index('exit_handover_requests_exit').on(t.tenantId, t.exitRequestId),
+    check(
+      'exit_handover_requests_state',
+      sql`${t.state} IN ('in_progress', 'completed', 'terminated', 'not_launched')`,
+    ),
+    check(
+      'exit_handover_requests_not_launched',
+      sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
+        AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER') IN ('NO_HANDLER')`,
+    ),
+    check(
+      'exit_handover_requests_end_reason',
+      sql`(${t.state} = 'terminated') = (${t.endReason} IS NOT NULL)
+        AND coalesce(${t.endReason}, 'disapproved') IN ('disapproved', 'rejected', 'withdrawn', 'exit_cancelled')`,
+    ),
+    check('exit_handover_requests_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/** 交接事项（发起时从交接事项设置整份快照；办理完成可改，其余冻结）。“交接人”是只读文本，不随负责人回填（R2f2）。 */
+export const exitHandoverRequestItems = pgTable(
+  'exit_handover_request_items',
+  {
+    id: uuid('id').notNull(),
+    tenantId: tenant(),
+    requestId: uuid('request_id').notNull(),
+    category: text('category').notNull(),
+    sequenceNo: integer('sequence_no').notNull(),
+    todoType: text('todo_type').notNull(),
+    title: text('title').notNull(),
+    formRef: text('form_ref'),
+    remark: text('remark'),
+    done: boolean('done').notNull().default(false),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    doneByUserId: uuid('done_by_user_id'),
+    handoverPerson: text('handover_person'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    foreignKey({
+      name: 'exit_handover_request_items_request_fk',
+      columns: [t.tenantId, t.requestId],
+      foreignColumns: [exitHandoverRequests.tenantId, exitHandoverRequests.id],
+    }),
+    index('exit_handover_request_items_list').on(t.tenantId, t.requestId, t.sequenceNo, t.id),
+    check('exit_handover_request_items_todo_type', sql`${t.todoType} IN ('work_handover', 'other')`),
+    check('exit_handover_request_items_revision', sql`${t.revision} > 0`),
   ],
 );

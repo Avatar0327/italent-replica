@@ -200,3 +200,123 @@ export const retirementIdentityTypes = pgTable(
     check('retirement_identity_types_display_order', sql`${t.displayOrder} >= 0`),
   ],
 );
+
+/**
+ * R2 BE-5c2 预计退休日期 / 弹性范围的每日批次（R2-T04 §2.4 / §9.2）：每租户 × 用途 × 业务日一行，是“推进进度”而不是一次性占位。
+ * 认领 = INSERT 新建 running（lease_until 10 分钟）；租约过期的 running 行由 CAS 接管（attempts + 1）；done 行跳过。
+ * position_employee_id 是主扫描已完成到的员工 ID（升序），与锁忙跳过清单在同一短事务推进，崩溃后从该位置续跑。
+ */
+export const retirementRuleDailyRuns = pgTable(
+  'retirement_rule_daily_runs',
+  {
+    tenantId: tenant(),
+    purpose: text('purpose').notNull(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    state: text('state').notNull().default('running'),
+    positionEmployeeId: uuid('position_employee_id'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }).notNull(),
+    attempts: integer('attempts').notNull().default(1),
+    skippedCount: integer('skipped_count').notNull().default(0),
+    commandId: text('command_id').notNull(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'retirement_rule_daily_runs_pk', columns: [t.tenantId, t.purpose, t.businessDate] }),
+    check('retirement_rule_daily_runs_purpose', sql`${t.purpose} IN ('expected_date', 'flexible_range')`),
+    check('retirement_rule_daily_runs_state', sql`${t.state} IN ('running', 'done')`),
+    check('retirement_rule_daily_runs_attempts', sql`${t.attempts} > 0 AND ${t.skippedCount} >= 0`),
+  ],
+);
+
+/** 锁忙待重试清单（第二遍读它）：pending 重试成功即删除，仍锁忙置 given_up（本日不再追，次日批次照常覆盖）。 */
+export const retirementRuleRunSkips = pgTable(
+  'retirement_rule_run_skips',
+  {
+    tenantId: tenant(),
+    purpose: text('purpose').notNull(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    state: text('state').notNull().default('pending'),
+    createdAt: utc(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'retirement_rule_run_skips_pk',
+      columns: [t.tenantId, t.purpose, t.businessDate, t.employeeId],
+    }),
+    foreignKey({
+      name: 'retirement_rule_run_skips_run_fk',
+      columns: [t.tenantId, t.purpose, t.businessDate],
+      foreignColumns: [
+        retirementRuleDailyRuns.tenantId,
+        retirementRuleDailyRuns.purpose,
+        retirementRuleDailyRuns.businessDate,
+      ],
+    }),
+    check('retirement_rule_run_skips_state', sql`${t.state} IN ('pending', 'given_up')`),
+  ],
+);
+
+/**
+ * “立即执行”的续跑句柄：回执只给随机句柄，内部位置（员工 ID）不出库；句柄绑定租户 × 操作人 × 用途 × 业务日。只增不改。
+ * 独立于 employment_auto_regularization_run_cursors：自动转正的句柄在退休接口查不到即拒绝。
+ */
+export const retirementRuleRunCursors = pgTable(
+  'retirement_rule_run_cursors',
+  {
+    id: uuid('id').primaryKey(),
+    tenantId: tenant(),
+    userId: uuid('user_id').notNull(),
+    purpose: text('purpose').notNull(),
+    businessDate: date('business_date', { mode: 'string' }).notNull(),
+    positionEmployeeId: uuid('position_employee_id').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+  },
+  (t) => [
+    unique('retirement_rule_run_cursors_tenant_id').on(t.tenantId, t.id),
+    check('retirement_rule_run_cursors_purpose', sql`${t.purpose} IN ('expected_date', 'flexible_range')`),
+  ],
+);
+
+/**
+ * 意向退休日期申请（5d2，设计 §2.5 / §11）：独立申请表，单表 + revision，不做版本链（意向申请不是任职记录）。
+ * 快照列（预计退休日期与弹性上下限）在创建 / 提交时冻结，只读；department_id 是申请时主职部门快照，写范围的组织坐标取它。
+ * 同员工至多一张未办结（draft / in_review / rejected），部分唯一索引兜住并发。审批通过只置 approved，不写人事字段（A-6）。
+ */
+export const retirementIntentions = pgTable(
+  'retirement_intentions',
+  {
+    id: uuid('id').notNull(),
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    staffId: uuid('staff_id').notNull(),
+    departmentId: uuid('department_id'),
+    intendedDate: date('intended_date', { mode: 'string' }).notNull(),
+    expectedDateSnapshot: date('expected_date_snapshot', { mode: 'string' }),
+    earliestSnapshot: date('earliest_snapshot', { mode: 'string' }),
+    latestSnapshot: date('latest_snapshot', { mode: 'string' }),
+    reason: text('reason'),
+    initiator: text('initiator').notNull(),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    state: text('state').notNull(),
+    approvalInstanceId: uuid('approval_instance_id'),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    index('retirement_intentions_employee').on(t.tenantId, t.employeeId),
+    uniqueIndex('retirement_intentions_open')
+      .on(t.tenantId, t.employeeId)
+      .where(sql`${t.state} IN ('draft', 'in_review', 'rejected')`),
+    check('retirement_intentions_initiator', sql`${t.initiator} IN ('hr', 'self')`),
+    check(
+      'retirement_intentions_state',
+      sql`${t.state} IN ('draft', 'in_review', 'rejected', 'approved', 'disapproved', 'withdrawn')`,
+    ),
+    check('retirement_intentions_reason', sql`${t.reason} IS NULL OR char_length(${t.reason}) <= 500`),
+  ],
+);

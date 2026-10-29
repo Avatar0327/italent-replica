@@ -12,6 +12,9 @@ import {
   PART_TIME_EXPIRING_DAYS,
   PART_TIME_SERVICE_TYPES,
   PART_TIME_VIEWS,
+  PART_TIME_REQUEST_STATES,
+  PART_TIME_REQUEST_TYPES,
+  PART_TIME_REQUEST_SOURCES,
   partTimePermissionFields,
   tenantLocalDate,
 } from '@italent/domain';
@@ -65,11 +68,12 @@ import {
   type CreatePartTimeInput,
 } from './service.js';
 import { PART_TIME_FIELD_KEYS, normalizeBatchEnd, type EditPartTimeInput } from './validation.js';
+import { SORT_FIELDS, sortable, type SortField } from './view-sort.js';
 
 export const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 /**
- * 兼职表单可填的预置字段（§4.2）：沿用任职预置字段的校验，部门必填；isDepartmentHead / addedSubordinateIds 先接收，
- * PT-7 之前由服务层拒绝 true / 非空（§4.8，400 PART_TIME_LINKAGE_NOT_AVAILABLE），不静默丢弃。
+ * 兼职表单可填的预置字段（§4.2）：沿用任职预置字段的校验，部门必填；isDepartmentHead / addedSubordinateIds 自 PT-7 开放
+ * （§4.8）：服务层保存时校验联动人员，开始日 ≤ 今天同事务执行，未来开始写待执行事件。
  */
 const partTimeFields = presetFieldsSchema
   .pick({
@@ -298,18 +302,27 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 过滤，total 与本页同一份结果；姓名 / 工号按人员对象、其余按任职记录对象的可见字段裁剪
   router.get('/part-times', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
-    const { view, days, departmentId, includeChildren, ...rest } = parseViewQuery(c);
+    const { view, days, departmentId, includeChildren, sortBy, direction, ...rest } = parseViewQuery(c);
     const page = pageQuery(c);
     const filter: PartTimeViewFilter = rest;
     const show = await viewableIn(deps, ctx);
     requireViewableFilters({ ...filter, ...(departmentId ? { departmentIds: [departmentId] } : {}) }, show);
+    if (sortBy && !(sortBy === 'code' ? show.employee(sortBy) : show.employment(sortBy)))
+      throw new AppError('FORBIDDEN', '排序字段不可查看');
     const today = partTimeToday(ctx);
     const { items, total } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const departmentIds = departmentId
         ? await resolveDepartmentIds(tx, ctx.tenantId, departmentId, includeChildren !== 'false', today)
         : undefined;
       const scoped = { ...filter, ...(departmentIds ? { departmentIds } : {}) };
-      return listPartTimeView(tx, ctx, { view, days: days ?? PART_TIME_EXPIRING_DAYS.default, page, filter: scoped });
+      return listPartTimeView(tx, ctx, {
+        view,
+        days: days ?? PART_TIME_EXPIRING_DAYS.default,
+        page,
+        filter: scoped,
+        sortBy,
+        direction,
+      });
     });
     return c.json({
       items: await trimViewItems(deps, ctx, items, show),
@@ -343,6 +356,8 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 // ---- 六视图的查询参数、筛选字段权与响应裁剪 ---------------------------------------------------------------------------
 
 const enabledQuery = z.enum(['true', 'false']).optional();
+const requestStates = z.enum(PART_TIME_REQUEST_STATES).exclude(['deleted']);
+const multi = <T extends z.ZodType>(item: T) => z.array(item).min(1).max(200).optional();
 const viewQuery = z.object({
   view: z.enum(PART_TIME_VIEWS),
   days: z
@@ -360,12 +375,46 @@ const viewQuery = z.object({
   endFrom: date.optional(),
   endTo: date.optional(),
   directManagerId: normalizedUuid.optional(),
+  sortBy: z.enum(SORT_FIELDS).optional(),
+  direction: z.enum(['asc', 'desc']).optional(),
+  employeeIds: multi(normalizedUuid),
+  serviceTypes: multi(z.enum(PART_TIME_SERVICE_TYPES)),
+  postId: normalizedUuid.optional(),
+  serviceStatuses: multi(z.enum(['serving', 'ended'])),
+  current: enabledQuery,
+  pendingStatuses: multi(requestStates),
+  kinds: multi(z.enum(PART_TIME_REQUEST_TYPES)),
+  statuses: multi(requestStates),
+  requestSources: multi(z.enum(PART_TIME_REQUEST_SOURCES)),
 });
 const VIEW_QUERY_KEYS = Object.keys(viewQuery.shape);
+const MULTI_QUERY_KEYS = new Set([
+  'employeeIds',
+  'serviceTypes',
+  'serviceStatuses',
+  'pendingStatuses',
+  'kinds',
+  'statuses',
+  'requestSources',
+]);
 
 /** 日期区间首尾颠倒按非法处理（400）。 */
 function parseViewQuery(c: Context<TenantEnv>) {
-  const query = parse(viewQuery, Object.fromEntries(VIEW_QUERY_KEYS.map((key) => [key, c.req.query(key)])));
+  const entries = VIEW_QUERY_KEYS.map((key) => {
+    const values = c.req.queries(key);
+    if (!MULTI_QUERY_KEYS.has(key) && values && values.length > 1)
+      throw new AppError('VALIDATION_FAILED', '单值查询参数不可重复');
+    return [key, MULTI_QUERY_KEYS.has(key) ? values : values?.[0]];
+  });
+  const query = parse(viewQuery, Object.fromEntries(entries));
+  if ((query.direction && !query.sortBy) || (query.sortBy && !sortable(query.view, query.sortBy as SortField)))
+    throw new AppError('VALIDATION_FAILED', '该视图不支持此排序');
+  if (
+    ((query.serviceStatuses || query.current) && query.view !== 'all') ||
+    (query.pendingStatuses && query.view !== 'expiring') ||
+    ((query.kinds || query.statuses || query.requestSources) && query.view !== 'in_approval')
+  )
+    throw new AppError('VALIDATION_FAILED', '该视图不支持此筛选');
   if (query.startFrom && query.startTo && query.startFrom > query.startTo)
     throw new AppError('VALIDATION_FAILED', '开始日期区间的起止日期颠倒');
   if (query.endFrom && query.endTo && query.endFrom > query.endTo)
@@ -394,6 +443,15 @@ const FILTER_FIELDS: Readonly<Record<keyof PartTimeViewFilter, { employee?: stri
   endFrom: { employment: ['endDate'] },
   endTo: { employment: ['endDate'] },
   directManagerId: { employment: ['directManagerId'] },
+  employeeIds: { employment: ['employeeId'] },
+  serviceTypes: { employment: ['serviceType'] },
+  postId: { employment: ['postId'] },
+  serviceStatuses: { employment: ['serviceStatus'] },
+  current: { employment: ['partTimeView'] },
+  pendingStatuses: { employment: ['status'] },
+  kinds: { employment: ['kind'] },
+  statuses: { employment: ['status'] },
+  requestSources: { employment: ['requestSource'] },
 };
 
 function requireViewableFilters(filter: PartTimeViewFilter, show: Viewable) {
@@ -413,15 +471,20 @@ async function trimViewItems(
   items: readonly PartTimeViewItem[],
   show: Viewable,
 ) {
-  const records = items.map(({ employee: _employee, primaryDepartmentId: _primary, ...record }) => record);
+  const records = items.map(
+    ({ employee: _employee, primaryDepartmentId: _primary, pendingKind: _kind, pendingStatus: _status, ...record }) =>
+      record,
+  );
   const trimmed = (await trimEmploymentResponse(deps, ctx, records)) as object[];
   return trimmed.map((record, index) => {
-    const { employee, primaryDepartmentId } = items[index]!;
+    const { employee, primaryDepartmentId, pendingKind, pendingStatus } = items[index]!;
     const person = Object.fromEntries(Object.entries(employee).filter(([field]) => show.employee(field)));
     return {
       ...record,
       ...(Object.keys(person).length ? { employee: person } : {}),
       ...(primaryDepartmentId !== undefined && show.employment('departmentId') ? { primaryDepartmentId } : {}),
+      ...(pendingKind !== undefined && show.employment('kind') ? { pendingKind } : {}),
+      ...(pendingStatus !== undefined && show.employment('status') ? { pendingStatus } : {}),
     };
   });
 }

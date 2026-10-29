@@ -32,9 +32,14 @@ async function withoutSubjectsTable<T>(db: Db, run: () => Promise<T>): Promise<T
   await db.execute(sql`GRANT SELECT ON account_avatar_attachments TO app_user`);
   // F-128：当前建合同类型的代码会读写显示顺序列，旧库还没有；同样临时补列，升级前撤掉，由正式迁移（0127）加上。
   await db.execute(sql`ALTER TABLE contract_types ADD COLUMN display_order integer NOT NULL DEFAULT 0`);
+  // BE-8b2（DEC-663）：当前保存流程定义的代码会写兜底处理人列，旧库还没有；同样临时补列，升级前撤掉，由正式迁移加上。
+  await db.execute(
+    sql`ALTER TABLE approval_process_nodes ADD COLUMN fallback_user_ids uuid[] NOT NULL DEFAULT '{}'::uuid[]`,
+  );
   try {
     return await run();
   } finally {
+    await db.execute(sql`ALTER TABLE approval_process_nodes DROP COLUMN fallback_user_ids`);
     await db.execute(sql`DROP TABLE approval_instance_subjects`);
     await db.execute(sql`DROP TABLE account_avatar_attachments`);
     await db.execute(sql`ALTER TABLE contract_types DROP COLUMN display_order`);

@@ -16,6 +16,10 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import { auditEmployment } from './context.js';
 import { loadOccupancy, assertOccupancyChange } from './exit-cancel-intervals.js';
 import { runExitCancelledHooks, type ExitCancelCase } from './exit-confirmation.js';
+// 撤销离职回收黑名单（BE-8b1，DEC-631）订阅 onCancelled 端口，随撤销入口一起加载
+import './exit-blacklist.js';
+// 交接自动发起（BE-8b2，DM-R14）订阅 onConfirmed、撤销离职终止交接订阅 onCancelled，随入口一起加载
+import './exit-handover.js';
 import { probeDownstream, type Downstream } from './exit-downstream.js';
 import { businessKind, isExitKind, loadExitRequest } from './exit-gate.js';
 import { lockExitOrganizationResources } from './exit-void-applications.js';

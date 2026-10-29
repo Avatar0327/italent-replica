@@ -6,7 +6,7 @@ import { completedDetail } from '../demo-stubs/approval.js';
 import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
 import { useApprovalAction } from './action-command.js';
-import { logComment, readApproval, uuidPattern, visibleActions } from './api.js';
+import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
   detailText as d,
   fieldLabels,
@@ -200,13 +200,15 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
         items={detail.logs.map((log, index) => {
           const task = log.taskId ? tasks.get(log.taskId) : undefined;
           const comment = logComment(log);
+          const actor = logActor(log);
           return {
             key: `${log.createdAt}-${index}`,
             color: 'gray',
             children: (
               <div className="approval-log">
+                {log.actorUserId !== null && actor && <span className="approval-log-actor">{actor}</span>}
                 <strong>{logEvents[log.event] ?? log.event}</strong>
-                {log.actorUserId === null && <Tag>{d.systemActor}</Tag>}
+                {log.actorUserId === null && <Tag>{actor}</Tag>}
                 {task && <Tag>{task.nodeName}</Tag>}
                 {comment && <p>{comment}</p>}
                 <small>{formatInstant(log.createdAt, timezone)}</small>

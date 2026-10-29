@@ -617,7 +617,8 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/${PAGES}/op:view`);
     expect(STANDARD_GRANT_CODES).toContain(`${EMP}/app:Qualification`);
     expect(grantCodesDigest(STANDARD_GRANT_CODES)).toBe(STANDARD_GRANT_DIGEST);
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(18);
+    // F255A：机构 / 申请来源只读字段，合并时统一定号。
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(33);
     // B7b 新增的项目人才标准引用字段、B6b 新增的模板复制按钮都在编码集合里
     expect(STANDARD_GRANT_CODES.some((code) => code.includes('/TalentReview.Project/field:criterionId:'))).toBe(true);
     expect(STANDARD_GRANT_CODES.some((code) => code.endsWith('/TalentReview.Template/button:copy@list'))).toBe(true);

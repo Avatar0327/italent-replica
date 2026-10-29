@@ -7,6 +7,7 @@
  * （exitCommandGuard / exitBatchGuard，#199），重放与失败回查同样经过。E ≤ 今天的直接离职在保存事务内生效（§5.3）。
  */
 import {
+  addDays,
   buttonResource,
   buttonsOf,
   EXIT_BUTTONS,
@@ -50,7 +51,7 @@ import {
 import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest, requireExitPermission } from './exit-gate.js';
-import { exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
+import { assertBlacklistFields, exitOptionsSchema, splitExitOptions } from './exit-initiation.js';
 import {
   EXIT_INITIATIONS,
   EXIT_STATES,
@@ -195,7 +196,11 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readContext(c, deps, 'object.view', 0, id);
     const { lastWorkDate } = parse(z.strictObject({ lastWorkDate: day }), await jsonBody(c));
     await requirePreviewButton(deps, ctx);
-    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate)));
+    // 离职预览不披露退休字段；显式传空可见性，避免共享预览入口依赖省略参数（F-301）。
+    const retirementView: ExitViewable = { employee: () => false, employment: () => false };
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) => previewExit(tx, ctx, id, lastWorkDate, retirementView)),
+    );
   });
   // 新建（HR 端，离职申请 / 直接离职）：与通用入口同一申请服务与门禁；不要求 Employment.Create
   router.post('/exits/employees/:id', async (c) => {
@@ -227,6 +232,8 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exits/batch', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const { items } = parse(batchSchema, await jsonBody(c));
+    // 加黑参数不合法是请求本身的错误（400），先于逐人业务门禁（那里的失败按批量契约整批 409）；生效日 = 最后工作日次日
+    for (const item of items) if (item.exit) assertBlacklistFields(item.exit, addDays(item.lastWorkDate, 1));
     const guard = exitBatchGuard(deps, ctx, items);
     return runWrite(
       c,
@@ -470,7 +477,7 @@ function parseViewQuery(c: Context<TenantEnv>) {
 }
 
 /** 姓名 / 工号属人员对象，其余按任职记录对象；无字段权限配置 = 全可见（同实习视图）。 */
-async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
+export async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ExitViewable> {
   const [employee, employment] = await Promise.all([
     getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT),
     getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT),

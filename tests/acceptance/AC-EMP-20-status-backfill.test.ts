@@ -63,7 +63,7 @@ async function snapshot(tx: Tx, tenantId: string) {
       SELECT 'record' AS t, to_jsonb(r) - 'employee_status' - 'entry_status' AS body FROM employment_records r
       WHERE r.tenant_id=${tenantId}
       UNION ALL
-      -- 迁移 0130（F-140）在之后新增人工计划生效日列，升级前不存在，不属于本回填比较范围
+      -- planned_effective_date 是升级前测试垫片，正式迁移会回填，不属于旧结构原有列。
       SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date'
       FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId}
@@ -154,7 +154,15 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
   const before = await withTenant(handle.db, tenantId, (tx) => snapshot(tx, tenantId));
   await handle.migrate();
   const after = await withTenant(handle.db, tenantId, (tx) => snapshot(tx, tenantId));
-  expect(after).toEqual(before);
+  // migrate() 会继续跑后续迁移；按旧行已有列比较，不为每次新增列维护排除名单。
+  const afterById = new Map(after.map(({ t, body }) => [`${t}/${String(body.id)}`, body]));
+  expect(after).toHaveLength(before.length);
+  expect(afterById.size).toBe(before.length);
+  for (const { t, body } of before) {
+    const current = afterById.get(`${t}/${String(body.id)}`);
+    expect(current).toBeDefined();
+    expect(Object.fromEntries(Object.keys(body).map((column) => [column, current![column]]))).toEqual(body);
+  }
   const statuses = await withTenant(handle.db, tenantId, async (tx) => {
     const records = rows<{ id: string; s: number; e: number | null }>(
       await tx.execute(sql`SELECT id, employee_status AS s, entry_status AS e FROM employment_records

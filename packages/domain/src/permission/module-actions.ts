@@ -10,6 +10,11 @@ import {
   RETIREMENT_BUTTONS,
 } from '../employment/exit.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import {
+  RETIREMENT_INTENTION_BUTTON,
+  RETIREMENT_INTENTION_EDITABLE_FIELDS,
+  RETIREMENT_INTENTION_SNAPSHOT_FIELDS,
+} from '../employment/retirement-intention.js';
 import { PART_TIME_BUTTONS, PART_TIME_FIELDS, PART_TIME_SYSTEM_FIELDS } from '../employment/part-time-constants.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
@@ -303,10 +308,21 @@ export const MODULE_OBJECTS = {
       // R2 BE-15b2 自动发起试用期考核规则（B58）也挂在这里：考核类型、入职后天数（考核名称 = name，其余沿用上面的）
       'assessmentType',
       'daysAfterEntry',
+      // R2 BE-8b1 离职交接事项（B64，DEC-266③）也挂在这里：事项类别、序号、待办类别、待办事项、办理表单、备注（没有适用人群与负责人）
+      'category',
+      'sequenceNo',
+      'todoType',
+      'title',
+      'formRef',
+      'remark',
     ],
     crud,
     ['operatorUserId'],
   ),
+  // R2 BE-12b 人事分析 - 人事看板（规格 35 §2.1）：只读聚合查询，无业务字段、无按钮；数据范围按人员 / 组织裁剪，
+  // 看全部默认给本模块的预置管理员（DEC-415）
+  // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
+  hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(
@@ -331,6 +347,9 @@ export const MODULE_OBJECTS = {
     ],
     ['blacklistDate', 'source', 'status', 'removedAt'],
   ),
+  // BE-12a 人事分析 - 时点员工花名册（规格 35 §2.2）：功能权只有“查看”和列表级“导出”按钮；数据范围与字段权复用
+  // 员工档案（EmployeeInformation）、任职记录、合同三个对象，所以这个对象本身没有业务字段，asOf 只是请求参数
+  hrRoster: object('HrRoster', ['asOf'], [button('export', 'list')]),
   // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
   employee: object(
     'Employee',
@@ -384,6 +403,8 @@ export const MODULE_OBJECTS = {
       ...EXIT_REQUEST_FIELDS,
       // BE-7 兼职（设计 §7.2）：兼职类型、结束日期、申请备注
       ...PART_TIME_FIELDS,
+      // R2-T04 5d2 意向退休申请（设计 §11.1）：意向日期、申请原因登记为本对象的业务字段（申请表是独立表，不新建权限对象）
+      ...RETIREMENT_INTENTION_EDITABLE_FIELDS,
     ],
     [
       button('Employment.Create', 'detail', 'create'),
@@ -412,6 +433,8 @@ export const MODULE_OBJECTS = {
       button(RETIREMENT_BUTTONS.application, 'detail', 'create'),
       button(RETIREMENT_BUTTONS.edit, 'detail', 'update'),
       button(RETIREMENT_BUTTONS.cancel, 'detail', 'update'),
+      // R2-T04 5d2：HR 代员工提出意向退休日期申请（自助入口随 F-020）
+      button(RETIREMENT_INTENTION_BUTTON, 'detail', 'create'),
       // BE-7 兼职（设计 §7.2）：新增兼职 / 新增兼职申请 / 延长申请 / 结束申请 / 批量结束 / 编辑兼职
       button(PART_TIME_BUTTONS.direct, 'detail', 'create'),
       button(PART_TIME_BUTTONS.application, 'detail', 'create'),
@@ -443,6 +466,8 @@ export const MODULE_OBJECTS = {
       ...EXIT_REQUEST_SYSTEM_FIELDS,
       // R2-T04 退休扩展字段：类型由 L 与快照 P 派生，P 快照与是否返聘不可手改
       ...RETIREMENT_REQUEST_FIELDS,
+      // 意向申请的快照三项（申请时冻结的预计退休日期与弹性上下限）只读
+      ...RETIREMENT_INTENTION_SNAPSHOT_FIELDS,
       // 兼职：原定结束日期取申请版本，任职状态 / 视图归属按期限链派生，只可授查看
       ...PART_TIME_SYSTEM_FIELDS,
     ],

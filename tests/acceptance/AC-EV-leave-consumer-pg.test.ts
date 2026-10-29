@@ -9,6 +9,7 @@ import {
 } from '../../apps/api/src/modules/evaluation/leave-consumer.js';
 import { leaveConsumerWorld, signal, testConsumer } from './AC-EV-leave-consumer-support.js';
 import { rowsOf } from './AC-EMP-F055-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-consumer 真 PG', () => {
@@ -27,26 +28,28 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-consumer 真 PG', (
     const first = run();
     await entered.promise;
     const second = run();
-    try {
-      await vi.waitFor(
-        async () => {
-          const [waiting] = rowsOf<{ n: number }>(
-            await w.db.execute(sql`SELECT count(*)::int AS n
+    await withRelease(
+      () => release.resolve(),
+      async (cleanup) => {
+        [first, second].forEach((request) => cleanup.track<unknown>(request));
+        await vi.waitFor(
+          async () => {
+            const [waiting] = rowsOf<{ n: number }>(
+              await w.db.execute(sql`SELECT count(*)::int AS n
           FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'`),
-          );
-          expect(waiting!.n).toBeGreaterThan(0);
-        },
-        { timeout: 8000 },
-      );
-      release.resolve();
-      const results = await Promise.all([first, second]);
-      expect(results.reduce((sum, result) => sum + result.done, 0)).toBe(1);
-      expect(handle).toHaveBeenCalledTimes(1);
-      expect(await w.queue(consumer.kind)).toMatchObject([{ state: 'done', attempts: 1 }]);
-    } finally {
-      release.resolve();
-      await Promise.all([first, second]);
-    }
+            );
+            expect(waiting!.n).toBeGreaterThan(0);
+          },
+          { timeout: 8000 },
+        );
+        release.resolve();
+        const results = await Promise.all([first, second]);
+        expect(results.reduce((sum, result) => sum + result.done, 0)).toBe(1);
+        expect(handle).toHaveBeenCalledTimes(1);
+        expect(await w.queue(consumer.kind)).toMatchObject([{ state: 'done', attempts: 1 }]);
+      },
+      [first, second],
+    );
   });
 
   it('慢 kind 持锁期间，另一个 kind 的其他员工继续处理且后续 tick 不重入', async () => {

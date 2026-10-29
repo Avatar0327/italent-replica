@@ -35,6 +35,7 @@ export interface PartTimeRequestDto {
   readonly requestRemark: string | null;
   /** 延长 / 结束：目标兼职记录；新增：审批通过并落地后的兼职记录（落地前为空）。 */
   readonly recordId: string | null;
+  readonly institutionId: string | null;
   readonly fields: Partial<PresetFields>;
   readonly customFields: CustomFields;
   readonly warnings: readonly { readonly reason: string }[];
@@ -59,6 +60,7 @@ export function requestDto(
     status: request.state,
     initiator: request.initiator,
     processCode: request.processCode,
+    institutionId: version.institutionId,
     versionNo: version.versionNo,
     serviceType: version.serviceType,
     effectiveDate: version.startDate,
@@ -76,6 +78,9 @@ export function requestDto(
       dottedManagerId: version.dottedManagerId,
       employmentType: version.employmentType,
       employmentForm: version.employmentForm,
+      // 联动字段（§4.8，PT-7）：只新增申请有值；落地前只是申请上的意图，不代表组织上已经是负责人 / 下属已改
+      ...(version.isDepartmentHead !== null ? { isDepartmentHead: version.isDepartmentHead } : {}),
+      ...(version.addedSubordinateIds ? { addedSubordinateIds: version.addedSubordinateIds } : {}),
     } as Partial<PresetFields>,
     customFields: version.customFields,
     warnings: (extra.warnings ?? []).map((reason) => ({ reason })),

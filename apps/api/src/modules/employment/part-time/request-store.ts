@@ -17,7 +17,8 @@ import {
 } from '@italent/domain';
 import { rowsOf } from '../record-store.js';
 import type { EmploymentContext } from '../types.js';
-import { currentDepartment, latestSnapshot, uuidArray } from './store.js';
+import { partTimeInstitution } from './institution.js';
+import { currentDepartment, currentInstitution, latestSnapshot, uuidArray } from './store.js';
 
 /** 申请载荷（版本）：预置字段与兼职记录同一组（§1.1），日期与备注是申请自己的。 */
 export interface PartTimeRequestVersion {
@@ -25,6 +26,7 @@ export interface PartTimeRequestVersion {
   readonly versionNo: number;
   readonly serviceType: PartTimeServiceType;
   readonly departmentId: string | null;
+  readonly institutionId: string | null;
   readonly positionId: string | null;
   readonly postId: string | null;
   readonly sequenceId: string | null;
@@ -33,6 +35,9 @@ export interface PartTimeRequestVersion {
   readonly dottedManagerId: string | null;
   readonly employmentType: string | null;
   readonly employmentForm: string | null;
+  /** 联动（§4.8，PT-7）：草稿 / 审批中只保存，落地时才执行；延长 / 结束申请恒为 null。 */
+  readonly isDepartmentHead: boolean | null;
+  readonly addedSubordinateIds: readonly string[] | null;
   readonly startDate: string;
   readonly endDate: string | null;
   /** extend / end：创建时目标记录的当前结束日；add 为 null（PT-4c 使用）。 */
@@ -60,10 +65,12 @@ export interface PartTimeRequestRow {
 // 部门：新增申请取最新版本；延长 / 结束申请取目标兼职记录的当前部门（§7.2 / §7.3A：读取时取当前值，范围 / 审计 / 重放都据此判）
 const VERSION_COLUMNS = sql`v.id AS "versionId", v.version_no AS "versionNo", v.service_type AS "serviceType",
   CASE WHEN q.record_id IS NULL THEN v.department_id ELSE ${currentDepartment} END AS "departmentId",
+  CASE WHEN q.record_id IS NULL THEN v.institution_id ELSE ${currentInstitution} END AS "institutionId",
   v.position_id AS "positionId", v.post_id AS "postId",
   v.sequence_id AS "sequenceId", v.level_id AS "levelId", v.direct_manager_id AS "directManagerId",
   v.dotted_manager_id AS "dottedManagerId", v.employment_type AS "employmentType",
-  v.employment_form AS "employmentForm", v.start_date::text AS "startDate", v.end_date::text AS "endDate",
+  v.employment_form AS "employmentForm", v.is_department_head AS "isDepartmentHead",
+  v.added_subordinate_ids AS "addedSubordinateIds", v.start_date::text AS "startDate", v.end_date::text AS "endDate",
   v.original_end_date::text AS "originalEndDate", v.base_term_no AS "baseTermNo", v.remark,
   v.custom_fields AS "customFields"`;
 
@@ -76,6 +83,7 @@ function toRow(raw: RawRequest): PartTimeRequestRow {
     versionNo: Number(rest.versionNo),
     serviceType: rest.serviceType,
     departmentId: rest.departmentId,
+    institutionId: rest.institutionId,
     positionId: rest.positionId,
     postId: rest.postId,
     sequenceId: rest.sequenceId,
@@ -84,6 +92,8 @@ function toRow(raw: RawRequest): PartTimeRequestRow {
     dottedManagerId: rest.dottedManagerId,
     employmentType: rest.employmentType,
     employmentForm: rest.employmentForm,
+    isDepartmentHead: rest.isDepartmentHead,
+    addedSubordinateIds: rest.addedSubordinateIds,
     startDate: rest.startDate,
     endDate: rest.endDate,
     originalEndDate: rest.originalEndDate,
@@ -150,7 +160,9 @@ export interface NewRequestHead {
   readonly processCode: string | null;
 }
 
-export type RequestPayload = Omit<PartTimeRequestVersion, 'id' | 'versionNo'>;
+export type RequestPayload = Omit<PartTimeRequestVersion, 'id' | 'versionNo' | 'institutionId'> & {
+  readonly institutionId?: string | null;
+};
 
 async function insertVersion(
   tx: Tx,
@@ -161,16 +173,28 @@ async function insertVersion(
   payload: RequestPayload,
 ): Promise<string> {
   const id = randomUUID();
+  const [previous] = rowsOf<{ department: string; start: string; institution: string | null }>(
+    await tx.execute(sql`SELECT department_id AS department, start_date::text AS start, institution_id AS institution
+      FROM part_time_request_versions WHERE tenant_id=${ctx.tenantId} AND id=${previousVersionId}::uuid`),
+  );
+  const unchanged = previous?.department === payload.departmentId && previous?.start === payload.startDate;
+  const institutionId =
+    payload.institutionId ??
+    (unchanged ? previous.institution : undefined) ??
+    (await partTimeInstitution(tx, ctx.tenantId, payload.departmentId!, payload.startDate));
   await tx.execute(sql`
     INSERT INTO part_time_request_versions(id, tenant_id, employee_id, request_id, version_no, previous_version_id,
-      command_id, service_type, department_id, position_id, post_id, sequence_id, level_id, direct_manager_id,
-      dotted_manager_id, employment_type, employment_form, start_date, end_date, original_end_date, base_term_no,
-      remark, custom_fields, created_at)
+      command_id, service_type, institution_id, department_id, position_id, post_id, sequence_id, level_id,
+      direct_manager_id,
+      dotted_manager_id, employment_type, employment_form, is_department_head, added_subordinate_ids, start_date,
+      end_date, original_end_date, base_term_no, remark, custom_fields, created_at)
     VALUES (${id}, ${ctx.tenantId}, ${head.employeeId}, ${head.id}, ${versionNo}, ${previousVersionId},
-      ${ctx.commandId}, ${payload.serviceType}, ${payload.departmentId}, ${payload.positionId}, ${payload.postId},
+      ${ctx.commandId}, ${payload.serviceType}, ${institutionId}, ${payload.departmentId},
+      ${payload.positionId}, ${payload.postId},
       ${payload.sequenceId}, ${payload.levelId}, ${payload.directManagerId}, ${payload.dottedManagerId},
-      ${payload.employmentType}, ${payload.employmentForm}, ${payload.startDate}, ${payload.endDate},
-      ${payload.originalEndDate}, ${payload.baseTermNo}, ${payload.remark},
+      ${payload.employmentType}, ${payload.employmentForm}, ${payload.isDepartmentHead},
+      ${payload.addedSubordinateIds && `{${payload.addedSubordinateIds.join(',')}}`}::uuid[], ${payload.startDate},
+      ${payload.endDate}, ${payload.originalEndDate}, ${payload.baseTermNo}, ${payload.remark},
       ${JSON.stringify(payload.customFields)}::jsonb, ${ctx.now.toISOString()}::timestamptz)
   `);
   return id;

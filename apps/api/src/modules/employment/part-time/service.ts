@@ -33,6 +33,14 @@ import { assertEmploymentDepartmentAvailableWithin } from '../references.js';
 import { loadOrgSnapshot } from '../../org/read-model.js';
 import type { CustomFields, EmploymentContext, PresetFields } from '../types.js';
 import { assertPartTimeWithinCycle } from './boundary.js';
+import {
+  linkageDelta,
+  linkageOf,
+  lockLinkageParticipants,
+  queuePartTimeLinkage,
+  validatePartTimeLinkage,
+} from './linkage.js';
+import { partTimeInstitution } from './institution.js';
 import { partTimeNotFound } from './read.js';
 import {
   appendPartTimeTerm,
@@ -101,6 +109,15 @@ export async function checkNewPartTime(
   const fields = partTimePresetFields(normalized, { jobNumber: employee.code, employType: cycle.employType as never });
   await validatePartTimeReferences(tx, ctx, normalized, fields);
   const custom = await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
+  // §4.8：联动人员保存时就校验（负责人的组织写范围、下属在职 / 资格 / 范围），不留“记录说是负责人、组织上不是”的半套
+  await validatePartTimeLinkage(
+    tx,
+    ctx,
+    employee.id,
+    normalized.departmentId,
+    linkageOf(normalized.fields),
+    normalized.startDate,
+  );
   return { cycle, warnings, fields, custom };
 }
 
@@ -117,7 +134,7 @@ export async function insertCheckedPartTime(
   options: { readonly sourceId?: string } = {},
 ) {
   const { cycle, fields, custom } = checked;
-  const { id, payloadVersionId } = await insertPartTimeRecord(tx, ctx, {
+  const { id, payloadVersionId, institutionId } = await insertPartTimeRecord(tx, ctx, {
     employeeId,
     staffId: cycle.staffId,
     entryDate: cycle.entryDate,
@@ -140,6 +157,7 @@ export async function insertCheckedPartTime(
       ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
       // DEC-019：自定义字段展开成 custom:<id> 进审计快照与 outbox（同主职落地审计约定）
       ...Object.fromEntries(Object.entries(custom.customFields).map(([id, value]) => [`custom:${id}`, value])),
+      institutionId,
       serviceType: normalized.serviceType,
       startDate: normalized.startDate,
       endDate: normalized.endDate,
@@ -149,6 +167,8 @@ export async function insertCheckedPartTime(
     options.sourceId ? { requestId: options.sourceId } : undefined,
     { employeeId, orgId: normalized.departmentId },
   );
+  // 直接新增与申请落地共用的联动入口（§4.8）：开始日 ≤ 今天同事务执行，未来开始写待执行事件
+  await queuePartTimeLinkage(tx, ctx, id, linkageOf(normalized.fields));
   return { id, staffId: cycle.staffId };
 }
 
@@ -158,6 +178,8 @@ export async function createPartTime(
   input: CreatePartTimeInput,
 ): Promise<CreatedPartTime> {
   const normalized = normalizeNewPartTime(input);
+  // 有下属时先按 UUID 升序取整个联动闭包（§7.1），再取员工行锁（已持有则重入）
+  await lockLinkageParticipants(tx, ctx, normalized.employeeId, linkageOf(normalized.fields));
   const employee = await lockEmploymentEmployee(tx, ctx, normalized.employeeId);
   // PT-R2 / PT-R3：员工按主职在范围，且兼职部门在范围（默认开，A-6）；可信端口（无 scope）不设限
   await requireEmployeeInScope(tx, ctx, employee.id);
@@ -218,6 +240,14 @@ export async function previewPartTime(
   const derived = { jobNumber: employee.code, employType: cycle.employType as never };
   await validatePartTimeReferences(tx, ctx, normalized, partTimePresetFields(normalized, derived));
   await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
+  await validatePartTimeLinkage(
+    tx,
+    ctx,
+    employee.id,
+    normalized.departmentId,
+    linkageOf(normalized.fields),
+    normalized.startDate,
+  );
   const given = (key: 'directManagerId' | 'sequenceId') => Object.hasOwn(input, key);
   const defaults = {
     ...(given('directManagerId')
@@ -300,10 +330,19 @@ async function writePartTimeEdit(
     );
   }
   if (changes.length) {
+    const institutionId =
+      plan.fields.departmentId === row.departmentId
+        ? payload.institutionId
+        : await partTimeInstitution(tx, ctx.tenantId, plan.fields.departmentId!, row.startDate);
+    if (institutionId !== payload.institutionId)
+      changes = [
+        ...changes,
+        { field: 'institutionId', before: payload.institutionId ?? null, after: institutionId ?? null },
+      ];
     const next = await appendForwardPayload(
       tx,
       ctx,
-      payload,
+      { ...payload, institutionId },
       { fields: plan.fields, customFields },
       row.id,
       true,
@@ -355,6 +394,9 @@ export async function editPartTime(
   recordId: string,
   input: EditPartTimeInput,
 ): Promise<EditedPartTime> {
+  // 本次带联动（设负责人 / 追加下属）时先按 UUID 升序收齐整个联动闭包（§7.1），之后才取兼职业务头锁
+  const [owner] = await readPartTimeRecords(tx, ctx, [recordId]);
+  if (owner) await lockLinkageParticipants(tx, ctx, owner.employeeId, linkageOf(input));
   const business = await lockEmploymentBusiness(tx, ctx, recordId, { partTime: true });
   const [row] = await lockPartTimeRecords(tx, ctx, business.employeeId, { ids: [recordId] });
   if (!row) throw partTimeNotFound();
@@ -400,7 +442,11 @@ export async function editPartTime(
       addDays(endDate, 1),
     );
   const customFields = { ...business.payload.customFields, ...custom.customFields };
+  // §4.8：只对本次新出现的联动（新设为负责人 / 新追加的下属）校验并办理，已办过的不重复
+  const delta = linkageDelta(business.payload.fields, plan.fields);
+  await validatePartTimeLinkage(tx, ctx, row.employeeId, departmentId, delta, row.startDate);
   const revision = await writePartTimeEdit(tx, ctx, row, business.payload, { plan, changes, customFields });
+  await queuePartTimeLinkage(tx, ctx, row.id, delta);
   return { ...unchanged, revision, changed: true, warnings };
 }
 

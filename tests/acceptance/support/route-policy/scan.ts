@@ -549,6 +549,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['job', '/api/tenant/job', [path.join(modules, 'job')]],
     ['establishment', '/api/tenant/establishment', [path.join(modules, 'establishment')]],
     ['personnel', '/api/tenant/personnel', [path.join(modules, 'personnel')]],
+    ['hr-analysis', '/api/tenant/hr-analysis', [path.join(modules, 'hr-analysis')]],
     ['audit', '/api/tenant/audit', [path.join(API_SRC, 'audit')]],
     // 业务模块的平台接口在平台前缀之下，须排在 platform 之前（先匹配先得）
     ['succession-platform', '/api/platform/succession', ['succession', 'platform'].map((d) => path.join(modules, d))],
@@ -566,6 +567,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['avatar', '/api/tenant/account', [path.join(modules, 'avatar')]],
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
     ['command-result', '/api/tenant/commands', [path.join(modules, 'command-result')]],
+    ['hr-dashboard', '/api/tenant/analytics/hr-dashboard', [path.join(modules, 'analytics')]],
   ];
   const hit = table.find(([, prefix]) => fullPath === prefix || fullPath.startsWith(prefix + '/'));
   return hit
@@ -649,12 +651,26 @@ function namespaceRefs(index: SourceIndex, file: string, text: string): { file: 
 }
 
 /**
+ * F-231：默认 6 保持冻结基准不变；深层守卫取证时可设 ROUTE_POLICY_SCAN_MAX_DEPTH=7 等。
+ * 只影响省略深度的调用，近闭包仍显式传 3。限制到 64 层以免误配导致扫描失控。
+ */
+export function scanMaxDepth(): number {
+  const raw = process.env.ROUTE_POLICY_SCAN_MAX_DEPTH;
+  if (raw === undefined) return 6;
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)) || Number(raw) > 64) {
+    throw new Error('ROUTE_POLICY_SCAN_MAX_DEPTH 必须是 0～64 的整数');
+  }
+  return Number(raw);
+}
+
+/**
  * 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。
+ * 深度从处理函数直接引用的定义（0）起算；循环沿用 visited 去重，显式 maxDepth 优先于环境配置。
  */
 export function closureText(
   index: SourceIndex,
   registration: StaticRegistration,
-  maxDepth = 6,
+  maxDepth = scanMaxDepth(),
   trace?: string[],
 ): string {
   const handlerText = registration.handlerText;

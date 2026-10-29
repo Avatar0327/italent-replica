@@ -6,6 +6,7 @@ import { useSession } from './Session.js';
 import { appRoute } from './routes.js';
 import { currentApp, searchMenus, type MenuHit } from './menu-nav.js';
 import type { MenuNode } from './permission-snapshot.js';
+import { CONFIGURATION_ROOT } from './configuration-registry.js';
 import { ui } from './messages.js';
 import { MenuIcon } from './ViewHeading.js';
 
@@ -176,14 +177,23 @@ export function MessageCenter() {
   );
 }
 
-/** 原站右上角头像 + 姓名，下拉进入个人设置；其余个人菜单项复刻未提供。 */
+/** 头像入口与配置中心路由共用服务端快照计算的可见页集合。 */
 export function PersonalMenu() {
+  const { snapshot, loading, error } = usePermissions();
+  const hasConfiguration = !loading && !error && !!snapshot.configurationPages?.length;
   const session = useSession();
   const name = session.displayName || ui.identity;
   return (
     <Dropdown
       trigger={['click']}
-      menu={{ items: [{ key: 'account', label: <Link to="/settings/account">{ui.account}</Link> }] }}
+      menu={{
+        items: [
+          { key: 'account', label: <Link to="/settings/account">{ui.account}</Link> },
+          ...(hasConfiguration
+            ? [{ key: 'configuration', label: <Link to={CONFIGURATION_ROOT}>{ui.applicationConfiguration}</Link> }]
+            : []),
+        ],
+      }}
     >
       <Button type="text" className="personal-menu" aria-label={ui.personalMenu}>
         <Avatar size={24}>{name.slice(0, 1)}</Avatar>

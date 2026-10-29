@@ -9,7 +9,7 @@ import { runOfferSyncSweep } from '../../apps/api/src/modules/offer/sync-schedul
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { syncWorld, type SyncOffer } from './AC-OF-BE14b2-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const count = async (w: Awaited<ReturnType<typeof syncWorld>>, offerId: string) => {
@@ -84,8 +84,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
 
       const releaseLock = await holdOfferLock(w, synced.id);
       let restore: Promise<Response> | undefined;
-      try {
-        restore = w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' });
+      await withRelease(releaseLock, async (cleanup) => {
+        restore = cleanup.track(w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' }));
         expect(await settledOrBlocked(w.db, restore, 1)).toBe('blocked');
         // 恢复请求此刻只在等 Offer 锁：员工行、待入职业务行都还能被别人立即锁住（NOWAIT 不报 55P03）
         await withTenant(w.db, w.tenant.id, async (tx) => {
@@ -96,9 +96,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
             sql`SELECT id FROM employment_business_objects WHERE id = ${entryId}::uuid FOR UPDATE NOWAIT`,
           );
         });
-      } finally {
-        await releaseLock();
-      }
+      });
       expect((await restore!).status).toBe(200);
     });
   },
@@ -111,14 +109,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送
     const target = await w.social();
     const other = await w.social();
     const releaseLock = await holdOfferLock(w, target.id);
-    const both = Promise.all([w.send(target), w.sync(target)]);
-    try {
+    const requests = [w.send(target), w.sync(target)] as const;
+    const both = Promise.all(requests);
+    await withRelease(releaseLock, async (cleanup) => {
+      [...requests, both].forEach((request) => cleanup.track<unknown>(request));
       const peer = await w.send(other); // 另一份 Offer 的发送不受影响
       expect(peer.status, await peer.clone().text()).toBe(200);
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
-    } finally {
-      await releaseLock();
-    }
+    });
     const [sent, synced] = await both;
     expect(sent.status, await sent.clone().text()).toBe(200);
     expect(await sent.json()).toMatchObject({ status: 'sent', syncStatus: 'success', hasPendingEntry: true });
@@ -135,8 +133,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送
     const employeeId = (await w.record(entryId)).employeeId;
     const current = await w.read(sent.id);
     const releaseLock = await holdOfferLock(w, sent.id);
-    const both = Promise.all([w.send(current), w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' })]);
-    try {
+    const requests = [w.send(current), w.entryAction(entryId, 'postpone', { effectiveDate: '2026-11-15' })] as const;
+    const both = Promise.all(requests);
+    await withRelease(releaseLock, async (cleanup) => {
+      [...requests, both].forEach((request) => cleanup.track<unknown>(request));
       expect(await settledOrBlocked(w.db, both, 2)).toBe('blocked');
       await withTenant(w.db, w.tenant.id, async (tx) => {
         await tx.execute(
@@ -144,9 +144,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('合 main 收口：发送
         );
         await tx.execute(sql`SELECT id FROM employment_business_objects WHERE id = ${entryId}::uuid FOR UPDATE NOWAIT`);
       });
-    } finally {
-      await releaseLock();
-    }
+    });
     const [resent, restored] = await both;
     expect(restored.status, await restored.clone().text()).toBe(200);
     expect([200, 409]).toContain(resent.status);
@@ -182,16 +180,18 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
       });
       await heldPromise;
       const send = w.send(offer);
-      try {
-        expect(await settledOrBlocked(w.db, send, 1)).toBe('blocked');
-        await withTenant(w.db, w.tenant.id, async (tx) => {
-          await tx.execute(sql`SET LOCAL lock_timeout = '300ms'`);
-          await lockOrganizationSettings(tx, w.tenant.id); // 持有者若在等员工锁则这里超时（55P03）
-        });
-      } finally {
-        release();
-        await holder;
-      }
+      await withRelease(
+        release,
+        async (cleanup) => {
+          [send, holder].forEach((request) => cleanup.track<unknown>(request));
+          expect(await settledOrBlocked(w.db, send, 1)).toBe('blocked');
+          await withTenant(w.db, w.tenant.id, async (tx) => {
+            await tx.execute(sql`SET LOCAL lock_timeout = '300ms'`);
+            await lockOrganizationSettings(tx, w.tenant.id); // 持有者若在等员工锁则这里超时（55P03）
+          });
+        },
+        [holder],
+      );
       expect((await send).status).toBe(200);
     });
 
