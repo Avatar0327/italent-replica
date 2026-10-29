@@ -91,7 +91,7 @@ it('AC-IN-F308：审批发起人与建单人不同时，以实际提交产生的
   const person = await w.hire('F308代建单', 'intern');
   const draft = await w.session.business(
     person.employee.id,
-    { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-20', fields: {} },
+    { kind: 'intern_regularization', mode: 'application', effectiveDate: '2026-10-20', fields: {}, probation: false },
     await w.revision(person.employee.id),
   );
   const creator = sender(w, w.session.user.id);
