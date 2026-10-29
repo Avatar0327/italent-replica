@@ -175,6 +175,8 @@ export const approvalProcessNodes = pgTable(
     disagreeRuleKind: text('disagree_rule_kind'),
     disagreeRuleValue: numeric('disagree_rule_value', { precision: 5, scale: 2 }),
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
+    /** F-316：NULL 保留未配置语义与旧兜底行为；显式值随流程版本冻结。 */
+    emptyApproverPolicy: text('empty_approver_policy'),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
     /** DEC-106：相同 / 历史相同审批人自动处理的结果「同意」/「跳过」。 */
@@ -237,6 +239,15 @@ export const approvalProcessNodes = pgTable(
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
+    check(
+      'approval_nodes_empty_approver',
+      sql`${t.emptyApproverPolicy} IS NULL OR (
+      ${t.nodeType} = 'countersign' AND (
+        (${t.nodeKey} = 'work_handover' AND ${t.emptyApproverPolicy} IN ('stop','auto_approve','specified')) OR
+        (${t.nodeKey} = 'other_handover' AND ${t.emptyApproverPolicy} IN ('exception_admin','auto_approve','specified'))
+      ) AND (${t.emptyApproverPolicy} <> 'auto_approve' OR 'approve' = ANY(${t.exits}))
+    )`,
+    ),
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),

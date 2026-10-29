@@ -68,6 +68,9 @@ export const HANDOVER_FALLBACK_APPROVERS: ReadonlySet<ApproverExpression> = new 
   'handover_hr_admin',
 ]);
 export const HANDOVER_FALLBACK_LIMIT = 20;
+/** F-316 / DEC-678：工作交接为停住 / 自动同意 / 指定人员；其他事项以异常管理员替代停住。 */
+export const EMPTY_APPROVER_POLICIES = ['stop', 'exception_admin', 'auto_approve', 'specified'] as const;
+export type EmptyApproverPolicy = (typeof EMPTY_APPROVER_POLICIES)[number];
 export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
@@ -279,6 +282,8 @@ interface ApprovalNodeBase {
    * 只用于离职交接申请的会签交接节点：主取法（交接人 → 直线经理 / 人事管理员）取不到人时，改派其中具备审批资格的人。
    */
   readonly fallbackUserIds?: readonly string[];
+  /** F-316：仅交接会签节点可配；未配置保持 DEC-663 的取人顺序（含旧兜底名单）。 */
+  readonly emptyApproverPolicy?: EmptyApproverPolicy;
 }
 
 /** 单人审批节点：一个审批人表达式（R1-T07 起的节点；类型缺省即单人）。 */
