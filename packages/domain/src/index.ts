@@ -67,5 +67,6 @@ export * from './idp/index.js';
 export * from './talent-review/index.js';
 export * from './succession/index.js';
 export * from './offer/index.js';
+export * from './analytics/hr-dashboard.js';
 export * from './org-adjustment/index.js';
 export * from './employment/exit-handover.js';
