@@ -1,11 +1,13 @@
 /** DEC-005 / 17 §1 / 22 §1：仅简体中文标准字段；元数据不是 JSON 实体存储。 */
-export type FieldKind = 'text' | 'email' | 'date' | 'uuid' | 'boolean' | 'integer' | 'decimal';
+export type FieldKind = 'text' | 'email' | 'date' | 'uuid' | 'boolean' | 'integer' | 'decimal' | 'money';
 export interface PersonnelField {
   readonly code: string;
   readonly kind: FieldKind;
   readonly system?: boolean;
 }
 export const EMPLOYEE_EDITABLE_FIELDS: readonly PersonnelField[] = [
+  // DEC-685①：金额以十进制字符串传递，不经过浮点数。
+  { code: 'dailyWageStandard', kind: 'money' },
   { code: 'name', kind: 'text' },
   { code: 'displayName', kind: 'text', system: true },
   { code: 'engName', kind: 'text' },

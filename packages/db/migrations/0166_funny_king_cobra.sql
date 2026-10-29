@@ -1,0 +1,3 @@
+ALTER TABLE "personnel_employee_versions" ADD COLUMN "daily_wage_standard" numeric;--> statement-breakpoint
+ALTER TABLE "personnel_employee_versions" ADD CONSTRAINT "personnel_employee_daily_wage_valid" CHECK ("personnel_employee_versions"."daily_wage_standard" >= 0 AND "personnel_employee_versions"."daily_wage_standard" < 1000000000000
+        AND scale("personnel_employee_versions"."daily_wage_standard") <= 2);
