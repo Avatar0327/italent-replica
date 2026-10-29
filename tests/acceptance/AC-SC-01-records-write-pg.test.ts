@@ -11,12 +11,12 @@
  * - 任职交错（审查第 1 轮 P2-1）：办理离职与新增继任者排队等同一员工行锁，离职先提交；新增拿到锁后必须重读资格——
  *   400 SUCCESSOR_NOT_ACTIVE，不落生效记录（状态与 FOR SHARE 分开两条语句）。
  */
-import { sql, withTenant } from '@italent/db';
+import { sql, type Tx, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { type SuccessionWorld, successionWorld } from './AC-SC-support.js';
 import { rowsOf } from './support/f048.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const pg = describe.runIf(Boolean(process.env.TEST_DATABASE_URL));
@@ -90,26 +90,16 @@ pg('AC-SC-01 写入口并发（真 PG）', () => {
     expect(bothEnded || (bDeleted && rows.get(a)!.end_date !== '2026-09-30')).toBe(true);
   });
 
-  /** 持有目标锁行（与写入口同一把锁）的事务：释放前其他请求在该目标上排队。 */
-  const holdTargetLock = async (kind: 'org' | 'position', targetId: string) => {
-    let locked!: () => void;
-    let release!: () => void;
-    const lockedSignal = new Promise<void>((resolve) => (locked = resolve));
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    const done = withTenant(w.db, w.tenant.id, async (tx) => {
+  /** 持有目标锁行（与写入口同一把锁）的事务：释放前其他请求在该目标上排队；由 withHeldLock 无条件收束（F-282）。 */
+  const targetLock = (kind: 'org' | 'position', targetId: string) => ({
+    run: <R>(fn: (tx: Tx) => Promise<R>) => withTenant(w.db, w.tenant.id, fn),
+    take: async (tx: Tx) => {
       await tx.execute(sql`INSERT INTO succession_target_locks (tenant_id, target_kind, target_id)
         VALUES (${w.tenant.id}::uuid, ${kind}, ${targetId}::uuid) ON CONFLICT DO NOTHING`);
       await tx.execute(sql`SELECT 1 FROM succession_target_locks
         WHERE tenant_id = ${w.tenant.id}::uuid AND target_kind = ${kind} AND target_id = ${targetId}::uuid FOR UPDATE`);
-      locked();
-      await gate;
-    });
-    await lockedSignal;
-    return async () => {
-      release();
-      await done;
-    };
-  };
+    },
+  });
 
   it('跨目标锁序（审查 P3）：两个请求结束不同记录集合、共同覆盖组织与职位两个目标，双方先占不同目标也不死锁', async () => {
     // 记录 ID 的大小决定无锁读出目标的顺序（按主键索引）：请求 1 先见组织目标，请求 2 先见职位目标——
@@ -122,16 +112,19 @@ pg('AC-SC-01 写入口并发（真 PG）', () => {
     const b1 = await w.insertRecord({ ...posTarget, id: ids[1], successorId: await hire() });
     const b2 = await w.insertRecord({ ...posTarget, id: ids[2], successorId: await hire() });
     const a2 = await w.insertRecord({ ...orgTarget, id: ids[3], successorId: await hire() });
-    const releaseOrg = await holdTargetLock('org', std.orgA.id);
-    const releasePosition = await holdTargetLock('position', std.keyPosition.id);
-    const first = end([a1, b1]);
-    await waitForBlocked(w.db, 1);
-    const second = end([b2, a2]);
-    await waitForBlocked(w.db, 2);
-    // 先放开职位目标：若实现按“先见到的目标”取锁，请求 2 此时拿到职位锁并等组织锁；按升序取锁则两者仍都卡在第一把锁上
-    await releasePosition();
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    await releaseOrg();
+    const { first, second } = await withHeldLock(targetLock('org', std.orgA.id), (org) =>
+      withHeldLock(targetLock('position', std.keyPosition.id), async (position) => {
+        // 请求登记在外层：内层先放职位锁时不能等它们（它们还卡在组织锁上）
+        const pendingFirst = org.track(end([a1, b1]));
+        await waitForBlocked(w.db, 1);
+        const pendingSecond = org.track(end([b2, a2]));
+        await waitForBlocked(w.db, 2);
+        // 先放开职位目标：若实现按“先见到的目标”取锁，请求 2 此时拿到职位锁并等组织锁；按升序取锁则两者仍都卡在第一把锁上
+        await position.release();
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return { first: pendingFirst, second: pendingSecond };
+      }),
+    );
     const results = await Promise.all([first, second]);
     expect(results.map((response) => response.status)).toEqual([200, 200]);
     for (const row of await endDates([a1, b1, a2, b2])) expect(row.end_date).toBe('2026-09-30');
@@ -139,13 +132,14 @@ pg('AC-SC-01 写入口并发（真 PG）', () => {
 
   it('确定性的失败回查重放（审查 P3）：同键同 revision 两个编辑排队，后到者因 revision 变化失败后回查台账，返回相同结果、审计一次', async () => {
     const id = await seed();
-    const release = await holdTargetLock('org', std.orgA.id);
     const key = crypto.randomUUID();
     const edit = () =>
       w.request('PUT', `/records/${id}`, { ifMatch: 1, idempotencyKey: key, body: { backupType: 'deputy' } });
-    const results = [edit(), edit()];
-    await waitForBlocked(w.db, 2);
-    await release();
+    const { results } = await withHeldLock(targetLock('org', std.orgA.id), async (lock) => {
+      const pending = [lock.track(edit()), lock.track(edit())];
+      await waitForBlocked(w.db, 2);
+      return { results: pending };
+    });
     const [one, two] = await Promise.all(results);
     expect([one!.status, two!.status]).toEqual([200, 200]);
     const bodies = [(await one!.json()) as { revision: number }, (await two!.json()) as { revision: number }];
@@ -172,33 +166,35 @@ pg('AC-SC-01 写入口并发（真 PG）', () => {
   it('任职交错：办理离职与新增继任者排队等同一员工行锁，离职先提交后新增必须重读资格 → 400，不落生效记录', async () => {
     const hired = await w.hire(`交错${++seq}`, {}, '2026-08-01');
     const detail = (await (await w.call('GET', `employment/employees/${hired.id}`)).json()) as { revision: number };
-    let locked!: () => void;
-    let release!: () => void;
-    const lockedSignal = new Promise<void>((resolve) => (locked = resolve));
-    const gate = new Promise<void>((resolve) => (release = resolve));
     // 持有员工行锁，让后面两个请求按顺序排队：先离职（FOR NO KEY UPDATE），再新增继任者（FOR SHARE，排在离职之后）
-    const holding = withTenant(w.db, w.tenant.id, async (tx) => {
-      await tx.execute(sql`SELECT id FROM employment_employees WHERE id = ${hired.id}::uuid FOR NO KEY UPDATE`);
-      locked();
-      await gate;
-    });
-    await lockedSignal;
-    const leaving = w.call('POST', `employment/employees/${hired.id}/businesses`, {
-      ifMatch: detail.revision,
-      body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-01', fields: {} },
-    });
-    await waitForBlocked(w.db, 1);
-    const creating = w.request('POST', '/records', {
-      body: {
-        successionType: 'org',
-        targetOrgId: std.orgA.id,
-        successorEmployeeId: hired.id,
-        startDate: '2026-09-01',
+    const { leaving, creating } = await withHeldLock(
+      {
+        run: (fn) => withTenant(w.db, w.tenant.id, fn),
+        take: (tx) =>
+          tx.execute(sql`SELECT id FROM employment_employees WHERE id = ${hired.id}::uuid FOR NO KEY UPDATE`),
       },
-    });
-    await waitForBlocked(w.db, 2);
-    release();
-    await holding;
+      async (lock) => {
+        const leave = lock.track(
+          w.call('POST', `employment/employees/${hired.id}/businesses`, {
+            ifMatch: detail.revision,
+            body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-01', fields: {} },
+          }),
+        );
+        await waitForBlocked(w.db, 1);
+        const create = lock.track(
+          w.request('POST', '/records', {
+            body: {
+              successionType: 'org',
+              targetOrgId: std.orgA.id,
+              successorEmployeeId: hired.id,
+              startDate: '2026-09-01',
+            },
+          }),
+        );
+        await waitForBlocked(w.db, 2);
+        return { leaving: leave, creating: create };
+      },
+    );
     expect((await leaving).status).toBe(201);
     const response = await creating;
     expect([response.status, await reasonOf(response)]).toEqual([400, 'SUCCESSOR_NOT_ACTIVE']);

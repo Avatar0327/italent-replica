@@ -8,7 +8,7 @@ import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as regularization from '../../apps/api/src/modules/employment/regularization.js';
 import { hire, pbWorld } from './AC-PB-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -130,13 +130,16 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-PB-14 立即执行与
       return original(...args);
     });
     const runNow = () => w.session.request('POST', '/auto-regularization/run', { ifMatch: 0, body: {} });
-    const first = runNow();
-    await enteredOnce;
-    const second = runNow();
-    // 第二次立即执行在第一次持有的员工锁上等待（不跳过、不报错）
-    await waitForBlocked(w.db, 1);
-    resume();
-    const [a, b] = await Promise.all([first, second]);
+    // 门在被 mock 的 launchRegularization 里（第一次执行自己持员工锁）：等待失败时也要放门并收束两个请求（F-282）
+    const pending = await withRelease(resume, async (run) => {
+      const first = run.track(runNow());
+      await enteredOnce;
+      const second = run.track(runNow());
+      // 第二次立即执行在第一次持有的员工锁上等待（不跳过、不报错）
+      await waitForBlocked(w.db, 1);
+      return [first, second] as const;
+    });
+    const [a, b] = await Promise.all(pending);
     expect(a.status, await a.clone().text()).toBe(200);
     expect(b.status, await b.clone().text()).toBe(200);
     expect(((await a.json()) as { launched: unknown[] }).launched).toHaveLength(employees.length);

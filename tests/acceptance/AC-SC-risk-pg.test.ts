@@ -1,7 +1,7 @@
 import { sql, type DbHandle } from '@italent/db';
 import { createTestDb } from '@italent/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 import { rowsOf } from '../../apps/api/src/modules/succession/read-sql.js';
 import { riskWorld } from './AC-SC-risk-support.js';
 
@@ -50,16 +50,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-SC-risk 真 PG 清除
         name === 'compute' ? w.run(runId) : w.assign(initialRevision, name === 'clear' ? null : w.levelId);
       const [first, second] = order.split('-');
       let a: Promise<unknown> | undefined, b: Promise<unknown> | undefined;
-      try {
-        a = action(first!);
-        expect(await settledOrBlocked(handle.db, a, 1)).toBe('blocked');
-        b = action(second!);
-        expect(await settledOrBlocked(handle.db, b, 2)).toBe('blocked');
-      } finally {
-        release();
-        await blocker;
-        await Promise.allSettled([a, b].filter((p) => p !== undefined));
-      }
+      await withRelease(
+        release,
+        async (cleanup) => {
+          cleanup.track(blocker);
+          a = cleanup.track<unknown>(action(first!));
+          expect(await settledOrBlocked(handle.db, a, 1)).toBe('blocked');
+          b = cleanup.track<unknown>(action(second!));
+          expect(await settledOrBlocked(handle.db, b, 2)).toBe('blocked');
+        },
+        [blocker],
+      );
       const responses = await Promise.all([a!, b!]);
       const states: Record<string, { method: string; level_id: string | null; revision: number }> = {
         'clear-compute': { method: 'computed', level_id: w.levelId, revision: 3 },

@@ -11,7 +11,6 @@ import {
   jumpAllowed,
   nodeRecusal,
   rejectToPreviousAllowed,
-  revokeAllowed,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -30,6 +29,7 @@ import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { addSignAllowed, addSignLink, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
+import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { loadRecusalFacts } from './subjects.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
@@ -208,20 +208,18 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   }
   const retrievable = retrievableTask(instance, version, allTasks, userId);
   if (retrievable && !recusedOn(retrievable)) actions.push('retrieve');
-  if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data));
+  if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data, userId));
   // DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的申请，不公布管理员转交 / 干预。
   if (running && !instanceHit && data.admin.transfer) actions.push('adminTransfer');
   if (running && !instanceHit && data.admin.intervene) actions.push('adminIntervene');
   return actions;
 }
 
-function initiatorActions({ instance, version }: DetailData): string[] {
+function initiatorActions({ instance, version }: DetailData, userId: string): string[] {
   const actions: string[] = [];
   // DEC-318 K-39：撤回按当前节点的开关（isRevoke，缺省开启）
   const current = version.nodes.find((node) => node.key === instance.currentNodeKey);
-  if (['running', 'returned'].includes(instance.status) && (!current || revokeAllowed(current))) {
-    actions.push('withdraw');
-  }
+  if (!approvalWithdrawalFailure(instance, userId, current)) actions.push('withdraw');
   // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9），
   // 发展计划驳回或撤回后由所有者沿原实例重提（DEC-318 K-39）。
   const sameInstance = ['personnel_change', 'idp'].includes(instance.businessType);
