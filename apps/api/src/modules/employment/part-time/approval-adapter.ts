@@ -156,8 +156,10 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, requestId: string): Promis
     dottedManagerId: version.dottedManagerId,
     employmentType: version.employmentType,
     employmentForm: version.employmentForm,
-    // 只有“是”才是本单内容（false 与未填等价，不算审批人要看的变化字段，免得无权看该字段的审批人被盲审拦住）
-    isDepartmentHead: version.isDepartmentHead === true ? true : null,
+    // 联动意图如实保留（F-280）：明确填“否”就是 false，只有没填才是 null；新增下属存员工 ID 列表，展示名由审批中心按人员字段解析。
+    // 两项都是本单内容，无查看权的审批人走现有盲审口径（DEC-058），不另写一套裁剪
+    isDepartmentHead: version.isDepartmentHead,
+    addedSubordinateIds: version.addedSubordinateIds,
     startDate: version.startDate,
     endDate: version.endDate,
     originalEndDate: version.originalEndDate,

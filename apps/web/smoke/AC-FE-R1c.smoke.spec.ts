@@ -102,6 +102,46 @@ test('AC-FE-F248 系统撤销详情显示操作人和理由，空 actions 仅可
   await expect(header).toContainText('当前没有可办理操作');
 });
 
+test('AC-FE-F264FE 已处理审批详情显示审批人姓名和系统，旧日志不显示 ID', async ({ page }, testInfo) => {
+  const processed = {
+    ...detail(5, 'cancelled'),
+    tasks: [{ id: task, nodeName: '部门负责人审批', status: 'approved' }],
+    logs: [
+      {
+        event: 'approve',
+        taskId: task,
+        actorUserId: user,
+        actorName: '合成审批人林晓',
+        detail: { comment: '合成审批意见' },
+        createdAt: '2026-10-19T09:00:00Z',
+      },
+      {
+        event: 'system_revoke',
+        actorUserId: null,
+        actorName: null,
+        detail: { comment: '离职业务终止在途审批流程' },
+        createdAt: '2026-10-19T10:00:00Z',
+      },
+      { event: 'urge', actorUserId: 'synthetic-legacy-actor', createdAt: '2026-10-19T08:00:00Z' },
+    ],
+  };
+  await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: processed }));
+  await page.route('**/api/tenant/approval/instances?**', (route) => route.fulfill({ json: { items: [processed] } }));
+  await switchIdentity(page, '/approval/applications');
+  await openTodo(page);
+  const entries = page.locator('.approval-log');
+  await expect(entries).toHaveCount(3);
+  await expect(entries.nth(0)).toContainText('合成审批人林晓');
+  await expect(entries.nth(0).getByText('同意', { exact: true })).toBeVisible();
+  await expect(entries.nth(0)).toContainText('合成审批意见');
+  await expect(entries.nth(0)).not.toContainText(user);
+  await expect(entries.nth(1).getByText('系统', { exact: true })).toBeVisible();
+  await expect(entries.nth(1)).toContainText('撤销');
+  await expect(entries.nth(2)).not.toContainText('synthetic-legacy-actor');
+  await expect(entries.nth(2)).not.toContainText('系统');
+  await page.screenshot({ path: testInfo.outputPath('approval-log-actors.png'), fullPage: true });
+});
+
 async function openTodo(page: Page) {
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByRole('heading', { name: '合成员工的调动申请', exact: true })).toBeVisible();

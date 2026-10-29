@@ -3,6 +3,7 @@ import { sql, withTenant } from '@italent/db';
 import { afterEach, describe, expect, it } from 'vitest';
 import { syncProbe } from '../../apps/api/src/modules/survey360/sync.js';
 import { boundedScene, useBoundedDb } from './AC-360-F088-support.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useBoundedDb();
 afterEach(() => {
@@ -109,20 +110,24 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-360-06 / F-088 真 PostgreSQ
     });
     await held;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const response = await Promise.race([
-        s.auto(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('等待未入选员工锁')), 30_000);
-        }),
-      ]);
-      expect(response.status).toBe(200);
-      expect(((await response.json()) as Result).added).toHaveLength(1);
-    } finally {
-      clearTimeout(timer);
-      release();
-      await holder;
-    }
+    await withRelease(
+      () => {
+        clearTimeout(timer);
+        release();
+      },
+      async (cleanup) => {
+        cleanup.track(holder);
+        const response = await Promise.race([
+          cleanup.track(s.auto()),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('等待未入选员工锁')), 30_000);
+          }),
+        ]);
+        expect(response.status).toBe(200);
+        expect(((await response.json()) as Result).added).toHaveLength(1);
+      },
+      [holder],
+    );
   }, 120_000);
 
   it('计划完成后撤空员工范围：取锁后跳过，回执不泄露员工，不中途补锁', async () => {

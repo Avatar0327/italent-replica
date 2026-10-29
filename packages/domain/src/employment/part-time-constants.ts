@@ -88,8 +88,16 @@ export function partTimePermissionFields<T>(values: Readonly<Record<string, T>>)
 
 /** 可授编辑的兼职字段（申请字段编码 = 任职记录字段编码，PT-R4）。 */
 export const PART_TIME_FIELDS = ['partTimeType', 'endDate', 'requestRemark'] as const;
-/** 系统字段，只可授查看：原定结束日期（申请版本）、任职状态与视图归属（按期限链派生）。 */
-export const PART_TIME_SYSTEM_FIELDS = ['originalEndDate', 'serviceStatus', 'partTimeView'] as const;
+/** 系统字段，只可授查看：原定结束日期、任职状态 / 视图、机构存值与业务来源（F255A）。 */
+export const PART_TIME_SYSTEM_FIELDS = [
+  'originalEndDate',
+  'serviceStatus',
+  'partTimeView',
+  'institutionId',
+  'requestSource',
+] as const;
+/** F255A：后两种来源按名称推断，原站无样本，映射未验证；当前只有兼职申请写入路径。 */
+export const PART_TIME_REQUEST_SOURCES = ['part_time', 'transfer', 'org_adjustment'] as const;
 
 /** 机器可读的业务拒绝原因（`details.reason`）；各批次入口按 §4 使用。 */
 export const PART_TIME_ERRORS = {

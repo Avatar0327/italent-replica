@@ -29,3 +29,4 @@ export * from './offer.js';
 export * from './blacklist.js';
 export * from './part-time.js';
 export * from './retirement.js';
+export * from './org-adjustment.js';

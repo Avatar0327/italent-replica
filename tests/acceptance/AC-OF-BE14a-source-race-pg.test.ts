@@ -10,7 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as access from '../../apps/api/src/modules/permission/module-route-access.js';
 import { offerRealWorld, type OfferBody } from './AC-OF-BE14a-support.js';
-import { settledOrBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const MOBILE = '13900000000';
@@ -93,13 +93,15 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('P2-03 源 Offer 判定�
       body: { entry: 'campus_early_intern', campusOfferId: campus.id, ...rest },
     });
     let edit: Promise<Response> | undefined;
-    try {
-      await arrived(pause, pending);
-      edit = w.request('PUT', `/${campus.id}`, { ifMatch: 1, body: { mobile: MOBILE } });
-      await settledOrBlocked(w.db, edit, 1);
-    } finally {
-      pause.resume.resolve();
-    }
+    await withRelease(
+      () => pause.resume.resolve(),
+      async (cleanup) => {
+        cleanup.track(pending);
+        await arrived(pause, pending);
+        edit = cleanup.track(w.request('PUT', `/${campus.id}`, { ifMatch: 1, body: { mobile: MOBILE } }));
+        await settledOrBlocked(w.db, edit, 1);
+      },
+    );
     const response = await pending;
     const edited = await edit!;
     expect(edited.status, await edited.clone().text()).toBe(200);
@@ -116,15 +118,19 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('P2-03 源 Offer 判定�
     const pause = pauseExpandedCheck();
     const pending = w.real('POST', `/${source.id}/copy`, { ifMatch: 1, idempotencyKey: key });
     let write: Promise<unknown> | undefined;
-    try {
-      await arrived(pause, pending);
-      write = withTenant(w.db, w.tenant.id, (tx) =>
-        tx.execute(sql`UPDATE offers SET mobile = ${MOBILE} WHERE id = ${source.id}`),
-      );
-      await settledOrBlocked(w.db, write, 1);
-    } finally {
-      pause.resume.resolve();
-    }
+    await withRelease(
+      () => pause.resume.resolve(),
+      async (cleanup) => {
+        cleanup.track(pending);
+        await arrived(pause, pending);
+        write = cleanup.track(
+          withTenant(w.db, w.tenant.id, (tx) =>
+            tx.execute(sql`UPDATE offers SET mobile = ${MOBILE} WHERE id = ${source.id}`),
+          ),
+        );
+        await settledOrBlocked(w.db, write, 1);
+      },
+    );
     const response = await pending;
     await write;
     await expectNoUnauthorizedMobile(w, response, before, key);

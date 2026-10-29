@@ -39,6 +39,8 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   selectedStaffId: string | null;
   /** 人工计划生效日（F-140）：读自库；写入时由 insertEmploymentRow 丢弃，由插入触发器维护（迁移 0130）。 */
   plannedEffectiveDate?: string;
+  /** F255A：兼职机构的版本存值，不属于人工预置字段。 */
+  institutionId?: string | null;
   /** 读自库；写入时由 insertEmploymentRow 丢弃，只经显式状态流转或触发器继承（F-022）。 */
   employeeStatus?: number;
   entryStatus?: number | null;
