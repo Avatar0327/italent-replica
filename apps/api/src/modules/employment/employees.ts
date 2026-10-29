@@ -32,6 +32,7 @@ export interface Employee {
   readonly entryStatus: EntryStatusCode | null;
 }
 export interface EmployeeFilters {
+  readonly view?: 'labor';
   readonly status?: EmployeeStatus;
   readonly employeeStatus?: number;
   readonly entryStatus?: number;
@@ -87,7 +88,7 @@ export async function employeeName(tx: Tx, tenantId: string, id: string): Promis
   return row.name;
 }
 
-function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) {
+function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope, labor = false) {
   businessDate(asOf);
   const predicate = employmentScopePredicate(
     scope,
@@ -107,6 +108,19 @@ function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) 
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     LEFT JOIN LATERAL employment_record_status(e.tenant_id, r.id) s ON true
     WHERE e.tenant_id=${tenantId} AND ${predicate}
+    ${
+      labor
+        ? sql`AND s.employee_status IN (2,3) AND r.service_type='primary'
+      AND EXISTS (SELECT 1 FROM employment_forms f
+        WHERE f.tenant_id=r.tenant_id AND f.category=2 AND f.code=(COALESCE(
+          (SELECT to_jsonb(p) FROM employment_payload_versions p
+            WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+            ORDER BY p.version_no DESC LIMIT 1), to_jsonb(r))->>'employment_form'))
+      AND (COALESCE((SELECT to_jsonb(p) FROM employment_payload_versions p
+        WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+        ORDER BY p.version_no DESC LIMIT 1),to_jsonb(r))->>'employ_type')='internal'`
+        : sql``
+    }
   `;
 }
 
@@ -141,7 +155,7 @@ export async function listEmployees(
     throw new AppError('VALIDATION_FAILED', '入职状态不合法');
   return rowsOf<Employee>(
     await tx.execute(sql`
-    SELECT * FROM (${employeeQuery(tenantId, asOf, scope)}) employee WHERE true
+    SELECT * FROM (${employeeQuery(tenantId, asOf, scope, filters.view === 'labor')}) employee WHERE true
       ${filters.status ? sql`AND status=${filters.status}` : sql``}
       ${filters.employeeStatus === undefined ? sql`` : sql`AND "employeeStatus"=${filters.employeeStatus}`}
       ${filters.entryStatus === undefined ? sql`` : sql`AND "entryStatus"=${filters.entryStatus}`}

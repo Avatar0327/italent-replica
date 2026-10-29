@@ -329,3 +329,16 @@ export const detailSections = [
   },
   { title: '合同信息', fields: ['合同主体法人公司', '期限类型', '合同期限（月）', '终止日期'] },
 ];
+export const mailText = {
+  offer: 'Offer',
+  basic: '基本信息',
+  name: '姓名',
+  recipient: '个人邮箱',
+  notice: '录用通知书',
+  subject: '主题',
+  delivery: 'offer发送附件/抄送信息',
+  attachments: '附件',
+  cc: '抄送',
+  bcc: '密送',
+  notSent: '暂无Offer邮件',
+};
