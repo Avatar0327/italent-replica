@@ -48,6 +48,7 @@ import {
   memo,
   personOfUser,
   resolveCandidate,
+  resolveCandidates,
   tenantAdminTakeover,
   type RoutingSubject,
 } from './resolver.js';
@@ -174,6 +175,7 @@ function routingSubject(run: Run): RoutingSubject {
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
     tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
+    handoverEmployeeId: run.snapshot.handoverEmployeeId ?? null,
     cache: new Map(),
   };
 }
@@ -206,8 +208,9 @@ async function decide(
   node: ApprovalNode,
   expression: ApproverExpression,
   facts: RoutingFacts,
+  resolved?: Candidate,
 ) {
-  const candidate = await resolveCandidate(tx, subject, expression);
+  const candidate = resolved ?? (await resolveCandidate(tx, subject, expression));
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
@@ -463,8 +466,13 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
   const seats: SeatEntry[] = [];
   const selfSkips: NodeDecision[] = [];
   const candidates = new Set<string>();
-  for (const expression of node.approvers) {
-    const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts);
+  // 一个表达式可展开成多席（离职交接的兜底处理人，DEC-663）；其余表达式恰好一席
+  const resolved: (readonly [ApproverExpression, Candidate])[] = [];
+  for (const expression of node.approvers)
+    for (const candidate of await resolveCandidates(tx, entry.subject, expression, node.fallbackUserIds))
+      resolved.push([expression, candidate]);
+  for (const [expression, resolvedCandidate] of resolved) {
+    const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts, resolvedCandidate);
     if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
     if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;

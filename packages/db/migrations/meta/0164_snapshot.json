@@ -1,6 +1,6 @@
 {
-  "id": "a9ab5128-07eb-435e-8c4e-5dca653f1ffe",
-  "prevId": "906c9bf0-f0ad-4ef6-92c3-bf60134cfbeb",
+  "id": "9f2d00bf-d020-425d-b252-0fc0a626eabd",
+  "prevId": "452f498b-870d-4d1a-b063-723523626b4c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9877,7 +9877,7 @@
         },
         "employment_activation_attempts_outcome": {
           "name": "employment_activation_attempts_outcome",
-          "value": "\"employment_activation_attempts\".\"outcome\" IN ('effective', 'failed', 'suspended', 'replanned')"
+          "value": "\"employment_activation_attempts\".\"outcome\" IN ('effective', 'failed', 'suspended')"
         },
         "employment_activation_attempts_reason": {
           "name": "employment_activation_attempts_reason",
@@ -11140,13 +11140,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "manual_plan": {
-          "name": "manual_plan",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "last_work_date": {
           "name": "last_work_date",
           "type": "date",
@@ -11173,6 +11166,12 @@
         },
         "source_staff_id": {
           "name": "source_staff_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "institution_id": {
+          "name": "institution_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -11493,6 +11492,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_payload_versions_institution_fk": {
+          "name": "employment_payload_versions_institution_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -12015,6 +12029,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -12236,6 +12256,21 @@
             "tenant_id"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_institution_fk": {
+          "name": "employment_records_institution_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -23349,7 +23384,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -23921,6 +23956,13 @@
           "notNull": true,
           "default": "'{}'::text[]"
         },
+        "fallback_user_ids": {
+          "name": "fallback_user_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
         "exits": {
           "name": "exits",
           "type": "text[]",
@@ -24204,7 +24246,7 @@
         },
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',\n        'approval_subject_org_head')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',\n        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',\n        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',\n        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -24236,7 +24278,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'approval_subject_org_hrbp','approval_subject_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',\n            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',\n            'approval_subject_org_hrbp','approval_subject_org_head',\n            'handover_work_owner','handover_hr_admin','handover_employee']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -27719,11 +27761,11 @@
         },
         "transfer_linkage_items_status": {
           "name": "transfer_linkage_items_status",
-          "value": "\"transfer_linkage_items\".\"status\" IN ('pending', 'succeeded', 'failed', 'superseded')"
+          "value": "\"transfer_linkage_items\".\"status\" IN ('pending', 'succeeded', 'failed')"
         },
         "transfer_linkage_items_failure": {
           "name": "transfer_linkage_items_failure",
-          "value": "(\"transfer_linkage_items\".\"status\" IN ('failed', 'superseded')) = (\"transfer_linkage_items\".\"failure_code\" IS NOT NULL)"
+          "value": "(\"transfer_linkage_items\".\"status\" = 'failed') = (\"transfer_linkage_items\".\"failure_code\" IS NOT NULL)"
         },
         "transfer_linkage_items_counts": {
           "name": "transfer_linkage_items_counts",
@@ -54696,7 +54738,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
@@ -54855,12 +54897,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "supersedes_business_id": {
-          "name": "supersedes_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "employee_id": {
           "name": "employee_id",
@@ -55115,23 +55151,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "exit_requests_supersedes_fk": {
-          "name": "exit_requests_supersedes_fk",
-          "tableFrom": "exit_requests",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "supersedes_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "exit_requests_cycle_fk": {
           "name": "exit_requests_cycle_fk",
           "tableFrom": "exit_requests",
@@ -55174,16 +55193,7 @@
           ]
         }
       },
-      "uniqueConstraints": {
-        "exit_requests_one_successor": {
-          "name": "exit_requests_one_successor",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "supersedes_business_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "exit_requests_mode": {
@@ -60023,6 +60033,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "department_id": {
           "name": "department_id",
           "type": "uuid",
@@ -60180,6 +60196,21 @@
             "tenant_id",
             "employee_id",
             "request_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "part_time_request_versions_institution_fk": {
+          "name": "part_time_request_versions_institution_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "institution_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -60610,18 +60641,6 @@
           "notNull": true,
           "default": false
         },
-        "rehire_plan": {
-          "name": "rehire_plan",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rehire_business_id": {
-          "name": "rehire_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -60668,21 +60687,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "retirement_requests_rehire_fk": {
-          "name": "retirement_requests_rehire_fk",
-          "tableFrom": "retirement_requests",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "rehire_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -60697,14 +60701,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "retirement_requests_rehire_plan": {
-          "name": "retirement_requests_rehire_plan",
-          "value": "\"retirement_requests\".\"re_employed\" = (\"retirement_requests\".\"rehire_plan\" IS NOT NULL)"
-        },
-        "retirement_requests_rehire_business": {
-          "name": "retirement_requests_rehire_business",
-          "value": "\"retirement_requests\".\"rehire_business_id\" IS NULL OR \"retirement_requests\".\"re_employed\""
-        },
         "retirement_requests_type": {
           "name": "retirement_requests_type",
           "value": "\"retirement_requests\".\"retire_type\" IS NULL OR \"retirement_requests\".\"retire_type\" IN ('early', 'normal', 'delayed')"
@@ -62723,6 +62719,397 @@
         "org_adjustments_revision_positive": {
           "name": "org_adjustments_revision_positive",
           "value": "\"org_adjustments\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.exit_handover_request_items": {
+      "name": "exit_handover_request_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence_no": {
+          "name": "sequence_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "todo_type": {
+          "name": "todo_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "form_ref": {
+          "name": "form_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "done": {
+          "name": "done",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "done_at": {
+          "name": "done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "done_by_user_id": {
+          "name": "done_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_person": {
+          "name": "handover_person",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "exit_handover_request_items_list": {
+          "name": "exit_handover_request_items_list",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exit_handover_request_items_tenant_id_tenants_id_fk": {
+          "name": "exit_handover_request_items_tenant_id_tenants_id_fk",
+          "tableFrom": "exit_handover_request_items",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exit_handover_request_items_request_fk": {
+          "name": "exit_handover_request_items_request_fk",
+          "tableFrom": "exit_handover_request_items",
+          "tableTo": "exit_handover_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "exit_handover_request_items_tenant_id_id_pk": {
+          "name": "exit_handover_request_items_tenant_id_id_pk",
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "exit_handover_request_items_todo_type": {
+          "name": "exit_handover_request_items_todo_type",
+          "value": "\"exit_handover_request_items\".\"todo_type\" IN ('work_handover', 'other')"
+        },
+        "exit_handover_request_items_revision": {
+          "name": "exit_handover_request_items_revision",
+          "value": "\"exit_handover_request_items\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.exit_handover_requests": {
+      "name": "exit_handover_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exit_request_id": {
+          "name": "exit_request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "initiator_user_id": {
+          "name": "initiator_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "not_launched_reason": {
+          "name": "not_launched_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approval_instance_id": {
+          "name": "approval_instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "exit_handover_requests_live": {
+          "name": "exit_handover_requests_live",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "exit_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'not_launched')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "exit_handover_requests_exit": {
+          "name": "exit_handover_requests_exit",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "exit_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exit_handover_requests_tenant_id_tenants_id_fk": {
+          "name": "exit_handover_requests_tenant_id_tenants_id_fk",
+          "tableFrom": "exit_handover_requests",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exit_handover_requests_exit_fk": {
+          "name": "exit_handover_requests_exit_fk",
+          "tableFrom": "exit_handover_requests",
+          "tableTo": "exit_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "exit_request_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "business_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "exit_handover_requests_tenant_id_id_pk": {
+          "name": "exit_handover_requests_tenant_id_id_pk",
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "exit_handover_requests_state": {
+          "name": "exit_handover_requests_state",
+          "value": "\"exit_handover_requests\".\"state\" IN ('in_progress', 'completed', 'terminated', 'not_launched')"
+        },
+        "exit_handover_requests_not_launched": {
+          "name": "exit_handover_requests_not_launched",
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
+        },
+        "exit_handover_requests_end_reason": {
+          "name": "exit_handover_requests_end_reason",
+          "value": "(\"exit_handover_requests\".\"state\" = 'terminated') = (\"exit_handover_requests\".\"end_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"end_reason\", 'disapproved') IN ('disapproved', 'rejected', 'withdrawn', 'exit_cancelled')"
+        },
+        "exit_handover_requests_revision": {
+          "name": "exit_handover_requests_revision",
+          "value": "\"exit_handover_requests\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

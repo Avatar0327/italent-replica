@@ -191,6 +191,10 @@ export interface EmploymentBusiness {
   readonly mode: 'direct' | 'application';
   readonly formId: FormId;
   readonly effectiveDate: string;
+  /** F-306：本单最新试用期版本，与 revision 同一 SQL 快照；HTTP 响应仍按当前字段权限裁剪。 */
+  readonly probation: boolean;
+  readonly probationMonths: number | null;
+  readonly probationEndDate: string | null;
   readonly fields: PresetFields;
   readonly customFields: CustomFields;
   readonly employeeStatus: EmployeeStatusCode;

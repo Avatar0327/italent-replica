@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type DbHandle, migrationsFolder, sql } from '@italent/db';
+import { type DbHandle, migrationsFolder, sql, withTenant } from '@italent/db';
 import { describe, expect, it } from 'vitest';
-import { PRE_UPGRADE_SHIMS } from './pre-upgrade-shims.js';
+import { PRE_UPGRADE_SHIMS, PRE_UPGRADE_TABLE_SHIMS } from './pre-upgrade-shims.js';
 import { createTestDb } from './test-db.js';
 
 const journal = JSON.parse(readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')) as {
@@ -27,6 +27,44 @@ async function columnTypes(handle: DbHandle): Promise<Map<string, string>> {
 }
 
 describe('升级前兼容垫片（migrateBefore 夹具）', () => {
+  it('F-306：0140 之前的旧库也能执行当前申请详情读取的试用期查询', async () => {
+    const handle = await createTestDb({ migrateBefore: '_approval_subjects' });
+    try {
+      const result = await withTenant(handle.db, '00000000-0000-4000-8000-000000000001', (tx) =>
+        tx.execute(sql`SELECT has_probation, months, expected_end_date
+          FROM employment_probation_versions
+          WHERE tenant_id='00000000-0000-4000-8000-000000000001'::uuid
+          ORDER BY version_no DESC LIMIT 1`),
+      );
+      expect(Array.isArray(result) ? result : (result as { rows: unknown[] }).rows).toEqual([]);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it('F-306：每张登记表对应唯一真实建表迁移，全部列名和类型与正式表一致', async () => {
+    const full = await createTestDb();
+    try {
+      const types = await columnTypes(full);
+      expect(new Set(PRE_UPGRADE_TABLE_SHIMS.map((s) => s.table)).size).toBe(PRE_UPGRADE_TABLE_SHIMS.length);
+      for (const shim of PRE_UPGRADE_TABLE_SHIMS) {
+        expect(journal.entries.filter((e) => e.tag.endsWith(`_${shim.migration}`))).toHaveLength(1);
+        const statement = migrationSql(shim.migration)
+          .split('--> statement-breakpoint')
+          .find((s) => s.trimStart().startsWith(`CREATE TABLE "${shim.table}" (`));
+        expect(statement, shim.table).toBeDefined();
+        const names = [...types.keys()].filter((name) => name.startsWith(`${shim.table}.`)).sort();
+        expect(shim.columns.map((c) => `${shim.table}.${c.name}`).sort()).toEqual(names);
+        for (const column of shim.columns) {
+          expect(statement).toContain(`"${column.name}" ${column.type}`);
+          expect(types.get(`${shim.table}.${column.name}`)).toBe(column.type);
+        }
+      }
+    } finally {
+      await full.close();
+    }
+  });
+
   it('每一行都对应一条真实迁移里的 ADD COLUMN，且类型与完整迁移后的列一致', async () => {
     const full = await createTestDb();
     try {

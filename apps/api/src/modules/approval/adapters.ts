@@ -19,6 +19,7 @@ import { orgAdjustmentAdapter } from '../org-adjustment/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
 import { retirementIntentionAdapter } from '../employment/retirement-intention-adapter.js';
+import { exitHandoverAdapter } from '../employment/exit-handover-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
@@ -72,7 +73,8 @@ export type BusinessType =
   | 'offer_batch'
   | 'probation_assessment'
   | 'org_adjustment'
-  | 'retirement_intention';
+  | 'retirement_intention'
+  | 'exit_handover';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -94,6 +96,8 @@ export interface BusinessSnapshot {
   readonly recordDepartmentId: string | null;
   /** 发展计划的指导人（R3-T07，审批人表达式 idp_tutor）；其他业务为空。 */
   readonly tutorEmployeeId?: string | null;
+  /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
+  readonly handoverEmployeeId?: string | null;
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
@@ -638,4 +642,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   org_adjustment: orgAdjustmentAdapter,
   // R2 BE-5d2：意向退休日期申请（业务单 = 意向申请；通过只记录，不写人事字段，A-6）
   retirement_intention: retirementIntentionAdapter,
+  // R2 BE-8b2：离职交接申请（业务单 = 交接申请；通过只置已完成，不改离职状态）
+  exit_handover: exitHandoverAdapter,
 };

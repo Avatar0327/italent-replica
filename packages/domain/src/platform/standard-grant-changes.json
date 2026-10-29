@@ -1,5 +1,14 @@
 {
-  "reason": "R2 BE-12a：新增人事分析 - 时点员工花名册对象（TenantBase.HrRoster：查看、列表级导出按钮、asOf 字段与系统字段），只进标准版系统管理员和人事管理员（DEC-415，人事专员不预置）；不产生看全部授权（名册的数据范围复用员工档案对象）",
-  "add": ["standard_org_system_admin/TenantBase.HrRoster/*", "standard_hr_admin/TenantBase.HrRoster/*"],
+  "reason": "F255A / DEC-673：兼职机构存值与申请来源增加只读字段授权；不新增对象、按钮或数据范围",
+  "add": [
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:institutionId:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:requestSource:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:institutionId:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:requestSource:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:institutionId:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:requestSource:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:institutionId:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:requestSource:view"
+  ],
   "remove": []
 }

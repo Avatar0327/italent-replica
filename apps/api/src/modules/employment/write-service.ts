@@ -19,6 +19,7 @@ import {
 } from './employee-status.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
@@ -461,22 +462,33 @@ async function assertBusinessSequence(
     beforeOrder === undefined
       ? sql`t.start_date <= ${input.effectiveDate}::date`
       : sql`(t.start_date, t.sort_order) < (${input.effectiveDate}::date, ${beforeOrder})`;
-  const [latest] = rowsOf<{ kind: BusinessKind }>(
-    await tx.execute(sql`
-    SELECT r.kind FROM employment_timeline t
-    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND ${bound}
-    ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
-  `),
-  );
+  const latest = await latestTimelineRecord(tx, ctx.tenantId, employeeId, bound);
   const reason = sequenceViolation(latest?.kind, input.kind);
   if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
   // 实习转正另看插入点之后与前驱身份（F-215）：新增、申请改期、落地（审批通过后到期生效记生效失败，DEC-052）都经这里
   await assertInternRegularizationEligible(tx, ctx, employeeId, input);
 }
 
+/** 时间轴上满足 bound 的最后一条任职记录的业务类型（同日取最后一次操作，DEC-108）；默认不限日期 = 员工当前最新一条。 */
+export async function latestTimelineRecord(
+  tx: Tx,
+  tenantId: string,
+  employeeId: string,
+  bound: SQL = sql`true`,
+): Promise<{ kind: BusinessKind } | undefined> {
+  const [latest] = rowsOf<{ kind: BusinessKind }>(
+    await tx.execute(sql`
+    SELECT r.kind FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}::uuid AND ${bound}
+    ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
+  `),
+  );
+  return latest;
+}
+
 /** 前一条为 previous 时能否接 kind：终止任职后只能开新周期，在职时不能再入职（`07` §2、DEC-077）。 */
-function sequenceViolation(previous: BusinessKind | undefined, kind: BusinessKind): string | undefined {
+export function sequenceViolation(previous: BusinessKind | undefined, kind: BusinessKind): string | undefined {
   const terminal = previous !== undefined && ['leave', 'retirement'].includes(previous);
   if (kind === 'hire' && previous && !terminal) return 'EMPLOYEE_ALREADY_EMPLOYED';
   if (kind === 'rehire' && previous !== 'leave') return 'REHIRE_REQUIRES_LEAVE';

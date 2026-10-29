@@ -72,6 +72,8 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { requireEmploymentTransitionWrite } from './transition-access.js';
+import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 import {
   disclosePendingApplications,
   PendingApplicationError,
@@ -455,8 +457,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const ack = action === 'submit' ? await submitBody(c) : undefined;
-        const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
-        await requireEmploymentWrite(ctx, action === 'delete' ? 'delete' : 'update', {}, button);
+        await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
@@ -486,7 +487,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
                 authorize: async (tx, scoped) => {
                   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentWrite(scoped, action === 'delete' ? 'delete' : 'update', {}, button);
+                  await requireEmploymentTransitionWrite(scoped, action);
                 },
               }),
         };
@@ -504,6 +505,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
               undefined,
               action === 'submit' ? {} : undefined,
             );
+            const denied = action === 'withdraw' && (await employmentWithdrawalFailure(tx, checked, id));
+            if (denied) throw denied;
             const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
             // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);

@@ -40,7 +40,7 @@ export async function createTestDb(options: TestDbOptions = {}): Promise<DbHandl
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
-  // 升级前夹具用当前代码写数据：临时补上当前代码需要、旧结构还没有的列，第一次 migrate 前撤掉（pre-upgrade-shims.ts）
+  // 升级前夹具用当前代码写数据：临时补上缺失的列 / 表，第一次 migrate 前撤掉（pre-upgrade-shims.ts）。
   return withPreUpgradeShims(handle);
 }
 
