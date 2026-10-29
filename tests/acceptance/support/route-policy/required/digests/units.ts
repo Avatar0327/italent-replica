@@ -280,7 +280,7 @@ export const DIGESTS: Digests = {
     'route:POST /exits/batch': '70cfcd5c6b1e',
     'route:POST /exits/dictionaries/:dict': '9690d9b65058',
     'route:POST /exits/employees/:id': '332886384156',
-    'route:POST /exits/employees/:id/preview': 'b4dbee4bfe7b',
+    'route:POST /exits/employees/:id/preview': '6210e64db158',
     'route:PUT /exits/dictionaries/:dict/:id': '8b409a1cdfdf',
     runExitCancel: 'e361205053dc',
   },
