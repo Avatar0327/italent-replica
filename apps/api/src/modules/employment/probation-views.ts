@@ -111,7 +111,7 @@ function filterPredicate(tenantId: string, filter: ProbationViewFilter): SQL {
  * 入职申请的版本开始日为空，取开启记录实际生效日，预计结束日按 resolveDeferredProbation 的规则（手填不早于开始日才保留，
  * 否则按月数推算：开始日 + 月数 − 1 天，PostgreSQL 的 date + interval 'n month' 与 termEnd 同样取月末）。
  */
-const probationInfo = sql`SELECT
+export const probationInfo = sql`SELECT
     COALESCE(pv.has_probation, ast.employee_status=${EMPLOYEE_STATUS.probation}) AS has_probation,
     CASE WHEN pv.start_date IS NOT NULL THEN pv.start_date
       WHEN COALESCE(pv.has_probation, ast.employee_status=${EMPLOYEE_STATUS.probation}) THEN anchor.start_date

@@ -14,6 +14,8 @@ import { leaveBody } from './AC-EXIT-gate-support.js';
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => cancelWorld(database().db, label, TODAY);
+/** 要停用调出 / 调入部门的用例：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织，这些用例的主题是离职撤销与停用相交）。 */
+const worldToDisable = (label: string) => cancelWorld(database().db, label, TODAY, { capacity: false });
 
 const disabled = (disabledOn: string) => ({
   status: 409,
@@ -33,7 +35,7 @@ async function rejected(x: CancelWorld, id: string, expected: object, body: obje
 
 describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒绝（表 #1）', () => {
   it('B-63 原反例：E 之后已落地的未来直接调动 T 的组织 B 排定 10-26 停用 → 撤销 409；失败前后逐项相等', async () => {
-    const x = await world('b63');
+    const x = await worldToDisable('b63');
     await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-20');
     // 按 §6A.1 离职 approved 从 E 起不计占用，T 在 B 的区间随之不计：B 允许排定 10-26 停用
@@ -44,7 +46,7 @@ describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒
   });
 
   it('B-63-rev 反向顺序：先撤销离职，再排定 B 的停用 → 停用 409 ORG_SUBTREE_NOT_EMPTY，计数含 T', async () => {
-    const x = await world('b63-rev');
+    const x = await worldToDisable('b63-rev');
     await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-20');
     await x.cancelled(leave.id);
@@ -55,14 +57,14 @@ describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒
   });
 
   it('B-63a 组织单人：A 排定 10-22 停用（离职 E = 10-21 之后），撤销 → 409；失败前后相等', async () => {
-    const x = await world('b63a');
+    const x = await worldToDisable('b63a');
     const leave = await x.directLeave('2026-10-20');
     expect((await x.disable(x.from, '2026-10-22')).status).toBe(200);
     await rejected(x, leave.id, disabled('2026-10-22'));
   });
 
   it('B-63c 有限区间不跨停用日：员工 10-10 起已调到 B，A 排定 10-12 停用与撤销无关 → 撤销放行', async () => {
-    const x = await world('b63c');
+    const x = await worldToDisable('b63c');
     await x.directTransfer(x.to, '2026-10-10');
     const leave = await x.directLeave('2026-10-20');
     expect((await x.disable(x.from, '2026-10-12')).status).toBe(200);
@@ -73,7 +75,7 @@ describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒
   });
 
   it('B-63d E 之后另有同周期的后续记录：10-23 起到 B，B 排定 10-24 停用 → 撤销 409', async () => {
-    const x = await world('b63d-reject');
+    const x = await worldToDisable('b63d-reject');
     await x.directTransfer(x.to, '2026-10-23');
     const leave = await x.directLeave('2026-10-20');
     expect((await x.disable(x.to, '2026-10-24')).status).toBe(200);
@@ -81,7 +83,7 @@ describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒
   });
 
   it('B-63d 对照：B 记录 10-23～10-31 后被另一调动结束，B 排定 11-01 停用与撤销无关 → 放行', async () => {
-    const x = await world('b63d-pass');
+    const x = await worldToDisable('b63d-pass');
     await x.directTransfer(x.to, '2026-10-23');
     await x.directTransfer(x.other, '2026-10-31');
     const leave = await x.directLeave('2026-10-20');
@@ -93,7 +95,7 @@ describe('AC-DM-27 B-63 撤销 approved 离职：ΔO 与组织停用相交即拒
 
 describe('AC-DM-27 撤销已生效离职恢复在职：前一条恢复到最终窗口（表 #2）', () => {
   it('A 在离职生效后排定 10-10 停用（离职截断后无人占用）：恢复在职 → 409，失败前后相等', async () => {
-    const x = await world('b63-effective');
+    const x = await worldToDisable('b63-effective');
     const leave = await x.createdLeave(x.employee.id, leaveBody('2026-10-05', 'direct'));
     expect(leave.status).toBe('effective');
     expect((await x.disable(x.from, '2026-10-10')).status).toBe(200);

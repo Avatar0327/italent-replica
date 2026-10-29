@@ -260,21 +260,37 @@ export async function runDuePartTimeLinkage(tx: Tx, ctx: EmploymentContext, empl
   const due = rowsOf<{ id: string }>(
     await tx.execute(sql`
       SELECT DISTINCT o.business_id::text AS id FROM employment_outbox o
-      JOIN employment_records r ON r.tenant_id=o.tenant_id AND r.id=o.business_id
+      LEFT JOIN employment_records r ON r.tenant_id=o.tenant_id AND r.id=o.business_id
       WHERE o.tenant_id=${ctx.tenantId} AND o.employee_id=${employeeId}::uuid AND o.event_type=${EVENTS.pending}
-        AND r.start_date <= ${today}::date AND ${unresolvedSql(sql`o`)}
+        AND ${dueOrUnreadableSql(today)} AND ${unresolvedSql(sql`o`)}
       ORDER BY 1`),
   );
   if (!due.length) return;
-  for (const record of await lockPartTimeRecordsById(
-    tx,
-    ctx,
-    due.map((row) => row.id),
-  )) {
+  const ids = due.map((row) => row.id);
+  const records = await lockPartTimeRecordsById(tx, ctx, ids);
+  // 待办还在、兼职记录却读不到（内连接查不到，或不是兼职记录）：留 UNAVAILABLE 跳过事件结清，不静默略过（F-281）
+  const readable = new Set(records.map((record) => record.id));
+  for (const id of ids.filter((candidate) => !readable.has(candidate)))
+    await auditEmployment(
+      tx,
+      ctx,
+      EVENTS.skipped,
+      PART_TIME_AUDIT_OBJECTS.record,
+      id,
+      null,
+      { reason: SKIPS.unavailable },
+      undefined,
+      undefined,
+      { employeeId },
+    );
+  for (const record of records) {
     if (await eventExists(tx, ctx, record.id, [EVENTS.linked, EVENTS.skipped])) continue;
     await executeLinkage(tx, ctx, record, await resolveLinkageIntent(tx, ctx, record.id), { strict: false });
   }
 }
+
+/** 开始日已到，或兼职记录已读不到（读不到的待办也要被调度命中并留痕）。 */
+const dueOrUnreadableSql = (today: string) => sql`(r.id IS NULL OR r.start_date <= ${today}::date)`;
 
 /** 待执行事件 alias 对应的记录还没有已执行 / 已跳过事件（调度候选、闭包规划共用）。 */
 export const unresolvedSql = (pending: ReturnType<typeof sql>) => sql`NOT EXISTS (
@@ -284,7 +300,7 @@ export const unresolvedSql = (pending: ReturnType<typeof sql>) => sql`NOT EXISTS
 /** 调度候选：开始日已到、仍有未办结待执行联动的员工（返回 employee_id，按游标分页的一段）。 */
 export function dueLinkageEmployees(tenantId: string, businessDate: string) {
   return sql`SELECT DISTINCT o.employee_id::text AS "employeeId" FROM employment_outbox o
-    JOIN employment_records r ON r.tenant_id=o.tenant_id AND r.id=o.business_id
-    WHERE o.tenant_id=${tenantId} AND o.event_type=${EVENTS.pending} AND r.start_date <= ${businessDate}::date
+    LEFT JOIN employment_records r ON r.tenant_id=o.tenant_id AND r.id=o.business_id
+    WHERE o.tenant_id=${tenantId} AND o.event_type=${EVENTS.pending} AND ${dueOrUnreadableSql(businessDate)}
       AND ${unresolvedSql(sql`o`)}`;
 }
