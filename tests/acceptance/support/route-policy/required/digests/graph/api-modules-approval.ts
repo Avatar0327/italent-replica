@@ -185,9 +185,7 @@ export const GRAPH: Graph = {
     '#openTask',
     '#outcomeAction',
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
-    'apps/api/src/modules/approval/add-sign.ts#assertNotAddSigner',
     'apps/api/src/modules/approval/add-sign.ts#continueAfterApproval',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#persistRun',
     'apps/api/src/modules/approval/notifications.ts#applyMessageRules',
     'apps/api/src/modules/approval/store.ts#appendLog',
@@ -206,7 +204,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/actions.ts#assertApprovalEdit': [
     'apps/api/src/modules/approval/context.ts#approvalError',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+    'apps/api/src/modules/approval/edit-surface.ts#editBlocker',
   ],
   'apps/api/src/modules/approval/actions.ts#assertExit': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -306,12 +304,15 @@ export const GRAPH: Graph = {
     '#editableInput',
     '#ok',
     '#openTask',
-    'apps/api/src/modules/approval/add-sign.ts#assertNotAddSigner',
-    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/engine.ts#persistRun',
     'apps/api/src/modules/approval/store.ts#loadTasks',
   ],
-  'apps/api/src/modules/approval/actions.ts#editableInput': ['apps/api/src/modules/approval/context.ts#approvalError'],
+  'apps/api/src/modules/approval/actions.ts#editableInput': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/edit-surface.ts#editableKeys',
+    'apps/api/src/modules/approval/edit-surface.ts#isBlank',
+    'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED',
+  ],
   'apps/api/src/modules/approval/actions.ts#jumpTask': [
     '#assertOpen',
     '#auditTask',
@@ -451,7 +452,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#HELD_STATUSES': [
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#employeeHeader': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -645,13 +646,13 @@ export const GRAPH: Graph = {
     '#changed',
   ],
   'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
-  'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
+  'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
     '#votingTasks',
     'packages/domain/src/approval/countersign.ts#countersignVote',
   ],
   'apps/api/src/modules/approval/countersign.ts#countersignFlowed': [
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/countersign.ts#holdersAfterRetrieve': ['#seatHolders'],
   'apps/api/src/modules/approval/countersign.ts#mergeSeat': [
@@ -930,13 +931,13 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
+    'apps/api/src/modules/approval/edit-surface.ts#editSurface',
     'apps/api/src/modules/approval/rules.ts#addSignAllowed',
     'apps/api/src/modules/approval/rules.ts#addSignLink',
     'apps/api/src/modules/approval/rules.ts#retrievableTask',
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     'packages/domain/src/approval/recusal.ts#nodeRecusal',
-    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/approval/types.ts#hasExit',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#jumpAllowed',
@@ -988,9 +989,23 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#recordsHiddenFor',
   ],
   'apps/api/src/modules/approval/disclosure.ts#viewerNode': ['#ownTasks'],
+  'apps/api/src/modules/approval/disclosure.ts#visibleRecordInstances': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#recordsHidden',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#visibleTasks': [
     '#recordsHidden',
     'packages/domain/src/approval/policies.ts#visibleWhenHidden',
+  ],
+  'apps/api/src/modules/approval/edit-surface.ts#editBlocker': [
+    'apps/api/src/modules/approval/rules.ts#addSignLink',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/approval/edit-surface.ts#editSurface': [
+    '#editBlocker',
+    '#editableKeys',
+    'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED',
+    'packages/domain/src/approval/types.ts#hasExit',
   ],
   'apps/api/src/modules/approval/engine.ts#advanceFrom': [
     '#complete',
@@ -1387,6 +1402,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/queries.ts#listAdminLogs': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/disclosure.ts#visibleRecordInstances',
     '#iso',
     'apps/api/src/modules/approval/store.ts#withActorNames',
   ],
@@ -1820,9 +1836,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/rules.ts#countersignRetrievable': [
     '#addSignLink',
     '#untouchedStatus',
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
-  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
+  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': [
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
+  ],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': [
     '#AUTO_ORIGINS',
     '#addSignLink',
@@ -2029,8 +2047,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/store.ts#displayWindow': ['#RECENT'],
   'apps/api/src/modules/approval/store.ts#endOpenTasks': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#OPEN_STATUSES',
     '#auditTask',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/store.ts#insertTask': [
     '#assertAssigneeUsable',
@@ -2100,7 +2118,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrievedApprovals'],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
-    'apps/api/src/modules/approval/rules.ts#isActiveInstance',
+    'apps/api/src/modules/approval/instance-state.ts#isActiveInstance',
     'packages/domain/src/approval/types.ts#revokeAllowed',
   ],
 };

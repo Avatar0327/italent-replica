@@ -11,5 +11,9 @@ export const GRAPH: Graph = {
   'packages/domain/src/transfer/catalog.ts#form': ['#view'],
   'packages/domain/src/transfer/catalog.ts#interOrgExclusions': ['#transferExclusions'],
   'packages/domain/src/transfer/catalog.ts#type': ['#view'],
-  'packages/domain/src/transfer/required.ts#missingTransferRequiredFields': ['#requiredTransferFields'],
+  'packages/domain/src/transfer/required.ts#missingTransferRequiredFields': [
+    '#TRANSFER_REQUIRED_FIELDS',
+    '#requiredTransferFields',
+  ],
+  'packages/domain/src/transfer/required.ts#requiredTransferFields': ['#TRANSFER_REQUIRED_FIELDS'],
 };

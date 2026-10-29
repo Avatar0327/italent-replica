@@ -5,7 +5,7 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
-  APPROVAL_TYPES,
+  APPROVAL_EDIT_REQUIRED,
   instanceRecusal,
   jumpAllowed,
   rejectToPreviousAllowed,
@@ -18,6 +18,8 @@ import {
   rejectAllowed,
   type AddSignType,
   type ApprovalNode,
+  type ApprovalTypeCode,
+  type EditMode,
   type NodeExit,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -27,6 +29,7 @@ import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
 import type { TargetScope } from './access.js';
 import { ADAPTERS } from './adapters.js';
+import { editableKeys, editBlocker, isBlank } from './edit-surface.js';
 import {
   approvalError,
   assertRevision,
@@ -182,21 +185,51 @@ function assertNotBlindAfterEdit(run: Run, viewable: ReadonlySet<string> | undef
   }
 }
 
-/** DEC-105：审批类型不开放审批中编辑时（员工信息类），历史配置下的编辑一律拒绝，详情也不公布（F14）。 */
-function assertApprovalEdit(run: Run): void {
-  if (!APPROVAL_TYPES[run.snapshot.approvalType].approvalEdit) {
+/**
+ * 审批中编辑的前置检查（同意带 fields / 独立编辑共用，与详情下发 form.edit 同源：edit-surface.ts）。
+ * 顺序：类型不开放（DEC-105，员工信息类历史配置下也拒绝）→ 节点 editMode 不符 → 加签人不能编辑（`14` §11.3）。
+ */
+function assertApprovalEdit(
+  run: Run,
+  tasks: readonly TaskRow[],
+  task: TaskRow,
+  node: ApprovalNode,
+  mode: EditMode,
+): void {
+  const blocker = editBlocker(run.snapshot.approvalType, tasks, task);
+  if (blocker === 'unsupported') {
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_UNSUPPORTED', '该类审批不支持审批中编辑，请驳回后由申请人修正');
+  }
+  if (node.editMode !== mode) {
+    const message = mode === 'separate' ? '本节点没有独立的编辑按钮' : '本节点不支持编辑与同意合一';
+    throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', message);
+  }
+  if (blocker === 'add_signer') {
+    throw approvalError('FORBIDDEN', 'APPROVAL_ADD_SIGNER_EDIT', '加签人不能编辑表单内容，只有本节点原审批人可以');
   }
 }
 
-function editableInput(node: ApprovalNode, fields: Row, viewable: ReadonlySet<string> | undefined): Row {
+function editableInput(
+  approvalType: ApprovalTypeCode,
+  node: ApprovalNode,
+  fields: Row,
+  viewable: ReadonlySet<string> | undefined,
+): Row {
   const keys = Object.keys(fields);
-  const denied = keys.filter(
-    (key) => !node.editableFields.includes(key) || (viewable !== undefined && !viewable.has(key)),
-  );
+  const allowed = new Set(editableKeys(node, viewable));
+  const denied = keys.filter((key) => !allowed.has(key));
   if (!keys.length || denied.length) {
     throw approvalError('FORBIDDEN', 'APPROVAL_FIELD_NOT_EDITABLE', '只能编辑本节点开放且您可查看的字段', {
       fields: denied,
+    });
+  }
+  // 必填与详情下发的 required 同一张表（APPROVAL_EDIT_REQUIRED）：空值当次拒收
+  const required = APPROVAL_EDIT_REQUIRED[approvalType] ?? {};
+  const blanks = keys.filter((key) => Object.hasOwn(required, key) && isBlank(fields[key]));
+  if (blanks.length) {
+    throw approvalError('VALIDATION_FAILED', required[blanks[0]!]!, '必填项不能为空', {
+      field: blanks[0],
+      missingFields: blanks,
     });
   }
   return fields;
@@ -248,11 +281,8 @@ export async function approveTask(
   const { run, task, node } = scene;
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   if (input.fields && Object.keys(input.fields).length) {
-    assertApprovalEdit(run);
-    if (node.editMode !== 'with_approve')
-      throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点不支持编辑与同意合一');
-    assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
-    await applyEdit(tx, scene, editableInput(node, input.fields, viewable));
+    assertApprovalEdit(run, await loadTasks(tx, ctx.tenantId, run.instance.id), task, node, 'with_approve');
+    await applyEdit(tx, scene, editableInput(run.snapshot.approvalType, node, input.fields, viewable));
     assertNotBlindAfterEdit(run, viewable);
   }
   await closeTask(tx, ctx, task.id, 'approved', input.comment);
@@ -687,11 +717,9 @@ export async function editTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
-  assertApprovalEdit(scene.run);
-  if (scene.node.editMode !== 'separate')
-    throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点没有独立的编辑按钮');
-  assertNotAddSigner(await loadTasks(tx, ctx.tenantId, scene.run.instance.id), scene.task);
-  await applyEdit(tx, scene, editableInput(scene.node, input.fields, viewable));
+  const { run, task, node } = scene;
+  assertApprovalEdit(run, await loadTasks(tx, ctx.tenantId, run.instance.id), task, node, 'separate');
+  await applyEdit(tx, scene, editableInput(run.snapshot.approvalType, node, input.fields, viewable));
   assertNotBlindAfterEdit(scene.run, viewable);
   await persistRun(tx, scene.run, 'approval.task.edit');
   return ok(scene.run);

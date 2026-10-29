@@ -61,7 +61,7 @@ export const DIGESTS: Digests = {
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
     respondHistory: '9bab67d00813',
-    'route:GET /admin-logs': 'ca4d3201d9b0',
+    'route:GET /admin-logs': '11eb36767d6e',
     'route:GET /designer/person-candidates': '07805ba9ec52',
     'route:GET /designer/source-candidates': 'e81f2de6216c',
     'route:GET /instances': 'f66cdd697241',

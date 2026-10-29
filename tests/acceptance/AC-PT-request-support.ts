@@ -56,6 +56,8 @@ export interface WorldOptions {
   readonly noSideHead?: boolean;
   /** 节点额外开放（表单字段 + 可编辑字段）的审批字段，用来分别覆盖“节点禁止编辑”与“适配器拒绝”两层。 */
   readonly extraEditable?: readonly string[];
+  /** 三类流程的节点都开启加签（F-291 加签人不下发 form.edit）。 */
+  readonly addSign?: boolean;
 }
 
 export async function requestWorld(db: Db, label: string, options: WorldOptions = {}) {
@@ -128,6 +130,7 @@ export async function requestWorld(db: Db, label: string, options: WorldOptions 
                   formFields: [...node.formFields, ...(options.extraEditable ?? [])],
                 }
               : {}),
+            ...(options.addSign ? { actions: { ...node.actions, addSign: true } } : {}),
             ...(options.disagree ? { exits: ['approve', 'disagree'] as const } : {}),
           };
         }),
