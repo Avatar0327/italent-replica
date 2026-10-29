@@ -4,7 +4,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import * as catalog from '../../apps/api/src/modules/talent-review/calc-rule-catalog.js';
 import { bumpFieldCatalog } from '../../apps/api/src/modules/talent-review/field-catalog.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 import { formBody } from './AC-TR-form-flow-support.js';
 import { indicatorModule, templateBody, templateWorld } from './AC-TR-template-support.js';
 
@@ -78,12 +78,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-04 第 2 轮并发
       modules: [indicatorModule(rule.id, { id: t.modules[0]!.id, name: '乙'.repeat(31) })],
     });
     let renamed: Response;
-    try {
-      await loaded.promise;
-      renamed = await w.trRequest('PATCH', `/fields/${source.id}`, { ifMatch: 1, body: { name: '甲'.repeat(31) } });
-    } finally {
-      resume.resolve();
-    }
+    await withRelease(
+      () => resume.resolve(),
+      async (cleanup) => {
+        cleanup.track(pending);
+        await loaded.promise;
+        renamed = await w.trRequest('PATCH', `/fields/${source.id}`, { ifMatch: 1, body: { name: '甲'.repeat(31) } });
+      },
+    );
     const response = await pending;
     spy.mockRestore();
     expect(renamed!.status, await renamed!.clone().text()).toBe(200);
