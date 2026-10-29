@@ -211,7 +211,9 @@ export async function loadEmploymentBusiness(
       : employmentScopePredicate(scope, sql`b.employee_id`, department, creator);
   const [row] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
-    SELECT b.id,b.employee_id,b.revision,e.revision AS employee_revision,p.*,s.state
+    SELECT b.id,b.employee_id,b.revision,e.revision AS employee_revision,p.*,s.state,
+      probation.has_probation,probation.months AS probation_months,
+      probation.expected_end_date::text AS probation_end_date
     FROM employment_business_objects b
     JOIN employment_employees e ON e.tenant_id=b.tenant_id AND e.id=b.employee_id
     JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
@@ -219,12 +221,19 @@ export async function loadEmploymentBusiness(
     LEFT JOIN employment_records r ON r.tenant_id=b.tenant_id AND r.id=b.id
     JOIN LATERAL (SELECT s.state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
+    LEFT JOIN LATERAL (
+      SELECT v.has_probation,v.months,v.expected_end_date FROM employment_probation_versions v
+      WHERE v.tenant_id=b.tenant_id AND v.business_id=b.id
+      ORDER BY v.version_no DESC LIMIT 1
+    ) probation ON true
     WHERE b.tenant_id=${tenantId} AND b.id=${id}
       AND p.kind<>${PART_TIME_KIND}
       AND ${scopeFilter} LIMIT 1
   `),
   );
   if (!row) return null;
+  // F-306：本单试用期与业务 revision 取同一 SQL 快照，不读员工当前锚点，也不推算未保存的结束日。
+  const probation = row.has_probation === true;
   const effectiveRecord = await loadEmploymentRecord(tx, tenantId, id, asOf, scope);
   const activation = await activationSummary(tx, tenantId, id, String(row.state));
   return {
@@ -238,6 +247,9 @@ export async function loadEmploymentBusiness(
     mode: row.mode as 'direct' | 'application',
     formId: row.form_id as FormId,
     effectiveDate: String(row.effective_date),
+    probation,
+    probationMonths: probation && row.probation_months !== null ? Number(row.probation_months) : null,
+    probationEndDate: probation ? ((row.probation_end_date as string | null) ?? null) : null,
     fields: effectiveRecord?.fields ?? snapshotFields(row),
     customFields: effectiveRecord?.customFields ?? (row.custom_fields as CustomFields),
     employeeStatus: effectiveRecord?.employeeStatus ?? (Number(row.employee_status) as EmployeeStatusCode),

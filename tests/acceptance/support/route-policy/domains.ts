@@ -60,6 +60,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   PROBATION_ASSESSMENT_OBJECT: { adapter: 'probation_assessment', codes: [PROBATION_ASSESSMENT_OBJECT] },
   // employment/retirement-intention-adapter.ts（R2 BE-5d2）：意向退休日期申请，字段权限沿用任职记录对象（设计 §11.1）
   'TYPE.objectCode': { adapter: 'retirement_intention', codes: [APPROVAL_TYPES.retirement_intention.objectCode] },
+  // employment/exit-handover-adapter.ts（R2 BE-8b2）：离职交接申请，字段权限沿用任职记录对象
+  HANDOVER_OBJECT: { adapter: 'exit_handover', codes: [APPROVAL_TYPES.exit_handover.objectCode] },
 };
 
 /**
