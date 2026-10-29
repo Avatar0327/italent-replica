@@ -4,7 +4,6 @@ import { APPROVAL_INSTANCE_OBJECT, buttonResource, PROBATION_ASSESSMENT_OBJECT }
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { instanceScopeSql } from '../approval/access.js';
-import { disclosedFields, readDetail } from '../approval/disclosure.js';
 import { latestInstanceOf } from '../approval/store.js';
 import {
   authorizeInTransaction,
@@ -85,6 +84,8 @@ async function canDisclose(tx: Tx, ctx: EmploymentContext, assessmentId: string)
   };
   let readable = false;
   await visible(async () => {
+    // runWrite 随任职读模型加载；延迟进入审批披露，避免 store → 任职 → 审批 → store 的初始化环。
+    const { disclosedFields, readDetail } = await import('../approval/disclosure.js');
     const data = await readDetail(tx, ctx, instance.id, viewer, false);
     const disclosed = disclosedFields(data, ctx.userId, fields);
     readable = disclosed.has('assessmentName') && disclosed.has('assessmentDate');
