@@ -49,6 +49,17 @@ async function permissionWorld() {
 const objectPath = `/api/tenant/permission/me/objects/${encodeURIComponent(EXIT_SETTINGS_OBJECT)}`;
 
 describe('AC-DM-31 FE2b 夹具与真实接口一致', () => {
+  it('AC-DM-31 / F-321：共享用工形式日期权限保留，只有日期权限不能写离职字典', () => {
+    const dates = ['effectiveDate', 'expiryDate'];
+    const datePermission = {
+      ...settingsPermission,
+      viewableFields: settingsPermission.viewableFields.filter((field) => dates.includes(field)),
+      editableFields: settingsPermission.editableFields.filter((field) => dates.includes(field)),
+    };
+    expect(datePermission).toEqual({ ...settingsPermission, viewableFields: dates, editableFields: dates });
+    expect(writeAccess(datePermission)).toEqual({ create: false, createFields: [], updateFields: [] });
+  });
+
   it('管理员读任职设置对象的返回等于冒烟夹具，可新增、可编辑字典四个字段；只有查看权的成员页面只读', async () => {
     const { as, admin, viewer } = await permissionWorld();
     const adminRes = await as(admin, 'GET', objectPath);

@@ -15,7 +15,7 @@ import { useState, type Key, type Dispatch, type SetStateAction } from 'react';
 import { offerExamples, type OfferExample } from '../demo-stubs/offers.js';
 import { ViewHeading } from '../foundation/ViewHeading.js';
 import { OfferDetail, OfferDialog } from './OfferDialogs.js';
-import { m, toolbars, viewSpecs } from './messages.js';
+import { actions, m, toolbars, viewSpecs } from './messages.js';
 import { displayValue, filterOffers, inView, pendingViews, rowActions, type DemoAction, type View } from './model.js';
 
 export function OfferList() {
@@ -35,6 +35,7 @@ export function OfferList() {
     setSelected([]);
   };
   const act = (row: OfferExample, label: string) => {
+    if (label === actions.mail) window.open(`/offers/${encodeURIComponent(row.id)}/mail`, '_blank', 'noopener');
     if (label === m.transfer || label === m.invalidate)
       setDialog({ row, action: label === m.transfer ? 'transfer' : 'invalidate' });
   };
@@ -74,7 +75,7 @@ export function OfferList() {
 }
 function RowActions({ row, view, act }: { row: OfferExample; view: View; act(label: string): void }) {
   const { primary, menu } = rowActions(row, view);
-  const enabled = (label: string) => [m.transfer, m.invalidate].includes(label);
+  const enabled = (label: string) => [m.transfer, m.invalidate, actions.mail].includes(label);
   return (
     <Space size={0}>
       {primary.map((label) => (

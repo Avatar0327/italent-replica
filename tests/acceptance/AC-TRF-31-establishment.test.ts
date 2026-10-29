@@ -323,7 +323,10 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
 
   it('Q-M0-15 同条件字段且/同字段值或/多条件并集，与雇佣关系匹配', async () => {
     const ranges = [
-      { employmentType: 'internal', conditions: { employmentForm: ['full', 'part'], employmentType: ['engineer'] } },
+      {
+        employmentType: 'internal',
+        conditions: { employmentForm: ['full_time', 'part_time'], employmentType: ['engineer'] },
+      },
       { employmentType: 'intern', conditions: { employmentSource: ['campus'] } },
     ];
     const w = await fixture('trf-est-ranges', 0, ranges);
@@ -339,8 +342,8 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
           fields: { departmentId: w.to.id, ...fields },
         },
       });
-    expect((await create({ employmentForm: 'part', employmentType: 'engineer' })).status).toBe(409);
-    expect((await create({ employmentForm: 'contract', employmentType: 'engineer' })).status).toBe(201);
+    expect((await create({ employmentForm: 'part_time', employmentType: 'engineer' })).status).toBe(409);
+    expect((await create({ employmentForm: 'regular', employmentType: 'engineer' })).status).toBe(201);
   });
 
   it('申请通过后真实满编 → 到期失败 → 调整编制 → 按执行日重试，幂等关闭待办', async () => {

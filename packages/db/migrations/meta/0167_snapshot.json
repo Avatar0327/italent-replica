@@ -1,6 +1,6 @@
 {
-  "id": "281d7ead-ec58-4963-996d-75bf908c5ab9",
-  "prevId": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
+  "id": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
+  "prevId": "f3e62de8-f801-47a3-9aff-7692e01b6206",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11735,6 +11735,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "employment_payload_versions_form_fk": {
+          "name": "employment_payload_versions_form_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -12462,6 +12477,21 @@
           "columnsTo": [
             "tenant_id",
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_form_fk": {
+          "name": "employment_records_form_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -24007,12 +24037,6 @@
           "notNull": true,
           "default": "'exception_admin'"
         },
-        "empty_approver_policy": {
-          "name": "empty_approver_policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "same_assignee_skip": {
           "name": "same_assignee_skip",
           "type": "boolean",
@@ -24301,10 +24325,6 @@
         "approval_nodes_exit_rules": {
           "name": "approval_nodes_exit_rules",
           "value": "(\"approval_process_nodes\".\"approve_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"approve_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"disagree_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"approve_rule_kind\" IS NULL OR \"approval_process_nodes\".\"approve_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"approve_rule_value\" >= 1 AND \"approval_process_nodes\".\"approve_rule_value\" = trunc(\"approval_process_nodes\".\"approve_rule_value\")\n          OR \"approval_process_nodes\".\"approve_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"approve_rule_value\" > 0 AND \"approval_process_nodes\".\"approve_rule_value\" <= 100)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"disagree_rule_value\" >= 1 AND \"approval_process_nodes\".\"disagree_rule_value\" = trunc(\"approval_process_nodes\".\"disagree_rule_value\")\n          OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"disagree_rule_value\" > 0 AND \"approval_process_nodes\".\"disagree_rule_value\" <= 100)"
-        },
-        "approval_nodes_empty_approver": {
-          "name": "approval_nodes_empty_approver",
-          "value": "\"approval_process_nodes\".\"empty_approver_policy\" IS NULL OR (\n      \"approval_process_nodes\".\"node_type\" = 'countersign' AND (\n        (\"approval_process_nodes\".\"node_key\" = 'work_handover' AND \"approval_process_nodes\".\"empty_approver_policy\" IN ('stop','auto_approve','specified')) OR\n        (\"approval_process_nodes\".\"node_key\" = 'other_handover' AND \"approval_process_nodes\".\"empty_approver_policy\" IN ('exception_admin','auto_approve','specified'))\n      ) AND (\"approval_process_nodes\".\"empty_approver_policy\" <> 'auto_approve' OR 'approve' = ANY(\"approval_process_nodes\".\"exits\"))\n    )"
         }
       },
       "isRLSEnabled": false
@@ -60330,6 +60350,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "part_time_request_versions_form_fk": {
+          "name": "part_time_request_versions_form_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -63124,6 +63159,151 @@
         "exit_handover_requests_revision": {
           "name": "exit_handover_requests_revision",
           "value": "\"exit_handover_requests\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.employment_forms": {
+      "name": "employment_forms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_forms_tenant_id_tenants_id_fk": {
+          "name": "employment_forms_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_forms",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "employment_forms_tenant_id": {
+          "name": "employment_forms_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "employment_forms_tenant_code": {
+          "name": "employment_forms_tenant_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "employment_forms_category": {
+          "name": "employment_forms_category",
+          "value": "\"employment_forms\".\"category\" IN (1,2,3,4)"
+        },
+        "employment_forms_nonempty": {
+          "name": "employment_forms_nonempty",
+          "value": "btrim(\"employment_forms\".\"code\") <> '' AND btrim(\"employment_forms\".\"name\") <> ''"
+        },
+        "employment_forms_dates": {
+          "name": "employment_forms_dates",
+          "value": "\"employment_forms\".\"effective_date\" <= \"employment_forms\".\"expiry_date\""
+        },
+        "employment_forms_revision_order": {
+          "name": "employment_forms_revision_order",
+          "value": "\"employment_forms\".\"revision\" > 0 AND \"employment_forms\".\"display_order\" >= 0"
         }
       },
       "isRLSEnabled": false

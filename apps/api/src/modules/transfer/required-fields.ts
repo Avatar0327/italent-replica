@@ -1,4 +1,4 @@
-import { missingTransferRequiredFields, type TransferRequiredForm } from '@italent/domain';
+import { missingTransferRequiredFields, TRANSFER_REQUIRED_REASON, type TransferRequiredForm } from '@italent/domain';
 import { AppError } from '../../errors.js';
 
 export function assertRequiredTransferFields(
@@ -10,7 +10,7 @@ export function assertRequiredTransferFields(
   const missingFields = missingTransferRequiredFields(form, effectiveFields, { includeNonEditable: true });
   if (missingFields.length)
     throw new AppError('VALIDATION_FAILED', '请填写本场景必填的调动字段', {
-      reason: 'TRANSFER_REQUIRED_FIELDS',
+      reason: TRANSFER_REQUIRED_REASON,
       missingFields,
     });
 }

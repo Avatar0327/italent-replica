@@ -2084,6 +2084,38 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 试用结果字典（B7）：读取对持任职记录查看权者开放（转正表单下拉）；enabled 查询非法 → 400；无组织字段，不按范围裁剪
+  // F-321：类别可空，配置对象沿用；读字典不受人员范围限制。
+  'GET /employment-forms': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('用工形式表单下拉无按钮'),
+    scope: noScope('用工形式是租户配置，无组织 / 人员字段'),
+    fields: fixed(
+      [
+        'items',
+        'categories',
+        'id',
+        'code',
+        'name',
+        'category',
+        'displayOrder',
+        'effectiveDate',
+        'expiryDate',
+        'enabled',
+        'remark',
+        'revision',
+      ],
+      'F-321：字典固定键',
+    ),
+  }),
+  'POST /employment-forms': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('employment_form')),
+  'PUT /employment-forms/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('employment_form'),
+    byId,
+  ),
   'GET /probation-results': object({
     object: EMPLOYMENT,
     operation: 'view',
