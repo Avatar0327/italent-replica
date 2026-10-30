@@ -13,10 +13,14 @@ import {
 import { useTestDb } from '@italent/testkit';
 import { expect, it, vi } from 'vitest';
 import * as accounts from '../../apps/api/src/modules/employment/exit-account-worker.js';
+import * as retries from '../../apps/api/src/modules/employment/exit-handover-retry.js';
 import * as handovers from '../../apps/api/src/modules/employment/exit-handover.js';
+import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
 import { handoverWorld } from './AC-EXIT-handover-support.js';
+import { rowsOf } from './support/f048.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -243,18 +247,63 @@ it.each(['rollback', 'unavailable'] as const)(
   },
 );
 
+// PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行。
 it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
   'AC-DM-05 × DM-R14：两个真实 PG 调度并发补发只建一单和一个审批实例',
   async () => {
-    const { x, replace } = await setup('concurrent');
-    const pause = vi.spyOn(accounts, 'drainExitAccounts').mockResolvedValue();
-    let result: Awaited<ReturnType<typeof replace>>;
+    const { x, replace, user } = await setup('concurrent');
+    const result = await deferred(replace);
+    // 先只跑账号消费者恢复账号（补发暂停），并发只落在补发消费上；否则第一个调度在恢复账号时就排队，
+    // 第二个调度被它持有的锁挡住，两个调度根本走不到补发消费（F-337）。
+    const hold = vi.spyOn(retries, 'drainExitHandoverRetries').mockResolvedValue();
     try {
-      result = await replace();
+      await x.runScheduler(round(1));
     } finally {
-      pause.mockRestore();
+      hold.mockRestore();
     }
-    await Promise.all([x.runScheduler('2026-10-06T02:05:00Z'), x.runScheduler('2026-10-06T02:10:00Z')]);
+    expect((await user()).status).toBe('active');
+    expect(await x.requestRows(result.successor.id)).toEqual([]);
+    // F-337：交错不靠 Promise.all 碰运气。持锁会话先占住员工行，两个调度依次启动，各自排到这把员工锁后面
+    // （pg_stat_activity 恰有 n 个会话在等锁，且都排在持锁会话之后）才放行，补发消费确实在员工锁上相遇。
+    const ctx = {
+      tenantId: x.tenantId,
+      timezone: x.session.tenant.timezone,
+      now: new Date(round(0)),
+      userId: x.session.user.id,
+      expectedRevision: 0,
+      commandId: cmd().commandId,
+    };
+    let holder = 0;
+    // 排在同一行锁后的会话，PG 显示第一个被持锁会话阻塞、后来者被前一个等待者阻塞（元组锁队列）；
+    // 持锁事务只锁了这一行员工，所以阻塞者都落在“持锁会话 + 等待者”之内即说明都排在员工锁上。
+    const queuedBehindHolder = async () => {
+      const waiters = rowsOf<{ pid: number; blockers: number[] }>(
+        await x.db.execute(sql`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity
+          WHERE datname=current_database() AND wait_event_type='Lock'`),
+      );
+      const queue = new Set([holder, ...waiters.map((w) => w.pid)]);
+      return waiters.filter((w) => w.blockers.length > 0 && w.blockers.every((pid) => queue.has(pid))).length;
+    };
+    const running = await withHeldLock(
+      {
+        run: (fn) => withTenant(x.db, x.tenantId, fn),
+        take: async (tx) => {
+          const [self] = rowsOf<{ pid: number }>(await tx.execute(sql`SELECT pg_backend_pid() AS pid`));
+          holder = self!.pid;
+          await lockEmploymentEmployee(tx, ctx, x.employee.id);
+        },
+      },
+      async (session) => {
+        const started: Promise<unknown>[] = [];
+        for (const [index, minute] of [5, 10].entries()) {
+          started.push(session.track(x.runScheduler(round(minute))));
+          await waitForBlocked(x.db, index + 1);
+          expect(await queuedBehindHolder()).toBe(index + 1);
+        }
+        return started;
+      },
+    );
+    expect((await Promise.allSettled(running)).map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     const next = await x.requestRows(result.successor.id);
     expect(next).toHaveLength(1);
     expect(next[0]!.state).toBe('in_progress');
@@ -262,6 +311,9 @@ it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     const instances = await x.sqlRows(sql`SELECT id FROM approval_instances
       WHERE tenant_id=${x.tenantId} AND business_type='exit_handover' AND business_id=${next[0]!.id}::uuid`);
     expect(instances).toHaveLength(1);
+    expect(await retryAttempts(x, result.successor.id)).toEqual([
+      expect.objectContaining({ attempt_no: 1, state: 'sent' }),
+    ]);
   },
 );
 
