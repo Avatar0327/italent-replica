@@ -1,6 +1,15 @@
 /** AC-DM-05 × DM-R14：F-140b 替代、F-261 账号恢复与 BE-8b 交接发起的相交回归。 */
 import './support/exit-gate-enforced.js';
-import { getUser, setUserStatus, grantMembership, revokeMembership, sql, withPlatform } from '@italent/db';
+import {
+  employmentOutbox,
+  getUser,
+  grantMembership,
+  revokeMembership,
+  setUserStatus,
+  sql,
+  withPlatform,
+  withTenant,
+} from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it, vi } from 'vitest';
 import * as accounts from '../../apps/api/src/modules/employment/exit-account-worker.js';
@@ -17,12 +26,17 @@ const accountAudits = (userId: string) =>
     WHERE object_id=${userId} AND action='user.set_status'`);
     return Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
   });
-async function setup(label: string, lastWorkDate = '2026-10-05') {
+async function world(label: string) {
   const x = await handoverWorld(database().db, `f261-handover-${label}`);
   await x.addSettingItems();
   await x.publishHandoverProcess();
   await x.setTrigger({ enabled: true, includePastLastWorkDate: true });
-  const draft = await x.createdExit(x.employee.id, lastWorkDate, 'application', {
+  return x;
+}
+type World = Awaited<ReturnType<typeof world>>;
+/** 指定员工走“离职申请审批通过 → 改期替代”的场景；默认是夹具的离职员工。 */
+async function scene(x: World, employeeId: string, userId: string, lastWorkDate: string) {
+  const draft = await x.createdExit(employeeId, lastWorkDate, 'application', {
     exitTypeCode: 'voluntary',
     handoverEmployeeId: x.workOwner.employeeId,
   });
@@ -45,9 +59,39 @@ async function setup(label: string, lastWorkDate = '2026-10-05') {
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as { successor: { id: string; status: string; effectiveDate: string } };
   };
-  const user = async () => (await getUser(database().db, x.leaverUserId))!;
-  return { x, draft, old: old[0]!, replace, user };
+  const user = async () => (await getUser(database().db, userId))!;
+  return { draft, old: old[0]!, replace, user };
 }
+async function setup(label: string, lastWorkDate = '2026-10-05') {
+  const x = await world(label);
+  return { x, ...(await scene(x, x.employee.id, x.leaverUserId, lastWorkDate)) };
+}
+/** 提交后账号消费者暂停：替代单已登记补发意图，账号仍是自动停用。 */
+async function deferred(replace: () => Promise<{ successor: { id: string } }>) {
+  const pause = vi.spyOn(accounts, 'drainExitAccounts').mockResolvedValue();
+  try {
+    return await replace();
+  } finally {
+    pause.mockRestore();
+  }
+}
+async function manualDisable(user: () => ReturnType<typeof getUser>) {
+  const current = (await user())!;
+  await setUserStatus(
+    database().db,
+    { userId: current.id, status: 'disabled', expectedRevision: current.revision },
+    cmd(),
+  );
+}
+/** 后继单补发意图的全部回执（按次数）。 */
+function retryAttempts(x: World, businessId: string) {
+  return x.sqlRows<{ attempt_no: number; state: string; error_reason: string | null }>(sql`
+    SELECT a.attempt_no, a.state, a.error_reason FROM employment_outbox_attempts a
+    JOIN employment_outbox o ON o.tenant_id=a.tenant_id AND o.id=a.outbox_id
+    WHERE o.tenant_id=${x.tenantId} AND o.business_id=${businessId}::uuid
+      AND o.event_type='employment.exit_handover.retry' ORDER BY o.id, a.attempt_no`);
+}
+const round = (minute: number) => `2026-10-06T02:${String(minute).padStart(2, '0')}:00Z`;
 
 it('AC-DM-05 × DM-R14：未生效改期保留原交接，账号保持 active', async () => {
   const { x, draft, old, replace, user } = await setup('approved', '2026-10-10');
@@ -299,4 +343,89 @@ it('AC-DM-05 × DM-R14：自动停用凭据归另一租户的离职单，恢复�
   expect(next[0]!.state).toBe('in_progress');
   await x.runScheduler('2026-10-11T02:10:00Z');
   expect(await x.requestRows(result.successor.id)).toEqual(next);
+});
+
+it('AC-DM-05 × DM-R14 · F-336：人工停用后补发一直等账号，同因失败回执不逐轮增长；恢复后补发一次并办结', async () => {
+  const { x, draft, replace, user } = await setup('permanent-wait');
+  const result = await deferred(replace);
+  await manualDisable(user);
+  const counts: number[] = [];
+  for (const minute of [5, 10, 15, 20]) {
+    await x.runScheduler(round(minute));
+    counts.push((await retryAttempts(x, result.successor.id)).length);
+  }
+  expect(counts).toEqual([1, 1, 1, 1]);
+  const waiting = { attempt_no: 1, state: 'failed', error_reason: 'NO_INITIATOR_ACCOUNT' };
+  expect(await retryAttempts(x, result.successor.id)).toEqual([waiting]);
+  // F-261 人工停用保护不变：原恢复请求作废，账号保持停用，不发起后继交接
+  const tasks = await x.sqlRows(sql`SELECT restore_requested, status FROM exit_account_tasks
+    WHERE tenant_id=${x.tenantId} AND business_id=${draft.id}::uuid`);
+  expect(tasks).toEqual([{ restore_requested: false, status: 'skipped' }]);
+  expect((await user()).status).toBe('disabled');
+  expect(await x.requestRows(result.successor.id)).toEqual([]);
+  // 管理员恢复账号后，保留的意图在下一轮补发成功、写 sent 回执并办结
+  const disabled = await user();
+  await setUserStatus(
+    database().db,
+    { userId: disabled.id, status: 'active', expectedRevision: disabled.revision },
+    cmd(),
+  );
+  await x.runScheduler(round(25));
+  const next = await x.requestRows(result.successor.id);
+  expect(next).toHaveLength(1);
+  expect(next[0]).toMatchObject({ state: 'in_progress', initiatorUserId: x.leaverUserId });
+  expect(await x.auditActions(next[0]!.id, 'exit_handover.launch')).toHaveLength(1);
+  const closed = await retryAttempts(x, result.successor.id);
+  expect(closed).toEqual([waiting, expect.objectContaining({ attempt_no: 2, state: 'sent' })]);
+  await x.runScheduler(round(30));
+  expect(await retryAttempts(x, result.successor.id)).toEqual(closed);
+  expect(await x.requestRows(result.successor.id)).toEqual(next);
+});
+
+it('AC-DM-05 × DM-R14 · F-336：等账号的意图占满首页时回执不增长，其他员工的后页补发照常发起', async () => {
+  const x = await world('wait-paging');
+  const first = await scene(x, x.employee.id, x.leaverUserId, '2026-10-05');
+  const waiting = await deferred(first.replace);
+  await manualDisable(first.user);
+  const other = await x.person('合成离职员工乙');
+  const second = await scene(x, other.employeeId, other.userId, '2026-10-05');
+  const later = await deferred(second.replace);
+  expect((await second.user()).status).toBe('disabled');
+  // 100 条合成意图只用于隔离分页：挂在等账号的同一后继单上，键排在真实意图之前，占满首页（BATCH=100）
+  const ids = Array.from(
+    { length: 100 },
+    (_, i) => `00000000-0000-0000-0000-${(i + 1).toString(16).padStart(12, '0')}`,
+  );
+  await withTenant(database().db, x.tenantId, (tx) =>
+    tx.insert(employmentOutbox).values(
+      ids.map((id) => ({
+        id,
+        tenantId: x.tenantId,
+        employeeId: x.employee.id,
+        businessId: waiting.successor.id,
+        objectType: 'exit-request',
+        objectId: waiting.successor.id,
+        eventType: 'employment.exit_handover.retry',
+        payload: { approvedOn: '2026-10-06' },
+        commandId: `f336-page:${id}`,
+        createdAt: new Date(round(0)),
+      })),
+    ),
+  );
+  let next: Awaited<ReturnType<World['requestRows']>> | undefined;
+  for (const minute of [5, 10, 15]) {
+    await x.runScheduler(round(minute));
+    const waits = await retryAttempts(x, waiting.successor.id);
+    expect(waits).toHaveLength(101);
+    expect(waits.every((a) => a.state === 'failed' && a.error_reason === 'NO_INITIATOR_ACCOUNT')).toBe(true);
+    next ??= await x.requestRows(later.successor.id);
+    expect(next).toHaveLength(1);
+    expect(await x.requestRows(later.successor.id)).toEqual(next);
+    expect(await retryAttempts(x, later.successor.id)).toEqual([
+      expect.objectContaining({ attempt_no: 1, state: 'sent' }),
+    ]);
+  }
+  expect(next![0]!.state).toBe('in_progress');
+  expect((await second.user()).status).toBe('active');
+  expect(await x.requestRows(waiting.successor.id)).toEqual([]);
 });
