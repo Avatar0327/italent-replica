@@ -6224,6 +6224,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/transitions.ts#assertDeletionNotPaused': [
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
+  ],
   'apps/api/src/modules/employment/transitions.ts#assertRegularizationSubmittable': [
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
   ],
@@ -6242,6 +6246,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
@@ -6249,6 +6254,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
     'apps/api/src/modules/employment/timeline.ts#isDetachedRecord',
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
+    '#assertDeletionNotPaused',
     '#auditDeletedRecord',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
