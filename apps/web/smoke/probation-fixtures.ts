@@ -9,6 +9,13 @@ export const recordId = '40000000-0000-4000-8000-000000000021';
 export const businessId = '80000000-0000-4000-8000-000000000021';
 export const assessmentId = '90000000-0000-4000-8000-000000000021';
 export const person = { name: '合成试用员工', code: 'PB-DEMO-001' };
+/** 同视图里的第二名试用员工（批量转正用）：没有预计试用结束日期。 */
+export const peer = {
+  id: '40000000-0000-4000-8000-000000000022',
+  employeeId: '30000000-0000-4000-8000-000000000022',
+  name: '合成试用员工乙',
+  code: 'PB-DEMO-002',
+};
 
 export interface Business {
   revision: number;
@@ -23,6 +30,8 @@ export interface Server {
   probation: { hasProbation: boolean; startDate: string | null; months: number | null; expectedEndDate: string | null };
   regularizationDate: string | null;
   business?: Business;
+  /** 列表里再放一名同事（peer），只在即将到期 / 全部视图。 */
+  peer?: boolean;
   writes: { method: string; path: string; body: Record<string, unknown>; ifMatch?: string }[];
 }
 
@@ -47,6 +56,30 @@ function info(server: Server) {
     regularizationState: business?.status ?? null,
     regularizationMode: business?.mode ?? null,
     probationResult: business?.probationResult ?? null,
+  };
+}
+function peerRow() {
+  return {
+    id: peer.id,
+    employeeId: peer.employeeId,
+    revision: 7,
+    hasProbation: true,
+    startDate: '2026-08-01',
+    months: null,
+    expectedEndDate: null,
+    regularizationDate: null,
+    regularizationBusinessId: null,
+    regularizationState: null,
+    regularizationMode: null,
+    probationResult: null,
+    departmentId: department,
+    postId: null,
+    employeeStatus: 2,
+    organizationId: department,
+    name: peer.name,
+    code: peer.code,
+    assessmentId: null,
+    assessmentType: null,
   };
 }
 function row(server: Server, assessing: boolean) {
@@ -128,12 +161,13 @@ async function routePermissions(page: Page, buttons: string[]) {
   );
 }
 
-export async function setup(page: Page, options: { buttons?: string[] } = {}) {
+export async function setup(page: Page, options: { buttons?: string[]; peer?: boolean } = {}) {
   const queries: URLSearchParams[] = [];
   const server: Server = {
     employeeRevision: 4,
     probation: { hasProbation: true, startDate: '2026-08-01', months: 3, expectedEndDate: '2026-10-31' },
     regularizationDate: null,
+    peer: options.peer,
     writes: [],
   };
   await routePermissions(page, options.buttons ?? allButtons);
@@ -143,7 +177,10 @@ export async function setup(page: Page, options: { buttons?: string[] } = {}) {
     const view = query.get('view') ?? 'expiring';
     return route.fulfill({
       json: {
-        items: inView(view, server) ? [row(server, view === 'assessing')] : [],
+        items: [
+          ...(inView(view, server) ? [row(server, view === 'assessing')] : []),
+          ...(server.peer && ['expiring', 'all'].includes(view) ? [peerRow()] : []),
+        ],
         page: Number(query.get('page')),
         pageSize: Number(query.get('pageSize')),
         hasDataPermission: true,
@@ -200,22 +237,48 @@ export async function setup(page: Page, options: { buttons?: string[] } = {}) {
   return { queries, server };
 }
 
-// context.ts requireRevision：details 带期望与实际 revision
-const conflictReceipt = (expected: number, actual: number) => ({
-  total: 1,
-  succeeded: 0,
-  failed: 1,
-  items: [
-    {
-      employeeId: employee,
-      status: 'failed',
-      businessId: null,
-      effectiveDate: null,
-      businessStatus: null,
-      error: { code: 'REVISION_CONFLICT', message: '任职数据已变更，请刷新后显式重提', details: { expected, actual } },
-    },
-  ],
+type Item = { employeeId: string; revision: number };
+const failure = (employeeId: string, error: Record<string, unknown>) => ({
+  employeeId,
+  status: 'failed',
+  businessId: null,
+  effectiveDate: null,
+  businessStatus: null,
+  error,
 });
+function regularizeOne(server: Server, body: Record<string, unknown>, item: Item) {
+  // context.ts requireRevision：details 带期望与实际 revision
+  if (item.revision !== server.employeeRevision)
+    return failure(employee, {
+      code: 'REVISION_CONFLICT',
+      message: '任职数据已变更，请刷新后显式重提',
+      details: { expected: item.revision, actual: server.employeeRevision },
+    });
+  const effectiveDate = String(body.effectiveDate ?? '2026-11-01');
+  server.business = {
+    revision: 1,
+    status: 'approved',
+    mode: 'direct',
+    effectiveDate,
+    probationResult: String(body.probationResult),
+  };
+  server.employeeRevision += 1;
+  return {
+    employeeId: employee,
+    status: 'succeeded',
+    businessId,
+    effectiveDate,
+    businessStatus: 'approved',
+    error: null,
+  };
+}
+// 同事没有预计试用结束日期：不填统一转正日期时这一人失败（regularization.ts regularizationDate）
+const peerFailure = (item: Item) =>
+  failure(item.employeeId, {
+    code: 'VALIDATION_FAILED',
+    message: '没有预计试用结束日期，请填写转正日期',
+    details: { reason: 'PROBATION_END_DATE_MISSING' },
+  });
 async function routeWrites(page: Page, server: Server) {
   await page.route(`**/employment/employees/${employee}`, (route) =>
     route.fulfill({ json: { id: employee, ...person, revision: server.employeeRevision } }),
@@ -239,36 +302,12 @@ async function routeWrites(page: Page, server: Server) {
   await page.route('**/employment/regularizations', (route) => {
     const write = posted(route.request());
     server.writes.push(write);
-    // 同 regularizeEmployees：员工 revision 不符是这一人的失败（REVISION_CONFLICT），整单仍 200
-    const [item] = write.body.items as { employeeId: string; revision: number }[];
-    if (item!.revision !== server.employeeRevision)
-      return route.fulfill({ json: conflictReceipt(item!.revision, server.employeeRevision) });
-    const effectiveDate = String(write.body.effectiveDate ?? '2026-11-01');
-    server.business = {
-      revision: 1,
-      status: 'approved',
-      mode: 'direct',
-      effectiveDate,
-      probationResult: String(write.body.probationResult),
-    };
-    server.employeeRevision += 1;
-    return route.fulfill({
-      json: {
-        total: 1,
-        succeeded: 1,
-        failed: 0,
-        items: [
-          {
-            employeeId: employee,
-            status: 'succeeded',
-            businessId,
-            effectiveDate,
-            businessStatus: 'approved',
-            error: null,
-          },
-        ],
-      },
-    });
+    // 同 regularizeEmployees：逐人办理，某人失败只记在他的回执里，整单仍 200；回执按请求顺序
+    const items = (write.body.items as Item[]).map((item) =>
+      item.employeeId === employee ? regularizeOne(server, write.body, item) : peerFailure(item),
+    );
+    const succeeded = items.filter((item) => item.status === 'succeeded').length;
+    return route.fulfill({ json: { total: items.length, succeeded, failed: items.length - succeeded, items } });
   });
   await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
     const write = posted(route.request());

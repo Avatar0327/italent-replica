@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect, employee, user } from './fixtures.js';
-import { businessId, openDetail, person, setup, switchView } from './probation-fixtures.js';
+import { businessId, openDetail, peer, person, setup, switchView } from './probation-fixtures.js';
 
 const named = (name: string) => ({ name: new RegExp(`^${name.split('').join('\\s*')}$`) });
 const dialog = (page: Page, title: string) => page.getByRole('dialog', { name: title, exact: true });
@@ -12,6 +12,14 @@ async function pickResult(page: Page, form: ReturnType<typeof dialog>) {
   await page.locator('.ant-select-dropdown:visible').getByText('合成通过', { exact: true }).click();
 }
 const rowCount = (page: Page) => page.locator('.probation-table tr.ant-table-row');
+// antd 收起加载图标有动画，可访问名可能仍带“loading”前缀；点击会等到按钮可用
+const save = (form: ReturnType<typeof dialog>) => form.getByRole('button', { name: /保\s*存$/ });
+async function openBatch(page: Page, count: number) {
+  await page.getByRole('button', { name: '批量转正', exact: true }).click();
+  const form = dialog(page, `批量转正（已选 ${count} 人）`);
+  await pickResult(page, form);
+  return form;
+}
 
 test('AC-FE-R2c1-01 五视图切换：按视图请求、每页 15 条、空状态原文、不串数据', async ({ page }) => {
   const { queries } = await setup(page);
@@ -148,13 +156,34 @@ test('AC-FE-R2c1-07 直接转正版本冲突：重读核对后重提带最新员
   // 冲突后自动重读最新版本；读完（重读按钮不再转圈）才可确认
   await expect(form.getByRole('button', { name: /重读最新版本$/ })).not.toHaveClass(/ant-btn-loading/);
   await form.getByRole('button', { name: '已核对差异，继续编辑' }).click();
-  // antd 收起加载图标有动画，可访问名可能仍带“loading”前缀；点击会等到按钮可用
-  await form.getByRole('button', { name: /保\s*存$/ }).click();
+  await save(form).click();
   await expect.poll(() => server.writes.length).toBe(2);
   expect(server.writes.map((write) => (write.body.items as { revision: number }[])[0]!.revision)).toEqual([4, 5]);
   await expect(form).toHaveCount(0);
   await expect(page.getByRole('button', { name: '已转正', exact: true, pressed: true })).toBeVisible();
   await expect(rowCount(page)).toContainText('审批通过');
+});
+
+test('AC-FE-R2c1-08 批量转正部分失败：回执按打开时的人员快照列出姓名，人数不变（P2-3）', async ({ page }) => {
+  const { server } = await setup(page, { peer: true });
+  await expect(rowCount(page)).toHaveCount(2);
+  await page.getByRole('checkbox', { name: 'Select all' }).check();
+  const form = await openBatch(page, 2);
+  await save(form).click();
+  await expect(page.getByText('1 人转正成功')).toBeVisible();
+  // 成功后列表已刷新、勾选已清空；弹窗仍按打开时的两人显示
+  await expect(form).toContainText(`${peer.name}：没有预计试用结束日期，请填写转正日期`);
+  expect(server.writes).toHaveLength(1);
+  expect(server.writes[0]!.body.items).toEqual(
+    expect.arrayContaining([
+      { employeeId: employee, revision: 4 },
+      { employeeId: peer.employeeId, revision: 7 },
+    ]),
+  );
+  await form.getByRole('button', named('取消')).click();
+  await expect(form).toHaveCount(0);
+  await expect(rowCount(page)).toHaveCount(1);
+  await expect(rowCount(page)).toContainText(peer.name);
 });
 
 test('AC-FE-R2c1-05 无编辑 / 创建按钮权不显示对应入口', async ({ page }) => {
