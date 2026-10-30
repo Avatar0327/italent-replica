@@ -114,6 +114,16 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
     expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
   });
 
+  it('联系邮箱格式不合法（档案为自由文本，导入可能带入）：登录名不变，重聘照常保存并启用账号', async () => {
+    const { x, userId } = await world('malformed', 'not an email');
+    const before = (await getUser(x.db, userId))!;
+    await leave(x);
+    const response = await rehire(x);
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'active', email: before.email });
+    expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
+  });
+
   it('联系邮箱已是别人的登录名：409 EMAIL_TAKEN，整单回滚，不改别人的账号，原账号仍停用', async () => {
     const { x, userId } = await world('taken');
     const other = await x.otherUser();
