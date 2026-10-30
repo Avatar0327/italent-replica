@@ -31,6 +31,7 @@ import {
   object,
   probationPath,
   probationValues,
+  regularizationReceipt,
   regularizationsBody,
   regularizations,
   regularizeFields,
@@ -366,12 +367,12 @@ export function BatchForm({ rows, onClose, onDone, refresh }: Omit<FormProps, 'r
     !permissions.can('Employment.Create');
   const { error, submit } = useSubmit(form, async (values) => {
     validateRegularize(values, false);
-    let outcome: ReturnType<typeof acceptRegularizations> | undefined;
+    let outcome: ReturnType<typeof regularizationReceipt> | undefined;
     const send: Send = {
       path: regularizations,
       ifMatch: false,
       body: (values) => regularizationsBody(values, items),
-      accept: (raw) => void (outcome = acceptRegularizations(raw, items)),
+      accept: (raw) => void (outcome = regularizationReceipt(raw, items)),
     };
     if (!(await cmd.submit(values, regularizeFields, send)) || !outcome) return;
     if (outcome.succeeded.length) void message.success(m.success.batch(outcome.succeeded.length));

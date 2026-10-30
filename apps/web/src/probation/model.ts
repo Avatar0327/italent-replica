@@ -224,10 +224,11 @@ export interface ReceiptItem {
 }
 const errorStatus: Record<string, number> = { REVISION_CONFLICT: 409, CONFLICT: 409, NOT_FOUND: 404, FORBIDDEN: 403 };
 /**
- * 批量回执（regularization.ts regularizeEmployees）：total 与提交人数一致、逐人与 items 同序同人；成功的人要有单据 ID。
- * 单人失败即整单未写：按该人的错误码抛出，内核判为拒绝（REVISION_CONFLICT 走冲突恢复）；多人部分成功按逐条回执展示。
+ * 逐人回执（regularization.ts regularizeEmployees）：total 与提交人数一致、逐人与 items 同序同人；成功的人要有单据 ID。
+ * 批量入口不论人数都按逐人回执展示：批量是多人命令，没有单一基线可重读核对，版本冲突也是这一人的失败，
+ * 列出原因并刷新列表，用户重选后按最新版本再提交（P2-2）。
  */
-export function acceptRegularizations(raw: unknown, items: readonly Pinned[]) {
+export function regularizationReceipt(raw: unknown, items: readonly Pinned[]) {
   const receipt = raw as { total?: unknown; items?: ReceiptItem[] } | null;
   const rows = receipt?.items;
   if (
@@ -241,13 +242,23 @@ export function acceptRegularizations(raw: unknown, items: readonly Pinned[]) {
     )
   )
     throw new Error(m.invalidReceipt);
-  const failed = rows.filter((row) => row.status === 'failed');
-  if (rows.length === 1 && failed.length === 1) {
-    const { code, message, details } = failed[0]!.error!;
+  return {
+    succeeded: rows.filter((row) => row.status === 'succeeded'),
+    failed: rows.filter((row) => row.status === 'failed'),
+  };
+}
+/**
+ * 单人直接转正的回执：失败即整单未写，按该人的错误码抛出，内核判为拒绝（REVISION_CONFLICT 走冲突恢复，
+ * 单人有员工详情可重读核对）。
+ */
+export function acceptRegularizations(raw: unknown, items: readonly Pinned[]) {
+  const outcome = regularizationReceipt(raw, items);
+  if (items.length === 1 && outcome.failed.length === 1) {
+    const { code, message, details } = outcome.failed[0]!.error!;
     const reason = (details as Values | undefined)?.reason;
     throw new DirectError(errorStatus[code] ?? 400, code, message, reason ? { reason } : {});
   }
-  return { succeeded: rows.filter((row) => row.status === 'succeeded'), failed };
+  return outcome;
 }
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */

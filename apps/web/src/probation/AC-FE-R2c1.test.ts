@@ -198,6 +198,14 @@ describe('AC-FE-R2c1 ③ 提交体与回执按真实接口形状', () => {
     const rejected = () => model.acceptRegularizations({ total: 1, items: [failed('e1', 'VALIDATION_FAILED')] }, one);
     expect(rejected).toThrow(expect.objectContaining({ status: 400, details: { reason: 'X' } }));
   });
+  it('批量入口只选一人也按逐人回执：版本冲突列为这一人的失败，不抛给内核（P2-2）', () => {
+    const one = [pinned[0]!];
+    expect(model.regularizationReceipt({ total: 1, items: [failed('e1')] }, one)).toEqual({
+      succeeded: [],
+      failed: [failed('e1')],
+    });
+    expect(() => model.regularizationReceipt({ total: 2, items: [failed('e1')] }, one)).toThrow('回执与原单不符');
+  });
 });
 
 describe('AC-FE-R2c1 ④ 写后去向', () => {
