@@ -144,8 +144,21 @@ describe('AC-OA-01 改名 / 改上级必填“是否新增任职”（OA-R3）�
       );
       return row?.code;
     });
-    const created = await w.item(view.id, newOrg(w.a, { code: taken ?? 'missing' }));
+    // 第 2 轮 P2-4：保存与整单校验同用 assertCodeAvailable 口径，已占用的编码保存即 409；保存后才被占用的由校验报出。
+    await expectError(
+      await w.addItem(view.id, newOrg(w.a, { code: taken ?? 'missing' })),
+      409,
+      'CONFLICT',
+      'ORG_CODE_DUPLICATE',
+    );
+    const code = `LATE${randomUUID().replaceAll('-', '')}`;
+    const created = await w.item(view.id, newOrg(w.a, { code }));
     expect(created.items).toHaveLength(1);
+    const occupied = await w.call('POST', '/api/tenant/org/organizations', {
+      ifMatch: 0,
+      body: { name: `占码${randomUUID()}`, code, establishedOn: '2020-01-01', parents: { admin: { parentId: w.b } } },
+    });
+    expect(occupied.status, await occupied.clone().text()).toBe(201);
     expect(reasons(await w.checked(view.id))).toContain('ORG_CODE_DUPLICATE');
     const future = await w.call('PATCH', `/api/tenant/org/organizations/${w.a}`, {
       ifMatch: 1,
