@@ -399,6 +399,16 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/employment-forms": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/entry-email-rules": {
     "all": {
       "status": 200
@@ -1650,6 +1660,20 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "POST /api/tenant/employment/employment-forms": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "8b6e4ccbe469",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
   "POST /api/tenant/employment/exit-handover-items": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -2568,6 +2592,25 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "PUT /api/tenant/employment/employment-forms/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "6e87a7266204",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
     ]
   },
   "PUT /api/tenant/employment/entry-email-rules": {

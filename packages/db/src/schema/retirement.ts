@@ -217,10 +217,10 @@ export const retirementRuleConditions = pgTable(
       columns: [t.tenantId, t.ruleId],
       foreignColumns: [retirementRules.tenantId, retirementRules.id],
     }).onDelete('cascade'),
-    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 4`),
+    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 5`),
     check(
       'retirement_rule_conditions_field',
-      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType')`,
+      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')`,
     ),
     check('retirement_rule_conditions_operator', sql`${t.operator} = 'in'`),
     check('retirement_rule_conditions_values', sql`cardinality(${t.values}) BETWEEN 1 AND 50`),

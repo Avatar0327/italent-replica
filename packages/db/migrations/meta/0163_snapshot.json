@@ -1,6 +1,6 @@
 {
-  "id": "c57654a2-c40d-4d2f-ad12-c2f198c585b3",
-  "prevId": "f7a5a358-831b-4f88-b87c-74b03a98bc69",
+  "id": "9d3bc3e6-01e5-48db-954e-429a59781ca6",
+  "prevId": "a9ab5128-07eb-435e-8c4e-5dca653f1ffe",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9885,7 +9885,7 @@
         },
         "employment_activation_attempts_trigger": {
           "name": "employment_activation_attempts_trigger",
-          "value": "\"employment_activation_attempts\".\"trigger\" IN ('scheduler', 'retry', 'approval', 'retirement_change')"
+          "value": "\"employment_activation_attempts\".\"trigger\" IN ('scheduler', 'retry', 'approval')"
         },
         "employment_activation_attempts_detail_object": {
           "name": "employment_activation_attempts_detail_object",
@@ -11580,6 +11580,21 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "employment_payload_versions_form_fk": {
+          "name": "employment_payload_versions_form_fk",
+          "tableFrom": "employment_payload_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "employment_payload_versions_department_fk": {
           "name": "employment_payload_versions_department_fk",
           "tableFrom": "employment_payload_versions",
@@ -12285,6 +12300,21 @@
             "tenant_id",
             "employee_id",
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_records_form_fk": {
+          "name": "employment_records_form_fk",
+          "tableFrom": "employment_records",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -60279,6 +60309,21 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "part_time_request_versions_form_fk": {
+          "name": "part_time_request_versions_form_fk",
+          "tableFrom": "part_time_request_versions",
+          "tableTo": "employment_forms",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_form"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "part_time_request_versions_request_fk": {
           "name": "part_time_request_versions_request_fk",
           "tableFrom": "part_time_request_versions",
@@ -60695,125 +60740,6 @@
         "part_time_requests_revision_positive": {
           "name": "part_time_requests_revision_positive",
           "value": "\"part_time_requests\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retire_rehire_dependencies": {
-      "name": "retire_rehire_dependencies",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "retirement_id": {
-          "name": "retirement_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "invalidated_at": {
-          "name": "invalidated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "retire_rehire_dependencies_retirement": {
-          "name": "retire_rehire_dependencies_retirement",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "retirement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "retire_rehire_dependencies_business_fk": {
-          "name": "retire_rehire_dependencies_business_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "retire_rehire_dependencies_retirement_fk": {
-          "name": "retire_rehire_dependencies_retirement_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "retirement_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "retire_rehire_dependencies_tenant_id_business_id_pk": {
-          "name": "retire_rehire_dependencies_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retire_rehire_dependencies_distinct": {
-          "name": "retire_rehire_dependencies_distinct",
-          "value": "\"retire_rehire_dependencies\".\"business_id\" <> \"retire_rehire_dependencies\".\"retirement_id\""
         }
       },
       "isRLSEnabled": false
@@ -61386,11 +61312,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 4"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -61931,6 +61857,151 @@
         "retirement_rules_revision_positive": {
           "name": "retirement_rules_revision_positive",
           "value": "\"retirement_rules\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.employment_forms": {
+      "name": "employment_forms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_forms_tenant_id_tenants_id_fk": {
+          "name": "employment_forms_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_forms",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "employment_forms_tenant_id": {
+          "name": "employment_forms_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "employment_forms_tenant_code": {
+          "name": "employment_forms_tenant_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "employment_forms_category": {
+          "name": "employment_forms_category",
+          "value": "\"employment_forms\".\"category\" IN (1,2,3,4)"
+        },
+        "employment_forms_nonempty": {
+          "name": "employment_forms_nonempty",
+          "value": "btrim(\"employment_forms\".\"code\") <> '' AND btrim(\"employment_forms\".\"name\") <> ''"
+        },
+        "employment_forms_dates": {
+          "name": "employment_forms_dates",
+          "value": "\"employment_forms\".\"effective_date\" <= \"employment_forms\".\"expiry_date\""
+        },
+        "employment_forms_revision_order": {
+          "name": "employment_forms_revision_order",
+          "value": "\"employment_forms\".\"revision\" > 0 AND \"employment_forms\".\"display_order\" >= 0"
         }
       },
       "isRLSEnabled": false

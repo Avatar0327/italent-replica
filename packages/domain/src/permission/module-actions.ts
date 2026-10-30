@@ -285,6 +285,9 @@ export const MODULE_OBJECTS = {
       'autoPopulate',
       // R2 BE-2b：入职生成邮箱规则（EN-R12）整份配置，一个字段承载规则列表
       'entryEmailRules',
+      // F-321：用工形式生效 / 失效日期（类别、备注沿用已有字段）。
+      'effectiveDate',
+      'expiryDate',
       // R2-T03 离职三个字典（B60～62）挂在任职设置配置对象上：名称、编码、启用、显示顺序（设计 §2.1）
       'code',
       'name',

@@ -15,7 +15,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
       departmentId: firstOrg.id,
       place: '合成工作地点A',
       employmentSource: '招聘',
-      employmentForm: '全职',
+      employmentForm: 'full_time',
       isKeyPerson: true,
       dimension1: '研发',
       jobNumber: 'SYNTHETIC_EMP_01',
