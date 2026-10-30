@@ -126,6 +126,8 @@ export interface EmploymentContext {
   readonly deferredExecution?: boolean;
   /** 系统代发（BE-15a 自动转正，R2e7）：userId 是规则配置的发起人，审批发起日志标“系统代发”。 */
   readonly systemProxy?: boolean;
+  /** 组织调整执行器调用时带本单 ID，本单的暂停行不拦本单写入（R2-T08 §7.6）。 */
+  readonly orgAdjustmentId?: string;
 }
 
 export interface EmploymentBusinessInput {

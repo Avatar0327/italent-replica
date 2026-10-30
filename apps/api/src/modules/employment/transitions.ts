@@ -4,6 +4,7 @@ import { activationFailureOf, assertEstablishmentCapacity } from './activation-c
 import { lockTransferBusiness } from './transfer-locks.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -174,6 +175,11 @@ export async function transitionEmployment(
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
     // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
     if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);
+    // R2-T08 §7.6：员工主部门或载荷部门正在执行组织调整时 409；离职 / 退休不判。先于编制锁（锁序 ④ → ⑤）。
+    if (!isExitKind(payload.kind)) {
+      const target = { employeeId: business.employeeId, departmentIds: [fields.departmentId], date: effectiveDate };
+      await assertNotPausedByOrgAdjustment(tx, ctx, target);
+    }
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: business.id,
       employeeId: business.employeeId,

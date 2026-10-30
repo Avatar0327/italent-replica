@@ -7,6 +7,7 @@ import { saveAddedPendingEntryData } from './entry-pending-contract.js';
 import { saveCreatedProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
 import { assertNotBlacklisted } from './blacklist.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
@@ -871,6 +872,13 @@ async function checkMaterializedCapacity(
   fields: PresetFields,
   options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] },
 ) {
+  const { kind, effectiveDate } = business.payload;
+  // R2-T08 §7.6：落地（含定时生效）时员工主部门或落地部门正在执行组织调整即 409，由生效端口记失败后重试；
+  // 离职 / 退休不判。须先于编制锁（锁序 ④ → ⑤）。
+  if (!isExitKind(kind)) {
+    const target = { employeeId: business.employeeId, departmentIds: [fields.departmentId], date: effectiveDate };
+    await assertNotPausedByOrgAdjustment(tx, ctx, target);
+  }
   await assertEstablishmentCapacity(
     tx,
     ctx,
@@ -918,6 +926,11 @@ async function validatePreparedEmployment(
     reporting,
     NEW_CYCLE_KINDS.includes(kind),
   );
+  // R2-T08 §7.6：保存 / 修改时员工主部门或目标部门正在执行组织调整即 409；离职 / 退休不判。
+  if (!isExitKind(kind)) {
+    const target = { employeeId, departmentIds: [effectiveFields.departmentId], date: prepared.effectiveDate };
+    await assertNotPausedByOrgAdjustment(tx, ctx, target);
+  }
 }
 
 async function registerCompletion(

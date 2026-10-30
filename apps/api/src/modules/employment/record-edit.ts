@@ -1,4 +1,5 @@
 import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { reconcileCompletion } from '../transfer/completion.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
@@ -69,6 +70,11 @@ export async function editEmploymentRecord(
   if (isExitKind(record.kind))
     await requireExitPermission(ctx, 'update', { employeeId: record.employeeId, kind: record.kind, patch });
   const after = await editedValues(tx, ctx, record, patch);
+  // R2-T08 §7.6：员工主部门、原部门或新部门正在执行组织调整时 409（页面、批量、导入编辑同一端口；离职 / 退休不判）。
+  if (!isExitKind(record.kind)) {
+    const departmentIds = [record.fields.departmentId, after.fields.departmentId];
+    await assertNotPausedByOrgAdjustment(tx, ctx, { employeeId: record.employeeId, departmentIds, date: today });
+  }
   if (record.kind === 'transfer' && patch.fields && Object.hasOwn(patch.fields, 'addedSubordinateIds'))
     await validateTransferSubordinates(tx, ctx, record.employeeId, after.fields, record.effectiveDate);
   assertRequiredTransferFields(record.kind, business.payload.formSnapshot, after.fields);
