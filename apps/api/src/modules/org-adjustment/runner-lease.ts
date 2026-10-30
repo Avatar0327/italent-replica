@@ -66,6 +66,17 @@ export async function fenced<T>(db: Db, lease: RunnerLease, run: (tx: Tx) => Pro
   });
 }
 
+/** 定时器预检（只读）：租户没有未完成的执行队列行时不领执行权，免得每刻对每个租户写一次执行权、fencing 空涨。 */
+export async function hasOpenExecution(db: Db, tenantId: string) {
+  const [row] = await withTenant(db, tenantId, async (tx) =>
+    rowsOf<{ open: boolean }>(
+      await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM org_adjustment_executions
+        WHERE tenant_id=${tenantId} AND state<>'done') AS open`),
+    ),
+  );
+  return row?.open === true;
+}
+
 /** 没有可执行单据时释放执行权（§7.2“释放”）。 */
 export async function releaseRunner(db: Db, lease: RunnerLease) {
   await fenced(db, lease, (tx) =>

@@ -24,6 +24,7 @@ import {
   claimOrgAdjustmentRunner,
   fenced,
   FencingLost,
+  hasOpenExecution,
   pickAdjustment,
   PROCESS_HOLDER_TOKEN,
   releaseRunner,
@@ -280,8 +281,10 @@ export async function runOrgAdjustmentSlot(
   options: RunnerOptions = {},
 ): Promise<void> {
   try {
-    for await (const tenant of activeTenants(db, null))
-      await runOrgAdjustmentTenant(db, tenant, clock, options).catch(onError);
+    for await (const tenant of activeTenants(db, null)) {
+      const open = await hasOpenExecution(db, tenant.id).catch((error: unknown) => (onError(error), false));
+      if (open) await runOrgAdjustmentTenant(db, tenant, clock, options).catch(onError);
+    }
   } catch (error) {
     onError(error);
   }
