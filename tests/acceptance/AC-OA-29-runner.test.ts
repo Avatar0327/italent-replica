@@ -8,7 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../apps/api/src/errors.js';
-import type { ExecutionGroup } from '../../apps/api/src/modules/org-adjustment/execution-groups.js';
+import type { ExecutionGroup, GroupExecutor } from '../../apps/api/src/modules/org-adjustment/execution-groups.js';
 import {
   runOrgAdjustmentSlot,
   runOrgAdjustmentTenant,
@@ -21,6 +21,7 @@ import {
   RUNNER_LEASE_MS,
 } from '../../apps/api/src/modules/org-adjustment/runner-lease.js';
 import { scheduleOrgAdjustmentExecution } from '../../apps/api/src/modules/org-adjustment/schedule.js';
+import { updateOrganization } from '../../apps/api/src/modules/org/write-service.js';
 import { orgPeopleWorld, resultRows, TODAY } from './AC-ORG-people-support.js';
 import {
   adjustmentState,
@@ -329,5 +330,58 @@ describe('AC-OA-29 定时槽入口', () => {
     expect(errors).toEqual([]);
     expect(calls).toEqual(expect.arrayContaining(groups));
     expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, state: 'done' });
+  });
+});
+
+describe('AC-OA-29 变更组顺序：按生效日完整新树', () => {
+  it('新树里有未变更的中间组织时仍先移出再挂入：根→A→B→P，A 挂 P、B 移根，序号 A 在前 → B→A，两组成功', async () => {
+    const world = await runnerWorld('oa29-topology');
+    const { db, tenant, w } = world;
+    const a = await w.org('A');
+    const b = await w.org('B', a.id);
+    const p = await w.org('P', b.id);
+    const adjustment = await seedAdjustment(db, tenant.id, {
+      createdBy: w.user.id,
+      subjectOrgId: a.id,
+      effectiveDate: TODAY,
+    });
+    const move = (seq: number, target: string, parent: string) =>
+      seedItem(db, tenant.id, adjustment.id, {
+        seq,
+        target_org_id: target,
+        parent_org_id: parent,
+        add_employment: false,
+      });
+    const toP = await move(1, a.id, p.id);
+    const toRoot = await move(2, b.id, tenant.id);
+    await world.schedule(adjustment.id);
+
+    // 真实组织写入口：顺序错了会被“组织层级不得形成循环”拒绝。
+    const order: string[] = [];
+    const executor: GroupExecutor = async (tx, { group }) => {
+      order.push(group.id);
+      const [object] = resultRows<{ revision: number }>(
+        await tx.execute(sql`SELECT revision FROM org_objects
+          WHERE tenant_id=${tenant.id} AND id=${group.lead.targetOrgId}`),
+      );
+      const context = {
+        tenantId: tenant.id,
+        userId: w.user.id,
+        timezone: tenant.timezone,
+        now: world.clock(),
+        commandId: randomUUID(),
+        expectedRevision: object!.revision,
+        orgAdjustmentId: adjustment.id,
+      };
+      const body = { effectiveDate: TODAY, parents: { admin: { parentId: group.lead.parentOrgId } } };
+      await updateOrganization(tx, context, group.lead.targetOrgId!, { ...body, addEmployment: false });
+      return 'done';
+    };
+    await world.run('process-a', { executors: { 2: executor } });
+
+    expect(order, '先 B（移根）后 A（挂入 P）').toEqual([toRoot, toP]);
+    const results = await itemResults(db, tenant.id, adjustment.id);
+    expect([results.get(toP)?.execution_result, results.get(toRoot)?.execution_result]).toEqual([1, 1]);
+    expect(await world.state(adjustment.id)).toMatchObject({ success_count: 2, failure_count: 0 });
   });
 });
