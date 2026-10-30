@@ -33,8 +33,10 @@ const posted = (request: Request) => ({
   ifMatch: request.headers()['if-match'],
 });
 
+// 同 probation.ts cycleRegularization：草稿不算本周期的转正业务，视图行与试用详情都不带草稿单
+const picked = (server: Server) => (server.business?.status === 'draft' ? undefined : server.business);
 function info(server: Server) {
-  const business = server.business;
+  const business = picked(server);
   return {
     employeeId: employee,
     revision: server.employeeRevision,
@@ -61,13 +63,13 @@ function row(server: Server, assessing: boolean) {
     assessmentType: assessing ? 'probation_assessment' : null,
   };
 }
-/** 视图归属（PB-R1）：无转正业务在即将到期与全部；审批中在转正审批中与全部；审批通过 / 生效在已转正。 */
+/** 视图归属（probation-views.ts viewPredicate）：无转正业务在即将到期与全部；审批中在转正审批中与全部；审批通过 / 生效在已转正。 */
 function inView(view: string, server: Server) {
-  const state = server.business?.status;
+  const state = picked(server)?.status;
   if (view === 'assessing') return true;
   if (view === 'regularized') return state === 'approved' || state === 'effective';
   if (view === 'in_review') return state === 'in_review';
-  if (view === 'expiring') return !state || state === 'draft';
+  if (view === 'expiring') return !state;
   return state !== 'approved' && state !== 'effective';
 }
 function business(server: Server) {
