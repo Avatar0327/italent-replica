@@ -12,6 +12,7 @@ import { acceptBusiness } from '../intern/model.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
 import { useRead } from '../part-time/useRead.js';
 import { useProbationCommand } from './commands.js';
+import { useDraftPointer } from './draft.js';
 import { m } from './messages.js';
 import {
   apiRoot,
@@ -132,6 +133,7 @@ function ApplicationAction({ row, action, onDone, refresh }: ActionProps) {
   const reread = async () => ({ ...(await read()), id: row.employeeId! });
   const target = { id: row.employeeId!, revision, baseline: {}, read: reread };
   const cmd = useProbationCommand(employees, target, `${action}/${id}`, () => refresh());
+  const pointer = useDraftPointer(row.employeeId!);
   const run = async () => {
     try {
       const done = await cmd.submit({}, [], {
@@ -143,6 +145,9 @@ function ApplicationAction({ row, action, onDone, refresh }: ActionProps) {
         },
       });
       if (!done) return;
+      // 撤回后单据回到草稿：再点“转正申请”沿用这张单同单重提（DEC-103）；撤销是终态，不再找回
+      if (action === 'withdraw') pointer.put(id);
+      else pointer.clear(id);
       void message.success(m.success[action]);
       onDone();
     } catch {

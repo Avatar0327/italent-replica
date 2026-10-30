@@ -76,6 +76,7 @@ export const m = {
   invalidMonths: '试用期(月)必须为1～6的整数',
   invalidEnd: '预计试用结束日期不能早于试用开始日期',
   draftCreated: '申请已保存，继续提交同一申请；已保存的字段只读。',
+  draftRecovered: '试用结果已随原申请保存，单据详情不回显。',
   noResults: '没有启用的试用结果，请先在设置中维护试用结果字典。',
   success: {
     edit: '试用期信息已保存',

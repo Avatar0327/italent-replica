@@ -261,6 +261,24 @@ export function acceptRegularizations(raw: unknown, items: readonly Pinned[]) {
   return outcome;
 }
 
+/**
+ * 找回的转正申请草稿（P2-4）：GET /businesses/:id 仍是这名员工的转正申请、仍停在草稿，才沿用同一张单（DEC-103）。
+ * 单据详情不带试用结果（另存 employment_regularization_results），只取转正日期作只读展示。
+ */
+export function recoveredDraft(latest: Values, employeeId: string, id: string) {
+  if (
+    latest.id !== id ||
+    latest.employeeId !== employeeId ||
+    latest.kind !== 'regularization' ||
+    latest.mode !== 'application' ||
+    latest.status !== 'draft' ||
+    !Number.isSafeInteger(latest.revision)
+  )
+    return undefined;
+  const values: Values = latest.effectiveDate === undefined ? {} : { effectiveDate: latest.effectiveDate };
+  return { id, revision: Number(latest.revision), values };
+}
+
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */
 const destinations: Record<string, ProbationView> = {
   in_review: 'in_review',

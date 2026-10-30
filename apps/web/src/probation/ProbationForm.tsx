@@ -10,11 +10,13 @@ import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import type { Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
-import { useBusinessRead, useInternDraft, type ApplicationDraft } from '../intern/commands.js';
+import { PageState } from '../foundation/PageState.js';
+import { useBusinessRead, type ApplicationDraft } from '../intern/commands.js';
 import { acceptBusiness } from '../intern/model.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
 import { useRead } from '../part-time/useRead.js';
 import { useProbationCommand, type ProbationCommand, type Send } from './commands.js';
+import { useDraftPointer, useRecoveredDraft } from './draft.js';
 import { m } from './messages.js';
 import {
   acceptAdjust,
@@ -225,10 +227,18 @@ const openingRegularize = (values: Values): Values => ({
 /** B7 直接转正 / B8 转正申请：转正日期默认预计结束日次日（F-205），试用结果必填。 */
 export function RegularizeForm(props: FormProps & { application?: boolean }) {
   const read = useProbationRead(props.row.employeeId!, openingRegularize);
+  const recovery = useRecoveredDraft(props.row.employeeId!, !!props.application);
   const title = props.application ? m.entries.apply : m.entries.regularize;
+  // 申请先按指针找回原草稿（P2-4）；找回失败不当作没有草稿开表单，否则会另建第二张
+  if (!recovery.done)
+    return (
+      <Modal open title={title} footer={null} onCancel={props.onClose}>
+        <PageState kind={recovery.error ? 'error' : 'loading'} error={recovery.error} retry={recovery.retry} />
+      </Modal>
+    );
   return (
     <WithOpening read={read} title={title} onClose={props.onClose}>
-      {(opening) => <RegularizeEditor {...props} opening={opening} read={read} />}
+      {(opening) => <RegularizeEditor {...props} opening={opening} read={read} recovered={recovery.draft} />}
     </WithOpening>
   );
 }
@@ -271,12 +281,15 @@ function useSends(employeeId: string, created: (draft: ApplicationDraft) => void
   return { direct, step, destination };
 }
 
-function RegularizeEditor({ row, application, onClose, onDone, refresh, opening, read }: EditorProps) {
+function RegularizeEditor(props: EditorProps & { recovered?: ApplicationDraft }) {
+  const { row, application, onClose, onDone, refresh, opening, read, recovered } = props;
   const employeeId = row.employeeId!;
   const permissions = usePermissions(object);
   const permission = permissions.snapshot.objects[object];
-  const saved = useInternDraft(`probation/${employeeId}`);
-  const draft = application ? saved.draft : undefined;
+  const pointer = useDraftPointer(employeeId);
+  // 本次弹窗建的草稿优先，否则沿用打开时找回的原申请单（服务端仍是草稿）：都只提交同一张单（DEC-103）
+  const [created, setCreated] = useState<ApplicationDraft>();
+  const draft = application ? (created ?? recovered) : undefined;
   const [form] = Form.useForm();
   const results = useResults();
   // 第二步的 If-Match 是草稿单 revision：409 重读读草稿单，恢复槽仍是员工（换入口也绕不开未知锁）
@@ -293,15 +306,16 @@ function RegularizeEditor({ row, application, onClose, onDone, refresh, opening,
     !permission?.dataOperations.create ||
     !permissions.can('Employment.Create') ||
     (!!application && (!permission?.dataOperations.update || !permissions.can('Employment.Submit')));
-  const { direct, step, destination } = useSends(employeeId, (created) =>
-    saved.put({ ...created, values: form.getFieldsValue(true) as Values }),
-  );
+  const { direct, step, destination } = useSends(employeeId, (made) => {
+    pointer.put(made.id);
+    setCreated({ ...made, values: form.getFieldsValue(true) as Values });
+  });
   const { error, submit } = useSubmit(form, async (values) => {
     if (!draft) validateRegularize(values);
     if (!(await cmd.submit(values, regularizeFields, application ? step(draft?.id) : direct))) return;
     // 建草稿已确认才自动进入第二步（同实习）；第二步失败时草稿保留，由用户显式重提同一张单
     if (application && !draft) return void (autoSubmit.current = true);
-    saved.put();
+    if (draft) pointer.clear(draft.id);
     void message.success(application ? m.success.apply : m.success.regularize);
     void refresh(destination.current);
     onDone();
@@ -322,6 +336,7 @@ function RegularizeEditor({ row, application, onClose, onDone, refresh, opening,
       okText={application ? m.submit : m.save}
     >
       {draft && <Alert type="info" message={m.draftCreated} />}
+      {draft && !created && <Alert type="info" message={m.draftRecovered} />}
       {results.data && !results.options.length && <Alert type="warning" message={m.noResults} />}
       <FormLock locked={!!draft}>
         <RegularizeFields
