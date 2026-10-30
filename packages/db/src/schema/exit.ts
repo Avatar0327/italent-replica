@@ -45,12 +45,55 @@ const businessFk = (name: string, t: Record<'tenantId' | 'employeeId' | 'busines
     ],
   });
 
+/** DEC-684：租户级提前停用配置。默认关闭；指定时刻使用租户时区。 */
+export const exitAccountSettings = pgTable('exit_account_settings', {
+  tenantId: tenant().primaryKey(),
+  earlyEnabled: boolean('early_enabled').notNull().default(false),
+  basis: text('basis'),
+  time: text('time'),
+  inReview: boolean('in_review').notNull().default(false),
+  revision: integer('revision').notNull().default(0),
+});
+
+/** 离退休事务只登记任务；全局账号事务负责执行并回写，停用失败不能撤回任职生效。 */
+export const exitAccountTasks = pgTable(
+  'exit_account_tasks',
+  {
+    tenantId: tenant(),
+    businessId: uuid('business_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    handlerUserId: uuid('handler_user_id'),
+    status: text('status').notNull().default('pending'),
+    reason: text('reason'),
+    attempts: integer('attempts').notNull().default(0),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    restoreRequested: boolean('restore_requested').notNull().default(false),
+    autoRevision: integer('auto_revision'),
+    recipientUserIds: uuid('recipient_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    businessFk('exit_account_tasks_business_fk', t),
+    index('exit_account_tasks_user').on(t.tenantId, t.userId, t.businessId),
+    check(
+      'exit_account_tasks_status',
+      sql`${t.status} IN ('pending','disabled','blocked','restored','skipped','failed')`,
+    ),
+  ],
+);
+
 /** 离职扩展行：与任职业务 1:1（照 transfer_requests）；可改的只有非日期业务字段（列级授权见迁移）。 */
 export const exitRequests = pgTable(
   'exit_requests',
   {
     tenantId: tenant(),
     businessId: uuid('business_id').notNull(),
+    supersedesBusinessId: uuid('supersedes_business_id'),
     employeeId: uuid('employee_id').notNull(),
     /** 离职所属任职周期（employment_cycles.id），创建时等于载荷 selectedStaffId，此后不变（§2.1）。 */
     staffId: uuid('staff_id').notNull(),
@@ -89,6 +132,16 @@ export const exitRequests = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.businessId] }),
     businessFk('exit_requests_business_fk', t),
+    foreignKey({
+      name: 'exit_requests_supersedes_fk',
+      columns: [t.tenantId, t.employeeId, t.supersedesBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    unique('exit_requests_one_successor').on(t.tenantId, t.supersedesBusinessId),
     foreignKey({
       name: 'exit_requests_cycle_fk',
       columns: [t.tenantId, t.employeeId, t.staffId],
@@ -259,5 +312,94 @@ export const exitHandoverItems = pgTable(
     check('exit_handover_items_form', sql`${t.formRef} IS NULL OR char_length(${t.formRef}) <= 200`),
     check('exit_handover_items_remark', sql`${t.remark} IS NULL OR char_length(${t.remark}) <= 500`),
     check('exit_handover_items_revision_positive', sql`${t.revision} > 0`),
+  ],
+);
+
+/**
+ * 离职交接申请（R2 BE-8b2，B64，DM-R13）：独立申请表，业务单 = 交接申请，单表 + revision，不做版本链（交接不是任职记录）。
+ * 工作交接取不到处理人时落一条 not_launched 记录（DEC-663，无事项、无审批实例），等 HR 补人后处理。
+ * 离职申请审批通过时由系统代发（发起人 = 员工本人账号）；同一离职至多一张进行中 / 已完成的（部分唯一索引兜住并发与重放）。
+ * 终止原因：不同意 / 驳回 / 撤回 / 撤销离职。交接状态不回写离职状态（交接未完成不阻止离职生效）。
+ */
+export const exitHandoverRequests = pgTable(
+  'exit_handover_requests',
+  {
+    id: uuid('id').notNull(),
+    tenantId: tenant(),
+    exitRequestId: uuid('exit_request_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    /** 发起时员工主职部门快照：审批路由（部门 HRBP）取它。 */
+    departmentId: uuid('department_id'),
+    initiatorUserId: uuid('initiator_user_id').notNull(),
+    state: text('state').notNull(),
+    endReason: text('end_reason'),
+    /** 交接未发起的原因（state = not_launched 时必填，DEC-663）。 */
+    notLaunchedReason: text('not_launched_reason'),
+    approvalInstanceId: uuid('approval_instance_id'),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    foreignKey({
+      name: 'exit_handover_requests_exit_fk',
+      columns: [t.tenantId, t.exitRequestId],
+      foreignColumns: [exitRequests.tenantId, exitRequests.businessId],
+    }),
+    uniqueIndex('exit_handover_requests_live')
+      .on(t.tenantId, t.exitRequestId)
+      .where(sql`${t.state} IN ('in_progress', 'completed', 'not_launched')`),
+    index('exit_handover_requests_exit').on(t.tenantId, t.exitRequestId),
+    check(
+      'exit_handover_requests_state',
+      sql`${t.state} IN ('in_progress', 'completed', 'terminated', 'not_launched')`,
+    ),
+    check(
+      'exit_handover_requests_not_launched',
+      sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
+        AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER') IN ('NO_HANDLER')`,
+    ),
+    check(
+      'exit_handover_requests_end_reason',
+      sql`(${t.state} = 'terminated') = (${t.endReason} IS NOT NULL)
+        AND coalesce(${t.endReason}, 'disapproved') IN ('disapproved', 'rejected', 'withdrawn', 'exit_cancelled')`,
+    ),
+    check('exit_handover_requests_revision', sql`${t.revision} > 0`),
+  ],
+);
+
+/** 交接事项（发起时从交接事项设置整份快照；办理完成可改，其余冻结）。“交接人”是只读文本，不随负责人回填（R2f2）。 */
+export const exitHandoverRequestItems = pgTable(
+  'exit_handover_request_items',
+  {
+    id: uuid('id').notNull(),
+    tenantId: tenant(),
+    requestId: uuid('request_id').notNull(),
+    category: text('category').notNull(),
+    sequenceNo: integer('sequence_no').notNull(),
+    todoType: text('todo_type').notNull(),
+    title: text('title').notNull(),
+    formRef: text('form_ref'),
+    remark: text('remark'),
+    done: boolean('done').notNull().default(false),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    doneByUserId: uuid('done_by_user_id'),
+    handoverPerson: text('handover_person'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.id] }),
+    foreignKey({
+      name: 'exit_handover_request_items_request_fk',
+      columns: [t.tenantId, t.requestId],
+      foreignColumns: [exitHandoverRequests.tenantId, exitHandoverRequests.id],
+    }),
+    index('exit_handover_request_items_list').on(t.tenantId, t.requestId, t.sequenceNo, t.id),
+    check('exit_handover_request_items_todo_type', sql`${t.todoType} IN ('work_handover', 'other')`),
+    check('exit_handover_request_items_revision', sql`${t.revision} > 0`),
   ],
 );

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { transferPartTimePort } from '../../apps/api/src/modules/transfer/linkage/part-time.js';
 import { requestWorld, type RequestWorld } from './AC-PT-request-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -98,17 +98,22 @@ describe.skipIf(!realPostgres)('AC-PT-transfer-pg 结束申请落地 vs 调动�
       }),
     );
     let approve: ReturnType<typeof w.taskAction> | undefined;
-    try {
-      await employeeLocked.promise;
-      approve = w.taskAction(last.userId, task.id, 'approve', view.revision, { comment: '合成意见' });
-      await waitForBlocked(w.db, 1);
-      proceed.resolve();
-      await transfer.held;
-      await waitForBlocked(w.db, 1);
-    } finally {
-      proceed.resolve();
-      transfer.release();
-    }
+    await withRelease(
+      () => {
+        proceed.resolve();
+        transfer.release();
+      },
+      async (cleanup) => {
+        cleanup.track(transfer.done);
+        await employeeLocked.promise;
+        approve = cleanup.track(w.taskAction(last.userId, task.id, 'approve', view.revision, { comment: '合成意见' }));
+        await waitForBlocked(w.db, 1);
+        proceed.resolve();
+        await transfer.held;
+        await waitForBlocked(w.db, 1);
+      },
+      [transfer.done],
+    );
     expect(await transfer.done).toBeUndefined();
 
     const response = await approve!;

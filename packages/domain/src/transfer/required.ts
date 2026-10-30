@@ -5,9 +5,12 @@ export interface TransferRequiredForm {
   readonly fieldModes: Readonly<Record<string, TransferFieldMode>>;
 }
 
-/** DEC-165：所有场景的新部门必填；DEC-163 允许其余不带出字段存空。 */
+/** DEC-165：所有场景的新部门必填；DEC-163 允许其余不带出字段存空。任职写入与审批中编辑（F-291）共用这一份。 */
+export const TRANSFER_REQUIRED_FIELDS: readonly string[] = ['departmentId'];
+export const TRANSFER_REQUIRED_REASON = 'TRANSFER_REQUIRED_FIELDS';
+
 export function requiredTransferFields(form: TransferRequiredForm): readonly string[] {
-  return form.fieldModes['preset:departmentId'] === 'editable' ? ['departmentId'] : [];
+  return form.fieldModes['preset:departmentId'] === 'editable' ? TRANSFER_REQUIRED_FIELDS : [];
 }
 
 export function missingTransferRequiredFields(
@@ -15,7 +18,7 @@ export function missingTransferRequiredFields(
   effectiveFields: Readonly<Record<string, unknown>>,
   options: { includeNonEditable?: boolean } = {},
 ): readonly string[] {
-  return (options.includeNonEditable ? ['departmentId'] : requiredTransferFields(form)).filter((field) => {
+  return (options.includeNonEditable ? TRANSFER_REQUIRED_FIELDS : requiredTransferFields(form)).filter((field) => {
     const value = effectiveFields[field];
     return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
   });

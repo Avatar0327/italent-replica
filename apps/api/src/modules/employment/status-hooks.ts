@@ -8,6 +8,7 @@
  * 事件里的 effectiveDate 是记录生效日：离职 / 退休 = 离职生效日（最后工作日的次日，fields.ts），
  * 未来日期的直接业务保存即落地（到期不再通知，按时间轴切换状态），由订阅方的夜间任务按生效日处理。
  */
+import type { DownstreamItem } from './exit-downstream.js';
 import type { Tx } from '@italent/db';
 import type { EmployeeStatusCode } from '@italent/domain';
 import type { BusinessKind } from './types.js';
@@ -40,14 +41,14 @@ export interface EmployeeStatusHooks {
   /** 已生效记录被删除（写墓碑、恢复前一条区间）之后；事件是被删除的那条记录。 */
   onRecordDeleted?(tx: Tx, ctx: EmployeeStatusHookContext, event: EmploymentRecordEvent): Promise<void>;
   /**
-   * 预留：记录生效日改期。main 没有离职改期路径（任职编辑拒绝改日期 RECORD_DATE_IMMUTABLE，离职 R2-T03 搁置），
-   * 接入改期时由 employment 在同一事务里调用。
+   * F-140：同业务重定位时恰调用一次；替代仅走 deleted / materialized。
+   * 订阅方返回下游提示，响应与幂等重放均按读取人的当前权限裁剪。
    */
   onRecordRescheduled?(
     tx: Tx,
     ctx: EmployeeStatusHookContext,
     change: { readonly before: EmploymentRecordEvent; readonly after: EmploymentRecordEvent },
-  ): Promise<void>;
+  ): Promise<readonly DownstreamItem[] | void>;
 }
 
 const registry = new Map<string, EmployeeStatusHooks>();
@@ -77,6 +78,18 @@ const hookContext = (ctx: EmployeeStatusHookContext): EmployeeStatusHookContext 
 
 /** employment 内部的调用入口。 */
 export const employeeStatusHooks = {
+  async recordRescheduled(
+    tx: Tx,
+    ctx: EmployeeStatusHookContext,
+    change: { before: EmploymentRecordEvent; after: EmploymentRecordEvent },
+  ): Promise<DownstreamItem[]> {
+    const hints: DownstreamItem[] = [];
+    for (const hooks of subscribers()) {
+      const result = await hooks.onRecordRescheduled?.(tx, hookContext(ctx), change);
+      if (result) hints.push(...result);
+    }
+    return hints;
+  },
   async recordMaterialized(tx: Tx, ctx: EmployeeStatusHookContext, event: EmploymentRecordEvent): Promise<void> {
     for (const hooks of subscribers()) await hooks.onRecordMaterialized?.(tx, hookContext(ctx), event);
   },

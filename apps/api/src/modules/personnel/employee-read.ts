@@ -6,8 +6,8 @@ import { AppError } from '../../errors.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 import { avatarSql } from '../avatar/references.js';
 
-export function employeeJoins(ctx: PersonnelContext): SQL {
-  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+/** 人员 / 任职 / 职务属性的“按日取值”唯一入口：personnel 列表固定取租户今天，时点花名册（BE-12a）传 asOf。 */
+export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.now, ctx.timezone)): SQL {
   return sql`
     LEFT JOIN LATERAL (SELECT v.* FROM personnel_employee_versions v
       WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY revision DESC LIMIT 1) v ON true
@@ -45,6 +45,8 @@ export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee
   r.current_employee_status AS employee_status,r.current_entry_status AS entry_status,
   ${sortRankColumns},person_rank.order_code,
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
+/** numeric 在 JSON 中默认成为数字；先转 text，确保列表与详情都不经 JS 浮点数。 */
+export const employeeProfile = sql`to_jsonb(v)||jsonb_build_object('daily_wage_standard',v.daily_wage_standard::text)`;
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const profile = (row.profile ?? {}) as Row;
   const dto = camel(profile);
@@ -66,7 +68,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
 }
 export async function readEmployee(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [row] = rows(
-    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},${employeeProfile} AS profile
     FROM employment_employees e ${employeeJoins(ctx)}
     WHERE e.tenant_id=${ctx.tenantId} AND e.id=${employeeId}::uuid LIMIT 1`),
   );

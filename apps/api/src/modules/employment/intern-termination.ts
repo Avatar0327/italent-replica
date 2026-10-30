@@ -10,7 +10,13 @@ import type { Tx } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { createExitApplication } from './exit-application.js';
-import { assertLastWorkDateNotBeforeEntry, disclose, inFlightApplications, type InFlight } from './exit-gate.js';
+import {
+  assertLastWorkDateNotBeforeEntry,
+  disclose,
+  inFlightApplications,
+  type ExitGateTarget,
+  type InFlight,
+} from './exit-gate.js';
 import { lockExitParticipants } from './exit-lock-plan.js';
 import { assertInternEndable } from './intern-eligibility.js';
 import { lockEmploymentEmployee } from './record-store.js';
@@ -28,6 +34,17 @@ export const internTerminationInput = z.strictObject({
 });
 export type InternTerminationInput = z.infer<typeof internTerminationInput>;
 
+/** 结束实习走直接离职门禁的目标（变动类型“实习结束”）：入口、命令内复核、读口下发动作共用。 */
+export const internTerminationGate = (employeeId: string, endDate: string): ExitGateTarget => ({
+  employeeId,
+  initiation: 'hr',
+  mode: 'direct',
+  lastWorkDate: endDate,
+  exit: {},
+  payload: { fields: {}, customFields: {} },
+  changeType: 'intern_end',
+});
+
 const IN_REVIEW_NOTICE = '此人有转正申请在审批中，结束实习将作废该申请，确定？';
 const PENDING_ENTRY_NOTICE = '此人有已通过审批、尚未生效的实习转正（待入职），结束实习将一并作废，确定？';
 const RETURN_REASON = 'INTERN_REGULARIZATION_WILL_BE_VOIDED';
@@ -41,7 +58,7 @@ const toDisclosable = (rows: readonly InFlight[], extra: (row: InFlight) => obje
  * - 审批中：一律先确认（DEC-593④）；审批通过未生效的待入职：开关开启 = 生效时一并作废，不再确认；关闭 = 先确认（DEC-593②，未证的保守取法）。
  * 草稿 / 已驳回的申请不是“在途审批”，不提示，随生效链步骤 1 静默作废。
  */
-async function confirmInFlightRegularizations(
+export async function confirmInFlightRegularizations(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,

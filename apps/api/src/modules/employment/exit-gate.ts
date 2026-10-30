@@ -21,6 +21,7 @@ import { currentEmploymentCycle } from './cycles.js';
 import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
+import { exitListOrder } from './exit-list-order.js';
 import { rowsOf } from './record-store.js';
 import { assertNoLiveRehire } from './retirement-application.js';
 import { plannedEffectiveDate } from './timeline.js';
@@ -83,6 +84,8 @@ export interface ExitGateTarget {
   readonly deleting?: boolean;
   /** cancel：来自离职撤销入口（cancelExit）；通用 revoke / delete 不带它，对离职单 409 USE_EXIT_CANCEL。 */
   readonly cancelling?: boolean;
+  /** F-140：仅替代内核传入；仍校验编辑权，不把内部撤销误当成用户独立撤销。 */
+  readonly rescheduling?: true;
   /** 离职扩展行（门禁内部加载；submit / withdraw 按发起方式取按钮）。 */
   readonly row?: typeof exitRequests.$inferSelect;
   /** 审批编辑 / 编辑并同意：权限由审批中心按节点规则负责，本门禁只判日期。 */
@@ -148,6 +151,7 @@ function permissionSpec(operation: ExitOperation, target: ExitGateTarget): Permi
         ? { op: 'update', payload: {}, buttons: [BUTTON.application] }
         : null;
     case 'cancel':
+      if (target.rescheduling) return { op: 'update', payload: {}, buttons: [BUTTON.edit] };
       return { op: target.deleting ? 'delete' : 'update', payload: {}, buttons: [BUTTON.cancel] };
     case 'retry':
       // RetryActivation 与 Dimission 的交集
@@ -267,7 +271,7 @@ export async function inFlightApplications(
         ${filter.excludeId ? sql`AND b.id<>${filter.excludeId}::uuid` : sql``}
         ${filter.approvedAfter ? sql`AND (s.state<>'approved' OR ${planned} > ${filter.approvedAfter}::date)` : sql``}
         ${filter.excluding ? sql`AND NOT ${filter.excluding}` : sql``}
-      ORDER BY planned, b.id LIMIT 1001`),
+      ORDER BY ${exitListOrder('inFlightApplications').order} LIMIT 1001`),
   );
 }
 
@@ -377,7 +381,7 @@ export async function regularizationBlocker(
 }
 
 /** §8B → 409 EXIT_REGULARIZATION_IN_FLIGHT。 */
-async function assertNoRegularizationInFlight(
+export async function assertNoRegularizationInFlight(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
@@ -471,7 +475,7 @@ export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, empl
   };
 }
 
-async function checkPendingTransferAck(
+export async function checkPendingTransferAck(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,

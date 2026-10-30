@@ -465,7 +465,14 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const flag = c.req.query('adminSelfTransfer');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listAdminLogs(tx, ctx.tenantId, scopeSql, flag === undefined ? {} : { adminSelfTransfer: flag === 'true' }, page),
+      listAdminLogs(
+        tx,
+        ctx.tenantId,
+        ctx.userId,
+        scopeSql,
+        flag === undefined ? {} : { adminSelfTransfer: flag === 'true' },
+        page,
+      ),
     );
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
@@ -500,7 +507,10 @@ const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const decision = z.strictObject({ comment, fields: fields.optional() });
+  const exitReschedule = z
+    .strictObject({ pendingTransferAck: z.string().max(200).optional(), confirmed: z.boolean().optional() })
+    .optional();
+  const decision = z.strictObject({ comment, fields: fields.optional(), exitReschedule });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -512,7 +522,12 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const taskId = uuidParam(c);
       const input = await parseBody(c, decision);
       const viewable = await fieldRights(c, deps, taskId, input.fields);
-      const request = { taskId, comment: input.comment ?? null, ...(input.fields ? { fields: input.fields } : {}) };
+      const request = {
+        taskId,
+        comment: input.comment ?? null,
+        ...(input.fields ? { fields: input.fields } : {}),
+        ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+      };
       const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
       return respondOutcome(c, deps, result);
     });
@@ -558,9 +573,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/tasks/:id/edit', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
-    const input = await parseBody(c, z.strictObject({ fields }));
+    const input = await parseBody(c, z.strictObject({ fields, exitReschedule }));
     const viewable = await fieldRights(c, deps, taskId, input.fields);
-    const request = { taskId, fields: input.fields };
+    const request = {
+      taskId,
+      fields: input.fields,
+      ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
+    };
     const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
     return respondOutcome(c, deps, result);
   });

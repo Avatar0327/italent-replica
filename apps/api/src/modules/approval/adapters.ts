@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
+import { queueExitAccount } from '../employment/exit-account-store.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
@@ -8,15 +9,17 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
 import { lockEstablishment } from '../establishment/store.js';
-import { lockExitOrganizationResources } from '../employment/exit-void-applications.js';
+import { lockExitOrganizationResources, lockOtherBusinessHeads } from '../employment/exit-void-applications.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { offerAdapter, offerBatchAdapter } from '../offer/approval-adapter.js';
+import { orgAdjustmentAdapter } from '../org-adjustment/approval-adapter.js';
 import { assessmentAdapter } from '../employment/assessment-approval-adapter.js';
 import { partTimeAdapter } from '../employment/part-time/approval-adapter.js';
 import { retirementIntentionAdapter } from '../employment/retirement-intention-adapter.js';
+import { exitHandoverAdapter } from '../employment/exit-handover-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
@@ -69,7 +72,9 @@ export type BusinessType =
   | 'offer'
   | 'offer_batch'
   | 'probation_assessment'
-  | 'retirement_intention';
+  | 'org_adjustment'
+  | 'retirement_intention'
+  | 'exit_handover';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -91,6 +96,8 @@ export interface BusinessSnapshot {
   readonly recordDepartmentId: string | null;
   /** 发展计划的指导人（R3-T07，审批人表达式 idp_tutor）；其他业务为空。 */
   readonly tutorEmployeeId?: string | null;
+  /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
+  readonly handoverEmployeeId?: string | null;
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
@@ -109,6 +116,8 @@ export interface BusinessAdapter {
    */
   lock(tx: Tx, ctx: ApprovalContext, businessId: string, reassignFrom?: string): Promise<void>;
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
+  /** 实例推进的同事务出口；包括只改任务/实例、尚未改变业务状态的办理。不得在这里更新全局账号。 */
+  persisted?(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<void>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
@@ -355,9 +364,12 @@ const employmentAdapter: BusinessAdapter = {
     // 是否可能推进业务由 mayAdvanceBusiness 统一判断（手动交接 / 成员撤销接管只在可能合席时取，F-070）。
     else if (
       (owner.kind === 'leave' || owner.kind === 'retirement') &&
-      (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom))
+      (owner.kind === 'leave' || (await mayAdvanceBusiness(tx, ctx, [businessId], reassignFrom)))
     ) {
-      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId);
+      if (owner.kind === 'leave') await lockOtherBusinessHeads(tx, ctx, owner.employee_id, businessId);
+      await lockExitOrganizationResources(tx, ctx, owner.employee_id, businessId, {
+        establishment: owner.kind === 'leave',
+      });
     }
   },
   /**
@@ -467,6 +479,11 @@ const employmentAdapter: BusinessAdapter = {
       processCode,
     };
   },
+  async persisted(tx, ctx, snapshot) {
+    // F-261 P2-1：即使业务仍在审批中，也统一关联当前命令，留给提交后消费/调度回查。
+    if (!['leave', 'retirement'].includes(snapshot.approvalType)) return;
+    await queueExitAccount(tx, ctx, snapshot.businessId);
+  },
   approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
   disapproved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'disapprove'),
@@ -476,17 +493,18 @@ const employmentAdapter: BusinessAdapter = {
   },
   async edit(tx, ctx, id, input) {
     await requireExitApprovalEdit(tx, ctx, id, input);
-    // R2-T03 §4B：离职扩展字段（如补齐离职类型）写离职扩展行，其余任职字段照旧；日期与当前值不同两条路都 400
+    // R2-T03 §4B / F-140：扩展字段写薄扩展行，日期变更与任职字段共用改期编排。
     const { exit, employment, datesOnly } = splitExitEdit(input);
     if (!Object.keys(exit).length || !datesOnly) {
       const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
       await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(employment), {
         approvalEdit: true,
+        ...ctx.exitReschedule,
       });
     }
     if (Object.keys(exit).length) {
       const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-      const patch = parseExitPatch(datesOnly ? { ...employment, ...exit } : exit);
+      const patch = parseExitPatch({ ...(datesOnly ? { ...employment, ...exit } : exit), ...ctx.exitReschedule });
       const kind = (await businessKind(tx, ctx.tenantId, id)) === 'retirement' ? 'retirement' : 'leave';
       if (kind === 'retirement') assertRetirementFields(patch.fields);
       await updateExitFields(tx, { ...ctx, expectedRevision }, id, patch, { approvalEdit: true, kind });
@@ -620,6 +638,10 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   offer_batch: offerBatchAdapter,
   // R2 BE-15b1：试用中考核 / 转正考核（业务单 = 考核记录）
   probation_assessment: assessmentAdapter,
+  // R2-T08 BE-10a：组织调整（业务单 = 组织调整申请单），BE-10a 为占位，BE-10c 接入真适配器
+  org_adjustment: orgAdjustmentAdapter,
   // R2 BE-5d2：意向退休日期申请（业务单 = 意向申请；通过只记录，不写人事字段，A-6）
   retirement_intention: retirementIntentionAdapter,
+  // R2 BE-8b2：离职交接申请（业务单 = 交接申请；通过只置已完成，不改离职状态）
+  exit_handover: exitHandoverAdapter,
 };

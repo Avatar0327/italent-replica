@@ -74,6 +74,8 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { requireEmploymentTransitionWrite } from './transition-access.js';
+import { employmentWithdrawalFailure } from './withdraw-eligibility.js';
 import {
   disclosePendingApplications,
   PendingApplicationError,
@@ -116,6 +118,8 @@ import { installPartTime } from './part-time/install.js';
 import { registerPartTimeRequestRoutes } from './part-time/request-routes.js';
 import { registerPartTimeRoutes } from './part-time/routes.js';
 import { isRegularizationEntryKind } from './regularization.js';
+import { installExitAccount } from './exit-account-hooks.js';
+import { registerExitAccountRoutes } from './exit-account-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -128,6 +132,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   });
   // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
   installPartTime();
+  installExitAccount();
+  registerExitAccountRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
@@ -461,8 +467,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const ack = action === 'submit' ? await submitBody(c) : undefined;
-        const button = `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`;
-        await requireEmploymentWrite(ctx, action === 'delete' ? 'delete' : 'update', {}, button);
+        await requireEmploymentTransitionWrite(ctx, action);
         const current = await authorizeBusinessWrite(deps, ctx, id);
         if (ack !== undefined && !isExitKind(current.kind))
           throw new AppError('VALIDATION_FAILED', '只有离职提交可以带在途调动确认令牌');
@@ -492,7 +497,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
                 ...(action === 'submit' ? { referenceChange: {} } : {}),
                 authorize: async (tx, scoped) => {
                   if (action === 'submit') await requireEmployeeTransferBusiness(tx, scoped, id);
-                  await requireEmploymentWrite(scoped, action === 'delete' ? 'delete' : 'update', {}, button);
+                  await requireEmploymentTransitionWrite(scoped, action);
                 },
               }),
         };
@@ -510,6 +515,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
               undefined,
               action === 'submit' ? {} : undefined,
             );
+            const denied = action === 'withdraw' && (await employmentWithdrawalFailure(tx, checked, id));
+            if (denied) throw denied;
             const business = await transitionEmployment(tx, checked, { id, action, ...(ack ? { ack } : {}) });
             // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
             if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
@@ -581,7 +588,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone),
+      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone, ctx.userId),
     );
     return c.json({
       items: await trimEmploymentResponse(deps, ctx, items),
@@ -603,10 +610,11 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ctx,
       { id, action: 'retry-activation' },
       async (tx, context) => {
-        // 离职的生效重试权限为 RetryActivation 且 Dimission 的交集（§4A）
+        // 离职 / 退休的生效重试权限为 RetryActivation 与本类型直接办理按钮的交集（§4A；退休为 Retire，F-265）
         if (exit)
           await requireExitGate(tx, context, 'retry', {
             employeeId: current.employeeId,
+            kind: current.kind,
             business: await lockEmploymentBusiness(tx, context, id),
           });
         await retryActivation(tx, context, id, current.employeeId);
@@ -614,7 +622,13 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       },
       {
         guard: exit
-          ? exitCommandGuard(deps, ctx, 'retry', { employeeId: current.employeeId }, { businessId: id })
+          ? exitCommandGuard(
+              deps,
+              ctx,
+              'retry',
+              { employeeId: current.employeeId, kind: current.kind },
+              { businessId: id },
+            )
           : sameOrderScopeGuard(deps, ctx, {
               writeScope: { businessId: id, employeeId: current.employeeId },
               authorize: (_tx, scoped) => requireEmploymentWrite(scoped, 'update', {}, 'Employment.RetryActivation'),

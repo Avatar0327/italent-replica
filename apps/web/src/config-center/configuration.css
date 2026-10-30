@@ -1,0 +1,72 @@
+.configuration-center {
+  min-height: 100%;
+  background: #fff;
+  border: 1px solid var(--shell-border);
+}
+.configuration-heading {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--shell-border);
+}
+.configuration-heading h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+.configuration-body {
+  display: flex;
+  min-height: 640px;
+}
+.configuration-navigation {
+  flex: 0 0 224px;
+  padding: 16px 12px;
+  border-right: 1px solid var(--shell-border);
+}
+.configuration-navigation ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+.configuration-navigation a,
+.configuration-navigation button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--shell-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.configuration-navigation a:hover,
+.configuration-navigation button:hover {
+  background: var(--shell-background);
+}
+.configuration-navigation a[aria-current='page'] {
+  color: var(--shell-primary);
+  background: #edf4ff;
+}
+.configuration-navigation .configuration-application {
+  font-weight: 600;
+}
+.configuration-navigation :focus-visible {
+  outline: 2px solid var(--shell-primary);
+  outline-offset: -2px;
+}
+.configuration-content {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+}
+.configuration-placeholder h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.configuration-empty {
+  padding: 88px 16px;
+  text-align: center;
+  color: var(--shell-muted);
+}

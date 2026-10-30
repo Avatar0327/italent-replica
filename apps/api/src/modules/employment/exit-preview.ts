@@ -21,8 +21,10 @@ import {
   regularizationBlocker,
   type InFlight,
 } from './exit-gate.js';
+import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
 import { previewRehire } from './retirement-rehire.js';
+import { RETIREMENT_RESPONSE_DEPENDENCIES } from './retirement-views.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
 
@@ -45,9 +47,18 @@ export async function previewExit(
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string,
-  kind: 'leave' | 'retirement' = 'leave',
+  retirementView: ExitViewable,
   rehire: { reEmployed?: unknown; rehire?: unknown } = {},
 ) {
+  // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
+  if (
+    retirementView === null ||
+    typeof retirementView !== 'object' ||
+    typeof retirementView.employee !== 'function' ||
+    typeof retirementView.employment !== 'function'
+  ) {
+    throw new Error('previewExit 必须显式传入有效的 retirementView');
+  }
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
   if (leaves.length)
@@ -77,10 +88,14 @@ export async function previewExit(
   return {
     lastWorkDate,
     effectiveDate: dayAfter(lastWorkDate),
-    // 退休另给创建时将冻结的预计退休日期 P 与按它派生的退休类型（R2-T04 §3.1 preview 行）
-    ...(kind === 'retirement' ? await retirementPreview(tx, ctx, employeeId, lastWorkDate) : {}),
+    // R2-T04 §3.1：P 与退休类型按详情 / 列表同一张路径表裁剪（F-266）；离职入口显式传空可见性（F-301）。
+    ...trimWith(
+      RETIREMENT_RESPONSE_DEPENDENCIES,
+      await retirementPreview(tx, ctx, employeeId, lastWorkDate),
+      retirementView,
+    ),
     // 同时返聘（5b）：返聘日与创建时会遇到的问题；没带 reEmployed + rehire 时没有这一块
-    ...(kind === 'retirement' ? await rehirePreview(tx, ctx, employeeId, lastWorkDate, rehire) : {}),
+    ...(await rehirePreview(tx, ctx, employeeId, lastWorkDate, rehire)),
     blockers,
     ack: ack
       ? {

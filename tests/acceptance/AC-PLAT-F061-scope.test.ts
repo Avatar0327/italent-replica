@@ -57,6 +57,7 @@ import {
   withoutButton,
   type World,
 } from './support/f061.js';
+import { withRelease } from './support/pg-interleave.js';
 
 const testDb = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
@@ -77,8 +78,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 9 个（评定字典不在内，DEC-503）', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(47);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 13 个（评定字典不在内，DEC-503）', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(51);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -96,9 +97,14 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
         .filter((a) => a.profileCode === TR)
         .map((a) => a.targetCode),
     ).toEqual(DEC_415);
-    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）
+    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、组织调整申请（BE-10a2）
     expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
-      ['TenantBase.Blacklist', 'TenantBase.ProbationAssessment'].flatMap((targetCode) =>
+      [
+        'TenantBase.Blacklist',
+        'TenantBase.ProbationAssessment',
+        'TenantBase.HrDashboard',
+        'TenantBase.OrganizationApproval',
+      ].flatMap((targetCode) =>
         DEC_415_BLACKLIST.map((profileCode) => ({
           profileCode,
           appCode: 'TenantBase',
@@ -118,7 +124,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(47);
+    expect(unique.size).toBe(51);
   });
 
   it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码与批准清单逐项一致', () => {
@@ -580,42 +586,48 @@ describe.skipIf(!realPostgres)('AC-PLAT-F061 T-20 回补补看全部 × setIdent
     const w = await legacyWorld(testDb().db, 'f061t20c', missing);
     const profileId = w.profileIds.get(TR)!;
     const pause = pauseBeforeScopeLock();
-    try {
-      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
-      await pause.reached;
-      expect(await identityRowLocked(w, profileId)).toBe(true);
-      const filling = runBackfill(w);
-      await expectWaitingOnLock(w.db, filling);
-      pause.release.open();
-      expect((await saving).status).toBe(200);
-      const installed = grantsInstalled(await filling);
-      expect(installed).not.toContain(seeAllCode(APPROVED[0]!));
-      expect(installed).toContain(seeAllCode(APPROVED[1]!));
-    } finally {
-      scopeLockProbe.beforeScopeLock = undefined;
-      pause.release.open();
-    }
+    await withRelease(
+      () => {
+        scopeLockProbe.beforeScopeLock = undefined;
+        pause.release.open();
+      },
+      async (cleanup) => {
+        const saving = cleanup.track(closeScope(w, profileId, APPROVED[0]!, 0));
+        await pause.reached;
+        expect(await identityRowLocked(w, profileId)).toBe(true);
+        const filling = cleanup.track(runBackfill(w));
+        await expectWaitingOnLock(w.db, filling);
+        pause.release.open();
+        expect((await saving).status).toBe(200);
+        const installed = grantsInstalled(await filling);
+        expect(installed).not.toContain(seeAllCode(APPROVED[0]!));
+        expect(installed).toContain(seeAllCode(APPROVED[1]!));
+      },
+    );
   });
 
   it('交错点在“已持身份行锁、尚未取范围锁”之间（回补一侧）：身份行已被锁住，租户保存看全部在身份行上等待，之后按范围 revision 409', async () => {
     const w = await legacyWorld(testDb().db, 'f061t20d', missing);
     const profileId = w.profileIds.get(TR)!;
     const pause = pauseBeforeScopeLock();
-    try {
-      const filling = runBackfill(w);
-      await pause.reached;
-      expect(await identityRowLocked(w, profileId)).toBe(true);
-      const saving = closeScope(w, profileId, APPROVED[0]!, 0);
-      await expectWaitingOnLock(w.db, saving);
-      pause.release.open();
-      expect(grantsInstalled(await filling)).toContain(seeAllCode(APPROVED[0]!));
-      const res = await saving;
-      expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
-    } finally {
-      scopeLockProbe.beforeScopeLock = undefined;
-      pause.release.open();
-    }
+    await withRelease(
+      () => {
+        scopeLockProbe.beforeScopeLock = undefined;
+        pause.release.open();
+      },
+      async (cleanup) => {
+        const filling = cleanup.track(runBackfill(w));
+        await pause.reached;
+        expect(await identityRowLocked(w, profileId)).toBe(true);
+        const saving = cleanup.track(closeScope(w, profileId, APPROVED[0]!, 0));
+        await expectWaitingOnLock(w.db, saving);
+        pause.release.open();
+        expect(grantsInstalled(await filling)).toContain(seeAllCode(APPROVED[0]!));
+        const res = await saving;
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
+      },
+    );
   });
 
   it('回补先提交：租户按范围 revision 0 保存返回 409，刷新后（revision 1）可关闭', async () => {

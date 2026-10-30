@@ -220,18 +220,58 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
       const writeAction =
         actions.find(([, a]) => a.kind === 'object' && a.operation === 'update')?.[0] ?? 'object.update';
       const resource = object.code;
-      const fields = [object.fields.find((field) => !field.system)!.code];
+      const businessField = object.fields.find((field) => !field.system);
       const viewer: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, false)] };
       const editor: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, true)] };
       const outside: PermissionSubject = {
         adminRoles: [],
         objectPermissions: [{ ...moduleGrant(object.code, true), profileApps: ['OtherApp'] }],
       };
+      if (object.code === MODULE_OBJECTS.hrDashboard.code) {
+        expect(businessField).toBeUndefined();
+        // 规格 35 §2.1：看板是无业务字段的只读聚合，不应为了构造写用例而要求它提供业务字段。
+        expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);
+        expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
+        expect(
+          actions.filter(([, a]) => a.kind === 'object' && a.operation !== 'view'),
+          resource,
+        ).toEqual([]);
+        expect(
+          object.buttons.filter((button) => button.requires !== undefined),
+          resource,
+        ).toEqual([]);
+        const dirty: PermissionSubject = {
+          adminRoles: ADMIN_ROLES,
+          objectPermissions: [
+            {
+              ...moduleGrant(resource, true),
+              dataOperations: { create: true, update: true, delete: true },
+              fields: object.fields.map((field) => ({ fieldCode: field.code, view: true, edit: true })),
+            },
+          ],
+        };
+        for (const field of object.fields) {
+          for (const action of ['object.create', 'object.update']) {
+            expect(decide(dirty, { action, resource, fields: [field.code] }, catalog), `${action}:${field.code}`).toBe(
+              false,
+            );
+          }
+        }
+        continue;
+      }
+      // R2-T08 §9.2：明细仅有系统字段，显式空字段集仍校验数据操作开关。
+      const fields = businessField ? [businessField.code] : [];
       expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);
       expect(decide(viewer, { action: writeAction, resource, fields }, catalog), writeAction).toBe(false);
       expect(decide(editor, { action: writeAction, resource }, catalog), writeAction).toBe(false);
       expect(decide(editor, { action: writeAction, resource, fields }, catalog), writeAction).toBe(true);
       expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
+      for (const field of object.fields.filter((field) => field.system)) {
+        expect(
+          decide(editor, { action: writeAction, resource, fields: [field.code] }, catalog),
+          `${resource}.${field.code}`,
+        ).toBe(false);
+      }
     }
   });
 

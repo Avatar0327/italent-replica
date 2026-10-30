@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 // F-147：恢复槽键统一为“资源 + 对象 id”。同一对象上任一动作结果未知时，其他动作一并锁定；
 // 合同按槽里记下的 op / mode 重开表单；审批动作的上下文存进内核槽，冲突重读后不丢（接口全部为合成桩）。
 import type { Locator, Page } from '@playwright/test';
@@ -188,7 +189,7 @@ test.describe('审批', () => {
     const form = page.getByRole('dialog', { name: '转交', exact: true });
     await page.getByLabel('转交给（账号编号）').fill(user);
     await page.getByRole('button', save).click();
-    await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+    await actionButton(form, '重读最新版本').click();
     await expect(form.getByRole('button', { name: '已核对差异，继续编辑', exact: true })).toBeVisible();
     await closeDialog(page);
     await expect(form).toHaveCount(0);

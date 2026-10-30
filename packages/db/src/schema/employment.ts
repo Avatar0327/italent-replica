@@ -217,10 +217,14 @@ function kindRule(name: string, kind: AnyPgColumn) {
 /**
  * “变动类型”（原站与业务类型、异动类型并列的分类，W-416）。职位变更同步直线经理写入“职位调整”（F-006）；
  * 实习转正写入“实习转正”（BE-6a，R2f B41 / 31 Q-M0-122 ④）；结束实习写入“实习结束”（BE-6b，R2d B41）。
+ * 审批路径的组织调整写入“组织调整”（R2-T08 DEC-526①）；直接改组织路径仍为空（DEC-137）。
  * 其余业务与存量记录没有原站依据，保持空值，不回填。
  */
 function changeTypeRule(name: string, changeType: AnyPgColumn) {
-  return check(name, sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end')`);
+  return check(
+    name,
+    sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')`,
+  );
 }
 
 export const employmentPayloadVersions = pgTable(
@@ -244,11 +248,15 @@ export const employmentPayloadVersions = pgTable(
      * 序列同步、状态传播）一律沿用上一版本的值；effective_date 是实际写入日。由插入触发器维护（迁移 0130）。
      */
     plannedEffectiveDate: day('planned_effective_date').notNull(),
+    /** F-140：专用人工重定位快照；系统派生不得继承。 */
+    manualPlan: boolean('manual_plan').notNull().default(false),
     lastWorkDate: day('last_work_date'),
     formId: text('form_id').notNull(),
     selectedStaffId: uuid('selected_staff_id'),
     sourceRecordId: uuid('source_record_id'),
     sourceStaffId: uuid('source_staff_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     customFields: customFields(),
@@ -264,6 +272,7 @@ export const employmentPayloadVersions = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_payload_versions_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_payload_versions_tenant_id').on(t.tenantId, t.id),
     unique('employment_payload_versions_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_payload_versions_business_id').on(t.tenantId, t.employeeId, t.businessId, t.id),
@@ -398,6 +407,8 @@ export const employmentRecords = pgTable(
     serviceType: text('service_type').notNull().default('primary'),
     isInserted: boolean('is_inserted').notNull().default(false),
     inheritanceSourceId: uuid('inheritance_source_id'),
+    /** F255A：兼职机构保存时固化；主职不使用。 */
+    institutionId: uuid('institution_id'),
     ...presetFields(),
     ...statusColumns(),
     employType: text('employ_type').notNull(),
@@ -405,6 +416,7 @@ export const employmentRecords = pgTable(
     createdAt: utc(),
   },
   (t): PgTableExtraConfigValue[] => [
+    reference('employment_records_institution_fk', t.tenantId, t.institutionId, orgObjects),
     unique('employment_records_tenant_id').on(t.tenantId, t.id),
     unique('employment_records_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_records_employee_staff').on(t.tenantId, t.employeeId, t.id, t.staffId),
@@ -728,7 +740,10 @@ export const employmentActivationAttempts = pgTable(
     }),
     index('employment_activation_attempts_employee').on(t.tenantId, t.employeeId, t.businessId),
     check('employment_activation_attempts_number_positive', sql`${t.attemptNo} > 0`),
-    check('employment_activation_attempts_outcome', sql`${t.outcome} IN ('effective', 'failed', 'suspended')`),
+    check(
+      'employment_activation_attempts_outcome',
+      sql`${t.outcome} IN ('effective', 'failed', 'suspended', 'replanned')`,
+    ),
     check(
       'employment_activation_attempts_reason',
       sql`(${t.outcome} = 'effective') = (${t.reason} IS NULL)

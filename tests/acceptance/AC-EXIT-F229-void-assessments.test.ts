@@ -18,7 +18,7 @@ import {
 import { reasonOf as plainReason } from './AC-PB-BE15b1-support.js';
 import { exitActivator } from './AC-EXIT-activation-support.js';
 import { SYSTEM_USER_ID } from '../../apps/api/src/system-actor.js';
-import { sql } from '@italent/db';
+import { getUser, sql } from '@italent/db';
 
 const database = useTestDb();
 const world = (label: string) => assessmentExitWorld(database().db, label);
@@ -264,8 +264,10 @@ describe('F-229 生效时作废在途考核', () => {
       comment: '迟到的同意',
     });
     expect(approved.status).toBeGreaterThanOrEqual(400);
-    const todos = await x.todos(task.assigneeUserId);
-    expect(todos.items.map((item) => item.taskId)).not.toContain(task.id);
+    // F-261：内部生效事务提交后也立即停用账号，本人不能再认证；作废仍须真实移除待办。
+    expect((await getUser(x.db, person.userId))!.status).toBe('disabled');
+    expect((await x.request(task.assigneeUserId, 'GET', '/api/tenant/approval/todos')).status).toBe(401);
+    expect(await x.pendingTaskCount(assessmentId)).toBe(0);
     expect((await x.get(assessmentId)).status).toBe('cancelled');
   });
 

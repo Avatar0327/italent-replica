@@ -5,7 +5,8 @@ import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
-async function fixture(label: string, capacity = 1, occupancyRanges = [{ employmentType: 'internal' }]) {
+/** capacity 为 null 时不建编制（F-296：含编制的组织在 11e 前不能直接停用，停用类用例要用无编制的组织）。 */
+async function fixture(label: string, capacity: number | null = 1, occupancyRanges = [{ employmentType: 'internal' }]) {
   const w = await activationWorld(database().db, label);
   const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
   async function request(method: string, path: string, body: object, revision = 0) {
@@ -16,6 +17,8 @@ async function fixture(label: string, capacity = 1, occupancyRanges = [{ employm
       body,
     });
   }
+  // 无编制时 cap 不会被用到（仅“编制不足”类用例读取），never 让两个返回分支的类型保持一致。
+  if (capacity === null) return { ...w, request, cap: undefined as never };
   const schemeResponse = await request('POST', '/schemes', {
     name: '合成严格控编方案',
     periodType: 'annual',
@@ -138,7 +141,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
   it.each(['capacity', 'disabled'])(
     'DEC-173 无联动直接调动到期复查 %s：只提醒、不改变任职、不挂起后序',
     async (cause) => {
-      const w = await fixture(`trf-direct-recheck-${cause}`);
+      const w = await fixture(`trf-direct-recheck-${cause}`, cause === 'disabled' ? null : 1);
       const { employee, hire } = await w.hired();
       const direct = await w.session.business(
         employee.id,

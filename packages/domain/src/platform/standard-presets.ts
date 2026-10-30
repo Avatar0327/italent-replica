@@ -19,7 +19,7 @@ import type { ButtonGrant, ObjectDefinition, ObjectPermission } from '../permiss
 import { EVALUATION_APP, EVALUATION_OBJECTS } from '../evaluation/catalog.js';
 import { EVALUATION_FLOW_OBJECTS } from '../evaluation/flow-catalog.js';
 import { IDP_APP, IDP_OBJECTS, type IdpObject } from '../idp/catalog.js';
-import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
+import { PERSONNEL_OBJECT, PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { QUALIFICATION_APP, QUALIFICATION_OBJECTS, QUALIFICATION_PAGES } from '../qualification/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
@@ -72,6 +72,23 @@ const ASSESSMENT_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.probationAssessment.code,
 };
 
+/**
+ * DEC-415：人事分析 - 人事看板（R2 BE-12b）是组织员工模块的只读新对象，看全部同样默认给本模块的预置管理员（标准版系统管理员、
+ * 人事管理员）；人事专员不是管理员，不预置，其看板按数据范围统计。
+ */
+const HR_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.hrDashboard.code,
+};
+
+/** R2-T08 §9.2、DEC-415：申请单按主体组织控范围，明细没有独立范围。 */
+const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.orgAdjustment.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -105,6 +122,11 @@ const CONFIG_OBJECTS = new Set<string>([
   MODULE_OBJECTS.contractRules.code,
 ]);
 
+/** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */
+const READ_ONLY_OBJECTS = new Set<string>([MODULE_OBJECTS.hrDashboard.code]);
+const grant = (definition: ObjectDefinition) =>
+  READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
+
 const BUSINESS_OBJECTS: readonly ObjectDefinition[] = [
   ...Object.values(MODULE_OBJECTS).filter((o) => !CONFIG_OBJECTS.has(o.code)),
   ...APPROVAL_OBJECTS,
@@ -129,6 +151,12 @@ function readOnly(definition: ObjectDefinition): ObjectPermission {
     fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
     buttons: [],
   };
+}
+
+/** F-325 / DEC-685①：新工资字段仅默认授予所属模块管理员，不随全字段模板扩给专员或经理。 */
+function withoutDailyWage(permission: ObjectPermission): ObjectPermission {
+  if (permission.objectCode !== PERSONNEL_OBJECT) return permission;
+  return { ...permission, fields: permission.fields.filter((f) => f.fieldCode !== 'dailyWageStandard') };
 }
 
 /** 指定数据操作与按钮（按钮编码，含全部级别）；字段全部可见、非系统字段可编辑。 */
@@ -363,9 +391,9 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '拥有组织员工的所有业务功能的权限',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(full),
+    objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
   },
   {
     code: 'standard_hr_admin',
@@ -373,9 +401,9 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '人事管理员',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(full),
+    objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象
@@ -384,7 +412,16 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '相比人事管理员除去了设置菜单',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => o.code !== APPROVAL_PROCESS_OBJECT).map(full),
+    // DEC-415（BE-12a）、R2-T08 §9.2：花名册与组织调整仅给两预置管理员，专员不自动扩权。
+    objects: BUSINESS_OBJECTS.filter(
+      (o) =>
+        ![
+          APPROVAL_PROCESS_OBJECT,
+          MODULE_OBJECTS.hrRoster.code,
+          MODULE_OBJECTS.orgAdjustment.code,
+          MODULE_OBJECTS.orgAdjustmentDetail.code,
+        ].includes(o.code),
+    ).map((o) => withoutDailyWage(grant(o))),
     hr: true,
   },
   {
@@ -428,7 +465,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '经理若要查看并使用组织人事产品的经理自助端功能，须对此身份配置相应权限',
     licenseType: null,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map(readOnly),
+    objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map((o) => withoutDailyWage(readOnly(o))),
     hr: false,
   },
   // DEC-280①②：三类内置 360 身份，由企业管理员在“用户授权”里授予；不消耗许可，数据范围不预置

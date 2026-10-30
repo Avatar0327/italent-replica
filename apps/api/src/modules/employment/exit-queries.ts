@@ -9,7 +9,9 @@ import { sql, type Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
+import { activationSummary } from './activation-store.js';
 import { employmentCreator } from './context.js';
+import { exitListOrder } from './exit-list-order.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { checkPage, rowsOf } from './read-model.js';
 import { plannedEffectiveDate } from './timeline.js';
@@ -113,6 +115,7 @@ export interface ExitItem {
   /** 审批通过但生效失败 / 挂起的标记（最近一次生效尝试）；其余为 null。 */
   readonly activation: {
     readonly status: 'failed' | 'suspended';
+    readonly details?: Record<string, unknown>;
     readonly reason: string | null;
     readonly blockedByBusinessId: string | null;
   } | null;
@@ -182,7 +185,7 @@ export async function resolveDepartmentIds(
 }
 
 /** 视图谓词只读最新状态与撤销记录，三个主视图之外的状态（作废 / 删除 / 不同意）只在“全部”里。 */
-function viewPredicate(view: ExitView): SQL {
+export function viewPredicate(view: ExitView): SQL {
   switch (view) {
     case 'in_progress':
       return sql`s.state IN ('draft','in_review','approved','rejected')`;
@@ -202,7 +205,7 @@ function viewPredicate(view: ExitView): SQL {
  */
 function viewOrder(view: ExitView, show: ExitViewable): SQL {
   const rule = EXIT_SORT_DEPENDENCIES[view];
-  return rule.anyOf.some(show.employment) ? rule.order : sql`b.id`;
+  return rule.anyOf.some(show.employment) ? rule.order : exitListOrder('businessId').order;
 }
 
 const SHOWN_DEPARTMENT = sql`COALESCE(prev.department_id, p.department_id)`;
@@ -320,9 +323,10 @@ export async function pageOfCandidates<T extends { id?: unknown }>(
     WITH base AS MATERIALIZED (${candidateSql}),
       counted AS (SELECT count(*)::int AS total FROM base)
     SELECT counted.total, page.* FROM counted
-    LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ord LIMIT ${page.limit} OFFSET ${page.offset}) page
+    LEFT JOIN LATERAL (SELECT * FROM base ORDER BY ${exitListOrder('page').order}
+      LIMIT ${page.limit} OFFSET ${page.offset}) page
       ON true
-    ORDER BY page.ord
+    ORDER BY ${exitListOrder('pageResult').order}
   `),
   );
   return { total: Number(rows[0]?.total ?? 0), rows };
@@ -404,25 +408,27 @@ async function loadDetailParts(tx: Tx, tenantId: string, id: string) {
     SELECT version_no AS "versionNo", effective_date::text AS "effectiveDate",
       planned_effective_date::text AS "plannedEffectiveDate", last_work_date::text AS "lastWorkDate",
       created_at AS "createdAt"
-    FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${id}::uuid ORDER BY version_no
+    FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${id}::uuid
+    ORDER BY ${exitListOrder('versions').order}
   `),
   );
   const events = rowsOf<ExitDetail['events'][number] & { createdAt: string | Date }>(
     await tx.execute(sql`
     SELECT event_no AS "eventNo", state, created_at AS "createdAt" FROM employment_state_events
-    WHERE tenant_id=${tenantId} AND business_id=${id}::uuid ORDER BY event_no
+    WHERE tenant_id=${tenantId} AND business_id=${id}::uuid ORDER BY ${exitListOrder('events').order}
   `),
   );
   const [instance] = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT id FROM approval_instances WHERE tenant_id=${tenantId} AND business_type='employment'
-      AND business_id=${id}::uuid ORDER BY created_at DESC, id DESC LIMIT 1
+      AND business_id=${id}::uuid ORDER BY ${exitListOrder('approvalInstance').order} LIMIT 1
   `),
   );
   const effects = rowsOf<ExitDetail['effects'][number]>(
     await tx.execute(sql`
     SELECT phase, kind, count(*)::int AS count FROM exit_effects
-    WHERE tenant_id=${tenantId} AND business_id=${id}::uuid GROUP BY phase, kind ORDER BY phase, kind
+    WHERE tenant_id=${tenantId} AND business_id=${id}::uuid GROUP BY phase, kind
+    ORDER BY ${exitListOrder('effectSummary').order}
   `),
   );
   return { extension: extension!, versions, events, instance, effects };
@@ -436,17 +442,20 @@ export async function loadExitDetail(
   scope: EmploymentScope | undefined,
   source: CandidateSource = LEAVE_SOURCE,
 ): Promise<ExitDetail | null> {
-  const [row] = rowsOf<ExitRow>(
-    await tx.execute(
-      sql`SELECT * FROM (${candidates(tenantId, scope, [sql`b.id=${id}::uuid`], sql`b.id`, source)}) base`,
-    ),
-  );
+  const candidateSql = candidates(tenantId, scope, [sql`b.id=${id}::uuid`], exitListOrder('businessId').order, source);
+  const [row] = rowsOf<ExitRow>(await tx.execute(sql`SELECT * FROM (${candidateSql}) base`));
   if (!row) return null;
   const { extension: ext, versions, events, instance, effects } = await loadDetailParts(tx, tenantId, id);
   const counted = (kind: string) =>
     effects.filter((effect) => effect.kind === kind).reduce((sum, effect) => sum + Number(effect.count), 0);
+  const item = toItem(row);
+  const failure =
+    item.activation?.reason === 'EXIT_LATER_RECORD_EXISTS'
+      ? await activationSummary(tx, tenantId, id, row.status)
+      : null;
   return {
-    ...toItem(row),
+    ...item,
+    ...(failure?.details && item.activation ? { activation: { ...item.activation, details: failure.details } } : {}),
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
@@ -543,6 +552,18 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   'activation.status': on('activation'),
   'activation.reason': on('activation'),
   'activation.blockedByBusinessId': on('activation'),
+  'activation.details': on('activation'),
+  'activation.details.title': on('activation'),
+  'activation.details.message': on('lastWorkDate'),
+  'activation.details.hiddenCount': on('activation'),
+  'activation.details.actions': on('activation'),
+  'activation.details.actions[]': on('activation'),
+  'activation.details.records': on('activation'),
+  'activation.details.records[]': on('activation'),
+  'activation.details.records[].docId': on('id'),
+  'activation.details.records[].docNo': on('id'),
+  'activation.details.records[].bizType': on('kind'),
+  'activation.details.records[].effectiveDate': on('effectiveDate'),
   // 撤销信息：case 由撤销前状态决定（设计 §7.1 四种撤销情形与撤销前状态一一对应），跟随 status
   cancellation: independent('有无撤销记录由撤销视图的归属决定（视图名是显式查询参数，设计 §3.2 DM-R5）；叶子各有规则'),
   'cancellation.id': on('id'),
@@ -684,9 +705,11 @@ export function filterFieldsOf(filter: ExitViewFilter): { employee: string[]; em
 }
 
 /** 各视图默认排序的键依赖的字段（任一可见即可用设计排序）及设计排序；撤销视图按撤销记录的创建时间（createdAt）。 */
-export const EXIT_SORT_DEPENDENCIES: Readonly<Record<ExitView, { readonly anyOf: readonly string[]; order: SQL }>> = {
-  in_progress: { anyOf: ['lastWorkDate', 'effectiveDate'], order: sql`p.last_work_date ASC, b.id` },
-  completed: { anyOf: ['lastWorkDate', 'effectiveDate'], order: sql`p.last_work_date DESC, b.id` },
-  all: { anyOf: ['createdAt'], order: sql`b.created_at DESC, b.id DESC` },
-  cancellations: { anyOf: ['createdAt'], order: sql`c.created_at DESC, c.id DESC` },
-};
+export const EXIT_SORT_DEPENDENCIES = {
+  in_progress: { anyOf: ['lastWorkDate', 'effectiveDate'], ...exitListOrder('in_progress') },
+  completed: { anyOf: ['lastWorkDate', 'effectiveDate'], ...exitListOrder('completed') },
+  all: { anyOf: ['createdAt'], ...exitListOrder('all') },
+  cancellations: { anyOf: ['createdAt'], ...exitListOrder('cancellations') },
+} as const satisfies Readonly<
+  Record<ExitView, { readonly anyOf: readonly string[] } & ReturnType<typeof exitListOrder>>
+>;

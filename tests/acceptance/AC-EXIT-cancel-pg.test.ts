@@ -15,11 +15,13 @@ import { lockTransferParticipants } from '../../apps/api/src/modules/employment/
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { cancelWorld, type CancelWorld } from './AC-EXIT-cancel-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
 const world = (label: string) => cancelWorld(database().db, label, TODAY);
+/** 要停用调出部门的场景：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织）。 */
+const worldToDisable = (label: string) => cancelWorld(database().db, label, TODAY, { capacity: false });
 const live = Boolean(process.env.TEST_DATABASE_URL);
 
 const signal = () => {
@@ -47,15 +49,17 @@ async function queueBehind(x: CancelWorld, lock: (tx: Tx) => Promise<unknown>, r
   const session = holder(x, lock);
   await session.held;
   const running: Promise<unknown>[] = [];
-  try {
-    for (const [index, request] of requests.entries()) {
-      running.push(request());
-      await waitForBlocked(x.db, index + 1);
-    }
-  } finally {
-    session.release();
-    await session.done;
-  }
+  await withRelease(
+    () => session.release(),
+    async (cleanup) => {
+      cleanup.track(session.done);
+      for (const [index, request] of requests.entries()) {
+        running.push(cleanup.track(request()));
+        await waitForBlocked(x.db, index + 1);
+      }
+    },
+    [session.done],
+  );
   return Promise.allSettled(running);
 }
 
@@ -118,13 +122,15 @@ describe.runIf(live)('AC-EXIT-cancel-pg ② 撤销 vs 定时生效', () => {
     });
     await session.held;
     let cancelling: Promise<Response> | undefined;
-    try {
-      cancelling = x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision });
-      await waitForBlocked(x.db, 1);
-    } finally {
-      session.release();
-      await session.done;
-    }
+    await withRelease(
+      () => session.release(),
+      async (cleanup) => {
+        cleanup.track(session.done);
+        cancelling = cleanup.track(x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision }));
+        await waitForBlocked(x.db, 1);
+      },
+      [session.done],
+    );
     expect(await x.reason(await cancelling!)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     expect(await x.stateOfBusiness(leave.id)).toBe('effective');
     expect(await x.cancellationOf(leave.id)).toBeUndefined();
@@ -138,7 +144,7 @@ describe.runIf(live)('AC-EXIT-cancel-pg ② 撤销 vs 定时生效', () => {
 describe.runIf(live)('AC-EXIT-cancel-pg ⑤ 组织停用 vs 撤销 approved 离职（恰一方成功）', () => {
   /** 离职 E = 10-21 已批准，A 的停用 10-22 起（按 §6A.1 允许：approved 离职从 E 起不计占用）。 */
   async function scene(label: string) {
-    const x = await world(label);
+    const x = await worldToDisable(label);
     const leave = await x.directLeave('2026-10-20');
     const revision = (await x.business(leave.id)).revision;
     const cancel = () => x.cancel(leave.id, { reason: '撤销' }, { ifMatch: revision });
@@ -179,14 +185,16 @@ describe.runIf(live)('AC-EXIT-cancel-pg 锁序：员工 / 业务 → 组织 → 
     const session = holder(x, lockOrg(x));
     await session.held;
     let running: Promise<Response> | undefined;
-    try {
-      running = x.cancel(draft.id, { reason: '撤销' });
-      await waitForBlocked(x.db, 1);
-      expect(await lockable(x, instance.id), '撤销事务不应在等组织锁时持有审批实例锁').toBe(true);
-    } finally {
-      session.release();
-      await session.done;
-    }
+    await withRelease(
+      () => session.release(),
+      async (cleanup) => {
+        cleanup.track(session.done);
+        running = cleanup.track(x.cancel(draft.id, { reason: '撤销' }));
+        await waitForBlocked(x.db, 1);
+        expect(await lockable(x, instance.id), '撤销事务不应在等组织锁时持有审批实例锁').toBe(true);
+      },
+      [session.done],
+    );
     const done = await running!;
     expect(done.status, await done.clone().text()).toBe(200);
     expect((await x.instanceOf(draft.id))!.status).toBe('cancelled');

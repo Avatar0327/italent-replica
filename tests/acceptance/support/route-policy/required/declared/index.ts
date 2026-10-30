@@ -7,10 +7,13 @@ import { CONTRACTS_DECLARED } from './contracts.js';
 import { EMPLOYMENT_DECLARED } from './employment.js';
 import { ESTABLISHMENT_DECLARED } from './establishment.js';
 import { EVALUATION_DECLARED } from './evaluation.js';
+import { HR_DASHBOARD_DECLARED } from './hr-dashboard.js';
+import { HR_ANALYSIS_DECLARED } from './hr-analysis.js';
 import { IDP_DECLARED } from './idp.js';
 import { JOB_DECLARED } from './job.js';
 import { OFFERS_DECLARED } from './offers.js';
 import { ORG_DECLARED } from './org.js';
+import { ORG_ADJUSTMENT_DECLARED } from './org-adjustment.js';
 import { PERMISSION_DECLARED } from './permission.js';
 import { PERSONNEL_DECLARED } from './personnel.js';
 import { QUALIFICATION_DECLARED } from './qualification.js';
@@ -32,10 +35,13 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   employment: EMPLOYMENT_DECLARED,
   establishment: ESTABLISHMENT_DECLARED,
   evaluation: EVALUATION_DECLARED,
+  'hr-dashboard': HR_DASHBOARD_DECLARED,
+  'hr-analysis': HR_ANALYSIS_DECLARED,
   idp: IDP_DECLARED,
   job: JOB_DECLARED,
   offers: OFFERS_DECLARED,
   org: ORG_DECLARED,
+  'org-adjustment': ORG_ADJUSTMENT_DECLARED,
   permission: PERMISSION_DECLARED,
   personnel: PERSONNEL_DECLARED,
   qualification: QUALIFICATION_DECLARED,

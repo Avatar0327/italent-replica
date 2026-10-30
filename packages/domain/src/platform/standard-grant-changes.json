@@ -1,27 +1,12 @@
 {
-  "reason": "R2 BE-8b1：离职扩展行新增加黑三项字段（blacklistExpiryDate / blacklistReason / blacklistNote，EXIT_REQUEST_FIELDS），随任职记录对象的字段查看 / 编辑授权进标准身份（与 addToBlacklist 同级，人事三身份可查看 + 编辑，标准经理仅查看）；不新增对象、按钮或数据范围",
+  "reason": "BE-10a2：两预置管理员新增组织调整申请/明细对象字段、数据操作与18个按钮；申请单预置看全部（DEC-415），其他身份不扩权",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistExpiryDate:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistExpiryDate:edit",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistReason:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistReason:edit",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistNote:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:blacklistNote:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistExpiryDate:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistExpiryDate:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistReason:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistReason:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistNote:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:blacklistNote:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistExpiryDate:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistExpiryDate:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistReason:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistReason:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistNote:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:blacklistNote:edit",
-    "standard_manager/TenantBase.EmploymentRecord/field:blacklistExpiryDate:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:blacklistReason:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:blacklistNote:view"
+    "standard_org_system_admin/TenantBase.OrganizationApproval/*",
+    "standard_org_system_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval",
+    "standard_hr_admin/TenantBase.OrganizationApproval/*",
+    "standard_hr_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval"
   ],
   "remove": []
 }

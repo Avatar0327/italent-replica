@@ -11,10 +11,13 @@ import { CONTRACTS } from './contracts.js';
 import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
 import { EVALUATION } from './evaluation.js';
+import { HR_DASHBOARD } from './hr-dashboard.js';
+import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
 import { OFFERS } from './offers.js';
 import { ORG } from './org.js';
+import { ORG_ADJUSTMENT } from './org-adjustment.js';
 import { PERMISSION } from './permission.js';
 import { PERSONNEL } from './personnel.js';
 import { QUALIFICATION } from './qualification.js';
@@ -39,6 +42,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   job: JOB,
   establishment: ESTABLISHMENT,
   personnel: PERSONNEL,
+  'hr-analysis': HR_ANALYSIS,
   contracts: CONTRACTS,
   offers: OFFERS,
   permission: PERMISSION,
@@ -51,6 +55,8 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   qualification: QUALIFICATION,
   evaluation: EVALUATION,
   succession: SUCCESSION,
+  'hr-dashboard': HR_DASHBOARD,
+  'org-adjustment': ORG_ADJUSTMENT,
 };
 
 const PARTS: readonly RequiredTable[] = Object.values(REQUIRED_BY_MODULE);

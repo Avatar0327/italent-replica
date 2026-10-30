@@ -1,3 +1,4 @@
+import { exitFollowingRecords, assertNoLaterExitRecords } from './exit-later-records.js';
 /**
  * 离职生效单一编排器（R2-T03 设计 §5.1，批 B3-1）：approved → effective 的唯一路径。
  * 顺序 0a 前序 → 0 最终日期 → 0b 顺延后重验 → 0c 在职段延长校验 → 1 作废在途申请 → 2 版本链落地 → 3 编制 →
@@ -22,11 +23,13 @@ import {
 import { auditEmployment } from './context.js';
 import { handleContractsOnExitEffective } from './exit-contract-effects.js';
 import { runExitDutyTransfer } from './exit-duty-transfer.js';
-import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { runExitEffectiveHooks, type ExitActivationSource } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
 // 离职生效写黑名单（BE-8b1）同样订阅 effective 端口
 import './exit-blacklist.js';
+// 交接自动发起（BE-8b2，DM-R14）订阅 onConfirmed、撤销离职终止交接订阅 onCancelled，随入口一起加载
+import './exit-handover.js';
 import {
   exitSourceOf,
   isExitKind,
@@ -271,8 +274,13 @@ async function recordEffectiveCorrection(
 }
 
 /** §5.8：摘下同周期排在离职之后的已落地调动；台账记原窗口（B4 撤销时按它挂回），审计提示 HR。 */
-async function detachAndRecord(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
-  const detached = await detachFutureTransfers(tx, ctx, business.employeeId, business.id);
+export async function detachAndRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  candidates?: readonly string[],
+) {
+  const detached = await detachFutureTransfers(tx, ctx, business.employeeId, business.id, candidates);
   for (const item of detached) {
     await tx.insert(exitEffects).values({
       tenantId: ctx.tenantId,
@@ -351,6 +359,20 @@ async function createRehireIfPlanned(
   return retirement;
 }
 
+async function followingTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  exit: ExitRow,
+  planned: string,
+  date: string,
+) {
+  if (business.payload.kind !== 'leave') return undefined;
+  const following = await exitFollowingRecords(tx, ctx, business, exit.staffId, date);
+  assertNoLaterExitRecords(following, planned, date, exit.initiatorUserId);
+  return following.filter((row) => row.bizType === 'transfer').map((row) => row.docId);
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -381,6 +403,8 @@ async function runSteps(
   // 结束实习保存到生效之间，转正申请可能已审批通过并落地：此时人已不是实习生，不能再记“实习结束”，生效失败交 HR（DEC-593①）
   if (business.payload.changeType === 'intern_end')
     await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
+  // DEC-507 步骤 0d：先检查同一插入位置之后的集合，再分流；失败连顺延版本一起回滚。
+  const detachable = await followingTransfers(tx, ctx, business, exit, planned, late.effectiveDate);
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
@@ -388,7 +412,7 @@ async function runSteps(
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
-  const detached = await detachAndRecord(tx, ctx, business);
+  const detached = await detachAndRecord(tx, ctx, business, detachable);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
     tx,
@@ -424,7 +448,7 @@ async function runSteps(
     undefined,
     { employeeId: business.employeeId },
   );
-  const event: ExitEffectiveEvent = {
+  await runExitEffectiveHooks(tx, ctx, {
     businessId: business.id,
     employeeId: business.employeeId,
     source,
@@ -432,8 +456,7 @@ async function runSteps(
     effectiveDate: late.effectiveDate,
     kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
     reEmployed: retirement?.reEmployed === true,
-  };
-  await runExitEffectiveHooks(tx, ctx, event);
+  });
   // 审批落地由调用命令统一递增一次业务 revision；调度 / 重试 / 内部入口在这里递增
   if (trigger !== 'approval') await bumpEmploymentBusiness(tx, ctx, business);
   return late;

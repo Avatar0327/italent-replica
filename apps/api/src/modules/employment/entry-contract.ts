@@ -41,10 +41,32 @@ const contractFields = (record: Pick<EmploymentRecord, 'effectiveDate'>, contrac
 });
 
 /**
- * 办理入职带合同信息时，操作人在合同对象上的当前权限：字段创建权、合同“新建”按钮（与 POST /contracts/commands 同一资源）、
+ * 带合同信息的入职写入，操作人在合同对象上的当前权限：字段创建权、合同“新建”按钮（与 POST /contracts/commands 同一资源）、
  * 对该员工的合同数据范围。由 CommandGuard.before 在命令事务内调用——首次执行、同键重放、失败回查三个出口都先过它
  * （DEC-385③）；合同端口自己的字段 / 范围复核只在真正执行时才跑，命中命令台账的重放到不了那里。
+ * 退休同时返聘（R2-T04 §8.2）传已有员工与返聘日 R，复用同一字段、按钮和范围校验。
+ * employeeId 为 null = 员工还没建（新增实习生一体写入）：范围复核留给执行时的合同端口，其余照常。
  */
+export async function requireContractCreateAccess(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  owner: { readonly employeeId: string | null; readonly effectiveDate: string },
+  contract: EntryContract,
+): Promise<void> {
+  const access = await contractContext(tx, deps, ctx);
+  await checkFields(access, 'create', contractFields(owner, contract));
+  await requirePermission(access.authorize!, {
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    action: 'object.button',
+    resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list'),
+  });
+  if (owner.employeeId)
+    await checkOperationScope(tx, access, { employeeId: owner.employeeId, operation: 'create' }, null);
+}
+
+/** 办理入职带合同信息：合同归属的员工与生效日取自待入职记录。 */
 export async function requireEntryContractAccess(
   tx: Tx,
   deps: TenantRouteDeps,
@@ -62,28 +84,6 @@ export async function requireEntryContractAccess(
   );
   if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
   await requireContractCreateAccess(tx, deps, ctx, owner, contract);
-}
-
-/**
- * 合同“新建”的权限复核本体：字段创建权、合同“新建”按钮、对该员工的合同数据范围。办理入职按已落地记录取起始日，
- * 退休同时返聘（R2-T04 §8.2）在创建时记录还不存在，按返聘日 R 直接给出，两处口径一致。
- */
-export async function requireContractCreateAccess(
-  tx: Tx,
-  deps: TenantRouteDeps,
-  ctx: EmploymentContext,
-  owner: { readonly employeeId: string; readonly effectiveDate: string },
-  contract: EntryContract,
-): Promise<void> {
-  const access = await contractContext(tx, deps, ctx);
-  await checkFields(access, 'create', contractFields(owner, contract));
-  await requirePermission(access.authorize!, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    action: 'object.button',
-    resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list'),
-  });
-  await checkOperationScope(tx, access, { employeeId: owner.employeeId, operation: 'create' }, null);
 }
 
 export async function generateEntryContract(

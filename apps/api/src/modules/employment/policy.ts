@@ -79,6 +79,7 @@ import {
   BAD_REQUEST,
   button,
   buttonOnly,
+  commandWrite,
   denied,
   EMPTY_LIST,
   fixed,
@@ -92,6 +93,7 @@ import {
   own,
   pointScope,
   projector,
+  relation,
   seeAll,
   shape,
   write,
@@ -121,6 +123,8 @@ const F_NO_DEPARTMENT = denied(403, 'FORBIDDEN', '无权选择调动部门');
 const NF_BLACKLIST = denied(404, 'NOT_FOUND', '黑名单记录不存在');
 const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
 const NF_INTENTION = denied(404, 'NOT_FOUND', '意向退休申请不存在');
+const NF_HANDOVER = denied(404, 'NOT_FOUND', '离职交接申请不存在');
+const F_HANDOVER_NOT_ASSIGNEE = denied(403, 'FORBIDDEN', 'EXIT_HANDOVER_NOT_ASSIGNEE');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
@@ -142,6 +146,22 @@ const LINKAGE = 'employment.linkage';
 const RESPONSE = projector('employment.response', 'employment.response');
 const SETTINGS_FIELDS = shape('employment.settings');
 const CUSTOM_FIELD_FIELDS = shape('employment.customField');
+/** BE-8b2 离职交接的三个固定回执形状（exit-handover.ts 的 exitHandoverStatus / handoverDetail / tickHandoverItem）。 */
+const HANDOVER_STATUS_KEYS = ['status', 'request'] as const;
+const HANDOVER_DETAIL_KEYS = [
+  'id',
+  'exitRequestId',
+  'employeeId',
+  'status',
+  'endReason',
+  'notLaunchedReason',
+  'hint',
+  'approvalInstanceId',
+  'revision',
+  'items',
+  'mine',
+] as const;
+const HANDOVER_TICK_KEYS = ['item', 'mine'] as const;
 const EXIT_DICTIONARY_KEYS = ['id', 'code', 'name', 'enabled', 'displayOrder', 'revision'] as const;
 const PROBATION_RESULT_KEYS = EXIT_DICTIONARY_KEYS;
 const RETIREMENT_IDENTITY_TYPE_KEYS = EXIT_DICTIONARY_KEYS;
@@ -424,7 +444,41 @@ const exitTransition = (code: string = EXIT_BUTTONS.application) =>
     ...byId,
   });
 
+const ACCOUNT_SETTINGS_FIELDS = fixed(['revision', 'earlyEnabled', 'basis', 'time', 'inReview'], 'DEC-684');
+const ACCOUNT_TASK_FIELDS = fixed(
+  ['items', 'nextCursor', 'businessId', 'employeeId', 'status', 'reason', 'revision', 'attempts', 'recipientUserIds'],
+  'DEC-684',
+);
+const accountTaskView = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('待办查询无需业务按钮'),
+  scope: guardScope('employment.scope', denied(404, 'NOT_FOUND', '账号处理任务不存在')),
+  fields: ACCOUNT_TASK_FIELDS,
+});
+
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
+  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'PUT /exit-account/settings': admin('other_settings', {
+    alias: 'tenant.employment.configuration.write',
+    fields: ACCOUNT_SETTINGS_FIELDS,
+    write: write(none('严格配置 DTO'), 'config.audited:employment_settings', none('租户配置无人员范围'), {
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+  'GET /exit-account/tasks': { ...accountTaskView, scope: listScope('employment.accountTasks') },
+  'GET /exit-account/tasks/:id': { ...accountTaskView, ...byId },
+  'POST /exit-account/tasks/:id/retry': admin('user_manage', {
+    ...byId,
+    fields: fixed(['businessId', 'status', 'revision'], 'DEC-684：账号权限回执不含员工资料'),
+    write: write(none('原任务重试，空请求体'), none('账号管理能力；任务限定当前租户'), none('固定最小回执'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+
   // ---- transfer/routes.ts registerPersonalEntry：本人调动入口 ------------------------------------------------------
   // requireTransferButton(employee) 先查 Transfer.Self；绑定员工缺失 → 403「当前用户未绑定员工」；requireTransferSource
   // (employee) 再按绑定本人为源员工判范围（范围外 404「员工不存在」）；items 固定 id / name / code / revision，不按字段权裁剪
@@ -877,17 +931,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION],
+    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION, LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
-    write: employmentWrite('body.fields+customFields', [
-      'transferBusinessContext',
-      'requireManagerBusinessSource',
-      'lockEmploymentBusiness',
-      'assertRevision',
-      'requireEmployeeTransferBusiness',
-      'requireScopedEmploymentObject',
-    ]),
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'transferBusinessContext',
+        'requireManagerBusinessSource',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireEmployeeTransferBusiness',
+        'requireScopedEmploymentObject',
+      ],
+      { controls: ['pendingTransferAck', 'confirmed'] },
+    ),
     ...byId,
   }),
   // ---- employment/routes.ts registerBusinessTransitions（router.on）：命令式按钮 ---------------------------------------
@@ -1012,7 +1070,89 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     guards: ['employment.viewableFilters'],
     scope: listScope('module.scopeSql'),
     fields: projector('employment.response', 'employment.internViews'),
+    // F-283 逐行 availableActions（intern-actions.ts）：对每行跑转正 / 结束实习 / 撤回 / 撤销写入口的同一组判定，只决定响应里
+    // 的动作码，不参与准入；无对应对象操作权（readContext 的 403）时该类动作不下发，其余错误照常抛出
+    optional: {
+      rowActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'create',
+            button: button('Employment.Create', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 regularize / terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button(EXIT_BUTTONS.direct, 'detail'),
+            scope: noScope('只判按钮：员工范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 terminate'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button('Employment.Withdraw', 'detail'),
+            scope: noScope('只决定动作码：员工 / 业务范围由逐行写入口同一判定（intern-actions.ts）承担'),
+            fields: noFields('只决定 availableActions 的 withdraw / revoke'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：业务范围已由上一项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
+  // 新增实习生一体写入（BE-R2d4c，DEC-662）：If-Match 必填（新增 0，重聘 = 候选人员当前 revision）；body 严格（400）：kind =
+  // hire（code + name + loginEmail，建档并绑定用户）| rehire（employeeId = rehire-matches 候选，不再建档），contract 必填且终止日必填、
+  // 不早于入职日（400 INTERN_CONTRACT_DATE_INVALID）；用工类型固定实习（填别的 400）。权限同 POST /employees：人员对象新增权 +
+  // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
+  // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
+  // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
+  // F-322：profile 普通字段经档案更新权，教育经子集创建权，均在命令事务复核；资料回执按当前档案查看权裁剪。
+  // 任一步失败整体回滚，同命令 ID 不重复写入；没有 profile 时保持原回执。
+  'POST /interns': all(
+    [
+      object({
+        object: EMPLOYEE,
+        operation: 'create',
+        button: button('Employee.Create', 'list'),
+        scope: seeAll(NF_DATA),
+        fields: noFields('人员新增权只判对象与按钮；回执不含人员字段'),
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'create',
+        button: button('Employment.Create', 'detail'),
+        scope: guardScope('employment.scope', NF_DATA),
+        fields: noFields('回执是固定形状（人员 / 业务 ID、合同摘要、视图归属），不含任职字段'),
+      }),
+    ],
+    projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
+    {
+      guards: [LINKAGE, 'employment.entryContract', 'employment.internProfile'],
+      write: employmentWrite(
+        'body.fields+customFields',
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireInternProfileAccess'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract', 'profile'] },
+      ),
+      optional: {
+        profile: object({
+          object: 'TenantBase.EmployeeInformation',
+          operation: 'view',
+          button: noButton('资料回执按当前档案查看权披露'),
+          scope: pointScope({ derived: 'employment.internProfile' }, 'personnel.employee', denied(404, 'NOT_FOUND')),
+          fields: projector('employment.internProfile', 'personnel.employee'),
+        }),
+      },
+      ...byId,
+    },
+  ),
   // 直接实习转正：If-Match 必填；body 严格（合同 / 工号 / 入职日期不受理，400）；resource=id 人员范围 404「任职数据不存在」 +
   // 看全部的写别名；requireEmploymentWrite('create', 实际写入字段, Employment.Create)；requireEmploymentScope（人员 + 目标部门）；
   // 命令内 internRegularizationGuard 按当前授权重过；非在职实习生 409 NOT_INTERN、有审批中转正申请 409
@@ -1230,6 +1370,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: pointScope({ param: 'id' }, 'employment.partTimeRequest', NF_PART_TIME_REQUEST),
     fields: projector('employment.response', 'employment.partTimeRequest'),
     ...byId,
+    // F-268 逐单 availableActions（part-time/request-actions.ts）：对改 / 提交 / 删除 / 撤回 / 撤销各跑写入口的同一个
+    // requirePartTimeRequestAccess（对象操作权 + 申请类型按钮 + 写入口径范围），只决定响应里的动作码，不参与准入
+    optional: {
+      requestActions: all(
+        [
+          object({
+            object: EMPLOYMENT,
+            operation: 'update',
+            button: button(PART_TIME_BUTTONS.application, 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 edit / submit / withdraw'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'delete',
+            button: button('Employment.Delete', 'detail'),
+            scope: noScope('只决定动作码：申请范围由写入口同一判定 requirePartTimeRequestAccess 承担'),
+            fields: noFields('只决定 availableActions 的 delete'),
+          }),
+          object({
+            object: EMPLOYMENT,
+            operation: 'button',
+            button: button('Employment.Revoke', 'detail'),
+            scope: noScope('只判按钮：申请范围已由上面两项判过'),
+            fields: noFields('只决定 availableActions 的 revoke'),
+          }),
+        ],
+        noFields('只决定 availableActions'),
+      ),
+    },
   }),
   // 兼职六视图（B25～B30，R2-T05 §6.1）：view ∈ ongoing / expiring / not_started / ended / all / in_approval（缺失或不合法 400，
   // 不回退到 all）；days（1～365，默认 30）/ keyword / departmentId（含下级，可 includeChildren=false）/ serviceType /
@@ -1632,14 +1802,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // 编辑离职：If-Match 必填；body = 离职扩展字段 + 可选日期（400）；写入口径 404「任职业务不存在」，不是离职单 404；
-  // DimissionEdit，审批中的单另需审批管理员按钮 adminIntervene（B-65a）；日期与当前值不同 400 EXIT_DATE_IMMUTABLE（§7.2）
+  // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
+  // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(
     [
       object({
         object: EMPLOYMENT,
         operation: 'update',
         button: button(EXIT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
@@ -1653,7 +1824,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate'], {
+        controls: ['pendingTransferAck', 'confirmed'],
+      }),
       ...byId,
     },
   ),
@@ -1685,6 +1858,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         object: EMPLOYMENT,
         operation: 'update',
         button: button(RETIREMENT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
@@ -1795,9 +1969,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
-  // 视图：view ∈ upcoming / overdue / processing / completed / all（缺失、cancelled 或不合法 400）；asOf 缺省租户今天（不合法 400）；
-  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，分页前 employmentVisibilitySql
-  // （DEC-177）过滤，total 与本页同一语句；任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
+  // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
+  // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；
+  // upcomingDays 1～365 整数（缺省读 retirement.upcoming_days，不合法 400）；readPageContext(list)，
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一语句；
+  // 任职字段按任职记录、姓名 / 工号 / 预计退休日期及弹性上下限按人员对象可见字段裁剪（无权缺席）
   'GET /retirements': object({
     object: EMPLOYMENT,
     operation: 'view',
@@ -2353,6 +2529,39 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('employment.response', 'employment.assessment'),
     write: write('body', 'assessment.update', none('返回后按考核对象字段查看权投影'), {
       preconditions: ['requireEmployeeInScope', 'assertAssessmentRevision'],
+    }),
+    ...byId,
+  }),
+  // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DM-R13 / DM-R14，DEC-632）----------------------------
+  // 离职详情上的交接状态与事项：权限与范围同 GET /exits/:id（DEC-177，看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」）；
+  // 没有交接申请 = status not_started（含档案直接离职，R2c）
+  'GET /exits/:id/handover': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: fixed(HANDOVER_STATUS_KEYS, 'DEC-632 交接状态与事项固定键，事项内容来自交接事项设置快照'),
+    ...byId,
+  }),
+  // 交接申请详情：参与人（发起人员工本人 / 该审批实例上有任务的审批人）可读，不要求任职对象权限（审批人不一定有）；
+  // 非参与人与不存在同一个 404「离职交接申请不存在」；items[].editable 标出查看人当前可办理的事项
+  'GET /exit-handover-requests/:id': relation({
+    relation: 'exitHandover.participant',
+    target: { param: 'id' },
+    denied: NF_HANDOVER,
+    fields: fixed(HANDOVER_DETAIL_KEYS, 'DEC-632 交接申请详情固定键'),
+    ...byId,
+  }),
+  // 勾选 / 取消勾选“办理完成”自动保存：If-Match = 事项 revision；body 严格 { done }（400）；非参与人 404；交接已结束 409
+  // EXIT_HANDOVER_NOT_IN_PROGRESS；查看人没有当前待办 403 EXIT_HANDOVER_NOT_ASSIGNEE；事项不属当前节点 403
+  // EXIT_HANDOVER_ITEM_NOT_OWNED；revision 不一致 409；值未变不写。审计 exit_handover.item_done
+  'PUT /exit-handover-requests/:id/items/:itemId': relation({
+    relation: 'exitHandover.assignee',
+    target: { param: 'id' },
+    denied: F_HANDOVER_NOT_ASSIGNEE,
+    fields: fixed(HANDOVER_TICK_KEYS, 'DEC-632 办理回执固定键'),
+    write: commandWrite('exitHandover.tick', none('固定形状回执，不是任职对象'), {
+      preconditions: ['lockHandoverRequest', 'assertRevision'],
     }),
     ...byId,
   }),

@@ -168,6 +168,7 @@ export const profileSections = [
       'firstEntryDate',
       'latestEntryDate',
       'lastWorkDate',
+      'dailyWageStandard',
     ],
   },
 ];

@@ -44,7 +44,7 @@ export interface EntryViewItem {
   readonly cancelRemark: string | null;
 }
 
-function viewPredicate(view: EntryView, today: string): SQL {
+export function entryViewPredicate(view: EntryView, today: string): SQL {
   const pending = sql`s.employee_status=${EMPLOYEE_STATUS.pendingEntry}`;
   switch (view) {
     case 'all':
@@ -101,7 +101,7 @@ export async function listEntryView(
       ENTRY_KINDS.map((kind) => sql`${kind}`),
       sql`, `,
     )})
-      AND ${viewPredicate(input.view, input.today)} AND ${visible}
+      AND ${entryViewPredicate(input.view, input.today)} AND ${visible}
     ORDER BY t.start_date, r.id LIMIT ${input.page.limit} OFFSET ${input.page.offset}
   `),
   );

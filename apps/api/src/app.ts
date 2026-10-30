@@ -1,6 +1,9 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
+import { registerHrAnalysisRoutes } from './modules/hr-analysis/routes.js';
 import { registerOfferRoutes } from './modules/offer/routes.js';
 import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
+import { registerHrDashboardRoutes } from './modules/analytics/hr-dashboard-routes.js';
+import { registerOrgAdjustmentRoutes } from './modules/org-adjustment/routes.js';
 import type { Db } from '@italent/db';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -52,6 +55,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerContractRoutes, // R2-T06 合同协议
   registerOfferRoutes, // R2 BE-14a Offer 管理
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
+  registerHrAnalysisRoutes, // R2 BE-12a 人事分析（时点员工花名册）
   registerAuditRoutes, // R1-T16 审计日志
   registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
@@ -62,6 +66,8 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerCommandResultRoutes, // F-120 本人命令结果只读回查
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）
+  registerHrDashboardRoutes, // R2-T10 BE-12b 人事分析：人事看板
+  registerOrgAdjustmentRoutes, // R2-T08 组织调整审批（BE-10b1 头字段与调整范围）
 ];
 
 export interface AppDeps {

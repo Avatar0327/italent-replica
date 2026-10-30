@@ -228,6 +228,13 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['instanceOfTask', call('instanceOfTask'), NEAR],
     ['currentAssignee（assertOpen / openTask）', calls('assertOpen', 'openTask'), NEAR],
     ['retrievable（retrievableTask）', call('retrievableTask'), NEAR],
+    // 离职交接（BE-8b2）：参与人 = 发起人员工本人或该审批实例上有任务的审批人；办理 = 当前待办节点负责的类别（exit-handover.ts）
+    [
+      'exit handover participant（isHandoverParticipant）',
+      call('isHandoverParticipant'),
+      { near: true, modules: ['employment'] },
+    ],
+    ['exit handover assignee（tickHandoverItem）', call('tickHandoverItem'), { near: true, modules: ['employment'] }],
     // IDP 执行人：当前阶段在办待办人 + 节点按钮（plan-access.ts requireExecutor）
     ['idp executor（requireExecutor）', call('requireExecutor'), { near: true, modules: ['idp'] }],
     [
@@ -369,6 +376,12 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['org.visibleParents', call('visibleParents'), { near: true, modules: ['org'] }],
     ['job.assignmentReferences', call('assignmentReferences'), { near: true, modules: ['job'] }],
     ['job.employmentScope', call('authorizeSequenceTargets'), { modules: ['job'] }],
+    // 组织调整申请头：主体组织 + 调整范围逐个（命令守卫内；改头 / 作废 / 校验经 authorizeStored 对现值再判）
+    [
+      'orgAdjustment.head',
+      calls('authorizeHead', 'authorizeHeadAction', 'authorizeStored'),
+      { modules: ['org-adjustment'] },
+    ],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
   // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）

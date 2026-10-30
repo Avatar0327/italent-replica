@@ -18,6 +18,8 @@ import { loadOccupancy, assertOccupancyChange } from './exit-cancel-intervals.js
 import { runExitCancelledHooks, type ExitCancelCase } from './exit-confirmation.js';
 // 撤销离职回收黑名单（BE-8b1，DEC-631）订阅 onCancelled 端口，随撤销入口一起加载
 import './exit-blacklist.js';
+// 交接自动发起（BE-8b2，DM-R14）订阅 onConfirmed、撤销离职终止交接订阅 onCancelled，随入口一起加载
+import './exit-handover.js';
 import { probeDownstream, type Downstream } from './exit-downstream.js';
 import { businessKind, isExitKind, loadExitRequest } from './exit-gate.js';
 import { lockExitOrganizationResources } from './exit-void-applications.js';
@@ -114,6 +116,7 @@ export async function cancelExit(
   ctx: EmploymentContext,
   businessId: string,
   input: CancelInput,
+  options: { readonly replacementUntil?: string } = {},
 ): Promise<CancelReceipt> {
   const head = await loadCancelHead(tx, ctx, businessId);
   const reason = textReason(input.reason, head.kind);
@@ -129,10 +132,16 @@ export async function cancelExit(
 
   // 状态迁移：未办结草稿删除；审批中 / 已驳回 / 已批准作废（revoke）；已生效删除（墓碑 + 时间轴恢复 + 挂回未来调动）
   const action = stateBefore === 'draft' || stateBefore === 'effective' ? 'delete' : 'revoke';
-  const result = await transitionEmployment(tx, ctx, { id: businessId, action, cancelling: true });
+  const result = await transitionEmployment(tx, ctx, {
+    id: businessId,
+    action,
+    cancelling: true,
+    restoreUntil: options.replacementUntil,
+  });
   // 结束在途 / 退回中的审批实例（审批通过的申请没有活动实例，钩子无事可做）
   await employmentApprovalHooks.deleted(tx, ctx, businessId);
-  if (before) await assertOccupancyChange(tx, ctx, business.employeeId, businessId, before, input.confirmed === true);
+  if (before && !options.replacementUntil)
+    await assertOccupancyChange(tx, ctx, business.employeeId, businessId, before, input.confirmed === true);
 
   const downstream = await probeDownstream(tx, ctx, {
     employeeId: business.employeeId,

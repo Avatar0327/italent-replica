@@ -26,8 +26,8 @@ export interface Cancelled {
   };
 }
 
-export async function cancelWorld(db: Db, label: string, today = '2026-10-06') {
-  const x = await capacityWorld(db, label, today);
+export async function cancelWorld(db: Db, label: string, today = '2026-10-06', options: { capacity?: boolean } = {}) {
+  const x = await capacityWorld(db, label, today, options);
   const tenantId = x.session.tenant.id;
 
   /** 撤销（If-Match 缺省取业务当前 revision）；返回原始响应。 */
