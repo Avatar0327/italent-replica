@@ -40,9 +40,9 @@ export async function loadWorld(tx: Tx, tenantId: string, view: AdjustmentView):
   return { tenantId, view, items, orgs: new Map(snapshot.map((org) => [org.id, org])) };
 }
 
-/** 停用整支展开与在岗判断所需的组织上下文：这些只读判断只用到租户，不落组织版本。 */
-export function orgContext(tenantId: string): OrgWriteContext {
-  return { tenantId, userId: '', timezone: 'UTC', rootName: '', now: new Date(0), commandId: '', expectedRevision: 0 };
+/** 复用组织模块只读判断所需的上下文：只用到租户与当前时刻（编码预占是否过期），不落组织版本。 */
+export function orgContext(tenantId: string, now = new Date(0)): OrgWriteContext {
+  return { tenantId, userId: '', timezone: 'UTC', rootName: '', now, commandId: '', expectedRevision: 0 };
 }
 
 const orgRef = (id: string): AdjustmentOrgRef => ({ kind: 'org', id });
@@ -97,9 +97,13 @@ export function planIssues(world: ItemWorld, items: readonly OrgItem[]): OrgPlan
   return planOrgTree({ rootId: root, orgs, items: planItems });
 }
 
-/** 写入时只拦本次写的行上的问题；其它行的问题由整单校验列出。 */
-export function assertPlan(world: ItemWorld, items: readonly OrgItem[], written: ReadonlySet<string>) {
-  const hit = planIssues(world, items).find((issue) => written.has(issue.itemId));
+/**
+ * 写入时只拦本次操作新造成的问题：按“原因 + 违规节点”比较操作前后（问题行只是归属，可能落在别的行上，第 2 轮 P2-5）；
+ * 操作前已有的问题保留，由整单校验列出。
+ */
+export function assertPlan(world: ItemWorld, before: readonly OrgItem[], after: readonly OrgItem[]) {
+  const existing = new Set(planIssues(world, before).flatMap((i) => i.nodes.map((node) => `${i.reason}:${node}`)));
+  const hit = planIssues(world, after).find((i) => i.nodes.some((node) => !existing.has(`${i.reason}:${node}`)));
   if (hit)
     throw new AppError('VALIDATION_FAILED', PLAN_MESSAGES[hit.reason], { reason: hit.reason, itemId: hit.itemId });
 }

@@ -33,9 +33,12 @@ describe('AC-OA-43 路由 4～6、8～9 的按钮与入口（§9.3）', () => {
   const payload = (w: Awaited<ReturnType<typeof itemsWorld>>, entry: OrgItemEntry) => {
     const type = ORG_ITEM_ENTRY_BUTTONS[entry].adjustType;
     const body = type === 1 ? newOrg(w.a) : type === 2 ? rename(w.a) : stop(w.a);
-    return entry === 'editor.drag'
-      ? { entry, adjustType: 2, targetOrgId: w.a, parent: { orgId: w.b }, addEmployment: false }
-      : { ...body, entry };
+    if (entry === 'editor.drag') {
+      return { entry, adjustType: 2, targetOrgId: w.a, parent: { orgId: w.b }, addEmployment: false };
+    }
+    // §6.2：同级新增只给同级来源，上级由服务端取（第 2 轮 P2-1）。
+    if (entry === 'editor.peer') return { entry, adjustType: 1, name: newOrg(w.a).name, siblingOf: { orgId: w.a } };
+    return { ...body, entry };
   };
 
   it('每个入口缺其按钮 → 403 不写；入口与类型不符 → 400', async () => {

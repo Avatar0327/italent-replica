@@ -140,7 +140,7 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const stored = await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
         authorizeHeadAction(tx, deps, ctx, { actor: 'applicant', operation: 'update', subjectOrgId, rangeOrgIds }),
       );
-      return checkAdjustment(tx, ctx.tenantId, stored);
+      return checkAdjustment(tx, ctx.tenantId, stored, deps.clock());
     });
     return c.json(await trimCheck(deps, ctx, result), 200);
   });
@@ -158,7 +158,11 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await writeFields(deps, ctx, OBJECT, 'update', itemFieldCodes(Object.keys(input)));
     return itemCommand(c, deps, ctx, id, input, {
       button: [entry.objectCode, entry.code, entry.level],
-      orgIds: async () => [input.targetOrgId, ...inputOrgs(input)],
+      orgIds: async () => [
+        input.targetOrgId,
+        input.siblingOf && 'orgId' in input.siblingOf ? input.siblingOf.orgId : undefined,
+        ...inputOrgs(input),
+      ],
       execute: (tx, commandCtx) => addOrgItem(tx, commandCtx, id, input, orgScopeAuthorizer(deps, ctx)),
     });
   });

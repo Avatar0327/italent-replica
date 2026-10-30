@@ -1,6 +1,8 @@
 /**
  * 组织明细基线（R2-T08 §2.5，BE-10b2）：建行时记目标组织生效日现行版本与组织 revision；提交（10c）前判外部变更，
- * 刷新基线（路由 8 单行 / 路由 9 整单）把基线改成当前值。刷新即使无变化也 revision + 1 并审计，便于追溯。
+ * 刷新基线（路由 8 单行 / 路由 9 整单）把基线改成当前值。刷新即使无变化也 revision + 1 并审计，便于追溯：
+ * 每行一条明细审计；整单刷新另记一条申请单审计（空单、仅含新增行时也有，第 2 轮 P2-6）。
+ * 刷新只确认版本，不豁免业务约束（整单校验照常按生效日重判）。
  */
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
@@ -9,7 +11,7 @@ import { BASELINE_CHANGED, baselineIssues } from './item-check.js';
 import { loadWorld } from './item-tree.js';
 import { auditItem, bumpRevision, loadItems, updateItem, type ItemsResult, type OrgItem } from './items-store.js';
 import { ORG_INACTIVE } from './range.js';
-import { editable, loadAdjustment, type WriteContext } from './service.js';
+import { audit, editable, loadAdjustment, type WriteContext } from './service.js';
 
 /** 提交关口：任一非暂存行基线过期 → 409，列出行。 */
 export async function assertBaselines(tx: Tx, tenantId: string, adjustmentId: string, _stage: 'submit') {
@@ -36,7 +38,9 @@ export async function rebaseItem(tx: Tx, ctx: WriteContext, id: string, itemId: 
 export async function rebaseAll(tx: Tx, ctx: WriteContext, id: string): Promise<ItemsResult> {
   const view = await editable(tx, ctx, id);
   const items = (await loadItems(tx, ctx.tenantId, id)).filter((item) => item.targetOrgId);
-  return rebase(tx, ctx, view.approvalSubjectOrgId, id, view.effectiveDate, items);
+  const result = await rebase(tx, ctx, view.approvalSubjectOrgId, id, view.effectiveDate, items);
+  await audit(tx, ctx, 'org-adjustment.rebase', view, { ...view, revision: result.revision });
+  return result;
 }
 
 async function rebase(

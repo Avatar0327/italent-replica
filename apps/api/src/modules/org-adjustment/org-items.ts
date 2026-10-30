@@ -1,20 +1,18 @@
 /**
  * 组织明细增改删（R2-T08 §6.1 路由 4～6，BE-10b2）。每次写：锁申请单 → revision → 申请人与状态（同改头）→
- * 关口与字段 → 引用组织在生效日存在且启用 → 内容完整（暂存行跳过）→ 调整范围 → 停用整支展开连带行 → 100 条上限 →
- * 叠树校验（只拦本次写的行）→ 写行 → revision + 1 → 每行一条审计。组织层数据范围由调用方在命令守卫里先判（access.ts）。
+ * 关口与字段 → 内容完整（暂存行跳过）→ 逐行业务规则（item-rules，与整单校验同一入口）→ 停用整支展开连带行 →
+ * 100 条上限 → 叠树校验（只拦本次操作新造成的问题）→ 写行 → revision + 1 → 每行一条审计。
+ * 组织层数据范围由调用方在命令守卫里先判（access.ts）；同级新增解析出的上级在命令内再判。
  */
 import { randomUUID } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import {
-  assertDeactivationAfterEstablished,
-  planDeactivationSubtree,
-  type CascadeAuthorizer,
-} from '../org/deactivation.js';
+import type { CascadeAuthorizer } from '../org/deactivation.js';
 import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import type { OrgRecord } from '../org/read-model.js';
 import { invalid, type OrganizationPatch } from '../org/validation.js';
-import { assertInRange, assertPlan, loadWorld, orgContext, type ItemWorld } from './item-tree.js';
+import { activeOrg, assertItemRules, createdRow, existingOrg, planStop, type Submitted } from './item-rules.js';
+import { assertPlan, loadWorld, type ItemWorld } from './item-tree.js';
 import { type AddItemInput, assertItemFields, CHANGE_FIELDS, type ItemPatch, toContent } from './item-validation.js';
 import {
   auditItem,
@@ -28,7 +26,6 @@ import {
   type OrgItemContent,
   updateItem,
 } from './items-store.js';
-import { ORG_INACTIVE } from './range.js';
 import { editable, type AdjustmentView, type WriteContext } from './service.js';
 
 export const ORG_ITEM_LIMIT = 100;
@@ -52,8 +49,7 @@ export async function addOrgItem(
   if (drag && !input.parent) throw invalid('parent', '拖拽必须选择上级组织');
   const world = await loadWorld(tx, ctx.tenantId, view);
   const target = input.targetOrgId ? activeOrg(world, input.targetOrgId) : undefined;
-  const content = { ...EMPTY_CONTENT, ...toContent(input) };
-  assertRefs(world, content);
+  const content = { ...EMPTY_CONTENT, ...toContent(input), ...(await siblingParent(tx, world, input, authorize)) };
   const existing = target && world.items.find((item) => item.targetOrgId === target.id);
   if (existing) {
     if (drag && existing.adjustType === 2 && !existing.cascadedFromItemId) {
@@ -73,9 +69,8 @@ export async function addOrgItem(
     isStaged: input.isStaged ?? false,
   };
   if (!item.isStaged) validateContent(item, target);
-  assertInRange(world, [...world.items, item], item);
-  const cascaded =
-    item.adjustType === 3 && !item.isStaged ? await cascade(tx, ctx, world, item, target!, authorize) : [];
+  await assertItemRules(tx, ctx.now, world, [...world.items, item], item, 'all');
+  const cascaded = item.adjustType === 3 && !item.isStaged ? await cascade(tx, world, item, target!, authorize) : [];
   const written = numbered(world.items, [item, ...cascaded]);
   const count = world.items.length + written.length;
   if (count > ORG_ITEM_LIMIT) {
@@ -86,7 +81,7 @@ export async function addOrgItem(
       count,
     });
   }
-  assertPlan(world, [...world.items, ...written], new Set(written.map((row) => row.id)));
+  assertPlan(world, world.items, [...world.items, ...written]);
   for (const row of written) await insertItem(tx, ctx.tenantId, id, row);
   const revision = await finish(
     tx,
@@ -111,15 +106,7 @@ export async function patchOrgItem(
   const before = ownRow(world.items, itemId);
   assertItemFields(before.adjustType, patch);
   const after: OrgItem = { ...before, ...toContent(patch) };
-  assertRefs(world, after);
-  const current = before.targetOrgId ? existingOrg(world, before.targetOrgId) : undefined;
-  if (!after.isStaged) validateContent(after, current);
-  const items = world.items.map((item) => (item.id === itemId ? after : item));
-  assertInRange(world, items, after);
-  assertPlan(world, items, new Set([itemId]));
-  await updateItem(tx, ctx.tenantId, id, after);
-  const revision = await finish(tx, ctx, view, 'org-adjustment.item.update', [[before, after]]);
-  return { adjustmentId: id, revision, items: [after] };
+  return { adjustmentId: id, ...(await rewrite(tx, ctx, world, before, after, Object.keys(patch))) };
 }
 
 /** 路由 6：删一行及其连带行；被本单其它行引用（上级 / 转移组织指向它）时拒绝。返回被删的行（供重放复核范围）。 */
@@ -163,27 +150,57 @@ async function dragOnto(
     parentItemId: content.parentItemId,
     addEmployment: content.addEmployment,
   };
-  if (!after.isStaged) validateContent(after, existingOrg(world, after.targetOrgId!));
+  return { adjustmentId: world.view.id, ...(await rewrite(tx, ctx, world, before, after, [])) };
+}
+
+/** 改一行（修改 / 拖拽共用）：内容完整 → 逐行规则 → 叠树（比较改前改后）→ 写行与审计。 */
+async function rewrite(
+  tx: Tx,
+  ctx: WriteContext,
+  world: ItemWorld,
+  before: OrgItem,
+  after: OrgItem,
+  submitted: Submitted,
+): Promise<Omit<ItemsResult, 'adjustmentId'>> {
+  if (!after.isStaged) validateContent(after, before.targetOrgId ? existingOrg(world, before.targetOrgId) : undefined);
   const items = world.items.map((item) => (item.id === after.id ? after : item));
-  assertInRange(world, items, after);
-  assertPlan(world, items, new Set([after.id]));
+  await assertItemRules(tx, ctx.now, world, items, after, submitted);
+  assertPlan(world, world.items, items);
   await updateItem(tx, ctx.tenantId, world.view.id, after);
   const revision = await finish(tx, ctx, world.view, 'org-adjustment.item.update', [[before, after]]);
-  return { adjustmentId: world.view.id, revision, items: [after] };
+  return { revision, items: [after] };
+}
+
+/**
+ * 同级新增（`editor.peer`，§6.2）：上级取同级来源的上级——既有组织取其生效日行政上级（须在数据范围内），
+ * 本单新增行取其上级引用。来源没有上级（根组织）时不能建同级。
+ */
+async function siblingParent(
+  tx: Tx,
+  world: ItemWorld,
+  input: AddItemInput,
+  authorize: CascadeAuthorizer,
+): Promise<Pick<OrgItemContent, 'parentOrgId' | 'parentItemId'> | undefined> {
+  const sibling = input.siblingOf;
+  if (!sibling) return undefined;
+  const source =
+    'orgId' in sibling
+      ? { parentOrgId: existingOrg(world, sibling.orgId).parents.admin?.parentId ?? null, parentItemId: null }
+      : createdRow(world.items, sibling.itemId);
+  if (!source.parentOrgId && !source.parentItemId) throw invalid('siblingOf', '根组织不能新建同级组织');
+  if (source.parentOrgId) await authorize(tx, [source.parentOrgId]);
+  return { parentOrgId: source.parentOrgId, parentItemId: source.parentItemId };
 }
 
 /** 停用整支：按生效日展开各级下级（含数据范围校验、设立日校验），生效日仍启用的下级各生成一条连带行。 */
 async function cascade(
   tx: Tx,
-  ctx: WriteContext,
   world: ItemWorld,
   root: OrgItem,
   target: OrgRecord,
   authorize: CascadeAuthorizer,
 ): Promise<OrgItem[]> {
-  const orgCtx = orgContext(ctx.tenantId);
-  const plan = await planDeactivationSubtree(tx, orgCtx, target, world.view.effectiveDate, authorize);
-  await assertDeactivationAfterEstablished(tx, orgCtx, [target.id, ...plan.descendants], plan.from);
+  const plan = await planStop(tx, world, target, authorize);
   const descendants = new Set(plan.descendants);
   const rows = plan.atFrom
     .filter((org) => descendants.has(org.id) && org.enabled)
@@ -231,28 +248,6 @@ function validateContent(item: OrgItem, current: OrgRecord | undefined) {
   if (!changed && flags.some((flag) => flag !== null)) {
     throw invalid('transferOldHeadSubordinates', '负责人未变化时不能选择负责人联动');
   }
-}
-
-/** 引用的既有上级须在生效日存在且启用；引用本单行须是本单的新增行。 */
-function assertRefs(world: ItemWorld, content: Pick<OrgItem, 'parentOrgId' | 'parentItemId'>) {
-  if (content.parentOrgId) activeOrg(world, content.parentOrgId);
-  if (content.parentItemId && !world.items.some((row) => row.id === content.parentItemId && row.adjustType === 1)) {
-    throw new AppError('NOT_FOUND', '组织调整明细不存在');
-  }
-}
-
-function existingOrg(world: ItemWorld, orgId: string): OrgRecord {
-  const org = world.orgs.get(orgId);
-  if (!org) throw new AppError('NOT_FOUND', '组织不存在');
-  return org;
-}
-
-function activeOrg(world: ItemWorld, orgId: string): OrgRecord {
-  const org = existingOrg(world, orgId);
-  if (!org.enabled) {
-    throw new AppError('VALIDATION_FAILED', '组织在生效日已停用', { reason: ORG_INACTIVE, orgIds: [orgId] });
-  }
-  return org;
 }
 
 /** 本单的行；连带行不能单独改删。 */

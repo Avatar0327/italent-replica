@@ -22,9 +22,16 @@ export type OrgPlanReason =
 export interface OrgPlanIssue {
   readonly itemId: string;
   readonly reason: OrgPlanReason;
+  /**
+   * 违规的树节点（`o:组织ID` / `i:明细ID`）：超层为超过 10 级的各节点，其它为该行自己的节点。问题行只是归属，
+   * 写入按“原因 + 节点”比较操作前后，判断是否本次操作新造成（第 2 轮 P2-5）。
+   */
+  readonly nodes: readonly string[];
 }
 
 export const ORG_MAX_LEVEL = 10;
+
+const nodeOf = (item: OrgPlanItem) => (item.adjustType === 1 ? `i:${item.id}` : `o:${item.targetOrgId}`);
 
 export function planOrgTree(input: {
   readonly rootId: string;
@@ -38,10 +45,12 @@ export function planOrgTree(input: {
   const parentOf = new Map(original);
   const known = (key: string) => key === root || original.has(key);
   const creates = new Map(input.items.filter((item) => item.adjustType === 1).map((item) => [item.id, item]));
-  const issues: OrgPlanIssue[] = [];
-  const report = (item: OrgPlanItem, reason: OrgPlanReason) => {
-    if (item.isStaged || issues.some((issue) => issue.itemId === item.id && issue.reason === reason)) return;
-    issues.push({ itemId: item.id, reason });
+  const issues: { itemId: string; reason: OrgPlanReason; nodes: string[] }[] = [];
+  const report = (item: OrgPlanItem, reason: OrgPlanReason, node = nodeOf(item)) => {
+    if (item.isStaged) return;
+    const found = issues.find((issue) => issue.itemId === item.id && issue.reason === reason);
+    if (!found) issues.push({ itemId: item.id, reason, nodes: [node] });
+    else if (!found.nodes.includes(node)) found.nodes.push(node);
   };
   const resolve = (parent: OrgPlanItem['parent']) => {
     if (!parent) return undefined;
@@ -102,7 +111,7 @@ function reportLevels(
   parentOf: ReadonlyMap<string, string | null>,
   owners: ReadonlyMap<string, OrgPlanItem>,
   cyclic: ReadonlySet<string>,
-  report: (item: OrgPlanItem, reason: OrgPlanReason) => void,
+  report: (item: OrgPlanItem, reason: OrgPlanReason, node?: string) => void,
 ) {
   const depths = new Map<string, number | null>([[root, 0]]);
   const depthOf = (key: string): number | null => {
@@ -122,12 +131,12 @@ function reportLevels(
   for (const key of parentOf.keys()) {
     if ((depthOf(key) ?? 0) <= ORG_MAX_LEVEL) continue;
     const own = owners.get(key);
-    if (own?.adjustType === 1) report(own, 'ORG_ADJUSTMENT_LEVEL_EXCEEDED');
+    if (own?.adjustType === 1) report(own, 'ORG_ADJUSTMENT_LEVEL_EXCEEDED', key);
     // 整支被压深：报离该组织最近的改上级行（发起行）。
     for (let at: string | null | undefined = key; at; at = parentOf.get(at)) {
       const owner = owners.get(at);
       if (owner?.adjustType !== 2) continue;
-      report(owner, 'ORG_ADJUSTMENT_LEVEL_EXCEEDED');
+      report(owner, 'ORG_ADJUSTMENT_LEVEL_EXCEEDED', key);
       break;
     }
   }

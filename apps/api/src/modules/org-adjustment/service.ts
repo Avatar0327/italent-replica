@@ -132,14 +132,14 @@ async function assertItemsInRange(tx: Tx, tenantId: string, next: AdjustmentView
 const CHECK_LIMIT = 200;
 
 /** 整单只读校验（路由 7）：主体组织与调整范围在生效日可用 + 组织明细（item-check）；信封最多 200 条，超出标 truncated。 */
-export async function checkAdjustment(tx: Tx, tenantId: string, view: AdjustmentView) {
+export async function checkAdjustment(tx: Tx, tenantId: string, view: AdjustmentView, now: Date) {
   const orgIds = await inactiveOrgs(
     tx,
     tenantId,
     [view.approvalSubjectOrgId, ...view.adjustmentRange],
     view.effectiveDate,
   );
-  const items = await checkOrgItems(tx, await loadWorld(tx, tenantId, view));
+  const items = await checkOrgItems(tx, await loadWorld(tx, tenantId, view), now);
   const all = [...(orgIds.length > 0 ? [{ reason: ORG_INACTIVE, orgIds }] : []), ...items];
   const errors = all.slice(0, CHECK_LIMIT);
   return { valid: all.length === 0, errors, warnings: [], ...(all.length > CHECK_LIMIT && { truncated: true }) };
@@ -182,7 +182,7 @@ async function nextCode(tx: Tx, ctx: WriteContext): Promise<string> {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
-function audit(tx: Tx, ctx: WriteContext, action: string, before: AdjustmentView | null, after: AdjustmentView) {
+export function audit(tx: Tx, ctx: WriteContext, action: string, before: AdjustmentView | null, after: AdjustmentView) {
   return recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,

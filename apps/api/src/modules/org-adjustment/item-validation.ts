@@ -47,6 +47,8 @@ export const addItemSchema = z.strictObject({
   entry: z.enum(ENTRIES),
   adjustType: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   targetOrgId: opt(uuid),
+  /** 只用于 `editor.peer`：服务端取同级来源的上级作为新上级（§6.2），不落库。 */
+  siblingOf: orgRef.optional(),
   isStaged: z.boolean().optional(),
 });
 export const patchItemSchema = z
@@ -99,9 +101,10 @@ export const CHANGE_FIELDS = [
   'hrbpId',
 ] as const satisfies readonly (keyof OrgItemContent)[];
 
-/** 字段编辑权按 OrganizationApproval 的 `orgItems.*` 判（上级 / 转移组织按字段名，不分引用方式）。 */
+/** 字段编辑权按 OrganizationApproval 的 `orgItems.*` 判（上级 / 转移组织按字段名，不分引用方式；同级来源即定上级）。 */
 export function itemFieldCodes(keys: readonly string[]): Record<string, true> {
-  const name = (key: string) => (key === 'parent' ? 'parentOrgId' : key === 'transferTo' ? 'transferToOrgId' : key);
+  const name = (key: string) =>
+    key === 'parent' || key === 'siblingOf' ? 'parentOrgId' : key === 'transferTo' ? 'transferToOrgId' : key;
   return Object.fromEntries(keys.filter((key) => key !== 'entry').map((key) => [`orgItems.${name(key)}`, true]));
 }
 
@@ -113,6 +116,11 @@ export function assertEntryType(input: AddItemInput) {
   if ((input.adjustType === 1) !== (input.targetOrgId == null)) {
     throw invalid('targetOrgId', input.adjustType === 1 ? '新增组织不能指定目标组织' : '必须选择目标组织');
   }
+  const peer = input.entry === 'editor.peer';
+  if (peer !== (input.siblingOf !== undefined)) {
+    throw invalid('siblingOf', peer ? '新建同级组织必须选择同级组织' : '只有新建同级组织可以选择同级组织');
+  }
+  if (peer && input.parent !== undefined) throw invalid('parent', '新建同级组织的上级取同级组织的上级，不能另选');
 }
 
 /** 只许本类型（入口）的字段；11d / 11e 前未开放的能力按关口拒绝。 */
@@ -140,7 +148,12 @@ export function assertItemFields(kind: 1 | 2 | 3 | 'drag', input: Partial<Record
 
 /** 把载荷里的上级 / 转移组织引用拆成存储列；未给的键保持 undefined（PATCH 不改）。 */
 export function toContent(input: Partial<Record<ItemFieldKey, unknown>>): Partial<OrgItemContent> {
-  const { parent, transferTo, ...rest } = input as Record<string, unknown> & {
+  const {
+    parent,
+    transferTo,
+    siblingOf: _sibling,
+    ...rest
+  } = input as Record<string, unknown> & {
     parent?: { orgId?: string; itemId?: string } | null;
     transferTo?: { orgId?: string; itemId?: string } | null;
   };

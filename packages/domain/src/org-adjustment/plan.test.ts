@@ -63,6 +63,23 @@ describe('planOrgTree（R2-T08 §5.2：本单明细叠到生效日组织树）',
     expect(reasonsOf([...chain, under, moveUnderItem('m', 'b', 'n9')])).toContain('m:ORG_ADJUSTMENT_LEVEL_EXCEEDED');
   });
 
+  it('nodes 记违规节点：超层为超过 10 级的各节点（归属仍报发起行），其它为行自己的节点', () => {
+    const chain: OrgPlanItem[] = [];
+    let parent: OrgPlanItem['parent'] = { kind: 'org', id: 'b' };
+    for (let level = 2; level <= 9; level++) {
+      chain.push(create(`c${level}`, parent));
+      parent = { kind: 'item', id: `c${level}` };
+    }
+    // a 挂到第 9 层 c9 下：a 第 10 层，a1 第 11、a11 第 12 → 同一问题归发起行 m，节点记 a1、a11。
+    expect(plan([...chain, moveUnderItem('m', 'a', 'c9')])).toEqual([
+      { itemId: 'm', reason: 'ORG_ADJUSTMENT_LEVEL_EXCEEDED', nodes: ['o:a1', 'o:a11'] },
+    ]);
+    expect(plan([move('i1', 'a', 'a11')])).toEqual([{ itemId: 'i1', reason: 'ORG_ADJUSTMENT_CYCLE', nodes: ['o:a'] }]);
+    expect(plan([create('n', { kind: 'item', id: 'missing' })])).toEqual([
+      { itemId: 'n', reason: 'ORG_ADJUSTMENT_ITEM_REFERENCE', nodes: ['i:n'] },
+    ]);
+  });
+
   it('挂到本单停用整支下（含连带下级）→ PARENT_STOPPED；挂到未停用的上级不算', () => {
     expect(reasonsOf([stop('s', 'a'), create('n', { kind: 'org', id: 'a11' })])).toEqual([
       'n:ORG_ADJUSTMENT_PARENT_STOPPED',
