@@ -6,6 +6,7 @@ import { ReadPanel } from './ReadPanel.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useRead } from './useRead.js';
+import { EditPersonButton } from './EditCommands.js';
 import { EmploymentRecords, PersonnelProfile } from './ProfileSections.js';
 import { displayValue, type Row } from './model.js';
 import { m } from './messages.js';
@@ -31,7 +32,12 @@ export function StaffDetail({
       open
       onClose={onClose}
       title={m.detail}
-      actions={actions}
+      actions={
+        <>
+          <EditPersonButton employeeId={employeeId} saved={result.refresh} />
+          {actions}
+        </>
+      }
       summary={
         <>
           <DecisionNote id="personnel-records" />
