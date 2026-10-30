@@ -385,3 +385,68 @@ describe('AC-OA-29 变更组顺序：按生效日完整新树', () => {
     expect(await world.state(adjustment.id)).toMatchObject({ success_count: 2, failure_count: 0 });
   });
 });
+
+describe('AC-OA-29 提交结果未知', () => {
+  it('第五次提交已落库但回执丢失：恢复时复读组终态，保留成功，不累计第五次失败、不记 EXECUTION_ERROR', async () => {
+    const world = await runnerWorld('oa29-unknown-commit');
+    const { db, tenant, w } = world;
+    const a = await w.org('A');
+    const { adjustment, groups } = await world.scheduledAdjustment([a.id]);
+    let loseReceipt = false;
+    // 事务已提交，调用方却收到错误：与“提交后连接断开、结果未知”同形。
+    const flaky = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== 'transaction') return Reflect.get(target, key, receiver);
+        return async (...args: unknown[]) => {
+          const out = await (target.transaction as (...a: unknown[]) => Promise<unknown>)(...args);
+          if (!loseReceipt) return out;
+          loseReceipt = false;
+          throw new Error('提交回执丢失');
+        };
+      },
+    });
+    let calls = 0;
+    const executor: GroupExecutor = async (tx) => {
+      if (++calls < 5) throw new Error('数据库连接中断');
+      const context = {
+        tenantId: tenant.id,
+        userId: w.user.id,
+        timezone: tenant.timezone,
+        now: world.clock(),
+        commandId: randomUUID(),
+        expectedRevision: a.revision,
+        orgAdjustmentId: adjustment.id,
+      };
+      await updateOrganization(tx, context, a.id, { effectiveDate: TODAY, name: 'A已实际改名', addEmployment: false });
+      loseReceipt = true;
+      return 'done';
+    };
+    const results = [];
+    for (let attempt = 1; attempt <= 5; attempt++)
+      results.push(
+        await runOrgAdjustmentTenant(flaky, world.tenant, world.clock, {
+          holderToken: 'p',
+          executors: { 2: executor },
+        }),
+      );
+
+    expect(results[4]).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect((await w.orgsAt(TODAY)).get(a.id)?.name, '第五次事务已提交').toBe('A已实际改名');
+    expect((await itemResults(db, tenant.id, adjustment.id)).get(groups[0]!)).toMatchObject({
+      execution_result: 1,
+      execution_reason: null,
+    });
+    expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, success_count: 1, failure_count: 0 });
+    const attempts = await tableRows<{ attempts: number }>(
+      db,
+      tenant.id,
+      'org_adjustment_group_attempts',
+      adjustment.id,
+    );
+    expect(
+      attempts.map((row) => row.attempts),
+      '已成功的组不再累计第五次',
+    ).toEqual([4]);
+    expect(await world.pauses(adjustment.id)).toEqual([]);
+  });
+});
