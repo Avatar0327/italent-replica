@@ -400,6 +400,17 @@ test('AC-FE-R1a-43 只写原系统编码映射与 expectedRevision、没有 orgI
   expect(posts.map((request) => request.postDataJSON())).toEqual([{ rows: [mapped] }]);
 });
 
+async function openColumnSettings(page: Page) {
+  await page.getByRole('button', { name: '列设置' }).click();
+  await page.getByText('设置显示字段', { exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置显示字段' });
+  await expect(dialog).toBeVisible();
+  // F-338：缩放动画期间元素可见，但指针坐标仍在变化，须等动画退出后再勾选、拖拽。
+  await expect(dialog).toHaveCSS('transform', 'none');
+  await expect(dialog).not.toHaveClass(/ant-zoom-(appear|enter)/);
+  return dialog;
+}
+
 test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动排序、恢复默认，确定后生效', async ({ page, baseURL }) => {
   await setup(page, baseURL!);
   await page.goto('/org');
@@ -416,15 +427,12 @@ test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动�
     '操作',
   ];
   await expect(headers).toHaveText(defaults.map((text) => new RegExp(`^${text}`)));
-  const open = async () => {
-    await page.getByRole('button', { name: '列设置' }).click();
-    await page.getByText('设置显示字段', { exact: true }).click();
-    return page.getByRole('dialog', { name: '设置显示字段' });
-  };
-  let modal = await open();
+  let modal = await openColumnSettings(page);
   await expect(modal.getByRole('checkbox', { name: '机构ID' })).toBeDisabled();
   await modal.getByRole('checkbox', { name: '机构简称' }).check();
+  await expect(modal.getByText('已选字段 9/13', { exact: true })).toBeVisible();
   await modal.getByRole('checkbox', { name: '机构全称' }).uncheck();
+  await expect(modal.getByText('已选字段 8/13', { exact: true })).toBeVisible();
   const selected = modal.getByRole('list', { name: '已选字段' });
   await selected
     .getByRole('listitem', { name: '机构简称' })
@@ -441,13 +449,26 @@ test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动�
   ]);
   await modal.getByRole('button', { name: /取\s*消/ }).click();
   await expect(headers).toHaveText(defaults.map((text) => new RegExp(`^${text}`)));
-  modal = await open();
+  modal = await openColumnSettings(page);
   await modal.getByRole('checkbox', { name: '机构简称' }).check();
+  await expect(modal.getByText('已选字段 9/13', { exact: true })).toBeVisible();
   // 右栏固定高度：拖动可见范围内的项（新勾选的简称排在末尾）。
   await selected
     .getByRole('listitem', { name: '启用日期' })
     .dragTo(selected.getByRole('listitem', { name: '机构全称' }));
+  await expect(selected.getByRole('listitem')).toHaveText([
+    '机构ID',
+    '机构名称',
+    '启用日期',
+    '机构全称',
+    '所在城市',
+    '机构类型',
+    '建立日期',
+    '禁用日期',
+    '机构简称',
+  ]);
   await modal.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(modal).toHaveCount(0);
   await expect(headers).toHaveText(
     [
       '机构ID',
@@ -462,7 +483,7 @@ test('AC-FE-R1a-44 列设置：齿轮打开居中两栏弹窗，勾选、拖动�
       '操作',
     ].map((text) => new RegExp(`^${text}`)),
   );
-  modal = await open();
+  modal = await openColumnSettings(page);
   await modal.getByRole('button', { name: '恢复默认' }).click();
   await modal.getByRole('button', { name: /确\s*定/ }).click();
   await expect(headers).toHaveText(defaults.map((text) => new RegExp(`^${text}`)));

@@ -1,10 +1,12 @@
 {
-  "reason": "F-325 / DEC-685①：日工资标准仅默认授予组织员工模块的标准版系统管理员和人事管理员",
+  "reason": "BE-10a2：两预置管理员新增组织调整申请/明细对象字段、数据操作与18个按钮；申请单预置看全部（DEC-415），其他身份不扩权",
   "add": [
-    "standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view",
-    "standard_org_system_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit",
-    "standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:view",
-    "standard_hr_admin/TenantBase.EmployeeInformation/field:dailyWageStandard:edit"
+    "standard_org_system_admin/TenantBase.OrganizationApproval/*",
+    "standard_org_system_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval",
+    "standard_hr_admin/TenantBase.OrganizationApproval/*",
+    "standard_hr_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval"
   ],
   "remove": []
 }

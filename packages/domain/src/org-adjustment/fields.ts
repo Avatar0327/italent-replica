@@ -1,20 +1,20 @@
-/**
- * 组织调整的审批字段目录（R2-T08 设计 §4.5 编码契约）。
- * 本文件只是编码与类型 formFields：本对象字段用静态命名空间编码（权限编码 = 披露编码），合同变更等外部对象字段的编码
- * 带明细身份（逐行判可见）。**不注册到权限对象**：对象编码与按钮清单待 A-14 取证（DEC-644，F273A），由 BE-10a2 挂接。
- */
+/** 组织调整审批字段目录（R2-T08 v1.6 §4.5；权限编码 = 披露编码）。 */
 
-/**
- * 权限对象编码。待 F-273（F273A）取证，BE-10a2 定稿；现取设计值 TenantBase.OrgAdjustment（§9.2）。
- * 全仓只在这里写一次，审批类型、适配器与后续授权都引用这个常量，取证后改一处即可。
- */
-export const ORG_ADJUSTMENT_OBJECT_CODE = 'TenantBase.OrgAdjustment';
+/** F273A §2：原站视图 TenantBase.IntegrationOrgApprovalAdjustNavView 对应这两个业务对象。 */
+export const ORG_ADJUSTMENT_OBJECT_CODE = 'TenantBase.OrganizationApproval';
+export const ORG_ADJUSTMENT_DETAIL_OBJECT_CODE = 'TenantBase.OrganizationApprovalDetail';
 
 /** 标准流程编码（规格 33 OA-R1，预置的发起条件）。 */
 export const ORG_ADJUSTMENT_PROCESS_CODE = 'OrganizationProcess';
 
-/** 头字段：调整范围（scopeNote）语义未取证，字段关闭，不进审批表单（A-9，DEC-645）。 */
-export const ORG_ADJUSTMENT_HEADER_FIELDS = ['subject', 'effectiveDate', 'approvalSubjectOrgId', 'content'] as const;
+/** 头字段：调整范围为组织多选（F273A §4、设计 §2.1A）。 */
+export const ORG_ADJUSTMENT_HEADER_FIELDS = [
+  'subject',
+  'effectiveDate',
+  'approvalSubjectOrgId',
+  'adjustmentRange',
+  'content',
+] as const;
 
 /** 五个明细分区的静态编码：节点勾了某分区的哪些字段，审批人就能看哪些（§4.5 第二行）。 */
 export const ORG_ADJUSTMENT_SECTION_FIELDS = {
