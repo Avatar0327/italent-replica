@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { expectError } from './AC-OA-head-support.js';
+import { bodyOf, expectError, only } from './AC-OA-head-support.js';
 import { type ItemsWorld, itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -81,6 +81,25 @@ describe('AC-OA-01 / AC-OA-43 R2 P2-1 同级新增 editor.peer（§6.2：sibling
       'VALIDATION_FAILED',
     );
     expect(await w.rows(view.id)).toHaveLength(before);
+  });
+
+  it('AC-OA-24 siblingOf 不存在 / 来源不在组织范围 / 来源的上级不在组织范围 → 同一 404，不写库', async () => {
+    const w = await itemsWorld(testDb().db, 'oar2peer');
+    const source = await w.org(`同级来源${uniqueSuffix()}`, w.a);
+    const view = await w.created();
+    const peer = (sibling: string) => ({ entry: 'editor.peer', adjustType: 1, siblingOf: { orgId: sibling } });
+    const missing = await w.addItem(view.id, { ...peer(randomUUID()), name: `同级${uniqueSuffix()}` });
+    await expectError(missing, 404, 'NOT_FOUND');
+    const notFound = (await bodyOf(missing)).error!.message;
+    for (const scope of [only(w.a), only(source)]) {
+      w.access.org = scope;
+      const res = await w.addItem(view.id, { ...peer(source), name: `同级${uniqueSuffix()}` });
+      await expectError(res, 404, 'NOT_FOUND');
+      expect((await bodyOf(res)).error!.message).toBe(notFound);
+    }
+    expect(await w.rows(view.id)).toEqual([]);
+    w.access.org = only(w.a, source);
+    expect((await w.addItem(view.id, { ...peer(source), name: `同级${uniqueSuffix()}` })).status).toBe(201);
   });
 });
 
