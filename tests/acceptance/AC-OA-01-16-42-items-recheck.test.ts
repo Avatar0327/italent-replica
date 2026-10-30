@@ -283,3 +283,68 @@ describe('§2.5 / DEC-019 R2 P2-6 整单刷新基线写申请单级审计', () =
     expect(await w.itemAudits(creates.id)).toEqual(['org-adjustment.item.create']);
   });
 });
+
+describe('AC-OA-01 / AC-OA-43 R3 P2-R2-1 同级新增取本单叠树后的来源上级（§6.2 与 §5.2 预览叠树一致）', () => {
+  const peer = (orgId: string) => ({
+    entry: 'editor.peer',
+    adjustType: 1,
+    siblingOf: { orgId },
+    name: `同级${uniqueSuffix()}`,
+  });
+  const saved = async (w: ItemsWorld, adjustmentId: string, itemId: string) =>
+    (await w.rows(adjustmentId)).find((row) => row.id === itemId);
+
+  it('先把 X 改到既有组织下再新建同级 → 挂到新上级；多次调整后取最后一次的上级', async () => {
+    const w = await itemsWorld(testDb().db, 'oar3peer');
+    const origin = await w.org(`原上级${uniqueSuffix()}`, w.a);
+    const first = await w.org(`新上级甲${uniqueSuffix()}`, w.a);
+    const second = await w.org(`新上级乙${uniqueSuffix()}`, w.a);
+    const x = await w.org(`来源${uniqueSuffix()}`, origin);
+    const view = await w.created();
+    const changeId = (await w.item(view.id, move(x, first))).items[0]!.id;
+    const once = (await w.item(view.id, peer(x))).items[0]!;
+    expect(once).toMatchObject({ parentOrgId: first, parentItemId: null });
+    expect(await saved(w, view.id, once.id)).toMatchObject({ parent_org_id: first, parent_item_id: null });
+
+    const patched = await w.patchItem(view.id, changeId, { parent: { orgId: second } });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    const twice = (await w.item(view.id, peer(x))).items[0]!;
+    expect(twice).toMatchObject({ parentOrgId: second, parentItemId: null });
+    expect(await saved(w, view.id, twice.id)).toMatchObject({ parent_org_id: second, parent_item_id: null });
+    expect((await w.checked(view.id)).valid).toBe(true);
+  });
+
+  it('先把 X 改到本单新增行下再新建同级 → 上级为该新增行（parentItemId）', async () => {
+    const w = await itemsWorld(testDb().db, 'oar3peer');
+    const origin = await w.org(`原上级${uniqueSuffix()}`, w.a);
+    const x = await w.org(`来源${uniqueSuffix()}`, origin);
+    const view = await w.created();
+    const created = (await w.item(view.id, newOrg(w.a))).items[0]!.id;
+    await w.item(view.id, { ...move(x, w.a), parent: { itemId: created } });
+    const row = (await w.item(view.id, peer(x))).items[0]!;
+    expect(row).toMatchObject({ parentOrgId: null, parentItemId: created });
+    expect(await saved(w, view.id, row.id)).toMatchObject({ parent_org_id: null, parent_item_id: created });
+    expect((await w.checked(view.id)).valid).toBe(true);
+  });
+});
+
+describe('AC-OA-42 R3 P2-R2-2 整单校验重判连带停用行的调整范围（§5.6：刷新基线不豁免）', () => {
+  it('连带子组织被外部移出调整范围后刷新基线 → 校验报该连带行 OUT_OF_RANGE', async () => {
+    const w = await itemsWorld(testDb().db, 'oar3cas');
+    const parent = await w.org(`停用上级${uniqueSuffix()}`, w.a);
+    const child = await w.org(`连带下级${uniqueSuffix()}`, parent);
+    const view = await w.created();
+    const written = (await w.item(view.id, stop(parent))).items;
+    const cascaded = written.find((row) => row.targetOrgId === child)!;
+    expect(cascaded.cascadedFromItemId).toBe(written[0]!.id);
+    expect((await w.checked(view.id)).valid).toBe(true);
+
+    await moveOrg(w, child, w.b);
+    expect((await w.rebaseAll(view.id)).status).toBe(200);
+    const result = await w.checked(view.id);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ itemId: cascaded.id, reason: 'ORG_ADJUSTMENT_OUT_OF_RANGE', orgId: child }),
+    );
+  });
+});
