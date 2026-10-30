@@ -226,6 +226,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       36: 'ec8ed8d7ea948c06',
       // BE-10a2：组织调整两对象与申请单看全部（占位，合并时定号）。
       37: 'af83d59e6a2c0208',
+      // F-323（DEC-706）：人员类别字典对象授权项（两预置管理员）
+      38: 'c8e4748944d0f740',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

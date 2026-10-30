@@ -7,6 +7,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { employmentTypeId } from './AC-EMP-support.js';
 import { serviceWorld, type ServiceWorld } from './AC-PT-service-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -97,14 +98,15 @@ describe('createPartTime：写入底座（§1.3）', () => {
 
   it('可选字段照存；自定义字段、用工形式随记录保存，不从主职继承（A-15）', async () => {
     const w = await serviceWorld(database().db, 'pt-create-fields');
-    const result = await w.create({ employmentForm: 'full_time', employmentType: 'normal' });
+    const type = await employmentTypeId(w.db, w.tenantId, '职能后台');
+    const result = await w.create({ employmentForm: 'full_time', employmentType: type });
     const [row] = await withTenant(w.db, w.tenantId, async (tx) =>
       rowsOf<{ employment_form: string | null; employment_type: string | null; position_id: string | null }>(
         await tx.execute(sql`SELECT employment_form, employment_type, position_id FROM employment_records
           WHERE tenant_id=${w.tenantId} AND id=${result.id}`),
       ),
     );
-    expect(row).toEqual({ employment_form: 'full_time', employment_type: 'normal', position_id: null });
+    expect(row).toEqual({ employment_form: 'full_time', employment_type: type, position_id: null });
   });
 });
 

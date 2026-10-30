@@ -1205,6 +1205,13 @@
       "when": 1792958631516,
       "tag": "0171_shiny_husk",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1793376559729,
+      "tag": "0172_employment_types",
+      "breakpoints": true
     }
   ]
 }

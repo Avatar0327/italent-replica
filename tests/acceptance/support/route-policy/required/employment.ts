@@ -887,6 +887,58 @@ function blacklistRoute(
   ];
 }
 
+/** F-323 人员类别：入口 readContext 判对象操作，写权限链在命令内 requireTypeWrite（guard.before）。 */
+const EMPLOYMENT_TYPE = 'TenantBase.EmploymentType';
+const ET = `${SRC}/employment/employment-type-routes.ts`;
+const ET_CONST: Evidence = {
+  role: 'const',
+  unit: `${SRC}/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT`,
+  anchor: 'MODULE_OBJECTS.employmentType.code',
+};
+const etWrite = (anchor: string): Evidence => fn(ET, 'requireTypeWrite', anchor);
+function employmentTypeRoute(
+  method: string,
+  path: string,
+  operation: 'view' | 'create' | 'update' | 'delete',
+  button?: readonly [string, 'list' | 'detail'],
+): Obligation[] {
+  const rev = operation === 'view' ? '0' : 'revision(c)';
+  const entry = at(
+    ET,
+    method,
+    path,
+    `const ctx = await readContext(c, deps, 'object.${operation}', ${rev}, undefined, EMPLOYMENT_TYPE_OBJECT)`,
+  );
+  const facts = ['object:readContext(object.*)', `objectOp:${EMPLOYMENT_TYPE}:${operation}`, 'object:object.* 动作'];
+  const write =
+    operation === 'delete'
+      ? etWrite(
+          "await requirePermission(authorize, { ...ctx, action: 'object.delete', resource: EMPLOYMENT_TYPE_OBJECT })",
+        )
+      : etWrite('await requireObjectWrite(authorize, ctx, {');
+  return [
+    ob(
+      `obj:${EMPLOYMENT_TYPE}:${operation}`,
+      operation === 'view' ? facts : [...facts, OBJECT_WRITE_FACT],
+      operation === 'view' ? [entry, READ, ET_CONST] : [entry, READ, write, ET_CONST],
+    ),
+    ...(button
+      ? [
+          ob(
+            `btn:${EMPLOYMENT_TYPE}#${button[0]}@${button[1]}`,
+            ['button:buttonResource', 'button:object.button'],
+            [
+              etWrite(
+                "action: 'object.button', resource: buttonResource(EMPLOYMENT_TYPE_OBJECT, write.button, level),",
+              ),
+              ET_CONST,
+            ],
+          ),
+        ]
+      : []),
+  ];
+}
+
 /** R2 BE-15b1 试用期考核：考核对象 TenantBase.ProbationAssessment，写入口复用 readContext / requireEmploymentWrite（带对象编码）。 */
 const ASSESSMENT = 'TenantBase.ProbationAssessment';
 const ASSESS = `${SRC}/employment/assessment-routes.ts`;
@@ -3557,6 +3609,54 @@ export const EMPLOYMENT: RequiredTable = {
       '/exits/dictionaries/:dict/:id',
       "await requireEmploymentWrite(ctx, 'update', input, undefined, 'TenantBase.EmploymentSettings')",
     ),
+  ),
+  // ---- employment/employment-type-routes.ts：F-323 人员类别字典（DEC-706）-----------------------------------------
+  'GET /api/tenant/employment/employment-types': employmentTypeRoute('GET', '/employment-types', 'view'),
+  'GET /api/tenant/employment/employment-types/options': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          ET,
+          'GET',
+          '/employment-types/options',
+          "await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: EMPLOYMENT_OBJECT })",
+        ),
+        {
+          role: 'impl',
+          unit: 'apps/api/src/authorization.ts#requirePermission',
+          anchor: "if (!(await authorizer(request))) throw new AppError('FORBIDDEN'",
+        },
+        RECORD_CONST,
+      ],
+    ),
+  ],
+  'POST /api/tenant/employment/employment-types': employmentTypeRoute('POST', '/employment-types', 'create', [
+    'create',
+    'list',
+  ]),
+  'PUT /api/tenant/employment/employment-types/:id': employmentTypeRoute('PUT', '/employment-types/:id', 'update', [
+    'update',
+    'detail',
+  ]),
+  'POST /api/tenant/employment/employment-types/:id/disable': employmentTypeRoute(
+    'POST',
+    '/employment-types/:id/disable',
+    'update',
+    ['disable', 'detail'],
+  ),
+  'POST /api/tenant/employment/employment-types/:id/enable': employmentTypeRoute(
+    'POST',
+    '/employment-types/:id/enable',
+    'update',
+    ['enable', 'detail'],
+  ),
+  'DELETE /api/tenant/employment/employment-types/:id': employmentTypeRoute(
+    'DELETE',
+    '/employment-types/:id',
+    'delete',
+    ['delete', 'detail'],
   ),
   // ---- employment/blacklist-routes.ts：R2 BE-8a 黑名单（B68）与离职自动加黑规则（任职设置配置对象）------------------
   'GET /api/tenant/employment/blacklist': blacklistRoute(

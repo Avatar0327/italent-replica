@@ -80,6 +80,26 @@
       "obj:TenantBase.EmploymentRecord:delete"
     ]
   },
+  "DELETE /api/tenant/employment/employment-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "64e918c6232c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentType#delete@detail",
+      "obj:TenantBase.EmploymentType:delete"
+    ]
+  },
   "DELETE /api/tenant/employment/exit-handover-items/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -400,6 +420,30 @@
     ]
   },
   "GET /api/tenant/employment/employment-forms": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/employment-types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentType"
+    ],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentType:view"
+    ]
+  },
+  "GET /api/tenant/employment/employment-types/options": {
     "all": {
       "status": 200
     },
@@ -1754,6 +1798,60 @@
       "admin:other_settings"
     ]
   },
+  "POST /api/tenant/employment/employment-types": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "3d2d1231b3cb",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentType:create"
+    ]
+  },
+  "POST /api/tenant/employment/employment-types/:id/disable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "64e918c6232c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentType#disable@detail",
+      "obj:TenantBase.EmploymentType:update"
+    ]
+  },
+  "POST /api/tenant/employment/employment-types/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "64e918c6232c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentType#enable@detail",
+      "obj:TenantBase.EmploymentType:update"
+    ]
+  },
   "POST /api/tenant/employment/exit-account/tasks/:id/retry": {
     "all": {
       "code": "NOT_FOUND",
@@ -2723,6 +2821,26 @@
     ],
     "trace": [
       "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/employment-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "64e918c6232c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentType#update@detail",
+      "obj:TenantBase.EmploymentType:update"
     ]
   },
   "PUT /api/tenant/employment/entry-email-rules": {

@@ -4,6 +4,8 @@ import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
+import { AppError } from '../../apps/api/src/errors.js';
+import { validateEmploymentType } from '../../apps/api/src/modules/employment/employment-types.js';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession, withLoginEmail } from './AC-EMP-support.js';
 import type { Request } from './support/revocable-rights.js';
@@ -147,14 +149,15 @@ it('AC-EMP-F323-03：任职按 ID 引用并返回名称；非 UUID 400、未知 
   const unknown = await w.hireRaw(randomUUID());
   expect(unknown.response.status, await unknown.response.clone().text()).toBe(422);
   expect(await unknown.response.json()).toMatchObject({
-    code: 'EMPLOYMENT_TYPE_INVALID',
-    details: { field: 'employmentType', reason: 'EMPLOYMENT_TYPE_UNKNOWN' },
+    error: { code: 'EMPLOYMENT_TYPE_INVALID', details: { field: 'employmentType', reason: 'EMPLOYMENT_TYPE_UNKNOWN' } },
   });
   expect(await w.s.records(unknown.e.id)).toEqual([]);
   const disabled = await w.s.request('POST', `/employment-types/${type.id}/disable`, { ifMatch: type.revision });
   expect(disabled.status).toBe(200);
   const rejected = await w.hireRaw(type.id);
-  expect(await rejected.response.json()).toMatchObject({ details: { reason: 'EMPLOYMENT_TYPE_DISABLED' } });
+  expect(await rejected.response.json()).toMatchObject({
+    error: { details: { reason: 'EMPLOYMENT_TYPE_DISABLED' } },
+  });
   const record = await w.s.record(hired.id);
   expect(record.fields).toMatchObject({ employmentType: type.id, employmentTypeName: '技术开发' });
   const changed = await w.s.request('PATCH', `/records/${hired.id}`, {
@@ -191,7 +194,7 @@ it('AC-EMP-F323-05：被任职引用的类别不可删除 409；未引用的删�
   await w.hire(used.id);
   const conflict = await w.s.request('DELETE', `/employment-types/${used.id}`, { ifMatch: used.revision });
   expect(conflict.status, await conflict.clone().text()).toBe(409);
-  expect(await conflict.json()).toMatchObject({ details: { reason: 'EMPLOYMENT_TYPE_IN_USE' } });
+  expect(await conflict.json()).toMatchObject({ error: { details: { reason: 'EMPLOYMENT_TYPE_IN_USE' } } });
   const free = await w.named('YG校招生');
   expect((await w.s.request('DELETE', `/employment-types/${free.id}`, { ifMatch: free.revision + 1 })).status).toBe(
     409,
@@ -210,7 +213,7 @@ it('AC-EMP-F323-05：被任职引用的类别不可删除 409；未引用的删�
   const audit = rows<{ action: string; before: unknown }>(
     await withTenant(w.db, w.s.tenant.id, (tx) =>
       tx.execute(sql`SELECT action, before FROM audit_events
-        WHERE tenant_id=${w.s.tenant.id} AND object_id=${free.id} ORDER BY occurred_at DESC LIMIT 1`),
+        WHERE tenant_id=${w.s.tenant.id} AND object_id=${free.id} AND action='employment_type.delete'`),
     ),
   );
   expect(audit[0]).toMatchObject({ action: 'employment_type.delete', before: { name: 'YG校招生' } });
@@ -328,4 +331,16 @@ it('AC-EMP-F323-09：任职字段不可见时不披露人员类别名称', async
   });
   expect(detail.status).toBe(200);
   expect(JSON.stringify(await detail.json())).not.toContain('employmentTypeName');
+});
+
+it('AC-EMP-F323-11：审批编辑等未经 UUID 解析的入口传旧名称文本，统一 422 未知类别，不落成数据库 500', async () => {
+  const w = await world('raw-name');
+  const refusal = await withTenant(w.db, w.s.tenant.id, (tx) =>
+    validateEmploymentType(tx, w.s.tenant.id, '技术开发').then(
+      () => null,
+      (error: unknown) => error,
+    ),
+  );
+  expect(refusal).toBeInstanceOf(AppError);
+  expect(refusal).toMatchObject({ code: 'EMPLOYMENT_TYPE_INVALID', details: { reason: 'EMPLOYMENT_TYPE_UNKNOWN' } });
 });

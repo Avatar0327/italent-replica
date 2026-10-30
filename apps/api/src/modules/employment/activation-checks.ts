@@ -103,6 +103,7 @@ export async function assertEstablishmentCapacity(
 const RULE_REJECTIONS = new Set<ErrorCode>([
   // F-321 / DEC-052：审批后字典停用须记业务失败，交 HR 修正后显式重试。
   'EMPLOYMENT_FORM_INVALID',
+  'EMPLOYMENT_TYPE_INVALID',
   'VALIDATION_FAILED',
   'CONFLICT',
   'NOT_FOUND',

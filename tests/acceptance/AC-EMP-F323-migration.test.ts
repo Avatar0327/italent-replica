@@ -8,9 +8,10 @@ import { employmentSession } from './AC-EMP-support.js';
 const database = useTestDb({ migrateBefore: '_employment_types' });
 const rows = <T>(v: unknown) => (Array.isArray(v) ? v : (v as { rows: T[] }).rows) as T[];
 
-it('AC-EMP-F323-10：两个租户的主职 / 兼职载荷及申请迁移，未知与非精确名称置空；预置 8 条、触发器恢复、外键生效', async () => {
+it('AC-EMP-F323-10：两个租户的主职 / 兼职载荷及申请迁移，未知与非精确名称置空；编制占编条件同步映射；预置 8 条、触发器恢复、外键生效', async () => {
   const db = database().db;
   const targets: { tenantId: string; id: string; value: string | null }[] = [];
+  const schemes: { tenantId: string; version: string }[] = [];
   for (const label of ['f323-migration-a', 'f323-migration-b']) {
     const s = await employmentSession(db, label);
     const org = await s.org('合成迁移部门', { establishedOn: '2020-01-01' });
@@ -50,6 +51,16 @@ it('AC-EMP-F323-10：两个租户的主职 / 兼职载荷及申请迁移，未�
           VALUES (${payload},${s.tenant.id},${e.id},${id},1,${randomUUID()},'part_time',${org.id},${date},${name})`);
         targets.push({ tenantId: s.tenant.id, id, value: name });
       }
+      const scheme = randomUUID();
+      const version = randomUUID();
+      await tx.execute(sql`INSERT INTO establishment_scheme_objects(id,tenant_id) VALUES (${scheme},${s.tenant.id})`);
+      await tx.execute(sql`INSERT INTO establishment_scheme_versions
+        (id,tenant_id,scheme_id,version_no,code,name,cycle,maintenance_mode,start_date)
+        VALUES (${version},${s.tenant.id},${scheme},1,'f323','合成方案','annual','local','2026-01-01')`);
+      await tx.execute(sql`INSERT INTO establishment_scheme_ranges
+        (tenant_id,version_id,ordinal,employment_type,conditions) VALUES (${s.tenant.id},${version},0,'internal',
+          ${JSON.stringify({ employmentType: ['技术开发', '不存在'], employmentForm: ['技术开发'] })}::jsonb)`);
+      schemes.push({ tenantId: s.tenant.id, version });
     });
   }
   await database().migrate();
@@ -78,13 +89,25 @@ it('AC-EMP-F323-10：两个租户的主职 / 兼职载荷及申请迁移，未�
       }
     });
   }
+  for (const scheme of schemes) {
+    await withTenant(db, scheme.tenantId, async (tx) => {
+      const [type] = rows<{ id: string }>(
+        await tx.execute(sql`SELECT id FROM employment_types WHERE tenant_id=${scheme.tenantId} AND name='技术开发'`),
+      );
+      const [range] = rows<{ conditions: unknown }>(
+        await tx.execute(sql`SELECT conditions FROM establishment_scheme_ranges WHERE version_id=${scheme.version}`),
+      );
+      // 只改人员类别条件：同名的用工形式条件不受影响
+      expect(range?.conditions).toEqual({ employmentType: [type!.id, '不存在'], employmentForm: ['技术开发'] });
+    });
+  }
   const triggers = rows<{ tgenabled: string }>(
     await db.execute(sql`
     SELECT tgenabled FROM pg_trigger WHERE tgname IN (
       'employment_records_append_only', 'employment_payload_versions_append_only',
-      'part_time_request_versions_append_only')`),
+      'part_time_request_versions_append_only', 'establishment_scheme_ranges_append_only')`),
   );
-  expect(triggers).toHaveLength(3);
+  expect(triggers).toHaveLength(4);
   expect(triggers.every((t) => t.tgenabled === 'O')).toBe(true);
   const foreignKeys = rows<{ conname: string }>(
     await db.execute(sql`SELECT conname FROM pg_constraint WHERE conname IN (

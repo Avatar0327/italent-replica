@@ -1,12 +1,5 @@
 {
-  "reason": "BE-10a2：两预置管理员新增组织调整申请/明细对象字段、数据操作与18个按钮；申请单预置看全部（DEC-415），其他身份不扩权",
-  "add": [
-    "standard_org_system_admin/TenantBase.OrganizationApproval/*",
-    "standard_org_system_admin/TenantBase.OrganizationApprovalDetail/*",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval",
-    "standard_hr_admin/TenantBase.OrganizationApproval/*",
-    "standard_hr_admin/TenantBase.OrganizationApprovalDetail/*",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval"
-  ],
+  "reason": "F-323（DEC-706）：两预置管理员新增人员类别字典对象字段、数据操作与新建/编辑/停用/启用/删除按钮；租户字典无范围，其他身份不扩权",
+  "add": ["standard_org_system_admin/TenantBase.EmploymentType/*", "standard_hr_admin/TenantBase.EmploymentType/*"],
   "remove": []
 }

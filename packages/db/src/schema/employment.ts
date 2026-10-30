@@ -1,4 +1,5 @@
 import { employmentForms } from './employment-forms.js';
+import { employmentTypes } from './employment-types.js';
 /**
  * 任职业务的不可变快照与独立日期投影（R1-T05；07 §1–3、15 §1–2）。
  * 草稿、审批事件和生效记录分开保存；当前状态按租户业务日期从投影派生。
@@ -130,7 +131,7 @@ function presetFields() {
     place: text('place'),
     directManagerId: uuid('direct_manager_id'),
     dottedManagerId: uuid('dotted_manager_id'),
-    employmentType: text('employment_type'),
+    employmentType: uuid('employment_type'),
     employType: text('employ_type'),
     employmentSource: text('employment_source'),
     employmentForm: text('employment_form'),
@@ -152,6 +153,7 @@ function presetFields() {
 
 interface PresetColumns {
   readonly employmentForm: AnyPgColumn;
+  readonly employmentType: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
   readonly departmentId: AnyPgColumn;
   readonly positionId: AnyPgColumn;
@@ -173,6 +175,7 @@ function presetRules(name: string, t: PresetColumns): PgTableExtraConfigValue[] 
       columns: [t.tenantId, t.employmentForm],
       foreignColumns: [employmentForms.tenantId, employmentForms.code],
     }),
+    reference(`${name}_type_fk`, t.tenantId, t.employmentType, employmentTypes),
     reference(`${name}_department_fk`, t.tenantId, t.departmentId, orgObjects),
     reference(`${name}_position_fk`, t.tenantId, t.positionId, jobPositionObjects),
     reference(`${name}_post_fk`, t.tenantId, t.postId, jobPostObjects),
