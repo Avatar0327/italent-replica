@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
+import { approvalEditGroup } from './EditFields.js';
+import { actionTask, editValues } from './edit-model.js';
 import { useApprovalAction } from './action-command.js';
 import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
@@ -99,7 +101,11 @@ export function ApprovalDetail(props: DetailProps) {
             props.onChanged();
             props.onClose();
           }}
-          groups={[actionGroup(action.action, detail)]}
+          initialValues={editValues(detail, action.action)}
+          groups={[
+            ...approvalEditGroup(detail, action.action),
+            ...(action.action === 'edit' ? [] : [actionGroup(action.action, detail)]),
+          ]}
         />
       )}
     </>
@@ -221,7 +227,8 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
 function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; action: ActionState; refresh(): void }) {
   const { row, demo, detail, action } = props;
   const available = visibleActions(detail);
-  const actions = actionOrder.filter((item) => available.includes(item));
+  const actions = [...actionOrder, 'edit' as const].filter((item) => available.includes(item));
+  const taskId = actionTask(detail, row.taskId);
   return (
     <Space wrap className="approval-action-bar">
       {!demo &&
@@ -230,8 +237,8 @@ function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; ac
             key={item}
             type={item === 'approve' ? 'primary' : 'default'}
             ghost={item === 'disagree'}
-            disabled={(!!action.pending && action.pending !== item) || (item !== 'withdraw' && !row.taskId)}
-            onClick={() => action.open(item)}
+            disabled={(!!action.pending && action.pending !== item) || (item !== 'withdraw' && !taskId)}
+            onClick={() => action.open(item, detail)}
           >
             {m[item]}
           </Button>
@@ -244,7 +251,7 @@ function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; ac
       </Tooltip>
       <Button onClick={props.refresh}>{m.refresh}</Button>
       {!demo && !actions.length && <span className="approval-muted">{m.noAction}</span>}
-      {!row.taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}
+      {!taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}
     </Space>
   );
 }

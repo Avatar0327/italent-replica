@@ -6,6 +6,7 @@ import { auditFieldLabel } from '../../packages/domain/src/audit/labels.js';
 
 describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
   it.each([
+    ['dailyWageStandard', '日工资标准'],
     ['displayOrder', '显示顺序'],
     ['syncQualification', '同步任职资格子集'],
     ['createdBy', '创建人'],

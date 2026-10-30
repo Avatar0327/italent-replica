@@ -1,6 +1,6 @@
 {
-  "id": "a9ab5128-07eb-435e-8c4e-5dca653f1ffe",
-  "prevId": "906c9bf0-f0ad-4ef6-92c3-bf60134cfbeb",
+  "id": "7b212c4d-dabb-418c-afed-e32346331048",
+  "prevId": "86077378-8048-4cad-a239-03f92cc3b96b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11372,13 +11372,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "manual_plan": {
-          "name": "manual_plan",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
@@ -16283,6 +16276,12 @@
           "notNull": true,
           "default": "now()"
         },
+        "daily_wage_standard": {
+          "name": "daily_wage_standard",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -16748,6 +16747,10 @@
         "personnel_employee_revision_positive": {
           "name": "personnel_employee_revision_positive",
           "value": "\"personnel_employee_versions\".\"revision\" > 0"
+        },
+        "personnel_employee_daily_wage_valid": {
+          "name": "personnel_employee_daily_wage_valid",
+          "value": "\"personnel_employee_versions\".\"daily_wage_standard\" >= 0 AND \"personnel_employee_versions\".\"daily_wage_standard\" < 1000000000000\n        AND scale(\"personnel_employee_versions\".\"daily_wage_standard\") <= 2"
         }
       },
       "isRLSEnabled": false
@@ -27798,11 +27801,11 @@
         },
         "transfer_linkage_items_status": {
           "name": "transfer_linkage_items_status",
-          "value": "\"transfer_linkage_items\".\"status\" IN ('pending', 'succeeded', 'failed', 'superseded')"
+          "value": "\"transfer_linkage_items\".\"status\" IN ('pending', 'succeeded', 'failed')"
         },
         "transfer_linkage_items_failure": {
           "name": "transfer_linkage_items_failure",
-          "value": "(\"transfer_linkage_items\".\"status\" IN ('failed', 'superseded')) = (\"transfer_linkage_items\".\"failure_code\" IS NOT NULL)"
+          "value": "(\"transfer_linkage_items\".\"status\" = 'failed') = (\"transfer_linkage_items\".\"failure_code\" IS NOT NULL)"
         },
         "transfer_linkage_items_counts": {
           "name": "transfer_linkage_items_counts",
@@ -54775,7 +54778,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
@@ -54934,12 +54937,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "supersedes_business_id": {
-          "name": "supersedes_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "employee_id": {
           "name": "employee_id",
@@ -55194,23 +55191,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "exit_requests_supersedes_fk": {
-          "name": "exit_requests_supersedes_fk",
-          "tableFrom": "exit_requests",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "supersedes_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "exit_requests_cycle_fk": {
           "name": "exit_requests_cycle_fk",
           "tableFrom": "exit_requests",
@@ -55253,16 +55233,7 @@
           ]
         }
       },
-      "uniqueConstraints": {
-        "exit_requests_one_successor": {
-          "name": "exit_requests_one_successor",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "supersedes_business_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "exit_requests_mode": {
@@ -60725,18 +60696,6 @@
           "notNull": true,
           "default": false
         },
-        "rehire_plan": {
-          "name": "rehire_plan",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rehire_business_id": {
-          "name": "rehire_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -60783,21 +60742,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "retirement_requests_rehire_fk": {
-          "name": "retirement_requests_rehire_fk",
-          "tableFrom": "retirement_requests",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "rehire_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -60812,14 +60756,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "retirement_requests_rehire_plan": {
-          "name": "retirement_requests_rehire_plan",
-          "value": "\"retirement_requests\".\"re_employed\" = (\"retirement_requests\".\"rehire_plan\" IS NOT NULL)"
-        },
-        "retirement_requests_rehire_business": {
-          "name": "retirement_requests_rehire_business",
-          "value": "\"retirement_requests\".\"rehire_business_id\" IS NULL OR \"retirement_requests\".\"re_employed\""
-        },
         "retirement_requests_type": {
           "name": "retirement_requests_type",
           "value": "\"retirement_requests\".\"retire_type\" IS NULL OR \"retirement_requests\".\"retire_type\" IN ('early', 'normal', 'delayed')"
@@ -62590,12 +62526,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "scope_note": {
-          "name": "scope_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "content": {
           "name": "content",
           "type": "text",
@@ -62822,10 +62752,6 @@
         "org_adjustments_subject": {
           "name": "org_adjustments_subject",
           "value": "btrim(\"org_adjustments\".\"subject\") <> '' AND char_length(\"org_adjustments\".\"subject\") <= 100"
-        },
-        "org_adjustments_scope_note": {
-          "name": "org_adjustments_scope_note",
-          "value": "char_length(COALESCE(\"org_adjustments\".\"scope_note\", '')) <= 500"
         },
         "org_adjustments_content": {
           "name": "org_adjustments_content",
@@ -63376,6 +63302,118 @@
           "value": "\"employment_forms\".\"revision\" > 0 AND \"employment_forms\".\"display_order\" >= 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.org_adjustment_range_orgs": {
+      "name": "org_adjustment_range_orgs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment_id": {
+          "name": "adjustment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "org_adjustment_range_org": {
+          "name": "org_adjustment_range_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_adjustment_range_orgs_tenant_id_tenants_id_fk": {
+          "name": "org_adjustment_range_orgs_tenant_id_tenants_id_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_range_adjustment_fk": {
+          "name": "org_adjustment_range_adjustment_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "org_adjustments",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_range_org_fk": {
+          "name": "org_adjustment_range_org_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk": {
+          "name": "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk",
+          "columns": [
+            "tenant_id",
+            "adjustment_id",
+            "org_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

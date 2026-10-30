@@ -1,14 +1,12 @@
 {
-  "reason": "F255A / DEC-673：兼职机构存值与申请来源增加只读字段授权；不新增对象、按钮或数据范围",
+  "reason": "BE-10a2：两预置管理员新增组织调整申请/明细对象字段、数据操作与18个按钮；申请单预置看全部（DEC-415），其他身份不扩权",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:requestSource:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:institutionId:view",
-    "standard_manager/TenantBase.EmploymentRecord/field:requestSource:view"
+    "standard_org_system_admin/TenantBase.OrganizationApproval/*",
+    "standard_org_system_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval",
+    "standard_hr_admin/TenantBase.OrganizationApproval/*",
+    "standard_hr_admin/TenantBase.OrganizationApprovalDetail/*",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.OrganizationApproval"
   ],
   "remove": []
 }
