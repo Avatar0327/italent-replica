@@ -44,6 +44,7 @@ const contractFields = (record: Pick<EmploymentRecord, 'effectiveDate'>, contrac
  * 带合同信息的入职写入，操作人在合同对象上的当前权限：字段创建权、合同“新建”按钮（与 POST /contracts/commands 同一资源）、
  * 对该员工的合同数据范围。由 CommandGuard.before 在命令事务内调用——首次执行、同键重放、失败回查三个出口都先过它
  * （DEC-385③）；合同端口自己的字段 / 范围复核只在真正执行时才跑，命中命令台账的重放到不了那里。
+ * 退休同时返聘（R2-T04 §8.2）传已有员工与返聘日 R，复用同一字段、按钮和范围校验。
  * employeeId 为 null = 员工还没建（新增实习生一体写入）：范围复核留给执行时的合同端口，其余照常。
  */
 export async function requireContractCreateAccess(

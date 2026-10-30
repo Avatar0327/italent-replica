@@ -203,4 +203,7 @@ export const GRAPH: Graph = {
     '#pad',
     '#parseYmd',
   ],
+  'packages/domain/src/employment/retirement.ts#retireRehireStartDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
 };

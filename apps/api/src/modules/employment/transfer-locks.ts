@@ -3,16 +3,29 @@
  * 事务本地设置跟随保存点回滚，不能用进程缓存替代数据库持锁事实。
  */
 import { isUuid, sql, type Tx } from '@italent/db';
+import { remainingExitDuties } from './exit-replacement-plan.js';
 import { AppError } from '../../errors.js';
 import { partTimeLinkageParticipants } from './part-time/linkage-participants.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-const SETTING = 'italent.transfer_employee_locks';
+// DEC-142：全局账号命令会依次进入多个租户，持锁记录也必须按租户隔离。
+const settingKey = (tenantId: string) => `italent.transfer_employee_locks_${tenantId.replaceAll('-', '')}`;
 const array = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
-async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, extra: readonly string[]) {
+async function participants(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  extra: readonly string[],
+  rescheduledExitId?: string,
+) {
   const ids = new Set([employeeId, ...extra].map((id) => id.toLowerCase()));
+  // F-140b2：后继会重新执行旧失败职责；普通闭包的“已有执行行”排除规则不能用于这份剩余计划。
+  if (rescheduledExitId) {
+    const remaining = await remainingExitDuties(tx, ctx.tenantId, rescheduledExitId);
+    remaining?.dutyTransfer.subordinates.forEach((d) => ids.add(d.employeeId));
+  }
   for (;;) {
     const rows = rowsOf<{ ids: string[] | null }>(
       await tx.execute(sql`
@@ -51,13 +64,14 @@ async function acquire(
   employeeId: string,
   extra: readonly string[],
   skipLocked: boolean,
+  rescheduledExitId?: string,
 ): Promise<SweepLockOutcome> {
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
   employeeId = employeeId.toLowerCase();
   extra = [...new Set(extra.map((id) => id.toLowerCase()))];
-  const planned = await participants(tx, ctx, employeeId, extra);
+  const planned = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
   const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+    await tx.execute(sql`SELECT current_setting(${settingKey(ctx.tenantId)}, true) AS value`),
   );
   const held: string[] = setting?.value ? (JSON.parse(setting.value) as string[]) : [];
   const needed = planned.filter((id) => !held.includes(id));
@@ -78,11 +92,11 @@ async function acquire(
   }
   const all = [...held, ...needed];
   {
-    const actual = await participants(tx, ctx, employeeId, extra);
+    const actual = await participants(tx, ctx, employeeId, extra, rescheduledExitId);
     if (actual.some((id) => !all.includes(id)))
       throw new AppError('CONFLICT', '联动参与人员已变化，请刷新后重试', { reason: 'TRANSFER_LOCK_PLAN_CHANGED' });
   }
-  await tx.execute(sql`SELECT set_config(${SETTING},${JSON.stringify(all)},true)`);
+  await tx.execute(sql`SELECT set_config(${settingKey(ctx.tenantId)},${JSON.stringify(all)},true)`);
   // 各参与者的业务头在审批实例之前取锁；员工锁保证业务集合不会再被其他事务改写。
   if (planned.length > 1)
     await tx.execute(sql`
@@ -114,8 +128,9 @@ export const lockTransferParticipants = (
   ctx: EmploymentContext,
   employeeId: string,
   extra: readonly string[] = [],
-  options: { skipLocked?: boolean } = {},
-): Promise<SweepLockOutcome> => acquire(tx, ctx, employeeId, extra, options.skipLocked === true);
+  options: { skipLocked?: boolean; rescheduledExitId?: string } = {},
+): Promise<SweepLockOutcome> =>
+  acquire(tx, ctx, employeeId, extra, options.skipLocked === true, options.rescheduledExitId);
 
 /**
  * 断言这些员工的锁已在本事务的预锁集合内（落地 / 执行只能重入、复核，不得再新取员工锁：新取会在持组织锁之后逆序，与先锁下属再取
@@ -123,7 +138,10 @@ export const lockTransferParticipants = (
  */
 export async function assertEmployeeLocksHeld(tx: Tx, ids: readonly string[]): Promise<void> {
   const [setting] = rowsOf<{ value: string | null }>(
-    await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
+    await tx.execute(
+      sql`SELECT current_setting('italent.transfer_employee_locks_' ||
+        replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
+    ),
   );
   const held = new Set<string>(setting?.value ? (JSON.parse(setting.value) as string[]) : []);
   const missing = ids.map((id) => id.toLowerCase()).filter((id) => !held.has(id));

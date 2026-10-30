@@ -21,11 +21,12 @@ const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
+const REHIRE = `${SRC}/employment/retirement-rehire.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const INTERN_CREATE = `${SRC}/employment/intern-create.ts`;
 const INTERN_PROFILE = `${SRC}/employment/intern-profile.ts`;
-const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
 const INTERN_ACTIONS = `${SRC}/employment/intern-actions.ts`;
 const EXIT_GATE = `${SRC}/employment/exit-gate.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
@@ -887,7 +888,7 @@ function exitBusinessCommand(
       `btn:${RECORD}#${anchor}@detail`,
       [],
       [
-        call(unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : GUARD_ANCHOR[unit]),
+        call(unit === 'route' ? 'guard: exitEditGuard(deps, ctx, gate, id)' : GUARD_ANCHOR[unit]),
         guard,
         EXIT_PERMISSION,
         WRITE_BUTTON,
@@ -1028,7 +1029,70 @@ function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
   ];
 }
 
+const ACCOUNT = `${SRC}/employment/exit-account-routes.ts`;
+const accountSettings = (method: string): Obligation =>
+  ob(
+    'admin:other_settings',
+    ['admin:tenant.employment.configuration'],
+    [
+      at(ACCOUNT, method, '/exit-account/settings', "'tenant.employment.configuration.write'"),
+      READ,
+      {
+        role: 'const',
+        unit: 'packages/domain/src/permission/module-actions.ts#actions',
+        anchor: "'tenant.employment.configuration.write': tenantConfiguration",
+      },
+    ],
+  );
+const accountScope = ob(
+  'guard:employment.scope',
+  [],
+  [fn(ACCOUNT, 'readScopedAccountTask', 'await requireEmployeeInScope(tx, ctx, task.employeeId)'), EMPLOYEE_IN_SCOPE],
+);
+const accountRead = (call: Evidence): Obligation =>
+  ob(
+    `obj:${RECORD}:view`,
+    ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
+    [call, READ, RECORD_CONST],
+  );
 export const EMPLOYMENT: RequiredTable = {
+  'GET /api/tenant/employment/exit-account/settings': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          ACCOUNT,
+          'GET',
+          '/exit-account/settings',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+        { role: 'const', unit: `${ACCOUNT}#settingsObject`, anchor: "'TenantBase.EmploymentSettings'" },
+      ],
+    ),
+  ],
+  'PUT /api/tenant/employment/exit-account/settings': [accountSettings('PUT')],
+  'GET /api/tenant/employment/exit-account/tasks': [
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'GET /api/tenant/employment/exit-account/tasks/:id': [
+    accountScope,
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks/:id', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'POST /api/tenant/employment/exit-account/tasks/:id/retry': [
+    ob(
+      'admin:user_manage',
+      ['admin:admin.*'],
+      [
+        fn(
+          ACCOUNT,
+          'retry',
+          "requirePermission(authorizeInTransaction(deps.authorize, tx), { ...ctx, action: 'admin.user_manage' })",
+        ),
+      ],
+    ),
+  ],
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
   'GET /api/tenant/employment/transfers/self': [
     recordView(at(TRF, 'GET', '/transfers/self', "const ctx = await readPageContext(c, deps, 'detail')")),
@@ -1945,6 +2009,10 @@ export const EMPLOYMENT: RequiredTable = {
         '/businesses/:id',
         'requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id)',
       ),
+    ),
+    linkage(
+      at(EMP, 'PATCH', '/businesses/:id', 'body: await updateEmploymentBusiness(tx, checked, id, input)'),
+      'F-140：共用改期编排的联动守卫；通用 approved / effective 日期编辑仍先拒绝',
     ),
     businessWrite(at(EMP, 'PATCH', '/businesses/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
   ],
@@ -3223,11 +3291,15 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
+    linkage(
+      at(EXIT, 'PATCH', '/exits/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140：共用编辑服务的改期分支可进入生效联动或重定位 / 替代；退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],
       [
-        at(EXIT, 'PATCH', '/exits/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        at(EXIT, 'PATCH', '/exits/:id', 'guard: exitEditGuard(deps, ctx, gate, id)'),
         fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
@@ -3283,7 +3355,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE,
           'POST',
           '/retirements/employees/:id',
-          "{ guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) }",
+          "const guard = exitCommandGuard(deps, ctx, 'create', gate, { departmentId })",
         ),
         EXIT_GUARD,
         EXIT_PERMISSION,
@@ -3305,9 +3377,62 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(at(RETIRE, 'POST', '/retirements/employees/:id', 'body: await createExitApplication(tx, context,')),
+    // 条件准入（请求带 reEmployed + rehire 才挂；R2-T04 §8.2）：返聘写的是新任职，字段按 Employment.Create 复核，
+    // 返聘合同另要合同“新建”按钮 / 字段创建权 / 合同数据范围；入口与 CommandGuard.before 两处同一函数
+    ob(
+      'guard:employment.rehire',
+      [],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          '{ guard: rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) }',
+        ),
+        fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+      ],
+      '条件守卫：同时返聘时另要 Employment.Create 字段权 / 返聘部门范围；带合同计划时另要合同新建权限',
+    ),
+    {
+      ...ob(
+        `btn:${RECORD}#Employment.Create@detail`,
+        ['button:requireEmploymentWrite(按钮)', 'button:buttonResource', 'button:object.button'],
+        [
+          at(RETIRE, 'POST', '/retirements/employees/:id', 'if (rehire) await requireRehireWrite(ctx, id, rehire)'),
+          fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+          fn(REHIRE, 'requireRehireWrite', "'Employment.Create',"),
+          WRITE_BUTTON,
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
+    {
+      ...ob(
+        'btn:TenantBase.EmploymentContract#create@list',
+        ['button:buttonResource', 'button:object.button'],
+        [
+          fn(REHIRE, 'rehireGuard', 'await requireContractCreateAccess('),
+          fn(
+            ENTRY_CONTRACT,
+            'requireContractCreateAccess',
+            "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
+          ),
+          {
+            role: 'const',
+            unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+            anchor: "'TenantBase.EmploymentContract'",
+          },
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
   ],
   'PATCH /api/tenant/employment/retirements/:id': [
     ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),
+    linkage(
+      at(RETIRE, 'PATCH', '/retirements/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140：共用编辑服务的改期分支可进入生效联动或重定位 / 替代；退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],

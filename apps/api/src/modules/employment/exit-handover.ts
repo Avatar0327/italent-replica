@@ -38,6 +38,7 @@ import { activeInstanceOf } from '../approval/store.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertRevision } from './context.js';
 import { exitPostEffectHooks, type ExitCancelledEvent, type ExitConfirmedEvent } from './exit-confirmation.js';
+import { queueExitHandoverRetry } from './exit-handover-retry.js';
 import { listHandoverItems } from './exit-handover-items.js';
 import {
   insertHandoverRequest,
@@ -122,10 +123,12 @@ export async function launchExitHandover(
   tx: Tx,
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
+  approvedOn?: string,
 ): Promise<LaunchResult> {
   if (event.kind !== 'leave' || event.mode !== 'application') return { outcome: 'skipped', reason: 'NOT_APPLICABLE' };
   const { automaticHandover } = await import('./exit-handover-launch.js');
-  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed');
+  // 补发重试传入登记时的批准日；缺省取 R（pre_release_date，确认当日写入后不再改变）
+  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed', undefined, approvedOn);
 }
 
 /** F-250：各入口共用创建与审批执行；调用方持员工锁并判定触发资格。 */
@@ -139,7 +142,16 @@ export async function createExitHandover(
   const live = await liveHandoverOfExit(tx, ctx.tenantId, event.businessId);
   if (live) return { outcome: 'exists', requestId: live.id };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
-  if (!initiatorUserId) return recordNotLaunched(tx, auditContext, event, null, 'NO_INITIATOR_ACCOUNT');
+  if (!initiatorUserId) {
+    // F-140b × F-261：替代单恢复账号的补发意图已登记时沿用跳过 + 补发（列车 A）；其余无账号仍落未发起记录（F-310 / F-305）
+    if (await queueExitHandoverRetry(tx, ctx, event)) {
+      await auditHandover(tx, auditContext, 'skipped', 'exit-request', event.businessId, null, {
+        reason: 'NO_INITIATOR_ACCOUNT',
+      });
+      return { outcome: 'skipped', reason: 'NO_INITIATOR_ACCOUNT' };
+    }
+    return recordNotLaunched(tx, auditContext, event, null, 'NO_INITIATOR_ACCOUNT');
+  }
   try {
     // 保存点：业务拒绝（没有可用流程、首节点无审批人……）整体回退，只留痕，不拖垮离职审批
     return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId, actorUserId));

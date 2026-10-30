@@ -22,7 +22,14 @@ type Moment = 'on_submit' | 'on_node_approved' | 'on_approval_passed' | 'due';
 const skip = (reason: string) => ({ outcome: 'skipped' as const, reason });
 
 /** 自动触发的输入只能来自真实提交 / 审批动作 / 调度；调用方已持员工锁。 */
-export async function automaticHandover(tx: Tx, ctx: EmploymentContext, id: string, moment: Moment, nodeKey?: string) {
+export async function automaticHandover(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  moment: Moment,
+  nodeKey?: string,
+  approvedOnOverride?: string,
+) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const business = await loadEmploymentBusiness(tx, ctx.tenantId, id, today);
   if (
@@ -47,7 +54,7 @@ export async function automaticHandover(tx: Tx, ctx: EmploymentContext, id: stri
   if (!exit) return skip('NOT_APPLICABLE');
   if (moment === 'on_approval_passed' || moment === 'due') {
     if (!['approved', 'effective'].includes(business.status)) return skip('NOT_APPROVED');
-    const approvedOn = exit.preReleaseDate;
+    const approvedOn = approvedOnOverride ?? exit.preReleaseDate;
     const lastWorkDate = await lastWorkDateOf(tx, ctx.tenantId, id);
     if (!approvedOn || !lastWorkDate) return skip('NOT_APPROVED');
     const decision = handoverLaunchDecision(setting, { lastWorkDate, approvedOn });

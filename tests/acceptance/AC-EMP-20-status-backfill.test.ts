@@ -63,8 +63,8 @@ async function snapshot(tx: Tx, tenantId: string) {
       SELECT 'record' AS t, to_jsonb(r) - 'employee_status' - 'entry_status' AS body FROM employment_records r
       WHERE r.tenant_id=${tenantId}
       UNION ALL
-      -- planned_effective_date 是升级前测试垫片，正式迁移会回填，不属于旧结构原有列。
-      SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date'
+      -- planned_effective_date / manual_plan 为后续迁移回填的垫片列，不属于旧结构原有列。
+      SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date' - 'manual_plan'
       FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId}
       ORDER BY 1, 2`),
@@ -158,6 +158,15 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
   const afterById = new Map(after.map(({ t, body }) => [`${t}/${String(body.id)}`, body]));
   expect(after).toHaveLength(before.length);
   expect(afterById.size).toBe(before.length);
+  // 保留列车的整组快照精确比较；按 main 口径投影旧列，后续迁移新增列不进入本回填断言。
+  const beforeById = new Map(before.map(({ t, body }) => [`${t}/${String(body.id)}`, body]));
+  const oldColumnsAfter = after.map(({ t, body }) => ({
+    t,
+    body: Object.fromEntries(
+      Object.keys(beforeById.get(`${t}/${String(body.id)}`) ?? {}).map((column) => [column, body[column]]),
+    ),
+  }));
+  expect(oldColumnsAfter).toEqual(before);
   for (const { t, body } of before) {
     const current = afterById.get(`${t}/${String(body.id)}`);
     expect(current).toBeDefined();

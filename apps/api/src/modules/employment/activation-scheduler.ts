@@ -1,4 +1,5 @@
 import { dueHandoverCandidates, readDueHandoverEnabled, runDueHandovers } from './exit-handover-launch.js';
+import { plannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { pendingActivationState, STALE_DEPARTED_FAILURE } from './activation-store.js';
 import { completionCandidates, remindCompletion } from '../transfer/completion.js';
@@ -33,6 +34,7 @@ import { EmploymentError } from './errors.js';
 import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
+import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
 
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
@@ -89,6 +91,7 @@ export async function runEmploymentActivations(
   const runs: EmploymentActivationRun[] = [];
   for await (const tenant of activeTenants(db, normalized.tenantId)) {
     runs.push(await sweepTenant(db, meta, tenant, now, normalized));
+    await drainExitAccounts(db, tenant.id, now);
   }
   const result: EmploymentActivationRunResult = { runs };
   return runPlatformCommand(db, meta, RUN_OPERATION, normalized, async (ctx) => {
@@ -185,9 +188,9 @@ async function dueEmployees(
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id AND NOT ${STALE_DEPARTED_FAILURE}
       ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
-      AND p.effective_date<=${businessDate}::date
+      AND ${plannedEffectiveDate(tenantId, sql`b.id`, sql`p.effective_date`)}<=${businessDate}::date
       AND (${cursor}::uuid IS NULL OR b.employee_id>${cursor}::uuid)
-      AND (a.outcome IS NULL OR (a.outcome='suspended' AND NOT (
+      AND (a.outcome IS NULL OR a.outcome='replanned' OR (a.outcome='suspended' AND NOT (
         (SELECT x.state FROM employment_state_events x WHERE x.tenant_id=b.tenant_id
           AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) IN ('approved','effective')
         AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
@@ -242,12 +245,14 @@ export function startEmploymentActivationScheduler(
         running = null;
       });
   };
+  const accounts = startExitAccountScheduler(db, { clock, onError, intervalMs });
   const timer = setInterval(tick, intervalMs);
   tick();
   return {
     async stop() {
       clearInterval(timer);
       await running;
+      await accounts.stop();
     },
   };
 }
