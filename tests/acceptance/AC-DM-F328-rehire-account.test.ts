@@ -63,7 +63,7 @@ const links = (x: World) =>
   x.sqlRows<{ userId: string }>(sql`SELECT user_id::text AS "userId" FROM permission_user_person_links
     WHERE tenant_id=${x.session.tenant.id} AND employee_id=${x.employee.id}::uuid`);
 
-describe('F-328 重聘（合并人员）沿用原账号', () => {
+describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
   it('当天重聘：同一账号自动启用、登录名改为联系邮箱，人员绑定不变，任职三段连续，审计留痕', async () => {
     const { x, userId, contact } = await world('same-day');
     const before = (await getUser(x.db, userId))!;
