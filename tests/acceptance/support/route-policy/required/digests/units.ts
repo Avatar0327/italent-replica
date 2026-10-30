@@ -440,7 +440,7 @@ export const DIGESTS: Digests = {
     'route:POST /retirements/:id/cancel': 'c98a4f57dd10',
     'route:POST /retirements/:id/restore': 'f6e8af58d15c',
     'route:POST /retirements/employees/:id': '4c8d0ae53028',
-    'route:POST /retirements/employees/:id/preview': '3e852373e22d',
+    'route:POST /retirements/employees/:id/preview': '899701576358',
   },
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
     'route:DELETE /retirement-rules/:id': '8de974e02097',
@@ -2010,7 +2010,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': '036e2608dd5f',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/restore': 'b30c105cf038',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id': '1933ba3a50a6',
-  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': 'e8d1b0782fc0',
+  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '9d83e75a1207',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': '9c74e44bfb8b',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-identity-types': '4e944340ea36',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',

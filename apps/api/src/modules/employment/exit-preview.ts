@@ -49,6 +49,8 @@ export async function previewExit(
   lastWorkDate: string,
   retirementView: ExitViewable,
   rehire: { reEmployed?: unknown; rehire?: unknown } = {},
+  // F-314：退休预览与执行同口径，在 LIMIT 前排除应保留的等待返聘（voidInFlightApplications 按退休单判断）
+  kind: 'leave' | 'retirement' = 'leave',
 ) {
   // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
   if (
