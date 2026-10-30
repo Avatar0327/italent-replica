@@ -47,6 +47,9 @@ test('AC-FE-R2c1-01 五视图切换：按视图请求、每页 15 条、空状�
   await page.getByRole('button', named('查看考核')).click();
   await expect(dialog(page, '考核详情')).toContainText('合成试用中考核');
   await expect(dialog(page, '考核详情')).toContainText('正常转正');
+  // 考核类型按真实接口编码（ASSESSMENT_TYPES：probation）显示名称
+  const type = dialog(page, '考核详情').locator('.ant-descriptions-item').filter({ hasText: '考核类型' });
+  await expect(type).toContainText('试用中考核');
 });
 
 test('AC-FE-R2c1-02 编辑试用期：改月数推算预计结束日，PUT 带员工 revision 与整份试用信息', async ({ page }) => {

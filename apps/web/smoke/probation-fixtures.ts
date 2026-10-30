@@ -95,7 +95,7 @@ function row(server: Server, assessing: boolean) {
     organizationId: department,
     ...person,
     assessmentId: assessing ? assessmentId : null,
-    assessmentType: assessing ? 'probation_assessment' : null,
+    assessmentType: assessing ? 'probation' : null,
   };
 }
 /** 视图归属（probation-views.ts viewPredicate）：无转正业务在即将到期与全部；审批中在转正审批中与全部；审批通过 / 生效在已转正。 */
@@ -219,7 +219,7 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
       json: {
         id: assessmentId,
         employeeId: employee,
-        assessmentType: 'probation_assessment',
+        assessmentType: 'probation',
         assessmentName: '合成试用中考核',
         assessmentDate: '2026-10-20',
         selfEvaluation: '合成自评',
