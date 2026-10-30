@@ -172,8 +172,8 @@ async function rewrite(
 }
 
 /**
- * 同级新增（`editor.peer`，§6.2）：上级取同级来源的上级——既有组织取其生效日行政上级（须在数据范围内），
- * 本单新增行取其上级引用。来源没有上级（根组织）时不能建同级。
+ * 同级新增（`editor.peer`，§6.2）：上级取同级来源在本单叠树后的上级（与 §5.2 预览同一棵树）——既有组织取
+ * overlaidParent，本单新增行取其上级引用；解析出的既有上级须在数据范围内。来源没有上级（根组织）时不能建同级。
  */
 async function siblingParent(
   tx: Tx,
@@ -183,13 +183,24 @@ async function siblingParent(
 ): Promise<Pick<OrgItemContent, 'parentOrgId' | 'parentItemId'> | undefined> {
   const sibling = input.siblingOf;
   if (!sibling) return undefined;
-  const source =
-    'orgId' in sibling
-      ? { parentOrgId: existingOrg(world, sibling.orgId).parents.admin?.parentId ?? null, parentItemId: null }
-      : createdRow(world.items, sibling.itemId);
+  const source = 'orgId' in sibling ? overlaidParent(world, sibling.orgId) : createdRow(world.items, sibling.itemId);
   if (!source.parentOrgId && !source.parentItemId) throw invalid('siblingOf', '根组织不能新建同级组织');
   if (source.parentOrgId) await authorize(tx, [source.parentOrgId]);
   return { parentOrgId: source.parentOrgId, parentItemId: source.parentItemId };
+}
+
+/**
+ * 既有组织在本单叠树后的行政上级：本单非暂存的改上级行优先，未改上级时取生效日原树（与 planOrgTree 同口径：
+ * 暂存的改组织行不改树；第 3 轮 P2-R2-1）。
+ */
+function overlaidParent(world: ItemWorld, orgId: string): Pick<OrgItemContent, 'parentOrgId' | 'parentItemId'> {
+  const org = existingOrg(world, orgId);
+  const moved = world.items.find(
+    (item) =>
+      item.adjustType === 2 && !item.isStaged && item.targetOrgId === orgId && (item.parentOrgId ?? item.parentItemId),
+  );
+  if (moved) return { parentOrgId: moved.parentOrgId, parentItemId: moved.parentItemId };
+  return { parentOrgId: org.parents.admin?.parentId ?? null, parentItemId: null };
 }
 
 /** 停用整支：按生效日展开各级下级（含数据范围校验、设立日校验），生效日仍启用的下级各生成一条连带行。 */

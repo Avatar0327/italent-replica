@@ -69,10 +69,10 @@ async function headIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
     .map((item) => issue(item, 'ORG_ADJUSTMENT_HEAD_NOT_IN_ORG', '请在本单为新负责人添加调动或兼职明细'));
 }
 
-/** 发起行（连带行随发起行）逐行跑保存时的同一套规则；规则抛的业务错误转为该行的问题。 */
+/** 逐行跑保存时的同一套规则（连带行只剩调整范围可判，见 assertItemRules）；规则抛的业务错误转为该行的问题。 */
 async function ruleIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[], now: Date) {
   const issues: ItemIssue[] = [];
-  for (const item of live.filter((row) => !row.cascadedFromItemId)) {
+  for (const item of live) {
     try {
       await assertItemRules(tx, now, world, world.items, item, 'all');
     } catch (error) {

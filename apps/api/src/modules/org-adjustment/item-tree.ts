@@ -59,12 +59,14 @@ function rangeNodes(world: ItemWorld, items: readonly OrgItem[]): AdjustmentRang
   return nodes;
 }
 
-/** 行的目标与新上级须在调整范围内；返回第一个不在范围的组织（新增行取行 ID）。连带行随发起行，不单判。 */
+/**
+ * 行的目标与新上级须在调整范围内；返回第一个不在范围的组织（新增行取行 ID）。连带行也判目标：建行时按原树天然
+ * 在范围内，但之后可能被外部移出，刷新基线不豁免（第 3 轮 P2-R2-2）。
+ */
 export function outOfRange(world: ItemWorld, items: readonly OrgItem[], range: readonly string[]) {
   const nodes = rangeNodes(world, items);
   const misses: { itemId: string; orgId: string }[] = [];
   for (const item of items) {
-    if (item.cascadedFromItemId) continue;
     const refs = item.adjustType === 1 ? [itemRef(item.id)] : [orgRef(item.targetOrgId!)];
     const parent = item.adjustType === 2 ? parentRef(item) : null;
     if (parent) refs.push(parent);

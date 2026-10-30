@@ -24,7 +24,7 @@ const PEOPLE = ['personInChargeId', 'hrbpId'] as const satisfies readonly (keyof
 
 /**
  * 一行的业务规则：目标在生效日启用 → 引用可用 → 人员资格 → 编码 → 调整范围。暂存行只判目标、引用与范围
- * （其余随完成再判）；连带行随发起行，不单判目标与范围。
+ * （其余随完成再判）；连带行随发起行，不单判目标启用，但照判调整范围（第 3 轮 P2-R2-2）。
  */
 export async function assertItemRules(
   tx: Tx,
@@ -48,7 +48,7 @@ export async function assertItemRules(
       await assertItemCode(tx, now, world, items, item, item.code);
     }
   }
-  if (!item.cascadedFromItemId) assertInRange(world, items, item);
+  assertInRange(world, items, item);
 }
 
 /** 停用整支：按生效日展开各级下级（含数据范围校验）并判停用日晚于整支各组织设立日；保存展开连带行与整单校验共用。 */
