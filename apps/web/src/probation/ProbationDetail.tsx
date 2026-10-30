@@ -68,16 +68,23 @@ export function ProbationDetail({ view, row, onClose, refresh }: DetailProps) {
 }
 
 const infoFields = [...adjustFields, 'actualEndDate', 'regularizationMode', 'regularizationState', 'probationResult'];
-/** 试用信息区：只读 GET /employees/:id/probation；试用结果显示编码（字典名称由设置页维护，FE-R2c1b）。 */
+/**
+ * 试用信息区：只读 GET /employees/:id/probation；试用结果按全量字典（含已停用项）显示名称，
+ * 字典读不到或编码不在字典里时退回显示编码（字典维护在设置页，FE-R2c1b）。
+ */
 function ProbationInfo({ employeeId, onClose }: { employeeId: string; onClose(): void }) {
   const result = useRead<Values>(probationPath(employeeId));
+  const dictionary = useRead<{ items: { code: string; name: string }[] }>(`${apiRoot}/probation-results`);
+  const names = new Map(dictionary.data?.items.map((item) => [item.code, item.name]));
+  const show = (values: Values, key: string) =>
+    (key === 'probationResult' && names.get(String(values[key]))) || cellValue(values, key);
   return (
     <Modal open title={m.entries.info} footer={null} onCancel={onClose}>
       {result.data ? (
         <Descriptions
           column={1}
           size="small"
-          items={infoFields.map((key) => ({ key, label: m.fields[key], children: cellValue(result.data!, key) }))}
+          items={infoFields.map((key) => ({ key, label: m.fields[key], children: show(result.data!, key) }))}
         />
       ) : (
         <PageState kind={result.error ? 'error' : 'loading'} error={result.error} retry={result.refresh} />
