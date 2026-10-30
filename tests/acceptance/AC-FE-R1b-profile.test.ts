@@ -101,3 +101,21 @@ describe('AC-FE-R1b-03 第 3 轮 P2-2 籍贯与户籍所在地', () => {
     expect(html.indexOf('籍贯')).toBeLessThan(html.indexOf('合成省乙县'));
   });
 });
+
+// DEC-687③：本单只读展示，档案编辑另派 F-329。
+describe('AC-PER-F325 日工资标准只读展示', () => {
+  it('有查看权显示标签与精确金额，无查看权不显示', () => {
+    const fields = profileSections.flatMap((section: { fields: string[] }) => section.fields);
+    expect(fields).toContain('dailyWageStandard');
+    const row = { name: '合成员工', dailyWageStandard: '123456789012.34' };
+    const render = (allowed: string[]) => renderToStaticMarkup(createElement(FieldGrid, { row, fields, allowed }));
+    const visible = render(['name', 'dailyWageStandard']);
+    expect(visible).toContain('日工资标准');
+    expect(visible).toContain('123456789012.34');
+    const hidden = render(['name']);
+    expect(hidden).toContain('合成员工');
+    expect(hidden).not.toContain('日工资标准');
+    expect(hidden).not.toContain('123456789012.34');
+    expect(visible).not.toContain('<input');
+  });
+});

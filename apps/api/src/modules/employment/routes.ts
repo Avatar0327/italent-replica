@@ -1,3 +1,4 @@
+import { registerEmploymentFormRoutes } from './employment-form-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -33,6 +34,7 @@ import {
   requireScopedEmploymentObject,
   trimEmploymentResponse,
   EMPLOYEE_OBJECT,
+  EMPLOYMENT_OBJECT,
 } from './context.js';
 import { createEmployee, employeeName, getEmployee, listEmployees } from './employees.js';
 import { EmploymentError } from './errors.js';
@@ -95,6 +97,7 @@ import { policedSub } from '../../route-policy/index.js';
 import { EMPLOYMENT_POLICIES } from './policy.js';
 import { registerExitRoutes, runExitCancel } from './exit-routes.js';
 import { registerRetirementRoutes } from './retirement-routes.js';
+import { assertNoRehireKeys } from './retirement-rehire.js';
 import { registerAutoAssessmentRoutes } from './auto-assessment-routes.js';
 import { registerAutoRegularizationRoutes } from './auto-regularization-routes.js';
 import { registerRetirementRuleRoutes } from './retirement-rule-routes.js';
@@ -115,6 +118,8 @@ import { installPartTime } from './part-time/install.js';
 import { registerPartTimeRequestRoutes } from './part-time/request-routes.js';
 import { registerPartTimeRoutes } from './part-time/routes.js';
 import { isRegularizationEntryKind } from './regularization.js';
+import { installExitAccount } from './exit-account-hooks.js';
+import { registerExitAccountRoutes } from './exit-account-routes.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   // F-039：子应用套本模块登记表（EMPLOYMENT_POLICIES），注册行不变、处理函数不变
@@ -127,6 +132,8 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   });
   // R2-T05 §4.9：兼职的钩子 / 探针装配点，生产与测试都经 createApp 必经此处
   installPartTime();
+  installExitAccount();
+  registerExitAccountRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
@@ -147,6 +154,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerProbationRoutes(module, deps, authorizeBusinessWrite);
   registerAutoRegularizationRoutes(module, deps);
   registerRetirementRuleRoutes(module, deps);
+  registerEmploymentFormRoutes(module, deps);
   registerRetirementIntentionRoutes(module, deps);
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);
@@ -188,6 +196,12 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list', undefined, EMPLOYEE_OBJECT);
     const page = pageQuery(c);
     await requireViewableFilters(deps, ctx, ['employeeStatus', 'entryStatus'], (key) => c.req.query(key));
+    const view = parse(z.literal('labor').optional(), c.req.query('view'));
+    if (view === 'labor') {
+      const visible = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
+      if (visible && ['employmentForm', 'employType', 'employeeStatus'].some((key) => !visible.has(key)))
+        throw new AppError('FORBIDDEN', '劳务视图筛选字段不可查看');
+    }
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listEmployees(
         tx,
@@ -195,6 +209,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         queryDate(c, ctx),
         page,
         {
+          view,
           code: c.req.query('code'),
           name: c.req.query('name'),
           status: parse(z.enum(['pending', 'employed', 'left', 'retired']).optional(), c.req.query('status')),
@@ -233,6 +248,8 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (isRegularizationEntryKind((body as { kind?: unknown } | null)?.kind))
       return createRegularizationViaBusinesses(c, deps, ctx, id, body, probationResult);
     if (probationResult !== undefined) throw new AppError('VALIDATION_FAILED', '只有转正业务可以提供试用结果');
+    // 同时返聘只经退休专用入口（R2-T04 §8.2）：通用入口见到 reEmployed / rehire 直接 400，不落到“未知字段”的泛化报错
+    assertNoRehireKeys(body);
     const { rawInput: withoutEmail, email } = splitLoginEmail(body);
     const { rawInput: withoutExit, exit } = splitExitOptions(withoutEmail);
     const { rawInput, entry } = splitEntryOptions(withoutExit);
@@ -571,7 +588,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone),
+      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone, ctx.userId),
     );
     return c.json({
       items: await trimEmploymentResponse(deps, ctx, items),

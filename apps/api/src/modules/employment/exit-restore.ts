@@ -23,13 +23,20 @@ export async function restoreAfterExitDeletion(
   deleted: EmploymentRecord,
   exit: { readonly id: string; readonly employeeId: string },
   point: { recordId: string; window: { from: string; to: string | null } },
+  until?: string,
 ): Promise<{ id: string; kind: string; date: string } | null> {
   const reattached = await reattachFutureTransfers(tx, ctx, exit.employeeId, exit.id);
   const delegate = { delegateIntervalChecks: true };
-  const finalWindow = { from: point.window.from, to: reattached[0]?.from ?? point.window.to };
-  await assertRestoredPredecessor(tx, ctx, deleted, { previousId: point.recordId, window: finalWindow }, delegate);
+  const bound = (window: { from: string; to: string | null }) => ({
+    ...window,
+    to: until && (!window.to || until < window.to) ? until : window.to,
+  });
+  const finalWindow = bound({ from: point.window.from, to: reattached[0]?.from ?? point.window.to });
+  if (!finalWindow.to || finalWindow.from < finalWindow.to)
+    await assertRestoredPredecessor(tx, ctx, deleted, { previousId: point.recordId, window: finalWindow }, delegate);
   for (const item of reattached) {
-    await assertRestoredPredecessor(tx, ctx, deleted, { previousId: item.recordId, window: item }, delegate);
+    if (!until || item.from < until)
+      await assertRestoredPredecessor(tx, ctx, deleted, { previousId: item.recordId, window: bound(item) }, delegate);
     await personnelHooks.sync(tx, ctx, exit.employeeId, item.recordId, 'transfer', item.from);
   }
   const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, finalWindow.from);

@@ -22,7 +22,7 @@ import {
   plannedEffectiveDate,
   timelinePosition,
 } from './timeline.js';
-import type { EmploymentContext } from './types.js';
+import type { EmploymentContext, EmploymentRecord } from './types.js';
 
 export { REBUILD_REQUIRED };
 
@@ -171,37 +171,61 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
     // versionNo：业务内单调序号（F-140 约束 1），排序与计划日只读版本，不读本事件的时间戳。
     { originalEffectiveDate: previous.effectiveDate, effectiveDate: today, versionNo: next.versionNo },
   );
-  if (record) {
-    const [point] = rowsOf<{ startDate: string; sortOrder: number }>(
-      await tx.execute(sql`
+  if (record) await repositionEffectiveRecord(tx, ctx, business, record);
+}
+
+/** F-140 §3.4：同一业务重定位；调动顺延与人工离职更正共用时间轴内核。 */
+export async function repositionEffectiveRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  record: EmploymentRecord,
+  beforeInsert?: () => Promise<void>,
+) {
+  const [point] = rowsOf<{ startDate: string; sortOrder: number }>(
+    await tx.execute(sql`
       SELECT start_date::text AS "startDate",sort_order AS "sortOrder" FROM employment_timeline
       WHERE tenant_id=${ctx.tenantId} AND record_id=${business.id}::uuid`),
-    );
-    const [before] = rowsOf<{ id: string }>(
-      await tx.execute(sql`
+  );
+  const [before] = rowsOf<{ id: string }>(
+    await tx.execute(sql`
       SELECT record_id AS id FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
         AND employee_id=${business.employeeId}::uuid
         AND (start_date,sort_order)<(${point!.startDate}::date,${point!.sortOrder})
       ORDER BY start_date DESC,sort_order DESC LIMIT 1`),
-    );
-    const [after] = rowsOf<{ date: string }>(
-      await tx.execute(sql`
+  );
+  const [after] = rowsOf<{ date: string }>(
+    await tx.execute(sql`
       SELECT start_date::text AS date FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
         AND employee_id=${business.employeeId}::uuid
         AND (start_date,sort_order)>(${point!.startDate}::date,${point!.sortOrder})
       ORDER BY start_date,sort_order LIMIT 1`),
-    );
-    await tx.execute(
-      sql`DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND record_id=${business.id}::uuid`,
-    );
-    if (before)
-      await tx.execute(sql`UPDATE employment_timeline
+  );
+  await tx.execute(
+    sql`DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND record_id=${business.id}::uuid`,
+  );
+  if (before)
+    await tx.execute(sql`UPDATE employment_timeline
       SET valid_during=daterange(start_date,${after?.date ?? null}::date,'[)')
       WHERE tenant_id=${ctx.tenantId} AND record_id=${before.id}::uuid`);
-    await validateTransferReposition(tx, ctx, business, record);
-    await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, today);
-    // F-022：移到当天后按新位置的前一条重新确定人员状态（跨过转正时取正式，不沿用原日期下的试用）
-    await rederiveRepositionedStatus(tx, ctx, business);
-  }
-  if (record) await personnelHooks.sync(tx, ctx, business.employeeId, business.id, 'transfer', today);
+  await beforeInsert?.();
+  await validateTransferReposition(tx, ctx, business, record);
+  await insertEmploymentTimeline(
+    tx,
+    ctx,
+    business.employeeId,
+    business.id,
+    record.staffId,
+    business.payload.effectiveDate,
+  );
+  // F-022：移到当天后按新位置的前一条重新确定人员状态（跨过转正时取正式，不沿用原日期下的试用）
+  await rederiveRepositionedStatus(tx, ctx, business);
+  await personnelHooks.sync(
+    tx,
+    ctx,
+    business.employeeId,
+    business.id,
+    business.payload.kind,
+    business.payload.effectiveDate,
+  );
 }

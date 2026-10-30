@@ -6,6 +6,7 @@ import { auditFieldLabel } from '../../packages/domain/src/audit/labels.js';
 
 describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
   it.each([
+    ['dailyWageStandard', '日工资标准'],
     ['displayOrder', '显示顺序'],
     ['syncQualification', '同步任职资格子集'],
     ['createdBy', '创建人'],
@@ -16,6 +17,12 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['reEmployed', '是否同时返聘'],
     ['expectedRetirementDate', '预计退休日期'],
     ['actualRetirementDate', '实际退休日期'],
+    // R2-T04 5b 同时返聘（employment.retirement.rehired）
+    ['rehireBusinessId', '返聘业务'],
+    ['rehireDate', '返聘日期'],
+    ['retirementEffectiveDate', '退休生效日期'],
+    ['rehireContractId', '返聘合同'],
+    ['initiatorUserId', '发起人'],
     // R2-T04 BE-5c2：批处理写入的人事字段
     ['expectedRetirementConfirmed', '预计退休日期已核准'],
     ['earliestRetirementDate', '最早退休日期'],

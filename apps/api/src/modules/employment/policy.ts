@@ -447,7 +447,41 @@ const exitTransition = (code: string = EXIT_BUTTONS.application) =>
     ...byId,
   });
 
+const ACCOUNT_SETTINGS_FIELDS = fixed(['revision', 'earlyEnabled', 'basis', 'time', 'inReview'], 'DEC-684');
+const ACCOUNT_TASK_FIELDS = fixed(
+  ['items', 'nextCursor', 'businessId', 'employeeId', 'status', 'reason', 'revision', 'attempts', 'recipientUserIds'],
+  'DEC-684',
+);
+const accountTaskView = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('待办查询无需业务按钮'),
+  scope: guardScope('employment.scope', denied(404, 'NOT_FOUND', '账号处理任务不存在')),
+  fields: ACCOUNT_TASK_FIELDS,
+});
+
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
+  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'PUT /exit-account/settings': admin('other_settings', {
+    alias: 'tenant.employment.configuration.write',
+    fields: ACCOUNT_SETTINGS_FIELDS,
+    write: write(none('严格配置 DTO'), 'config.audited:employment_settings', none('租户配置无人员范围'), {
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+  'GET /exit-account/tasks': { ...accountTaskView, scope: listScope('employment.accountTasks') },
+  'GET /exit-account/tasks/:id': { ...accountTaskView, ...byId },
+  'POST /exit-account/tasks/:id/retry': admin('user_manage', {
+    ...byId,
+    fields: fixed(['businessId', 'status', 'revision'], 'DEC-684：账号权限回执不含员工资料'),
+    write: write(none('原任务重试，空请求体'), none('账号管理能力；任务限定当前租户'), none('固定最小回执'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+
   // ---- transfer/routes.ts registerPersonalEntry：本人调动入口 ------------------------------------------------------
   // requireTransferButton(employee) 先查 Transfer.Self；绑定员工缺失 → 403「当前用户未绑定员工」；requireTransferSource
   // (employee) 再按绑定本人为源员工判范围（范围外 404「员工不存在」）；items 固定 id / name / code / revision，不按字段权裁剪
@@ -900,17 +934,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION],
+    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION, LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
-    write: employmentWrite('body.fields+customFields', [
-      'transferBusinessContext',
-      'requireManagerBusinessSource',
-      'lockEmploymentBusiness',
-      'assertRevision',
-      'requireEmployeeTransferBusiness',
-      'requireScopedEmploymentObject',
-    ]),
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'transferBusinessContext',
+        'requireManagerBusinessSource',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireEmployeeTransferBusiness',
+        'requireScopedEmploymentObject',
+      ],
+      { controls: ['pendingTransferAck', 'confirmed'] },
+    ),
     ...byId,
   }),
   // ---- employment/routes.ts registerBusinessTransitions（router.on）：命令式按钮 ---------------------------------------
@@ -1079,7 +1117,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // Employee.Create + 只认看全部（DEC-121，否则 404「任职数据不存在」），叠加任职新增权 / 字段写权 + Employment.Create；
   // 命令内 internCreateGuard 三个出口重过，并复核合同对象字段创建权 + 合同“新建”按钮（入职日 ≤ 今天）。入职日 ≤ 今天同事务生成
   // 正式合同（view=interning），在未来写待入职合同（view=pendingEntry，只记终止日 / 合同公司，其余合同字段 400 INTERN_PENDING_CONTRACT_FIELDS）；
-  // 任一步失败整体回滚，同命令 ID 重放返回首个结果。回执是固定形状，不经任职字段裁剪
+  // F-322：profile 普通字段经档案更新权，教育经子集创建权，均在命令事务复核；资料回执按当前档案查看权裁剪。
+  // 任一步失败整体回滚，同命令 ID 不重复写入；没有 profile 时保持原回执。
   'POST /interns': all(
     [
       object({
@@ -1099,12 +1138,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     projector('employment.internCreateReceipt', 'employment.internCreateReceipt'),
     {
-      guards: [LINKAGE, 'employment.entryContract'],
+      guards: [LINKAGE, 'employment.entryContract', 'employment.internProfile'],
       write: employmentWrite(
         'body.fields+customFields',
-        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject'],
-        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract'] },
+        ['lockEmploymentEmployee', 'assertRevision', 'requireScopedEmploymentObject', 'requireInternProfileAccess'],
+        { controls: ['employeeId', 'code', 'name', 'loginEmail', 'contract', 'profile'] },
       ),
+      optional: {
+        profile: object({
+          object: 'TenantBase.EmployeeInformation',
+          operation: 'view',
+          button: noButton('资料回执按当前档案查看权披露'),
+          scope: pointScope({ derived: 'employment.internProfile' }, 'personnel.employee', denied(404, 'NOT_FOUND')),
+          fields: projector('employment.internProfile', 'personnel.employee'),
+        }),
+      },
       ...byId,
     },
   ),
@@ -1757,14 +1805,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // 编辑离职：If-Match 必填；body = 离职扩展字段 + 可选日期（400）；写入口径 404「任职业务不存在」，不是离职单 404；
-  // DimissionEdit，审批中的单另需审批管理员按钮 adminIntervene（B-65a）；日期与当前值不同 400 EXIT_DATE_IMMUTABLE（§7.2）
+  // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
+  // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(
     [
       object({
         object: EMPLOYMENT,
         operation: 'update',
         button: button(EXIT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
@@ -1778,7 +1827,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate'], {
+        controls: ['pendingTransferAck', 'confirmed'],
+      }),
       ...byId,
     },
   ),
@@ -1798,7 +1849,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'create',
     button: RETIREMENT_CREATE_BUTTON,
-    guards: [LINKAGE],
+    guards: [LINKAGE, 'employment.rehire'],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),
@@ -1810,6 +1861,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         object: EMPLOYMENT,
         operation: 'update',
         button: button(RETIREMENT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
@@ -2084,6 +2136,38 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 试用结果字典（B7）：读取对持任职记录查看权者开放（转正表单下拉）；enabled 查询非法 → 400；无组织字段，不按范围裁剪
+  // F-321：类别可空，配置对象沿用；读字典不受人员范围限制。
+  'GET /employment-forms': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('用工形式表单下拉无按钮'),
+    scope: noScope('用工形式是租户配置，无组织 / 人员字段'),
+    fields: fixed(
+      [
+        'items',
+        'categories',
+        'id',
+        'code',
+        'name',
+        'category',
+        'displayOrder',
+        'effectiveDate',
+        'expiryDate',
+        'enabled',
+        'remark',
+        'revision',
+      ],
+      'F-321：字典固定键',
+    ),
+  }),
+  'POST /employment-forms': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('employment_form')),
+  'PUT /employment-forms/:id': configuration(
+    SETTINGS,
+    'update',
+    SETTINGS_FIELDS,
+    auditedConfigWrite('employment_form'),
+    byId,
+  ),
   'GET /probation-results': object({
     object: EMPLOYMENT,
     operation: 'view',

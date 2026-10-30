@@ -1,3 +1,4 @@
+import { employmentFormNames } from './employment-forms.js';
 import { sql, withTenant, type Tx } from '@italent/db';
 import { buttonResource, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -229,7 +230,13 @@ export async function requireEmploymentWrite(
   if (operation === 'delete') {
     await requirePermission(ctx.authorize, { ...ctx, action: 'object.delete', resource: objectCode });
   } else {
-    const { fields, customFields, ...metadata } = payload as Record<string, unknown>;
+    const {
+      fields,
+      customFields,
+      pendingTransferAck: _ack,
+      confirmed: _confirmed,
+      ...metadata
+    } = payload as Record<string, unknown>;
     const actual = {
       ...metadata,
       ...(fields as Record<string, unknown> | undefined),
@@ -260,6 +267,35 @@ export async function requireEmploymentWrite(
   }
 }
 
+/** DEC-507：首次、重放、待办统一按读取人的当前字段权与范围裁剪历史失败。 */
+async function projectActivationFailures(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  input: unknown,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<unknown> {
+  if (Array.isArray(input))
+    return Promise.all(input.map((item) => projectActivationFailures(deps, ctx, item, viewable)));
+  if (!input || typeof input !== 'object') return input;
+  const row = { ...(input as Record<string, unknown>) };
+  if (row.items) row.items = await projectActivationFailures(deps, ctx, row.items, viewable);
+  const activation = row.activation as { failureReason?: string; details?: Record<string, unknown> } | undefined;
+  if (activation?.failureReason === 'EXIT_LATER_RECORD_EXISTS' && activation.details) {
+    const { projectExitFailureDetails } = await import('./exit-later-records.js');
+    row.activation = {
+      ...activation,
+      details: await withTenant(deps.db, ctx.tenantId, (tx) =>
+        projectExitFailureDetails(tx, ctx, activation.details!, viewable),
+      ),
+    };
+  }
+  return row;
+}
+
+function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
+  return withTenant(deps.db, ctx.tenantId, (tx) => employmentFormNames(tx, ctx.tenantId, value));
+}
+
 /** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */
 export async function trimEmploymentResponse(
   deps: TenantRouteDeps,
@@ -268,7 +304,8 @@ export async function trimEmploymentResponse(
 ): Promise<unknown> {
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
-  if (viewable === undefined) return value;
+  value = await projectActivationFailures(deps, ctx, value, viewable);
+  if (viewable === undefined) return withEmploymentFormNames(deps, ctx, value);
   const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {
     if (Array.isArray(record)) return record.map(trim);
@@ -337,9 +374,11 @@ export async function trimEmploymentResponse(
     return result;
   };
   // Flat employee/configuration DTOs use the shared helper; nested employment DTOs require field-level traversal.
-  return objectCode === EMPLOYMENT_OBJECT
-    ? trimEmploymentManagerReferences(deps, ctx, trim(value))
-    : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
+  const trimmed =
+    objectCode === EMPLOYMENT_OBJECT
+      ? await trimEmploymentManagerReferences(deps, ctx, trim(value))
+      : await trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
+  return withEmploymentFormNames(deps, ctx, trimmed);
 }
 
 /**

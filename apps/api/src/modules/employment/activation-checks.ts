@@ -36,7 +36,10 @@ export interface ActivationFailure {
     /** 离职生效主链（exit-activation.ts）：顺延后在职段跨过部门停用日、顺延后重验转正在途；已落地未来调动被离职摘下（§5.8）。 */
     | 'EMPLOYMENT_DEPARTMENT_DISABLED'
     | 'EXIT_REGULARIZATION_IN_FLIGHT'
-    | 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER';
+    | 'EXIT_LATER_RECORD_EXISTS'
+    | 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER'
+    /** 退休同时返聘（R2-T04 §8.3）：返聘任职 / 合同生成被业务规则拒绝（返聘部门已停用、黑名单、合同冲突等），退休整体不生效。 */
+    | 'RETIREMENT_REHIRE_FAILED';
   readonly detail: Record<string, unknown>;
 }
 
@@ -98,6 +101,8 @@ export async function assertEstablishmentCapacity(
 
 /** 业务规则拒绝：按租户数据确定的结果，重跑也不会变，记为失败交 HR 修正。 */
 const RULE_REJECTIONS = new Set<ErrorCode>([
+  // F-321 / DEC-052：审批后字典停用须记业务失败，交 HR 修正后显式重试。
+  'EMPLOYMENT_FORM_INVALID',
   'VALIDATION_FAILED',
   'CONFLICT',
   'NOT_FOUND',

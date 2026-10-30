@@ -31,7 +31,7 @@ const preset = PRESET_PROCESSES.find((p) => p.approvalType === 'org_adjustment')
 describe('审批类型定义（§4.1）', () => {
   it('独立类型：对象编码来自单一常量、适配器 org_adjustment、默认流程编码 OrganizationProcess', () => {
     const type = APPROVAL_TYPES.org_adjustment;
-    expect(ORG_ADJUSTMENT_OBJECT_CODE).toBe('TenantBase.OrgAdjustment');
+    expect(ORG_ADJUSTMENT_OBJECT_CODE).toBe('TenantBase.OrganizationApproval');
     expect(ORG_ADJUSTMENT_PROCESS_CODE).toBe('OrganizationProcess');
     expect(type).toMatchObject({
       code: 'org_adjustment',

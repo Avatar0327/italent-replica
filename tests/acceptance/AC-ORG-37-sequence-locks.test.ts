@@ -76,7 +76,10 @@ it('AC-ORG-34 组织联动预锁待执行调动的参与员工闭包', async () 
     const targets = await lockOrgEmploymentTargets(tx, ctx, w.to.id, '2026-10-16');
     expect(targets).toEqual([person.employee.id]);
     const [row] = resultRows<{ value: string | null }>(
-      await tx.execute(sql`SELECT current_setting('italent.transfer_employee_locks', true) AS value`),
+      await tx.execute(
+        sql`SELECT current_setting('italent.transfer_employee_locks_' ||
+          replace(current_setting('app.tenant_id'),'-',''), true) AS value`,
+      ),
     );
     expect(JSON.parse(row?.value || '[]')).toEqual([person.employee.id, subordinate.employee.id].sort());
   });

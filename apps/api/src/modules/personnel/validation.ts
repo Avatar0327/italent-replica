@@ -33,11 +33,22 @@ function fieldSchema(field: PersonnelField): z.ZodType {
       return z.number().int().nonnegative().max(2147483647);
     case 'decimal':
       return z.number().finite().nonnegative().max(1e12);
+    case 'money':
+      return z.unknown().transform(normalizeDailyWageStandard);
     case 'email':
       return z.email().max(320);
     default:
       return z.string().trim().max(2000);
   }
+}
+
+/** DEC-685①：沿用合同金额的 12 位整数 / 2 位小数字符串口径；规范化也只操作字符串。 */
+export function normalizeDailyWageStandard(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !/^\d{1,12}(\.\d{1,2})?$/.test(value))
+    throw new AppError('DAILY_WAGE_STANDARD_INVALID', '日工资标准须为非负金额，最多两位小数');
+  const [integer, fraction = ''] = value.split('.');
+  return `${integer!.replace(/^0+(?=\d)/, '')}.${fraction.padEnd(2, '0')}`;
 }
 export function parseFields(fields: readonly PersonnelField[], value: unknown): Row {
   const shape = Object.fromEntries(

@@ -45,12 +45,55 @@ const businessFk = (name: string, t: Record<'tenantId' | 'employeeId' | 'busines
     ],
   });
 
+/** DEC-684：租户级提前停用配置。默认关闭；指定时刻使用租户时区。 */
+export const exitAccountSettings = pgTable('exit_account_settings', {
+  tenantId: tenant().primaryKey(),
+  earlyEnabled: boolean('early_enabled').notNull().default(false),
+  basis: text('basis'),
+  time: text('time'),
+  inReview: boolean('in_review').notNull().default(false),
+  revision: integer('revision').notNull().default(0),
+});
+
+/** 离退休事务只登记任务；全局账号事务负责执行并回写，停用失败不能撤回任职生效。 */
+export const exitAccountTasks = pgTable(
+  'exit_account_tasks',
+  {
+    tenantId: tenant(),
+    businessId: uuid('business_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    handlerUserId: uuid('handler_user_id'),
+    status: text('status').notNull().default('pending'),
+    reason: text('reason'),
+    attempts: integer('attempts').notNull().default(0),
+    revision: integer('revision').notNull().default(1),
+    commandId: text('command_id').notNull(),
+    restoreRequested: boolean('restore_requested').notNull().default(false),
+    autoRevision: integer('auto_revision'),
+    recipientUserIds: uuid('recipient_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    businessFk('exit_account_tasks_business_fk', t),
+    index('exit_account_tasks_user').on(t.tenantId, t.userId, t.businessId),
+    check(
+      'exit_account_tasks_status',
+      sql`${t.status} IN ('pending','disabled','blocked','restored','skipped','failed')`,
+    ),
+  ],
+);
+
 /** 离职扩展行：与任职业务 1:1（照 transfer_requests）；可改的只有非日期业务字段（列级授权见迁移）。 */
 export const exitRequests = pgTable(
   'exit_requests',
   {
     tenantId: tenant(),
     businessId: uuid('business_id').notNull(),
+    supersedesBusinessId: uuid('supersedes_business_id'),
     employeeId: uuid('employee_id').notNull(),
     /** 离职所属任职周期（employment_cycles.id），创建时等于载荷 selectedStaffId，此后不变（§2.1）。 */
     staffId: uuid('staff_id').notNull(),
@@ -89,6 +132,16 @@ export const exitRequests = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.businessId] }),
     businessFk('exit_requests_business_fk', t),
+    foreignKey({
+      name: 'exit_requests_supersedes_fk',
+      columns: [t.tenantId, t.employeeId, t.supersedesBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    unique('exit_requests_one_successor').on(t.tenantId, t.supersedesBusinessId),
     foreignKey({
       name: 'exit_requests_cycle_fk',
       columns: [t.tenantId, t.employeeId, t.staffId],
@@ -184,7 +237,7 @@ export const exitEffects = pgTable(
       'exit_effects_kind',
       sql`${t.kind} IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',
         'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',
-        'duty_failed')`,
+        'duty_failed', 'rehire_created')`,
     ),
     check('exit_effects_target_type', sql`btrim(${t.targetType}) <> ''`),
   ],

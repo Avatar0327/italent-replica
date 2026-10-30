@@ -180,7 +180,7 @@ function taskAction(fields: FieldsFrom, preconditions: readonly string[], extra:
  * approval.fieldRights（必需项表按 when:approval.fieldRights 关联快照对象的 update）。
  */
 const editRights = { ...taskObject, guards: ['approval.fieldRights'] };
-/** 同意 / 不同意 / 驳回：body.fields 可选，字段集合与盲审可见集由 fieldRights 算（routes.ts 461–471 行）。 */
+/** body.fields 的授权与盲审由 fieldRights 算；exitReschedule 是离职改期确认控制项，不是可编辑字段。 */
 const decision = (preconditions: readonly string[]) =>
   taskAction({ guard: 'approval.fieldRights' }, preconditions, editRights);
 /**

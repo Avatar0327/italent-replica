@@ -63,10 +63,11 @@ export async function affectsEstablishmentOccupancy(
 }
 
 /**
- * 计入编制判定的业务：调动（R1-T09）与实习转正（BE-6a：雇佣关系由实习生转为内部员工，按占编条件可能新占一编；
- * R2f B41 实测保存前先弹超编确认）。其他业务维持原有口径（入职等不判）。
+ * 计入编制判定的业务：调动（R1-T09）、实习转正（BE-6a：雇佣关系由实习生转为内部员工，按占编条件可能新占一编；
+ * R2f B41 实测保存前先弹超编确认）与退休返聘（BE-5b：同时返聘在退休生效保存点内生成返聘任职，设计 §8.3 要求过编制，
+ * 超编使整个退休生效失败）。其他业务维持原有口径（入职、重聘等不判）。
  */
-const CAPACITY_KINDS: readonly string[] = ['transfer', 'intern_regularization'];
+const CAPACITY_KINDS: readonly string[] = ['transfer', 'intern_regularization', 'retire_rehire'];
 
 /** 编制判定结果：严格控编超编（拒绝）、非严格控编超编（提示后由用户确认）、未超编。 */
 export type EstablishmentAssessment = 'strict' | 'warning' | 'none';
@@ -641,7 +642,9 @@ async function projectTarget(
           fields: projectedAdjustments.get(target.businessId)?.fields ?? target.fields ?? {},
           from,
           until,
-          ...staffOf(staffId),
+          // 返聘开新任职周期，保存 / 干跑时新周期行还不存在（selected_staff_id 为空）：用业务自身 ID 占位，
+          // 否则会按起点所在周期回退成退休人的旧周期，被该退休的预减（subtractPendingExits）连带扣掉而漏判超编
+          ...staffOf(staffId ?? (target.kind === 'retire_rehire' ? target.businessId : undefined)),
         },
       ]);
   }

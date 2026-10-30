@@ -65,7 +65,9 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   transfer_form: { label: '调动表单', app: ORG_PEOPLE },
   'exit-request': { label: '离职申请', app: ORG_PEOPLE },
   'exit-cancellation': { label: '撤销的离职记录', app: ORG_PEOPLE },
+  'exit-account-task': { label: '离退休账号处理任务', app: ORG_PEOPLE },
   'exit-effect': { label: '离职下游效果', app: ORG_PEOPLE },
+  employment_form: { label: '用工形式字典', app: ORG_PEOPLE },
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
   offer: { label: 'Offer', app: ORG_PEOPLE },
   offer_dictionary: { label: 'Offer 字典', app: ORG_PEOPLE },
@@ -188,6 +190,15 @@ export function auditObjectMeta(objectType: string): AuditObjectMeta {
 
 /** 任职记录（及引用同名字段的组织、调动等对象）的字段中文名。 */
 const FIELD_LABELS: Readonly<Record<string, string>> = {
+  earlyEnabled: '启用提前停用',
+  basis: '停用基准',
+  time: '指定时刻',
+  inReview: '审批中也停用',
+  restoreRequested: '改期或撤销恢复请求',
+  autoRevision: '自动停用账号版本',
+  recipientUserIds: '待办接收人',
+  handlerUserId: '办理人',
+  attempts: '执行次数',
   departmentId: '部门',
   positionId: '职位',
   postId: '职务',
@@ -217,12 +228,19 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // R2-T04 退休（审计动作 retirement.* / employment.retirement.*）
   retireType: '退休类型',
   reEmployed: '是否同时返聘',
+  dailyWageStandard: '日工资标准',
   expectedRetirementDate: '预计退休日期',
   expectedRetirementConfirmed: '预计退休日期已核准',
   earliestRetirementDate: '最早退休日期',
   latestRetirementDate: '最晚退休日期',
   flexibleRangeConfirmed: '弹性退休范围已核准',
   actualRetirementDate: '实际退休日期',
+  // 5b 同时返聘（employment.retirement.rehired）
+  rehireBusinessId: '返聘业务',
+  rehireDate: '返聘日期',
+  retirementEffectiveDate: '退休生效日期',
+  rehireContractId: '返聘合同',
+  initiatorUserId: '发起人',
   // R2 BE-5d2 意向退休日期申请
   intendedDate: '意向退休日期',
   expectedDateSnapshot: '申请时预计退休日期',
@@ -404,6 +422,7 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'employment_custom_field',
   'transfer_settings',
   'transfer_form',
+  'employment_form',
   'exit_dictionary',
   'offer_dictionary',
   'blacklist_rule',

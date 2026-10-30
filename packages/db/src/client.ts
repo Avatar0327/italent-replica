@@ -7,6 +7,7 @@ import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator';
 import { drizzle as drizzlePg } from 'drizzle-orm/postgres-js';
 import { migrate as migratePg } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
+import { trackTransactionCommits } from './after-commit.js';
 import * as schema from './schema/index.js';
 
 /** 迁移目录（包内 `migrations/`，源码与 dist 运行时都从包根解析）。 */
@@ -36,7 +37,7 @@ export function createPgDb(url: string, options: { max?: number; applicationName
   });
   const db = drizzlePg(client, { schema });
   return {
-    db: db as unknown as Db,
+    db: trackTransactionCommits(db as unknown as Db),
     driver: 'pg',
     migrate: (folder = migrationsFolder) => migratePg(db, { migrationsFolder: folder }),
     close: () => client.end(),
@@ -60,7 +61,7 @@ export async function openPgliteDir(dataDir: string): Promise<DbHandle> {
 export function createPgliteDb(client: PGlite): DbHandle {
   const db = drizzlePglite(client, { schema });
   return {
-    db: db as unknown as Db,
+    db: trackTransactionCommits(db as unknown as Db),
     driver: 'pglite',
     migrate: (folder = migrationsFolder) => migratePglite(db, { migrationsFolder: folder }),
     close: () => client.close(),
