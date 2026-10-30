@@ -50,8 +50,9 @@ export interface FormProps {
   refresh(view?: ProbationView): Promise<unknown>;
 }
 
-/** 打开基线与 409 重读共用一个读取：试用详情的 revision 与值来自同一次响应。 */
-export function useProbationRead(employeeId: string, project: (values: Values) => Values = (values) => values) {
+const unchanged = (values: Values) => values;
+/** 打开基线与 409 重读共用一个读取：试用详情的 revision 与值来自同一次响应；投影须是稳定引用，否则上层重渲染即重读。 */
+export function useProbationRead(employeeId: string, project: (values: Values) => Values = unchanged) {
   const api = useApiClient();
   return useCallback(async (): Promise<Latest> => {
     const { revision, values } = probationValues(await api.request(probationPath(employeeId)), employeeId);

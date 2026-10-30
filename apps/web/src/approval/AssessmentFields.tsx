@@ -64,13 +64,7 @@ export function assessmentField(
 
 const opinionOptions = Object.entries(ASSESSMENT_OPINIONS);
 const ratingOptions = Object.entries(ASSESSMENT_RATINGS);
-interface ControlProps {
-  label: string;
-  id?: string;
-  value?: string | null;
-  onChange?(value: string | null): void;
-  disabled?: boolean;
-}
+type ControlProps = { label: string; id?: string; value?: string | null; onChange?(value: string | null): void };
 function ChoiceControl({ label, options, value, onChange, ...props }: ControlProps & { options: string[][] }) {
   return (
     <select

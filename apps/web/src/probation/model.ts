@@ -251,5 +251,10 @@ export function acceptRegularizations(raw: unknown, items: readonly Pinned[]) {
 }
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */
+const destinations: Record<string, ProbationView> = {
+  in_review: 'in_review',
+  approved: 'regularized',
+  effective: 'regularized',
+};
 export const destinationOf = (status: unknown): ProbationView | undefined =>
-  status === 'in_review' ? 'in_review' : ['approved', 'effective'].includes(String(status)) ? 'regularized' : undefined;
+  typeof status === 'string' && Object.hasOwn(destinations, status) ? destinations[status] : undefined;
