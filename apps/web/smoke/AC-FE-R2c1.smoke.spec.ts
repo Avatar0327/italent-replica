@@ -134,6 +134,29 @@ test('AC-FE-R2c1-04 转正申请：建草稿后提交同一张单，人员进入
   await expect(page.getByRole('button', named('转正'))).toHaveCount(0);
 });
 
+test('AC-FE-R2c1-07 直接转正版本冲突：重读核对后重提带最新员工 revision 并转正成功（P2-1）', async ({ page }) => {
+  const { server } = await setup(page);
+  await openDetail(page);
+  await page.getByRole('button', named('转正')).click();
+  const form = dialog(page, '转正');
+  await expect(form.getByLabel('转正日期', { exact: true })).toHaveValue('2026-11-01');
+  // 打开后别人改了这名员工（4 → 5）
+  server.employeeRevision = 5;
+  await pickResult(page, form);
+  await form.getByRole('button', named('保存')).click();
+  await expect(form.getByText('版本冲突：输入已保留，请重读最新版本并核对差异后重提。')).toBeVisible();
+  // 冲突后自动重读最新版本；读完（重读按钮不再转圈）才可确认
+  await expect(form.getByRole('button', { name: /重读最新版本$/ })).not.toHaveClass(/ant-btn-loading/);
+  await form.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+  // antd 收起加载图标有动画，可访问名可能仍带“loading”前缀；点击会等到按钮可用
+  await form.getByRole('button', { name: /保\s*存$/ }).click();
+  await expect.poll(() => server.writes.length).toBe(2);
+  expect(server.writes.map((write) => (write.body.items as { revision: number }[])[0]!.revision)).toEqual([4, 5]);
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '已转正', exact: true, pressed: true })).toBeVisible();
+  await expect(rowCount(page)).toContainText('审批通过');
+});
+
 test('AC-FE-R2c1-05 无编辑 / 创建按钮权不显示对应入口', async ({ page }) => {
   await setup(page, { buttons: ['Employment.Submit'] });
   await openDetail(page);

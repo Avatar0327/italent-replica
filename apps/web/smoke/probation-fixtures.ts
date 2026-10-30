@@ -200,6 +200,22 @@ export async function setup(page: Page, options: { buttons?: string[] } = {}) {
   return { queries, server };
 }
 
+// context.ts requireRevision：details 带期望与实际 revision
+const conflictReceipt = (expected: number, actual: number) => ({
+  total: 1,
+  succeeded: 0,
+  failed: 1,
+  items: [
+    {
+      employeeId: employee,
+      status: 'failed',
+      businessId: null,
+      effectiveDate: null,
+      businessStatus: null,
+      error: { code: 'REVISION_CONFLICT', message: '任职数据已变更，请刷新后显式重提', details: { expected, actual } },
+    },
+  ],
+});
 async function routeWrites(page: Page, server: Server) {
   await page.route(`**/employment/employees/${employee}`, (route) =>
     route.fulfill({ json: { id: employee, ...person, revision: server.employeeRevision } }),
@@ -223,6 +239,10 @@ async function routeWrites(page: Page, server: Server) {
   await page.route('**/employment/regularizations', (route) => {
     const write = posted(route.request());
     server.writes.push(write);
+    // 同 regularizeEmployees：员工 revision 不符是这一人的失败（REVISION_CONFLICT），整单仍 200
+    const [item] = write.body.items as { employeeId: string; revision: number }[];
+    if (item!.revision !== server.employeeRevision)
+      return route.fulfill({ json: conflictReceipt(item!.revision, server.employeeRevision) });
     const effectiveDate = String(write.body.effectiveDate ?? '2026-11-01');
     server.business = {
       revision: 1,
