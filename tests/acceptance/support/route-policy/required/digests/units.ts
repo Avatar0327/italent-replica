@@ -789,6 +789,21 @@ export const DIGESTS: Digests = {
     'route:POST /:id/transfer': 'fe50616b1faa',
     transferCommand: '75ffa751dcd8',
   },
+  'apps/api/src/modules/org-adjustment/access.ts': {
+    OBJECT: 'b007f3f6067a',
+    authorizeHead: '9c1815c29cd6',
+    authorizeHeadAction: '45a4e2cfc6e7',
+    requireButtons: '733084dc052f',
+    requireScopes: 'ec285517eea1',
+  },
+  'apps/api/src/modules/org-adjustment/routes.ts': {
+    OBJECT: 'b007f3f6067a',
+    authorizeStored: '5184ecbbcbed',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
+    'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': 'ff954d56bb30',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
+  },
   'apps/api/src/modules/org/employment-linkage.ts': {
     authorizeOrgEmploymentReplay: 'fc158c7c64c2',
   },
@@ -1594,6 +1609,9 @@ export const DIGESTS: Digests = {
     OFFER_BUTTONS: '1bd948c24c67',
     OFFER_OBJECT: '952606b19b50',
   },
+  'packages/domain/src/org-adjustment/fields.ts': {
+    ORG_ADJUSTMENT_OBJECT_CODE: '011609a4568b',
+  },
   'packages/domain/src/permission/module-actions.ts': {
     'MODULE_OBJECTS>establishment': 'b43c05b47d73',
     'MODULE_OBJECTS>organization': 'c6abbfbedeec',
@@ -2230,6 +2248,20 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/offer/transitions.ts#route:POST /:id/toolbar-transfer': 'f0a7b28abef7',
   'apps/api/src/modules/offer/transitions.ts#route:POST /:id/transfer': 'f0a7b28abef7',
   'apps/api/src/modules/offer/transitions.ts#transferCommand': 'db3db89a3bb6',
+  'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',
+  'apps/api/src/modules/org-adjustment/access.ts#requireButtons': '7f0d931cf235',
+  'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
+  'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
+  'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id':
+    '489c94042dde',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
+    'f0353ec4d7cd',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
+    'b17c3833a45e',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
   'apps/api/src/modules/org/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/org/routes.ts#anyPersonFieldEditable': '7c428d724e80',
@@ -2814,6 +2846,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>workShift': 'aa3bf6d1c73d',
   'packages/domain/src/offer/rules.ts#OFFER_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/offer/rules.ts#OFFER_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE': 'e3b0c44298fc',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': '338aa90ac3d1',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': 'b292502f2d84',
   'packages/domain/src/permission/module-actions.ts#actions': 'b1e627792f33',

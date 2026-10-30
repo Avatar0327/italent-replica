@@ -13173,6 +13173,57 @@
         ]
       }
     },
+    "PATCH /api/tenant/org-adjustment/adjustments/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "orgAdjustment.head"
+        ],
+        "object": [
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
     "PATCH /api/tenant/org/organizations/:id": {
       "edge": {
         "anonymous": {
@@ -21467,6 +21518,142 @@
         ],
         "object": [
           "requireObjectWrite（对象写操作权）"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite",
+          "writeFields"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "orgAdjustment.head"
+        ],
+        "object": [
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:create"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/check": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "orgAdjustment.head"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/void": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsOut": [
+          "trimModuleResponse"
+        ],
+        "guard": [
+          "orgAdjustment.head"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
