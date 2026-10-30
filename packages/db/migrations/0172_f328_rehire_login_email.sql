@@ -17,13 +17,15 @@ BEGIN
   IF caller IS NULL THEN
     RAISE EXCEPTION 'tenant_rehire_login_email 只能在租户上下文中调用' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF normalized !~ '^[^@[:space:]]+@[^@[:space:]]+$' THEN
-    RAISE EXCEPTION '登录邮箱不合法' USING ERRCODE = 'check_violation';
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM permission_user_person_links l WHERE l.tenant_id = caller AND l.user_id = p_user) THEN
     RAISE EXCEPTION '账号未绑定本租户人员' USING ERRCODE = 'insufficient_privilege';
   END IF;
   SELECT * INTO account FROM users u WHERE u.id = p_user FOR NO KEY UPDATE;
+  -- 联系邮箱是档案自由文本（导入可能带入不合法值）：不能作登录名时保持原登录名，不让重聘失败（结果 'invalid'）
+  IF normalized IS NULL OR normalized !~ '^[^@[:space:]]+@[^@[:space:]]+$' THEN
+    RETURN QUERY SELECT 'invalid'::text, account.email, account.email, account.revision;
+    RETURN;
+  END IF;
   IF account.email = normalized THEN
     RETURN QUERY SELECT 'unchanged'::text, account.email, account.email, account.revision;
     RETURN;
