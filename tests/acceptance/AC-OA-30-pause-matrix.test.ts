@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { assertNotPausedByOrgAdjustment } from '../../apps/api/src/modules/org-adjustment/pause.js';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
-import { withLoginEmail } from './AC-EMP-support.js';
+import { withLoginEmail, type EmploymentRecord } from './AC-EMP-support.js';
 import { orgPeopleWorld, resultRows, TODAY } from './AC-ORG-people-support.js';
 import { pauseOrgs, seedAdjustment } from './support/org-adjustment-execution.js';
 
@@ -101,7 +101,8 @@ describe('AC-OA-30 执行期间暂停：任职入口', () => {
       });
     await expectPaused(world, await transfer(e2.id, d.id));
     await expectPaused(world, await transfer(e1.id, b.id));
-    const record = await w.record(e1.recordId);
+    // 读接口带 revision（AC-EMP-support 的类型未声明该字段）
+    const record = (await w.record(e1.recordId)) as EmploymentRecord & { readonly revision: number };
     await expectPaused(
       world,
       await w.request('PATCH', `/records/${e1.recordId}`, {

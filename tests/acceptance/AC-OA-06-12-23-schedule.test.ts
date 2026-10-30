@@ -47,7 +47,8 @@ describe('AC-OA-06 排期与执行期间暂停', () => {
     const org = await world.w.org('大批量组织');
     const big = await world.adjustment(org.id);
     await withTenant(world.db, world.tenant.id, (tx) =>
-      tx.execute(sql`INSERT INTO org_adjustment_org_items(tenant_id, id, adjustment_id, seq, adjust_type, parent_org_id, name)
+      tx.execute(sql`INSERT INTO org_adjustment_org_items
+          (tenant_id, id, adjustment_id, seq, adjust_type, parent_org_id, name)
         SELECT ${world.tenant.id}, gen_random_uuid(), ${big.id}, g, 1, ${org.id}, '批量新增' || g
         FROM generate_series(1, 6000) AS g`),
     );
@@ -99,8 +100,10 @@ describe('AC-OA-06 排期与执行期间暂停', () => {
         body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-03', fields: { departmentId: d.id } },
       });
     const during: string[] = [];
-    const outcome = async (response: Response) =>
-      `${response.status}:${((await response.json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason}`;
+    const outcome = async (response: Response) => {
+      const body = (await response.json()) as { error?: { details?: { reason?: string } } };
+      return `${response.status}:${body.error?.details?.reason}`;
+    };
     const { executors } = fakeExecutors();
     const afterGroup = async () => {
       during.push(await outcome(await hireInto(d.id)), await outcome(await transferIn()));
