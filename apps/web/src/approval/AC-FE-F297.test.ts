@@ -15,7 +15,7 @@ const dateRequired = '提前转正 / 延期转正须填写转正日期';
  * 形状照 assessment-approval-adapter.ts snapshot：form.values = ASSESSMENT_FORM_FIELDS；经理评价节点可编辑
  * managerRating / regularizationOpinion / regularizationDate（presets.ts，with_approve，考核类型不在 APPROVAL_EDIT_REQUIRED）。
  */
-function fixture(): Detail {
+function fixture(editable = ['managerRating', 'regularizationOpinion', 'regularizationDate']): Detail {
   const values = {
     assessmentName: '合成试用中考核',
     assessmentDate: '2026-10-20',
@@ -38,7 +38,7 @@ function fixture(): Detail {
       edit: {
         taskId: '50000000-0000-4000-8000-000000000298',
         mode: 'with_approve',
-        fields: ['managerRating', 'regularizationOpinion', 'regularizationDate'].map((key) => ({
+        fields: editable.map((key) => ({
           key,
           required: false,
           value: values[key as keyof typeof values],
@@ -175,6 +175,16 @@ describe('AC-FE-F297 考核审批编辑：转正意见 / 转正日期联动', ()
       regularizationOpinion: null,
       regularizationDate: null,
     });
+  });
+  it('自定义节点开放考核日期：按 edit.fields 给可编辑的日期控件并随提交发送（P2-5）', async () => {
+    await render(fixture(['assessmentDate', 'managerRating']));
+    await click('同意');
+    expect(control('考核日期').getAttribute('type')).toBe('date');
+    expect(control('考核日期').value).toBe('2026-10-20');
+    await fill('考核日期', '2026-10-25');
+    await fill('经理评价', 'meets');
+    await click('保存');
+    expect(posts.map(({ body }) => body.fields)).toEqual([{ assessmentDate: '2026-10-25', managerRating: 'meets' }]);
   });
   it('后端以 ASSESSMENT_DATE_REQUIRED 拒绝：保留输入、显示原因、可修正后重提', async () => {
     reject = true;
