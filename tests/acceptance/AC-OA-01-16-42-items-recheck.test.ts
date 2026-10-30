@@ -54,7 +54,7 @@ const move = (targetOrgId: string, parentOrgId: string) => ({
   addEmployment: false,
 });
 
-describe('R2 P2-1 同级新增 editor.peer（§6.2：siblingOf，服务端取同级来源的上级）', () => {
+describe('AC-OA-01 / AC-OA-43 R2 P2-1 同级新增 editor.peer（§6.2：siblingOf，服务端取同级来源的上级）', () => {
   it('siblingOf 引用既有组织 / 本单新增行 → 201，上级取来源的上级；入口与 siblingOf 不配套 → 400', async () => {
     const w = await itemsWorld(testDb().db, 'oar2peer');
     const source = await w.org(`同级来源${uniqueSuffix()}`, w.a);
@@ -84,7 +84,7 @@ describe('R2 P2-1 同级新增 editor.peer（§6.2：siblingOf，服务端取同
   });
 });
 
-describe('R2 P2-2 整单校验在当前生效日重判上级可用、调整范围、停用日期（§5.2 / §5.6）', () => {
+describe('AC-OA-01 / AC-OA-16 / AC-OA-42 R2 P2-2 整单校验在当前生效日重判上级可用、调整范围、停用日期（§5.2 / §5.6）', () => {
   it('新增行的上级之后被停用 → 校验报 ORG_INACTIVE', async () => {
     const w = await itemsWorld(testDb().db, 'oar2chk');
     const parent = await w.org(`上级${uniqueSuffix()}`, w.a);
@@ -135,7 +135,7 @@ describe('R2 P2-2 整单校验在当前生效日重判上级可用、调整范�
   });
 });
 
-describe('R2 P2-3 组织角色人员资格（§5.2：复用 assertOrgPeopleEligible）', () => {
+describe('AC-OA-01 R2 P2-3 组织角色人员资格（§5.2：复用 assertOrgPeopleEligible）', () => {
   it('保存 / 修改：无任职人员或不存在的人员 → 400 PERSON_NOT_ELIGIBLE，不留明细；在职人员可保存', async () => {
     const w = await itemsWorld(testDb().db, 'oar2ppl');
     const jobless = await w.employee(`无任职${uniqueSuffix()}`);
@@ -171,7 +171,7 @@ describe('R2 P2-3 组织角色人员资格（§5.2：复用 assertOrgPeopleEligi
   });
 });
 
-describe('R2 P2-4 编码复用 assertCodeAvailable 的格式与占用口径', () => {
+describe('AC-OA-01 R2 P2-4 编码复用 assertCodeAvailable 的格式与占用口径', () => {
   it('保存 / 修改：非法格式、保留编码 ROOT → 400 ORG_CODE_INVALID；被其它组织占用 → 409 ORG_CODE_DUPLICATE', async () => {
     const w = await itemsWorld(testDb().db, 'oar2code');
     const view = await w.created();
@@ -204,7 +204,7 @@ describe('R2 P2-4 编码复用 assertCodeAvailable 的格式与占用口径', ()
   });
 });
 
-describe('R2 P2-5 叠树错误按“本次操作新造成”拦截（操作前后问题集合取差集）', () => {
+describe('AC-OA-01 R2 P2-5 叠树错误按“本次操作新造成”拦截（操作前后问题集合取差集）', () => {
   it('先把合法子树移到 A 下，再移动 A 使最深后代到第 11 层 → 第二次保存 400，明细 / revision / 审计不变', async () => {
     const w = await itemsWorld(testDb().db, 'oar2plan');
     // a 为第 1 层：p2…p7 一条链（p7 在第 7 层）；x、s 在第 2 层，s ─ s2 ─ s3。
@@ -248,7 +248,7 @@ describe('R2 P2-5 叠树错误按“本次操作新造成”拦截（操作前�
   });
 });
 
-describe('R2 P2-6 整单刷新基线写申请单级审计', () => {
+describe('§2.5 / DEC-019 R2 P2-6 整单刷新基线写申请单级审计', () => {
   it('空单 / 仅含新增行：整单刷新 revision + 1 并写 org-adjustment.rebase 审计', async () => {
     const w = await itemsWorld(testDb().db, 'oar2rb');
     const empty = await w.created();
