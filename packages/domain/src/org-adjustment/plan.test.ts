@@ -22,6 +22,10 @@ const move = (id: string, targetOrgId: string, parentOrgId: string): OrgPlanItem
   targetOrgId,
   parent: { kind: 'org', id: parentOrgId },
 });
+const moveUnderItem = (id: string, targetOrgId: string, itemId: string): OrgPlanItem => ({
+  ...move(id, targetOrgId, ROOT),
+  parent: { kind: 'item', id: itemId },
+});
 const stop = (id: string, targetOrgId: string): OrgPlanItem => ({ id, adjustType: 3, targetOrgId, parent: null });
 const plan = (items: OrgPlanItem[]) => planOrgTree({ rootId: ROOT, orgs, items });
 const reasonsOf = (items: OrgPlanItem[]) => plan(items).map((issue) => `${issue.itemId}:${issue.reason}`);
@@ -54,9 +58,9 @@ describe('planOrgTree（R2-T08 §5.2：本单明细叠到生效日组织树）',
     }
     expect(plan(chain)).toEqual([]);
     expect(reasonsOf([...chain, create('n11', parent)])).toEqual(['n11:ORG_ADJUSTMENT_LEVEL_EXCEEDED']);
-    expect(reasonsOf([...chain, move('m', 'b', 'n9')])).toEqual([]);
+    expect(reasonsOf([...chain, moveUnderItem('m', 'b', 'n9')])).toEqual([]);
     const under = create('bc', { kind: 'org', id: 'b' });
-    expect(reasonsOf([...chain, under, move('m', 'b', 'n9')])).toContain('m:ORG_ADJUSTMENT_LEVEL_EXCEEDED');
+    expect(reasonsOf([...chain, under, moveUnderItem('m', 'b', 'n9')])).toContain('m:ORG_ADJUSTMENT_LEVEL_EXCEEDED');
   });
 
   it('挂到本单停用整支下（含连带下级）→ PARENT_STOPPED；挂到未停用的上级不算', () => {

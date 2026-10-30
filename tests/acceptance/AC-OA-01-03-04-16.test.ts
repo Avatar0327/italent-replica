@@ -3,6 +3,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { BASE, bodyOf, expectError } from './AC-OA-head-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
 import { itemsWorld, newOrg, reasons, rename, stop } from './AC-OA-items-support.js';
 
 const testDb = useTestDb();
@@ -87,6 +88,7 @@ describe('AC-OA-01 改名 / 改上级必填“是否新增任职”（OA-R3）�
       'org-adjustment.item.create',
       'org-adjustment.item.update',
       'org-adjustment.item.create',
+      'org-adjustment.item.delete',
     ]);
   });
 
@@ -137,9 +139,9 @@ describe('AC-OA-01 改名 / 改上级必填“是否新增任职”（OA-R3）�
     const w = await itemsWorld(testDb().db, 'oa01');
     const view = await w.created();
     const taken = await withTenant(w.db, w.tenant.id, async (tx) => {
-      const [row] = (await tx.execute(
-        sql`SELECT code FROM org_versions WHERE org_id = ${w.b} ORDER BY version_no DESC LIMIT 1`,
-      )) as unknown as { code: string }[];
+      const [row] = resultRows<{ code: string }>(
+        await tx.execute(sql`SELECT code FROM org_versions WHERE org_id = ${w.b} ORDER BY version_no DESC LIMIT 1`),
+      );
       return row?.code;
     });
     const created = await w.item(view.id, newOrg(w.a, { code: taken ?? 'missing' }));

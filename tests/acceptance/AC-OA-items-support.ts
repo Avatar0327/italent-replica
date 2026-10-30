@@ -91,7 +91,7 @@ export async function itemsWorld(db: Db, label: string) {
     return withTenant(w.db, w.tenant.id, async (tx) =>
       resultRows<{ action: string }>(
         await tx.execute(sql`SELECT action FROM audit_events WHERE object_type = 'org-adjustment-item'
-          AND object_id IN (SELECT id FROM org_adjustment_org_items WHERE adjustment_id = ${id})
+          AND coalesce(after->>'adjustmentId', before->>'adjustmentId') = ${id}
           ORDER BY occurred_at, id`),
       ).map((r) => r.action),
     );
