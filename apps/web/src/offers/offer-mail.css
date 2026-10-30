@@ -1,0 +1,81 @@
+.offer-mail-page {
+  color: #30353b;
+}
+.offer-mail-page h1 {
+  margin: 4px 24px 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.offer-mail-card {
+  padding: 24px 40px;
+  border-radius: 8px;
+  background: #fff;
+}
+.offer-mail-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  border-left: 3px solid #4b90ff;
+  padding-left: 8px;
+  font-size: 16px;
+}
+.offer-mail-card h2::after {
+  flex: 1;
+  border-top: 1px dashed #dbe7f5;
+  content: '';
+}
+.offer-mail-card h3 {
+  margin: 24px 0 16px;
+  font-size: 14px;
+}
+.offer-mail-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0 0 28px;
+}
+.offer-mail-page dt {
+  margin-bottom: 8px;
+  color: #626972;
+  font-size: 12px;
+}
+.offer-mail-page dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.offer-mail-notice {
+  width: min(900px, 100%);
+  border: 1px solid #e0e4ea;
+  border-radius: 4px;
+}
+.offer-mail-subject {
+  margin: 0;
+  border-bottom: 1px solid #e0e4ea;
+  padding: 20px 32px;
+  background: #fafbfc;
+}
+.offer-mail-subject > div {
+  display: flex;
+  gap: 28px;
+}
+.offer-mail-subject dt {
+  margin: 0;
+}
+.offer-mail-body {
+  max-height: 520px;
+  overflow: auto;
+  padding: 24px 32px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.offer-mail-body h4 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  text-align: center;
+}
+.offer-mail-body p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

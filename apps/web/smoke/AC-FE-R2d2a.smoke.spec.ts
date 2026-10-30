@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
 import { setup, record, recordId, listRecord, fields } from './part-time-fixtures.js';
@@ -209,7 +210,7 @@ test('AC-FE-R2d2a-03 批量结束冲突逐条提示、重读重提使用新版�
     await page.route(`**/employment/part-times/${id}`, (route) =>
       route.fulfill({ json: { ...record, id, revision: 2 } }),
     );
-  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(page, '重读最新版本').click();
   const confirm = page.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
   await confirm.click();
   await expect(confirm).toHaveCount(0);
@@ -244,7 +245,7 @@ test('AC-FE-R2d2a-05 编辑结果未知关闭换视图重开仍锁定，回查�
   await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(save(page)).toBeDisabled();
-  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await actionButton(page, '回查原单').click();
   await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
   await expect(save(page)).toBeDisabled();
   expect(writes).toBe(1);
@@ -271,7 +272,7 @@ test('AC-FE-R2d2a-06 编辑冲突重读：保留部门草稿、更新未改结�
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await choose(page, '部门', '合成部门乙');
   await save(page).click();
-  await page.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await actionButton(page, '重读最新版本').click();
   const confirm = page.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
   await confirm.click();
   await expect(confirm).toHaveCount(0);
@@ -305,7 +306,7 @@ test('AC-FE-R2d2a-07 批量未知锁住单条编辑与重组批次', async ({ pa
   await page.locator('.ant-table-tbody input[type=checkbox]').nth(1).check();
   await page.getByRole('button', { name: '批量结束兼职', exact: true }).click();
   await expect(save(page)).toBeDisabled();
-  await page.getByRole('button', { name: '回查原单', exact: true }).click();
+  await actionButton(page, '回查原单').click();
   await expect(page.getByText('原单当前值（仅供核对，不能据此确认本次命令结果）')).toBeVisible();
   await expect(save(page)).toBeDisabled();
   expect(writes).toBe(1);

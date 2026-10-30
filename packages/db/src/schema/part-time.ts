@@ -1,3 +1,4 @@
+import { employmentForms } from './employment-forms.js';
 /**
  * BE-7 兼职（docs/08_设计/R2-T05_兼职设计.md §1.2 / §1.4）：兼职期限链与兼职申请三表。
  * 兼职记录本身复用 employment_records（service_type ≠ primary、kind = part_time，不进时间轴，§1.1），这里只放
@@ -148,6 +149,7 @@ export const partTimeRequestVersions = pgTable(
     previousVersionId: uuid('previous_version_id'),
     commandId: text('command_id').notNull(),
     serviceType: text('service_type').notNull(),
+    institutionId: uuid('institution_id'),
     departmentId: uuid('department_id'),
     positionId: uuid('position_id'),
     postId: uuid('post_id'),
@@ -171,6 +173,11 @@ export const partTimeRequestVersions = pgTable(
     createdAt: utc(),
   },
   (t) => [
+    foreignKey({
+      name: 'part_time_request_versions_form_fk',
+      columns: [t.tenantId, t.employmentForm],
+      foreignColumns: [employmentForms.tenantId, employmentForms.code],
+    }),
     unique('part_time_request_versions_tenant_id').on(t.tenantId, t.id),
     unique('part_time_request_versions_request_id').on(t.tenantId, t.employeeId, t.requestId, t.id),
     unique('part_time_request_versions_request_version').on(t.tenantId, t.requestId, t.versionNo),
@@ -180,6 +187,7 @@ export const partTimeRequestVersions = pgTable(
       columns: [t.tenantId, t.employeeId, t.requestId, t.previousVersionId],
       foreignColumns: [t.tenantId, t.employeeId, t.requestId, t.id],
     }),
+    ref('part_time_request_versions_institution_fk', t.tenantId, t.institutionId, orgObjects),
     ref('part_time_request_versions_department_fk', t.tenantId, t.departmentId, orgObjects),
     ref('part_time_request_versions_position_fk', t.tenantId, t.positionId, jobPositionObjects),
     ref('part_time_request_versions_post_fk', t.tenantId, t.postId, jobPostObjects),

@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, user } from './fixtures.js';
 
 const id = '40000000-0000-4000-8000-000000000001';
@@ -236,7 +237,7 @@ test('AC-FE-R1a-12 列表序列同步保留选中对象 revision 和异步回执
   await page.goto('/job?kind=posts');
   await expect(page.getByRole('button', { name: '合成条目' })).toBeVisible();
   await page.getByRole('checkbox').nth(1).check();
-  await page.getByRole('button', { name: '同步序列到任职', exact: true }).click();
+  await actionButton(page, '同步序列到任职').click();
   await page.getByRole('button', { name: /确\s*认/, exact: true }).click();
   await expect(page.getByText('后台开始处理对应任职记录上的序列，完成后会给你发送消息。')).toBeVisible();
   expect(writes).toEqual([{ items: [{ id, revision: 1 }] }]);

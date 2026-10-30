@@ -11,8 +11,13 @@ import { cancelWorld, type Cancelled, type CancelBody } from './AC-EXIT-cancel-s
 import { dayAt } from './AC-EXIT-activation-support.js';
 import { withRetirement } from './AC-RT-support.js';
 
-export async function retirementCancelWorld(db: Db, label: string, today = '2026-10-06') {
-  const x = withRetirement(db, await cancelWorld(db, label, today), today);
+export async function retirementCancelWorld(
+  db: Db,
+  label: string,
+  today = '2026-10-06',
+  options: { capacity?: boolean } = {},
+) {
+  const x = withRetirement(db, await cancelWorld(db, label, today, options), today);
   const tenantId = x.session.tenant.id;
 
   /** 专用撤销入口（If-Match 缺省取业务当前 revision）；返回原始响应。 */

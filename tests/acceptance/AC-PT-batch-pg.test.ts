@@ -3,49 +3,40 @@
  * 只在设了 TEST_DATABASE_URL 时运行：批量结束与单条编辑同一兼职 —— 后到者在员工行锁上真实等待，先到者提交后锁内比对
  * revision 失败，恰一方成功、失败方整批无写入；两个批量结束以相反条目顺序交错也不死锁（同一员工两条记录，以及跨两名员工，F-235②）。
  */
+import type * as Crypto from 'node:crypto';
 import { withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { batchEndPartTimes, editPartTime } from '../../apps/api/src/modules/employment/part-time/service.js';
 import { readPartTimeRecords } from '../../apps/api/src/modules/employment/part-time/store.js';
 import { httpWorld } from './AC-PT-http-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
+import { orderedEmployeePair } from './support/ordered-employee-pair.js';
+
+// F-334：仅在造兼职记录期间固定前缀，保留其余随机位，保证读取顺序与员工锁序相反。
+const uuidPrefix = vi.hoisted(() => ({ value: '' }));
+vi.mock('node:crypto', async (original) => {
+  const actual = await original<typeof Crypto>();
+  return {
+    ...actual,
+    randomUUID: () => {
+      const id = actual.randomUUID();
+      return uuidPrefix.value ? uuidPrefix.value + id.slice(8) : id;
+    },
+  };
+});
 
 const database = useTestDb();
 
-interface CreatedRecord {
-  readonly id: string;
-  readonly employeeId: string;
-  readonly revision: number;
-}
 const endDate = '2026-12-31';
 
-function signal() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-/** 在租户事务里执行 work，停在提交之前直到 release；返回提交结果（成功 undefined，失败为错误）。 */
-function holdThen(db: Db, tenantId: string, work: (tx: Tx) => Promise<unknown>) {
-  const held = signal();
-  const release = signal();
-  const done = withTenant(db, tenantId, async (tx) => {
-    await work(tx);
-    held.resolve();
-    await release.promise;
-  }).then(
-    () => undefined,
-    (error: unknown) => {
-      held.resolve();
-      return error;
-    },
-  );
-  return { held: held.promise, release: release.resolve, done };
-}
+/** 租户事务里执行 take 后停在提交之前，直到 withHeldLock 放行；take 失败（含死锁）会让 withHeldLock 直接抛出。 */
+const holding = (
+  w: { db: Db; tenantId: string },
+  take: (tx: Tx) => Promise<unknown>,
+  afterRelease?: (tx: Tx) => Promise<void>,
+) => ({ run: <R>(fn: (tx: Tx) => Promise<R>) => withTenant(w.db, w.tenantId, fn), take, afterRelease });
 
 async function setup(label: string) {
   const w = await httpWorld(database().db, label);
@@ -58,14 +49,14 @@ async function setup(label: string) {
 describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 单条编辑真 PG 交错', () => {
   it('编辑先持锁、批量结束（旧 revision）后到：等员工行锁，编辑提交后锁内比对失败 → 409，整批无写入', async () => {
     const { w, a, b, items } = await setup('batch-pg-edit-first');
-    const editor = holdThen(w.db, w.tenantId, (tx) =>
-      editPartTime(tx, w.context(a.revision), a.id, { endDate: '2026-10-20' }),
+    const { batch } = await withHeldLock(
+      holding(w, (tx) => editPartTime(tx, w.context(a.revision), a.id, { endDate: '2026-10-20' })),
+      async (lock) => {
+        const pending = lock.track(w.batchEnd(items, '2026-10-15'));
+        await waitForBlocked(w.db, 1);
+        return { batch: pending };
+      },
     );
-    await editor.held;
-    const batch = w.batchEnd(items, '2026-10-15');
-    await waitForBlocked(w.db, 1);
-    editor.release();
-    expect(await editor.done).toBeUndefined();
     const response = await batch;
     expect(response.status, await response.clone().text()).toBe(409);
     expect(await response.json()).toMatchObject({
@@ -77,14 +68,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
 
   it('批量结束先持锁、单条编辑（旧 revision）后到：编辑 409，只有批量一方写入', async () => {
     const { w, a, b, items } = await setup('batch-pg-batch-first');
-    const batch = holdThen(w.db, w.tenantId, (tx) =>
-      batchEndPartTimes(tx, w.context(), { items, endDate: '2026-10-15' }),
+    const { edit } = await withHeldLock(
+      holding(w, (tx) => batchEndPartTimes(tx, w.context(), { items, endDate: '2026-10-15' })),
+      async (lock) => {
+        const pending = lock.track(w.edit(a.id, { endDate: '2026-10-10' }, a.revision));
+        await waitForBlocked(w.db, 1);
+        return { edit: pending };
+      },
     );
-    await batch.held;
-    const edit = w.edit(a.id, { endDate: '2026-10-10' }, a.revision);
-    await waitForBlocked(w.db, 1);
-    batch.release();
-    expect(await batch.done).toBeUndefined();
     const response = await edit;
     expect(response.status, await response.clone().text()).toBe(409);
     expect((await response.json()) as unknown).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
@@ -94,14 +85,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
 
   it('两个批量结束以相反条目顺序交错：不死锁，后到者 409，用新 revision 重提成功', async () => {
     const { w, a, b, items } = await setup('batch-pg-opposite-order');
-    const first = holdThen(w.db, w.tenantId, (tx) =>
-      batchEndPartTimes(tx, w.context(), { items, endDate: '2026-10-15' }),
+    const { second } = await withHeldLock(
+      holding(w, (tx) => batchEndPartTimes(tx, w.context(), { items, endDate: '2026-10-15' })),
+      async (lock) => {
+        const pending = lock.track(w.batchEnd([...items].reverse(), '2026-10-10'));
+        await waitForBlocked(w.db, 1);
+        return { second: pending };
+      },
     );
-    await first.held;
-    const second = w.batchEnd([...items].reverse(), '2026-10-10');
-    await waitForBlocked(w.db, 1);
-    first.release();
-    expect(await first.done).toBeUndefined();
     expect((await second).status).toBe(409);
     const fresh = [a, b].map((record) => ({ recordId: record.id, revision: 2 }));
     expect((await w.batchEnd(fresh.reverse(), '2026-10-10')).status).toBe(200);
@@ -115,49 +106,46 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-PT-batch-pg 批量结束 vs 
    */
   it('两个批量结束跨两名员工、相反顺序交错：首个员工锁后交错，无 40P01，后到者 409 REVISION_CONFLICT', async () => {
     const w = await httpWorld(database().db, 'batch-pg-cross-employee');
-    const colleague = await w.colleague('跨员工兼职');
-    const [lowEmployee, highEmployee] = [w.employeeId, colleague.id].sort();
-    // 读取顺序 = 记录 ID 升序（store.ts partTimeRows），与员工 UUID 无关：夹具补建记录，直到
-    // 较大员工的某条记录 ID 小于较小员工的某条记录 ID —— 这样不排序时读到的员工顺序恰是降序，与锁序相反
-    const created = { low: [] as CreatedRecord[], high: [] as CreatedRecord[] };
-    const make = async (side: 'low' | 'high') =>
-      created[side].push(await w.create({ employeeId: side === 'low' ? lowEmployee! : highEmployee!, endDate }));
-    const pick = () => ({
-      low: created.low.reduce((a, b) => (a.id > b.id ? a : b)),
-      high: created.high.reduce((a, b) => (a.id < b.id ? a : b)),
-    });
-    await make('low');
-    await make('high');
-    for (let round = 0; round < 40 && pick().high.id > pick().low.id; round++) {
-      await make('low');
-      await make('high');
-    }
-    const { low, high } = pick();
+    const { worker, subordinate } = await orderedEmployeePair(
+      await w.getEmployee(w.employeeId),
+      () => w.colleague('跨员工兼职'),
+      (person) => person.id,
+      'above',
+    );
+    const [lowEmployee, highEmployee] = [worker.id, subordinate.id];
+    const make = async (employeeId: string, prefix: string) => {
+      uuidPrefix.value = prefix;
+      try {
+        return await w.create({ employeeId, endDate });
+      } finally {
+        uuidPrefix.value = '';
+      }
+    };
+    // partTimeRows 按记录 ID 升序读取：大员工对应小记录，恰好反转员工锁序，无需重试。
+    const low = await make(lowEmployee, 'eeeeeeee');
+    const high = await make(highEmployee, '11111111');
+    expect(lowEmployee < highEmployee && high.id < low.id).toBe(true);
     // 前提：本请求的真实读取结果按员工 UUID 降序（读取顺序 ≠ 锁序），“仅删 .sort()”才会改变加锁顺序
     const readOrder = await withTenant(w.db, w.tenantId, async (tx) =>
       (await readPartTimeRecords(tx, w.context(), [low.id, high.id])).map((row) => row.employeeId),
     );
     expect(readOrder).toEqual([highEmployee, lowEmployee]);
     const item = (record: { id: string; revision: number }) => ({ recordId: record.id, revision: record.revision });
-    const locked = signal();
-    const proceed = signal();
-    const first = withTenant(w.db, w.tenantId, async (tx) => {
-      await lockEmploymentEmployee(tx, w.context(), low.employeeId);
-      locked.resolve();
-      await proceed.promise;
-      await batchEndPartTimes(tx, w.context(), { items: [item(low), item(high)], endDate: '2026-10-15' });
-    }).then(
-      () => undefined,
-      (error: unknown) => {
-        locked.resolve();
-        return error;
+    // 首个连接若被死锁（40P01），其错误由 withHeldLock 抛出，用例判红
+    const { second } = await withHeldLock(
+      holding(
+        w,
+        (tx) => lockEmploymentEmployee(tx, w.context(), low.employeeId),
+        async (tx) => {
+          await batchEndPartTimes(tx, w.context(), { items: [item(low), item(high)], endDate: '2026-10-15' });
+        },
+      ),
+      async (lock) => {
+        const pending = lock.track(w.batchEnd([item(high), item(low)], '2026-10-10'));
+        await waitForBlocked(w.db, 1);
+        return { second: pending };
       },
     );
-    await locked.promise;
-    const second = w.batchEnd([item(high), item(low)], '2026-10-10');
-    await waitForBlocked(w.db, 1);
-    proceed.resolve();
-    expect(await first, '首个连接不得被死锁（40P01）').toBeUndefined();
     const response = await second;
     expect(response.status, await response.clone().text()).toBe(409);
     expect(await response.json()).toMatchObject({

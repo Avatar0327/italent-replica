@@ -20,8 +20,10 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import type { ProbationProcessCheck } from './probation-guard.js';
+import type { ProbationProcessTarget } from './probation-guard.js';
+import type { EmploymentContext } from './types.js';
 import { rowsOf } from './record-store.js';
+import { discloseAssessmentConflict } from './assessment-conflict-disclosure.js';
 
 /** 审批中的考核对应的并行规则开关。 */
 const BLOCKER_OF: Readonly<Record<AssessmentType, ParallelRuleBlocker>> = {
@@ -35,7 +37,12 @@ export async function readParallelRule(tx: Tx, tenantId: string, blocker: Parall
   return isParallelRuleValue(blocker, value) ? value : PARALLEL_RULE_DEFAULT;
 }
 
-export const assessmentInReview: ProbationProcessCheck = async (tx, ctx, target) => {
+// 函数声明可在审批 / 任职模块的循环依赖中先完成登记，独立加载检查点也不会读到未初始化的绑定。
+export async function assessmentInReview(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ProbationProcessTarget,
+): Promise<void> {
   const rows = rowsOf<{ id: string; assessmentType: AssessmentType; assessmentName: string; assessmentDate: string }>(
     await tx.execute(sql`SELECT id::text AS id, assessment_type AS "assessmentType",
         assessment_name AS "assessmentName", assessment_date::text AS "assessmentDate"
@@ -47,12 +54,14 @@ export const assessmentInReview: ProbationProcessCheck = async (tx, ctx, target)
   for (const row of rows) {
     const rule = await readParallelRule(tx, ctx.tenantId, BLOCKER_OF[row.assessmentType]);
     if (parallelAllows(rule, process)) continue;
-    // 原站提示“存在未完成的考核（日期、考核名称）”（§8 AC-PB-03），提交时拦截
-    throw new AppError(
-      'CONFLICT',
-      `该员工存在未完成的${ASSESSMENT_TYPES[row.assessmentType]}（${row.assessmentDate}、${row.assessmentName}），` +
+    // 原站提示保留给可查看明细者；无权者仍被 PB-R9 拦截（F-228）。
+    const error = await discloseAssessmentConflict(tx, ctx, {
+      code: 'CONFLICT',
+      message:
+        `该员工存在未完成的${ASSESSMENT_TYPES[row.assessmentType]}（${row.assessmentDate}、${row.assessmentName}），` +
         '不能再发起转正、考核或调整试用期',
-      { reason: 'PROBATION_PROCESS_IN_REVIEW', process: BLOCKER_OF[row.assessmentType], assessmentId: row.id },
-    );
+      details: { reason: 'PROBATION_PROCESS_IN_REVIEW', process: BLOCKER_OF[row.assessmentType], assessmentId: row.id },
+    });
+    throw new AppError('CONFLICT', error.message, error.details);
   }
-};
+}

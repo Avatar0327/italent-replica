@@ -10,7 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { lockOrganizationSettings } from '../../apps/api/src/modules/org/locks.js';
 import { retirementCancelWorld, type RetirementCancelWorld } from './AC-RT-cancel-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { waitForBlocked, withRelease } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -39,15 +39,17 @@ async function queueBehind(x: RetirementCancelWorld, requests: (() => Promise<un
   const session = holder(x, (tx) => lockOrganizationSettings(tx, x.session.tenant.id));
   await session.held;
   const running: Promise<unknown>[] = [];
-  try {
-    for (const [index, request] of requests.entries()) {
-      running.push(request());
-      await waitForBlocked(x.db, index + 1);
-    }
-  } finally {
-    session.release();
-    await session.done;
-  }
+  await withRelease(
+    () => session.release(),
+    async (cleanup) => {
+      cleanup.track(session.done);
+      for (const [index, request] of requests.entries()) {
+        running.push(cleanup.track(request()));
+        await waitForBlocked(x.db, index + 1);
+      }
+    },
+    [session.done],
+  );
   return Promise.allSettled(running);
 }
 
@@ -56,7 +58,8 @@ const response = (settled: PromiseSettledResult<unknown>) => (settled as Promise
 describe.runIf(live)('AC-RT-11-cancel-pg ③ 组织停用 vs 撤销 approved 退休（恰一方成功）', () => {
   /** 退休 E = 10-21 已批准，A 的停用 10-22 起（按 §6A.1 允许：approved 退休从 E 起不计占用）。 */
   async function scene(label: string) {
-    const x = await retirementCancelWorld(database().db, label, TODAY);
+    // 要停用调出部门：不建编制（F-296 在 11e 前拒绝直接停用含编制的组织）。
+    const x = await retirementCancelWorld(database().db, label, TODAY, { capacity: false });
     const retire = await x.directRetire('2026-10-20');
     const revision = (await x.business(retire.id)).revision;
     const cancel = () => x.cancelRetire(retire.id, { reason: '撤销' }, { ifMatch: revision });
