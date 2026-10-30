@@ -189,7 +189,8 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
       },
     });
   });
-  await page.route('**/employment/probation-results?*', (route) =>
+  // 转正下拉只取启用项（?enabled=true），试用信息按全量字典显示历史结果的名称
+  await page.route(/\/employment\/probation-results(\?.*)?$/, (route) =>
     route.fulfill({
       json: {
         items: [

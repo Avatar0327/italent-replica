@@ -115,6 +115,12 @@ test('AC-FE-R2c1-03 直接转正：试用结果必填，默认预计结束日次
   await expect(rowCount(page)).toContainText('审批通过');
   await switchView(page, 'expiring');
   await expect(rowCount(page)).toHaveCount(0);
+  // 试用信息里的试用结果按租户字典显示名称，不显示编码（P3）
+  await switchView(page, 'regularized');
+  await openDetail(page);
+  await page.getByRole('button', named('试用信息')).click();
+  const result = dialog(page, '试用信息').locator('.ant-descriptions-item').filter({ hasText: '试用结果' });
+  await expect(result).toContainText('合成通过');
 });
 
 test('AC-FE-R2c1-04 转正申请：建草稿后提交同一张单，人员进入“转正审批中”', async ({ page }) => {
