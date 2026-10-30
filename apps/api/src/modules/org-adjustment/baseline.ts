@@ -16,10 +16,8 @@ export async function assertBaselines(tx: Tx, tenantId: string, adjustmentId: st
   const view = await loadAdjustment(tx, tenantId, adjustmentId);
   if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
   const world = await loadWorld(tx, tenantId, view);
-  const stale = baselineIssues(
-    world,
-    world.items.filter((item) => !item.isStaged),
-  );
+  const live = world.items.filter((item) => !item.isStaged);
+  const stale = baselineIssues(world, live);
   if (stale.length) {
     throw new AppError('CONFLICT', '组织在添加明细后已被修改，请刷新基线', {
       reason: BASELINE_CHANGED,

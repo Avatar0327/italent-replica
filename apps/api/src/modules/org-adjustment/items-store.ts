@@ -105,22 +105,17 @@ export async function loadItem(tx: Tx, tenantId: string, adjustmentId: string, i
 
 export async function insertItem(tx: Tx, tenantId: string, adjustmentId: string, item: OrgItem) {
   const keys = Object.keys(COLUMNS) as (keyof OrgItem)[];
+  const values = keys.map((key) => sql`${item[key]}`);
   await tx.execute(sql`INSERT INTO org_adjustment_org_items
     (tenant_id, adjustment_id, ${sql.raw(keys.map((key) => COLUMNS[key]).join(', '))})
-    VALUES (${tenantId}, ${adjustmentId}, ${sql.join(
-      keys.map((key) => sql`${item[key]}`),
-      sql`, `,
-    )})`);
+    VALUES (${tenantId}, ${adjustmentId}, ${sql.join(values, sql`, `)})`);
 }
 
 /** 改内容与基线；行身份（类型、目标、连带、暂存）不改。 */
 export async function updateItem(tx: Tx, tenantId: string, adjustmentId: string, item: OrgItem) {
   const keys = [...CONTENT_KEYS, 'baseVersionId', 'baseOrgRevision'] as const;
-  const assignments = sql.join(
-    keys.map((key) => sql`${sql.raw(COLUMNS[key])} = ${item[key]}`),
-    sql`, `,
-  );
-  await tx.execute(sql`UPDATE org_adjustment_org_items SET ${assignments}
+  const assignments = keys.map((key) => sql`${sql.raw(COLUMNS[key])} = ${item[key]}`);
+  await tx.execute(sql`UPDATE org_adjustment_org_items SET ${sql.join(assignments, sql`, `)}
     WHERE tenant_id = ${tenantId} AND adjustment_id = ${adjustmentId} AND id = ${item.id}`);
 }
 
