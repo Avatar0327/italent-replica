@@ -249,12 +249,22 @@ export async function resolveCandidates(
 ): Promise<Candidate[]> {
   const primary = await resolveCandidate(tx, subject, expression);
   if (primary.userId || !HANDOVER_FALLBACK_APPROVERS.has(expression) || !fallbackUserIds.length) return [primary];
-  return memo(subject, `fallback:${expression}:${fallbackUserIds.join(',')}`, async () => {
+  const eligible = await resolveFallbackCandidates(tx, subject, fallbackUserIds);
+  return eligible.length ? eligible : [primary];
+}
+
+/** F-316：指定人员和旧兜底使用同一资格过滤，全部无效等同名单为空。 */
+export function resolveFallbackCandidates(
+  tx: Tx,
+  subject: RoutingSubject,
+  userIds: readonly string[],
+): Promise<Candidate[]> {
+  return memo(subject, `fallback:${userIds.join(',')}`, async () => {
     const eligible: Candidate[] = [];
-    for (const userId of fallbackUserIds)
+    for (const userId of userIds)
       if (await isEligibleApprover(tx, subject, userId))
         eligible.push({ userId, personId: await personOfUser(tx, subject.tenantId, userId) });
-    return eligible.length ? eligible : [primary];
+    return eligible;
   });
 }
 

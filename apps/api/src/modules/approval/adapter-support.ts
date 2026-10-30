@@ -6,7 +6,7 @@ import { sql, type Tx } from '@italent/db';
 import { ageOn, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
-import { OPEN_STATUSES } from './store.js';
+import { OPEN_STATUSES } from './task-state.js';
 
 /**
  * DEC-122：调动审批详情带出员工档案的性别与年龄（年龄按租户业务日期由出生日期计算，与员工档案一致）。

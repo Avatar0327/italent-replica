@@ -270,6 +270,8 @@ function registerHooks(deps: TenantRouteDeps) {
   registerEmploymentApprovalHooks({
     submitted: async (tx, ctx, businessId) => {
       await startOrResume(tx, withFields(ctx), { businessType: 'employment', businessId });
+      const { automaticHandover } = await import('../employment/exit-handover-launch.js');
+      await automaticHandover(tx, ctx, businessId, 'on_submit');
     },
     withdrawn: async (tx, ctx, businessId) => {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);

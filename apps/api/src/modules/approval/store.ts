@@ -1,12 +1,15 @@
 /** 审批实例、任务、日志的读写（全部在调用方的租户事务内，查询有界）。 */
 import { randomUUID } from 'node:crypto';
-import { sql, type Tx } from '@italent/db';
+import { activeApprovalInstanceCondition, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { operatorNames } from '../../audit/query.js';
 import { AppError } from '../../errors.js';
 import { actorOf, approvalError, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
 import { isAssignable } from './resolver.js';
+import { OPEN_STATUSES } from './task-state.js';
+
+export { OPEN_STATUSES } from './task-state.js';
 
 /**
  * DEC-101：历史任务与日志不设总量上限、分页读取；只限制同时在办的任务数与单次读取的批量。
@@ -46,9 +49,6 @@ export type TaskStatus =
   | 'queued'
   | 'ended'
   | 'merged';
-
-/** 仍在办的任务状态（待办、依次加签排队中、前加签挂起中）。 */
-export const OPEN_STATUSES: ReadonlySet<TaskStatus> = new Set(['pending', 'queued', 'add_signed']);
 
 export interface InstanceRow {
   readonly id: string;
@@ -163,7 +163,8 @@ export async function activeInstanceOf(
 ): Promise<InstanceRow | null> {
   const [row] = rowsOf(
     await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
-      AND business_type=${businessType} AND business_id=${businessId}::uuid AND status IN ('running','returned')
+      AND business_type=${businessType} AND business_id=${businessId}::uuid
+      AND ${activeApprovalInstanceCondition({ status: sql`status`, businessType: sql`business_type` })}
       ${lock ? sql`FOR UPDATE` : sql``}`),
   );
   return row ? instanceOf(row) : null;

@@ -3,7 +3,7 @@
  * 流程是稳定对象 + 版本；已发布版本及其节点、条件、消息规则只读（迁移 0029 触发器），实例绑定版本 ID 即冻结快照（`14` §4）。
  * 所有表带 tenant_id 并强制 RLS；人员引用一律指向租户成员（账号）或任职员工主档。
  */
-import { sql } from 'drizzle-orm';
+import { sql, type SQLWrapper } from 'drizzle-orm';
 import {
   boolean,
   check,
@@ -175,6 +175,8 @@ export const approvalProcessNodes = pgTable(
     disagreeRuleKind: text('disagree_rule_kind'),
     disagreeRuleValue: numeric('disagree_rule_value', { precision: 5, scale: 2 }),
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
+    /** F-316：NULL 保留未配置语义与旧兜底行为；显式值随流程版本冻结。 */
+    emptyApproverPolicy: text('empty_approver_policy'),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
     /** DEC-106：相同 / 历史相同审批人自动处理的结果「同意」/「跳过」。 */
@@ -237,6 +239,15 @@ export const approvalProcessNodes = pgTable(
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
+    check(
+      'approval_nodes_empty_approver',
+      sql`${t.emptyApproverPolicy} IS NULL OR (
+      ${t.nodeType} = 'countersign' AND (
+        (${t.nodeKey} = 'work_handover' AND ${t.emptyApproverPolicy} IN ('stop','auto_approve','specified')) OR
+        (${t.nodeKey} = 'other_handover' AND ${t.emptyApproverPolicy} IN ('exception_admin','auto_approve','specified'))
+      ) AND (${t.emptyApproverPolicy} <> 'auto_approve' OR 'approve' = ANY(${t.exits}))
+    )`,
+    ),
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
@@ -320,6 +331,12 @@ export const approvalNodeMessageRules = pgTable(
   ],
 );
 
+/** DEC-674：交接驳回即业务终止，旧 returned 实例只读；其他业务仍占用原实例以便重提。查询与唯一索引共用。 */
+export function activeApprovalInstanceCondition(columns: { status: SQLWrapper; businessType: SQLWrapper }) {
+  return sql`(${columns.status} = 'running'
+    OR (${columns.status} = 'returned' AND ${columns.businessType} <> 'exit_handover'))`;
+}
+
 export const approvalInstances = pgTable(
   'approval_instances',
   {
@@ -356,7 +373,7 @@ export const approvalInstances = pgTable(
     unique('approval_instances_tenant_id').on(t.tenantId, t.id),
     uniqueIndex('approval_instances_active_business')
       .on(t.tenantId, t.businessType, t.businessId)
-      .where(sql`${t.status} IN ('running','returned')`),
+      .where(activeApprovalInstanceCondition(t)),
     index('approval_instances_initiator').on(t.tenantId, t.initiatorUserId, t.createdAt),
     index('approval_instances_business').on(t.tenantId, t.businessType, t.businessId, t.createdAt),
     foreignKey({

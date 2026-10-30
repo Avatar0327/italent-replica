@@ -35,7 +35,7 @@ export interface RoutingFacts extends RecusalFacts {
   readonly chainUserIds: readonly string[];
 }
 
-export type AutoOutcome = 'same_skip' | 'history_skip' | 'subject_skip';
+export type AutoOutcome = 'same_skip' | 'history_skip' | 'subject_skip' | 'no_assignee_approve';
 export type AssignOrigin = 'resolved' | 'self_skip_manager' | 'exception_admin';
 
 export type NodeDecision =

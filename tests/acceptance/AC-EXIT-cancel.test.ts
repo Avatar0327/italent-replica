@@ -132,7 +132,7 @@ describe('AC-DM-02 撤销审批通过未生效的离职（approved_voided，B-03
     expect(await x.managerOf(subordinate.id)).toBe(receiver.id);
   });
 
-  it('B-60a 撤销清单四类固定顺序：没有对应台账的类目 none，离职交接 / 薪资档案未接入占位', async () => {
+  it('B-60a 撤销清单四类固定顺序：无交接单等无数据类目 none，薪资档案未接入占位（F-302）', async () => {
     const x = await world('cancel-fixed');
     const leave = await x.directLeave('2026-10-20');
 
@@ -142,7 +142,7 @@ describe('AC-DM-02 撤销审批通过未生效的离职（approved_voided，B-03
     expect(result.downstream.items.map((entry) => entry.status)).toEqual([
       'none',
       'none',
-      'not_connected',
+      'none',
       'not_connected',
       'none',
     ]);

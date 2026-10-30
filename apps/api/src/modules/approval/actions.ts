@@ -55,7 +55,7 @@ import {
 import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
-import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
+import { addSignAllowed, isActiveInstance, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
 import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
@@ -315,6 +315,10 @@ export async function approveTask(
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
   // DEC-095：加签人依次审批，前加签全部同意后回到原审批人，后加签全部完成才离开本节点；会签按流转规则结算。
+  if (run.instance.businessType === 'employment') {
+    const { automaticHandover } = await import('../employment/exit-handover-launch.js');
+    await automaticHandover(tx, ctx, run.instance.businessId, 'on_node_approved', task.nodeKey);
+  }
   await continueAfterApproval(tx, run, task);
   run.events.push('approval.task.approved');
   await persistRun(tx, run, outcomeAction(run));
@@ -847,7 +851,7 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 export async function revokeBySystem(tx: Tx, ctx: ApprovalContext, instanceId: string, reason: string): Promise<void> {
   const run = await openRun(tx, ctx, instanceId);
   // 终态幂等：openRun 已锁实例，只有未结束的实例才撤销；已终止 / 已通过 / 已驳回等直接成功返回，不写日志、审计，不推进版本
-  if (!['running', 'returned'].includes(run.instance.status)) return;
+  if (!isActiveInstance(run.instance)) return;
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
   await appendLog(tx, ctx, run.instance, { event: 'system_revoke', actorUserId: null, detail: { comment: reason } });

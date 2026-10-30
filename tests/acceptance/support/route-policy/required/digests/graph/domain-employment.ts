@@ -50,10 +50,9 @@ export const GRAPH: Graph = {
     '#HANDOVER_VERIFIED_METHOD',
   ],
   'packages/domain/src/employment/exit-handover.ts#checkHandoverTrigger': [
+    '#HANDOVER_METHODS',
     '#HANDOVER_VERIFIED_INITIATOR',
-    '#HANDOVER_VERIFIED_METHOD',
     '#UNVERIFIED_INITIATORS',
-    '#UNVERIFIED_METHODS',
     '#hasExactKeys',
     '#isDays',
     '#isRecord',

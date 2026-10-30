@@ -330,7 +330,8 @@ export const exitHandoverRequests = pgTable(
     employeeId: uuid('employee_id').notNull(),
     /** 发起时员工主职部门快照：审批路由（部门 HRBP）取它。 */
     departmentId: uuid('department_id'),
-    initiatorUserId: uuid('initiator_user_id').notNull(),
+    /** DEC-674：没有员工账号也持久化未发起；实际发起时补齐。 */
+    initiatorUserId: uuid('initiator_user_id'),
     state: text('state').notNull(),
     endReason: text('end_reason'),
     /** 交接未发起的原因（state = not_launched 时必填，DEC-663）。 */
@@ -359,7 +360,12 @@ export const exitHandoverRequests = pgTable(
     check(
       'exit_handover_requests_not_launched',
       sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
-        AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER') IN ('NO_HANDLER')`,
+        AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER')
+          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')`,
+    ),
+    check(
+      'exit_handover_requests_initiator',
+      sql`${t.state} NOT IN ('in_progress', 'completed') OR ${t.initiatorUserId} IS NOT NULL`,
     ),
     check(
       'exit_handover_requests_end_reason',
