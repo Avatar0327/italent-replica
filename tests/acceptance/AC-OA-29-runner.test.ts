@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { AppError } from '../../apps/api/src/errors.js';
 import type { ExecutionGroup } from '../../apps/api/src/modules/org-adjustment/execution-groups.js';
 import {
+  runOrgAdjustmentSlot,
   runOrgAdjustmentTenant,
   type RunnerOptions,
 } from '../../apps/api/src/modules/org-adjustment/execution-runner.js';
@@ -301,5 +302,32 @@ describe('AC-OA-29 失败分类与暂存过滤', () => {
     expect(started!.after.pausedOrgIds, '范围扩大的组不纳入暂停').toEqual([other.id]);
     const denials = await itemResults(db, tenant.id, outOfScope.adjustment.id);
     expect([...denials.values()].map((row) => row.execution_reason)).toEqual(['APPLICANT_OUT_OF_SCOPE']);
+  });
+});
+
+describe('AC-OA-29 定时槽入口', () => {
+  it('没有未完成执行队列的租户不领执行权；有到期单时同一槽内执行完成', async () => {
+    const world = await runnerWorld('oa29-slot');
+    const { db, tenant } = world;
+    const runners = () =>
+      withTenant(db, tenant.id, async (tx) =>
+        resultRows<{ fencing_no: string }>(
+          await tx.execute(sql`SELECT fencing_no::text FROM org_adjustment_tenant_runners
+            WHERE tenant_id=${tenant.id}`),
+        ),
+      );
+    const errors: unknown[] = [];
+    const { calls, executors } = fakeExecutors();
+    const slot = () =>
+      runOrgAdjustmentSlot(db, world.clock, (error) => errors.push(error), { holderToken: 'process-a', executors });
+    await slot();
+    expect(await runners(), '无待执行单时不写执行权行').toEqual([]);
+
+    const target = await world.w.org('定时槽组织');
+    const { adjustment, groups } = await world.scheduledAdjustment([target.id]);
+    await slot();
+    expect(errors).toEqual([]);
+    expect(calls).toEqual(expect.arrayContaining(groups));
+    expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, state: 'done' });
   });
 });
