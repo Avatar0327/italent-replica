@@ -401,6 +401,7 @@ async function deleteEmploymentBusiness(
     if (record) {
       const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
+      if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
       if (point && exitCancel) previous = await restoreAfterExitDeletion(tx, ctx, record, business, point);
       else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
@@ -427,6 +428,21 @@ async function deleteEmploymentBusiness(
   // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
   await clearPendingProbation(tx, ctx, business.id);
   return previous;
+}
+
+/**
+ * R2-T08 §7.6：删除已生效记录会让员工在原区间回到前驱部门（并离开被删记录的部门），员工集合随之改变，
+ * 暂停期间被删记录或恢复的前驱涉及暂停组织即 409；离职 / 退休不判。组织设置锁在判定内取，409 回滚整个删除。
+ */
+async function assertDeletionNotPaused(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  point: { recordId: string; window: { from: string } } | null,
+) {
+  const kept = point ? await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from) : null;
+  const departmentIds = [record.fields.departmentId, kept?.fields.departmentId];
+  await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: record.effectiveDate });
 }
 
 /**
