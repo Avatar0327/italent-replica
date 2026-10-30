@@ -372,8 +372,9 @@ describe('AC-OA-29 变更组顺序：按生效日完整新树', () => {
         commandId: randomUUID(),
         expectedRevision: object!.revision,
         orgAdjustmentId: adjustment.id,
+        rootName: w.tenant.name,
       };
-      const body = { effectiveDate: TODAY, parents: { admin: { parentId: group.lead.parentOrgId } } };
+      const body = { effectiveDate: TODAY, parents: { admin: { parentId: group.lead.parentOrgId! } } };
       await updateOrganization(tx, context, group.lead.targetOrgId!, { ...body, addEmployment: false });
       return 'done';
     };
@@ -416,6 +417,7 @@ describe('AC-OA-29 提交结果未知', () => {
         commandId: randomUUID(),
         expectedRevision: a.revision,
         orgAdjustmentId: adjustment.id,
+        rootName: w.tenant.name,
       };
       await updateOrganization(tx, context, a.id, { effectiveDate: TODAY, name: 'A已实际改名', addEmployment: false });
       loseReceipt = true;
