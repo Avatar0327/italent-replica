@@ -83,7 +83,7 @@ describe('表结构与租户隔离', () => {
       return {
         inserted,
         read: resultRows<Record<string, unknown>>(
-          await tx.execute(sql`SELECT approval_status, execution_status, revision, scope_note, data_volume,
+          await tx.execute(sql`SELECT approval_status, execution_status, revision, data_volume,
             success_count, failure_count FROM org_adjustments WHERE id = ${inserted.id}`),
         )[0],
       };
@@ -92,7 +92,6 @@ describe('表结构与租户隔离', () => {
       approval_status: 0,
       execution_status: 1,
       revision: 1,
-      scope_note: null,
       data_volume: 0,
       success_count: 0,
       failure_count: 0,
@@ -133,13 +132,12 @@ describe('申请单 CHECK（§2.1）', () => {
     }
   });
 
-  it('主题 1～100 字、调整范围 ≤ 500、调整内容 ≤ 2000、revision > 0、数据量与计数 ≥ 0、同租户编号唯一', async () => {
+  it('主题 1～100 字、调整内容 ≤ 2000、revision > 0、数据量与计数 ≥ 0、同租户编号唯一', async () => {
     const { w, orgId } = await world('oa10a-text');
     const bad: Record<string, unknown>[] = [
       { subject: '' },
       { subject: '  ' },
       { subject: '题'.repeat(101) },
-      { scope_note: '范'.repeat(501) },
       { content: '内'.repeat(2001) },
       { revision: 0 },
       { data_volume: -1 },
@@ -154,7 +152,6 @@ describe('申请单 CHECK（§2.1）', () => {
     await withTenant(testDb().db, w.tenant.id, (tx) =>
       insertHeader(tx, w, orgId, {
         subject: '题'.repeat(100),
-        scope_note: '范'.repeat(500),
         content: '内'.repeat(2000),
       }),
     );
@@ -274,5 +271,47 @@ describe('共享 CHECK 放宽（§2.4）', () => {
       expect(def, name).toContain("'org_adjustment'");
       expect(def, name).toContain("'position_adjustment'");
     }
+  });
+});
+
+describe('AC-OA-42 范围子表契约（BE-10a2，§2.1A）', () => {
+  it('范围表 FORCE RLS，头表 scope_note 已删除', async () => {
+    expect(
+      resultRows(
+        await testDb().db.execute(sql`SELECT relrowsecurity, relforcerowsecurity FROM pg_class
+      WHERE oid = to_regclass('public.org_adjustment_range_orgs')`),
+      ),
+    ).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
+    expect(
+      resultRows(
+        await testDb().db.execute(sql`SELECT column_name FROM information_schema.columns
+      WHERE table_name='org_adjustments' AND column_name='scope_note'`),
+      ),
+    ).toEqual([]);
+  });
+
+  it('同租户复合外键、范围去重主键与跨租户读写隔离', async () => {
+    const a = await world('oa-range-a');
+    const b = await world('oa-range-b');
+    const head = await withTenant(testDb().db, a.w.tenant.id, (tx) => insertHeader(tx, a.w, a.orgId));
+    const insert = (tx: Tx, tenant: string, orgId: string) =>
+      tx.execute(sql`
+      INSERT INTO org_adjustment_range_orgs(tenant_id, adjustment_id, org_id, seq)
+      VALUES (${tenant}, ${head.id}, ${orgId}, 1)`);
+    await withTenant(testDb().db, a.w.tenant.id, (tx) => insert(tx, a.w.tenant.id, a.orgId));
+    expect(await rejects(a.w, (tx) => insert(tx, a.w.tenant.id, a.orgId))).toMatch(/duplicate|unique/i);
+    expect(await rejects(a.w, (tx) => insert(tx, a.w.tenant.id, b.orgId))).toMatch(/foreign key/i);
+    expect(await rejects(b.w, (tx) => insert(tx, b.w.tenant.id, b.orgId))).toMatch(/foreign key/i);
+    expect(
+      await withTenant(testDb().db, b.w.tenant.id, async (tx) =>
+        resultRows(await tx.execute(sql`SELECT * FROM org_adjustment_range_orgs`)),
+      ),
+    ).toEqual([]);
+    expect(await rejects(b.w, (tx) => insert(tx, a.w.tenant.id, b.orgId))).not.toBeNull();
+    expect(
+      await withTenant(testDb().db, a.w.tenant.id, async (tx) =>
+        resultRows(await tx.execute(sql`SELECT org_id, seq FROM org_adjustment_range_orgs`)),
+      ),
+    ).toEqual([{ org_id: a.orgId, seq: 1 }]);
   });
 });

@@ -66,6 +66,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'exit-request': { label: '离职申请', app: ORG_PEOPLE },
   'exit-cancellation': { label: '撤销的离职记录', app: ORG_PEOPLE },
   'exit-effect': { label: '离职下游效果', app: ORG_PEOPLE },
+  employment_form: { label: '用工形式字典', app: ORG_PEOPLE },
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
   offer: { label: 'Offer', app: ORG_PEOPLE },
   offer_dictionary: { label: 'Offer 字典', app: ORG_PEOPLE },
@@ -217,6 +218,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // R2-T04 退休（审计动作 retirement.* / employment.retirement.*）
   retireType: '退休类型',
   reEmployed: '是否同时返聘',
+  dailyWageStandard: '日工资标准',
   expectedRetirementDate: '预计退休日期',
   expectedRetirementConfirmed: '预计退休日期已核准',
   earliestRetirementDate: '最早退休日期',
@@ -404,6 +406,7 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'employment_custom_field',
   'transfer_settings',
   'transfer_form',
+  'employment_form',
   'exit_dictionary',
   'offer_dictionary',
   'blacklist_rule',

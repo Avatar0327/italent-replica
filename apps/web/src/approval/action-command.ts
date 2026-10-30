@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useApiClient } from '../foundation/index.js';
 import { messages as kernel } from '../foundation/forms/messages.js';
 import { lockedContext, type Values } from '../foundation/forms/store.js';
-import { acceptReceipt, approvalRequest, readApproval } from './api.js';
+import { acceptReceipt, approvalFailure, approvalRequest, readApproval } from './api.js';
 import { approvalNotice, confirmNotice } from './before-approve.js';
+import { actionTask, editFields, editValues } from './edit-model.js';
+import { ApiError } from '../foundation/client.js';
+import { messages as m } from './messages.js';
 import { useApprovalCommand } from './commands.js';
 import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 
@@ -22,6 +25,7 @@ export const actionFields: Record<ApprovalAction, readonly string[]> = {
   reject: ['comment'],
   transfer: ['toUserId', 'comment'],
   withdraw: [],
+  edit: [],
 };
 /**
  * 审批动作接 F-123 内核（F-123 页面片接入 2）：键只含流程实例 ID；回执是动作后的详情，
@@ -39,30 +43,44 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     command.reread(async (id) => {
       const detail = await readApproval(api, id ?? row.id);
       onRead(detail);
-      return { id: detail.id, revision: detail.revision, values: {} };
+      return {
+        id: detail.id,
+        revision: detail.revision,
+        values: context && context.action !== 'urge' ? editValues(detail, context.action) : {},
+      };
     });
-  const open = (action: ApprovalAction) => {
+  const open = (action: ApprovalAction, detail: ApprovalDetail) => {
     // 被拒或已完成的槽可以清掉重来；锁定的槽 clear 无效，仍按槽里的动作打开。
     command.clear();
-    setChosen({ action, taskId: row.taskId });
+    setChosen({ action, taskId: actionTask(detail, row.taskId) });
   };
   async function submit(detail: ApprovalDetail, values: Values) {
     // 催办由合同行内发起，本单不重提；槽里是催办时各按钮都已禁用。
     if (!context || context.action === 'urge') return;
     const { action, taskId } = context;
-    await confirmNotice(approvalNotice(detail, action));
+    // 冲突重读换了任务时不把原动作转投另一节点；用户需关闭并核对新任务。
+    if (taskId !== actionTask(detail, row.taskId))
+      throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
+    const fields = editFields(detail, action);
+    const businessValues = Object.fromEntries(
+      fields.map(({ key, value }) => [key, Object.hasOwn(values, key) ? values[key] : value]),
+    );
+    await confirmNotice(
+      approvalNotice({ ...detail, form: { values: { ...detail.form.values, ...businessValues } } }, action),
+    );
     const result = await command.submit({
       values,
-      baseline: {},
-      editableFields: actionFields[action],
+      baseline: editValues(detail, action),
+      editableFields: [...actionFields[action], ...fields.map(({ key }) => key)],
       revision: detail.revision,
       businessId: detail.id,
       send: async (sent) => {
         const request = approvalRequest(detail, action, taskId, sent.body);
-        const receipt = await api.request<unknown>(request.path, {
-          method: 'POST',
-          command: { ...sent, body: request.body },
-        });
+        const receipt = await api
+          .request<unknown>(request.path, { method: 'POST', command: { ...sent, body: request.body } })
+          .catch((error: unknown) => {
+            throw approvalFailure(error);
+          });
         return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
       },
       context: { action, ...(taskId ? { taskId } : {}) },

@@ -64,6 +64,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#ORG_ADJUSTMENT_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#QUALIFICATION_PROFILES': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
@@ -88,11 +92,13 @@ export const GRAPH: Graph = {
     '#HR_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',
     '#MANAGER_OBJECTS',
+    '#ORG_ADJUSTMENT_SEE_ALL',
     '#QUALIFICATION_PROFILES',
     '#SUCCESSION_PROFILES',
     '#full',
     '#grant',
     '#readOnly',
+    '#withoutDailyWage',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_APP',
     'packages/domain/src/survey360/catalog.ts#SURVEY360_PROFILES',
     'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_APP',
@@ -114,5 +120,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],
   'packages/domain/src/platform/standard-presets.ts#succession': [
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#withoutDailyWage': [
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
 };

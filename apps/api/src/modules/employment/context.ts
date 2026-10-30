@@ -1,3 +1,4 @@
+import { employmentFormNames } from './employment-forms.js';
 import { sql, withTenant, type Tx } from '@italent/db';
 import { buttonResource, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -260,6 +261,10 @@ export async function requireEmploymentWrite(
   }
 }
 
+function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
+  return withTenant(deps.db, ctx.tenantId, (tx) => employmentFormNames(tx, ctx.tenantId, value));
+}
+
 /** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */
 export async function trimEmploymentResponse(
   deps: TenantRouteDeps,
@@ -268,7 +273,7 @@ export async function trimEmploymentResponse(
 ): Promise<unknown> {
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
-  if (viewable === undefined) return value;
+  if (viewable === undefined) return withEmploymentFormNames(deps, ctx, value);
   const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {
     if (Array.isArray(record)) return record.map(trim);
@@ -337,9 +342,11 @@ export async function trimEmploymentResponse(
     return result;
   };
   // Flat employee/configuration DTOs use the shared helper; nested employment DTOs require field-level traversal.
-  return objectCode === EMPLOYMENT_OBJECT
-    ? trimEmploymentManagerReferences(deps, ctx, trim(value))
-    : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
+  const trimmed =
+    objectCode === EMPLOYMENT_OBJECT
+      ? await trimEmploymentManagerReferences(deps, ctx, trim(value))
+      : await trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
+  return withEmploymentFormNames(deps, ctx, trimmed);
 }
 
 /**

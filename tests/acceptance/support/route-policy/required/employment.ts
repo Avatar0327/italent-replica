@@ -24,6 +24,7 @@ const ENTRY = `${SRC}/employment/entry-routes.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const INTERN_CREATE = `${SRC}/employment/intern-create.ts`;
+const INTERN_PROFILE = `${SRC}/employment/intern-profile.ts`;
 const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
 const INTERN_ACTIONS = `${SRC}/employment/intern-actions.ts`;
 const EXIT_GATE = `${SRC}/employment/exit-gate.ts`;
@@ -2061,12 +2062,7 @@ export const EMPLOYMENT: RequiredTable = {
         'guard:employment.entryContract',
         [],
         [
-          at(
-            INTERN,
-            'POST',
-            '/interns',
-            '{ guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body }',
-          ),
+          at(INTERN, 'POST', '/interns', 'guard: internCreateGuard(deps, employeeCtx, ctx, plan)'),
           fn(
             INTERN_CREATE,
             'internCreateGuard',
@@ -2098,6 +2094,80 @@ export const EMPLOYMENT: RequiredTable = {
           ],
         ),
         purpose: 'when:employment.entryContract',
+      },
+      ob(
+        'guard:employment.internProfile',
+        [],
+        [
+          fn(
+            INTERN_CREATE,
+            'internCreateGuard',
+            'await requireInternProfileAccess(tx, deps, scoped, plan.profile, plan.input.employeeId)',
+          ),
+          fn(
+            INTERN_PROFILE,
+            'requireInternProfileAccess',
+            'await authorize(authorizer, access, operation, payload, operation)',
+          ),
+          fn(INTERN_PROFILE, 'writeInternProfile', 'await requireInternProfileAccess(tx, deps, ctx, plan, employeeId)'),
+          fn(INTERN_PROFILE, 'requireInternProfileAccess', 'scope = await personnelCreationScope('),
+          fn(
+            `${SRC}/permission/scope-resolver.ts`,
+            'personnelCreationScope',
+            "current.terms.map((term) => (term.dimension === 'using_user' ? managed : term))",
+          ),
+        ],
+        '条件准入：普通资料校验档案更新权；教育新增经 DEC-082 创建范围转换；两者各自检查字段、按钮和范围',
+      ),
+      ...[
+        'obj:TenantBase.EmployeeInformation:update',
+        'btn:TenantBase.EmployeeInformation#update@detail',
+        'obj:TenantBase.Education:create',
+        'btn:TenantBase.Education#create@list',
+      ].map((perm) => ({
+        ...ob(
+          perm,
+          ['object:object.* 动作', 'button:buttonResource', 'button:object.button'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'requireInternProfileAccess',
+              'await authorize(authorizer, access, operation, payload, operation)',
+            ),
+            fn(
+              `${SRC}/personnel/access.ts`,
+              'authorize',
+              'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+            ),
+          ],
+        ),
+        purpose: 'when:employment.internProfile' as const,
+      })),
+      {
+        ...ob(
+          'obj:TenantBase.EmployeeInformation:view',
+          ['object:object.* 动作'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              "if (!(await authorizer({ ...ctx, action: 'object.view', resource: PERSONNEL_OBJECT }))) return base",
+            ),
+            {
+              role: 'scope' as const,
+              unit: `${INTERN_PROFILE}#projectInternProfile`,
+              anchor:
+                'await requirePerson(tx, { ...ctx, objectCode: PERSONNEL_OBJECT, scope }, String(receipt.employeeId))',
+            },
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              'const visible = await getModuleViewableFieldsInTransaction(deps, ctx, PERSONNEL_OBJECT, tx)',
+            ),
+          ],
+        ),
+        purpose: 'disclosure:profile' as const,
+        need: { scope: 'point' as const, locator: 'personnel.employee' },
       },
       linkage(fn(INTERN_CREATE, 'createInternEntry', 'const created = await createEmploymentBusiness(')),
     ],
@@ -2917,6 +2987,49 @@ export const EMPLOYMENT: RequiredTable = {
       ),
     ),
   ],
+  'GET /api/tenant/employment/employment-forms': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          `${SRC}/employment/employment-form-routes.ts`,
+          'GET',
+          '/employment-forms',
+          "await requirePermission(deps.authorize, { ...ctx, action: 'object.view', " +
+            "resource: 'TenantBase.EmploymentRecord'",
+        ),
+        {
+          role: 'impl',
+          unit: 'apps/api/src/authorization.ts#requirePermission',
+          anchor: "if (!(await authorizer(request))) throw new AppError('FORBIDDEN'",
+        },
+      ],
+    ),
+  ],
+  ...Object.fromEntries(
+    (
+      [
+        ['POST', '/employment-forms', 'create'],
+        ['PUT', '/employment-forms/:id', 'update'],
+      ] as const
+    ).map(([method, path, operation]) => [
+      `${method} /api/tenant/employment${path}`,
+      withObjectWriteFact(
+        configWrite(
+          fn(AUTO_REG, 'writeContext', "readContext( c, deps, 'tenant.employment.configuration.write', revision(c),"),
+          'TenantBase.EmploymentSettings',
+          operation,
+          at(
+            `${SRC}/employment/employment-form-routes.ts`,
+            method,
+            path,
+            `await requireEmploymentWrite(ctx, '${operation}', input, undefined, 'TenantBase.EmploymentSettings'`,
+          ),
+        ),
+      ),
+    ]),
+  ),
   'GET /api/tenant/employment/probation-results': [
     ob(
       `obj:${RECORD}:view`,

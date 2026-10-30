@@ -222,6 +222,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       34: '317a95a6b957b4e9',
       // F255A：机构存值 / 申请来源只读字段，版本占位，恢复后由 03 合 main 定号
       35: 'eeae8e14155ed823',
+      // F-325：日工资标准仅默认授予组织员工模块管理员（占位，合并时 main + 1）
+      36: 'ec8ed8d7ea948c06',
+      // BE-10a2：组织调整两对象与申请单看全部（占位，合并时定号）。
+      37: 'af83d59e6a2c0208',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

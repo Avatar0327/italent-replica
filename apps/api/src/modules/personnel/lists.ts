@@ -14,7 +14,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { personScope, trimWithFields, type AccessContext } from './access.js';
-import { employeeAttributes, employeeDto, employeeJoins } from './employee-read.js';
+import { employeeAttributes, employeeDto, employeeJoins, employeeProfile } from './employee-read.js';
 import { camel, rows, type Row } from './store.js';
 
 const sortColumns: Record<string, SQL> = {
@@ -82,7 +82,7 @@ export async function listEmployees(
   options: ListOptions,
 ) {
   return rows(
-    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},${employeeProfile} AS profile
     FROM employment_employees e ${employeeJoins(ctx)} WHERE e.tenant_id=${ctx.tenantId}
     AND ${personScope(ctx)} AND ${options.filter}
     ORDER BY ${options.order} person_rank.order_code ASC NULLS LAST,e.code COLLATE "C",e.id
