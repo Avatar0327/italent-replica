@@ -186,6 +186,31 @@ test('AC-FE-R2c1-08 批量转正部分失败：回执按打开时的人员快照
   await expect(rowCount(page)).toContainText(peer.name);
 });
 
+test('AC-FE-R2c1-09 只选一人批量转正遇版本冲突：列为这一人的失败并刷新列表，重选后可再转正（P2-2）', async ({
+  page,
+}) => {
+  const { server, queries } = await setup(page);
+  await rowCount(page).first().getByRole('checkbox').check();
+  // 列表行是 revision 4；打开批量前别人改了这名员工
+  server.employeeRevision = 5;
+  const form = await openBatch(page, 1);
+  const listed = queries.length;
+  await save(form).click();
+  await expect(form).toContainText(`${person.name}：任职数据已变更，请刷新后显式重提`);
+  await expect.poll(() => queries.length).toBeGreaterThan(listed);
+  await form.getByRole('button', named('取消')).click();
+  await expect(form).toHaveCount(0);
+  await rowCount(page).first().getByRole('checkbox').check();
+  const again = await openBatch(page, 1);
+  await save(again).click();
+  await expect(again).toHaveCount(0);
+  expect(server.writes.map((write) => write.body.items)).toEqual([
+    [{ employeeId: employee, revision: 4 }],
+    [{ employeeId: employee, revision: 5 }],
+  ]);
+  await expect(page.getByText('1 人转正成功')).toBeVisible();
+});
+
 test('AC-FE-R2c1-05 无编辑 / 创建按钮权不显示对应入口', async ({ page }) => {
   await setup(page, { buttons: ['Employment.Submit'] });
   await openDetail(page);
