@@ -793,15 +793,22 @@ export const DIGESTS: Digests = {
     OBJECT: 'b007f3f6067a',
     authorizeHead: '9c1815c29cd6',
     authorizeHeadAction: '45a4e2cfc6e7',
+    authorizeItem: 'a9765a0f5029',
     requireButtons: '733084dc052f',
     requireScopes: 'ec285517eea1',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
     authorizeStored: '5184ecbbcbed',
+    itemCommand: '6064969f5d1c',
+    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '81e54260e4ea',
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8a50ea532585',
     'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': 'ff954d56bb30',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '4951c8103a88',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '6796566b048a',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
   },
   'apps/api/src/modules/org/employment-linkage.ts': {
@@ -1609,6 +1616,9 @@ export const DIGESTS: Digests = {
     OFFER_BUTTONS: '1bd948c24c67',
     OFFER_OBJECT: '952606b19b50',
   },
+  'packages/domain/src/org-adjustment/entry-buttons.ts': {
+    ORG_ITEM_ENTRY_BUTTONS: '6c2f4637d4fb',
+  },
   'packages/domain/src/org-adjustment/fields.ts': {
     ORG_ADJUSTMENT_OBJECT_CODE: '011609a4568b',
   },
@@ -2251,15 +2261,27 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeItem': '3771393c935a',
   'apps/api/src/modules/org-adjustment/access.ts#requireButtons': '7f0d931cf235',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
+  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
+    '788c2fe7f803',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id':
     '489c94042dde',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
+    '565dd86e153d',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
-    'f0353ec4d7cd',
+    '699a1d647fea',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase':
+    '7d7911ec96cb',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/org-items':
+    'f0bfe2ff9c4f',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
+    'bff89d82db76',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
@@ -2846,6 +2868,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>workShift': 'aa3bf6d1c73d',
   'packages/domain/src/offer/rules.ts#OFFER_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/offer/rules.ts#OFFER_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/org-adjustment/entry-buttons.ts#ORG_ITEM_ENTRY_BUTTONS': '91839983af98',
   'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE': 'e3b0c44298fc',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': '338aa90ac3d1',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': 'b292502f2d84',

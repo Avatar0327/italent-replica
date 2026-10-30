@@ -5,9 +5,16 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/org-adjustment/entry-buttons.ts#ORG_ITEM_ENTRY_BUTTONS': [
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_DETAIL_OBJECT_CODE',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
+  ],
   'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_FORM_FIELDS': [
     '#ORG_ADJUSTMENT_CONTRACT_CONTAINER',
     '#ORG_ADJUSTMENT_HEADER_FIELDS',
     '#ORG_ADJUSTMENT_SECTION_FIELDS',
   ],
+  'packages/domain/src/org-adjustment/plan.ts#planOrgTree': ['#reportLevels'],
+  'packages/domain/src/org-adjustment/plan.ts#reportLevels': ['#ORG_MAX_LEVEL'],
+  'packages/domain/src/org-adjustment/range.ts#isInAdjustmentRange': ['#keyOf'],
 };

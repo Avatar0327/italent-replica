@@ -41,6 +41,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished': [
     'apps/api/src/modules/org/validation.ts#deactivationNotAfterEstablished',
   ],
+  'apps/api/src/modules/org/deactivation.ts#assertDeactivationVacant': ['#assertSubtreeVacant'],
   'apps/api/src/modules/org/deactivation.ts#assertParentAvailable': ['#dayAfter'],
   'apps/api/src/modules/org/deactivation.ts#assertSubtreeVacant': [
     'apps/api/src/modules/employment/org-people.ts#countDepartmentStaff',
@@ -54,10 +55,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/org/deactivation.ts#planDeactivation': [
-    '#CASCADE_LIMIT',
     '#assertDeactivationAfterEstablished',
-    '#assertSubtreeVacant',
+    '#assertDeactivationVacant',
+    '#planDeactivationSubtree',
     '#rejectFutureDescendantVersions',
+  ],
+  'apps/api/src/modules/org/deactivation.ts#planDeactivationSubtree': [
+    '#CASCADE_LIMIT',
     '#subtree',
     'apps/api/src/modules/org/read-model.ts#futureBoundaries',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',

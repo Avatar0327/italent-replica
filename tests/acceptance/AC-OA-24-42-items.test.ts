@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { bodyOf, expectError, only } from './AC-OA-head-support.js';
-import { itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
+import { BASE, bodyOf, expectError, only } from './AC-OA-head-support.js';
+import { type ItemsResult, itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
 
 const testDb = useTestDb();
 
@@ -47,6 +47,41 @@ describe('AC-OA-24 明细组织须在组织对象范围（F-287）：范围外�
     w.access.main = only(w.b);
     await expectError(await w.addItem(view.id, rename(w.a)), 404, 'NOT_FOUND');
     expect(await w.rows(view.id)).toHaveLength(1);
+  });
+});
+
+describe('AC-OA-24 明细重放复核与按查看权裁剪（F-087 同类）', () => {
+  it('同命令重放时目标已出组织范围 → 404，与首次判定同口径', async () => {
+    const w = await itemsWorld(testDb().db, 'oa24');
+    const view = await w.created({ ...w.head(), adjustmentRange: [w.a, w.b] });
+    const body = rename(w.b);
+    const idempotencyKey = randomUUID();
+    const send = () => w.call('POST', `${BASE}/${view.id}/org-items`, { ifMatch: 1, body, idempotencyKey });
+    expect((await send()).status).toBe(201);
+    w.access.org = only(w.a);
+    await expectError(await send(), 404, 'NOT_FOUND');
+    w.access.org = only(w.a, w.b);
+    expect((await send()).status).toBe(201);
+    expect(await w.rows(view.id)).toHaveLength(1);
+  });
+
+  it('看不到 orgItems 字段：明细响应去掉对应列，校验信封的明细问题不带组织 ID', async () => {
+    const w = await itemsWorld(testDb().db, 'oa24');
+    const view = await w.created();
+    const itemId = (await w.item(view.id, rename(w.a))).items[0]!.id;
+    await w.touchOrg(w.a);
+    const stale = (await w.checked(view.id)).errors.find((e) => e.itemId === itemId);
+    expect(stale).toMatchObject({ reason: 'ORG_ADJUSTMENT_BASELINE_CHANGED', orgId: w.a });
+    w.access.hiddenFields.add('orgItems.targetOrgId').add('orgItems.name');
+    const hidden = (await w.checked(view.id)).errors.find((e) => e.itemId === itemId);
+    expect(hidden).toMatchObject({ section: 'org', reason: 'ORG_ADJUSTMENT_BASELINE_CHANGED' });
+    expect(hidden).not.toHaveProperty('orgId');
+    const res = await w.rebaseItem(view.id, itemId);
+    expect(res.status, await res.clone().text()).toBe(200);
+    const [row] = ((await res.json()) as ItemsResult).items;
+    expect(row).toMatchObject({ id: itemId, seq: 1 });
+    expect(row).not.toHaveProperty('targetOrgId');
+    expect(row).not.toHaveProperty('name');
   });
 });
 
