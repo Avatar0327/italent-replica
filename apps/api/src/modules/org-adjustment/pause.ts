@@ -27,15 +27,19 @@ export async function assertNotPausedByOrgAdjustment(tx: Tx, ctx: PauseContext, 
   const employee = target.employeeId
     ? sql`OR p.org_id IN (${primaryDepartmentSql(ctx.tenantId, target.employeeId, target.date)})`
     : sql``;
-  const [hit] = rowsOf<{ code: string }>(
-    await tx.execute(sql`SELECT a.code FROM org_adjustment_pauses p
-      JOIN org_adjustments a ON a.tenant_id=p.tenant_id AND a.id=p.adjustment_id
+  const [hit] = rowsOf<{ adjustment_id: string }>(
+    await tx.execute(sql`SELECT p.adjustment_id FROM org_adjustment_pauses p
       WHERE p.tenant_id=${ctx.tenantId} AND p.adjustment_id IS DISTINCT FROM ${ctx.orgAdjustmentId ?? null}::uuid
         AND (p.org_id=ANY(${`{${ids.join(',')}}`}::uuid[]) ${employee}) LIMIT 1`),
   );
-  if (hit)
-    throw new AppError('CONFLICT', '相关组织正在执行组织调整，请执行完成后再操作', {
-      reason: 'ORG_ADJUSTMENT_EXECUTING',
-      adjustmentCode: hit.code,
-    });
+  if (!hit) return;
+  // 命中后才读单据编号：未命中路径只依赖暂停表（升级前夹具只为它登记垫片，见 testkit pre-upgrade-shims）。
+  const [adjustment] = rowsOf<{ code: string }>(
+    await tx.execute(sql`SELECT code FROM org_adjustments
+      WHERE tenant_id=${ctx.tenantId} AND id=${hit.adjustment_id}::uuid`),
+  );
+  throw new AppError('CONFLICT', '相关组织正在执行组织调整，请执行完成后再操作', {
+    reason: 'ORG_ADJUSTMENT_EXECUTING',
+    adjustmentCode: adjustment?.code,
+  });
 }

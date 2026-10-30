@@ -64,6 +64,16 @@ export const PRE_UPGRADE_TABLE_SHIMS: readonly PreUpgradeTableShim[] = [
       { name: 'created_at', type: 'timestamp with time zone' },
     ],
   },
+  // BE-11a：任职 / 组织 / 职位写入口都先查执行期间暂停行（R2-T08 §7.6），旧库夹具也需这张表。
+  {
+    table: 'org_adjustment_pauses',
+    migration: 'be11a_org_adjustment_execution',
+    columns: [
+      { name: 'tenant_id', type: 'uuid' },
+      { name: 'org_id', type: 'uuid' },
+      { name: 'adjustment_id', type: 'uuid' },
+    ],
+  },
 ];
 
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);
