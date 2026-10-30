@@ -95,9 +95,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/employment-linkage.ts#orgEmploymentTargets': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#ORG_EMPLOYMENT_LIMIT',
-    '#subtree',
+    '#targetsSql',
   ],
+  'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql': ['#primaryAt', '#primaryDepartment'],
   'apps/api/src/modules/org/employment-linkage.ts#subtree': ['#idsSql'],
+  'apps/api/src/modules/org/employment-linkage.ts#targetsSql': ['#primaryAt', '#primaryDepartment', '#subtree'],
   'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice': [
     '#requiresEmploymentChoice',
     'apps/api/src/modules/org/validation.ts#invalid',
@@ -456,8 +458,10 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/org/write-service.ts#correctEstablishedOn': [
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/org/correction.ts#applyEstablishedOnCorrection',
     'apps/api/src/modules/org/correction.ts#planEstablishedOnCorrection',
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
     'apps/api/src/modules/org/validation.ts#date',
     'apps/api/src/modules/org/validation.ts#invalid',
     '#assertRevision',
@@ -466,6 +470,7 @@ export const GRAPH: Graph = {
     '#recordAt',
   ],
   'apps/api/src/modules/org/write-service.ts#createOrganization': [
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/org/codes.ts#consumeCode',
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
     'apps/api/src/modules/org/validation.ts#normalizeCreation',
@@ -493,6 +498,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#linkedObjectScope',
   ],
   'apps/api/src/modules/org/write-service.ts#updateOrganization': [
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/org/codes.ts#assertCodeAvailable',
     'apps/api/src/modules/org/codes.ts#ensureOrgSetup',
     'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished',
