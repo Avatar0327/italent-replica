@@ -51,7 +51,7 @@ export interface FormProps {
 }
 
 /** 打开基线与 409 重读共用一个读取：试用详情的 revision 与值来自同一次响应。 */
-function useProbationRead(employeeId: string, project: (values: Values) => Values = (values) => values) {
+export function useProbationRead(employeeId: string, project: (values: Values) => Values = (values) => values) {
   const api = useApiClient();
   return useCallback(async (): Promise<Latest> => {
     const { revision, values } = probationValues(await api.request(probationPath(employeeId)), employeeId);
