@@ -23,7 +23,8 @@ export interface Send {
   path: string;
   /** POST /regularizations 不读 If-Match（员工 revision 逐人在请求体里）。 */
   ifMatch?: boolean;
-  body(values: Values): Values;
+  /** revision 是内核本次命令的版本（冲突核对后即最新版本），请求体里带员工 revision 的入口须用它。 */
+  body(values: Values, revision: number): Values;
   /** 回执校验用实际提交的 revision；不符抛错，内核按结果未知锁定。不返回回读对象时只刷新列表（批量）。 */
   accept(raw: Values, sent: number): Readback | undefined;
   /** 明确拒绝后重读；409 revision 冲突由内核展示差异、显式确认。 */
@@ -98,7 +99,7 @@ export function useProbationCommand(resource: string, target: Target, action: st
               editableFields,
               send: async ({ edited, command }) => {
                 // 未改的可提交字段取最新全量：重读后服务端的新值不会被打开时的旧值覆盖
-                const body = send.body({ ...projectFields(cmd.full, editableFields), ...edited });
+                const body = send.body({ ...projectFields(cmd.full, editableFields), ...edited }, command.revision!);
                 const raw = await transmit(send, { ...command, body: { ...body, ...extra } });
                 await settle(send.accept(raw, command.revision!));
                 return { id: target.id ?? resource };

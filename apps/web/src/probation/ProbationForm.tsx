@@ -231,8 +231,11 @@ export function RegularizeForm(props: FormProps & { application?: boolean }) {
     </WithOpening>
   );
 }
-/** 直接转正（/regularizations 单人）与申请两步的提交定义；写后回读按单据状态定目的视图。 */
-function useSends(employeeId: string, revision: number, created: (draft: ApplicationDraft) => void) {
+/**
+ * 直接转正（/regularizations 单人）与申请两步的提交定义；写后回读按单据状态定目的视图。
+ * 直接转正的员工 revision 在请求体里：取内核本次命令的版本，冲突核对后重提即带最新版本。
+ */
+function useSends(employeeId: string, created: (draft: ApplicationDraft) => void) {
   const destination = useRef<ProbationView>(undefined);
   const verify = (latest: Values) => {
     destination.current = destinationOf(latest.status);
@@ -241,8 +244,8 @@ function useSends(employeeId: string, revision: number, created: (draft: Applica
   const direct: Send = {
     path: regularizations,
     ifMatch: false,
-    body: (values) => regularizationsBody(values, [{ employeeId, revision }]),
-    accept: (raw) => {
+    body: (values, revision) => regularizationsBody(values, [{ employeeId, revision }]),
+    accept: (raw, revision) => {
       const id = acceptRegularizations(raw, [{ employeeId, revision }]).succeeded[0]!.businessId!;
       return { path: slotKey(businesses, id), id, revision: 0, verify };
     },
@@ -289,7 +292,7 @@ function RegularizeEditor({ row, application, onClose, onDone, refresh, opening,
     !permission?.dataOperations.create ||
     !permissions.can('Employment.Create') ||
     (!!application && (!permission?.dataOperations.update || !permissions.can('Employment.Submit')));
-  const { direct, step, destination } = useSends(employeeId, opening.revision, (created) =>
+  const { direct, step, destination } = useSends(employeeId, (created) =>
     saved.put({ ...created, values: form.getFieldsValue(true) as Values }),
   );
   const { error, submit } = useSubmit(form, async (values) => {
