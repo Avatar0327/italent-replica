@@ -39,7 +39,7 @@ export function dateRule(opinion: unknown): NonNullable<FormItemProps['rules']>[
 
 /**
  * 只映射考核表单里已实现的控件；节点可编辑哪些字段、哪些必填仍以详情 edit.fields 为准（required 来自服务端）。
- * 考核日期、考核名称在审批节点不可编辑（后端 editableFields 不含），出现时也只读。
+ * 考核日期：自定义节点可开放（edit.fields 含它就给日期控件），不参与转正意见联动；考核名称仍只读。
  */
 export function assessmentField(
   key: string,
@@ -53,6 +53,7 @@ export function assessmentField(
     return { label, rules, control: <ChoiceControl label={label} options={ratingOptions} /> };
   if (key === 'regularizationOpinion')
     return { label, rules, control: <ChoiceControl label={label} options={opinionOptions} /> };
+  if (key === 'assessmentDate') return { label, rules, control: <DateInput label={label} /> };
   if (key === 'regularizationDate')
     return {
       label,
@@ -81,6 +82,17 @@ function ChoiceControl({ label, options, value, onChange, ...props }: ControlPro
         </option>
       ))}
     </select>
+  );
+}
+function DateInput({ label, value, onChange, ...props }: ControlProps) {
+  return (
+    <Input
+      {...props}
+      type="date"
+      aria-label={label}
+      value={value ?? ''}
+      onChange={(event) => onChange?.(event.target.value || null)}
+    />
   );
 }
 function TextControl({ label, value, onChange, ...props }: ControlProps) {
