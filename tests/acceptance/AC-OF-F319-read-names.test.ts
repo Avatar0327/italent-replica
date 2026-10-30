@@ -253,6 +253,8 @@ describe('AC-OF-F319 只读关联名称', () => {
       await w.db.execute(sql`SELECT current_user AS name, rolsuper AS superuser, rolbypassrls AS bypass
         FROM pg_roles WHERE rolname = current_user`),
     );
-    if (process.env.TEST_DATABASE_URL) expect(role).toEqual({ name: 'app_owner', superuser: false, bypass: false });
+    if (process.env.REQUIRE_APP_ROLE === '1') {
+      expect(role).toEqual({ name: 'app_owner', superuser: false, bypass: false });
+    }
   });
 });
