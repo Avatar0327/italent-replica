@@ -46,7 +46,7 @@ describe('AC-OA-24 头写入（BE-10b1：建单 / 改头 / 作废，§6.1、§3�
     expect(await res.json()).toMatchObject({ subject: '新主题', adjustmentRange: [w.b, w.a], revision: 2 });
     expect(await w.stored(view.id)).toMatchObject({ subject: '新主题', revision: 2, range: [w.b, w.a] });
     await expectError(await w.patch(view.id, { subject: '旧版本' }, 1), 409, 'REVISION_CONFLICT');
-    await expectError(await w.patch(view.id, { subject: '缺版本' }, undefined), 400, 'REVISION_REQUIRED');
+    await expectError(await w.patch(view.id, { subject: '缺版本' }, null), 400, 'REVISION_REQUIRED');
     await w.setStatus(view.id, 6);
     expect((await w.patch(view.id, { content: null }, 2)).status).toBe(200);
     expect(await w.stored(view.id)).toMatchObject({ content: null, revision: 3, approval_status: 6 });

@@ -1,4 +1,5 @@
-import { type Db, sql, withTenant } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { type Db, eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { expect } from 'vitest';
 import type { AuthorizationRequest, Authorizer } from '../../apps/api/src/authorization.js';
@@ -13,7 +14,12 @@ export const MAIN = ORG_ADJUSTMENT_OBJECT_CODE;
 export const ORG = MODULE_OBJECTS.organization.code;
 export const BASE = '/api/tenant/org-adjustment/adjustments';
 export const ALL: ModuleScope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
-export const only = (...orgIds: string[]): ModuleScope => ({ ...EMPTY_SCOPE, orgIds, hasDataPermission: true });
+export const only = (...orgIds: string[]): ModuleScope => ({
+  ...EMPTY_SCOPE,
+  orgIds,
+  hasDataPermission: true,
+  terms: [{ dimension: 'management', orgIds, personIds: [] }],
+});
 
 export interface AdjustmentView {
   id: string;
@@ -91,8 +97,9 @@ export async function headWorld(db: Db, label: string) {
     expect(res.status, await res.clone().text()).toBe(201);
     return (await res.json()) as AdjustmentView;
   }
-  const patch = (id: string, body: Record<string, unknown>, ifMatch: number | undefined = 1, user = w.hr.id) =>
-    call('PATCH', `${BASE}/${id}`, { ifMatch, body }, user);
+  /** @param ifMatch `null` 表示不带 If-Match。 */
+  const patch = (id: string, body: Record<string, unknown>, ifMatch: number | null = 1, user = w.hr.id) =>
+    call('PATCH', `${BASE}/${id}`, { ifMatch: ifMatch ?? undefined, body }, user);
   const voidIt = (id: string, ifMatch = 1, user = w.hr.id) =>
     call('POST', `${BASE}/${id}/void`, { ifMatch, body: {} }, user);
   const check = (id: string, user = w.hr.id) => call('POST', `${BASE}/${id}/check`, { body: {} }, user);
@@ -135,11 +142,22 @@ export async function headWorld(db: Db, label: string) {
       tx.execute(sql`UPDATE org_adjustments SET approval_status = ${status} WHERE id = ${id}`),
     );
   }
-  /** 可信夹具：把组织当前全部版本置为停用。 */
+  /** 可信夹具：追加一条同开始日的停用版本（组织版本只允许追加，同 setOrgRoles）。 */
   async function disable(orgId: string) {
-    await withTenant(w.db, w.tenant.id, (tx) =>
-      tx.execute(sql`UPDATE org_versions SET enabled = false WHERE org_id = ${orgId}`),
-    );
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      const [old] = await tx
+        .select()
+        .from(orgVersions)
+        .where(eq(orgVersions.orgId, orgId))
+        .orderBy(sql`version_no DESC`)
+        .limit(1);
+      const versionId = randomUUID();
+      await tx
+        .insert(orgVersions)
+        .values({ ...old!, id: versionId, versionNo: old!.versionNo + 1, previousVersionId: old!.id, enabled: false });
+      const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
+      if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
+    });
   }
 
   return {
