@@ -77,7 +77,9 @@ describe('升级前兼容垫片（migrateBefore 夹具）', () => {
         expect(sqlText).not.toMatch(/IF NOT EXISTS/i);
         const dataType = types.get(`${shim.table}.${shim.column}`);
         expect(dataType, `${shim.table}.${shim.column}`).toBeDefined();
-        const expected = { uuid: 'uuid', text: 'text', integer: 'integer', date: 'date' }[shim.type];
+        const expected = { uuid: 'uuid', text: 'text', integer: 'integer', date: 'date', boolean: 'boolean' }[
+          shim.type
+        ];
         expect(dataType).toBe(expected);
       }
     } finally {
@@ -89,7 +91,11 @@ describe('升级前兼容垫片（migrateBefore 夹具）', () => {
     const handle = await createTestDb({ migrateBefore: '_command_ledger_actor' });
     try {
       const before = await columnTypes(handle);
-      for (const shim of PRE_UPGRADE_SHIMS) expect(before.has(`${shim.table}.${shim.column}`)).toBe(true);
+      for (const shim of PRE_UPGRADE_SHIMS) {
+        // 切点早于建表迁移时只补列的垫片不造整张业务表；已有表则必须补齐列。
+        const tableExists = [...before.keys()].some((key) => key.startsWith(`${shim.table}.`));
+        expect(before.has(`${shim.table}.${shim.column}`), `${shim.table}.${shim.column}`).toBe(tableExists);
+      }
       await handle.migrate();
       await handle.migrate();
       const after = await columnTypes(handle);

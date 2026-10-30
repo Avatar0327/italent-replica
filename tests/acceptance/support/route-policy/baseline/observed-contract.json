@@ -4306,6 +4306,90 @@
         ]
       }
     },
+    "GET /api/tenant/employment/exit-account/settings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/exit-account/tasks": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
+        "scope": [
+          "readContext（非配置对象）"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/exit-account/tasks/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
+        "scope": [
+          "readContext（非配置对象）"
+        ]
+      }
+    },
     "GET /api/tenant/employment/exit-handover-items": {
       "edge": {
         "anonymous": {
@@ -11882,6 +11966,7 @@
         ],
         "guard": [
           "employment.businessWrite",
+          "employment.linkage",
           "transfer.source"
         ],
         "object": [
@@ -11897,7 +11982,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -11940,10 +12024,12 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -11955,7 +12041,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -12352,7 +12437,8 @@
           "employment runWrite()"
         ],
         "guard": [
-          "employment.businessWrite"
+          "employment.businessWrite",
+          "employment.linkage"
         ],
         "object": [
           "object.* 动作",
@@ -12364,7 +12450,6 @@
         "scope": [
           "employment scope",
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ],
@@ -17559,6 +17644,33 @@
         ]
       }
     },
+    "POST /api/tenant/employment/exit-account/tasks/:id/retry": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "admin.*"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/tenant/employment/exit-handover-items": {
       "edge": {
         "anonymous": {
@@ -18026,7 +18138,8 @@
           "runCommand / runWrite"
         ],
         "domain": [
-          "employment.importRowOperation"
+          "employment.importRowOperation",
+          "transfer.initiator"
         ],
         "fieldsIn": [
           "checkFields",
@@ -18081,6 +18194,9 @@
           "assertRevision",
           "revision(c)",
           "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsIn": [
           "requireEmploymentWrite"
@@ -19378,7 +19494,8 @@
       "primitives": {
         "button": [
           "buttonResource",
-          "object.button"
+          "object.button",
+          "requireEmploymentWrite(按钮)"
         ],
         "command": [
           "assertRevision",
@@ -26203,6 +26320,33 @@
         ],
         "objectOp": [
           "TenantBase.EmploymentSettings:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/employment/exit-account/settings": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "admin": [
+          "tenant.employment.configuration"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
         ]
       }
     },

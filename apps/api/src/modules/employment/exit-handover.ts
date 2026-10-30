@@ -39,6 +39,7 @@ import { activeInstanceOf } from '../approval/store.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { assertRevision } from './context.js';
 import { exitPostEffectHooks, type ExitCancelledEvent, type ExitConfirmedEvent } from './exit-confirmation.js';
+import { queueExitHandoverRetry } from './exit-handover-retry.js';
 import { listHandoverItems } from './exit-handover-items.js';
 import {
   insertHandoverRequest,
@@ -119,17 +120,21 @@ export async function launchExitHandover(
   tx: Tx,
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
+  approvedOn = tenantLocalDate(ctx.now, ctx.timezone),
 ): Promise<LaunchResult> {
   if (event.kind !== 'leave' || event.mode !== 'application') return { outcome: 'skipped', reason: 'NOT_APPLICABLE' };
   const live = await liveHandoverOfExit(tx, ctx.tenantId, event.businessId);
   if (live) return { outcome: 'exists', requestId: live.id };
   const decision = handoverLaunchDecision(await readTrigger(tx, ctx.tenantId), {
     lastWorkDate: await lastWorkDateOf(tx, ctx.tenantId, event.businessId),
-    approvedOn: tenantLocalDate(ctx.now, ctx.timezone),
+    approvedOn,
   });
   if (decision !== 'launch') return { outcome: 'skipped', reason: decision.toUpperCase() };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
-  if (!initiatorUserId) return skip(tx, ctx, event, 'NO_INITIATOR_ACCOUNT');
+  if (!initiatorUserId) {
+    await queueExitHandoverRetry(tx, ctx, event);
+    return skip(tx, ctx, event, 'NO_INITIATOR_ACCOUNT');
+  }
   try {
     // 保存点：业务拒绝（没有可用流程、首节点无审批人……）整体回退，只留痕，不拖垮离职审批
     return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId));

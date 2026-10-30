@@ -67,6 +67,8 @@ const businessSchema = z.strictObject({
   customFields: customFields.default({}),
 });
 const patchSchema = z.strictObject({
+  pendingTransferAck: z.string().max(200).optional(),
+  confirmed: z.boolean().optional(),
   effectiveDate: date.optional(),
   lastWorkDate: date.nullable().optional(),
   fields: presetFieldsSchema.optional(),

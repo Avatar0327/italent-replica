@@ -48,6 +48,7 @@ import {
   rejectRestore,
   updateCancellationReason,
 } from './exit-cancel.js';
+import { projectExitFailureDetails } from './exit-later-records.js';
 import { trimDownstream, type Downstream } from './exit-downstream.js';
 import { createExitBatch, EXIT_BATCH_LIMIT, submitExit } from './exit-batch.js';
 import { businessKind, loadExitRequest, requireExitPermission } from './exit-gate.js';
@@ -287,7 +288,7 @@ function registerExitChanges(
   deps: TenantRouteDeps,
   authorizeBusinessWrite: BusinessWriteGuard,
 ) {
-  // 编辑离职（B14）：非日期字段；日期与当前值不同 → 400 EXIT_DATE_IMMUTABLE（§7.2），审批中的单另需审批管理员按钮
+  // F-140：日期与扩展字段同事务；审批中的单另需审批管理员按钮，已生效走重定位 / 替代
   router.patch('/exits/:id', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.update', revision(c));
@@ -301,7 +302,29 @@ function registerExitChanges(
       ctx,
       patch,
       async (tx, context) => ({ status: 200, body: await updateExitFields(tx, context, id, patch) }),
-      { guard: exitEditGuard(deps, ctx, gate, id) },
+      {
+        guard: exitEditGuard(deps, ctx, gate, id),
+        project: async (body) => {
+          const { downstreamHints, successor, ...business } = body as {
+            downstreamHints?: Downstream;
+            employeeId: string;
+            successor?: object;
+          };
+          const trimmed = (await trimEmploymentResponse(deps, ctx, business)) as object;
+          if (!downstreamHints) return trimmed;
+          const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
+            trimDownstream(tx, ctx, downstreamHints, business.employeeId),
+          );
+          return {
+            ...trimmed,
+            ...(successor ? { successor: await trimEmploymentResponse(deps, ctx, successor) } : {}),
+            downstreamHints: {
+              items: visible.items.filter((item) => item.status === 'found'),
+              probes: visible.items.map(({ kind, status }) => ({ kind, status })),
+            },
+          };
+        },
+      },
     );
   });
   // 提交（含撤回 / 驳回后重提，只允许原发起人）与撤回：只要 DimissionApproval（hr 发起），不要求 Employment.Submit / Withdraw
@@ -529,6 +552,13 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    return c.json(trimExitDetail(detail, await viewableIn(deps, ctx)));
+    const show = await viewableIn(deps, ctx);
+    if (detail.activation?.details) {
+      const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
+        projectExitFailureDetails(tx, ctx, detail.activation!.details!, { has: show.employment }),
+      );
+      return c.json(trimExitDetail({ ...detail, activation: { ...detail.activation, details } }, show));
+    }
+    return c.json(trimExitDetail(detail, show));
   });
 }

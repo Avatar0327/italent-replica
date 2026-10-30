@@ -58,7 +58,7 @@ const toDisclosable = (rows: readonly InFlight[], extra: (row: InFlight) => obje
  * - 审批中：一律先确认（DEC-593④）；审批通过未生效的待入职：开关开启 = 生效时一并作废，不再确认；关闭 = 先确认（DEC-593②，未证的保守取法）。
  * 草稿 / 已驳回的申请不是“在途审批”，不提示，随生效链步骤 1 静默作废。
  */
-async function confirmInFlightRegularizations(
+export async function confirmInFlightRegularizations(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,

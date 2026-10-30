@@ -444,7 +444,41 @@ const exitTransition = (code: string = EXIT_BUTTONS.application) =>
     ...byId,
   });
 
+const ACCOUNT_SETTINGS_FIELDS = fixed(['revision', 'earlyEnabled', 'basis', 'time', 'inReview'], 'DEC-684');
+const ACCOUNT_TASK_FIELDS = fixed(
+  ['items', 'nextCursor', 'businessId', 'employeeId', 'status', 'reason', 'revision', 'attempts', 'recipientUserIds'],
+  'DEC-684',
+);
+const accountTaskView = object({
+  object: EMPLOYMENT,
+  operation: 'view',
+  button: noButton('待办查询无需业务按钮'),
+  scope: guardScope('employment.scope', denied(404, 'NOT_FOUND', '账号处理任务不存在')),
+  fields: ACCOUNT_TASK_FIELDS,
+});
+
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
+  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'PUT /exit-account/settings': admin('other_settings', {
+    alias: 'tenant.employment.configuration.write',
+    fields: ACCOUNT_SETTINGS_FIELDS,
+    write: write(none('严格配置 DTO'), 'config.audited:employment_settings', none('租户配置无人员范围'), {
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+  'GET /exit-account/tasks': { ...accountTaskView, scope: listScope('employment.accountTasks') },
+  'GET /exit-account/tasks/:id': { ...accountTaskView, ...byId },
+  'POST /exit-account/tasks/:id/retry': admin('user_manage', {
+    ...byId,
+    fields: fixed(['businessId', 'status', 'revision'], 'DEC-684：账号权限回执不含员工资料'),
+    write: write(none('原任务重试，空请求体'), none('账号管理能力；任务限定当前租户'), none('固定最小回执'), {
+      commandOnly: true,
+      preconditions: ['assertRevision'],
+      ledger: 'single',
+    }),
+  }),
+
   // ---- transfer/routes.ts registerPersonalEntry：本人调动入口 ------------------------------------------------------
   // requireTransferButton(employee) 先查 Transfer.Self；绑定员工缺失 → 403「当前用户未绑定员工」；requireTransferSource
   // (employee) 再按绑定本人为源员工判范围（范围外 404「员工不存在」）；items 固定 id / name / code / revision，不按字段权裁剪
@@ -897,17 +931,21 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Edit', 'detail'),
-    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION],
+    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness', DIRECT_OPERATION, LINKAGE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
-    write: employmentWrite('body.fields+customFields', [
-      'transferBusinessContext',
-      'requireManagerBusinessSource',
-      'lockEmploymentBusiness',
-      'assertRevision',
-      'requireEmployeeTransferBusiness',
-      'requireScopedEmploymentObject',
-    ]),
+    write: employmentWrite(
+      'body.fields+customFields',
+      [
+        'transferBusinessContext',
+        'requireManagerBusinessSource',
+        'lockEmploymentBusiness',
+        'assertRevision',
+        'requireEmployeeTransferBusiness',
+        'requireScopedEmploymentObject',
+      ],
+      { controls: ['pendingTransferAck', 'confirmed'] },
+    ),
     ...byId,
   }),
   // ---- employment/routes.ts registerBusinessTransitions（router.on）：命令式按钮 ---------------------------------------
@@ -1764,14 +1802,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
-  // 编辑离职：If-Match 必填；body = 离职扩展字段 + 可选日期（400）；写入口径 404「任职业务不存在」，不是离职单 404；
-  // DimissionEdit，审批中的单另需审批管理员按钮 adminIntervene（B-65a）；日期与当前值不同 400 EXIT_DATE_IMMUTABLE（§7.2）
+  // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
+  // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(
     [
       object({
         object: EMPLOYMENT,
         operation: 'update',
         button: button(EXIT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),
@@ -1785,7 +1824,9 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ],
     RESPONSE,
     {
-      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate']),
+      write: employmentWrite('body', ['lockEmploymentBusiness', 'assertRevision', 'requireExitGate'], {
+        controls: ['pendingTransferAck', 'confirmed'],
+      }),
       ...byId,
     },
   ),
@@ -1805,7 +1846,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'create',
     button: RETIREMENT_CREATE_BUTTON,
-    guards: [LINKAGE],
+    guards: [LINKAGE, 'employment.rehire'],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', EXIT_CREATE_PRECONDITIONS, { controls: ['exit'] }),
@@ -1817,6 +1858,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         object: EMPLOYMENT,
         operation: 'update',
         button: button(RETIREMENT_BUTTONS.edit, 'detail'),
+        guards: [LINKAGE],
         scope: BUSINESS_WRITE,
         fields: RESPONSE,
       }),

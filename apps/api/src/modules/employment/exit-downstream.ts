@@ -6,6 +6,7 @@
  * registerDownstreamProbe 接入或替换，不改本文件；入口签名 probeDownstream 保持稳定。
  * 目标按查看人裁剪（trimDownstream）：合同按合同对象查看权，任职业务 / 职责转交下属按 DEC-177 可见范围，不可见的只计 hiddenCount。
  */
+import { tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { exitListOrder } from './exit-list-order.js';
 import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
@@ -68,13 +69,19 @@ interface EffectRow {
 async function effectsOf(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<EffectRow[]> {
   return rowsOf<EffectRow>(
     await tx.execute(sql`
+    WITH RECURSIVE chain AS (
+      SELECT business_id,supersedes_business_id FROM exit_requests
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid
+      UNION ALL SELECT r.business_id,r.supersedes_business_id FROM exit_requests r JOIN chain c
+        ON r.business_id=c.supersedes_business_id WHERE r.tenant_id=${ctx.tenantId}
+    )
     SELECT x.kind, x.phase, x.target_type AS "targetType", x.target_id::text AS "targetId", x.detail,
       (SELECT p.department_id::text FROM employment_payload_versions p
         WHERE p.tenant_id=x.tenant_id AND p.business_id=x.target_id
         ORDER BY p.version_no DESC LIMIT 1) AS "departmentId",
       EXISTS (SELECT 1 FROM employment_timeline tl
         WHERE tl.tenant_id=x.tenant_id AND tl.record_id=x.target_id) AS "onTimeline"
-    FROM exit_effects x WHERE x.tenant_id=${ctx.tenantId} AND x.business_id=${businessId}::uuid
+    FROM exit_effects x WHERE x.tenant_id=${ctx.tenantId} AND x.business_id IN (SELECT business_id FROM chain)
     ORDER BY ${exitListOrder('effectTargets').order}`),
   );
 }
@@ -165,6 +172,12 @@ async function allowed(ctx: EmploymentContext, resource: string) {
   return ctx.authorize ? Boolean(await ctx.authorize({ ...ctx, action: 'object.view', resource })) : true;
 }
 
+type Visibility = (tx: Tx, ctx: EmploymentContext, target: DownstreamTarget) => Promise<boolean>;
+const downstreamVisibility = new Map<string, Visibility>();
+export function registerDownstreamVisibility(type: string, visible: Visibility) {
+  downstreamVisibility.set(type, visible);
+}
+
 const DEPARTMENT_SCOPED_TYPES = ['employment-business', 'employment-record', 'part-time-request'];
 
 /** 每个目标是否对查看人可见：合同类按合同对象查看权，任职业务按 DEC-177，职责转交按下属可见，编制按编制对象查看权。 */
@@ -194,7 +207,9 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
       )
     : [];
   for (const target of targets) {
-    if (target.type === 'contract' || target.type === 'contract-request') visible.set(key(target), contract);
+    const subscriber = downstreamVisibility.get(target.type);
+    if (subscriber) visible.set(key(target), await subscriber(tx, ctx, target));
+    else if (target.type === 'contract' || target.type === 'contract-request') visible.set(key(target), contract);
     else if (target.type === 'establishment-capacity') visible.set(key(target), capacity);
     else if (target.type === 'transfer-linkage-item')
       visible.set(key(target), linkedVisible[linked.indexOf(target)] ?? false);
@@ -221,4 +236,51 @@ export async function trimDownstream(
     };
   };
   return { items: downstream.items.map(trim) as DownstreamItem[], additional: downstream.additional.map(trim) };
+}
+
+/** 改期按方向检查旧最后工作日上的数据，未连接探针保留状态，不伪造命中（DM-R7）。 */
+export async function probeRescheduleDownstream(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  before: string,
+  after: string,
+): Promise<Downstream> {
+  const kinds = ['payroll', 'social_insurance'];
+  if (after > before) kinds.push('leave_balance', 'compensatory_leave', 'parental_leave');
+  if (after > before && after > tenantLocalDate(ctx.now, ctx.timezone)) kinds.push('duty_transfer');
+  const items: DownstreamItem[] = [];
+  for (const kind of kinds) {
+    const result = await (probes.get(kind) ?? notConnected(kind)).probe(tx, ctx, {
+      employeeId,
+      businessId,
+      lastWorkDate: before,
+    });
+    items.push({ kind, ...result, hiddenCount: 0 });
+  }
+  return { items, additional: [] };
+}
+
+/** 已生效改期的历史副作用仅提示，不反向改合同或复活已作废申请。 */
+export async function effectiveRescheduleHints(tx: Tx, ctx: EmploymentContext, employeeId: string, businessId: string) {
+  const downstream = await probeDownstream(tx, ctx, { employeeId, businessId, lastWorkDate: null });
+  return [
+    ...downstream.items
+      .filter((item) => item.kind === 'contract' && item.status === 'found')
+      .map((item) => ({
+        ...item,
+        targets: item.targets.map((target) => ({
+          ...target,
+          detail: { ...target.detail, message: '合同实际终止日需手工更正' },
+        })),
+      })),
+    ...downstream.additional
+      .filter((item) => item.action === 'reinitiate')
+      .map((item) => ({
+        ...item,
+        status: 'found' as const,
+        targets: item.targets.map((target) => ({ ...target, detail: { ...target.detail, message: '需重新发起' } })),
+      })),
+  ];
 }

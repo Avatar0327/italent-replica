@@ -27,6 +27,7 @@ import {
   type EmploymentEmployeeRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
+import { loadRetirementRequest } from './retirement-application.js';
 import { BUSINESS_KINDS, type EmploymentContext } from './types.js';
 import { appendEmploymentState } from './write-service.js';
 
@@ -101,7 +102,9 @@ export async function lockExitOrganizationResources(
     return;
   }
   const transfers = await inFlightApplications(tx, ctx, employeeId, ['transfer'], OPEN_STATES);
-  if (transfers.some((row) => !row.landed && row.id !== exitId))
+  // 同时返聘的退休生效会在保存点里生成返聘任职并过编制校验（R2-T04 §8.3-1）：编制锁也在这里先于审批实例取齐，保存点内只是重入
+  const rehiring = exitId !== null && (await loadRetirementRequest(tx, ctx.tenantId, exitId))?.reEmployed === true;
+  if (rehiring || transfers.some((row) => !row.landed && row.id !== exitId))
     await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
 }
 
