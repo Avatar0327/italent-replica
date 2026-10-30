@@ -174,6 +174,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/actions.ts#applyEdit': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/store.ts#appendLog',
   ],
   'apps/api/src/modules/approval/actions.ts#approveTask': [
@@ -195,6 +196,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#closeTask',
     'apps/api/src/modules/approval/store.ts#loadTasks',
+    'apps/api/src/modules/employment/exit-handover-launch.ts#automaticHandover',
   ],
   'apps/api/src/modules/approval/actions.ts#assertAddSignType': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -455,7 +457,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#HELD_STATUSES': [
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/adapter-support.ts#employeeHeader': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -512,10 +514,12 @@ export const GRAPH: Graph = {
     '#transferProcessCode',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
+    'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
@@ -649,13 +653,13 @@ export const GRAPH: Graph = {
     '#changed',
   ],
   'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
-  'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
+  'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
     '#votingTasks',
     'packages/domain/src/approval/countersign.ts#countersignVote',
   ],
   'apps/api/src/modules/approval/countersign.ts#countersignFlowed': [
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/countersign.ts#holdersAfterRetrieve': ['#seatHolders'],
   'apps/api/src/modules/approval/countersign.ts#mergeSeat': [
@@ -708,6 +712,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'packages/domain/src/approval/types.ts#isApprovalType',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#assertEmptyApproverPolicies': [
+    '#emptyPolicyError',
+    'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'apps/api/src/modules/approval/definition-input.ts#conditionItem': [
     '#text',
     'packages/domain/src/approval/types.ts#CONDITION_OPERATORS',
@@ -719,6 +728,13 @@ export const GRAPH: Graph = {
     '#node',
     '#optionalText',
     '#text',
+  ],
+  'apps/api/src/modules/approval/definition-input.ts#emptyApproverPolicy': [
+    '#emptyPolicyError',
+    'packages/domain/src/approval/types.ts#EMPTY_APPROVER_POLICIES',
+  ],
+  'apps/api/src/modules/approval/definition-input.ts#emptyPolicyError': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
   ],
   'apps/api/src/modules/approval/definition-input.ts#exitRule': [
     'packages/domain/src/approval/types.ts#EXIT_RULE_KINDS',
@@ -733,6 +749,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#canonicalId',
     '#avoidSubjectsResult',
     '#codeList',
+    '#emptyApproverPolicy',
     '#messageRule',
     '#text',
     '#transitionRule',
@@ -748,6 +765,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definition-input.ts#toDefinition': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    '#assertEmptyApproverPolicies',
     '#nodeTypeViolations',
     '#toNode',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
@@ -863,6 +881,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/definitions.ts#versionId': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/definitions.ts#writeVersionContent': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/definition-input.ts#assertEmptyApproverPolicies',
     '#assertFallbackUsers',
     '#nodeTypeColumns',
     '#textArray',
@@ -1006,7 +1025,6 @@ export const GRAPH: Graph = {
     '#noAssignee',
     '#seatOf',
     '#seatUser',
-    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
   ],
   'apps/api/src/modules/approval/engine.ts#currentRouting': [
     '#nodeIndex',
@@ -1026,10 +1044,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
   ],
   'apps/api/src/modules/approval/engine.ts#enterCountersign': [
+    '#assign',
+    '#autoProcess',
     '#countersignSeats',
+    '#noAssignee',
     '#recordSelfSkip',
     '#returnInstance',
     '#writeSeat',
+    'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers',
     'apps/api/src/modules/approval/store.ts#appendLog',
     'apps/api/src/modules/approval/store.ts#loadTasks',
     'packages/domain/src/approval/countersign.ts#countersignOutcome',
@@ -1109,6 +1131,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#loadInstance',
   ],
   'apps/api/src/modules/approval/engine.ts#persistRun': [
+    'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/context.ts#auditApproval',
     'apps/api/src/modules/approval/context.ts#emitOutbox',
     '#instanceAudit',
@@ -1146,6 +1169,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/engine.ts#routingSubject': ['packages/domain/src/tenant-time.ts#tenantLocalDate'],
   'apps/api/src/modules/approval/engine.ts#seatOf': ['#exceptionAdminFor', '#hiddenForAuto', '#settleAssignee'],
   'apps/api/src/modules/approval/engine.ts#settleAssignee': ['#exceptionAdminFor'],
+  'apps/api/src/modules/approval/engine.ts#startNewHandover': [
+    'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#assertActorUsable',
+    '#launch',
+    '#matchProcess',
+    'apps/api/src/modules/approval/store.ts#activeInstanceOf',
+  ],
   'apps/api/src/modules/approval/engine.ts#startOrResume': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1179,6 +1210,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
+  'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
+  ],
+  'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers': [
+    '#decideHandoverApprovers',
+    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
+    'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
   ],
   'apps/api/src/modules/approval/handover.ts#assertTenantMember': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1395,11 +1435,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/resolver.ts#personOfUser': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidate': ['#memo', '#resolveFresh'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidates': [
+    '#resolveCandidate',
+    '#resolveFallbackCandidates',
+    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
+  ],
+  'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates': [
     '#isEligibleApprover',
     '#memo',
     '#personOfUser',
-    '#resolveCandidate',
-    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
   ],
   'apps/api/src/modules/approval/resolver.ts#resolveFresh': [
     '#NOBODY',
@@ -1745,9 +1788,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/rules.ts#countersignRetrievable': [
     '#addSignLink',
     '#untouchedStatus',
-    'apps/api/src/modules/approval/store.ts#OPEN_STATUSES',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
-  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': ['apps/api/src/modules/approval/store.ts#OPEN_STATUSES'],
+  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': [
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
+  ],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': [
     '#AUTO_ORIGINS',
     '#addSignLink',
@@ -1778,8 +1823,6 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
   'apps/api/src/modules/approval/simulation.ts#decideVirtual': [
-    '#NOBODY',
-    '#candidateOf',
     '#managerOf',
     'packages/domain/src/approval/routing.ts#decideNode',
   ],
@@ -1790,13 +1833,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/simulation.ts#preflight': [
     '#NOBODY',
-    '#decideVirtual',
     '#managerOf',
+    '#virtualDecisions',
     '#virtualFacts',
     'packages/domain/src/approval/routing.ts#adminRecused',
     'packages/domain/src/approval/routing.ts#avoidSelfExceptionAdmin',
     'packages/domain/src/approval/routing.ts#submitBlockers',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateByObject': [
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
@@ -1810,11 +1852,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/simulation.ts#simulateNodes': [
-    '#candidateOf',
     '#countersignSummary',
     '#simulatedSeats',
+    '#virtualDecisions',
     '#virtualFacts',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
     'packages/domain/src/approval/types.ts#nodeKindOf',
@@ -1828,7 +1869,16 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/conditions.ts#evaluateCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
-  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': ['#candidateOf', '#decideVirtual', '#describe'],
+  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': ['#describe'],
+  'apps/api/src/modules/approval/simulation.ts#virtualDecisions': [
+    'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers',
+    '#NOBODY',
+    '#candidateOf',
+    '#decideVirtual',
+    '#virtualCandidate',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+    'packages/domain/src/approval/types.ts#isCountersign',
+  ],
   'apps/api/src/modules/approval/simulation.ts#virtualFacts': ['packages/domain/src/approval/recusal.ts#recusalFacts'],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
@@ -1865,8 +1915,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/store.ts#displayWindow': ['#RECENT'],
   'apps/api/src/modules/approval/store.ts#endOpenTasks': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#OPEN_STATUSES',
     '#auditTask',
+    'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/store.ts#insertTask': [
     '#assertAssigneeUsable',
@@ -1935,6 +1985,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/instance-state.ts#isActiveInstance',
     'packages/domain/src/approval/types.ts#revokeAllowed',
   ],
 };

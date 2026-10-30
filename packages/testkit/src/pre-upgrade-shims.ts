@@ -26,6 +26,12 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   { table: 'command_ledger', column: 'actor_user_id', type: 'uuid', migration: 'command_ledger_actor' },
   { table: 'command_ledger', column: 'command_type', type: 'text', migration: 'command_ledger_actor' },
   { table: 'audit_command_failures', column: 'http_status', type: 'integer', migration: 'command_failure_http_status' },
+  {
+    table: 'approval_process_nodes',
+    column: 'empty_approver_policy',
+    type: 'text',
+    migration: 'f316_handover_empty_approver',
+  },
   // F-140：升级前垫片列为空，计划日函数取回退值（记录 / 载荷生效日）；正式迁移 0130 回填并加触发器。
   {
     table: 'employment_payload_versions',
@@ -35,6 +41,9 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   },
   // F-255：当前离职夹具查询兼职最新快照，旧库也需临时具备该查询读取的机构列。
   { table: 'employment_payload_versions', column: 'institution_id', type: 'uuid', migration: 'gray_firestar' },
+  // F-261 叠在 F-140b 上：当前任职写入与离职读取已依赖人工计划、替代来源两列。
+  { table: 'employment_payload_versions', column: 'manual_plan', type: 'boolean', migration: 'ancient_nitro' },
+  { table: 'exit_requests', column: 'supersedes_business_id', type: 'uuid', migration: 'ancient_nitro' },
 ];
 
 export interface PreUpgradeTableShim {

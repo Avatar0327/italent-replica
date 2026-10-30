@@ -259,6 +259,62 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
 describe('AC-PRM-FW-02 B-01 / B-03 结构弱化：按声明结构与表的披露义务生成，生成数 = 报出数', () => {
   const all = () => manifest.declared.flatMap((r) => disclosureWeakeningsOf(r, REQUIRED));
 
+  it('生成器自检：每个披露变异都实际改变策略，未改动时报告端点、位置与类别', () => {
+    for (const original of manifest.declared) {
+      for (const mutant of disclosureWeakeningsOf(original, REQUIRED)) {
+        const target = `${original.method} ${original.path} @${mutant.at} ${mutant.kind}`;
+        expect(mutant.route.policy, `未改动策略的披露变异：${target}`).not.toEqual(original.policy);
+      }
+    }
+  });
+
+  it('guard 披露范围：wrong-predicate 改 guard 名称且检测器报出 DISCLOSURE_WEAK', () => {
+    const path = '/api/tenant/idp/guard-disclosure-fixture';
+    const original = withPolicy(
+      { ...route(COPY), method: 'GET', path },
+      {
+        ...MEMBER,
+        optional: {
+          guarded: {
+            kind: 'object',
+            object: 'IDP.IDPTemplateModule',
+            operation: 'view',
+            button: { none: true, reason: '夹具' },
+            scope: {
+              mode: 'guard',
+              guard: 'fixture.original',
+              denied: { status: 404, code: 'NOT_FOUND', reason: '夹具' },
+            },
+            fields: { mode: 'none', reason: '夹具' },
+          },
+        },
+      },
+    );
+    const obligation: Obligation = {
+      perm: MODULE_VIEW,
+      purpose: 'disclosure:guarded',
+      need: { scope: 'guard', guard: 'fixture.original' },
+      at: [{ role: 'scope', unit: 'synthetic#scope', anchor: 'scope' }],
+    };
+    const table: RequiredTable = {
+      [`GET ${path}`]: [obligation, { ...obligation, perm: 'guard:fixture.original' }],
+      'GET /api/tenant/idp/other-guard-fixture': [{ ...obligation, need: { scope: 'guard', guard: 'fixture.other' } }],
+    };
+    const before = clone(original.policy);
+    expect(check([original], table), show(check([original], table))).toEqual([]);
+    const mutants = disclosureWeakeningsOf(original, table).filter(
+      (mutant) => mutant.kind === 'disclosure-scope→wrong-predicate',
+    );
+    expect(mutants).toHaveLength(1);
+    const mutant = mutants[0]!;
+    expect(mutant.route.policy).toMatchObject({
+      optional: { guarded: { scope: { mode: 'guard', guard: 'fixture.other' } } },
+    });
+    expect(original.policy).toEqual(before);
+    expect(mutant.expected).toBe('DISCLOSURE_WEAK');
+    expect(codes(check([mutant.route], table))).toContain(mutant.expected);
+  });
+
   it('6 类弱化都至少施加一次，且没有未知类别', () => {
     const kinds = new Set(all().map((w) => w.kind));
     for (const kind of DISCLOSURE_WEAKENING_KINDS) expect(kinds.has(kind), `没有任何声明能施加 ${kind}`).toBe(true);

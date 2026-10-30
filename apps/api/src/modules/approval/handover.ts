@@ -389,7 +389,15 @@ export async function prelockOnDeactivation(tx: Tx, deps: TenantRouteDeps, revoc
   const { tenantId, userId } = revocation;
   await closeAssigneeGate(tx, tenantId, userId);
   const instances = await allPendingInLockOrder(tx, tenantId, userId);
-  await lockHandoverParticipants(tx, deactivationContext(deps, revocation), instances, { organization: true });
+  // F-261：改期/撤销与自动账号任务共用员工锁；必须并入预锁闭包，不能等取到组织或账号锁后再补。
+  const people = rowsOf<{ employee_id: string }>(
+    await tx.execute(sql`
+    SELECT employee_id FROM permission_user_person_links WHERE tenant_id=${tenantId} AND user_id=${userId}::uuid`),
+  );
+  await lockHandoverParticipants(tx, deactivationContext(deps, revocation), instances, {
+    organization: true,
+    employees: people.map((p) => p.employee_id),
+  });
 }
 
 function deactivationContext(deps: TenantRouteDeps, revocation: MembershipRevocation): ApprovalContext {
@@ -524,9 +532,9 @@ async function lockHandoverParticipants(
   tx: Tx,
   ctx: ApprovalContext,
   batch: readonly LockKey[],
-  options: { readonly organization: boolean; readonly reassignFrom?: string },
+  options: { readonly organization: boolean; readonly reassignFrom?: string; readonly employees?: readonly string[] },
 ) {
-  const employees = [...new Set(batch.map((item) => item.employee_id))]
+  const employees = [...new Set([...batch.map((item) => item.employee_id), ...(options.employees ?? [])])]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')
     .sort();
   if (employees.length) await lockTransferParticipants(tx, ctx, employees[0]!, employees.slice(1));

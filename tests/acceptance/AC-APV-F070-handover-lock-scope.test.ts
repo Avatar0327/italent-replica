@@ -1,9 +1,10 @@
 /**
  * F-070（#151 / #159 审查存量 P3；真 PostgreSQL 锁交错，PGlite 单连接无法并发，只在设了 TEST_DATABASE_URL 时运行）：
- * 手动异常交接只在“批里可能推进任职业务”时才取租户组织锁（org/locks.ts：组织锁保留租户粒度，所以不能收窄到单个组织，
- * 只能收窄到“要不要取”）。取组织锁的理由（F-065）：调动要取编制锁；会签合席结算可能推进业务、落地时校验部门要取组织锁。
- * - 仅改派（单人节点的离职申请，不会合席）：交接排队等实例锁时不持组织锁，同租户的普通组织写入不被它挡住；
- * - 会签合席（替代人已在本节点占着一席，非调动任职业务）：仍持组织锁，守住 F-065 / F-017 的保护。
+ * F-140b / DEC-692：离职单一律预锁组织、编制与其他业务头，即使仅改派或没有调动申请也不豁免。
+ * F-070 的“只在可能推进业务时才取”仍适用于退休单（mayAdvanceBusiness）；组织锁保留租户粒度。
+ * - 离职仅改派：交接排队等实例锁时仍持组织锁，交接结果不变；
+ * - 退休仅改派（不会合席）：不持组织锁，普通组织写入不被挡住；
+ * - 离职会签合席：仍持组织锁、编制锁，守住 F-065 / F-017 的保护。
  * 全局取锁顺序不变：员工闭包 / 多员工业务头 → 组织 / 编制 → 账号 / 成员 → 剩余业务头 → 实例。
  */
 import './support/exit-gate-enforced.js';
@@ -29,8 +30,13 @@ const COUNTERSIGN = {
   transitionRule: { type: 'all' },
 } as const;
 
-/** 外部账号 U 持有离职申请（非调动任职业务）的异常待办；countersign 时 U 占会签节点里无人可办的那一席。 */
-async function leaveScene(label: string, countersign: boolean, withTransfer = false) {
+/** 外部账号 U 持有离职 / 退休申请（非调动任职业务）的异常待办；countersign 时 U 占会签节点里无人可办的那一席。 */
+async function leaveScene(
+  label: string,
+  countersign: boolean,
+  withTransfer = false,
+  kind: 'leave' | 'retirement' = 'leave',
+) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
   await installExitSeeds(w.db, w.tenant.id);
@@ -42,8 +48,11 @@ async function leaveScene(label: string, countersign: boolean, withTransfer = fa
   await grantMembership(w.db, { tenantId: w.tenant.id, userId: source.id, expectedRevision: 0 }, cmd());
   await w.setOrgRoles(s.from, { hrbp: null });
   const process = await w.publishedProcess({
-    approvalType: 'leave',
-    conditions: LEAVE_CONDITION,
+    approvalType: kind,
+    conditions:
+      kind === 'leave'
+        ? LEAVE_CONDITION
+        : { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'RetireProcess' }] },
     nodes: [NODES.outHead, countersign ? COUNTERSIGN : { key: 'hrbp', approver: 'record_department_hrbp' }],
     exceptionAdminUserId: source.id,
   });
@@ -57,11 +66,11 @@ async function leaveScene(label: string, countersign: boolean, withTransfer = fa
         )
       ).revision,
       body: {
-        kind: 'leave',
+        kind,
         mode: 'application',
         lastWorkDate: '2026-10-20',
         fields: {},
-        exit: { exitTypeCode: 'voluntary' },
+        ...(kind === 'leave' ? { exit: { exitTypeCode: 'voluntary' } } : {}),
       },
     }),
     201,
@@ -138,8 +147,14 @@ async function lockFreeWhileHandoverQueued(
 }
 
 describe.runIf(realPostgres)('AC-APV F-070 手动交接的组织锁范围（DEC-196 全局锁序不变）', () => {
-  it('仅改派（不会合席）：交接排队等实例锁时不持组织锁，普通组织写入不被挡住；交接结果不变', async () => {
+  it('DEC-692 离职仅改派：F-140b 一律预锁，交接排队等实例锁时仍持组织锁；交接结果不变', async () => {
     const f = await leaveScene('f070-reassign-only', false);
+    expect(await lockFreeWhileHandoverQueued(f)).toBe(false);
+    expect(pendingOf(await f.w.detail(f.view.id))).toEqual([expect.objectContaining({ assigneeUserId: f.successor })]);
+  });
+
+  it('DEC-692 退休仅改派：仍按 mayAdvanceBusiness 不持组织锁，交接结果不变', async () => {
+    const f = await leaveScene('f070-retirement-reassign-only', false, false, 'retirement');
     expect(await lockFreeWhileHandoverQueued(f)).toBe(true);
     expect(pendingOf(await f.w.detail(f.view.id))).toEqual([expect.objectContaining({ assigneeUserId: f.successor })]);
   });
@@ -149,11 +164,11 @@ describe.runIf(realPostgres)('AC-APV F-070 手动交接的组织锁范围（DEC-
     expect(await lockFreeWhileHandoverQueued(f)).toBe(false);
   });
 
-  it('会签合席 + 同员工有未落地调动申请：除组织锁外还持编制锁（离职生效会回退其带编分配）；无调动申请时不持编制锁', async () => {
+  it('DEC-692 离职会签合席：有未落地调动申请时持编制锁；无调动申请时也一律预锁编制', async () => {
     const withTransfer = await leaveScene('f070-merge-with-transfer', true, true);
     expect(await lockFreeWhileHandoverQueued(withTransfer, 'tryEstablishmentLock')).toBe(false);
     const without = await leaveScene('f070-merge-no-transfer', true);
-    expect(await lockFreeWhileHandoverQueued(without, 'tryEstablishmentLock')).toBe(true);
+    expect(await lockFreeWhileHandoverQueued(without, 'tryEstablishmentLock')).toBe(false);
   });
 
   it('成员撤销接管合席结算并让离职生效：等组织锁期间尚未持有实例锁（锁序 组织 → 实例），放行后离职生效', async () => {

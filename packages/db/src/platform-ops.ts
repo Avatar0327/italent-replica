@@ -132,15 +132,33 @@ export interface UserStatusChange {
  * 相容，不会与本人正在进行的操作成环；与授予 / 重新激活成员关系先取的 FOR SHARE 互斥，停用期间该用户不会在任何
  * 租户新变成有效成员，逐租户处理的“有效成员”集合因此稳定。只改状态等非键列，UPDATE 本身同样只需 NO KEY UPDATE。
  */
-export async function setUserStatus(db: Db, change: UserStatusChange, meta: PlatformCommandMeta): Promise<User> {
+/** 自动任务在既有全局锁内复核来源，并与账号状态同事务写回任务；不提供第二条账号更新路径。 */
+export interface UserStatusCoordination {
+  /** 任务来源租户：即使成员关系已撤销，仍须在同一排序下预锁来源员工。 */
+  readonly sourceTenants: readonly { id: string; timezone: string }[];
+  before(ctx: PlatformCommandContext, tenants: readonly { id: string; timezone: string }[]): Promise<void>;
+  after(ctx: PlatformCommandContext, user: User): Promise<void>;
+}
+export async function setUserStatus(
+  db: Db,
+  change: UserStatusChange,
+  meta: PlatformCommandMeta,
+  coordination?: UserStatusCoordination,
+): Promise<User> {
   return runPlatformCommand(db, meta, 'user.set_status', change, async (ctx) => {
     // F-069：账号行锁排在组织锁之后（入职首次绑定是 员工 → 组织 → 账号行 FOR SHARE）。停用先不加锁地看一眼状态，
     // 若要走成员停用挂接点，先在各租户按全局锁序取齐接管要用的业务锁，再锁账号行，避免持账号行锁时反向等组织锁。
     const [seen] = await ctx.tx.select({ status: users.status }).from(users).where(eq(users.id, change.userId));
     const deactivating = seen?.status === 'active' && change.status === 'disabled';
     const prelocked = new Set<string>();
-    if (deactivating && membershipRevokeHook && membershipPrelockHook) {
-      for (const tenant of await activeMembershipTenants(ctx, change.userId)) {
+    const planned = new Map<string, { id: string; timezone: string }>();
+    if ((deactivating || coordination) && membershipRevokeHook && membershipPrelockHook) {
+      for (const tenant of [
+        ...(await activeMembershipTenants(ctx, change.userId)),
+        ...(coordination?.sourceTenants ?? []),
+      ])
+        planned.set(tenant.id, tenant);
+      for (const tenant of [...planned.values()].sort((a, b) => a.id.localeCompare(b.id))) {
         await runInTenant(ctx, tenant, change.userId, meta, 'user_disabled', membershipPrelockHook);
         prelocked.add(tenant.id);
       }
@@ -148,6 +166,12 @@ export async function setUserStatus(db: Db, change: UserStatusChange, meta: Plat
     const [before] = await ctx.tx.select().from(users).where(eq(users.id, change.userId)).for('no key update');
     if (before && before.revision !== change.expectedRevision) {
       throw new RevisionConflictError('user', change.expectedRevision);
+    }
+    if (coordination) {
+      const current = await activeMembershipTenants(ctx, change.userId);
+      if (current.some((tenant) => !prelocked.has(tenant.id)))
+        throw new RevisionConflictError('用户的成员关系', change.expectedRevision);
+      await coordination.before(ctx, [...planned.values()]);
     }
     if (before?.status === 'active' && change.status === 'disabled' && membershipRevokeHook) {
       const tenantsNow = await activeMembershipTenants(ctx, change.userId);
@@ -167,6 +191,7 @@ export async function setUserStatus(db: Db, change: UserStatusChange, meta: Plat
       .returning();
     if (!before || !row) throw new RevisionConflictError('user', change.expectedRevision);
     await ctx.auditPlatform(audit('user.set_status', 'user', row.id, userSnapshot(before), userSnapshot(row)));
+    await coordination?.after(ctx, row);
     return row;
   });
 }

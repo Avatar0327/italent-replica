@@ -1,10 +1,14 @@
 /** 审批动作的判定规则（纯函数）：详情公布的动作与命令执行共用同一套计算，避免“公布了却执行不了”（X-15 / X-16）。 */
 import { addSignerVotes, isCountersign, urgeAllowed, type AddSignType, type ApprovalNode } from '@italent/domain';
 import type { VersionView } from './definitions.js';
-import { OPEN_STATUSES, type InstanceRow, type TaskRow } from './store.js';
+import type { InstanceRow, TaskRow } from './store.js';
+import { OPEN_STATUSES } from './task-state.js';
+
+// 撤回资格需要独立加载此纯函数，避免引入本文件经 store 建立的运行时依赖环。
+export { isActiveInstance } from './instance-state.js';
 
 /** 系统自动处理的任务（自动同意 / 自动跳过 / 自审跳过），不算人工处理。 */
-const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip']);
+const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip', 'subject_skip', 'no_assignee_approve']);
 /**
  * 系统结束的任务也不算人工处理（P2-3）：会签节点流转后其余待办自动结束（ended）、同一人承接多席时多出的一席
  * （merged）。

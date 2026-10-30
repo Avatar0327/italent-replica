@@ -25,6 +25,8 @@ export interface FieldAccess {
 
 /** 审批命令上下文：时钟与命令 ID 由路由注入，事件时间存 UTC（DEC-056）。 */
 export interface ApprovalContext extends TenantContext {
+  /** F-140：审批改期的确认控制项，和编辑字段分开，不能绕过节点字段授权。 */
+  readonly exitReschedule?: { readonly pendingTransferAck?: string; readonly confirmed?: boolean };
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
