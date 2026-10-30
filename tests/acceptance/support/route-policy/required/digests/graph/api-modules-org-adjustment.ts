@@ -217,6 +217,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/items-store.ts#auditItem',
     'apps/api/src/modules/org-adjustment/items-store.ts#bumpRevision',
   ],
+  'apps/api/src/modules/org-adjustment/org-items.ts#overlaidParent': [
+    'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
+  ],
   'apps/api/src/modules/org-adjustment/org-items.ts#patchOrgItem': [
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertItemFields',
@@ -235,7 +238,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/org-items.ts#siblingParent': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#createdRow',
-    'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
+    '#overlaidParent',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/org-items.ts#validateContent': [
