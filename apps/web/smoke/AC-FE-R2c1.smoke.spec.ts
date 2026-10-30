@@ -211,6 +211,78 @@ test('AC-FE-R2c1-09 只选一人批量转正遇版本冲突：列为这一人的
   await expect(page.getByText('1 人转正成功')).toBeVisible();
 });
 
+const create = `/api/tenant/employment/employees/${employee}/businesses`;
+const submitPath = `/api/tenant/employment/businesses/${businessId}/submit`;
+const withdrawPath = `/api/tenant/employment/businesses/${businessId}/withdraw`;
+const sentPaths = (server: { writes: { path: string; ifMatch?: string }[] }) =>
+  server.writes.map(({ path, ifMatch }) => [path, ifMatch]);
+async function applyOnce(page: Page) {
+  await openDetail(page);
+  await page.getByRole('button', named('转正申请')).click();
+  const form = dialog(page, '转正申请');
+  await pickResult(page, form);
+  await form.getByRole('button', named('提交')).click();
+  return form;
+}
+/** 重开“转正申请”：应找回服务端仍是草稿的原申请单，只读展示后提交同一张单。 */
+async function submitRecovered(page: Page) {
+  await expect(rowCount(page)).toHaveCount(1);
+  await openDetail(page);
+  await page.getByRole('button', named('转正申请')).click();
+  const form = dialog(page, '转正申请');
+  await expect(form).toContainText('申请已保存，继续提交同一申请；已保存的字段只读。');
+  await form.getByRole('button', { name: /提\s*交$/ }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '转正审批中', exact: true, pressed: true })).toBeVisible();
+}
+
+test('AC-FE-R2c1-10 申请第二步失败后刷新页面：找回原草稿同单提交，不再建第二张（P2-4）', async ({ page }) => {
+  const { server } = await setup(page);
+  server.rejectSubmits = 1;
+  const form = await applyOnce(page);
+  await expect(form).toContainText('没有可用的转正流程');
+  await page.reload();
+  await submitRecovered(page);
+  expect(sentPaths(server)).toEqual([
+    [create, '4'],
+    [submitPath, '1'],
+    [submitPath, '1'],
+  ]);
+});
+
+test('AC-FE-R2c1-11 申请第二步失败后重新进入页面：找回原草稿同单提交，不再建第二张（P2-4）', async ({ page }) => {
+  const { server } = await setup(page);
+  server.rejectSubmits = 1;
+  const form = await applyOnce(page);
+  await expect(form).toContainText('没有可用的转正流程');
+  await page.goto('/staff');
+  await page.goto('/probations');
+  await submitRecovered(page);
+  expect(sentPaths(server)).toEqual([
+    [create, '4'],
+    [submitPath, '1'],
+    [submitPath, '1'],
+  ]);
+});
+
+test('AC-FE-R2c1-12 撤回后再申请：沿用原申请单同单重提，不再建第二张（P2-4，DEC-103）', async ({ page }) => {
+  const { server } = await setup(page);
+  const form = await applyOnce(page);
+  await expect(form).toHaveCount(0);
+  await openDetail(page);
+  await page.getByRole('button', named('撤回')).click();
+  await page.locator('.ant-popconfirm').getByRole('button', named('确定')).click();
+  await expect(page.getByText('已撤回')).toBeVisible();
+  await switchView(page, 'expiring');
+  await submitRecovered(page);
+  expect(sentPaths(server)).toEqual([
+    [create, '4'],
+    [submitPath, '1'],
+    [withdrawPath, '2'],
+    [submitPath, '3'],
+  ]);
+});
+
 test('AC-FE-R2c1-05 无编辑 / 创建按钮权不显示对应入口', async ({ page }) => {
   await setup(page, { buttons: ['Employment.Submit'] });
   await openDetail(page);

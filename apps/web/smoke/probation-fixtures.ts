@@ -32,6 +32,8 @@ export interface Server {
   business?: Business;
   /** 列表里再放一名同事（peer），只在即将到期 / 全部视图。 */
   peer?: boolean;
+  /** 申请第二步（submit）还要拒绝几次：模拟没有可用的转正流程。 */
+  rejectSubmits?: number;
   writes: { method: string; path: string; body: Record<string, unknown>; ifMatch?: string }[];
 }
 
@@ -325,7 +327,23 @@ async function routeWrites(page: Page, server: Server) {
   await page.route(`**/employment/businesses/${businessId}`, (route) => route.fulfill({ json: business(server) }));
   await page.route(`**/employment/businesses/${businessId}/submit`, (route) => {
     server.writes.push(posted(route.request()));
+    if (server.rejectSubmits) {
+      server.rejectSubmits -= 1;
+      // approval/matching.ts：同类型流程都不满足即 409 CONFLICT（APPROVAL_PROCESS_NOT_MATCHED），单据仍是草稿
+      const error = {
+        code: 'CONFLICT',
+        message: '没有可用的转正流程',
+        details: { reason: 'APPROVAL_PROCESS_NOT_MATCHED' },
+      };
+      return route.fulfill({ status: 409, json: { error } });
+    }
     server.business = { ...server.business!, status: 'in_review', revision: server.business!.revision + 1 };
+    return route.fulfill({ json: business(server) });
+  });
+  // transitions.ts：发起人撤回审批中的申请，单据回到草稿（DEC-103 同单重提）
+  await page.route(`**/employment/businesses/${businessId}/withdraw`, (route) => {
+    server.writes.push(posted(route.request()));
+    server.business = { ...server.business!, status: 'draft', revision: server.business!.revision + 1 };
     return route.fulfill({ json: business(server) });
   });
 }
