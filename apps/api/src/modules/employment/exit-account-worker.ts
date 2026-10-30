@@ -46,6 +46,7 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
       // 配置修改不获取员工锁，因此可在全局预锁后锁配置，保证判定与状态写入看到同一版设置。
       await tx.execute(sql`SELECT tenant_id FROM exit_account_settings WHERE tenant_id=${tenant.id} FOR SHARE`);
       const settings = await readAccountSettings(tx, tenant.id);
+      const today = tenantLocalDate(now, tenant.timezone);
       let after: string | null = null;
       for (;;) {
         const tasks: AccountTask[] = await tx
@@ -61,9 +62,20 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
           .orderBy(exitAccountTasks.businessId)
           .limit(100);
         for (const task of tasks) {
-          const [source] = rowsOf<{ state: string; last: string; actual: string | null; reEmployed: boolean }>(
+          const [source] = rowsOf<{
+            state: string;
+            last: string;
+            actual: string | null;
+            reEmployed: boolean;
+            rehired: boolean;
+          }>(
             await tx.execute(sql`SELECT s.state, p.last_work_date::text AS last, e.actual_leave_date::text AS actual,
-            COALESCE(r.re_employed,false) AS "reEmployed"
+            COALESCE(r.re_employed,false) AS "reEmployed",
+            EXISTS(SELECT 1 FROM employment_timeline lt JOIN employment_timeline rt
+                ON rt.tenant_id=lt.tenant_id AND rt.employee_id=lt.employee_id
+              JOIN employment_records rr ON rr.tenant_id=rt.tenant_id AND rr.id=rt.record_id AND rr.kind='rehire'
+              WHERE lt.tenant_id=e.tenant_id AND lt.record_id=e.business_id AND rt.start_date<=${today}::date
+                AND (rt.start_date, rt.sort_order) > (lt.start_date, lt.sort_order)) AS rehired
             FROM exit_requests e JOIN permission_user_person_links l
               ON l.tenant_id=e.tenant_id AND l.employee_id=e.employee_id AND l.user_id=${userId}::uuid
             JOIN LATERAL (SELECT state FROM employment_state_events s
@@ -73,7 +85,12 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
             LEFT JOIN retirement_requests r ON r.tenant_id=e.tenant_id AND r.business_id=e.business_id
             WHERE e.tenant_id=${tenant.id} AND e.business_id=${task.businessId}::uuid`),
           );
-          const terminal = !source || source.reEmployed || ['deleted', 'voided', 'disapproved'].includes(source.state);
+          // F-328：其后的重聘入职已到入职日，这段离职不再要求停用（DEC-707）
+          const terminal =
+            !source ||
+            source.reEmployed ||
+            source.rehired ||
+            ['deleted', 'voided', 'disapproved'].includes(source.state);
           let due = !terminal && source?.state === 'effective';
           if (
             !terminal &&
@@ -83,7 +100,6 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
             (source.state === 'approved' || (source.state === 'in_review' && settings.inReview))
           ) {
             const day = settings.basis === 'actual_leave_date' ? (source.actual ?? source.last) : source.last;
-            const today = tenantLocalDate(now, tenant.timezone);
             due = due || day < today || (day === today && settings.time <= timeIn(now, tenant.timezone));
           }
           result.push({ task, tenant, due, terminal });
