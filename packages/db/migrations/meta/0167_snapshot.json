@@ -1,6 +1,6 @@
 {
-  "id": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
-  "prevId": "f3e62de8-f801-47a3-9aff-7692e01b6206",
+  "id": "86077378-8048-4cad-a239-03f92cc3b96b",
+  "prevId": "399c3007-766b-4975-95d6-19556c912c2c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16276,6 +16276,12 @@
           "notNull": true,
           "default": "now()"
         },
+        "daily_wage_standard": {
+          "name": "daily_wage_standard",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -16741,6 +16747,10 @@
         "personnel_employee_revision_positive": {
           "name": "personnel_employee_revision_positive",
           "value": "\"personnel_employee_versions\".\"revision\" > 0"
+        },
+        "personnel_employee_daily_wage_valid": {
+          "name": "personnel_employee_daily_wage_valid",
+          "value": "\"personnel_employee_versions\".\"daily_wage_standard\" >= 0 AND \"personnel_employee_versions\".\"daily_wage_standard\" < 1000000000000\n        AND scale(\"personnel_employee_versions\".\"daily_wage_standard\") <= 2"
         }
       },
       "isRLSEnabled": false
@@ -23254,7 +23264,7 @@
             }
           ],
           "isUnique": true,
-          "where": "(\"approval_instances\".\"status\" = 'running'\n    OR (\"approval_instances\".\"status\" = 'returned' AND \"approval_instances\".\"business_type\" <> 'exit_handover'))",
+          "where": "\"approval_instances\".\"status\" IN ('running','returned')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -62516,12 +62526,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "scope_note": {
-          "name": "scope_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "content": {
           "name": "content",
           "type": "text",
@@ -62748,10 +62752,6 @@
         "org_adjustments_subject": {
           "name": "org_adjustments_subject",
           "value": "btrim(\"org_adjustments\".\"subject\") <> '' AND char_length(\"org_adjustments\".\"subject\") <= 100"
-        },
-        "org_adjustments_scope_note": {
-          "name": "org_adjustments_scope_note",
-          "value": "char_length(COALESCE(\"org_adjustments\".\"scope_note\", '')) <= 500"
         },
         "org_adjustments_content": {
           "name": "org_adjustments_content",
@@ -62999,7 +62999,7 @@
           "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "state": {
           "name": "state",
@@ -63146,11 +63146,7 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
-        },
-        "exit_handover_requests_initiator": {
-          "name": "exit_handover_requests_initiator",
-          "value": "\"exit_handover_requests\".\"state\" NOT IN ('in_progress', 'completed') OR \"exit_handover_requests\".\"initiator_user_id\" IS NOT NULL"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",
@@ -63306,6 +63302,118 @@
           "value": "\"employment_forms\".\"revision\" > 0 AND \"employment_forms\".\"display_order\" >= 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.org_adjustment_range_orgs": {
+      "name": "org_adjustment_range_orgs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment_id": {
+          "name": "adjustment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "org_adjustment_range_org": {
+          "name": "org_adjustment_range_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_adjustment_range_orgs_tenant_id_tenants_id_fk": {
+          "name": "org_adjustment_range_orgs_tenant_id_tenants_id_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_range_adjustment_fk": {
+          "name": "org_adjustment_range_adjustment_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "org_adjustments",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_range_org_fk": {
+          "name": "org_adjustment_range_org_fk",
+          "tableFrom": "org_adjustment_range_orgs",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk": {
+          "name": "org_adjustment_range_orgs_tenant_id_adjustment_id_org_id_pk",
+          "columns": [
+            "tenant_id",
+            "adjustment_id",
+            "org_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

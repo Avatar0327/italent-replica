@@ -1,5 +1,5 @@
 {
-  "id": "f3e62de8-f801-47a3-9aff-7692e01b6206",
+  "id": "399c3007-766b-4975-95d6-19556c912c2c",
   "prevId": "16943b50-655a-4f07-9154-744fba9e3661",
   "version": "7",
   "dialect": "postgresql",
@@ -16276,6 +16276,12 @@
           "notNull": true,
           "default": "now()"
         },
+        "daily_wage_standard": {
+          "name": "daily_wage_standard",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -16741,6 +16747,10 @@
         "personnel_employee_revision_positive": {
           "name": "personnel_employee_revision_positive",
           "value": "\"personnel_employee_versions\".\"revision\" > 0"
+        },
+        "personnel_employee_daily_wage_valid": {
+          "name": "personnel_employee_daily_wage_valid",
+          "value": "\"personnel_employee_versions\".\"daily_wage_standard\" >= 0 AND \"personnel_employee_versions\".\"daily_wage_standard\" < 1000000000000\n        AND scale(\"personnel_employee_versions\".\"daily_wage_standard\") <= 2"
         }
       },
       "isRLSEnabled": false
@@ -62999,7 +63009,7 @@
           "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "state": {
           "name": "state",
@@ -63146,11 +63156,7 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
-        },
-        "exit_handover_requests_initiator": {
-          "name": "exit_handover_requests_initiator",
-          "value": "\"exit_handover_requests\".\"state\" NOT IN ('in_progress', 'completed') OR \"exit_handover_requests\".\"initiator_user_id\" IS NOT NULL"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",

@@ -8,7 +8,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminLogs@list"
@@ -38,7 +39,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
@@ -61,7 +63,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
@@ -84,7 +87,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
@@ -174,7 +178,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminIntervene@detail"
@@ -197,7 +202,8 @@
       "scope:IDP/IDP.Idp/IDP.Idp.list",
       "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
-      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list"
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
     ],
     "trace": [
       "btn:TenantBase.ApprovalInstance#adminTransfer@detail"

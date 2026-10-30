@@ -1,3 +1,8 @@
+import {
+  ORG_ADJUSTMENT_OBJECT_CODE,
+  ORG_ADJUSTMENT_DETAIL_OBJECT_CODE,
+  ORG_ADJUSTMENT_FORM_FIELDS,
+} from '../org-adjustment/fields.js';
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
 import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 import { OFFER_BUTTONS, OFFER_FIELDS, OFFER_STATUS_FIELDS } from '../offer/rules.js';
@@ -166,6 +171,54 @@ export const MODULE_OBJECTS = {
     [button('PartDisAgree', 'detail', 'update'), button('AllDisAgree', 'detail', 'update')],
     ['status'],
   ),
+  // R2-T08 v1.6 §9.2：原站编码照抄（含拼写），明细字段统一挂申请单；合同容器是本对象静态字段。
+  orgAdjustment: {
+    ...object(
+      'OrganizationApproval',
+      ORG_ADJUSTMENT_FORM_FIELDS,
+      [
+        button('AddAdjustOrgApprovalBtn', 'list', 'create'),
+        button('OrganizationApprovalDelete', 'list_row', 'update'),
+        button('EditAdjustOrgDetailBtn', 'detail', 'update'),
+        button('EditApprovalIngApply', 'detail', 'update'),
+        button('AddSubOrgApprovalDetails', 'app_page', 'update'),
+        button('AddPeerOrgApprovalDetail', 'app_page', 'update'),
+        button('StopOrgBtn', 'app_page', 'update'),
+        button('DragToGenerateOrgApprovalDetails', 'app_page', 'update'),
+        button('ChangeOrgBtn', 'app_page', 'update'),
+        button('AddOrgBtn', 'app_page', 'update'),
+      ],
+      [
+        'code',
+        'approvalStatus',
+        'executionStatus',
+        'executionNote',
+        'dataVolume',
+        'successCount',
+        'failureCount',
+        'approvedAt',
+        'executedAt',
+      ],
+    ),
+    code: ORG_ADJUSTMENT_OBJECT_CODE,
+  },
+  orgAdjustmentDetail: {
+    ...object(
+      'OrganizationApprovalDetail',
+      [],
+      [
+        button('OrgAdjustDetailChange', 'list', 'create'),
+        button('OrgAjustDetailCreate', 'list', 'create'),
+        button('orgAdjustDetailStop', 'list', 'create'),
+        button('AddOrgEstApprovalOfOrgApprovalDetail', 'list_row', 'create'),
+        button('EditOrgEstApprovalOfOrgApprovalDetail', 'list_row', 'update'),
+        button('EditOrgApprovalDetail', 'list_row', 'update'),
+        button('DelteOrgApprovalDetail', 'list_row', 'delete'),
+        button('DelOrgEstApprovalOfOrgApprovalDetail', 'list_row', 'delete'),
+      ],
+    ),
+    code: ORG_ADJUSTMENT_DETAIL_OBJECT_CODE,
+  },
   organization: object(
     'Organization',
     [
