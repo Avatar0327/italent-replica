@@ -14,7 +14,7 @@ export const GRAPH: Graph = {
     '#ORG_ADJUSTMENT_HEADER_FIELDS',
     '#ORG_ADJUSTMENT_SECTION_FIELDS',
   ],
-  'packages/domain/src/org-adjustment/plan.ts#planOrgTree': ['#reportLevels'],
+  'packages/domain/src/org-adjustment/plan.ts#planOrgTree': ['#nodeOf', '#reportLevels'],
   'packages/domain/src/org-adjustment/plan.ts#reportLevels': ['#ORG_MAX_LEVEL'],
   'packages/domain/src/org-adjustment/range.ts#isInAdjustmentRange': ['#keyOf'],
 };

@@ -805,9 +805,9 @@ export const DIGESTS: Digests = {
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8a50ea532585',
     'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '4951c8103a88',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '798a85ce87b9',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '6796566b048a',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': 'fdaad898c549',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
   },
@@ -2275,11 +2275,11 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '565dd86e153d',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
-    '699a1d647fea',
+    'fd4b6e85c4cd',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase':
     '7d7911ec96cb',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/org-items':
-    'f0bfe2ff9c4f',
+    'd0c2f163388b',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
     'bff89d82db76',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
