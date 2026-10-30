@@ -190,11 +190,16 @@ async function recordFailure(run: Run, group: ExecutionGroup, failure: Failure) 
   return 'failed' as const;
 }
 
-/** §7.7 可恢复失败：独立短事务累计次数；满 5 次记 EXECUTION_ERROR 并继续后续组，保证暂停能解除。 */
+/**
+ * §7.7 可恢复失败：独立短事务累计次数；满 5 次记 EXECUTION_ERROR 并继续后续组，保证暂停能解除。
+ * 提交回执丢失时事务可能已落库：计次、写失败之前先在持有 fencing 的同一事务内复读组终态，已完成的结果保留。
+ */
 async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
   const { tenantId } = run.lease;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-  const attempts = await fenced(run.db, run.lease, async (tx) => {
+  const counted = await fenced(run.db, run.lease, async (tx) => {
+    const settled = await settledResult(tx, run, group);
+    if (settled !== null) return { settled };
     const [row] = rowsOf<{ attempts: number }>(
       await tx.execute(sql`INSERT INTO org_adjustment_group_attempts
           (tenant_id, adjustment_id, group_item_id, attempts, last_error, updated_at)
@@ -206,10 +211,21 @@ async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
         RETURNING attempts`),
     );
     await audit(tx, run, 'group.retry', { groupItemId: group.id, attempts: row!.attempts });
-    return row!.attempts;
+    return { attempts: row!.attempts };
   });
-  if (attempts < MAX_GROUP_ATTEMPTS) return 'retry' as const;
+  if ('settled' in counted) return counted.settled === 1 ? ('done' as const) : ('failed' as const);
+  if (counted.attempts < MAX_GROUP_ATTEMPTS) return 'retry' as const;
   return recordFailure(run, group, failed('EXECUTION_ERROR', '多次执行出错，已停止重试'));
+}
+
+/** 组内各行都已收尾（exec_phase=2）时取组首行的执行结果；否则 null。 */
+async function settledResult(tx: Tx, run: Run, group: ExecutionGroup) {
+  const rows = rowsOf<{ id: string; exec_phase: number; execution_result: number | null }>(
+    await tx.execute(sql`SELECT id, exec_phase, execution_result FROM org_adjustment_org_items
+      WHERE tenant_id=${run.lease.tenantId} AND id=ANY(${idsOf(group)}::uuid[])`),
+  );
+  if (!rows.length || rows.some((row) => row.exec_phase !== 2)) return null;
+  return rows.find((row) => row.id === group.id)?.execution_result ?? null;
 }
 
 async function succeedGroup(tx: Tx, run: Run, group: ExecutionGroup) {
