@@ -69,21 +69,21 @@ export async function loadExecutionItems(tx: Tx, tenantId: string, adjustmentId:
   );
 }
 
-/** §7.4 单内顺序：新增（按新建链深度）→ 变更（按新树拓扑）→ 停用（目标自下而上）；同层按序号。 */
+/** §7.4 单内顺序：新增（按新建链深度）→ 变更（按生效日完整新树拓扑）→ 停用（目标自下而上）；同层按序号。 */
 export async function loadExecutionGroups(tx: Tx, tenantId: string, adjustmentId: string, date: string) {
   const items = await loadExecutionItems(tx, tenantId, adjustmentId);
   const leads = items.filter((item) => !item.cascadedFromItemId);
   const byId = new Map(items.map((item) => [item.id, item]));
-  const byTarget = new Map(leads.filter((i) => i.adjustType === 2).map((i) => [i.targetOrgId, i]));
   const depth = (item: ExecutionItem, next: (i: ExecutionItem) => ExecutionItem | undefined) => {
     const seen = new Set([item.id]);
     for (let cur = next(item); cur && !seen.has(cur.id); cur = next(cur)) seen.add(cur.id);
     return seen.size - 1;
   };
   const orgDepth = await targetDepths(tx, tenantId, leads, date);
+  const changedAbove = await changedAncestorCounts(tx, tenantId, leads, byId, date);
   const rank = (item: ExecutionItem): [number, number] => {
     if (item.adjustType === 1) return [1, depth(item, (i) => byId.get(i.parentItemId ?? ''))];
-    if (item.adjustType === 2) return [2, depth(item, (i) => byTarget.get(i.parentOrgId))];
+    if (item.adjustType === 2) return [2, changedAbove.get(item.id) ?? 0];
     return [3, -(orgDepth.get(item.targetOrgId!) ?? 0)];
   };
   const ranked = leads.map((lead) => ({ lead, rank: rank(lead) }));
@@ -111,6 +111,55 @@ async function targetDepths(tx: Tx, tenantId: string, leads: readonly ExecutionI
       ) SELECT id, max(depth)::int AS depth FROM up GROUP BY id`),
   );
   return new Map(rows.map((row) => [row.id, row.depth]));
+}
+
+/**
+ * 变更行在“生效日当前树叠加同单全部变更”的新树里，上行祖先链上有几个同单变更目标：祖先先于后代执行。
+ * 链会穿过没有变更明细的中间组织（根→A→B→P，A 挂 P、B 移根时，A 须排在 B 之后）。
+ */
+async function changedAncestorCounts(
+  tx: Tx,
+  tenantId: string,
+  leads: readonly ExecutionItem[],
+  byId: ReadonlyMap<string, ExecutionItem>,
+  date: string,
+) {
+  const changes = leads.filter((i) => i.adjustType === 2);
+  const moved = new Set(changes.map((i) => i.targetOrgId!));
+  const requested = new Map(changes.map((i) => [i.targetOrgId!, resolveParent(i, byId)]));
+  const start = [...moved, ...[...requested.values()].filter((id): id is string => !!id)];
+  const current = await adminParentsAt(tx, tenantId, start, date);
+  const parentOf = (orgId: string) => (moved.has(orgId) && requested.get(orgId)) || current.get(orgId) || null;
+  const counts = new Map<string, number>();
+  for (const item of changes) {
+    const seen = new Set<string>([item.targetOrgId!]);
+    let count = 0;
+    for (let cur = parentOf(item.targetOrgId!); cur && !seen.has(cur); cur = parentOf(cur)) {
+      seen.add(cur);
+      if (moved.has(cur)) count++;
+    }
+    counts.set(item.id, count);
+  }
+  return counts;
+}
+
+/** 生效日当前树中这些组织及其全部祖先的行政上级：orgId → parentOrgId。 */
+async function adminParentsAt(tx: Tx, tenantId: string, ids: readonly string[], date: string) {
+  if (!ids.length) return new Map<string, string | null>();
+  const rows = rowsOf<{ org_id: string; parent_org_id: string | null }>(
+    await tx.execute(sql`WITH RECURSIVE versions AS (
+        SELECT DISTINCT ON (org_id) id, org_id FROM org_versions
+        WHERE tenant_id=${tenantId} AND start_date<=${date}::date ORDER BY org_id, start_date DESC, version_no DESC
+      ), up AS (
+        SELECT v.org_id, h.parent_org_id FROM versions v
+          JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.version_id=v.id AND h.dimension='admin'
+        WHERE v.org_id=ANY(${`{${ids.join(',')}}`}::uuid[])
+        UNION
+        SELECT v.org_id, h.parent_org_id FROM up JOIN versions v ON v.org_id=up.parent_org_id
+          JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.version_id=v.id AND h.dimension='admin'
+      ) SELECT org_id, parent_org_id FROM up`),
+  );
+  return new Map(rows.map((row) => [row.org_id, row.parent_org_id]));
 }
 
 /** 新建行引用同单新建行时，沿引用链取第一个已存在的组织（§2.6）。 */
