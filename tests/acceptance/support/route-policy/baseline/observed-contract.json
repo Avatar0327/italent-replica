@@ -18033,7 +18033,8 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimWithFields / trimSubset"
         ],
         "guard": [
           "employment.linkage"
