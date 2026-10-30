@@ -8,17 +8,17 @@ import { getUser, grantMembership, setUserStatus, sql, withPlatform } from '@ita
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
-import { leaveBody } from './AC-EXIT-gate-support.js';
 import { rowsOf } from './AC-DM-R2-blacklist-support.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
-const CONTACT = 'Rehire.Contact@Example.com';
-const world = async (label: string, contact: string | null = CONTACT) => {
+/** 联系邮箱按用例区分：同一测试库里前一用例改名后已占用的邮箱会让后一用例撞唯一约束。 */
+const contactOf = (label: string) => `Rehire.${label}@Example.com`;
+const world = async (label: string, contact: string | null = contactOf(label)) => {
   const x = await downstreamWorld(database().db, `f328-${label}`);
   const userId = await x.applicantAccount(x.employee.id);
   if (contact !== null) await setContactEmail(x, contact);
-  return { x, userId };
+  return { x, userId, contact: contact?.toLowerCase() };
 };
 type World = Awaited<ReturnType<typeof downstreamWorld>>;
 
@@ -33,9 +33,11 @@ async function setContactEmail(x: World, email: string) {
     WHERE e.tenant_id = ${x.session.tenant.id} AND e.id = ${x.employee.id}::uuid
     GROUP BY e.tenant_id, e.id, e.name`);
 }
-/** 真实离职入口：最后工作日 10-04，生效日 10-05 已到，保存即生效并停用账号（F-261）。 */
+/** 真实离职入口：10-04 保存最后工作日 10-04 的直接离职，10-05 调度生效并停用账号（F-261），时钟回到 10-06。 */
 async function leave(x: World) {
-  const created = await x.createdLeave(x.employee.id, leaveBody('2026-10-04', 'direct', { exitTypeCode: 'voluntary' }));
+  const created = await x.directLeave('2026-10-04', { exitTypeCode: 'voluntary' });
+  await x.runScheduler('2026-10-05T01:00:00Z');
+  x.setNow('2026-10-06T01:00:00.000Z');
   expect((await x.business(created.id)).status).toBe('effective');
   return created;
 }
@@ -63,7 +65,7 @@ const links = (x: World) =>
 
 describe('F-328 重聘（合并人员）沿用原账号', () => {
   it('当天重聘：同一账号自动启用、登录名改为联系邮箱，人员绑定不变，任职三段连续，审计留痕', async () => {
-    const { x, userId } = await world('same-day');
+    const { x, userId, contact } = await world('same-day');
     const before = (await getUser(x.db, userId))!;
     await leave(x);
     expect((await getUser(x.db, userId))!.status).toBe('disabled');
@@ -71,7 +73,7 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
     expect(response.status, await response.clone().text()).toBe(201);
 
     const after = (await getUser(x.db, userId))!;
-    expect(after).toMatchObject({ id: before.id, status: 'active', email: CONTACT.toLowerCase() });
+    expect(after).toMatchObject({ id: before.id, status: 'active', email: contact });
     expect(await links(x)).toEqual([{ userId }]);
     expect((await x.session.getEmployee(x.employee.id)).code).toBeTruthy();
     const timeline = await x.timeline();
@@ -85,7 +87,7 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
       expect.objectContaining({
         action: 'user.change_email',
         before: expect.objectContaining({ email: before.email }),
-        after: expect.objectContaining({ email: CONTACT.toLowerCase() }),
+        after: expect.objectContaining({ email: contact }),
       }),
     );
     expect(events.filter((e) => e.action === 'user.set_status').at(-1)).toMatchObject({
@@ -94,7 +96,7 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
     expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([
       {
         before: expect.objectContaining({ email: before.email }),
-        after: expect.objectContaining({ email: CONTACT.toLowerCase() }),
+        after: expect.objectContaining({ email: contact }),
       },
     ]);
     const [task] = await x.sqlRows<{ status: string; restore: boolean }>(sql`
@@ -132,19 +134,19 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
   });
 
   it('请求里带原登录邮箱（入职类业务旧参数）仍按同一账号处理，不报改绑', async () => {
-    const { x, userId } = await world('legacy-login');
+    const { x, userId, contact } = await world('legacy-login');
     const before = (await getUser(x.db, userId))!;
     await leave(x);
     const response = await rehire(x, '2026-10-06', { loginEmail: before.email });
     expect(response.status, await response.clone().text()).toBe(201);
-    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'active', email: CONTACT.toLowerCase() });
+    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'active', email: contact });
   });
 
   it('未来日期重聘：保存即改登录名，到入职日才启用账号（调度补偿）', async () => {
-    const { x, userId } = await world('future');
+    const { x, userId, contact } = await world('future');
     await leave(x);
     expect((await rehire(x, '2026-10-20')).status).toBe(201);
-    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'disabled', email: CONTACT.toLowerCase() });
+    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'disabled', email: contact });
     await x.runScheduler('2026-10-19T15:00:00Z');
     expect((await getUser(x.db, userId))!.status).toBe('disabled');
     await x.runScheduler('2026-10-20T01:00:00Z');
@@ -152,12 +154,12 @@ describe('F-328 重聘（合并人员）沿用原账号', () => {
   });
 
   it('离职后人工再次停用（DEC-685③）：重聘不擅自启用，登录名照常改', async () => {
-    const { x, userId } = await world('manual');
+    const { x, userId, contact } = await world('manual');
     await leave(x);
     const disabled = (await getUser(x.db, userId))!;
     await setUserStatus(database().db, { userId, status: 'disabled', expectedRevision: disabled.revision }, cmd());
     expect((await rehire(x)).status).toBe(201);
-    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'disabled', email: CONTACT.toLowerCase() });
+    expect((await getUser(x.db, userId))!).toMatchObject({ status: 'disabled', email: contact });
   });
 
   it('账号同属其他租户：不改全局登录名（不影响他租户），账号照常启用', async () => {
