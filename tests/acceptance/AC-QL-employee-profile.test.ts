@@ -610,7 +610,7 @@ describe('AC-QL-employee-profile 必测 11：version / 指纹守卫（DEC-404、
   // DEC-439④：version 在合并时由 pnpm merge:main 统一定为 main + 1，不再在测试里钉“合并进来的 main 版本 / 指纹”快照
   // （那份快照在下一个改授权项编码的 PR 合并后必然失效，正是串行队列反复撞号的来源）。递增与历史由 AC-PLAT-F061-grants 守，
   // 本 PR 增删了哪些编码由 AC-PLAT-F061-grants 的动态基线（分叉点编码 + 声明清单，F-097）守。
-  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；指纹与编码一致，version 不低于含日工资标准字段的 36（AC-QL-employee-profile）', () => {
+  it('授权项编码含员工身份任职对象三个按钮与页面载体按钮；指纹与编码一致，保留组织调整 / F255A 和日工资标准版本下界（AC-QL-employee-profile）', () => {
     for (const button of EMPLOYEE_SELF_SERVICE_BUTTONS)
       expect(STANDARD_GRANT_CODES).toContain(buttonCode(EMP, RECORD, button));
     expect(STANDARD_GRANT_CODES).toContain(pageButtonCode);

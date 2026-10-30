@@ -227,7 +227,8 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
         adminRoles: [],
         objectPermissions: [{ ...moduleGrant(object.code, true), profileApps: ['OtherApp'] }],
       };
-      if (!businessField) {
+      if (object.code === MODULE_OBJECTS.hrDashboard.code) {
+        expect(businessField).toBeUndefined();
         // 规格 35 §2.1：看板是无业务字段的只读聚合，不应为了构造写用例而要求它提供业务字段。
         expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);
         expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
@@ -258,12 +259,19 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
         }
         continue;
       }
-      const fields = [businessField.code];
+      // R2-T08 §9.2：明细仅有系统字段，显式空字段集仍校验数据操作开关。
+      const fields = businessField ? [businessField.code] : [];
       expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);
       expect(decide(viewer, { action: writeAction, resource, fields }, catalog), writeAction).toBe(false);
       expect(decide(editor, { action: writeAction, resource }, catalog), writeAction).toBe(false);
       expect(decide(editor, { action: writeAction, resource, fields }, catalog), writeAction).toBe(true);
       expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
+      for (const field of object.fields.filter((field) => field.system)) {
+        expect(
+          decide(editor, { action: writeAction, resource, fields: [field.code] }, catalog),
+          `${resource}.${field.code}`,
+        ).toBe(false);
+      }
     }
   });
 

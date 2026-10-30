@@ -82,6 +82,13 @@ const HR_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.hrDashboard.code,
 };
 
+/** R2-T08 §9.2、DEC-415：申请单按主体组织控范围，明细没有独立范围。 */
+const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.orgAdjustment.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -386,7 +393,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
   },
   {
     code: 'standard_hr_admin',
@@ -396,7 +403,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象
@@ -405,9 +412,15 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '相比人事管理员除去了设置菜单',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    // DEC-415：时点花名册（BE-12a）导出全员档案，只给本模块的预置管理员，人事专员不预置
+    // DEC-415（BE-12a）、R2-T08 §9.2：花名册与组织调整仅给两预置管理员，专员不自动扩权。
     objects: BUSINESS_OBJECTS.filter(
-      (o) => o.code !== APPROVAL_PROCESS_OBJECT && o.code !== MODULE_OBJECTS.hrRoster.code,
+      (o) =>
+        ![
+          APPROVAL_PROCESS_OBJECT,
+          MODULE_OBJECTS.hrRoster.code,
+          MODULE_OBJECTS.orgAdjustment.code,
+          MODULE_OBJECTS.orgAdjustmentDetail.code,
+        ].includes(o.code),
     ).map((o) => withoutDailyWage(grant(o))),
     hr: true,
   },
