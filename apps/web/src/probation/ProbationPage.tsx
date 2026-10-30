@@ -59,7 +59,8 @@ function useProbationList() {
   // 选中时连同视图一起记下：切换视图的瞬间点到旧行也不会按新视图推导入口
   const [selected, select] = useState<{ view: ProbationView; row: Row }>();
   const [checked, check] = useState<Row[]>([]);
-  const [batch, setBatch] = useState(false);
+  // 批量弹窗按打开时的人员快照办理与列回执：写后刷新会清空勾选，回执姓名与人数不能随之丢失
+  const [batch, setBatch] = useState<Row[]>();
   const allowed = useFilterPermission();
   const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed)));
   const reset = (next: ProbationView) => {
@@ -122,7 +123,7 @@ function ProbationList() {
         <FilterBar key={view} allowed={list.allowed} onApply={list.applyFilters} onRefresh={result.refresh} />
         {selectable && (
           <Space className="intern-toolbar">
-            <Button disabled={!checked.length} onClick={() => list.setBatch(true)}>
+            <Button disabled={!checked.length} onClick={() => list.setBatch(checked)}>
               {m.entries.batch}
             </Button>
             <span>{m.selected(checked.length)}</span>
@@ -163,10 +164,10 @@ function ProbationList() {
       )}
       {list.batch && (
         <BatchForm
-          rows={checked}
-          onClose={() => list.setBatch(false)}
+          rows={list.batch}
+          onClose={() => list.setBatch(undefined)}
           onDone={() => {
-            list.setBatch(false);
+            list.setBatch(undefined);
             void list.refresh();
           }}
           refresh={list.refresh}
