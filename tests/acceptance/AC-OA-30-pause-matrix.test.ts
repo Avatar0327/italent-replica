@@ -166,6 +166,78 @@ describe('AC-OA-30 执行期间暂停：任职入口', () => {
   });
 });
 
+describe('AC-OA-30 执行期间暂停：删除已生效的调动记录', () => {
+  /** 员工时间轴、业务与员工 revision、删除快照（墓碑）、删除审计：409 后须逐项不变。 */
+  async function employmentState(world: World, employeeId: string, businessId: string) {
+    const { tenant } = world.w;
+    return withTenant(world.db, tenant.id, async (tx) =>
+      resultRows<Record<string, unknown>>(
+        await tx.execute(sql`SELECT
+            (SELECT coalesce(jsonb_agg(jsonb_build_array(t.record_id, t.valid_during::text)
+              ORDER BY t.start_date, t.sort_order), '[]'::jsonb) FROM employment_timeline t
+              WHERE t.tenant_id=${tenant.id} AND t.employee_id=${employeeId}) AS timeline,
+            (SELECT revision FROM employment_business_objects WHERE tenant_id=${tenant.id} AND id=${businessId})
+              AS "businessRevision",
+            (SELECT revision FROM employment_employees WHERE tenant_id=${tenant.id} AND id=${employeeId})
+              AS "employeeRevision",
+            (SELECT count(*)::int FROM employment_record_tombstones
+              WHERE tenant_id=${tenant.id} AND employee_id=${employeeId}) AS tombstones,
+            (SELECT count(*)::int FROM audit_events WHERE tenant_id=${tenant.id} AND object_id=${businessId}
+              AND action='employment.record.delete') AS "deleteAudits"`),
+      ),
+    );
+  }
+
+  async function transferred(world: World, employeeId: string, departmentId: string) {
+    const { revision } = await world.w.getEmployee(employeeId);
+    return world.w.business(
+      employeeId,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-03', fields: { departmentId } },
+      revision,
+    );
+  }
+
+  it('删除调出记录会让前驱区间回到暂停部门 → 409，时间轴、revision、删除快照均不变；暂停解除后照常', async () => {
+    const world = await pausedWorld('oa30-delete-out');
+    const { w, e1, b } = world;
+    const out = await transferred(world, e1.id, b.id); // e1 原在 D，调到暂停外的 B
+    await pause(world);
+    const before = await employmentState(world, e1.id, out.id);
+
+    await expectPaused(world, await w.request('DELETE', `/businesses/${out.id}`, { ifMatch: out.revision }));
+    expect(await employmentState(world, e1.id, out.id), '整体回滚').toEqual(before);
+
+    await withTenant(world.db, w.tenant.id, (tx) =>
+      tx.execute(sql`DELETE FROM org_adjustment_pauses WHERE tenant_id=${w.tenant.id}`),
+    );
+    const retried = await w.request('DELETE', `/businesses/${out.id}`, { ifMatch: out.revision });
+    expect(retried.status, await retried.clone().text()).toBe(200);
+  });
+
+  it('删除调入暂停部门的记录（该部门人员减少）同样 409；暂停外的删除照常', async () => {
+    const world = await pausedWorld('oa30-delete-in');
+    const { w, e1, e2, d, b2 } = world;
+    const into = await transferred(world, e2.id, d.id); // e2 原在 B，调入 D（暂停前）
+    const outside = await transferred(world, e1.id, b2.id); // e1 原在 D，调到 B2（暂停前）
+    await pause(world);
+    const before = await employmentState(world, e2.id, into.id);
+
+    await expectPaused(world, await w.request('DELETE', `/businesses/${into.id}`, { ifMatch: into.revision }));
+    expect(await employmentState(world, e2.id, into.id)).toEqual(before);
+    // 被删记录在 B2（暂停外），前驱在暂停的 D：同样拦
+    await expectPaused(world, await w.request('DELETE', `/businesses/${outside.id}`, { ifMatch: outside.revision }));
+  });
+
+  it('被删记录与前驱都不在暂停组织内：照常删除', async () => {
+    const world = await pausedWorld('oa30-delete-free');
+    const { w, e2, b2 } = world;
+    const move = await transferred(world, e2.id, b2.id); // B → B2，均不在暂停集合
+    await pause(world);
+    const deleted = await w.request('DELETE', `/businesses/${move.id}`, { ifMatch: move.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+  });
+});
+
 describe('AC-OA-30 执行期间暂停：组织与职位入口', () => {
   it('新建 / 改名 / 移入 / 导入 / 更正设立日期 / 外部祖先停用（F-274）→ 409，且不留版本与 revision 变化', async () => {
     const world = await pausedWorld('oa30-org');
