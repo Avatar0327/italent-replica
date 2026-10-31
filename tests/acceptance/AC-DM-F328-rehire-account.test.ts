@@ -59,6 +59,10 @@ const tenantAudit = (x: World, action: string) =>
   x.sqlRows<{ before: Record<string, unknown> | null; after: Record<string, unknown> | null }>(sql`
     SELECT before, after FROM audit_events WHERE tenant_id=${x.session.tenant.id} AND action=${action}
     ORDER BY occurred_at, id`);
+const accountTasks = (x: World) =>
+  x.sqlRows<{ status: string; restore: boolean; auto: number | null }>(sql`
+    SELECT status, restore_requested AS restore, auto_revision AS auto FROM exit_account_tasks
+    WHERE tenant_id=${x.session.tenant.id} ORDER BY business_id`);
 const links = (x: World) =>
   x.sqlRows<{ userId: string }>(sql`SELECT user_id::text AS "userId" FROM permission_user_person_links
     WHERE tenant_id=${x.session.tenant.id} AND employee_id=${x.employee.id}::uuid`);
@@ -181,5 +185,124 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     expect((await rehire(x)).status).toBe(201);
     expect((await getUser(x.db, userId))!).toMatchObject({ status: 'active', email: before.email });
     expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
+  });
+
+  it('当天重聘时账号启用写入失败：整单失败，账号、员工 revision、任职链、审计与账号任务都保持提交前状态', async () => {
+    const { x, userId } = await world('enable-failure');
+    await leave(x);
+    const account = (await getUser(x.db, userId))!;
+    const employee = (await x.session.getEmployee(x.employee.id)).revision;
+    const timeline = await x.timeline();
+    const audits = await platformAudit(userId);
+    const tasks = await accountTasks(x);
+    // 合成存储故障：只拦“停用 → 启用”这一次写入（离职停用已在上面完成）
+    await x.db.execute(sql`CREATE FUNCTION f328_fail_enable() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.status = 'active' AND OLD.status = 'disabled' THEN
+        RAISE EXCEPTION 'synthetic enable storage failure' USING ERRCODE = '53100';
+      END IF; RETURN NEW; END $$`);
+    await x.db.execute(sql`CREATE TRIGGER f328_fail_enable BEFORE UPDATE OF status ON users
+      FOR EACH ROW EXECUTE FUNCTION f328_fail_enable()`);
+    try {
+      const response = await rehire(x);
+      expect(response.status, await response.clone().text()).toBeGreaterThanOrEqual(500);
+    } finally {
+      await x.db.execute(sql`DROP TRIGGER f328_fail_enable ON users`);
+      await x.db.execute(sql`DROP FUNCTION f328_fail_enable()`);
+    }
+    expect(await getUser(x.db, userId)).toEqual(account);
+    expect((await x.session.getEmployee(x.employee.id)).revision).toBe(employee);
+    expect(await x.timeline()).toEqual(timeline);
+    expect(await platformAudit(userId)).toEqual(audits);
+    expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
+    expect(await accountTasks(x)).toEqual(tasks);
+  });
+
+  it('当天重聘在同一事务里启用账号：响应返回时已启用，账号任务已恢复并记下启用后的 revision', async () => {
+    const { x, userId } = await world('same-tx');
+    await leave(x);
+    const response = await rehire(x);
+    expect(response.status, await response.clone().text()).toBe(201);
+    const after = (await getUser(x.db, userId))!;
+    expect(after.status).toBe('active');
+    expect(await accountTasks(x)).toEqual([
+      expect.objectContaining({ status: 'restored', restore: false, auto: after.revision }),
+    ]);
+  });
+
+  it('未来待重聘保存后取消（DEC-711 b）：原入职日及之后调度都不启用账号，恢复请求撤销', async () => {
+    const { x, userId } = await world('cancelled');
+    await leave(x);
+    const created = await rehire(x, '2026-10-20', { pendingEntry: true });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const body = (await created.json()) as { id: string; revision: number };
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ restore: true })]);
+    const cancelled = await x.session.request('POST', `/pending-entries/${body.id}/cancel`, {
+      ifMatch: body.revision,
+      body: { reason: 'other' },
+    });
+    expect(cancelled.status, await cancelled.clone().text()).toBe(200);
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ status: 'disabled', restore: false })]);
+    await x.runScheduler('2026-10-20T01:00:00Z');
+    expect((await getUser(x.db, userId))!.status).toBe('disabled');
+    await x.runScheduler('2026-10-21T01:00:00Z');
+    expect((await getUser(x.db, userId))!.status).toBe('disabled');
+  });
+
+  it('删除已自动启用的重聘（DEC-711 d）：调度后账号恢复离职停用并留审计，登录名保持联系邮箱', async () => {
+    const { x, userId, contact } = await world('deleted');
+    await leave(x);
+    const response = await rehire(x);
+    expect(response.status, await response.clone().text()).toBe(201);
+    const body = (await response.json()) as { id: string; revision: number };
+    expect((await getUser(x.db, userId))!.status).toBe('active');
+    const deleted = await x.session.request('DELETE', `/businesses/${body.id}`, { ifMatch: body.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    await x.runScheduler('2026-10-06T02:00:00Z');
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave']);
+    const account = (await getUser(x.db, userId))!;
+    expect(account).toMatchObject({ status: 'disabled', email: contact });
+    expect((await platformAudit(userId)).filter((e) => e.action === 'user.set_status').at(-1)).toMatchObject({
+      before: { status: 'active' },
+      after: { status: 'disabled' },
+    });
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ status: 'disabled', auto: account.revision })]);
+    const changes = await tenantAudit(x, 'employment.exit_account.task');
+    expect(changes.at(-1)).toMatchObject({ after: expect.objectContaining({ status: 'disabled' }) });
+  });
+
+  it('自动启用后账号被人工改动过：删除重聘不再自动停用（保留人工修改）', async () => {
+    const { x, userId } = await world('deleted-manual');
+    await leave(x);
+    const response = await rehire(x);
+    const body = (await response.json()) as { id: string; revision: number };
+    const enabled = (await getUser(x.db, userId))!;
+    const disabled = await setUserStatus(
+      database().db,
+      { userId, status: 'disabled', expectedRevision: enabled.revision },
+      cmd(),
+    );
+    await setUserStatus(database().db, { userId, status: 'active', expectedRevision: disabled.revision }, cmd());
+    const deleted = await x.session.request('DELETE', `/businesses/${body.id}`, { ifMatch: body.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    await x.runScheduler('2026-10-06T02:00:00Z');
+    expect((await getUser(x.db, userId))!.status).toBe('active');
+  });
+
+  it('当天待重聘已启用后改期到未来：改期即重新停用，到新入职日再启用', async () => {
+    const { x, userId } = await world('postponed');
+    await leave(x);
+    const created = await rehire(x, '2026-10-06', { pendingEntry: true });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const body = (await created.json()) as { id: string; revision: number };
+    expect((await getUser(x.db, userId))!.status).toBe('active');
+    const postponed = await x.session.request('POST', `/pending-entries/${body.id}/postpone`, {
+      ifMatch: body.revision,
+      body: { effectiveDate: '2026-10-20' },
+    });
+    expect(postponed.status, await postponed.clone().text()).toBe(200);
+    await x.runScheduler('2026-10-06T02:00:00Z');
+    expect((await getUser(x.db, userId))!.status).toBe('disabled');
+    await x.runScheduler('2026-10-20T01:00:00Z');
+    expect((await getUser(x.db, userId))!.status).toBe('active');
   });
 });
