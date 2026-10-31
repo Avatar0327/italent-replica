@@ -32,7 +32,7 @@ async function buildWorld() {
     department: a,
     profile: { gender: '女', birthday: '1996-10-01', educationLevel: '硕士' },
     fields: { sequenceId: s2.id, levelId: l2.id, employmentSource: '社会招聘' },
-    probationMonths: 12,
+    probationMonths: 6,
   });
   await w.hire('报表丙', { date: '2026-04-02', department: b, profile: { gender: '保密', birthday: '1975-10-01' } });
   await w.hire('报表丁', {

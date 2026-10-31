@@ -32,13 +32,13 @@ async function buildWorld() {
       profile: { gender: '男', birthday: '2001-10-01', educationLevel: '本科' },
       fields: { sequenceId: s1.id, levelId: l1.id, employmentForm: form, employmentType: '合成类别甲' },
     }),
-    // 恰满 1 年、恰 30 岁、试用中
+    // 恰满 1 年、恰 30 岁、试用中（试用期最长 6 个月；没办转正，人员状态仍是试用）
     p2: await w.hire('结构乙', {
       date: '2025-10-01',
       department: a1x,
       profile: { gender: '女', birthday: '1996-10-01', educationLevel: '硕士研究生' },
       fields: { sequenceId: s2.id, levelId: l2.id },
-      probationMonths: 12,
+      probationMonths: 6,
     }),
     // 差一天满 6 个月、恰 51 岁；没有学历、序列、职级
     p3: await w.hire('结构丙', {
