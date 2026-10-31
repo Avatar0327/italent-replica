@@ -342,3 +342,266 @@ test('AC-FE-R2c3-08 结果未知只读锁定：关闭重开、换入口、换视
   await expect(dialog(page).getByRole('button', { name: /提\s*交/ })).toBeDisabled();
   expect(attempts).toBe(1);
 });
+
+// ---- 第 2 轮返工回归（审查结论 P2-1～P2-5；形状对照 exit-routes.ts projectCancelReceipt 与 exit-downstream.ts）----
+
+/** 按字段权裁剪的写回执（context.ts trimEmploymentResponse）：顶层只留可见字段，fields / customFields 逐项裁剪。 */
+function trimmed(raw: Record<string, unknown>, shown: string[], kept: string[] = []) {
+  return Object.fromEntries(
+    Object.entries({ ...raw, fields: {}, customFields: {} }).filter(
+      ([key]) => shown.includes(key) || ['fields', 'customFields', 'record', ...kept].includes(key),
+    ),
+  );
+}
+const recordPermission = (json: Record<string, unknown>) => ({
+  json: {
+    objectCode: 'TenantBase.EmploymentRecord',
+    dataOperations: { read: true, create: true, update: true },
+    ...json,
+  },
+});
+
+test('AC-FE-R2c3-09 P2-1 撤销回执裁掉类型、意向回执裁掉状态：照常确认成功，不锁结果未知', async ({ page }) => {
+  const { server } = await setup(page);
+  const shown = ['id', 'employeeId', 'revision', 'name', 'code', 'mode', 'lastWorkDate', 'effectiveDate'];
+  await page.route('**/permission/me/objects/TenantBase.EmploymentRecord', (route) =>
+    route.fulfill(
+      recordPermission({
+        viewableFields: [...shown, 'intendedDate', 'reason'],
+        editableFields: ['intendedDate', 'reason'],
+        buttons: ['Employment.RetireCancel', 'Employment.RetireIntention'].map((buttonCode) => ({
+          buttonCode,
+          level: 'detail',
+        })),
+      }),
+    ),
+  );
+  await page.reload();
+  server.views.processing = [bill('approved')];
+  server.views.all = [bill('approved')];
+  let writes = 0;
+  await page.route(`**/employment/retirements/${billId}/cancel`, (route) => {
+    writes += 1;
+    const cancellation = {
+      id: '80000000-0000-4000-8000-000000000002',
+      case: 'approved_voided',
+      stateBefore: 'approved',
+      reason: '合成撤销原因',
+      revision: 1,
+      createdAt: '2026-10-30T00:00:00.000Z',
+    };
+    server.billRevision = 3;
+    server.views.processing = [];
+    server.views.all = [bill('voided', { revision: 3, cancellation })];
+    const raw = {
+      ...business({ status: 'voided', revision: 3 }),
+      cancellation,
+      downstream: { items: [], additional: [] },
+    };
+    return route.fulfill({ json: trimmed(raw, shown, ['cancellation', 'downstream']) });
+  });
+  await openRow(page, 'processing');
+  await page.locator('.ant-drawer').getByRole('button', { name: '撤销退休', exact: true }).click();
+  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
+  await confirm(page);
+  await expect(page.getByText('已撤销退休')).toBeVisible();
+  await expect(page.getByText(/结果待确认/)).toHaveCount(0);
+  expect(writes).toBe(1);
+  await page.reload();
+
+  // 意向新建：回执裁掉 status（intentionView 经 trimEmploymentResponse），保存仍成功
+  const intentionShown = ['id', 'employeeId', 'revision', 'intendedDate', 'reason'];
+  await page.route(`**/employment/retirement-intentions/employees/${employee}`, (route) => {
+    writes += 1;
+    const view = trimmed(intention('draft'), intentionShown);
+    const { fields: _f, customFields: _c, record: _r, ...plain } = view;
+    server.intentions = [plain];
+    return route.fulfill({ status: 201, json: plain });
+  });
+  await enter(page, '意向退休日期申请');
+  await dialog(page)
+    .getByRole('button', { name: /新\s*建/ })
+    .click();
+  await date(page, '意向退休日期', '2026-12-31');
+  await dialog(page)
+    .getByRole('button', { name: /保\s*存/ })
+    .click();
+  await expect(page.getByText('已保存')).toBeVisible();
+  await expect(page.getByText(/结果待确认/)).toHaveCount(0);
+  expect(writes).toBe(2);
+});
+
+test('AC-FE-R2c3-10 P2-2 单据提交被要求确认在途调动：确认后令牌进 pendingTransferAck，原单与 revision 不变', async ({
+  page,
+}) => {
+  const { server } = await setup(page);
+  server.views.all = [bill('draft', { mode: 'application' })];
+  const sent: (ReturnType<typeof posted> & { url: string })[] = [];
+  await page.route(`**/employment/retirements/${billId}/submit`, (route) => {
+    sent.push({ ...posted(route.request()), url: route.request().url() });
+    if (sent.length === 1)
+      return route.fulfill(
+        conflict('有在途调动，提交将作废', { reason: 'EXIT_PENDING_TRANSFER_ACK_REQUIRED', ackToken: 'ack-2' }),
+      );
+    server.billRevision = 3;
+    return route.fulfill({ json: business({ mode: 'application', status: 'in_review', revision: 3 }) });
+  });
+  await openRow(page, 'all');
+  await page
+    .locator('.ant-drawer')
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await page
+    .getByRole('tooltip')
+    .getByRole('button', { name: /确\s*定/ })
+    .click();
+  await expect(page.locator('.ant-modal-confirm')).toBeVisible();
+  await confirm(page);
+  await expect(page.getByText('已提交')).toBeVisible();
+  expect(sent.map(({ body, ifMatch }) => ({ body, ifMatch }))).toEqual([
+    { body: {}, ifMatch: '2' },
+    { body: { pendingTransferAck: 'ack-2' }, ifMatch: '2' },
+  ]);
+  for (const item of sent) expect(item.url).toContain(`/retirements/${billId}/submit`);
+});
+
+/** 申请第一步建草稿（回执 = EmploymentBusiness，草稿 revision 1），员工 revision 加一。 */
+async function draftCreation(page: Page, server: { employeeRevision: number }) {
+  let creates = 0;
+  await page.route(`**/employment/retirements/employees/${employee}/preview`, (route) =>
+    route.fulfill({ json: { ...preview('2026-11-29'), ack: null } }),
+  );
+  await page.route(`**/employment/retirements/employees/${employee}`, (route) => {
+    creates += 1;
+    server.employeeRevision = employeeRevision + 1;
+    return route.fulfill({
+      status: 201,
+      json: business({ id: draftId, mode: 'application', status: 'draft', revision: 1 }),
+    });
+  });
+  return () => creates;
+}
+
+test('AC-FE-R2c3-11 P2-3 申请第二步 409：重读真实草稿，按服务端草稿 revision 重提', async ({ page }) => {
+  const { server } = await setup(page);
+  const creates = await draftCreation(page, server);
+  const sent: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    sent.push(posted(route.request()));
+    if (sent.length === 1) {
+      server.billRevision = 2;
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    }
+    server.billRevision = 3;
+    return route.fulfill({
+      json: business({ id: draftId, mode: 'application', status: 'in_review', revision: 3 }),
+    });
+  });
+  await enter(page, '退休申请');
+  await previewWith(page, '2026-11-29');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  const resume = dialog(page).getByRole('button', { name: '已核对差异，继续编辑' });
+  await expect(resume).toBeVisible();
+  await resume.click();
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(page.getByText('退休申请提交成功')).toBeVisible();
+  expect(sent.map((item) => [item.body, item.ifMatch])).toEqual([
+    [{}, '1'],
+    [{}, '2'],
+  ]);
+  expect(creates()).toBe(1);
+});
+
+test('AC-FE-R2c3-12 P2-3 申请第二步结果未知：关闭重开仍是同一草稿，回查原单查草稿而不是员工', async ({ page }) => {
+  const { server } = await setup(page);
+  const creates = await draftCreation(page, server);
+  let submits = 0;
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    submits += 1;
+    return route.abort('connectionreset');
+  });
+  await enter(page, '退休申请');
+  await previewWith(page, '2026-11-29');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.getByRole('button', { name: '退休申请', exact: true }).click();
+  await expect(dialog(page).getByText(/结果待确认/)).toBeVisible();
+  await expect(dialog(page).getByText(/申请已保存，继续提交同一申请/)).toBeVisible();
+  await expect(dialog(page).getByRole('button', { name: /提\s*交/ })).toBeDisabled();
+  const reads: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && request.url().includes('/employment/'))
+      reads.push(new URL(request.url()).pathname);
+  });
+  await dialog(page).getByRole('button', { name: '回查原单', exact: true }).click();
+  await expect.poll(() => reads.length).toBeGreaterThan(0);
+  expect(reads).toContain(`/api/tenant/employment/businesses/${draftId}`);
+  expect(reads.some((path) => path.endsWith(`/employees/${employee}`))).toBe(false);
+  expect([creates(), submits]).toEqual([1, 1]);
+});
+
+test('AC-FE-R2c3-13 P2-5 撤销成功后展示服务端返回的下游清单，动作刷新后不丢', async ({ page }) => {
+  const { server } = await setup(page);
+  await page.route(`**/employment/retirements/${billId}/cancel`, (route) => {
+    const cancellation = {
+      id: '80000000-0000-4000-8000-000000000001',
+      case: 'record_deleted_reinstated',
+      stateBefore: 'effective',
+      reason: '合成撤销原因',
+      revision: 1,
+      createdAt: '2026-10-30T00:00:00.000Z',
+    };
+    server.billRevision = 3;
+    server.views.completed = [];
+    server.views.all = [bill('deleted', { revision: 3, cancellation })];
+    // trimDownstream：可见目标只回 type / id / detail，不可见只计 hiddenCount；四类固定在前，附加项在后
+    const downstream = {
+      items: [
+        {
+          kind: 'contract',
+          status: 'found',
+          targets: [
+            { type: 'contract', id: '90000000-0000-4000-8000-000000000001', detail: { effect: 'contract_terminated' } },
+          ],
+          hiddenCount: 0,
+        },
+        { kind: 'duty_transfer', status: 'none', targets: [], hiddenCount: 0 },
+        { kind: 'handover', status: 'none', targets: [], hiddenCount: 0 },
+        { kind: 'payroll', status: 'not_connected', targets: [], hiddenCount: 0 },
+      ],
+      additional: [
+        {
+          kind: 'application_voided',
+          action: 'reinitiate',
+          targets: [{ type: 'employment-business', id: draftId, detail: { effect: 'application_voided' } }],
+          hiddenCount: 1,
+        },
+      ],
+    };
+    return route.fulfill({ json: { ...business({ status: 'deleted', revision: 3 }), cancellation, downstream } });
+  });
+  await openRow(page, 'completed');
+  const drawer = page.locator('.ant-drawer');
+  await drawer.getByRole('button', { name: '撤销退休', exact: true }).click();
+  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
+  await confirm(page);
+  await expect(page.getByText('已撤销退休')).toBeVisible();
+  // 撤销后单据带撤销记录，撤销按钮随刷新卸载；清单留在详情层
+  await expect(drawer.getByRole('button', { name: '撤销退休', exact: true })).toHaveCount(0);
+  const list = drawer.getByRole('region', { name: '撤销退休后的下游数据' });
+  await expect(list).toBeVisible();
+  await expect(list.getByText('合同：有记录（1 件）')).toBeVisible();
+  await expect(list.getByText('薪资档案：未接入')).toBeVisible();
+  await expect(list.getByText('被作废的在途任职申请：需重新发起（2 件，其中 1 件无权查看）')).toBeVisible();
+  // DEC-714：前端不补“合同需手工处理 / 已恢复”等文案，也不推算账号状态
+  await expect(drawer.getByText(/手工|已恢复|账号/)).toHaveCount(0);
+});

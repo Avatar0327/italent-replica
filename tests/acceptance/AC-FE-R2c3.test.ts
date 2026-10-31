@@ -172,6 +172,20 @@ describe('AC-FE-R2c3 入口只按视图归属、单据状态与权限快照里�
     expect(intentionEntries(undefined, permission(['Employment.Retire']))).toEqual([]);
     expect(intentionEntries({ status: 'draft' }, { ...all, editableFields: [] })).toEqual(['submit']);
   });
+
+  it('第 2 轮 P2-4：意向日期只读时，员工视图入口仍在，已有草稿可提交、审批中可撤回', () => {
+    const readonly = { ...all, editableFields: ['lastWorkDate'] };
+    expect(entriesFor('upcoming', person, readonly)).toEqual(['retire', 'apply', 'intention']);
+    expect(intentionEntries(undefined, readonly)).toEqual([]);
+    expect(intentionEntries({ status: 'draft' }, readonly)).toEqual(['submit']);
+    expect(intentionEntries({ status: 'in_review' }, readonly)).toEqual(['withdraw']);
+    // 只有修改权（无新增）也能进入已有申请；按钮缺失仍不出
+    const updateOnly = permission(['Employment.RetireIntention'], { create: false, update: true });
+    expect(entriesFor('upcoming', person, updateOnly)).toEqual(['intention']);
+    const neither = permission(['Employment.RetireIntention'], { create: false, update: false });
+    expect(entriesFor('upcoming', person, neither)).toEqual([]);
+    expect(entriesFor('upcoming', person, { ...readonly, buttons: [] })).toEqual([]);
+  });
 });
 
 describe('AC-FE-R2c3 提交体、确认令牌与回执', () => {
@@ -272,6 +286,26 @@ describe('AC-FE-R2c3 提交体、确认令牌与回执', () => {
     expect(acceptRetirement(submitted, { employeeId, sent: 3, id: billId })).toBe(submitted);
     expect(() => acceptRetirement(submitted, { employeeId, sent: 4, id: billId })).toThrow();
     expect(() => acceptRetirement({ ...submitted, id: receiverId }, { employeeId, sent: 3, id: billId })).toThrow();
+  });
+
+  it('第 2 轮 P2-1：类型 / 状态 / 员工 revision 按字段权被裁剪时照常接受，字段在但值错误仍拒绝', () => {
+    const receipt = { id: billId, employeeId, kind: 'retirement', revision: 4, employeeRevision: 6, status: 'voided' };
+    const { kind: _kind, status: _status, employeeRevision: _rev, ...trimmed } = receipt;
+    expect(acceptRetirement(trimmed, { employeeId, sent: 3, id: billId })).toBe(trimmed);
+    expect(acceptRetirement({ ...trimmed, revision: 1 }, { employeeId, sent: 5 })).toMatchObject({ revision: 1 });
+    expect(() => acceptRetirement({ ...trimmed, kind: 'leave' }, { employeeId, sent: 3, id: billId })).toThrow();
+    expect(() => acceptRetirement({ ...trimmed, kind: null }, { employeeId, sent: 3, id: billId })).toThrow();
+    expect(() => acceptRetirement({ ...trimmed, employeeRevision: 5 }, { employeeId, sent: 5 })).toThrow();
+    expect(() => acceptRetirement({ ...trimmed, revision: 3 }, { employeeId, sent: 3, id: billId })).toThrow();
+    const { revision: _r, ...noRevision } = trimmed;
+    expect(() => acceptRetirement(noRevision, { employeeId, sent: 3, id: billId })).toThrow();
+    const view = { id: billId, employeeId, intendedDate: '2026-12-31', revision: 1 };
+    expect(acceptIntention(view, { employeeId })).toBe(view);
+    expect(acceptIntention({ ...view, revision: 2 }, { employeeId, id: billId, sent: 1 })).toMatchObject({
+      revision: 2,
+    });
+    expect(() => acceptIntention({ ...view, status: 'unknown' }, { employeeId })).toThrow();
+    expect(() => acceptIntention({ ...view, status: null }, { employeeId })).toThrow();
   });
 
   it('意向回执（intentionView）：同员工、revision 前进；新建时 revision 不与员工 revision 比较', () => {
