@@ -1,5 +1,5 @@
 /**
- * BE-13a 三个只读看板 / 报表路由的 F-039 声明：权限都是各自对象的查看权（analyticsContext → objectContext），
+ * BE-13a 三个只读看板 / 报表路由的 F-039 声明：权限都是各自对象的查看权（各入口以对象常量调 objectContext，再经 analyticsScope 解析同对象范围），
  * 范围按同一对象的数据范围解析（requestScope，页面编码 <对象>.list）。人员结构分析 / 员工结构报表在取数 SQL 里
  * 先叠加可见谓词再分组（hr-structure.ts structurePeople）；合同情况在每个组件的候选行上叠加（contract-board.ts boardRows）。
  * 响应只含固定键的计数、分组与 ID；报表的列由字典展开，单元格是范围内的计数 / 平均值。

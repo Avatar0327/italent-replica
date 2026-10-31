@@ -1,6 +1,6 @@
 /**
  * 必需项表：合同情况看板（modules/analytics/contract-board-routes.ts，R2-T10 BE-13a）。两个只读 GET 经 boardContext →
- * analyticsContext → objectContext 判对象 TenantBase.ContractBoard 的查看权；数据范围在同一对象上解析（requestScope），
+ * objectContext 判对象 TenantBase.ContractBoard 的查看权；数据范围在同一对象上解析（requestScope），
  * 由 contract-board.ts boardRows 在 SQL 内叠加，先于分组与分页。无按钮、无写入。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
@@ -18,12 +18,7 @@ const view = (path: string): Obligation => ({
     {
       role: 'impl',
       unit: `${ROUTES}#boardContext`,
-      anchor: 'const ctx = await analyticsContext(c, deps, CONTRACT_BOARD_OBJECT)',
-    },
-    {
-      role: 'impl',
-      unit: 'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsContext',
-      anchor: "const base = await objectContext(c, deps, object, 'view')",
+      anchor: "const base = await objectContext(c, deps, CONTRACT_BOARD_OBJECT, 'view')",
     },
     {
       role: 'impl',

@@ -170,7 +170,16 @@ export async function structureWorld(db: Db, label: string) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string };
   }
-  async function patchProfile(employeeId: string, profile: Record<string, unknown>) {
+  /** 学历（educationLevel）是人员上的系统字段，取自“最高学历”教育经历，经教育子集写入。 */
+  async function patchProfile(employeeId: string, { educationLevel, ...profile }: Record<string, unknown>) {
+    if (educationLevel !== undefined) {
+      const education = await call('POST', `/api/tenant/personnel/employees/${employeeId}/subsets/education`, {
+        ifMatch: 0,
+        body: { educationLevel, isHighestEducation: true },
+      });
+      expect(education.status, await education.clone().text()).toBe(201);
+    }
+    if (!Object.keys(profile).length) return;
     const current = (await (await call('GET', `/api/tenant/personnel/employees/${employeeId}`)).json()) as {
       revision: number;
     };

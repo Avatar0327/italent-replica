@@ -38,15 +38,24 @@ export function dateQuery(c: Context, name: string): string | undefined {
   return raw;
 }
 
-/** 人事分析看板 / 报表的公共上下文：对象查看权 → 同对象的数据范围 → asOf（缺省租户当地今天）。BE-13a 三个对象同用。 */
-export async function analyticsContext(c: Context<TenantEnv>, deps: TenantRouteDeps, object: string) {
-  const base = await objectContext(c, deps, object, 'view');
+/**
+ * 人事分析看板 / 报表的公共上下文（BE-13a 三个对象同用）：已过对象查看权的 base → 同对象的数据范围 → asOf（缺省租户当地今天）。
+ * 查看权由各入口以对象常量调用 objectContext，F-039 探测按常量识别对象，所以不收进这里。
+ */
+export async function analyticsScope(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  base: Awaited<ReturnType<typeof objectContext>>,
+  object: string,
+) {
   const scope = await requestScope(c, deps, base, object);
   const asOf = dateQuery(c, 'asOf') ?? tenantLocalDate(base.now, base.timezone);
   return { base, scope, asOf };
 }
-const dashboardContext = (c: Context<TenantEnv>, deps: TenantRouteDeps) =>
-  analyticsContext(c, deps, HR_DASHBOARD_OBJECT);
+async function dashboardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const base = await objectContext(c, deps, HR_DASHBOARD_OBJECT, 'view');
+  return analyticsScope(c, deps, base, HR_DASHBOARD_OBJECT);
+}
 
 export function registerHrDashboardRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_DASHBOARD_BASE, async (c) => {

@@ -19,8 +19,9 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
+import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
-import { analyticsContext } from './hr-dashboard-routes.js';
+import { analyticsScope } from './hr-dashboard-routes.js';
 import { jobDictionary, orgTree, structurePeople } from './hr-structure.js';
 import {
   componentMembers,
@@ -58,7 +59,16 @@ function boardFilter(c: Context): StructureFilter {
   };
 }
 
-type Analytics = Awaited<ReturnType<typeof analyticsContext>>;
+type Analytics = Awaited<ReturnType<typeof analyticsScope>>;
+
+async function boardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const base = await objectContext(c, deps, HR_STRUCTURE_OBJECT, 'view');
+  return analyticsScope(c, deps, base, HR_STRUCTURE_OBJECT);
+}
+async function reportContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const base = await objectContext(c, deps, HR_STRUCTURE_REPORT_OBJECT, 'view');
+  return analyticsScope(c, deps, base, HR_STRUCTURE_REPORT_OBJECT);
+}
 
 async function lookupOf(tx: Tx, tenantId: string, asOf: string): Promise<StructureLookup> {
   return {
@@ -81,7 +91,7 @@ function loadPeople(deps: TenantRouteDeps, ctx: Analytics, types: readonly strin
 
 export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_STRUCTURE_BASE, async (c) => {
-    const ctx = await analyticsContext(c, deps, HR_STRUCTURE_OBJECT);
+    const ctx = await boardContext(c, deps);
     const { lookup, people } = await loadPeople(deps, ctx, BOARD_EMPLOY_TYPES, boardFilter(c));
     return c.json({
       asOf: ctx.asOf,
@@ -91,7 +101,7 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
   });
 
   router.get(`${HR_STRUCTURE_BASE}/components/:code`, async (c) => {
-    const ctx = await analyticsContext(c, deps, HR_STRUCTURE_OBJECT);
+    const ctx = await boardContext(c, deps);
     const component = HR_STRUCTURE_COMPONENTS.find((item) => item.code === c.req.param('code'));
     if (!component || component.kind === 'unavailable') throw new AppError('NOT_FOUND', '组件不存在或没有数据源');
     const group = c.req.query('group');
@@ -115,7 +125,7 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
   });
 
   router.get(`${HR_STRUCTURE_BASE}/reports/:report`, async (c) => {
-    const ctx = await analyticsContext(c, deps, HR_STRUCTURE_REPORT_OBJECT);
+    const ctx = await reportContext(c, deps);
     const report = HR_STRUCTURE_REPORTS.find((item) => item.code === c.req.param('report'));
     if (!report) throw new AppError('NOT_FOUND', '报表不存在');
     const employType = c.req.query('employType') ?? 'internal';

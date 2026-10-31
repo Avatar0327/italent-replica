@@ -11,6 +11,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
+import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import {
   contractBoardComponents,
@@ -20,7 +21,7 @@ import {
   type ContractBoardContext,
 } from './contract-board.js';
 import { dashboardRenewalTypes } from './hr-dashboard.js';
-import { analyticsContext, dateQuery } from './hr-dashboard-routes.js';
+import { analyticsScope, dateQuery } from './hr-dashboard-routes.js';
 import { uuidQuery } from './hr-structure-routes.js';
 
 export const CONTRACT_BOARD_BASE = '/api/tenant/analytics/contract-board';
@@ -40,7 +41,8 @@ function boardFilter(c: Context, asOf: string): ContractBoardContext['filter'] {
 }
 
 async function boardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
-  const ctx = await analyticsContext(c, deps, CONTRACT_BOARD_OBJECT);
+  const base = await objectContext(c, deps, CONTRACT_BOARD_OBJECT, 'view');
+  const ctx = await analyticsScope(c, deps, base, CONTRACT_BOARD_OBJECT);
   const filter = boardFilter(c, ctx.asOf);
   const at = (renewalTypeIds: readonly string[]): ContractBoardContext => ({
     a: { tenantId: ctx.base.tenantId, asOf: ctx.asOf, timezone: ctx.base.timezone, scope: ctx.scope, renewalTypeIds },
