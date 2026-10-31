@@ -114,4 +114,25 @@ export const m = {
     ...{ intention: '已保存', intentionSubmit: '意向退休日期申请已提交', intentionWithdraw: '已撤回' },
   },
   noIntention: '暂无进行中的意向退休日期申请',
+  // 撤销下游清单：类目 / 动作名对照 exit-downstream.ts FIXED_DOWNSTREAM_KINDS 与 ADDITIONAL，原站文案未取证
+  downstream: {
+    title: '撤销退休后的下游数据',
+    kinds: {
+      contract: '合同',
+      duty_transfer: '职责转交',
+      handover: '交接',
+      payroll: '薪资档案',
+      application_voided: '被作废的在途任职申请',
+      contract_request_withdrawn: '被撤回的合同申请',
+      future_transfer_detached: '被摘下的未来调动',
+      establishment_pre_released: '编制预减',
+    } as Record<string, string>,
+    states: { found: '有记录', none: '无', not_connected: '未接入' } as Record<string, string>,
+    actions: { reinitiate: '需重新发起', reattached: '已按原窗口挂回', restored: '占用已收回' } as Record<
+      string,
+      string
+    >,
+    count: (total: number, hidden: number) =>
+      total ? `（${total} 件${hidden ? `，其中 ${hidden} 件无权查看` : ''}）` : '',
+  },
 };

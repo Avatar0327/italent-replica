@@ -20,6 +20,7 @@ import {
   acceptIntention,
   cellValue,
   intentionBody,
+  differs,
   intentionEntries,
   intentions,
   intentionSlot,
@@ -138,7 +139,8 @@ function IntentionFields(props: EditorProps & { opening: Latest; read(): Promise
         body: (input) => intentionBody(input, writable),
         accept: (raw, revision) => {
           const receipt = acceptIntention(raw, { employeeId, ...(current ? { id: current.id, sent: revision } : {}) });
-          if (receipt.status !== (current ? current.status : 'draft')) throw new Error(m.invalidReceipt);
+          // 状态可按字段权裁剪：缺键不核，在场不符拒绝（第 2 轮 P2-1）
+          if (differs(receipt, 'status', current ? current.status : 'draft')) throw new Error(m.invalidReceipt);
           const id = String(receipt.id);
           return { path: slotKey(intentions, id), id, revision: Number(receipt.revision) };
         },

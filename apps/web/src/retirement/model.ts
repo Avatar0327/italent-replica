@@ -99,7 +99,7 @@ export function entriesFor(view: RetirementView, row: Row, p: ObjectPermission |
     const entries: [Entry, boolean][] = [
       ['retire', create && can(RETIREMENT_BUTTONS.direct)],
       ['apply', create && can(RETIREMENT_BUTTONS.application)],
-      ['intention', intentionEntries(undefined, p).includes('create')],
+      ['intention', intentionEntry(p)],
     ];
     return entries.filter(([, shown]) => shown).map(([entry]) => entry);
   }
@@ -111,6 +111,16 @@ export function entriesFor(view: RetirementView, row: Row, p: ObjectPermission |
   if ((row.status === 'approved' || row.status === 'effective') && !row.cancellation && can(RETIREMENT_BUTTONS.cancel))
     return ['cancel'];
   return [];
+}
+
+/**
+ * 员工视图的意向入口：列表行不带在途申请，能新建或能进入已有申请（修改 / 提交 / 撤回只要 update）任一成立就出，
+ * 具体动作进入后按申请状态再判（intentionEntries）；意向日期只读不挡提交 / 撤回（第 2 轮 P2-4）。
+ */
+function intentionEntry(p: ObjectPermission) {
+  return (
+    canButton(p, RETIREMENT_INTENTION_BUTTON, 'detail') && (editable(p, 'intendedDate') || !!p.dataOperations.update)
+  );
 }
 
 export type IntentionEntry = 'create' | 'edit' | 'submit' | 'withdraw';
@@ -181,28 +191,41 @@ export function previewNotices(preview: Values): { blockers: Notice[]; warnings:
 }
 
 /**
- * 回执按真实返回（EmploymentBusiness）核对：同一员工、业务类型为退休；新建把员工 revision 加一，按实际提交的
- * command.revision 判定（claude_fe_rules a）。单据命令（提交 / 撤回 / 撤销）核对单据 id 与 revision。
+ * 写回执按字段权裁剪（context.ts trimEmploymentResponse）：kind / status / mode / employeeRevision 无查看权时缺键。
+ * 缺键照常接受、在场才核对；值不符仍拒绝（第 2 轮 P2-1）。
+ */
+export const differs = (row: Values, key: string, expected: unknown) =>
+  Object.hasOwn(row, key) && row[key] !== expected;
+const advanced = (revision: unknown, sent: number) => Number.isSafeInteger(revision) && Number(revision) > sent;
+
+/**
+ * 回执按真实返回（EmploymentBusiness）核对。固定校验信息：同一员工、本单 id 与 revision；单据命令（提交 / 撤回 / 撤销）
+ * 的单据 revision 须前进（按实际提交的 command.revision，claude_fe_rules a）。新建的员工 revision 在场时须前进，
+ * 被裁剪时由写后回读员工 revision 把关（调用方取 sent + 1 作下限）。类型在场须为退休。
  */
 export function acceptRetirement(value: unknown, expected: { employeeId: string; sent: number; id?: string }): Values {
   const row = value as Values | null | undefined;
-  const revision = expected.id ? row?.revision : row?.employeeRevision;
   if (
     !row ||
     typeof row.id !== 'string' ||
     !row.id ||
     (expected.id !== undefined && row.id !== expected.id) ||
     row.employeeId !== expected.employeeId ||
-    row.kind !== 'retirement' ||
+    differs(row, 'kind', 'retirement') ||
     !Number.isSafeInteger(row.revision) ||
-    !Number.isSafeInteger(revision) ||
-    Number(revision) <= expected.sent
+    (expected.id !== undefined && !advanced(row.revision, expected.sent)) ||
+    (expected.id === undefined &&
+      Object.hasOwn(row, 'employeeRevision') &&
+      !advanced(row.employeeRevision, expected.sent))
   )
     throw new Error(m.invalidReceipt);
   return row;
 }
 
-/** 意向申请回执（retirement-intention-store.ts intentionView）：新建只核员工与状态；修改 / 提交 / 撤回再核 id 与 revision。 */
+/**
+ * 意向申请回执（retirement-intention-store.ts intentionView，同样按字段权裁剪）：新建只核员工，状态在场须合法；
+ * 修改 / 提交 / 撤回再核 id 与 revision。
+ */
 export function acceptIntention(value: unknown, expected: { employeeId: string; id?: string; sent?: number }): Values {
   const row = value as Values | null | undefined;
   if (
@@ -210,7 +233,7 @@ export function acceptIntention(value: unknown, expected: { employeeId: string; 
     typeof row.id !== 'string' ||
     !row.id ||
     row.employeeId !== expected.employeeId ||
-    !(RETIREMENT_INTENTION_STATES as readonly unknown[]).includes(row.status) ||
+    (Object.hasOwn(row, 'status') && !(RETIREMENT_INTENTION_STATES as readonly unknown[]).includes(row.status)) ||
     !Number.isSafeInteger(row.revision) ||
     (expected.id !== undefined && (row.id !== expected.id || Number(row.revision) <= Number(expected.sent)))
   )
@@ -225,4 +248,25 @@ export function intentionBody(values: Values, writable: readonly string[]): Valu
       .filter((key) => writable.includes(key))
       .map((key) => [key, isBlank(values[key]) ? null : values[key]]),
   );
+}
+
+type Disclosed = { kind?: unknown; status?: unknown; action?: unknown; targets?: unknown; hiddenCount?: unknown };
+/**
+ * 撤销回执的下游清单（exit-downstream.ts trimDownstream，已按查看人裁剪）：只照服务端返回逐条列出类目、状态 / 动作与件数；
+ * 状态、件数缺键就不显示，不补合同 / 账号等推断文案（DEC-714）。
+ */
+export function downstreamLines(downstream: unknown): string[] {
+  const value = (downstream ?? {}) as { items?: unknown; additional?: unknown };
+  const list = (entries: unknown) => (Array.isArray(entries) ? (entries as Disclosed[]) : []);
+  const line = (entry: Disclosed, label: string | undefined) => {
+    const kind = m.downstream.kinds[String(entry.kind)] ?? String(entry.kind);
+    const visible = Array.isArray(entry.targets) ? entry.targets.length : undefined;
+    const hidden = Number.isSafeInteger(entry.hiddenCount) ? Number(entry.hiddenCount) : 0;
+    const count = visible === undefined ? '' : m.downstream.count(visible + hidden, hidden);
+    return `${kind}${label ? `：${label}` : ''}${count}`;
+  };
+  return [
+    ...list(value.items).map((entry) => line(entry, m.downstream.states[String(entry.status)])),
+    ...list(value.additional).map((entry) => line(entry, m.downstream.actions[String(entry.action)])),
+  ];
 }

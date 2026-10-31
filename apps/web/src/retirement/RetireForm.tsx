@@ -10,8 +10,9 @@ import { projectFields, type Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import type { Latest } from '../foundation/forms/store.js';
-import { employeePath, useEmployeeRead } from '../intern/commands.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
+import { useApiClient } from '../foundation/Session.js';
+import { type ApplicationDraft, employeePath, useEmployeeRead, useInternDraft } from '../intern/commands.js';
 import { useDirectApi } from '../part-time/direct-api.js';
 import { refPaths } from '../part-time/references.js';
 import { useRetireCommand } from './commands.js';
@@ -20,6 +21,7 @@ import {
   acceptRetirement,
   apiRoot,
   cellValue,
+  differs,
   object,
   previewNotices,
   retireBody,
@@ -87,7 +89,7 @@ function usePreview(employeeId: string) {
 }
 
 type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest> };
-type Draft = { id: string; revision: number };
+type Draft = ApplicationDraft;
 /**
  * 新建（POST /retirements/employees/:id，If-Match = 员工 revision）或申请第二步提交草稿（If-Match = 草稿 revision）。
  * 回执按 EmploymentBusiness 核对；申请新建只建草稿，草稿 id / revision 交 onCreated 进入第二步。
@@ -103,11 +105,14 @@ function retireSend(row: Row, mode: FormProps['mode'], draft: Draft | undefined,
       const receipt = acceptRetirement(raw, { employeeId, sent, id: draft?.id });
       // 只有申请走草稿两步：新建应为草稿、提交后应为审批中；直接办理的状态随生效日而定，不核
       const status = draft ? 'in_review' : 'draft';
-      if (receipt.mode !== mode || (mode === 'application' && receipt.status !== status))
+      // 方式 / 状态可按字段权裁剪：缺键不核，在场不符拒绝（第 2 轮 P2-1）
+      if (differs(receipt, 'mode', mode) || (mode === 'application' && differs(receipt, 'status', status)))
         throw new Error(m.invalidReceipt);
       if (draft) return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
-      if (mode === 'application') onCreated({ id: String(receipt.id), revision: Number(receipt.revision) });
-      return { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };
+      if (mode === 'application') onCreated({ id: String(receipt.id), revision: Number(receipt.revision), values: {} });
+      // 员工 revision 被裁剪时，写后回读员工 revision 不低于提交值 + 1 即确认
+      const employeeRevision = Number(receipt.employeeRevision ?? sent + 1);
+      return { path: employeePath(employeeId), id: employeeId, revision: employeeRevision };
     },
   };
 }
@@ -124,21 +129,33 @@ function useEditable(mode: FormProps['mode']) {
   return { permission, editable, writable: may('lastWorkDate') };
 }
 
+/**
+ * 申请第二步的最新版本读真实草稿（GET /businesses/:id），revision 取服务端值，冲突重提与“回查原单”都对草稿。
+ * 恢复槽仍是员工（slotKey 稳定），返回 id 用员工 id；第二步只发空请求体，不比较字段（values 为空）。
+ */
+function useDraftRead(employeeId: string, draft: Draft | undefined, read: () => Promise<Latest>) {
+  const api = useApiClient();
+  return async (): Promise<Latest> => {
+    if (!draft) return read();
+    const latest = await api.request<Values>(slotKey(businesses, draft.id));
+    if (latest.id !== draft.id || latest.employeeId !== employeeId || !Number.isSafeInteger(latest.revision))
+      throw new Error(m.invalidReceipt);
+    return { id: employeeId, revision: Number(latest.revision), values: {} };
+  };
+}
+
 function useRetire({ row, mode, onDone, refresh, opening, read }: EditorProps, editable: string[], writable: boolean) {
   const employeeId = row.employeeId!;
   const [form] = Form.useForm();
-  const [baseline] = useState(() => opening.values);
-  // 申请两步：草稿创建确认后，同一恢复槽、同一动作按草稿 revision 自动提交（结构同 intern RegularizeForm）
-  const [draft, setDraft] = useState<Draft>();
+  // 申请两步：草稿创建确认后，同一恢复槽、同一动作按草稿 revision 自动提交（结构同 intern RegularizeForm）；
+  // 草稿存页面层（InternCommands），关闭重开仍接同一草稿，第二步失败不重建（第 2 轮 P2-3）
+  const saved = useInternDraft(employeeId);
+  const draft = mode === 'application' ? saved.draft : undefined;
+  const [baseline] = useState(() => draft?.values ?? opening.values);
   const autoSubmit = useRef(false);
-  const draftRead = async (): Promise<Latest> => ({ ...(await read()), revision: draft?.revision ?? -1 });
   const revision = draft?.revision ?? opening.revision;
-  const cmd = useRetireCommand(
-    retireSlot,
-    { id: employeeId, revision, baseline, read: draft ? draftRead : read },
-    mode,
-    refresh,
-  );
+  const target = { id: employeeId, revision, baseline, read: useDraftRead(employeeId, draft, read) };
+  const cmd = useRetireCommand(retireSlot, target, mode, refresh);
   useDraftRefill(cmd.form, editable, form);
   const previewing = usePreview(employeeId);
   const lastWorkDate = Form.useWatch('lastWorkDate', form) as string | null | undefined;
@@ -151,16 +168,17 @@ function useRetire({ row, mode, onDone, refresh, opening, read }: EditorProps, e
     if (locked || !ready) return;
     setError(undefined);
     try {
-      const values = projectFields(draft ? form.getFieldsValue(true) : await form.validateFields(), editable);
+      const values = draft ? {} : projectFields(await form.validateFields(), editable);
       let created: Draft | undefined;
-      const send = retireSend(row, mode, draft, (next) => (created = next));
+      const send = retireSend(row, mode, draft, (next) => (created = { ...next, values }));
       // 预览令牌作为初始确认项随单提交（两种办理方式新建时都核令牌，exit-gate.ts createConditions）
       const ack = (preview?.data.ack as { ackToken?: string } | null | undefined)?.ackToken;
-      if (!(await cmd.submit(values, editable, send, draft ? {} : { ack }))) return;
+      if (!(await cmd.submit(values, draft ? [] : editable, send, draft ? {} : { ack }))) return;
       if (created) {
         autoSubmit.current = true;
-        return setDraft(created);
+        return saved.put(created);
       }
+      if (draft) saved.put();
       void message.success(m.success[mode === 'direct' ? 'retire' : 'apply']);
       onDone();
     } catch (cause) {

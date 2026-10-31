@@ -2,6 +2,7 @@ import { Alert, Button, Descriptions, Drawer, Input, Modal, Space, Table, Tabs, 
 import { useState } from 'react';
 import { NameOf } from '../contracts/references.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import type { Values } from '../foundation/forms/values.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -16,11 +17,13 @@ import {
   acceptRetirement,
   apiRoot,
   cellValue,
+  downstreamLines,
   entriesFor,
   object,
   retirements,
   retireSlot,
   type Entry,
+  type Extra,
   type RetirementView,
   type Row,
 } from './model.js';
@@ -67,9 +70,11 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
     await refresh();
     await result.reload();
   };
+  // 撤销回执的下游清单存在详情层：撤销按钮随刷新卸载后仍可见（第 2 轮 P2-5）
+  const [downstream, setDownstream] = useState<string[]>([]);
   const actions = entries
     .filter((entry): entry is BillEntry => entry === 'submit' || entry === 'withdraw' || entry === 'cancel')
-    .map((entry) => <BillAction key={entry} row={detail!} action={entry} refresh={reload} />);
+    .map((entry) => <BillAction key={entry} row={detail!} action={entry} refresh={reload} onReceipt={setDownstream} />);
   return (
     <Drawer open width={760} title={detail?.name ? String(detail.name) : m.title} onClose={onClose}>
       {result.error ? (
@@ -81,6 +86,7 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
               {actions}
             </Space>
           )}
+          {downstream.length > 0 && <DownstreamList lines={downstream} />}
           {detail && (
             <Tabs
               items={[
@@ -143,12 +149,41 @@ function VersionsTab({ detail }: { detail: Row }) {
   );
 }
 
+/**
+ * 撤销带撤销原因与确认项（confirmed）；提交被要求确认在途调动时，令牌放 pendingTransferAck（EmploymentBusinessPatch，
+ * 第 2 轮 P2-2）；撤回只发空体。
+ */
+function billBody(action: BillEntry, input: Values, extra: Extra): Values {
+  if (action === 'cancel') return { reason: input.reason, ...extra };
+  return action === 'submit' && extra.ack ? { pendingTransferAck: extra.ack } : {};
+}
+
+/** 只列服务端返回的项，不补合同 / 账号 / 交接 / 加黑提示（DEC-714；交接与加黑是否自动发起仍待取证）。 */
+function DownstreamList({ lines }: { lines: string[] }) {
+  return (
+    <section aria-label={m.downstream.title} className="retirement-downstream">
+      <Alert
+        type="info"
+        message={m.downstream.title}
+        description={
+          <ul>
+            {lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        }
+      />
+    </section>
+  );
+}
+
 type BillEntry = 'submit' | 'withdraw' | 'cancel';
+type BillProps = { row: Row; action: BillEntry; refresh(): Promise<unknown>; onReceipt(downstream: string[]): void };
 /**
  * 单据动作（提交 / 撤回 / 撤销）：按单据 revision 提交，与办理 / 申请共用员工恢复槽，任一入口结果未知都锁住同一员工；
  * 撤销超编由服务端 409 CONFIRMATION_REQUIRED 要求确认，确认后同一命令上下文带 confirmed 重提。
  */
-function BillAction({ row, action, refresh }: { row: Row; action: BillEntry; refresh(): Promise<unknown> }) {
+function BillAction({ row, action, refresh, onReceipt }: BillProps) {
   const id = row.id!;
   const read = useBusinessRead(id);
   const target = {
@@ -164,9 +199,10 @@ function BillAction({ row, action, refresh }: { row: Row; action: BillEntry; ref
       const values = action === 'cancel' ? { reason: reason?.trim() ?? '' } : {};
       const done = await cmd.submit(values, action === 'cancel' ? ['reason'] : [], {
         path: `${slotKey(retirements, id)}/${action}`,
-        body: (input, extra) => (action === 'cancel' ? { reason: input.reason, ...extra } : {}),
+        body: (input, extra) => billBody(action, input, extra),
         accept: (raw, sent) => {
           const receipt = acceptRetirement(raw, { employeeId: row.employeeId!, sent, id });
+          if (action === 'cancel') onReceipt(downstreamLines(receipt.downstream));
           return { path: slotKey(`${apiRoot}/businesses`, id), id, revision: Number(receipt.revision) };
         },
       });
