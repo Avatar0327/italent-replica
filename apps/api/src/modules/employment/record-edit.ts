@@ -20,6 +20,7 @@ import { loadEmploymentRecord } from './read-model.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { assertEmploymentDepartmentAvailable, validateEmploymentReferences } from './references.js';
 import { isPendingEntryRecord } from './employee-status.js';
+import { validateSelectedEmploymentType } from './employment-types.js';
 import { recordWindow } from './reporting-cycle.js';
 import { requireSavedBusiness } from './write-service.js';
 import type { EmploymentBusinessPatch, EmploymentContext, EmploymentRecord, CustomFields } from './types.js';
@@ -47,6 +48,7 @@ export async function editedValues(
   const fields = { ...record.fields, ...patch.fields, ...(sequenceId ? { sequenceId } : {}) };
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, fields.departmentId, record.id);
+  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, record.fields.employmentType);
   return { fields, customFields };
 }
 

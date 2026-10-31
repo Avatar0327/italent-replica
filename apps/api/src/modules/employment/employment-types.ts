@@ -90,6 +90,10 @@ export async function employmentTypeName(tx: Tx, tenantId: string, id: unknown):
  * 按文本比较：审批编辑等入口不经 UUID 解析，旧名称文本须落成“未知”而不是 uuid 转换的数据库错误。
  */
 export async function requireEnabledEmploymentTypes(tx: Tx, tenantId: string, ids: readonly string[]) {
+  await requireEmploymentTypes(tx, tenantId, ids, true);
+}
+
+async function requireEmploymentTypes(tx: Tx, tenantId: string, ids: readonly string[], enabledOnly: boolean) {
   if (!ids.length) return;
   if (ids.length > LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '人员类别校验超过上限');
   const found = await tx
@@ -99,7 +103,7 @@ export async function requireEnabledEmploymentTypes(tx: Tx, tenantId: string, id
     .for('share');
   const byId = new Map(found.map((row) => [row.id, row.enabled]));
   for (const id of ids) {
-    if (byId.get(id) === true) continue;
+    if (byId.get(id) === true || (!enabledOnly && byId.has(id))) continue;
     throw new AppError('EMPLOYMENT_TYPE_INVALID', '人员类别不存在或已停用', {
       field: 'employmentType',
       reason: byId.get(id) === false ? 'EMPLOYMENT_TYPE_DISABLED' : 'EMPLOYMENT_TYPE_UNKNOWN',
@@ -107,11 +111,23 @@ export async function requireEnabledEmploymentTypes(tx: Tx, tenantId: string, id
   }
 }
 
-/** 同用工形式（F-321）：任职 / 兼职每次追加版本都校验；null / 未给表示不选。入口已按 UUID 解析。 */
-export async function validateEmploymentType(tx: Tx, tenantId: string, id: unknown) {
-  if (id === null || id === undefined) return;
+function typeId(id: unknown): id is string {
+  if (id === null || id === undefined) return false;
   if (typeof id !== 'string') throw new AppError('EMPLOYMENT_TYPE_INVALID', '人员类别必须是字典 ID');
-  await requireEnabledEmploymentTypes(tx, tenantId, [id]);
+  return true;
+}
+
+/**
+ * 存量引用校验（任职 / 兼职每次追加版本，同用工形式 F-321 的写入口）：本租户未删除的字典 ID 即可，停用不拦；
+ * null / 未给表示不选。离职、结束兼职、调动、重排期等沿用原值的继承路径保留已停用的原引用（F-323 第 1 轮审查 P2-1）。
+ */
+export async function validateEmploymentType(tx: Tx, tenantId: string, id: unknown) {
+  if (typeId(id)) await requireEmploymentTypes(tx, tenantId, [id], false);
+}
+
+/** 显式选择（入职 / 业务表单、编辑任职、兼职新增与编辑）：与沿用值（前驱 / 原记录）不同即新选 / 改选，须启用。 */
+export async function validateSelectedEmploymentType(tx: Tx, tenantId: string, id: unknown, inherited?: unknown) {
+  if (typeId(id)) await requireEmploymentTypes(tx, tenantId, [id], id !== inherited);
 }
 
 /** 名称补充发生在字段权限裁剪后（看不到 employmentType 就不补名称）；停用 / 删除后仍显示历史名称。 */

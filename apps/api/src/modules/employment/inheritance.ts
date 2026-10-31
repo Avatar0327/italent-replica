@@ -1,4 +1,5 @@
 import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
+import { validateSelectedEmploymentType } from './employment-types.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
@@ -263,6 +264,8 @@ export async function prepareInheritance(
     derivedOrigins,
     employee.code,
   );
+  // F-323：沿用前驱的人员类别可以是已停用项，新选 / 改选须启用
+  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, eligible?.fields.employmentType);
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
   const explicit = new Set(explicitFieldCodes);
   for (const origin of derivedOrigins) explicit.add(`preset:${derivationFields(origin).field}`);
