@@ -1,9 +1,9 @@
 import { exitPostEffectHooks } from './exit-confirmation.js';
 import { queueExitAccount } from './exit-account-store.js';
-import { applyRehireAccount } from './rehire-account.js';
+import { applyRehireAccount, withdrawRehireAccount } from './rehire-account.js';
 import { registerEmployeeStatusHooks } from './status-hooks.js';
 
-const rehireAccountHooks = { onRecordMaterialized: applyRehireAccount };
+const rehireAccountHooks = { onRecordMaterialized: applyRehireAccount, onRecordDeleted: withdrawRehireAccount };
 
 let installed = false;
 export function installExitAccount() {

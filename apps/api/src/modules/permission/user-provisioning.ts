@@ -176,3 +176,21 @@ export async function changeRehireLoginEmail(
   });
   return { beforeRevision: row.revision - 1, afterRevision: row.revision };
 }
+
+/**
+ * F-328 返工 P1-1：当天重聘在重聘事务内启用离职停用的账号（迁移 0172 tenant_rehire_enable_account），
+ * 启用写入失败随整单回滚。账号已不是 expectedRevision 的停用状态（人工改过）或同属其他租户时不动账号。
+ * @returns 启用后的账号 revision；未启用为 null
+ */
+export async function enableRehireAccount(
+  tx: Tx,
+  write: WriteContext,
+  userId: string,
+  expectedRevision: number,
+): Promise<number | null> {
+  const [row] = scopeRows<{ outcome: string; revision: number }>(
+    await tx.execute(sql`SELECT outcome, revision FROM tenant_rehire_enable_account(
+      ${userId}::uuid, ${expectedRevision}, ${auditActor(write.userId)}::uuid, ${write.commandId})`),
+  );
+  return row?.outcome === 'enabled' ? row.revision : null;
+}

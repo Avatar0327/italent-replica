@@ -12,7 +12,7 @@ import {
   type PlatformCommandContext,
   type User,
 } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { ENTRY_STATUS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
@@ -21,7 +21,7 @@ import { readAccountSettings, saveTask, type AccountTask } from './exit-account-
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-type EnterTenant = PlatformCommandContext['inTenant'];
+export type EnterTenant = PlatformCommandContext['inTenant'];
 type Fact = { task: AccountTask; tenant: TenantRow; due: boolean; terminal: boolean };
 const context = (f: Fact, now: Date, commandId: string): EmploymentContext => ({
   tenantId: f.tenant.id,
@@ -39,7 +39,13 @@ const timeIn = (now: Date, timezone: string) =>
     hourCycle: 'h23',
   }).format(now);
 
-async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userId: string, now: Date): Promise<Fact[]> {
+/** 各租户该账号的离职账号任务及其当前事实；重聘在当天入职的同一事务里也用它判定能否启用（rehire-account.ts）。 */
+export async function facts(
+  inTenant: EnterTenant,
+  tenants: readonly TenantRow[],
+  userId: string,
+  now: Date,
+): Promise<Fact[]> {
   const result: Fact[] = [];
   for (const tenant of tenants)
     await inTenant(tenant.id, async (tx) => {
@@ -75,7 +81,9 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
                 ON rt.tenant_id=lt.tenant_id AND rt.employee_id=lt.employee_id
               JOIN employment_records rr ON rr.tenant_id=rt.tenant_id AND rr.id=rt.record_id AND rr.kind='rehire'
               WHERE lt.tenant_id=e.tenant_id AND lt.record_id=e.business_id AND rt.start_date<=${today}::date
-                AND (rt.start_date, rt.sort_order) > (lt.start_date, lt.sort_order)) AS rehired
+                AND (rt.start_date, rt.sort_order) > (lt.start_date, lt.sort_order)
+                AND (SELECT st.entry_status FROM employment_record_status(rr.tenant_id, rr.id) st)
+                  IS DISTINCT FROM ${ENTRY_STATUS.cancelled}) AS rehired
             FROM exit_requests e JOIN permission_user_person_links l
               ON l.tenant_id=e.tenant_id AND l.employee_id=e.employee_id AND l.user_id=${userId}::uuid
             JOIN LATERAL (SELECT state FROM employment_state_events s
@@ -85,7 +93,7 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
             LEFT JOIN retirement_requests r ON r.tenant_id=e.tenant_id AND r.business_id=e.business_id
             WHERE e.tenant_id=${tenant.id} AND e.business_id=${task.businessId}::uuid`),
           );
-          // F-328：其后的重聘入职已到入职日，这段离职不再要求停用（DEC-707）
+          // F-328：其后的重聘入职已到入职日且未取消入职，这段离职不再要求停用（DEC-707；取消的重聘不算，返工 P2-1）
           const terminal =
             !source ||
             source.reEmployed ||
@@ -145,7 +153,9 @@ async function settle(
     const waitingRestore =
       t.restoreRequested && user.status === 'disabled' && t.autoRevision === user.revision && hasDue;
     const status = !f.due && waitingRestore ? 'pending' : settledStatus(f, user);
-    const autoRevision = automatic && user.status === 'disabled' && f.due ? user.revision : t.autoRevision;
+    // 自动停用与重聘的自动启用都记下改后的 revision：重聘失效时据此区分“仍是自动启用的状态”与人工改动（F-328）
+    const automated = user.status === 'disabled' ? f.due : status === 'restored' && t.restoreRequested;
+    const autoRevision = automatic && automated ? user.revision : t.autoRevision;
     const restoreRequested = t.restoreRequested && (f.due || waitingRestore);
     if (status === t.status && autoRevision === t.autoRevision && restoreRequested === t.restoreRequested) continue;
     await inTenant(f.tenant.id, async (tx) => {
