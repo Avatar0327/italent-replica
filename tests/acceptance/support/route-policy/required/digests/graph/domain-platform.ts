@@ -64,6 +64,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#ORG_ADJUSTMENT_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#QUALIFICATION_PROFILES': [
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_APP',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',
@@ -88,6 +92,7 @@ export const GRAPH: Graph = {
     '#HR_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',
     '#MANAGER_OBJECTS',
+    '#ORG_ADJUSTMENT_SEE_ALL',
     '#QUALIFICATION_PROFILES',
     '#SUCCESSION_PROFILES',
     '#full',

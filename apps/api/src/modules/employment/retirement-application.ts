@@ -6,11 +6,14 @@ import { retirementRequests, sql, type Tx } from '@italent/db';
 import { deriveRetireType, RETIREMENT_EXIT_KEYS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ExitOptions } from './exit-initiation.js';
+import type { RehirePlan } from './retirement-rehire.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-/** 退休专有的创建入参。5a 为空；同时返聘（reEmployed / rehire）在 5b 加入。 */
-export type RetirementCreateInput = Record<string, never>;
+/** 退休专有的创建入参：同时返聘的计划（reEmployed 即 rehire 是否存在，创建后不可改，§5）。 */
+export interface RetirementCreateInput {
+  readonly rehire?: RehirePlan;
+}
 
 /** 请求里出现了离职专用字段（离职类型 / 原因 / 去向 / 结算 / 实际离岗日）→ 400；退休只收交接人、加黑、职责转交计划。 */
 export function assertRetirementFields(exit: ExitOptions): void {
@@ -60,7 +63,7 @@ export async function writeRetirementExtension(
   tx: Tx,
   ctx: EmploymentContext,
   business: { readonly id: string; readonly employeeId: string; readonly lastWorkDate: string },
-  _input: RetirementCreateInput,
+  input: RetirementCreateInput,
 ) {
   const expected = await expectedRetirementDateOf(tx, ctx, business.employeeId);
   await tx.insert(retirementRequests).values({
@@ -69,6 +72,8 @@ export async function writeRetirementExtension(
     employeeId: business.employeeId,
     expectedRetirementDate: expected,
     retireType: deriveRetireType(business.lastWorkDate, expected),
+    reEmployed: input.rehire !== undefined,
+    rehirePlan: input.rehire ?? null,
   });
 }
 
@@ -92,10 +97,36 @@ export async function rederiveRetireType(
 }
 
 export async function loadRetirementRequest(tx: Tx, tenantId: string, businessId: string) {
-  const [row] = rowsOf<{ expectedRetirementDate: string | null; retireType: string | null; reEmployed: boolean }>(
+  const [row] = rowsOf<{
+    expectedRetirementDate: string | null;
+    retireType: string | null;
+    reEmployed: boolean;
+    rehirePlan: RehirePlan | null;
+    rehireBusinessId: string | null;
+  }>(
     await tx.execute(sql`SELECT expected_retirement_date::text AS "expectedRetirementDate",
-      retire_type AS "retireType", re_employed AS "reEmployed" FROM retirement_requests
+      retire_type AS "retireType", re_employed AS "reEmployed", rehire_plan AS "rehirePlan",
+      rehire_business_id AS "rehireBusinessId" FROM retirement_requests
       WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid`),
   );
   return row;
+}
+
+/**
+ * 撤销退休的返聘守卫（设计 §6 #6，DEC-638 A-11）：退休生效时已生成的返聘业务仍未删除 → 409 RETIREMENT_HAS_REHIRE，
+ * 要求先处理（删除）返聘，不级联。在 transitionEmployment(cancelling) 的门禁里、任何写之前判定；没有返聘的退休（含 approved）直接放行。
+ */
+export async function assertNoLiveRehire(tx: Tx, tenantId: string, businessId: string): Promise<void> {
+  const [row] = rowsOf<{ rehireBusinessId: string; state: string | null }>(
+    await tx.execute(sql`SELECT r.rehire_business_id AS "rehireBusinessId",
+        (SELECT s.state FROM employment_state_events s WHERE s.tenant_id=r.tenant_id
+          AND s.business_id=r.rehire_business_id ORDER BY s.event_no DESC LIMIT 1) AS state
+      FROM retirement_requests r
+      WHERE r.tenant_id=${tenantId} AND r.business_id=${businessId}::uuid AND r.rehire_business_id IS NOT NULL`),
+  );
+  if (row && row.state !== 'deleted' && row.state !== 'voided')
+    throw new AppError('CONFLICT', '该退休已生成返聘，请先删除返聘记录再撤销退休', {
+      reason: 'RETIREMENT_HAS_REHIRE',
+      rehireBusinessId: row.rehireBusinessId,
+    });
 }

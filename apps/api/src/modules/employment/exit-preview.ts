@@ -23,9 +23,21 @@ import {
 } from './exit-gate.js';
 import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
+import { previewRehire } from './retirement-rehire.js';
 import { RETIREMENT_RESPONSE_DEPENDENCIES } from './retirement-views.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
+
+async function rehirePreview(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  input: { reEmployed?: unknown; rehire?: unknown },
+) {
+  const preview = await previewRehire(tx, ctx, employeeId, lastWorkDate, input);
+  return preview ? { rehire: preview } : {};
+}
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));
@@ -36,6 +48,7 @@ export async function previewExit(
   employeeId: string,
   lastWorkDate: string,
   retirementView: ExitViewable,
+  rehire: { reEmployed?: unknown; rehire?: unknown } = {},
 ) {
   // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
   if (
@@ -72,6 +85,8 @@ export async function previewExit(
       await retirementPreview(tx, ctx, employeeId, lastWorkDate),
       retirementView,
     ),
+    // 同时返聘（5b）：返聘日与创建时会遇到的问题；没带 reEmployed + rehire 时没有这一块
+    ...(await rehirePreview(tx, ctx, employeeId, lastWorkDate, rehire)),
     blockers,
     ack: ack
       ? {

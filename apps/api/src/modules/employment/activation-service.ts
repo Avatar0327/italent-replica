@@ -148,9 +148,9 @@ export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId
       expected: ctx.expectedRevision,
       actual: item.revision,
     });
-  if (item.lastOutcome !== 'failed' && item.lastOutcome !== 'suspended')
+  if (item.lastOutcome !== 'failed' && item.lastOutcome !== 'suspended' && item.lastOutcome !== 'replanned')
     throw new AppError('CONFLICT', '该申请没有生效失败或挂起，等待定时生效', { reason: 'NOT_FAILED' });
-  if (item.effectiveDate > tenantLocalDate(ctx.now, ctx.timezone))
+  if (item.plannedDate > tenantLocalDate(ctx.now, ctx.timezone))
     throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
   const blocker = item.reminderOnly
     ? undefined

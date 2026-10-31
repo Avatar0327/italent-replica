@@ -15,6 +15,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -37,7 +38,7 @@ const tenantId = () =>
     .references(() => tenants.id);
 const utc = (name: string) => timestamp(name, { withTimezone: true });
 
-/** 申请单头（§2.1）。scope_note 列保留，写入非空的拦截在 BE-10b（A-9，DEC-645）。 */
+/** 申请单头（§2.1）；组织多选调整范围在 §2.1A 子表。 */
 export const orgAdjustments = pgTable(
   'org_adjustments',
   {
@@ -46,7 +47,6 @@ export const orgAdjustments = pgTable(
     code: text('code').notNull(),
     subject: text('subject').notNull(),
     effectiveDate: date('effective_date', { mode: 'string' }).notNull(),
-    scopeNote: text('scope_note'),
     content: text('content'),
     approvalSubjectOrgId: uuid('approval_subject_org_id').notNull(),
     /** 0 已暂存（列表另有“草稿”同筛 0）/ 1 审批中 / 2 审批通过 / 3 审批未通过 / 4 生效（复刻不写入）/ 5 作废 / 6 已驳回。 */
@@ -82,10 +82,34 @@ export const orgAdjustments = pgTable(
     check('org_adjustments_approval_status', sql`${t.approvalStatus} IN (0, 1, 2, 3, 4, 5, 6)`),
     check('org_adjustments_execution_status', sql`${t.executionStatus} IN (1, 2, 3)`),
     check('org_adjustments_subject', sql`btrim(${t.subject}) <> '' AND char_length(${t.subject}) <= 100`),
-    check('org_adjustments_scope_note', sql`char_length(COALESCE(${t.scopeNote}, '')) <= 500`),
     check('org_adjustments_content', sql`char_length(COALESCE(${t.content}, '')) <= 2000`),
     check('org_adjustments_counts', sql`${t.dataVolume} >= 0 AND ${t.successCount} >= 0 AND ${t.failureCount} >= 0`),
     check('org_adjustments_revision_positive', sql`${t.revision} > 0`),
+  ],
+);
+
+/** R2-T08 §2.1A：选择顺序独立保存，同租户外键；数量/生效日启用校验随 10b1 写入口落地。 */
+export const orgAdjustmentRangeOrgs = pgTable(
+  'org_adjustment_range_orgs',
+  {
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    orgId: uuid('org_id').notNull(),
+    seq: integer('seq').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.adjustmentId, t.orgId] }),
+    foreignKey({
+      name: 'org_adjustment_range_adjustment_fk',
+      columns: [t.tenantId, t.adjustmentId],
+      foreignColumns: [orgAdjustments.tenantId, orgAdjustments.id],
+    }),
+    foreignKey({
+      name: 'org_adjustment_range_org_fk',
+      columns: [t.tenantId, t.orgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
+    }),
+    index('org_adjustment_range_org').on(t.tenantId, t.orgId),
   ],
 );
 
