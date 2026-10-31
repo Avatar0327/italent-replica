@@ -1512,7 +1512,7 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/employment-types.ts#setEmploymentTypeEnabled': ['#current', '#lock', '#write'],
-  'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType': ['#requireEmploymentTypes', '#typeId'],
+  'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType': ['#validateSelectedEmploymentType'],
   'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType': [
     '#requireEmploymentTypes',
     '#typeId',
@@ -3412,14 +3412,12 @@ export const GRAPH: Graph = {
     '#setField',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
-    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
-    '#owns',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     '#prepareInheritance',
-    '#setField',
+    '#restoreFrozenDefaults',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareInheritance': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
-    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     'apps/api/src/modules/employment/fields.ts#businessDate',
@@ -3432,6 +3430,7 @@ export const GRAPH: Graph = {
     '#selfServiceForm',
     '#setField',
     '#snapshotForm',
+    '#validateInheritedEmploymentType',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
@@ -3441,12 +3440,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#owns',
+    '#setField',
+  ],
   'apps/api/src/modules/employment/inheritance.ts#selfServiceForm': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
   ],
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
+  ],
+  'apps/api/src/modules/employment/inheritance.ts#validateInheritedEmploymentType': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
   ],
   'apps/api/src/modules/employment/intern-actions.ts#internRowActions': [
     'apps/api/src/modules/employment/context.ts#tryWriteContext',
