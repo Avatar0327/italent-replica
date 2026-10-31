@@ -1764,6 +1764,7 @@ export const GRAPH: Graph = {
     '#facts',
     '#fail',
     '#members',
+    '#owesAction',
     '#reasonOf',
     '#settle',
   ],
