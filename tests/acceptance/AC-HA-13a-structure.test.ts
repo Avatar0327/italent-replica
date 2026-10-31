@@ -179,6 +179,31 @@ describe('AC-HA-13a B49 人员结构分析', () => {
     await c.expectCount(B, '6.14', ids(p2), `${AS_OF}&departmentId=${x.a1.id}`, '女');
   });
 
+  it('AC-HA-13a-04：UUID 参数大小写等价——筛选 ID 与分组键写成大写，数字与明细同小写（审查 P2-2）', async () => {
+    const { p1, p2, p4 } = x.p;
+    const up = (id: string) => id.toUpperCase();
+    const filters: [string, string, readonly { id: string }[]][] = [
+      ['institutionId', x.institution.id, [p1, p2]],
+      ['departmentId', x.a1.id, [p1, p2]],
+      ['sequenceId', x.s1.id, [p1, p4]],
+    ];
+    for (const [name, id, people] of filters) {
+      await c.expectCount(B, '6.01', ids(...people), `${AS_OF}&${name}=${up(id)}`);
+      expect(await c.board(B, `${AS_OF}&${name}=${up(id)}`), name).toEqual(await c.board(B, `${AS_OF}&${name}=${id}`));
+    }
+    const groups: [string, string, readonly { id: string }[]][] = [
+      ['6.04', x.institution.id, [p1, p2]],
+      ['6.05', x.l1.id, [p1]],
+      ['6.06', x.s1.id, [p1, p4]],
+      ['6.11', x.institution.id, [p1, p2]],
+    ];
+    for (const [code, group, people] of groups) {
+      const upper = await c.detail(B, code, AS_OF, up(group));
+      expect(upper, `${code}/${up(group)}`).toEqual({ ids: ids(...people), total: people.length });
+      expect(upper).toEqual(await c.detail(B, code, AS_OF, group));
+    }
+  });
+
   it('AC-HA-13a-04：参数校验——asOf / 筛选 ID 不合法 400，未知组件 404', async () => {
     for (const bad of ['asOf=2026-02-30', 'asOf=abc', 'departmentId=abc', 'institutionId=1', 'sequenceId=x'])
       expect((await c.get(`${B}?${bad}`)).status, bad).toBe(400);

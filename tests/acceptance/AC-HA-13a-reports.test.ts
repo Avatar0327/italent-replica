@@ -179,6 +179,10 @@ describe('AC-HA-13a B53 员工结构报表', () => {
     const department = await c.report('quality', `${AS_OF}&departmentId=${x.a.id}`);
     expect(department.rows.map((item) => item.organizationId)).toEqual([x.a.id]);
     expect(department.summary.cells).toMatchObject({ total: 2 });
+    // UUID 参数大小写等价（审查 P2-2）：部门 ID 写成大写，报表与小写一致
+    const upper = await c.report('quality', `${AS_OF}&departmentId=${x.a.id.toUpperCase()}`);
+    expect(upper.rows.map((item) => item.organizationId)).toEqual([x.a.id]);
+    expect(upper).toEqual(department);
     // 2026-03-31：甲、丙还没入职
     expect((await c.report('quality', 'asOf=2026-03-31')).summary.cells).toMatchObject({ total: 2 });
 

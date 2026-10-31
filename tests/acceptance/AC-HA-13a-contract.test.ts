@@ -212,6 +212,29 @@ describe('AC-HA-13a B55 合同情况', () => {
     await c.expectCount(B, 'signByType', [k.changed.id], `${AS_OF}&companyId=${x.y.id}`, x.labor.id);
   });
 
+  it('AC-HA-13a-09：UUID 参数大小写等价——公司 / 合同类型筛选与分组键写成大写，数字与明细同小写（审查 P2-2）', async () => {
+    const k = x.contracts;
+    const r = x.requests;
+    const up = (id: string) => id.toUpperCase();
+    await c.expectCount(B, 'changeCreate', r.createExpiring, `${AS_OF}&companyId=${up(x.x.id)}`);
+    await c.expectCount(B, 'changeCreate', r.createTerminated, `${AS_OF}&typeId=${up(x.service.id)}`);
+    for (const [name, id] of [
+      ['companyId', x.y.id],
+      ['typeId', x.labor.id],
+    ] as const)
+      expect(await c.board(B, `${AS_OF}&${name}=${up(id)}`), name).toEqual(await c.board(B, `${AS_OF}&${name}=${id}`));
+    const groups: [string, string, string[]][] = [
+      ['signByCompany', x.x.id, [k.renewal.id, k.expiring.id, k.indefinite.id]],
+      ['signByCompany', x.y.id, [k.changed.id]],
+      ['signByType', x.labor.id, [k.renewal.id, k.changed.id, k.expiring.id, k.indefinite.id]],
+    ];
+    for (const [code, group, expected] of groups) {
+      const upper = await c.detail(B, code, AS_OF, up(group));
+      expect(upper, `${code}/${up(group)}`).toEqual({ ids: sorted(expected), total: expected.length });
+      expect(upper).toEqual(await c.detail(B, code, AS_OF, group));
+    }
+  });
+
   it('AC-HA-13a-09：参数校验——日期 / ID / 期限类型不合法 400，区间倒置 400，未知组件 404', async () => {
     for (const bad of [
       'asOf=2026-02-30',
