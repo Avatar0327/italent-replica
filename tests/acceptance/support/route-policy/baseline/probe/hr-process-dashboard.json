@@ -1,0 +1,40 @@
+{
+  "GET /api/tenant/analytics/hr-process-dashboard": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:TenantBase/TenantBase.HrProcessDashboard/TenantBase.HrProcessDashboard.list",
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail",
+      "obj:TenantBase.HrProcessDashboard:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-process-dashboard/components/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4f8e39cb5adf",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:TenantBase/TenantBase.HrProcessDashboard/TenantBase.HrProcessDashboard.list",
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail",
+      "obj:TenantBase.HrProcessDashboard:view"
+    ]
+  }
+}

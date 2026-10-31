@@ -2,6 +2,7 @@
  * 直接依赖图：区域 api-modules-analytics（节点 → 直接依赖，字典序；同文件的依赖写作 #名字；没有依赖的叶子不登记）。
  * 生成文件（F-072）：改源码后用 `ROUTE_POLICY_UPDATE_DIGESTS=1` 重算，不要手改；冲突时取任一侧后重算。
  */
+/* eslint-disable max-len -- 生成文件，键含完整路径 */
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
@@ -129,5 +130,107 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': [
+    'apps/api/src/modules/approval/access.ts#adminScope',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#dateParam': [
+    '#DATE_MAX',
+    '#DATE_MIN',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#filters': [
+    '#UUID',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#APPROVAL_CATEGORIES',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': [
+    '#approvalVisible',
+    '#dateParam',
+    '#filters',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'apps/api/src/modules/permission/module-route-access.ts#requestScope',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DASHBOARD_OBJECT',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DEFAULT_DAYS',
+    'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
+    [
+      '#HR_PROCESS_DASHBOARD_BASE',
+      '#processContext',
+      '#window',
+      'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessOverview',
+    ],
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
+    [
+      '#HR_PROCESS_DASHBOARD_BASE',
+      '#detailFilter',
+      '#processContext',
+      '#window',
+      'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessPage',
+      'apps/api/src/modules/job/context.ts#pageQuery',
+      'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#DURATION': ['#days'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#businesses': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#SUBMITTED_OR_DIRECT_JOIN',
+    '#approvedInstance',
+    '#employmentAt',
+    '#inWindow',
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#doneTasks': ['#days'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#employmentAt': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#SNAPSHOT',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#current',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#facts': [
+    '#employmentAt',
+    '#inWindow',
+    '#localDate',
+    '#userLeft',
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessOverview': [
+    '#WITH_HITS',
+    '#ratio',
+    '#round',
+    '#statement',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#hrProcessPage': [
+    '#round',
+    '#statement',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#inWindow': ['#localDate'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#listColumns': ['#iso', '#userLeft'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#select': ['#NULL'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#specs': [
+    '#APPROVED',
+    '#APPROVE_LAG',
+    '#DURATION',
+    '#IN_FLIGHT',
+    '#LAGGED',
+    '#NULL',
+    '#QUALITY',
+    '#SUBMIT_LAG',
+    '#listColumns',
+    '#task',
+    '#usage',
+    '#week',
+  ],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#statement': [
+    '#SECOND_LEVEL',
+    '#businesses',
+    '#doneTasks',
+    '#facts',
+    '#select',
+    '#specs',
   ],
 };
