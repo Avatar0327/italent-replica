@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { actionButton } from './action-button.js';
 import { test, expect, employee } from './fixtures.js';
 import {
   VOID_LIMIT,
@@ -203,7 +204,7 @@ test('AC-FE-R2c2-06 离职申请：先建草稿再按草稿 revision 提交审�
   expect(submits()).toHaveLength(1);
   expect(submits()[0]!.ifMatch).toBe('1');
   expect(submits()[0]!.body).toEqual({});
-  await dialog(page).getByRole('button', { name: '提交审批', exact: true }).click();
+  await actionButton(dialog(page), '提交审批').click();
   await expect(toast(page, '已提交')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(server.sent.filter((item) => item.path === `/exits/employees/${employee}`)).toHaveLength(1);
@@ -219,7 +220,7 @@ test('AC-FE-R2c2-07 发起交接 409：弹窗内重读离职单，按新 revisio
   await section.getByRole('button', { name: '发起离职交接', exact: true }).click();
   await popconfirm(page).click();
   await section.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
-  await section.getByRole('button', { name: '发起离职交接', exact: true }).click();
+  await actionButton(section, '发起离职交接').click();
   await popconfirm(page).click();
   await expect(toast(page, '已发起离职交接')).toBeVisible();
   expect(writes(server, '/handover/submit').map((item) => item.ifMatch)).toEqual(['3', '4']);
@@ -234,7 +235,7 @@ test('AC-FE-R2c2-08 重新提交交接 409：重读交接单（不是离职单�
   await section.getByRole('button', { name: '重新提交交接', exact: true }).click();
   await popconfirm(page).click();
   await section.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
-  await section.getByRole('button', { name: '重新提交交接', exact: true }).click();
+  await actionButton(section, '重新提交交接').click();
   await popconfirm(page).click();
   await expect(toast(page, '已发起离职交接')).toBeVisible();
   expect(writes(server, '/resubmit').map((item) => item.ifMatch)).toEqual(['1', '2']);
