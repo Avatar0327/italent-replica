@@ -1,3 +1,4 @@
+import { exitFollowingRecords, assertNoLaterExitRecords } from './exit-later-records.js';
 /**
  * 离职生效单一编排器（R2-T03 设计 §5.1，批 B3-1）：approved → effective 的唯一路径。
  * 顺序 0a 前序 → 0 最终日期 → 0b 顺延后重验 → 0c 在职段延长校验 → 1 作废在途申请 → 2 版本链落地 → 3 编制 →
@@ -5,7 +6,7 @@
  * 任一步业务规则拒绝即整体回滚，只留一条 failed 尝试（DEC-052）；存储不可用原样抛出、不记失败。
  * 入口：审批通过 / 直接保存（activateIfDue）、调度与 HR 重试（activation-service 按队列逐条调用）、activate 端口（transitions.ts）。
  * 退休（R2-T04 §4）走同一编排器，差异只有：要求 retirement_requests 扩展行、审计动作名、版本链落地后回写实际退休日期
- * 并按快照 P 重派生退休类型（R-1，保存点内），事件带 kind / reEmployed。
+ * 并按快照 P 重派生退休类型（R-1，保存点内），同时返聘的退休在合同端口之后生成返聘（R-2，§8.3），事件带 kind / reEmployed。
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, exitEffects, sql, type Tx } from '@italent/db';
@@ -22,7 +23,7 @@ import {
 import { auditEmployment } from './context.js';
 import { handleContractsOnExitEffective } from './exit-contract-effects.js';
 import { runExitDutyTransfer } from './exit-duty-transfer.js';
-import { runExitEffectiveHooks, type ExitActivationSource, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { runExitEffectiveHooks, type ExitActivationSource } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
 // 离职生效写黑名单（BE-8b1）同样订阅 effective 端口
@@ -52,6 +53,7 @@ import {
 import { assertInternEndable } from './intern-eligibility.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
 import { loadRetirementRequest, rederiveRetireType } from './retirement-application.js';
+import { createRetirementRehire } from './retirement-rehire.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import {
   bumpEmploymentBusiness,
@@ -272,8 +274,13 @@ async function recordEffectiveCorrection(
 }
 
 /** §5.8：摘下同周期排在离职之后的已落地调动；台账记原窗口（B4 撤销时按它挂回），审计提示 HR。 */
-async function detachAndRecord(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
-  const detached = await detachFutureTransfers(tx, ctx, business.employeeId, business.id);
+export async function detachAndRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  candidates?: readonly string[],
+) {
+  const detached = await detachFutureTransfers(tx, ctx, business.employeeId, business.id, candidates);
   for (const item of detached) {
     await tx.insert(exitEffects).values({
       tenantId: ctx.tenantId,
@@ -336,6 +343,36 @@ async function syncActualRetirementDate(
   );
 }
 
+/**
+ * R-2（R2-T04 §8.3）：同时返聘在合同终止之后、职责转交之前生成；失败整个保存点回滚，退休不生效。
+ * 返回退休扩展行（非退休为 undefined），生效事件据此带 reEmployed。
+ */
+async function createRehireIfPlanned(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  effectiveDate: string,
+) {
+  if (business.payload.kind !== 'retirement') return undefined;
+  const retirement = await loadRetirementRequest(tx, ctx.tenantId, business.id);
+  if (retirement?.rehirePlan) await createRetirementRehire(tx, ctx, business, retirement.rehirePlan, effectiveDate);
+  return retirement;
+}
+
+async function followingTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  exit: ExitRow,
+  planned: string,
+  date: string,
+) {
+  if (business.payload.kind !== 'leave') return undefined;
+  const following = await exitFollowingRecords(tx, ctx, business, exit.staffId, date);
+  assertNoLaterExitRecords(following, planned, date, exit.initiatorUserId);
+  return following.filter((row) => row.bizType === 'transfer').map((row) => row.docId);
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -366,6 +403,8 @@ async function runSteps(
   // 结束实习保存到生效之间，转正申请可能已审批通过并落地：此时人已不是实习生，不能再记“实习结束”，生效失败交 HR（DEC-593①）
   if (business.payload.changeType === 'intern_end')
     await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
+  // DEC-507 步骤 0d：先检查同一插入位置之后的集合，再分流；失败连顺延版本一起回滚。
+  const detachable = await followingTransfers(tx, ctx, business, exit, planned, late.effectiveDate);
   // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
@@ -373,7 +412,7 @@ async function runSteps(
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
-  const detached = await detachAndRecord(tx, ctx, business);
+  const detached = await detachAndRecord(tx, ctx, business, detachable);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
     tx,
@@ -387,6 +426,7 @@ async function runSteps(
   await recordEffectiveCorrection(tx, ctx, business, detail);
   // 步骤 4：合同端口（生效时终止，Q-M0-100 取“生效时”，§19 B-8）；步骤 6：职责转交，子项失败只记 duty_failed
   await handleContractsOnExitEffective(tx, ctx, business, late.lastWorkDate);
+  const retirement = await createRehireIfPlanned(tx, ctx, business, late.effectiveDate);
   await runExitDutyTransfer(tx, ctx, exit, 'effective', late.effectiveDate);
   await appendEmploymentState(tx, ctx, business, 'effective');
   await auditEmployment(
@@ -408,16 +448,15 @@ async function runSteps(
     undefined,
     { employeeId: business.employeeId },
   );
-  const event: ExitEffectiveEvent = {
+  await runExitEffectiveHooks(tx, ctx, {
     businessId: business.id,
     employeeId: business.employeeId,
     source,
     lastWorkDate: late.lastWorkDate,
     effectiveDate: late.effectiveDate,
     kind: business.payload.kind === 'retirement' ? 'retirement' : 'leave',
-    reEmployed: (await loadRetirementRequest(tx, ctx.tenantId, business.id))?.reEmployed === true,
-  };
-  await runExitEffectiveHooks(tx, ctx, event);
+    reEmployed: retirement?.reEmployed === true,
+  });
   // 审批落地由调用命令统一递增一次业务 revision；调度 / 重试 / 内部入口在这里递增
   if (trigger !== 'approval') await bumpEmploymentBusiness(tx, ctx, business);
   return late;

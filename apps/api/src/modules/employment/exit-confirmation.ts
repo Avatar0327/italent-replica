@@ -13,6 +13,7 @@ import { loadExitRequest } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { loadRetirementRequest } from './retirement-application.js';
 import type { EmploymentContext } from './types.js';
+import { queueExitAccount } from './exit-account-store.js';
 
 export interface ExitConfirmedEvent {
   readonly businessId: string;
@@ -58,11 +59,31 @@ export interface ExitCancelledEvent {
 type CancelledHook = (tx: Tx, ctx: EmploymentContext, event: ExitCancelledEvent) => Promise<void>;
 const cancelledHooks: CancelledHook[] = [];
 
+/** F-140：人工计划变更的唯一事务出口；F-261 在此登记账号处理任务。 */
+export interface ExitReplannedEvent {
+  readonly tenantId: string;
+  readonly employeeId: string;
+  readonly businessId: string;
+  readonly fromPlanned: string;
+  readonly toPlanned: string;
+  readonly versionNo: number;
+  readonly supersedesBusinessId?: string;
+}
+type ReplannedHook = (tx: Tx, ctx: EmploymentContext, event: ExitReplannedEvent) => Promise<void>;
+const replannedHooks: ReplannedHook[] = [];
+export async function runExitReplannedHooks(tx: Tx, ctx: EmploymentContext, event: ExitReplannedEvent) {
+  for (const hook of replannedHooks) await hook(tx, ctx, event);
+}
+
 /**
  * 离职后续任务端口（设计 §0 / §5.1 步骤 8）：confirmed 在审批通过 / 直接离职保存时调用（DM-R14 交接自动发起，BE-8）；
- * effective 在离职落地后调用（自动加黑 BE-8、账号停用另行任务）。订阅方在同一事务内处理，失败即整单回滚；默认没有订阅方。
+ * effective 在离职落地后调用。F-261 订阅方在同一事务内登记持久任务，提交后独立执行全局账号命令；
+ * 账号停用失败不回滚离退休生效（DEC-684），事务内的登记失败仍随业务回滚。
  */
 export const exitPostEffectHooks = {
+  onReplanned(hook: ReplannedHook): void {
+    replannedHooks.push(hook);
+  },
   onConfirmed(hook: ConfirmedHook): void {
     confirmedHooks.push(hook);
   },
@@ -96,6 +117,7 @@ export interface ConfirmedExit {
 export async function confirmExit(tx: Tx, ctx: EmploymentContext, business: ConfirmedExit) {
   const exit = await loadExitRequest(tx, ctx.tenantId, business.id);
   if (!exit) return;
+  await queueExitAccount(tx, ctx, business.id);
   // R 一经写入不再改变（迟到顺延、重试都不改），已有 R 说明预减与端口订阅已执行过
   if (!exit.preReleaseDate) await registerPreRelease(tx, ctx, business);
   // approval_passed 时机的职责转交（§5.7）：生效日 = 批准 / 保存当天；联动执行行保证至多执行一次

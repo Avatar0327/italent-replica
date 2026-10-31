@@ -423,6 +423,51 @@
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
+  "GET /api/tenant/employment/exit-account/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentSettings:view"
+    ]
+  },
+  "GET /api/tenant/employment/exit-account/tasks": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/employment/exit-account/tasks/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eba3363d3424",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/exit-handover-items": {
     "all": {
       "status": 200
@@ -1709,6 +1754,23 @@
       "admin:other_settings"
     ]
   },
+  "POST /api/tenant/employment/exit-account/tasks/:id/retry": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "eba3363d3424",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
   "POST /api/tenant/employment/exit-handover-items": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -1721,6 +1783,27 @@
     ],
     "trace": [
       "admin:other_settings"
+    ]
+  },
+  "POST /api/tenant/employment/exit-handover-requests/:id/resubmit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b19ff8596413",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#Employment.HandoverReSubmit@detail",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/exits/:id/cancel": {
@@ -1741,6 +1824,48 @@
     ],
     "trace": [
       "btn:TenantBase.EmploymentRecord#Employment.DimissionCancel@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/exits/:id/handover/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#EmploymentRecrdDetailDimissionHandoverApproval@detail",
+      "obj:TenantBase.EmploymentRecord:update"
+    ]
+  },
+  "POST /api/tenant/employment/exits/:id/handover/submit-from-list": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
@@ -1873,6 +1998,22 @@
     ],
     "trace": [
       "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "POST /api/tenant/employment/exits/handover/batch-submit": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "4d2080fecf28",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentRecord#BatchDimissionHandoverApproval@list",
+      "obj:TenantBase.EmploymentRecord:update"
     ]
   },
   "POST /api/tenant/employment/interns": {
@@ -2667,6 +2808,20 @@
     "all": {
       "code": "VALIDATION_FAILED",
       "error": "afc1cba80779",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/employment/exit-account/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ddf4af7ab521",
       "status": 400
     },
     "fieldQueries": [],

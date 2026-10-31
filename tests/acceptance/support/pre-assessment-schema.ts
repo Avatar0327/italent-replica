@@ -31,6 +31,36 @@ export async function addPreAssessmentTable(db: Db): Promise<() => Promise<void>
     await db.execute(sql`GRANT SELECT ON retirement_intentions TO app_user`);
     added.push('retirement_intentions');
   }
+  // F-261：旧结构夹具仍经当前离职入口。临时任务表仅支持造旧实例，升级前撤掉；生产不做缺表兜底。
+  if (!(await present(db, 'exit_requests'))) {
+    // 当前提交入口会用 Drizzle 读完整扩展行；旧实例没有扩展数据，列齐全但始终保持空表。
+    await db.execute(sql`CREATE TABLE exit_requests (tenant_id uuid, business_id uuid, supersedes_business_id uuid,
+      employee_id uuid, staff_id uuid, mode text, initiator text, initiator_user_id uuid, attachment_refs jsonb,
+      process_code text, exit_type_code text, reason_code text, whereabouts_code text, handover_employee_id uuid,
+      add_to_blacklist boolean, blacklist_expiry_date date, blacklist_reason text, blacklist_note text,
+      compensation_amount numeric(14,2), non_compete_amount numeric(14,2), last_pay_date date,
+      social_insurance_end_month text, annual_leave_settled boolean, tax_period text, tax_year integer,
+      employer_name text, actual_leave_date date, pending_transfer_ack jsonb, batch_id uuid,
+      duty_transfer_timing text, pre_release_date date, created_at timestamptz)`);
+    await db.execute(sql`GRANT SELECT ON exit_requests TO app_user`);
+    added.push('exit_requests');
+  }
+  if (!(await present(db, 'exit_account_settings'))) {
+    await db.execute(sql`CREATE TABLE exit_account_settings (tenant_id uuid PRIMARY KEY,
+      early_enabled boolean NOT NULL DEFAULT false, basis text, time text,
+      in_review boolean NOT NULL DEFAULT false, revision integer NOT NULL DEFAULT 0)`);
+    await db.execute(sql`GRANT SELECT, INSERT, UPDATE ON exit_account_settings TO app_user`);
+    added.push('exit_account_settings');
+  }
+  if (!(await present(db, 'exit_account_tasks'))) {
+    await db.execute(sql`CREATE TABLE exit_account_tasks (tenant_id uuid NOT NULL, business_id uuid NOT NULL,
+      employee_id uuid NOT NULL, user_id uuid NOT NULL, handler_user_id uuid,
+      status text NOT NULL DEFAULT 'pending', reason text, attempts integer NOT NULL DEFAULT 0,
+      revision integer NOT NULL DEFAULT 1, command_id text NOT NULL, restore_requested boolean NOT NULL DEFAULT false,
+      auto_revision integer, recipient_user_ids uuid[] NOT NULL DEFAULT '{}', PRIMARY KEY(tenant_id,business_id))`);
+    await db.execute(sql`GRANT SELECT, INSERT, UPDATE ON exit_account_tasks TO app_user`);
+    added.push('exit_account_tasks');
+  }
   return async () => {
     for (const table of added) await db.execute(sql`DROP TABLE IF EXISTS ${sql.identifier(table)}`);
   };

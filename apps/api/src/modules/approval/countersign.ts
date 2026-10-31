@@ -31,15 +31,8 @@ import {
 import { notifyTodo } from './notifications.js';
 import { canTake } from './recusal.js';
 import { votesInTransition } from './rules.js';
-import {
-  appendLog,
-  endOpenTasks,
-  insertTask,
-  loadTasks,
-  OPEN_STATUSES,
-  type TaskRow,
-  type TaskStatus,
-} from './store.js';
+import { appendLog, endOpenTasks, insertTask, loadTasks, type TaskRow, type TaskStatus } from './store.js';
+import { OPEN_STATUSES } from './task-state.js';
 
 /** 节点的同一次激活（F-003）。 */
 export function activationOf(tasks: readonly TaskRow[], task: TaskRow): TaskRow[] {

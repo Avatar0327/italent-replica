@@ -1,3 +1,4 @@
+import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
@@ -41,7 +42,6 @@ import {
   bumpEmploymentBusiness,
   bumpEmploymentEmployee,
   insertEmploymentRow,
-  lockEmploymentBusiness,
   lockEmploymentEmployee,
   rowsOf,
   type EmploymentPayloadRow,
@@ -69,6 +69,7 @@ import {
   type NormalizedEmploymentInput,
   type PresetFields,
 } from './types.js';
+import { queueExitAccount } from './exit-account-store.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
@@ -85,6 +86,8 @@ interface SelectedEmploymentCycle {
 }
 
 export interface CreateEmploymentOptions {
+  /** F-140 替代复制已校验快照；恢复段与整体 ΔO / ΔP 在改期编排中重验。 */
+  readonly rescheduledExit?: true;
   readonly withEstablishment?: boolean;
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
@@ -140,7 +143,16 @@ export async function createEmploymentBusiness(
     staffId: selected?.cycle.id ?? '',
     predecessor: selected?.predecessor ?? null,
   });
-  await validatePreparedEmployment(tx, ctx, employee.id, normalized.kind, prepared, effective.fields);
+  await validatePreparedEmployment(
+    tx,
+    ctx,
+    employee.id,
+    normalized.kind,
+    prepared,
+    effective.fields,
+    undefined,
+    options.rescheduledExit === true && normalized.kind === 'leave',
+  );
   const id = await initializeEmploymentBusiness(
     tx,
     ctx,
@@ -171,15 +183,7 @@ export async function createEmploymentBusiness(
     options.changeType ?? defaultChangeType(normalized.kind),
     entryStatusFor(normalized.kind, options.entry),
   );
-  const business: LockedEmploymentBusiness = {
-    id,
-    employeeId: employee.id,
-    revision: 1,
-    employee,
-    payload,
-    state: normalized.mode === 'direct' ? (gatedDirect ? 'approved' : 'effective') : 'draft',
-    eventNo: 0,
-  };
+  const business = initialBusiness(employee, payload, gatedDirect);
   if (normalized.mode === 'direct' && !gatedDirect) await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
   await bumpEmploymentEmployee(tx, ctx, employee);
@@ -187,6 +191,40 @@ export async function createEmploymentBusiness(
   const created = { ...payloadAudit(payload), ...pendingAudit };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, created);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/**
+ * 新周期入职类业务的创建前干跑（只读）：与 createEmploymentBusiness 同一条继承 → 引用 / 部门可用性 / 必填校验，不写任何数据。
+ * 退休同时返聘在创建时用它提前暴露返聘部门 / 职位 / 引用问题（R2-T04 §8.2）；生效时的权威校验仍在 createEmploymentBusiness 里。
+ */
+export async function validateNewCycleEmployment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: NormalizedEmploymentInput,
+): Promise<void> {
+  if (!NEW_CYCLE_KINDS.includes(input.kind)) throw new AppError('VALIDATION_FAILED', '只有入职类业务可以干跑');
+  const prepared = await prepareInheritance(tx, ctx, { ...input, employeeId, staffId: undefined });
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, { staffId: '', predecessor: null });
+  await validatePreparedEmployment(tx, ctx, employeeId, input.kind, prepared, effective.fields);
+}
+
+/** 初始业务头纯装配；继承与引用门禁仍在创建入口直接调用，保留 F-039 的强制调用点。 */
+function initialBusiness(
+  employee: LockedEmploymentBusiness['employee'],
+  payload: EmploymentPayloadRow,
+  gatedDirect: boolean,
+): LockedEmploymentBusiness {
+  const directState = gatedDirect ? 'approved' : 'effective';
+  return {
+    id: payload.businessId,
+    employeeId: employee.id,
+    revision: 1,
+    employee,
+    payload,
+    state: payload.mode === 'direct' ? directState : 'draft',
+    eventNo: 0,
+  };
 }
 
 /** 实习转正（直接或申请）的变动类型固定为“实习转正”（R2f B41；31 Q-M0-122 ④ 实习转正中的异动类型）。 */
@@ -246,17 +284,34 @@ async function initializeEmploymentBusiness(
   return id;
 }
 
-export async function updateEmploymentBusiness(
+async function replanEditableExit(
   tx: Tx,
   ctx: EmploymentContext,
-  id: string,
-  input: EmploymentBusinessPatch,
-  options: { readonly approvalEdit?: boolean } = {},
-): Promise<EmploymentBusiness> {
-  const patch = normalizeBusinessPatch(input);
-  const business = await lockEmploymentBusiness(tx, ctx, id);
-  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  // R2-T03 §4A / §7.2：离职 / 退休的日期创建后不可改，判定在权限链之后、状态检查与任何写入之前；审批编辑与编辑并同意同路
+  business: LockedEmploymentBusiness,
+  patch: EmploymentBusinessPatch,
+  options: RescheduleOptions,
+) {
+  // 通用入口只放开草稿 / 驳回，以及审批中心授权的在审编辑；approved 只能走离职专用入口。
+  if (
+    business.payload.kind === 'leave' &&
+    (['draft', 'rejected'].includes(business.state) || (business.state === 'in_review' && options.approvalEdit)) &&
+    (await exitDateChange(tx, ctx, business, patch))
+  ) {
+    await rescheduleExit(tx, ctx, business, patch, options);
+    const { lastWorkDate: _last, effectiveDate: _effective, ...remaining } = patch;
+    return Object.keys(remaining).length ? remaining : null;
+  }
+  return patch;
+}
+
+async function requireUnchangedExitDates(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  patch: EmploymentBusinessPatch,
+  options: RescheduleOptions,
+) {
+  // 未开放的离职入口与退休日期保留原拒绝（F-140b1 / DEC-687）。
   if (isExitKind(business.payload.kind))
     await requireExitGate(tx, ctx, 'update', {
       employeeId: business.employeeId,
@@ -264,6 +319,23 @@ export async function updateEmploymentBusiness(
       patch,
       approvalEdit: options.approvalEdit === true,
     });
+}
+
+export async function updateEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+  options: RescheduleOptions = {},
+): Promise<EmploymentBusiness> {
+  const { pendingTransferAck, confirmed, ...businessPatch } = normalizeBusinessPatch(input);
+  let patch = businessPatch;
+  const business = await lockExitForEdit(tx, ctx, id);
+  await requireEmployeeTransferBusiness(tx, ctx, id, patch);
+  const remaining = await replanEditableExit(tx, ctx, business, patch, { pendingTransferAck, confirmed, ...options });
+  if (remaining === null) return requireSavedBusiness(tx, ctx, id);
+  patch = remaining;
+  await requireUnchangedExitDates(tx, ctx, business, patch, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
   if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
@@ -310,7 +382,7 @@ export async function updateEmploymentBusiness(
     ctx,
     business.employeeId,
     id,
-    business.revision,
+    before.versionNo + 1,
     normalized,
     prepared,
     before.id,
@@ -600,6 +672,8 @@ export async function appendEmploymentState(
     undefined,
     meta,
   );
+  if (business.payload.kind === 'leave' || business.payload.kind === 'retirement')
+    await queueExitAccount(tx, ctx, business.id, state === 'deleted' || state === 'voided');
 }
 
 async function cycleForMaterialization(
@@ -635,10 +709,18 @@ export async function validateTransferReposition(
     beforeOrder: position.order,
   });
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
-  await validateNewEmploymentReferences(tx, ctx, record.fields, payload.effectiveDate, {
-    employeeId: business.employeeId,
-    window: windowBefore(payload.effectiveDate, next),
-  });
+  await validateNewEmploymentReferences(
+    tx,
+    ctx,
+    record.fields,
+    payload.effectiveDate,
+    {
+      employeeId: business.employeeId,
+      window: windowBefore(payload.effectiveDate, next),
+    },
+    false,
+    isExitKind(payload.kind),
+  );
 }
 
 interface MaterializeOptions {
@@ -896,6 +978,7 @@ async function validatePreparedEmployment(
   prepared: PreparedInheritance,
   effectiveFields: PresetFields,
   existing?: LockedEmploymentBusiness,
+  terminatingSnapshot = false,
 ) {
   assertRequiredTransferFields(kind, prepared.formSnapshot, { ...effectiveFields });
   if (kind === 'transfer')
@@ -917,6 +1000,7 @@ async function validatePreparedEmployment(
     prepared.effectiveDate,
     reporting,
     NEW_CYCLE_KINDS.includes(kind),
+    terminatingSnapshot,
   );
 }
 

@@ -13,6 +13,8 @@ export const ERROR_STATUS = {
   // F-325 / DEC-685①：日工资标准的金额校验按派发契约返回 422。
   DAILY_WAGE_STANDARD_INVALID: 422,
   EMPLOYMENT_FORM_INVALID: 422,
+  // F-316 / DEC-678：交接节点空审批人配置的语义校验；既有校验仍用 400。
+  APPROVAL_EMPTY_APPROVER_POLICY_INVALID: 422,
   SELF_TRANSFER_DATE_UNAVAILABLE: 400,
   CONFLICT: 409,
   // 多租户（R1-T00）：非成员与租户不存在同码，不泄露租户是否存在；只有成员才会看到 TENANT_UNAVAILABLE

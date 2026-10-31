@@ -527,6 +527,7 @@ const RULES: readonly Rule[] = [
       'exit-request',
       'exit-cancellation',
       'exit-effect',
+      'exit-account-task',
     ],
     objectCode: EMPLOYMENT,
     visible: (scope, row, viewer) => {

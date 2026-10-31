@@ -3,8 +3,8 @@
  * 发送记录（send.ts 写入），姓名与正文字段取当前 Offer 行。不返回发送时间 / 发送人 / 历史 / 投递状态（原站不展示）。
  * 权限 = 查看 Offer（loadOffer 同 GET /:id 的数据范围）；收件人 / 抄送 / 密送按 personalEmail 查看字段权，正文字段各按自己的查看字段权。
  */
-import { and, desc, eq, lte, offerSendRecords, orgVersions, withTenant, type Tx } from '@italent/db';
-import { OFFER_OBJECT, tenantLocalDate } from '@italent/domain';
+import { and, desc, eq, offerSendRecords, withTenant, type Tx } from '@italent/db';
+import { OFFER_OBJECT } from '@italent/domain';
 import type { Hono } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -13,6 +13,7 @@ import { uuidParam } from '../job/context.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { offerReadContext, type OfferContext } from './context.js';
 import { loadOffer } from './service.js';
+import { offerDepartmentNames } from './read-names.js';
 
 const MISSING = '--';
 export const OFFER_MAIL_SUBJECT = '录用通知';
@@ -51,7 +52,9 @@ export async function offerMail(tx: Tx, ctx: OfferContext, id: string, viewable:
   const text = (field: string, value: string | null) => (shown(field) && value ? value : MISSING);
   const emailShown = shown('personalEmail');
   const department =
-    shown('departmentId') && offer.departmentId ? await departmentName(tx, ctx, offer.departmentId) : MISSING;
+    shown('departmentId') && offer.departmentId
+      ? ((await offerDepartmentNames(tx, ctx, [offer.departmentId])).get(offer.departmentId)?.name ?? MISSING)
+      : MISSING;
   return {
     offerId: offer.id,
     name: text('name', offer.name),
@@ -71,23 +74,6 @@ export async function offerMail(tx: Tx, ctx: OfferContext, id: string, viewable:
     cc: emailShown ? record.cc : null,
     bcc: emailShown ? record.bcc : null,
   };
-}
-
-/** 录用部门当前名称（按租户时区的今天取已生效的最新版本）；取不到按缺省值。 */
-async function departmentName(tx: Tx, ctx: OfferContext, orgId: string) {
-  const [version] = await tx
-    .select({ name: orgVersions.name })
-    .from(orgVersions)
-    .where(
-      and(
-        eq(orgVersions.tenantId, ctx.tenantId),
-        eq(orgVersions.orgId, orgId),
-        lte(orgVersions.startDate, tenantLocalDate(ctx.now, ctx.timezone)),
-      ),
-    )
-    .orderBy(desc(orgVersions.startDate), desc(orgVersions.versionNo))
-    .limit(1);
-  return version?.name ?? MISSING;
 }
 
 export function registerOfferMail(module: Hono<TenantEnv>, deps: TenantRouteDeps) {

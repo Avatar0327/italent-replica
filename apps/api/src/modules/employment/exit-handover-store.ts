@@ -13,7 +13,7 @@ export interface HandoverRequestRow {
   readonly exitRequestId: string;
   readonly employeeId: string;
   readonly departmentId: string | null;
-  readonly initiatorUserId: string;
+  readonly initiatorUserId: string | null;
   readonly state: HandoverRequestState;
   readonly endReason: HandoverEndReason | null;
   readonly notLaunchedReason: HandoverNotLaunchedReason | null;
@@ -92,6 +92,20 @@ export async function insertHandoverRequest(
     VALUES (${input.id}::uuid, ${input.tenantId}, ${input.exitRequestId}::uuid, ${input.employeeId}::uuid,
     ${input.departmentId}::uuid, ${input.initiatorUserId}::uuid, 'in_progress', 1, ${input.commandId},
     ${now}::timestamptz, ${now}::timestamptz)`);
+  await insertRequestItems(tx, input);
+}
+
+/** 未发起没有事项；首次成功启动时才冻结设置，已终止重提沿用原事项快照与办理记录。 */
+export async function insertRequestItems(
+  tx: Tx,
+  input: {
+    readonly tenantId: string;
+    readonly id: string;
+    readonly now: Date;
+    readonly items: readonly HandoverItemView[];
+  },
+) {
+  const now = input.now.toISOString();
   for (const item of input.items)
     await tx.execute(sql`INSERT INTO exit_handover_request_items(id, tenant_id, request_id, category, sequence_no,
       todo_type, title, form_ref, remark, created_at, updated_at)
@@ -108,7 +122,7 @@ export async function insertNotLaunchedRequest(
     readonly exitRequestId: string;
     readonly employeeId: string;
     readonly departmentId: string | null;
-    readonly initiatorUserId: string;
+    readonly initiatorUserId: string | null;
     readonly reason: HandoverNotLaunchedReason;
     readonly commandId: string;
     readonly now: Date;

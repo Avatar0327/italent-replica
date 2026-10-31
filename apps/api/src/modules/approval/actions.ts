@@ -55,7 +55,7 @@ import {
 import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
-import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
+import { addSignAllowed, isActiveInstance, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
 import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
@@ -235,10 +235,17 @@ function editableInput(
   return fields;
 }
 
-async function applyEdit(tx: Tx, scene: TaskScene, fields: Row): Promise<void> {
+async function applyEdit(
+  tx: Tx,
+  scene: TaskScene,
+  fields: Row,
+  confirmation?: ApprovalContext['exitReschedule'],
+): Promise<void> {
   const { run, task } = scene;
   const adapter = ADAPTERS[run.instance.businessType];
-  await adapter.edit(tx, run.ctx, run.instance.businessId, fields);
+  if (confirmation && run.snapshot.approvalType !== 'leave')
+    throw approvalError('VALIDATION_FAILED', 'EXIT_CONFIRMATION_NOT_APPLICABLE', '改期确认只适用于离职审批');
+  await adapter.edit(tx, { ...run.ctx, exitReschedule: confirmation }, run.instance.businessId, fields);
   // 【编辑并同意】随后推进节点：路由部门必须取编辑后的业务单，不能沿用打开任务时的快照。
   run.snapshot = await adapter.snapshot(tx, run.ctx, run.instance.businessId);
   run.instance = { ...run.instance, businessVersion: run.snapshot.version };
@@ -262,6 +269,7 @@ async function auditTask(tx: Tx, run: Run, action: string, before: Row, after: R
 }
 
 export interface DecisionInput {
+  readonly exitReschedule?: ApprovalContext['exitReschedule'];
   readonly taskId: string;
   readonly comment: string | null;
   readonly fields?: Row;
@@ -282,7 +290,12 @@ export async function approveTask(
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   if (input.fields && Object.keys(input.fields).length) {
     assertApprovalEdit(run, await loadTasks(tx, ctx.tenantId, run.instance.id), task, node, 'with_approve');
-    await applyEdit(tx, scene, editableInput(run.snapshot.approvalType, node, input.fields, viewable));
+    await applyEdit(
+      tx,
+      scene,
+      editableInput(run.snapshot.approvalType, node, input.fields, viewable),
+      input.exitReschedule,
+    );
     assertNotBlindAfterEdit(run, viewable);
   }
   await closeTask(tx, ctx, task.id, 'approved', input.comment);
@@ -302,6 +315,10 @@ export async function approveTask(
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
   // DEC-095：加签人依次审批，前加签全部同意后回到原审批人，后加签全部完成才离开本节点；会签按流转规则结算。
+  if (run.instance.businessType === 'employment') {
+    const { automaticHandover } = await import('../employment/exit-handover-launch.js');
+    await automaticHandover(tx, ctx, run.instance.businessId, 'on_node_approved', task.nodeKey);
+  }
   await continueAfterApproval(tx, run, task);
   run.events.push('approval.task.approved');
   await persistRun(tx, run, outcomeAction(run));
@@ -708,14 +725,19 @@ async function delegate(
 export async function editTask(
   tx: Tx,
   ctx: ApprovalContext,
-  input: { taskId: string; fields: Row },
+  input: { taskId: string; fields: Row; exitReschedule?: ApprovalContext['exitReschedule'] },
   viewable: ReadonlySet<string> | undefined,
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
   assertApprovalEdit(run, await loadTasks(tx, ctx.tenantId, run.instance.id), task, node, 'separate');
-  await applyEdit(tx, scene, editableInput(run.snapshot.approvalType, node, input.fields, viewable));
+  await applyEdit(
+    tx,
+    scene,
+    editableInput(run.snapshot.approvalType, node, input.fields, viewable),
+    input.exitReschedule,
+  );
   assertNotBlindAfterEdit(scene.run, viewable);
   await persistRun(tx, scene.run, 'approval.task.edit');
   return ok(scene.run);
@@ -829,7 +851,7 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 export async function revokeBySystem(tx: Tx, ctx: ApprovalContext, instanceId: string, reason: string): Promise<void> {
   const run = await openRun(tx, ctx, instanceId);
   // 终态幂等：openRun 已锁实例，只有未结束的实例才撤销；已终止 / 已通过 / 已驳回等直接成功返回，不写日志、审计，不推进版本
-  if (!['running', 'returned'].includes(run.instance.status)) return;
+  if (!isActiveInstance(run.instance)) return;
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
   await appendLog(tx, ctx, run.instance, { event: 'system_revoke', actorUserId: null, detail: { comment: reason } });
