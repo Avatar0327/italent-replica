@@ -77,6 +77,7 @@ export const m = {
   invalidEnd: '预计试用结束日期不能早于试用开始日期',
   draftCreated: '申请已保存，继续提交同一申请；已保存的字段只读。',
   draftRecovered: '试用结果已随原申请保存，单据详情不回显。',
+  draftVolatile: '本机无法保存这份申请的找回记录：刷新或离开本页后将找不回，请在本页完成提交。',
   noResults: '没有启用的试用结果，请先在设置中维护试用结果字典。',
   success: {
     edit: '试用期信息已保存',

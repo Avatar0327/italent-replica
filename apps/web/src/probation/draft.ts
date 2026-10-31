@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ApiError } from '../foundation/client.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import type { Values } from '../foundation/forms/values.js';
@@ -6,17 +6,27 @@ import { useApiClient, useSession } from '../foundation/Session.js';
 import type { ApplicationDraft } from '../intern/commands.js';
 import { businesses, recoveredDraft } from './model.js';
 
+const Memory = createContext<Map<string, string> | undefined>(undefined);
+/** 页面根部：本机存储写不进时的草稿指针后备，同样只存单据 ID；刷新或离开本页即失效。 */
+export function DraftPointers({ children }: { children: ReactNode }) {
+  const [memory] = useState(() => new Map<string, string>());
+  return createElement(Memory.Provider, { value: memory }, children);
+}
+
 /**
  * 转正申请草稿的指针（P2-4，DEC-103 同单重提）：服务端没有“员工未提交的转正草稿”读投影，草稿也不进试用详情与视图行
  * （probation.ts cycleRegularization），前端只按 租户 × 身份 × 员工 记下草稿单 ID，内容一律以服务端单据为准。
- * 存储不可用（隐私模式、被禁用）时读写都静默失败：本次弹窗仍按内存里的草稿继续，刷新后找不回。
+ * 存储写不进（配额、隐私模式、浏览器策略）时改记在页面内存：同页关闭重开仍找回同一张单，不另建第二张；
+ * 内存指针比存储里可能残留的旧指针新，读取时优先。
  */
 export function useDraftPointer(employeeId: string) {
   const { tenantId, identityKey } = useSession();
+  const memory = useContext(Memory)!;
   const key = `italent.probation.draft:${JSON.stringify([tenantId, identityKey, employeeId])}`;
   return useMemo(
     () => ({
       get(): string | undefined {
+        if (memory.has(key)) return memory.get(key);
         try {
           return localStorage.getItem(key) ?? undefined;
         } catch {
@@ -26,20 +36,24 @@ export function useDraftPointer(employeeId: string) {
       put(id: string) {
         try {
           localStorage.setItem(key, id);
+          memory.delete(key);
         } catch {
-          // 见上：只影响刷新后的找回
+          memory.set(key, id);
         }
       },
       /** 只清指向这张单的指针：别处已换成新草稿时不误删。 */
       clear(id: string) {
+        if (memory.get(key) === id) memory.delete(key);
         try {
           if (localStorage.getItem(key) === id) localStorage.removeItem(key);
         } catch {
-          // 见上
+          // 存储不可读写：内存指针已清，存储里本来也没有
         }
       },
+      /** 指针只在页面内存里：刷新或离开本页后找不回，须提示用户。 */
+      volatile: () => memory.has(key),
     }),
-    [key],
+    [key, memory],
   );
 }
 

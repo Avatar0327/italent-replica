@@ -240,6 +240,8 @@ async function submitRecovered(page: Page) {
   await page.getByRole('button', named('转正申请')).click();
   const form = dialog(page, '转正申请');
   await expect(form).toContainText('申请已保存，继续提交同一申请；已保存的字段只读。');
+  // 本机存储可写时指针已持久化，不出“找回记录未保存”的限制提示
+  await expect(form).not.toContainText('本机无法保存这份申请的找回记录');
   await form.getByRole('button', { name: /提\s*交$/ }).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByRole('button', { name: '转正审批中', exact: true, pressed: true })).toBeVisible();

@@ -337,6 +337,7 @@ function RegularizeEditor(props: EditorProps & { recovered?: ApplicationDraft })
     >
       {draft && <Alert type="info" message={m.draftCreated} />}
       {draft && !created && <Alert type="info" message={m.draftRecovered} />}
+      {draft && pointer.volatile() && <Alert type="warning" message={m.draftVolatile} />}
       {results.data && !results.options.length && <Alert type="warning" message={m.noResults} />}
       <FormLock locked={!!draft}>
         <RegularizeFields
