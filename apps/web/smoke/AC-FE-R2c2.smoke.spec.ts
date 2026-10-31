@@ -244,7 +244,7 @@ test('AC-FE-R2c2-09 批量发起整批未发起成功：刷新后没有可操作
   const server = await setupExits(page);
   server.rowActions = { [ids.inProgress]: [rowSubmit] };
   server.batchOutcome = { outcome: 'not_launched', reason: 'NO_INITIATOR_ACCOUNT' };
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: /^刷\s*新$/ }).click();
   await list(page).getByRole('button', { name: '批量发起离职交接', exact: true }).click();
   const result = page.getByRole('dialog').filter({ hasText: '批量发起结果' });
   await expect(result.getByRole('listitem')).toHaveText([`${names.inProgress}：未发起成功（NO_INITIATOR_ACCOUNT）`]);
@@ -304,7 +304,7 @@ test('AC-FE-R2c2-12 普通生效失败与挂起：列表有标记，详情显示
   addExit(server, '合成员工丙', { status: 'approved', activation: failed });
   const waiting = { status: 'suspended', reason: 'PREDECESSOR_FAILED', blockedByBusinessId: ids.failed };
   addExit(server, '合成员工丁', { status: 'approved', activation: waiting });
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: /^刷\s*新$/ }).click();
   await expect(rowOf(page, '合成员工丙')).toContainText('生效失败');
   await expect(rowOf(page, '合成员工丁')).toContainText('生效挂起');
   await expect(rowOf(page, names.inProgress)).not.toContainText('生效');
