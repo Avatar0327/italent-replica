@@ -11,7 +11,7 @@ import { isForwardEditSupported } from './forward-rules.js';
 import { AppError } from '../../errors.js';
 import type { EmploymentBusinessPatch } from './types.js';
 import { tenantLocalDate } from '@italent/domain';
-import { selectEmploymentCycle, NEW_CYCLE_KINDS } from './write-service.js';
+import { assertBusinessSequence, selectEmploymentCycle, NEW_CYCLE_KINDS } from './write-service.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 
@@ -28,6 +28,7 @@ export async function previewEmploymentForwardUpdate(
   if (normalized.fields.departmentId !== undefined)
     requireEmploymentScope(ctx, employeeId, normalized.fields.departmentId);
   await assertNotBeforeCurrentCycle(tx, ctx, employeeId, normalized);
+  if (normalized.kind === 'retire_rehire') await assertBusinessSequence(tx, ctx, employeeId, normalized);
   if (NEW_CYCLE_KINDS.includes(normalized.kind))
     return { employeeRevision: employee.revision, changes: [], skipped: [], wholeRecordSkips: [] };
   const selected = await selectEmploymentCycle(tx, ctx, employeeId, normalized);

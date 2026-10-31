@@ -29,6 +29,7 @@ import {
 } from './activation-store.js';
 import { blockingPredecessors } from './linkage-dependency.js';
 import { lockEmploymentEmployee } from './record-store.js';
+import { retireRehireActivationDecision } from './retire-rehire-eligibility.js';
 import type { EmploymentContext } from './types.js';
 
 export interface ActivationResult {
@@ -37,10 +38,59 @@ export interface ActivationResult {
   readonly suspended: string[];
 }
 
-/** 到期项 = 计划生效日 ≤ 租户今天（设计 §5.0A D-4：与排序同一来源，不读载荷日）。 */
+/** 到期按计划日；DEC-677 派生到退休次日的返聘还须等到新日期，不提前落地未来记录。 */
 export async function dueQueue(tx: Tx, ctx: EmploymentContext, employeeId: string): Promise<PendingActivation[]> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  return (await pendingActivations(tx, ctx, employeeId)).filter((item) => item.plannedDate <= today);
+  return (await pendingActivations(tx, ctx, employeeId)).filter(
+    (item) => item.plannedDate <= today && (item.kind !== 'retire_rehire' || item.effectiveDate <= today),
+  );
+}
+
+async function suspendAfterPredecessorFailure(
+  tx: Tx,
+  ctx: EmploymentContext,
+  item: PendingActivation,
+  trigger: Exclude<ActivationTrigger, 'approval'>,
+  unresolved: PendingActivation[],
+  result: ActivationResult,
+): Promise<boolean> {
+  const blocker = item.reminderOnly
+    ? undefined
+    : unresolvedPredecessor(await blockingPredecessors(tx, ctx, unresolved, item.id));
+  if (!blocker) return false;
+  if (item.lastOutcome !== 'suspended' || item.lastBlockedBy !== blocker.failedId) {
+    await recordActivationAttempt(tx, ctx, item, {
+      outcome: 'suspended',
+      trigger,
+      reason: PREDECESSOR_FAILED,
+      blockedBy: blocker.failedId,
+    });
+    result.suspended.push(item.id);
+  }
+  unresolved.push({ ...item, lastOutcome: 'suspended', lastBlockedBy: blocker.failedId });
+  return true;
+}
+
+async function waitingRehire(
+  tx: Tx,
+  ctx: EmploymentContext,
+  item: PendingActivation,
+  trigger: ActivationTrigger,
+  result: ActivationResult,
+): Promise<PendingActivation | null> {
+  const decision = await retireRehireActivationDecision(tx, ctx, item);
+  if (!decision) return null;
+  // 只去重等待通知；失败只有显式重试才能再进这里，必须保留本次失败次数与审计。
+  if (decision.outcome === 'failed' || item.lastOutcome !== decision.outcome || item.lastReason !== decision.reason) {
+    await recordActivationAttempt(tx, ctx, item, { ...decision, trigger });
+    result[decision.outcome].push(item.id);
+  }
+  return {
+    ...item,
+    lastOutcome: decision.outcome,
+    lastReason: decision.reason ?? null,
+    lastBlockedBy: decision.blockedBy ?? null,
+  };
 }
 
 export async function activateDueBusinesses(
@@ -60,24 +110,21 @@ export async function activateDueBusinesses(
   const attempted = new Set<string>();
   for (let index = 0; index < queue.length; index++) {
     const item = queue[index]!;
-    const blocker = item.reminderOnly
-      ? undefined
-      : unresolvedPredecessor(await blockingPredecessors(tx, ctx, unresolved, item.id));
-    if (blocker) {
-      if (item.lastOutcome !== 'suspended' || item.lastBlockedBy !== blocker.failedId) {
-        await recordActivationAttempt(tx, ctx, item, {
-          outcome: 'suspended',
-          trigger,
-          reason: PREDECESSOR_FAILED,
-          blockedBy: blocker.failedId,
-        });
-        result.suspended.push(item.id);
-      }
-      unresolved.push({ ...item, lastOutcome: 'suspended', lastBlockedBy: blocker.failedId });
+    const skipFailed = item.lastOutcome === 'failed' && (item.id !== retryBusinessId || attempted.has(item.id));
+    // DEC-677：已作废依赖造成的失败不能被通用分支改记挂起，也不能自动改绑另一笔退休。
+    if (item.kind === 'retire_rehire' && skipFailed) {
+      unresolved.push(item);
       continue;
     }
+    const waiting = await waitingRehire(tx, ctx, item, trigger, result);
+    if (waiting) {
+      attempted.add(item.id);
+      unresolved.push(waiting);
+      continue;
+    }
+    if (await suspendAfterPredecessorFailure(tx, ctx, item, trigger, unresolved, result)) continue;
     // 失败的业务只由 HR 修正后重试（DEC-052），定时任务不自动重试，失败次数不随每次运行增加。
-    if (item.lastOutcome === 'failed' && (item.id !== retryBusinessId || attempted.has(item.id))) {
+    if (skipFailed) {
       if (!item.reminderOnly) unresolved.push(item);
       continue;
     }
@@ -152,9 +199,11 @@ export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId
     throw new AppError('CONFLICT', '该申请没有生效失败或挂起，等待定时生效', { reason: 'NOT_FAILED' });
   if (item.plannedDate > tenantLocalDate(ctx.now, ctx.timezone))
     throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
-  const blocker = item.reminderOnly
-    ? undefined
-    : unresolvedPredecessor(await blockingPredecessors(tx, ctx, before, item.id));
+  const rehireDecision = await retireRehireActivationDecision(tx, ctx, item);
+  const blocker =
+    item.reminderOnly || rehireDecision
+      ? undefined
+      : unresolvedPredecessor(await blockingPredecessors(tx, ctx, before, item.id));
   if (blocker)
     throw new AppError('CONFLICT', '前序业务生效失败，请先处理前序业务', {
       reason: PREDECESSOR_FAILED,

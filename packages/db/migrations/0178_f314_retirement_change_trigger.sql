@@ -1,0 +1,2 @@
+ALTER TABLE "employment_activation_attempts" DROP CONSTRAINT "employment_activation_attempts_trigger";--> statement-breakpoint
+ALTER TABLE "employment_activation_attempts" ADD CONSTRAINT "employment_activation_attempts_trigger" CHECK ("employment_activation_attempts"."trigger" IN ('scheduler', 'retry', 'approval', 'retirement_change'));
