@@ -141,7 +141,8 @@ describe('AC-FE-R2c2-F240 在途申请超上限', () => {
     expect(
       model.activationNotice({ activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: 1000 } } }),
     ).toContain('1000');
-    expect(model.activationNotice({ ...row, activation: { status: 'failed', reason: 'OTHER' } })).toBeUndefined();
+    expect(model.activationNotice({ ...row, activation: null })).toBeUndefined();
+    expect(model.activationNotice({ ...row })).toBeUndefined();
   });
   it('blockers 挡提交并显示原因', () => {
     const notice = model.previewNotice({ ...preview([]), blockers: [{ reason: 'EXIT_IN_PROGRESS' }] });
@@ -219,5 +220,129 @@ describe('AC-FE-R2c2 请求体与回执校验（真实返回形状）', () => {
   it('预览回执须是本次最后工作日', () => {
     expect(() => model.parsePreview(preview([]), '2026-12-01')).toThrow();
     expect(model.parsePreview(preview([]), '2026-11-30').ack).toBeNull();
+  });
+});
+
+// 第 2 轮回归（rfer2c2_1）：形态对照 exit-routes.ts 撤销 / 改期回执、exit-queries.ts activation、transitions.ts submit
+describe('AC-FE-R2c2 第 2 轮：申请两步提交', () => {
+  it('申请新建回执须是草稿，取离职单自身 id 与 revision 作为提交依据', () => {
+    const created = { id: 'exit-9', employeeId: 'employee-1', kind: 'leave', status: 'draft', revision: 1 };
+    expect(model.acceptDraft({ ...created, mode: 'application', employeeRevision: 6 })).toEqual({
+      id: 'exit-9',
+      revision: 1,
+    });
+    expect(() => model.acceptDraft({ ...created, status: 'approved', employeeRevision: 6 })).toThrow();
+    expect(() => model.acceptDraft({ ...created, revision: undefined })).toThrow();
+  });
+  it('提交审批的请求体只带顶层令牌，不带 confirmed', () => {
+    expect(model.submitBody({})).toEqual({});
+    expect(model.submitBody({ pendingTransferAck: 'token', confirmed: true })).toEqual({ pendingTransferAck: 'token' });
+  });
+  it('详情“提交审批”只给离职申请的草稿 / 已驳回单', () => {
+    expect(model.detailEntries({ ...row, status: 'draft' }, permission)).toEqual(['submit', 'edit', 'cancel']);
+    expect(model.detailEntries({ ...row, status: 'rejected' }, permission)).toEqual(['submit', 'edit', 'cancel']);
+    expect(model.detailEntries({ ...row, status: 'draft', mode: 'direct' }, permission)).toEqual(['edit', 'cancel']);
+    expect(model.detailEntries({ ...row, status: 'draft' }, without('Employment.DimissionApproval'))).toEqual([
+      'edit',
+      'cancel',
+    ]);
+  });
+});
+
+describe('AC-FE-R2c2 第 2 轮：加黑组保持不变', () => {
+  const baseline = {
+    lastWorkDate: '2026-11-30',
+    addToBlacklist: true,
+    blacklistExpiryDate: null,
+    blacklistReason: null,
+    blacklistNote: null,
+  };
+  it('已加黑且原三项未知：只改日期可提交，PATCH 不带加黑字段', () => {
+    const values = { ...baseline, lastWorkDate: '2026-12-10' };
+    expect(model.blackGroupKept(values, baseline)).toBe(true);
+    expect(() => model.validateExit(values, model.formFields, baseline)).not.toThrow();
+    expect(model.patchBody({ lastWorkDate: '2026-12-10' }, {}, values)).toEqual({ lastWorkDate: '2026-12-10' });
+  });
+  it('改动加黑组或新增加黑仍校验加黑原因', () => {
+    const changed = { ...baseline, blacklistExpiryDate: '2027-12-31' };
+    expect(model.blackGroupKept(changed, baseline)).toBe(false);
+    expect(() => model.validateExit(changed, model.formFields, baseline)).toThrow('加黑原因');
+    const added = { ...baseline, addToBlacklist: false };
+    expect(() => model.validateExit({ ...added, addToBlacklist: true }, model.formFields, added)).toThrow('加黑原因');
+    expect(() => model.validateExit({ ...baseline }, model.formFields)).toThrow('加黑原因');
+  });
+});
+
+describe('AC-FE-R2c2 第 2 轮：下游数据清单', () => {
+  const target = (id: string, detail?: Record<string, unknown>) => ({
+    type: 'contract',
+    id,
+    ...(detail ? { detail } : {}),
+  });
+  it('撤销回执：命中项、无权查看条数、附加项按服务端清单展示；未接入的只在有清单时附带', () => {
+    const receipt = {
+      id: 'exit-1',
+      status: 'voided',
+      downstream: {
+        items: [
+          { kind: 'contract', status: 'found', targets: [target('c-1')], hiddenCount: 1 },
+          { kind: 'duty_transfer', status: 'none', targets: [], hiddenCount: 0 },
+          { kind: 'payroll', status: 'not_connected', targets: [], hiddenCount: 0 },
+        ],
+        additional: [{ kind: 'application_voided', action: 'reinitiate', targets: [target('a-1')], hiddenCount: 0 }],
+      },
+    };
+    expect(model.downstreamLines(receipt)).toEqual([
+      '合同：1 条，另有 1 条无权查看',
+      '被作废的在途任职申请：1 条，保持作废，需重新发起',
+      '未接入，需人工核对：薪资档案',
+    ]);
+    const quiet = { ...receipt.downstream, items: receipt.downstream.items.slice(1), additional: [] };
+    expect(model.downstreamLines({ ...receipt, downstream: quiet })).toEqual([]);
+  });
+  it('改期回执：提示项带服务端说明，新单另起一行；字段缺席时不推算', () => {
+    const receipt = {
+      id: 'exit-1',
+      successor: { id: 'exit-2', kind: 'leave', status: 'approved', revision: 1 },
+      downstreamHints: {
+        items: [
+          {
+            kind: 'contract',
+            status: 'found',
+            targets: [target('c-1', { message: '合同实际终止日需手工更正' })],
+            hiddenCount: 0,
+          },
+        ],
+        probes: [
+          { kind: 'payroll', status: 'not_connected' },
+          { kind: 'leave_balance', status: 'none' },
+        ],
+      },
+    };
+    expect(model.downstreamLines(receipt)).toEqual([
+      '已生成新的离职单',
+      '合同：1 条（合同实际终止日需手工更正）',
+      '未接入，需人工核对：薪资档案',
+    ]);
+    expect(model.downstreamLines({ id: 'exit-1', revision: 4 })).toEqual([]);
+  });
+});
+
+describe('AC-FE-R2c2 第 2 轮：普通生效失败 / 挂起可见', () => {
+  it('failed 非超上限显示原因，suspended 显示挂起；列表给通用标记', () => {
+    const failed = { ...row, activation: { status: 'failed', reason: 'REBUILD_REQUIRED', blockedByBusinessId: null } };
+    expect(model.activationNotice(failed)).toBe('生效失败：生效区间内有其他任职记录，需处理后重试');
+    const suspended = {
+      ...row,
+      activation: { status: 'suspended', reason: 'PREDECESSOR_FAILED', blockedByBusinessId: 'exit-0' },
+    };
+    expect(model.activationNotice(suspended)).toBe('生效挂起：前序业务生效失败');
+    expect(model.activationNotice({ ...row, activation: { status: 'failed', reason: 'X_UNKNOWN' } })).toBe(
+      '生效失败：X_UNKNOWN',
+    );
+    expect(model.activationBadge(failed)).toBe('生效失败');
+    expect(model.activationBadge(suspended)).toBe('生效挂起');
+    expect(model.activationBadge(row)).toBeUndefined();
+    expect(model.activationBadge({ ...row, activation: undefined })).toBeUndefined();
   });
 });
