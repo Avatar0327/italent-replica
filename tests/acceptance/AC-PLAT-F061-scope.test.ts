@@ -97,12 +97,16 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
         .filter((a) => a.profileCode === TR)
         .map((a) => a.targetCode),
     ).toEqual(DEC_415);
-    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、组织调整申请（BE-10a2）
+    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、
+    // 人员结构分析 / 员工结构报表 / 合同情况（BE-13a）、组织调整申请（BE-10a2）
     expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
       [
         'TenantBase.Blacklist',
         'TenantBase.ProbationAssessment',
         'TenantBase.HrDashboard',
+        'TenantBase.HrStructure',
+        'TenantBase.HrStructureReport',
+        'TenantBase.ContractBoard',
         'TenantBase.OrganizationApproval',
       ].flatMap((targetCode) =>
         DEC_415_BLACKLIST.map((profileCode) => ({
