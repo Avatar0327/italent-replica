@@ -93,7 +93,7 @@ describe('清单 24：审批容量（DEC-101）', () => {
       tx.execute(sql`INSERT INTO approval_tasks
         (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,origin,status,created_at)
         SELECT gen_random_uuid(),${w.tenant.id},${view.id}::uuid,100000+g,1,'out_head',${w.exceptionAdmin}::uuid,
-          'transfer','pending',now() FROM generate_series(1,60) g`),
+          'transfer','pending',now() FROM generate_series(1,110) g`),
     );
     const response = await w.taskAction(s.outHead.userId, current(view).id, 'add-sign', view.revision, {
       userIds: [finance],
@@ -131,7 +131,7 @@ describe('清单 24：审批容量（DEC-101）', () => {
               {
                 key: 'out_head',
                 name: '调出负责人',
-                approver: 'latest_record_department_head',
+                approver: { type: 'department', value: 'latest_record_department_head' },
                 noAssignee: 'exception_admin',
                 sameAssigneeSkip: false,
                 historySameAssigneeSkip: false,
@@ -161,7 +161,7 @@ describe('清单 24：审批容量（DEC-101）', () => {
     const s = await transferScene(w);
     const nodes = Array.from({ length: 30 }, (_, i) => ({
       key: `n${i}`,
-      approver: 'latest_record_department_head' as const,
+      approver: { type: 'department', value: 'latest_record_department_head' } as const,
       sameAssigneeSkip: true,
     }));
     await w.publishedProcess({ nodes });
@@ -194,7 +194,7 @@ describe('X-21：并发创建同编码流程返回 409', () => {
       approvalType: 'transfer',
       exceptionAdminUserId: w.exceptionAdmin,
       conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-      nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }],
+      nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
     };
     const raced = await Promise.all(
       [0, 1].map(() => w.request(w.hr.id, 'POST', `${BASE}/processes`, { ifMatch: 0, body })),
@@ -264,7 +264,7 @@ describe('清单 25：流程配置权仅限租户级管理员（DEC-102）', () 
       approvalType: 'transfer',
       exceptionAdminUserId: w.exceptionAdmin,
       conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-      nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }],
+      nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
     };
     const denied = await real.request('POST', `${BASE}/processes`, { ...w.as(departmentHr), ifMatch: 0, body });
     expect(denied.status).toBe(403);

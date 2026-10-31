@@ -97,7 +97,10 @@ describe('AC-EXIT-F316 默认与指定人员退回', () => {
       definition(x, {
         work_handover: {
           emptyApproverPolicy: 'auto_approve',
-          approvers: ['handover_work_owner', 'record_department_hrbp'],
+          approvers: [
+            { type: 'object_field', value: 'handover_work_owner' },
+            { type: 'department', value: 'record_department_hrbp' },
+          ],
         },
       }),
     );

@@ -69,7 +69,13 @@ async function leaveBefore(db: Db) {
   await w.publishedProcess({
     approvalType: 'leave',
     conditions: LEAVE_CONDITION,
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', actions: { avoidSelf: true } }],
+    nodes: [
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        actions: { avoidSelf: true },
+      },
+    ],
   });
   const employee = await w.json<{ revision: number }>(
     await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
@@ -106,7 +112,14 @@ async function personnelBefore(db: Db) {
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'self', approver: 'owner', formFields: ['school'], actions: { avoidSelf: true } }],
+    nodes: [
+      {
+        key: 'self',
+        approver: { type: 'custom_variable', value: 'owner' },
+        formFields: ['school'],
+        actions: { avoidSelf: true },
+      },
+    ],
   });
   const record = await w.json<{ id: string; revision: number }>(
     await w.request(w.hr.id, 'POST', `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`, {
@@ -168,7 +181,7 @@ async function contractBefore(db: Db) {
             {
               ...preset.definition.nodes[0]!,
               kind: 'single',
-              approver: 'owner',
+              approver: { type: 'custom_variable', value: 'owner' },
               exits: ['approve', 'disagree'],
             },
           ],

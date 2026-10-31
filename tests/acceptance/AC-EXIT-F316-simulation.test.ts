@@ -160,7 +160,10 @@ describe('AC-EXIT-F316 两个仿真入口复用运行策略', () => {
         work_handover: { emptyApproverPolicy: 'specified', fallbackUserIds: [specified, specified] },
         other_handover: {
           emptyApproverPolicy: 'auto_approve',
-          approvers: ['handover_hr_admin', 'record_department_hrbp'],
+          approvers: [
+            { type: 'identity', value: 'handover_hr_admin' },
+            { type: 'department', value: 'record_department_hrbp' },
+          ],
         },
       }),
     );

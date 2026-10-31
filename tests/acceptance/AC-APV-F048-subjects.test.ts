@@ -63,7 +63,9 @@ const pendingOf = (view: InstanceView) => view.tasks.filter((task) => task.statu
 /** 只有一个“调出部门负责人”节点的已发布调动流程。 */
 async function scene(w: ApprovalWorld) {
   const s = await transferScene(w);
-  await w.publishedProcess({ nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }] });
+  await w.publishedProcess({
+    nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
+  });
   return s;
 }
 

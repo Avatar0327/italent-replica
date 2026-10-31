@@ -8,7 +8,11 @@ import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
-const DIRECT = { key: 'manager', name: '直接上级', approver: 'direct_manager' } as const;
+const DIRECT = {
+  key: 'manager',
+  name: '直接上级',
+  approver: { type: 'object_field', value: 'direct_manager' },
+} as const;
 
 async function directBusiness(w: ApprovalWorld, employeeId: string, body: object) {
   const employee = await w.json<{ revision: number }>(
@@ -51,7 +55,7 @@ describe('AC-APV-38 最新生效主职直线经理，与部门负责人并存', 
       fields: { directManagerId: s.inHead.employeeId },
     });
     const process = await w.publishedProcess({
-      nodes: [DIRECT, { key: 'head', approver: 'latest_record_department_head' }],
+      nodes: [DIRECT, { key: 'head', approver: { type: 'department', value: 'latest_record_department_head' } }],
     });
     expect(process.currentVersion?.nodes[0]).toMatchObject(DIRECT);
     const draft = await w.application(s.subject.employeeId.toUpperCase(), {
@@ -99,7 +103,7 @@ describe('AC-APV-39 不可用经理按空处理', () => {
       expect(await w.business(draft.id)).toEqual(businessBefore);
       await w.publishedProcess({
         priority: -1,
-        nodes: [{ key: 'head', approver: 'latest_record_department_head' }, DIRECT],
+        nodes: [{ key: 'head', approver: { type: 'department', value: 'latest_record_department_head' } }, DIRECT],
       });
       let view = await w.submit(draft);
       view = await w.json(await w.taskAction(s.outHead.userId, w.pending(view)[0]!.id, 'approve', view.revision));
@@ -164,7 +168,10 @@ describe('AC-APV-41 流程匹配、虚拟仿真、UUID 规范化与租户隔离'
         {
           key: 'joint',
           kind: 'countersign',
-          approvers: ['direct_manager', 'record_department_head'],
+          approvers: [
+            { type: 'object_field', value: 'direct_manager' },
+            { type: 'department', value: 'record_department_head' },
+          ],
         },
       ],
     });
@@ -212,8 +219,8 @@ describe('AC-APV-41 流程匹配、虚拟仿真、UUID 规范化与租户隔离'
       nodes: [
         {
           approvers: [
-            { expression: 'direct_manager', approverUserId: manager },
-            { expression: 'record_department_head', approverUserId: boss },
+            { expression: { type: 'object_field', value: 'direct_manager' }, approverUserId: manager },
+            { expression: { type: 'department', value: 'record_department_head' }, approverUserId: boss },
           ],
         },
       ],
@@ -260,13 +267,22 @@ describe('AC-APV-42 出厂离职预置与已发布自定义流程', () => {
       approvalType: 'leave',
       isFallback: true,
       conditions: { items: [] },
-      nodes: [{ key: 'direct_head', name: '租户自定义', approver: 'latest_record_department_head' }],
+      nodes: [
+        {
+          key: 'direct_head',
+          name: '租户自定义',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+        },
+      ],
     });
     const install = async () =>
       w.json<{ items: ProcessView[] }>(await w.request(w.hr.id, 'POST', `${BASE}/presets/install`, { ifMatch: 0 }));
     const installed = await install();
     const leave = installed.items.find((p) => p.presetKey === 'standard_leave')!;
-    expect(leave.latestVersion.nodes[0]).toMatchObject({ name: '直接上级', approver: 'direct_manager' });
+    expect(leave.latestVersion.nodes[0]).toMatchObject({
+      name: '直接上级',
+      approver: { type: 'object_field', value: 'direct_manager' },
+    });
     const configured = await w.json<ProcessView>(
       await w.request(w.hr.id, 'PUT', `${BASE}/processes/${leave.id}/draft`, {
         ifMatch: leave.revision,

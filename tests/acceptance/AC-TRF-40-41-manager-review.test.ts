@@ -33,7 +33,7 @@ describe('AC-TRF-40/41 astra 第二轮回归', () => {
     await w.setOrgRoles(source, { head: managerId });
     await w.setOrgRoles(target, { head: managerId });
     employeeId = (await w.person('被调动员工', source)).employeeId;
-    await w.publishedProcess({ nodes: [{ key: 'owner', approver: 'owner' }] });
+    await w.publishedProcess({ nodes: [{ key: 'owner', approver: { type: 'custom_variable', value: 'owner' } }] });
     const createJob = async (kind: string, body: object) =>
       (
         await w.json<{ id: string }>(

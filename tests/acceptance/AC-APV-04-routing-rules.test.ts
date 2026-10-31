@@ -46,7 +46,7 @@ describe('清单 6：中间节点审批人为空一律转异常管理员（DEC-0
           approvalType: 'transfer',
           exceptionAdminUserId: w.hr.id,
           conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-          nodes: [{ key: 'in_hrbp', approver: 'record_department_hrbp', noAssignee }],
+          nodes: [{ key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' }, noAssignee }],
         },
       });
       expect(response.status).toBe(400);
@@ -190,7 +190,7 @@ describe('清单 21：无可用账号按空处理；异常管理员停用前交�
     const initiator = await w.member('离职的发起人');
     await w.publishedProcess({
       exceptionAdminUserId: w.hr.id,
-      nodes: [TRANSFER_NODES[0]!, { key: 'owner', approver: 'owner' }],
+      nodes: [TRANSFER_NODES[0]!, { key: 'owner', approver: { type: 'custom_variable', value: 'owner' } }],
     });
     const draft = await w.application(s.subject.employeeId, { departmentId: s.to }, { actor: initiator });
     const view = await w.submit(draft, initiator);
@@ -215,7 +215,7 @@ describe('X-14：自动同意也触发该节点的同意消息规则', () => {
         TRANSFER_NODES[0]!,
         {
           key: 'in_head',
-          approver: 'record_department_head',
+          approver: { type: 'department', value: 'record_department_head' },
           sameAssigneeSkip: true,
           messageRules: [
             { trigger: 'approve', channels: ['inbox'], template: 'TenantBase.Ygddtz', recipient: 'subject_employee' },

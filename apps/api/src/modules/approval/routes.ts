@@ -2,6 +2,7 @@
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
+import { designerSourcesQuery, listDesignerSources } from './designer-sources.js';
 import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
 import {
   pgErrorCode,
@@ -60,6 +61,7 @@ import {
   withdraw,
   type Outcome,
 } from './actions.js';
+import { designerPeopleQuery, listDesignerPeople } from './designer-people.js';
 import { ADAPTERS } from './adapters.js';
 import { approvalError, canonicalId, type ApprovalContext, type FieldAccess } from './context.js';
 import { approvalTypeOf, createSchema, definitionSchema, toDefinition } from './definition-input.js';
@@ -293,6 +295,18 @@ function registerHooks(deps: TenantRouteDeps) {
 }
 
 function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/designer/source-candidates', async (c) => {
+    const ctx = readCtx(c, deps);
+    await requireProcessButton(deps, ctx, 'update');
+    const query = designerSourcesQuery(c.req.query());
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerSources(tx, ctx.tenantId, query)));
+  });
+  router.get('/designer/person-candidates', async (c) => {
+    const ctx = readCtx(c, deps);
+    await requireProcessButton(deps, ctx, 'update');
+    const query = designerPeopleQuery(c.req.query());
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => listDesignerPeople(tx, ctx.tenantId, query)));
+  });
   router.get('/types', async (c) => {
     await requireProcessView(deps, tenantCtx(c));
     return c.json({ items: Object.values(APPROVAL_TYPES) });
@@ -399,6 +413,7 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
 /** 仿真只收虚拟数据（清单 7）：审批人关系、直线经理、组织上下级都由输入给出，不接受真实员工标识去查库。 */
 const simulationData = z.strictObject({
   values: z.record(z.string().max(100), z.union([z.string().max(500), z.null()])),
+  sourceRelations: z.record(z.string().max(250), z.array(userIdInput).max(200)).optional(),
   relations: z.partialRecord(z.enum(APPROVER_EXPRESSIONS), userIdInput.nullable()).optional(),
   managers: z
     .record(z.uuid(), userIdInput.nullable())

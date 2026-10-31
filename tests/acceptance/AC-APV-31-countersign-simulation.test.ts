@@ -15,7 +15,10 @@ const JOINT: NodeInput = {
   key: 'joint',
   name: '调入部门会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
   transitionRule: { type: 'all' },
 };
 
@@ -73,8 +76,16 @@ describe('AC-APV-31 仿真支持会签节点', () => {
       approverUserId: null,
       transitionRule: { type: 'all' },
       approvers: [
-        expect.objectContaining({ expression: 'record_department_head', status: 'pass', approverUserId: head }),
-        expect.objectContaining({ expression: 'record_department_hrbp', status: 'pass', approverUserId: hrbp }),
+        expect.objectContaining({
+          expression: { type: 'department', value: 'record_department_head' },
+          status: 'pass',
+          approverUserId: head,
+        }),
+        expect.objectContaining({
+          expression: { type: 'department', value: 'record_department_hrbp' },
+          status: 'pass',
+          approverUserId: hrbp,
+        }),
       ],
     });
     expect(full.nodes[1]).toMatchObject({ key: 'out_head', kind: 'single', approverUserId: outHead });
@@ -91,7 +102,14 @@ describe('AC-APV-31 仿真支持会签节点', () => {
     const draft = await w.createProcess({
       nodes: [
         TRANSFER_NODES[0]!,
-        { ...JOINT, approvers: ['latest_record_department_head', 'record_department_hrbp'], sameAssigneeSkip: true },
+        {
+          ...JOINT,
+          approvers: [
+            { type: 'department', value: 'latest_record_department_head' },
+            { type: 'department', value: 'record_department_hrbp' },
+          ],
+          sameAssigneeSkip: true,
+        },
       ],
     });
     const outHead = randomUUID();

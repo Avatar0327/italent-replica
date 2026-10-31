@@ -50,3 +50,33 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 16px;
 }
+.intern-create {
+  top: 20px;
+  padding-bottom: 20px;
+}
+.intern-create .ant-modal-body {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding-right: 12px;
+}
+.intern-create h3 {
+  border-left: 3px solid #4096ff;
+  padding-left: 8px;
+  font-size: 15px;
+  margin: 24px 0 18px;
+}
+.intern-create .ant-form-item-label {
+  flex: 0 0 116px;
+}
+.intern-create .ant-form-item-control {
+  min-width: 0;
+  flex: 1;
+}
+.intern-create .ant-picker,
+.intern-create .ant-input-number {
+  width: 100%;
+}
+.intern-create p {
+  color: #777;
+  font-size: 12px;
+}
