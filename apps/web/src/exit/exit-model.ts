@@ -201,8 +201,9 @@ export function previewNotice(preview: Preview) {
     else if (warning.reason === 'IN_FLIGHT_ASSESSMENT' && count) messages.push(x.assessment(count));
   }
   const ackToken = tooMany ? undefined : preview.ack?.ackToken;
-  const label = tooMany ? x.continueSubmit : ackToken ? x.confirmSubmit : x.submit;
-  return { blockers, messages, ackToken, tooMany: !!tooMany, label };
+  // 超上限时没有令牌，“确认并提交”只在有令牌时出现
+  const plain = tooMany ? x.continueSubmit : x.submit;
+  return { blockers, messages, ackToken, tooMany: !!tooMany, label: ackToken ? x.confirmSubmit : plain };
 }
 
 /** 表单字段（exitOptionsSchema + lastWorkDate）；加黑三项只在“加入黑名单 = 是”时出现。 */

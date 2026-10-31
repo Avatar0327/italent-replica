@@ -82,6 +82,7 @@ export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): vo
   );
 }
 
+const doneText = (item: HandoverItem) => (item.done ? x.itemDone : x.itemPending);
 function Handover({ row, refresh }: { row: Row; refresh(): Promise<unknown> }) {
   const read = useRead<unknown>(`${slotKey(exits, row.id)}/handover`);
   const permission = usePermissions(object).snapshot.objects[object];
@@ -118,8 +119,7 @@ function Handover({ row, refresh }: { row: Row; refresh(): Promise<unknown> }) {
           columns={(['title', 'category', 'done'] as const).map((key) => ({
             key,
             title: x.handoverItems[key],
-            render: (_: unknown, item: HandoverItem) =>
-              key === 'done' ? (item.done ? x.itemDone : x.itemPending) : (item[key] ?? x.missing),
+            render: (_: unknown, item: HandoverItem) => (key === 'done' ? doneText(item) : (item[key] ?? x.missing)),
           }))}
         />
       )}
