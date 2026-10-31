@@ -55,10 +55,11 @@ const platformAudit = (userId: string) =>
         WHERE object_type='user' AND object_id=${userId} ORDER BY occurred_at, id`),
     ),
   );
+// 同一事务写的几条 occurred_at 相同（领取与结算可在同一事务）、id 是随机 uuid：同刻按对象 revision 排
 const tenantAudit = (x: World, action: string) =>
   x.sqlRows<{ before: Record<string, unknown> | null; after: Record<string, unknown> | null }>(sql`
     SELECT before, after FROM audit_events WHERE tenant_id=${x.session.tenant.id} AND action=${action}
-    ORDER BY occurred_at, id`);
+    ORDER BY occurred_at, (after->>'revision')::int NULLS FIRST, id`);
 const accountTasks = (x: World) =>
   x.sqlRows<{ status: string; restore: boolean; auto: number | null }>(sql`
     SELECT status, restore_requested AS restore, auto_revision AS auto FROM exit_account_tasks
