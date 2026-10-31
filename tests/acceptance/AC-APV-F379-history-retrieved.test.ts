@@ -33,11 +33,16 @@ async function act(response: Response): Promise<InstanceView> {
   return (await response.json()) as InstanceView;
 }
 
-/** 当前唯一待办由 user 同意。 */
+/** 当前唯一待办，且属于 user。 */
+function onlyPending(w: ApprovalWorld, current: InstanceView, user: string) {
+  const pending = w.pending(current);
+  expect(pending.map((task) => task.assigneeUserId)).toEqual([user]);
+  return pending[0]!;
+}
+
 async function approvePending(w: ApprovalWorld, current: InstanceView, user: string) {
-  const [task] = w.pending(current);
-  expect(task?.assigneeUserId).toBe(user);
-  return act(await w.taskAction(user, task!.id, 'approve', current.revision));
+  const task = onlyPending(w, current, user);
+  return act(await w.taskAction(user, task.id, 'approve', current.revision));
 }
 
 async function retrieve(w: ApprovalWorld, current: InstanceView, user: string, taskId: string) {
@@ -46,8 +51,8 @@ async function retrieve(w: ApprovalWorld, current: InstanceView, user: string, t
 }
 
 async function transferPending(w: ApprovalWorld, current: InstanceView, from: string, to: string) {
-  const [task] = w.pending(current);
-  return act(await w.taskAction(from, task!.id, 'transfer', current.revision, { toUserId: to }));
+  const task = onlyPending(w, current, from);
+  return act(await w.taskAction(from, task.id, 'transfer', current.revision, { toUserId: to }));
 }
 
 const tasksOf = (current: InstanceView, nodeKey: string) =>
@@ -61,7 +66,7 @@ describe('AC-APV-F379 历史相同自动处理排除已撤回的同意', () => {
   it('A 同意节点一后撤回并转交 C、C 同意：节点三给 A 人工待办，不按历史相同自动通过', async () => {
     const { w, s, current: submitted } = await threeNodeScene('f379-retrieved-transfer');
     let current = submitted;
-    const original = w.pending(current)[0]!;
+    const original = onlyPending(w, current, s.outHead.userId);
     current = await approvePending(w, current, s.outHead.userId);
     current = await retrieve(w, current, s.outHead.userId, original.id);
     const replacement = await w.person('接手审批人', s.from);
@@ -86,7 +91,7 @@ describe('AC-APV-F379 历史相同自动处理排除已撤回的同意', () => {
   it('撤回后由 A 本人重新同意：新同意有效，节点三按历史相同自动同意', async () => {
     const { w, s, current: submitted } = await threeNodeScene('f379-reapproved');
     let current = submitted;
-    const original = w.pending(current)[0]!;
+    const original = onlyPending(w, current, s.outHead.userId);
     current = await approvePending(w, current, s.outHead.userId);
     current = await retrieve(w, current, s.outHead.userId, original.id);
     current = await approvePending(w, current, s.outHead.userId);
