@@ -20,6 +20,16 @@ export type OfferListField =
   | 'currentApprovers'
   | 'currentApprovalNode';
 
+/** F-319：名称从对应 ID 的字段查看权派生，不新增独立授权项。 */
+export const OFFER_NAME_FIELDS = {
+  departmentName: 'departmentId',
+  departmentFullName: 'departmentId',
+  positionName: 'positionId',
+  postName: 'postId',
+  sentByName: 'sentBy',
+  directManagerName: 'directManagerId',
+} as const satisfies Readonly<Record<string, OfferListField>>;
+
 /** 原站显示名 → 字段；不在表里的列（简历信息、Offer附件、签署状态等）没有数据来源。 */
 const LABEL_FIELDS: Readonly<Record<string, OfferListField>> = {
   姓名: 'name',
