@@ -265,10 +265,14 @@ describe('AC-HA-13c ① 在途流程监控（只统计 6 类核心流程）', ()
   it('7.2.01 共发起 / 在途：窗口内的核心流程；退休（其他）与窗口前发起的不计', async () => {
     const all = [...instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'), f.offers.o1Instance, f.contracts.instance];
     await board.expectComponent('inFlightCount', { all, hits: instances('f', 'g', 'l') });
-    await board.expectComponent('inFlightCount', {
-      all: instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'),
-      hits: instances('f', 'g', 'l'),
-    }, TRANSFER);
+    await board.expectComponent(
+      'inFlightCount',
+      {
+        all: instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'),
+        hits: instances('f', 'g', 'l'),
+      },
+      TRANSFER,
+    );
     // 窗口起点放宽一天，窗口前一天发起的 OUT 随即计入
     const wider = await board.detail('inFlightCount', 'from=2026-09-20');
     expect(wider.map((item) => item.id)).toContain(f.flows.out.instance);
@@ -490,30 +494,46 @@ describe('AC-HA-13c 范围与授权', () => {
     const stranger = await w.member('旁人');
     const denyAdmin: Authorizer = (request) =>
       !(request.action === 'object.button' && /#admin(Transfer|Intervene)@/.test(String(request.resource)));
-    const other = processClient(w.db, { tenant: w.tenant.id, user: stranger }, {
-      now: () => new Date(at(AS_OF)),
-      authorize: denyAdmin,
-    });
+    const other = processClient(
+      w.db,
+      { tenant: w.tenant.id, user: stranger },
+      {
+        now: () => new Date(at(AS_OF)),
+        authorize: denyAdmin,
+      },
+    );
     await other.expectComponent('inFlightCount', { all: [], hits: [] });
     // 同一授权器下的发起人 HR 仍看到自己发起的
-    const initiator = processClient(w.db, { tenant: w.tenant.id, user: w.hr.id }, {
-      now: () => new Date(at(AS_OF)),
-      authorize: denyAdmin,
-    });
-    await initiator.expectComponent('inFlightCount', {
-      all: instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'),
-      hits: instances('f', 'g', 'l'),
-    }, TRANSFER);
+    const initiator = processClient(
+      w.db,
+      { tenant: w.tenant.id, user: w.hr.id },
+      {
+        now: () => new Date(at(AS_OF)),
+        authorize: denyAdmin,
+      },
+    );
+    await initiator.expectComponent(
+      'inFlightCount',
+      {
+        all: instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'),
+        hits: instances('f', 'g', 'l'),
+      },
+      TRANSFER,
+    );
     // Offer 由申请人发起，HR 不是参与人：管理员按钮被拒后看不到
     expect((await initiator.detail('inFlightCount')).map((i) => i.id)).not.toContain(f.offers.o1Instance);
   });
 
   it('403 / 400 / 404', async () => {
     const denied: Authorizer = (request) => !(request.action === 'object.view' && request.resource === OBJECT);
-    const blocked = processClient(w.db, { tenant: w.tenant.id, user: w.hr.id }, {
-      now: () => new Date(at(AS_OF)),
-      authorize: denied,
-    });
+    const blocked = processClient(
+      w.db,
+      { tenant: w.tenant.id, user: w.hr.id },
+      {
+        now: () => new Date(at(AS_OF)),
+        authorize: denied,
+      },
+    );
     expect((await blocked.get(PROCESS_BASE)).status).toBe(403);
     expect((await blocked.get(`${PROCESS_BASE}/components/inFlightList`)).status).toBe(403);
     for (const query of ['asOf=2026-02-30', 'category=nope', 'from=2026-10-10&to=2026-10-01', 'departmentId=x'])

@@ -3,9 +3,9 @@
  * （hr-process-dashboard-routes.ts processContext → objectContext），范围按同一对象的数据范围解析（requestScope），
  * 与审批披露（参与人 / 审批管理员范围）取交集后在 SQL 内先于分页叠加。响应只含固定键的数字、ID 与在途明细 14 列。
  */
-import { HR_PROCESS_DASHBOARD_OBJECT } from '@italent/domain';
+import { APPROVAL_INSTANCE_OBJECT, HR_PROCESS_DASHBOARD_OBJECT } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';
-import { fixed, listScope, noButton, object } from '../../route-policy/presets.js';
+import { button, fixed, listScope, noButton, noFields, object } from '../../route-policy/presets.js';
 import { HR_PROCESS_DASHBOARD_BASE } from './hr-process-dashboard-routes.js';
 
 const read = (fields: ReturnType<typeof fixed>) =>
@@ -15,6 +15,19 @@ const read = (fields: ReturnType<typeof fixed>) =>
     button: noButton('看板只读，按对象查看权'),
     scope: listScope('hrProcessDashboard.visibility'),
     fields,
+    // 审批披露的管理员分支（approvalVisible → adminScope）：按钮 + 业务范围只放宽可见的审批实例，不参与准入
+    optional: Object.fromEntries(
+      (['adminTransfer', 'adminIntervene'] as const).map((code) => [
+        code,
+        object({
+          object: APPROVAL_INSTANCE_OBJECT,
+          operation: 'button',
+          button: button(code, 'detail'),
+          scope: listScope('approval.adminScope'),
+          fields: noFields('只向看板 SQL 提供审批实例的范围谓词'),
+        }),
+      ]),
+    ),
   });
 
 const WINDOW = ['asOf', 'from', 'to', 'hasDataPermission'];

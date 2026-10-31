@@ -6643,7 +6643,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_INDICATORS': ['2f879092d45f', 'e3b0c44298fc'],
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT': ['fd210121ca03', 'e3b0c44298fc'],
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_SOON_DAYS': ['91bdaf4d0a54', 'e3b0c44298fc'],
-  'packages/domain/src/analytics/hr-process-dashboard.ts#APPROVAL_CATEGORIES': ['0b3539b8adfe', 'e3b0c44298fc'],
+  'packages/domain/src/analytics/hr-process-dashboard.ts#APPROVAL_CATEGORIES': ['b908deb6bcdf', 'e3b0c44298fc'],
   'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS': ['dc0da8754072', 'e3b0c44298fc'],
   'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DASHBOARD_OBJECT': ['4d129b52ca20', 'e3b0c44298fc'],
   'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DEFAULT_DAYS': ['0e3d8916441e', 'e3b0c44298fc'],

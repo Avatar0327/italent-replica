@@ -22,6 +22,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
+    approvalVisible: '2e0c654e1a67',
     processContext: 'e09e4e721826',
     'route:GET /api/tenant/analytics/hr-process-dashboard': '6b3a6cfa7302',
     'route:GET /api/tenant/analytics/hr-process-dashboard/components/:code': '910cb6f5a545',
@@ -1737,6 +1738,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
     '980851c99aab',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
     '16d80c7c9dbf',

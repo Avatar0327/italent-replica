@@ -6,7 +6,15 @@
 export const HR_PROCESS_DASHBOARD_OBJECT = 'TenantBase.HrProcessDashboard';
 
 /** 审批类别：6 类核心流程 + 其他（B51 “只统计 6 类核心流程”）。值也是 approval_instances.approval_category 的取值。 */
-export const APPROVAL_CATEGORIES = ['offer', 'entry', 'regularization', 'transfer', 'exit', 'contract', 'other'] as const;
+export const APPROVAL_CATEGORIES = [
+  'offer',
+  'entry',
+  'regularization',
+  'transfer',
+  'exit',
+  'contract',
+  'other',
+] as const;
 export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
 export const CORE_APPROVAL_CATEGORIES: readonly ApprovalCategory[] = APPROVAL_CATEGORIES.filter((c) => c !== 'other');
 export const APPROVAL_CATEGORY_NAMES: Readonly<Record<ApprovalCategory, string>> = {
@@ -60,9 +68,27 @@ export const HR_PROCESS_COMPONENTS = [
   { no: '7.2.14', code: 'lateApprovalByCategory', name: '晚审批流程数', module: 'quality', subject: 'instance' },
   { no: '7.2.15', code: 'lateApprovalByApprover', name: '晚审批按审批人排名', module: 'quality', subject: 'task' },
   { no: '7.2.16', code: 'submitLag', name: '发起时间 − 业务日期 平均天数', module: 'quality', subject: 'instance' },
-  { no: '7.2.17', code: 'submitLagByCategory', name: '发起时间 − 业务日期（按类别）', module: 'quality', subject: 'instance' },
-  { no: '7.2.18', code: 'approveLag', name: '审批完成时间 − 业务日期 平均天数', module: 'quality', subject: 'instance' },
-  { no: '7.2.19', code: 'approveLagByCategory', name: '审批完成时间 − 业务日期（按类别）', module: 'quality', subject: 'instance' },
+  {
+    no: '7.2.17',
+    code: 'submitLagByCategory',
+    name: '发起时间 − 业务日期（按类别）',
+    module: 'quality',
+    subject: 'instance',
+  },
+  {
+    no: '7.2.18',
+    code: 'approveLag',
+    name: '审批完成时间 − 业务日期 平均天数',
+    module: 'quality',
+    subject: 'instance',
+  },
+  {
+    no: '7.2.19',
+    code: 'approveLagByCategory',
+    name: '审批完成时间 − 业务日期（按类别）',
+    module: 'quality',
+    subject: 'instance',
+  },
   // ④ 流程应用情况（7.1.20～24）：业务单据的审批占比
   { no: '7.1.20', code: 'offerApprovalRate', name: '入职 Offer 审批占比', module: 'usage', subject: 'business' },
   { no: '7.1.21', code: 'transferApprovalRate', name: '调动审批占比', module: 'usage', subject: 'business' },
