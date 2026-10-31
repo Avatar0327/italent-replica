@@ -98,6 +98,11 @@ export interface BusinessSnapshot {
   readonly tutorEmployeeId?: string | null;
   /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
   readonly handoverEmployeeId?: string | null;
+  /**
+   * 业务日期（规格 35 B51，人事流程看板判“业务已过期 / 晚提交 / 晚审批”）：Offer = 入职日期、离职 = 最后工作日，其余 = 生效日期；
+   * 业务没有这类日期时不填。实例发起与重提时写入审批实例（DEC-402 不回填存量）。
+   */
+  readonly businessDate?: string | null;
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
@@ -346,6 +351,10 @@ async function completedTransferDates(
   return { ...dates, actualEffectiveDate: business.effectiveDate };
 }
 
+/** 规格 35 B51：离职（及同走最后工作日的退休）取最后工作日，其余任职业务取生效日期。 */
+const employmentBusinessDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
+  ['leave', 'retirement'].includes(kind) ? (lastWorkDate ?? effectiveDate) : effectiveDate;
+
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId, reassignFrom) {
     const [owner] = rowsOf<{ employee_id: string; kind: string }>(
@@ -477,6 +486,7 @@ const employmentAdapter: BusinessAdapter = {
       // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
       version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
       processCode,
+      businessDate: employmentBusinessDate(business.kind, payload.lastWorkDate, business.effectiveDate),
     };
   },
   async persisted(tx, ctx, snapshot) {

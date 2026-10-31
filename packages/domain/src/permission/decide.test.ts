@@ -227,7 +227,7 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
         adminRoles: [],
         objectPermissions: [{ ...moduleGrant(object.code, true), profileApps: ['OtherApp'] }],
       };
-      if (object.code === MODULE_OBJECTS.hrDashboard.code) {
+      if (object.code === MODULE_OBJECTS.hrDashboard.code || object.code === MODULE_OBJECTS.hrProcessDashboard.code) {
         expect(businessField).toBeUndefined();
         // 规格 35 §2.1：看板是无业务字段的只读聚合，不应为了构造写用例而要求它提供业务字段。
         expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);

@@ -181,7 +181,12 @@ async function buildWorld(w: World) {
     await w.json(
       await w.request(w.hr.id, 'POST', '/api/tenant/contracts/commands', {
         ifMatch: 0,
-        body: { operation: 'create', mode, employeeId: person.employeeId, fields: { ...fields, signingDate: '2026-10-01' } },
+        body: {
+          operation: 'create',
+          mode,
+          employeeId: person.employeeId,
+          fields: { ...fields, signingDate: '2026-10-01' },
+        },
       }),
       201,
     );
@@ -208,7 +213,12 @@ async function buildWorld(w: World) {
   // 兜底流程的审批人 = 发起人（HR），在 10-12 当天同意
   const contractView = await w.detail(contractInstance.id);
   const contractTask = w.pending(contractView)[0]!;
-  const contractDone = await w.taskAction(contractTask.assigneeUserId, contractTask.id, 'approve', contractView.revision);
+  const contractDone = await w.taskAction(
+    contractTask.assigneeUserId,
+    contractTask.id,
+    'approve',
+    contractView.revision,
+  );
   expect((await w.json<InstanceView>(contractDone)).status).toBe('approved');
 
   w.setNow(at(AS_OF));
@@ -292,7 +302,7 @@ describe('AC-HA-13c ① 在途流程监控（只统计 6 类核心流程）', ()
       currentApproverUserId: f.leaver.userId,
       approverStatus: 'left',
       departmentId: f.org.x,
-      directManagerId: f.boss.employeeId,
+      directManagerId: f.leaver.employeeId, // G 的直线经理是将离职的经理（夹具第 71 行）
       initiatorUserId: w.hr.id,
       startedAt: at('2026-10-16'),
       arrivedAt: at('2026-10-16'),

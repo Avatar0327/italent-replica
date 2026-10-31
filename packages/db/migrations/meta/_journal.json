@@ -1226,6 +1226,13 @@
       "when": 1792958631519,
       "tag": "0174_f316_handover_empty_approver",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1793442697798,
+      "tag": "0175_be13c_approval_category",
+      "breakpoints": true
     }
   ]
 }

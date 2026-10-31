@@ -12,6 +12,7 @@ import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
 import { EVALUATION } from './evaluation.js';
 import { HR_DASHBOARD } from './hr-dashboard.js';
+import { HR_PROCESS_DASHBOARD } from './hr-process-dashboard.js';
 import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
@@ -56,6 +57,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   evaluation: EVALUATION,
   succession: SUCCESSION,
   'hr-dashboard': HR_DASHBOARD,
+  'hr-process-dashboard': HR_PROCESS_DASHBOARD,
   'org-adjustment': ORG_ADJUSTMENT,
 };
 

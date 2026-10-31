@@ -385,6 +385,8 @@ export const MODULE_OBJECTS = {
   // 看全部默认给本模块的预置管理员（DEC-415）
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
+  // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
+  hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(
