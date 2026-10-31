@@ -6,7 +6,7 @@
  *   当前审批节点”取在途实例；首节点为空报错；无权发起 403；状态不对 409；
  * - 预置草稿与审批人取值的类型限制（批量不得用“录用部门负责人”，三个新取值只用于 Offer 两类审批）。
  */
-import { PRESET_PROCESSES } from '@italent/domain';
+import { PRESET_PROCESSES, approverSource, type ApproverExpression } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { offerApprovalWorld, reasonOf, type OfferView } from './AC-OF-BE14a3-support.js';
@@ -21,26 +21,31 @@ describe('预置草稿（DEC-094，OF-R15）', () => {
       { no: 1, field: 'processCode', operator: 'eq', value: 'OfferBatchApprovalProcess' },
     ]);
     expect(preset.nodes.map((n) => [n.name, 'approver' in n && n.approver, n.noAssignee, n.exits])).toEqual([
-      ['直接上级', 'initiator_direct_manager', 'none', ['approve', 'disagree']],
-      ['审批主体一级组织负责人', 'approval_subject_first_level_org_head', 'exception_admin', ['approve', 'disagree']],
+      ['直接上级', approverSource('initiator_direct_manager'), 'none', ['approve', 'disagree']],
+      [
+        '审批主体一级组织负责人',
+        approverSource('approval_subject_first_level_org_head'),
+        'exception_admin',
+        ['approve', 'disagree'],
+      ],
     ]);
   });
 
   it('单个 Offer 审批：录用部门负责人（节点结构未取证，沿用占位）', () => {
     const nodes = presetOf('offer')!.definition.nodes;
-    expect(nodes.map((n) => 'approver' in n && n.approver)).toEqual(['offer_department_head']);
+    expect(nodes.map((n) => 'approver' in n && n.approver)).toEqual([approverSource('offer_department_head')]);
   });
 });
 
 describe('审批人取值的类型限制', () => {
-  const process = (approvalType: string, approver: string) => ({
+  const process = (approvalType: string, approver: ApproverExpression) => ({
     code: `OF3_${approvalType}_${approver}`.slice(0, 60),
     name: '合成流程',
     approvalType,
     exceptionAdminUserId: null,
     isFallback: true,
     conditions: { items: [] },
-    nodes: [{ key: 'n1', approver }],
+    nodes: [{ key: 'n1', approver: approverSource(approver) }],
   });
 
   it('批量审批不得用“录用部门负责人”；新取值不得用于调动；各自类型上可用', async () => {
@@ -53,7 +58,7 @@ describe('审批人取值的类型限制', () => {
       ['offer', 'approval_subject_first_level_org_head'],
     ] as const) {
       expect(await reasonOf(await post(process(type, approver))), `${type}/${approver}`).toMatchObject({
-        status: 400,
+        status: 422,
         reason: 'APPROVAL_DEFINITION_INVALID',
       });
     }

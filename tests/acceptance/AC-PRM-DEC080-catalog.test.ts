@@ -1,6 +1,18 @@
+import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { trimModuleResponse } from '../../apps/api/src/modules/permission/module-access.js';
 import {
+  addMember,
+  createProfile,
+  grant,
+  makeGrantable,
+  type MyObjectPermission,
+  myObject,
+  seedPermissionWorld,
+  setObjectPermission,
+} from './AC-PRM-support.js';
+import {
+  buttonResource,
   decide,
   PERSONNEL_OBJECT,
   PERSONNEL_OBJECTS,
@@ -8,6 +20,8 @@ import {
   ObjectCatalog,
   type PermissionSubject,
 } from '@italent/domain';
+
+const testDb = useTestDb();
 
 describe('DEC-080 real module catalogs and fail-closed writes', () => {
   it('AC-PER-F325 日工资标准登记为可独立授予编辑权的档案字段', () => {
@@ -17,11 +31,55 @@ describe('DEC-080 real module catalogs and fail-closed writes', () => {
     ]);
   });
 
-  it('AC-PRM-DEC080 F-222：Offer 批量审批单只登记原站 B1/B2 的两个详情页不同意按钮', () => {
+  it('AC-PRM-DEC080 F-222 / F-225：Offer 批量审批单只登记两个详情页不同意按钮，按“新增”控制（DEC-704）', () => {
     expect(MODULE_OBJECTS.offerBatchApproval.buttons).toEqual([
-      { code: 'PartDisAgree', level: 'detail', requires: 'update' },
-      { code: 'AllDisAgree', level: 'detail', requires: 'update' },
+      { code: 'PartDisAgree', level: 'detail', requires: 'create' },
+      { code: 'AllDisAgree', level: 'detail', requires: 'create' },
     ]);
+  });
+
+  // F-225（DEC-704）：原站两按钮事件类型为“创建”。只开新增 → 可见可执行；只开编辑不开新增 → 不可见、授权器拒绝。
+  it.each([
+    ['只开新增', true, { create: true, update: false, delete: false }],
+    ['只开编辑', false, { create: false, update: true, delete: false }],
+  ] as const)('AC-PRM-DEC080 F-225：%s → 两个不同意按钮可见 = %s', async (label, visible, dataOperations) => {
+    const definition = MODULE_OBJECTS.offerBatchApproval;
+    const world = await seedPermissionWorld(testDb().db);
+    const profile = await createProfile(world, `f225${dataOperations.create ? 'create' : 'update'}`);
+    const buttons = definition.buttons.map((b) => ({ buttonCode: b.code, level: b.level }));
+    const set = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations,
+        fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
+        buttons,
+      },
+      definition.code,
+    );
+    expect(set.status, await set.clone().text()).toBe(200);
+    await makeGrantable(world, [profile.id]);
+    const user = await addMember(world, label);
+    expect((await grant(world, user.id, profile.id)).status).toBe(201);
+
+    const res = await myObject(world, user, definition.code);
+    expect(res.status, await res.clone().text()).toBe(200);
+    const mine = (await res.json()) as MyObjectPermission;
+    expect(mine.dataOperations).toEqual(dataOperations);
+    expect(mine.buttons).toHaveLength(visible ? buttons.length : 0);
+    expect(mine.buttons).toEqual(expect.arrayContaining(visible ? buttons : []));
+
+    const subject: PermissionSubject = {
+      adminRoles: [],
+      objectPermissions: [
+        { objectCode: definition.code, profileApps: [definition.application], dataOperations, fields: [], buttons },
+      ],
+    };
+    const catalog = new ObjectCatalog(Object.values(MODULE_OBJECTS));
+    for (const { buttonCode, level } of buttons) {
+      const resource = buttonResource(definition.code, buttonCode, level);
+      expect(decide(subject, { action: 'object.button', resource }, catalog), buttonCode).toBe(visible);
+    }
   });
 
   it('registers actual fields and buttons, with system fields never editable', () => {

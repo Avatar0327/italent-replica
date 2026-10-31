@@ -18,7 +18,13 @@ import {
   withTenant,
 } from '@italent/db';
 import { bootstrapTenantAdmin } from '@italent/api';
-import { APPROVAL_TYPES, MODULE_OBJECTS, type ApprovalTypeCode, type ObjectDefinition } from '@italent/domain';
+import {
+  APPROVAL_TYPES,
+  MODULE_OBJECTS,
+  type ApprovalTypeCode,
+  type ApproverSource,
+  type ObjectDefinition,
+} from '@italent/domain';
 import { expect } from 'vitest';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { withLoginEmail } from './AC-EMP-support.js';
@@ -29,19 +35,7 @@ import { uniqueSuffix } from './support/unique.js';
 export const APV_TODAY = '2026-10-01';
 const BASE = '/api/tenant/approval';
 
-export type ApproverExpressionInput =
-  | 'owner'
-  | 'direct_manager'
-  | 'latest_record_department_head'
-  | 'record_department_head'
-  | 'record_department_hrbp'
-  | 'record_first_level_org_head'
-  // BE-7 PT-1：主职部门 HRBP（兼职预置流程）
-  | 'latest_record_department_hrbp'
-  // R2 BE-14a3：Offer 两类审批专用
-  | 'offer_department_head'
-  | 'initiator_direct_manager'
-  | 'approval_subject_first_level_org_head';
+export type ApproverExpressionInput = ApproverSource;
 
 export interface ExitRuleInput {
   readonly kind: 'count' | 'percent';
@@ -508,10 +502,14 @@ export type ApprovalWorld = Awaited<ReturnType<typeof approvalWorld>>;
 
 /** 本租户调动流程节点结构（`14` §2）：调出负责人 → 调入 HRBP → 调入负责人 → 一级组织负责人。 */
 export const TRANSFER_NODES: readonly NodeInput[] = [
-  { key: 'out_head', name: '调出部门负责人审批', approver: 'latest_record_department_head' },
-  { key: 'in_hrbp', name: '调入部门HRBP审核', approver: 'record_department_hrbp' },
-  { key: 'in_head', name: '调入部门负责人审批', approver: 'record_department_head' },
-  { key: 'first_level', name: '单人审批', approver: 'record_first_level_org_head' },
+  {
+    key: 'out_head',
+    name: '调出部门负责人审批',
+    approver: { type: 'department', value: 'latest_record_department_head' },
+  },
+  { key: 'in_hrbp', name: '调入部门HRBP审核', approver: { type: 'department', value: 'record_department_hrbp' } },
+  { key: 'in_head', name: '调入部门负责人审批', approver: { type: 'department', value: 'record_department_head' } },
+  { key: 'first_level', name: '单人审批', approver: { type: 'department', value: 'record_first_level_org_head' } },
 ];
 
 /**
@@ -636,7 +634,7 @@ export async function installApprovalFallbacks(
             {
               key: 'owner',
               name: '夹具节点',
-              approver: 'owner',
+              approver: { type: 'custom_variable', value: 'owner' },
               noAssignee: 'exception_admin',
               sameAssigneeSkip: false,
               historySameAssigneeSkip: false,

@@ -169,7 +169,7 @@ describe('F-291 不下发的情形', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate', 'place', hidden],
           editableFields: [hidden, 'place'],
           editMode: 'with_approve',
@@ -236,7 +236,7 @@ describe('F-291 调动：既有必填规则（DEC-165 新部门必填）纳入�
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate', 'place'],
           editableFields: ['departmentId', 'place'],
           editMode: 'with_approve',

@@ -654,6 +654,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/establishment.ts#assertNoStrictQuota',
     'apps/api/src/modules/offer/sync-lock.ts#inboundEmploymentContext',
     '#assertContractDates',
+    '#assertSyncPlanReady',
     '#present',
     '#profilePatch',
     '#regularizationProbation',
@@ -663,7 +664,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#effectiveOfferType',
     'packages/domain/src/offer/sync.ts#offerSyncKind',
   ],
-  'apps/api/src/modules/offer/sync.ts#internConversionOnly': ['#linkedPerson'],
+  'apps/api/src/modules/offer/sync.ts#internConversionOnly': ['#linkedPerson', '#syncPlan'],
   'apps/api/src/modules/offer/sync.ts#linkEmployee': [
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
@@ -701,9 +702,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/offer/context.ts#assertOfferRevision',
     'apps/api/src/modules/offer/service.ts#lockOffer',
     'apps/api/src/modules/offer/service.ts#offerDto',
+    'apps/api/src/modules/offer/sync-lock.ts#lockOfferSyncScope',
+    '#assertSyncPlanReady',
     '#internConversionOnly',
     '#readOfferSyncSetting',
     '#syncOffer',
+    '#syncPlan',
     'packages/domain/src/offer/sync.ts#offerManualSyncable',
   ],
   'apps/api/src/modules/offer/sync.ts#syncOfferWhenDue': [
@@ -713,7 +717,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/sync.ts#offerSyncDue',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
-  'apps/api/src/modules/offer/sync.ts#syncPlan': ['apps/api/src/modules/employment/read-model.ts#findPredecessor'],
+  'apps/api/src/modules/offer/sync.ts#syncPlan': [
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#hasPendingRetirement',
+  ],
   'apps/api/src/modules/offer/transitions.ts#offerActionAccess': [
     'packages/domain/src/offer/rules.ts#OFFER_BUTTONS',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',

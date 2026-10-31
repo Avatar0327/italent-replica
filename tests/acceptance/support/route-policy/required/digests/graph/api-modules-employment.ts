@@ -45,15 +45,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/activation-service.ts#activateDueBusinesses': [
     'apps/api/src/modules/employment/activation-checks.ts#activateWithJudgement',
     '#dueQueue',
-    'apps/api/src/modules/employment/activation-store.ts#PREDECESSOR_FAILED',
+    '#suspendAfterPredecessorFailure',
+    '#waitingRehire',
     'apps/api/src/modules/employment/activation-store.ts#REBUILD_REQUIRED',
     'apps/api/src/modules/employment/activation-store.ts#failureBlockerIds',
     'apps/api/src/modules/employment/activation-store.ts#recordActivationAttempt',
-    'apps/api/src/modules/employment/activation-store.ts#unresolvedPredecessor',
     'apps/api/src/modules/employment/exit-activation.ts#activateExit',
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
-    'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors',
   ],
   'apps/api/src/modules/employment/activation-service.ts#dueQueue': [
     'apps/api/src/modules/employment/activation-store.ts#pendingActivations',
@@ -66,8 +65,19 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/activation-store.ts#unresolvedPredecessor',
     'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#retireRehireActivationDecision',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/employment/activation-service.ts#suspendAfterPredecessorFailure': [
+    'apps/api/src/modules/employment/activation-store.ts#PREDECESSOR_FAILED',
+    'apps/api/src/modules/employment/activation-store.ts#recordActivationAttempt',
+    'apps/api/src/modules/employment/activation-store.ts#unresolvedPredecessor',
+    'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors',
+  ],
+  'apps/api/src/modules/employment/activation-service.ts#waitingRehire': [
+    'apps/api/src/modules/employment/activation-store.ts#recordActivationAttempt',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#retireRehireActivationDecision',
   ],
   'apps/api/src/modules/employment/activation-store.ts#activationPredecessors': ['#pendingActivations'],
   'apps/api/src/modules/employment/activation-store.ts#activationSummary': [
@@ -2282,6 +2292,7 @@ export const GRAPH: Graph = {
     '#TYPE',
     'apps/api/src/modules/employment/exit-handover-store.ts#loadHandoverRequest',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-adapter.ts#unsupported': [
@@ -3263,10 +3274,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
     '#VOIDABLE_KINDS',
+    'apps/api/src/modules/employment/fields.ts#dayAfter',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireSurvivesRetirement',
+    'apps/api/src/modules/employment/timeline.ts#timelinePosition',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
     '#voidApplications',
     '#voidCandidates',
+    'apps/api/src/modules/employment/fields.ts#dayAfter',
+    'apps/api/src/modules/employment/retirement-application.ts#loadRetirementRequest',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidOne': [
     'apps/api/src/modules/approval/actions.ts#cancel',
@@ -3392,6 +3408,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/references.ts#validateEmploymentReferences',
     'apps/api/src/modules/employment/types.ts#emptyPresetFields',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
+    'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence',
     'apps/api/src/modules/employment/write-service.ts#selectEmploymentCycle',
   ],
   'apps/api/src/modules/employment/forward-references.ts#availableForwardChanges': [
@@ -3816,7 +3833,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/activation-store.ts#activationPredecessors',
     '#blockingPredecessors',
   ],
-  'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors': ['#exemptsBlocker'],
+  'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors': [
+    '#exemptsBlocker',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireDependency',
+  ],
   'apps/api/src/modules/employment/linkage-dependency.ts#exemptsBlocker': [
     'apps/api/src/modules/employment/activation-store.ts#isRebuildBlocker',
     '#linkageDependent',
@@ -5667,6 +5687,56 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/reporting-cycle.ts#recordWindow': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#hasPendingRetirement': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#pendingRetirementBefore',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#pendingRetirementBefore': ['#pendingRetirementId'],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#pendingRetirementId': [
+    'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireDependency': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireSurvivesRetirement': [
+    'apps/api/src/modules/employment/timeline.ts#operationKey',
+    'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#retireRehireActivationDecision': [
+    '#RETIRE_REHIRE_REQUIRES_RETIREMENT',
+    '#RETIRE_REHIRE_RETIREMENT_VOIDED',
+    '#rehireDependency',
+    '#sequencePredecessorKind',
+    'apps/api/src/modules/employment/timeline.ts#timelinePosition',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-eligibility.ts#sequencePredecessorKind': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-waiting.ts#alignApprovedRehire': [
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireDependency',
+    '#shiftRehireDate',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#pendingRetirementId',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#rehireDependency',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-waiting.ts#retirementChanged': [
+    'apps/api/src/modules/employment/activation-store.ts#pendingActivations',
+    'apps/api/src/modules/employment/activation-store.ts#recordActivationAttempt',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#retireRehireActivationDecision',
+    '#shiftRehireDate',
+  ],
+  'apps/api/src/modules/employment/retire-rehire-waiting.ts#shiftRehireDate': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/fields.ts#dayAfter',
+    'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+  ],
   'apps/api/src/modules/employment/retirement-application.ts#assertNoLiveRehire': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -6273,6 +6343,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_RULE_PURPOSES',
   ],
   'apps/api/src/modules/employment/retirement-rules.ts#replaceConditions': [
+    'apps/api/src/modules/employment/employment-forms.ts#requireEnabledEmploymentForms',
     '#arrayOf',
     'packages/domain/src/employment/retirement-rules.ts#RETIREMENT_CONDITION_FIELDS',
   ],
@@ -6880,6 +6951,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/activation-store.ts#unresolvedPredecessor',
     'apps/api/src/modules/employment/late-transfer.ts#postponeLateTransfer',
     'apps/api/src/modules/employment/linkage-dependency.ts#blockingPredecessors',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#retireRehireActivationDecision',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -6950,6 +7022,7 @@ export const GRAPH: Graph = {
     '#deleteEmploymentBusiness',
     '#exitGateFor',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
+    'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence',
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
@@ -6984,10 +7057,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+    'apps/api/src/modules/employment/retire-rehire-waiting.ts#alignApprovedRehire',
+    'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
+    'apps/api/src/modules/employment/retire-rehire-waiting.ts#retirementChanged',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence': [
     'apps/api/src/modules/employment/intern-eligibility.ts#assertInternRegularizationEligible',
-    '#latestTimelineRecord',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#RETIRE_REHIRE_REQUIRES_RETIREMENT',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#hasPendingRetirement',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#sequencePredecessorKind',
     '#sequenceViolation',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertDirectTransferAllowed': [
@@ -7024,6 +7102,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentEmployee',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
+    'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferParticipants',
     '#NEW_CYCLE_KINDS',
     '#appendEmploymentPayload',
@@ -7116,7 +7195,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/write-service.ts#sequenceViolation': ['#NEW_CYCLE_KINDS'],
+  'apps/api/src/modules/employment/write-service.ts#sequenceViolation': [
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#RETIRE_REHIRE_REQUIRES_RETIREMENT',
+    '#NEW_CYCLE_KINDS',
+  ],
   'apps/api/src/modules/employment/write-service.ts#storedStatus': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -7130,6 +7212,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+    'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
     '#NEW_CYCLE_KINDS',
     '#appendEmploymentPayload',
     '#assertBusinessSequence',

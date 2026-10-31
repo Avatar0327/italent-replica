@@ -73,7 +73,9 @@ async function scene(label: string) {
       approvalType: 'personnel_change',
       priority,
       conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: subset }] },
-      nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: [field] }],
+      nodes: [
+        { key: 'head', approver: { type: 'department', value: 'latest_record_department_head' }, formFields: [field] },
+      ],
     });
   }
   const path = (kind: string) => `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/${kind}`;

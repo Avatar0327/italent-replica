@@ -1,8 +1,8 @@
 /**
  * R2-T04 §9.1 / §9.1A 预计退休日期与弹性范围规则（纯函数，禁止 IO；DEC-640、DEC-641、DEC-638 A-4）。
  * 规则类型：固定年龄（DEC-636 c4，只用于预计退休日期）与内置法定函数（5c1b，两种用途都可选用，见 retirement-statutory.ts）；
- * 条件是原站五槽中复刻已有的四个固定槽位，每槽至多一条、只用 in（多选值命中其一），槽位之间 AND；雇佣关系必填。
- * 用工形式、人员类别复刻没有对应字段，登记 F-263。
+ * 条件使用固定槽位，每槽至多一条、只用 in（多选值命中其一），槽位之间 AND；雇佣关系必填。
+ * F-263 / DEC-684⑤⑥：补用工形式，国籍保持；人员类别为复刻取舍，后补 F-323。
  */
 import {
   IDENTITY_TYPE_CADRE,
@@ -22,13 +22,20 @@ export const RETIREMENT_AGE_YEARS = { min: 30, max: 80 } as const;
 export const RETIREMENT_AGE_MONTHS = { min: 0, max: 11 } as const;
 
 /** 固定槽位，数组顺序即展示 / 存储顺序（seq = 下标 + 1）。 */
-export const RETIREMENT_CONDITION_FIELDS = ['gender', 'nationality', 'employType', 'identityType'] as const;
+export const RETIREMENT_CONDITION_FIELDS = [
+  'gender',
+  'nationality',
+  'employType',
+  'identityType',
+  'employmentForm',
+] as const;
 export type RetirementConditionField = (typeof RETIREMENT_CONDITION_FIELDS)[number];
 export const RETIREMENT_CONDITION_LABELS: Readonly<Record<RetirementConditionField, string>> = {
   gender: '性别',
   nationality: '国籍',
   employType: '雇佣关系',
   identityType: '个人身份',
+  employmentForm: '用工形式',
 };
 /** 原站“雇佣关系”必填（DEC-640②）。 */
 export const RETIREMENT_REQUIRED_CONDITION: RetirementConditionField = 'employType';
@@ -92,11 +99,13 @@ export interface RetirementPerson {
   readonly nationality: string | null;
   readonly employType: string | null;
   readonly identityType: string | null;
+  /** 未提供时不命中该条件；无用工形式条件的既有调用保持原行为。 */
+  readonly employmentForm?: string | null;
 }
 
 function satisfies(condition: RetirementCondition, person: RetirementPerson): boolean {
   const value = person[condition.fieldCode];
-  return value !== null && condition.values.includes(value);
+  return typeof value === 'string' && condition.values.includes(value);
 }
 
 function inScope(rule: RetirementRule, person: RetirementPerson): boolean {

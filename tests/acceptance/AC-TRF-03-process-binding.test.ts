@@ -36,11 +36,13 @@ describe('AC-TRF-03：调动类型、原因与服务端流程绑定', () => {
     await configureProcessForms(world);
     const department = await world.org('合成调动部门');
     const person = await world.person('合成调动人员', department);
-    const standard = await world.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
+    const standard = await world.publishedProcess({
+      nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }],
+    });
     const custom = await world.publishedProcess({
       priority: 1,
       conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'Customized5TransferFlow' }] },
-      nodes: [{ key: 'review', approver: 'owner' }],
+      nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }],
     });
     for (const [formId, processId] of [
       ['TenantBase.JobLevelTransferMultiFormView', standard.id],

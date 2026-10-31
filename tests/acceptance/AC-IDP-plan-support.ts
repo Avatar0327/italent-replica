@@ -5,7 +5,7 @@
  * 权限用例另用真实授权器（AC-IDP-plan-visibility）。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, approverSource } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { approvalWorld, type InstanceView, type Person } from './AC-APV-support.js';
@@ -136,7 +136,12 @@ function approvalBody(
     isFallback: true,
     exceptionAdminUserId: admin,
     conditions: { items: [] },
-    nodes: nodes.map(([key, name, approver]) => ({ key, name, approver, ...overrides[approver] })),
+    nodes: nodes.map(([key, name, approver]) => ({
+      key,
+      name,
+      approver: approverSource(approver),
+      ...overrides[approver],
+    })),
   };
 }
 

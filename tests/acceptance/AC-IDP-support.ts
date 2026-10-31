@@ -127,7 +127,7 @@ function approvalDefinition(approvalType: IdpApprovalType, nodes: readonly [stri
     nodes: nodes.map(([key, name]) => ({
       key,
       name,
-      approver: 'owner' as const,
+      approver: { type: 'custom_variable', value: 'owner' } as const,
       noAssignee: 'exception_admin' as const,
       sameAssigneeSkip: false,
       historySameAssigneeSkip: false,

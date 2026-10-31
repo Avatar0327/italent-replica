@@ -28,6 +28,9 @@ import {
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { loadRetirementRequest } from './retirement-application.js';
+import { rehireSurvivesRetirement } from './retire-rehire-eligibility.js';
+import { timelinePosition } from './timeline.js';
+import { dayAfter } from './fields.js';
 import { BUSINESS_KINDS, type EmploymentContext } from './types.js';
 import { appendEmploymentState } from './write-service.js';
 
@@ -42,18 +45,30 @@ export { exceedsVoidLimit, VOID_LIMIT };
  * lastWorkDate：预览传最后工作日，已批准且计划生效日 ≤ 它的会先于离职落地，不算；生效时传 null——这些已由步骤 0a 落地，
  * 剩下的未落地申请全部作废。
  */
-export const voidCandidates = (
+export async function voidCandidates(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   lastWorkDate: string | null,
   excludeId?: string,
-) =>
-  inFlightApplications(tx, ctx, employeeId, VOIDABLE_KINDS, OPEN_STATES, 'application', {
+  retirement?: { readonly effectiveDate: string; readonly reEmployed: boolean },
+) {
+  const excluding = retirement
+    ? rehireSurvivesRetirement(
+        ctx.tenantId,
+        employeeId,
+        await timelinePosition(tx, ctx, employeeId, retirement.effectiveDate, excludeId),
+        retirement.reEmployed ? dayAfter(retirement.effectiveDate) : undefined,
+        excludeId,
+      )
+    : undefined;
+  return inFlightApplications(tx, ctx, employeeId, VOIDABLE_KINDS, OPEN_STATES, 'application', {
     unlanded: true,
+    excluding,
     ...(excludeId ? { excludeId } : {}),
     ...(lastWorkDate ? { approvedAfter: lastWorkDate } : {}),
   });
+}
 
 export interface VoidedApplication {
   readonly id: string;
@@ -259,7 +274,16 @@ export async function voidInFlightApplications(
   lastWorkDate: string,
   heads: ReadonlyMap<string, number>,
 ): Promise<VoidedApplication[]> {
-  const candidates = await voidCandidates(tx, ctx, exit.employeeId, null, exit.id);
+  const retirement =
+    exit.payload.kind === 'retirement' ? await loadRetirementRequest(tx, ctx.tenantId, exit.id) : undefined;
+  const candidates = await voidCandidates(
+    tx,
+    ctx,
+    exit.employeeId,
+    null,
+    exit.id,
+    retirement ? { effectiveDate: dayAfter(lastWorkDate), reEmployed: retirement.reEmployed } : undefined,
+  );
   return voidApplications(tx, ctx, { kind: 'exit', exit, lastWorkDate }, candidates, heads);
 }
 

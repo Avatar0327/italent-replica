@@ -1,3 +1,4 @@
+import { withPreApprovalSources } from './pre-approval-sources.js';
 import { type DbHandle, sql } from '@italent/db';
 
 /**
@@ -90,6 +91,7 @@ async function existingColumns(handle: DbHandle): Promise<Set<string>> {
 
 /** 补上缺的垫片对象，并让第一次 migrate 先撤掉它们；不改变已有正式对象。 */
 export async function withPreUpgradeShims(handle: DbHandle): Promise<DbHandle> {
+  handle = await withPreApprovalSources(handle);
   const present = await existingColumns(handle);
   const tables = new Set([...present].map((key) => key.split('.')[0]));
   const added = PRE_UPGRADE_SHIMS.filter((s) => tables.has(s.table) && !present.has(`${s.table}.${s.column}`));

@@ -30,6 +30,7 @@ describe('AC-EXIT-F316 流程定义 HTTP 配置', () => {
       const nodes = input.nodes.map((node) => {
         const copy: Record<string, unknown> = { ...node };
         delete copy.emptyApproverPolicy;
+        delete copy.emptyApproverSources;
         return copy;
       });
       const saved = await view(await api(x, 'PUT', `/${created.id}/draft`, draft.revision, { ...input, nodes }));
@@ -86,11 +87,23 @@ describe('AC-EXIT-F316 流程定义 HTTP 配置', () => {
     const input = definition(x, { work_handover: { emptyApproverPolicy: 'auto_approve' } });
     const first = input.nodes[0]!;
     const payloads = [
-      { ...input, approvalType: 'transfer', nodes: [{ ...first, approvers: ['owner'] }] },
+      {
+        ...input,
+        approvalType: 'transfer',
+        nodes: [{ ...first, approvers: [{ type: 'custom_variable', value: 'owner' }] }],
+      },
       {
         ...input,
         approvalType: 'exit_handover',
-        nodes: [{ ...first, kind: 'single', approver: 'owner', approvers: undefined, transitionRule: undefined }],
+        nodes: [
+          {
+            ...first,
+            kind: 'single',
+            approver: { type: 'custom_variable', value: 'owner' },
+            approvers: undefined,
+            transitionRule: undefined,
+          },
+        ],
       },
       { ...input, approvalType: 'exit_handover', nodes: [{ ...first, exits: ['disagree'] }] },
     ];

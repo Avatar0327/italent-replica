@@ -15,8 +15,8 @@ describe('AC-APV-05/06/07 版本规则', () => {
     const s = await transferScene(w);
     let process = await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head' },
-        { key: 'in_head', approver: 'record_department_head' },
+        { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+        { key: 'in_head', approver: { type: 'department', value: 'record_department_head' } },
       ],
     });
     expect(process).toMatchObject({
@@ -28,7 +28,10 @@ describe('AC-APV-05/06/07 版本规则', () => {
 
     const edit = await w.request(w.hr.id, 'PUT', `${BASE}/processes/${process.id}/draft`, {
       ifMatch: process.revision,
-      body: { name: '直接修改', nodes: [{ key: 'in_hrbp', approver: 'record_department_hrbp' }] },
+      body: {
+        name: '直接修改',
+        nodes: [{ key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } }],
+      },
     });
     expect(edit.status).toBe(409);
     expect(await edit.json()).toMatchObject({ error: { details: { reason: 'APPROVAL_VERSION_PUBLISHED' } } });
@@ -50,7 +53,7 @@ describe('AC-APV-05/06/07 版本规则', () => {
           isFallback: false,
           exceptionAdminUserId: w.exceptionAdmin,
           conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-          nodes: [{ key: 'in_hrbp', approver: 'record_department_hrbp' }],
+          nodes: [{ key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } }],
         },
       }),
     );
@@ -206,10 +209,10 @@ describe('DEC-018 出厂预置调动流程', () => {
         exceptionAdminUserId: null,
         conditions: { items: [{ field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
         nodes: [
-          { key: 'out_head', approver: 'latest_record_department_head' },
-          { key: 'in_hrbp', approver: 'record_department_hrbp' },
-          { key: 'in_head', approver: 'record_department_head' },
-          { key: 'first_level', approver: 'record_first_level_org_head' },
+          { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+          { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
+          { key: 'in_head', approver: { type: 'department', value: 'record_department_head' } },
+          { key: 'first_level', approver: { type: 'department', value: 'record_first_level_org_head' } },
         ],
       },
     });

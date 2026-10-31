@@ -186,9 +186,14 @@ describe('F-264 审批日志操作人姓名', () => {
     await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head' },
-        { key: 'in_head', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
-        { key: 'in_hrbp', approver: 'record_department_hrbp' },
+        { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+        {
+          key: 'in_head',
+          approver: { type: 'department', value: 'record_department_head' },
+          sameAssigneeSkip: true,
+          sameAssigneeResult: 'skip',
+        },
+        { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
