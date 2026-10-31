@@ -1253,6 +1253,49 @@
         ]
       }
     },
+    "DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "guard": [
+          "orgAdjustment.item"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
     "DELETE /api/tenant/org/code-reservations/:id": {
       "edge": {
         "anonymous": {
@@ -13354,6 +13397,52 @@
         ]
       }
     },
+    "PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "guard": [
+          "orgAdjustment.item"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
     "PATCH /api/tenant/org/organizations/:id": {
       "edge": {
         "anonymous": {
@@ -21916,6 +22005,138 @@
         ],
         "guard": [
           "orgAdjustment.head"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "guard": [
+          "orgAdjustment.item"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/org-items": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "writeFields"
+        ],
+        "guard": [
+          "orgAdjustment.item"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:update"
+        ],
+        "postcheck": [
+          "org result"
+        ],
+        "scope": [
+          "creator scope"
+        ]
+      }
+    },
+    "POST /api/tenant/org-adjustment/adjustments/:id/rebase": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "button()",
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "guard": [
+          "orgAdjustment.item"
         ],
         "object": [
           "objectContext"

@@ -7,6 +7,7 @@ import { exitOccupancy, type TimelineSegment } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { businessDate } from './fields.js';
 import { loadExitStates } from './exit-occupancy-store.js';
+import { partTimeCurrentEndSql, partTimeEmptySql } from './part-time/span-sql.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { checkPage, rowsOf } from './read-model.js';
 
@@ -146,4 +147,37 @@ export async function countDepartmentStaff(
     if (segment.to === null || segment.to > from)
       counted.set(segment.departmentId, (counted.get(segment.departmentId) ?? new Set()).add(segment.sourceId));
   return new Map([...counted].map(([orgId, ids]) => [orgId, ids.size]));
+}
+
+/**
+ * DEC-644 A-12：生效日在指定组织任职的人员——主职在职（同 activeEmployees），或兼职区间覆盖生效日（兼职计数同口径）。
+ * 返回命中的 `员工ID:组织ID` 组合；只读、不按调用方范围过滤。
+ */
+export async function employeesInOrgs(
+  tx: Tx,
+  tenantId: string,
+  pairs: readonly { readonly employeeId: string; readonly orgId: string }[],
+  asOf: string,
+): Promise<Set<string>> {
+  if (!pairs.length) return new Set();
+  businessDate(asOf);
+  const employees = uuidArray([...new Set(pairs.map((pair) => pair.employeeId))]);
+  const orgs = uuidArray([...new Set(pairs.map((pair) => pair.orgId))]);
+  const rows = rowsOf<{ employeeId: string; orgId: string }>(
+    await tx.execute(sql`
+      SELECT c.id AS "employeeId", c.department_id AS "orgId" FROM (${activeEmployees(tenantId, asOf)}) c
+      WHERE c.id = ANY(${employees}) AND c.department_id = ANY(${orgs})
+      UNION
+      SELECT p.employee_id, p.department_id FROM (
+        SELECT r.employee_id, ${currentDepartment} AS department_id, r.start_date,
+          ${partTimeCurrentEndSql(tenantId, sql`r.id`)} AS end_date
+        FROM employment_records r ${latestSnapshot}
+        WHERE r.tenant_id=${tenantId} AND r.service_type <> 'primary' AND r.employee_id = ANY(${employees})
+      ) p
+      WHERE p.department_id = ANY(${orgs}) AND p.start_date <= ${asOf}::date
+        AND NOT ${partTimeEmptySql(sql`p.start_date`, sql`p.end_date`)}
+        AND (p.end_date IS NULL OR p.end_date >= ${asOf}::date)
+    `),
+  );
+  return new Set(rows.map((row) => `${row.employeeId}:${row.orgId}`));
 }

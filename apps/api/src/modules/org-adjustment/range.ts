@@ -1,7 +1,7 @@
 /**
  * 审批主体组织与调整范围所选组织的“生效日存在且启用”判定（R2-T08 §2.1A）。
  * 取每个组织在生效日的现行版本（开始日不晚于生效日的最新版本），须启用且结束日不早于生效日；不存在 / 未成立 / 停用都算不可用。
- * 范围包含判定 `assertInAdjustmentRange`（§5.6）随明细写入落在 10b2，本片不涉及。
+ * 明细是否在调整范围（§5.6）见 item-tree.ts `outOfRange`。
  */
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';

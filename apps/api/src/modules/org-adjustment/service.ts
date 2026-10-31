@@ -1,5 +1,6 @@
 /**
- * 组织调整单一写服务的头部分（R2-T08 §6.1，BE-10b1）：建单、改头、作废。明细写入、刷新基线、提交 / 撤回随 10b2 / 10c。
+ * 组织调整单一写服务的头部分（R2-T08 §6.1，BE-10b1）：建单、改头、作废、整单校验。组织明细见 org-items.ts、
+ * 刷新基线见 baseline.ts（10b2）；提交 / 撤回随 10c。
  * 每次写：锁申请单行 → 校验 revision → 申请人与状态（§3：只有 0 已暂存 / 6 已驳回可改、可作废）→ 生效日组织可用 →
  * 写头与调整范围（整体替换、去重保序）→ revision + 1 → 同事务审计。授权由调用方在命令守卫里先判（access.ts）。
  */
@@ -9,6 +10,8 @@ import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { rowsOf } from '../org/read-model.js';
+import { checkOrgItems } from './item-check.js';
+import { loadWorld, OUT_OF_RANGE, outOfRange } from './item-tree.js';
 import { assertOrgsActive, inactiveOrgs, ORG_INACTIVE } from './range.js';
 import type { HeadInput, HeadPatch } from './validation.js';
 
@@ -85,6 +88,7 @@ export async function updateAdjustmentHead(
   const before = await editable(tx, ctx, id);
   const next = { ...before, ...patch };
   await assertOrgsActive(tx, ctx.tenantId, [next.approvalSubjectOrgId, ...next.adjustmentRange], next.effectiveDate);
+  if (patch.adjustmentRange || patch.effectiveDate) await assertItemsInRange(tx, ctx.tenantId, next);
   await tx.execute(sql`
     UPDATE org_adjustments SET subject = ${next.subject}, effective_date = ${next.effectiveDate}::date,
       content = ${next.content ?? null}, approval_subject_org_id = ${next.approvalSubjectOrgId},
@@ -113,20 +117,36 @@ export async function voidAdjustment(tx: Tx, ctx: WriteContext, id: string): Pro
   return view;
 }
 
-/** 整单只读校验（路由 7）：本片只判主体组织与调整范围在生效日可用，结果以信封返回、不写数据。 */
-export async function checkAdjustment(tx: Tx, tenantId: string, view: AdjustmentView) {
+/** 改头改范围或生效日：已有明细（含新上级）须仍在范围内（§5.6），否则 400 并列出明细，不写。 */
+async function assertItemsInRange(tx: Tx, tenantId: string, next: AdjustmentView) {
+  const world = await loadWorld(tx, tenantId, next);
+  const misses = outOfRange(world, world.items, next.adjustmentRange);
+  if (misses.length) {
+    throw new AppError('VALIDATION_FAILED', '已有明细不在新的调整范围内', {
+      reason: OUT_OF_RANGE,
+      items: misses.map((miss) => ({ section: 'org', ...miss })),
+    });
+  }
+}
+
+const CHECK_LIMIT = 200;
+
+/** 整单只读校验（路由 7）：主体组织与调整范围在生效日可用 + 组织明细（item-check）；信封最多 200 条，超出标 truncated。 */
+export async function checkAdjustment(tx: Tx, tenantId: string, view: AdjustmentView, now: Date) {
   const orgIds = await inactiveOrgs(
     tx,
     tenantId,
     [view.approvalSubjectOrgId, ...view.adjustmentRange],
     view.effectiveDate,
   );
-  const errors = orgIds.length > 0 ? [{ reason: ORG_INACTIVE, orgIds }] : [];
-  return { valid: errors.length === 0, errors, warnings: [] };
+  const items = await checkOrgItems(tx, await loadWorld(tx, tenantId, view), now);
+  const all = [...(orgIds.length > 0 ? [{ reason: ORG_INACTIVE, orgIds }] : []), ...items];
+  const errors = all.slice(0, CHECK_LIMIT);
+  return { valid: all.length === 0, errors, warnings: [], ...(all.length > CHECK_LIMIT && { truncated: true }) };
 }
 
 /** 锁行 → revision → 申请人 → 状态；返回改前视图。 */
-async function editable(tx: Tx, ctx: WriteContext, id: string): Promise<AdjustmentView> {
+export async function editable(tx: Tx, ctx: WriteContext, id: string): Promise<AdjustmentView> {
   const row = await loadAdjustment(tx, ctx.tenantId, id, true);
   if (!row) throw new AppError('NOT_FOUND', '组织调整申请不存在');
   if (row.revision !== ctx.expectedRevision) throw new AppError('REVISION_CONFLICT', '申请单已被修改，请刷新后重试');
@@ -162,7 +182,7 @@ async function nextCode(tx: Tx, ctx: WriteContext): Promise<string> {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
-function audit(tx: Tx, ctx: WriteContext, action: string, before: AdjustmentView | null, after: AdjustmentView) {
+export function audit(tx: Tx, ctx: WriteContext, action: string, before: AdjustmentView | null, after: AdjustmentView) {
   return recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,

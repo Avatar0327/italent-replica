@@ -3903,6 +3903,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'packages/domain/src/employment/exit-occupancy.ts#exitOccupancy',
   ],
+  'apps/api/src/modules/employment/org-people.ts#employeesInOrgs': [
+    'apps/api/src/modules/employment/fields.ts#businessDate',
+    '#activeEmployees',
+    '#currentDepartment',
+    '#latestSnapshot',
+    '#uuidArray',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeCurrentEndSql',
+    'apps/api/src/modules/employment/part-time/span-sql.ts#partTimeEmptySql',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople': [
     'apps/api/src/modules/employment/fields.ts#businessDate',
     '#activeEmployees',
