@@ -94,7 +94,7 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate', 'place'],
           editableFields: ['lastWorkDate', 'place'],
           editMode,
@@ -157,7 +157,9 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
     'F-140 审批 %s：确认控制项与字段分开，409 后可携新令牌重提',
     async (editMode) => {
       const { w, s, draft, instance, task } = await scene(`ack-${editMode}`, editMode);
-      await w.publishedProcess({ nodes: [{ key: 'transfer', approver: 'latest_record_department_head' }] });
+      await w.publishedProcess({
+        nodes: [{ key: 'transfer', approver: { type: 'department', value: 'latest_record_department_head' } }],
+      });
       await w.submit(
         await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-20' }),
       );

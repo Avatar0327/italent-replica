@@ -43,7 +43,7 @@ beforeAll(async () => {
   outside = await w.org('合成审计范围外');
   const self = await w.person('合成本人', inside, { place: '隐藏原地址' });
   const other = await w.person('合成范围外本人', outside);
-  await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
+  await w.publishedProcess({ nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }] });
   const admin = await permissionAdmin(w);
   viewer = await memberWithAdminRole(admin, 'audit_admin', 'self-auditor');
   await grantFieldAccess(admin, viewer.user.id, { view: ['effectiveDate', 'departmentId', 'transferTypeCode'] });

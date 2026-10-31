@@ -37,8 +37,12 @@ describe('AC-PRM-29 审批人最小披露', () => {
     expect(emptyScope.status, await emptyScope.clone().text()).toBe(200);
     await w.publishedProcess({
       nodes: [
-        { key: 'in_head', approver: 'record_department_head', formFields: ['departmentId', 'levelId', 'place'] },
-        { key: 'out_head', approver: 'latest_record_department_head' },
+        {
+          key: 'in_head',
+          approver: { type: 'department', value: 'record_department_head' },
+          formFields: ['departmentId', 'levelId', 'place'],
+        },
+        { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
       ],
     });
     const draft = await w.application(s.subject.employeeId, {

@@ -280,16 +280,16 @@ describe('审批中心接入', () => {
         isFallback: false,
         exceptionAdminUserId: w.exceptionAdmin,
         conditions: { items: [] },
-        nodes: [{ key: 'n1', name: '节点', approver: 'idp_employee' }],
+        nodes: [{ key: 'n1', name: '节点', approver: { type: 'object_field', value: 'idp_employee' } }],
       },
     });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     const idpPresets = PRESET_PROCESSES.filter((p) => p.approvalType.startsWith('idp_'));
     expect(idpPresets).toHaveLength(3);
     for (const preset of idpPresets) {
       expect(preset.definition.nodes.map((n) => ('approver' in n ? n.approver : null))).toEqual([
-        'idp_employee',
-        'idp_tutor',
+        { type: 'object_field', value: 'idp_employee' },
+        { type: 'object_field', value: 'idp_tutor' },
       ]);
     }
   });

@@ -8,7 +8,11 @@ it.each([true, false])('DEC-195 完成详情日期披露=%s，不改实例快照
   const scene = await transferScene(w);
   await w.publishedProcess({
     nodes: [
-      { key: 'owner', approver: 'owner', formFields: showDate ? ['effectiveDate', 'departmentId'] : ['departmentId'] },
+      {
+        key: 'owner',
+        approver: { type: 'custom_variable', value: 'owner' },
+        formFields: showDate ? ['effectiveDate', 'departmentId'] : ['departmentId'],
+      },
     ],
   });
   const draft = await w.application(

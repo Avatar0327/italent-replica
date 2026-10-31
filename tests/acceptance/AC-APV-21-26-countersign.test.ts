@@ -27,12 +27,22 @@ const JOINT: NodeInput = {
   key: 'joint',
   name: '调入部门会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
 };
 /** 三人会签：调入负责人、调入 HRBP、调出负责人（outHead）。 */
-const TRIO: NodeInput = { ...JOINT, approvers: [...JOINT.approvers!, 'latest_record_department_head'] };
+const TRIO: NodeInput = {
+  ...JOINT,
+  approvers: [...JOINT.approvers!, { type: 'department', value: 'latest_record_department_head' }],
+};
 /** 会签之后的单人节点：一级组织负责人（调入部门为一级组织，即 inHead）。 */
-const FINAL: NodeInput = { key: 'final', name: '一级组织负责人审批', approver: 'record_first_level_org_head' };
+const FINAL: NodeInput = {
+  key: 'final',
+  name: '一级组织负责人审批',
+  approver: { type: 'department', value: 'record_first_level_org_head' },
+};
 const BOTH_EXITS = ['approve', 'disagree'] as const;
 
 const pendingOf = (view: InstanceView) => view.tasks.filter((task) => task.status === 'pending');
@@ -85,7 +95,10 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
     const [any, all, custom, single] = draft.latestVersion.nodes;
     expect(any).toMatchObject({
       kind: 'countersign',
-      approvers: ['record_department_head', 'record_department_hrbp'],
+      approvers: [
+        { type: 'department', value: 'record_department_head' },
+        { type: 'department', value: 'record_department_hrbp' },
+      ],
       exits: ['approve'],
       transitionRule: { type: 'any', rules: { approve: { kind: 'count', value: 1 } } },
     });
@@ -102,7 +115,11 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
         rules: { approve: { kind: 'percent', value: 50 }, disagree: { kind: 'count', value: 2 } },
       },
     });
-    expect(single).toMatchObject({ kind: 'single', approver: 'record_first_level_org_head', exits: ['approve'] });
+    expect(single).toMatchObject({
+      kind: 'single',
+      approver: { type: 'department', value: 'record_first_level_org_head' },
+      exits: ['approve'],
+    });
     const published = await w.publish(draft);
     expect(published.currentVersion!.nodes[2]).toMatchObject({ transitionRule: { type: 'custom' } });
     const next = await w.json<typeof published>(
@@ -137,8 +154,14 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
     const invalid: NodeInput[] = [
       { key: 'joint', kind: 'countersign' },
       { ...JOINT, approvers: [] },
-      { ...JOINT, approvers: ['record_department_head', 'record_department_head'] },
-      { ...JOINT, approver: 'record_department_head' },
+      {
+        ...JOINT,
+        approvers: [
+          { type: 'department', value: 'record_department_head' },
+          { type: 'department', value: 'record_department_head' },
+        ],
+      },
+      { ...JOINT, approver: { type: 'department', value: 'record_department_head' } },
       { ...JOINT, transitionRule: { type: 'ratio' as 'any' } },
       { ...JOINT, transitionRule: { type: 'any', rules: { approve: { kind: 'count', value: 2 } } } },
       { ...JOINT, transitionRule: { type: 'custom' } },
@@ -151,8 +174,12 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
       custom({ approve: { kind: 'count', value: 1.5 }, disagree: { kind: 'count', value: 1 } }),
       { ...JOINT, sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
       { ...JOINT, historySameAssigneeSkip: true, historySameAssigneeResult: 'skip' },
-      { key: 'single', approvers: ['record_department_head'] },
-      { key: 'single', approver: 'record_department_head', transitionRule: { type: 'any' } },
+      { key: 'single', approvers: [{ type: 'department', value: 'record_department_head' }] },
+      {
+        key: 'single',
+        approver: { type: 'department', value: 'record_department_head' },
+        transitionRule: { type: 'any' },
+      },
       { key: 'single' },
       { ...TRANSFER_NODES[0]!, exits: [] },
       { ...TRANSFER_NODES[0]!, exits: ['approve', 'approve'] },
@@ -445,7 +472,15 @@ describe('AC-APV-26 会签节点的审批人规则逐人生效', () => {
     const s = await transferScene(w);
     await w.setOrgRoles(s.from, { head: s.subject.employeeId });
     await w.publishedProcess({
-      nodes: [{ ...JOINT, approvers: ['latest_record_department_head', 'record_department_head'] }],
+      nodes: [
+        {
+          ...JOINT,
+          approvers: [
+            { type: 'department', value: 'latest_record_department_head' },
+            { type: 'department', value: 'record_department_head' },
+          ],
+        },
+      ],
     });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     expect(view.tasks.find((task) => task.origin === 'self_skip')).toMatchObject({
@@ -467,7 +502,10 @@ describe('AC-APV-26 会签节点的审批人规则逐人生效', () => {
   it('相同审批人逐人自动同意并计入流转规则：需所有人同意时只等其他人；任一人同意即可时进入节点即流转', async () => {
     const same: NodeInput = {
       ...JOINT,
-      approvers: ['latest_record_department_head', 'record_department_head'],
+      approvers: [
+        { type: 'department', value: 'latest_record_department_head' },
+        { type: 'department', value: 'record_department_head' },
+      ],
       sameAssigneeSkip: true,
     };
     const w = await approvalWorld(database().db, 'apv-cs-same');

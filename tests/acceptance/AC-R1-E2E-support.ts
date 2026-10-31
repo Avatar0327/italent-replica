@@ -36,9 +36,13 @@ import { uniqueSuffix } from './support/unique.js';
 export const E2E_TODAY = '2026-10-01';
 /** 本租户调动流程的前三个节点（`14` §2）：调出负责人 → 调入 HRBP → 调入负责人。 */
 export const E2E_NODES: readonly NodeInput[] = [
-  { key: 'out_head', name: '调出部门负责人审批', approver: 'latest_record_department_head' },
-  { key: 'in_hrbp', name: '调入部门HRBP审核', approver: 'record_department_hrbp' },
-  { key: 'in_head', name: '调入部门负责人审批', approver: 'record_department_head' },
+  {
+    key: 'out_head',
+    name: '调出部门负责人审批',
+    approver: { type: 'department', value: 'latest_record_department_head' },
+  },
+  { key: 'in_hrbp', name: '调入部门HRBP审核', approver: { type: 'department', value: 'record_department_hrbp' } },
+  { key: 'in_head', name: '调入部门负责人审批', approver: { type: 'department', value: 'record_department_head' } },
 ];
 
 export interface Actor {
