@@ -1,5 +1,6 @@
 // F-329（DEC-705）：员工档案三类编辑入口，全部经 F-123 内核 useConflictCommand 提交，只复用既有写接口。
-// 恢复槽是集合路径（新增）或集合路径 + 对象 id（修改 / 删除），未确认的命令由页面根部 ConflictCommands 持有。
+// 恢复槽是集合路径（新增）或集合路径 + 对象 id（修改 / 删除），未确认的命令由模块级存储 PersonnelCommands 持有：
+// 员工页、实习生页都能打开档案，存储不能随所在页面根部走（第 2 轮 P2-1）。
 import { Button, Drawer, Input, InputNumber, Popconfirm, Space, Switch, message } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { PERSONNEL_OBJECT } from '@italent/domain';
@@ -13,6 +14,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
 import { RefSelect, refPaths } from '../contracts/references.js';
+import { PersonnelCommands } from './commands.js';
 import {
   canDeleteSubset,
   personEditable,
@@ -90,7 +92,11 @@ export function EditPersonButton({ employeeId, saved }: { employeeId: string; sa
       <Button type="link" onClick={() => setOpen(true)}>
         {m.editing.person}
       </Button>
-      {open && <PersonDrawer employeeId={employeeId} editable={editable} close={() => setOpen(false)} saved={saved} />}
+      {open && (
+        <PersonnelCommands>
+          <PersonDrawer employeeId={employeeId} editable={editable} close={() => setOpen(false)} saved={saved} />
+        </PersonnelCommands>
+      )}
     </>
   );
 }
@@ -117,12 +123,13 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
     reader(api, path, (raw) => raw),
     { action: 'edit' },
   );
+  // 只读展示取内核最新全量：409 重读核对后显示同事改后的值，不停在打开时（第 2 轮 P2-5）。
   const item = (name: string) => ({
     ...field(
       name,
       personFieldKind(name),
       { visible: permission.field(name).visible, editable: editable.includes(name) },
-      row,
+      writer.full,
     ),
     rules: ['name', 'email'].includes(name) ? required : undefined,
   });
@@ -174,19 +181,30 @@ export function SubsetCreate(props: {
       <Button type="link" size="small" onClick={() => setOpen(true)}>
         {m.editing.create}
       </Button>
-      {open && <SubsetForm {...props} close={() => setOpen(false)} />}
+      {open && (
+        <PersonnelCommands>
+          <SubsetForm {...props} close={() => setOpen(false)} />
+        </PersonnelCommands>
+      )}
     </>
   );
 }
 
-/** 子集逐条「编辑」「删除」；本单位经历由任职同步，不能删，同步字段只读。 */
-export function SubsetRowCommands(props: {
+type RowProps = {
   employeeId: string;
   kind: ProfileSubset;
   permission?: ObjectPermission;
   row: Row;
   saved(): void;
-}) {
+};
+/** 子集逐条「编辑」「删除」；本单位经历由任职同步，不能删，同步字段只读。 */
+export const SubsetRowCommands = (props: RowProps) => (
+  <PersonnelCommands>
+    <RowCommands {...props} />
+  </PersonnelCommands>
+);
+
+function RowCommands(props: RowProps) {
   const { employeeId, kind, permission, row, saved } = props;
   const api = useApiClient();
   const [editing, setEditing] = useState(false);
@@ -198,7 +216,7 @@ export function SubsetRowCommands(props: {
     { action: 'delete' },
   );
   const editable = subsetEditable(permission, kind, 'update', row).length > 0 && validObject(row);
-  const deletable = canDeleteSubset(permission, row);
+  const deletable = canDeleteSubset(permission, kind, row);
   if (!editable && !deletable) return null;
   const remove = async () => {
     try {
@@ -280,7 +298,7 @@ function SubsetForm({
       item.code,
       item.kind,
       { visible: fieldAccess(permission, item.code).visible, editable: editable.includes(item.code) },
-      values,
+      writer.full,
     ),
   );
   const title = `${row ? m.editing.edit : m.editing.create}${subsetLabels[kind]}`;
@@ -331,7 +349,11 @@ export function RecordEdit({
       <Button type="link" size="small" onClick={() => setOpen(true)}>
         {m.editing.job}
       </Button>
-      {open && <RecordForm record={record} editable={editable} close={() => setOpen(false)} saved={saved} />}
+      {open && (
+        <PersonnelCommands>
+          <RecordForm record={record} editable={editable} close={() => setOpen(false)} saved={saved} />
+        </PersonnelCommands>
+      )}
     </>
   );
 }
@@ -357,7 +379,7 @@ function RecordForm({
     reader(api, path, preset),
     { action: 'edit' },
   );
-  const fields = editable.map((name) => field(name, undefined, { visible: true, editable: true }, values));
+  const fields = editable.map((name) => field(name, undefined, { visible: true, editable: true }, writer.full));
   return (
     <FormOverlay
       open

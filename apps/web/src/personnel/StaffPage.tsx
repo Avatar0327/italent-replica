@@ -5,7 +5,6 @@ import { ListPage } from '../foundation/templates.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageRequest, PageResult } from '../foundation/client.js';
-import { ConflictCommands } from '../foundation/forms/ConflictCommands.js';
 import { StaffDetail } from './StaffDetail.js';
 import { EditPersonButton } from './EditCommands.js';
 import { personEditable } from './edit-model.js';
@@ -53,50 +52,53 @@ export function StaffPage() {
   // 原站列设置入口在表头最右侧齿轮，不占工具栏按钮位。
   columns.push({ key: 'settings', width: 48, title: <ColumnGear onOpen={() => setOverlay('columns')} /> });
   return (
-    <ConflictCommands>
-      <div className="staff-page">
-        <DecisionNote id="personnel" />
-        <DecisionNote id="personnel-records" />
-        <ListPage
-          title={m.title}
-          data={result.data ?? { items: [] }}
-          columns={columns}
-          rowKey="id"
-          page={page}
-          onPageChange={setPage}
-          loading={result.loading}
-          error={result.error}
-          retry={result.refresh}
-          filters={
-            <QuickFilters
-              allowed={allowed}
-              filters={filters}
-              search={search}
-              setSearch={setSearch}
-              apply={apply}
-              open={() => setOverlay('filter')}
-            />
-          }
-        />
-        {!columnChoices.some((key) => allowed.includes(key)) && !result.loading && !result.error && (
-          <Empty description={m.noFields} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        )}
-        {overlay === 'filter' && (
-          <StaffFilters value={filters} allowed={allowed} onApply={apply} onClose={() => setOverlay(undefined)} />
-        )}
-        {overlay === 'columns' && (
-          <ColumnSettings
-            value={selectedColumns}
+    <div className="staff-page">
+      <DecisionNote id="personnel" />
+      <DecisionNote id="personnel-records" />
+      <ListPage
+        title={m.title}
+        data={result.data ?? { items: [] }}
+        columns={columns}
+        rowKey="id"
+        page={page}
+        onPageChange={setPage}
+        loading={result.loading}
+        error={result.error}
+        retry={result.refresh}
+        filters={
+          <QuickFilters
             allowed={allowed}
-            onApply={setColumns}
-            onClose={() => setOverlay(undefined)}
+            filters={filters}
+            search={search}
+            setSearch={setSearch}
+            apply={apply}
+            open={() => setOverlay('filter')}
           />
-        )}
-        {employeeId && (
-          <StaffDetail key={employeeId} employeeId={employeeId} onClose={() => setEmployeeId(undefined)} />
-        )}
-      </div>
-    </ConflictCommands>
+        }
+      />
+      {!columnChoices.some((key) => allowed.includes(key)) && !result.loading && !result.error && (
+        <Empty description={m.noFields} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )}
+      {overlay === 'filter' && (
+        <StaffFilters value={filters} allowed={allowed} onApply={apply} onClose={() => setOverlay(undefined)} />
+      )}
+      {overlay === 'columns' && (
+        <ColumnSettings
+          value={selectedColumns}
+          allowed={allowed}
+          onApply={setColumns}
+          onClose={() => setOverlay(undefined)}
+        />
+      )}
+      {employeeId && (
+        <StaffDetail
+          key={employeeId}
+          employeeId={employeeId}
+          onClose={() => setEmployeeId(undefined)}
+          onSaved={result.refresh}
+        />
+      )}
+    </div>
   );
 }
 

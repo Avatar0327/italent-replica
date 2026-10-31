@@ -1,6 +1,6 @@
 // F-329（DEC-705）：员工档案按原站三类入口分别编辑，不做整页编辑。
 // 原站依据 docs/02_业务建模/17 补充「F-329 员工档案的编辑入口」；本文件只放入口判断、字段与回执核对。
-import { EMPLOYEE_FIELDS, SUBSETS, type PersonnelField, type SubsetKind } from '@italent/domain';
+import { EMPLOYEE_FIELDS, SUBSETS, buttonsOf, type PersonnelField, type SubsetKind } from '@italent/domain';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { validObject } from '../foundation/forms/ConflictCommands.js';
 import { m } from './messages.js';
@@ -56,7 +56,7 @@ const syncedJobHistory = new Set([
   'employmentRecordId',
   'isThisCompany',
 ]);
-/** 离职 / 退休记录另需离职编辑权限（R2-T03 §4A），档案页不放入口。 */
+/** 离职 / 退休记录另需各自的编辑按钮（R2-T03 §4A、R2-T04 §3.1，后端 record-edit.ts requireExitPermission）。 */
 const exitKinds = new Set(['leave', 'retirement']);
 const writablePerson = new Set(EMPLOYEE_FIELDS.filter((field) => !field.system).map((field) => field.code));
 
@@ -74,24 +74,37 @@ export function subsetFields(kind: SubsetKind): readonly PersonnelField[] {
   return SUBSETS[kind].fields;
 }
 
+/**
+ * 工作履历行是否可能由任职同步：后端手工行的标识落库为 null / false；字段被查看权裁掉（键缺失）时不知道，
+ * 按同步处理，免得把本单位经历当手工行放开改删（后端仍会拒绝，但入口不该出现）。
+ */
+const maybeSynced = (kind: SubsetKind, row: Item) =>
+  kind === 'jobhistory' && (!Object.hasOwn(row, 'isThisCompany') || row.isThisCompany === true);
+
 /** 新增要列表级 create 按钮，编辑要详情级 update 按钮；附件（uuid）与系统字段不进表单。 */
 export function subsetEditable(p: Permission, kind: SubsetKind, mode: 'create' | 'update', row?: Item): string[] {
   if (!granted(p, mode, mode, mode === 'create' ? 'list' : 'detail')) return [];
-  const synced = kind === 'jobhistory' && row?.isThisCompany === true;
+  const synced = row !== undefined && maybeSynced(kind, row);
   return subsetFields(kind)
     .filter((field) => !field.system && field.kind !== 'uuid' && m.labels[field.code])
     .filter((field) => !(synced && syncedJobHistory.has(field.code)) && fieldAccess(p, field.code).editable)
     .map((field) => field.code);
 }
 
-export function canDeleteSubset(p: Permission, row: Item) {
-  return granted(p, 'delete', 'delete', 'detail') && row.isThisCompany !== true && validObject(row);
+export function canDeleteSubset(p: Permission, kind: SubsetKind, row: Item) {
+  return granted(p, 'delete', 'delete', 'detail') && !maybeSynced(kind, row) && validObject(row);
 }
 
+/**
+ * 「编辑任职」要 Employment.Edit；离职记录还要 DimissionEdit，退休记录要 RetireEdit（独立授权，不复用 Dimission*）。
+ * 业务类型被裁剪或不认识时无法确定要哪个按钮，不放入口。
+ */
 export function recordEditable(p: Permission, record: Item): string[] {
   if (!granted(p, 'update', 'Employment.Edit', 'detail') || !validObject(record)) return [];
   if (record.status !== undefined && record.status !== 'effective') return [];
-  if (exitKinds.has(String(record.kind))) return [];
+  const kind = record.kind;
+  if (typeof kind !== 'string' || !Object.hasOwn(m.kinds, kind)) return [];
+  if (exitKinds.has(kind) && !canButton(p, buttonsOf(kind).edit, 'detail')) return [];
   return recordFields.filter((name) => fieldAccess(p, name).editable);
 }
 
@@ -113,11 +126,15 @@ export function personReceipt(raw: unknown, sent: { id: string; revision: number
   return { id: sent.id };
 }
 
-/** 子集写入回整行：新增 0 → 1 带新 id；编辑 / 删除同 id、n → n + 1，删除还须 deleted=true。 */
+/**
+ * 子集写入回整行：新增 0 → 1 带新 id；编辑 / 删除同 id、n → n + 1。回执按查看权裁剪（personnel/http.ts write → trim），
+ * 删除时 deleted 常被裁掉：缺键时以成功状态码 + 同 id、版本 +1 确认；可见时须为 true。
+ */
 export function subsetReceipt(raw: unknown, sent: { id?: string; revision: number; deleted?: boolean }) {
   const body = object(raw);
   if (typeof body.id !== 'string' || !body.id || (sent.id !== undefined && body.id !== sent.id)) reject();
-  if (body.revision !== sent.revision + 1 || (sent.deleted && body.deleted !== true)) reject();
+  if (body.revision !== sent.revision + 1) reject();
+  if (sent.deleted && Object.hasOwn(body, 'deleted') && body.deleted !== true) reject();
   return { id: body.id as string };
 }
 
