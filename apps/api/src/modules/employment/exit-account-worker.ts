@@ -191,10 +191,15 @@ const reasonOf = (error: unknown) => {
   const e = error as { code?: string; details?: { reason?: string } };
   return e?.details?.reason ?? e?.code ?? 'EXIT_ACCOUNT_STORAGE_UNAVAILABLE';
 };
+/** 失败记在本次要办的那一方向的任务上：停用记到期任务，恢复记由本规则停用、仍在等恢复的任务（F-348，口径同停用）。 */
+const owesAction = (f: Fact, target: 'active' | 'disabled', user: User) =>
+  target === 'disabled'
+    ? f.due && ['pending', 'failed'].includes(f.task.status)
+    : f.task.restoreRequested && f.task.autoRevision === user.revision;
 async function fail(db: Db, plan: readonly Fact[], now: Date, commandId: string, error: unknown) {
   const reason = reasonOf(error);
   const blocked = reason === 'APPROVAL_EXCEPTION_ADMIN_HANDOVER_REQUIRED';
-  for (const f of plan.filter((f) => f.due && ['pending', 'failed'].includes(f.task.status))) {
+  for (const f of plan) {
     await withTenant(db, f.tenant.id, async (tx) => {
       const admins = rowsOf<{ id: string }>(
         await tx.execute(sql`SELECT DISTINCT a.user_id AS id FROM permission_admins a
@@ -253,7 +258,8 @@ async function processUser(db: Db, userId: string, now: Date, origin: TenantRow)
   } catch (error) {
     // 保存点/账号事务回滚后另记待办；失败绝不传回已提交的离退休事务。
     if (reasonOf(error) === 'EXIT_ACCOUNT_RECHECK' || reasonOf(error) === 'REVISION_CONFLICT') return;
-    await fail(db, locked.length ? locked : initial, now, commandId, error);
+    const plan = (locked.length ? locked : initial).filter((f) => owesAction(f, target, user));
+    await fail(db, plan, now, commandId, error);
   }
 }
 
