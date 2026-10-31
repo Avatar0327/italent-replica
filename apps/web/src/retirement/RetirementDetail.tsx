@@ -167,8 +167,8 @@ function DownstreamList({ lines }: { lines: string[] }) {
         message={m.downstream.title}
         description={
           <ul>
-            {lines.map((line) => (
-              <li key={line}>{line}</li>
+            {lines.map((line, index) => (
+              <li key={`${index}:${line}`}>{line}</li>
             ))}
           </ul>
         }
@@ -197,17 +197,20 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
   const run = async () => {
     try {
       const values = action === 'cancel' ? { reason: reason?.trim() ?? '' } : {};
+      // 写后回读确认后才交出下游清单；结果未知时不展示
+      let downstream: string[] = [];
       const done = await cmd.submit(values, action === 'cancel' ? ['reason'] : [], {
         path: `${slotKey(retirements, id)}/${action}`,
         body: (input, extra) => billBody(action, input, extra),
         accept: (raw, sent) => {
           const receipt = acceptRetirement(raw, { employeeId: row.employeeId!, sent, id });
-          if (action === 'cancel') onReceipt(downstreamLines(receipt.downstream));
+          if (action === 'cancel') downstream = downstreamLines(receipt.downstream);
           return { path: slotKey(`${apiRoot}/businesses`, id), id, revision: Number(receipt.revision) };
         },
       });
       if (!done) return;
       setReason(undefined);
+      if (action === 'cancel') onReceipt(downstream);
       void message.success(m.success[action]);
     } catch {
       // 拒绝 / 冲突 / 结果未知由内核状态条显示

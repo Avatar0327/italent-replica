@@ -8,6 +8,7 @@ import type { ObjectPermission } from '../../apps/web/src/foundation/permission-
 import {
   acceptIntention,
   acceptRetirement,
+  downstreamLines,
   cellValue,
   intentionBody,
   columns,
@@ -317,5 +318,25 @@ describe('AC-FE-R2c3 提交体、确认令牌与回执', () => {
     });
     expect(() => acceptIntention({ ...view, revision: 1 }, { employeeId, id: billId, sent: 1 })).toThrow();
     expect(() => acceptIntention({ ...view, status: 'unknown' }, { employeeId })).toThrow();
+  });
+
+  it('第 2 轮 P2-5：撤销下游清单只照服务端返回列出，缺键不推算', () => {
+    expect(downstreamLines(undefined)).toEqual([]);
+    expect(downstreamLines({})).toEqual([]);
+    expect(
+      downstreamLines({
+        items: [
+          { kind: 'contract', status: 'found', targets: [], hiddenCount: 1 },
+          { kind: 'handover', status: 'none', targets: [], hiddenCount: 0 },
+          { kind: 'payroll', status: 'pending_sync' },
+        ],
+        additional: [{ kind: 'establishment_pre_released', action: 'restored', targets: [{ type: 'x', id: 'y' }] }],
+      }),
+    ).toEqual([
+      '合同：有记录（1 件，其中 1 件无权查看）',
+      '交接：无',
+      '薪资档案：pending_sync',
+      '编制预减：占用已收回（1 件）',
+    ]);
   });
 });

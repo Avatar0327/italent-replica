@@ -132,7 +132,7 @@ export const m = {
       string,
       string
     >,
-    count: (total: number, hidden: number) =>
-      total ? `（${total} 件${hidden ? `，其中 ${hidden} 件无权查看` : ''}）` : '',
+    count: (total: number) => `（${total} 件`,
+    hidden: (hidden: number) => `，其中 ${hidden} 件无权查看`,
   },
 };
