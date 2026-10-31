@@ -28,6 +28,7 @@ import {
   type AccountStop,
 } from './account-stop.js';
 import { EXIT_SETTINGS_OBJECT } from './model.js';
+import './account-stop.css';
 
 const LABELS = { earlyEnabled: a.earlyEnabled, basis: a.basis, time: a.time, inReview: a.inReview };
 const required = { required: true, message: a.required };
@@ -152,7 +153,7 @@ function EarlyFields() {
         ]}
       >
         <LockedField>
-          <Input placeholder="HH:mm" maxLength={5} style={{ width: 120 }} />
+          <Input className="exit-account-stop-time" placeholder="HH:mm" maxLength={5} />
         </LockedField>
       </Form.Item>
     </>
