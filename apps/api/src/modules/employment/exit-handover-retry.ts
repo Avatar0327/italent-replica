@@ -45,15 +45,21 @@ export async function queueExitHandoverRetry(tx: Tx, ctx: EmploymentContext, eve
 }
 
 type Retry = { id: string; employeeId: string; businessId: string; approvedOn: string };
+/** 等账号恢复的失败原因：账号可能长期不恢复（如人工停用），每轮调度都会再失败一次。 */
+const WAITING_ACCOUNT = 'NO_INITIATOR_ACCOUNT';
 async function receipt(tx: Tx, ctx: EmploymentContext, id: string, state: 'sent' | 'failed', reason: string | null) {
-  const [last] = rowsOf<{ n: number }>(
-    await tx.execute(sql`SELECT COALESCE(MAX(attempt_no),0)::int AS n
-    FROM employment_outbox_attempts WHERE tenant_id=${ctx.tenantId} AND outbox_id=${id}::uuid`),
+  const [last] = rowsOf<{ n: number; state: string; reason: string | null }>(
+    await tx.execute(sql`SELECT attempt_no AS n, state, error_reason AS reason
+    FROM employment_outbox_attempts WHERE tenant_id=${ctx.tenantId} AND outbox_id=${id}::uuid
+    ORDER BY attempt_no DESC LIMIT 1`),
   );
+  // F-336：上一条已是同因等账号失败时不再追加，意图仍待办，账号恢复后照常补发；其它失败仍逐次记次数与原因。
+  const waiting = state === 'failed' && reason === WAITING_ACCOUNT;
+  if (waiting && last?.state === 'failed' && last.reason === WAITING_ACCOUNT) return;
   await tx.insert(employmentOutboxAttempts).values({
     tenantId: ctx.tenantId,
     outboxId: id,
-    attemptNo: last!.n + 1,
+    attemptNo: (last?.n ?? 0) + 1,
     state,
     errorReason: reason,
     createdAt: ctx.now,
@@ -81,7 +87,7 @@ async function consume(tx: Tx, ctx: EmploymentContext, item: Retry) {
     return;
   }
   if (!(await userOfPerson(tx, ctx.tenantId, item.employeeId))) {
-    await receipt(tx, ctx, item.id, 'failed', 'NO_INITIATOR_ACCOUNT');
+    await receipt(tx, ctx, item.id, 'failed', WAITING_ACCOUNT);
     return;
   }
   // 当前账号/成员、当前开关/流程/交接处理人重新核对；“早于批准日”仍按原确认日判断，而非重试日。
@@ -92,8 +98,7 @@ async function consume(tx: Tx, ctx: EmploymentContext, item: Retry) {
     { businessId: item.businessId, employeeId: item.employeeId, kind: 'leave', mode: 'application', reEmployed: false },
     item.approvedOn,
   );
-  const retry =
-    result.outcome === 'failed' || (result.outcome === 'skipped' && result.reason === 'NO_INITIATOR_ACCOUNT');
+  const retry = result.outcome === 'failed' || (result.outcome === 'skipped' && result.reason === WAITING_ACCOUNT);
   await receipt(tx, ctx, item.id, retry ? 'failed' : 'sent', 'reason' in result ? result.reason : null);
 }
 
