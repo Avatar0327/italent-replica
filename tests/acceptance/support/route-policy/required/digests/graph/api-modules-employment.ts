@@ -1499,7 +1499,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/employment-types.ts#parseEmploymentTypeView': [
     'packages/domain/src/employment/employment-types.ts#EMPLOYMENT_TYPE_VIEWS',
   ],
-  'apps/api/src/modules/employment/employment-types.ts#requireEnabledEmploymentTypes': ['#LIMIT', '#live'],
+  'apps/api/src/modules/employment/employment-types.ts#requireEmploymentTypes': ['#LIMIT', '#live'],
   'apps/api/src/modules/employment/employment-types.ts#saveEmploymentType': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
     '#LIMIT',
@@ -1512,7 +1512,11 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/employment-types.ts#setEmploymentTypeEnabled': ['#current', '#lock', '#write'],
-  'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType': ['#requireEnabledEmploymentTypes'],
+  'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType': ['#requireEmploymentTypes', '#typeId'],
+  'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType': [
+    '#requireEmploymentTypes',
+    '#typeId',
+  ],
   'apps/api/src/modules/employment/employment-types.ts#write': ['#audit', '#columns', '#writerOf'],
   'apps/api/src/modules/employment/employment-types.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/entry-actions.ts#assertRemark': [
@@ -3415,6 +3419,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareInheritance': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#derivationFields',
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     'apps/api/src/modules/employment/fields.ts#businessDate',
@@ -4792,6 +4797,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#checkNewPartTime': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
     'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage',
@@ -4817,6 +4823,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageDelta',
@@ -4851,6 +4858,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#previewPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
@@ -5281,6 +5289,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/record-edit.ts#editedValues': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
   ],
