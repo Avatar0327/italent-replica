@@ -101,26 +101,80 @@ describe('AC-FE-F329-03 子集逐条新增 / 编辑 / 删除按服务端权限�
       ],
     );
     const synced = { id: rowId, revision: 2, isThisCompany: true };
+    const manual = { id: rowId, revision: 2, isThisCompany: false };
     expect(edit.subsetEditable(job, 'jobhistory', 'update', synced)).toEqual(['responsibilities']);
-    expect(edit.subsetEditable(job, 'jobhistory', 'update', { id: rowId, revision: 2 })).toEqual([
+    expect(edit.subsetEditable(job, 'jobhistory', 'update', manual)).toEqual([
       'company',
       'department',
       'startDate',
       'responsibilities',
     ]);
-    expect(edit.canDeleteSubset(job, synced)).toBe(false);
-    expect(edit.canDeleteSubset(job, { id: rowId, revision: 2 })).toBe(true);
-    expect(edit.canDeleteSubset(grant([], [['update', 'detail']]), { id: rowId, revision: 2 })).toBe(false);
+    // 后端手工行的同步标识落库为 null（subsets.ts saveSubset 先置空全部字段），仍是已知的非本单位
+    expect(edit.subsetEditable(job, 'jobhistory', 'update', { ...manual, isThisCompany: null })).toHaveLength(4);
+    expect(edit.canDeleteSubset(job, 'jobhistory', synced)).toBe(false);
+    expect(edit.canDeleteSubset(job, 'jobhistory', manual)).toBe(true);
+    expect(edit.canDeleteSubset(job, 'jobhistory', { ...manual, isThisCompany: null })).toBe(true);
+    expect(edit.canDeleteSubset(grant([], [['update', 'detail']]), 'jobhistory', manual)).toBe(false);
     // 版本被裁剪（无效对象）时入口不显示，避免落到新建槽
-    expect(edit.canDeleteSubset(job, { id: rowId })).toBe(false);
+    expect(edit.canDeleteSubset(job, 'jobhistory', { id: rowId, isThisCompany: false })).toBe(false);
+    // 其他子集没有同步标识，不受影响
+    expect(edit.canDeleteSubset(all, 'education', { id: rowId, revision: 2 })).toBe(true);
+  });
+  it('第 2 轮 P2-2：同步标识被字段权限裁剪（键缺失）时按“未知”处理，同步字段只读、不能删除', () => {
+    const job = grant(
+      ['company', 'department', 'startDate', 'responsibilities'],
+      [
+        ['update', 'detail'],
+        ['delete', 'detail'],
+      ],
+    );
+    const unknown = { id: rowId, revision: 2, company: '合成本单位' };
+    expect(edit.subsetEditable(job, 'jobhistory', 'update', unknown)).toEqual(['responsibilities']);
+    expect(edit.canDeleteSubset(job, 'jobhistory', unknown)).toBe(false);
   });
 });
 
 describe('AC-FE-F329-04 任职记录「编辑任职」按 Employment.Edit 与字段权限显示', () => {
   const p = grant(['departmentId', 'postId', 'place', 'remarks', 'jobNumber'], [['Employment.Edit', 'detail']]);
-  const record = { id: rowId, revision: 3, status: 'effective', fields: {} };
+  const record = { id: rowId, revision: 3, status: 'effective', kind: 'hire', fields: {} };
   it('只列复刻可编辑的任职字段：工号须与员工 ID 一致、生效日期另走业务，均不进表单', () => {
     expect(edit.recordEditable(p, record)).toEqual(['departmentId', 'postId', 'place', 'remarks']);
+  });
+  it('第 2 轮 P2-3：离职记录要 Employment.Edit 与 DimissionEdit，退休记录要 RetireEdit（R2-T03 §4A）', () => {
+    const fields = ['departmentId', 'place'];
+    const exit = grant(fields, [
+      ['Employment.Edit', 'detail'],
+      ['Employment.DimissionEdit', 'detail'],
+    ]);
+    const retire = grant(fields, [
+      ['Employment.Edit', 'detail'],
+      ['Employment.RetireEdit', 'detail'],
+    ]);
+    expect(edit.recordEditable(exit, { ...record, kind: 'leave' })).toEqual(fields);
+    expect(edit.recordEditable(retire, { ...record, kind: 'retirement' })).toEqual(fields);
+    // 缺对应按钮：离职只有 Edit、退休只有 DimissionEdit（退休独立授权，不复用 Dimission*）
+    expect(edit.recordEditable(grant(fields, [['Employment.Edit', 'detail']]), { ...record, kind: 'leave' })).toEqual(
+      [],
+    );
+    expect(edit.recordEditable(exit, { ...record, kind: 'retirement' })).toEqual([]);
+    expect(
+      edit.recordEditable(grant(fields, [['Employment.DimissionEdit', 'detail']]), { ...record, kind: 'leave' }),
+    ).toEqual([]);
+  });
+  it('第 2 轮 P2-3：业务类型被裁剪或不认识时不显示入口（无法确认是否要离职 / 退休编辑权）', () => {
+    const all = grant(
+      ['place'],
+      [
+        ['Employment.Edit', 'detail'],
+        ['Employment.DimissionEdit', 'detail'],
+        ['Employment.RetireEdit', 'detail'],
+      ],
+    );
+    const { kind: _kind, ...trimmed } = record;
+    expect(edit.recordEditable(all, trimmed)).toEqual([]);
+    expect(edit.recordEditable(all, { ...record, kind: null })).toEqual([]);
+    expect(edit.recordEditable(all, { ...record, kind: 'unknown_kind' })).toEqual([]);
+    expect(edit.recordEditable(all, { ...record, kind: 'transfer' })).toEqual(['place']);
   });
   it('缺按钮、缺修改权、版本无效或记录不是生效状态时不显示', () => {
     expect(edit.recordEditable(grant(['place'], [['update', 'detail']]), record)).toEqual([]);
@@ -142,15 +196,26 @@ describe('AC-FE-F329-05 回执按真实响应形态与本次 If-Match 核对', (
     expect(() => edit.personReceipt({ id: rowId, revision: 3 }, { id: employee, revision: 2 })).toThrow();
     expect(() => edit.personReceipt({ items: [] }, { id: employee, revision: 2 })).toThrow();
   });
-  it('子集回执：新增 0 → 1 且带新 id；编辑 n → n+1 且同 id；删除还须 deleted=true', () => {
+  it('子集回执：新增 0 → 1 且带新 id；编辑 / 删除 n → n+1 且同 id', () => {
     expect(edit.subsetReceipt({ id: rowId, revision: 1 }, { revision: 0 })).toEqual({ id: rowId });
     expect(() => edit.subsetReceipt({ revision: 1 }, { revision: 0 })).toThrow();
     expect(edit.subsetReceipt({ id: rowId, revision: 5 }, { id: rowId, revision: 4 })).toEqual({ id: rowId });
     expect(() => edit.subsetReceipt({ id: rowId, revision: 4 }, { id: rowId, revision: 4 })).toThrow();
-    expect(() => edit.subsetReceipt({ id: rowId, revision: 5 }, { id: rowId, revision: 4, deleted: true })).toThrow();
     expect(
       edit.subsetReceipt({ id: rowId, revision: 5, deleted: true }, { id: rowId, revision: 4, deleted: true }),
     ).toEqual({ id: rowId });
+    expect(() =>
+      edit.subsetReceipt({ id: rowId, revision: 4, deleted: true }, { id: rowId, revision: 4, deleted: true }),
+    ).toThrow();
+  });
+  it('第 2 轮 P2-4：删除回执按查看权裁掉 deleted 时仍确认成功；deleted 可见但不为 true 判结果未知', () => {
+    // personnel/http.ts write → trim：回执只留可查看字段
+    const trimmed = { id: rowId, revision: 5, school: '合成示例大学' };
+    expect(edit.subsetReceipt(trimmed, { id: rowId, revision: 4, deleted: true })).toEqual({ id: rowId });
+    expect(() =>
+      edit.subsetReceipt({ ...trimmed, deleted: false }, { id: rowId, revision: 4, deleted: true }),
+    ).toThrow();
+    expect(() => edit.subsetReceipt({ ...trimmed, id: employee }, { id: rowId, revision: 4, deleted: true })).toThrow();
   });
   it('任职回执：同一记录、版本不低于提交版本（无实际变化时后端不加版本）', () => {
     expect(edit.recordReceipt({ id: rowId, employeeId: employee, revision: 4 }, { id: rowId, revision: 3 })).toEqual({

@@ -1,5 +1,6 @@
 // F-329（DEC-705）：员工档案三类编辑入口。接口全是合成桩，回执形态按后端：
-// 人员 PATCH 回整份人员 DTO（revision + 1）；子集 POST / PATCH / DELETE 回整行（删除带 deleted: true）；
+// 人员 PATCH 回整份人员 DTO（revision + 1）；子集 POST / PATCH / DELETE 回整行，按查看权裁剪（personnel/http.ts
+// write → trim）：deleted 不在可查看字段里，删除回执不带它（第 2 轮 P2-4）；
 // 任职 PATCH /records/:id 回任职业务 DTO（id 为记录 id、revision + 1）。
 import type { Page } from '@playwright/test';
 import { actionButton } from './action-button.js';
@@ -122,7 +123,7 @@ function subsetWrite(server: Server, method: string, id: string | undefined, wri
   const next = { ...row, ...(write.body as object), revision: row.revision + 1 };
   if (method === 'DELETE') {
     education.splice(index, 1);
-    return { status: 200, json: { ...next, deleted: true } };
+    return { status: 200, json: next };
   }
   education[index] = next;
   return { status: 200, json: next };
@@ -313,6 +314,155 @@ test('AC-FE-F329-04 无修改权限时三类入口都不显示', async ({ page }
   await expect(section.getByRole('button', named('新增'))).toHaveCount(0);
   await expect(section.getByRole('button', named('编辑'))).toHaveCount(0);
   await expect(section.getByRole('button', named('删除'))).toHaveCount(0);
+  await page.getByRole('tab', { name: '任职记录', exact: true }).click();
+  await expect(page.getByText('生效中', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', named('编辑任职'))).toHaveCount(0);
+});
+
+test('AC-FE-F329-05 结果未知后从实习生档案重开同一人员：仍锁定，不发第 2 次写（第 2 轮 P2-1）', async ({ page }) => {
+  const server = await setup(page);
+  await page.route('**/employment/interns?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: employee, employeeId: employee, name: '合成林晓', code: 'DEMO-001', revision: 3, employeeStatus: 1 },
+        ],
+        hasDataPermission: true,
+      },
+    }),
+  );
+  await page
+    .getByRole('row', { name: /合成林晓/ })
+    .getByRole('button', named('编辑人员'))
+    .click();
+  await item(drawer(page), '手机号码').getByRole('textbox').fill('00000000001');
+  server.next.push('abort');
+  await drawer(page).getByRole('button', save).click();
+  await expect(drawer(page).getByText('结果待确认', { exact: false })).toBeVisible();
+  await drawer(page).getByRole('button', named('取消')).click();
+  // 员工页卸载、实习生页另起页面根部：命令存储须跨入口共用
+  await page.evaluate(() => {
+    history.pushState({}, '', '/interns');
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.getByRole('heading', { name: '实习生', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '查看详情', exact: true }).click();
+  await page.getByRole('dialog', { name: '员工档案', exact: true }).getByRole('button', named('编辑人员')).click();
+  await expect(drawer(page).getByText('结果待确认', { exact: false })).toBeVisible();
+  await expect(drawer(page).getByRole('button', save)).toBeDisabled();
+  expect(server.writes).toHaveLength(1);
+});
+
+test('AC-FE-F329-06 409 重读后只读字段显示最新值，可编辑字段保留草稿（第 2 轮 P2-5）', async ({ page }) => {
+  const grants = structuredClone(permissions) as Record<string, { editableFields: string[] }>;
+  const person = grants['TenantBase.EmployeeInformation']!;
+  person.editableFields = person.editableFields.filter((field) => field !== 'email');
+  const server = await setup(page, grants);
+  await page
+    .getByRole('row', { name: /合成林晓/ })
+    .getByRole('button', named('编辑人员'))
+    .click();
+  await expect(item(drawer(page), '电子邮件')).toContainText('lin@example.com');
+  await item(drawer(page), '手机号码').getByRole('textbox').fill('00000000001');
+  Object.assign(server.person, { email: 'other@example.com', revision: 2 });
+  await drawer(page).getByRole('button', save).click();
+  await expect(drawer(page).getByText('版本冲突', { exact: false })).toBeVisible();
+  await actionButton(drawer(page), '重读最新版本').click();
+  await drawer(page).getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(item(drawer(page), '手机号码').getByRole('textbox')).toHaveValue('00000000001');
+  await expect(item(drawer(page), '电子邮件')).toContainText('other@example.com');
+  await expect(item(drawer(page), '电子邮件')).not.toContainText('lin@example.com');
+});
+
+test('AC-FE-F329-07 详情抬头保存姓名后关闭详情，员工列表显示新姓名（第 2 轮 P2-6）', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  const detail = page.getByRole('dialog', { name: '员工档案', exact: true });
+  await detail.getByRole('button', named('编辑人员')).click();
+  await item(drawer(page), '员工姓名').getByRole('textbox').fill('合成林晓改');
+  await drawer(page).getByRole('button', save).click();
+  await expect(drawer(page)).toHaveCount(0);
+  await expect(detail.getByRole('heading', { name: '合成林晓改' })).toBeVisible();
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await expect(page.getByRole('row', { name: /合成林晓改/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: '合成林晓', exact: true })).toHaveCount(0);
+});
+
+test('AC-FE-F329-08 删除回执被裁掉 deleted 仍确认成功：旧行移除、不锁结果待确认（第 2 轮 P2-4）', async ({ page }) => {
+  const server = await setup(page);
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  const section = page.getByRole('region', { name: '教育经历' });
+  await expect(section).toContainText('合成示例大学');
+  await section.getByRole('button', named('删除')).click();
+  await page.getByRole('tooltip').getByRole('button', named('确定')).click();
+  await expect(section).not.toContainText('合成示例大学');
+  await expect(section.getByText('结果待确认', { exact: false })).toHaveCount(0);
+  expect(server.education).toHaveLength(0);
+  expect(brief(server.writes)).toEqual([['DELETE', `${personPath}/subsets/education/${educationId}`, '1', {}]]);
+});
+
+test('AC-FE-F329-09 同步标识被裁剪的工作履历：同步字段只读、无删除（第 2 轮 P2-2）', async ({ page }) => {
+  const viewable = ['id', 'revision', 'company', 'department', 'responsibilities'];
+  const grants = {
+    ...permissions,
+    'TenantBase.jobhistory': {
+      dataOperations: { view: true, update: true, delete: true },
+      viewableFields: viewable,
+      editableFields: ['company', 'department', 'responsibilities'],
+      buttons: [
+        { buttonCode: 'update', level: 'detail' },
+        { buttonCode: 'delete', level: 'detail' },
+      ],
+    },
+  };
+  await setup(page, grants);
+  // 服务端行带 isThisCompany: true，按查看权裁掉后前端拿不到
+  const full = {
+    id: '70000000-0000-4000-8000-000000000001',
+    revision: 1,
+    isThisCompany: true,
+    company: '合成本单位',
+    department: '合成同步部门',
+    responsibilities: '合成职责',
+  };
+  const row = Object.fromEntries(Object.entries(full).filter(([field]) => viewable.includes(field)));
+  await page.route(`**/personnel/employees/${employee}/subsets/jobhistory?*`, (route) =>
+    route.fulfill({ json: { items: [row] } }),
+  );
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  const section = page.getByRole('region', { name: '工作履历' });
+  await expect(section).toContainText('合成本单位');
+  await expect(section.getByRole('button', named('删除'))).toHaveCount(0);
+  await section.getByRole('button', named('编辑')).click();
+  const form = page.getByRole('dialog', { name: '编辑工作履历', exact: true });
+  await expect(item(form, '公司')).toContainText('合成本单位');
+  await expect(item(form, '公司').getByRole('textbox')).toHaveCount(0);
+  await expect(item(form, '部门').getByRole('textbox')).toHaveCount(0);
+  await expect(item(form, '职责').getByRole('textbox')).toBeVisible();
+});
+
+test('AC-FE-F329-10 离职记录按 DimissionEdit 显示「编辑任职」，业务类型被裁剪时不显示（第 2 轮 P2-3）', async ({
+  page,
+}) => {
+  const grants = structuredClone(permissions) as Record<string, { buttons: unknown[]; viewableFields: string[] }>;
+  grants['TenantBase.EmploymentRecord']!.buttons.push({ buttonCode: 'Employment.DimissionEdit', level: 'detail' });
+  const server = await setup(page, grants);
+  let trimKind = false;
+  await page.route('**/employment/employees/*/records?*', (route) => {
+    const record: Record<string, unknown> = { ...structuredClone(server.record), kind: 'leave' };
+    if (trimKind) delete record.kind;
+    return route.fulfill({ json: { items: [record] } });
+  });
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
+  const detail = page.getByRole('dialog', { name: '员工档案', exact: true });
+  await page.getByRole('tab', { name: '任职记录', exact: true }).click();
+  await expect(page.getByText('生效中', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', named('编辑任职'))).toHaveCount(1);
+
+  trimKind = true;
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '合成林晓', exact: true }).click();
   await page.getByRole('tab', { name: '任职记录', exact: true }).click();
   await expect(page.getByText('生效中', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', named('编辑任职'))).toHaveCount(0);
