@@ -1207,6 +1207,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
   ],
   'apps/api/src/modules/approval/engine.ts#routingFacts': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
     'packages/domain/src/approval/policies.ts#effectiveHistory',
     'packages/domain/src/approval/policies.ts#previousNodeComparand',
   ],
