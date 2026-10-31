@@ -101,8 +101,10 @@ function retireSend(row: Row, mode: FormProps['mode'], draft: Draft | undefined,
       : (input: Values, extra: Extra) => retireBody(input, mode, row.departmentId, extra),
     accept: (raw: Values, sent: number) => {
       const receipt = acceptRetirement(raw, { employeeId, sent, id: draft?.id });
-      const status = draft ? 'in_review' : mode === 'application' ? 'draft' : undefined;
-      if (receipt.mode !== mode || (status && receipt.status !== status)) throw new Error(m.invalidReceipt);
+      // 只有申请走草稿两步：新建应为草稿、提交后应为审批中；直接办理的状态随生效日而定，不核
+      const status = draft ? 'in_review' : 'draft';
+      if (receipt.mode !== mode || (mode === 'application' && receipt.status !== status))
+        throw new Error(m.invalidReceipt);
       if (draft) return { path: slotKey(businesses, draft.id), id: draft.id, revision: Number(receipt.revision) };
       if (mode === 'application') onCreated({ id: String(receipt.id), revision: Number(receipt.revision) });
       return { path: employeePath(employeeId), id: employeeId, revision: Number(receipt.employeeRevision) };

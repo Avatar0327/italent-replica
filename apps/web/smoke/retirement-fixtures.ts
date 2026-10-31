@@ -268,8 +268,8 @@ async function routeReferences(page: Page) {
   );
   await page.route(/\/personnel\/employees\/[^/?]+$/, (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-1);
-    const label = id === receiver ? '合成接收人' : id === subordinate ? '合成下属' : name;
-    return route.fulfill({ json: { id, name: label, code, revision: 1 } });
+    const names: Record<string, string> = { [receiver]: '合成接收人', [subordinate]: '合成下属' };
+    return route.fulfill({ json: { id, name: names[id!] ?? name, code, revision: 1 } });
   });
 }
 
