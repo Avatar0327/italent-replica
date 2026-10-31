@@ -56,6 +56,9 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
+  HANDOVER_RESUBMIT_BUTTON,
+  HANDOVER_ROW_SUBMIT_BUTTON,
+  HANDOVER_BATCH_SUBMIT_BUTTON,
   RETIREMENT_BUTTONS,
   RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
@@ -1955,6 +1958,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'view',
     button: noButton('列表无按钮'),
     guards: ['employment.viewableFilters'],
+    optional: {
+      handoverRow: object({
+        object: EMPLOYMENT,
+        operation: 'update',
+        button: button(HANDOVER_ROW_SUBMIT_BUTTON.code, 'list_row'),
+        scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
+        fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
+      }),
+    },
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.exitViews'),
   }),
@@ -2533,6 +2545,61 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DM-R13 / DM-R14，DEC-632）----------------------------
+  'POST /exits/:id/handover/submit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button('EmploymentRecrdDetailDimissionHandoverApproval', 'detail'),
+    scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
+    fields: fixed(['exitRequestId', 'requestId', 'outcome', 'revision', 'reason'], 'DEC-683 首次发起交接固定回执'),
+    write: write('body', 'exitHandover.submit', none('固定回执，before 复核离职单与员工写范围'), {
+      commandOnly: true,
+      preconditions: ['lockEmploymentBusiness', 'assertRevision', 'requireHandoverSubmit'],
+    }),
+    ...byId,
+  }),
+  'POST /exits/:id/handover/submit-from-list': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(HANDOVER_ROW_SUBMIT_BUTTON.code, 'list_row'),
+    scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
+    fields: fixed(['exitRequestId', 'requestId', 'outcome', 'revision', 'reason'], 'F-317 列表行首次发起固定回执'),
+    write: write('body', 'exitHandover.submit', none('before 复核离职单与员工写范围'), {
+      commandOnly: true,
+      preconditions: ['lockEmploymentBusiness', 'assertRevision', 'requireHandoverSubmit'],
+    }),
+    ...byId,
+  }),
+  'POST /exits/handover/batch-submit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(HANDOVER_BATCH_SUBMIT_BUTTON.code, 'list'),
+    scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
+    fields: fixed(['items'], 'F-317 逐项固定回执，当前权限投影后返回'),
+    rows: {
+      path: 'items[*]',
+      target: { body: 'items[*].exitRequestId' },
+      fields: none('离职 ID 与 revision 是命令控制项，不写任职字段'),
+      batch: 'receipt',
+    },
+    write: write('body', 'exitHandover.batchSubmit', none('逐项 before 和汇总回放后重新验权；无权项隐藏旧回执'), {
+      commandOnly: true,
+      ledger: 'perItem',
+      preconditions: ['EXIT_BATCH_LIMIT', 'lockEmploymentBusiness', 'assertRevision', 'requireHandoverSubmit'],
+    }),
+  }),
+  // F-305 / DEC-674：同单重新提交，入口与命令内复核对象 / 独立按钮 / 原离职单及员工范围。
+  'POST /exit-handover-requests/:id/resubmit': object({
+    object: EMPLOYMENT,
+    operation: 'update',
+    button: button(HANDOVER_RESUBMIT_BUTTON.code, 'detail'),
+    scope: guardScope('employment.handoverResubmit', NF_HANDOVER),
+    fields: fixed(['requestId', 'status', 'revision', 'approvalInstanceId'], 'DEC-674 重新提交交接固定命令回执'),
+    write: write('body', 'exitHandover.resubmit', none('固定交接命令回执，before 复核原离职单与员工范围'), {
+      commandOnly: true,
+      preconditions: ['lockHandoverRequest', 'assertRevision', 'requireHandoverResubmit'],
+    }),
+    ...byId,
+  }),
   // 离职详情上的交接状态与事项：权限与范围同 GET /exits/:id（DEC-177，看不见 / 不存在 / 非离职单同一个 404「任职业务不存在」）；
   // 没有交接申请 = status not_started（含档案直接离职，R2c）
   'GET /exits/:id/handover': object({

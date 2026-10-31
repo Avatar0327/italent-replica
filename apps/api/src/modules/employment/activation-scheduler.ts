@@ -1,3 +1,4 @@
+import { dueHandoverCandidates, readDueHandoverEnabled, runDueHandovers } from './exit-handover-launch.js';
 import { plannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { pendingActivationState, STALE_DEPARTED_FAILURE } from './activation-store.js';
@@ -139,6 +140,8 @@ async function sweepTenant(
       const outcome = await withTenant(db, tenant.id, async (tx) => {
         const lock = await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true });
         if (lock !== 'acquired') return lock;
+        // 交接与离职生效彼此独立：生效失败也不推迟已到期交接（DM-R12）。
+        await runDueHandovers(tx, ctx, employeeId);
         const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
         await remindCompletion(tx, ctx, employeeId);
         // PT-7（兼职设计 §4.8）：开始日已到的兼职“是否部门负责人 / 新增下属”联动，与调动联动同一员工事务、同一闭包锁
@@ -173,6 +176,7 @@ async function dueEmployees(
   now: Date,
   timezone: string,
 ): Promise<string[]> {
+  const handoverEnabled = await readDueHandoverEnabled(tx, tenantId);
   const rows = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
     SELECT DISTINCT b.employee_id::text AS "employeeId" FROM employment_business_objects b
@@ -202,6 +206,8 @@ async function dueEmployees(
       WHERE (${cursor}::uuid IS NULL OR c."employeeId">${cursor}::uuid)
     UNION SELECT "employeeId" FROM (${dueLinkageEmployees(tenantId, businessDate)}) l
       WHERE (${cursor}::uuid IS NULL OR l."employeeId"::uuid>${cursor}::uuid)
+    UNION SELECT "employeeId" FROM (${dueHandoverCandidates(tenantId, businessDate)}) h
+      WHERE ${handoverEnabled} AND (${cursor}::uuid IS NULL OR h."employeeId"::uuid>${cursor}::uuid)
     ORDER BY 1 LIMIT ${limit}
   `),
   );
