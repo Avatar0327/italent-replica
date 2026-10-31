@@ -102,20 +102,18 @@ describe('AC-FE-R1b-03 第 3 轮 P2-2 籍贯与户籍所在地', () => {
   });
 });
 
-// DEC-687③：本单只读展示，档案编辑另派 F-329。
-describe('AC-PER-F325 日工资标准只读展示', () => {
-  it('有查看权显示标签与精确金额，无查看权不显示', () => {
+// DEC-687③ 原为只读展示；DEC-705（F-329）改为档案页不展示：原站本租户详情页与「编辑人员」表单都没有这个字段。
+// 后端字段、接口与实习流程不变，只是档案页即使有查看权、接口返回了取值也不画出来。
+describe('AC-PER-F325 日工资标准不在档案页展示（DEC-705）', () => {
+  it('有查看权且接口返回取值时，档案分区也不显示标签与金额', () => {
     const fields = profileSections.flatMap((section: { fields: string[] }) => section.fields);
-    expect(fields).toContain('dailyWageStandard');
+    expect(fields).not.toContain('dailyWageStandard');
     const row = { name: '合成员工', dailyWageStandard: '123456789012.34' };
-    const render = (allowed: string[]) => renderToStaticMarkup(createElement(FieldGrid, { row, fields, allowed }));
-    const visible = render(['name', 'dailyWageStandard']);
-    expect(visible).toContain('日工资标准');
-    expect(visible).toContain('123456789012.34');
-    const hidden = render(['name']);
-    expect(hidden).toContain('合成员工');
-    expect(hidden).not.toContain('日工资标准');
-    expect(hidden).not.toContain('123456789012.34');
-    expect(visible).not.toContain('<input');
+    const html = renderToStaticMarkup(
+      createElement(FieldGrid, { row, fields, allowed: ['name', 'dailyWageStandard'] }),
+    );
+    expect(html).toContain('合成员工');
+    expect(html).not.toContain('日工资标准');
+    expect(html).not.toContain('123456789012.34');
   });
 });

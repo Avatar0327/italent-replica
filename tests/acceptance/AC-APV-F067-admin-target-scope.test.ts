@@ -275,7 +275,13 @@ defineSuite('员工子集变更', async (label) => {
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school', 'major'] }],
+    nodes: [
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        formFields: ['school', 'major'],
+      },
+    ],
   });
   const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
   const record = await w.json<{ id: string; revision: number }>(
@@ -341,7 +347,12 @@ defineSuite('合同', async (label) => {
           ...preset.definition,
           exceptionAdminUserId: reviewer.id,
           nodes: [
-            { ...preset.definition.nodes[0]!, kind: 'single', approver: 'owner', exits: ['approve', 'disagree'] },
+            {
+              ...preset.definition.nodes[0]!,
+              kind: 'single',
+              approver: { type: 'custom_variable', value: 'owner' },
+              exits: ['approve', 'disagree'],
+            },
           ],
         },
       );

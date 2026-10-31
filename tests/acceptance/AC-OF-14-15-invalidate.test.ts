@@ -55,7 +55,9 @@ describe('失效接口作废在途审批（#398 衔接）', () => {
       code: `OF3_LOCKED_${randomUUID().replaceAll('-', '')}`.slice(0, 60),
       approvalType: 'offer',
       conditions: { items: [{ no: 1, field: 'offer.offerType', operator: 'eq', value: 'social' }] },
-      nodes: [{ key: 'locked', approver: 'offer_department_head', actions: { revoke: false } }],
+      nodes: [
+        { key: 'locked', approver: { type: 'department', value: 'offer_department_head' }, actions: { revoke: false } },
+      ],
     });
     const offer = await w.social(w.applicant);
     await w.json(await w.submitRaw(offer));

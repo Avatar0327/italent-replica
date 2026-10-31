@@ -1,3 +1,4 @@
+import { withPreApprovalSources } from './pre-approval-sources.js';
 import { type DbHandle, sql } from '@italent/db';
 
 /**
@@ -26,6 +27,12 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   { table: 'command_ledger', column: 'actor_user_id', type: 'uuid', migration: 'command_ledger_actor' },
   { table: 'command_ledger', column: 'command_type', type: 'text', migration: 'command_ledger_actor' },
   { table: 'audit_command_failures', column: 'http_status', type: 'integer', migration: 'command_failure_http_status' },
+  {
+    table: 'approval_process_nodes',
+    column: 'empty_approver_policy',
+    type: 'text',
+    migration: 'f316_handover_empty_approver',
+  },
   // F-140：升级前垫片列为空，计划日函数取回退值（记录 / 载荷生效日）；正式迁移 0130 回填并加触发器。
   {
     table: 'employment_payload_versions',
@@ -84,6 +91,7 @@ async function existingColumns(handle: DbHandle): Promise<Set<string>> {
 
 /** 补上缺的垫片对象，并让第一次 migrate 先撤掉它们；不改变已有正式对象。 */
 export async function withPreUpgradeShims(handle: DbHandle): Promise<DbHandle> {
+  handle = await withPreApprovalSources(handle);
   const present = await existingColumns(handle);
   const tables = new Set([...present].map((key) => key.split('.')[0]));
   const added = PRE_UPGRADE_SHIMS.filter((s) => tables.has(s.table) && !present.has(`${s.table}.${s.column}`));

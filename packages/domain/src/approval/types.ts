@@ -1,3 +1,5 @@
+import type { ApproverSource } from './sources.js';
+import { approverSourcesOf, expressionValue } from './sources.js';
 import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
 import { OFFER_BATCH_FIELDS, OFFER_BATCH_OBJECT, OFFER_BATCH_PROCESS_CODE } from '../offer/approval.js';
 import { OFFER_FIELDS, OFFER_OBJECT } from '../offer/rules.js';
@@ -70,12 +72,15 @@ export const HANDOVER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(
   'handover_hr_admin',
   'handover_employee',
 ]);
-/** 兜底处理人只对这两个取值生效（主取法取不到人时的备选，resolver.ts resolveCandidates）。 */
+/** 兜底处理人只对这两个取值生效（主取法取不到人时的备选，handover-empty.ts resolveHandoverApprovers）。 */
 export const HANDOVER_FALLBACK_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'handover_work_owner',
   'handover_hr_admin',
 ]);
 export const HANDOVER_FALLBACK_LIMIT = 20;
+/** F-316 / DEC-678：工作交接为停住 / 自动同意 / 指定人员；其他事项以异常管理员替代停住。 */
+export const EMPTY_APPROVER_POLICIES = ['stop', 'exception_admin', 'auto_approve', 'specified'] as const;
+export type EmptyApproverPolicy = (typeof EMPTY_APPROVER_POLICIES)[number];
 export const OFFER_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'offer_department_head',
   'initiator_direct_manager',
@@ -301,12 +306,15 @@ interface ApprovalNodeBase {
    * 只用于离职交接申请的会签交接节点：主取法（交接人 → 直线经理 / 人事管理员）取不到人时，改派其中具备审批资格的人。
    */
   readonly fallbackUserIds?: readonly string[];
+  /** F-316：仅交接会签节点可配；未配置保持 DEC-663 的取人顺序（含旧兜底名单）。 */
+  readonly emptyApproverPolicy?: EmptyApproverPolicy;
+  readonly emptyApproverSources?: readonly ApproverSource[];
 }
 
 /** 单人审批节点：一个审批人表达式（R1-T07 起的节点；类型缺省即单人）。 */
 export interface SingleApprovalNode extends ApprovalNodeBase {
   readonly kind?: 'single';
-  readonly approver: ApproverExpression;
+  readonly approver: ApproverSource;
 }
 
 /**
@@ -315,7 +323,7 @@ export interface SingleApprovalNode extends ApprovalNodeBase {
  */
 export interface CountersignApprovalNode extends ApprovalNodeBase {
   readonly kind: 'countersign';
-  readonly approvers: readonly ApproverExpression[];
+  readonly approvers: readonly ApproverSource[];
   readonly transitionRule: TransitionRule;
 }
 
@@ -329,9 +337,11 @@ export function nodeKindOf(node: ApprovalNode): NodeKind {
   return node.kind ?? 'single';
 }
 
-/** 节点逐人解析的审批人表达式：单人节点一个，会签节点按配置顺序多个。 */
+/** 主来源与空人候选中的命名值，仅供审批类型约束校验；解析统一使用来源结构。 */
 export function approverExpressionsOf(node: ApprovalNode): readonly ApproverExpression[] {
-  return isCountersign(node) ? node.approvers : [node.approver];
+  return [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])].flatMap(
+    (source) => expressionValue(source) ?? [],
+  );
 }
 
 export function nodeExits(node: Pick<ApprovalNode, 'exits'>): readonly NodeExit[] {

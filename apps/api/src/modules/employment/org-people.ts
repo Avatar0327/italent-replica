@@ -32,7 +32,7 @@ const currentDepartment = sql`CASE WHEN latest.id IS NULL THEN r.department_id E
  * DEC-135 / DEC-128：生效日在职的“内部员工”= 有人员档案、当天任职不是离职 / 退休。外部用户没有人员档案，
  * 不会出现在这里（DEC-128）；同日多条取最后一次操作（DEC-108，同日在前的记录区间为空）。
  */
-function activeEmployees(tenantId: string, asOf: string): SQL {
+export function activeEmployees(tenantId: string, asOf: string): SQL {
   return sql`
     SELECT e.id, e.code, ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
       ${currentDepartment} AS department_id

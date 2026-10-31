@@ -1,6 +1,6 @@
 {
-  "id": "c57654a2-c40d-4d2f-ad12-c2f198c585b3",
-  "prevId": "f7a5a358-831b-4f88-b87c-74b03a98bc69",
+  "id": "281d7ead-ec58-4963-996d-75bf908c5ab9",
+  "prevId": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9885,7 +9885,7 @@
         },
         "employment_activation_attempts_trigger": {
           "name": "employment_activation_attempts_trigger",
-          "value": "\"employment_activation_attempts\".\"trigger\" IN ('scheduler', 'retry', 'approval', 'retirement_change')"
+          "value": "\"employment_activation_attempts\".\"trigger\" IN ('scheduler', 'retry', 'approval')"
         },
         "employment_activation_attempts_detail_object": {
           "name": "employment_activation_attempts_detail_object",
@@ -23271,7 +23271,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"approval_instances\".\"status\" IN ('running','returned')",
+          "where": "(\"approval_instances\".\"status\" = 'running'\n    OR (\"approval_instances\".\"status\" = 'returned' AND \"approval_instances\".\"business_type\" <> 'exit_handover'))",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -24054,6 +24054,12 @@
           "notNull": true,
           "default": "'exception_admin'"
         },
+        "empty_approver_policy": {
+          "name": "empty_approver_policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "same_assignee_skip": {
           "name": "same_assignee_skip",
           "type": "boolean",
@@ -24342,6 +24348,10 @@
         "approval_nodes_exit_rules": {
           "name": "approval_nodes_exit_rules",
           "value": "(\"approval_process_nodes\".\"approve_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"approve_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"disagree_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"approve_rule_kind\" IS NULL OR \"approval_process_nodes\".\"approve_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"approve_rule_value\" >= 1 AND \"approval_process_nodes\".\"approve_rule_value\" = trunc(\"approval_process_nodes\".\"approve_rule_value\")\n          OR \"approval_process_nodes\".\"approve_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"approve_rule_value\" > 0 AND \"approval_process_nodes\".\"approve_rule_value\" <= 100)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"disagree_rule_value\" >= 1 AND \"approval_process_nodes\".\"disagree_rule_value\" = trunc(\"approval_process_nodes\".\"disagree_rule_value\")\n          OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"disagree_rule_value\" > 0 AND \"approval_process_nodes\".\"disagree_rule_value\" <= 100)"
+        },
+        "approval_nodes_empty_approver": {
+          "name": "approval_nodes_empty_approver",
+          "value": "\"approval_process_nodes\".\"empty_approver_policy\" IS NULL OR (\n      \"approval_process_nodes\".\"node_type\" = 'countersign' AND (\n        (\"approval_process_nodes\".\"node_key\" = 'work_handover' AND \"approval_process_nodes\".\"empty_approver_policy\" IN ('stop','auto_approve','specified')) OR\n        (\"approval_process_nodes\".\"node_key\" = 'other_handover' AND \"approval_process_nodes\".\"empty_approver_policy\" IN ('exception_admin','auto_approve','specified'))\n      ) AND (\"approval_process_nodes\".\"empty_approver_policy\" <> 'auto_approve' OR 'approve' = ANY(\"approval_process_nodes\".\"exits\"))\n    )"
         }
       },
       "isRLSEnabled": false
@@ -61073,11 +61083,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 4"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -63073,7 +63083,7 @@
           "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "state": {
           "name": "state",
@@ -63220,7 +63230,11 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
+        },
+        "exit_handover_requests_initiator": {
+          "name": "exit_handover_requests_initiator",
+          "value": "\"exit_handover_requests\".\"state\" NOT IN ('in_progress', 'completed') OR \"exit_handover_requests\".\"initiator_user_id\" IS NOT NULL"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",
@@ -63720,125 +63734,6 @@
         "exit_account_tasks_status": {
           "name": "exit_account_tasks_status",
           "value": "\"exit_account_tasks\".\"status\" IN ('pending','disabled','blocked','restored','skipped','failed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retire_rehire_dependencies": {
-      "name": "retire_rehire_dependencies",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "retirement_id": {
-          "name": "retirement_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "invalidated_at": {
-          "name": "invalidated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "retire_rehire_dependencies_retirement": {
-          "name": "retire_rehire_dependencies_retirement",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "retirement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "retire_rehire_dependencies_business_fk": {
-          "name": "retire_rehire_dependencies_business_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "retire_rehire_dependencies_retirement_fk": {
-          "name": "retire_rehire_dependencies_retirement_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "retirement_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "retire_rehire_dependencies_tenant_id_business_id_pk": {
-          "name": "retire_rehire_dependencies_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retire_rehire_dependencies_distinct": {
-          "name": "retire_rehire_dependencies_distinct",
-          "value": "\"retire_rehire_dependencies\".\"business_id\" <> \"retire_rehire_dependencies\".\"retirement_id\""
         }
       },
       "isRLSEnabled": false

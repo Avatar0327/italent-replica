@@ -1,0 +1,98 @@
+.flow-designer h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.flow-heading,
+.flow-versions,
+.flow-paging {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+.flow-paging {
+  justify-content: flex-end;
+}
+.flow-summary {
+  padding: 20px;
+  background: var(--shell-background);
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+}
+.flow-note {
+  margin: 16px 0;
+}
+.flow-muted {
+  color: var(--shell-muted);
+}
+.flow-node-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  border: 1px solid var(--shell-border);
+  margin-top: 20px;
+}
+.flow-nodes {
+  padding: 16px 12px;
+  border-right: 1px solid var(--shell-border);
+}
+.flow-nodes h3,
+.flow-properties h3 {
+  margin: 0 0 20px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.flow-nodes button {
+  width: 100%;
+  height: auto;
+  min-height: 36px;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  margin: 4px 0;
+}
+.flow-node-number {
+  opacity: 0.7;
+  font-size: 12px;
+}
+.flow-properties {
+  padding: 20px 24px;
+  max-width: 650px;
+}
+.flow-properties .ant-form-item {
+  margin: 16px 0;
+}
+.flow-footer {
+  padding: 16px 0;
+  text-align: right;
+}
+.flow-read-config {
+  margin: 16px 0;
+}
+.flow-read-config summary {
+  cursor: pointer;
+  color: var(--shell-primary);
+  padding: 8px 0;
+}
+
+.flow-source-group {
+  margin: 16px 0;
+}
+.flow-source-row {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  margin-bottom: 8px;
+}
+.flow-source-row > .ant-select {
+  width: 175px;
+  flex-shrink: 0;
+}
+.flow-source-value {
+  flex: 1;
+  min-width: 160px;
+}
+.flow-source-value > .ant-select {
+  width: 100%;
+}

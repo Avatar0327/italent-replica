@@ -55,7 +55,7 @@ async function fixture() {
     body: { kind: 'org_range', orgRanges: [a, b, outside].map((orgId) => ({ orgId, includeDescendants: true })) },
   });
   expect(scope.status).toBe(200);
-  await w.publishedProcess({ nodes: [{ key: 'owner', approver: 'owner' }] });
+  await w.publishedProcess({ nodes: [{ key: 'owner', approver: { type: 'custom_variable', value: 'owner' } }] });
   const revision = async () =>
     (await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', `${BASE}/employees/${employee.employeeId}`)))
       .revision;

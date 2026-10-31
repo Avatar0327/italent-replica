@@ -381,7 +381,11 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     const w = await approvalWorld(database().db, 'apv-pg-r42-deadlock');
     const s = await transferScene(w);
     await w.setOrgRoles(s.to, { hrbp: null });
-    const third = { key: 'in_hrbp_again', name: '调入部门HRBP复核', approver: 'record_department_hrbp' } as const;
+    const third = {
+      key: 'in_hrbp_again',
+      name: '调入部门HRBP复核',
+      approver: { type: 'department', value: 'record_department_hrbp' },
+    } as const;
     await w.publishedProcess({ nodes: [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!, third] });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     view = await w.json(await w.taskAction(s.outHead.userId, pending(view).id, 'approve', view.revision));
@@ -462,7 +466,11 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     const w = await approvalWorld(database().db, label);
     const s = await transferScene(w);
     await w.setOrgRoles(s.to, { hrbp: null });
-    const third = { key: 'in_hrbp_again', name: '调入部门HRBP复核', approver: 'record_department_hrbp' } as const;
+    const third = {
+      key: 'in_hrbp_again',
+      name: '调入部门HRBP复核',
+      approver: { type: 'department', value: 'record_department_hrbp' },
+    } as const;
     await w.publishedProcess({ nodes: [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!, third] });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     view = await w.json(await w.taskAction(s.outHead.userId, pending(view).id, 'approve', view.revision));

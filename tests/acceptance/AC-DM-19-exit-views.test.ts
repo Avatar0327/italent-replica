@@ -477,7 +477,17 @@ const CATALOG = MODULE_OBJECTS.employmentRecord.fields.map((field) => field.code
 const FULL = [...CATALOG, 'name', 'code'];
 /** 响应键与字段目录的对应：派生的显示名跟随编码；这些结构 / 汇总键没有自己的字段编码，行可见即可见。 */
 const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName'];
-const STRUCTURES = ['cancellation', 'events', 'versions', 'effects', 'approvalInstanceId', 'dutyTransfer', 'dates'];
+// F-317：rowActions 是服务端按对象 / 行按钮 / 当前写范围判定的控制项，行为另由 F-317 验收守卫。
+const STRUCTURES = [
+  'cancellation',
+  'events',
+  'versions',
+  'effects',
+  'approvalInstanceId',
+  'dutyTransfer',
+  'dates',
+  'rowActions',
+];
 const keysOf = (value: object) => Object.keys(value).sort();
 
 describe('AC-DM-19 系统字段按各自字段权裁剪（第 2 轮 P2-1，设计 §9.1）', () => {

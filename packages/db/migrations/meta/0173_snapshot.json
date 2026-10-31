@@ -1,6 +1,6 @@
 {
-  "id": "f7a5a358-831b-4f88-b87c-74b03a98bc69",
-  "prevId": "9d3bc3e6-01e5-48db-954e-429a59781ca6",
+  "id": "e99653d2-afa4-47ad-9e7b-ccdeefa3453e",
+  "prevId": "f3e62de8-f801-47a3-9aff-7692e01b6206",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -23271,7 +23271,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"approval_instances\".\"status\" IN ('running','returned')",
+          "where": "(\"approval_instances\".\"status\" = 'running'\n    OR (\"approval_instances\".\"status\" = 'returned' AND \"approval_instances\".\"business_type\" <> 'exit_handover'))",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -61073,11 +61073,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 4"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -63073,7 +63073,7 @@
           "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "state": {
           "name": "state",
@@ -63220,7 +63220,11 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
+        },
+        "exit_handover_requests_initiator": {
+          "name": "exit_handover_requests_initiator",
+          "value": "\"exit_handover_requests\".\"state\" NOT IN ('in_progress', 'completed') OR \"exit_handover_requests\".\"initiator_user_id\" IS NOT NULL"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",
@@ -63720,125 +63724,6 @@
         "exit_account_tasks_status": {
           "name": "exit_account_tasks_status",
           "value": "\"exit_account_tasks\".\"status\" IN ('pending','disabled','blocked','restored','skipped','failed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.retire_rehire_dependencies": {
-      "name": "retire_rehire_dependencies",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "retirement_id": {
-          "name": "retirement_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "invalidated_at": {
-          "name": "invalidated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "retire_rehire_dependencies_retirement": {
-          "name": "retire_rehire_dependencies_retirement",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "retirement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "retire_rehire_dependencies_business_fk": {
-          "name": "retire_rehire_dependencies_business_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "retire_rehire_dependencies_retirement_fk": {
-          "name": "retire_rehire_dependencies_retirement_fk",
-          "tableFrom": "retire_rehire_dependencies",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "retirement_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "retire_rehire_dependencies_tenant_id_business_id_pk": {
-          "name": "retire_rehire_dependencies_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "retire_rehire_dependencies_distinct": {
-          "name": "retire_rehire_dependencies_distinct",
-          "value": "\"retire_rehire_dependencies\".\"business_id\" <> \"retire_rehire_dependencies\".\"retirement_id\""
         }
       },
       "isRLSEnabled": false

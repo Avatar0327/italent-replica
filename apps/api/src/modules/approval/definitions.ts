@@ -1,3 +1,4 @@
+import { assertSourceReferences } from './source-reference.js';
 /**
  * 流程定义与版本（REQ-APV-001）：草稿可整体替换；发布后只读，只能“编辑最新版本”生成新草稿；废弃移出可用列表。
  * 发布校验见 publishViolations（DEC-018 / DEC-054）；出厂预置见 PRESET_PROCESSES（DEC-018）。
@@ -23,7 +24,9 @@ import {
   revokeAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
-  type ApproverExpression,
+  type ApproverSource,
+  approverSourcesOf,
+  approverSourceViolations,
   type ConditionItem,
   type ExitRule,
   type ExitRules,
@@ -42,7 +45,9 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
+import { eligibleDesignerPeople } from './designer-people.js';
 import { isAssignable } from './resolver.js';
+import { assertEmptyApproverPolicies } from './definition-input.js';
 
 export interface VersionView extends ProcessDefinition {
   readonly id: string;
@@ -147,10 +152,10 @@ function transitionRuleOf(row: Row, exits: readonly NodeExit[]): TransitionRule 
 /** 节点类型与审批人（F-003）：单人节点一个表达式，会签节点逐人解析的表达式列表与流转规则。 */
 function approversOf(row: Row, exits: readonly NodeExit[]) {
   if (row.node_type !== 'countersign')
-    return { kind: 'single' as const, approver: row.approver_expression as ApproverExpression };
+    return { kind: 'single' as const, approver: row.approver_expression as ApproverSource };
   return {
     kind: 'countersign' as const,
-    approvers: row.approver_expressions as ApproverExpression[],
+    approvers: row.approver_expressions as ApproverSource[],
     transitionRule: transitionRuleOf(row, exits),
   };
 }
@@ -166,7 +171,13 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
     ...(Array.isArray(row.fallback_user_ids) && row.fallback_user_ids.length
       ? { fallbackUserIds: row.fallback_user_ids as string[] }
       : {}),
+    ...(Array.isArray(row.empty_approver_sources) && row.empty_approver_sources.length
+      ? { emptyApproverSources: row.empty_approver_sources as ApproverSource[] }
+      : {}),
     noAssignee: row.no_assignee_policy as ApprovalNode['noAssignee'],
+    ...(typeof row.empty_approver_policy === 'string'
+      ? { emptyApproverPolicy: row.empty_approver_policy as ApprovalNode['emptyApproverPolicy'] }
+      : {}),
     sameAssigneeSkip: Boolean(row.same_assignee_skip),
     historySameAssigneeSkip: Boolean(row.history_same_assignee_skip),
     sameAssigneeResult: row.same_assignee_result as ApprovalNode['sameAssigneeResult'],
@@ -300,7 +311,13 @@ export async function listProcesses(
 /** 节点类型相关的列（F-003）：会签的自定义审批方式逐行落库，预设只存类型（DEC-144）。 */
 function nodeTypeColumns(node: ApprovalNode) {
   if (!isCountersign(node)) {
-    return { type: 'single', approver: node.approver, approvers: [] as string[], rule: null, custom: {} as ExitRules };
+    return {
+      type: 'single',
+      approver: node.approver,
+      approvers: [] as ApproverSource[],
+      rule: null,
+      custom: {} as ExitRules,
+    };
   }
   const custom = node.transitionRule.type === 'custom' ? (node.transitionRule.rules ?? {}) : {};
   return {
@@ -320,23 +337,27 @@ const uuidArray = (ids: readonly string[]) =>
       )}]::uuid[]`
     : sql`'{}'::uuid[]`;
 
-/** DEC-663：兜底处理人必须是本租户的有效成员（写入时复核；审批资格在每次取人时再复核）。 */
+/** DEC-686①：兜底处理人与设计器候选共用在职内部员工及有效账号校验；运行时取人仍独立复核。 */
 async function assertFallbackUsers(tx: Tx, tenantId: string, node: ApprovalNode) {
   const ids = node.fallbackUserIds ?? [];
   if (!ids.length) return;
-  const found = rowsOf<{ user_id: string }>(
-    await tx.execute(sql`SELECT user_id FROM tenant_memberships WHERE tenant_id=${tenantId}
-      AND status='active' AND user_id = ANY(${uuidArray(ids)})`),
-  );
+  const found = await eligibleDesignerPeople(tx, tenantId, { userIds: ids, limit: ids.length, offset: 0 });
   if (found.length !== new Set(ids).size)
     throw approvalError(
       'VALIDATION_FAILED',
       'APPROVAL_FALLBACK_USER_INVALID',
-      `节点 ${node.key} 的兜底处理人包含不是本租户有效成员的用户`,
+      `节点 ${node.key} 的兜底处理人须为本租户在职且有有效登录账号的内部员工`,
     );
 }
 
-async function writeVersionContent(tx: Tx, tenantId: string, id: string, definition: ProcessDefinition) {
+async function writeVersionContent(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  definition: ProcessDefinition,
+  type: ApprovalTypeCode,
+) {
+  assertEmptyApproverPolicies(definition, type);
   // F-048 R3-01：节点落库前统一复核，新建、草稿替换（含继承）、新版本复制、交接重发、预置各自独立拒绝开启（设计 §14）
   const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
   if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);
@@ -349,6 +370,20 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
   }
   for (const [index, node] of definition.nodes.entries()) {
     await assertFallbackUsers(tx, tenantId, node);
+    const sources = [...approverSourcesOf(node), ...(node.emptyApproverSources ?? [])];
+    const [violation] = approverSourceViolations(node, APPROVAL_TYPES[type]);
+    if (violation) throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_DEFINITION_INVALID', violation);
+    try {
+      await assertFallbackUsers(tx, tenantId, {
+        ...node,
+        fallbackUserIds: [...new Set(sources.filter((s) => s.type === 'specified').map((s) => s.value))],
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'VALIDATION_FAILED')
+        throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_USER_INVALID', error.message);
+      throw error;
+    }
+    await assertSourceReferences(tx, tenantId, sources);
     const typed = nodeTypeColumns(node);
     const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes
@@ -358,9 +393,10 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
        edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
        reject_comment_required,hide_records,reject_resubmit_mode,avoid_self,allow_revoke,allow_reject_previous,
-       allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids)
-      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
-        ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
+       allow_jump,avoid_subjects,avoid_subjects_result,fallback_user_ids,empty_approver_policy,empty_approver_sources)
+      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},
+        ${typed.approver ? JSON.stringify(typed.approver) : null}::jsonb,
+        ${JSON.stringify(typed.approvers)}::jsonb,${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
         ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
         ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
@@ -368,7 +404,8 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
         ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
         ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)},${revokeAllowed(node)},
         ${rejectToPreviousAllowed(node)},${jumpAllowed(node)},${avoidsSubjects(node)},
-        ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT},${uuidArray(node.fallbackUserIds ?? [])})`);
+        ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT},${uuidArray(node.fallbackUserIds ?? [])},
+        ${node.emptyApproverPolicy ?? null},${JSON.stringify(node.emptyApproverSources ?? [])}::jsonb)`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)
@@ -384,6 +421,7 @@ async function insertVersion(
   processId: string,
   versionNo: number,
   definition: ProcessDefinition,
+  type: ApprovalTypeCode,
 ): Promise<string> {
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_process_versions
@@ -393,7 +431,7 @@ async function insertVersion(
       ${definition.description},${definition.priority},${definition.isFallback},${definition.exceptionAdminUserId},
       ${definition.urgeEnabled},${definition.hideRecordsFromInitiator},${definition.conditions.expression},
       ${ctx.userId},${ctx.now.toISOString()})`);
-  await writeVersionContent(tx, ctx.tenantId, id, definition);
+  await writeVersionContent(tx, ctx.tenantId, id, definition, type);
   return id;
 }
 
@@ -443,7 +481,7 @@ export async function createProcess(
     ON CONFLICT DO NOTHING RETURNING id`),
   );
   if (!inserted.length) throw approvalError('CONFLICT', 'APPROVAL_CODE_DUPLICATE', '流程编码已存在');
-  await insertVersion(tx, ctx, id, 1, definition);
+  await insertVersion(tx, ctx, id, 1, definition, input.approvalType);
   return audited(tx, ctx, 'create', null, id);
 }
 
@@ -477,7 +515,7 @@ export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, inp
       hide_records_from_initiator=${definition.hideRecordsFromInitiator},
       condition_expression=${definition.conditions.expression}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
-  await writeVersionContent(tx, ctx.tenantId, draft.id, definition);
+  await writeVersionContent(tx, ctx.tenantId, draft.id, definition, before.approvalType);
   await bump(tx, ctx, id);
   return audited(tx, ctx, 'draft.update', before, id);
 }
@@ -507,7 +545,7 @@ export async function newVersion(tx: Tx, ctx: ApprovalContext, id: string) {
     throw approvalError('CONFLICT', 'APPROVAL_DRAFT_EXISTS', '最新版本已是草稿，请直接编辑');
   }
   const next = Number(row.latest_version_no) + 1;
-  await insertVersion(tx, ctx, id, next, before.latestVersion);
+  await insertVersion(tx, ctx, id, next, before.latestVersion, before.approvalType);
   await bump(tx, ctx, id, sql`,latest_version_no=${next}`);
   return audited(tx, ctx, 'version.create', before, id);
 }
@@ -562,7 +600,14 @@ export async function republishWithExceptionAdmin(tx: Tx, ctx: ApprovalContext, 
     throw approvalError('CONFLICT', 'APPROVAL_DRAFT_EXISTS', `流程 ${row.code} 有未发布的草稿，请先处理后再交接`);
   }
   const next = Number(row.latest_version_no) + 1;
-  const versionId = await insertVersion(tx, ctx, id, next, { ...before.currentVersion, exceptionAdminUserId: userId });
+  const versionId = await insertVersion(
+    tx,
+    ctx,
+    id,
+    next,
+    { ...before.currentVersion, exceptionAdminUserId: userId },
+    before.approvalType,
+  );
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${versionId}::uuid`);

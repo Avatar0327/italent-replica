@@ -31,15 +31,9 @@ import {
 import { notifyTodo } from './notifications.js';
 import { canTake } from './recusal.js';
 import { votesInTransition } from './rules.js';
-import {
-  appendLog,
-  endOpenTasks,
-  insertTask,
-  loadTasks,
-  OPEN_STATUSES,
-  type TaskRow,
-  type TaskStatus,
-} from './store.js';
+import { withoutRetrievedApprovals } from './task-history.js';
+import { appendLog, endOpenTasks, insertTask, loadTasks, type TaskRow, type TaskStatus } from './store.js';
+import { OPEN_STATUSES } from './task-state.js';
 
 /** 节点的同一次激活（F-003）。 */
 export function activationOf(tasks: readonly TaskRow[], task: TaskRow): TaskRow[] {
@@ -51,8 +45,7 @@ export function activationOf(tasks: readonly TaskRow[], task: TaskRow): TaskRow[
  * （DEC-097）。
  */
 function votingTasks(activation: readonly TaskRow[]): TaskRow[] {
-  const retrieved = new Set(activation.filter((task) => task.origin === 'retrieve').map((task) => task.parentTaskId));
-  return activation.filter((task) => !retrieved.has(task.id) && votesInTransition(activation, task));
+  return withoutRetrievedApprovals(activation).filter((task) => votesInTransition(activation, task));
 }
 
 /**

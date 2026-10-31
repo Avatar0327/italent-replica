@@ -12,13 +12,13 @@ const database = useTestDb();
 const BASE = '/api/tenant/approval';
 const first: NodeInput = {
   key: 'first',
-  approver: 'latest_record_department_head',
+  approver: { type: 'department', value: 'latest_record_department_head' },
   exits: ['approve', 'disagree'],
   actions: { transfer: true, addSign: true, copySend: true, retrieve: true, jump: true },
 };
 const second: NodeInput = {
   key: 'second',
-  approver: 'direct_manager',
+  approver: { type: 'object_field', value: 'direct_manager' },
   actions: { rejectToPrevious: true },
 };
 async function scene(
@@ -173,14 +173,17 @@ describe('AC-DM-04 审批推进即时停用', () => {
       {
         ...first,
         kind: 'countersign',
-        approvers: ['latest_record_department_head', 'direct_manager'],
+        approvers: [
+          { type: 'department', value: 'latest_record_department_head' },
+          { type: 'object_field', value: 'direct_manager' },
+        ],
         approver: undefined,
         transitionRule:
           type === 'custom'
             ? { type, rules: { approve: { kind: 'count', value: 2 }, disagree: { kind: 'count', value: 2 } } }
             : { type },
       },
-      { key: 'second', approver: 'owner' },
+      { key: 'second', approver: { type: 'custom_variable', value: 'owner' } },
     ]);
     x.past();
     const next = await action(x, 'approve');
@@ -201,7 +204,10 @@ describe('AC-DM-04 审批推进即时停用', () => {
                 ...first,
                 kind: 'countersign',
                 approver: undefined,
-                approvers: ['latest_record_department_head', 'direct_manager'],
+                approvers: [
+                  { type: 'department', value: 'latest_record_department_head' },
+                  { type: 'object_field', value: 'direct_manager' },
+                ],
                 transitionRule: { type: 'all' },
               },
               second,

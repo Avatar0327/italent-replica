@@ -1,5 +1,5 @@
 {
-  "id": "9d3bc3e6-01e5-48db-954e-429a59781ca6",
+  "id": "f3e62de8-f801-47a3-9aff-7692e01b6206",
   "prevId": "7e5a20a1-42d2-4f95-b337-164527c64bb2",
   "version": "7",
   "dialect": "postgresql",
@@ -61073,11 +61073,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 4"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -63073,7 +63073,7 @@
           "name": "initiator_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "state": {
           "name": "state",
@@ -63220,7 +63220,11 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER') IN ('NO_HANDLER')"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
+        },
+        "exit_handover_requests_initiator": {
+          "name": "exit_handover_requests_initiator",
+          "value": "\"exit_handover_requests\".\"state\" NOT IN ('in_progress', 'completed') OR \"exit_handover_requests\".\"initiator_user_id\" IS NOT NULL"
         },
         "exit_handover_requests_end_reason": {
           "name": "exit_handover_requests_end_reason",

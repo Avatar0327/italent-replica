@@ -14,6 +14,7 @@ const unfinished = sql`NOT EXISTS (SELECT 1 FROM employment_outbox_attempts a
   WHERE a.tenant_id=o.tenant_id AND a.outbox_id=o.id AND a.state='sent')`;
 
 /** 仅补偿本次替代与自动恢复相交的缺口；既有无账号审批不变，不扫描历史 skipped 审计（DEC-402）。 */
+/** 返回本单是否有未完成的补发意图（F-310 合并：有则沿用跳过 + 补发，无则由调用方落未发起记录）。 */
 export async function queueExitHandoverRetry(tx: Tx, ctx: EmploymentContext, event: ExitConfirmedEvent) {
   // 自动停用凭据可能由另一租户持有；本单只声明恢复意图，恢复资格仍由 F-261 全局判定。
   const [source] = rowsOf(
@@ -22,12 +23,12 @@ export async function queueExitHandoverRetry(tx: Tx, ctx: EmploymentContext, eve
     WHERE e.tenant_id=${ctx.tenantId} AND e.business_id=${event.businessId}::uuid
       AND a.restore_requested`),
   );
-  if (!source) return;
-  const [existing] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM employment_outbox
-    WHERE tenant_id=${ctx.tenantId} AND business_id=${event.businessId}::uuid AND event_type=${EVENT}`),
+  if (!source) return false;
+  const [existing] = rowsOf<{ open: boolean }>(
+    await tx.execute(sql`SELECT ${unfinished} AS open FROM employment_outbox o
+    WHERE o.tenant_id=${ctx.tenantId} AND o.business_id=${event.businessId}::uuid AND o.event_type=${EVENT}`),
   );
-  if (existing) return;
+  if (existing) return existing.open;
   // 调用方已持员工锁，确认重入与消费均串行；outbox / attempts 都只追加。
   await tx.insert(employmentOutbox).values({
     tenantId: ctx.tenantId,
@@ -40,6 +41,7 @@ export async function queueExitHandoverRetry(tx: Tx, ctx: EmploymentContext, eve
     commandId: ctx.commandId,
     createdAt: ctx.now,
   });
+  return true;
 }
 
 type Retry = { id: string; employeeId: string; businessId: string; approvedOn: string };

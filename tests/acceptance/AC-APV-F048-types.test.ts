@@ -67,7 +67,9 @@ describe('T11 离职（DEC-329④）', () => {
   it('手工新建且不传开关：发起人是审批人时收到自己的待办（不再自审回避）', async () => {
     const w = await approvalWorld(database().db, 'f048-type-leave-default');
     const s = await transferScene(w);
-    await manualProcess(w, 'leave', LEAVE, [{ key: 'owner_node', approver: 'owner' }]);
+    await manualProcess(w, 'leave', LEAVE, [
+      { key: 'owner_node', approver: { type: 'custom_variable', value: 'owner' } },
+    ]);
     const view = await w.submit(await leaveApplication(w, s.subject.employeeId));
     expect(pendingOf(view)).toEqual([
       expect.objectContaining({ nodeKey: 'owner_node', assigneeUserId: w.hr.id, origin: 'resolved' }),
@@ -79,7 +81,11 @@ describe('T11 离职（DEC-329④）', () => {
     const w = await approvalWorld(database().db, 'f048-type-leave-legacy');
     const s = await transferScene(w);
     await manualProcess(w, 'leave', LEAVE, [
-      { key: 'head', approver: 'latest_record_department_head', actions: { avoidSelf: true } },
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        actions: { avoidSelf: true },
+      },
     ]);
     const view = await w.submit(await leaveApplication(w, s.subject.employeeId));
     const facts = await legacyFacts(w, view);
@@ -128,7 +134,10 @@ describe('T11 员工子集变更（DEC-329④）', () => {
   }
 
   it('手工新建且不传开关：本人发起、本人是审批人时收到自己的待办', async () => {
-    const { s, view } = await scene('f048-type-sub-default', { key: 'owner_node', approver: 'owner' });
+    const { s, view } = await scene('f048-type-sub-default', {
+      key: 'owner_node',
+      approver: { type: 'custom_variable', value: 'owner' },
+    });
     expect(pendingOf(view)).toEqual([
       expect.objectContaining({ nodeKey: 'owner_node', assigneeUserId: s.subject.userId, origin: 'resolved' }),
     ]);
@@ -138,7 +147,7 @@ describe('T11 员工子集变更（DEC-329④）', () => {
   it('存量在途实例（avoid_self=true、无冻结行）：按单主体回退，升级后继续办理并走完', async () => {
     const { w, s, view } = await scene('f048-type-sub-legacy', {
       key: 'head',
-      approver: 'latest_record_department_head',
+      approver: { type: 'department', value: 'latest_record_department_head' },
       actions: { avoidSelf: true },
     });
     const facts = await legacyFacts(w, view);

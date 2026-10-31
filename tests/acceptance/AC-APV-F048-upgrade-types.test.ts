@@ -36,9 +36,19 @@ async function withoutSubjectsTable<T>(db: Db, run: () => Promise<T>): Promise<T
   await db.execute(
     sql`ALTER TABLE approval_process_nodes ADD COLUMN fallback_user_ids uuid[] NOT NULL DEFAULT '{}'::uuid[]`,
   );
+  // F-250：当前离职提交会读取交接配置；旧结构临时补 0158_be8b1_exit_blacklist 的默认值，升级前撤掉。
+  await db.execute(sql`INSERT INTO system_settings (key, value, description, overridable, version, updated_at)
+    VALUES ('exit.handover_trigger', ${JSON.stringify({
+      enabled: true,
+      method: 'on_approval_passed',
+      includePastLastWorkDate: true,
+      initiator: 'self',
+      remind: { enabled: true, daysBeforeLastWorkDate: 5, daysAfterLastWorkDate: 15 },
+    })}::jsonb, '升级夹具临时交接配置', true, 1, now())`);
   try {
     return await run();
   } finally {
+    await db.execute(sql`DELETE FROM system_settings WHERE key = 'exit.handover_trigger'`);
     await db.execute(sql`ALTER TABLE approval_process_nodes DROP COLUMN fallback_user_ids`);
     await db.execute(sql`DROP TABLE approval_instance_subjects`);
     await db.execute(sql`DROP TABLE account_avatar_attachments`);
@@ -59,7 +69,13 @@ async function leaveBefore(db: Db) {
   await w.publishedProcess({
     approvalType: 'leave',
     conditions: LEAVE_CONDITION,
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', actions: { avoidSelf: true } }],
+    nodes: [
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        actions: { avoidSelf: true },
+      },
+    ],
   });
   const employee = await w.json<{ revision: number }>(
     await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${s.subject.employeeId}`),
@@ -96,7 +112,14 @@ async function personnelBefore(db: Db) {
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'self', approver: 'owner', formFields: ['school'], actions: { avoidSelf: true } }],
+    nodes: [
+      {
+        key: 'self',
+        approver: { type: 'custom_variable', value: 'owner' },
+        formFields: ['school'],
+        actions: { avoidSelf: true },
+      },
+    ],
   });
   const record = await w.json<{ id: string; revision: number }>(
     await w.request(w.hr.id, 'POST', `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`, {
@@ -158,7 +181,7 @@ async function contractBefore(db: Db) {
             {
               ...preset.definition.nodes[0]!,
               kind: 'single',
-              approver: 'owner',
+              approver: { type: 'custom_variable', value: 'owner' },
               exits: ['approve', 'disagree'],
             },
           ],

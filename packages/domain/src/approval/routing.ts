@@ -29,13 +29,14 @@ export interface RoutingFacts extends RecusalFacts {
    * 上一节点是会签时有多个（F-003）。
    */
   readonly previousApproverUserIds: readonly string[];
+  readonly previousApprovedUserIds?: readonly string[];
   /** 本实例本轮、有效历史边界之后已同意过的人（历史相同审批人跳过；干预 / 跳转前的同意不算，F7）。 */
   readonly approvedUserIds: readonly string[];
   /** 本实例已分配过任务的人（DEC-068“已在本单审批链上”）。 */
   readonly chainUserIds: readonly string[];
 }
 
-export type AutoOutcome = 'same_skip' | 'history_skip' | 'subject_skip';
+export type AutoOutcome = 'same_skip' | 'history_skip' | 'subject_skip' | 'no_assignee_approve';
 export type AssignOrigin = 'resolved' | 'self_skip_manager' | 'exception_admin';
 
 export type NodeDecision =

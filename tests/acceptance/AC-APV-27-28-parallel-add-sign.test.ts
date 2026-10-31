@@ -26,10 +26,17 @@ const JOINT: NodeInput = {
   key: 'joint',
   name: '调入部门会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
   actions: { addSign: true },
 };
-const FINAL: NodeInput = { key: 'final', name: '一级组织负责人审批', approver: 'record_first_level_org_head' };
+const FINAL: NodeInput = {
+  key: 'final',
+  name: '一级组织负责人审批',
+  approver: { type: 'department', value: 'record_first_level_org_head' },
+};
 
 const pendingOf = (view: InstanceView) => view.tasks.filter((task) => task.status === 'pending');
 

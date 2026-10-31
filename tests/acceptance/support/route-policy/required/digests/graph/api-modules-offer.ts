@@ -152,6 +152,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/offer/context.ts#protocolKeys': ['#PROTOCOL_KEYS'],
+  'apps/api/src/modules/offer/context.ts#readableNames': [
+    '#protocolKeys',
+    'packages/domain/src/offer/views.ts#OFFER_NAME_FIELDS',
+  ],
   'apps/api/src/modules/offer/context.ts#requireOfferInScope': [
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
@@ -176,7 +180,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
   'apps/api/src/modules/offer/context.ts#trimOffer': [
-    '#protocolKeys',
+    '#readableNames',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
   ],
@@ -294,16 +298,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/rules.ts#OFFER_LINKAGE_KEY',
     'packages/domain/src/offer/rules.ts#validOfferLinkageSetting',
   ],
-  'apps/api/src/modules/offer/mail.ts#departmentName': [
-    '#MISSING',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
   'apps/api/src/modules/offer/mail.ts#offerMail': [
     '#MISSING',
     '#NOTICE_TITLE',
     '#OFFER_MAIL_SUBJECT',
-    '#departmentName',
     '#renderNotice',
+    'apps/api/src/modules/offer/read-names.ts#offerDepartmentNames',
     'apps/api/src/modules/offer/service.ts#loadOffer',
   ],
   'apps/api/src/modules/offer/mail.ts#renderNotice': ['#NOTICE_TEMPLATE'],
@@ -313,6 +313,22 @@ export const GRAPH: Graph = {
     '#offerMail',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/offer/rules.ts#OFFER_OBJECT',
+  ],
+  'apps/api/src/modules/offer/read-names.ts#jobNames': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/offer/read-names.ts#managerNames': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/offer/read-names.ts#offerDepartmentNames': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/offer/read-names.ts#senderNames': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/offer/read-names.ts#withOfferNames': [
+    '#jobNames',
+    '#managerNames',
+    '#offerDepartmentNames',
+    '#senderNames',
   ],
   'apps/api/src/modules/offer/routes.ts#batchVisible': ['apps/api/src/modules/offer/service.ts#loadOffer'],
   'apps/api/src/modules/offer/routes.ts#listFilters': [
@@ -490,6 +506,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#listOffers': [
     'apps/api/src/modules/offer/approval-progress.ts#withApprovalProgress',
     'apps/api/src/modules/offer/entry-link.ts#currentEntryIds',
+    'apps/api/src/modules/offer/read-names.ts#withOfferNames',
     '#TEXT_FILTERS',
     '#offerViewConditions',
     '#withActions',
@@ -514,6 +531,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/offer/service.ts#offerDetail': [
     'apps/api/src/modules/offer/approval-progress.ts#withApprovalProgress',
     'apps/api/src/modules/offer/entry-link.ts#currentEntryIds',
+    'apps/api/src/modules/offer/read-names.ts#withOfferNames',
     '#loadOffer',
     '#withActions',
   ],

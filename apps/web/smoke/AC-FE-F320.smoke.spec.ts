@@ -18,7 +18,7 @@ function withFlow(allowed: boolean) {
   };
 }
 
-test('AC-FE-F320-05 头像进入配置中心，目录展开、占位不可写、刷新与返回企业设置', async ({ page }) => {
+test('AC-FE-F320-05 头像进入配置中心，目录展开、流程列表、其余占位不可写、刷新与返回企业设置', async ({ page }) => {
   const writes: string[] = [];
   page.on('request', (request) => {
     if (request.url().includes('/api/') && !['GET', 'HEAD'].includes(request.method())) writes.push(request.url());
@@ -37,7 +37,7 @@ test('AC-FE-F320-05 头像进入配置中心，目录展开、占位不可写、
   await workflow.click();
   await nav.getByRole('link', { name: '流程', exact: true }).click();
   await expect(page.getByRole('heading', { name: '流程', exact: true })).toBeVisible();
-  await expect(page.getByText('此配置页尚未开放', { exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '流程名称', exact: true })).toBeVisible();
   await page.reload();
   await expect(nav.getByRole('link', { name: '流程', exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('configuration-center.png'), fullPage: true });
@@ -73,7 +73,7 @@ test('AC-FE-F320-06 无权隐藏头像入口，直达和撤权刷新均拒绝', 
   await expect(page.getByText(ui.denied, { exact: true })).toBeVisible();
 });
 
-test('AC-FE-F320-07 有权直达、大小写和编码路径、未知页及占位页不吞下子路由', async ({ page }) => {
+test('AC-FE-F320-07 有权直达、大小写和编码路径、未知页及流程非法子路由拒绝', async ({ page }) => {
   await page.route('**/permission/me/snapshot', (route) => route.fulfill({ json: withFlow(true) }));
   for (const path of [flowPath, '/CONFIG-CENTER/workflow/PROCESSES/', '/%63onfig-center/workflow/processes']) {
     await page.goto(path);

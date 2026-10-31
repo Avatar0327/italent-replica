@@ -2,8 +2,8 @@
  * 离职交接执行（R2 BE-8b2，B64 / B65，DM-R11 / DM-R13 / DM-R14，DEC-632；设计 R2-T03 §0 / §5.1 步骤 8 的 confirmed / cancelled 端口订阅方）。
  * - 自动发起：订阅 exitPostEffectHooks.onConfirmed（端口只对离职申请审批通过调用，直接离职不调用，B-59）。按 exit.handover_trigger 判断开关与
  *   “包含最后工作日早于审批通过日的人员”；发起人 = 员工本人账号、系统代发（审计操作人为空）。发起在保存点内：没有可用流程等
- *   业务拒绝只留痕（exit_handover.launch_failed），不回滚离职审批。工作交接节点按“交接人 → 直线经理 → 本节点兜底处理人”取人
- *   （resolver.ts resolveCandidates）；三者都空时不发起，落一条持久的“交接未发起”记录（not_launched，原因 NO_HANDLER）并写审计，
+ *   业务拒绝不回滚离职审批；取人为空、无可用流程与无发起账号持久化未发起状态（DEC-674）。工作交接节点按“交接人 → 直线经理 → 本节点兜底处理人”取人
+ *   （handover-empty.ts resolveHandoverApprovers）；三者都空时不发起，落一条持久的“交接未发起”记录（not_launched，原因 NO_HANDLER）并写审计，
  *   离职批准照常通过（DEC-663，原站交接在离职审批通过后才发起，二者解耦）。其他事项交接取不到人沿用审批引擎的异常管理员机制。
  *   同一离职最多一条进行中 / 已完成 / 未发起的交接记录（部分唯一索引兜底，重放返回已有的一条）。
  * - 办理：勾选“办理完成”即自动保存（tickHandoverItem，不点同意也生效、不推进节点）；只能改当前待办节点负责的类别
@@ -21,7 +21,6 @@ import {
   HANDOVER_NOT_LAUNCHED_HINTS,
   HANDOVER_NODE_OF_TODO,
   HANDOVER_TRIGGER_DEFAULT,
-  handoverLaunchDecision,
   EXIT_HANDOVER_TRIGGER_KEY,
   tenantLocalDate,
   type HandoverDisplayStatus,
@@ -67,7 +66,7 @@ export type LaunchResult =
   | { readonly outcome: 'not_launched'; readonly requestId: string; readonly reason: string }
   | { readonly outcome: 'skipped' | 'failed'; readonly reason: string };
 
-async function auditHandover(
+export async function auditHandover(
   tx: Tx,
   ctx: Pick<EmploymentContext, 'tenantId' | 'commandId' | 'now'> & { readonly actorUserId?: string | null },
   action: string,
@@ -89,12 +88,12 @@ async function auditHandover(
   });
 }
 
-async function readTrigger(tx: Tx, tenantId: string): Promise<HandoverTriggerSetting> {
+export async function readTrigger(tx: Tx, tenantId: string): Promise<HandoverTriggerSetting> {
   const checked = checkHandoverTrigger((await readEffectiveSetting(tx, tenantId, EXIT_HANDOVER_TRIGGER_KEY)).value);
   return checked.ok ? checked.value : HANDOVER_TRIGGER_DEFAULT;
 }
 
-async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise<string | null> {
+export async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise<string | null> {
   const [row] = rowsOf<{ lastWorkDate: string | null }>(
     await tx.execute(sql`SELECT last_work_date::text AS "lastWorkDate" FROM employment_payload_versions
       WHERE tenant_id = ${tenantId} AND business_id = ${exitId}::uuid ORDER BY version_no DESC LIMIT 1`),
@@ -106,11 +105,15 @@ async function lastWorkDateOf(tx: Tx, tenantId: string, exitId: string): Promise
  * 审批中心上下文：发起人换成员工本人账号，操作人显式设为系统（actorUserId: null）——审批发起日志、审计与主体冻结的操作人都记系统，
  * 不冒用批准离职的审批人（第 2 轮 P2-2）；发起日志另标“系统代发”。
  */
-const launchContext = (ctx: EmploymentContext, initiatorUserId: string) =>
+export const handoverLaunchContext = (
+  ctx: EmploymentContext,
+  initiatorUserId: string,
+  actorUserId: string | null = null,
+) =>
   ({
     ...ctx,
     userId: initiatorUserId,
-    actorUserId: null,
+    actorUserId,
     expectedRevision: 0,
     systemProxy: true,
   }) as unknown as ApprovalContext;
@@ -120,47 +123,63 @@ export async function launchExitHandover(
   tx: Tx,
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
-  approvedOn = tenantLocalDate(ctx.now, ctx.timezone),
+  approvedOn?: string,
 ): Promise<LaunchResult> {
   if (event.kind !== 'leave' || event.mode !== 'application') return { outcome: 'skipped', reason: 'NOT_APPLICABLE' };
+  const { automaticHandover } = await import('./exit-handover-launch.js');
+  // 补发重试传入登记时的批准日；缺省取 R（pre_release_date，确认当日写入后不再改变）
+  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed', undefined, approvedOn);
+}
+
+/** F-250：各入口共用创建与审批执行；调用方持员工锁并判定触发资格。 */
+export async function createExitHandover(
+  tx: Tx,
+  ctx: EmploymentContext,
+  event: ExitConfirmedEvent,
+  actorUserId: string | null = null,
+): Promise<LaunchResult> {
+  const auditContext = { ...ctx, actorUserId };
   const live = await liveHandoverOfExit(tx, ctx.tenantId, event.businessId);
   if (live) return { outcome: 'exists', requestId: live.id };
-  const decision = handoverLaunchDecision(await readTrigger(tx, ctx.tenantId), {
-    lastWorkDate: await lastWorkDateOf(tx, ctx.tenantId, event.businessId),
-    approvedOn,
-  });
-  if (decision !== 'launch') return { outcome: 'skipped', reason: decision.toUpperCase() };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
   if (!initiatorUserId) {
-    await queueExitHandoverRetry(tx, ctx, event);
-    return skip(tx, ctx, event, 'NO_INITIATOR_ACCOUNT');
+    // F-140b × F-261：替代单恢复账号的补发意图已登记时沿用跳过 + 补发（列车 A）；其余无账号仍落未发起记录（F-310 / F-305）
+    if (await queueExitHandoverRetry(tx, ctx, event)) {
+      await auditHandover(tx, auditContext, 'skipped', 'exit-request', event.businessId, null, {
+        reason: 'NO_INITIATOR_ACCOUNT',
+      });
+      return { outcome: 'skipped', reason: 'NO_INITIATOR_ACCOUNT' };
+    }
+    return recordNotLaunched(tx, auditContext, event, null, 'NO_INITIATOR_ACCOUNT');
   }
   try {
     // 保存点：业务拒绝（没有可用流程、首节点无审批人……）整体回退，只留痕，不拖垮离职审批
-    return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId));
+    return await tx.transaction((savepoint) => createAndStart(savepoint, ctx, event, initiatorUserId, actorUserId));
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
-    const details = error.details as { reason?: string; nodeKey?: string } | undefined;
-    const reason = details?.reason ?? error.code;
-    // 工作交接节点取不到处理人（交接人、直线经理、兜底处理人都空）：不发起，落“交接未发起”记录，离职批准照常通过（DEC-663）。
-    // 与节点“无审批人”策略无关：转异常管理员时引擎报“首节点审批人为空”，无操作时报“无审批人”，按引擎给的节点编码判定
-    if (NO_HANDLER_REASONS.has(reason) && details?.nodeKey === HANDOVER_NODE_KEYS.work)
-      return recordNotLaunched(tx, ctx, event, initiatorUserId);
-    await auditHandover(tx, ctx, 'launch_failed', 'exit-request', event.businessId, null, { reason });
+    const recoverable = handoverNotLaunchedReason(error);
+    if (recoverable) return recordNotLaunched(tx, auditContext, event, initiatorUserId, recoverable);
+    const reason = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
+    await auditHandover(tx, auditContext, 'launch_failed', 'exit-request', event.businessId, null, { reason });
     return { outcome: 'failed', reason };
   }
 }
 
-async function skip(tx: Tx, ctx: EmploymentContext, event: ExitConfirmedEvent, reason: string): Promise<LaunchResult> {
-  await auditHandover(tx, ctx, 'skipped', 'exit-request', event.businessId, null, { reason });
-  return { outcome: 'skipped', reason };
+/** 自动发起与 HR 重新提交共用原因分类；只把工作交接节点的取人失败归为 NO_HANDLER（DEC-663）。 */
+export function handoverNotLaunchedReason(error: unknown): HandoverNotLaunchedReason | null {
+  if (!(error instanceof AppError)) return null;
+  const details = error.details as { reason?: string; nodeKey?: string } | undefined;
+  const reason = details?.reason ?? error.code;
+  if (NO_HANDLER_REASONS.has(reason) && details?.nodeKey === HANDOVER_NODE_KEYS.work) return 'NO_HANDLER';
+  return reason === 'APPROVAL_PROCESS_NOT_MATCHED' ? reason : null;
 }
 
 async function recordNotLaunched(
   tx: Tx,
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
-  initiatorUserId: string,
+  initiatorUserId: string | null,
+  reason: HandoverNotLaunchedReason,
 ): Promise<LaunchResult> {
   const current = await findCurrentRecord(tx, ctx.tenantId, event.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
   const id = randomUUID();
@@ -171,17 +190,17 @@ async function recordNotLaunched(
     employeeId: event.employeeId,
     departmentId: current?.fields.departmentId ?? null,
     initiatorUserId,
-    reason: 'NO_HANDLER',
+    reason,
     commandId: ctx.commandId,
     now: ctx.now,
   });
   await auditHandover(tx, ctx, 'not_launched', REQUEST_TYPE, id, null, {
     exitRequestId: event.businessId,
     employeeId: event.employeeId,
-    reason: 'NO_HANDLER',
-    hint: HANDOVER_NOT_LAUNCHED_HINTS.NO_HANDLER,
+    reason,
+    hint: HANDOVER_NOT_LAUNCHED_HINTS[reason],
   });
-  return { outcome: 'not_launched', requestId: id, reason: 'NO_HANDLER' };
+  return { outcome: 'not_launched', requestId: id, reason };
 }
 
 async function createAndStart(
@@ -189,6 +208,7 @@ async function createAndStart(
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
   initiatorUserId: string,
+  actorUserId: string | null,
 ): Promise<LaunchResult> {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const current = await findCurrentRecord(tx, ctx.tenantId, event.employeeId, today);
@@ -207,12 +227,12 @@ async function createAndStart(
   });
   // 动态加载：审批引擎经 ADAPTERS 反向依赖本模块的适配器（同意向退休申请的做法）
   const { startOrResume } = await import('../approval/engine.js');
-  const instance = await startOrResume(tx, launchContext(ctx, initiatorUserId), {
+  const instance = await startOrResume(tx, handoverLaunchContext(ctx, initiatorUserId, actorUserId), {
     businessType: 'exit_handover',
     businessId: id,
   });
   await linkHandoverInstance(tx, ctx.tenantId, id, instance.id);
-  await auditHandover(tx, ctx, 'launch', REQUEST_TYPE, id, null, {
+  await auditHandover(tx, { ...ctx, actorUserId }, 'launch', REQUEST_TYPE, id, null, {
     exitRequestId: event.businessId,
     employeeId: event.employeeId,
     initiatorUserId,
