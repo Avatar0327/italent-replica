@@ -274,6 +274,35 @@ test('AC-FE-R2c1-11 申请第二步失败后重新进入页面：找回原草稿
   ]);
 });
 
+test('AC-FE-R2c1-13 本机存储写不进时关闭重开：按页面内存指针找回原草稿同单提交，不再建第二张（P2）', async ({
+  page,
+}) => {
+  // 配额已满 / 浏览器策略禁止写入：读照常，写一律抛错
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException('synthetic quota', 'QuotaExceededError');
+    };
+  });
+  const { server } = await setup(page);
+  server.rejectSubmits = 1;
+  const form = await applyOnce(page);
+  await expect(form).toContainText('没有可用的转正流程');
+  await form.getByRole('button', named('取消')).click();
+  await expect(form).toHaveCount(0);
+  // 不刷新、不离开：详情仍开着，直接再点“转正申请”
+  await page.getByRole('button', named('转正申请')).click();
+  await expect(form).toContainText('申请已保存，继续提交同一申请；已保存的字段只读。');
+  await expect(form).toContainText('本机无法保存这份申请的找回记录');
+  await form.getByRole('button', { name: /提\s*交$/ }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '转正审批中', exact: true, pressed: true })).toBeVisible();
+  expect(sentPaths(server)).toEqual([
+    [create, '4'],
+    [submitPath, '1'],
+    [submitPath, '1'],
+  ]);
+});
+
 test('AC-FE-R2c1-12 撤回后再申请：沿用原申请单同单重提，不再建第二张（P2-4，DEC-103）', async ({ page }) => {
   const { server } = await setup(page);
   const form = await applyOnce(page);
