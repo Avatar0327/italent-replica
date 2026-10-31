@@ -198,12 +198,24 @@ async function selfServiceForm(
   return configured;
 }
 
+/** 新建业务的继承：沿用合格前驱的人员类别可以是已停用项（新周期无前驱），新选 / 改选须启用（F-323）。 */
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
-  frozenForm?: TrustedFormSnapshot,
 ): Promise<PreparedInheritance> {
+  const { prepared, predecessorType } = await inheritFields(tx, ctx, input);
+  await validateSelectedEmploymentType(tx, ctx.tenantId, prepared.fields.employmentType, predecessorType);
+  return prepared;
+}
+
+/** 继承与显式字段合并；不判断人员类别是否改选，由新建 / 修改入口按各自的沿用基准判定。 */
+async function inheritFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  frozenForm?: TrustedFormSnapshot,
+): Promise<{ prepared: PreparedInheritance; predecessorType: string | null }> {
   businessDate(input.effectiveDate);
   let configured =
     input.kind === 'transfer'
@@ -264,12 +276,10 @@ export async function prepareInheritance(
     derivedOrigins,
     employee.code,
   );
-  // F-323：沿用前驱的人员类别可以是已停用项，新选 / 改选须启用
-  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, eligible?.fields.employmentType);
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
   const explicit = new Set(explicitFieldCodes);
   for (const origin of derivedOrigins) explicit.add(`preset:${derivationFields(origin).field}`);
-  return {
+  const prepared = {
     effectiveDate: input.effectiveDate,
     fields,
     customFields,
@@ -279,6 +289,7 @@ export async function prepareInheritance(
     sourceRecordId: eligible?.id ?? null,
     sourceStaffId: eligible?.staffId ?? null,
   };
+  return { prepared, predecessorType: eligible?.fields.employmentType ?? null };
 }
 
 /** 日期不变时保留创建表单时捕获的默认值；日期改变按 DEC-041 重新查前驱。 */
@@ -289,8 +300,24 @@ export async function prepareEmploymentPatch(
   previous: PreparedInheritance,
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
-  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
-  if (input.effectiveDate !== previous.effectiveDate) return prepared;
+  const { prepared, predecessorType } = await inheritFields(tx, ctx, input, previous.formSnapshot);
+  const merged =
+    input.effectiveDate === previous.effectiveDate ? restoreFrozenDefaults(input, previous, prepared) : prepared;
+  // F-323 第 2 轮 P2-2：字段最终合并后，以锁内本单旧值为沿用基准判断是否改选，不以前驱类别为准；
+  // 改期且未显式填写时类别按新前驱重新带出（DEC-041），沿用的是新前驱的值
+  const reinherited =
+    input.effectiveDate !== previous.effectiveDate && !merged.explicitFieldCodes.includes('preset:employmentType');
+  const baseline = reinherited ? predecessorType : previous.fields.employmentType;
+  await validateSelectedEmploymentType(tx, ctx.tenantId, merged.fields.employmentType, baseline);
+  return merged;
+}
+
+/** 日期不变：恢复创建时冻结的默认值，本次显式填写与上一版显式 / 延后字段除外。 */
+function restoreFrozenDefaults(
+  input: InheritanceInput,
+  previous: PreparedInheritance,
+  prepared: PreparedInheritance,
+): PreparedInheritance {
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
   const oldExplicit = new Set(previous.explicitFieldCodes);

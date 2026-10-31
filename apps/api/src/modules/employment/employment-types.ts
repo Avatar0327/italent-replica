@@ -118,16 +118,20 @@ function typeId(id: unknown): id is string {
 }
 
 /**
- * 存量引用校验（任职 / 兼职每次追加版本，同用工形式 F-321 的写入口）：本租户未删除的字典 ID 即可，停用不拦；
- * null / 未给表示不选。离职、结束兼职、调动、重排期等沿用原值的继承路径保留已停用的原引用（F-323 第 1 轮审查 P2-1）。
+ * F-323 “显式改选 vs 沿用原引用”的唯一判定，所有带人员类别的写入口只经它判断（第 3 轮 03 两问）：
+ * value 与 baseline 相同即沿用，已停用也放行（仍须本租户未删除）；不同即新选 / 改选，须启用。null / 未给表示不选。
+ * baseline：修改既有申请 / 记录 = 锁内本单旧值；新建 = 合格前驱的值（新周期、兼职新增无前驱，为 null）。
  */
-export async function validateEmploymentType(tx: Tx, tenantId: string, id: unknown) {
-  if (typeId(id)) await requireEmploymentTypes(tx, tenantId, [id], false);
+export async function validateSelectedEmploymentType(tx: Tx, tenantId: string, value: unknown, baseline: unknown) {
+  if (typeId(value)) await requireEmploymentTypes(tx, tenantId, [value], value !== baseline);
 }
 
-/** 显式选择（入职 / 业务表单、编辑任职、兼职新增与编辑）：与沿用值（前驱 / 原记录）不同即新选 / 改选，须启用。 */
-export async function validateSelectedEmploymentType(tx: Tx, tenantId: string, id: unknown, inherited?: unknown) {
-  if (typeId(id)) await requireEmploymentTypes(tx, tenantId, [id], id !== inherited);
+/**
+ * 存量引用校验（任职 / 兼职每次追加版本，同用工形式 F-321 的写入口）：存储层不判断是否改选，值即基准，只校验存在；
+ * 是否改选由各入口在字段合并后另行判定。离职、结束兼职等继承路径保留已停用的原引用（F-323 第 1 轮审查 P2-1）。
+ */
+export async function validateEmploymentType(tx: Tx, tenantId: string, id: unknown) {
+  await validateSelectedEmploymentType(tx, tenantId, id, id);
 }
 
 /** 名称补充发生在字段权限裁剪后（看不到 employmentType 就不补名称）；停用 / 删除后仍显示历史名称。 */

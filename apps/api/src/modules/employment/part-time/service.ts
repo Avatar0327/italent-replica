@@ -110,7 +110,7 @@ export async function checkNewPartTime(
   });
   await assertExclusiveTypeFree(tx, ctx, normalized, undefined, excludeRequestId);
   const fields = partTimePresetFields(normalized, { jobNumber: employee.code, employType: cycle.employType as never });
-  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, savedType);
+  await validateSelectedEmploymentType(tx, ctx.tenantId, fields.employmentType, savedType ?? null);
   await validatePartTimeReferences(tx, ctx, normalized, fields);
   const custom = await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
   // §4.8：联动人员保存时就校验（负责人的组织写范围、下属在职 / 资格 / 范围），不留“记录说是负责人、组织上不是”的半套
@@ -242,7 +242,7 @@ export async function previewPartTime(
   });
   await assertExclusiveTypeFree(tx, ctx, normalized);
   const derived = { jobNumber: employee.code, employType: cycle.employType as never };
-  await validateSelectedEmploymentType(tx, ctx.tenantId, normalized.fields.employmentType);
+  await validateSelectedEmploymentType(tx, ctx.tenantId, normalized.fields.employmentType, null);
   await validatePartTimeReferences(tx, ctx, normalized, partTimePresetFields(normalized, derived));
   await validatePartTimeCustomFields(tx, ctx, normalized.customFields);
   await validatePartTimeLinkage(
