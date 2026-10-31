@@ -62,8 +62,15 @@ function YesNo(props: { value?: boolean; onChange?(value: boolean): void; disabl
 }
 
 const dictionaries = Object.entries({ exitTypeCode: 'types', reasonCode: 'reasons', whereaboutsCode: 'whereabouts' });
-/** 新建与编辑共用：最后工作日、三个字典项、加入黑名单（默认否；选“是”才出现加黑三项）。 */
-export function ExitFields({ black, ...props }: Access & { black: boolean }) {
+/**
+ * 新建与编辑共用：最后工作日、三个字典项、加入黑名单（默认否；选“是”才出现加黑三项）。
+ * blackRequired：加黑原因是否必填；编辑时加黑组原样保留（blackGroupKept）则不要求重填。
+ */
+export function ExitFields({
+  black,
+  blackRequired = black,
+  ...props
+}: Access & { black: boolean; blackRequired?: boolean }) {
   return (
     <>
       <ExitField name="lastWorkDate" {...props} required>
@@ -82,7 +89,7 @@ export function ExitFields({ black, ...props }: Access & { black: boolean }) {
           <ExitField name="blacklistExpiryDate" {...props} extra={x.permanent}>
             <TenantDatePicker />
           </ExitField>
-          <ExitField name="blacklistReason" {...props} required>
+          <ExitField name="blacklistReason" {...props} required={blackRequired}>
             <Select aria-label={x.fields.blacklistReason} options={blacklistReasons} />
           </ExitField>
           <ExitField name="blacklistNote" {...props}>

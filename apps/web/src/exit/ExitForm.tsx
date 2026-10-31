@@ -1,5 +1,5 @@
 import { Alert, Form, Modal } from 'antd';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { usePeople } from '../contracts/references.js';
 import { newCommand } from '../foundation/client.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -11,11 +11,12 @@ import { PersonSelect, type Choice } from '../foundation/selectors.js';
 import { useApiClient } from '../foundation/Session.js';
 import { employeePath, useEmployeeRead } from '../intern/commands.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
-import { CommandModal } from './EditForm.js';
+import { CommandModal, SubmitForm } from './EditForm.js';
 import { useExitCommand, useFormSubmit } from './ExitCommands.js';
 import { ExitFields } from './ExitFields.js';
 import { x } from './messages.js';
 import {
+  acceptDraft,
   acceptExit,
   createBody,
   editableFields,
@@ -88,8 +89,28 @@ function usePreview(employeeId: string) {
   return { checked, check, reset: () => setChecked(undefined) };
 }
 
-function ExitEditor({ mode, employee, onDone, onClose, opening, read }: EditorProps) {
+type Draft = { id: string; revision: number; confirmable: boolean };
+/**
+ * 离职申请分两步：新建只建草稿（exit-routes.ts 新建 → draft），再按草稿 id / revision 提交审批；
+ * 第二步成功才提示已提交。草稿建好后不再回到新建表单，提交失败就在提交弹窗里重试同一草稿。
+ */
+function ExitEditor(props: EditorProps) {
+  const [draft, setDraft] = useState<Draft>();
+  if (draft) return <SubmitForm {...draft} auto onClose={props.onClose} refresh={props.onDone} />;
+  return <CreateEditor {...props} onDraft={setDraft} />;
+}
+
+function CreateEditor({
+  mode,
+  employee,
+  onDone,
+  onClose,
+  opening,
+  read,
+  onDraft,
+}: EditorProps & { onDraft(draft: Draft): void }) {
   const employeeId = employee.value;
+  const draft = useRef<Draft | undefined>(undefined);
   const permission = usePermissions(object).snapshot.objects[object];
   const editable = editableFields(permission, 'create');
   const [form] = Form.useForm();
@@ -111,18 +132,21 @@ function ExitEditor({ mode, employee, onDone, onClose, opening, read }: EditorPr
       const { notice } = preview.checked;
       if (notice.blockers.length) return false;
       const ack: Values = notice.ackToken ? { pendingTransferAck: notice.ackToken } : {};
-      return cmd.submit(values, editable, {
+      const done = await cmd.submit(values, editable, {
         path: slotKey(exitEmployees, employeeId),
         method: 'POST',
         body: (merged, confirm) => createBody(merged, mode, { ...ack, ...confirm }),
-        accept: (raw, sent) => ({
-          path: employeePath(employeeId),
-          id: employeeId,
-          revision: acceptExit(raw, { employeeId, sent: Number(sent) }).revision,
-        }),
+        accept: (raw, sent) => {
+          const revision = acceptExit(raw, { employeeId, sent: Number(sent) }).revision;
+          if (mode === 'application') draft.current = { ...acceptDraft(raw), confirmable: !notice.tooMany };
+          return { path: employeePath(employeeId), id: employeeId, revision };
+        },
         // F-240：超上限时后端不给令牌，不进确认循环
         confirmable: !notice.tooMany,
       });
+      if (!done || !draft.current) return done;
+      onDraft(draft.current);
+      return false;
     },
     onClose,
   );

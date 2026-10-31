@@ -1,15 +1,17 @@
 import { Alert, Button, Descriptions, Modal, Popconfirm, Space, Table, Tag, message } from 'antd';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { NameOf } from '../contracts/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { slotKey } from '../foundation/forms/slot.js';
+import type { Latest } from '../foundation/forms/store.js';
 import type { Values } from '../foundation/forms/values.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
-import { CancelForm, EditForm } from './EditForm.js';
-import { useExitCommand } from './ExitCommands.js';
+import { CancelForm, EditForm, SubmitForm } from './EditForm.js';
+import { useExitCommand, useExitRead } from './ExitCommands.js';
+import { useApiClient } from '../foundation/Session.js';
 import { x } from './messages.js';
 import {
   acceptHandoverSubmit,
@@ -43,7 +45,7 @@ export const fieldValue = (row: Row, key: string) =>
 export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): void; refresh(): Promise<unknown> }) {
   const detail = useRead<Row>(slotKey(exits, id));
   const permission = usePermissions(object).snapshot.objects[object];
-  const [open, setOpen] = useState<'edit' | 'cancel'>();
+  const [open, setOpen] = useState<'submit' | 'edit' | 'cancel'>();
   const row = detail.data;
   const reload = async () => {
     await Promise.all([detail.reload(), refresh()]);
@@ -72,6 +74,9 @@ export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): vo
           </Descriptions>
           <Handover row={row} refresh={reload} />
           <p className="exit-hint">{x.unverifiedSections}</p>
+          {open === 'submit' && (
+            <SubmitForm id={id} revision={Number(row.revision)} onClose={() => setOpen(undefined)} refresh={reload} />
+          )}
           {open === 'edit' && <EditForm id={id} onClose={() => setOpen(undefined)} refresh={reload} />}
           {open === 'cancel' && (
             <CancelForm id={id} revision={Number(row.revision)} onClose={() => setOpen(undefined)} refresh={reload} />
@@ -106,9 +111,16 @@ function Handover({ row, refresh }: { row: Row; refresh(): Promise<unknown> }) {
       {!!error && <PageState kind="error" error={error} retry={read.refresh} />}
       {request?.hint && <Alert type="info" message={request.hint} />}
       {entries.includes('submit') && (
-        <HandoverButton kind="submit" target={{ id: row.id, revision: Number(row.revision) }} refresh={reload} />
+        <HandoverButton
+          kind="submit"
+          exitId={row.id}
+          target={{ id: row.id, revision: Number(row.revision) }}
+          refresh={reload}
+        />
       )}
-      {request && entries.includes('resubmit') && <HandoverButton kind="resubmit" target={request} refresh={reload} />}
+      {request && entries.includes('resubmit') && (
+        <HandoverButton kind="resubmit" exitId={row.id} target={request} refresh={reload} />
+      )}
       {request && (
         <Table<HandoverItem>
           size="small"
@@ -127,12 +139,23 @@ function Handover({ row, refresh }: { row: Row; refresh(): Promise<unknown> }) {
   );
 }
 
+/** 重新提交交接的 409 重读：交接单 revision 来自离职单的交接投影（GET /exits/:id/handover），不是离职单。 */
+function useHandoverRead(exitId: string, requestId: string) {
+  const api = useApiClient();
+  return useCallback(async (): Promise<Latest> => {
+    const request = parseHandover(await api.request<unknown>(`${slotKey(exits, exitId)}/handover`)).request;
+    if (request?.id !== requestId) throw new Error(x.invalidReceipt);
+    return { id: requestId, revision: request.revision, values: {} };
+  }, [api, exitId, requestId]);
+}
+
 /**
  * 发起（详情 submit / 行内 submit-from-list）与重新提交交接：空请求体，If-Match 分别为离职单与交接单 revision；
- * 结果未知时按钮锁定。
+ * 409 时在本处重读对应对象，核对后按新 revision 重提；结果未知时按钮锁定。
  */
 export function HandoverButton(props: {
   kind: 'submit' | 'submit-from-list' | 'resubmit';
+  exitId: string;
   target: { id: string; revision: number };
   refresh(): Promise<unknown>;
 }) {
@@ -141,7 +164,11 @@ export function HandoverButton(props: {
   const label = resubmit ? x.entries.resubmit : x.entries.handover;
   const [baseline] = useState<Values>({});
   const resource = resubmit ? handoverRequests : exits;
-  const cmd = useExitCommand(resource, { ...target, baseline }, resubmit ? 'resubmit' : 'handover', props.refresh);
+  const exitRead = useExitRead(props.exitId);
+  const handoverRead = useHandoverRead(props.exitId, target.id);
+  const read = resubmit ? handoverRead : exitRead;
+  const action = resubmit ? 'resubmit' : 'handover';
+  const cmd = useExitCommand(resource, { ...target, baseline, read }, action, props.refresh);
   const accept = resubmit ? acceptResubmit : acceptHandoverSubmit;
   const run = async () => {
     try {

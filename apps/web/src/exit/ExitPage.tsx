@@ -1,4 +1,4 @@
-import { Button, Modal, Space, Table } from 'antd';
+import { Button, Modal, Space, Table, Tag } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { KeywordFilter } from '../contracts/Filters.js';
@@ -18,6 +18,7 @@ import { x } from './messages.js';
 import {
   BATCH_LIMIT,
   VIEWS,
+  activationBadge,
   allowedFilters,
   batchHandoverRows,
   columns,
@@ -196,6 +197,7 @@ function ExitTable(props: {
           <HandoverButton
             key={entry}
             kind="submit-from-list"
+            exitId={row.id}
             target={{ id: row.id, revision: Number(row.revision) }}
             refresh={props.refresh}
           />
@@ -216,7 +218,7 @@ function ExitTable(props: {
         ...columns[props.view].map((key) => ({
           key,
           title: x.fields[key],
-          render: (_: unknown, row: Row) => fieldValue(row, key),
+          render: (_: unknown, row: Row) => (key === 'name' ? <NameCell row={row} /> : fieldValue(row, key)),
         })),
         {
           key: 'operation',
@@ -229,14 +231,30 @@ function ExitTable(props: {
   );
 }
 
-/** 批量发起交接（F-317）：只对本页带行动作的单，逐人回执列出失败原因；版本逐条在请求体里，不带 If-Match。 */
+/** 生效失败 / 挂起（exit-queries.ts activation）：列表只给通用标记，原因在详情。 */
+function NameCell({ row }: { row: Row }) {
+  const badge = activationBadge(row);
+  return (
+    <>
+      {fieldValue(row, 'name')}
+      {badge && <Tag color="error">{badge}</Tag>}
+    </>
+  );
+}
+
+type BatchResult = { receipts: BatchReceipt[]; names: Map<string, string> };
+/**
+ * 批量发起交接（F-317）：只对本页带行动作的单，逐人回执列出失败原因；版本逐条在请求体里，不带 If-Match。
+ * 写后刷新可能让本页不再有可发起的行（整批未发起成功也会被服务端摘掉行动作）：按钮随之消失，回执与状态条保留。
+ */
 function BatchHandover({ rows, refresh }: { rows: Row[]; refresh(): Promise<unknown> }) {
   const pinned = rows.slice(0, BATCH_LIMIT).map((row) => ({ id: row.id, revision: Number(row.revision) }));
   const ids = pinned.map((item) => item.id);
   const cmd = useExitCommand(exits, { revision: undefined, baseline: {} }, 'batch-handover', refresh, pinned);
-  const [receipts, setReceipts] = useState<BatchReceipt[]>();
-  if (!rows.length) return null;
+  const [result, setResult] = useState<BatchResult>();
   const run = async () => {
+    // 提交时的姓名快照：刷新后行可能不在本页
+    const names = new Map(rows.map((row) => [row.id, row.name ?? row.id]));
     let parsed: BatchReceipt[] = [];
     try {
       const done = await cmd.submit({}, [], {
@@ -247,25 +265,26 @@ function BatchHandover({ rows, refresh }: { rows: Row[]; refresh(): Promise<unkn
         body: () => ({ items: pinned.map((item) => ({ exitRequestId: item.id, revision: item.revision })) }),
         accept: (raw) => void (parsed = parseBatchReceipts(raw, ids)),
       });
-      if (done) setReceipts(parsed);
+      if (done) setResult({ receipts: parsed, names });
     } catch {
       // 拒绝 / 结果未知由内核状态条显示
     }
   };
-  const names = new Map(rows.map((row) => [row.id, row.name ?? row.id]));
   return (
     <Space direction="vertical">
-      <Button loading={cmd.form.busy} disabled={cmd.disabled} onClick={() => void run()}>
-        {x.entries.batchHandover}
-        {rows.length > BATCH_LIMIT && ` ${x.batchLimit(BATCH_LIMIT)}`}
-      </Button>
+      {rows.length > 0 && (
+        <Button loading={cmd.form.busy} disabled={cmd.disabled} onClick={() => void run()}>
+          {x.entries.batchHandover}
+          {rows.length > BATCH_LIMIT && ` ${x.batchLimit(BATCH_LIMIT)}`}
+        </Button>
+      )}
       <CommandStatus submission={cmd.form} />
-      {receipts && (
-        <Modal open title={x.batchResult} footer={null} onCancel={() => setReceipts(undefined)}>
+      {result && (
+        <Modal open title={x.batchResult} footer={null} onCancel={() => setResult(undefined)}>
           <ul aria-label={x.batchResult}>
-            {receipts.map((item) => (
+            {result.receipts.map((item) => (
               <li key={item.exitRequestId}>
-                {names.get(item.exitRequestId)}：{x.outcomes[item.outcome] ?? item.outcome}
+                {result.names.get(item.exitRequestId)}：{x.outcomes[item.outcome] ?? item.outcome}
                 {item.reason && `（${item.reason}）`}
               </li>
             ))}

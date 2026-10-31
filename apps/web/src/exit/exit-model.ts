@@ -12,7 +12,7 @@ import {
   HANDOVER_SUBMIT_BUTTON as SUBMIT,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
-import { isBlank, type Values } from '../foundation/forms/values.js';
+import { isBlank, sameValue, type Values } from '../foundation/forms/values.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { x } from './messages.js';
 
@@ -93,13 +93,21 @@ const pick = <T extends keyof typeof EXIT_BUTTONS>(p: ObjectPermission, entries:
 export const createEntries = (p: ObjectPermission | undefined) =>
   p?.dataOperations.create ? pick(p, ['application', 'direct'] as const) : [];
 
+/** 提交审批（transitions.ts submit）：只有离职申请的草稿 / 已驳回单，按钮同新建申请（policy.ts exitTransition）。 */
+const SUBMIT_STATUSES = ['draft', 'rejected'];
+
 /**
  * 详情动作：读接口没有逐单动作（同 F-268），按单据状态与权限快照推导；restore 后端一律拒绝，不提供。
  * 状态被裁剪或单据标识无效时不给任何写入口。
  */
-export function detailEntries(row: Row, p: ObjectPermission | undefined): ('edit' | 'cancel')[] {
+export function detailEntries(row: Row, p: ObjectPermission | undefined): ('submit' | 'edit' | 'cancel')[] {
   if (!p?.dataOperations.update || !validObject(row.id, row.revision)) return [];
-  return OPEN_STATUSES.includes(String(row.status)) ? pick(p, ['edit', 'cancel'] as const) : [];
+  if (!OPEN_STATUSES.includes(String(row.status))) return [];
+  const submit = row.mode === 'application' && SUBMIT_STATUSES.includes(String(row.status));
+  return [
+    ...(submit ? pick(p, ['application'] as const).map(() => 'submit' as const) : []),
+    ...pick(p, ['edit', 'cancel'] as const),
+  ];
 }
 
 /**
@@ -156,14 +164,22 @@ export function handoverEntries(row: Row, handover: Handover | undefined, p: Obj
   return entries;
 }
 
-/** F-240：详情的生效失败原因（activation.reason，或命令 409 的 details.activationFailure）。 */
+type Activation = { status?: unknown; reason?: unknown; detail?: Values; details?: Values } | null | undefined;
+/**
+ * 详情的生效失败 / 挂起原因（activation，或命令 409 的 details.activationFailure）：F-240 超上限保留专门文案；
+ * 其余 failed 显示原因，suspended 显示挂起；没有 activation 或原因缺席时不推算。
+ */
 export function activationNotice(source: Row | Values | undefined): string | undefined {
-  const failure = (source?.activationFailure ?? source?.activation) as
-    { reason?: unknown; detail?: Values; details?: Values } | null | undefined;
-  if (failure?.reason !== TOO_MANY) return undefined;
+  const failure = (source?.activationFailure ?? source?.activation) as Activation;
+  if (typeof failure?.reason !== 'string') return undefined;
   // 详情投影未登记 details.limit（会被裁掉），有就显示，没有只显示原因
-  return x.activationTooMany((failure.detail ?? failure.details)?.limit);
+  if (failure.reason === TOO_MANY) return x.activationTooMany((failure.detail ?? failure.details)?.limit);
+  const reason = x.activationReasons[failure.reason] ?? failure.reason;
+  return failure.status === 'suspended' ? x.activationSuspended(reason) : x.activationFailed(reason);
 }
+/** 列表的通用标记（exit-queries.ts activation：failed / suspended，其余为 null）。 */
+export const activationBadge = (row: Row): string | undefined =>
+  x.activationBadges[String((row.activation as Activation)?.status)];
 
 /** POST /exits/employees/:id/preview 返回（exit-preview.ts previewExit）。 */
 export interface Preview {
@@ -228,11 +244,21 @@ function invalid(field: string, message: string): never {
   });
 }
 /**
+ * 已加黑且加黑组原样保留：详情投影不回加黑三项（缺席 = 未知），只改别的字段时不得要求重填加黑原因，
+ * 请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
+ */
+export const blackGroupKept = (values: Values, baseline: Values) =>
+  baseline.addToBlacklist === true &&
+  values.addToBlacklist === true &&
+  blacklistFields.every((field) => sameValue(values[field], baseline[field]));
+
+/**
  * 本地校验在命令前抛出（内核：send 里抛错会被判为结果未知）。新建：必填项须可编辑；
  * 编辑（带 baseline）：只校验可编辑项，原有的字典值不能清空（接口不接受 null）。
  */
 export function validateExit(values: Values, editable: readonly string[], baseline?: Values) {
-  for (const field of ['lastWorkDate', ...(values.addToBlacklist === true ? ['blacklistReason'] : [])]) {
+  const black = values.addToBlacklist === true && !(baseline && blackGroupKept(values, baseline));
+  for (const field of ['lastWorkDate', ...(black ? ['blacklistReason'] : [])]) {
     const allowed = editable.includes(field);
     if (!allowed && !baseline) throw new ApiError(403, 'FORBIDDEN', 'forbidden', x.denied);
     if (allowed && isBlank(values[field])) invalid(field, x.required(x.fields[field]!));
@@ -299,6 +325,48 @@ export function acceptExit(raw: unknown, expected: { employeeId?: string; id?: s
     throw new Error(x.invalidReceipt);
   return { id: row.id, revision: Number(revision) };
 }
+/** 申请新建回执（exit-routes.ts 新建，mode = application）：须是草稿，提交审批按离职单自身 id / revision。 */
+export function acceptDraft(raw: unknown) {
+  const row = raw as Values | null;
+  if (row?.status !== 'draft' || !validObject(row.id, row.revision)) throw new Error(x.invalidReceipt);
+  return { id: String(row.id), revision: Number(row.revision) };
+}
+/** POST /exits/:id/submit 请求体（exit-routes.ts transitionBody）：只收顶层 pendingTransferAck，不收 confirmed。 */
+export const submitBody = (confirm: Values): Values =>
+  typeof confirm.pendingTransferAck === 'string' ? { pendingTransferAck: confirm.pendingTransferAck } : {};
+
+type Target = { detail?: { message?: unknown } | null };
+type Downstream = { kind: string; status?: string; action?: string; targets?: Target[]; hiddenCount?: number };
+const kindName = (kind: string) => x.downstreamKinds[kind] ?? kind;
+function downstreamLine(item: Downstream) {
+  const targets = Array.isArray(item.targets) ? item.targets : [];
+  const notes = [...new Set(targets.map((target) => target?.detail?.message).filter((m) => typeof m === 'string'))];
+  const count = x.downstreamCount(targets.length, Number(item.hiddenCount) || 0);
+  return `${kindName(item.kind)}：${count}${notes.length ? `（${notes.join('；')}）` : ''}`;
+}
+/**
+ * 撤销回执 downstream（items + additional）/ 改期回执 downstreamHints（items + probes）与 successor 的展示行
+ * （exit-downstream.ts，已按查看人裁剪）：命中项、附加项照服务端给的条数显示；未接入的类目只在已有其他行时附带。
+ * 字段缺席时不推算。
+ */
+export function downstreamLines(raw: unknown): string[] {
+  const value = raw as Values | null;
+  const list = (value?.downstream ?? value?.downstreamHints) as
+    { items?: Downstream[]; additional?: Downstream[]; probes?: Downstream[] } | undefined;
+  const items = Array.isArray(list?.items) ? list.items : [];
+  const additional = Array.isArray(list?.additional) ? list.additional : [];
+  const lines = [
+    ...(value?.successor ? [x.successor] : []),
+    ...items.filter((item) => item.status === 'found').map(downstreamLine),
+    ...additional.map((item) =>
+      [downstreamLine(item), x.downstreamActions[String(item.action)]].filter(Boolean).join('，'),
+    ),
+  ];
+  const probes = Array.isArray(list?.probes) ? list.probes : [];
+  const missing = [...new Set([...items, ...probes].filter((i) => i.status === 'not_connected').map((i) => i.kind))];
+  return lines.length && missing.length ? [...lines, x.notConnected(missing.map(kindName).join('、'))] : lines;
+}
+
 /** 首次发起交接（详情 / 行内）：回执的离职 revision 不变，outcome 由服务端给。 */
 export function acceptHandoverSubmit(raw: unknown, expected: { id: string; sent: number }) {
   const value = raw as Values | null;
