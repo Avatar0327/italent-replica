@@ -2,6 +2,8 @@
  * F-328 / DEC-707：离职后重聘（合并人员）沿用原人员与原账号（docs/02_业务建模/30「F-328」节）。
  * 重聘入职落地后账号由离职自动停用恢复为启用（到入职日才启用，DEC-684 同一持久任务）；登录用户名改为员工联系邮箱
  * （无联系邮箱不改；与他人登录名冲突 409 整单回滚；账号同属其他租户不改）；任职三段连续，离职段在重聘入职日前一天封口。
+ * 当天重聘：单租户账号在重聘事务内启用，启用失败整单回滚；账号同属其他租户时按 DEC-717 豁免整单回滚，
+ * 由提交后的离职账号任务按全局锁序启用，启用失败记 failed / attempts / reason 进 HR 待办、可重试（并入 F-348）。
  */
 import './support/exit-gate-enforced.js';
 import { getUser, grantMembership, setUserStatus, sql, withPlatform } from '@italent/db';
@@ -68,6 +70,23 @@ const links = (x: World) =>
   x.sqlRows<{ userId: string }>(sql`SELECT user_id::text AS "userId" FROM permission_user_person_links
     WHERE tenant_id=${x.session.tenant.id} AND employee_id=${x.employee.id}::uuid`);
 
+/** 合成存储故障：只拦“停用 → 启用”这一次写入（离职停用在安装前已完成）；返回卸载函数。 */
+async function failEnable(x: World) {
+  await x.db.execute(sql`CREATE FUNCTION f328_fail_enable() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.status = 'active' AND OLD.status = 'disabled' THEN
+      RAISE EXCEPTION 'synthetic enable storage failure' USING ERRCODE = '53100';
+    END IF; RETURN NEW; END $$`);
+  await x.db.execute(sql`CREATE TRIGGER f328_fail_enable BEFORE UPDATE OF status ON users
+    FOR EACH ROW EXECUTE FUNCTION f328_fail_enable()`);
+  return async () => {
+    await x.db.execute(sql`DROP TRIGGER f328_fail_enable ON users`);
+    await x.db.execute(sql`DROP FUNCTION f328_fail_enable()`);
+  };
+}
+type TaskReceipt = { businessId: string; status: string; reason: string | null; revision: number; attempts: number };
+const inbox = async (x: World) =>
+  ((await (await x.session.request('GET', '/exit-account/tasks')).json()) as { items: TaskReceipt[] }).items;
+
 describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
   it('当天重聘：同一账号自动启用、登录名改为联系邮箱，人员绑定不变，任职三段连续，审计留痕', async () => {
     const { x, userId, contact } = await world('same-day');
@@ -127,6 +146,50 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     expect(response.status, await response.clone().text()).toBe(201);
     expect((await getUser(x.db, userId))!).toMatchObject({ status: 'active', email: before.email });
     expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
+    // DEC-717：共享账号由提交后的离职账号任务按全局锁序启用，任务随之恢复，不进待办
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ status: 'restored', restore: false })]);
+    expect(await inbox(x)).toEqual([]);
+  });
+
+  it('DEC-717 / F-348：共享账号当天重聘启用失败：重聘照常提交，任务记失败进 HR 待办，重试后启用', async () => {
+    const { x, userId } = await world('shared-failure');
+    const y = await downstreamWorld(database().db, 'f328-shared-failure-other');
+    await grantMembership(database().db, { tenantId: y.session.tenant.id, userId, expectedRevision: 0 }, cmd());
+    const exit = await leave(x);
+    const disabled = (await getUser(x.db, userId))!;
+    expect(disabled.status).toBe('disabled');
+    const task = async () =>
+      (await (await x.session.request('GET', `/exit-account/tasks/${exit.id}`)).json()) as TaskReceipt;
+    const { attempts } = await task();
+    const uninstall = await failEnable(x);
+    let response: Response;
+    try {
+      response = await rehire(x);
+    } finally {
+      await uninstall();
+    }
+    // 共享账号豁免“启用失败整单回滚”：重聘已提交，账号保持停用，失败记在离职账号任务上
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave', 'rehire']);
+    expect(await getUser(x.db, userId)).toEqual(disabled);
+    // 与停用方向同一口径：attempts 累加、reason 机器可读、待办接收人可见
+    const [failed] = await inbox(x);
+    expect(failed).toMatchObject({ businessId: exit.id, status: 'failed', attempts: attempts + 1 });
+    expect(failed!.reason).toEqual(expect.any(String));
+    expect(await task()).toEqual(failed);
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ status: 'failed', restore: true })]);
+
+    const retried = await x.session.request('POST', `/exit-account/tasks/${exit.id}/retry`, {
+      ifMatch: failed!.revision,
+      body: {},
+    });
+    expect(retried.status, await retried.clone().text()).toBe(200);
+    const enabled = (await getUser(x.db, userId))!;
+    expect(enabled).toMatchObject({ id: userId, status: 'active', email: disabled.email });
+    expect(await accountTasks(x)).toEqual([
+      expect.objectContaining({ status: 'restored', restore: false, auto: enabled.revision }),
+    ]);
+    expect(await inbox(x)).toEqual([]);
   });
 
   it('联系邮箱已是别人的登录名：409 EMAIL_TAKEN，整单回滚，不改别人的账号，原账号仍停用', async () => {
@@ -188,7 +251,7 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([]);
   });
 
-  it('当天重聘时账号启用写入失败：整单失败，账号、员工 revision、任职链、审计与账号任务都保持提交前状态', async () => {
+  it('单租户账号当天重聘启用写入失败：整单失败，账号、员工 revision、任职链、审计与账号任务都保持提交前状态', async () => {
     const { x, userId } = await world('enable-failure');
     await leave(x);
     const account = (await getUser(x.db, userId))!;
@@ -196,19 +259,12 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     const timeline = await x.timeline();
     const audits = await platformAudit(userId);
     const tasks = await accountTasks(x);
-    // 合成存储故障：只拦“停用 → 启用”这一次写入（离职停用已在上面完成）
-    await x.db.execute(sql`CREATE FUNCTION f328_fail_enable() RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN IF NEW.status = 'active' AND OLD.status = 'disabled' THEN
-        RAISE EXCEPTION 'synthetic enable storage failure' USING ERRCODE = '53100';
-      END IF; RETURN NEW; END $$`);
-    await x.db.execute(sql`CREATE TRIGGER f328_fail_enable BEFORE UPDATE OF status ON users
-      FOR EACH ROW EXECUTE FUNCTION f328_fail_enable()`);
+    const uninstall = await failEnable(x);
     try {
       const response = await rehire(x);
       expect(response.status, await response.clone().text()).toBeGreaterThanOrEqual(500);
     } finally {
-      await x.db.execute(sql`DROP TRIGGER f328_fail_enable ON users`);
-      await x.db.execute(sql`DROP FUNCTION f328_fail_enable()`);
+      await uninstall();
     }
     expect(await getUser(x.db, userId)).toEqual(account);
     expect((await x.session.getEmployee(x.employee.id)).revision).toBe(employee);
@@ -218,7 +274,7 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     expect(await accountTasks(x)).toEqual(tasks);
   });
 
-  it('当天重聘在同一事务里启用账号：响应返回时已启用，账号任务已恢复并记下启用后的 revision', async () => {
+  it('单租户账号当天重聘在同一事务里启用账号：响应返回时已启用，账号任务已恢复并记下启用后的 revision', async () => {
     const { x, userId } = await world('same-tx');
     await leave(x);
     const response = await rehire(x);
