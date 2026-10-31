@@ -10,6 +10,8 @@ import { useRead } from './useRead.js';
 import { useSubsetAccess, type ProfileSubset } from './useSubsetAccess.js';
 import { displayValue, fieldValue, profileSections, recordPeriod, type Row } from './model.js';
 import { m, subsetLabels } from './messages.js';
+import type { ObjectPermission } from '../foundation/permission-model.js';
+import { RecordEdit, SubsetCreate, SubsetRowCommands } from './EditCommands.js';
 
 export function FieldGrid({
   row,
@@ -37,12 +39,23 @@ export function FieldGrid({
   );
 }
 /** 原站“人员信息”每个分区右上角有“收起”，收起后只留标题栏。 */
-function CollapsibleSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function CollapsibleSection({
+  id,
+  title,
+  extra,
+  children,
+}: {
+  id: string;
+  title: string;
+  extra?: ReactNode;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(true);
   return (
     <section className="staff-section" id={id} aria-label={title}>
       <header className="staff-section-header">
         <h3 className="staff-section-title">{title}</h3>
+        {extra}
         <Button type="link" size="small" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? m.collapse : m.expand}
         </Button>
@@ -85,7 +98,7 @@ export function PersonnelProfile({ row, employeeId }: { row: Row; employeeId: st
             id={anchor(kind)}
             employeeId={employeeId}
             kind={kind}
-            allowed={access.data![kind]!.viewableFields}
+            permission={access.data![kind]!}
           />
         ))}
       </div>
@@ -144,7 +157,8 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
   const [page, setPage] = useState(1);
   const object = 'TenantBase.EmploymentRecord';
   const permission = usePermissions(object);
-  const allowed = permission.snapshot.objects[object]?.viewableFields ?? [];
+  const grant = permission.snapshot.objects[object];
+  const allowed = grant?.viewableFields ?? [];
   const result = useRead<PageResult<Row>>(
     `/api/tenant/employment/employees/${encodeURIComponent(employeeId)}` + `/records?page=${page}&pageSize=15`,
   );
@@ -169,6 +183,7 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
                 {allowed.includes('isCurrent') && typeof row.isCurrent === 'boolean' && (
                   <RecordTag current={row.isCurrent} />
                 )}
+                <RecordEdit record={row} permission={grant} saved={result.refresh} />
               </header>
               <FieldGrid row={row} allowed={allowed} fields={['staffId', 'entryDate', 'employeeStatus']} />
               <FieldGrid
@@ -190,12 +205,12 @@ function SubsetRows({
   id,
   employeeId,
   kind,
-  allowed,
+  permission,
 }: {
   id: string;
   employeeId: string;
   kind: ProfileSubset;
-  allowed: readonly string[];
+  permission: ObjectPermission;
 }) {
   const [page, setPage] = useState(1);
   const definition = SUBSETS[kind];
@@ -204,11 +219,22 @@ function SubsetRows({
   );
   const fields = definition.fields.map((field) => field.code).filter((key) => m.labels[key]);
   return (
-    <CollapsibleSection id={id} title={subsetLabels[kind]}>
+    <CollapsibleSection
+      id={id}
+      title={subsetLabels[kind]}
+      extra={<SubsetCreate employeeId={employeeId} kind={kind} permission={permission} saved={result.refresh} />}
+    >
       <ReadPanel {...result} empty={!result.data?.items.length && m.noSubset(subsetLabels[kind])}>
         {(result.data?.items ?? []).map((row) => (
           <div className="staff-subset-row" key={row.id}>
-            <FieldGrid row={row} fields={fields} allowed={allowed} />
+            <FieldGrid row={row} fields={fields} allowed={permission.viewableFields} />
+            <SubsetRowCommands
+              employeeId={employeeId}
+              kind={kind}
+              permission={permission}
+              row={row}
+              saved={result.refresh}
+            />
           </div>
         ))}
       </ReadPanel>

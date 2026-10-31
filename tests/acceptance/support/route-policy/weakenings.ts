@@ -322,6 +322,7 @@ function otherScopeName(table: RequiredTable, key: string, mode: string, used: s
 const scopeNames = (scope: Node): [string, string] | undefined => {
   if (scope['mode'] === 'point') return ['locator', String(scope['locator'])];
   if (scope['mode'] === 'list') return ['predicate', String(scope['predicate'])];
+  if (scope['mode'] === 'guard') return ['guard', String(scope['guard'])];
   return undefined;
 };
 

@@ -90,7 +90,9 @@ async function personnelScene(w: ApprovalWorld, s: Awaited<ReturnType<typeof tra
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'] }],
+    nodes: [
+      { key: 'head', approver: { type: 'department', value: 'latest_record_department_head' }, formFields: ['school'] },
+    ],
   });
   return personnelRequest(w, s);
 }
@@ -461,7 +463,7 @@ describe('F14：员工子集变更不开放审批中编辑（DEC-105）', () => 
         nodes: [
           {
             key: 'head',
-            approver: 'latest_record_department_head',
+            approver: { type: 'department', value: 'latest_record_department_head' },
             formFields: ['school'],
             editableFields: ['school'],
             editMode: 'separate',
@@ -497,7 +499,7 @@ describe('F14：员工子集变更不开放审批中编辑（DEC-105）', () => 
             {
               key: 'head',
               name: '负责人',
-              approver: 'latest_record_department_head',
+              approver: { type: 'department', value: 'latest_record_department_head' },
               noAssignee: 'exception_admin',
               sameAssigneeSkip: false,
               historySameAssigneeSkip: false,
@@ -558,9 +560,19 @@ describe('DEC-114（代选）：“与上一节点相同”比较上一节点解
     await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'n1', approver: 'latest_record_department_head' },
-        { key: 'n2', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
-        { key: 'n3', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' },
+        { key: 'n1', approver: { type: 'department', value: 'latest_record_department_head' } },
+        {
+          key: 'n2',
+          approver: { type: 'department', value: 'record_department_head' },
+          sameAssigneeSkip: true,
+          sameAssigneeResult: 'skip',
+        },
+        {
+          key: 'n3',
+          approver: { type: 'department', value: 'record_department_head' },
+          sameAssigneeSkip: true,
+          sameAssigneeResult: 'skip',
+        },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
@@ -592,7 +604,7 @@ describe('DEC-115（代选）：记录隐藏时严格隐藏，任一参与节点
       nodes: [
         { ...TRANSFER_NODES[0]!, hideRecords: true },
         TRANSFER_NODES[2]!,
-        { key: 'again', approver: 'latest_record_department_head' },
+        { key: 'again', approver: { type: 'department', value: 'latest_record_department_head' } },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
@@ -636,7 +648,14 @@ describe('测试质量：DEC-106 的结果取值校验能区分新旧行为', ()
   it('「跳过」被接受并原样读回；非法取值按枚举校验报错（不是未知字段）', async () => {
     const w = await approvalWorld(database().db, 'apv-dec106-schema');
     const process = await w.createProcess({
-      nodes: [{ key: 'n', approver: 'record_department_head', sameAssigneeSkip: true, sameAssigneeResult: 'skip' }],
+      nodes: [
+        {
+          key: 'n',
+          approver: { type: 'department', value: 'record_department_head' },
+          sameAssigneeSkip: true,
+          sameAssigneeResult: 'skip',
+        },
+      ],
     });
     expect(process.latestVersion.nodes[0]).toMatchObject({
       sameAssigneeResult: 'skip',
@@ -650,7 +669,9 @@ describe('测试质量：DEC-106 的结果取值校验能区分新旧行为', ()
         approvalType: 'transfer',
         exceptionAdminUserId: w.exceptionAdmin,
         conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
-        nodes: [{ key: 'n', approver: 'record_department_head', sameAssigneeResult: 'reject' }],
+        nodes: [
+          { key: 'n', approver: { type: 'department', value: 'record_department_head' }, sameAssigneeResult: 'reject' },
+        ],
       },
     });
     expect(invalid.status).toBe(400);

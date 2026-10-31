@@ -1,5 +1,5 @@
 /**
- * R2-T03 B2a / AC-DM-33 B-86（DEC-499）：最后工作日只在创建时填写，此后任何人工入口改日期一律拒绝且无任何业务写入。
+ * R2-T03 B2a / AC-DM-33 B-86（DEC-499）：F-140b1 开放未生效离职改期；通用 approved 入口仍拒绝。
  * 本批覆盖经 updateEmploymentBusiness 的三个入口：通用 PATCH businesses/:id（draft / rejected / approved）、
  * 审批编辑（edit）、编辑并同意（approve 带 fields）；records / batch-edit / 导入编辑行与 PATCH exits/:id 归 B2b。
  * 判定在权限链之后、首个写之前：无 DimissionEdit 先得 403；日期与当前值相同不算修改。
@@ -11,15 +11,10 @@ import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
-import { denyButtons, gateWorld, leaveBody, stateSnapshot } from './AC-EXIT-gate-support.js';
+import { denyButtons, gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
 
 const database = useTestDb();
 const LATER = '2026-10-20';
-
-async function reasonOf(response: Response) {
-  const body = (await response.json()) as { error?: { code?: string; details?: { reason?: string } } };
-  return { status: response.status, code: body.error?.code, reason: body.error?.details?.reason };
-}
 
 describe('AC-DM-33 B-86 通用 PATCH businesses/:id', () => {
   async function states() {
@@ -50,28 +45,24 @@ describe('AC-DM-33 B-86 通用 PATCH businesses/:id', () => {
     return { w, draft, rejected: await w.business(rejected.id), approved: await w.business(approved.id) };
   }
 
-  it('draft / rejected / approved 改最后工作日或生效日：400 EXIT_DATE_IMMUTABLE，前后读取逐项相等，同键重放同一拒绝', async () => {
+  it('draft / rejected 改期可重放；approved 通用入口仍拒绝且无写入', async () => {
     const { w, draft, rejected, approved } = await states();
-    expect(rejected.status).toBe('rejected');
     for (const target of [draft, rejected, approved]) {
-      const employeeId = (await w.business(target.id)).employeeId;
-      const before = await w.stateOf(employeeId);
-      for (const patch of [{ lastWorkDate: '2026-10-25' }, { effectiveDate: '2026-10-26' }]) {
-        const key = randomUUID();
-        const send = () =>
-          w.session.request('PATCH', `/businesses/${target.id}`, {
-            ifMatch: target.revision,
-            body: patch,
-            idempotencyKey: key,
-          });
-        expect(await w.reason(await send()), JSON.stringify(patch)).toMatchObject({
-          status: 400,
-          code: 'VALIDATION_FAILED',
-          reason: 'EXIT_DATE_IMMUTABLE',
+      const before = await w.stateOf((await w.business(target.id)).employeeId);
+      const key = randomUUID();
+      const send = () =>
+        w.session.request('PATCH', `/businesses/${target.id}`, {
+          ifMatch: target.revision,
+          body: { lastWorkDate: '2026-10-25', effectiveDate: '2026-10-26' },
+          idempotencyKey: key,
         });
-        expect(await w.reason(await send())).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+      for (const response of [await send(), await send()]) {
+        if (target.id === approved.id)
+          expect(await w.reason(response)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
+        else expect(response.status, await response.clone().text()).toBe(200);
       }
-      expect(await w.stateOf(employeeId)).toEqual(before);
+      if (target.id === approved.id) expect(await w.stateOf(approved.employeeId)).toEqual(before);
+      else expect(await w.business(target.id)).toMatchObject({ effectiveDate: '2026-10-26' });
     }
   });
 
@@ -103,7 +94,7 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate', 'place'],
           editableFields: ['lastWorkDate', 'place'],
           editMode,
@@ -131,43 +122,60 @@ describe('AC-DM-33 B-86 审批编辑与编辑并同意', () => {
     return { w, s, draft, instance, task: w.pending(instance)[0]! };
   }
 
-  it('审批编辑改最后工作日：400 EXIT_DATE_IMMUTABLE，任务 / 实例 / 业务不变；改非日期字段 200', async () => {
-    const { w, s, draft, instance, task } = await scene('immutable-edit', 'separate');
-    const before = await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId);
-    const rejected = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, {
+  it('审批编辑改期刷新实例；旧 revision 拒绝，刷新后可继续改字段', async () => {
+    const { w, s, draft, instance, task } = await scene('replan-edit', 'separate');
+    const changed = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, {
       fields: { lastWorkDate: '2026-10-25' },
     });
-    expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
-    expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    expect(await w.business(draft.id)).toMatchObject({ status: 'in_review', effectiveDate: '2026-10-26' });
     const after = await w.detail(instance.id);
-    expect({ revision: after.revision, tasks: after.tasks }).toEqual({
-      revision: instance.revision,
-      tasks: instance.tasks,
-    });
-    expect(await w.business(draft.id)).toMatchObject({ status: 'in_review', effectiveDate: '2026-10-21' });
-    const ok = await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, {
-      fields: { place: '改地点' },
-    });
+    expect(after.revision).toBeGreaterThan(instance.revision);
+    expect(
+      (await w.taskAction(s.outHead.userId, task.id, 'edit', instance.revision, { fields: { place: '改地点' } }))
+        .status,
+    ).toBe(409);
+    const ok = await w.taskAction(s.outHead.userId, task.id, 'edit', after.revision, { fields: { place: '改地点' } });
     expect(ok.status, await ok.clone().text()).toBe(200);
-    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21', fields: { place: '改地点' } });
+    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-26', fields: { place: '改地点' } });
   });
 
-  it('编辑并同意带日期改动：整个同意动作失败，任务仍待办、节点不推进；日期未变的同意通过', async () => {
-    const { w, s, draft, instance, task } = await scene('immutable-approve', 'with_approve');
-    const before = await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId);
-    const rejected = await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision, {
+  it('编辑并同意带改期：按新日期批准，未来日期留待调度', async () => {
+    const { w, s, draft, instance, task } = await scene('replan-approve', 'with_approve');
+    const ok = await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision, {
       fields: { lastWorkDate: '2026-10-25', place: '改地点' },
     });
-    expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
-    expect(await stateSnapshot(w.db, w.tenant.id, s.subject.employeeId)).toEqual(before);
-    const after = await w.detail(instance.id);
-    expect(after.revision).toBe(instance.revision);
-    expect(w.pending(after).map((t) => t.id)).toEqual([task.id]);
-    expect(await w.business(draft.id)).toMatchObject({ status: 'in_review', effectiveDate: '2026-10-21' });
-    const ok = await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision, {
-      fields: { lastWorkDate: LATER, place: '改地点' },
-    });
     expect(ok.status, await ok.clone().text()).toBe(200);
-    expect(await w.business(draft.id)).toMatchObject({ status: 'approved', fields: { place: '改地点' } });
+    expect(await w.business(draft.id)).toMatchObject({
+      status: 'approved',
+      effectiveDate: '2026-10-26',
+      fields: { place: '改地点' },
+    });
+    expect(w.pending(await w.detail(instance.id))).toHaveLength(0);
   });
+  it.each(['separate', 'with_approve'] as const)(
+    'F-140 审批 %s：确认控制项与字段分开，409 后可携新令牌重提',
+    async (editMode) => {
+      const { w, s, draft, instance, task } = await scene(`ack-${editMode}`, editMode);
+      await w.publishedProcess({
+        nodes: [{ key: 'transfer', approver: { type: 'department', value: 'latest_record_department_head' } }],
+      });
+      await w.submit(
+        await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-20' }),
+      );
+      const action = editMode === 'separate' ? 'edit' : 'approve';
+      const fields = { lastWorkDate: '2026-10-29' };
+      const denied = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, { fields });
+      expect(denied.status, await denied.clone().text()).toBe(409);
+      const rejection = await denied.json();
+      expect(rejection.error.details.reason).toBe('EXIT_PENDING_TRANSFER_ACK_REQUIRED');
+      expect((await w.detail(instance.id)).revision).toBe(instance.revision);
+      const ok = await w.taskAction(s.outHead.userId, task.id, action, instance.revision, {
+        fields,
+        exitReschedule: { pendingTransferAck: rejection.error.details.ackToken },
+      });
+      expect(ok.status, await ok.clone().text()).toBe(200);
+      expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-30' });
+    },
+  );
 });

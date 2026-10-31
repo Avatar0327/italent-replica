@@ -180,7 +180,7 @@ function taskAction(fields: FieldsFrom, preconditions: readonly string[], extra:
  * approval.fieldRights（必需项表按 when:approval.fieldRights 关联快照对象的 update）。
  */
 const editRights = { ...taskObject, guards: ['approval.fieldRights'] };
-/** 同意 / 不同意 / 驳回：body.fields 可选，字段集合与盲审可见集由 fieldRights 算（routes.ts 461–471 行）。 */
+/** body.fields 的授权与盲审由 fieldRights 算；exitReschedule 是离职改期确认控制项，不是可编辑字段。 */
 const decision = (preconditions: readonly string[]) =>
   taskAction({ guard: 'approval.fieldRights' }, preconditions, editRights);
 /**
@@ -379,6 +379,12 @@ const ADMIN_LOG_KEYS = [
 
 export const APPROVAL_POLICIES = defineTable('approval', {
   // ---- registerProcessRoutes：流程定义（DEC-102）------------------------------------------------------------------
+  'GET /designer/source-candidates': admin('process_matrix', {
+    fields: fixed(['id', 'name', 'enabled', 'parentId'], 'DEC-691 / DEC-686①'),
+  }),
+  'GET /designer/person-candidates': admin('process_matrix', {
+    fields: fixed(['userId', 'name', 'code', 'departmentId', 'departmentName'], 'DEC-686① / DEC-135'),
+  }),
   'GET /types': processView(DICTIONARY, DICTIONARY),
   // status 非法值 .catch('active')，不报错
   'GET /processes': processView(PROCESS_ALL, PROCESS_SHAPE),

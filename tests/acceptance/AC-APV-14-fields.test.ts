@@ -1,3 +1,5 @@
+import './support/exit-gate-enforced.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
 /**
  * PR #35 第二轮清单 主题 B：字段权限与盲审（DEC-057 / DEC-058 / DEC-069）。
  * 2 审批编辑校验字段编辑权；3 审批快照覆盖自定义字段、业务日期、最后工作日（载荷、原值、变化、编辑）；
@@ -70,7 +72,7 @@ describe('清单 2：审批编辑必须校验字段编辑权', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate', 'place'],
           editableFields: ['place'],
           editMode: 'separate',
@@ -106,7 +108,13 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
     );
     const code = `custom:${field.id}`;
     await w.publishedProcess({
-      nodes: [{ key: 'out_head', approver: 'latest_record_department_head', formFields: ['departmentId', code] }],
+      nodes: [
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['departmentId', code],
+        },
+      ],
     });
     const world = await permissionAdmin(w);
     await grantFieldAccess(world, s.outHead.userId, { view: ['id', 'departmentId', 'effectiveDate'] });
@@ -132,8 +140,9 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
     expect(await reasonOf(blind)).toMatchObject({ status: 403, reason: 'APPROVAL_BLIND_REVIEW' });
   });
 
-  it('离职节点可查看最后工作日：详情有值；审批编辑改最后工作日一律拒绝（R2-T03 DEC-499，创建后不可改）', async () => {
+  it('离职节点可查看最后工作日：详情有值；节点授权的审批编辑改期成功（F-140b1）', async () => {
     const w = await approvalWorld(database().db, 'apv-last-work-date');
+    await installExitSeeds(w.db, w.tenant.id);
     const s = await transferScene(w);
     await w.publishedProcess({
       approvalType: 'leave',
@@ -141,7 +150,7 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate'],
           editableFields: ['lastWorkDate'],
           editMode: 'separate',
@@ -154,7 +163,13 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
     const draft = await w.json<{ id: string; revision: number }>(
       await w.request(w.hr.id, 'POST', `/api/tenant/employment/employees/${s.subject.employeeId}/businesses`, {
         ifMatch: employee.revision,
-        body: { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-20', fields: {} },
+        body: {
+          kind: 'leave',
+          mode: 'application',
+          lastWorkDate: '2026-10-20',
+          fields: {},
+          exit: { exitTypeCode: 'voluntary' },
+        },
       }),
       201,
     );
@@ -163,8 +178,8 @@ describe('清单 3：审批快照覆盖自定义字段、业务日期与最后�
     const rejected = await w.taskAction(s.outHead.userId, current(instance).id, 'edit', instance.revision, {
       fields: { lastWorkDate: '2026-10-25' },
     });
-    expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'EXIT_DATE_IMMUTABLE' });
-    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-21' });
+    expect(rejected.status, await rejected.clone().text()).toBe(200);
+    expect(await w.business(draft.id)).toMatchObject({ effectiveDate: '2026-10-26' });
   });
 });
 
@@ -179,7 +194,7 @@ describe('清单 4：编辑并同意后按新快照重新做盲审', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate'],
           editableFields: ['effectiveDate'],
           editMode: 'with_approve',
@@ -214,15 +229,23 @@ describe('清单 5：同人自动跳过之前也做盲审', () => {
     await grantFieldAccess(world, s.inHrbp.userId, { view: all, edit: ['place'] });
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', formFields: ['departmentId'] },
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['departmentId'],
+        },
         {
           key: 'in_hrbp',
-          approver: 'record_department_hrbp',
+          approver: { type: 'department', value: 'record_department_hrbp' },
           formFields: ['departmentId', 'place'],
           editableFields: ['place'],
           editMode: 'with_approve',
         },
-        { key: 'recheck', approver: 'latest_record_department_head', historySameAssigneeSkip: true },
+        {
+          key: 'recheck',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          historySameAssigneeSkip: true,
+        },
       ],
     });
     const real = realApi(w);

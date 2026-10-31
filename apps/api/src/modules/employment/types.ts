@@ -149,6 +149,8 @@ export interface NormalizedEmploymentInput extends EmploymentBusinessInput {
 }
 
 export interface EmploymentBusinessPatch {
+  readonly pendingTransferAck?: string;
+  readonly confirmed?: boolean;
   readonly effectiveDate?: string;
   readonly lastWorkDate?: string | null;
   readonly fields?: Partial<PresetFields>;

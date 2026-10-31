@@ -11,6 +11,7 @@ export const pages: ModulePages = {
       label: configurationUi.flow,
       section: 'workflow',
       access: { app: 'approval', objectCode: 'TenantBase.ApprovalProcess' },
+      page: lazyPage('ProcessDesigner', () => import('./designer/ProcessDesigner.js')),
     },
   ],
   apps: [

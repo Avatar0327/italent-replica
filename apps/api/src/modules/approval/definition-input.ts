@@ -1,10 +1,14 @@
 /** 流程定义的请求体校验：只接受 JSON 白名单结构，再交给领域校验（definitionViolations）。 */
 import {
-  APPROVER_EXPRESSIONS,
+  APPROVER_SOURCE_TYPES,
+  approverSourceViolations,
+  type ApproverSource,
   AUTO_RESULTS,
   CONDITION_OPERATORS,
   definitionViolations,
   EDIT_MODES,
+  EMPTY_APPROVER_POLICIES,
+  emptyApproverPolicyViolation,
   EXIT_RULE_KINDS,
   HANDOVER_FALLBACK_LIMIT,
   isApprovalType,
@@ -29,6 +33,26 @@ import { approvalError, canonicalId } from './context.js';
 const text = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 const codeList = z.array(z.string().min(1).max(100)).max(200);
+
+const emptyApproverPolicy = z
+  .unknown()
+  .transform((value) => {
+    const parsed = z.enum(EMPTY_APPROVER_POLICIES).safeParse(value);
+    if (!parsed.success) throw emptyPolicyError('空审批人处理方式不合法');
+    return parsed.data;
+  })
+  .optional();
+
+const emptyPolicyError = (message: string) =>
+  approvalError('APPROVAL_EMPTY_APPROVER_POLICY_INVALID', 'APPROVAL_EMPTY_APPROVER_POLICY_INVALID', message);
+
+/** 新建、草稿保存、内部版本复制统一校验（非法配置 422，F-316）。 */
+export function assertEmptyApproverPolicies(definition: ProcessDefinition, type: ApprovalTypeCode) {
+  for (const node of definition.nodes) {
+    const violation = emptyApproverPolicyViolation(node, APPROVAL_TYPES[type]);
+    if (violation) throw emptyPolicyError(violation);
+  }
+}
 
 const messageRule = z.strictObject({
   trigger: z.enum(MESSAGE_TRIGGERS),
@@ -55,15 +79,25 @@ const avoidSubjectsResult = z.union([
   z.custom<`exit:${string}`>((value) => typeof value === 'string' && /^exit:[A-Za-z][A-Za-z0-9_]{0,39}$/.test(value)),
 ]);
 
+const sourceSchema = z.unknown().transform((value): ApproverSource => {
+  const parsed = z.strictObject({ type: z.enum(APPROVER_SOURCE_TYPES), value: text(200) }).safeParse(value);
+  if (!parsed.success)
+    throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_INVALID', '审批人来源必须为类型和值');
+  return {
+    ...parsed.data,
+    value: parsed.data.type === 'specified' ? canonicalId(parsed.data.value) : parsed.data.value,
+  };
+});
+
 const node = z.strictObject({
   key: text(40),
   name: text(100).optional(),
   /** F-003：单人审批（缺省）/ 会签审批。 */
   kind: z.enum(NODE_KINDS).default('single'),
   /** 单人审批节点的审批人。 */
-  approver: z.enum(APPROVER_EXPRESSIONS).optional(),
+  approver: sourceSchema.optional(),
   /** 会签节点的审批人（逐人解析，表达式不重复）。 */
-  approvers: z.array(z.enum(APPROVER_EXPRESSIONS)).max(APPROVER_EXPRESSIONS.length).optional(),
+  approvers: z.array(sourceSchema).max(200).optional(),
   transitionRule: transitionRule.optional(),
   /** 出口动作（DEC-144）：缺省只有「同意」。 */
   exits: z.array(z.enum(NODE_EXITS)).max(NODE_EXITS.length).default(['approve']),
@@ -79,6 +113,9 @@ const node = z.strictObject({
   avoidSubjectsResult: avoidSubjectsResult.optional(),
   /** DEC-663：兜底处理人（用户 ID，可多人、可为空）；不给不补缺省值，只在离职交接申请的会签交接节点上有意义。 */
   fallbackUserIds: z.array(z.uuid().transform(canonicalId)).max(HANDOVER_FALLBACK_LIMIT).optional(),
+  // 不补默认值，保留旧请求的命令指纹与未配置时的取人行为（DEC-067 / DEC-663）。
+  emptyApproverPolicy,
+  emptyApproverSources: z.array(sourceSchema).max(200).optional(),
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
@@ -186,6 +223,10 @@ export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): Pr
     },
     nodes: input.nodes.map(toNode),
   };
+  assertEmptyApproverPolicies(definition, type);
+  const sources = definition.nodes.flatMap((node) => approverSourceViolations(node, APPROVAL_TYPES[type]));
+  if (sources.length)
+    throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_DEFINITION_INVALID', sources[0]!, { violations: sources });
   // F-048 R3-01 / DEC-331⑤：多主体回避开关与命中动作给出各自的机读原因（设计 §3.1、§14）
   const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
   if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);

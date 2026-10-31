@@ -156,14 +156,15 @@ describe('自动发起（DM-R13 / DM-R14、B64 B65）', () => {
     expect(await x.statusOf(leave.id)).toEqual({ status: 'not_started', request: null });
   });
 
-  it('员工没有可用账号（无法作为发起人）：跳过并留痕，离职审批照常通过', async () => {
+  it('DEC-674 员工没有可用账号：持久未发起记录，离职审批照常通过', async () => {
     const x = await world('launch-no-account');
     const lone = await x.colleague('无账号员工');
     await x.unbindAccount(lone.id);
     const { approved } = await x.approvedApplication(lone.id);
     expect(approved.status).toBe('approved');
-    expect(await x.requestRows(approved.id)).toEqual([]);
-    expect(await x.auditActions(approved.id, 'exit_handover.skipped')).toEqual([
+    const [request] = await x.requestRows(approved.id);
+    expect(request).toMatchObject({ state: 'not_launched', initiatorUserId: null, instanceId: null });
+    expect(await x.auditActions(request!.id, 'exit_handover.not_launched')).toEqual([
       { after: expect.objectContaining({ reason: 'NO_INITIATOR_ACCOUNT' }) },
     ]);
   });
@@ -502,7 +503,7 @@ describe('兜底处理人配置（流程定义节点，DEC-663 ⑥）', () => {
       {
         key: 'work_handover',
         kind: 'countersign',
-        approvers: ['handover_work_owner'],
+        approvers: [{ type: 'object_field', value: 'handover_work_owner' }],
         transitionRule: { type: 'any' },
         fallbackUserIds: fallback,
       },
@@ -544,9 +545,14 @@ describe('兜底处理人配置（流程定义节点，DEC-663 ⑥）', () => {
     expect(await reasonOf(await post(x, processBody(x, [member, member])))).toMatchObject({ status: 400 });
     // 兜底只对离职交接申请的交接节点有意义：转调动流程上配置被拒
     const wrongType = { ...processBody(x, [member]), approvalType: 'transfer' };
-    expect((await post(x, { ...wrongType, nodes: [{ ...wrongType.nodes[0], approvers: ['owner'] }] })).status).toBe(
-      400,
-    );
+    expect(
+      (
+        await post(x, {
+          ...wrongType,
+          nodes: [{ ...wrongType.nodes[0], approvers: [{ type: 'custom_variable', value: 'owner' }] }],
+        })
+      ).status,
+    ).toBe(400);
   });
 });
 

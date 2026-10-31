@@ -248,6 +248,8 @@ export const employmentPayloadVersions = pgTable(
      * 序列同步、状态传播）一律沿用上一版本的值；effective_date 是实际写入日。由插入触发器维护（迁移 0130）。
      */
     plannedEffectiveDate: day('planned_effective_date').notNull(),
+    /** F-140：专用人工重定位快照；系统派生不得继承。 */
+    manualPlan: boolean('manual_plan').notNull().default(false),
     lastWorkDate: day('last_work_date'),
     formId: text('form_id').notNull(),
     selectedStaffId: uuid('selected_staff_id'),
@@ -738,13 +740,19 @@ export const employmentActivationAttempts = pgTable(
     }),
     index('employment_activation_attempts_employee').on(t.tenantId, t.employeeId, t.businessId),
     check('employment_activation_attempts_number_positive', sql`${t.attemptNo} > 0`),
-    check('employment_activation_attempts_outcome', sql`${t.outcome} IN ('effective', 'failed', 'suspended')`),
+    check(
+      'employment_activation_attempts_outcome',
+      sql`${t.outcome} IN ('effective', 'failed', 'suspended', 'replanned')`,
+    ),
     check(
       'employment_activation_attempts_reason',
       sql`(${t.outcome} = 'effective') = (${t.reason} IS NULL)
         AND (${t.outcome} = 'suspended') = (${t.blockedByBusinessId} IS NOT NULL)`,
     ),
-    check('employment_activation_attempts_trigger', sql`${t.trigger} IN ('scheduler', 'retry', 'approval')`),
+    check(
+      'employment_activation_attempts_trigger',
+      sql`${t.trigger} IN ('scheduler', 'retry', 'approval', 'retirement_change')`,
+    ),
     check('employment_activation_attempts_detail_object', sql`jsonb_typeof(${t.detail}) = 'object'`),
     check('employment_activation_attempts_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],

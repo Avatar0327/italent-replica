@@ -172,6 +172,7 @@ export async function applyRetirementRules(
         gender: row.gender,
         nationality: row.nationality,
         employType: current.fields.employType ?? null,
+        employmentForm: current.fields.employmentForm ?? null,
         identityType: row.identityType,
       };
       const plan = (purpose === 'expected_date' ? planExpected : planFlexible)(rules, person, row);

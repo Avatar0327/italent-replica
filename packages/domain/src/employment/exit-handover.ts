@@ -1,8 +1,7 @@
 /**
  * R2 BE-8b1 离职交接设置（B64 交接事项、B65 交接发起规则；DEC-266③、DEC-632；差距表“补证结论 R2c / R2f”）。纯规则，不碰 IO。
  * - 交接事项：事项类别、序号、待办类别（工作交接 / 其他）、待办事项、事项办理表单、备注；没有适用人群与负责人（办理人由交接流程会签节点决定）。
- * - 发起规则：只实现已验证的“离职申请审批通过后自动发起”，发起人只有员工本人；其他发起方式（提交 / 节点同意时、审批通过且距最后工作日 N 天）
- *   与其他发起人未验证，校验直接拒绝并提示“未验证、后补”（交接执行归 BE-8b2）。
+ * - F-250 / DEC-683：手工、提交、指定节点同意、批准与生效日凌晨；自动发起人沿用配置的员工本人。
  */
 
 /** 待办类别。 */
@@ -19,16 +18,25 @@ export const HANDOVER_REMARK_MAX = 500;
 /** 交接发起规则（租户设置项，两层配置）。 */
 export const EXIT_HANDOVER_TRIGGER_KEY = 'exit.handover_trigger';
 
-/** 已验证的发起方式 / 发起人；其余取值在 UNVERIFIED_* 里，校验时给出“未验证、后补”。 */
+/** F-250 已接入全部发起方式；发起人沿用员工本人配置，其他发起人规则仍待后补。 */
 export const HANDOVER_VERIFIED_METHOD = 'on_approval_passed';
 export const HANDOVER_VERIFIED_INITIATOR = 'self';
-const UNVERIFIED_METHODS = ['on_submit', 'on_node_approved', 'days_before_last_work_date'] as const;
+export const HANDOVER_METHODS = [
+  'manual',
+  'on_submit',
+  'on_node_approved',
+  'on_approval_passed',
+  'days_before_last_work_date',
+] as const;
+export type HandoverMethod = (typeof HANDOVER_METHODS)[number];
 const UNVERIFIED_INITIATORS = ['role'] as const;
 export const HANDOVER_REMIND_DAYS_MAX = 365;
 
 export interface HandoverTriggerSetting {
   readonly enabled: boolean;
-  readonly method: typeof HANDOVER_VERIFIED_METHOD;
+  readonly method: HandoverMethod;
+  readonly daysBeforeLastWorkDate?: number;
+  readonly nodeKey?: string;
   /** 包含最后工作日早于审批通过日的人员。 */
   readonly includePastLastWorkDate: boolean;
   readonly initiator: typeof HANDOVER_VERIFIED_INITIATOR;
@@ -58,11 +66,24 @@ const hasExactKeys = (value: Record<string, unknown>, keys: readonly string[]) =
 const isDays = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= HANDOVER_REMIND_DAYS_MAX;
 
-/** 校验租户写入的发起规则：结构严格（不接受未知字段）；未验证的发起方式 / 发起人单独标出，供接口提示“未验证、后补”。 */
+/** 校验租户写入的发起规则：结构严格（不接受未知字段）；未验证的发起人单独标出，供接口提示“未验证、后补”。 */
 export function checkHandoverTrigger(value: unknown): HandoverTriggerCheck {
   const invalid = { ok: false, unverified: false } as const;
-  if (!isRecord(value) || !hasExactKeys(value, ['enabled', 'method', 'includePastLastWorkDate', 'initiator', 'remind']))
+  if (!isRecord(value)) return invalid;
+  const base = ['enabled', 'method', 'includePastLastWorkDate', 'initiator', 'remind'];
+  if (
+    !base.every((key) => key in value) ||
+    Object.keys(value).some((key) => ![...base, 'daysBeforeLastWorkDate', 'nodeKey'].includes(key))
+  )
     return invalid;
+  if (value.daysBeforeLastWorkDate !== undefined && !isDays(value.daysBeforeLastWorkDate)) return invalid;
+  if (
+    value.nodeKey !== undefined &&
+    (typeof value.nodeKey !== 'string' || !value.nodeKey.trim() || value.nodeKey.length > 200)
+  )
+    return invalid;
+  if (value.method === 'days_before_last_work_date' && !isDays(value.daysBeforeLastWorkDate)) return invalid;
+  if (value.method === 'on_node_approved' && typeof value.nodeKey !== 'string') return invalid;
   const { enabled, method, includePastLastWorkDate, initiator, remind } = value;
   if (typeof enabled !== 'boolean' || typeof includePastLastWorkDate !== 'boolean') return invalid;
   if (
@@ -73,14 +94,18 @@ export function checkHandoverTrigger(value: unknown): HandoverTriggerCheck {
     !isDays(remind.daysAfterLastWorkDate)
   )
     return invalid;
-  if ((UNVERIFIED_METHODS as readonly unknown[]).includes(method)) return { ok: false, unverified: true };
   if ((UNVERIFIED_INITIATORS as readonly unknown[]).includes(initiator)) return { ok: false, unverified: true };
-  if (method !== HANDOVER_VERIFIED_METHOD || initiator !== HANDOVER_VERIFIED_INITIATOR) return invalid;
+  if (!(HANDOVER_METHODS as readonly unknown[]).includes(method) || initiator !== HANDOVER_VERIFIED_INITIATOR)
+    return invalid;
   return {
     ok: true,
     value: {
       enabled,
-      method: HANDOVER_VERIFIED_METHOD,
+      method: method as HandoverMethod,
+      ...(value.daysBeforeLastWorkDate === undefined
+        ? {}
+        : { daysBeforeLastWorkDate: value.daysBeforeLastWorkDate as number }),
+      ...(value.nodeKey === undefined ? {} : { nodeKey: value.nodeKey as string }),
       includePastLastWorkDate,
       initiator: HANDOVER_VERIFIED_INITIATOR,
       remind: {
@@ -108,8 +133,37 @@ export type HandoverEndReason = (typeof HANDOVER_END_REASONS)[number];
 /** 交接未发起的原因（exit_handover_requests.not_launched_reason）与给 HR 的提示文案。 */
 export const HANDOVER_NOT_LAUNCHED_HINTS = {
   NO_HANDLER: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
+  APPROVAL_PROCESS_NOT_MATCHED: '离职交接未发起：没有可用的离职交接流程，请配置后重新提交',
+  NO_INITIATOR_ACCOUNT: '离职交接未发起：员工没有可用发起账号，请补充后重新提交',
 } as const;
 export type HandoverNotLaunchedReason = keyof typeof HANDOVER_NOT_LAUNCHED_HINTS;
+/** DEC-674 / F305A：复用任职对象的独立详情按钮，对应原站 HandoverReSubmit。 */
+export const HANDOVER_RESUBMIT_BUTTON = {
+  code: 'Employment.HandoverReSubmit',
+  name: '重新提交交接',
+  level: 'detail',
+  requires: 'update',
+} as const;
+/** DEC-684：详情按钮采用原站完整编码，不追加命名空间；独立于 F-305 重新提交。 */
+export const HANDOVER_SUBMIT_BUTTON = {
+  code: 'EmploymentRecrdDetailDimissionHandoverApproval',
+  name: '发起离职交接',
+  level: 'detail',
+  requires: 'update',
+} as const;
+/** F-317：原站列表行 / 列表批量编码，与详情首次发起独立授权。 */
+export const HANDOVER_ROW_SUBMIT_BUTTON = {
+  code: 'EmploymentRecrdLineOpDimissionHandoverApproval',
+  name: '发起离职交接',
+  level: 'list_row',
+  requires: 'update',
+} as const;
+export const HANDOVER_BATCH_SUBMIT_BUTTON = {
+  code: 'BatchDimissionHandoverApproval',
+  name: '批量发起离职交接',
+  level: 'list',
+  requires: 'update',
+} as const;
 /** 撤销离职终止交接的日志理由（B4 撤销端口）。 */
 export const HANDOVER_CANCEL_REASON = '离职撤销终止交接';
 
@@ -131,7 +185,7 @@ export type HandoverLaunchDecision = 'launch' | 'disabled' | 'past_last_work_dat
 
 /**
  * 审批通过时是否自动发起（B65，DM-R13）：开关关 → 不发起；“包含最后工作日早于审批通过日期的人员”未勾选且最后工作日早于
- * 审批通过当天（租户日）→ 不发起。发起方式 / 发起人 b1 已限定为已验证的唯一取值。
+ * 审批通过当天（租户日）→ 不发起。发起时点由 F-250 执行入口判定。
  */
 export function handoverLaunchDecision(
   setting: Pick<HandoverTriggerSetting, 'enabled' | 'includePastLastWorkDate'>,

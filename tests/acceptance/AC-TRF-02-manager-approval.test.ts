@@ -11,7 +11,9 @@ describe('AC-TRF-02 经理复用审批安全', () => {
     const manager = await w.person('纯经理', org);
     const employee = await w.person('组织内员工', org);
     await w.setOrgRoles(org, { head: manager.employeeId });
-    const process = await w.publishedProcess({ nodes: [{ key: 'manager', approver: 'record_department_head' }] });
+    const process = await w.publishedProcess({
+      nodes: [{ key: 'manager', approver: { type: 'department', value: 'record_department_head' } }],
+    });
     const api = tenantApi(database().db, { authorize: undefined, clock: () => new Date('2026-10-01T01:00:00Z') });
     const actor = { user: manager.userId, tenant: w.tenant.id };
     const saved = await api.request('POST', `/api/tenant/employment/transfers/employees/${employee.employeeId}`, {

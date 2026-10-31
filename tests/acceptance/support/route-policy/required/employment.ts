@@ -21,10 +21,12 @@ const EXIT = `${SRC}/employment/exit-routes.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
+const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
+const REHIRE = `${SRC}/employment/retirement-rehire.ts`;
 const EMAIL = `${SRC}/employment/entry-email-routes.ts`;
 const INTERN = `${SRC}/employment/intern-routes.ts`;
 const INTERN_CREATE = `${SRC}/employment/intern-create.ts`;
-const ENTRY_CONTRACT = `${SRC}/employment/entry-contract.ts`;
+const INTERN_PROFILE = `${SRC}/employment/intern-profile.ts`;
 const INTERN_ACTIONS = `${SRC}/employment/intern-actions.ts`;
 const EXIT_GATE = `${SRC}/employment/exit-gate.ts`;
 const PART_TIME = `${SRC}/employment/part-time/routes.ts`;
@@ -45,6 +47,10 @@ const EMPLOYEE_IN_SCOPE: Evidence = {
 const BL = `${SRC}/employment/blacklist-routes.ts`;
 const HANDOVER = `${SRC}/employment/exit-handover-routes.ts`;
 const HANDOVER_SERVICE = `${SRC}/employment/exit-handover.ts`;
+const HANDOVER_LAUNCH = 'apps/api/src/modules/employment/exit-handover-launch.ts';
+const HANDOVER_LIST = `${SRC}/employment/exit-handover-list-routes.ts`;
+const HANDOVER_BATCH = `${SRC}/employment/exit-handover-batch.ts`;
+const HANDOVER_RESUBMIT = `${SRC}/employment/exit-handover-resubmit.ts`;
 const AUTO_REG = `${SRC}/employment/auto-regularization-routes.ts`;
 const AUTO_ASSESS = `${SRC}/employment/auto-assessment-routes.ts`;
 const RETIREMENT_RULE = `${SRC}/employment/retirement-rule-routes.ts`;
@@ -176,6 +182,76 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
   at: evidence,
   ...(note ? { note } : {}),
 });
+
+/** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
+function handoverListSubmit(path: string, batch: boolean): Obligation[] {
+  const code = batch ? 'BatchDimissionHandoverApproval' : 'EmploymentRecrdLineOpDimissionHandoverApproval';
+  const name = batch ? 'HANDOVER_BATCH_SUBMIT_BUTTON' : 'HANDOVER_ROW_SUBMIT_BUTTON';
+  const level = batch ? 'list' : 'list_row';
+  return [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER_LIST,
+          'POST',
+          path,
+          batch
+            ? "const ctx = await readContext(c, deps, 'object.update')"
+            : "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#${code}@${level}`,
+      [],
+      [
+        at(HANDOVER_LIST, 'POST', path, `${name}.code`),
+        ...(batch
+          ? [fn(HANDOVER_BATCH, 'batchGuard', 'await requireEmploymentWrite')]
+          : [
+              at(
+                HANDOVER_LIST,
+                'POST',
+                path,
+                'guard: handoverSubmitGuard(deps, ctx, id, HANDOVER_ROW_SUBMIT_BUTTON.code)',
+              ),
+            ]),
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', "await requireEmploymentWrite(ctx, 'update', {}, button"),
+        { role: 'const', unit: `packages/domain/src/employment/exit-handover.ts#${name}`, anchor: `code: '${code}'` },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverSubmit',
+      [],
+      [
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+        ...(batch
+          ? [
+              fn(
+                HANDOVER_BATCH,
+                'runHandoverBatch',
+                'guard: handoverSubmitGuard(deps, context, item.exitRequestId, batchButton)',
+              ),
+              fn(
+                HANDOVER_BATCH,
+                'visibleBatchReceipt',
+                'await requireHandoverSubmit(tx, scoped, receipt.exitRequestId, batchButton)',
+              ),
+            ]
+          : []),
+      ],
+      '逐项当前按钮、原离职业务和员工写范围；无权项只回显请求 ID',
+    ),
+  ];
+}
+
 /**
  * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支 receiptDisclosure，不参与准入（配置准入见 run 条目）。
  * 回执内容受任职记录查看权控制：visibleEmployees 先判 object.view（承接这一探测事实），再按数据范围逐人过滤；
@@ -812,7 +888,7 @@ function exitBusinessCommand(
       `btn:${RECORD}#${anchor}@detail`,
       [],
       [
-        call(unit === 'route' ? '{ guard: exitEditGuard(deps, ctx, gate, id) }' : GUARD_ANCHOR[unit]),
+        call(unit === 'route' ? 'guard: exitEditGuard(deps, ctx, gate, id)' : GUARD_ANCHOR[unit]),
         guard,
         EXIT_PERMISSION,
         WRITE_BUTTON,
@@ -953,7 +1029,70 @@ function intentionAction(action: 'submit' | 'withdraw'): Obligation[] {
   ];
 }
 
+const ACCOUNT = `${SRC}/employment/exit-account-routes.ts`;
+const accountSettings = (method: string): Obligation =>
+  ob(
+    'admin:other_settings',
+    ['admin:tenant.employment.configuration'],
+    [
+      at(ACCOUNT, method, '/exit-account/settings', "'tenant.employment.configuration.write'"),
+      READ,
+      {
+        role: 'const',
+        unit: 'packages/domain/src/permission/module-actions.ts#actions',
+        anchor: "'tenant.employment.configuration.write': tenantConfiguration",
+      },
+    ],
+  );
+const accountScope = ob(
+  'guard:employment.scope',
+  [],
+  [fn(ACCOUNT, 'readScopedAccountTask', 'await requireEmployeeInScope(tx, ctx, task.employeeId)'), EMPLOYEE_IN_SCOPE],
+);
+const accountRead = (call: Evidence): Obligation =>
+  ob(
+    `obj:${RECORD}:view`,
+    ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
+    [call, READ, RECORD_CONST],
+  );
 export const EMPLOYMENT: RequiredTable = {
+  'GET /api/tenant/employment/exit-account/settings': [
+    ob(
+      'obj:TenantBase.EmploymentSettings:view',
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+      [
+        at(
+          ACCOUNT,
+          'GET',
+          '/exit-account/settings',
+          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+        ),
+        READ,
+        { role: 'const', unit: `${ACCOUNT}#settingsObject`, anchor: "'TenantBase.EmploymentSettings'" },
+      ],
+    ),
+  ],
+  'PUT /api/tenant/employment/exit-account/settings': [accountSettings('PUT')],
+  'GET /api/tenant/employment/exit-account/tasks': [
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'GET /api/tenant/employment/exit-account/tasks/:id': [
+    accountScope,
+    accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks/:id', "const ctx = await readContext(c, deps, 'object.view')")),
+  ],
+  'POST /api/tenant/employment/exit-account/tasks/:id/retry': [
+    ob(
+      'admin:user_manage',
+      ['admin:admin.*'],
+      [
+        fn(
+          ACCOUNT,
+          'retry',
+          "requirePermission(authorizeInTransaction(deps.authorize, tx), { ...ctx, action: 'admin.user_manage' })",
+        ),
+      ],
+    ),
+  ],
   // ---- transfer/routes.ts：本人入口、目录、部门、预览、发起 ----------------------------------------------------------
   'GET /api/tenant/employment/transfers/self': [
     recordView(at(TRF, 'GET', '/transfers/self', "const ctx = await readPageContext(c, deps, 'detail')")),
@@ -1871,6 +2010,10 @@ export const EMPLOYMENT: RequiredTable = {
         'requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id)',
       ),
     ),
+    linkage(
+      at(EMP, 'PATCH', '/businesses/:id', 'body: await updateEmploymentBusiness(tx, checked, id, input)'),
+      'F-140：共用改期编排的联动守卫；通用 approved / effective 日期编辑仍先拒绝',
+    ),
     businessWrite(at(EMP, 'PATCH', '/businesses/:id', 'const current = await authorizeBusinessWrite(deps, ctx, id)')),
   ],
   'POST /api/tenant/employment/businesses/:id/submit': transition('submit'),
@@ -2061,12 +2204,7 @@ export const EMPLOYMENT: RequiredTable = {
         'guard:employment.entryContract',
         [],
         [
-          at(
-            INTERN,
-            'POST',
-            '/interns',
-            '{ guard: internCreateGuard(deps, employeeCtx, ctx, plan), project: (body) => body }',
-          ),
+          at(INTERN, 'POST', '/interns', 'guard: internCreateGuard(deps, employeeCtx, ctx, plan)'),
           fn(
             INTERN_CREATE,
             'internCreateGuard',
@@ -2098,6 +2236,80 @@ export const EMPLOYMENT: RequiredTable = {
           ],
         ),
         purpose: 'when:employment.entryContract',
+      },
+      ob(
+        'guard:employment.internProfile',
+        [],
+        [
+          fn(
+            INTERN_CREATE,
+            'internCreateGuard',
+            'await requireInternProfileAccess(tx, deps, scoped, plan.profile, plan.input.employeeId)',
+          ),
+          fn(
+            INTERN_PROFILE,
+            'requireInternProfileAccess',
+            'await authorize(authorizer, access, operation, payload, operation)',
+          ),
+          fn(INTERN_PROFILE, 'writeInternProfile', 'await requireInternProfileAccess(tx, deps, ctx, plan, employeeId)'),
+          fn(INTERN_PROFILE, 'requireInternProfileAccess', 'scope = await personnelCreationScope('),
+          fn(
+            `${SRC}/permission/scope-resolver.ts`,
+            'personnelCreationScope',
+            "current.terms.map((term) => (term.dimension === 'using_user' ? managed : term))",
+          ),
+        ],
+        '条件准入：普通资料校验档案更新权；教育新增经 DEC-082 创建范围转换；两者各自检查字段、按钮和范围',
+      ),
+      ...[
+        'obj:TenantBase.EmployeeInformation:update',
+        'btn:TenantBase.EmployeeInformation#update@detail',
+        'obj:TenantBase.Education:create',
+        'btn:TenantBase.Education#create@list',
+      ].map((perm) => ({
+        ...ob(
+          perm,
+          ['object:object.* 动作', 'button:buttonResource', 'button:object.button'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'requireInternProfileAccess',
+              'await authorize(authorizer, access, operation, payload, operation)',
+            ),
+            fn(
+              `${SRC}/personnel/access.ts`,
+              'authorize',
+              'await requireObjectWrite(authorizer, ctx, { objectCode: ctx.objectCode, operation, payload })',
+            ),
+          ],
+        ),
+        purpose: 'when:employment.internProfile' as const,
+      })),
+      {
+        ...ob(
+          'obj:TenantBase.EmployeeInformation:view',
+          ['object:object.* 动作'],
+          [
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              "if (!(await authorizer({ ...ctx, action: 'object.view', resource: PERSONNEL_OBJECT }))) return base",
+            ),
+            {
+              role: 'scope' as const,
+              unit: `${INTERN_PROFILE}#projectInternProfile`,
+              anchor:
+                'await requirePerson(tx, { ...ctx, objectCode: PERSONNEL_OBJECT, scope }, String(receipt.employeeId))',
+            },
+            fn(
+              INTERN_PROFILE,
+              'projectInternProfile',
+              'const visible = await getModuleViewableFieldsInTransaction(deps, ctx, PERSONNEL_OBJECT, tx)',
+            ),
+          ],
+        ),
+        purpose: 'disclosure:profile' as const,
+        need: { scope: 'point' as const, locator: 'personnel.employee' },
       },
       linkage(fn(INTERN_CREATE, 'createInternEntry', 'const created = await createEmploymentBusiness(')),
     ],
@@ -3079,11 +3291,15 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),
+    linkage(
+      at(EXIT, 'PATCH', '/exits/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140：共用编辑服务的改期分支可进入生效联动或重定位 / 替代；退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],
       [
-        at(EXIT, 'PATCH', '/exits/:id', '{ guard: exitEditGuard(deps, ctx, gate, id) }'),
+        at(EXIT, 'PATCH', '/exits/:id', 'guard: exitEditGuard(deps, ctx, gate, id)'),
         fn(REPLAY, 'exitEditGuard', 'await requireExitEditRights(tx, scoped, target, businessId)'),
         fn(
           REPLAY,
@@ -3139,7 +3355,7 @@ export const EMPLOYMENT: RequiredTable = {
           RETIRE,
           'POST',
           '/retirements/employees/:id',
-          "{ guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) }",
+          "const guard = exitCommandGuard(deps, ctx, 'create', gate, { departmentId })",
         ),
         EXIT_GUARD,
         EXIT_PERMISSION,
@@ -3161,9 +3377,62 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
     linkage(at(RETIRE, 'POST', '/retirements/employees/:id', 'body: await createExitApplication(tx, context,')),
+    // 条件准入（请求带 reEmployed + rehire 才挂；R2-T04 §8.2）：返聘写的是新任职，字段按 Employment.Create 复核，
+    // 返聘合同另要合同“新建”按钮 / 字段创建权 / 合同数据范围；入口与 CommandGuard.before 两处同一函数
+    ob(
+      'guard:employment.rehire',
+      [],
+      [
+        at(
+          RETIRE,
+          'POST',
+          '/retirements/employees/:id',
+          '{ guard: rehireGuard(deps, ctx, guard, id, rehire, input.lastWorkDate) }',
+        ),
+        fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+      ],
+      '条件守卫：同时返聘时另要 Employment.Create 字段权 / 返聘部门范围；带合同计划时另要合同新建权限',
+    ),
+    {
+      ...ob(
+        `btn:${RECORD}#Employment.Create@detail`,
+        ['button:requireEmploymentWrite(按钮)', 'button:buttonResource', 'button:object.button'],
+        [
+          at(RETIRE, 'POST', '/retirements/employees/:id', 'if (rehire) await requireRehireWrite(ctx, id, rehire)'),
+          fn(REHIRE, 'rehireGuard', 'await requireRehireWrite(await commandContext(tx, deps, ctx), employeeId, plan)'),
+          fn(REHIRE, 'requireRehireWrite', "'Employment.Create',"),
+          WRITE_BUTTON,
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
+    {
+      ...ob(
+        'btn:TenantBase.EmploymentContract#create@list',
+        ['button:buttonResource', 'button:object.button'],
+        [
+          fn(REHIRE, 'rehireGuard', 'await requireContractCreateAccess('),
+          fn(
+            ENTRY_CONTRACT,
+            'requireContractCreateAccess',
+            "resource: buttonResource(CONTRACT_OBJECT, contractAction('create', 'direct'), 'list')",
+          ),
+          {
+            role: 'const',
+            unit: 'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+            anchor: "'TenantBase.EmploymentContract'",
+          },
+        ],
+      ),
+      purpose: 'when:employment.rehire',
+    },
   ],
   'PATCH /api/tenant/employment/retirements/:id': [
     ...exitBusinessCommand('/retirements/:id', 'Employment.RetireEdit', 'route', RETIRE),
+    linkage(
+      at(RETIRE, 'PATCH', '/retirements/:id', 'body: await updateExitFields(tx, context, id, patch'),
+      'F-140：共用编辑服务的改期分支可进入生效联动或重定位 / 替代；退休仍拒绝日期变更',
+    ),
     ob(
       'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
       ['button:object.button', 'button:buttonResource'],
@@ -3271,6 +3540,47 @@ export const EMPLOYMENT: RequiredTable = {
   'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
+    ...[
+      ob(
+        `obj:${RECORD}:update`,
+        [],
+        [at(EXIT, 'GET', '/exits', 'await handoverRowActions(deps, ctx, items)'), WRITE_OBJECT],
+      ),
+      ob(
+        `btn:${RECORD}#EmploymentRecrdLineOpDimissionHandoverApproval@list_row`,
+        [],
+        [
+          fn(
+            HANDOVER_BATCH,
+            'handoverRowActions',
+            'await requireHandoverSubmit(tx, scoped, item.id, HANDOVER_ROW_SUBMIT_BUTTON.code)',
+          ),
+          WRITE_BUTTON,
+        ],
+      ),
+      ob(
+        'guard:employment.handoverSubmit',
+        [],
+        [
+          fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+          BUSINESS_WRITE,
+          EMPLOYEE_IN_SCOPE,
+        ],
+      ),
+    ].map((entry) => ({
+      ...entry,
+      purpose: 'disclosure:handoverRow' as const,
+      need: guardScope('employment.handoverSubmit'),
+      at: [
+        ...entry.at,
+        {
+          role: 'scope' as const,
+          unit: `${HANDOVER_LAUNCH}#requireHandoverSubmit`,
+          anchor: 'await requireEmployeeInScope(tx, ctx, business.employeeId)',
+        },
+      ],
+    })),
+
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
     ob(
       'guard:employment.viewableFilters',
@@ -3285,6 +3595,105 @@ export const EMPLOYMENT: RequiredTable = {
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DEC-632）-----------------------------------------
+  'POST /api/tenant/employment/exits/:id/handover/submit': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'POST',
+          '/exits/:id/handover/submit',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#EmploymentRecrdDetailDimissionHandoverApproval@detail`,
+      [],
+      [
+        at(HANDOVER, 'POST', '/exits/:id/handover/submit', 'requireHandoverSubmit(tx, ctx, id)'),
+        fn(
+          HANDOVER_LAUNCH,
+          'handoverSubmitGuard',
+          'requireHandoverSubmit(tx, await commandContext(tx, deps, ctx), id, button)',
+        ),
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'HANDOVER_SUBMIT_BUTTON.code'),
+        {
+          role: 'const',
+          unit: 'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON',
+          anchor: "code: 'EmploymentRecrdDetailDimissionHandoverApproval'",
+        },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverSubmit',
+      [],
+      [
+        fn(HANDOVER_LAUNCH, 'requireHandoverSubmit', 'requireBusinessWriteScope(tx, ctx.authorize!, ctx, id)'),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '原离职业务写范围与当前员工范围；范围外与不存在同一个 404',
+    ),
+  ],
+  'POST /api/tenant/employment/exits/:id/handover/submit-from-list': handoverListSubmit(
+    '/exits/:id/handover/submit-from-list',
+    false,
+  ),
+  'POST /api/tenant/employment/exits/handover/batch-submit': handoverListSubmit('/exits/handover/batch-submit', true),
+  'POST /api/tenant/employment/exit-handover-requests/:id/resubmit': [
+    ob(
+      `obj:${RECORD}:update`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:update', 'object:object.* 动作'],
+      [
+        at(
+          HANDOVER,
+          'POST',
+          '/exit-handover-requests/:id/resubmit',
+          "const ctx = await readContext(c, deps, 'object.update', revision(c))",
+        ),
+        READ,
+        WRITE_OBJECT,
+      ],
+    ),
+    ob(
+      `btn:${RECORD}#Employment.HandoverReSubmit@detail`,
+      [],
+      [
+        at(HANDOVER, 'POST', '/exit-handover-requests/:id/resubmit', 'requireHandoverResubmit(tx, ctx, id)'),
+        fn(
+          HANDOVER_RESUBMIT,
+          'handoverResubmitGuard',
+          'requireHandoverResubmit(tx, await commandContext(tx, deps, ctx), id)',
+        ),
+        fn(HANDOVER_RESUBMIT, 'requireHandoverResubmit', 'HANDOVER_RESUBMIT_BUTTON.code'),
+        {
+          role: 'const',
+          unit: 'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON',
+          anchor: "code: 'Employment.HandoverReSubmit'",
+        },
+        WRITE_BUTTON,
+      ],
+    ),
+    ob(
+      'guard:employment.handoverResubmit',
+      [],
+      [
+        fn(
+          HANDOVER_RESUBMIT,
+          'requireHandoverResubmit',
+          'requireBusinessWriteScope(tx, ctx.authorize!, ctx, row.exitRequestId, row.employeeId)',
+        ),
+        BUSINESS_WRITE,
+        EMPLOYEE_IN_SCOPE,
+      ],
+      '原离职业务写范围与当前员工范围；范围外与不存在同一个 404',
+    ),
+  ],
   'GET /api/tenant/employment/exits/:id/handover': [
     recordView(at(HANDOVER, 'GET', '/exits/:id/handover', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],

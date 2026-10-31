@@ -493,8 +493,11 @@ export const transferLinkageItems = pgTable(
       foreignColumns: [orgObjects.tenantId, orgObjects.id],
     }),
     check('transfer_linkage_items_type', sql`${t.itemType} IN ('duty_subordinate', 'duty_org_role', 'part_time_end')`),
-    check('transfer_linkage_items_status', sql`${t.status} IN ('pending', 'succeeded', 'failed')`),
-    check('transfer_linkage_items_failure', sql`(${t.status} = 'failed') = (${t.failureCode} IS NOT NULL)`),
+    check('transfer_linkage_items_status', sql`${t.status} IN ('pending', 'succeeded', 'failed', 'superseded')`),
+    check(
+      'transfer_linkage_items_failure',
+      sql`(${t.status} IN ('failed', 'superseded')) = (${t.failureCode} IS NOT NULL)`,
+    ),
     check('transfer_linkage_items_counts', sql`${t.attemptCount} >= 0 AND ${t.revision} > 0 AND ${t.lineNo} > 0`),
   ],
 );

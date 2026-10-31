@@ -11,6 +11,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -19,6 +20,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { employmentBusinessObjects } from './employment.js';
 import { exitRequests } from './exit.js';
 import { tenants } from './tenancy.js';
 
@@ -33,8 +35,16 @@ export const retirementRequests = pgTable(
     expectedRetirementDate: date('expected_retirement_date', { mode: 'string' }),
     /** early / normal / delayed，由最后工作日 L 与快照 P 派生；不可手改，系统顺延改变 L 时按快照 P 重派生。 */
     retireType: text('retire_type'),
-    /** 是否同时返聘（规格 IsReEmployed）；5a 期间恒为 false，5b 开放。 */
+    /** 是否同时返聘（规格 IsReEmployed）；与 rehire_plan 同有同无（CHECK）。 */
     reEmployed: boolean('re_employed').notNull().default(false),
+    /**
+     * 同时返聘的返聘任职 / 合同 / 试用期计划（设计 §8.2）：固定 schema 的待执行命令载荷，结构与
+     * POST employees/:id/businesses kind=retire_rehire 的请求体一致；落地后的规范对象是 retire_rehire 任职业务与合同。
+     * 返聘日不存这里，生效时由最终生效日 E′ 经 retireRehireStartDate 算出（A-15 顺延时跟着变）。
+     */
+    rehirePlan: jsonb('rehire_plan'),
+    /** 生效时生成的 retire_rehire 业务（规格 LURetireReEmployedRecord）；撤销退休的返聘守卫读它。 */
+    rehireBusinessId: uuid('rehire_business_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -44,7 +54,14 @@ export const retirementRequests = pgTable(
       columns: [t.tenantId, t.businessId],
       foreignColumns: [exitRequests.tenantId, exitRequests.businessId],
     }),
+    foreignKey({
+      name: 'retirement_requests_rehire_fk',
+      columns: [t.tenantId, t.rehireBusinessId],
+      foreignColumns: [employmentBusinessObjects.tenantId, employmentBusinessObjects.id],
+    }),
     index('retirement_requests_employee').on(t.tenantId, t.employeeId),
+    check('retirement_requests_rehire_plan', sql`${t.reEmployed} = (${t.rehirePlan} IS NOT NULL)`),
+    check('retirement_requests_rehire_business', sql`${t.rehireBusinessId} IS NULL OR ${t.reEmployed}`),
     check(
       'retirement_requests_type',
       sql`${t.retireType} IS NULL OR ${t.retireType} IN ('early', 'normal', 'delayed')`,
@@ -54,6 +71,41 @@ export const retirementRequests = pgTable(
       'retirement_requests_type_needs_expected',
       sql`${t.retireType} IS NULL OR ${t.expectedRetirementDate} IS NOT NULL`,
     ),
+  ],
+);
+
+/** DEC-677：提前发起的返聘依赖哪笔退休；作废标记保留，不能被另一笔退休自动接管。 */
+export const retireRehireDependencies = pgTable(
+  'retire_rehire_dependencies',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    retirementId: uuid('retirement_id').notNull(),
+    invalidatedAt: timestamp('invalidated_at', { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    foreignKey({
+      name: 'retire_rehire_dependencies_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    foreignKey({
+      name: 'retire_rehire_dependencies_retirement_fk',
+      columns: [t.tenantId, t.employeeId, t.retirementId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    index('retire_rehire_dependencies_retirement').on(t.tenantId, t.employeeId, t.retirementId),
+    check('retire_rehire_dependencies_distinct', sql`${t.businessId} <> ${t.retirementId}`),
   ],
 );
 
@@ -165,10 +217,10 @@ export const retirementRuleConditions = pgTable(
       columns: [t.tenantId, t.ruleId],
       foreignColumns: [retirementRules.tenantId, retirementRules.id],
     }).onDelete('cascade'),
-    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 4`),
+    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 5`),
     check(
       'retirement_rule_conditions_field',
-      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType')`,
+      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')`,
     ),
     check('retirement_rule_conditions_operator', sql`${t.operator} = 'in'`),
     check('retirement_rule_conditions_values', sql`cardinality(${t.values}) BETWEEN 1 AND 50`),

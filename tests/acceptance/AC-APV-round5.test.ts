@@ -268,8 +268,16 @@ async function personnelException(w: ApprovalWorld, s: Scene) {
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
     nodes: [
-      { key: 'head', approver: 'latest_record_department_head', formFields: ['school', 'major'] },
-      { key: 'hrbp', approver: 'record_department_hrbp', formFields: ['school', 'major'] },
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        formFields: ['school', 'major'],
+      },
+      {
+        key: 'hrbp',
+        approver: { type: 'department', value: 'record_department_hrbp' },
+        formFields: ['school', 'major'],
+      },
     ],
   });
   const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;

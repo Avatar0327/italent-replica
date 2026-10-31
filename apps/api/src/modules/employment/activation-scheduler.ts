@@ -1,3 +1,5 @@
+import { dueHandoverCandidates, readDueHandoverEnabled, runDueHandovers } from './exit-handover-launch.js';
+import { plannedEffectiveDate } from './timeline.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { pendingActivationState, STALE_DEPARTED_FAILURE } from './activation-store.js';
 import { completionCandidates, remindCompletion } from '../transfer/completion.js';
@@ -33,6 +35,7 @@ import { EmploymentError } from './errors.js';
 import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
+import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
 
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
@@ -89,6 +92,7 @@ export async function runEmploymentActivations(
   const runs: EmploymentActivationRun[] = [];
   for await (const tenant of activeTenants(db, normalized.tenantId)) {
     runs.push(await sweepTenant(db, meta, tenant, now, normalized));
+    await drainExitAccounts(db, tenant.id, now);
   }
   const result: EmploymentActivationRunResult = { runs };
   return runPlatformCommand(db, meta, RUN_OPERATION, normalized, async (ctx) => {
@@ -137,6 +141,8 @@ async function sweepTenant(
       const outcome = await withTenant(db, tenant.id, async (tx) => {
         const lock = await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true });
         if (lock !== 'acquired') return lock;
+        // 交接与离职生效彼此独立：生效失败也不推迟已到期交接（DM-R12）。
+        await runDueHandovers(tx, ctx, employeeId);
         const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
         await remindCompletion(tx, ctx, employeeId);
         // PT-7（兼职设计 §4.8）：开始日已到的兼职“是否部门负责人 / 新增下属”联动，与调动联动同一员工事务、同一闭包锁
@@ -161,6 +167,7 @@ async function sweepTenant(
 /**
  * 有事可做的员工：有到期的审批通过申请，且它不是“失败待 HR 重试”，也不是“挂起且所等前序仍失败未修正”。
  * 只从审批通过的状态事件出发（部分索引），再确认它仍是该业务的最新状态。
+ * 前序在审批当场生效时没有尝试行，NULL 不等于失败，不能挡住 DEC-677 的自动续办。
  */
 async function dueEmployees(
   tx: Tx,
@@ -171,6 +178,7 @@ async function dueEmployees(
   now: Date,
   timezone: string,
 ): Promise<string[]> {
+  const handoverEnabled = await readDueHandoverEnabled(tx, tenantId);
   const rows = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
     SELECT DISTINCT b.employee_id::text AS "employeeId" FROM employment_business_objects b
@@ -182,13 +190,13 @@ async function dueEmployees(
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id AND NOT ${STALE_DEPARTED_FAILURE}
       ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
-      AND p.effective_date<=${businessDate}::date
+      AND ${plannedEffectiveDate(tenantId, sql`b.id`, sql`p.effective_date`)}<=${businessDate}::date
       AND (${cursor}::uuid IS NULL OR b.employee_id>${cursor}::uuid)
-      AND (a.outcome IS NULL OR (a.outcome='suspended' AND NOT (
+      AND (a.outcome IS NULL OR a.outcome='replanned' OR (a.outcome='suspended' AND NOT (
         (SELECT x.state FROM employment_state_events x WHERE x.tenant_id=b.tenant_id
           AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) IN ('approved','effective')
-        AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
-          AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed')))
+        AND COALESCE((SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
+          AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed', false))))
     UNION SELECT "employeeId"::text FROM (${completionCandidates({
       tenantId,
       timezone,
@@ -200,6 +208,8 @@ async function dueEmployees(
       WHERE (${cursor}::uuid IS NULL OR c."employeeId">${cursor}::uuid)
     UNION SELECT "employeeId" FROM (${dueLinkageEmployees(tenantId, businessDate)}) l
       WHERE (${cursor}::uuid IS NULL OR l."employeeId"::uuid>${cursor}::uuid)
+    UNION SELECT "employeeId" FROM (${dueHandoverCandidates(tenantId, businessDate)}) h
+      WHERE ${handoverEnabled} AND (${cursor}::uuid IS NULL OR h."employeeId"::uuid>${cursor}::uuid)
     ORDER BY 1 LIMIT ${limit}
   `),
   );
@@ -237,12 +247,14 @@ export function startEmploymentActivationScheduler(
         running = null;
       });
   };
+  const accounts = startExitAccountScheduler(db, { clock, onError, intervalMs });
   const timer = setInterval(tick, intervalMs);
   tick();
   return {
     async stop() {
       clearInterval(timer);
       await running;
+      await accounts.stop();
     },
   };
 }

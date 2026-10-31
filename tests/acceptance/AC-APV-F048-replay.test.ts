@@ -22,15 +22,22 @@ const CREATE_BODY = {
   exceptionAdminUserId: null,
   conditions: { items: [] },
   nodes: [
-    { key: 'n1', approver: 'owner', actions: { copySend: true } },
-    { key: 'cs', kind: 'countersign', approvers: ['owner', 'record_department_head'] },
+    { key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, actions: { copySend: true } },
+    {
+      key: 'cs',
+      kind: 'countersign',
+      approvers: [
+        { type: 'custom_variable', value: 'owner' },
+        { type: 'department', value: 'record_department_head' },
+      ],
+    },
   ],
 };
 
 const DRAFT_BODY = {
   name: 'F-048 升级前草稿',
   exceptionAdminUserId: null,
-  nodes: [{ key: 'n1', approver: 'owner', actions: { avoidSelf: true } }],
+  nodes: [{ key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: true } }],
 };
 
 const LEGACY_NODE_TAIL = {
@@ -68,7 +75,7 @@ const LEGACY_CREATE = {
     {
       key: 'n1',
       kind: 'single',
-      approver: 'owner',
+      approver: { type: 'custom_variable', value: 'owner' },
       ...LEGACY_NODE_TAIL,
       actions: { ...LEGACY_ACTIONS, copySend: true, urge: 'inherit' },
       ...LEGACY_NODE_END,
@@ -76,7 +83,10 @@ const LEGACY_CREATE = {
     {
       key: 'cs',
       kind: 'countersign',
-      approvers: ['owner', 'record_department_head'],
+      approvers: [
+        { type: 'custom_variable', value: 'owner' },
+        { type: 'department', value: 'record_department_head' },
+      ],
       ...LEGACY_NODE_TAIL,
       actions: { ...LEGACY_ACTIONS, urge: 'inherit' },
       ...LEGACY_NODE_END,
@@ -94,7 +104,7 @@ const LEGACY_DRAFT = {
     {
       key: 'n1',
       kind: 'single',
-      approver: 'owner',
+      approver: { type: 'custom_variable', value: 'owner' },
       ...LEGACY_NODE_TAIL,
       actions: { ...LEGACY_ACTIONS, urge: 'inherit', avoidSelf: true },
       ...LEGACY_NODE_END,
@@ -147,7 +157,9 @@ describe('F-048 跨升级重放：新建流程', () => {
 describe('F-048 跨升级重放：草稿保存', () => {
   it('升级前入台账的草稿保存命令，同键同内容重放 → 200 与首次结果相同；同键异内容 → 409', async () => {
     const w = await approvalWorld(database().db, 'f048-replay-draft');
-    const created = await w.createProcess({ nodes: [{ key: 'n1', approver: 'owner' }] });
+    const created = await w.createProcess({
+      nodes: [{ key: 'n1', approver: { type: 'custom_variable', value: 'owner' } }],
+    });
     const key = 'f048-legacy-draft';
     const path = `${BASE}/processes/${created.id}/draft`;
     const request = { ifMatch: created.revision, idempotencyKey: key, body: DRAFT_BODY };
@@ -158,7 +170,10 @@ describe('F-048 跨升级重放：草稿保存', () => {
 
     const other = await w.request(w.hr.id, 'PUT', path, {
       ...request,
-      body: { ...DRAFT_BODY, nodes: [{ key: 'n1', approver: 'owner', actions: { avoidSelf: false } }] },
+      body: {
+        ...DRAFT_BODY,
+        nodes: [{ key: 'n1', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: false } }],
+      },
     });
     expect(await errorCode(other)).toEqual({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
   });

@@ -376,6 +376,14 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['org.visibleParents', call('visibleParents'), { near: true, modules: ['org'] }],
     ['job.assignmentReferences', call('assignmentReferences'), { near: true, modules: ['job'] }],
     ['job.employmentScope', call('authorizeSequenceTargets'), { modules: ['job'] }],
+    // 组织调整申请头：主体组织 + 调整范围逐个（命令守卫内；改头 / 作废 / 校验经 authorizeStored 对现值再判）
+    [
+      'orgAdjustment.head',
+      calls('authorizeHead', 'authorizeHeadAction', 'authorizeStored'),
+      { modules: ['org-adjustment'] },
+    ],
+    // 组织调整明细：按钮 + 主体组织 + 行涉及的组织（命令守卫内 authorizeItem；停用连带下级在写服务内逐个判）
+    ['orgAdjustment.item', calls('authorizeItem', 'orgScopeAuthorizer'), { modules: ['org-adjustment'] }],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
   // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）

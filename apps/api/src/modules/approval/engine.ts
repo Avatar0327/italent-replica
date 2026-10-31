@@ -1,3 +1,4 @@
+import { resolveSource, previousApproved, limitApprovers } from './source-resolver.js';
 /**
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
  * 审批人为空、自审、相同 / 历史相同审批人跳过；遇到需人工审批的节点即停下等待。
@@ -27,7 +28,7 @@ import {
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
-  type ApproverExpression,
+  type ApproverSource,
   type Candidate,
   type CountersignApprovalNode,
   type NodeDecision,
@@ -47,11 +48,10 @@ import {
   isAssignable,
   memo,
   personOfUser,
-  resolveCandidate,
-  resolveCandidates,
   tenantAdminTakeover,
   type RoutingSubject,
 } from './resolver.js';
+import { resolveHandoverApprovers, type ResolvedApprover } from './handover-empty.js';
 import { freezeRunSubjects, recusalFactsOf } from './recusal.js';
 import { freezeSubjects } from './subjects.js';
 import {
@@ -155,6 +155,7 @@ export async function persistRun(tx: Tx, run: Run, action: string, created = fal
       revision: saved.revision,
     });
   }
+  await ADAPTERS[saved.businessType].persisted?.(tx, run.ctx, run.snapshot);
   return saved;
 }
 
@@ -169,6 +170,7 @@ function routingSubject(run: Run): RoutingSubject {
   return {
     tenantId: run.ctx.tenantId,
     asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone),
+    businessDate: run.snapshot.businessDate,
     initiatorUserId: run.instance.initiatorUserId,
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
@@ -205,18 +207,30 @@ async function decide(
   tx: Tx,
   subject: RoutingSubject,
   node: ApprovalNode,
-  expression: ApproverExpression,
+  expression: ApproverSource,
   facts: RoutingFacts,
   resolved?: Candidate,
 ) {
-  const candidate = resolved ?? (await resolveCandidate(tx, subject, expression));
+  const candidates = resolved ? [resolved] : await resolveSource(tx, subject, expression);
+  if (candidates.length > 1)
+    throw approvalError(
+      'APPROVAL_SOURCE_INVALID',
+      'APPROVAL_SINGLE_SOURCE_MULTIPLE',
+      '单人节点解析出多名审批人，请使用会签节点',
+    );
+  const candidate = candidates[0]!;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
 }
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
-const MECHANISMS = { same_skip: 'same', history_skip: 'history', subject_skip: 'subject' } as const;
+const MECHANISMS = {
+  same_skip: 'same',
+  history_skip: 'history',
+  subject_skip: 'subject',
+  no_assignee_approve: 'no_assignee',
+} as const;
 
 /**
  * 实际接手异常任务的人：流程上的异常管理员不可用（已停用、正在停用）时由租户管理员接管（DEC-098，回退人同样复核
@@ -369,7 +383,17 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
   const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
-    const entry: Entry = { subject, facts: routingFacts(run, tasks, i, recusal), activationId: randomUUID() };
+    const previousKey = i > 0 ? run.version.nodes[i - 1]!.key : null;
+    const currentSubject = {
+      ...subject,
+      previousApprovedUserIds: previousApproved(effectiveHistory(tasks, run.instance), previousKey),
+      samplingSeed: `${run.instance.id}:${run.instance.round}:${run.instance.historyFromSeq}:${node.key}`,
+    };
+    const entry: Entry = {
+      subject: currentSubject,
+      facts: routingFacts(run, tasks, i, recusal),
+      activationId: randomUUID(),
+    };
     const result = isCountersign(node)
       ? await enterCountersign(tx, run, node, entry, tasks)
       : await enterSingle(tx, run, node, entry, tasks);
@@ -381,13 +405,13 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
 /** 进入节点的结果：继续下一节点 / 停在本节点等待人工处理 / 实例已退回发起人。 */
 type EntryResult = 'next' | 'stay' | 'returned';
 
-function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey, ...extra });
+function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey });
 }
 
 /** DEC-318 K-38：节点“无操作”且审批人为空——拒绝本次推进，流程停在原节点（不转异常管理员）。 */
-function noAssignee(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey, ...extra });
+function noAssignee(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey });
 }
 
 /** 单人审批节点：需人工审批即停下；相同 / 历史相同审批人自动处理后继续下一节点。 */
@@ -461,19 +485,20 @@ interface SeatEntry {
  * §11.6，会签只有「同意」，DEC-106）都按人处理；首节点任一人为空即拒绝提交。被自审跳过的人另行留痕，即使其接替人
  * 与其他席位重合、该席被合并；被合并那一席的候选人留在保留的这一席上，下一节点按全部候选人比较（DEC-114，P2-4）。
  */
-async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode, entry: Entry) {
+async function countersignSeats(
+  tx: Tx,
+  run: Run,
+  node: CountersignApprovalNode,
+  entry: Entry,
+  resolved: readonly ResolvedApprover[],
+) {
   const seats: SeatEntry[] = [];
   const selfSkips: NodeDecision[] = [];
   const candidates = new Set<string>();
-  // 一个表达式可展开成多席（离职交接的兜底处理人，DEC-663）；其余表达式恰好一席
-  const resolved: (readonly [ApproverExpression, Candidate])[] = [];
-  for (const expression of node.approvers)
-    for (const candidate of await resolveCandidates(tx, entry.subject, expression, node.fallbackUserIds))
-      resolved.push([expression, candidate]);
   for (const [expression, resolvedCandidate] of resolved) {
     const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts, resolvedCandidate);
-    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
-    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
+    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision);
+    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision);
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);
@@ -482,7 +507,11 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
     if (!same) seats.push({ seat, mergedCandidateUserIds: [] });
     else if (candidate.userId !== null) same.mergedCandidateUserIds.push(candidate.userId);
   }
-  return { seats, selfSkips };
+  // DEC-686：回避、空人兜底可能改变最终账号集合，先合并席位再统一随机取 100。
+  return {
+    seats: limitApprovers(seats, ({ seat }) => seatUser(seat), entry.subject.samplingSeed ?? node.key),
+    selfSkips,
+  };
 }
 
 async function seatOf(
@@ -514,7 +543,47 @@ async function enterCountersign(
   entry: Entry,
   tasks: TaskRow[],
 ): Promise<EntryResult> {
-  const { seats, selfSkips } = await countersignSeats(tx, run, node, entry);
+  const resolved = await resolveHandoverApprovers(tx, entry.subject, node);
+  if (resolved.kind === 'stop') throw noAssignee(node.key, { reason: '工作交接审批人为空，流程不再继续流转' });
+  if (resolved.kind === 'auto_approve') {
+    // 节点级自动同意直接走同意出口，不伪造人员席位或受自定义会签人数阈值阻塞（DEC-678）。
+    tasks.push(
+      await autoProcess(
+        tx,
+        run,
+        node,
+        {
+          kind: 'auto',
+          outcome: 'no_assignee_approve',
+          result: 'approve',
+          userId: null,
+          reason: '交接节点审批人为空，按配置自动同意',
+        },
+        tasks,
+        entry.activationId,
+      ),
+    );
+    return 'next';
+  }
+  if (resolved.kind === 'exception_admin') {
+    await assign(
+      tx,
+      run,
+      node,
+      {
+        kind: 'assign',
+        userId: entry.facts.exceptionAdminUserId,
+        origin: 'exception_admin',
+        isExceptionAdmin: true,
+        selfSkippedUserId: null,
+        reason: '交接节点审批人为空，转异常管理员',
+      },
+      { ...entry, candidateUserId: null },
+    );
+    run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
+    return 'stay';
+  }
+  const { seats, selfSkips } = await countersignSeats(tx, run, node, entry, resolved.candidates);
   for (const skipped of selfSkips) await recordSelfSkip(tx, run, node.key, skipped, entry.activationId);
   const rules = exitRulesOf(node.transitionRule, nodeExits(node));
   const outcome = countersignOutcome(
@@ -619,7 +688,9 @@ async function autoProcess(
   const assigneeUserId = skip ? null : decision.userId;
   const status = skip ? 'skipped' : 'approved';
   const round = run.instance.round;
-  const taskId = await insertTask(tx, run.ctx, run.instance.id, {
+  const systemApproval = decision.outcome === 'no_assignee_approve';
+  const ctx = systemApproval ? { ...run.ctx, actorUserId: null } : run.ctx;
+  const taskId = await insertTask(tx, ctx, run.instance.id, {
     round,
     nodeKey: node.key,
     assigneeUserId,
@@ -630,9 +701,10 @@ async function autoProcess(
     activationId,
   });
   const mechanism = MECHANISMS[decision.outcome];
-  const detail = skip
-    ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
-    : { mechanism, userId: decision.userId, reason: decision.reason };
+  const detail =
+    skip || systemApproval
+      ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
+      : { mechanism, userId: decision.userId, reason: decision.reason };
   const event = skip ? 'skip' : 'auto_approve';
   await appendLog(tx, run.ctx, run.instance, { event, nodeKey: node.key, taskId, actorUserId: null, detail });
   if (!skip) await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', { id: taskId, assigneeUserId });
@@ -771,6 +843,16 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (latest) return resume(tx, ctx, latest.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
+  return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
+}
+
+/** DEC-674：HR 重新提交交接须匹配当前流程并新建实例，已终止的旧实例不复用、不改写。 */
+export async function startNewHandover(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
+  const request = { businessType: 'exit_handover', businessId } as const;
+  if (await activeInstanceOf(tx, ctx.tenantId, request.businessType, businessId))
+    throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '交接仍有活动审批实例');
+  const snapshot = await ADAPTERS.exit_handover.snapshot(tx, ctx, businessId);
   return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
 }
 

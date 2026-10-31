@@ -2,7 +2,7 @@
  * R2 BE-8b1 离职交接设置路由（B64 交接事项、B65 交接发起规则；挂在任职子应用 policedSub 上，策略登记在 employment/policy.ts）。
  * - 交接事项：任职设置配置对象（tenant.employment.configuration.write，管理员 other_settings），同自动加黑规则页。
  * - 交接发起规则：两层配置 exit.handover_trigger，经既有 /api/tenant/settings/:key 读写，这里只登记取值校验：
- *   未验证的发起方式 / 发起人返回 400 并提示“未验证、后补”（DEC-632）。
+ *   F-250 / DEC-683 接入其余发起方式，发起人规则仍只接受员工本人。
  */
 import { checkHandoverTrigger, EXIT_HANDOVER_TRIGGER_KEY, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { withTenant, type Tx } from '@italent/db';
@@ -17,6 +17,7 @@ import { authorizeInTransaction, trimModuleResponse } from '../permission/module
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
+  commandContext,
   jsonBody,
   readContext,
   readPageContext,
@@ -30,20 +31,19 @@ import { businessKind } from './exit-gate.js';
 import { exitHandoverStatus, handoverDetail, isHandoverParticipant, tickHandoverItem } from './exit-handover.js';
 import { deleteHandoverItem, listHandoverItems, parseHandoverItem, saveHandoverItem } from './exit-handover-items.js';
 import { loadHandoverRequest } from './exit-handover-store.js';
+import { handoverSubmitGuard, requireHandoverSubmit, submitExitHandover } from './exit-handover-launch.js';
+import { handoverResubmitGuard, requireHandoverResubmit, resubmitExitHandover } from './exit-handover-resubmit.js';
+import { registerHandoverListRoutes } from './exit-handover-list-routes.js';
 import { loadEmploymentBusiness } from './read-model.js';
 
 // 校验函数本身可以抛：未验证的取值给出明确提示，其余取值返回 false 走通用的“配置值不合法”
 registerSettingValidator(EXIT_HANDOVER_TRIGGER_KEY, (value) => {
   const checked = checkHandoverTrigger(value);
   if (!checked.ok && checked.unverified)
-    throw new AppError(
-      'VALIDATION_FAILED',
-      '该交接发起方式或发起人未验证、后补，当前只支持审批通过后自动发起、发起人为员工本人',
-      {
-        reason: 'HANDOVER_TRIGGER_UNVERIFIED',
-        key: EXIT_HANDOVER_TRIGGER_KEY,
-      },
-    );
+    throw new AppError('VALIDATION_FAILED', '该交接发起人未验证、后补，当前只支持发起人为员工本人', {
+      reason: 'HANDOVER_TRIGGER_UNVERIFIED',
+      key: EXIT_HANDOVER_TRIGGER_KEY,
+    });
   return checked.ok;
 });
 
@@ -135,7 +135,49 @@ export function registerExitHandoverRoutes(router: Hono<TenantEnv>, deps: Tenant
  * - PUT /exit-handover-requests/:id/items/:itemId：勾选“办理完成”自动保存，只认当前待办办理人与其节点负责的类别。
  * 后两个不要求任职对象权限（审批人不一定有），身份由参与关系与待办决定，范围外与不存在同一个 404。
  */
+function registerHandoverSubmitRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/exits/:id/handover/submit', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireHandoverSubmit(tx, ctx, id));
+    if (!z.strictObject({}).safeParse(await jsonBody(c)).success)
+      throw new AppError('VALIDATION_FAILED', '发起交接只接受空请求体');
+    const result = await runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input: {} },
+      guard: handoverSubmitGuard(deps, ctx, id),
+      execute: async (tx, commandId) => ({
+        status: 200,
+        body: await submitExitHandover(tx, { ...(await commandContext(tx, deps, ctx)), commandId }, id),
+      }),
+    });
+    c.header('ETag', `"${(result.body as { revision: number }).revision}"`);
+    return c.json(result.body, result.status);
+  });
+}
+
 function registerHandoverExecutionRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerHandoverSubmitRoute(router, deps);
+  registerHandoverListRoutes(router, deps);
+  // DEC-674：详情级重新提交，If-Match 为交接 revision；空命令体，不复用编辑离职按钮。
+  router.post('/exit-handover-requests/:id/resubmit', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireHandoverResubmit(tx, ctx, id));
+    if (!z.strictObject({}).safeParse(await jsonBody(c)).success)
+      throw new AppError('VALIDATION_FAILED', '重新提交交接只接受空请求体');
+    const result = await runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input: {} },
+      guard: handoverResubmitGuard(deps, ctx, id),
+      execute: async (tx, commandId) => ({
+        status: 200,
+        body: await resubmitExitHandover(tx, { ...(await commandContext(tx, deps, ctx)), commandId }, id),
+      }),
+    });
+    c.header('ETag', `"${(result.body as { revision: number }).revision}"`);
+    return c.json(result.body, result.status);
+  });
   router.get('/exits/:id/handover', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');

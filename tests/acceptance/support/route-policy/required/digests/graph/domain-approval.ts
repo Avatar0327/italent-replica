@@ -45,6 +45,17 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#TRANSITION_RULE_TYPES',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'packages/domain/src/approval/definition.ts#approverSourceViolations': [
+    '#offerApproverViolation',
+    '#orgAdjustmentApproverViolation',
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#relationSource',
+    'packages/domain/src/approval/sources.ts#sourceViolation',
+    'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
   'packages/domain/src/approval/definition.ts#avoidSubjectsViolations': [
     'packages/domain/src/approval/types.ts#ENABLED_AVOID_SUBJECTS_RESULTS',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
@@ -56,23 +67,26 @@ export const GRAPH: Graph = {
     '#CUSTOM_FIELD',
     '#MAX_NODES',
     '#NODE_KEY',
+    '#approverSourceViolations',
+    '#emptyApproverPolicyViolation',
     '#fallbackViolations',
     '#nodeShapeViolations',
-    '#offerApproverViolation',
-    '#orgAdjustmentApproverViolation',
-    'packages/domain/src/approval/types.ts#ASSESSMENT_ONLY_APPROVERS',
-    'packages/domain/src/approval/types.ts#HANDOVER_ONLY_APPROVERS',
-    'packages/domain/src/approval/types.ts#IDP_ONLY_APPROVERS',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+  ],
+  'packages/domain/src/approval/definition.ts#emptyApproverPolicyViolation': [
+    'packages/domain/src/approval/types.ts#hasExit',
+    'packages/domain/src/approval/types.ts#isCountersign',
+    'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
   'packages/domain/src/approval/definition.ts#fallbackViolations': [
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_LIMIT',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'packages/domain/src/approval/definition.ts#nodeShapeViolations': [
     'packages/domain/src/approval/countersign.ts#transitionRuleViolations',
+    'packages/domain/src/approval/sources.ts#sourceKey',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
@@ -82,9 +96,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#orgAdjustmentApproverViolation': [
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_APPROVERS',
     'packages/domain/src/approval/types.ts#ORG_ADJUSTMENT_ONLY_APPROVERS',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
   ],
   'packages/domain/src/approval/definition.ts#publishViolations': [
     '#avoidSubjectsViolations',
@@ -153,7 +168,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/approval/presets.ts#RETIRE_FORM': [
     'packages/domain/src/employment/retirement.ts#RETIREMENT_REQUEST_FIELDS',
   ],
-  'packages/domain/src/approval/presets.ts#anyOneNode': ['#node'],
+  'packages/domain/src/approval/presets.ts#anyOneNode': [
+    '#node',
+    'packages/domain/src/approval/sources.ts#approverSource',
+  ],
   'packages/domain/src/approval/presets.ts#genericPreset': [
     '#GENERIC_FORM',
     '#draft',
@@ -164,6 +182,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/presets.ts#node': [
     '#PRESET_ACTIONS',
+    'packages/domain/src/approval/sources.ts#approverSource',
     'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS',
   ],
   'packages/domain/src/approval/presets.ts#partTimePreset': [
@@ -203,6 +222,13 @@ export const GRAPH: Graph = {
     '#exceptionAdmin',
     '#whoOf',
   ],
+  'packages/domain/src/approval/sources.ts#approverSource': ['#EXPRESSION_SOURCE_TYPES'],
+  'packages/domain/src/approval/sources.ts#expressionValue': [
+    '#EXPRESSION_SOURCE_TYPES',
+    'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
+  ],
+  'packages/domain/src/approval/sources.ts#relationSource': ['#RELATION_SOURCE_TYPES', '#SOURCE_DIMENSIONS'],
+  'packages/domain/src/approval/sources.ts#sourceViolation': ['#expressionValue', '#relationSource'],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_DETAIL_VIEW': ['#NO_MODEL', '#form', '#later'],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS': ['#TRANSFER_DETAIL_VIEW'],
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [
@@ -250,7 +276,10 @@ export const GRAPH: Graph = {
     '#ENTRY_KINDS',
     '#isApprovalType',
   ],
-  'packages/domain/src/approval/types.ts#approverExpressionsOf': ['#isCountersign'],
+  'packages/domain/src/approval/types.ts#approverExpressionsOf': [
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/sources.ts#expressionValue',
+  ],
   'packages/domain/src/approval/types.ts#assessmentType': [
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_FORM_FIELDS',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',

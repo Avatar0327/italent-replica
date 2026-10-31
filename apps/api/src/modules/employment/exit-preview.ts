@@ -23,9 +23,21 @@ import {
 } from './exit-gate.js';
 import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
+import { previewRehire } from './retirement-rehire.js';
 import { RETIREMENT_RESPONSE_DEPENDENCIES } from './retirement-views.js';
 import { exceedsVoidLimit, VOID_LIMIT, voidCandidates } from './exit-void-applications.js';
 import type { EmploymentContext } from './types.js';
+
+async function rehirePreview(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  input: { reEmployed?: unknown; rehire?: unknown },
+) {
+  const preview = await previewRehire(tx, ctx, employeeId, lastWorkDate, input);
+  return preview ? { rehire: preview } : {};
+}
 
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));
@@ -36,6 +48,9 @@ export async function previewExit(
   employeeId: string,
   lastWorkDate: string,
   retirementView: ExitViewable,
+  rehire: { reEmployed?: unknown; rehire?: unknown } = {},
+  // F-314：退休预览与执行同口径，在 LIMIT 前排除应保留的等待返聘（voidInFlightApplications 按退休单判断）
+  kind: 'leave' | 'retirement' = 'leave',
 ) {
   // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
   if (
@@ -56,7 +71,16 @@ export async function previewExit(
   if (regularization) blockers.push({ reason: 'EXIT_REGULARIZATION_IN_FLIGHT', ...regularization });
   const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
   // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列；条件在 SQL 里过滤（与生效时同一入口）
-  const voided = await voidCandidates(tx, ctx, employeeId, lastWorkDate);
+  const voided = await voidCandidates(
+    tx,
+    ctx,
+    employeeId,
+    lastWorkDate,
+    undefined,
+    kind === 'retirement'
+      ? { effectiveDate: dayAfter(lastWorkDate), reEmployed: rehire.reEmployed === true }
+      : undefined,
+  );
   const assessments = set?.assessments ?? [];
   // 确认清单超上限时不给令牌（不能确认被截断的集合）；上方 warnings 已提示 EXIT_APPLICATIONS_TOO_MANY（F-241）
   const ack = set && !set.tooMany ? set : null;
@@ -72,6 +96,8 @@ export async function previewExit(
       await retirementPreview(tx, ctx, employeeId, lastWorkDate),
       retirementView,
     ),
+    // 同时返聘（5b）：返聘日与创建时会遇到的问题；没带 reEmployed + rehire 时没有这一块
+    ...(await rehirePreview(tx, ctx, employeeId, lastWorkDate, rehire)),
     blockers,
     ack: ack
       ? {

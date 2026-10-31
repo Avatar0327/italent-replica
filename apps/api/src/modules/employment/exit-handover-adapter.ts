@@ -4,7 +4,7 @@
  * - 快照：流程主体 = 离职员工，路由部门 = 发起时主职部门快照；标题不含个人数据；表单不带字段（审批人只办事项，事项在交接申请详情里读写），
  *   所以没有盲审字段；工作交接人取离职申请上的交接人（handoverEmployeeId，空则解析器取直线经理）；
  * - 结果回写：通过 → 已完成；不同意 → 已终止；驳回 / 撤回 → 已终止（预置流程没有驳回 / 撤回入口，保底防止流程卡住）；
- * - 没有“同单重提”和“审批中编辑”：交接的发起与重新发起只走系统或 HR（F-250 后补）。
+ * - 审批中心不开放“同单重提”和“审批中编辑”：重新提交由 HR 的专用入口发起新实例（F-305 / DEC-674）。
  * 取锁顺序：员工 → 交接申请行 → 审批实例。
  */
 import { sql, type Tx } from '@italent/db';
@@ -13,7 +13,7 @@ import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js'
 import { approvalError, rowsOf, type ApprovalContext } from '../approval/context.js';
 import { lockHandoverRequest, settleHandoverFromApproval } from './exit-handover.js';
 import { loadHandoverRequest } from './exit-handover-store.js';
-import { findCurrentRecord } from './read-model.js';
+import { findCurrentRecord, loadEmploymentBusiness } from './read-model.js';
 import { loadExitRequest } from './exit-gate.js';
 import type { EmploymentContext } from './types.js';
 
@@ -29,11 +29,18 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<Busin
     await tx.execute(sql`SELECT code, name FROM employment_employees
       WHERE tenant_id=${ctx.tenantId} AND id=${row.employeeId}::uuid`),
   );
+  const business = await loadEmploymentBusiness(
+    tx,
+    ctx.tenantId,
+    row.exitRequestId,
+    tenantLocalDate(ctx.now, ctx.timezone),
+  );
   const current = await findCurrentRecord(tx, ctx.tenantId, row.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
   return {
     approvalType: 'exit_handover',
     businessType: 'exit_handover',
     businessId: id,
+    businessDate: business?.effectiveDate,
     fieldObjectCode: HANDOVER_OBJECT,
     profileFields: [],
     subjectEmployeeId: row.employeeId,

@@ -125,7 +125,7 @@ describe('审批适配（DEC-057 / DEC-058 / DEC-332①）：exitMetadata、LEAV
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate', 'exitTypeCode'],
           editableFields: ['exitTypeCode'],
           editMode: 'separate',

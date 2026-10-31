@@ -1,3 +1,5 @@
+import type { OfferApprovalStatus, OfferStatus, OfferSyncStatus, OfferType } from '@italent/domain';
+
 // 列序与列宽：派发附录 B2；菜单、弹窗文案按 R2a / R2e3～R2e6 截图。
 export const viewSpecs = [
   {
@@ -202,25 +204,11 @@ export const m = {
   summary: '设置摘要',
   back: '返回列表',
   demo: '演示数据',
-  notice: '以下为合成演示数据。筛选仅作用于演示样例，状态确认不会写入业务数据。',
   readonly: '只读演示：不提供设置修改；未验证的当前值显示 --。',
-  unchanged: '演示数据：未写入业务数据，状态不变',
-  required: '必填',
   empty: '--',
   transfer: '转移状态',
   invalidate: '失效Offer',
   actions: '行操作',
-  confirm: '确定',
-  cancel: '取消',
-  state: 'offer状态',
-  acceptDate: '接受offer时间',
-  rejectDate: '拒绝offer时间',
-  reason: '拒绝原因',
-  remark: '备注',
-  invalidReason: '失效原因',
-  invalidRemark: '失效备注',
-  capacity: '已超出设定编制，是否继续操作？',
-  overCapacity: '超编',
   clear: '清空已选',
   advanced: '高级筛选',
   columnSettings: '列设置',
@@ -228,9 +216,6 @@ export const m = {
   newOffer: '新建Offer',
   newIntern: '新建实习Offer',
   internEntries: ['新建实习生', '校招生提前实习'],
-  batchSingle: '演示转移仅支持选择一条记录',
-  unknownTransfer: '该状态的转移候选尚未验证，仅展示规格中的演示候选。',
-  unknownInvalidation: '待发Offer失效尚未执行取证，此处仅演示已发Offer的表单。',
   unverified: '未验证',
   settingsRoot: '设置',
   total: (n: number) => `共 ${n} 条`,
@@ -243,10 +228,20 @@ export const states = {
   rejected: '已拒绝offer',
   onboarded: '已入职offer',
   invalid: '失效offer',
-} as const;
-export const approvals = { unsubmitted: '未发起审批', approving: '审批中', approved: '审批通过' } as const;
-export const reasons = ['薪酬福利不满意', '发展空间受限', '有更好的工作机会', '个人原因', '其他原因'];
-export const invalidReasons = ['候选人放弃', '背调不通过'];
+} as const satisfies Record<OfferStatus, string>;
+export const approvals = {
+  unsubmitted: '未发起审批',
+  approving: '审批中',
+  approved: '审批通过',
+  disapproved: '审批不通过',
+} as const satisfies Record<OfferApprovalStatus, string>;
+export const readEnums: Record<string, Readonly<Record<string, string>>> = {
+  status: states,
+  approvalStatus: approvals,
+  offerType: { social: '社招', campus: '校招', intern: '实习' } satisfies Record<OfferType, string>,
+  hasProbation: { true: '是', false: '否' },
+  syncStatus: { success: '成功', failed: '失败' } satisfies Record<OfferSyncStatus, string>,
+};
 export const actions = {
   approve: '发起Offer审批',
   edit: 'Offer编辑',

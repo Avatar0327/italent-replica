@@ -15,6 +15,7 @@ import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
+import { retireRehireActivationDecision } from './retire-rehire-eligibility.js';
 import {
   activationPredecessors,
   PREDECESSOR_FAILED,
@@ -51,6 +52,7 @@ import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js'
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
+  assertBusinessSequence,
   materializeEmploymentRecord,
   NEW_CYCLE_KINDS,
   requireSavedBusiness,
@@ -80,6 +82,8 @@ export interface EmploymentTransitionInput {
    * USE_EXIT_CANCEL，不留绕过 §6B 的删除路径（设计 §4 / §18.1 末段）。
    */
   readonly cancelling?: true;
+  /** F-140 替代：恢复守卫以同事务后继离职的最终生效日截止。 */
+  readonly restoreUntil?: string;
 }
 
 /** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），到期生效由 R1-T08 定时任务经 activate 端口落地。 */
@@ -149,6 +153,8 @@ export async function transitionEmployment(
   // 调动业务的员工侧校验留在主函数里：F-039 按调用邻近度探测 transfer write，下沉一层会被判为口径变弱
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit') await assertRegularizationSubmittable(tx, ctx, business);
+  if (input.action === 'submit' && business.payload.kind === 'retire_rehire')
+    await assertBusinessSequence(tx, ctx, business.employeeId, business.payload);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
@@ -194,7 +200,7 @@ export async function transitionEmployment(
     ? await reverseCarriedEstablishment(tx, ctx, business.id)
     : [];
   if (input.action === 'delete') {
-    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true);
+    const previous = await deleteEmploymentBusiness(tx, ctx, business, input.cancelling === true, input.restoreUntil);
     const { kind, effectiveDate } = business.payload;
     await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
     // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
@@ -233,6 +239,11 @@ export async function transitionEmployment(
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  const rehireDecision = item && (await retireRehireActivationDecision(tx, ctx, item));
+  if (rehireDecision) {
+    await recordActivationAttempt(tx, ctx, item, { ...rehireDecision, trigger: 'approval' }, { bumpRevision: false });
+    return;
+  }
   const before = await blockingPredecessors(tx, ctx, predecessors, business.id);
   try {
     await postponeLateTransfer(tx, ctx, business);
@@ -309,6 +320,7 @@ async function exitGateFor(
       ...target,
       deleting: input.action === 'delete',
       ...(input.cancelling ? { cancelling: true } : {}),
+      ...(input.cancelling && input.restoreUntil ? { rescheduling: true as const } : {}),
     });
   else if (input.action === 'activate') await requireExitGate(tx, ctx, 'retry', target);
   return { row };
@@ -360,6 +372,7 @@ async function deleteEmploymentBusiness(
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   exitCancel = false,
+  restoreUntil?: string,
 ): Promise<{ id: string; kind: string; date: string } | null> {
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
@@ -402,7 +415,8 @@ async function deleteEmploymentBusiness(
       const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
       if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
-      if (point && exitCancel) previous = await restoreAfterExitDeletion(tx, ctx, record, business, point);
+      if (point && exitCancel)
+        previous = await restoreAfterExitDeletion(tx, ctx, record, business, point, restoreUntil);
       else if (point) {
         await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
         const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);

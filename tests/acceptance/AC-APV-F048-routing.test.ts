@@ -90,8 +90,13 @@ describe('T2 单人节点多主体回避：自动跳过（DEC-329①）', () => 
     const s = await transferScene(w);
     await w.publishedProcess({
       nodes: [
-        { key: 'a', approver: 'latest_record_department_head' },
-        { key: 'b', approver: 'latest_record_department_head', historySameAssigneeSkip: true, actions: ON },
+        { key: 'a', approver: { type: 'department', value: 'latest_record_department_head' } },
+        {
+          key: 'b',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          historySameAssigneeSkip: true,
+          actions: ON,
+        },
       ],
     });
     mapSubjects(() => [s.outHead.employeeId]);
@@ -112,10 +117,10 @@ describe('T2 单人节点多主体回避：自动跳过（DEC-329①）', () => 
     );
     await w.publishedProcess({
       nodes: [
-        { key: 'a', approver: 'owner', actions: { avoidSelf: false } },
+        { key: 'a', approver: { type: 'custom_variable', value: 'owner' }, actions: { avoidSelf: false } },
         {
           key: 'b',
-          approver: 'owner',
+          approver: { type: 'custom_variable', value: 'owner' },
           historySameAssigneeSkip: true,
           historySameAssigneeResult: 'skip',
           actions: { avoidSelf: false, avoidSubjects: true },
@@ -152,7 +157,15 @@ describe('T3 / 定义校验：会签或无「同意」出口的节点不能开�
   it('会签节点开启 → 400 APPROVAL_AVOID_SUBJECTS_UNSUPPORTED，不建流程', async () => {
     const w = await approvalWorld(database().db, 'f048-v-countersign');
     const response = await create(w, [
-      { key: 'cs', kind: 'countersign', approvers: ['owner', 'record_department_head'], actions: ON },
+      {
+        key: 'cs',
+        kind: 'countersign',
+        approvers: [
+          { type: 'custom_variable', value: 'owner' },
+          { type: 'department', value: 'record_department_head' },
+        ],
+        actions: ON,
+      },
     ]);
     expect(await reasonOf(response)).toMatchObject({
       status: 400,
@@ -165,14 +178,16 @@ describe('T3 / 定义校验：会签或无「同意」出口的节点不能开�
 
   it('单人节点没有「同意」出口时开启 → 400 APPROVAL_AVOID_SUBJECTS_UNSUPPORTED', async () => {
     const w = await approvalWorld(database().db, 'f048-v-no-approve');
-    const response = await create(w, [{ key: 'n', approver: 'owner', exits: ['disagree'], actions: ON }]);
+    const response = await create(w, [
+      { key: 'n', approver: { type: 'custom_variable', value: 'owner' }, exits: ['disagree'], actions: ON },
+    ]);
     expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
   });
 
   it('单人节点有「同意」出口时开启 → 201，回显显式 avoidSubjects=true', async () => {
     const w = await approvalWorld(database().db, 'f048-v-ok');
     const created = await w.json<{ latestVersion: { nodes: { actions: { avoidSubjects: boolean } }[] } }>(
-      await create(w, [{ key: 'n', approver: 'owner', actions: ON }]),
+      await create(w, [{ key: 'n', approver: { type: 'custom_variable', value: 'owner' }, actions: ON }]),
       201,
     );
     expect(created.latestVersion.nodes[0]!.actions.avoidSubjects).toBe(true);
@@ -187,7 +202,10 @@ describe('T3 / 定义校验：会签或无「同意」出口的节点不能开�
         {
           key: 'cs',
           kind: 'countersign',
-          approvers: ['latest_record_department_head', 'record_department_head'],
+          approvers: [
+            { type: 'department', value: 'latest_record_department_head' },
+            { type: 'department', value: 'record_department_head' },
+          ],
           actions: { avoidSelf: true },
         },
       ],
