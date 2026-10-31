@@ -1,7 +1,7 @@
 /**
  * 必需项表：人事看板（modules/analytics/hr-dashboard-routes.ts，R2-T10 BE-12b）。两个只读 GET 经 dashboardContext →
- * objectContext 判对象 TenantBase.HrDashboard 的查看权（授权项“人事分析 - 人事看板 查看”）；数据范围在同一对象上解析
- * （requestScope），由 hr-dashboard.ts 的 visible 在 SQL 内叠加，先于分页。无按钮、无写入。
+ * analyticsContext → objectContext 判对象 TenantBase.HrDashboard 的查看权（授权项“人事分析 - 人事看板 查看”）；
+ * 数据范围在同一对象上解析（requestScope），由 hr-dashboard.ts 的 visible 在 SQL 内叠加，先于分页。无按钮、无写入。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -22,7 +22,12 @@ const view = (path: string): Obligation => ({
     {
       role: 'impl',
       unit: `${ROUTES}#dashboardContext`,
-      anchor: "const base = await objectContext(c, deps, HR_DASHBOARD_OBJECT, 'view')",
+      anchor: 'analyticsContext(c, deps, HR_DASHBOARD_OBJECT)',
+    },
+    {
+      role: 'impl',
+      unit: `${ROUTES}#analyticsContext`,
+      anchor: "const base = await objectContext(c, deps, object, 'view')",
     },
     {
       role: 'impl',

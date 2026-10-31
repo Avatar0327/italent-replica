@@ -19,6 +19,7 @@ export {
 export * from './permission/index.js';
 export * from './personnel/index.js';
 export * from './hr-analysis/roster.js';
+export * from './hr-analysis/segments.js';
 export * from './approval/index.js';
 
 export * from './contracts/rules.js';

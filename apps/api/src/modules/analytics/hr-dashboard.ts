@@ -47,7 +47,7 @@ interface Metric {
 
 const NULL_UUID = sql`NULL::uuid`;
 /** 候选行的四列约定：明细 ID、所属员工、记录所在部门 / 组织、创建人（Offer / 合同用）。 */
-const pick = (id: SQL, employee: SQL = NULL_UUID, org: SQL = NULL_UUID, creator: SQL = NULL_UUID) =>
+export const pick = (id: SQL, employee: SQL = NULL_UUID, org: SQL = NULL_UUID, creator: SQL = NULL_UUID) =>
   sql`${id} AS id, ${employee} AS employee_id, ${org} AS org_id, ${creator} AS creator_id`;
 const list = (items: readonly string[]) =>
   sql.join(
@@ -66,18 +66,26 @@ const SNAPSHOT = sql`LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versi
   WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
   ORDER BY p.version_no DESC LIMIT 1) snap ON true`;
 /** 记录当前值：有最新快照取快照，否则取底表行（同 currentPersons 的口径）。 */
-const current = (column: string) => sql.raw(`CASE WHEN snap.id IS NULL THEN r.${column} ELSE snap.${column} END`);
+export const current = (column: string) =>
+  sql.raw(`CASE WHEN snap.id IS NULL THEN r.${column} ELSE snap.${column} END`);
 
-function inService(c: DashboardAsOf, extra: SQL): SQL {
-  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))}
-    FROM employment_timeline t
+/**
+ * 在职人员的 FROM … WHERE（别名 t / r / snap / s）：人事看板 1、2、20、21 与人员结构分析 / 员工结构报表（BE-13a）共用，
+ * 调用方只在 extra 里加雇佣关系等自己的口径。
+ */
+export function inServiceFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, extra: SQL): SQL {
+  return sql`FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     ${SNAPSHOT}
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
     WHERE t.tenant_id=${c.tenantId} AND t.valid_during @> ${c.asOf}::date AND r.service_type='primary'
       AND r.kind NOT IN ('leave','retirement') AND s.employee_status<>${EMPLOYEE_STATUS.pendingEntry} AND ${extra}`;
 }
-const employType = (types: readonly string[]) => sql`${current('employ_type')} IN (${list(types)})`;
+function inService(c: DashboardAsOf, extra: SQL): SQL {
+  const columns = pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'));
+  return sql`SELECT ${columns} ${inServiceFrom(c, extra)}`;
+}
+export const employType = (types: readonly string[]) => sql`${current('employ_type')} IN (${list(types)})`;
 const noWorkStartDate = (c: DashboardAsOf) => sql`(SELECT v.work_date FROM personnel_employee_versions v
   WHERE v.tenant_id=r.tenant_id AND v.employee_id=r.employee_id AND v.created_at < ${dayEnd(c)}
   ORDER BY v.revision DESC LIMIT 1) IS NULL`;
@@ -265,10 +273,14 @@ const METRICS: Readonly<Record<HrDashboardCode, Metric>> = {
 function visible(a: DashboardAsOf, kind: Visibility): SQL {
   if (kind === 'org') return scopeSql(a.scope, { org: sql`m.org_id` });
   if (kind === 'offer') return scopeSql(a.scope, { org: sql`m.org_id`, creator: sql`m.creator_id` });
+  return employmentVisible(a, sql`m`);
+}
+/** 任职类范围（DEC-177 可见谓词）：alias 是带 employee_id / org_id / creator_id 三列的候选行；BE-13a 两个看板同用。 */
+export function employmentVisible(a: Pick<DashboardAsOf, 'tenantId' | 'scope'>, alias: SQL): SQL {
   return employmentVisibilitySql(a.scope, {
-    employee: sql`m.employee_id`,
-    department: sql`m.org_id`,
-    creator: sql`COALESCE(m.creator_id, ${employmentCreator(a.tenantId, sql`m.employee_id`)})`,
+    employee: sql`${alias}.employee_id`,
+    department: sql`${alias}.org_id`,
+    creator: sql`COALESCE(${alias}.creator_id, ${employmentCreator(a.tenantId, sql`${alias}.employee_id`)})`,
   });
 }
 
@@ -298,17 +310,25 @@ export async function hrDashboardPage(
   a: DashboardAsOf,
   page: { readonly limit: number; readonly offset: number },
 ) {
-  const rows = rowsOf<{ total: number; id: string | null; employeeId: string | null }>(
+  const result = await pageRows(tx, indicatorRows(code, a), page);
+  return { total: result.total, items: result.items.map(({ id, employeeId }) => ({ id, employeeId })) };
+}
+
+/** 候选行（id / employee_id / org_id 三列，id 唯一）的一页，按 id 排序；BE-13a 合同情况看板同用。 */
+export async function pageRows(tx: Tx, base: SQL, page: { readonly limit: number; readonly offset: number }) {
+  const rows = rowsOf<{ total: number; id: string | null; employeeId: string | null; organizationId: string | null }>(
     await tx.execute(sql`
-    WITH base AS MATERIALIZED (${indicatorRows(code, a)}),
+    WITH base AS MATERIALIZED (${base}),
       counted AS (SELECT count(*)::int AS total FROM base)
-    SELECT counted.total, page.id, page.employee_id AS "employeeId" FROM counted
+    SELECT counted.total, page.id, page.employee_id AS "employeeId", page.org_id AS "organizationId" FROM counted
     LEFT JOIN LATERAL (SELECT * FROM base ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}) page ON true
     ORDER BY page.id`),
   );
   return {
     total: Number(rows[0]?.total ?? 0),
-    items: rows.filter((row) => row.id).map((row) => ({ id: row.id!, employeeId: row.employeeId })),
+    items: rows
+      .filter((row) => row.id)
+      .map((row) => ({ id: row.id!, employeeId: row.employeeId, organizationId: row.organizationId })),
   };
 }
 

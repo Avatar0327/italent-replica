@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import { ageOn, ROSTER_EMPLOY_TYPES, ROSTER_EMPLOYEE_STATUSES, tenureYears, type RosterColumn } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { contractInForce } from '../contracts/queries.js';
 import { ENTRY_LIKE_KINDS } from '../employment/employee-status.js';
 import { probationInfo } from '../employment/probation-views.js';
 import { cycleRegularization } from '../employment/probation.js';
@@ -74,9 +75,7 @@ function rosterJoins(ctx: AccessContext, asOf: string): SQL {
     LEFT JOIN LATERAL (${cycleRegularization(ctx.tenantId, sql`e.id`, sql`r.staff_id`, true)}) reg ON true
     LEFT JOIN LATERAL (SELECT k.*, kt.name AS type_name FROM contract_records k
       LEFT JOIN contract_types kt ON kt.tenant_id=k.tenant_id AND kt.id=k.type_id
-      WHERE k.tenant_id=e.tenant_id AND k.employee_id=e.id AND NOT k.deleted AND k.status<>'void'
-        AND k.approval_status='effective' AND k.effective_date<=${asOf}::date
-        AND COALESCE(k.actual_termination_date, k.end_date, 'infinity'::date)>=${asOf}::date
+      WHERE k.tenant_id=e.tenant_id AND k.employee_id=e.id AND ${contractInForce(sql`k`, asOf)}
       ORDER BY k.effective_date DESC, k.version_no DESC LIMIT 1) ct ON true`;
 }
 
