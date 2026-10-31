@@ -34,6 +34,7 @@ import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { createEmploymentBusiness } from '../employment/write-service.js';
 import { regularizeIntern } from '../employment/intern-regularization.js';
+import { hasPendingRetirement } from '../employment/retire-rehire-eligibility.js';
 import { appendEmployee } from '../personnel/employee-write.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
@@ -82,7 +83,15 @@ export function profilePatch(offer: OfferRow) {
   });
 }
 
-type SyncPlan = 'hire' | 'rehire' | 'retire_rehire' | 'intern_regularization';
+type SyncPlan = 'hire' | 'rehire' | 'retire_rehire' | 'intern_regularization' | 'awaiting_retirement';
+
+const assertSyncPlanReady = (plan: SyncPlan): Exclude<SyncPlan, 'awaiting_retirement'> => {
+  if (plan === 'awaiting_retirement')
+    throw new AppError('CONFLICT', '该员工的退休尚未生效，请在退休生效后再同步，届时将生成退休返聘', {
+      reason: 'OFFER_SYNC_AWAITING_RETIREMENT',
+    });
+  return plan;
+};
 
 /**
  * 同步产物按计划入职日的任职版本链决定（任职记录不可绕过顺序规则，07 §2、DEC-077）：
@@ -99,6 +108,8 @@ async function syncPlan(
   if (!latest) return 'hire';
   if (latest.kind === 'leave') return 'rehire';
   if (latest.kind === 'retirement') return 'retire_rehire';
+  // DEC-679：在途退休不能误生实习转正，也不提前生成待入职产物。
+  if (await hasPendingRetirement(tx, ctx.tenantId, employeeId, plannedEntryDate)) return 'awaiting_retirement';
   return latest.fields.employType === 'intern' ? 'intern_regularization' : 'hire';
 }
 
@@ -129,6 +140,7 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
   // 工号由 Offer ID 派生（同一 Offer 重试不会再造人）；入职准备里的“分配工号”之后再改
   const employeeId =
     linked?.employeeId ?? (await createEmployee(tx, base, { code: `OFR-${offer.id}`, name: offer.name! })).id;
+  const plan = assertSyncPlanReady(await syncPlan(tx, ctx, employeeId, offer.plannedEntryDate!));
   await appendEmployee(tx, { ...ctx, expectedRevision: 0 }, employeeId, profilePatch(offer), false);
   // DEC-128 / DEC-140：入职类业务同事务绑定租户用户，登录邮箱取 Offer 的个人邮箱；已绑定的人员不改绑（邮箱不同即冲突）
   await provisionEmployeeUser(tx, ctx, {
@@ -139,7 +151,6 @@ async function createSyncTarget(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, 
   });
   const employee = await lockEmploymentEmployee(tx, base, employeeId);
   const employment = inboundEmploymentContext(ctx, employee.revision);
-  const plan = await syncPlan(tx, ctx, employeeId, offer.plannedEntryDate!);
   // 生产的编制入口对 hire / rehire 不判容量，确认标记（弱控）也只在发送 / 接受时管弱控：同步在锁内自己做真实强控检查，
   // 超编按严格控制拒绝（记同步失败 ESTABLISHMENT_EXCEEDED）；实习转正走编制入口自己的强控，不重复判
   if (plan !== 'intern_regularization') await assertNoStrictQuota(tx, employment, offer, employeeId);
@@ -262,6 +273,11 @@ export async function syncOffer(tx: Tx, ctx: OfferSyncContext, offer: OfferRow):
 /** 在职实习生的正式 Offer 且开关关闭：不同步，改走实习转正（OF-R8）。 */
 async function internConversionOnly(tx: Tx, ctx: OfferSyncContext, offer: OfferRow, setting: OfferSyncSetting) {
   if (setting.internConversion || !offer.linkedEmployeeId) return false;
+  if (
+    offer.plannedEntryDate &&
+    (await syncPlan(tx, ctx, offer.linkedEmployeeId, offer.plannedEntryDate)) === 'awaiting_retirement'
+  )
+    return false;
   return (await linkedPerson(tx, ctx.tenantId, offer.linkedEmployeeId))?.active === true;
 }
 
@@ -275,6 +291,10 @@ export async function syncOfferNow(tx: Tx, ctx: OfferContext, id: string) {
     throw new AppError('CONFLICT', '只有已接受（或同步时机为发送时的已发）Offer 可以同步待入职', {
       reason: 'OFFER_SYNC_STATE_INVALID',
     });
+  // 手动入口明确 409；自动同步仍由 syncOffer 的保存点捕获，记录 failed，不影响接受 / 发送。
+  await lockOfferSyncScope(tx, ctx, row);
+  if (row.linkedEmployeeId && row.plannedEntryDate)
+    assertSyncPlanReady(await syncPlan(tx, ctx, row.linkedEmployeeId, row.plannedEntryDate));
   if (await internConversionOnly(tx, ctx, row, setting))
     throw new AppError('CONFLICT', '在职实习生的 Offer 同步已关闭，请走实习转正', {
       reason: 'OFFER_SYNC_INTERN_CONVERSION',
