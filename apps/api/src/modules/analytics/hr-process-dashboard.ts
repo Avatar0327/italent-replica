@@ -154,13 +154,19 @@ const approvedInstance = (c: ProcessContext, type: string, id: SQL) => sql`(SELE
     AND ai.business_id=${id} AND ai.status='approved' ORDER BY ai.completed_at DESC LIMIT 1)`;
 
 /**
- * Offer 是否计入 ④ 业务总量（单一入口，明细与总量只经此处）：审批通过，或从未关联过审批实例（单份 offer 实例、
- * 批量单 offer_batch 实例）的免审批 Offer（规格 35 ④“已审批通过的流程或已生效数据”）。“未发起审批”被驳回待重提、
- * 撤回、作废在途审批复用（domain offer/approval.ts OFFER_APPROVAL_OUTCOMES.returned），不能按审批子状态判“没走流程”：
- * 关联过实例而当前未通过的一律不计。
+ * Offer 是否计入 ④ 业务总量（单一入口，明细与总量只经此处）。规格 35 ④：业务总量 = 近 30 天实际发生量（不论是否走流程）。
+ * 判定看“审批子状态 + 当前业务状态”：
+ * - 审批通过的计入；
+ * - 已脱离待发（已发、已接受、已拒绝、已入职）且不在审批中的计入：没经审批通过而实际发生，包括驳回 / 撤回 / 作废 / 否决后
+ *   免审批直接发送或转移、已拒绝退回待发（rules.ts 重置为未发起审批）后再发送；
+ * - 仍待发的，只有从未关联过审批实例（单份 offer 实例、批量单 offer_batch 实例）的计入。“未发起审批”被驳回待重提、撤回、
+ *   作废复用（domain offer/approval.ts OFFER_APPROVAL_OUTCOMES.returned），待发 + 未发起 + 关联过实例按待重提 / 撤回待定不计；
+ *   待发的审批中、否决不计。
  */
-const offerCounted = (c: ProcessContext, offer: { id: SQL; status: SQL }) => sql`(${offer.status}='approved'
-  OR (${offer.status}='unsubmitted'
+const offerCounted = (c: ProcessContext, offer: { id: SQL; approvalStatus: SQL; status: SQL }) => sql`(
+  ${offer.approvalStatus}='approved'
+  OR (${offer.approvalStatus}<>'approving' AND ${offer.status}<>'pending')
+  OR (${offer.approvalStatus}='unsubmitted'
     AND NOT EXISTS (SELECT 1 FROM approval_instances li WHERE li.tenant_id=${c.tenantId}
       AND li.business_type='offer' AND li.business_id=${offer.id})
     AND NOT EXISTS (SELECT 1 FROM offer_batch_approval_items lb JOIN approval_instances li
@@ -192,7 +198,7 @@ function businesses(c: ProcessContext): SQL {
       o.department_id AS org_id, NULL::uuid AS employee_id, o.approval_status='approved' AS approved,
       ${scopeSql(c.scope, { org: sql`o.department_id`, creator: sql`o.created_by` })} AS visible
     FROM offers o WHERE o.tenant_id=${c.tenantId} AND o.status<>'invalid'
-      AND ${offerCounted(c, { id: sql`o.id`, status: sql`o.approval_status` })}
+      AND ${offerCounted(c, { id: sql`o.id`, approvalStatus: sql`o.approval_status`, status: sql`o.status` })}
       AND ${inWindow(c, sql`o.created_at`)}`;
   const contract = sql`SELECT q.id, ${approvedInstance(c, 'contract', sql`q.id`)} AS instance_id, 'contract' AS kind,
       emp.department_id AS org_id, q.employee_id, q.company_id,
