@@ -22,7 +22,7 @@ import {
 } from './contract-board.js';
 import { dashboardRenewalTypes } from './hr-dashboard.js';
 import { analyticsScope, dateQuery } from './hr-dashboard-routes.js';
-import { uuidQuery } from './hr-structure-routes.js';
+import { groupQuery, uuidQuery } from './hr-structure-routes.js';
 
 export const CONTRACT_BOARD_BASE = '/api/tenant/analytics/contract-board';
 
@@ -64,7 +64,7 @@ export function registerContractBoardRoutes(router: Hono<TenantEnv>, deps: Tenan
     const ctx = await boardContext(c, deps);
     const component = CONTRACT_BOARD_COMPONENTS.find((item) => item.code === c.req.param('code'));
     if (!component) throw new AppError('NOT_FOUND', '组件不存在');
-    const group = c.req.query('group');
+    const group = groupQuery(c);
     if (group !== undefined && !isGroupedContractComponent(component.code))
       throw new AppError('VALIDATION_FAILED', '该组件没有分组');
     const page = pageQuery(c);

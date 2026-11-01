@@ -42,10 +42,21 @@ registerPersonScopedObject(HR_STRUCTURE_REPORT_OBJECT);
 /** “正式员工”= 雇佣关系内部员工（含试用，不含实习生），与人事看板第 1 项同一口径。 */
 const BOARD_EMPLOY_TYPES = ['internal'];
 
+/**
+ * UUID 参数的单一入口（BE-13a 两个看板、明细与报表同用）：校验接受大小写，下游按小写比较（TS 内的相等 / 链查找、
+ * SQL 里 uuid::text 的分组键都是小写），所以在入口统一转小写，下游不再各自处理大小写。
+ */
+const canonicalUuid = (raw: string) => (isUuid(raw) ? raw.toLowerCase() : raw);
+
 export function uuidQuery(c: Context, name: string): string | undefined {
   const raw = c.req.query(name);
   if (raw !== undefined && !isUuid(raw)) throw new AppError('VALIDATION_FAILED', `${name} 必须是 UUID`);
-  return raw;
+  return raw === undefined ? undefined : canonicalUuid(raw);
+}
+/** 明细的分组键：机构 / 职级 / 序列 / 公司 / 合同类型是 UUID，同样转小写；分段键（regular、6mto1y、男…）原样。 */
+export function groupQuery(c: Context): string | undefined {
+  const raw = c.req.query('group');
+  return raw === undefined ? undefined : canonicalUuid(raw);
 }
 const textQuery = (c: Context, name: string) => c.req.query(name) || undefined;
 
@@ -104,7 +115,7 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
     const ctx = await boardContext(c, deps);
     const component = HR_STRUCTURE_COMPONENTS.find((item) => item.code === c.req.param('code'));
     if (!component || component.kind === 'unavailable') throw new AppError('NOT_FOUND', '组件不存在或没有数据源');
-    const group = c.req.query('group');
+    const group = groupQuery(c);
     if (group !== undefined && !isGrouped(component.code)) throw new AppError('VALIDATION_FAILED', '该组件没有分组');
     const filter = boardFilter(c);
     const page = pageQuery(c);

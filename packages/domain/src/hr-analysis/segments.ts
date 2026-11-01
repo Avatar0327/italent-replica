@@ -8,7 +8,7 @@ import { tenureYears } from './roster.js';
 
 export const SEGMENT_NONE = 'none';
 
-/** 年龄段（整岁，ageOn 口径）：段的下界含、上界含；51 岁及以上无上界。 */
+/** 年龄段（整岁，ageOn 口径）：段的下界含、上界含；恰 25 岁归入“25-30 岁”，差一天归入“25 岁以下”；恰 51 岁归入“51 岁及以上”。 */
 export const AGE_SEGMENTS = [
   { key: 'under25', label: '25岁以下', max: 24 },
   { key: '25to30', label: '25-30岁', max: 30 },
@@ -18,7 +18,10 @@ export const AGE_SEGMENTS = [
   { key: '51plus', label: '51岁及以上', max: Infinity },
 ] as const;
 
-/** 司龄段（按入职日到 asOf 的整日历月）：恰满 6 个月进“6 月~1 年”，恰满 12 个月进“1~2 年”。 */
+/**
+ * 司龄段（按入职日到 asOf 的整日历月，段名下限闭区间）：恰满 6 个月归入“6 月~1 年”，差一天归入“6 月以下”；
+ * 恰满 12 个月归入“1~2 年”，差一天归入“6 月~1 年”。
+ */
 export const TENURE_SEGMENTS = [
   { key: 'under6m', label: '6月以下', max: 5 },
   { key: '6mto1y', label: '6月~1年', max: 11 },

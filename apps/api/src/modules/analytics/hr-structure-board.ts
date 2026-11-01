@@ -77,10 +77,10 @@ const RULES: Readonly<Record<HrStructureCode, Rule | null>> = {
   // 工作地点 / 籍贯：复刻任职与档案里没有可统计的字典字段（规格“未决 / 假设”），返回 null，不造数据
   '6.09': null,
   '6.10': null,
+  // 规格只对 6.04 写“取前 20”；6.11 按机构全列，不截断
   '6.11': {
     key: institution,
     label: orgLabel,
-    limit: HR_STRUCTURE_TOP_INSTITUTIONS,
     members: (p) => BACHELOR_OR_ABOVE.includes(educationTier(p.educationLevel)),
   },
   '6.12': { key: (p) => educationTier(p.educationLevel), fixed: withNone(EDUCATION_TIERS) },
