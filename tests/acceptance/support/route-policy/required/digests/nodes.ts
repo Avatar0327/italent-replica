@@ -470,7 +470,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion': ['d0ac12f4b5cd', '3c988652fc60'],
   'apps/api/src/modules/approval/engine.ts#resume': ['c70467920df9', 'f94abf657416'],
   'apps/api/src/modules/approval/engine.ts#returnInstance': ['3e7ae72bae66', 'ad93f99d41b3'],
-  'apps/api/src/modules/approval/engine.ts#routingFacts': ['597fd79618ad', 'c9b7c912c80b'],
+  'apps/api/src/modules/approval/engine.ts#routingFacts': ['ce922d680f52', '292f19fcf7bf'],
   'apps/api/src/modules/approval/engine.ts#routingSubject': ['2459b3c9440c', '2797aa2c4a01'],
   'apps/api/src/modules/approval/engine.ts#seatOf': ['ef2378bef460', '70c53e1663f4'],
   'apps/api/src/modules/approval/engine.ts#seatUser': ['c565a689f5ca', 'e3b0c44298fc'],
