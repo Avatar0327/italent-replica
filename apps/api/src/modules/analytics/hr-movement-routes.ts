@@ -149,7 +149,8 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
       return movementReport(report.code, period, {
         tree,
         sequences,
-        exitDictionaries: await loadExitDictionaries(tx, base.tenantId),
+        exitDictionaries:
+          report.code === 'outflow' ? await loadExitDictionaries(tx, base.tenantId) : { types: [], reasons: [] },
         data: filterMovement(data, tree, departmentId),
         establishment: filterEstablishment(establishment, tree, departmentId),
         parentId,

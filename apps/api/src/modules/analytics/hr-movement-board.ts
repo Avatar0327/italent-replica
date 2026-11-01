@@ -174,6 +174,7 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
       members: x.data.exits.filter((e) => tenureSegment(e.entryDate, e.lastWorkDate) === key),
     })),
   }),
+  // 窗口 = 近 12 个自然月（含 asOf 所在月），司龄 ≤ 0.083 年（F-431②）；
   // ratio = 该部门人数 ÷ 近 12 个月“入职一个月内离职”的总人数（不是部门在职人数）
   '6.32': (x) => {
     const early = x.data.exits.filter((e) => withinOneMonth(e.entryDate, e.lastWorkDate));
