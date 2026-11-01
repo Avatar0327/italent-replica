@@ -1,7 +1,7 @@
 /**
  * 职责转交菜单路由的 F-039 声明（R2-T09a；DEC-602② / DEC-726）。对象 TenantBase.DutyTransferCommon，数据范围按被转交人
  * （DT-R9）：单人入口经 requireVisiblePerson 用同一范围谓词判定，范围外与不存在同为 404；列表在 SQL 里叠加范围谓词。
- * 写入口经 runCommand（同键同内容重放），守卫 before / replayed 在命令事务内按当前范围复核被转交人；
+ * 写入口经 runCommand（同键同内容重放），守卫 before / replayed 在命令事务内按当前范围复核被转交人与接收人；
  * 改写的组织角色 / 下属上级另按真实对象授权（service.authorizeDuty，与联动子项同口径）。
  * 本文件新起的登记名：守卫 dutyTransfer.person，形状 dutyTransfer.duties / dutyTransfer.records，
  * 列表谓词 dutyTransfer.visibility，前提 dutyTransfer.lock / revision / dutyHeld / receiverActive。
@@ -61,6 +61,8 @@ export const DUTY_TRANSFER_POLICIES = defineTable('duty-transfer', {
     button: SET_RECEIVER,
     scope: person,
     fields: records,
+    // 下属转交改写下属当前任职的上级：按任职范围联动复核（DEC-178，service.authorizeDuty，与离职内转交同口径）
+    guards: ['employment.linkage'],
     write: write('body', 'dutyTransfer.person', 'dutyTransfer.person', {
       ledger: 'single',
       preconditions: [

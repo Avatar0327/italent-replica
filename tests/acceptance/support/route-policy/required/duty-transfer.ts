@@ -44,6 +44,7 @@ const VISIBLE_PERSON: Evidence = {
   unit: `${ROUTES}#requireVisiblePerson`,
   anchor: "if (!(await personVisible(tx, tenantId, scope, employeeId))) throw new AppError('NOT_FOUND', '员工不存在')",
 };
+const SERVICE = 'apps/api/src/modules/duty-transfer/service.ts';
 const call = (method: string, path: string, anchor: string): Evidence => ({
   role: 'call',
   unit: `${ROUTES}#route:${method} ${path}`,
@@ -60,7 +61,7 @@ function op(method: string, path: string, operation: 'view' | 'create', anchor: 
 const view = (path: string) => op('GET', path, 'view', "const ctx = await objectContext(c, deps, OBJECT, 'view')");
 const setReceiver = (path: string): Obligation => ({
   perm: `btn:${OBJ}#${BUTTON_CODE}@list`,
-  facts: ['button:button()', 'button:buttonResource', 'button:object.button'],
+  facts: ['button:button()'],
   at: [
     call('POST', path, "await button(deps, ctx, OBJECT, DUTY_TRANSFER_SET_RECEIVER_BUTTON, 'list')"),
     BUTTON,
@@ -78,6 +79,22 @@ const person = (method: string, path: string, anchor: string): Obligation => ({
   at: [call(method, path, anchor), VISIBLE_PERSON],
 });
 
+/** 下属职责改写其当前任职的上级：按 DEC-178 联动范围复核（不可见整单拒绝），与离职内转交同口径。 */
+const LINKAGE: Obligation = {
+  perm: 'guard:employment.linkage',
+  facts: ['guard:employment.linkage'],
+  note: 'DEC-178：下属转交改写下属当前任职前按任职范围复核',
+  at: [
+    call('POST', PEOPLE, 'await submitMenuTransfer(tx, { ...ctx, commandId }, employeeId, input, access)'),
+    {
+      role: 'impl',
+      unit: `${SERVICE}#submitMenuTransfer`,
+      anchor: 'await authorizeDuty(tx, ctx, access, duty, today)',
+    },
+    { role: 'impl', unit: `${SERVICE}#authorizeDuty`, anchor: 'await requireLinkedEmploymentRecord(' },
+  ],
+};
+
 export const DUTY_TRANSFER: RequiredTable = {
   [`GET ${PEOPLE}/duties`]: [
     view(`${PEOPLE}/duties`),
@@ -91,6 +108,7 @@ export const DUTY_TRANSFER: RequiredTable = {
   [`POST ${PEOPLE}`]: [
     {
       ...op('POST', PEOPLE, 'create', "const ctx = await objectContext(c, deps, OBJECT, 'create', revision(c))"),
+      facts: ['object:objectContext', `objectOp:${OBJ}:create`, 'object:requireObjectWrite（对象写操作权）'],
       at: [
         call('POST', PEOPLE, "const ctx = await objectContext(c, deps, OBJECT, 'create', revision(c))"),
         CONTEXT,
@@ -104,6 +122,7 @@ export const DUTY_TRANSFER: RequiredTable = {
       ],
     },
     setReceiver(PEOPLE),
+    LINKAGE,
     person('POST', PEOPLE, 'await requireVisiblePerson(tx, ctx.tenantId, scope, employeeId)'),
   ],
   [`GET ${BASE}/records`]: [view(`${BASE}/records`)],
