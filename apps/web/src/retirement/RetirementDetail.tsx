@@ -199,20 +199,24 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
   const run = async () => {
     try {
       const values = action === 'cancel' ? { reason: reason?.trim() ?? '' } : {};
-      // 写后回读确认后才交出下游清单；结果未知时不展示
+      // 写后回读确认后才交出下游清单；结果未知时不展示。回读的单据状态交草稿入口决定本单引用的去留
       let downstream: string[] = [];
+      let readback: Values = {};
       const done = await cmd.submit(values, action === 'cancel' ? ['reason'] : [], {
         path: `${slotKey(retirements, id)}/${action}`,
         body: (input, extra) => billBody(action, input, extra),
         accept: (raw, sent) => {
           const receipt = acceptRetirement(raw, { employeeId: row.employeeId!, sent, id });
           if (action === 'cancel') downstream = downstreamLines(receipt.downstream);
-          return { path: slotKey(`${apiRoot}/businesses`, id), id, revision: Number(receipt.revision) };
+          const verify = (latest: Values) => {
+            readback = latest;
+          };
+          return { path: slotKey(`${apiRoot}/businesses`, id), id, revision: Number(receipt.revision), verify };
         },
       });
       if (!done) return;
-      // 同一单据已在详情处理并确认：员工入口不再把它当草稿接续（第 3 轮 P2-R2-2）
-      drafts.settle(id);
+      // 同一单据已在详情处理并确认：提交 / 撤销后员工入口不再接续，撤回回到草稿则继续原单（第 4 轮 P2-R3-1）
+      drafts.settled(id, action, readback);
       setReason(undefined);
       if (action === 'cancel') onReceipt(downstream);
       void message.success(m.success[action]);

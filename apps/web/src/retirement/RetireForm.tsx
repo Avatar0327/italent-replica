@@ -173,7 +173,8 @@ function useRetire(props: EditorProps, editable: string[], writable: boolean) {
         autoSubmit.current = true;
         return drafts.created(created);
       }
-      if (draft) drafts.settle(draft.id);
+      // 第二步提交已确认（回执核过 in_review）：员工入口不再接续这张单
+      if (draft) drafts.settled(draft.id, 'submit');
       void message.success(m.success[mode === 'direct' ? 'retire' : 'apply']);
       onDone();
     } catch (cause) {

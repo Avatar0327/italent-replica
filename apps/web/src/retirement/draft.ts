@@ -16,6 +16,14 @@ export type RetireDraft = ApplicationDraft;
 export const draftFields = ['lastWorkDate', 'handoverEmployeeId'] as const;
 /** 仍可作为草稿接续的单据状态（entriesFor：草稿 / 驳回可提交）；状态被裁剪时无从判断，按仍可接续处理。 */
 const resumable = (status: unknown) => status === undefined || status === 'draft' || status === 'rejected';
+/** 已写后回读确认的单据动作：申请第二步与详情提交都是 submit。 */
+export type DraftAction = 'submit' | 'withdraw' | 'cancel';
+/**
+ * 动作确认后本单还能否作为草稿接续：按写后回读的状态；状态被裁剪时按动作的终点（transitions.ts：
+ * withdraw → draft 可接续，submit → in_review、cancel → voided 不可接续）。
+ */
+const reopened = (action: DraftAction, status: unknown) =>
+  status === undefined ? action === 'withdraw' : resumable(status);
 
 /**
  * 退休申请草稿的唯一入口（DEC-431①）：接续、重读、冲突核对、清理都在这里，RetireForm 与 RetirementDetail 只调用它。
@@ -53,13 +61,15 @@ export function useRetireDraft(employeeId: string) {
   }, [detail, snapshot]);
   /**
    * 打开申请：缓存里有草稿时先读它当前的状态。仍是草稿 / 驳回才按真实 revision 与字段接续；已提交、审批中、已办结、
-   * 已撤销的清掉缓存，走新建（fallback 读员工）。员工恢复槽上有未确认命令（结果未知）时不读不清，保持原锁。
+   * 已撤销的清掉缓存，走新建（fallback 读员工）。员工恢复槽只拦处理中 / 结果未知（不读不清，保持原锁）；
+   * 冲突不钉槽，重开即按新 revision 重读（Claude 交叉审 P3-1）。
    */
   const resume = useCallback(
     async (fallback: () => Promise<Latest>): Promise<Latest> => {
       const { cache, slot } = live.current;
       const draft = cache.draft;
       if (!draft) return fallback();
+      // 处理中 / 结果未知：原命令仍钉在槽上，沿用缓存的 revision 与字段，由内核回查原单
       if (isLocked(slot.peek())) return { id: employeeId, revision: draft.revision, values: draft.values };
       // 读不到（含 404 / 无权）不猜草稿去向：打开读报错并可重试，不清缓存、不新建
       const latest = await detail(draft.id);
@@ -80,9 +90,19 @@ export function useRetireDraft(employeeId: string) {
     resume,
     /** 新建草稿已确认：记下草稿 id、revision 与提交时的核对字段。 */
     created: (draft: RetireDraft) => cache.put({ ...draft, values: projectFields(draft.values, draftFields) }),
-    /** 同一业务 id 的提交 / 撤回 / 撤销写后回读已确认：只清匹配的草稿，别的草稿与命令锁不动。 */
-    settle: (id: string) => {
-      if (live.current.cache.draft?.id === id) live.current.cache.put();
+    /**
+     * 同一业务 id 的提交 / 撤回 / 撤销写后回读已确认（第 4 轮 P2-R3-1）：按动作与回读状态决定本单引用的去留。
+     * 回到草稿 / 驳回（撤回）：保留或恢复本单引用，revision 取回读值，字段与 revision 在下次打开时由 resume 读退休详情刷新；
+     * 进入审批中 / 已作废等不可接续状态：清掉本单引用。缓存里是别的业务 id，或员工恢复槽处理中 / 结果未知时一律不动。
+     */
+    settled: (id: string, action: DraftAction, readback: Values = {}) => {
+      const { cache, slot } = live.current;
+      const held = cache.draft;
+      if ((held && held.id !== id) || isLocked(slot.peek())) return;
+      if (!reopened(action, readback.status)) return held && cache.put();
+      const revision = Number(readback.revision ?? held?.revision);
+      if (!Number.isSafeInteger(revision)) return;
+      cache.put({ id, revision, values: held?.values ?? projectFields({}, draftFields) });
     },
   };
 }
