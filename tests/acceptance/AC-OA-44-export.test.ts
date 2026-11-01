@@ -9,7 +9,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { BASE, expectError, only } from './AC-OA-head-support.js';
+import { ALL, BASE, expectError, only } from './AC-OA-head-support.js';
 import { type ItemsWorld, itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
 import { approvalFixture, orgName } from './AC-OA-read-support.js';
 import { uniqueSuffix } from './support/unique.js';
@@ -167,7 +167,7 @@ describe('AC-OA-44 架构图导出：两态、范围子树、四个节点字段�
 });
 
 describe('AC-OA-44 架构图导出：权限随详情、参数校验、不可见字段“--”', () => {
-  it('HR（读权 + 范围）与可打开审批实例的审批人能导出；旁人、范围外、不存在 404；after 缺省或非法 400', async () => {
+  it('HR（读权 + 范围）与可打开审批实例的审批人能导出；不能打开详情、主体组织范围外、不存在 404；after 缺省或非法 400', async () => {
     const w = await itemsWorld(testDb().db, 'oa44');
     const approver = await w.member('合成审批人');
     const stranger = await w.member('合成旁人');
@@ -181,25 +181,27 @@ describe('AC-OA-44 架构图导出：权限随详情、参数校验、不可见�
     }
     await expectError(await w.call('GET', `${BASE}/not-a-uuid/preview/export?after=true`), 400, 'VALIDATION_FAILED');
     await expectError(await exportRes(w, randomUUID(), 'true'), 404, 'NOT_FOUND');
-    await expectError(await exportRes(w, view.id, 'true', stranger), 404, 'NOT_FOUND');
 
+    // 测试授权器对所有成员同一口径：收回读权与范围后，只剩审批实例这条路
     w.access.viewDenied = true;
     w.access.main = EMPTY_SCOPE;
     w.access.org = EMPTY_SCOPE;
+    // 不能打开详情（无读权、不是审批人）：与详情同一 404，文案相同
+    const detail = await w.call('GET', `${BASE}/${view.id}`, {}, stranger);
+    const denied = await exportRes(w, view.id, 'true', stranger);
+    await expectError(detail, 404, 'NOT_FOUND');
+    await expectError(denied, 404, 'NOT_FOUND');
+    expect((await denied.json()).error.message).toBe((await detail.json()).error.message);
     const approverNodes = nodes((await exported(w, view.id, false, approver)).svg);
     expect(approverNodes).toEqual([
       [await orgName(w, w.a), ...FIELDS('--', '--')],
       [added.name, '新增', ...FIELDS('--', '--')],
     ]);
-    // HR 失去读权或主体组织出范围：与详情同一 404（文案同详情）
-    const detail = await w.call('GET', `${BASE}/${view.id}`);
-    const denied = await exportRes(w, view.id, 'false');
-    await expectError(detail, 404, 'NOT_FOUND');
-    await expectError(denied, 404, 'NOT_FOUND');
-    expect((await denied.json()).error.message).toBe((await detail.json()).error.message);
+    // 有读权但主体组织不在范围：同样 404
     w.access.viewDenied = false;
     w.access.main = only(randomUUID());
-    await expectError(await exportRes(w, view.id, 'false'), 404, 'NOT_FOUND');
+    w.access.org = ALL;
+    await expectError(await exportRes(w, view.id, 'false', stranger), 404, 'NOT_FOUND');
   });
 
   it('看不到调整范围 / 明细名称 → 节点名称、负责人、编制、文件名里的组织名都是“--”，不泄露', async () => {

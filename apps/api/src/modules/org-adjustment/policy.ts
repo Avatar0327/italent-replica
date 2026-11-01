@@ -1,5 +1,5 @@
 /**
- * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～9、12～15，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，
+ * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～9、12～15、28，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，
  * BE-10d 读取）。对象 OrganizationApproval：
  * 主体组织按 OrganizationApproval 范围，调整范围所选组织逐个按组织对象范围（`authorizeHead`，§6.3）；范围外与不存在同为 404。
  * 写入口经 runCommand（同键同内容重放），守卫 before 在命令事务内（首次与重放都经过）跑 `authorizeHead`，改头 / 作废先锁行读现值，
@@ -19,6 +19,7 @@
  *    范围外与不存在同为 404；replayed 按当前组织范围复核结果行涉及的组织。响应按 `orgItems.*` 查看权裁剪。
  * 6. 读取（BE-10d，路由 12～15）：列表为主对象 view + 主体组织列表范围（谓词 orgAdjustment.subjectScope）；详情 / 明细 /
  *    预览为 any（主对象 view + 守卫 orgAdjustment.disclosure，或关系 orgAdjustment.approvalCanOpen），都不是 → 404。
+ *    路由 28 架构图导出（BE-10e）与预览同一声明（DEC-650①：能看详情即能导出，不注册按钮）。
  *    §4.5 写“无查看权或范围外 → 404”，列表无对象查看权按 objectContext 现行口径 403（偏离记结果文件）。
  * 本文件新起的登记名：守卫 orgAdjustment.head（authorizeHead / authorizeHeadAction）、orgAdjustment.headReplay
  * （replayed 复核）、校验复核 orgAdjustment.rangeOrgs、形状 orgAdjustment.adjustment、
@@ -129,6 +130,7 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
   // 路由 14：section 只认 org，其它 404
   [`GET ${BASE}/:id/items/:section`]: reader,
   [`GET ${BASE}/:id/preview`]: reader,
+  [`GET ${BASE}/:id/preview/export`]: reader,
   [`POST ${BASE}`]: object({
     object: OBJECT,
     operation: 'create',
