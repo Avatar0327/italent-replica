@@ -284,19 +284,22 @@ describe('F-140b2 已生效离职', () => {
     expect(JSON.stringify(cancelled)).toContain(t.id);
     expect(await x.stateOfBusiness(t.id)).toBe('voided');
   });
-  it('摘下的未来 T 随新 L 挂回；多次改期与撤销不重复挂回', async () => {
+  // DEC-725③（取代 DEC-263② 的挂回）：离职生效时 T 已作废（墓碑），改期越过 T 或撤销都不再挂回
+  it('离职生效作废的未来 T：改到 T 之后、多次改期与撤销都不挂回', async () => {
     const x = await cancelWorld(database().db, 'f140b2-detached');
     const t = await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-15');
     await x.runScheduler('2026-10-16T02:00:00Z');
     expect((await x.timeline()).some((r) => r.record_id === t.id)).toBe(false);
+    expect(await x.stateOfBusiness(t.id)).toBe('voided');
     x.setNow('2026-11-05T02:00:00Z');
     await success(await patch(x, leave.id, '2026-10-21'));
     expect((await x.timeline()).some((r) => r.record_id === t.id)).toBe(false);
     await success(await patch(x, leave.id, '2026-10-29'));
-    expect((await x.timeline()).map((r) => r.record_id)).toContain(t.id);
+    expect((await x.timeline()).some((r) => r.record_id === t.id)).toBe(false);
     await x.cancelled(leave.id);
-    expect((await x.timeline()).filter((r) => r.record_id === t.id)).toHaveLength(1);
+    expect((await x.timeline()).filter((r) => r.record_id === t.id)).toEqual([]);
+    expect(await x.stateOfBusiness(t.id)).toBe('voided');
   });
 
   it.each(['2026-10-25', '2026-11-20'])('整体 ΔP：改到 %s 按 R 是否变化决定新增预占', async (last) => {

@@ -5,6 +5,7 @@
  */
 import {
   EXIT_TERMINATION_FLOWS,
+  EXIT_TERMINATION_PRESET,
   EXIT_TERMINATION_SETTING_KEY,
   exitTerminationPolicy,
   terminatedByExit,
@@ -13,12 +14,19 @@ import {
   type ExitTerminationSetting,
 } from '@italent/domain';
 import type { Tx } from '@italent/db';
+import { AppError } from '../../errors.js';
 import { readEffectiveSetting, registerSettingValidator } from '../tenant-settings/service.js';
 
 registerSettingValidator(EXIT_TERMINATION_SETTING_KEY, validExitTerminationSetting);
 
+/** 系统值缺失（迁移 0180 尚未执行：滚动升级窗口、只迁到旧版本的升级测试）时按预置取，与 0180 写入的系统值一致。 */
 export async function readExitTermination(tx: Tx, tenantId: string): Promise<ExitTerminationSetting> {
-  return exitTerminationPolicy((await readEffectiveSetting(tx, tenantId, EXIT_TERMINATION_SETTING_KEY)).value);
+  try {
+    return exitTerminationPolicy((await readEffectiveSetting(tx, tenantId, EXIT_TERMINATION_SETTING_KEY)).value);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return EXIT_TERMINATION_PRESET;
+    throw error;
+  }
 }
 
 /** 本次离职适用的勾选；退休返回 null（沿用原口径，F-351 再接）。 */

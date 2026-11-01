@@ -8,6 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { downstreamWorld, type DownstreamWorld } from './AC-EXIT-downstream-support.js';
+import { setExitTermination } from './support/exit-termination.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -70,8 +71,11 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
     });
   });
 
-  it('B-13 在途合同申请（in_review / returned / approved，生效日早于与晚于 L′）全部撤回，不按日期区分；离职后可签类型的申请保留', async () => {
+  // DEC-725①：按流程类型勾选。本例勾上“新建合同协议”（预置不勾），验证勾选类型不按日期区分全部撤回；
+  // 预置不勾时按最后工作日保留 / 撤回见 AC-F400-exit-termination
+  it('B-13 勾选的在途合同申请（in_review / returned / approved，生效日早于与晚于 L′）全部撤回，不按日期区分；离职后可签类型的申请保留', async () => {
     const x = await world('b13');
+    await setExitTermination(database().db, x.session.tenant.id, x.session.user.id, { contract_create: true });
     const [a, b, c, kept] = [
       await x.contractType('类型甲'),
       await x.contractType('类型乙'),

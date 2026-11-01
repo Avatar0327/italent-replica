@@ -1819,6 +1819,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/timeline.ts#detachFutureTransfers',
   ],
+  'apps/api/src/modules/employment/exit-activation.ts#detachAndVoid': [
+    '#detachAndRecord',
+    'apps/api/src/modules/employment/exit-void-future-transfers.ts#voidDetachedTransfers',
+  ],
   'apps/api/src/modules/employment/exit-activation.ts#followingTransfers': [
     'apps/api/src/modules/employment/exit-later-records.ts#assertNoLaterExitRecords',
     'apps/api/src/modules/employment/exit-later-records.ts#exitFollowingRecords',
@@ -1845,7 +1849,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#auditIncompleteAck',
     '#createRehireIfPlanned',
-    '#detachAndRecord',
+    '#detachAndVoid',
     '#followingTransfers',
     '#postponeLateExit',
     '#reconcileConfirmedSet',
@@ -2061,6 +2065,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/notifications.ts#notifyMessage',
     'apps/api/src/modules/contracts/ports.ts#handleContractsOnExit',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertBelowLimit': ['#EXIT_DICTIONARY_LIMIT', '#atLimit'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled': ['#findByCode'],
@@ -2220,6 +2225,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
+    '#keepClause',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
@@ -2238,6 +2244,9 @@ export const GRAPH: Graph = {
     '#exceedsVoidLimit',
     '#inFlightApplications',
     '#plannedRows',
+    '#untickedEmploymentKeep',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'packages/domain/src/employment/exit-termination.ts#assessmentTypeFlow',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': ['#buttonsFor', '#createPayload', '#kindOfTarget'],
   'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker': [
@@ -2245,6 +2254,7 @@ export const GRAPH: Graph = {
     '#disclose',
     '#inFlightApplications',
     '#plannedRows',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#requireExitGate': [
     '#assertActualLeaveDate',
@@ -2264,6 +2274,10 @@ export const GRAPH: Graph = {
     '#assertNoRegularizationInFlight',
     '#checkPendingTransferAck',
     '#loadExitRequest',
+  ],
+  'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep': [
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings': [
     '#VOID_LIMIT',
@@ -2835,6 +2849,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#overdueTransferBlocker',
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
+    'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep',
     '#asRows',
     '#rehirePreview',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
@@ -3245,6 +3260,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf': ['#readExitTermination'],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#readExitTermination': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_PRESET',
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_SETTING_KEY',
+    'packages/domain/src/employment/exit-termination.ts#exitTerminationPolicy',
+  ],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows': [
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_FLOWS',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
   ],
@@ -3281,6 +3306,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#timelinePosition',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
+    'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep',
     '#voidApplications',
     '#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
@@ -3304,6 +3330,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#lockOtherBusinessHeads',
     '#voidApplications',
+  ],
+  'apps/api/src/modules/employment/exit-void-future-transfers.ts#voidDetachedTransfers': [
+    'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
+    'apps/api/src/modules/approval/notifications.ts#notifyMessage',
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+    'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
   'apps/api/src/modules/employment/field-derivations.ts#derivationFields': ['#rules'],
   'apps/api/src/modules/employment/field-derivations.ts#derivePresetFields': ['#resolveDerivation', '#rules'],
