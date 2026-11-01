@@ -65,12 +65,22 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/approval-adapter.ts#orgAdjustmentAdapter': [
     '#lockRows',
+    'apps/api/src/modules/org-adjustment/approval-edit.ts#assertApprovable',
     'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval',
-    'apps/api/src/modules/org-adjustment/baseline.ts#assertBaselines',
     'apps/api/src/modules/org-adjustment/snapshot.ts#orgAdjustmentSnapshot',
     'apps/api/src/modules/org-adjustment/submission.ts#resubmitFromApproval',
     'apps/api/src/modules/org-adjustment/submission.ts#settleFromApproval',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
+  ],
+  'apps/api/src/modules/org-adjustment/approval-edit.ts#asApprover': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
+  ],
+  'apps/api/src/modules/org-adjustment/approval-edit.ts#assertApprovable': [
+    '#asApprover',
+    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
+    'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
+    'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
   ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#authorizeApprover': [
     'apps/api/src/modules/org-adjustment/access.ts#authorizeHead',
@@ -84,20 +94,19 @@ export const GRAPH: Graph = {
     '#parseHead',
     '#parseItems',
     '#toRefs',
+    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/items-store.ts#bumpRevision',
-    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
-    'apps/api/src/modules/org-adjustment/org-items.ts#reviseItems',
+    'apps/api/src/modules/org-adjustment/org-items.ts#persistRevisions',
+    'apps/api/src/modules/org-adjustment/org-items.ts#planRevisions',
+    'apps/api/src/modules/org-adjustment/service.ts#assertHeadPatch',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
-    'apps/api/src/modules/org-adjustment/service.ts#writeHead',
+    'apps/api/src/modules/org-adjustment/service.ts#persistHead',
     'apps/api/src/modules/org-adjustment/submission.ts#rowOrgIds',
+    'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
     'apps/api/src/modules/org/validation.ts#invalid',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
-  'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval': [
-    '#edit',
-    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
-    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
-  ],
+  'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval': ['#asApprover', '#edit'],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#parseHead': [
     '#ITEM_PREFIX',
     'apps/api/src/modules/org-adjustment/validation.ts#normalizeHead',
@@ -112,11 +121,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/item-validation.ts#patchItemSchema',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
-  'apps/api/src/modules/org-adjustment/baseline.ts#assertBaselines': [
+  'apps/api/src/modules/org-adjustment/baseline.ts#assertWorldBaselines': [
     'apps/api/src/modules/org-adjustment/item-check.ts#BASELINE_CHANGED',
     'apps/api/src/modules/org-adjustment/item-check.ts#baselineIssues',
-    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
-    'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
   ],
   'apps/api/src/modules/org-adjustment/baseline.ts#rebase': [
     'apps/api/src/modules/org-adjustment/items-store.ts#auditItem',
@@ -301,15 +308,16 @@ export const GRAPH: Graph = {
     '#rewrite',
     'apps/api/src/modules/org-adjustment/service.ts#editable',
   ],
-  'apps/api/src/modules/org-adjustment/org-items.ts#reviseItems': [
+  'apps/api/src/modules/org-adjustment/org-items.ts#persistRevisions': [
+    'apps/api/src/modules/org-adjustment/items-store.ts#auditItem',
+    'apps/api/src/modules/org-adjustment/items-store.ts#updateItem',
+  ],
+  'apps/api/src/modules/org-adjustment/org-items.ts#planRevisions': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemRules',
     'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
     'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
-    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertItemFields',
     'apps/api/src/modules/org-adjustment/item-validation.ts#toContent',
-    'apps/api/src/modules/org-adjustment/items-store.ts#auditItem',
-    'apps/api/src/modules/org-adjustment/items-store.ts#updateItem',
     '#validateContent',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
@@ -549,18 +557,21 @@ export const GRAPH: Graph = {
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
-  'apps/api/src/modules/org-adjustment/service.ts#assertItemsInRange': [
+  'apps/api/src/modules/org-adjustment/service.ts#assertHeadPatch': [
     'apps/api/src/modules/org-adjustment/item-tree.ts#OUT_OF_RANGE',
-    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/item-tree.ts#outOfRange',
+    'apps/api/src/modules/org-adjustment/range.ts#assertOrgsActive',
   ],
   'apps/api/src/modules/org-adjustment/service.ts#audit': [
     'apps/api/src/audit/record.ts#recordAudit',
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/org-adjustment/service.ts#checkAdjustment': [
-    'apps/api/src/modules/org-adjustment/item-check.ts#checkOrgItems',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
+    '#checkWorld',
+  ],
+  'apps/api/src/modules/org-adjustment/service.ts#checkWorld': [
+    'apps/api/src/modules/org-adjustment/item-check.ts#checkOrgItems',
     'apps/api/src/modules/org-adjustment/range.ts#ORG_INACTIVE',
     'apps/api/src/modules/org-adjustment/range.ts#inactiveOrgs',
     '#CHECK_LIMIT',
@@ -582,6 +593,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#rowsOf',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/org-adjustment/service.ts#persistHead': ['#audit', '#loadAdjustment', '#writeRange'],
   'apps/api/src/modules/org-adjustment/service.ts#updateAdjustmentHead': ['#editable', '#writeHead'],
   'apps/api/src/modules/org-adjustment/service.ts#voidAdjustment': [
     '#VOIDED',
@@ -591,37 +603,39 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/submission.ts#cancelReturned',
   ],
   'apps/api/src/modules/org-adjustment/service.ts#writeHead': [
-    'apps/api/src/modules/org-adjustment/range.ts#assertOrgsActive',
-    '#assertItemsInRange',
-    '#audit',
-    '#loadAdjustment',
-    '#writeRange',
+    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
+    '#assertHeadPatch',
+    '#persistHead',
   ],
   'apps/api/src/modules/org-adjustment/snapshot.ts#buildSnapshot': [
     '#filled',
     '#headValues',
-    '#orgSectionValues',
+    '#orgSection',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_PROCESS_CODE',
   ],
+  'apps/api/src/modules/org-adjustment/snapshot.ts#changed': ['#IDENTITY_KEYS'],
   'apps/api/src/modules/org-adjustment/snapshot.ts#headValues': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_HEADER_FIELDS',
   ],
   'apps/api/src/modules/org-adjustment/snapshot.ts#itemValue': ['#ITEM_REFS'],
+  'apps/api/src/modules/org-adjustment/snapshot.ts#loadBaselines': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org-adjustment/snapshot.ts#orgAdjustmentSnapshot': [
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     '#buildSnapshot',
+    '#loadBaselines',
   ],
-  'apps/api/src/modules/org-adjustment/snapshot.ts#orgSectionValues': [
+  'apps/api/src/modules/org-adjustment/snapshot.ts#orgSection': [
     '#ITEM_PREFIX',
+    '#changed',
     '#itemValue',
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_SECTION_FIELDS',
   ],
   'apps/api/src/modules/org-adjustment/submission.ts#assertSubmittable': [
-    'apps/api/src/modules/org-adjustment/baseline.ts#assertBaselines',
-    'apps/api/src/modules/org-adjustment/service.ts#checkAdjustment',
+    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
+    'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
   ],
   'apps/api/src/modules/org-adjustment/submission.ts#authorizeOwnerOf': [
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
@@ -688,4 +702,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/validation.ts#normalizeHead': ['#normalizeRange'],
   'apps/api/src/modules/org-adjustment/validation.ts#normalizeRange': ['#RANGE_MAX'],
   'apps/api/src/modules/org-adjustment/validation.ts#patchSchema': ['#fields'],
+  'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole': [
+    'apps/api/src/modules/org-adjustment/baseline.ts#assertWorldBaselines',
+    'apps/api/src/modules/org-adjustment/service.ts#checkWorld',
+  ],
 };

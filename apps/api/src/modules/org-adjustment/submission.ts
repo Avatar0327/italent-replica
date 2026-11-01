@@ -1,7 +1,7 @@
 /**
  * 组织调整的提交 / 撤回与审批结果回写（R2-T08 §3 状态机、§4.1～4.4、§14.1，BE-10c）。
- * - 提交（路由 10）与审批中心重提：同一关口——非暂存行（含连带行）基线过期 → 409 `ORG_ADJUSTMENT_BASELINE_CHANGED`
- *   并列出行；整单校验（与路由 7 同一份判断）有问题 → 400 `VALIDATION_FAILED`，`reason` 取首个问题、`items` 为全部问题；
+ * - 提交（路由 10）与审批中心重提：整单关口（whole-check，与审批中编辑、同意前同一入口）——非暂存行（含连带行）
+ *   基线过期 → 409 `ORG_ADJUSTMENT_BASELINE_CHANGED` 并列出行；整单校验（与路由 7 同一份判断）有问题 → 400；
  *   通过后 0 / 6 → 1、revision + 1、审计，同事务交审批引擎（驳回 / 撤回后沿用原实例，DEC-103）。
  * - 撤回（路由 11）只限申请人本人，1 → 0；在途实例同事务撤回（业务侧已迁移状态，不再回调适配器）。
  * - 审批结果：通过 → 2（执行状态保持 1 未执行，BE-10c 不写执行队列）、驳回 → 6、不同意 → 3、审批侧撤回 → 0。
@@ -14,24 +14,17 @@ import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { ApprovalContext, FieldAccess } from '../approval/context.js';
 import { authorizeOwnerAction, authorizeWithdraw, HEAD_BUTTONS, orgScopeAuthorizer } from './access.js';
-import { assertBaselines } from './baseline.js';
+import { loadWorld } from './item-tree.js';
 import { loadItems, type OrgItem } from './items-store.js';
-import { audit, checkAdjustment, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
+import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
+import { assertWhole } from './whole-check.js';
 
 const NOT_FOUND = '组织调整申请不存在';
 const BUSINESS = { businessType: 'org_adjustment' } as const;
 
-/** 提交关口（提交 / 重提共用）：基线 → 整单校验。暂存行不判基线、除被引用外不报问题（item-check）。 */
+/** 提交关口（提交 / 重提共用）：整单关口按库里的头与明细（whole-check）。暂存行不判基线、除被引用外不报问题。 */
 async function assertSubmittable(tx: Tx, ctx: WriteContext, view: AdjustmentView) {
-  await assertBaselines(tx, ctx.tenantId, view.id, 'submit');
-  const { errors } = await checkAdjustment(tx, ctx.tenantId, view, ctx.now);
-  const first = errors[0] as { reason: string; message?: string } | undefined;
-  if (first) {
-    throw new AppError('VALIDATION_FAILED', first.message ?? '申请单校验未通过', {
-      reason: first.reason,
-      items: errors,
-    });
-  }
+  await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
 }
 
 /** 锁住的申请单置新审批状态：revision + 1、同事务审计（系统身份的回调操作人记空）。 */

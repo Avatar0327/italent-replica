@@ -5,6 +5,8 @@
  * 调整范围与所改行涉及的组织在组织对象范围；改头 / 改行的业务规则与申请人改单相同。整次编辑 revision 只 + 1。
  * 载荷：头字段按编码给值；明细字段 `orgItems.<列>` 给 `[{ itemId, value }]`，上级 / 转移组织的值是组织 ID 或
  * `{ itemRef }`（与快照同形）。行不存在、跨单、连带行一律 400 且不回显行 ID（范围外与不存在同口径，F-339 ③）。
+ * 一次构造、一次校验、一次写入（§4.4）：先在内存里算出“改后的头 + 改后的明细”，对这份候选状态跑头校验与整单关口
+ * （whole-check，与提交 / 重提、同意前同一入口），全部通过才写头、写行、revision + 1；任何一步失败都不写。
  * 错误信封按审批人字段查看权裁剪（F-339 ②）。
  */
 import type { Tx } from '@italent/db';
@@ -15,11 +17,13 @@ import { invalid } from '../org/validation.js';
 import { authorizeHead, orgScopeAuthorizer } from './access.js';
 import { trimError } from './envelope.js';
 import { patchItemSchema, type ItemPatch } from './item-validation.js';
-import { bumpRevision, loadItems } from './items-store.js';
-import { reviseItems } from './org-items.js';
-import { loadAdjustment, writeHead, type AdjustmentView } from './service.js';
+import { loadWorld } from './item-tree.js';
+import { bumpRevision } from './items-store.js';
+import { persistRevisions, planRevisions } from './org-items.js';
+import { assertHeadPatch, loadAdjustment, persistHead, type AdjustmentView } from './service.js';
 import { rowOrgIds } from './submission.js';
 import { normalizeHead, patchSchema, type HeadPatch } from './validation.js';
+import { assertWhole } from './whole-check.js';
 
 type Row = Readonly<Record<string, unknown>>;
 
@@ -85,7 +89,7 @@ const approverDeps = (ctx: ApprovalContext) => ({ authorize: ctx.exitEditAuthori
 
 /**
  * 先按现值授权，再解析载荷、找行：范围外的审批人拿不到“行是否存在”的差别（F-339 ③）。
- * 改头时对改后值再判一次；所改行改前改后涉及的组织逐个在组织对象范围。
+ * 改头时对改后值再判一次；所改行改前改后涉及的组织逐个在组织对象范围。之后按候选状态一次校验、一次写入。
  */
 async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   const view = await loadAdjustment(tx, ctx.tenantId, id, true);
@@ -96,18 +100,23 @@ async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   }
   const head = parseHead(fields);
   const patches = parseItems(fields);
-  const items = await loadItems(tx, ctx.tenantId, id);
+  const next: AdjustmentView = head ? { ...view, ...head } : view;
+  const world = await loadWorld(tx, ctx.tenantId, next);
   const touched = [...patches.keys()].map((itemId) =>
-    items.find((item) => item.id === itemId && !item.cascadedFromItemId),
+    world.items.find((item) => item.id === itemId && !item.cascadedFromItemId),
   );
   if (touched.some((item) => !item)) throw invalid('orgItems', ROW_MISSING);
   const before = touched.map((item) => item!);
   const after = before.map((item) => ({ ...item, ...toRefs(patches.get(item.id)!) }));
-  if (head) await authorizeApprover(tx, ctx, { ...view, ...head }, fields);
+  if (head) await authorizeApprover(tx, ctx, next, fields);
   await orgScopeAuthorizer(approverDeps(ctx), ctx)(tx, rowOrgIds([...before, ...after]));
-  const written = head ? await writeHead(tx, ctx, view, head) : view;
-  if (patches.size) await reviseItems(tx, ctx, written, patches);
-  if (!head) await bumpRevision(tx, ctx, id);
+  const planned = patches.size ? await planRevisions(tx, ctx.now, world, patches) : { items: world.items, changes: [] };
+  const candidate = { ...world, items: planned.items };
+  if (head) await assertHeadPatch(tx, candidate, head);
+  await assertWhole(tx, candidate, ctx.now);
+  if (head) await persistHead(tx, ctx, view, head);
+  else await bumpRevision(tx, ctx, id);
+  await persistRevisions(tx, ctx, next, planned.changes);
 }
 
 /** 改行后涉及的已有组织（只为授权取组织 ID，不落库）。 */
@@ -121,10 +130,23 @@ function toRefs(patch: ItemPatch) {
 }
 
 export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
+  await asApprover(tx, ctx, () => edit(tx, ctx, id, fields));
+}
+
+/** 同意前兜底（beforeApprove）：按库里的头与明细跑整单关口，与审批中编辑同一入口、同一裁剪。 */
+export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string): Promise<void> {
+  await asApprover(tx, ctx, async () => {
+    const view = await loadAdjustment(tx, ctx.tenantId, id);
+    if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+    await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
+  });
+}
+
+/** 审批人侧的错误信封按其字段查看权裁剪（F-339 ②）；未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。 */
+async function asApprover(tx: Tx, ctx: ApprovalContext, work: () => Promise<void>): Promise<void> {
   try {
-    await edit(tx, ctx, id, fields);
+    await work();
   } catch (error) {
-    // 未注入字段访问按看不到处理（context.ts 同口径，fail-closed）
     const viewable = ctx.fields
       ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
       : new Set<string>();

@@ -12,7 +12,7 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { rowsOf } from '../org/read-model.js';
 import { checkOrgItems } from './item-check.js';
-import { loadWorld, OUT_OF_RANGE, outOfRange } from './item-tree.js';
+import { type ItemWorld, loadWorld, OUT_OF_RANGE, outOfRange } from './item-tree.js';
 import { assertOrgsActive, inactiveOrgs, ORG_INACTIVE } from './range.js';
 import type { HeadInput, HeadPatch } from './validation.js';
 
@@ -91,11 +91,37 @@ export async function updateAdjustmentHead(
   return writeHead(tx, ctx, await editable(tx, ctx, id), patch);
 }
 
-/**
- * 写头（申请人改头与审批人编辑共用，BE-10c）：生效日组织可用 → 已有明细仍在范围 → 写头与调整范围 → revision + 1 → 审计。
- * 调用方已锁行并判过 revision、身份与状态。
- */
+/** 申请人改头：头校验（按库里的明细）→ 写头。调用方已锁行并判过 revision、身份与状态。 */
 export async function writeHead(
+  tx: Tx,
+  ctx: WriteContext,
+  before: AdjustmentView,
+  patch: HeadPatch,
+): Promise<AdjustmentView> {
+  const next = { ...before, ...patch };
+  await assertHeadPatch(tx, await loadWorld(tx, ctx.tenantId, next), patch);
+  return persistHead(tx, ctx, before, patch);
+}
+
+/**
+ * 头校验（申请人改头与审批人编辑共用，BE-10c）：`world` 是改后的头 + 明细（审批中编辑传内存里的候选明细）。
+ * 生效日组织可用；改了范围或生效日时全部明细（含暂存行、新上级）须仍在范围（§5.6），否则 400 并列出明细。
+ */
+export async function assertHeadPatch(tx: Tx, world: ItemWorld, patch: HeadPatch) {
+  const next = world.view;
+  await assertOrgsActive(tx, world.tenantId, [next.approvalSubjectOrgId, ...next.adjustmentRange], next.effectiveDate);
+  if (!patch.adjustmentRange && !patch.effectiveDate) return;
+  const misses = outOfRange(world, world.items, next.adjustmentRange);
+  if (misses.length) {
+    throw new AppError('VALIDATION_FAILED', '已有明细不在新的调整范围内', {
+      reason: OUT_OF_RANGE,
+      items: misses.map((miss) => ({ section: 'org', ...miss })),
+    });
+  }
+}
+
+/** 写头与调整范围（不做业务校验，调用方先校验）：revision + 1、同事务审计。 */
+export async function persistHead(
   tx: Tx,
   ctx: WriteContext,
   before: AdjustmentView,
@@ -103,8 +129,6 @@ export async function writeHead(
 ): Promise<AdjustmentView> {
   const id = before.id;
   const next = { ...before, ...patch };
-  await assertOrgsActive(tx, ctx.tenantId, [next.approvalSubjectOrgId, ...next.adjustmentRange], next.effectiveDate);
-  if (patch.adjustmentRange || patch.effectiveDate) await assertItemsInRange(tx, ctx.tenantId, next);
   await tx.execute(sql`
     UPDATE org_adjustments SET subject = ${next.subject}, effective_date = ${next.effectiveDate}::date,
       content = ${next.content ?? null}, approval_subject_org_id = ${next.approvalSubjectOrgId},
@@ -136,29 +160,26 @@ export async function voidAdjustment(tx: Tx, ctx: WriteContext, id: string): Pro
   return view;
 }
 
-/** 改头改范围或生效日：已有明细（含新上级）须仍在范围内（§5.6），否则 400 并列出明细，不写。 */
-async function assertItemsInRange(tx: Tx, tenantId: string, next: AdjustmentView) {
-  const world = await loadWorld(tx, tenantId, next);
-  const misses = outOfRange(world, world.items, next.adjustmentRange);
-  if (misses.length) {
-    throw new AppError('VALIDATION_FAILED', '已有明细不在新的调整范围内', {
-      reason: OUT_OF_RANGE,
-      items: misses.map((miss) => ({ section: 'org', ...miss })),
-    });
-  }
-}
-
 const CHECK_LIMIT = 200;
 
-/** 整单只读校验（路由 7）：主体组织与调整范围在生效日可用 + 组织明细（item-check）；信封最多 200 条，超出标 truncated。 */
+/** 整单只读校验（路由 7）：按库里的头与明细。 */
 export async function checkAdjustment(tx: Tx, tenantId: string, view: AdjustmentView, now: Date) {
+  return checkWorld(tx, await loadWorld(tx, tenantId, view), now);
+}
+
+/**
+ * 整单校验的唯一实现（路由 7、提交 / 重提、审批中编辑的候选状态、同意前兜底共用，§4.4）：主体组织与调整范围在
+ * 生效日可用 + 组织明细（item-check）；信封最多 200 条，超出标 truncated。
+ */
+export async function checkWorld(tx: Tx, world: ItemWorld, now: Date) {
+  const view = world.view;
   const orgIds = await inactiveOrgs(
     tx,
-    tenantId,
+    world.tenantId,
     [view.approvalSubjectOrgId, ...view.adjustmentRange],
     view.effectiveDate,
   );
-  const items = await checkOrgItems(tx, await loadWorld(tx, tenantId, view), now);
+  const items = await checkOrgItems(tx, world, now);
   const all = [...(orgIds.length > 0 ? [{ reason: ORG_INACTIVE, orgIds }] : []), ...items];
   const errors = all.slice(0, CHECK_LIMIT);
   return { valid: all.length === 0, errors, warnings: [], ...(all.length > CHECK_LIMIT && { truncated: true }) };

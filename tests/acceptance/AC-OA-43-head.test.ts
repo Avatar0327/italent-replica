@@ -31,8 +31,11 @@ describe('AC-OA-43 路由 1～3、7 按钮（§9.3）；提交 / 撤回路由 10
     await expectError(await w.patch(view.id, { content: '无权字段' }), 403, 'FORBIDDEN');
     const { content: _content, ...withoutContent } = w.head();
     expect((await w.create(withoutContent)).status).toBe(201);
-    // 提交 / 撤回的行为见 AC-OA-12～15 / 26；这里只核对路由已注册（不再是 404）
-    for (const path of ['submit', 'withdraw'])
-      expect((await w.call('POST', `${BASE}/${view.id}/${path}`, { ifMatch: 1, body: {} })).status, path).not.toBe(404);
+    // 提交 / 撤回的行为见 AC-OA-12～15 / 26；这里核对路由已注册且走到业务关口：草稿提交在未发布流程时报流程未匹配
+    // （提交路由不按头字段编辑权拦，DEC-017 同类型内不满足即报错），草稿撤回报不在审批中
+    const post = (path: string) => w.call('POST', `${BASE}/${view.id}/${path}`, { ifMatch: 1, body: {} });
+    await expectError(await post('submit'), 409, 'CONFLICT', 'APPROVAL_PROCESS_NOT_MATCHED');
+    await expectError(await post('withdraw'), 409, 'CONFLICT', 'ORG_ADJUSTMENT_NOT_IN_REVIEW');
+    expect(await w.stored(view.id)).toMatchObject({ approval_status: 0, revision: 1 });
   });
 });

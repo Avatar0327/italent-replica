@@ -85,8 +85,15 @@ describe('AC-OA-43 路由 4～6、8～9 的按钮与入口（§9.3）', () => {
     await expectError(await w.addItem(view.id, newOrg(w.a), undefined, stranger), 403, 'FORBIDDEN');
     await w.setStatus(view.id, 1);
     await expectError(await w.addItem(view.id, newOrg(w.a)), 409, 'CONFLICT');
-    // 10c 起提交 / 撤回已注册（行为见 AC-OA-12～15 / 26）：审批中的单据再提交 → 409
-    expect((await w.call('POST', `${BASE}/${view.id}/submit`, { ifMatch: 2, body: {} })).status).toBe(409);
+    // 10c 起提交 / 撤回已注册（完整审批链路的撤回见 AC-OA-12-15-approval）：审批中的单据再提交 → 409；
+    // 非申请人撤回 → 403；申请人撤回 → 200 回到已暂存
+    const post = (path: string, user?: string) =>
+      w.call('POST', `${BASE}/${view.id}/${path}`, { ifMatch: 2, body: {} }, user);
+    await expectError(await post('submit'), 409, 'CONFLICT', 'ORG_ADJUSTMENT_IN_REVIEW');
+    await expectError(await post('withdraw', stranger), 403, 'FORBIDDEN', 'ORG_ADJUSTMENT_NOT_APPLICANT');
+    const withdrawn = await post('withdraw');
+    expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
+    expect(await w.stored(view.id)).toMatchObject({ approval_status: 0, revision: 3 });
   });
 });
 
