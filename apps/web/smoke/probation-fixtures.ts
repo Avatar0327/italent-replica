@@ -24,6 +24,16 @@ export interface Business {
   effectiveDate: string;
   probationResult: string;
 }
+/** 服务端暂存（GET / PUT /employees/:id/regularization-draft，F-347）：每员工一份，覆盖写。 */
+export interface Temporary {
+  effectiveDate: string | null;
+  probationResult: string | null;
+}
+export interface ResultItem {
+  code: string;
+  name: string;
+  enabled: boolean;
+}
 /** 可变的“服务端状态”：写接口改它，列表、详情与写后回读都按它返回。 */
 export interface Server {
   employeeRevision: number;
@@ -34,6 +44,10 @@ export interface Server {
   peer?: boolean;
   /** 申请第二步（submit）还要拒绝几次：模拟没有可用的转正流程。 */
   rejectSubmits?: number;
+  temporary?: Temporary;
+  temporaryRevision: number;
+  /** 试用结果字典（默认一项“合成通过”）；下拉只取启用项。 */
+  results: ResultItem[];
   writes: { method: string; path: string; body: Record<string, unknown>; ifMatch?: string }[];
 }
 
@@ -129,6 +143,28 @@ function business(server: Server) {
     entryStatus: null,
     record: null,
     activation: null,
+    probationResult: current.probationResult,
+    probationResultName: resultName(server, current.probationResult),
+  };
+}
+const resultName = (server: Server, code: string | null) =>
+  code === null ? null : (server.results.find((item) => item.code === code)?.name ?? null);
+/** 同 regularization-drafts.ts：草稿单（撤回单 / 第二步失败的单）作为 applicationId 带回，暂存另行返回。 */
+function regularizationDraft(server: Server) {
+  const pending = server.business?.mode === 'application' && server.business.status === 'draft';
+  const temporary = server.temporary;
+  return {
+    id: employee,
+    employeeId: employee,
+    revision: server.temporaryRevision,
+    temporary: temporary
+      ? {
+          ...temporary,
+          probationResultName: resultName(server, temporary.probationResult),
+          savedAt: '2026-10-01T01:00:00.000Z',
+        }
+      : null,
+    applicationId: pending ? businessId : null,
   };
 }
 
@@ -170,6 +206,8 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
     probation: { hasProbation: true, startDate: '2026-08-01', months: 3, expectedEndDate: '2026-10-31' },
     regularizationDate: null,
     peer: options.peer,
+    temporaryRevision: 0,
+    results: [{ code: 'pass', name: '合成通过', enabled: true }],
     writes: [],
   };
   await routePermissions(page, options.buttons ?? allButtons);
@@ -190,21 +228,13 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
     });
   });
   // 转正下拉只取启用项（?enabled=true），试用信息按全量字典显示历史结果的名称
-  await page.route(/\/employment\/probation-results(\?.*)?$/, (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            id: 'a0000000-0000-4000-8000-000000000001',
-            code: 'pass',
-            name: '合成通过',
-            enabled: true,
-            displayOrder: 0,
-          },
-        ],
-      },
-    }),
-  );
+  await page.route(/\/employment\/probation-results(\?.*)?$/, (route) => {
+    const enabledOnly = new URL(route.request().url()).searchParams.get('enabled') === 'true';
+    const items = server.results
+      .filter((item) => !enabledOnly || item.enabled)
+      .map((item, index) => ({ id: `a0000000-0000-4000-8000-00000000000${index + 1}`, ...item, displayOrder: index }));
+    return route.fulfill({ json: { items } });
+  });
   await page.route(/\/org\/organizations(\/[^/?]+)?(\?.*)?$/, (route) =>
     route.fulfill({
       json: route.request().url().includes('?')
@@ -238,6 +268,40 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
   await page.waitForURL('/staff');
   await page.goto('/probations');
   return { queries, server };
+}
+
+/** F-347：暂存（PUT 覆盖写，If-Match = 暂存 revision）与草稿单 PATCH（同 write-service.ts，revision + 1）。 */
+async function routeDrafts(page: Page, server: Server) {
+  await page.route(`**/employment/employees/${employee}/regularization-draft`, (route) => {
+    if (route.request().method() !== 'PUT') return route.fulfill({ json: regularizationDraft(server) });
+    const write = posted(route.request());
+    server.writes.push(write);
+    if (write.ifMatch !== String(server.temporaryRevision))
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'REVISION_CONFLICT', message: '任职数据已变更，请刷新后显式重提' } },
+      });
+    server.temporary = {
+      effectiveDate: (write.body.effectiveDate as string | null | undefined) ?? null,
+      probationResult: (write.body.probationResult as string | null | undefined) ?? null,
+    };
+    server.temporaryRevision += 1;
+    return route.fulfill({ json: regularizationDraft(server) });
+  });
+  await page.route(`**/employment/businesses/${businessId}`, (route) => {
+    if (route.request().method() !== 'PATCH') return route.fulfill({ json: business(server) });
+    // write-service.ts updateEmploymentBusiness：草稿 / 撤回单按字段改，revision + 1
+    const write = posted(route.request());
+    server.writes.push(write);
+    const { effectiveDate, probationResult } = write.body as Partial<Business>;
+    server.business = {
+      ...server.business!,
+      ...(effectiveDate ? { effectiveDate } : {}),
+      ...(probationResult ? { probationResult } : {}),
+      revision: server.business!.revision + 1,
+    };
+    return route.fulfill({ json: business(server) });
+  });
 }
 
 type Item = { employeeId: string; revision: number };
@@ -325,7 +389,7 @@ async function routeWrites(page: Page, server: Server) {
     server.employeeRevision += 1;
     return route.fulfill({ status: 201, json: business(server) });
   });
-  await page.route(`**/employment/businesses/${businessId}`, (route) => route.fulfill({ json: business(server) }));
+  await routeDrafts(page, server);
   await page.route(`**/employment/businesses/${businessId}/submit`, (route) => {
     server.writes.push(posted(route.request()));
     if (server.rejectSubmits) {
@@ -339,6 +403,11 @@ async function routeWrites(page: Page, server: Server) {
       return route.fulfill({ status: 409, json: { error } });
     }
     server.business = { ...server.business!, status: 'in_review', revision: server.business!.revision + 1 };
+    // 提交成功即清掉该员工的暂存（transitions.ts submit）
+    if (server.temporary) {
+      server.temporary = undefined;
+      server.temporaryRevision += 1;
+    }
     return route.fulfill({ json: business(server) });
   });
   // transitions.ts：发起人撤回审批中的申请，单据回到草稿（DEC-103 同单重提）
