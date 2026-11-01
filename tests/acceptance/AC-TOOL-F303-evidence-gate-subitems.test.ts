@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { decisionSettled, evidenceState, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
+import { decisionSettled, evidenceState, gateReport, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
 
 const TARGET = 'R9-T01';
 const OTHER_TARGET = 'R9-T02';
@@ -335,29 +335,74 @@ describe('AC-TOOL-F313 DEC-684⑦ 真实文档对账', () => {
     });
   });
 
-  it('AC-TOOL-F313：仅解除四条对账记录，其他开工前阻塞集合保持不变', () => {
+  it('AC-TOOL-F313 / F367：仅解除对账记录，其他开工前阻塞集合保持不变', () => {
     expect(evidence.filter((row) => row.st !== '✅' && row.level === '开工前').map((row) => row.id)).toEqual([
       'Q-M0-31',
-      'Q-M0-105',
       'Q-M0-107',
       'Q-M0-112',
       'Q-M0-114',
-      'Q-M0-115',
       'Q-M0-117',
-      'Q-M0-118',
-      'Q-M0-120',
-      'Q-M0-121',
-      'Q-M0-122',
-      'Q-M0-123',
       'Q-M0-134',
       'Q-M0-145',
       'Q-M0-148',
-      'Q-M0-166',
       'Q-M0-172',
       'Q-M0-173',
       'Q-M0-174',
       'Q-M0-175',
       'Q-M0-176',
     ]);
+  });
+});
+
+describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => {
+  const evidence = parseEvidence(readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8'));
+  const state = (id: string) => {
+    const row = evidence.find((entry) => entry.id === id);
+    return row && { st: row.st, level: row.level, pendingItems: row.pendingItems, tasks: [...row.tasks] };
+  };
+
+  it.each([
+    ['Q-M0-105', ['F-032', 'F-033']],
+    ['Q-M0-115', ['R3-T07']],
+    ['Q-M0-118', ['R2-T04']],
+    ['Q-M0-120', ['R2-T09']],
+    ['Q-M0-121', ['R2-T05']],
+    ['Q-M0-122', ['R2-T07']],
+    ['Q-M0-123', ['R2-T10']],
+  ])('AC-TOOL-F367：%s 残项保留为 🟡 可后补，任务范围不变', (id, tasks) => {
+    expect(state(id)).toEqual({ st: '🟡 部分', level: '可后补', pendingItems: [], tasks });
+  });
+
+  it.each(['Q-M0-162', 'Q-M0-165', 'Q-M0-166'])('AC-TOOL-F367：%s 已由 DEC 定口径，✅ 且无待决子项', (id) => {
+    expect(state(id)).toMatchObject({ st: '✅', pendingItems: [], tasks: ['F-076'] });
+  });
+
+  it.each([
+    ['Q-M0-112', ['R3-T03', 'F-040']],
+    ['Q-M0-114', ['R3-T06']],
+  ])('AC-TOOL-F367：%s 残项仍需开工前取证，继续阻塞', (id, tasks) => {
+    expect(state(id)).toEqual({ st: '🟡 部分', level: '开工前', pendingItems: [], tasks });
+  });
+
+  it('AC-TOOL-F367：门禁对 F-032 / F-033 / F-076 退出 0，F-040 仍退出 1', () => {
+    const report = (target: string) => gateReport(evidence, [], [target]);
+    expect(report('F-032').exitCode).toBe(0);
+    expect(report('F-033').exitCode).toBe(0);
+    expect(report('F-076').exitCode).toBe(0);
+    expect(report('F-040').exitCode).toBe(1);
+    expect(report('F-040').lines.join('\n')).toContain('Q-M0-112');
+  });
+
+  it('AC-TOOL-F367：已 ✅ 的行状态列不残留 🟡 / 待决写法，🟡 后补行不残留 ✅ 完成标记', () => {
+    const md = readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8');
+    const statusOf = (id: string) =>
+      md
+        .split('\n')
+        .find((l) => l.startsWith(`| ${id} `))!
+        .split('|')[6]!;
+    expect(statusOf('Q-M0-166')).not.toMatch(/🟡|待(?:实测|取证|定|确认|复核|用户|原站)/);
+    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122', 'Q-M0-123']) {
+      expect(statusOf(id)).not.toContain('✅');
+    }
   });
 });
