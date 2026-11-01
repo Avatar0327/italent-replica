@@ -127,7 +127,7 @@ async function stagedPair(w: FlowWorld) {
   return { id: view.id, staged, live };
 }
 
-describe('第 2 轮：审批中编辑与提交同一套整单校验（§4.4）', () => {
+describe('AC-OA-38 AC-OA-43 第 2 轮：审批中编辑与提交同一套整单校验（§4.4）', () => {
   it('把非暂存行的上级改指暂存行 → 400 STAGED_REFERENCE，头 / 明细 / revision / 实例版本都不变', async () => {
     const w = await flowWorld(testDb().db, 'oa-r2-staged', { nodes: wideNodes() });
     const { id, staged, live } = await stagedPair(w);

@@ -106,7 +106,7 @@ async function baseName(w: FlowWorld, orgId: string) {
   });
 }
 
-describe('第 2 轮：快照按基线（base_version_id）算原值与真实变更集（§4.5）', () => {
+describe('AC-OA-27 第 2 轮：快照按基线（base_version_id）算原值与真实变更集（§4.5）', () => {
   /** a 先有 HRBP；明细改名并把 HRBP 填成原值（填了但没变）。 */
   async function sameHrbp(w: FlowWorld) {
     const hrbp = await w.person(`原HRBP${randomUUID()}`, w.a);
