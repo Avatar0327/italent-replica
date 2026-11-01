@@ -132,10 +132,42 @@ export const decisionSettled = (statusCell) =>
   (startsChecked(statusCell) && checkedPendingItems(statusCell).length === 0) ||
   RELEASED_DECISION_STATUS.has(norm(statusCell));
 
+// F-367 第 2 轮：阻塞列按任务写级别。顶层分段（括号外按、；，分隔）形如“R3-T03（不挡本任务：…）”时，
+// 该段任务对这一行只列为可后补；同一任务在别的分段也出现、或该段另写“开工前”，仍按整行级别（保守）。
+// 标记不含“后续 / 可后补”等字样，不会触发整行放行（整行放行的缺陷另见 F-407）。
+const DEFERRED_SEGMENT = /^(?:R\d-T\d{2}|F-\d{3})(?:\s*\/\s*(?:R\d-)?T\d{2})*\s*[（(]不挡本任务/;
+function topLevelSegments(text) {
+  const segments = [];
+  let depth = 0;
+  let start = 0;
+  for (const match of text.matchAll(/[()（）、；;，,]/g)) {
+    const token = match[0];
+    if (token === '(' || token === '（') depth += 1;
+    else if (token === ')' || token === '）') depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      segments.push(text.slice(start, match.index));
+      start = match.index + 1;
+    }
+  }
+  segments.push(text.slice(start));
+  return segments.map((segment) => segment.trim()).filter(Boolean);
+}
+
+export function deferredTasks(blocks) {
+  const deferred = new Set();
+  const others = new Set();
+  for (const segment of topLevelSegments(blocks)) {
+    const into = DEFERRED_SEGMENT.test(segment) && !/开工前/.test(segment) ? deferred : others;
+    for (const id of taskIds(segment)) into.add(id);
+  }
+  return new Set([...deferred].filter((id) => !others.has(id)));
+}
+
 export function parseEvidence(markdown, file = 'docs/07_M0/03_需取证清单.md') {
   return markdown.split('\n').flatMap((l, index) => {
     if (!/^\| Q-M0-\d+/.test(l)) return [];
     const c = cells(l);
+    const state = evidenceState(c[4], c[5]);
     return [
       {
         id: c[0],
@@ -144,7 +176,9 @@ export function parseEvidence(markdown, file = 'docs/07_M0/03_需取证清单.md
         tasks: taskIds(c[4]),
         file,
         line: index + 1,
-        ...evidenceState(c[4], c[5]),
+        ...state,
+        // ✅ 中有待决子项时一律开工前阻塞，不按任务放宽。
+        deferredTasks: state.pendingItems.length ? new Set() : deferredTasks(c[4]),
       },
     ];
   });
@@ -190,8 +224,9 @@ export function gateReport(evidence, decisions, targets) {
   } else {
     for (const t of targets) {
       const hits = evidence.filter((e) => e.tasks.has(t) && e.st !== '✅');
-      const must = hits.filter((e) => e.level === '开工前');
-      const later = hits.filter((e) => e.level === '可后补');
+      const levelFor = (e) => (e.deferredTasks?.has(t) ? '可后补' : e.level);
+      const must = hits.filter((e) => levelFor(e) === '开工前');
+      const later = hits.filter((e) => levelFor(e) === '可后补');
       out.push(`\n== ${t} ==`);
       if (must.length) {
         blocked = true;
