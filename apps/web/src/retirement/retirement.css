@@ -1,0 +1,56 @@
+.retirement-page {
+  padding: 20px;
+  background: #f5f7fa;
+  min-height: 100%;
+}
+.retirement-page h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.retirement-views {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.retirement-views button {
+  flex: 1;
+  text-align: left;
+  min-height: 56px;
+  padding: 12px 18px;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #303640;
+}
+.retirement-views button[aria-pressed='true'] {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.retirement-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff;
+}
+.retirement-toolbar {
+  margin-bottom: 12px;
+}
+.retirement-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.retirement-note {
+  color: #6b7280;
+  font-size: 12px;
+}
+.retirement-preview {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.retirement-actions {
+  margin-bottom: 12px;
+}
