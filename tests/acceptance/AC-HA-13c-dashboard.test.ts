@@ -75,11 +75,15 @@ async function buildWorld(w: World) {
     retire: await subject('退休', x),
   };
   await installExitSeeds(w.db, w.tenant.id);
-  await w.publishedProcess({ nodes: [{ key: 'mgr', name: '直线经理审批', approver: 'direct_manager' }] });
+  await w.publishedProcess({
+    nodes: [{ key: 'mgr', name: '直线经理审批', approver: { type: 'object_field', value: 'direct_manager' } }],
+  });
   await w.publishedProcess({
     approvalType: 'retirement',
     conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'RetireProcess' }] },
-    nodes: [{ key: 'head', name: '部门负责人审批', approver: 'latest_record_department_head' }],
+    nodes: [
+      { key: 'head', name: '部门负责人审批', approver: { type: 'department', value: 'latest_record_department_head' } },
+    ],
   });
 
   async function submitted(person: Person, to: string, businessDate: string, submitAt: string) {

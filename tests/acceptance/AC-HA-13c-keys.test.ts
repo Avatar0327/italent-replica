@@ -41,11 +41,13 @@ async function buildWorld(w: World) {
   };
   await installExitSeeds(w.db, w.tenant.id);
   // 两个流程都用节点键 mgr，名称不同
-  await w.publishedProcess({ nodes: [{ key: 'mgr', name: '直线经理审批', approver: 'direct_manager' }] });
+  await w.publishedProcess({
+    nodes: [{ key: 'mgr', name: '直线经理审批', approver: { type: 'object_field', value: 'direct_manager' } }],
+  });
   await w.publishedProcess({
     approvalType: 'leave',
     conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'DimissionProcessNew' }] },
-    nodes: [{ key: 'mgr', name: '离职审批节点', approver: 'direct_manager' }],
+    nodes: [{ key: 'mgr', name: '离职审批节点', approver: { type: 'object_field', value: 'direct_manager' } }],
   });
 
   async function approve(view: InstanceView, doneAt: string) {

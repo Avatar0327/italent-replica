@@ -36,7 +36,9 @@ describe('AC-HA-13c 审批类别与业务日期由各业务写入', () => {
   it('调动：类别 = 调动，业务日期 = 生效日期', async () => {
     const w = await approvalWorld(database().db, 'ha13c-transfer');
     const s = await transferScene(w);
-    await w.publishedProcess({ nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }] });
+    await w.publishedProcess({
+      nodes: [{ key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } }],
+    });
     const business = await w.application(s.subject.employeeId, { departmentId: s.to }, { effectiveDate: '2026-10-15' });
     await w.submit(business);
     expect(await stamped(w.db, w.tenant.id, business.id)).toEqual([
@@ -54,7 +56,7 @@ describe('AC-HA-13c 审批类别与业务日期由各业务写入', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate'],
           editableFields: ['lastWorkDate'],
           editMode: 'separate',
