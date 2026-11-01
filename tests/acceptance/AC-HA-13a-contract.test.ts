@@ -315,7 +315,7 @@ describe('AC-HA-13a B55 签署情况按员工去重（F-387）', () => {
     });
   };
 
-  it('F-387：同一员工两份有效合同、期限类型相同 → 该条计 1 人、明细 1 行；类型不同 → 合同类型两条各计 1', async () => {
+  it('AC-HA-13a-08 / F-387：同一员工两份有效合同、期限类型相同 → 该条计 1 人、明细 1 行；类型不同 → 合同类型两条各计 1', async () => {
     const c = boardClient(database().db, x.w.who);
     const picks = [x.dual.multi.id, x.tiePick, x.out.multi.id];
     await c.expectCount(B, 'signByTermType', picks, AS_OF, 'indefinite');
@@ -328,7 +328,7 @@ describe('AC-HA-13a B55 签署情况按员工去重（F-387）', () => {
     expect(company.map((g) => [g.key, g.count, g.ratio])).toEqual([[x.company.id, 4, 1]]);
   });
 
-  it('F-387：组件合计 = 各组人数之和（各维度合计可以不同，均小于有效合同条数 7）', async () => {
+  it('AC-HA-13a-08 / F-387：组件合计 = 各组人数之和（各维度合计可以不同，均小于有效合同条数 7）', async () => {
     const c = boardClient(database().db, x.w.who);
     expect(await values(c)).toEqual([
       ['signByCompany', 4, 4],
@@ -337,7 +337,7 @@ describe('AC-HA-13a B55 签署情况按员工去重（F-387）', () => {
     ]);
   });
 
-  it('F-387：范围裁剪后去重——范围外员工的多份合同不计，范围内仍按人计', async () => {
+  it('AC-HA-13a-08 / F-387：范围裁剪后去重——范围外员工的多份合同不计，范围内仍按人计', async () => {
     const c = boardClient(
       database().db,
       x.w.who,
