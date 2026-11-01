@@ -5,7 +5,7 @@
  * 种子此后永不再动这张单（DEC-477）；要回到干净的演示数据用 pnpm demo:reset，重跑种子不复原被接管的单据。
  */
 import { type Db, sql, withTenant } from '@italent/db';
-import { TRANSFER_FORM_FIELDS } from '@italent/domain';
+import { TRANSFER_FORM_FIELDS, approverSource, type ApproverExpression } from '@italent/domain';
 import { type DemoClock, type Json, listAll } from './client.js';
 import { DEMO_TRANSFER_PROCESS_CODE, type OrgKey } from './data.js';
 import { transferSubjects } from './scale-data.js';
@@ -314,10 +314,10 @@ async function publishTransferProcess(world: DemoWorld): Promise<void> {
   const processes = await listAll(world.call, world.admin, '/api/tenant/approval/processes');
   let process = processes.find((row) => row.code === DEMO_TRANSFER_PROCESS_CODE);
   if (!process) {
-    const node = (key: string, name: string, approver: string) => ({
+    const node = (key: string, name: string, approver: ApproverExpression) => ({
       key,
       name,
-      approver,
+      approver: approverSource(approver),
       formFields: TRANSFER_FORM_FIELDS,
       // 自审回避（DEC-318 K-37）：发起人恰是本节点审批人时跳过本人，转直线经理 / 异常管理员，不自己审自己的单
       actions: { avoidSelf: true },

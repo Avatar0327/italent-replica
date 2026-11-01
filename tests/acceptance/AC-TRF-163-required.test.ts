@@ -281,7 +281,7 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
   it('旧草稿提交重新校验缺失字段，不能绕过升级后的保存规则', async () => {
     const { db } = database();
     const w = await fixture(db, 'trf163-old-draft');
-    await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
+    await w.publishedProcess({ nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }] });
     const created = await w.create({ mode: 'application' });
     expect(created.status).toBe(201);
     const draft = (await created.json()) as { id: string; revision: number };

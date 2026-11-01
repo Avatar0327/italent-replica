@@ -125,7 +125,7 @@ describe('AC-RT-09 审批编辑与编辑并同意', () => {
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['lastWorkDate', 'effectiveDate', 'place'],
           editableFields: ['lastWorkDate', 'place'],
           editMode,

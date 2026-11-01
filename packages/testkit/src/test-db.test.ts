@@ -84,9 +84,10 @@ describe('测试库：全新库 + 迁移 + PG 16 基线特性', () => {
     for (const shim of PRE_UPGRADE_TABLE_SHIMS) {
       const index = journal.entries.findIndex((e) => e.tag.endsWith(`_${shim.migration}`));
       expect(index).toBeGreaterThanOrEqual(0);
+      // 建表迁移是 journal 末条时没有可切的下一条：合并队列总把本分支迁移改号到 main 之后，
+      // 新加的表垫片必然落在这里；改用全量迁移库，照样核对原表保留、再 migrate 不撤除正式表。
       const next = journal.entries[index + 1];
-      expect(next, '切在建表迁移之后').toBeDefined();
-      const handle = await createTestDb({ migrateBefore: next!.tag });
+      const handle = await createTestDb(next ? { migrateBefore: next.tag } : {});
       try {
         const oid = await tableOid(handle, shim.table);
         await handle.migrate();

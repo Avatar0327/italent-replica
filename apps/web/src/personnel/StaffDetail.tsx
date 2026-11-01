@@ -6,21 +6,27 @@ import { ReadPanel } from './ReadPanel.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useRead } from './useRead.js';
+import { EditPersonButton } from './EditCommands.js';
 import { EmploymentRecords, PersonnelProfile } from './ProfileSections.js';
 import { displayValue, type Row } from './model.js';
 import { m } from './messages.js';
 import { EmployeePartTimes } from '../part-time/EmployeePartTimes.js';
 import { m as partTime } from '../part-time/messages.js';
 
-/** actions：业务模块挂在详情顶部的入口（如实习生，FE-R2d3），详情本身不变。 */
+/**
+ * actions：业务模块挂在详情顶部的入口（如实习生，FE-R2d3），详情本身不变。
+ * onSaved：抬头「编辑人员」保存后通知来源页刷新（员工列表的姓名等摘要，第 2 轮 P2-6）。
+ */
 export function StaffDetail({
   employeeId,
   onClose,
   actions,
+  onSaved,
 }: {
   employeeId: string;
   onClose(): void;
   actions?: ReactNode;
+  onSaved?(): void;
 }) {
   const result = useRead<Row>(`/api/tenant/personnel/employees/${encodeURIComponent(employeeId)}`);
   const permission = usePermissions(PERSONNEL_OBJECT);
@@ -31,7 +37,18 @@ export function StaffDetail({
       open
       onClose={onClose}
       title={m.detail}
-      actions={actions}
+      actions={
+        <>
+          <EditPersonButton
+            employeeId={employeeId}
+            saved={() => {
+              result.refresh();
+              onSaved?.();
+            }}
+          />
+          {actions}
+        </>
+      }
       summary={
         <>
           <DecisionNote id="personnel-records" />

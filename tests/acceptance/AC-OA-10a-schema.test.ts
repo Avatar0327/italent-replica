@@ -256,13 +256,25 @@ describe('共享 CHECK 放宽（§2.4）', () => {
     }
   });
 
-  it('审批节点 approver 白名单（单人 / 会签两处）含两个新表达式', async () => {
-    for (const name of ['approval_nodes_approver', 'approval_nodes_approvers']) {
-      const [def] = await definition(name);
-      expect(def, name).toContain("'approval_subject_org_hrbp'");
-      expect(def, name).toContain("'approval_subject_org_head'");
-      expect(def, name).toContain("'assessment_employee'");
-    }
+  it('DEC-697：审批节点单人 / 会签使用 F-318a JSON 来源约束', async () => {
+    // 旧 SQL 枚举由 F-318a 迁移为 JSON 结构；具体来源及类型白名单在 AC-OA-13 双向验收。
+    expect(await definition('approval_nodes_approver')).toEqual([]);
+    const [def] = await definition('approval_nodes_approvers');
+    expect(def).toContain('jsonb_typeof(approver_expression)');
+    expect(def).toContain("'object'");
+    expect(def).toContain('jsonb_typeof(approver_expressions)');
+    expect(def).toContain("'array'");
+    expect(def).toContain('jsonb_array_length(approver_expressions) >= 1');
+    expect(def).toContain('jsonb_array_length(approver_expressions) <= 200');
+    const columns = resultRows<{ column_name: string; data_type: string }>(
+      await testDb().db.execute(sql`SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='approval_process_nodes'
+        AND column_name IN ('approver_expression','approver_expressions') ORDER BY column_name`),
+    );
+    expect(columns).toEqual([
+      { column_name: 'approver_expression', data_type: 'jsonb' },
+      { column_name: 'approver_expressions', data_type: 'jsonb' },
+    ]);
   });
 
   it('变动类型 CHECK（任职记录 / 载荷版本）含 org_adjustment；kind 约束本就含它', async () => {

@@ -30,9 +30,16 @@ const JOINT: NodeInput = {
   key: 'joint',
   name: '调入部门会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
 };
-const FINAL: NodeInput = { key: 'final', name: '调出负责人确认', approver: 'latest_record_department_head' };
+const FINAL: NodeInput = {
+  key: 'final',
+  name: '调出负责人确认',
+  approver: { type: 'department', value: 'latest_record_department_head' },
+};
 const BOTH_EXITS = ['approve', 'disagree'] as const;
 
 const pendingOf = (view: InstanceView) => view.tasks.filter((task) => task.status === 'pending');
@@ -133,7 +140,11 @@ describe('AC-APV-32 会签一人一票（P2-1）', () => {
     const s = await transferScene(w);
     await w.setOrgRoles(s.to, { hrbp: null });
     // 会签 HRBP 一席为空 → 异常管理员（中间节点，DEC-054 / 098）；会签前先过调出负责人。
-    const first: NodeInput = { key: 'out_head', name: '调出负责人审批', approver: 'latest_record_department_head' };
+    const first: NodeInput = {
+      key: 'out_head',
+      name: '调出负责人审批',
+      approver: { type: 'department', value: 'latest_record_department_head' },
+    };
     await w.publishedProcess({ nodes: [first, { ...JOINT, transitionRule: { type: 'all' } }, FINAL] });
     const submitted = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     const before = await w.json<InstanceView>(
@@ -199,7 +210,14 @@ describe('AC-APV-33 「不同意」达标沿不同意连线流转到结束（P2-
     await w.publishedProcess({
       approvalType: 'personnel_change',
       conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-      nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'], exits: BOTH_EXITS }],
+      nodes: [
+        {
+          key: 'head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['school'],
+          exits: BOTH_EXITS,
+        },
+      ],
     });
     const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
     const record = await w.json<{ id: string; revision: number }>(
@@ -243,15 +261,18 @@ describe('AC-APV-34 系统自动结束 / 撤回导致的取消不阻止审批人
       {
         key: 'out_head',
         name: '调出负责人审批',
-        approver: 'latest_record_department_head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
         actions: { retrieve: true },
       },
       {
         ...JOINT,
-        approvers: ['latest_record_department_head', 'record_department_hrbp'],
+        approvers: [
+          { type: 'department', value: 'latest_record_department_head' },
+          { type: 'department', value: 'record_department_hrbp' },
+        ],
         sameAssigneeSkip: true,
       },
-      { key: 'final', name: '调入负责人审批', approver: 'record_department_head' },
+      { key: 'final', name: '调入负责人审批', approver: { type: 'department', value: 'record_department_head' } },
     ];
     const { s, view: submitted } = await started(w, nodes);
     const first = taskOf(submitted, s.outHead.userId, 'pending', 'out_head');
@@ -311,9 +332,20 @@ describe('AC-APV-35 合并席位保留全部候选人（P2-4，DEC-114）', () =
     await w.setOrgRoles(s.from, { head: s.subject.employeeId });
     await w.setOrgRoles(s.to, { head: s.manager.employeeId });
     const nodes: NodeInput[] = [
-      { ...JOINT, approvers: ['latest_record_department_head', 'record_department_head'] },
-      { key: 'again', name: '调入负责人复核', approver: 'record_department_head', sameAssigneeSkip: true },
-      { key: 'final', name: '调入HRBP审核', approver: 'record_department_hrbp' },
+      {
+        ...JOINT,
+        approvers: [
+          { type: 'department', value: 'latest_record_department_head' },
+          { type: 'department', value: 'record_department_head' },
+        ],
+      },
+      {
+        key: 'again',
+        name: '调入负责人复核',
+        approver: { type: 'department', value: 'record_department_head' },
+        sameAssigneeSkip: true,
+      },
+      { key: 'final', name: '调入HRBP审核', approver: { type: 'department', value: 'record_department_hrbp' } },
     ];
     const process = await w.publishedProcess({ nodes });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
