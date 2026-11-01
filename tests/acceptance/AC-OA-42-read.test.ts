@@ -78,6 +78,26 @@ describe('AC-OA-42 预览：调整范围子树 + 增减标记', () => {
   });
 });
 
+describe('AC-OA-42 暂存行不执行：不进预览，但计入明细与分区行数', () => {
+  it('暂存的新建 / 改名不出节点、不改名；明细返回该行，详情分区计数含暂存行', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const staged = (await w.item(view.id, newOrg(w.a, { isStaged: true }))).items.at(-1)!;
+    const stagedRename = (await w.item(view.id, rename(w.a, { isStaged: true }))).items.at(-1)!;
+    const kept = (await w.item(view.id, newOrg(w.a))).items.at(-1)!;
+
+    const nodes = flatten((await r.preview(view.id)).roots);
+    expect(nodes.map((node) => node.itemId).filter(Boolean)).toEqual([kept.id]);
+    expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: null, name: await orgName(w, w.a) });
+    expect(JSON.stringify(nodes)).not.toContain(staged.name!);
+    expect(JSON.stringify(nodes)).not.toContain(stagedRename.name!);
+
+    expect((await r.items(view.id)).items.map((item) => item.id)).toEqual([staged.id, stagedRename.id, kept.id]);
+    expect((await r.detail(view.id)).sections).toEqual({ org: { count: 3, hiddenRowCount: 0 } });
+  });
+});
+
 /** 在 parent 下建一个带行政顺序号的组织（组织模块写入口，与界面同路径）。 */
 async function orgWithSequence(w: ItemsWorld, name: string, parentId: string, sequence: number) {
   const created = await w.json<{ id: string }>(

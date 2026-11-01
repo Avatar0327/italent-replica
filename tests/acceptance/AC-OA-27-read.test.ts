@@ -88,8 +88,14 @@ describe('AC-OA-27 审批人读接口按披露集（§4.5 第二行）', () => {
     expect(items.items[0]).not.toHaveProperty('shortName');
     expect(JSON.stringify(items)).not.toContain('隐藏简称');
 
-    const addedNode = flatten((await r.preview(view.id, approver)).roots).find((node) => node.itemId === addedId);
+    const approverNodes = flatten((await r.preview(view.id, approver)).roots);
+    const addedNode = approverNodes.find((node) => node.itemId === addedId);
     expect(addedNode).toMatchObject({ mark: 'added', name: added.items.at(-1)!.name, masked: [] });
+    // formFields 不含 adjustmentRange：范围展开出的既有节点名称与人数都不披露
+    const rangeNode = approverNodes.find((node) => node.orgId === w.a)!;
+    expect(rangeNode).toMatchObject({ name: null, onDutyCount: null, partTimeCount: null });
+    expect(rangeNode.masked).toEqual(expect.arrayContaining(['name', 'onDutyCount', 'partTimeCount']));
+    expect(JSON.stringify(approverNodes)).not.toContain(await orgName(w, w.a));
 
     await expectError(await r.listRes('', approver), 403, 'FORBIDDEN');
     for (const res of [

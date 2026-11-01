@@ -48,6 +48,23 @@ describe('AC-OA-24 主体组织范围：列表先过滤再分页，详情范围�
     expect((await r.detail(shown.id)).id).toBe(shown.id);
   });
 
+  it('范围外的申请创建最晚（排在最前）→ pageSize=1 仍返回范围内那条，总数不含范围外', async () => {
+    const w = await itemsWorld(testDb().db, 'oa24r');
+    const r = reader(w);
+    const other = await w.org(`主体二${uniqueSuffix()}`);
+    w.setNow('2026-10-01T01:00:00.000Z');
+    const shown = await w.created(w.head());
+    w.setNow('2026-10-02T01:00:00.000Z');
+    const hidden = await w.created(w.head({ approvalSubjectOrgId: other }));
+    w.access.main = only(w.subject);
+
+    const page = await r.list('pageSize=1');
+    expect(page.items.map((row) => row.id)).toEqual([shown.id]);
+    expect(page).toMatchObject({ total: 1, page: 1, pageSize: 1 });
+    expect(JSON.stringify(page)).not.toContain(hidden.id);
+    expect((await r.list('page=2&pageSize=1')).items).toEqual([]);
+  });
+
   it('没有数据范围 → 列表为空（fail-closed）、详情 404；没有对象查看权 → 列表 403、详情 404', async () => {
     const w = await itemsWorld(testDb().db, 'oa24r');
     const r = reader(w);
