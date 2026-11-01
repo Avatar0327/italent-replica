@@ -707,7 +707,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
-    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
   ],
   'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1207,7 +1207,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
   ],
   'apps/api/src/modules/approval/engine.ts#routingFacts': [
-    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
+    'apps/api/src/modules/approval/task-history.ts#withoutRewoundDownstream',
     'packages/domain/src/approval/policies.ts#effectiveHistory',
     'packages/domain/src/approval/policies.ts#previousNodeComparand',
   ],
@@ -2124,7 +2125,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/subjects.ts#unknownSubject': [
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
-  'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrievedApprovals'],
+  'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrieved'],
+  'apps/api/src/modules/approval/task-history.ts#withoutRetrieved': ['#invalidatedByRetrieve'],
+  'apps/api/src/modules/approval/task-history.ts#withoutRewoundDownstream': ['#invalidatedByRetrieve'],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/instance-state.ts#isActiveInstance',
