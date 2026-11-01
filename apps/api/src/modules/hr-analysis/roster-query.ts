@@ -102,7 +102,8 @@ export async function listRoster(
         r.current_employee_status AS employee_status, r.last_work_date::text AS own_last_work_date,
         nx.last_work_date AS next_last_work_date, jl.name AS level_name,
         r.current_fields->>'department_id' AS department_id, r.current_fields->>'place' AS place,
-        r.current_fields->>'employment_type' AS employment_type,
+        (SELECT et.name FROM employment_types et WHERE et.tenant_id=${ctx.tenantId}
+          AND et.id::text=r.current_fields->>'employment_type') AS employment_type,
         r.current_fields->>'employment_form' AS employment_form,
         COALESCE(dmv.name, dm.name) AS direct_manager_name, dmv.work_email AS direct_manager_email,
         pi.has_probation, pi.start_date::text AS probation_start_date, pi.end_date::text AS probation_end_date,

@@ -1,4 +1,5 @@
 import { validateEmploymentForm } from './employment-forms.js';
+import { validateEmploymentType } from './employment-types.js';
 import { sql, type Tx } from '@italent/db';
 import { assertOrg } from '../establishment/org-reader.js';
 import { latestJobObject, type JobRecord } from '../job/read-model.js';
@@ -46,6 +47,7 @@ const JOB_REFERENCES = [
 async function validateTerminatingReferences(tx: Tx, ctx: EmploymentContext, fields: PresetFields): Promise<void> {
   const tenantId = ctx.tenantId;
   await validateEmploymentForm(tx, tenantId, fields.employmentForm);
+  await validateEmploymentType(tx, tenantId, fields.employmentType);
   if (fields.departmentId) {
     const [org] = rowsOf(
       await tx.execute(sql`SELECT 1 FROM org_objects WHERE tenant_id=${tenantId} AND id=${fields.departmentId}::uuid`),
@@ -155,6 +157,7 @@ export async function validateEmploymentReferences(
 ): Promise<void> {
   const tenantId = ctx.tenantId;
   await validateEmploymentForm(tx, tenantId, fields.employmentForm);
+  await validateEmploymentType(tx, tenantId, fields.employmentType);
   if (fields.departmentId) await assertOrg(tx, tenantId, fields.departmentId, effectiveDate);
   const position = fields.positionId
     ? await requiredJob(tx, tenantId, 'positions', fields.positionId, effectiveDate)

@@ -397,6 +397,14 @@ export const MODULE_OBJECTS = {
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
+  // F-323（DEC-706，17 §F-323）：设置 / 员工 / 人员类别租户字典；列表“新建”、详情“编辑 / 停用 / 删除”按原站，
+  // “启用”原站停用视图为空未见到，按对称补齐（🟡）；启停只经两个按钮写，登记为系统字段
+  employmentType: object(
+    'EmploymentType',
+    ['name', 'displayOrder', 'effectiveDate', 'expiryDate'],
+    [...crud, button('disable', 'detail', 'update'), button('enable', 'detail', 'update')],
+    ['enabled'],
+  ),
   // R2 BE-8a 黑名单（B68，差距表“补证结论 R2f”）：无组织字段，数据范围只认看全部；加黑日期 / 来源 / 状态由系统写入。
   // 行内“移出”与工具栏“移出”共用 remove@list（原站是否两个独立权限项未验证）；导入未验证，不登记按钮（后补）。
   blacklist: object(

@@ -285,7 +285,10 @@ export const GRAPH: Graph = {
   'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_ACTION': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
-  'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': ['#EMPLOYMENT'],
+  'apps/api/src/audit/visibility.ts#CONFIG_FIELDS_BY_TYPE': [
+    '#EMPLOYMENT',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
   'apps/api/src/audit/visibility.ts#EMPLOYMENT': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
   'apps/api/src/audit/visibility.ts#ESTABLISHMENT': ['packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS'],
   'apps/api/src/audit/visibility.ts#OBJECT_FIELDS': ['#S360'],
