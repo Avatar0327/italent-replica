@@ -58,8 +58,7 @@ const CORE_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
       {
         role: 'call',
         unit: 'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen',
-        anchor:
-          "await assertCanOpen(tx, { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 }, instance, viewer)",
+        anchor: 'await assertCanOpen(tx, command, instance, viewer)',
       },
       {
         role: 'impl',

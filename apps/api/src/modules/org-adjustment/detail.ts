@@ -12,6 +12,7 @@ import {
   ORG_ADJUSTMENT_STAGED_LABEL,
 } from '@italent/domain';
 import { rowsOf } from '../org/read-model.js';
+import { scopeAllows } from '../permission/module-access.js';
 import { canSee, notFound, orgSectionDisclosed, visibleItems, type Disclosure } from './disclosure.js';
 import { CONTENT_KEYS, loadItems, type OrgItem } from './items-store.js';
 import { loadHead, orgNamesAt, projectHeads } from './queries.js';
@@ -67,6 +68,13 @@ export async function readItems(tx: Tx, tenantId: string, disclosure: Disclosure
   const { items, hiddenRowCount } = visibleItems(disclosure, all);
   const results = await executionResults(tx, tenantId, view.id);
   const parents = await baselineParents(tx, tenantId, items);
+  // 原上级不参与行可见性，但同样按 HR 的组织对象范围复核：范围外的给 null，不带出名称（§4.5，F-339 同类）。
+  const scope = disclosure.orgScope;
+  if (scope) {
+    for (const [versionId, orgId] of parents) {
+      if (orgId && !scopeAllows(scope, { orgId })) parents.set(versionId, null);
+    }
+  }
   const orgIds = items.flatMap((item) => [
     item.targetOrgId,
     item.parentOrgId,

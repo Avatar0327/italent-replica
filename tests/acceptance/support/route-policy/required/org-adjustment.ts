@@ -276,8 +276,7 @@ function reader(path: string, anchor: string): Obligation[] {
         {
           role: 'impl',
           unit: `${DISC}#canOpen`,
-          anchor:
-            "await assertCanOpen(tx, { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 }, instance, viewer)",
+          anchor: 'await assertCanOpen(tx, command, instance, viewer)',
         },
         {
           role: 'impl',

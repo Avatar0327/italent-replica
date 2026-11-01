@@ -93,6 +93,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org-adjustment/queries.ts#orgNamesAt',
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',

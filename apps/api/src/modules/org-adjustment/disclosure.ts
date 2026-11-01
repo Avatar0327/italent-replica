@@ -96,8 +96,9 @@ async function canOpen(tx: Tx, bound: Deps, ctx: TenantContext, instance: Instan
     transferScope: await adminScope('adminTransfer'),
     interveneScope: await adminScope('adminIntervene'),
   };
+  const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
   try {
-    await assertCanOpen(tx, { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 }, instance, viewer);
+    await assertCanOpen(tx, command, instance, viewer);
     return true;
   } catch (error) {
     if (error instanceof AppError && error.code === 'NOT_FOUND') return false;

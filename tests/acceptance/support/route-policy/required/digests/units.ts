@@ -834,7 +834,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
-    canOpen: '2738561c9a61',
+    canOpen: 'a54884c13823',
     hrDisclosure: 'a6cf9fc390e1',
     orgAdjustmentDisclosure: '9ea7662b1ad8',
   },
