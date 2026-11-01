@@ -54,7 +54,8 @@ const list = (items: readonly string[]) =>
     items.map((item) => sql`${item}`),
     sql`, `,
   );
-const WORKING_TYPES = ['internal', 'intern'];
+/** 人事看板与人员流动（BE-13b）共用的“在职口径”雇佣关系：内部员工 + 实习生（外部人员不计）。 */
+export const WORKING_TYPES = ['internal', 'intern'];
 const yearStart = (asOf: string) => `${asOf.slice(0, 4)}-01-01`;
 const monthStart = (asOf: string) => `${asOf.slice(0, 7)}-01`;
 /** asOf 当日结束（次日 0 点，租户时区）：记录时间严格早于它即“asOf 时已知”（同退休视图）。 */
@@ -71,9 +72,9 @@ export const current = (column: string) =>
 
 /**
  * 在职人员的 FROM … WHERE（别名 t / r / snap / s）：人事看板 1、2、20、21 与人员结构分析 / 员工结构报表（BE-13a）共用，
- * 调用方只在 extra 里加雇佣关系等自己的口径。
+ * 调用方只在 extra 里加雇佣关系等自己的口径。asOf 也可以是 SQL 列（人员流动一条语句取多个时点，BE-13b）。
  */
-export function inServiceFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, extra: SQL): SQL {
+export function inServiceFrom(c: { readonly tenantId: string; readonly asOf: string | SQL }, extra: SQL): SQL {
   return sql`FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     ${SNAPSHOT}
@@ -92,9 +93,9 @@ const noWorkStartDate = (c: DashboardAsOf) => sql`(SELECT v.work_date FROM perso
 
 // ---- 入职（3、11、12）：入职类任职记录，已入职 / 待入职的判定就是入职视图自己的谓词 -------------------------------------------
 
-function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
-  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))}
-    FROM employment_records r
+/** 入职类任职记录的 FROM … WHERE（别名 r / t / snap / s）；人员流动的流入（BE-13b）同用，asOf 即期间末日。 */
+export function entriesFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, view: 'hired' | 'all', since?: string): SQL {
+  return sql`FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     ${SNAPSHOT}
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
@@ -105,11 +106,15 @@ function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
           : sql`true`
       }`;
 }
+function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
+  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))} ${entriesFrom(c, view, since)}`;
+}
 
 // ---- 离职 / 退休（4、14、18）：离职视图与退休视图共用的候选集 exitCandidates，一份谓词两种业务 --------------------------------
 
 const CYCLE_JOIN = sql`LEFT JOIN employment_cycles dc ON dc.tenant_id=x.tenant_id AND dc.id=x.staff_id`;
-const exitSource = (kind: 'leave' | 'retirement'): CandidateSource =>
+/** 离职 / 退休候选的来源：带任职周期 dc（雇佣关系、入职日期），人员流动（BE-13b）在此之上加列。 */
+export const exitSource = (kind: 'leave' | 'retirement'): CandidateSource =>
   kind === 'leave'
     ? { ...LEAVE_SOURCE, joins: sql`${SUBMITTED_AT_JOIN} ${CYCLE_JOIN}` }
     : { ...RETIREMENT_SOURCE, joins: sql`${RETIREMENT_SOURCE.joins} ${CYCLE_JOIN}` };

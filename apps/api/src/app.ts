@@ -5,6 +5,7 @@ import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-servi
 import { registerHrDashboardRoutes } from './modules/analytics/hr-dashboard-routes.js';
 import { registerHrStructureRoutes } from './modules/analytics/hr-structure-routes.js';
 import { registerContractBoardRoutes } from './modules/analytics/contract-board-routes.js';
+import { registerHrMovementRoutes } from './modules/analytics/hr-movement-routes.js';
 import { registerOrgAdjustmentRoutes } from './modules/org-adjustment/routes.js';
 import type { Db } from '@italent/db';
 import { sql } from 'drizzle-orm';
@@ -71,6 +72,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerHrDashboardRoutes, // R2-T10 BE-12b 人事分析：人事看板
   registerHrStructureRoutes, // R2-T10 BE-13a 人事分析：人员结构分析、员工结构报表
   registerContractBoardRoutes, // R2-T10 BE-13a 人事分析：合同情况
+  registerHrMovementRoutes, // R2-T10 BE-13b 人事分析：人员流动分析、流动情况报表
   registerOrgAdjustmentRoutes, // R2-T08 组织调整审批（BE-10b1 头字段与调整范围）
 ];
 

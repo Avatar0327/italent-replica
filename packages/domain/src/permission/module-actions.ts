@@ -391,6 +391,10 @@ export const MODULE_OBJECTS = {
   hrStructure: object('HrStructure', [], [button('detail', 'list')]),
   hrStructureReport: object('HrStructureReport', [], [button('detail', 'list')]),
   contractBoard: object('ContractBoard', [], [button('detail', 'list')]),
+  // R2 BE-13b 人事分析 - 人员流动分析（B50）/ 流动情况报表（B54，六个页签同一对象）：同人事看板，只读、无业务字段；
+  // “组件明细”只登记不授予
+  hrMovement: object('HrMovement', [], [button('detail', 'list')]),
+  hrMovementReport: object('HrMovementReport', [], [button('detail', 'list')]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(

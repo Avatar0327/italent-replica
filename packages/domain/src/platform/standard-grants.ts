@@ -42,8 +42,8 @@ export const STANDARD_GRANT_ENTRY = 'permission/standard-profile-grants';
  * 按合并结果统一定为 main + 1 并重算指纹、改写 AC-PLAT-F061-grants 的 HISTORY。这两行请保持单行字面量写法（脚本按行改写）。
  * 本 PR 有意增删的编码写进同目录 standard-grant-changes.json（F-097），守卫测试以分叉点的编码为基线核对实际增删。
  */
-export const STANDARD_GRANT_VERSION = 39;
-export const STANDARD_GRANT_DIGEST = 'cae83cbcf38de49c';
+export const STANDARD_GRANT_VERSION = 40;
+export const STANDARD_GRANT_DIGEST = '283b669639e4c911';
 
 /**
  * 预置“看全部”补装批准清单（D3 = A′，DEC-374②）：看全部属于数据范围扩大，存量租户的标准身份只对**这里明确列出**的目标补，
@@ -89,6 +89,11 @@ export const SEE_ALL_BACKFILL_APPROVED: readonly SeeAllBackfillApproval[] = [
   approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.HrStructureReport', 'DEC-415'),
   approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.ContractBoard', 'DEC-415'),
   approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.ContractBoard', 'DEC-415'),
+  // DEC-415：R2 BE-13b 人员流动分析 / 流动情况报表（组织员工模块）给本模块的预置管理员
+  approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.HrMovement', 'DEC-415'),
+  approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.HrMovement', 'DEC-415'),
+  approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.HrMovementReport', 'DEC-415'),
+  approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.HrMovementReport', 'DEC-415'),
   // R2-T08 BE-10a2、DEC-415：只给两管理员申请单看全部；明细跟随申请单，不设独立范围。
   approve('standard_org_system_admin', 'TenantBase', 'entity', 'TenantBase.OrganizationApproval', 'DEC-415'),
   approve('standard_hr_admin', 'TenantBase', 'entity', 'TenantBase.OrganizationApproval', 'DEC-415'),

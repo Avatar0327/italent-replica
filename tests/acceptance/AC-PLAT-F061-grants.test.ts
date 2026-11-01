@@ -233,6 +233,9 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       // R2 BE-13a：新增只读对象 TenantBase.HrStructure / HrStructureReport / ContractBoard（人员结构分析、员工结构报表、合同情况 查看）
       // 及管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
       39: 'cae83cbcf38de49c',
+      // R2 BE-13b：新增只读对象 TenantBase.HrMovement / HrMovementReport（人员流动分析、流动情况报表 查看）
+      // 及管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
+      40: '283b669639e4c911',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
