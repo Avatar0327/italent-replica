@@ -7234,6 +7234,136 @@
         ]
       }
     },
+    "GET /api/tenant/org-adjustment/adjustments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationApproval:view"
+        ],
+        "scope": [
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/org-adjustment/adjustments/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "or": [
+          "orgAdjustment.disclosure"
+        ],
+        "scope": [
+          "adminScope",
+          "creator scope",
+          "instanceScopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/org-adjustment/adjustments/:id/items/:section": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "or": [
+          "orgAdjustment.disclosure"
+        ],
+        "scope": [
+          "adminScope",
+          "creator scope",
+          "instanceScopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/org-adjustment/adjustments/:id/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "org-adjustment",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "or": [
+          "orgAdjustment.disclosure"
+        ],
+        "scope": [
+          "adminScope",
+          "creator scope",
+          "instanceScopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/org/organizations": {
       "edge": {
         "anonymous": {
