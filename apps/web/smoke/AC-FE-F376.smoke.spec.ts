@@ -36,7 +36,13 @@ async function application(page: Page, from = '/staff') {
   const fixture = await setup(page);
   const created: ReturnType<typeof posted>[] = [];
   const submitted: ReturnType<typeof posted>[] = [];
-  const state = { submitted: false, hold: false, release: undefined as (() => void) | undefined };
+  const state = {
+    submitted: false,
+    hold: false,
+    release: undefined as (() => void) | undefined,
+    holdCreate: false,
+    releaseCreate: undefined as (() => void) | undefined,
+  };
   const receipt = (status: string, revision: number) =>
     business('intern_regularization', {
       id: applicationId,
@@ -48,8 +54,9 @@ async function application(page: Page, from = '/staff') {
       probationEndDate: null,
       ...created.at(-1)?.body,
     });
-  await page.route(`**/employment/employees/${employee}/businesses`, (route) => {
+  await page.route(`**/employment/employees/${employee}/businesses`, async (route) => {
     created.push(posted(route.request()));
+    if (state.holdCreate) await new Promise<void>((resolve) => (state.releaseCreate = resolve));
     fixture.server.employeeRevision = employeeRevision + 1;
     return route.fulfill({ status: 201, json: receipt('draft', 1) });
   });
@@ -127,6 +134,41 @@ test('AC-FE-F376-03 正向：页面仍在时回读返回，照常切到实习转
   await expect(page).toHaveURL(/\/interns\?view=converting$/);
   await expect(page.getByRole('button', { name: '实习转正中', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('cell', { name: '审批中', exact: true })).toBeVisible();
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F376-05 回读在途时页内后退再前进（a→b→a），迟到成功不按旧票据切视图', async ({ page }) => {
+  const { created, submitted, state } = await application(page, '/interns?view=converted');
+  await submitAndHold(page, state);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/interns\?view=converted$/);
+  await expect(page.getByRole('button', { name: '已转正', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.goForward();
+  await expect(page).toHaveURL(/\/interns$/);
+  state.release!();
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect(page).toHaveURL(/\/interns$/);
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F376-06 第一步建草稿在途时页内后退，自动提交第二步后不再切回实习转正中', async ({ page }) => {
+  const { created, submitted, state } = await application(page, '/interns?view=converted');
+  state.holdCreate = true;
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交$/ })
+    .click();
+  await expect.poll(() => !!state.releaseCreate).toBe(true);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/interns\?view=converted$/);
+  await expect(page.getByRole('button', { name: '已转正', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  state.releaseCreate!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/interns\?view=converted$/);
+  await expect(page.getByRole('button', { name: '已转正', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
 });
