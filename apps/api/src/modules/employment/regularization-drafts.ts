@@ -148,12 +148,11 @@ export async function saveRegularizationDraft(
   const before = await draftRow(tx, ctx.tenantId, employeeId, true);
   const revision = before ? Number(before.revision) : 0;
   assertRevision(ctx.expectedRevision, revision);
-  const application = await pendingApplication(tx, ctx.tenantId, employeeId, anchor.staffId);
-  if (application)
+  // 错误里不带单据 ID：前端按冲突重读暂存视图（同一次 GET 给出 applicationId）再进入那张单
+  if (await pendingApplication(tx, ctx.tenantId, employeeId, anchor.staffId))
     throw new AppError('REVISION_CONFLICT', '任职数据已变更，请刷新后显式重提', {
       expected: ctx.expectedRevision,
       actual: revision,
-      applicationId: application,
     });
   const result = input.probationResult
     ? (await requireEnabledProbationEntry(tx, ctx.tenantId, input.probationResult)).code
