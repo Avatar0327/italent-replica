@@ -1,9 +1,11 @@
 import type { Page } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
 import { businessId, openDetail, setup, switchView } from './probation-fixtures.js';
+import { actionButton } from './action-button.js';
 
 // F-347 转正申请服务端暂存（DEC-709 / DEC-713）与草稿修正：恢复只靠服务端，本机存储清空、不可写都不影响
-const named = (name: string) => ({ name: new RegExp(`^${name.split('').join('\\s*')}$`) });
+// 按钮名容许 antd loading 图标残留的前缀（同 action-button.ts）：409 后自动重读期间按钮会短暂 loading
+const named = (name: string) => ({ name: new RegExp(`^(?:loading\\s*)?${name.split('').join('\\s*')}$`) });
 // 按钮处理中带 loading 图标，可访问名前面会多出图标名：暂存按钮只锚定结尾（rf347_1 P3）
 const stageButton = (form: ReturnType<typeof dialog>) => form.getByRole('button', { name: /暂\s*存$/ });
 const dialog = (page: Page, title: string) => page.getByRole('dialog', { name: title, exact: true });
@@ -256,8 +258,9 @@ test('AC-FE-F347-10 暂存 409：重读最新暂存、保留输入，核对后�
   await form.getByLabel('转正日期', { exact: true }).fill('2026-11-20');
   await stageButton(form).click();
   await expect(form).toContainText('版本冲突');
-  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
-  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  // 409 后内核已自动重读，重读按钮的可访问名可能残留 loading 前缀（action-button.ts）；再点一次重读同一视图
+  await actionButton(form, '重读最新版本').click();
+  await actionButton(form, '已核对差异，继续编辑').click();
   await expect(form.getByLabel('转正日期', { exact: true })).toHaveValue('2026-11-20');
   await expect(selected(form)).toHaveText('合成通过');
   await stageButton(form).click();
@@ -280,8 +283,10 @@ test('AC-FE-F347-11 打开后别人建了申请草稿单：暂存 409 不写，�
   await form.getByLabel('转正日期', { exact: true }).fill('2026-11-20');
   server.business = draftOf('pass', 1);
   server.employeeRevision = 5;
+  // 冲突提示会被随后的自动重读、进入申请单很快替换，按 PUT 回执断言 409，不靠瞬时文案
+  const staged = page.waitForResponse((r) => r.url().endsWith(draftPath) && r.request().method() === 'PUT');
   await stageButton(form).click();
-  await expect(form).toContainText('版本冲突');
+  expect((await staged).status()).toBe(409);
   expect(server.temporary).toBeUndefined();
   // 409 后内核自动重读暂存视图：视图带出申请单即进入那张单
   await recovered(form);
@@ -310,7 +315,7 @@ test('AC-FE-F347-12 草稿单 409：重读投影最新全部字段，只改的�
   await form.getByLabel('转正日期', { exact: true }).fill('2026-11-10');
   await form.getByRole('button', named('提交')).click();
   await expect(form).toContainText('版本冲突');
-  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await actionButton(form, '已核对差异，继续编辑').click();
   await expect(form.getByLabel('转正日期', { exact: true })).toHaveValue('2026-11-10');
   await expect(selected(form)).toHaveText('合成延期');
   await form.getByRole('button', named('提交')).click();
