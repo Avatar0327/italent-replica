@@ -246,6 +246,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
+  'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql',
+    'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
+  ],
   'apps/api/src/modules/org-adjustment/range.ts#assertOrgsActive': ['#ORG_INACTIVE', '#inactiveOrgs'],
   'apps/api/src/modules/org-adjustment/range.ts#inactiveOrgs': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org-adjustment/routes.ts#DETAIL': [

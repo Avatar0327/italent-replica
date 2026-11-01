@@ -11,6 +11,8 @@ export interface OrgWriteContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  /** 组织调整执行器调用时带本单 ID，本单的暂停行不拦本单写入（R2-T08 §7.6）。 */
+  readonly orgAdjustmentId?: string;
 }
 
 export interface OrgParentInput {

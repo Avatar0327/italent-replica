@@ -450,6 +450,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/uniqueness.ts#positionBoundaries',
     'apps/api/src/modules/job/validation.ts#invalid',
   ],
+  'apps/api/src/modules/job/write-service.ts#assertOrgNotPaused': [
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
+  ],
   'apps/api/src/modules/job/write-service.ts#createJobObject': [
     'apps/api/src/modules/job/fields.ts#normalizeFields',
     'apps/api/src/modules/job/metadata.ts#jobTables',
@@ -461,6 +464,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/validation.ts#validateJobFields',
     '#appendVersion',
     '#assertFutureHierarchy',
+    '#assertOrgNotPaused',
     '#assertRevision',
   ],
   'apps/api/src/modules/job/write-service.ts#jobRecordInput': ['apps/api/src/modules/job/fields.ts#jobCreationSchema'],
@@ -496,6 +500,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/validation.ts#validateJobFields',
     '#appendVersion',
     '#assertFutureHierarchy',
+    '#assertOrgNotPaused',
     '#assertRevision',
     '#assertTemporalOrder',
     '#lockObject',

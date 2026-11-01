@@ -5386,6 +5386,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/transfer-locks.ts#lockTransferBusiness',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/establishment/employment-check.ts#affectsEstablishmentOccupancy',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/transfer/completion.ts#reconcileCompletion',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -6956,6 +6957,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/transitions.ts#assertDeletionNotPaused': [
+    'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
+  ],
   'apps/api/src/modules/employment/transitions.ts#assertRegularizationSubmittable': [
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
   ],
@@ -6974,6 +6979,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/employee-status.ts#assertRegularizationNotPropagated',
     'apps/api/src/modules/employment/entry-pending-contract.ts#releasePendingContract',
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/exit-restore.ts#restoreAfterExitDeletion',
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
@@ -6981,6 +6987,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
     'apps/api/src/modules/employment/timeline.ts#isDetachedRecord',
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
+    '#assertDeletionNotPaused',
     '#auditDeletedRecord',
     'apps/api/src/modules/employment/write-service.ts#NEW_CYCLE_KINDS',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
@@ -7027,6 +7034,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
     'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/transfer/employee-policy.ts#requireEmployeeTransferBusiness',
     'apps/api/src/modules/transfer/linkage/service.ts#assertTransferLinkageSubmittable',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
@@ -7085,6 +7093,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#checkMaterializedCapacity': [
     'apps/api/src/modules/employment/activation-checks.ts#assertEstablishmentCapacity',
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
   ],
   'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness': [
     'apps/api/src/modules/employment/blacklist.ts#assertNotBlacklisted',
@@ -7237,10 +7247,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/write-service.ts#validatePreparedEmployment': [
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/references.ts#newRecordReporting',
     'apps/api/src/modules/employment/references.ts#validateNewEmploymentReferences',
     'apps/api/src/modules/employment/transfer-linkage.ts#validateTransferSubordinates',
     '#NEW_CYCLE_KINDS',
+    'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#validateTransferReposition': [
