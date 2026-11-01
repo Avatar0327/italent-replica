@@ -48,8 +48,10 @@ export interface FormProps {
   onClose(): void;
   /** 写入与本单回读已确认：关闭表单与详情。 */
   onDone(): void;
-  /** 申请确认后切换视图并独立定位；其他操作刷新当前视图。 */
-  refresh(destination?: ApplicationDestination): Promise<unknown>;
+  /** 写后刷新当前视图（不导航）。 */
+  refresh(): Promise<unknown>;
+  /** 提交开始时领取导航票据：申请确认后切换视图并独立定位；离页或期间已导航则丢弃（F-376）。 */
+  navigation(): (destination: ApplicationDestination) => void;
 }
 const kind = 'intern_regularization';
 
@@ -152,11 +154,12 @@ function submittedReadback(
   };
 }
 
-function useRegularize({ row, application, onDone, refresh, opening, read }: EditorProps) {
+function useRegularize({ row, application, onDone, refresh, navigation, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
   const saved = useInternDraft(employeeId);
   const draft = application ? saved.draft : undefined;
-  const autoSubmit = useRef(false);
+  // 第一步建草稿已确认、待自动提交第二步：携带用户这次显式提交时领的导航票据（F-376 R1 P2-2）
+  const autoSubmit = useRef<Located>(undefined);
   const permissions = usePermissions(object);
   const permission = permissions.snapshot.objects[object];
   const editable = editableFields(formFields, permission);
@@ -178,8 +181,10 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
     !permissions.can('Employment.Create') ||
     (application && (!permission?.dataOperations.update || !permissions.can('Employment.Submit')));
   const body = application ? applicationBody : regularizeBody;
-  const submit = async () => {
+  // 用户显式提交（含重提）领新票；自动提交第二步沿用第一步的票据，贯穿“创建 → 提交”整条链
+  const submit = async (carried?: Located) => {
     if (locked) return;
+    const located = carried ?? navigation();
     setError(undefined);
     try {
       const values = projectFields(draft ? form.getFieldsValue(true) : await form.validateFields(), editable);
@@ -207,13 +212,13 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
       });
       if (!done) return;
       if (created) {
-        autoSubmit.current = true;
+        autoSubmit.current = located;
         saved.put(created);
         return;
       }
       if (application) {
         saved.put();
-        if (destination) void refresh(destination);
+        if (destination) located(destination);
       }
       void message.success(application ? m.success.apply : m.success.regularize);
       onDone();
@@ -224,13 +229,15 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
   };
   // 创建已确认才自动进入第二步；重开页面只恢复同一草稿，由用户显式重提。
   useEffect(() => {
-    if (autoSubmit.current && draft) {
-      autoSubmit.current = false;
-      void submit();
+    const carried = autoSubmit.current;
+    if (carried && draft) {
+      autoSubmit.current = undefined;
+      void submit(carried);
     }
   });
   return { form, baseline, permission, editable, cmd, error, locked, submit, draft, latest, readError, reread };
 }
+type Located = ReturnType<FormProps['navigation']>;
 
 function RegularizeEditor(props: EditorProps) {
   const { row, onClose } = props;

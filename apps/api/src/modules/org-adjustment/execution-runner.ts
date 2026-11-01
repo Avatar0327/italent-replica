@@ -193,6 +193,7 @@ async function recordFailure(run: Run, group: ExecutionGroup, failure: Failure) 
 /**
  * §7.7 可恢复失败：独立短事务累计次数；满 5 次记 EXECUTION_ERROR 并继续后续组，保证暂停能解除。
  * 提交回执丢失时事务可能已落库：计次、写失败之前先在持有 fencing 的同一事务内复读组终态，已完成的结果保留。
+ * 计满与失败收尾同一事务（F-353）：计次回执丢失时组要么未计、要么已终态，下一刻不会再执行第 6 次。
  */
 async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
   const { tenantId } = run.lease;
@@ -211,11 +212,12 @@ async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
         RETURNING attempts`),
     );
     await audit(tx, run, 'group.retry', { groupItemId: group.id, attempts: row!.attempts });
+    if (row!.attempts >= MAX_GROUP_ATTEMPTS)
+      await failGroup(tx, run, group, failed('EXECUTION_ERROR', '多次执行出错，已停止重试'));
     return { attempts: row!.attempts };
   });
   if ('settled' in counted) return counted.settled === 1 ? ('done' as const) : ('failed' as const);
-  if (counted.attempts < MAX_GROUP_ATTEMPTS) return 'retry' as const;
-  return recordFailure(run, group, failed('EXECUTION_ERROR', '多次执行出错，已停止重试'));
+  return counted.attempts < MAX_GROUP_ATTEMPTS ? ('retry' as const) : ('failed' as const);
 }
 
 /** 组内各行都已收尾（exec_phase=2）时取组首行的执行结果；否则 null。 */
