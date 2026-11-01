@@ -71,7 +71,11 @@ test('AC-FE-R2b2-02 已取消不能入职，已入职只读', async ({ page, bas
 
 test('AC-FE-R2b2-03 AC-EN-08 日期自动计算、手改、终止日必填和办理入职', async ({ page, baseURL }) => {
   const state = await entryPage(page, baseURL!);
+  // F-423：法人公司从待入职合同预填（北森同）
+  state.row.contractCompanyId = companyId;
+  await page.reload();
   const dialog = await onboard(page);
+  await expect(item(dialog, '法人公司')).toContainText('合成法人公司');
   for (const title of ['员工信息', '汇报关系', '合同协议', '入职定薪', '社保信息'])
     await expect(dialog.getByRole('heading', { name: title, exact: true })).toBeAttached();
   await expect(dialog.getByRole('button', named('暂存'))).toBeDisabled();

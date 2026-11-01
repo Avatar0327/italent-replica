@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiClient, PageResult } from '../foundation/client.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
-import { completeBody, contractFields, editable, readEntry, type Row } from './model.js';
+import { completeBody, contractFields, contractRequired, editable, readEntry, type Row } from './model.js';
 
 const entryId = '71000000-0000-4000-8000-000000000001';
 const personId = '71000000-0000-4000-8000-000000000002';
@@ -97,6 +97,16 @@ describe('F-423 合同区全空 / 部分填写（锁定现有规则）', () => {
   it('清掉预填公司、合同区全空：提交体不带 contract，任何合同字段都不必填', () => {
     const values = { probation: false, ...blankContract };
     expect(completeBody(values, '2026-10-15', fields)).toEqual({ probation: false });
+    for (const name of contractFields) expect(contractRequired(name, values)).toBe(false);
+  });
+
+  it('只留预填公司：合同类型、期限类型必填；未选固定期限时终止日期不必填', () => {
+    const values = { ...blankContract, companyId };
+    expect(contractRequired('typeId', values)).toBe(true);
+    expect(contractRequired('termType', values)).toBe(true);
+    expect(contractRequired('companyId', values)).toBe(true);
+    expect(contractRequired('endDate', values)).toBe(false);
+    expect(contractRequired('endDate', { ...values, termType: 'fixed' })).toBe(true);
   });
 
   it('保留预填公司并补全：提交体带公司，不带生效日（生效日由后端取入职日）', () => {

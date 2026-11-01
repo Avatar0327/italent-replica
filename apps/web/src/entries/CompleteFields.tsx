@@ -7,7 +7,7 @@ import { TenantDatePicker } from '../foundation/selectors.js';
 import { NameOf, RefSelect, RefLabels, refPaths } from '../contracts/references.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
 import { isBlank, type Values } from '../foundation/forms/values.js';
-import { contractObject, endOfTerm, hasContract } from './model.js';
+import { contractObject, contractRequired, endOfTerm } from './model.js';
 import { m } from './messages.js';
 
 export const readOnly = (label: string, display: ReactNode = '--'): FormField => ({
@@ -153,13 +153,12 @@ function fieldBuilders(data: Values, canEdit: boolean, create: boolean, permissi
   });
   const contract = (name: keyof typeof m.fields, control: ReactNode): FormField => ({
     ...writable(name, control, create && permission.field(name).editable, []),
+    // 预填的法人公司在只读时显示名称而不是 ID（F-423）
+    ...(name === 'companyId' ? { display: <NameOf path={refPaths.companyId} id={data.companyId} /> } : {}),
     rules: [
       ({ getFieldsValue }) => ({
         validator: async (_, value) => {
-          const values = getFieldsValue();
-          const needed =
-            ['companyId', 'typeId', 'termType'].includes(name) || (name === 'endDate' && values.termType === 'fixed');
-          if (hasContract(values) && needed && isBlank(value)) throw new Error(m.required);
+          if (contractRequired(name, getFieldsValue()) && isBlank(value)) throw new Error(m.required);
         },
       }),
     ],

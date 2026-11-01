@@ -23,6 +23,8 @@ export const initialEntry = {
   revision: 4,
   probation: null as boolean | null,
   cancelRemark: null as string | null,
+  // 待入职合同公司（entry-views.ts contractCompanyId）；手工添加的待入职为 null
+  contractCompanyId: null as string | null,
   employType: 'internal',
 };
 export const entryFields = ['effectiveDate', 'departmentId', 'employType'];
