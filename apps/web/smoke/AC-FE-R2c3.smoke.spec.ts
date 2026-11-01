@@ -563,7 +563,8 @@ test('AC-FE-R2c3-12 P2-3 申请第二步结果未知：关闭重开仍是同一�
   });
   await dialog(page).getByRole('button', { name: '回查原单', exact: true }).click();
   await expect.poll(() => reads.length).toBeGreaterThan(0);
-  expect(reads).toContain(`/api/tenant/employment/businesses/${draftId}`);
+  // 回查原单读退休详情契约（GET /retirements/:id，含核对字段），不是员工
+  expect(reads).toContain(`/api/tenant/employment/retirements/${draftId}`);
   expect(reads.some((path) => path.endsWith(`/employees/${employee}`))).toBe(false);
   expect([creates(), submits]).toEqual([1, 1]);
 });

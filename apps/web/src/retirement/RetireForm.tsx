@@ -1,5 +1,5 @@
 import { Alert, Button, Checkbox, Descriptions, Form, Modal, Space, message } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefSelect } from '../contracts/references.js';
 import { newCommand, rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -11,11 +11,11 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import type { Latest } from '../foundation/forms/store.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
-import { useApiClient } from '../foundation/Session.js';
-import { type ApplicationDraft, employeePath, useEmployeeRead, useInternDraft } from '../intern/commands.js';
+import { employeePath, useEmployeeRead } from '../intern/commands.js';
 import { useDirectApi } from '../part-time/direct-api.js';
 import { refPaths } from '../part-time/references.js';
 import { useRetireCommand } from './commands.js';
+import { draftFields, type RetireDraft, type RetireDrafts, useRetireDraft } from './draft.js';
 import { m } from './messages.js';
 import {
   acceptRetirement,
@@ -53,10 +53,15 @@ const opening = (): Values => ({
 /** 退休办理（B22，含职责转交区）与退休申请（B23，无职责转交区）共用：先预览，再以同一命令上下文提交。 */
 export function RetireForm(props: FormProps) {
   const read = useEmployeeRead(props.row.employeeId!, opening, false);
-  const title = props.mode === 'direct' ? m.entries.retire : m.entries.apply;
+  const drafts = useRetireDraft(props.row.employeeId!);
+  const application = props.mode === 'application';
+  const { resume } = drafts;
+  // 申请先经草稿入口接续：缓存的草稿读到仍可提交才接续，否则清掉、读员工走新建
+  const start = useCallback(() => (application ? resume(read) : read()), [application, resume, read]);
+  const title = application ? m.entries.apply : m.entries.retire;
   return (
-    <WithOpening read={read} title={title} onClose={props.onClose}>
-      {(latest) => <RetireEditor {...props} opening={latest} read={read} />}
+    <WithOpening read={start} title={title} onClose={props.onClose}>
+      {(latest) => <RetireEditor {...props} opening={latest} read={read} drafts={drafts} />}
     </WithOpening>
   );
 }
@@ -88,8 +93,8 @@ function usePreview(employeeId: string) {
   return { preview, error, loading, run };
 }
 
-type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest> };
-type Draft = ApplicationDraft;
+type EditorProps = FormProps & { opening: Latest; read(): Promise<Latest>; drafts: RetireDrafts };
+type Draft = RetireDraft;
 /**
  * 新建（POST /retirements/employees/:id，If-Match = 员工 revision）或申请第二步提交草稿（If-Match = 草稿 revision）。
  * 回执按 EmploymentBusiness 核对；申请新建只建草稿，草稿 id / revision 交 onCreated 进入第二步。
@@ -129,34 +134,21 @@ function useEditable(mode: FormProps['mode']) {
   return { permission, editable, writable: may('lastWorkDate') };
 }
 
-/**
- * 申请第二步的最新版本读真实草稿（GET /businesses/:id），revision 取服务端值，冲突重提与“回查原单”都对草稿。
- * 恢复槽仍是员工（slotKey 稳定），返回 id 用员工 id；第二步只发空请求体，不比较字段（values 为空）。
- */
-function useDraftRead(employeeId: string, draft: Draft | undefined, read: () => Promise<Latest>) {
-  const api = useApiClient();
-  return async (): Promise<Latest> => {
-    if (!draft) return read();
-    const latest = await api.request<Values>(slotKey(businesses, draft.id));
-    if (latest.id !== draft.id || latest.employeeId !== employeeId || !Number.isSafeInteger(latest.revision))
-      throw new Error(m.invalidReceipt);
-    return { id: employeeId, revision: Number(latest.revision), values: {} };
-  };
-}
-
-function useRetire({ row, mode, onDone, refresh, opening, read }: EditorProps, editable: string[], writable: boolean) {
+function useRetire(props: EditorProps, editable: string[], writable: boolean) {
+  const { row, mode, onDone, refresh, opening, read, drafts } = props;
   const employeeId = row.employeeId!;
   const [form] = Form.useForm();
   // 申请两步：草稿创建确认后，同一恢复槽、同一动作按草稿 revision 自动提交（结构同 intern RegularizeForm）；
-  // 草稿存页面层（InternCommands），关闭重开仍接同一草稿，第二步失败不重建（第 2 轮 P2-3）
-  const saved = useInternDraft(employeeId);
-  const draft = mode === 'application' ? saved.draft : undefined;
-  const [baseline] = useState(() => draft?.values ?? opening.values);
+  // 草稿的接续 / 重读 / 清理只经 useRetireDraft（第 3 轮，DEC-431①），关闭重开仍接同一草稿，第二步失败不重建
+  const draft = mode === 'application' ? drafts.draft : undefined;
+  const baseline = draft?.values ?? opening.values;
   const autoSubmit = useRef(false);
   const revision = draft?.revision ?? opening.revision;
-  const target = { id: employeeId, revision, baseline, read: useDraftRead(employeeId, draft, read) };
+  // 第二步重读真实草稿（GET /retirements/:id）：revision 与核对字段都取服务端当前值
+  const target = { id: employeeId, revision, baseline, read: draft ? drafts.read : read };
   const cmd = useRetireCommand(retireSlot, target, mode, refresh);
-  useDraftRefill(cmd.form, editable, form);
+  // 第二步不写字段：写入字段集为空，冲突重读后表单整份回填为最新只读值（核对字段另传给内核）
+  useDraftRefill(cmd.form, draft ? [] : editable, form);
   const previewing = usePreview(employeeId);
   const lastWorkDate = Form.useWatch('lastWorkDate', form) as string | null | undefined;
   const preview = previewing.preview?.lastWorkDate === lastWorkDate ? previewing.preview : undefined;
@@ -168,17 +160,20 @@ function useRetire({ row, mode, onDone, refresh, opening, read }: EditorProps, e
     if (locked || !ready) return;
     setError(undefined);
     try {
-      const values = draft ? {} : projectFields(await form.validateFields(), editable);
+      // 第二步：核对字段取表单当前值（冲突后已回填为最新），只用于差异比较，请求体仍为空
+      const values = draft
+        ? projectFields(form.getFieldsValue(true) as Values, draftFields)
+        : projectFields(await form.validateFields(), editable);
       let created: Draft | undefined;
       const send = retireSend(row, mode, draft, (next) => (created = { ...next, values }));
       // 预览令牌作为初始确认项随单提交（两种办理方式新建时都核令牌，exit-gate.ts createConditions）
       const ack = (preview?.data.ack as { ackToken?: string } | null | undefined)?.ackToken;
-      if (!(await cmd.submit(values, draft ? [] : editable, send, draft ? {} : { ack }))) return;
+      if (!(await cmd.submit(values, draft ? draftFields : editable, send, draft ? {} : { ack }))) return;
       if (created) {
         autoSubmit.current = true;
-        return saved.put(created);
+        return drafts.created(created);
       }
-      if (draft) saved.put();
+      if (draft) drafts.settle(draft.id);
       void message.success(m.success[mode === 'direct' ? 'retire' : 'apply']);
       onDone();
     } catch (cause) {

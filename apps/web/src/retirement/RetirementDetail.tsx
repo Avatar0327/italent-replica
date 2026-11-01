@@ -11,6 +11,7 @@ import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
 import { ConfirmAction, useRetireCommand } from './commands.js';
+import { useRetireDraft } from './draft.js';
 import { IntentionForm } from './IntentionForm.js';
 import { m } from './messages.js';
 import {
@@ -193,6 +194,7 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
     read: async () => ({ ...(await read()), id: row.employeeId! }),
   };
   const cmd = useRetireCommand(retireSlot, target, `${action}/${id}`, refresh);
+  const drafts = useRetireDraft(row.employeeId!);
   const [reason, setReason] = useState<string>();
   const run = async () => {
     try {
@@ -209,6 +211,8 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
         },
       });
       if (!done) return;
+      // 同一单据已在详情处理并确认：员工入口不再把它当草稿接续（第 3 轮 P2-R2-2）
+      drafts.settle(id);
       setReason(undefined);
       if (action === 'cancel') onReceipt(downstream);
       void message.success(m.success[action]);
