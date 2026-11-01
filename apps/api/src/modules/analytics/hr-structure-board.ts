@@ -240,21 +240,48 @@ export function structureReport(code: HrStructureReportCode, people: readonly Pe
   };
 }
 
-/** 看板级 / 报表筛选：任职机构、任职部门（含下级）、职务序列、用工形式、人员类别；数字与明细都先过这一步。 */
+/**
+ * 看板级 / 报表筛选：任职机构、任职部门、职务序列、用工形式、人员类别；数字与明细都先过这一步（看板与报表共用，DEC-385③）。
+ * 任职机构 / 任职部门各有一个“包含下级”开关，缺省 = 勾选（规格 35 B49「F-437 补」）。
+ */
 export interface StructureFilter {
   readonly institutionId?: string;
+  readonly institutionIncludeChildren?: boolean;
   readonly departmentId?: string;
+  readonly departmentIncludeChildren?: boolean;
   readonly sequenceId?: string;
   readonly employmentForm?: string;
   readonly employmentType?: string;
 }
 
+type Match = (p: Person) => boolean;
+const ANY: Match = () => true;
+const NOBODY: Match = () => false;
+
+/**
+ * 任职机构按员工的任职机构（最近的机构类型上级，与 6.04 同源）匹配；含下级时从员工的任职机构往上找，不从任职部门找，
+ * 否则部门节点会匹配到它下面的人。所选节点本身不是任职机构（部门类型节点）时空集、不报错（规格 35 B49「F-437 补」）。
+ */
+function institutionMatch(tree: OrgTree, id: string | undefined, includeChildren = true): Match {
+  if (!id) return ANY;
+  if (tree.institution(id) !== id) return NOBODY;
+  return includeChildren
+    ? (p) => tree.chain(tree.institution(p.departmentId)).includes(id)
+    : (p) => tree.institution(p.departmentId) === id;
+}
+function departmentMatch(tree: OrgTree, id: string | undefined, includeChildren = true): Match {
+  if (!id) return ANY;
+  return includeChildren ? (p) => tree.chain(p.departmentId).includes(id) : (p) => p.departmentId === id;
+}
+
 export function filterPeople(people: readonly Person[], filter: StructureFilter, tree: OrgTree): Person[] {
   const f = filter;
+  const institution = institutionMatch(tree, f.institutionId, f.institutionIncludeChildren);
+  const department = departmentMatch(tree, f.departmentId, f.departmentIncludeChildren);
   return people.filter(
     (p) =>
-      (!f.institutionId || tree.institution(p.departmentId) === f.institutionId) &&
-      (!f.departmentId || tree.chain(p.departmentId).includes(f.departmentId)) &&
+      institution(p) &&
+      department(p) &&
       (!f.sequenceId || p.sequenceId === f.sequenceId) &&
       (!f.employmentForm || p.employmentForm === f.employmentForm) &&
       (!f.employmentType || p.employmentType === f.employmentType),
