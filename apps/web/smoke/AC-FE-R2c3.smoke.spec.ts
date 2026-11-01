@@ -742,3 +742,144 @@ test('复核-已保存草稿从详情提交并撤销后，员工申请入口应�
     .click();
   await expect.poll(creates).toBe(2);
 });
+
+/** 新建草稿后第二步被明确拒绝（403），关闭弹窗与人员详情：草稿引用留在页面层。返回第二步提交记录。 */
+async function rejectedDraft(page: Page, server: Server, extra?: () => Record<string, unknown>) {
+  const creates = await draftCreation(page, server, extra);
+  const sent: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    sent.push(posted(route.request()));
+    if (sent.length === 1)
+      return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '合成临时拒绝' } } });
+    return route.fallback();
+  });
+  await enter(page, '退休申请');
+  await previewWith(page, '2026-11-29');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(dialog(page).getByText('合成临时拒绝')).toBeVisible();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.locator('.ant-drawer-close').last().click();
+  return { creates, sent };
+}
+const draftHint = (page: Page) => dialog(page).getByText(/申请已保存，继续提交同一申请/);
+const confirmTip = (page: Page) =>
+  page
+    .getByRole('tooltip')
+    .getByRole('button', { name: /确\s*定/ })
+    .click();
+
+test('复核-已保存草稿从详情提交并撤回后，员工申请入口应继续原单', async ({ page }) => {
+  const { server } = await setup(page);
+  // 后注册的路由先匹配：详情提交（第 2 次）进审批中，员工入口再提交（第 3 次）进审批中
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    server.billRevision += 1;
+    server.views.all = [bill('in_review', { id: draftId, mode: 'application', revision: server.billRevision })];
+    const json = business({ id: draftId, mode: 'application', status: 'in_review', revision: server.billRevision });
+    return route.fulfill({ json });
+  });
+  await page.route(`**/employment/retirements/${draftId}/withdraw`, (route) => {
+    // transitions.ts：withdraw → draft，revision 前进
+    server.billRevision = 3;
+    server.views.all = [bill('draft', { id: draftId, mode: 'application', revision: 3 })];
+    return route.fulfill({ json: business({ id: draftId, mode: 'application', status: 'draft', revision: 3 }) });
+  });
+  const { creates, sent } = await rejectedDraft(page, server);
+  const drawer = page.locator('.ant-drawer');
+  await openRow(page, 'all');
+  await drawer.getByRole('button', { name: /提\s*交/ }).click();
+  await confirmTip(page);
+  await expect(page.getByText('已提交', { exact: true })).toBeVisible();
+  await drawer.getByRole('button', { name: /撤\s*回/ }).click();
+  await confirmTip(page);
+  await expect(page.getByText('已撤回', { exact: true })).toBeVisible();
+  await page.locator('.ant-drawer-close').last().click();
+  // 回到员工入口：撤回后的草稿仍可提交，接续同一张单，按撤回后的 revision 显式提交
+  await enter(page, '退休申请');
+  await expect(draftHint(page)).toHaveCount(1);
+  await expect(dialog(page).getByRole('button', { name: /预\s*览/ })).toBeDisabled();
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(page.getByText('退休申请提交成功')).toBeVisible();
+  expect(sent.map((item) => [item.body, item.ifMatch])).toEqual([
+    [{}, '1'],
+    [{}, '1'],
+    [{}, '3'],
+  ]);
+  expect(creates()).toBe(1);
+});
+
+for (const status of ['in_review', 'approved']) {
+  test(`复核-草稿已在别处进入 ${status} 后，员工入口走新建且无草稿提示`, async ({ page }) => {
+    const { server } = await setup(page);
+    const { creates } = await rejectedDraft(page, server);
+    // 另一会话已提交（及审批）：草稿详情读到的状态已不可接续
+    server.billRevision = 3;
+    server.views.all = [bill(status, { id: draftId, mode: 'application', revision: 3 })];
+    await enter(page, '退休申请');
+    await expect(dialog(page).getByRole('button', { name: /预\s*览/ })).toBeEnabled();
+    await expect(draftHint(page)).toHaveCount(0);
+    await previewWith(page, '2026-11-29');
+    await dialog(page)
+      .getByRole('button', { name: /提\s*交/ })
+      .click();
+    await expect.poll(creates).toBe(2);
+  });
+}
+
+test('复核-草稿详情读取 503：可重试报错，不新建、不清草稿，重试后接续', async ({ page }) => {
+  const { server } = await setup(page);
+  const { creates, sent } = await rejectedDraft(page, server);
+  let failing = true;
+  await page.route(`**/employment/retirements/${draftId}`, (route) =>
+    failing
+      ? route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '合成暂不可用' } } })
+      : route.fallback(),
+  );
+  const reads: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET') reads.push(new URL(request.url()).pathname);
+  });
+  await enter(page, '退休申请');
+  const retry = dialog(page).getByRole('button', { name: '重新加载', exact: true });
+  await expect(retry).toBeVisible();
+  await expect(draftHint(page)).toHaveCount(0);
+  await expect(dialog(page).getByRole('button', { name: /预\s*览/ })).toHaveCount(0);
+  // 读失败不猜草稿去向：没有回落去读任职员工（新建的打开基线）；人员详情读的是 personnel 路径
+  expect(reads).toContain(`/api/tenant/employment/retirements/${draftId}`);
+  expect(reads).not.toContain(`/api/tenant/employment/employees/${employee}`);
+  failing = false;
+  await retry.click();
+  await expect(draftHint(page)).toHaveCount(1);
+  expect([creates(), sent.length]).toEqual([1, 1]);
+});
+
+test('复核-另一会话改了交接人后重开：接续同一草稿，按新 revision 空体提交', async ({ page }) => {
+  const { server } = await setup(page);
+  let handover = receiver;
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    server.billRevision = 3;
+    server.views.all = [bill('in_review', { id: draftId, mode: 'application', revision: 3 })];
+    return route.fulfill({ json: business({ id: draftId, mode: 'application', status: 'in_review', revision: 3 }) });
+  });
+  const { creates, sent } = await rejectedDraft(page, server, () => ({ handoverEmployeeId: handover }));
+  // 另一会话经 PATCH /retirements/:id 把交接人改成乙，单据 revision 前进
+  handover = subordinate;
+  server.billRevision = 2;
+  await enter(page, '退休申请');
+  await expect(draftHint(page)).toHaveCount(1);
+  await expect(dialog(page).locator('form')).toContainText('合成下属');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(page.getByText('退休申请提交成功')).toBeVisible();
+  expect(sent.map((item) => [item.body, item.ifMatch])).toEqual([
+    [{}, '1'],
+    [{}, '2'],
+  ]);
+  expect(creates()).toBe(1);
+});
