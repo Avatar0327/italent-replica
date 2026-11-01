@@ -153,8 +153,8 @@ export async function menuWorld(db: Db, label: string, today = MENU_TODAY) {
     return { status: response.status, code: body.error?.code, reason: body.error?.details?.reason };
   }
 
-  /** 只看得到 personIds 这些人的转交记录 / 菜单（DT-R9）；其余对象看全部。 */
-  function scopedRequest(personIds: readonly string[]) {
+  /** 只看得到 personIds 这些人的转交记录 / 菜单（DT-R9）；其余对象看全部。hidden：本对象看不到的字段。 */
+  function scopedRequest(personIds: readonly string[], hidden: readonly string[] = []) {
     const authorize: Authorizer = () => true;
     const all: ModuleScope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
     const limited: ModuleScope = {
@@ -166,7 +166,8 @@ export async function menuWorld(db: Db, label: string, today = MENU_TODAY) {
     registerScopeProvider(authorize, {
       scope: async (query) => (query.objectCode === MENU_OBJECT ? limited : all),
       authorize: async () => true,
-      fields: async (_tenant, _user, objectCode) => new Set(everyField(objectCode)),
+      fields: async (_tenant, _user, objectCode) =>
+        new Set(everyField(objectCode).filter((field) => objectCode !== MENU_OBJECT || !hidden.includes(field))),
     });
     const scoped = tenantApi(db, { authorize, clock: () => new Date(nowIso) });
     return (method: string, path: string, init: Parameters<typeof scoped.request>[2] = {}) =>

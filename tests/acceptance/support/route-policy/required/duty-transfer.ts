@@ -2,7 +2,8 @@
  * 必需项表：职责转交菜单（modules/duty-transfer/routes.ts，R2-T09a；DEC-602② / DEC-726）。对象操作经
  * module-route-access.objectContext（对象 TenantBase.DutyTransferCommon）；按钮经 button；写入字段权经 writeFields。
  * 单人入口的被转交人经 requireVisiblePerson 按同一对象的数据范围判定（守卫 dutyTransfer.person，范围外与不存在同为 404）；
- * 提交在命令事务内按当前范围复核（runCommand 的 before / replayed）。两个列表在 SQL 内叠加范围谓词（requestScope + scopeSql）。
+ * 提交在命令事务内按当前范围复核（runCommand 的 before / replayed）；
+ * 接收人同样按该范围判定（requireVisibleReceivers）。两个列表在 SQL 内叠加范围谓词（requestScope + scopeSql）。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -103,11 +104,7 @@ export const DUTY_TRANSFER: RequiredTable = {
       ],
     },
     setReceiver(PEOPLE),
-    person(
-      'POST',
-      PEOPLE,
-      'requireVisiblePerson(tx, ctx.tenantId, await scopeInTransaction(tx, deps, ctx), employeeId)',
-    ),
+    person('POST', PEOPLE, 'await requireVisiblePerson(tx, ctx.tenantId, scope, employeeId)'),
   ],
   [`GET ${BASE}/records`]: [view(`${BASE}/records`)],
   [`GET ${BASE}/departed`]: [view(`${BASE}/departed`)],

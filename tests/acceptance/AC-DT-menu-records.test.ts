@@ -12,7 +12,7 @@ const LATER = '2026-10-20';
 
 const people = (items: readonly RecordView[]) => items.map((row) => row.employeeId);
 
-describe('转交记录', () => {
+describe('转交记录（DEC-726 三页签）', () => {
   it('全部 / 待生效 / 已完成三页签与被转交人、状态、来源筛选；全部页签含离职内转交（来源 = 离职）', async () => {
     const x = await menuWorld(database().db, 'tabs');
     await x.setHead(x.from.id, x.employee.id);
@@ -87,7 +87,73 @@ describe('转交记录', () => {
   });
 });
 
-describe('检查离职退休人员', () => {
+describe('字段权限（DT-R9，DEC-726）', () => {
+  it('看不到接收人 / 转交日期字段时：菜单回填与转交记录都不带出，生效提示（含日期）也不给', async () => {
+    const x = await menuWorld(database().db, 'fields');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const receiver = await x.peer('接收人');
+    await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [subordinateItem(subordinate.id, receiver.id)],
+    });
+    expect((await x.duties(x.employee.id)).hint).toContain(LATER);
+
+    const scoped = x.scopedRequest([x.employee.id], ['receiverId', 'transferDate']);
+    const menu = await scoped('GET', `/people/${x.employee.id}/duties`);
+    expect(menu.status).toBe(200);
+    const filled = (await menu.json()) as { hint: string | null; items: { pending: Record<string, unknown> | null }[] };
+    expect(filled.hint).toBeNull();
+    expect(filled.items[0]!.pending).not.toBeNull();
+    expect(Object.keys(filled.items[0]!.pending!).sort()).toEqual(['recordId', 'revision']);
+    const listed = await scoped('GET', '/records?tab=pending');
+    const [row] = ((await listed.json()) as { items: Record<string, unknown>[] }).items;
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty('receiverId');
+    expect(row).not.toHaveProperty('transferDate');
+  });
+});
+
+describe('接收人范围（DT-R9，DEC-726）', () => {
+  it('接收人须在操作人的人员范围内：范围外与不存在同一 400，确认信息不带出姓名，提交不改写', async () => {
+    const x = await menuWorld(database().db, 'receiver-scope');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const outside = await x.peer('范围外接收人');
+    const inside = await x.peer('范围内接收人');
+    const ghost = '00000000-0000-4000-8000-0000000000aa';
+    const scoped = x.scopedRequest([x.employee.id, inside.id]);
+    const body = (receiverId: string) => ({
+      timing: 'immediate',
+      items: [subordinateItem(subordinate.id, receiverId)],
+    });
+
+    const errorOf = async (response: Response) => {
+      const text = await response.text();
+      expect(text).not.toContain('范围外接收人');
+      const { error } = JSON.parse(text) as { error: { code: string; message: string; details?: { reason?: string } } };
+      return [response.status, error.code, error.message, error.details?.reason];
+    };
+    const checkOutside = await errorOf(
+      await scoped('POST', `/people/${x.employee.id}/check`, { body: body(outside.id) }),
+    );
+    expect(checkOutside[0]).toBe(400);
+    expect(checkOutside[3]).toBe('TRANSFER_PERSON_NOT_ELIGIBLE');
+    expect(await errorOf(await scoped('POST', `/people/${x.employee.id}/check`, { body: body(ghost) }))).toEqual(
+      checkOutside,
+    );
+    const submitOutside = await scoped('POST', `/people/${x.employee.id}`, { ifMatch: 0, body: body(outside.id) });
+    expect(await errorOf(submitOutside)).toEqual(checkOutside);
+    expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
+
+    const ok = await scoped('POST', `/people/${x.employee.id}/check`, { body: body(inside.id) });
+    expect(ok.status).toBe(200);
+    const accepted = await scoped('POST', `/people/${x.employee.id}`, { ifMatch: 0, body: body(inside.id) });
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    expect(await x.managerOf(subordinate.id)).toBe(inside.id);
+  });
+});
+
+describe('检查离职退休人员（DEC-726）', () => {
   it('只列最近 3 个月内离职或退休且仍承担职责的人；补转交后不再出现', async () => {
     const x = await menuWorld(database().db, 'departed', '2027-01-15');
     const recent = await x.peer('近期离职');

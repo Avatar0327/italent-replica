@@ -91,22 +91,43 @@ async function requireVisiblePerson(tx: Tx, tenantId: string, scope: ModuleScope
   if (!(await personVisible(tx, tenantId, scope, employeeId))) throw new AppError('NOT_FOUND', '员工不存在');
 }
 
+/**
+ * 接收人须在操作人本对象的人员范围内（引用 ID 先校验存在性与范围）：范围外与不存在同一个 400，
+ * 确认信息因此不会带出范围外人员的姓名。原站选人控件的范围未取证，按最保守口径（见 PR 描述“未决”）。
+ */
+async function requireVisibleReceivers(tx: Tx, tenantId: string, scope: ModuleScope, input: MenuSubmitInput) {
+  const ids = [...new Set(input.items.flatMap((item) => (item.receiverId ? [item.receiverId] : [])))];
+  for (const id of ids)
+    if (!(await personVisible(tx, tenantId, scope, id)))
+      throw new AppError('VALIDATION_FAILED', '接收人不存在或不在权限范围内', {
+        reason: 'TRANSFER_PERSON_NOT_ELIGIBLE',
+      });
+}
+
 /** 命令事务内按当前权限重解析范围（不沿用入口的旧范围）。 */
 async function scopeInTransaction(tx: Tx, deps: TenantRouteDeps, ctx: ScopeBusinessContext) {
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   return resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
 }
 
-/** 只裁对象字段（DUTY_TRANSFER_FIELDS）；id、failure 是记录标识与执行回执，不是可配置字段。 */
-async function trimRecords(deps: TenantRouteDeps, ctx: ScopeBusinessContext, rows: readonly DutyRecordView[]) {
+/** 当前操作人看不到的对象字段（DUTY_TRANSFER_FIELDS）；undefined = 不按字段裁剪。 */
+async function hiddenFields(deps: TenantRouteDeps, ctx: ScopeBusinessContext) {
   const fields = await getModuleViewableFields(deps, ctx, OBJECT);
-  if (fields === undefined) return rows;
-  const hidden = DUTY_TRANSFER_FIELDS.filter((field) => !fields.has(field));
-  return rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !hidden.includes(key as never))));
+  return fields === undefined ? new Set<string>() : new Set(DUTY_TRANSFER_FIELDS.filter((f) => !fields.has(f)));
 }
 
-/** 菜单回填：被转交人当前职责，逐条带上未完成的转交（再次选同一被转交人时回填接收人与日期）。 */
-async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: string) {
+/** 只裁对象字段；id、failure 是记录标识与执行回执，不是可配置字段。 */
+async function trimRecords(deps: TenantRouteDeps, ctx: ScopeBusinessContext, rows: readonly DutyRecordView[]) {
+  const hidden = await hiddenFields(deps, ctx);
+  if (!hidden.size) return rows;
+  return rows.map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !hidden.has(key))));
+}
+
+/**
+ * 菜单回填：被转交人当前职责，逐条带上未完成的转交（再次选同一被转交人时回填接收人与日期）。
+ * 回填的接收人 / 转交日期是本对象字段，按字段权限裁剪；看不到转交日期时提示文案也不给（文案里带日期）。
+ */
+async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: string, hidden: ReadonlySet<string>) {
   const duties = await currentDuties(tx, tenantId, employeeId, today);
   const pending = await pendingRecords(tx, tenantId, employeeId);
   const items = duties.map(({ holderId: _holder, ...duty }) => {
@@ -114,13 +135,13 @@ async function dutyMenu(tx: Tx, tenantId: string, employeeId: string, today: str
     const fill = record && {
       recordId: record.id,
       revision: record.revision,
-      receiverId: record.receiverId,
-      transferDate: record.transferDate,
+      ...(hidden.has('receiverId') ? {} : { receiverId: record.receiverId }),
+      ...(hidden.has('transferDate') ? {} : { transferDate: record.transferDate }),
     };
     return { ...duty, pending: fill ?? null };
   });
-  const dates = items.flatMap((item) => (item.pending ? [item.pending.transferDate] : []));
-  const hint = dutyPendingHint(items.length, dates);
+  const dates = duties.flatMap((duty) => pending.get(duty.key)?.transferDate ?? []);
+  const hint = hidden.has('transferDate') ? null : dutyPendingHint(items.length, dates);
   return { employeeId, total: items.length, pendingCount: dates.length, hint, items };
 }
 
@@ -130,9 +151,10 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     const employeeId = uuidParam(c);
     const scope = await requestScope(c, deps, ctx, OBJECT);
     const today = tenantLocalDate(ctx.now, ctx.timezone);
+    const hidden = await hiddenFields(deps, ctx);
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       await requireVisiblePerson(tx, ctx.tenantId, scope, employeeId);
-      return dutyMenu(tx, ctx.tenantId, employeeId, today);
+      return dutyMenu(tx, ctx.tenantId, employeeId, today, hidden);
     });
     return c.json(result);
   });
@@ -145,6 +167,7 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     const scope = await requestScope(c, deps, ctx, OBJECT);
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       await requireVisiblePerson(tx, ctx.tenantId, scope, employeeId);
+      await requireVisibleReceivers(tx, ctx.tenantId, scope, input);
       return checkMenuTransfer(tx, { ...ctx }, employeeId, input);
     });
     return c.json(result);
@@ -158,8 +181,11 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     const input = submitInput(body);
     await writeFields(deps, ctx, OBJECT, 'create', { receiverId: null, transferDate: null });
     await button(deps, ctx, OBJECT, DUTY_TRANSFER_SET_RECEIVER_BUTTON, 'list');
-    const guard = async (tx: Tx) =>
-      requireVisiblePerson(tx, ctx.tenantId, await scopeInTransaction(tx, deps, ctx), employeeId);
+    const guard = async (tx: Tx) => {
+      const scope = await scopeInTransaction(tx, deps, ctx);
+      await requireVisiblePerson(tx, ctx.tenantId, scope, employeeId);
+      await requireVisibleReceivers(tx, ctx.tenantId, scope, input);
+    };
     const result = await runCommand(deps.db, ctx, {
       id: c.req.header('idempotency-key'),
       fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, body },

@@ -12,7 +12,7 @@ const database = useTestDb();
 const world = (label: string) => menuWorld(database().db, label);
 const LATER = '2026-10-20';
 
-describe('立即生效（W-607）', () => {
+describe('立即生效（DEC-726，W-607）', () => {
   it('组织负责人：生成组织新版本、启用日 = 当天，记录已完成并写转交时间', async () => {
     const x = await world('now-org');
     await x.setHead(x.from.id, x.employee.id);
@@ -136,7 +136,7 @@ describe('指定日期（F-408）', () => {
   });
 });
 
-describe('待生效期间再次选同一被转交人（唯一入口）', () => {
+describe('待生效期间再次选同一被转交人（DEC-726，唯一入口）', () => {
   it('改日期 + 改接收人覆盖原记录（同一职责至多一条待生效），清空接收人即撤回，到期不执行', async () => {
     const x = await world('edit');
     await x.setHead(x.from.id, x.employee.id);
@@ -207,7 +207,7 @@ describe('待生效期间再次选同一被转交人（唯一入口）', () => {
   });
 });
 
-describe('DT-R6', () => {
+describe('DT-R6（DEC-726）', () => {
   it('接收人已离职：确认信息给出提示，立即转交被拒且职责不动', async () => {
     const x = await world('receiver-left');
     const subordinate = await x.subordinateOf(x.employee.id, '下属');
