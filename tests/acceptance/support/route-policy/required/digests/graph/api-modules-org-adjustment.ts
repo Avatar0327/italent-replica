@@ -318,6 +318,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
+  'apps/api/src/modules/org-adjustment/preview.ts#assemble': ['#compareSort'],
+  'apps/api/src/modules/org-adjustment/preview.ts#existingDraft': ['#COUNT_FIELDS', '#node'],
+  'apps/api/src/modules/org-adjustment/preview.ts#fillCounts': [
+    'apps/api/src/modules/employment/org-people.ts#countDepartmentStaff',
+    'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes',
+  ],
   'apps/api/src/modules/org-adjustment/preview.ts#overlay': ['#MARKS', '#node'],
   'apps/api/src/modules/org-adjustment/preview.ts#readPreview': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
@@ -325,7 +331,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     '#PREVIEW_NODE_LIMIT',
     '#assemble',
-    '#node',
+    '#existingDraft',
+    '#fillCounts',
     '#overlay',
     '#rangeSubtree',
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
