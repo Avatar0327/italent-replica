@@ -48,8 +48,10 @@ export interface FormProps {
   onClose(): void;
   /** 写入与本单回读已确认：关闭表单与详情。 */
   onDone(): void;
-  /** 申请确认后切换视图并独立定位；其他操作刷新当前视图。 */
-  refresh(destination?: ApplicationDestination): Promise<unknown>;
+  /** 写后刷新当前视图（不导航）。 */
+  refresh(): Promise<unknown>;
+  /** 提交开始时领取导航票据：申请确认后切换视图并独立定位；离页或期间已导航则丢弃（F-376）。 */
+  navigation(): (destination: ApplicationDestination) => void;
 }
 const kind = 'intern_regularization';
 
@@ -152,7 +154,7 @@ function submittedReadback(
   };
 }
 
-function useRegularize({ row, application, onDone, refresh, opening, read }: EditorProps) {
+function useRegularize({ row, application, onDone, refresh, navigation, opening, read }: EditorProps) {
   const employeeId = row.employeeId!;
   const saved = useInternDraft(employeeId);
   const draft = application ? saved.draft : undefined;
@@ -180,6 +182,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
   const body = application ? applicationBody : regularizeBody;
   const submit = async () => {
     if (locked) return;
+    const located = navigation();
     setError(undefined);
     try {
       const values = projectFields(draft ? form.getFieldsValue(true) : await form.validateFields(), editable);
@@ -213,7 +216,7 @@ function useRegularize({ row, application, onDone, refresh, opening, read }: Edi
       }
       if (application) {
         saved.put();
-        if (destination) void refresh(destination);
+        if (destination) located(destination);
       }
       void message.success(application ? m.success.apply : m.success.regularize);
       onDone();

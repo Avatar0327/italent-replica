@@ -19,7 +19,7 @@ import { RehirePrompt, useRehireCheck } from './RehireCheck.js';
 import { useCreateCommand } from './create-command.js';
 
 type Editor = ReturnType<typeof useEditor>;
-function useEditor(onDone: (receipt: CreateReceipt) => void) {
+function useEditor(begin: () => (receipt: CreateReceipt) => void) {
   const [form] = Form.useForm();
   const person = usePermissions(personObject).snapshot.objects[personObject];
   const employment = usePermissions(object).snapshot.objects[object];
@@ -56,6 +56,7 @@ function useEditor(onDone: (receipt: CreateReceipt) => void) {
   };
   const submit = async () => {
     if (locked || match.busy || match.prompt) return;
+    const done = begin();
     setError(undefined);
     try {
       const all = await form.validateFields();
@@ -73,7 +74,7 @@ function useEditor(onDone: (receipt: CreateReceipt) => void) {
       match.reset();
       form.resetFields();
       void message.success(c.success);
-      onDone(receipt);
+      done(receipt);
     } catch (cause) {
       if (!(cause && typeof cause === 'object' && 'errorFields' in cause)) setError(cause);
     }
@@ -113,13 +114,14 @@ function renderFields(access: Editor['access']) {
 export function CreateIntern({
   open,
   onClose,
-  onDone,
+  begin,
 }: {
   open: boolean;
   onClose(): void;
-  onDone(receipt: CreateReceipt): void;
+  /** 保存开始时领取完成回调：关闭弹窗；导航只在页面仍在、期间未导航时执行（F-376）。 */
+  begin(): (receipt: CreateReceipt) => void;
 }) {
-  const editor = useEditor(onDone);
+  const editor = useEditor(begin);
   const { form, locked, cmd, match } = editor;
   return (
     <>
