@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { bodyOf, expectError, only } from './AC-OA-head-support.js';
 import { itemsWorld, newOrg, rename } from './AC-OA-items-support.js';
-import { flatten, reader } from './AC-OA-read-support.js';
+import { flatten, orgName, reader } from './AC-OA-read-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -93,5 +93,23 @@ describe('AC-OA-24 明细组织范围：读时整行隐去，只计 hiddenRowCou
     // 范围外的组织本身也不出现在 HR 的预览树里；甲没有被隐藏行改动，标记为空
     expect(nodes.map((node) => node.orgId)).not.toContain(w.b);
     expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: null });
+  });
+});
+
+describe('AC-OA-24 原上级（版本链上一条）同样按组织范围复核', () => {
+  it('目标在范围内、原上级在范围外 → 行可见，但原上级 ID 与名称都给 null，不带出范围外组织名', async () => {
+    const w = await itemsWorld(testDb().db, 'oa24r');
+    const r = reader(w);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const renamed = await w.item(view.id, rename(w.a));
+    const itemId = renamed.items.at(-1)!.id;
+    const rootName = await orgName(w, w.tenant.id);
+    w.access.org = only(w.a);
+
+    const items = await r.items(view.id);
+    expect(items.items.map((item) => item.id)).toEqual([itemId]);
+    expect(items.items[0]).toMatchObject({ originalParentOrgId: null, originalParentOrgName: null });
+    expect(JSON.stringify(items)).not.toContain(w.tenant.id);
+    expect(JSON.stringify(items)).not.toContain(rootName);
   });
 });
