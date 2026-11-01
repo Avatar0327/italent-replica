@@ -367,8 +367,10 @@ describe('AC-HA-13c ② 流程时效（只统计已通过）', () => {
 
   it('7.2.08 / 09 任务平均耗时 = AVG(任务完成 − 任务到达)：按节点、按审批人（附审批计数）', async () => {
     const tasks = (['a', 'b', 'c', 'd', 'e'] as const).map((key) => f.flows[key].task);
-    const node = await board.expectGroup('taskDurationByNode', { group: 'mgr' }, tasks, TRANSFER);
-    expect([node?.label, node?.average]).toEqual(['直线经理审批', 2.03]);
+    // 节点组键 = 流程版本 + 节点键（第 2 轮），取概览给出的组键钻取
+    const [group] = (await board.component('taskDurationByNode', TRANSFER)).groups;
+    const node = await board.expectGroup('taskDurationByNode', { group: group!.key }, tasks, TRANSFER);
+    expect([node?.label, node?.average, group!.key.endsWith(':mgr')]).toEqual(['直线经理审批', 2.03, true]);
     const approver = await board.expectGroup('taskDurationByApprover', { group: f.boss.userId }, tasks, TRANSFER);
     expect([approver?.count, approver?.average]).toEqual([5, 2.03]);
   });

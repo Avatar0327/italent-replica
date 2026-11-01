@@ -76,7 +76,20 @@ const SECOND_LEVEL = (c: ProcessContext) => sql`org_now AS (
       AND l.parent_org_id=${c.tenantId}::uuid)`;
 
 /**
- * 审批实例事实表：窗口内发起、有类别、调用者可见。流程所属部门 = Offer 的录用部门，其余取主体员工 asOf 当天的主职部门；
+ * 批量 Offer 单内各 Offer 的录用部门，及“每一份 Offer 都在人事分析范围内”（同审批中心 access.ts offerInstanceScopeSql：
+ * 一份范围外即整单不可见；空单、录用部门为空的按范围外处理，fail-closed）。
+ */
+const batchOffers = (c: ProcessContext) => sql`LEFT JOIN LATERAL (
+  SELECT array_agg(DISTINCT bo.department_id) FILTER (WHERE bo.department_id IS NOT NULL) AS orgs,
+    COALESCE(bool_and(COALESCE(${scopeSql(c.scope, { org: sql`bo.department_id`, creator: sql`bo.created_by` })},
+      false)), false) AS in_scope
+  FROM offer_batch_approval_items bi JOIN offers bo ON bo.tenant_id=bi.tenant_id AND bo.id=bi.offer_id
+  WHERE i.business_type='offer_batch' AND bi.tenant_id=i.tenant_id AND bi.batch_id=i.business_id) ob ON true`;
+
+/**
+ * 审批实例事实表：窗口内发起、有类别、调用者可见。流程所属部门（orgs）= Offer 的录用部门、批量 Offer 单内各 Offer 的录用部门，
+ * 其余取主体员工 asOf 当天的主职部门；部门筛选命中其中任一个即保留（批量单跨部门时不丢单），
+ * 归属单一部门（org_id：明细的部门、二级组织分组）只在恰有一个部门时成立，跨部门批量单为空。
  * 当前审批人取最早到达的待办，“当前审批人已离职”看任一待办的处理人。
  */
 function facts(c: ProcessContext): SQL {
@@ -86,13 +99,16 @@ function facts(c: ProcessContext): SQL {
   const inner = sql`SELECT i.id, i.business_type, i.approval_category AS category, i.business_date, i.status, i.title,
       i.initiator_user_id AS initiator, i.subject_employee_id AS subject, i.created_at, i.completed_at, i.version_id,
       ${localDate(c, sql`i.created_at`)} AS started_on, ${localDate(c, sql`i.completed_at`)} AS completed_on,
-      CASE WHEN i.business_type='offer' THEN o.department_id ELSE emp.department_id END AS org_id,
-      emp.direct_manager_id, ${creator} AS creator_id,
+      CASE WHEN i.business_type='offer' THEN array_remove(ARRAY[o.department_id], NULL)
+        WHEN i.business_type='offer_batch' THEN COALESCE(ob.orgs, ARRAY[]::uuid[])
+        ELSE array_remove(ARRAY[emp.department_id], NULL) END AS orgs,
+      ob.in_scope AS batch_in_scope, emp.direct_manager_id, ${creator} AS creator_id,
       cur.assignee_user_id AS approver, cur.created_at AS arrived_at, n.name AS node_name,
       EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
         AND t.status='pending' AND ${userLeft(c, sql`t.assignee_user_id`)}) AS approver_left
     FROM approval_instances i
     LEFT JOIN offers o ON o.tenant_id=i.tenant_id AND o.id=i.business_id AND i.business_type='offer'
+    ${batchOffers(c)}
     ${employmentAt(c, sql`i.subject_employee_id`)}
     LEFT JOIN LATERAL (SELECT t.assignee_user_id, t.created_at, t.node_key FROM approval_tasks t
       WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id AND t.status='pending'
@@ -101,8 +117,8 @@ function facts(c: ProcessContext): SQL {
       AND n.node_key=cur.node_key
     WHERE i.tenant_id=${c.tenantId} AND i.approval_category IS NOT NULL AND ${inWindow(c, sql`i.created_at`)}
       AND ${c.approval} AND ${c.category ? sql`i.approval_category=${c.category}` : sql`true`}`;
-  const visible = sql`CASE WHEN x.business_type IN ('offer','offer_batch')
-    THEN ${scopeSql(c.scope, { org: sql`x.org_id`, creator: sql`x.creator_id` })}
+  const visible = sql`CASE WHEN x.business_type='offer_batch' THEN x.batch_in_scope
+    WHEN x.business_type='offer' THEN ${scopeSql(c.scope, { org: sql`x.org_id`, creator: sql`x.creator_id` })}
     ELSE ${employmentVisibilitySql(c.scope, {
       employee: sql`x.subject`,
       department: sql`x.org_id`,
@@ -114,12 +130,17 @@ function facts(c: ProcessContext): SQL {
       x.business_date IS NOT NULL AND x.completed_on > x.business_date AND x.started_on < x.business_date
         AS late_approval,
       ${c.asOf}::date - ${localDate(c, sql`x.arrived_at`)} AS wait_days
-    FROM (${inner}) x LEFT JOIN org_second s ON s.org_id=x.org_id
-    WHERE ${visible} AND ${c.departmentId ? sql`x.org_id=${c.departmentId}::uuid` : sql`true`}`;
+    FROM (SELECT y.*, CASE WHEN cardinality(y.orgs)=1 THEN y.orgs[1] END AS org_id FROM (${inner}) y) x
+    LEFT JOIN org_second s ON s.org_id=x.org_id
+    WHERE ${visible} AND ${c.departmentId ? sql`${c.departmentId}::uuid = ANY(x.orgs)` : sql`true`}`;
 }
 
-/** 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。 */
-const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id, t.node_key, t.assignee_user_id AS approver,
+/**
+ * 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。节点身份 = 流程版本 + 节点键（approval_process_nodes 主键），
+ * node_id 是概览分组与钻取共用的节点键：不同流程里同名的节点键不合并。
+ */
+const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id,
+    f.version_id::text || ':' || t.node_key AS node_id, t.assignee_user_id AS approver,
     n.name AS node_name, ${days(sql`t.created_at`, sql`t.acted_at`)} AS duration, f.core, f.late_approval
   FROM facts f JOIN approval_tasks t ON t.tenant_id=${c.tenantId} AND t.instance_id=f.id AND t.status='approved'
     AND t.acted_at IS NOT NULL AND t.assignee_user_id IS NOT NULL
@@ -133,6 +154,7 @@ const approvedInstance = (c: ProcessContext, type: string, id: SQL) => sql`(SELE
 
 /**
  * ④ 业务单据：按提交 / 办理（直接办理 = 保存）时刻或 Offer / 合同的创建时刻落入窗口；在途、撤回、作废的不算业务总量。
+ * Offer 只算没走流程（unsubmitted）与审批通过（approved）的（规格 35 ④“已审批通过的流程或已生效数据”），审批中、被否决的不算。
  * 任职业务按记录部门的二级组织分组，Offer 按录用部门，合同按签约公司。
  */
 function businesses(c: ProcessContext): SQL {
@@ -155,7 +177,8 @@ function businesses(c: ProcessContext): SQL {
   const offer = sql`SELECT o.id, ${approvedInstance(c, 'offer', sql`o.id`)} AS instance_id, 'offer' AS kind,
       o.department_id AS org_id, NULL::uuid AS employee_id, o.approval_status='approved' AS approved,
       ${scopeSql(c.scope, { org: sql`o.department_id`, creator: sql`o.created_by` })} AS visible
-    FROM offers o WHERE o.tenant_id=${c.tenantId} AND o.status<>'invalid' AND ${inWindow(c, sql`o.created_at`)}`;
+    FROM offers o WHERE o.tenant_id=${c.tenantId} AND o.status<>'invalid'
+      AND o.approval_status IN ('unsubmitted','approved') AND ${inWindow(c, sql`o.created_at`)}`;
   const contract = sql`SELECT q.id, ${approvedInstance(c, 'contract', sql`q.id`)} AS instance_id, 'contract' AS kind,
       emp.department_id AS org_id, q.employee_id, q.company_id,
       ${employmentVisibilitySql(c.scope, {
@@ -229,8 +252,8 @@ function listColumns(c: ProcessContext): SQL {
     'businessDate', f.business_date::text,
     'abnormalTypes', to_jsonb(array_remove(ARRAY[CASE WHEN f.approver_left THEN 'approverLeft' END,
       CASE WHEN f.business_date < ${c.asOf}::date THEN 'expired' END], NULL)),
-    'waitBucket', CASE WHEN f.wait_days > ${WAIT_LONGER} THEN 'gt7' WHEN f.wait_days > ${WAIT_LONG} THEN 'gt3'
-      ELSE 'le3' END,
+    'waitBucket', CASE WHEN f.wait_days IS NULL THEN NULL WHEN f.wait_days > ${WAIT_LONGER} THEN 'gt7'
+      WHEN f.wait_days > ${WAIT_LONG} THEN 'gt3' ELSE 'le3' END,
     'approvedCount', (SELECT count(*) FROM approval_tasks t WHERE t.tenant_id=${c.tenantId} AND t.instance_id=f.id
       AND t.status='approved'))`;
 }
@@ -255,7 +278,7 @@ function specs(c: ProcessContext): Readonly<Record<HrProcessComponentCode, Spec>
     inFlightList: { cols: listColumns(c), from: IN_FLIGHT },
     durationByWeek: { grp: week(sql`f.started_on`), value: DURATION, from: APPROVED },
     durationByCategory: { grp: sql`f.category`, value: DURATION, from: APPROVED },
-    taskDurationByNode: task({ grp: sql`t.node_key`, label: sql`t.node_name` }, sql`true`),
+    taskDurationByNode: task({ grp: sql`t.node_id`, label: sql`t.node_name` }, sql`true`),
     taskDurationByApprover: task({ grp: sql`t.approver` }, sql`true`),
     durationByOrg: { grp: sql`f.second_id`, value: DURATION, from: APPROVED },
     nonCompliantByWeek: { grp: week(sql`f.started_on`), hit: sql`f.late_submit OR f.late_approval`, from: QUALITY },
