@@ -3328,8 +3328,10 @@
           "TenantBase.HrMovement:view"
         ],
         "scope": [
+          "creator scope",
           "employment visibility",
-          "requestScope"
+          "requestScope",
+          "scopeSql"
         ]
       }
     },
@@ -3357,8 +3359,10 @@
           "TenantBase.HrMovement:view"
         ],
         "scope": [
+          "creator scope",
           "employment visibility",
-          "requestScope"
+          "requestScope",
+          "scopeSql"
         ]
       }
     },
@@ -3386,6 +3390,7 @@
           "TenantBase.HrMovementReport:view"
         ],
         "scope": [
+          "creator scope",
           "employment visibility",
           "requestScope",
           "scope.all",

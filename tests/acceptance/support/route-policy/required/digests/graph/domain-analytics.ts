@@ -7,7 +7,7 @@ import type { Graph } from '../../../evidence-graph.js';
 export const GRAPH: Graph = {
   'packages/domain/src/analytics/hr-movement.ts#growthRate': ['#round4'],
   'packages/domain/src/analytics/hr-movement.ts#leaveRate': ['#round4'],
-  'packages/domain/src/analytics/hr-movement.ts#monthOf': ['#pad', 'packages/domain/src/contracts/rules.ts#addDays'],
+  'packages/domain/src/analytics/hr-movement.ts#monthOf': ['#DAYS', '#leap', '#pad'],
   'packages/domain/src/analytics/hr-movement.ts#movementMonths': ['#monthIndex', '#monthOf'],
   'packages/domain/src/analytics/hr-movement.ts#withinOneMonth': ['#ONE_MONTH_YEARS'],
   'packages/domain/src/analytics/hr-movement.ts#yearMonths': ['#monthOf'],

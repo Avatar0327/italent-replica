@@ -30,8 +30,8 @@ export const DIGESTS: Digests = {
     boardContext: 'aa4bc1989f2b',
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': '0daf25180cc3',
-    'route:GET /api/tenant/analytics/hr-movement/components/:code': '75ea7df1450c',
-    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'b00c87dd8fb3',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code': 'c345bf9f3a91',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report': '43c958bab4bf',
   },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
@@ -1780,7 +1780,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
     'baaf86cd576d',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
-    'a95f3d2b4cbf',
+    '52d94feb96d7',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
