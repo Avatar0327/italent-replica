@@ -107,7 +107,8 @@ export function entriesFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, view: '
       }`;
 }
 function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
-  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))} ${entriesFrom(c, view, since)}`;
+  const columns = pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'));
+  return sql`SELECT ${columns} ${entriesFrom(c, view, since)}`;
 }
 
 // ---- 离职 / 退休（4、14、18）：离职视图与退休视图共用的候选集 exitCandidates，一份谓词两种业务 --------------------------------
