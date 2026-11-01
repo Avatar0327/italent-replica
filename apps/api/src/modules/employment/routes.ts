@@ -83,7 +83,7 @@ import {
 } from './deletion-guards.js';
 import { visibleEmploymentRecords } from './visibility.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
-import type { EmploymentContext } from './types.js';
+import type { EmploymentBusinessPatch, EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
@@ -379,12 +379,10 @@ async function readBusinessPatch(c: Context<TenantEnv>) {
   const onlyResult = result !== undefined && isEmptyBody(split.rawInput);
   return { result, onlyResult, input: onlyResult ? {} : normalizeBusinessPatch(split.rawInput) };
 }
-type BusinessPatch = Awaited<ReturnType<typeof readBusinessPatch>>;
-/** 命令事务内：按调动目标复核上下文后改单；带试用结果的转正申请走 updateRegularizationApplication（F-347 c）。 */
-async function applyBusinessPatch(tx: Tx, context: EmploymentContext, id: string, patch: BusinessPatch) {
-  const { input, result, onlyResult } = patch;
+/** 命令事务内按调动目标复核上下文（改单前；PATCH 的部门变更同步到调动目标）。 */
+async function patchContext(tx: Tx, context: EmploymentContext, id: string, input: EmploymentBusinessPatch) {
   const departmentId = input.fields?.departmentId;
-  let checked = await transferBusinessContext(
+  const checked = await transferBusinessContext(
     tx,
     { ...context, transferTarget: undefined },
     id,
@@ -392,10 +390,8 @@ async function applyBusinessPatch(tx: Tx, context: EmploymentContext, id: string
     departmentId,
     input,
   );
-  if (departmentId !== undefined && checked.transferTarget)
-    checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
-  if (result === undefined) return updateEmploymentBusiness(tx, checked, id, input);
-  return updateRegularizationApplication(tx, checked, id, onlyResult ? null : input, result);
+  if (departmentId === undefined || !checked.transferTarget) return checked;
+  return { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
 }
 function requireResultApplicable(result: string | undefined, kind: string) {
   if (result !== undefined && kind !== 'regularization')
@@ -452,7 +448,16 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       deps,
       ctx,
       result === undefined ? input : { ...input, probationResult: result },
-      async (tx, context) => ({ status: 200, body: await applyBusinessPatch(tx, context, id, patch) }),
+      async (tx, context) => {
+        const checked = await patchContext(tx, context, id, input);
+        // 带试用结果的转正申请走 updateRegularizationApplication（F-347 c）
+        if (result !== undefined)
+          return {
+            status: 200,
+            body: await updateRegularizationApplication(tx, checked, id, patch.onlyResult ? null : input, result),
+          };
+        return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
+      },
       {
         guard: isExitKind(current.kind)
           ? exitCommandGuard(deps, ctx, 'update', { ...exitTarget, patch: input }, { businessId: id })

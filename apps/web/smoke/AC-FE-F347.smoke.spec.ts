@@ -166,8 +166,10 @@ test('AC-FE-F347-06 启用字典为空：撤回单带已存结果（含停用项
   // 新建（没有草稿单）仍要启用项：提交与暂存都锁定
   server.business = undefined;
   await page.reload();
+  // 提交后列表停在“转正审批中”（URL 带 view），刷新后切回即将到期再开
+  await switchView(page, 'expiring');
   const fresh = await openApply(page);
-  await expect(fresh).toContainText('没有可用的试用结果');
+  await expect(fresh).toContainText('没有启用的试用结果');
   await expect(fresh.getByRole('button', named('提交'))).toBeDisabled();
 });
 
@@ -183,6 +185,7 @@ test('AC-FE-F347-07 撤回后清空本机存储再刷新：仍找回原申请同
   await expect(page.getByText('已撤回')).toBeVisible();
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await switchView(page, 'expiring');
   const again = await openApply(page);
   await expect(again).toContainText('已带出原申请');
   await again.getByRole('button', { name: /提\s*交$/ }).click();

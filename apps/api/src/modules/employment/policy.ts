@@ -2105,10 +2105,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    fields: fixed(
-      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
-      'F-347 暂存投影固定键（regularization-drafts.ts）',
-    ),
+    // 回执是暂存读投影（与 GET 同形状）：runWrite 的 project 原样返回，首次与重放同一出口
+    fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     write: employmentWrite('body.fields+customFields', ['assertRevision'], {
       commandOnly: true,
       controls: ['effectiveDate', 'probationResult'],

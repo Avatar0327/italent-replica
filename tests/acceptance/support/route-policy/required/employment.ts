@@ -1055,6 +1055,9 @@ const accountRead = (call: Evidence): Obligation =>
     ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
     [call, READ, RECORD_CONST],
   );
+const DRAFT_BUTTON =
+  "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })";
+
 export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/exit-account/settings': [
     ob(
@@ -1988,7 +1991,13 @@ export const EMPLOYMENT: RequiredTable = {
       `btn:${RECORD}#Employment.Edit@detail`,
       ['button:requireEmploymentWrite(按钮)'],
       [
-        at(EMP, 'PATCH', '/businesses/:id', "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')"),
+        // F-347 c：只改试用结果时 options = { commandOnly: true }（命令式校验，不按字段）
+        at(
+          EMP,
+          'PATCH',
+          '/businesses/:id',
+          "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options)",
+        ),
         WRITE_BUTTON,
       ],
     ),
@@ -3055,15 +3064,7 @@ export const EMPLOYMENT: RequiredTable = {
           ob(
             `btn:${RECORD}#Employment.Create@detail`,
             ['button:requireEmploymentWrite(按钮)'],
-            [
-              at(
-                PROBATION,
-                method,
-                path,
-                "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })",
-              ),
-              WRITE_BUTTON,
-            ],
+            [at(PROBATION, method, path, DRAFT_BUTTON), WRITE_BUTTON],
           ),
           ob(
             'guard:employment.scope',

@@ -92,7 +92,7 @@ async function changeResult(w: PbWorld, code: string, body: Record<string, unkno
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
-describe('F-347 a 转正申请服务端暂存（DEC-709）', () => {
+describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
   it('不校验必填即可暂存；再暂存覆盖上一份；另一会话（换设备）读回同一份；不建单、不进我的申请', async () => {
     const w = await pbWorld(testDb().db, 'f347-temp', { approval: true });
     const { employee } = await hire(w, { months: 3 });
@@ -191,7 +191,7 @@ describe('F-347 a 转正申请服务端暂存（DEC-709）', () => {
   });
 });
 
-describe('F-347 b 转正单详情带试用结果与保存时名称', () => {
+describe('AC-PB-F347 b 转正单详情带试用结果与保存时名称', () => {
   it('GET /businesses/:id 返回试用结果；字典改名、停用后仍显示保存时的名称', async () => {
     const w = await pbWorld(testDb().db, 'f347-name');
     const { employee } = await hire(w, { months: 3 });
@@ -202,7 +202,7 @@ describe('F-347 b 转正单详情带试用结果与保存时名称', () => {
   });
 });
 
-describe('F-347 c 草稿 / 撤回单改试用结果并同单重提', () => {
+describe('AC-PB-F347 c 草稿 / 撤回单改试用结果并同单重提', () => {
   it('草稿 PATCH 改试用结果后提交同一张单；撤回后再改、再提交仍是同一张', async () => {
     const w = await pbWorld(testDb().db, 'f347-patch', { approval: true });
     const { employee } = await hire(w, { months: 3 });
@@ -259,7 +259,7 @@ describe('F-347 c 草稿 / 撤回单改试用结果并同单重提', () => {
   });
 });
 
-describe('F-347 e 已存草稿提交不受启用字典为空限制', () => {
+describe('AC-PB-F347 e 已存草稿提交不受启用字典为空限制', () => {
   it('试用结果字典全部停用后，带已存结果的草稿仍能提交；新建申请仍要启用项', async () => {
     const w = await pbWorld(testDb().db, 'f347-empty-dict', { approval: true });
     const { employee } = await hire(w, { months: 3 });
