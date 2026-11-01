@@ -19,7 +19,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/analytics/contract-board-routes.ts': {
     boardContext: '4a3e91c51fbe',
     'route:GET /api/tenant/analytics/contract-board': '1b0731a6ea06',
-    'route:GET /api/tenant/analytics/contract-board/components/:code': '21aff52bd052',
+    'route:GET /api/tenant/analytics/contract-board/components/:code': '0fdf7a01efb5',
   },
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
     dashboardContext: 'cc49a288a205',
@@ -30,7 +30,7 @@ export const DIGESTS: Digests = {
     boardContext: '42546e84f947',
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
-    'route:GET /api/tenant/analytics/hr-structure/components/:code': 'fc842edf2cff',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': '1f0252f75cd3',
   },
   'apps/api/src/modules/approval/access.ts': {
@@ -1746,7 +1746,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board':
     'bb53ace7a311',
   'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code':
-    '927b00fb71b6',
+    'af5c24e28850',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '74c0d9467abe',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
@@ -1755,7 +1755,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
-    '485914272db2',
+    '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
     'e7e25e52013b',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',

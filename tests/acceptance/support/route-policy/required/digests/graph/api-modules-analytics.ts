@@ -30,6 +30,7 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/analytics/contract-board.ts#contractBoardPage',
       'apps/api/src/modules/analytics/contract-board.ts#isGroupedContractComponent',
       'apps/api/src/modules/analytics/hr-dashboard.ts#dashboardRenewalTypes',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
       'apps/api/src/modules/job/context.ts#pageQuery',
       'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_COMPONENTS',
     ],
@@ -290,6 +291,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT',
   ],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardFilter': ['#textQuery', '#uuidQuery'],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery': ['#canonicalUuid'],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#loadPeople': [
     'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople',
     '#lookupOf',
@@ -320,6 +322,7 @@ export const GRAPH: Graph = {
       '#HR_STRUCTURE_BASE',
       '#boardContext',
       '#boardFilter',
+      '#groupQuery',
       '#loadPeople',
       'apps/api/src/modules/job/context.ts#pageQuery',
       'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
@@ -334,6 +337,7 @@ export const GRAPH: Graph = {
       'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORTS',
       'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_EMPLOY_TYPES',
     ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery': ['#canonicalUuid'],
   'apps/api/src/modules/analytics/hr-structure.ts#attribute': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
   ],
