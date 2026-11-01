@@ -5514,6 +5514,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/regularization-drafts.ts#currentAnchor': [
     'apps/api/src/modules/employment/probation.ts#loadProbationCycle',
+    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#sequencePredecessorKind',
+    'apps/api/src/modules/employment/write-service.ts#sequenceViolation',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/regularization-drafts.ts#draftRow': [
@@ -5534,11 +5536,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationEntry',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     '#FORM',
     '#currentAnchor',
     '#draftInput',
     '#draftRow',
     '#loadRegularizationDraft',
+    '#pendingApplication',
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/employment/regularization-reschedule.ts#BLOCKING_KINDS': [
@@ -5600,6 +5604,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/regularization.ts#createRegularizationBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/regularization-drafts.ts#clearSubmittedRegularizationDraft',
     '#appendRegularizationResult',
     '#regularizationDate',
     '#requireRegularizationResult',
