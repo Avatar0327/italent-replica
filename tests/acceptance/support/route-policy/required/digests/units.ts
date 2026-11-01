@@ -31,7 +31,7 @@ export const DIGESTS: Digests = {
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report': '1f0252f75cd3',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
@@ -1769,7 +1769,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
-    'e7e25e52013b',
+    '4f9a6b459de0',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
