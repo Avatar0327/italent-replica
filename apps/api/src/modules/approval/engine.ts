@@ -1,3 +1,4 @@
+import { resolveSource, previousApproved, limitApprovers } from './source-resolver.js';
 /**
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
  * 审批人为空、自审、相同 / 历史相同审批人跳过；遇到需人工审批的节点即停下等待。
@@ -27,7 +28,7 @@ import {
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
-  type ApproverExpression,
+  type ApproverSource,
   type Candidate,
   type CountersignApprovalNode,
   type NodeDecision,
@@ -47,7 +48,6 @@ import {
   isAssignable,
   memo,
   personOfUser,
-  resolveCandidate,
   tenantAdminTakeover,
   type RoutingSubject,
 } from './resolver.js';
@@ -66,6 +66,7 @@ import {
   type InstanceRow,
   type TaskRow,
 } from './store.js';
+import { withoutRetrieved, withoutRewoundDownstream } from './task-history.js';
 
 /** 一次命令内的流转现场：实例状态在内存中推进，命令结束时一次落库（revision 只加一）。 */
 export interface Run {
@@ -170,6 +171,7 @@ function routingSubject(run: Run): RoutingSubject {
   return {
     tenantId: run.ctx.tenantId,
     asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone),
+    businessDate: run.snapshot.businessDate,
     initiatorUserId: run.instance.initiatorUserId,
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
@@ -185,13 +187,17 @@ function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusa
   // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const history = effectiveHistory(tasks, run.instance);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
+  // F-379 / F-392 / DEC-097：撤回的同意及撤回点之后的旧下游结果已失效，撤回后转交也不恢复；
+  // 仍有效的系统自动同意照常计入（不用 actualApprovals，口径不变）
+  const approvals = withoutRetrieved(history).filter(approvedBy);
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
+  const previousNode = withoutRewoundDownstream(history).filter((task) => task.nodeKey === previousKey);
   return {
     ...recusal,
     isFirstNode: index === 0,
     exceptionAdminUserId: run.version.exceptionAdminUserId!,
-    previousApproverUserIds: previousNodeComparand(history.filter((task) => task.nodeKey === previousKey)),
-    approvedUserIds: history.filter(approvedBy).map((task) => task.assigneeUserId!),
+    previousApproverUserIds: previousNodeComparand(previousNode),
+    approvedUserIds: approvals.map((task) => task.assigneeUserId!),
     chainUserIds: tasks
       .filter((task) => task.assigneeUserId !== null && task.origin !== 'self_skip')
       .map((task) => task.assigneeUserId!),
@@ -206,11 +212,18 @@ async function decide(
   tx: Tx,
   subject: RoutingSubject,
   node: ApprovalNode,
-  expression: ApproverExpression,
+  expression: ApproverSource,
   facts: RoutingFacts,
   resolved?: Candidate,
 ) {
-  const candidate = resolved ?? (await resolveCandidate(tx, subject, expression));
+  const candidates = resolved ? [resolved] : await resolveSource(tx, subject, expression);
+  if (candidates.length > 1)
+    throw approvalError(
+      'APPROVAL_SOURCE_INVALID',
+      'APPROVAL_SINGLE_SOURCE_MULTIPLE',
+      '单人节点解析出多名审批人，请使用会签节点',
+    );
+  const candidate = candidates[0]!;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
@@ -375,7 +388,17 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
   const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
-    const entry: Entry = { subject, facts: routingFacts(run, tasks, i, recusal), activationId: randomUUID() };
+    const previousKey = i > 0 ? run.version.nodes[i - 1]!.key : null;
+    const currentSubject = {
+      ...subject,
+      previousApprovedUserIds: previousApproved(effectiveHistory(tasks, run.instance), previousKey),
+      samplingSeed: `${run.instance.id}:${run.instance.round}:${run.instance.historyFromSeq}:${node.key}`,
+    };
+    const entry: Entry = {
+      subject: currentSubject,
+      facts: routingFacts(run, tasks, i, recusal),
+      activationId: randomUUID(),
+    };
     const result = isCountersign(node)
       ? await enterCountersign(tx, run, node, entry, tasks)
       : await enterSingle(tx, run, node, entry, tasks);
@@ -387,13 +410,13 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
 /** 进入节点的结果：继续下一节点 / 停在本节点等待人工处理 / 实例已退回发起人。 */
 type EntryResult = 'next' | 'stay' | 'returned';
 
-function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey, ...extra });
+function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey });
 }
 
 /** DEC-318 K-38：节点“无操作”且审批人为空——拒绝本次推进，流程停在原节点（不转异常管理员）。 */
-function noAssignee(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
-  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey, ...extra });
+function noAssignee(nodeKey: string, decision: { readonly reason: string }) {
+  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey });
 }
 
 /** 单人审批节点：需人工审批即停下；相同 / 历史相同审批人自动处理后继续下一节点。 */
@@ -479,8 +502,8 @@ async function countersignSeats(
   const candidates = new Set<string>();
   for (const [expression, resolvedCandidate] of resolved) {
     const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts, resolvedCandidate);
-    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
-    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
+    if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision);
+    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision);
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);
@@ -489,7 +512,11 @@ async function countersignSeats(
     if (!same) seats.push({ seat, mergedCandidateUserIds: [] });
     else if (candidate.userId !== null) same.mergedCandidateUserIds.push(candidate.userId);
   }
-  return { seats, selfSkips };
+  // DEC-686：回避、空人兜底可能改变最终账号集合，先合并席位再统一随机取 100。
+  return {
+    seats: limitApprovers(seats, ({ seat }) => seatUser(seat), entry.subject.samplingSeed ?? node.key),
+    selfSkips,
+  };
 }
 
 async function seatOf(

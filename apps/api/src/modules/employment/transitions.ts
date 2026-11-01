@@ -4,6 +4,7 @@ import { activationFailureOf, assertEstablishmentCapacity } from './activation-c
 import { lockTransferBusiness } from './transfer-locks.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -14,6 +15,7 @@ import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
+import { retireRehireActivationDecision } from './retire-rehire-eligibility.js';
 import {
   activationPredecessors,
   PREDECESSOR_FAILED,
@@ -50,6 +52,7 @@ import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js'
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
+  assertBusinessSequence,
   materializeEmploymentRecord,
   NEW_CYCLE_KINDS,
   requireSavedBusiness,
@@ -150,6 +153,8 @@ export async function transitionEmployment(
   // 调动业务的员工侧校验留在主函数里：F-039 按调用邻近度探测 transfer write，下沉一层会被判为口径变弱
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit') await assertRegularizationSubmittable(tx, ctx, business);
+  if (input.action === 'submit' && business.payload.kind === 'retire_rehire')
+    await assertBusinessSequence(tx, ctx, business.employeeId, business.payload);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数，起点是 §5.0A 计划生效日，D-8）。
@@ -176,6 +181,11 @@ export async function transitionEmployment(
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
     // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
     if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);
+    // R2-T08 §7.6：员工主部门或载荷部门正在执行组织调整时 409；离职 / 退休不判。先于编制锁（锁序 ④ → ⑤）。
+    if (!isExitKind(payload.kind)) {
+      const target = { employeeId: business.employeeId, departmentIds: [fields.departmentId], date: effectiveDate };
+      await assertNotPausedByOrgAdjustment(tx, ctx, target);
+    }
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: business.id,
       employeeId: business.employeeId,
@@ -229,6 +239,11 @@ export async function transitionEmployment(
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  const rehireDecision = item && (await retireRehireActivationDecision(tx, ctx, item));
+  if (rehireDecision) {
+    await recordActivationAttempt(tx, ctx, item, { ...rehireDecision, trigger: 'approval' }, { bumpRevision: false });
+    return;
+  }
   const before = await blockingPredecessors(tx, ctx, predecessors, business.id);
   try {
     await postponeLateTransfer(tx, ctx, business);
@@ -399,6 +414,7 @@ async function deleteEmploymentBusiness(
     if (record) {
       const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
+      if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
       if (point && exitCancel)
         previous = await restoreAfterExitDeletion(tx, ctx, record, business, point, restoreUntil);
       else if (point) {
@@ -426,6 +442,21 @@ async function deleteEmploymentBusiness(
   // F-203：试用期行（F-188）同样在内核同事务清理，各入口不再各自补清
   await clearPendingProbation(tx, ctx, business.id);
   return previous;
+}
+
+/**
+ * R2-T08 §7.6：删除已生效记录会让员工在原区间回到前驱部门（并离开被删记录的部门），员工集合随之改变，
+ * 暂停期间被删记录或恢复的前驱涉及暂停组织即 409；离职 / 退休不判。组织设置锁在判定内取，409 回滚整个删除。
+ */
+async function assertDeletionNotPaused(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  point: { recordId: string; window: { from: string } } | null,
+) {
+  const kept = point ? await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from) : null;
+  const departmentIds = [record.fields.departmentId, kept?.fields.departmentId];
+  await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: record.effectiveDate });
 }
 
 /**

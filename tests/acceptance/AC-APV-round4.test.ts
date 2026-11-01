@@ -76,7 +76,13 @@ async function returnedPersonnelRequest(w: ApprovalWorld, s: Scene) {
   await w.publishedProcess({
     approvalType: 'personnel_change',
     conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-    nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school', 'major'] }],
+    nodes: [
+      {
+        key: 'head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        formFields: ['school', 'major'],
+      },
+    ],
   });
   const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
   const record = await w.json<{ id: string; revision: number }>(
@@ -331,7 +337,7 @@ describe('N6 / DEC-122（P2）：调动审批详情交付性别、年龄，按�
         nodes: [
           {
             key: 'n',
-            approver: 'record_department_head',
+            approver: { type: 'department', value: 'record_department_head' },
             formFields: ['gender'],
             editableFields: ['gender'],
             editMode: 'separate',
@@ -429,9 +435,13 @@ describe('DEC-124（暂定）：“历史审批人相同”只算本轮有效同
     await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'n1', approver: 'latest_record_department_head' },
-        { key: 'n2', approver: 'record_department_hrbp', rejectResubmit: 'rejecting_node' },
-        { key: 'n3', approver: 'record_department_head', historySameAssigneeSkip: true },
+        { key: 'n1', approver: { type: 'department', value: 'latest_record_department_head' } },
+        {
+          key: 'n2',
+          approver: { type: 'department', value: 'record_department_hrbp' },
+          rejectResubmit: 'rejecting_node',
+        },
+        { key: 'n3', approver: { type: 'department', value: 'record_department_head' }, historySameAssigneeSkip: true },
       ],
     });
     const draft = await w.application(s.subject.employeeId, { departmentId: s.to });

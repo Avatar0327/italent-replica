@@ -1,0 +1,4 @@
+ALTER TABLE "retirement_rule_conditions" DROP CONSTRAINT "retirement_rule_conditions_seq";--> statement-breakpoint
+ALTER TABLE "retirement_rule_conditions" DROP CONSTRAINT "retirement_rule_conditions_field";--> statement-breakpoint
+ALTER TABLE "retirement_rule_conditions" ADD CONSTRAINT "retirement_rule_conditions_seq" CHECK ("retirement_rule_conditions"."seq" BETWEEN 1 AND 5);--> statement-breakpoint
+ALTER TABLE "retirement_rule_conditions" ADD CONSTRAINT "retirement_rule_conditions_field" CHECK ("retirement_rule_conditions"."field_code" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm'));

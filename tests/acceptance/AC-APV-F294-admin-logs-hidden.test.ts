@@ -77,7 +77,7 @@ describe('AC-APV-F294 管理员日志隐藏记录', () => {
       nodes: [
         { ...TRANSFER_NODES[0]!, hideRecords: true },
         TRANSFER_NODES[2]!,
-        { key: 'again', approver: 'latest_record_department_head' },
+        { key: 'again', approver: { type: 'department', value: 'latest_record_department_head' } },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));

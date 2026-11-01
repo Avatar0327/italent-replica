@@ -16,10 +16,22 @@ export const DIGESTS: Digests = {
   'apps/api/src/authorization.ts': {
     requirePermission: '697f511a2e1f',
   },
+  'apps/api/src/modules/analytics/contract-board-routes.ts': {
+    boardContext: '4a3e91c51fbe',
+    'route:GET /api/tenant/analytics/contract-board': '1b0731a6ea06',
+    'route:GET /api/tenant/analytics/contract-board/components/:code': '0fdf7a01efb5',
+  },
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts': {
-    dashboardContext: '01da30826e17',
+    dashboardContext: 'cc49a288a205',
     'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
     'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
+  },
+  'apps/api/src/modules/analytics/hr-structure-routes.ts': {
+    boardContext: '42546e84f947',
+    reportContext: '33293fcda1ae',
+    'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
+    'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': '1f0252f75cd3',
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
@@ -57,11 +69,13 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/approval/routes.ts': {
     fieldRights: '4ae7ecb6ac72',
     registerInstanceRoutes: '42f2d6e8987e',
-    registerProcessRoutes: 'f4e5b33618f6',
+    registerProcessRoutes: 'dfdd774363ae',
     registerTaskRoutes: '76e6581055d0',
     respondDetail: '352a1a785550',
     respondHistory: '9bab67d00813',
     'route:GET /admin-logs': '11eb36767d6e',
+    'route:GET /designer/person-candidates': '07805ba9ec52',
+    'route:GET /designer/source-candidates': 'e81f2de6216c',
     'route:GET /instances': 'f66cdd697241',
     'route:GET /notifications': '7e11cf9c0c2e',
     'route:GET /processes': '3b5b61e92fc6',
@@ -334,7 +348,7 @@ export const DIGESTS: Digests = {
     schema: 'c7b8883502d5',
   },
   'apps/api/src/modules/employment/forward-preview.ts': {
-    previewEmploymentForwardUpdate: '9e9497cd9082',
+    previewEmploymentForwardUpdate: '4e3f3230bc73',
   },
   'apps/api/src/modules/employment/intern-actions.ts': {
     requireRevokeAccess: '8f3da55b73bc',
@@ -460,7 +474,7 @@ export const DIGESTS: Digests = {
     'route:POST /retirements/:id/cancel': 'c98a4f57dd10',
     'route:POST /retirements/:id/restore': 'f6e8af58d15c',
     'route:POST /retirements/employees/:id': '4c8d0ae53028',
-    'route:POST /retirements/employees/:id/preview': '3e852373e22d',
+    'route:POST /retirements/employees/:id/preview': '899701576358',
   },
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
     'route:DELETE /retirement-rules/:id': '8de974e02097',
@@ -826,15 +840,22 @@ export const DIGESTS: Digests = {
     OBJECT: 'b007f3f6067a',
     authorizeHead: '9c1815c29cd6',
     authorizeHeadAction: '45a4e2cfc6e7',
+    authorizeItem: 'a9765a0f5029',
     requireButtons: '733084dc052f',
     requireScopes: 'ec285517eea1',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
     authorizeStored: '5184ecbbcbed',
+    itemCommand: '6064969f5d1c',
+    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '81e54260e4ea',
     'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8a50ea532585',
     'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': 'ff954d56bb30',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '798a85ce87b9',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': 'fdaad898c549',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
   },
   'apps/api/src/modules/org/employment-linkage.ts': {
@@ -1612,6 +1633,11 @@ export const DIGESTS: Digests = {
   'packages/domain/src/analytics/hr-dashboard.ts': {
     HR_DASHBOARD_OBJECT: 'fd210121ca03',
   },
+  'packages/domain/src/analytics/hr-structure.ts': {
+    CONTRACT_BOARD_OBJECT: 'd8404150dfe9',
+    HR_STRUCTURE_OBJECT: 'b811df5b64eb',
+    HR_STRUCTURE_REPORT_OBJECT: '1f75873ce22d',
+  },
   'packages/domain/src/contracts/rules.ts': {
     CONTRACT_OBJECT: 'e22987935f65',
     contractAction: '213e0434171f',
@@ -1647,6 +1673,9 @@ export const DIGESTS: Digests = {
   'packages/domain/src/offer/rules.ts': {
     OFFER_BUTTONS: '1bd948c24c67',
     OFFER_OBJECT: '952606b19b50',
+  },
+  'packages/domain/src/org-adjustment/entry-buttons.ts': {
+    ORG_ITEM_ENTRY_BUTTONS: '6c2f4637d4fb',
   },
   'packages/domain/src/org-adjustment/fields.ts': {
     ORG_ADJUSTMENT_OBJECT_CODE: '011609a4568b',
@@ -1725,10 +1754,22 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/data-changes/:id': '4a5d1edd24bd',
   'apps/api/src/audit/routes.ts#route:GET /api/tenant/audit/operation-logs': 'e453470a6384',
   'apps/api/src/authorization.ts#requirePermission': 'de23424a7b48',
-  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '15f5d8c90a73',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#boardContext': 'f45e7cc08d68',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board':
+    'bb53ace7a311',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code':
+    'af5c24e28850',
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': '74c0d9467abe',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
     '980851c99aab',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
+    '441eb6918e7f',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
+    'e7e25e52013b',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
@@ -1752,11 +1793,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
   'apps/api/src/modules/approval/routes.ts#registerInstanceRoutes': 'e9958472eb5c',
-  'apps/api/src/modules/approval/routes.ts#registerProcessRoutes': '220773fe40a1',
+  'apps/api/src/modules/approval/routes.ts#registerProcessRoutes': '83c033615f7b',
   'apps/api/src/modules/approval/routes.ts#registerTaskRoutes': '7f8827e8d288',
   'apps/api/src/modules/approval/routes.ts#respondDetail': '4481f12f1ad2',
   'apps/api/src/modules/approval/routes.ts#respondHistory': 'a2ba70424bdc',
   'apps/api/src/modules/approval/routes.ts#route:GET /admin-logs': '3a77adc92a62',
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/person-candidates': 'd400025f1ba9',
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/source-candidates': '3da9e38acdd4',
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': '7b1b9da3fe84',
   'apps/api/src/modules/approval/routes.ts#route:GET /notifications': '01b02ee97bcb',
   'apps/api/src/modules/approval/routes.ts#route:GET /processes': '55c2cac089a8',
@@ -1960,7 +2003,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': '72c5c332f80e',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
-  'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '4f083b329455',
+  'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
   'apps/api/src/modules/employment/intern-actions.ts#rowActions': '75815f414437',
   'apps/api/src/modules/employment/intern-create.ts#createInternEntry': '93cde734e116',
@@ -2051,7 +2094,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': '036e2608dd5f',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/restore': 'b30c105cf038',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id': '1933ba3a50a6',
-  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': 'e8d1b0782fc0',
+  'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id/preview': '9d83e75a1207',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:DELETE /retirement-rules/:id': '9c74e44bfb8b',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-identity-types': '4e944340ea36',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:GET /retirement-rules': '1db8509fb3be',
@@ -2314,15 +2357,27 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeItem': '3771393c935a',
   'apps/api/src/modules/org-adjustment/access.ts#requireButtons': '7f0d931cf235',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
+  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
+    '788c2fe7f803',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id':
     '489c94042dde',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
+    '565dd86e153d',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
-    'f0353ec4d7cd',
+    'fd4b6e85c4cd',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase':
+    '7d7911ec96cb',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/org-items':
+    'd0c2f163388b',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
+    'bff89d82db76',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
@@ -2889,6 +2944,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': 'c7b31c61e80d',
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': '1f7f71f7d487',
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
@@ -2913,6 +2971,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/idp/catalog.ts#IDP_OBJECTS>workShift': 'aa3bf6d1c73d',
   'packages/domain/src/offer/rules.ts#OFFER_BUTTONS': 'e3b0c44298fc',
   'packages/domain/src/offer/rules.ts#OFFER_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/org-adjustment/entry-buttons.ts#ORG_ITEM_ENTRY_BUTTONS': '91839983af98',
   'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE': 'e3b0c44298fc',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>establishment': '338aa90ac3d1',
   'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS>organization': 'b292502f2d84',

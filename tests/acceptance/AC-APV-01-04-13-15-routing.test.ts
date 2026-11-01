@@ -87,10 +87,18 @@ describe('AC-APV-03 相同审批人跳过 / 历史相同审批人跳过（结果
     await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', sameAssigneeSkip: true },
-        { key: 'in_head', approver: 'record_department_head', sameAssigneeSkip: true },
-        { key: 'in_hrbp', approver: 'record_department_hrbp' },
-        { key: 'again', approver: 'record_department_head', historySameAssigneeSkip: true },
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          sameAssigneeSkip: true,
+        },
+        { key: 'in_head', approver: { type: 'department', value: 'record_department_head' }, sameAssigneeSkip: true },
+        { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
+        {
+          key: 'again',
+          approver: { type: 'department', value: 'record_department_head' },
+          historySameAssigneeSkip: true,
+        },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
@@ -180,8 +188,12 @@ describe('AC-APV-15 自审跳过（DEC-058 / DEC-068）', () => {
     await w.setOrgRoles(s.from, { head: initiator.employeeId });
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', sameAssigneeSkip: true },
-        { key: 'in_head', approver: 'record_department_head' },
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          sameAssigneeSkip: true,
+        },
+        { key: 'in_head', approver: { type: 'department', value: 'record_department_head' } },
       ],
     });
     const view = await w.submit(
@@ -217,8 +229,8 @@ describe('AC-APV-15 自审跳过（DEC-058 / DEC-068）', () => {
     await w.publishedProcess({
       exceptionAdminUserId: admin,
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head' },
-        { key: 'in_head', approver: 'record_department_head' },
+        { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+        { key: 'in_head', approver: { type: 'department', value: 'record_department_head' } },
       ],
     });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));

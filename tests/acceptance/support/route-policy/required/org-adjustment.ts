@@ -3,6 +3,8 @@
  * module-route-access.objectContext（对象 TenantBase.OrganizationApproval）；按钮经 button；字段权经 writeFields。
  * 主体组织（OrganizationApproval 范围）与调整范围所选组织（组织对象范围）经 authorizeHead 在命令事务内判定（守卫
  * orgAdjustment.head；作废 / 校验不写字段，走 authorizeHeadAction；改头 / 作废 / 校验经 authorizeStored 对锁住的现值再判），范围外与不存在同为 404。
+ * 组织明细（BE-10b2，路由 4～6、8～9）：路由层判主对象 update、入口 / 行按钮、`orgItems.*` 字段；命令守卫经 itemCommand →
+ * authorizeItem 再判同一按钮、主体组织与行涉及的组织（守卫 orgAdjustment.item）。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -121,6 +123,64 @@ const head = (
   ],
 });
 
+// ---- 组织明细（BE-10b2）----------------------------------------------------------------------------------------
+const DETAIL_OBJ = 'TenantBase.OrganizationApprovalDetail';
+const ITEMS = `${BASE}/:id/org-items`;
+const ENTRY_FILE = 'packages/domain/src/org-adjustment/entry-buttons.ts#ORG_ITEM_ENTRY_BUTTONS';
+const ITEM_GUARD: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${ROUTES}#itemCommand`,
+    anchor: 'await authorizeItem(tx, deps, ctx, input)',
+  },
+];
+/** authorizeItem 先按命令登记的同一按钮再判一次（首次与重放都经过）。 */
+const ITEM_BUTTON: Evidence = {
+  role: 'impl',
+  unit: `${AUTH}#authorizeItem`,
+  anchor: "action: 'object.button',",
+};
+const ITEM_OP = (method: string, path: string) => op(method, path, 'update');
+function itemBtn(
+  method: string,
+  path: string,
+  object: string,
+  code: string,
+  level: 'list' | 'list_row' | 'detail' | 'app_page',
+  anchor: string,
+  extra: Partial<Obligation> = {},
+): Obligation {
+  return {
+    perm: `btn:${object}#${code}@${level}`,
+    facts: ['button:button()', 'button:buttonResource', 'button:object.button'],
+    at: [call(method, path, anchor), BUTTON, ...ITEM_GUARD, ITEM_BUTTON],
+    ...extra,
+  };
+}
+const itemScope = (method: string, path: string, anchor = 'return itemCommand('): Obligation => ({
+  perm: 'guard:orgAdjustment.item',
+  facts: ['guard:orgAdjustment.item'],
+  at: [
+    call(method, path, anchor),
+    ...ITEM_GUARD,
+    { role: 'impl', unit: `${AUTH}#authorizeItem`, anchor: 'await requireScopes(tx, bound, ctx, {' },
+    SCOPES,
+  ],
+});
+const ROW = (code: string) => (method: string, path: string, anchor: string) =>
+  itemBtn(method, path, DETAIL_OBJ, code, 'list_row', anchor);
+const ENTRIES = [
+  ['editor.sub', OBJ, 'AddSubOrgApprovalDetails', 'app_page'],
+  ['editor.peer', OBJ, 'AddPeerOrgApprovalDetail', 'app_page'],
+  ['editor.create', OBJ, 'AddOrgBtn', 'app_page'],
+  ['editor.change', OBJ, 'ChangeOrgBtn', 'app_page'],
+  ['editor.drag', OBJ, 'DragToGenerateOrgApprovalDetails', 'app_page'],
+  ['editor.stop', OBJ, 'StopOrgBtn', 'app_page'],
+  ['detail.create', DETAIL_OBJ, 'OrgAjustDetailCreate', 'list'],
+  ['detail.change', DETAIL_OBJ, 'OrgAdjustDetailChange', 'list'],
+  ['detail.stop', DETAIL_OBJ, 'orgAdjustDetailStop', 'list'],
+] as const;
+
 export const ORG_ADJUSTMENT: RequiredTable = {
   [`POST ${BASE}`]: [
     op('POST', BASE, 'create', undefined, true),
@@ -141,5 +201,60 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     op('POST', `${BASE}/:id/check`, 'update', "const ctx = await objectContext(c, deps, OBJECT, 'update')"),
     btn('POST', `${BASE}/:id/check`, 'EditAdjustOrgDetailBtn', 'detail', 'authorizeHeadAction'),
     head('POST', `${BASE}/:id/check`, 'authorizeHeadAction(tx, deps, ctx, {', 'authorizeHeadAction'),
+  ],
+  [`POST ${ITEMS}`]: [
+    ITEM_OP('POST', ITEMS),
+    ...ENTRIES.map(([entry, object, code, level]) =>
+      itemBtn(
+        'POST',
+        ITEMS,
+        object,
+        code,
+        level,
+        'await button(deps, ctx, entry.objectCode, entry.code, entry.level)',
+        {
+          or: `entry:${entry}`,
+          at: [
+            call('POST', ITEMS, 'await button(deps, ctx, entry.objectCode, entry.code, entry.level)'),
+            { role: 'const', unit: ENTRY_FILE, anchor: `'${entry}': { objectCode:` },
+            BUTTON,
+            ...ITEM_GUARD,
+            ITEM_BUTTON,
+          ],
+        },
+      ),
+    ),
+    itemScope('POST', ITEMS),
+  ],
+  [`PATCH ${ITEMS}/:itemId`]: [
+    ITEM_OP('PATCH', `${ITEMS}/:itemId`),
+    ROW('EditOrgApprovalDetail')('PATCH', `${ITEMS}/:itemId`, 'await button(deps, ctx, ...ROW_EDIT)'),
+    itemScope('PATCH', `${ITEMS}/:itemId`),
+  ],
+  [`DELETE ${ITEMS}/:itemId`]: [
+    ITEM_OP('DELETE', `${ITEMS}/:itemId`),
+    ROW('DelteOrgApprovalDetail')('DELETE', `${ITEMS}/:itemId`, 'await button(deps, ctx, ...rowDelete)'),
+    itemScope('DELETE', `${ITEMS}/:itemId`, 'return itemCommand('),
+  ],
+  [`POST ${BASE}/:id/items/:section/:itemId/rebase`]: [
+    ITEM_OP('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
+    ROW('EditOrgApprovalDetail')(
+      'POST',
+      `${BASE}/:id/items/:section/:itemId/rebase`,
+      'await button(deps, ctx, ...ROW_EDIT)',
+    ),
+    itemScope('POST', `${BASE}/:id/items/:section/:itemId/rebase`),
+  ],
+  [`POST ${BASE}/:id/rebase`]: [
+    ITEM_OP('POST', `${BASE}/:id/rebase`),
+    itemBtn(
+      'POST',
+      `${BASE}/:id/rebase`,
+      OBJ,
+      'EditAdjustOrgDetailBtn',
+      'detail',
+      'await button(deps, ctx, OBJECT, code, level)',
+    ),
+    itemScope('POST', `${BASE}/:id/rebase`),
   ],
 };

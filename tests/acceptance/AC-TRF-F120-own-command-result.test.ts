@@ -39,7 +39,9 @@ describe('F-120 员工本人调动：按命令 ID 回查', () => {
     department = await world.org('合成部门');
     self = await world.person('本人', department, { place: '权限外地址' });
     other = await world.person('其他员工', department);
-    await world.publishedProcess({ nodes: [{ key: 'owner_review', approver: 'owner' }] });
+    await world.publishedProcess({
+      nodes: [{ key: 'owner_review', approver: { type: 'custom_variable', value: 'owner' } }],
+    });
   });
 
   const query = (commandId: string, user = self.userId) =>

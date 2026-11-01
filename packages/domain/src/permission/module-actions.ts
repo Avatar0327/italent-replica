@@ -164,11 +164,12 @@ export const MODULE_OBJECTS = {
     ],
   ),
   // F-222（codex-F185b B1/B2）：对象功能与功能权限仅两个详情页“不同意”按钮；通用工作流操作不在该取证结论内。
-  // 不同意改变已有单据状态，沿用本文件审批提交 / 撤回 / 撤销的 update 数据操作；字段权限供审批中心披露。
+  // F-225（DEC-704）：原站两按钮事件类型为“创建”（新建一条审批处理记录，docs/02_业务建模/34 补充节），按新增控制；
+  // 字段权限供审批中心披露。
   offerBatchApproval: object(
     'OfferBatchApproval',
     OFFER_BATCH_FIELDS,
-    [button('PartDisAgree', 'detail', 'update'), button('AllDisAgree', 'detail', 'update')],
+    [button('PartDisAgree', 'detail', 'create'), button('AllDisAgree', 'detail', 'create')],
     ['status'],
   ),
   // R2-T08 v1.6 §9.2：原站编码照抄（含拼写），明细字段统一挂申请单；合同容器是本对象静态字段。
@@ -385,6 +386,11 @@ export const MODULE_OBJECTS = {
   // 看全部默认给本模块的预置管理员（DEC-415）
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
+  // R2 BE-13a 人事分析 - 人员结构分析（B49）/ 员工结构报表（B53，素质与任职两张同一对象）/ 合同情况（B55）：同人事看板，
+  // 只读、无业务字段；“组件明细”只登记不授予
+  hrStructure: object('HrStructure', [], [button('detail', 'list')]),
+  hrStructureReport: object('HrStructureReport', [], [button('detail', 'list')]),
+  contractBoard: object('ContractBoard', [], [button('detail', 'list')]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(

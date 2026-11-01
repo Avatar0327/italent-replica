@@ -12,7 +12,11 @@ import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
 const EMPLOYMENT = '/api/tenant/employment';
-const DIRECT = { key: 'manager', name: '直接上级', approver: 'direct_manager' } as const;
+const DIRECT = {
+  key: 'manager',
+  name: '直接上级',
+  approver: { type: 'object_field', value: 'direct_manager' },
+} as const;
 
 interface RecordView {
   readonly id: string;

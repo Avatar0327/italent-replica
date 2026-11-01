@@ -14,7 +14,8 @@ export { OPEN_STATUSES } from './task-state.js';
 /**
  * DEC-101：历史任务与日志不设总量上限、分页读取；只限制同时在办的任务数与单次读取的批量。
  */
-export const MAX_PENDING = 50;
+// DEC-686：会签来源最多派发 100 人，实例容量须容纳完整节点。
+export const MAX_PENDING = 100;
 const BATCH = 500;
 
 /** uuid[] 参数（drizzle 的数组参数会展开成列表，须显式拼成数组）。 */

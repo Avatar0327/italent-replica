@@ -60,7 +60,7 @@ describe('发起条件（`14` §1.1）', () => {
 const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   key: 'n',
   name: '节点',
-  approver: 'record_department_head',
+  approver: { type: 'department', value: 'record_department_head' },
   noAssignee: 'exception_admin',
   sameAssigneeSkip: true,
   historySameAssigneeSkip: true,
