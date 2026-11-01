@@ -5,7 +5,8 @@ import './support/exit-gate-enforced.js';
  *   数据范围要求单内每一份 Offer 都在范围内（同审批中心 access.ts offerInstanceScopeSql）；
  * - 节点身份含流程版本：不同流程里同名的节点键分别统计，概览与钻取共用同一个组键；
  * - 退回（没有待办）的在途流程，等待分档为空，不落进“≤3 天”；
- * - 7.1.23 转正正例：直接转正计入业务总量、不计审批总量；审批中的转正不算业务总量。
+ * - 7.1.23 转正正例：直接转正计入业务总量、不计审批总量；走流程且审批通过的两者都计；审批中的转正不算业务总量；
+ * - 7.1.20 Offer 业务总量（第 3 轮）：免审批 + 审批通过计入；驳回待重提、撤回、批量单驳回后回到“未发起审批”的不计。
  * 期望值一律是手写的实例 / 任务 / 业务单据 ID 集合。
  */
 import type { Authorizer } from '@italent/api';
@@ -18,6 +19,7 @@ import { installExitSeeds } from './AC-EXIT-support.js';
 import { offerApprovalWorld } from './AC-OF-BE14a3-support.js';
 import { hire, pbWorld, regularizeOk } from './AC-PB-support.js';
 import { processClient, sorted, type ProcessClient } from './AC-HA-13c-support.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const AS_OF = '2026-10-20';
@@ -206,23 +208,40 @@ describe('AC-HA-13c 退回的在途流程', () => {
 });
 
 describe('AC-HA-13c 7.1.23 转正正例', () => {
-  it('直接转正计入业务总量、不计审批总量；审批中的转正申请不算业务总量', async () => {
+  it('直接转正计入业务总量、不计审批总量；走流程且审批通过的计入两者；审批中的转正申请不算业务总量', async () => {
     const pb = await pbWorld(database().db, 'ha13c-regular-rate', { approval: true });
     const direct = await hire(pb, { months: 3, name: '直接转正' });
     const pending = await hire(pb, { months: 3, name: '转正审批中' });
+    const passed = await hire(pb, { months: 3, name: '转正审批通过' });
     const done = await regularizeOk(pb, { mode: 'direct' }, [direct.employee.id]);
     const review = await regularizeOk(pb, { mode: 'application' }, [pending.employee.id]);
     expect(review.items[0]).toMatchObject({ status: 'succeeded', businessStatus: 'in_review' });
+    const approved = (await regularizeOk(pb, { mode: 'application' }, [passed.employee.id])).items[0]!.businessId!;
+    const now = new Date('2026-10-01T01:00:00.000Z');
+    const api = tenantApi(pb.db, { clock: () => now });
+    const as = (user: string) => ({ user, tenant: pb.session.tenant.id });
+    const read = async <T>(path: string) =>
+      (await (await api.request('GET', `/api/tenant/approval${path}`, as(pb.session.user.id))).json()) as T;
+    const [listed] = (await read<{ items: { id: string }[] }>(`/instances?role=initiated&businessId=${approved}`))
+      .items;
+    const view = await read<InstanceView>(`/instances/${listed!.id}`);
+    const task = view.tasks.find((t) => t.status === 'pending')!;
+    const response = await api.request('POST', `/api/tenant/approval/tasks/${task.id}/approve`, {
+      ...as(task.assigneeUserId),
+      ifMatch: view.revision,
+      body: {},
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
     const regular = processClient(
       pb.db,
       { tenant: pb.session.tenant.id, user: pb.session.user.id },
-      { now: () => new Date('2026-10-01T01:00:00.000Z') },
+      { now: () => now },
     );
     const row = await regular.expectComponent('regularizationApprovalRate', {
-      all: [done.items[0]!.businessId!],
-      hits: [],
+      all: [done.items[0]!.businessId!, approved],
+      hits: [approved],
     });
-    expect(row.rate).toBe(0);
+    expect(row.rate).toBe(0.5);
   });
 });
 

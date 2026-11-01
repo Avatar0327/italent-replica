@@ -77,7 +77,8 @@ const SECOND_LEVEL = (c: ProcessContext) => sql`org_now AS (
 
 /**
  * 批量 Offer 单内各 Offer 的录用部门，及“每一份 Offer 都在人事分析范围内”（同审批中心 access.ts offerInstanceScopeSql：
- * 一份范围外即整单不可见；空单、录用部门为空的按范围外处理，fail-closed）。
+ * 一份范围外即整单不可见；空单按范围外处理，fail-closed）。录用部门为空的 Offer 按 scopeSql 原样判定：组织类范围不通过，
+ * 看全部、创建人本人范围仍可能通过。
  */
 const batchOffers = (c: ProcessContext) => sql`LEFT JOIN LATERAL (
   SELECT array_agg(DISTINCT bo.department_id) FILTER (WHERE bo.department_id IS NOT NULL) AS orgs,
@@ -153,9 +154,22 @@ const approvedInstance = (c: ProcessContext, type: string, id: SQL) => sql`(SELE
     AND ai.business_id=${id} AND ai.status='approved' ORDER BY ai.completed_at DESC LIMIT 1)`;
 
 /**
+ * Offer 是否计入 ④ 业务总量（单一入口，明细与总量只经此处）：审批通过，或从未关联过审批实例（单份 offer 实例、
+ * 批量单 offer_batch 实例）的免审批 Offer（规格 35 ④“已审批通过的流程或已生效数据”）。“未发起审批”被驳回待重提、
+ * 撤回、作废在途审批复用（domain offer/approval.ts OFFER_APPROVAL_OUTCOMES.returned），不能按审批子状态判“没走流程”：
+ * 关联过实例而当前未通过的一律不计。
+ */
+const offerCounted = (c: ProcessContext, offer: { id: SQL; status: SQL }) => sql`(${offer.status}='approved'
+  OR (${offer.status}='unsubmitted'
+    AND NOT EXISTS (SELECT 1 FROM approval_instances li WHERE li.tenant_id=${c.tenantId}
+      AND li.business_type='offer' AND li.business_id=${offer.id})
+    AND NOT EXISTS (SELECT 1 FROM offer_batch_approval_items lb JOIN approval_instances li
+      ON li.tenant_id=lb.tenant_id AND li.business_type='offer_batch' AND li.business_id=lb.batch_id
+      WHERE lb.tenant_id=${c.tenantId} AND lb.offer_id=${offer.id})))`;
+
+/**
  * ④ 业务单据：按提交 / 办理（直接办理 = 保存）时刻或 Offer / 合同的创建时刻落入窗口；在途、撤回、作废的不算业务总量。
- * Offer 只算没走流程（unsubmitted）与审批通过（approved）的（规格 35 ④“已审批通过的流程或已生效数据”），审批中、被否决的不算。
- * 任职业务按记录部门的二级组织分组，Offer 按录用部门，合同按签约公司。
+ * Offer 按 offerCounted 判定；任职业务按记录部门的二级组织分组，Offer 按录用部门，合同按签约公司。
  */
 function businesses(c: ProcessContext): SQL {
   const employment = sql`SELECT b.id, ${approvedInstance(c, 'employment', sql`b.id`)} AS instance_id,
@@ -178,7 +192,8 @@ function businesses(c: ProcessContext): SQL {
       o.department_id AS org_id, NULL::uuid AS employee_id, o.approval_status='approved' AS approved,
       ${scopeSql(c.scope, { org: sql`o.department_id`, creator: sql`o.created_by` })} AS visible
     FROM offers o WHERE o.tenant_id=${c.tenantId} AND o.status<>'invalid'
-      AND o.approval_status IN ('unsubmitted','approved') AND ${inWindow(c, sql`o.created_at`)}`;
+      AND ${offerCounted(c, { id: sql`o.id`, status: sql`o.approval_status` })}
+      AND ${inWindow(c, sql`o.created_at`)}`;
   const contract = sql`SELECT q.id, ${approvedInstance(c, 'contract', sql`q.id`)} AS instance_id, 'contract' AS kind,
       emp.department_id AS org_id, q.employee_id, q.company_id,
       ${employmentVisibilitySql(c.scope, {
