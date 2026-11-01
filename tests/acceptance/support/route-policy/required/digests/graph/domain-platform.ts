@@ -39,6 +39,10 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#CONFIG_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#DUTY_TRANSFER_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#EMPLOYEE_PROFILE': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
@@ -97,6 +101,7 @@ export const GRAPH: Graph = {
     '#BLACKLIST_SEE_ALL',
     '#BUSINESS_OBJECTS',
     '#CORE_HR',
+    '#DUTY_TRANSFER_SEE_ALL',
     '#EMPLOYEE_PROFILE',
     '#HR_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',

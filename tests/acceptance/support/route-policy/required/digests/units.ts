@@ -157,6 +157,15 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/contracts/todos.ts': {
     registerMergedTodos: '247f568f9db7',
   },
+  'apps/api/src/modules/duty-transfer/routes.ts': {
+    OBJECT: '7083a98e9a98',
+    requireVisiblePerson: 'abca1730966f',
+    'route:GET /api/tenant/duty-transfers/departed': '7795c01bc8c5',
+    'route:GET /api/tenant/duty-transfers/people/:id/duties': '160365b4dc2f',
+    'route:GET /api/tenant/duty-transfers/records': 'db1c98ce076a',
+    'route:POST /api/tenant/duty-transfers/people/:id': 'a12559e187cc',
+    'route:POST /api/tenant/duty-transfers/people/:id/check': 'ef2e3662e00b',
+  },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
     requireSelfServiceButtons: 'f061788dc9ba',
@@ -1645,6 +1654,10 @@ export const DIGESTS: Digests = {
   'packages/domain/src/employment/assessment.ts': {
     PROBATION_ASSESSMENT_OBJECT: 'a7ea04177ed2',
   },
+  'packages/domain/src/employment/duty-transfer-menu.ts': {
+    DUTY_TRANSFER_OBJECT: '56de2d6970cd',
+    DUTY_TRANSFER_SET_RECEIVER_BUTTON: '9f4883cbda1d',
+  },
   'packages/domain/src/employment/exit-handover.ts': {
     HANDOVER_BATCH_SUBMIT_BUTTON: 'c4f52053874e',
     HANDOVER_RESUBMIT_BUTTON: '3704cff4549f',
@@ -1863,6 +1876,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/routes.ts#route:PUT /settings': 'd121848a138c',
   'apps/api/src/modules/contracts/routes.ts#routeContext': 'ae6815d235ed',
   'apps/api/src/modules/contracts/todos.ts#registerMergedTodos': '73b57b28a247',
+  'apps/api/src/modules/duty-transfer/routes.ts#OBJECT': '2bcef067731e',
+  'apps/api/src/modules/duty-transfer/routes.ts#requireVisiblePerson': 'dd0006514593',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': 'd11fec3078fb',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/people/:id/duties': 'ea5ba0c36c25',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/records': 'b81f902b2bb7',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id': 'fc161ff8fb19',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id/check': '934eaa763551',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': '068fd9fcc31a',
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '8bb8fb420ee3',
@@ -2950,6 +2970,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/contracts/rules.ts#contractAction': 'e3b0c44298fc',
   'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SET_RECEIVER_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_BATCH_SUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON': 'e3b0c44298fc',
   'packages/domain/src/employment/exit-handover.ts#HANDOVER_ROW_SUBMIT_BUTTON': 'e3b0c44298fc',

@@ -338,6 +338,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
     'packages/domain/src/employment/assessment.ts#PROBATION_ASSESSMENT_OBJECT',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_OBJECT',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_AUDIT_OBJECTS',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_AUDIT_ACTIONS',
     'packages/domain/src/evaluation/catalog.ts#EVALUATION_OBJECTS',

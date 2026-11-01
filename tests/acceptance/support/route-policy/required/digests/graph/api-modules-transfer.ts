@@ -220,6 +220,18 @@ export const GRAPH: Graph = {
     '#assertNoInFlightContract',
     '#loadTarget',
   ],
+  'apps/api/src/modules/transfer/linkage/duty-execution.ts#dutyItemFailure': [
+    'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
+  ],
+  'apps/api/src/modules/transfer/linkage/duty-execution.ts#executeDutyItem': [
+    'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople',
+    'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord',
+    'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople',
+    'apps/api/src/modules/transfer/linkage/validation.ts#RELATION_FIELDS',
+    'apps/api/src/modules/transfer/linkage/validation.ts#ROLE_FIELDS',
+    'apps/api/src/modules/transfer/linkage/validation.ts#requireReportingSubordinate',
+    'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder',
+  ],
   'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer': [
     '#createItems',
     '#linkageExecuted',
@@ -264,21 +276,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/transfer/linkage/input.ts#normalizeLinkage': ['#assertUnique', '#linkageSchema'],
   'apps/api/src/modules/transfer/linkage/items.ts#attemptLinkageItem': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/transfer/linkage/duty-execution.ts#dutyItemFailure',
     '#executeItem',
-    '#itemFailure',
   ],
   'apps/api/src/modules/transfer/linkage/items.ts#executeItem': [
-    'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople',
-    'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord',
-    'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople',
+    'apps/api/src/modules/transfer/linkage/duty-execution.ts#executeDutyItem',
     'apps/api/src/modules/transfer/linkage/part-time.ts#transferPartTimePort',
-    'apps/api/src/modules/transfer/linkage/validation.ts#RELATION_FIELDS',
-    'apps/api/src/modules/transfer/linkage/validation.ts#ROLE_FIELDS',
-    'apps/api/src/modules/transfer/linkage/validation.ts#requireReportingSubordinate',
-    'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder',
-  ],
-  'apps/api/src/modules/transfer/linkage/items.ts#itemFailure': [
-    'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
   ],
   'apps/api/src/modules/transfer/linkage/items.ts#retryLinkageItem': [
     'apps/api/src/modules/employment/context.ts#assertRevision',
