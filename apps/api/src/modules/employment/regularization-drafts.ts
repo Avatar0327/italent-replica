@@ -7,6 +7,8 @@
  * - 跨操作人共享：有该员工的转正申请权限且在其数据范围内即可读写同一份（北森未测，复刻口径，写进未决）。
  * 同一份读投影还带 applicationId：本周期最近一张停在草稿的转正申请（含撤回回草稿的），前端据此同单重提（DEC-103），
  * 取代原先记在本机存储里的草稿指针。
+ * 第 2 轮（rf347_1 P2-2 / P2-3 / P2-8）：暂存先锁员工行串行化同员工的写（首次暂存没有行可锁）；读写都要求今天在职
+ * （与转正申请入口同一顺序口径 sequenceViolation）；已有申请草稿单时暂存按版本冲突拒绝，前端重读后进入那张单。
  */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -17,8 +19,10 @@ import { assertRevision, auditEmployment } from './context.js';
 import { parse } from './entry-routes.js';
 import { loadProbationCycle } from './probation.js';
 import { requireEnabledProbationEntry } from './probation-results.js';
-import { rowsOf } from './record-store.js';
+import { lockEmploymentEmployee, rowsOf } from './record-store.js';
+import { sequencePredecessorKind } from './retire-rehire-eligibility.js';
 import type { EmploymentContext } from './types.js';
+import { sequenceViolation } from './write-service.js';
 
 const FORM = 'standard';
 const draftInput = z.strictObject({
@@ -50,9 +54,16 @@ interface DraftRow {
   readonly updated_at: string;
 }
 
-/** 在职才有暂存：不在职（未入职、已离职）与员工不存在同样 404。 */
+/**
+ * 在职才有暂存：不在职（未入职、离职 / 退休已生效）与员工不存在同样 404。在职口径同转正申请入口
+ * （write-service.ts assertBusinessSequence：今天及以前最后一条不能是离职 / 退休）；周期取不到也算不在职。
+ */
 async function currentAnchor(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  const cycle = await loadProbationCycle(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const previous = await sequencePredecessorKind(tx, ctx.tenantId, employeeId, today);
+  const cycle = sequenceViolation(previous, 'regularization')
+    ? undefined
+    : await loadProbationCycle(tx, ctx.tenantId, employeeId, today);
   if (!cycle) throw new AppError('NOT_FOUND', '任职数据不存在');
   return cycle.anchor;
 }
@@ -120,7 +131,11 @@ export async function loadRegularizationDraft(
   return view(employeeId, row, anchor.id, await pendingApplication(tx, ctx.tenantId, employeeId, anchor.staffId));
 }
 
-/** 暂存（覆盖写）：不校验必填；填了试用结果须是启用项，存库里的编码写法。 */
+/**
+ * 暂存（覆盖写）：不校验必填；填了试用结果须是启用项，存库里的编码写法。
+ * 锁顺序同提交（员工 → 暂存行）：先锁员工行，首次暂存（还没有暂存行）的并发也串行，后到的按 revision 409。
+ * 本周期已有申请草稿单（别人在本页打开后建的）：409 不写，前端重读后进入那张单，避免暂存成功却被申请单遮住。
+ */
 export async function saveRegularizationDraft(
   tx: Tx,
   ctx: EmploymentContext,
@@ -128,9 +143,18 @@ export async function saveRegularizationDraft(
   raw: unknown,
 ): Promise<RegularizationDraftView> {
   const input = parse(draftInput, raw);
+  await lockEmploymentEmployee(tx, ctx, employeeId);
   const anchor = await currentAnchor(tx, ctx, employeeId);
   const before = await draftRow(tx, ctx.tenantId, employeeId, true);
-  assertRevision(ctx.expectedRevision, before ? Number(before.revision) : 0);
+  const revision = before ? Number(before.revision) : 0;
+  assertRevision(ctx.expectedRevision, revision);
+  const application = await pendingApplication(tx, ctx.tenantId, employeeId, anchor.staffId);
+  if (application)
+    throw new AppError('REVISION_CONFLICT', '任职数据已变更，请刷新后显式重提', {
+      expected: ctx.expectedRevision,
+      actual: revision,
+      applicationId: application,
+    });
   const result = input.probationResult
     ? (await requireEnabledProbationEntry(tx, ctx.tenantId, input.probationResult)).code
     : null;

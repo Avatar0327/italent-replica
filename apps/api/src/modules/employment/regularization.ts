@@ -17,6 +17,7 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import { auditEmployment, requireEmployeeInScope } from './context.js';
 import { loadProbationCycle } from './probation.js';
 import { requireEnabledProbationEntry } from './probation-results.js';
+import { clearSubmittedRegularizationDraft } from './regularization-drafts.js';
 import { transitionEmployment } from './transitions.js';
 import type {
   CustomFields,
@@ -73,7 +74,8 @@ async function appendRegularizationResult(
 
 /**
  * 草稿 / 撤回单改试用结果（F-347 c，由 PATCH /businesses/:id 调用，单据 revision 已在那里校验并递增）：
- * 须为启用项；与当前一版相同则不追加。审计挂在任职业务上，与单据其他字段的修改同一事务。
+ * 与当前一版相同（编码不区分大小写、去空白）直接返回，不追加、不校验启用——撤回单的结果已停用时只改日期仍可保存
+ * （rf347_1 P2-4）；换成别的结果才须为启用项。审计挂在任职业务上，与单据其他字段的修改同一事务。
  */
 export async function changeRegularizationResult(
   tx: Tx,
@@ -81,9 +83,9 @@ export async function changeRegularizationResult(
   business: { readonly id: string; readonly employeeId: string },
   code: string,
 ) {
-  const entry = await requireEnabledProbationEntry(tx, ctx.tenantId, code);
   const current = await loadRegularizationResult(tx, ctx.tenantId, business.id);
-  if (current?.code === entry.code) return;
+  if (current && current.code.trim().toLowerCase() === code.trim().toLowerCase()) return;
+  const entry = await requireEnabledProbationEntry(tx, ctx.tenantId, code);
   await appendRegularizationResult(tx, ctx, business.employeeId, business.id, entry);
   await auditEmployment(
     tx,
@@ -126,6 +128,9 @@ export async function createRegularizationBusiness(
   await auditEmployment(tx, ctx, 'employment.regularization.result', 'employment-business', created.id, null, {
     probationResult: result.code,
   });
+  // 直接转正（含考核生成的）与提交申请同一清暂存入口、同一事务（rf347_1 P3）；申请只建草稿，提交时再清
+  if (request.mode === 'direct')
+    await clearSubmittedRegularizationDraft(tx, ctx, { employeeId, payload: { kind: created.kind } });
   return created;
 }
 

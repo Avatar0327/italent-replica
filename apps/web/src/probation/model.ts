@@ -9,7 +9,7 @@ import {
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
 import { slotKey } from '../foundation/forms/slot.js';
-import { isBlank, type Values } from '../foundation/forms/values.js';
+import { isBlank, sameValue, type Values } from '../foundation/forms/values.js';
 import { canButton, type ObjectPermission } from '../foundation/permission-model.js';
 import { DirectError } from '../part-time/direct-api.js';
 import { m } from './messages.js';
@@ -317,11 +317,16 @@ export function acceptTemporary(raw: unknown, employeeId: string, sent: number):
     throw new Error(m.invalidReceipt);
   return Number(view.revision);
 }
-/** 草稿单修改（PATCH /businesses/:id，F-347 c）：转正日期与试用结果一起带上。 */
-export const draftPatchBody = (values: Values): Values => ({
-  effectiveDate: values.effectiveDate,
-  probationResult: values.probationResult,
-});
+/**
+ * 草稿单修改（PATCH /businesses/:id，F-347 c）：只带与 base（打开的草稿单内容）不同的项（rf347_1 P2-4）——
+ * 撤回单的结果已停用时只改日期不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。
+ */
+export const draftPatchBody = (values: Values, base: Values): Values =>
+  Object.fromEntries(
+    (['effectiveDate', 'probationResult'] as const)
+      .filter((field) => !sameValue(values[field], base[field]))
+      .map((field) => [field, values[field]]),
+  );
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */
 const destinations: Record<string, ProbationView> = {

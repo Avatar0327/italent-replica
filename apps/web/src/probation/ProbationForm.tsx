@@ -11,7 +11,7 @@ import { projectFields, sameValue, type Values } from '../foundation/forms/value
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { PageState } from '../foundation/PageState.js';
-import { useBusinessRead, type ApplicationDraft } from '../intern/commands.js';
+import type { ApplicationDraft } from '../intern/commands.js';
 import { acceptBusiness } from '../intern/model.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
 import { useRead } from '../part-time/useRead.js';
@@ -35,12 +35,14 @@ import {
   object,
   probationPath,
   probationValues,
+  recoveredDraft,
   regularizationReceipt,
   regularizationsBody,
   regularizations,
   regularizationDraftPath,
   regularizeFields,
   temporaryBody,
+  temporaryOf,
   validateAdjust,
   validateRegularize,
   type Pinned,
@@ -83,6 +85,8 @@ type ShellProps = Pick<FormProps, 'onClose'> & {
   cmd: ProbationCommand;
   error: unknown;
   locked: boolean;
+  /** 只锁提交、不锁表单（如新建时没有启用的试用结果：仍可编辑、暂存，rf347_1 P2-5）。 */
+  submitLocked?: boolean;
 };
 function Shell(props: ShellProps & { onSubmit(): void; okText?: string; extra?: ReactNode; children: ReactNode }) {
   const { cmd, error, locked } = props;
@@ -99,7 +103,12 @@ function Shell(props: ShellProps & { onSubmit(): void; okText?: string; extra?: 
             {m.cancel}
           </Button>
           {props.extra}
-          <Button type="primary" loading={cmd.form.busy} disabled={locked} onClick={props.onSubmit}>
+          <Button
+            type="primary"
+            loading={cmd.form.busy}
+            disabled={locked || props.submitLocked}
+            onClick={props.onSubmit}
+          >
             {props.okText ?? m.save}
           </Button>
         </Space>
@@ -225,12 +234,13 @@ function useResults() {
   const result = useRead<{ items: { code: string; name: string }[] }>(`${apiRoot}/probation-results?enabled=true`);
   return { ...result, options: (result.data?.items ?? []).map((item) => ({ value: item.code, label: item.name })) };
 }
-/** 下拉选项 = 启用项 ∪ 已存结果（保存时的名称）：停用 / 改名的已存结果仍按原名显示（F-347 b / e）。 */
+/**
+ * 下拉选项 = 已存结果（保存时的名称）∪ 其余启用项：已存结果的名称快照优先于字典当前名称，停用 / 改名后仍按保存时
+ * 的名称显示（F-347 b / e；rf347_1 P2-7：字典到了也不换成当前名称）。
+ */
 function withSaved(options: ResultOption[], names: Values): ResultOption[] {
-  const saved = Object.entries(names)
-    .filter(([code]) => !options.some((option) => option.value === code))
-    .map(([code, name]) => ({ value: code, label: String(name) }));
-  return [...saved, ...options];
+  const saved = Object.entries(names).map(([code, name]) => ({ value: code, label: String(name) }));
+  return [...saved, ...options.filter((option) => !Object.hasOwn(names, option.value))];
 }
 const openingRegularize = (values: Values): Values => ({
   effectiveDate: typeof values.expectedEndDate === 'string' ? defaultRegularizationDate(values.expectedEndDate) : null,
@@ -294,10 +304,10 @@ function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Val
       return { path: slotKey(businesses, made.id), ...made };
     },
   });
-  const patch = (id: string, values: Values): Send => ({
+  const patch = (id: string, values: Values, base: Values): Send => ({
     method: 'PATCH',
     path: slotKey(businesses, id),
-    body: draftPatchBody,
+    body: (sent) => draftPatchBody(sent, base),
     accept: (raw, sent) => {
       const made = kept(raw, sent, id);
       saved({ ...made, values: {} }, values);
@@ -323,10 +333,34 @@ function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Val
   };
 }
 
-/** 暂存（DEC-709）：PUT 覆盖写同一份，If-Match = 暂存 revision；不校验必填、不建单。 */
-function useStage(employeeId: string, revision: number, baseline: Values) {
+type FoundDraft = ApplicationDraft & { names: Values };
+/** 读一张草稿单（GET /businesses/:id）并投影成表单值：仍是这名员工停在草稿的转正申请，否则按回执无效。 */
+function useDraftRead(employeeId: string) {
+  const api = useApiClient();
+  return async (id: string): Promise<FoundDraft> => {
+    const latest = recoveredDraft(await api.request<Values>(slotKey(businesses, id)), employeeId, id);
+    if (!latest) throw new Error(m.invalidReceipt);
+    return latest;
+  };
+}
+
+/**
+ * 暂存（DEC-709）：PUT 覆盖写同一份，If-Match = 暂存 revision；不校验必填、不建单。
+ * 409 重读（rf347_1 P2-6）读同一个暂存视图：revision 与暂存内容来自同一次 GET，已改的输入保留，核对后显式重提；
+ * 视图里有申请草稿单（别人在本页打开后建的，P2-3）时交 found 进入那张单。
+ */
+function useStage(employeeId: string, revision: number, baseline: Values, found: (draft: FoundDraft) => void) {
+  const api = useApiClient();
+  const readDraft = useDraftRead(employeeId);
   const [current, setCurrent] = useState(revision);
-  const target = { id: employeeId, revision: current, baseline };
+  const read = async (): Promise<Latest> => {
+    const view = await api.request<Values>(regularizationDraftPath(employeeId));
+    if (view.employeeId !== employeeId || !Number.isSafeInteger(view.revision)) throw new Error(m.invalidReceipt);
+    if (typeof view.applicationId === 'string') found(await readDraft(view.applicationId));
+    const values = temporaryOf(view.temporary)?.values ?? baseline;
+    return { id: employeeId, revision: Number(view.revision), values };
+  };
+  const target = { id: employeeId, revision: current, baseline, read };
   const cmd = useProbationCommand(employees, target, 'stage-regularization', async () => undefined);
   const stage = async (values: Values) => {
     const send: Send = {
@@ -380,6 +414,31 @@ function useTemporaryResult(
   return results.data ? {} : (temporary?.names ?? {});
 }
 
+/**
+ * 暂存冲突重读到申请草稿单（rf347_1 P2-3）：表单换成那张单的内容并进入它（提示沿用“已带出原申请”）；暂存这次冲突
+ * 已由重读处理完，核对后清掉，不留锁定条目（同一员工槽上换了单据 revision 也不会撞上它）。
+ */
+function useFoundDraft(
+  found: FoundDraft | undefined,
+  staging: ProbationCommand,
+  form: FormInstance,
+  enter: (draft: FoundDraft) => void,
+) {
+  const entered = useRef<FoundDraft>(undefined);
+  useEffect(() => {
+    if (!found || entered.current === found) return;
+    entered.current = found;
+    enter(found);
+    form.setFieldsValue(found.values);
+  });
+  // 重读完成（有 latest、不在读）才能核对；每次渲染检查一次，条件不满足时内核自己不动
+  useEffect(() => {
+    if (!found || staging.form.status !== 'conflict') return;
+    staging.form.confirm();
+    staging.form.clear();
+  });
+}
+
 /** 转正 / 转正申请的按钮权与数据操作权（申请两步：建草稿 + 提交）。 */
 function useRegularizeAllowed(application?: boolean) {
   const permissions = usePermissions(object);
@@ -393,33 +452,51 @@ function RegularizeEditor(props: RegularizeProps) {
   const { row, application, onClose, onDone, refresh, opening, read, recovery } = props;
   const employeeId = row.employeeId!;
   const allowed = useRegularizeAllowed(application);
-  // 本次弹窗建 / 改过的草稿优先，否则沿用打开时找回的原申请单（服务端仍是草稿）：都只提交同一张单（DEC-103）
-  const [created, setCreated] = useState<ApplicationDraft>();
-  const draft = application ? (created ?? recovery?.draft) : undefined;
+  // 本次弹窗建 / 改过的草稿、暂存冲突重读到的申请单优先，否则沿用打开时找回的原申请单（服务端仍是草稿）：
+  // 都只提交同一张单（DEC-103）
+  const [own, setOwn] = useState<{ draft: ApplicationDraft; created: boolean }>();
+  const [found, setFound] = useState<FoundDraft>();
+  const draft = application ? (own?.draft ?? recovery?.draft) : undefined;
   const temporary = application && !draft ? recovery?.temporary : undefined;
   const [form] = Form.useForm();
   const results = useResults();
   const pending = useTemporaryResult(form, temporary, results);
-  // 草稿单下拉 = 启用项 ∪ 已存结果（保存时名称），停用 / 改名的已存结果照原名显示（F-347 b / e）
-  const options = withSaved(results.options, draft ? (recovery?.draft?.names ?? {}) : pending);
-  // 第二步的 If-Match 是草稿单 revision：409 重读读草稿单，恢复槽仍是员工（换入口也绕不开未知锁）
-  const readDraft = useBusinessRead(draft?.id ?? '');
-  const reread = draft ? async () => ({ ...(await readDraft()), id: employeeId, values: draft.values }) : read;
+  // 草稿单的已存结果名称（保存时名称）：打开时取原单，409 重读 / 暂存冲突进入别的单时取最新一次读到的
+  const [names, setNames] = useState<Values>(recovery?.draft?.names ?? {});
+  const options = withSaved(results.options, draft ? names : pending);
+  // 第二步的 If-Match 是草稿单 revision：409 重读读草稿单并投影全部字段（同一次 GET，rf347_1 P2-1），
+  // 未改的字段随最新；恢复槽仍是员工（换入口也绕不开未知锁）
+  const readDraft = useDraftRead(employeeId);
+  const reread = draft
+    ? async (): Promise<Latest> => {
+        const latest = await readDraft(draft.id);
+        setNames((saved) => ({ ...saved, ...latest.names }));
+        return { id: employeeId, revision: latest.revision, values: latest.values };
+      }
+    : read;
   const baseline = draft?.values ?? opening.values;
   const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: reread };
   const cmd = useProbationCommand(employees, target, application ? 'apply' : 'regularize', () => refresh());
-  const staging = useStage(employeeId, recovery?.revision ?? 0, opening.values);
+  const staging = useStage(employeeId, recovery?.revision ?? 0, opening.values, setFound);
+  const staged = application && !draft;
   useDraftRefill(cmd.form, regularizeFields, form);
+  useDraftRefill(staged ? staging.cmd.form : undefined, regularizeFields, form);
+  useFoundDraft(found, staging.cmd, form, (next) => {
+    setOwn({ draft: next, created: false });
+    setNames(next.names);
+  });
   const autoSubmit = useRef(false);
-  // 新建要有启用的试用结果；已存草稿带着已存结果提交，不受启用字典为空限制（F-347 e）
-  const locked = cmd.disabled || staging.cmd.disabled || (!draft && !results.options.length) || !allowed;
+  // 表单锁与暂存按钮只看命令状态与权限；暂存不校验必填，启用字典为空也能暂存（rf347_1 P2-5）
+  const locked = cmd.disabled || (staged && staging.cmd.disabled) || !allowed;
+  // 新建提交要有启用的试用结果；已存草稿带着已存结果提交，不受启用字典为空限制（F-347 e）
+  const submitLocked = !draft && !results.options.length;
   const { direct, step, patch, destination } = useSends(employeeId, (made, values) =>
-    setCreated({ ...made, values: projectFields(values, regularizeFields) }),
+    setOwn({ draft: { ...made, values: projectFields(values, regularizeFields) }, created: true }),
   );
   const { error, submit } = useSubmit(form, async (values) => {
     validateRegularize(values);
     const changed = !!draft && regularizeFields.some((field) => !sameValue(values[field], draft.values[field]));
-    const send = !application ? direct : changed ? patch(draft!.id, values) : step(draft?.id, values);
+    const send = !application ? direct : changed ? patch(draft!.id, values, draft!.values) : step(draft?.id, values);
     if (!(await cmd.submit(values, regularizeFields, send))) return;
     // 建草稿 / 改草稿已确认才自动进入提交（同实习）；提交失败时草稿保留，由用户显式重提同一张单
     if (application && (!draft || changed)) return void (autoSubmit.current = true);
@@ -432,20 +509,20 @@ function RegularizeEditor(props: RegularizeProps) {
     autoSubmit.current = false;
     void submit();
   });
-  const staged = application && !draft;
   return (
     <Shell
       title={application ? m.entries.apply : m.entries.regularize}
       cmd={cmd}
       error={error}
       locked={locked}
+      submitLocked={submitLocked}
       onClose={onClose}
       onSubmit={() => void submit()}
       okText={application ? m.submit : m.save}
-      extra={staged && staging.button(form, locked)}
+      extra={staged && staging.button(form, cmd.disabled || staging.cmd.disabled || !allowed)}
     >
       {staged && <CommandStatus submission={staging.cmd.form} labels={m.fields} />}
-      {draft && <Alert type="info" message={created ? m.draftCreated : m.draftRecovered} />}
+      {draft && <Alert type="info" message={own?.created ? m.draftCreated : m.draftRecovered} />}
       {temporary && <TemporaryNotice onClear={() => form.setFieldsValue(opening.values)} />}
       {!draft && results.data && !results.options.length && <Alert type="warning" message={m.noResults} />}
       <RegularizeFields

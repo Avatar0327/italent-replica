@@ -334,6 +334,12 @@ const failure = (employeeId: string, error: Record<string, unknown>) => ({
   businessStatus: null,
   error,
 });
+/** 同 regularization-drafts.ts clearRegularizationDraft：有暂存才清，revision + 1。 */
+function clearTemporary(server: Server) {
+  if (!server.temporary) return;
+  server.temporary = undefined;
+  server.temporaryRevision += 1;
+}
 function regularizeOne(server: Server, body: Record<string, unknown>, item: Item) {
   // context.ts requireRevision：details 带期望与实际 revision
   if (item.revision !== server.employeeRevision)
@@ -349,8 +355,11 @@ function regularizeOne(server: Server, body: Record<string, unknown>, item: Item
     mode: 'direct',
     effectiveDate,
     probationResult: String(body.probationResult),
+    probationResultName: resultName(server, String(body.probationResult)),
   };
   server.employeeRevision += 1;
+  // 直接转正与提交申请同一清暂存入口（regularization.ts createRegularizationBusiness，rf347_1 P3）
+  clearTemporary(server);
   return {
     employeeId: employee,
     status: 'succeeded',
@@ -426,10 +435,7 @@ async function routeWrites(page: Page, server: Server) {
     }
     server.business = { ...server.business!, status: 'in_review', revision: server.business!.revision + 1 };
     // 提交成功即清掉该员工的暂存（transitions.ts submit）
-    if (server.temporary) {
-      server.temporary = undefined;
-      server.temporaryRevision += 1;
-    }
+    clearTemporary(server);
     return route.fulfill({ json: business(server) });
   });
   // transitions.ts：发起人撤回审批中的申请，单据回到草稿（DEC-103 同单重提）
