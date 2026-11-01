@@ -4,9 +4,10 @@
  * b 转正单详情带试用结果编码与保存时名称（字典改名 / 停用后不变）；
  * c 草稿 / 撤回单 PATCH 可改试用结果并同单重提；
  * e 已存草稿提交不受启用字典为空限制（新建仍要启用项）。
+ * 第 2 轮返工（rf347_1）：停用结果同值 PATCH、首写并发、已有申请草稿时暂存、离职后暂存、直接转正清暂存。
  */
 import type { Authorizer } from '@italent/api';
-import { sql, withTenant } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -20,6 +21,7 @@ import {
   probationOf,
   type PbWorld,
 } from './AC-PB-support.js';
+import { waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -275,4 +277,135 @@ describe('AC-PB-F347 e 已存草稿提交不受启用字典为空限制', () => 
     });
     expect(created.status).toBe(400);
   });
+});
+
+async function resultVersions(w: PbWorld, businessId: string) {
+  return withTenant(w.db, w.session.tenant.id, async (tx) => {
+    const [row] = rows<{ n: number }>(
+      await tx.execute(sql`SELECT count(*)::int AS n FROM employment_regularization_results
+        WHERE tenant_id=${w.session.tenant.id} AND business_id=${businessId}::uuid`),
+    );
+    return row!.n;
+  });
+}
+
+async function storedDraft(w: PbWorld, employeeId: string) {
+  return withTenant(w.db, w.session.tenant.id, async (tx) =>
+    rows<{ revision: number; saved: boolean; effective_date: string | null }>(
+      await tx.execute(sql`SELECT revision, saved, effective_date::text AS effective_date
+        FROM employment_regularization_drafts
+        WHERE tenant_id=${w.session.tenant.id} AND employee_id=${employeeId}::uuid`),
+    ),
+  );
+}
+
+describe('AC-PB-F347 第 2 轮：结果停用、并发、申请草稿、离职、直接转正', () => {
+  it('撤回单的结果已停用：同值（大小写、空白不同）只改日期 200 且不追加结果版本；新选停用项仍 400', async () => {
+    const w = await pbWorld(testDb().db, 'f347-r2-disabled-same');
+    const { employee } = await hire(w, { months: 3 });
+    const draft = await draftRegularization(w, employee.id, '2026-12-01');
+    const before = await resultVersions(w, draft.id);
+    await changeResult(w, 'normal', { enabled: false });
+    const patched = await w.session.request('PATCH', `/businesses/${draft.id}`, {
+      ifMatch: await businessRevision(w, draft.id),
+      body: { effectiveDate: '2026-12-15', probationResult: ' NORMAL ' },
+    });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    expect(await businessOf(w, draft.id)).toMatchObject({
+      effectiveDate: '2026-12-15',
+      probationResult: 'normal',
+      probationResultName: '正常转正',
+    });
+    expect(await resultVersions(w, draft.id)).toBe(before);
+    await changeResult(w, 'early', { enabled: false });
+    const disabled = await w.session.request('PATCH', `/businesses/${draft.id}`, {
+      ifMatch: await businessRevision(w, draft.id),
+      body: { probationResult: 'early' },
+    });
+    expect(disabled.status).toBe(400);
+    expect(await resultVersions(w, draft.id)).toBe(before);
+  });
+
+  it('A 打开表单后 B 建了申请草稿单：A 再暂存 409（REVISION_CONFLICT），暂存不写；A 重读看到 B 的申请单', async () => {
+    const w = await pbWorld(testDb().db, 'f347-r2-pending');
+    const { employee } = await hire(w, { months: 3 });
+    const opened = await readDraft(w, employee.id);
+    expect(opened).toMatchObject({ revision: 0, temporary: null, applicationId: null });
+    const application = await draftRegularization(w, employee.id, '2026-12-01');
+    const stale = await w.session.request('PUT', draftPath(employee.id), {
+      ifMatch: opened.revision,
+      body: { effectiveDate: '2026-11-20' },
+    });
+    expect(stale.status).toBe(409);
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe('REVISION_CONFLICT');
+    expect(await storedDraft(w, employee.id)).toEqual([]);
+    expect(await readDraft(w, employee.id)).toMatchObject({ temporary: null, applicationId: application.id });
+  });
+
+  it('离职已生效：暂存读写都 404（与转正申请入口同口径），已有暂存不变', async () => {
+    const w = await pbWorld(testDb().db, 'f347-r2-left');
+    const { employee } = await hire(w, { months: 3 });
+    await saveDraft(w, employee.id, { effectiveDate: '2026-12-01' }, 0);
+    await w.session.business(
+      employee.id,
+      { kind: 'leave', mode: 'direct', effectiveDate: '2026-09-25', lastWorkDate: '2026-09-24' },
+      await employeeRevision(w, employee.id),
+    );
+    expect((await w.session.request('GET', draftPath(employee.id))).status).toBe(404);
+    const write = await w.session.request('PUT', draftPath(employee.id), { ifMatch: 1, body: {} });
+    expect(write.status).toBe(404);
+    expect(await storedDraft(w, employee.id)).toEqual([{ revision: 1, saved: true, effective_date: '2026-12-01' }]);
+  });
+
+  it('直接转正与提交申请同一清暂存入口、同一事务：转正成功后暂存清掉', async () => {
+    const w = await pbWorld(testDb().db, 'f347-r2-direct');
+    const { employee } = await hire(w, { months: 3 });
+    await saveDraft(w, employee.id, { probationResult: 'early' }, 0);
+    const direct = await w.session.request('POST', `/employees/${employee.id}/businesses`, {
+      ifMatch: await employeeRevision(w, employee.id),
+      body: { kind: 'regularization', mode: 'direct', effectiveDate: '2026-12-01', probationResult: 'normal' },
+    });
+    expect(direct.status, await direct.clone().text()).toBe(201);
+    expect(await storedDraft(w, employee.id)).toEqual([{ revision: 2, saved: false, effective_date: null }]);
+  });
+
+  // 屏障：BEFORE INSERT 触发器等测试会话持有的咨询锁，两个请求都已读到“没有暂存行”后才写（rf347_1 P2-2 的探针）
+  it.runIf(!!process.env.TEST_DATABASE_URL)(
+    '首次暂存两个请求都带 If-Match 0：一个 200、一个 409，落库为成功那份',
+    async () => {
+      const w = await pbWorld(testDb().db, 'f347-r2-first-race');
+      const { employee } = await hire(w, { months: 3 });
+      await w.db.execute(
+        sql.raw(`CREATE FUNCTION f347_r2_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN PERFORM pg_advisory_xact_lock(734734); RETURN NEW; END $$`),
+      );
+      await w.db.execute(
+        sql.raw(`CREATE TRIGGER f347_r2_gate BEFORE INSERT ON employment_regularization_drafts
+      FOR EACH ROW EXECUTE FUNCTION f347_r2_gate()`),
+      );
+      try {
+        const put = (effectiveDate: string) =>
+          w.session.request('PUT', draftPath(employee.id), { ifMatch: 0, body: { effectiveDate } });
+        const take = (tx: Tx) => tx.execute(sql`SELECT pg_advisory_xact_lock(734734)`);
+        const pending = await withHeldLock(
+          { run: (fn) => withTenant(w.db, w.session.tenant.id, fn), take },
+          async (lock) => {
+            const first = lock.track(put('2026-12-01'));
+            await waitForBlocked(w.db, 1);
+            const second = lock.track(put('2026-12-15'));
+            await waitForBlocked(w.db, 2);
+            return [first, second];
+          },
+        );
+        const replies = await Promise.all(pending);
+        expect(replies.map((reply) => reply.status).sort()).toEqual([200, 409]);
+        const winner = replies.find((reply) => reply.status === 200)!;
+        const saved = ((await winner.json()) as DraftView).temporary!.effectiveDate;
+        expect(await storedDraft(w, employee.id)).toEqual([{ revision: 1, saved: true, effective_date: saved }]);
+      } finally {
+        await w.db.execute(sql.raw('DROP TRIGGER f347_r2_gate ON employment_regularization_drafts'));
+        await w.db.execute(sql.raw('DROP FUNCTION f347_r2_gate()'));
+      }
+    },
+  );
 });

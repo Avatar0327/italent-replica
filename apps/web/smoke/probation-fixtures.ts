@@ -23,6 +23,8 @@ export interface Business {
   mode: 'direct' | 'application';
   effectiveDate: string;
   probationResult: string;
+  /** 保存时的名称快照（regularization_results.result_name）；不写时取字典当前名称（旧行回落，DEC-402）。 */
+  probationResultName?: string | null;
 }
 /** 服务端暂存（GET / PUT /employees/:id/regularization-draft，F-347）：每员工一份，覆盖写。 */
 export interface Temporary {
@@ -144,14 +146,19 @@ function business(server: Server) {
     record: null,
     activation: null,
     probationResult: current.probationResult,
-    probationResultName: resultName(server, current.probationResult),
+    probationResultName: current.probationResultName ?? resultName(server, current.probationResult),
   };
 }
 const resultName = (server: Server, code: string | null) =>
   code === null ? null : (server.results.find((item) => item.code === code)?.name ?? null);
+const sameCode = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const conflict = { error: { code: 'REVISION_CONFLICT', message: '任职数据已变更，请刷新后显式重提' } };
+/** 同 regularization-drafts.ts：本周期有停在草稿的转正申请。 */
+const pendingApplication = (server: Server) =>
+  server.business?.mode === 'application' && server.business.status === 'draft';
 /** 同 regularization-drafts.ts：草稿单（撤回单 / 第二步失败的单）作为 applicationId 带回，暂存另行返回。 */
 function regularizationDraft(server: Server) {
-  const pending = server.business?.mode === 'application' && server.business.status === 'draft';
+  const pending = pendingApplication(server);
   const temporary = server.temporary;
   return {
     id: employee,
@@ -270,17 +277,17 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
   return { queries, server };
 }
 
-/** F-347：暂存（PUT 覆盖写，If-Match = 暂存 revision）与草稿单 PATCH（同 write-service.ts，revision + 1）。 */
+/**
+ * F-347：暂存（PUT 覆盖写，If-Match = 暂存 revision；已有申请草稿单时 409 不写）与草稿单 PATCH
+ * （同 write-service.ts：If-Match = 单据 revision，revision + 1；试用结果与当前相同不追加，换成别的须是启用项）。
+ */
 async function routeDrafts(page: Page, server: Server) {
   await page.route(`**/employment/employees/${employee}/regularization-draft`, (route) => {
     if (route.request().method() !== 'PUT') return route.fulfill({ json: regularizationDraft(server) });
     const write = posted(route.request());
     server.writes.push(write);
-    if (write.ifMatch !== String(server.temporaryRevision))
-      return route.fulfill({
-        status: 409,
-        json: { error: { code: 'REVISION_CONFLICT', message: '任职数据已变更，请刷新后显式重提' } },
-      });
+    if (write.ifMatch !== String(server.temporaryRevision) || pendingApplication(server))
+      return route.fulfill({ status: 409, json: conflict });
     server.temporary = {
       effectiveDate: (write.body.effectiveDate as string | null | undefined) ?? null,
       probationResult: (write.body.probationResult as string | null | undefined) ?? null,
@@ -293,12 +300,26 @@ async function routeDrafts(page: Page, server: Server) {
     // write-service.ts updateEmploymentBusiness：草稿 / 撤回单按字段改，revision + 1
     const write = posted(route.request());
     server.writes.push(write);
+    const current = server.business!;
+    if (write.ifMatch !== String(current.revision)) return route.fulfill({ status: 409, json: conflict });
     const { effectiveDate, probationResult } = write.body as Partial<Business>;
+    const changed = !!probationResult && !sameCode(probationResult, current.probationResult);
+    if (changed && !server.results.some((item) => item.enabled && sameCode(item.code, probationResult)))
+      return route.fulfill({
+        status: 400,
+        json: {
+          error: {
+            code: 'VALIDATION_FAILED',
+            message: '试用结果已停用',
+            details: { reason: 'PROBATION_RESULT_DISABLED' },
+          },
+        },
+      });
     server.business = {
-      ...server.business!,
+      ...current,
       ...(effectiveDate ? { effectiveDate } : {}),
-      ...(probationResult ? { probationResult } : {}),
-      revision: server.business!.revision + 1,
+      ...(changed ? { probationResult, probationResultName: resultName(server, probationResult) } : {}),
+      revision: current.revision + 1,
     };
     return route.fulfill({ json: business(server) });
   });
@@ -385,6 +406,7 @@ async function routeWrites(page: Page, server: Server) {
       mode: 'application',
       effectiveDate: String(write.body.effectiveDate),
       probationResult: String(write.body.probationResult),
+      probationResultName: resultName(server, String(write.body.probationResult)),
     };
     server.employeeRevision += 1;
     return route.fulfill({ status: 201, json: business(server) });
