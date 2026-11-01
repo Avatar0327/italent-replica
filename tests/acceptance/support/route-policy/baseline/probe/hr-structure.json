@@ -1,0 +1,42 @@
+{
+  "GET /api/tenant/analytics/hr-structure": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrStructure/TenantBase.HrStructure.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrStructure:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-structure/components/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "172d83b2672c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrStructure/TenantBase.HrStructure.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrStructure:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-structure/reports/:report": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "409ae0b268e4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrStructureReport/TenantBase.HrStructureReport.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrStructureReport:view"
+    ]
+  }
+}
