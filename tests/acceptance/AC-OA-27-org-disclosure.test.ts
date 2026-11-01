@@ -4,12 +4,15 @@
  * 手动同意被拦、自动跳过转异常管理员（DEC-069）。调动 / 职位 / 编制 / 兼职分区不在本片。
  */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { ORG_ADJUSTMENT_SECTION_FIELDS } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { type FlowWorld, flowWorld, oaNodes } from './AC-OA-approval-support.js';
 import { expectError } from './AC-OA-head-support.js';
 import { rename } from './AC-OA-items-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
+import { orgAdjustmentSnapshot } from '../../apps/api/src/modules/org-adjustment/snapshot.js';
 
 const testDb = useTestDb();
 const linkage = { transferOldHeadSubordinates: false, adjustNewHeadManager: false };
@@ -90,5 +93,49 @@ describe('AC-OA-27 盲审：变化字段看不到', () => {
       expect.objectContaining({ nodeKey: 'n3', assigneeUserId: w.exceptionAdmin, origin: 'blind_review' }),
     ]);
     expect(await w.state(id)).toMatchObject({ approval: 1, queued: 0 });
+  });
+});
+
+/** 组织在生效日现行版本的名称（基线值）。 */
+async function baseName(w: FlowWorld, orgId: string) {
+  return withTenant(w.db, w.tenant.id, async (tx) => {
+    const [row] = resultRows<{ name: string }>(
+      await tx.execute(sql`SELECT name FROM org_versions WHERE org_id = ${orgId} ORDER BY version_no DESC LIMIT 1`),
+    );
+    return row!.name;
+  });
+}
+
+describe('第 2 轮：快照按基线（base_version_id）算原值与真实变更集（§4.5）', () => {
+  /** a 先有 HRBP；明细改名并把 HRBP 填成原值（填了但没变）。 */
+  async function sameHrbp(w: FlowWorld) {
+    const hrbp = await w.person(`原HRBP${randomUUID()}`, w.a);
+    await w.setOrgRoles(w.a, { hrbp: hrbp.employeeId });
+    const name = `基线改名${randomUUID()}`;
+    const { id, itemId } = await w.draft(rename(w.a, { name, hrbpId: hrbp.employeeId }));
+    await w.submitted(id);
+    return { id, itemId, name };
+  }
+
+  it('隐藏且未改的字段（HRBP 填了原值）不阻断同意；原值按基线展示，行数另给', async () => {
+    const w = await flowWorld(testDb().db, 'oa27-base');
+    const { id, itemId, name } = await sameHrbp(w);
+    const form = (await w.detail((await w.instance(id)).id, w.hrbp.userId)).form;
+    expect(form.values['orgItems.name']).toEqual([{ itemId, value: name }]);
+    expect(form.values).not.toHaveProperty('orgItems.hrbpId');
+    expect(form.originals?.['orgItems.name']).toEqual([{ itemId, value: await baseName(w, w.a) }]);
+    const snapshot = await withTenant(w.db, w.tenant.id, (tx) => orgAdjustmentSnapshot(tx, w.tenant.id, id));
+    expect(snapshot.values['orgItems.count']).toBe(1);
+    expect(snapshot.changedFields).not.toContain('orgItems.hrbpId');
+    expect(snapshot.changedFields).not.toContain('orgItems.count');
+    hide(w, w.hrbp.userId, 'orgItems.hrbpId');
+    await w.acted(id, w.hrbp, 'approve');
+  });
+
+  it('隐藏且已改的字段（名称）仍阻断同意', async () => {
+    const w = await flowWorld(testDb().db, 'oa27-base-blind');
+    const { id } = await sameHrbp(w);
+    hide(w, w.hrbp.userId, 'orgItems.name');
+    await expectError(await w.act(id, w.hrbp, 'approve'), 403, 'FORBIDDEN', 'APPROVAL_BLIND_REVIEW');
   });
 });
