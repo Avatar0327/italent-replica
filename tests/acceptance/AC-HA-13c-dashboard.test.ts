@@ -15,7 +15,7 @@
  *   退休 R（类别“其他”）业务日期 10-01 发起 10-03 在途：不进 6 类核心流程的组件。
  *   不走流程：直接调动（10-10）、直接离职（审批人离职那张，10-17）、直接新建合同（10-10）计入业务总量。
  *   ④ 的业务单据按提交 / 办理时刻的当地日期落入发起时间窗口（直接办理 = 保存时刻，Offer / 合同 = 创建时刻），
- *   在途 / 撤回 / 作废的不算业务总量。
+ *   在途 / 撤回 / 作废的不算业务总量；Offer 审批中（O4，10-19 提交）、被否决（O5）的也不算。
  */
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
@@ -221,6 +221,18 @@ async function buildWorld(w: World) {
   );
   expect((await w.json<InstanceView>(contractDone)).status).toBe('approved');
 
+  // Offer O4：窗口内提交、仍在审批中；O5：窗口内提交、被否决。两张都不算 Offer 业务总量（规格 35 ④“已审批通过或已生效”）
+  w.setNow(at('2026-10-19'));
+  const o4 = await w.offer(w.applicant);
+  expect((await w.submitRaw(o4)).status).toBe(200);
+  const o4Instance = (await w.instance(o4.id)).id;
+  const o5 = await w.offer(w.applicant);
+  expect((await w.submitRaw(o5)).status).toBe(200);
+  const o5View = await w.instance(o5.id);
+  await w.decide(o5View, w.head, 'disagree');
+  expect((await w.get(o5.id)).approvalStatus).toBe('disapproved');
+  expect((await w.get(o4.id)).approvalStatus).toBe('approving');
+
   w.setNow(at(AS_OF));
   return {
     org: { x, x2, y, y2 },
@@ -231,7 +243,7 @@ async function buildWorld(w: World) {
     retire: retireView.id,
     direct: direct.id,
     exit: exit.id,
-    offers: { o1, o2, o3, o1Instance: o1View.id },
+    offers: { o1, o2, o3, o1Instance: o1View.id, o4, o4Instance, o5, o5Instance: o5View.id },
     company,
     contracts: { direct: contractOf(s.a), application: contractOf(s.b), instance: contractInstance.id },
   };
@@ -263,8 +275,9 @@ describe('AC-HA-13c 外壳：默认时段、组件目录', () => {
 
 describe('AC-HA-13c ① 在途流程监控（只统计 6 类核心流程）', () => {
   it('7.2.01 共发起 / 在途：窗口内的核心流程；退休（其他）与窗口前发起的不计', async () => {
-    const all = [...instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'), f.offers.o1Instance, f.contracts.instance];
-    await board.expectComponent('inFlightCount', { all, hits: instances('f', 'g', 'l') });
+    const offers = [f.offers.o1Instance, f.offers.o4Instance, f.offers.o5Instance];
+    const all = [...instances('a', 'b', 'c', 'd', 'e', 'f', 'g', 'l', 'w'), ...offers, f.contracts.instance];
+    await board.expectComponent('inFlightCount', { all, hits: [...instances('f', 'g', 'l'), f.offers.o4Instance] });
     await board.expectComponent(
       'inFlightCount',
       {
@@ -296,7 +309,7 @@ describe('AC-HA-13c ① 在途流程监控（只统计 6 类核心流程）', ()
 
   it('7.2.05 在途明细 14 列', async () => {
     const items = await board.detail('inFlightList');
-    expect(sorted(items.map((item) => item.id))).toEqual(sorted(instances('f', 'g', 'l')));
+    expect(sorted(items.map((item) => item.id))).toEqual(sorted([...instances('f', 'g', 'l'), f.offers.o4Instance]));
     const g = items.find((item) => item.id === f.flows.g.instance)!;
     expect(g).toMatchObject({
       instanceId: f.flows.g.instance,
@@ -427,13 +440,15 @@ describe('AC-HA-13c ④ 流程应用（审批占比 = 审批总量 ÷ 业务总�
     expect(row.rate).toBeNull();
   });
 
-  it('7.1.20 Offer：窗口内创建的 Offer，按录用部门；窗口前创建的不计', async () => {
+  it('7.1.20 Offer：窗口内创建的 Offer，按录用部门；窗口前创建的、审批中的、被否决的不计', async () => {
     const row = await board.expectComponent('offerApprovalRate', {
       all: [f.offers.o1.id, f.offers.o2.id],
       hits: [f.offers.o1.id],
     });
     expect(row.rate).toBe(0.5);
     await board.expectGroup('offerApprovalRate', { group: w.department }, [f.offers.o1.id, f.offers.o2.id]);
+    const unhit = await board.detail('offerApprovalRate', '', { hit: false });
+    expect(unhit.map((item) => item.id)).toEqual([f.offers.o2.id]);
   });
 
   it('7.1.24 合同：按签约公司，直接新建计入业务总量', async () => {
