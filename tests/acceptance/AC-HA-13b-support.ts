@@ -207,6 +207,9 @@ export async function movementWorld(db: Db) {
   await x.synthetic(p.reg.id, { kind: 'regularization', state: 'effective', effectiveDate: '2026-06-01' });
   await x.synthetic(p.orgAdj.id, { kind: 'org_adjustment', state: 'effective', effectiveDate: '2026-06-02' });
 
-  return { x, db, tenantId, who, A, A1, B, H, E, S1, T, R, W, p, from: x.from };
+  return {
+    ...{ x, db, tenantId, who, A, A1, B, H, E, S1, T, R, W, p, from: x.from },
+    ...{ call, org, sequence, hire, leave, transfer },
+  };
 }
 export type MovementWorld = Awaited<ReturnType<typeof movementWorld>>;
