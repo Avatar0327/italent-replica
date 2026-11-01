@@ -180,6 +180,7 @@ export const GRAPH: Graph = {
     '#approvedInstance',
     '#employmentAt',
     '#inWindow',
+    '#offerCounted',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
