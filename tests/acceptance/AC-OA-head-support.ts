@@ -51,6 +51,10 @@ export interface HeadAccess {
   org: ModuleScope;
   deniedButtons: Set<string>;
   deniedFields: Set<string>;
+  /** 看不到的字段编码（查看权）。 */
+  hiddenFields: Set<string>;
+  /** 没有申请单对象查看权（object.view）。 */
+  viewDenied?: boolean;
 }
 
 const catalogFields = (objectCode: string) =>
@@ -66,18 +70,26 @@ export async function headWorld(db: Db, label: string) {
   const subject = await w.org(`主体${uniqueSuffix()}`);
   const a = await w.org(`范围甲${uniqueSuffix()}`);
   const b = await w.org(`范围乙${uniqueSuffix()}`);
-  const access: HeadAccess = { main: ALL, org: ALL, deniedButtons: new Set(), deniedFields: new Set() };
+  const access: HeadAccess = {
+    main: ALL,
+    org: ALL,
+    deniedButtons: new Set(),
+    deniedFields: new Set(),
+    hiddenFields: new Set(),
+  };
   const decide = (req: AuthorizationRequest) => {
     if (req.action === 'object.button') return !access.deniedButtons.has(req.resource!.split('#')[1]!.split('@')[0]!);
     if (req.action === 'object.create' || req.action === 'object.update')
       return !(req.fields ?? []).some((f) => access.deniedFields.has(f));
+    if (req.action === 'object.view' && req.resource === MAIN) return !access.viewDenied;
     return true;
   };
   const authorize: Authorizer = decide;
   registerScopeProvider(authorize, {
     scope: async (q) => (q.objectCode === MAIN ? access.main : q.objectCode === ORG ? access.org : ALL),
     authorize: async (req) => decide(req),
-    fields: async (_tenantId, _userId, objectCode) => catalogFields(objectCode),
+    fields: async (_tenantId, _userId, objectCode) =>
+      new Set([...catalogFields(objectCode)].filter((f) => !access.hiddenFields.has(f))),
   });
   const api = tenantApi(w.db, { authorize, clock: w.clock });
   const call = (method: string, path: string, options: RequestOptions = {}, user = w.hr.id) =>

@@ -12,7 +12,7 @@ describe('DEC-118 / DEC-057 调动详情映射', () => {
       nodes: [
         {
           key: 'review',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'effectiveDate', 'transferTypeCode', 'isStoreManager'],
           editableFields: [],
         },

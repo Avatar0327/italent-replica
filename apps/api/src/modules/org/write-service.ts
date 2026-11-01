@@ -9,6 +9,8 @@ import type { Authorizer } from '../../authorization.js';
 import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
 import { auditActor } from '../../system-actor.js';
 import { recordAudit } from '../../audit/record.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
+import { lockOrganizationSettings } from './locks.js';
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isUuid, orgHierarchyLinks, orgObjects, orgVersions, sql, type Tx } from '@italent/db';
 import { hasCapacityFrom } from '../establishment/capacity-exists.js';
@@ -101,6 +103,9 @@ export async function createOrganization(
   assertRevision(ctx.expectedRevision, 0);
   const normalized = normalizeCreation(ctx, input);
   await ensureOrgSetup(tx, ctx);
+  // R2-T08 §7.6：新建挂到正在执行组织调整的上级下 409；判定在组织设置锁之后、任何写入之前。
+  const departmentIds = [normalized.parents.admin?.parentId];
+  await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: normalized.startDate });
   const validation = await validateOrganization(tx, ctx, input, assess);
   assertCanSubmit(validation);
   const nodes = await validateHierarchy(tx, ctx, normalized);
@@ -171,6 +176,10 @@ export async function updateOrganization(
       authorizedSubtree.push(...ids);
     });
   const descendants = from ? await planDeactivation(tx, ctx, root, from, authorize) : [];
+  // R2-T08 §7.6、F-274：目标、新旧行政上级与实际级联停用集合，任一正在执行组织调整即 409（先于任何写入）。
+  const parents = [current.parents.admin?.parentId, normalized.parents.admin?.parentId];
+  const departmentIds = [orgId, ...parents, ...descendants.map((node) => node.id)];
+  await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: effectiveDate });
   // F-296：11e 合入后改为调用 endCapacity 并拆除本关口。须在 planDeactivation 的数据范围授权之后（先授权后判断）。
   if (from) await assertNoEstablishmentToEnd(tx, ctx, [root.id, ...authorizedSubtree], from);
   const revision = object.revision + 1;
@@ -223,11 +232,16 @@ export async function correctEstablishedOn(
   orgId = orgId.toLowerCase();
   if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
   const establishedOn = date(value, 'establishedOn');
+  // 锁序（locks.ts）：普通组织写入先取组织设置锁，再锁组织对象。
+  await lockOrganizationSettings(tx, ctx.tenantId);
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
   const plan = await planEstablishedOnCorrection(tx, ctx, orgId, establishedOn);
   if (plan) {
+    // R2-T08 §7.6：本组织或首版行政上级正在执行组织调整时 409，先于 revision 更新与原地更正。
+    const departmentIds = [orgId, plan.before.parents.admin?.parentId];
+    await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: establishedOn });
     const revision = object.revision + 1;
     await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
     await applyEstablishedOnCorrection(tx, ctx, orgId, plan);

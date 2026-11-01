@@ -1,0 +1,278 @@
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, message } from 'antd';
+import { useState, type ReactNode } from 'react';
+import { RefSelect, refPaths as contractRefs, useToday } from '../contracts/references.js';
+import { object as contractObject } from '../contracts/model.js';
+import { rejectionMessage } from '../foundation/client.js';
+import { usePermissions } from '../foundation/Permissions.js';
+import { TenantDatePicker } from '../foundation/selectors.js';
+import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
+import { CommandStatus } from '../foundation/forms/CommandStatus.js';
+import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
+import { projectFields, type Values } from '../foundation/forms/values.js';
+import { refPaths } from '../part-time/references.js';
+import { object, personObject } from './model.js';
+import { educationObject, profileObject, providedFields } from './create-profile.js';
+import { c } from './create-messages.js';
+import { m } from './messages.js';
+import { createAccess, docKey, validateCreate, type CreateReceipt } from './create-model.js';
+import { RehirePrompt, useRehireCheck } from './RehireCheck.js';
+import { useCreateCommand } from './create-command.js';
+
+type Editor = ReturnType<typeof useEditor>;
+function useEditor(begin: () => (receipt: CreateReceipt) => void) {
+  const [form] = Form.useForm();
+  const person = usePermissions(personObject).snapshot.objects[personObject];
+  const employment = usePermissions(object).snapshot.objects[object];
+  const contract = usePermissions(contractObject).snapshot.objects[contractObject];
+  const profile = usePermissions(profileObject).snapshot.objects[profileObject];
+  const education = usePermissions(educationObject).snapshot.objects[educationObject];
+  const access = createAccess(person, employment, contract, profile, education);
+  const today = useToday();
+  const date = Form.useWatch('effectiveDate', form) as string | undefined;
+  // 此比较仅控制接口允许填写的合同字段；目标视图始终按服务端回执。
+  const pending = !!today && !!date && date > today;
+  const match = useRehireCheck();
+  const cmd = useCreateCommand();
+  const [error, setError] = useState<unknown>();
+  const selected = match.selected;
+  const names = Object.keys(c.labels).filter(
+    (name) =>
+      !(pending && ['typeId', 'termType', 'termMonths'].includes(name)) &&
+      !(selected && ['name', 'code'].includes(name)),
+  );
+  const editable = names.filter((name) => access.field(name).editable);
+  useDraftRefill(cmd.form, editable, form);
+  const locked = cmd.form.locked || !access.allowed || !today;
+  const check = async () => {
+    if (locked) return;
+    const values = form.getFieldsValue();
+    if (!String(values.idType ?? '').trim() || !String(values.idNumber ?? '').trim()) {
+      setError(new Error(c.matchRequired));
+      return;
+    }
+    cmd.form.clear();
+    setError(undefined);
+    await match.check(values);
+  };
+  const submit = async () => {
+    if (locked || match.busy || match.prompt) return;
+    const done = begin();
+    setError(undefined);
+    try {
+      const all = await form.validateFields();
+      const provided = providedFields(
+        all,
+        editable,
+        names.filter((name) => form.isFieldTouched(name)),
+      );
+      const values = projectFields(all, provided);
+      if (String(all.idNumber ?? '').trim() && (!match.checked || match.key !== docKey(all)))
+        throw new Error(c.matchRequired);
+      validateCreate(values, editable, !!selected, pending);
+      const receipt = await cmd.submit(values, provided, selected, pending);
+      if (!receipt) return;
+      match.reset();
+      form.resetFields();
+      void message.success(c.success);
+      done(receipt);
+    } catch (cause) {
+      if (!(cause && typeof cause === 'object' && 'errorFields' in cause)) setError(cause);
+    }
+  };
+  const change = (changed: Values) => {
+    if ('idType' in changed || 'idNumber' in changed) {
+      match.reset();
+      cmd.form.clear();
+    }
+    setError(undefined);
+  };
+  return { form, access, pending, match, cmd, error, locked, check, submit, change };
+}
+function renderFields(access: Editor['access']) {
+  const field = (name: string, control: ReactNode, required = false) => {
+    const permission = access.field(name);
+    if (!permission.visible) return null;
+    return (
+      <Form.Item
+        name={name}
+        label={c.labels[name]}
+        rules={[
+          ...(required ? [{ required: true, message: m.required(c.labels[name]!) }] : []),
+          ...(['loginEmail', 'backupMail'].includes(name) ? [{ type: 'email' as const, message: c.invalidEmail }] : []),
+        ]}
+      >
+        <LockedField disabled={!permission.editable}>{control}</LockedField>
+      </Form.Item>
+    );
+  };
+  const input = (name: string, required = false) => field(name, <Input aria-label={c.labels[name]} />, required);
+  const ref = (name: string, path: string, required = false) =>
+    field(name, <RefSelect path={path} ariaLabel={c.labels[name]} />, required);
+  return { field, input, ref };
+}
+/** 保持挂在页面根部，关闭弹窗只隐藏；F-123 的页面槽保存未确认命令与草稿。 */
+export function CreateIntern({
+  open,
+  onClose,
+  begin,
+}: {
+  open: boolean;
+  onClose(): void;
+  /** 保存开始时领取完成回调：关闭弹窗；导航只在页面仍在、期间未导航时执行（F-376）。 */
+  begin(): (receipt: CreateReceipt) => void;
+}) {
+  const editor = useEditor(begin);
+  const { form, locked, cmd, match } = editor;
+  return (
+    <>
+      <Modal
+        open={open}
+        forceRender
+        title={c.title}
+        width={750}
+        className="intern-create"
+        maskClosable={false}
+        closable={!cmd.form.busy}
+        keyboard={!cmd.form.busy}
+        onCancel={onClose}
+        footer={<CreateFooter editor={editor} onClose={onClose} />}
+      >
+        <CreateStatus editor={editor} />
+        <Alert type="info" message={c.hint} />
+        <FormLock locked={locked}>
+          <Form
+            form={form}
+            layout="horizontal"
+            disabled={locked}
+            initialValues={{ idType: 'id_card' }}
+            onValuesChange={editor.change}
+          >
+            <CreateFields editor={editor} />
+          </Form>
+        </FormLock>
+      </Modal>
+      {open && <RehirePrompt match={match} />}
+    </>
+  );
+}
+function CreateFooter({ editor, onClose }: { editor: Editor; onClose(): void }) {
+  const { cmd, match, locked, submit } = editor;
+  return (
+    <Space>
+      <Button disabled={cmd.form.busy} onClick={onClose}>
+        {m.cancel}
+      </Button>
+      <Button
+        type="primary"
+        disabled={locked || !!match.busy || !!match.prompt}
+        loading={cmd.form.busy}
+        onClick={() => void submit()}
+      >
+        {m.save}
+      </Button>
+    </Space>
+  );
+}
+function CreateStatus({ editor }: { editor: Editor }) {
+  const { cmd, error, match, access } = editor;
+  return (
+    <>
+      <CommandStatus submission={cmd.form} labels={c.labels} />
+      {!!error && !cmd.form.state?.error && <Alert type="error" showIcon message={rejectionMessage(error)} />}
+      {!!match.error && <Alert type="error" message={rejectionMessage(match.error)} />}
+      {!access.allowed && <Alert type="warning" message={c.denied} />}
+      {cmd.form.status === 'unknown' && (
+        <Space direction="vertical">
+          <Button loading={cmd.query.busy} onClick={() => void cmd.queryResult()}>
+            {c.query}
+          </Button>
+          {cmd.query.message && <Alert type="info" message={cmd.query.message} />}
+          {!!cmd.query.error && <Alert type="error" message={rejectionMessage(cmd.query.error)} />}
+        </Space>
+      )}
+    </>
+  );
+}
+function CreateFields({ editor }: { editor: Editor }) {
+  const { access, match, locked, check } = editor;
+  const selected = match.selected;
+  const { field, input, ref } = renderFields(access);
+  return (
+    <>
+      <h3>{c.employee}</h3>
+      <div className="intern-form-grid">
+        {selected ? (
+          <Form.Item label={c.labels.name}>{selected.candidate.name ?? '--'}</Form.Item>
+        ) : (
+          input('name', true)
+        )}
+        {input('loginEmail', !selected)}
+        {input('backupMail')}
+        {input('mobilePhone')}
+        {input('idType')}
+        {input('idNumber')}
+        {input('gender')}
+        {field('birthday', <TenantDatePicker />)}
+        {input('lastSchool')}
+        {input('major')}
+        {input('educationLevel')}
+        {input('engName')}
+        {field('dailyWageStandard', <Input inputMode="decimal" aria-label={c.labels.dailyWageStandard} />)}
+        {field('graduateDate', <TenantDatePicker />)}
+      </div>
+      <Space>
+        <Button disabled={locked || match.busy} loading={match.busy} onClick={() => void check()}>
+          {c.match}
+        </Button>
+        <span>{selected ? c.selected : c.newHire}</span>
+        {match.checked && !match.candidate && <span>{c.noMatch}</span>}
+      </Space>
+      <h3>{c.employment}</h3>
+      <div className="intern-form-grid">
+        {field('effectiveDate', <TenantDatePicker />, true)}
+        {selected ? (
+          <Form.Item label={c.labels.code}>{selected.candidate.code ?? '--'}</Form.Item>
+        ) : (
+          input('code', true)
+        )}
+        {ref('departmentId', refPaths.departmentId!, true)}
+        {ref('positionId', refPaths.positionId!)}
+      </div>
+      <h3>{c.reporting}</h3>
+      <div className="intern-form-grid">
+        {ref('directManagerId', refPaths.directManagerId!)}
+        {ref('dottedManagerId', refPaths.dottedManagerId!)}
+      </div>
+      <p>{c.managerNote}</p>
+      <ContractFields editor={editor} />
+    </>
+  );
+}
+function ContractFields({ editor }: { editor: Editor }) {
+  const { pending, access } = editor;
+  const { field, ref } = renderFields(access);
+  return (
+    <>
+      <h3>{c.contract}</h3>
+      {pending && <Alert type="info" message={c.pendingNote} />}
+      <div className="intern-form-grid">
+        {ref('companyId', contractRefs.companyId, !pending)}
+        {!pending &&
+          field(
+            'termType',
+            <Select
+              allowClear
+              aria-label={c.labels.termType}
+              options={[
+                { value: 'fixed', label: c.fixed },
+                { value: 'task', label: c.task },
+              ]}
+            />,
+          )}
+        {!pending && ref('typeId', contractRefs.typeId, true)}
+        {!pending && field('termMonths', <InputNumber min={1} max={1200} aria-label={c.labels.termMonths} />)}
+        {field('endDate', <TenantDatePicker />, true)}
+      </div>
+    </>
+  );
+}

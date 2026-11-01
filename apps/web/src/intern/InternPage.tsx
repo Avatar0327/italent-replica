@@ -1,6 +1,6 @@
 import { Button, Input, Space, Table } from 'antd';
 import { useCallback, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { NameOf, RefSelect } from '../contracts/references.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
@@ -8,8 +8,12 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
 import { InternCommands } from './commands.js';
+import { CreateIntern } from './CreateIntern.js';
+import { canCreatePerson, type CreateReceipt } from './create-model.js';
+import { c } from './create-messages.js';
 import { ApplicationLocation, useApplicationLocation } from './ApplicationLocation.js';
 import { InternDetail } from './InternDetail.js';
+import { useNavigationGuard, type NavigationGuard } from './navigation.js';
 import { m } from './messages.js';
 import {
   allowedFilters,
@@ -51,6 +55,8 @@ function useFilterPermission() {
 
 function useInternList() {
   const [params, setParams] = useSearchParams();
+  const person = usePermissions(personObject);
+  const createAllowed = canCreatePerson(person.snapshot.objects[personObject]);
   const view = views.find((item) => item.key === params.get('view'))?.key ?? 'interning';
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({});
@@ -68,20 +74,27 @@ function useInternList() {
     select(undefined);
     locate(undefined);
   };
+  const guard = useNavigationGuard();
+  const create = useInternCreation(guard, () => {
+    switchView('interning');
+    result.refresh();
+  });
   const items = result.data?.items ?? [];
   const located = useCallback((page: number) => {
     refreshList.current();
     setPage(page);
     locate(undefined);
   }, []);
-  const refresh = async (destination?: ApplicationDestination) => {
-    if (!destination) return result.reload();
-    setParams({ view: destination.view });
-    setPage(1);
-    setFilters({});
-    locate(destination);
-    result.refresh();
-  };
+  const refresh = () => result.reload();
+  // 申请确认后切到目标视图并独立定位；提交开始时领票，离页或期间已导航则丢弃（F-376）
+  const navigation = () =>
+    guard((destination: ApplicationDestination) => {
+      setParams({ view: destination.view });
+      setPage(1);
+      setFilters({});
+      locate(destination);
+      result.refresh();
+    });
   const changePage = (next: number) => {
     locate(undefined);
     setPage(next);
@@ -109,6 +122,9 @@ function useInternList() {
     switchView,
     located,
     refresh,
+    navigation,
+    create,
+    createAllowed,
   };
 }
 
@@ -128,6 +144,9 @@ function InternList() {
     switchView,
     located,
     refresh,
+    navigation,
+    create,
+    createAllowed,
   } = useInternList();
   return (
     <>
@@ -143,7 +162,13 @@ function InternList() {
         <ApplicationLocation key={location.id} destination={location} onLocated={located} />
       )}
       <section className="intern-card">
-        <FilterBar key={view} allowed={allowed} onApply={applyFilters} onRefresh={result.refresh} />
+        <FilterBar
+          key={view}
+          allowed={allowed}
+          onApply={applyFilters}
+          onRefresh={result.refresh}
+          onCreate={createAllowed ? create.open : undefined}
+        />
         {result.error ? (
           <PageState kind="error" error={result.error} retry={result.refresh} />
         ) : (
@@ -165,6 +190,7 @@ function InternList() {
           </Button>
         </div>
       </section>
+      <CreateIntern {...create.props} />
       {selected && (
         <InternDetail
           key={`${selected.view}/${selected.row.id}`}
@@ -172,6 +198,7 @@ function InternList() {
           row={selected.row}
           onClose={close}
           refresh={refresh}
+          navigation={navigation}
         />
       )}
     </>
@@ -182,15 +209,22 @@ function FilterBar({
   allowed,
   onApply,
   onRefresh,
+  onCreate,
 }: {
   allowed: (key: keyof Filters) => boolean;
   onApply(filters: Filters): void;
   onRefresh(): void;
+  onCreate?: () => void;
 }) {
   const [draft, setDraft] = useState<Filters>({});
   const apply = (next: Filters) => onApply(allowedFilters({ ...next, keyword: next.keyword?.trim() }, allowed));
   return (
     <Space className="intern-toolbar" wrap>
+      {onCreate && (
+        <Button type="primary" onClick={onCreate}>
+          {c.title}
+        </Button>
+      )}
       {allowed('keyword') && (
         <Input
           allowClear
@@ -272,4 +306,25 @@ function InternTable({
       ]}
     />
   );
+}
+
+function useInternCreation(guard: NavigationGuard, onInterning: () => void) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const route = (receipt: CreateReceipt) => (receipt.view === 'pendingEntry' ? navigate('/entries') : onInterning());
+  return {
+    open: () => setOpen(true),
+    props: {
+      open,
+      onClose: () => setOpen(false),
+      // 保存开始时领票：回执迟到时页面已离开或已导航，只关弹窗、不再跳转（F-376）
+      begin() {
+        const go = guard(route);
+        return (receipt: CreateReceipt) => {
+          setOpen(false);
+          go(receipt);
+        };
+      },
+    },
+  };
 }

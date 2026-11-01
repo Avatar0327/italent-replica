@@ -382,6 +382,8 @@ export const PRIMITIVES: readonly Primitive[] = [
       calls('authorizeHead', 'authorizeHeadAction', 'authorizeStored'),
       { modules: ['org-adjustment'] },
     ],
+    // 组织调整明细：按钮 + 主体组织 + 行涉及的组织（命令守卫内 authorizeItem；停用连带下级在写服务内逐个判）
+    ['orgAdjustment.item', calls('authorizeItem', 'orgScopeAuthorizer'), { modules: ['org-adjustment'] }],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
   // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）
@@ -447,6 +449,15 @@ export const DISJUNCTIONS: readonly Disjunction[] = [
     pattern: call('requireExecutor'),
     modules: ['idp'],
     branches: [['relation']],
+    absorbs: ['object', 'scope'],
+  },
+  {
+    // org-adjustment/disclosure.ts orgAdjustmentDisclosure（BE-10d 读接口）：HR（对象查看权 + 主体组织在范围）或 可打开
+    // 最新审批实例（assertCanOpen）；HR 分支查看权为假不拒绝，转判审批实例，都不是 404
+    name: 'orgAdjustment.disclosure',
+    pattern: call('orgAdjustmentDisclosure'),
+    modules: ['org-adjustment'],
+    branches: [['object'], ['relation']],
     absorbs: ['object', 'scope'],
   },
   {

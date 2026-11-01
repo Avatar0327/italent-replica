@@ -1,7 +1,7 @@
 /**
  * F-290：取证门禁（scripts/evidence-gate.mjs）的状态识别（第 5 轮起：精确匹配放行，DEC-431①）。
  * 放行 = 整条状态列（规范化空白与全半角标点后）逐字等于放行表里的一条；放行表取自真实清单当前放行的 20 行
- * （Q-M0-127 / 132 / 133 / 153 + D-062～D-077）。其余状态一律阻塞：没有关键词 / 子串 / 正则式的“已取”“可后补”判定。
+ * （Q-M0-127 / 132 / 133 / 153 + D-062～D-077、D-079～D-081）。其余状态一律阻塞：没有关键词 / 子串 / 正则式的“已取”“可后补”判定。
  * 新的状态写法须人工把原文加进 evidence-gate-lib.mjs 的放行表并配测试。
  */
 import { spawnSync } from 'node:child_process';
@@ -35,7 +35,7 @@ const decisionCell = (id: string) =>
       .find((l) => l.startsWith(`| **${id}** `))!,
   )[4]!;
 const RELEASED_EVIDENCE = ['Q-M0-127', 'Q-M0-132', 'Q-M0-133', 'Q-M0-153'];
-const RELEASED_DECISIONS = Array.from({ length: 16 }, (_, i) => `D-0${62 + i}`);
+const RELEASED_DECISIONS = [...Array.from({ length: 16 }, (_, i) => `D-0${62 + i}`), 'D-079', 'D-080', 'D-081'];
 
 const decisionRow = (id: string, status: string) => `| **${id}** | 原站某行为 | 差异描述 | 方案 | ${status} |`;
 const evidenceRow = (id: string, blocks: string, status: string) =>
@@ -265,7 +265,7 @@ describe('F-290 真实清单上的放行集合（防止收紧误拦或放松误�
     expect(released).toEqual(RELEASED_EVIDENCE);
   });
 
-  it('AC-TOOL-F312：D-027 / 028 / 057 已决，非 ✅ 放行仍为 D-062～D-077', () => {
+  it('AC-TOOL-F312：D-027 / 028 / 057 已决，非 ✅ 放行仍为 D-062～D-077、D-079～D-081', () => {
     const md = read(DECISION_MD);
     const open = parseDecisions(md).map((d) => d.id);
     const settledNotTicked = md

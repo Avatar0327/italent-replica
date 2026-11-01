@@ -135,7 +135,7 @@ async function leaveScene(label: string) {
   const process = await w.publishedProcess({
     approvalType: 'leave',
     conditions: LEAVE_CONDITION,
-    nodes: [NODES.outHead, { key: 'hrbp', approver: 'record_department_hrbp' }],
+    nodes: [NODES.outHead, { key: 'hrbp', approver: { type: 'department', value: 'record_department_hrbp' } }],
     exceptionAdminUserId: source.id,
   });
   const employee = await w.json<{ revision: number }>(

@@ -26,11 +26,13 @@ export function InternDetail({
   row,
   onClose,
   refresh,
+  navigation,
 }: {
   view: InternView;
   row: Row;
   onClose(): void;
-  refresh(destination?: ApplicationDestination): Promise<unknown>;
+  refresh(): Promise<unknown>;
+  navigation(): (destination: ApplicationDestination) => void;
 }) {
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
@@ -40,7 +42,7 @@ export function InternDetail({
     setOpen(undefined);
     onClose();
   };
-  const form = { row, onClose: () => setOpen(undefined), onDone: done, refresh };
+  const form = { row, onClose: () => setOpen(undefined), onDone: done, refresh, navigation };
   const actions = (
     <Space wrap>
       {entries

@@ -15,6 +15,13 @@ export const GRAPH: Graph = {
     '#objectGrantCode',
     '#opGrantCode',
   ],
+  'packages/domain/src/platform/standard-presets.ts#ANALYTICS_BE13A_OBJECTS': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#ANALYTICS_BE13A_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    '#ANALYTICS_BE13A_OBJECTS',
+  ],
   'packages/domain/src/platform/standard-presets.ts#ASSESSMENT_SEE_ALL': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
@@ -83,11 +90,13 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/platform/standard-presets.ts#READ_ONLY_OBJECTS': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    '#ANALYTICS_BE13A_OBJECTS',
   ],
   'packages/domain/src/platform/standard-presets.ts#STANDARD_PROFILES': [
     'packages/domain/src/approval/catalog.ts#APPROVAL_PROCESS_OBJECT',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    '#ANALYTICS_BE13A_SEE_ALL',
     '#ASSESSMENT_SEE_ALL',
     '#BLACKLIST_SEE_ALL',
     '#BUSINESS_OBJECTS',

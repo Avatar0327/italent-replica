@@ -95,7 +95,12 @@ const FORM = ['departmentId', 'effectiveDate', 'isChangeContract', 'contractChan
 describe('P1 显式清空隐藏合同字段：人工审批被盲审拦下', () => {
   it.each(CLEARINGS)('$name：审批人看得到合同但看不到该字段，同意返回 403', async (clearing) => {
     const { w, s, instance, hidden, custom } = await approvalScene(`lnk4-manual-${clearing.name}`, clearing, [
-      { key: 'review', approver: 'latest_record_department_head', formFields: FORM, editableFields: [] },
+      {
+        key: 'review',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        formFields: FORM,
+        editableFields: [],
+      },
     ]);
     const task = instance.tasks.find((t) => t.status === 'pending')!;
     const request = controlledApi(
@@ -120,9 +125,13 @@ describe('P1 显式清空隐藏合同字段：人工审批被盲审拦下', () =
 describe('P1 显式清空隐藏合同字段：同人自动跳过前也做盲审', () => {
   it.each(CLEARINGS)('$name：被跳过的审批人看不到该字段时不自动同意，转异常管理员', async (clearing) => {
     const { w, s, instance, hidden, custom } = await approvalScene(`lnk4-auto-${clearing.name}`, clearing, [
-      { key: 'out_head', approver: 'latest_record_department_head', formFields: FORM },
-      { key: 'in_hrbp', approver: 'record_department_hrbp', formFields: FORM },
-      { key: 'recheck', approver: 'latest_record_department_head', historySameAssigneeSkip: true },
+      { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' }, formFields: FORM },
+      { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' }, formFields: FORM },
+      {
+        key: 'recheck',
+        approver: { type: 'department', value: 'latest_record_department_head' },
+        historySameAssigneeSkip: true,
+      },
     ]);
     const all = { [CONTRACT_OBJECT]: visibleExcept(custom, '') };
     const first = controlledApi(w.db, w.tenant.id, s.outHead.userId, { fields: all }, AT);

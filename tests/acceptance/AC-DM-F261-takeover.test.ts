@@ -14,13 +14,13 @@ const database = useTestDb();
 const BASE = '/api/tenant/approval';
 const first: NodeInput = {
   key: 'first',
-  approver: 'latest_record_department_head',
+  approver: { type: 'department', value: 'latest_record_department_head' },
   exits: ['approve', 'disagree'],
   actions: { transfer: true, addSign: true, copySend: true, retrieve: true, jump: true },
 };
 const second: NodeInput = {
   key: 'second',
-  approver: 'direct_manager',
+  approver: { type: 'object_field', value: 'direct_manager' },
   actions: { rejectToPrevious: true },
 };
 async function scene(

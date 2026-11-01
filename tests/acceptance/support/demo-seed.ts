@@ -3,7 +3,7 @@
  * 中断注入与打开节点转交 / 加签的流程配置。
  */
 import { sql, tenants, users, eq, withPlatform, withTenant } from '@italent/db';
-import { TRANSFER_FORM_FIELDS } from '@italent/domain';
+import { TRANSFER_FORM_FIELDS, approverSource, type ApproverExpression } from '@italent/domain';
 import type { createTestDb } from '@italent/testkit';
 import { expect } from 'vitest';
 import { DEMO_PEOPLE, DEMO_TRANSFER_PROCESS_CODE } from '../../../apps/api/src/demo/data.js';
@@ -104,10 +104,10 @@ export async function enableTransferAndAddSign(user: Awaited<ReturnType<typeof a
   const found = (list.items as Json[]).find((row) => row.code === DEMO_TRANSFER_PROCESS_CODE)!;
   const read = async () => user.send(admin, 'GET', `${base}/${String(found.id)}`);
   await user.send(admin, 'POST', `${base}/${String(found.id)}/versions`, undefined, Number((await read()).revision));
-  const node = (key: string, name: string, approver: string) => ({
+  const node = (key: string, name: string, approver: ApproverExpression) => ({
     key,
     name,
-    approver,
+    approver: approverSource(approver),
     formFields: TRANSFER_FORM_FIELDS,
     actions: { avoidSelf: true, transfer: true, addSign: true },
   });

@@ -153,9 +153,11 @@ export const approvalProcessNodes = pgTable(
     /** F-003：节点类型——单人审批 / 会签审批（`14` §11.4、§12）。 */
     nodeType: text('node_type').notNull().default('single'),
     /** 单人审批节点的审批人表达式；会签节点为空。 */
-    approverExpression: text('approver_expression'),
+    approverExpression: jsonb('approver_expression'),
     /** F-003：会签节点的审批人表达式（按配置顺序逐人解析）；单人节点为空数组。 */
-    approverExpressions: textArray('approver_expressions'),
+    approverExpressions: jsonb('approver_expressions')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** R2 BE-8b2（DEC-663）：兜底处理人（用户 ID，可多人、缺省空），只用于离职交接申请的会签交接节点。 */
     fallbackUserIds: uuid('fallback_user_ids')
       .array()
@@ -178,6 +180,9 @@ export const approvalProcessNodes = pgTable(
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
     /** F-316：NULL 保留未配置语义与旧兜底行为；显式值随流程版本冻结。 */
     emptyApproverPolicy: text('empty_approver_policy'),
+    emptyApproverSources: jsonb('empty_approver_sources')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
     /** DEC-106：相同 / 历史相同审批人自动处理的结果「同意」/「跳过」。 */
@@ -230,14 +235,6 @@ export const approvalProcessNodes = pgTable(
       columns: [t.tenantId, t.versionId],
       foreignColumns: [approvalProcessVersions.tenantId, approvalProcessVersions.id],
     }),
-    check(
-      'approval_nodes_approver',
-      sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
-        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor',
-        'latest_record_department_hrbp','offer_department_head','initiator_direct_manager',
-        'approval_subject_first_level_org_head','assessment_employee','approval_subject_org_hrbp',
-        'approval_subject_org_head','handover_work_owner','handover_hr_admin','handover_employee')`,
-    ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
     check(
@@ -261,14 +258,10 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approvers',
       sql`CASE WHEN ${t.nodeType} = 'countersign'
-        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 8
-          AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
-            'record_department_head','record_department_hrbp','record_first_level_org_head',
-            'idp_employee','idp_tutor','latest_record_department_hrbp','offer_department_head',
-            'initiator_direct_manager','approval_subject_first_level_org_head','assessment_employee',
-            'approval_subject_org_hrbp','approval_subject_org_head',
-            'handover_work_owner','handover_hr_admin','handover_employee']::text[]
-        ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
+        THEN ${t.approverExpression} IS NULL AND jsonb_typeof(${t.approverExpressions}) = 'array'
+          AND jsonb_array_length(${t.approverExpressions}) BETWEEN 1 AND 200
+        ELSE ${t.approverExpression} IS NOT NULL AND jsonb_typeof(${t.approverExpression}) = 'object'
+          AND ${t.approverExpressions} = '[]'::jsonb END`,
     ),
     check(
       'approval_nodes_exits',

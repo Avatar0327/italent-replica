@@ -1,3 +1,4 @@
+import { withPreApprovalSources } from './pre-approval-sources.js';
 import { type DbHandle, sql } from '@italent/db';
 
 /**
@@ -76,6 +77,16 @@ export const PRE_UPGRADE_TABLE_SHIMS: readonly PreUpgradeTableShim[] = [
       { name: 'created_at', type: 'timestamp with time zone' },
     ],
   },
+  // BE-11a：任职 / 组织 / 职位写入口都先查执行期间暂停行（R2-T08 §7.6），旧库夹具也需这张表。
+  {
+    table: 'org_adjustment_pauses',
+    migration: 'be11a_org_adjustment_execution',
+    columns: [
+      { name: 'tenant_id', type: 'uuid' },
+      { name: 'org_id', type: 'uuid' },
+      { name: 'adjustment_id', type: 'uuid' },
+    ],
+  },
 ];
 
 const ident = (name: string) => sql.raw(`"${name.replaceAll('"', '""')}"`);
@@ -93,6 +104,7 @@ async function existingColumns(handle: DbHandle): Promise<Set<string>> {
 
 /** 补上缺的垫片对象，并让第一次 migrate 先撤掉它们；不改变已有正式对象。 */
 export async function withPreUpgradeShims(handle: DbHandle): Promise<DbHandle> {
+  handle = await withPreApprovalSources(handle);
   const present = await existingColumns(handle);
   const tables = new Set([...present].map((key) => key.split('.')[0]));
   const added = PRE_UPGRADE_SHIMS.filter((s) => tables.has(s.table) && !present.has(`${s.table}.${s.column}`));

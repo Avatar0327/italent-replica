@@ -6,6 +6,8 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import type { PageRequest, PageResult } from '../foundation/client.js';
 import { StaffDetail } from './StaffDetail.js';
+import { EditPersonButton } from './EditCommands.js';
+import { personEditable } from './edit-model.js';
 import { StaffFilters } from './StaffFilters.js';
 import { ColumnGear, ColumnSettings } from './ColumnSettings.js';
 import { useRead } from './useRead.js';
@@ -39,6 +41,14 @@ export function StaffPage() {
     setPage({ ...page, page: 1 });
   };
   const columns = staffColumns(selectedColumns, allowed, setEmployeeId);
+  // 原站列表行「编辑人员」（F-329）；无编辑权时整列不出现。▾ 更多菜单不在本任务范围。
+  if (personEditable(permission.snapshot.objects[PERSONNEL_OBJECT]).length)
+    columns.push({
+      key: 'edit',
+      title: m.editing.operations,
+      width: 110,
+      render: (_: unknown, row: Row) => <EditPersonButton employeeId={row.id} saved={result.refresh} />,
+    });
   // 原站列设置入口在表头最右侧齿轮，不占工具栏按钮位。
   columns.push({ key: 'settings', width: 48, title: <ColumnGear onOpen={() => setOverlay('columns')} /> });
   return (
@@ -80,7 +90,14 @@ export function StaffPage() {
           onClose={() => setOverlay(undefined)}
         />
       )}
-      {employeeId && <StaffDetail key={employeeId} employeeId={employeeId} onClose={() => setEmployeeId(undefined)} />}
+      {employeeId && (
+        <StaffDetail
+          key={employeeId}
+          employeeId={employeeId}
+          onClose={() => setEmployeeId(undefined)}
+          onSaved={result.refresh}
+        />
+      )}
     </div>
   );
 }

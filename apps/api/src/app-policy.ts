@@ -6,6 +6,7 @@
 import { AUDIT_POLICIES } from './audit/policy.js';
 import { HR_DASHBOARD_POLICIES } from './modules/analytics/hr-dashboard-policy.js';
 import { HR_PROCESS_DASHBOARD_POLICIES } from './modules/analytics/hr-process-dashboard-policy.js';
+import { CONTRACT_BOARD_POLICIES, HR_STRUCTURE_POLICIES } from './modules/analytics/hr-structure-policy.js';
 import { ORG_ADJUSTMENT_POLICIES } from './modules/org-adjustment/policy.js';
 import { AVATAR_POLICIES } from './modules/avatar/policy.js';
 import { COMMAND_RESULT_POLICIES } from './modules/command-result/policy.js';
@@ -51,6 +52,8 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     SUCCESSION_POLICIES,
     HR_DASHBOARD_POLICIES,
     HR_PROCESS_DASHBOARD_POLICIES,
+    HR_STRUCTURE_POLICIES,
+    CONTRACT_BOARD_POLICIES,
     ORG_ADJUSTMENT_POLICIES,
     ...extra,
   ]);

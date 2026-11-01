@@ -25,10 +25,21 @@ const JOINT: NodeInput = {
   key: 'joint',
   name: '调入部门会签',
   kind: 'countersign',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
 };
-const FIRST: NodeInput = { key: 'out_head', name: '调出负责人审批', approver: 'latest_record_department_head' };
-const FINAL: NodeInput = { key: 'final', name: '调出负责人确认', approver: 'latest_record_department_head' };
+const FIRST: NodeInput = {
+  key: 'out_head',
+  name: '调出负责人审批',
+  approver: { type: 'department', value: 'latest_record_department_head' },
+};
+const FINAL: NodeInput = {
+  key: 'final',
+  name: '调出负责人确认',
+  approver: { type: 'department', value: 'latest_record_department_head' },
+};
 
 const pendingOf = (view: InstanceView) => view.tasks.filter((task) => task.status === 'pending');
 
@@ -150,7 +161,11 @@ describe('AC-APV-24 补充：多个出口动作同时达标时“不同意”优
         FIRST,
         {
           ...JOINT,
-          approvers: ['record_department_head', 'record_department_hrbp', 'latest_record_department_head'],
+          approvers: [
+            { type: 'department', value: 'record_department_head' },
+            { type: 'department', value: 'record_department_hrbp' },
+            { type: 'department', value: 'latest_record_department_head' },
+          ],
           exits: ['approve', 'disagree'],
           transitionRule: { type: 'custom', rules } as NodeInput['transitionRule'],
         },

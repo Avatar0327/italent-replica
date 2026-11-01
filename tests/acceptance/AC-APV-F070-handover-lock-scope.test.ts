@@ -26,7 +26,10 @@ const COUNTERSIGN = {
   key: 'joint',
   kind: 'countersign',
   name: '最终会签',
-  approvers: ['record_department_head', 'record_department_hrbp'],
+  approvers: [
+    { type: 'department', value: 'record_department_head' },
+    { type: 'department', value: 'record_department_hrbp' },
+  ],
   transitionRule: { type: 'all' },
 } as const;
 
@@ -53,7 +56,10 @@ async function leaveScene(
       kind === 'leave'
         ? LEAVE_CONDITION
         : { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'RetireProcess' }] },
-    nodes: [NODES.outHead, countersign ? COUNTERSIGN : { key: 'hrbp', approver: 'record_department_hrbp' }],
+    nodes: [
+      NODES.outHead,
+      countersign ? COUNTERSIGN : { key: 'hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
+    ],
     exceptionAdminUserId: source.id,
   });
   // 同员工有一张未落地的调动申请：离职生效会回退它的带编分配，所以合席结算前要把编制锁也取齐（R2-T03 B3-3）

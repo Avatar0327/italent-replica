@@ -43,12 +43,15 @@ async function scene(takeover: boolean) {
   prefix.value = '';
   await w.publishedProcess({
     nodes: [
-      { key: 'first', name: '调出审批', approver: 'latest_record_department_head' },
+      { key: 'first', name: '调出审批', approver: { type: 'department', value: 'latest_record_department_head' } },
       {
         key: 'joint',
         kind: 'countersign',
         name: '最终会签',
-        approvers: ['record_department_head', 'record_department_hrbp'],
+        approvers: [
+          { type: 'department', value: 'record_department_head' },
+          { type: 'department', value: 'record_department_hrbp' },
+        ],
         transitionRule: { type: 'all' },
       },
     ],
