@@ -3,6 +3,7 @@ import {
   assessmentTypeFlow,
   contractOperationFlow,
   employmentKindFlow,
+  EXIT_TERMINATION_FIXED,
   EXIT_TERMINATION_FLOW_CODES,
   EXIT_TERMINATION_PRESET,
   exitTerminationPolicy,
@@ -28,6 +29,17 @@ describe('F-400 离职生效终止在途流程配置（DEC-725）', () => {
     expect(exitTerminationPolicy({ transfer: false }).transfer).toBe(false);
     expect(exitTerminationPolicy({ transfer: false }).regularization).toBe(true);
     expect(exitTerminationPolicy({ transfer: 'no' })).toEqual(EXIT_TERMINATION_PRESET);
+  });
+
+  it('新增兼职固定终止：预置勾选、保存 false 拒绝、读到 false 仍按勾选', () => {
+    expect(EXIT_TERMINATION_FIXED).toEqual(['part_time_add']);
+    expect(EXIT_TERMINATION_PRESET.part_time_add).toBe(true);
+    expect(validExitTerminationSetting({ part_time_add: false })).toBe(false);
+    expect(validExitTerminationSetting({ part_time_add: true, transfer: false })).toBe(true);
+    expect(exitTerminationPolicy({ part_time_add: false, transfer: false })).toMatchObject({
+      part_time_add: true,
+      transfer: false,
+    });
   });
 
   it('业务类型映射到流程码', () => {

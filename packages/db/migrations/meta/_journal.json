@@ -1268,6 +1268,13 @@
       "when": 1793519993908,
       "tag": "0180_f400_exit_termination_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1793552914378,
+      "tag": "0181_f400_business_notifications",
+      "breakpoints": true
     }
   ]
 }

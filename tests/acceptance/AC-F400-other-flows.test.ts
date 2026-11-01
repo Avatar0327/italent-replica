@@ -29,14 +29,26 @@ async function world(label: string) {
   return { w, intention: draft, instance };
 }
 
+/** 有勾选终止的在途流程时先 409 要求确认（§8，F-400 第 2 轮），带回令牌再建；返回业务与令牌（提交时再带）。 */
 async function createLeave(w: IntentionWorld, lastWorkDate: string, mode: 'direct' | 'application') {
-  const exit = mode === 'application' ? { exitTypeCode: 'voluntary' } : undefined;
-  const response = await w.request(w.hr.id, 'POST', `${EMPLOYMENT}/employees/${w.subject.employeeId}/businesses`, {
-    ifMatch: await w.revisionOf(),
-    body: leaveBody(lastWorkDate, mode, exit),
-  });
+  const send = async (ack?: string) => {
+    const exit = {
+      ...(mode === 'application' ? { exitTypeCode: 'voluntary' } : {}),
+      ...(ack ? { pendingTransferAck: ack } : {}),
+    };
+    return w.request(w.hr.id, 'POST', `${EMPLOYMENT}/employees/${w.subject.employeeId}/businesses`, {
+      ifMatch: await w.revisionOf(),
+      body: leaveBody(lastWorkDate, mode, Object.keys(exit).length ? exit : undefined),
+    });
+  };
+  let response = await send();
+  let ack: string | undefined;
+  if (response.status === 409) {
+    ack = ((await response.json()) as { error: { details: { ackToken: string } } }).error.details.ackToken;
+    response = await send(ack);
+  }
   expect(response.status, await response.clone().text()).toBe(201);
-  return (await response.json()) as { id: string; revision: number; status: string };
+  return { ...((await response.json()) as { id: string; revision: number; status: string }), ack };
 }
 
 const audits = (w: IntentionWorld, objectId: string) =>
@@ -79,7 +91,7 @@ describe('F-400 ① 个人信息类在途流程（意向退休日期申请）', 
     const draft = await createLeave(w, '2026-10-05', 'application');
     const submitted = await w.request(w.hr.id, 'POST', `${EMPLOYMENT}/exits/${draft.id}/submit`, {
       ifMatch: draft.revision,
-      body: {},
+      body: draft.ack ? { pendingTransferAck: draft.ack } : {},
     });
     expect(submitted.status, await submitted.clone().text()).toBe(200);
     const view = await w.instanceOf(draft.id);

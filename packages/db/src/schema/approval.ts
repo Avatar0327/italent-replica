@@ -517,13 +517,19 @@ export const approvalInstanceLogs = pgTable(
   ],
 );
 
-/** 通知 / 待办消息：按接收人过滤；外发状态 pending / sent / failed / unknown（AGENTS §10）。 */
+/**
+ * 通知 / 待办消息：按接收人过滤；外发状态 pending / sent / failed / unknown（AGENTS §10）。
+ * 挂审批实例（instance_id），或在没有审批实例时挂业务单（business_type + business_id，F-400：直接办理的业务被离职作废时
+ * 仍要通知申请人与发起人，不伪造审批实例）；两者至少一个。
+ */
 export const approvalNotifications = pgTable(
   'approval_notifications',
   {
     id: id(),
     tenantId: tenantId(),
-    instanceId: uuid('instance_id').notNull(),
+    instanceId: uuid('instance_id'),
+    businessType: text('business_type'),
+    businessId: uuid('business_id'),
     taskId: uuid('task_id'),
     recipientUserId: uuid('recipient_user_id').notNull(),
     kind: text('kind').notNull(),
@@ -544,6 +550,10 @@ export const approvalNotifications = pgTable(
     check('approval_notifications_kind', sql`${t.kind} IN ('todo','urge','message','cc')`),
     check('approval_notifications_channel', sql`${t.channel} IN ('inbox','email','sms')`),
     check('approval_notifications_status', sql`${t.status} IN ('pending','sent','failed','unknown')`),
+    check(
+      'approval_notifications_target',
+      sql`${t.instanceId} IS NOT NULL OR (${t.businessType} IS NOT NULL AND ${t.businessId} IS NOT NULL)`,
+    ),
   ],
 );
 

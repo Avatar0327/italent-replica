@@ -51,7 +51,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: '89fe2b10a5fd',
+    listNotifications: 'd4873d3a6c0d',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -1760,7 +1760,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
-  'apps/api/src/modules/approval/queries.ts#listNotifications': '0f4e2d6ebf7d',
+  'apps/api/src/modules/approval/queries.ts#listNotifications': 'd0b6d75c28da',
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
   'apps/api/src/modules/approval/routes.ts#registerInstanceRoutes': 'e9958472eb5c',

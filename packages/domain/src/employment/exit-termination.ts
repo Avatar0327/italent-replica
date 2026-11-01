@@ -20,7 +20,8 @@ export const EXIT_TERMINATION_FLOWS = {
   batch_transfer: { group: 'employment', name: '批量调动' },
   labor_regularization: { group: 'employment', name: '劳务转正式' },
   intern_regularization: { group: 'employment', name: '实习转正' },
-  part_time_add: { group: 'employment', name: '新增兼职' },
+  // 固定终止（不可取消勾选）：离职后不能再新增兼职，见 EXIT_TERMINATION_FIXED
+  part_time_add: { group: 'employment', name: '新增兼职', fixed: true },
   part_time_extend: { group: 'employment', name: '延长兼职' },
   part_time_end: { group: 'employment', name: '结束兼职' },
   contract_create: { group: 'contract', name: '新建合同协议' },
@@ -42,7 +43,7 @@ export const EXIT_TERMINATION_FLOWS = {
   punish: { group: 'personal', name: '惩处记录变更' },
   certificate: { group: 'personal', name: '证书变更' },
   retirement_intention: { group: 'personal', name: '意向退休日期申请' },
-} as const satisfies Record<string, { group: ExitTerminationGroup; name: string }>;
+} as const satisfies Record<string, { group: ExitTerminationGroup; name: string; fixed?: true }>;
 
 export type ExitTerminationFlow = keyof typeof EXIT_TERMINATION_FLOWS;
 export const EXIT_TERMINATION_FLOW_CODES = Object.keys(EXIT_TERMINATION_FLOWS) as ExitTerminationFlow[];
@@ -55,19 +56,37 @@ export const EXIT_TERMINATION_PRESET: ExitTerminationSetting = Object.fromEntrie
 
 const isFlow = (code: string): code is ExitTerminationFlow => Object.hasOwn(EXIT_TERMINATION_FLOWS, code);
 
-/** 保存校验：必须是对象，键都是已知流程码，值都是布尔。 */
-export function validExitTerminationSetting(value: unknown): value is Partial<ExitTerminationSetting> {
+/** 固定终止、不可取消勾选的流程（目录里标 fixed）：保存 false 拒绝，读到 false 也按勾选处理。 */
+export const EXIT_TERMINATION_FIXED: readonly ExitTerminationFlow[] = EXIT_TERMINATION_FLOW_CODES.filter(
+  (code) => 'fixed' in EXIT_TERMINATION_FLOWS[code],
+);
+
+/** 读取口径：必须是对象，键都是已知流程码，值都是布尔。 */
+function isBooleanMap(value: unknown): value is Partial<ExitTerminationSetting> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   return Object.entries(value).every(([code, on]) => isFlow(code) && typeof on === 'boolean');
 }
 
-/** 有效勾选：配置缺的键按预置取；读到非法值（理论上保存时已拒）也回落到预置，不放宽为“全部保留”。 */
-export function exitTerminationPolicy(value: unknown): ExitTerminationSetting {
-  const stored = validExitTerminationSetting(value) ? value : {};
-  return { ...EXIT_TERMINATION_PRESET, ...stored };
+/** 保存校验：读取口径之外，固定终止的流程不能存 false（两层配置写入口 400 SETTING_VALUE_INVALID）。 */
+export function validExitTerminationSetting(value: unknown): value is Partial<ExitTerminationSetting> {
+  return isBooleanMap(value) && EXIT_TERMINATION_FIXED.every((code) => value[code] !== false);
 }
 
-/** 任职业务 kind → 流程码；不在 28 类里的（入职、重聘、返聘、组织调整、退休）返回 null，照旧全部作废。 */
+/**
+ * 有效勾选：配置缺的键按预置取；读到非法值（理论上保存时已拒）也回落到预置，不放宽为“全部保留”。
+ * 固定终止的流程不论存的是什么都按勾选（直接写库绕过校验时也不放宽）。
+ */
+export function exitTerminationPolicy(value: unknown): ExitTerminationSetting {
+  const stored = isBooleanMap(value) ? value : {};
+  const fixed = Object.fromEntries(EXIT_TERMINATION_FIXED.map((code) => [code, true]));
+  return { ...EXIT_TERMINATION_PRESET, ...stored, ...fixed };
+}
+
+/**
+ * 任职业务 kind → 流程码；不在 28 类里的（入职、重聘、返聘、组织调整、退休）返回 null，照旧全部作废。
+ * 机构间调动（inter_org_transfer）、批量调动（batch_transfer）目前没有单独入口；将来新增入口时须带自己的流程码，
+ * 不得复用 transfer——三个开关各自独立，复用会让“调动”的勾选误管另外两类。
+ */
 export function employmentKindFlow(kind: string): ExitTerminationFlow | null {
   return ['regularization', 'transfer', 'labor_regularization', 'intern_regularization'].includes(kind)
     ? (kind as ExitTerminationFlow)

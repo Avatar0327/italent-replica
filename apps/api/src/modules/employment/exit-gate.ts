@@ -22,6 +22,7 @@ import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
 import { exitListOrder } from './exit-list-order.js';
+import { discloseFlows, terminableOtherFlows } from './exit-flow-candidates.js';
 import { exitTerminationOf, untickedFlows } from './exit-termination-policy.js';
 import { rowsOf } from './record-store.js';
 import { assertNoLiveRehire } from './retirement-application.js';
@@ -481,9 +482,10 @@ export async function assessmentNoticeItems(
 
 /**
  * 确认清单 S = 审批中的调动（不论生效日，DEC-166）∪ 已批准未落地且计划生效日 > L 的调动（DEC-220，按 §5.0A 计划日比较）
- * ∪ 在途考核（F-229，DEC-617：审批中 / 已驳回待重提，离职生效时终止作废）。
+ * ∪ 在途考核（F-229，DEC-617：审批中 / 已驳回待重提，离职生效时终止作废）
+ * ∪ 按配置将终止的个人信息类流程（F-400，DEC-725：意向退休日期申请、员工子集变更申请，取自 exit-flow-candidates.ts）。
  * 集合为空无需确认（返回 null）；非空时令牌与已存哈希 / 请求带的令牌之一一致才算确认，否则 409 并给出新令牌。
- * 没有在途考核时集合与令牌与 F-229 之前逐位相同。
+ * 没有在途考核、也没有将终止的个人信息类流程时，集合与令牌与 F-229 之前逐位相同。
  * 调动部分的条件整个推进 SQL 后再取上限（F-241，与 voidCandidates 同一机制）：先截断再在 JS 里剔除前序会让前序占去名额，
  * 初次确认少覆盖、前序落地后重算又多出来。超过 VOID_LIMIT 条（查询取 1001 条，无法区分恰好 1001 与被截断）时不生成令牌，
  * 返回 tooMany。同一时刻下 S 的调动部分是 voidCandidates 的子集，但这只是上限口径一致，不能据此推出生效时必然超限
@@ -508,16 +510,38 @@ export async function pendingTransferAckSet(
     const flow = assessmentTypeFlow(row.assessmentType);
     return !policy || !flow || policy[flow];
   });
-  if (exceedsVoidLimit(rows)) return { tooMany: true as const, assessments };
-  if (!rows.length && !assessments.length) return null;
-  const ids = [...rows.map((row) => row.id), ...assessments.map((row) => row.id)].sort();
+  // F-400：生效时将终止的个人信息类流程（意向退休日期 / 员工子集变更），与预览、执行同一候选入口
+  const flows = await terminableOtherFlows(tx, ctx, employeeId, exitKind);
+  if (exceedsVoidLimit(rows)) return { tooMany: true as const, assessments, flows };
+  if (!rows.length && !assessments.length && !flows.length) return null;
+  const ids = [
+    ...rows.map((row) => row.id),
+    ...assessments.map((row) => row.id),
+    ...flows.map((row) => row.businessId),
+  ].sort();
   return {
     tooMany: false as const,
     ids,
     hash: ackToken(ctx, employeeId, lastWorkDate, ids),
     rows: plannedRows(rows),
     assessments,
+    flows,
   };
+}
+
+const ackReason = (set: { rows: readonly unknown[]; assessments: readonly unknown[] }) =>
+  set.rows.length
+    ? 'EXIT_PENDING_TRANSFER_ACK_REQUIRED'
+    : set.assessments.length
+      ? 'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED'
+      : 'EXIT_FLOW_TERMINATION_ACK_REQUIRED';
+
+/** 没有个人信息类流程时文案与 F-400 之前一致。 */
+function ackMessage(transfers: boolean, assessments: boolean, flows: boolean) {
+  const tail = flows ? '，以及终止在途的个人信息类流程' : '';
+  if (transfers) return `离职生效时将作废以下调动申请${assessments ? '和在途考核流程' : ''}${tail}，请确认`;
+  if (assessments) return `离职生效时将终止作废在途考核流程${tail}，请确认`;
+  return '离职生效时将终止在途的个人信息类流程，请确认';
 }
 
 export async function checkPendingTransferAck(
@@ -536,18 +560,14 @@ export async function checkPendingTransferAck(
   const { ids, hash } = set;
   if (provided === hash || stored?.hash === hash) return { ids, hash };
   const withAssessments = set.assessments.length > 0;
-  // 只有在途考核时用单独的原因码，客户端按它显示 DEC-617 的提示；令牌、确认入参与保存方式与调动完全一致
-  throw conflict(
-    set.rows.length ? 'EXIT_PENDING_TRANSFER_ACK_REQUIRED' : 'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED',
-    set.rows.length
-      ? `离职生效时将作废以下调动申请${withAssessments ? '和在途考核流程' : ''}，请确认`
-      : '离职生效时将终止作废在途考核流程，请确认',
-    {
-      ackToken: hash,
-      ...(await disclose(tx, ctx, employeeId, set.rows)),
-      ...(withAssessments ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, set.assessments) } : {}),
-    },
-  );
+  const withFlows = set.flows.length > 0;
+  // 只有在途考核 / 只有个人信息类流程时各用单独的原因码，客户端按它显示对应提示；令牌、确认入参与保存方式与调动完全一致
+  throw conflict(ackReason(set), ackMessage(set.rows.length > 0, withAssessments, withFlows), {
+    ackToken: hash,
+    ...(await disclose(tx, ctx, employeeId, set.rows)),
+    ...(withAssessments ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, set.assessments) } : {}),
+    ...(withFlows ? { flows: await discloseFlows(tx, ctx, set.flows) } : {}),
+  });
 }
 
 export async function saveAck(tx: Tx, ctx: EmploymentContext, businessId: string, ack: AckRecord | null) {

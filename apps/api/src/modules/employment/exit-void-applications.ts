@@ -3,13 +3,16 @@
  * 候选 = 该员工除本单外全部未落地的任职业务（最新状态 ∈ 草稿 / 审批中 / 已驳回 / 已批准未落地），不论 kind、不论载荷日期，
  * 与离职预览的“将作废”清单（exit-preview.ts）同一来源。排在离职之前的已批准申请已由步骤 0a 保证先落地，这里剩下的都排在离职之后。
  * 逐条按业务 ID 升序（§5.2 ③ 预锁）：状态置作废 → 审批实例 cancel → 带编调动回退 → 台账 → 审计 / outbox → 站内消息。
+ * 晚于最后工作日、已落地的未来调动（DEC-725 ③）在离职落地摘下后也走这里（voidLandedTransfers）：先立墓碑，再同一套作废步骤，
+ * 带编分配同样回退并校验，回退不合法时整单回滚。
  * 任一条失败即整单失败，由调用方的保存点回滚（含已作废的前几条）。
  * 作废实现（voidApplications / voidOne）只有一份：直接实习转正自动作废在途转正申请（DEC-593③③，voidSupersededRegularizations）
  * 复用它，只是原因不同——离职记台账 exit_effects（B4 撤销按它核对），转正不记，审计动作与站内消息模板按原因区分。
  */
+import { randomUUID } from 'node:crypto';
 import { exitEffects, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { activeInstanceOf, latestInstanceOf } from '../approval/store.js';
+import { activeInstanceOf, latestInstanceOf, type InstanceRow } from '../approval/store.js';
 import { cancel } from '../approval/actions.js';
 import { schedulerAwareContext } from '../approval/context.js';
 import { notifyMessage } from '../approval/notifications.js';
@@ -18,7 +21,7 @@ import { assertReleasedEstablishment, reverseCarriedEstablishment } from '../est
 import { lockEstablishment } from '../establishment/store.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { auditActor } from '../../system-actor.js';
-import { auditEmployment } from './context.js';
+import { auditEmployment, employmentCreator } from './context.js';
 import {
   exceedsVoidLimit,
   inFlightApplications,
@@ -29,6 +32,7 @@ import {
 } from './exit-gate.js';
 import {
   bumpEmploymentBusiness,
+  insertEmploymentRow,
   lockEmploymentBusiness,
   rowsOf,
   type EmploymentEmployeeRow,
@@ -129,8 +133,26 @@ export async function lockExitOrganizationResources(
   const transfers = await inFlightApplications(tx, ctx, employeeId, ['transfer'], OPEN_STATES);
   // 同时返聘的退休生效会在保存点里生成返聘任职并过编制校验（R2-T04 §8.3-1）：编制锁也在这里先于审批实例取齐，保存点内只是重入
   const rehiring = exitId !== null && (await loadRetirementRequest(tx, ctx.tenantId, exitId))?.reEmployed === true;
-  if (rehiring || transfers.some((row) => !row.landed && row.id !== exitId))
+  if (
+    rehiring ||
+    transfers.some((row) => !row.landed && row.id !== exitId) ||
+    (await hasCarriedAllocation(tx, ctx.tenantId, employeeId, exitId))
+  )
     await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
+}
+
+/**
+ * 员工其他业务是否还有未回退的带编分配：已落地的未来带编调动被离职作废时要回退（voidLandedTransfers），编制锁须先于审批实例取齐。
+ * 只看“有未回退分配”，不判断是否晚于最后工作日（此时还不知道哪些会被摘下）：取锁范围是超集，多取一次编制锁只多一点串行，不会漏锁成环。
+ */
+async function hasCarriedAllocation(tx: Tx, tenantId: string, employeeId: string, exitId: string | null) {
+  const [row] = rowsOf<{ found: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM transfer_establishment_allocations a
+        JOIN employment_business_objects b ON b.tenant_id=a.tenant_id AND b.id=a.business_id
+        WHERE a.tenant_id=${tenantId} AND b.employee_id=${employeeId}::uuid AND NOT a.reversed
+          AND (${exitId}::uuid IS NULL OR b.id<>${exitId}::uuid)) AS found`),
+  );
+  return row?.found === true;
 }
 
 /** §5.2 ⑥：其他审批实例按 id 升序 FOR UPDATE，之后逐个 cancel。 */
@@ -219,14 +241,34 @@ async function voidOne(
     { state: stateBefore },
     { state: 'voided', ...described.extra, ...detail },
   );
-  // 没有审批实例的草稿无处挂站内消息，只留上面的 outbox 事件（A-7）
-  if (instance) {
-    const applicant = await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId);
-    for (const recipientUserId of new Set([instance.initiatorUserId, applicant].filter((id): id is string => !!id)))
-      await notifyMessage(tx, approvalCtx, instance, { recipientUserId, templateCode: described.template });
-  }
+  await notifyVoided(tx, ctx, business, instance, described.template);
   await bumpEmploymentBusiness(tx, ctx, business);
   return { id: business.id, ...detail };
+}
+
+/**
+ * 作废的站内消息发给发起人与申请人（同一人只发一条）。有审批实例时挂实例、发起人取实例发起人；没有审批实例（草稿、直接办理的
+ * 未来调动）时挂业务单、发起人取业务单创建人（F-400，取代 A-7 “无实例只写 outbox”）。不伪造审批实例。
+ */
+async function notifyVoided(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  instance: InstanceRow | null | undefined,
+  templateCode: string,
+) {
+  const initiator = instance ? instance.initiatorUserId : await businessCreator(tx, ctx.tenantId, business.id);
+  const applicant = await userOfPerson(tx, ctx.tenantId, instance?.subjectEmployeeId ?? business.employeeId);
+  const target = instance ?? { businessType: 'employment', businessId: business.id };
+  for (const recipientUserId of new Set([initiator, applicant].filter((id): id is string => !!id)))
+    await notifyMessage(tx, schedulerAwareContext(ctx), target, { recipientUserId, templateCode });
+}
+
+async function businessCreator(tx: Tx, tenantId: string, businessId: string) {
+  const [row] = rowsOf<{ creator: string | null }>(
+    await tx.execute(sql`SELECT ${employmentCreator(tenantId, sql`${businessId}::uuid`, true)} AS creator`),
+  );
+  return row?.creator ?? null;
 }
 
 /** 超限整单拒绝：离职生效记 activationFailure（交 HR 重试），直接转正是明确的 409。 */
@@ -321,4 +363,38 @@ export async function voidSupersededRegularizations(
   if (!candidates.length) return [];
   const heads = await lockOtherBusinessHeads(tx, ctx, employee.id, null);
   return voidApplications(tx, ctx, { kind: 'direct_regularization', employee }, candidates, heads);
+}
+
+/**
+ * DEC-725 ③：离职落地摘下的、晚于最后工作日的已落地调动（detachAndRecord 台账 future_transfer_detached）一律作废
+ * （保留 DEC-520②“任职显示作废 / 已终止”）。逐条：墓碑（记录永久离开时间轴，覆盖校验与编制占用都按墓碑排除；
+ * 撤销离职时 reattachFutureTransfers 跳过墓碑，不再挂回）→ 与在途申请同一个 voidOne（作废、带编回退与校验、台账、审计、站内消息）。
+ * 退休暂不作废（F-351），保持只摘下。锁序：员工（已持有）→ 业务头（heads，生效链开头已预锁）→ 组织设置 / 编制（激活入口
+ * lockExitOrganizationResources 已按“有未回退带编分配”取齐，这里只是重入）→ 通知。
+ */
+export async function voidLandedTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  exit: LockedEmploymentBusiness,
+  detached: readonly { readonly recordId: string }[],
+  lastWorkDate: string,
+  heads: ReadonlyMap<string, number>,
+): Promise<VoidedApplication[]> {
+  if (exit.payload.kind === 'retirement' || !detached.length) return [];
+  await lockExitOrganizationResources(tx, ctx, exit.employeeId, exit.id);
+  const voided: VoidedApplication[] = [];
+  for (const id of detached.map((item) => item.recordId).sort()) {
+    const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: heads.get(id)! }, id);
+    business.employee = exit.employee;
+    await insertEmploymentRow(tx, 'employment_record_tombstones', {
+      id: randomUUID(),
+      tenantId: ctx.tenantId,
+      employeeId: business.employeeId,
+      recordId: business.id,
+      commandId: ctx.commandId,
+      createdAt: ctx.now.toISOString(),
+    });
+    voided.push(await voidOne(tx, ctx, { kind: 'exit', exit, lastWorkDate }, business));
+  }
+  return voided;
 }

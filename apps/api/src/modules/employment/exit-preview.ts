@@ -4,7 +4,8 @@
  * - ack：§8 在途调动确认清单与令牌（创建时带回 exit.pendingTransferAck）；
  * - warnings：生效时将被作废的在途任职申请（DEC-496①；超过 VOID_LIMIT 时改为只提示 EXIT_APPLICATIONS_TOO_MANY，F-237）、
  *   已落地且晚于最后工作日的直接调动（DEC-263②）、
- *   在途考核（F-229，DEC-617，只在有在途考核时追加在末尾；确认令牌覆盖它，见 exit-gate.ts）。
+ *   在途考核（F-229，DEC-617，只在有在途考核时追加在末尾；确认令牌覆盖它，见 exit-gate.ts）、
+ *   将终止的个人信息类流程（F-400 EXIT_FLOWS_TO_TERMINATE，只在有时追加；候选取自 exit-flow-candidates.ts，令牌覆盖它）。
  * 清单逐项按 DEC-177 可见性与字段查看权裁剪（disclose），不可见的只计件数。合同影响（将终止 / 删除的合同、将撤回的
  * 在途合同申请）随 B3-2 合同端口改造（设计 §5.4 返回清单）接入，届时按合同对象查看权与合同范围裁剪（§9.1）。
  */
@@ -22,6 +23,7 @@ import {
   untickedEmploymentKeep,
   type InFlight,
 } from './exit-gate.js';
+import { discloseFlows } from './exit-flow-candidates.js';
 import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
 import { previewRehire } from './retirement-rehire.js';
@@ -43,6 +45,18 @@ async function rehirePreview(
 const asRows = (rows: readonly InFlight[], date: (row: InFlight) => string = (row) => row.planned) =>
   rows.map((row) => ({ id: row.id, effectiveDate: date(row), departmentId: row.departmentId }));
 
+/** F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。 */
+function assertRetirementView(retirementView: ExitViewable) {
+  if (
+    retirementView === null ||
+    typeof retirementView !== 'object' ||
+    typeof retirementView.employee !== 'function' ||
+    typeof retirementView.employment !== 'function'
+  ) {
+    throw new Error('previewExit 必须显式传入有效的 retirementView');
+  }
+}
+
 export async function previewExit(
   tx: Tx,
   ctx: EmploymentContext,
@@ -53,15 +67,7 @@ export async function previewExit(
   // F-314：退休预览与执行同口径，在 LIMIT 前排除应保留的等待返聘（voidInFlightApplications 按退休单判断）
   kind: 'leave' | 'retirement' = 'leave',
 ) {
-  // F-301：调用方漏传 / 错传属于内部错误，必须在读取业务数据前失败。
-  if (
-    retirementView === null ||
-    typeof retirementView !== 'object' ||
-    typeof retirementView.employee !== 'function' ||
-    typeof retirementView.employment !== 'function'
-  ) {
-    throw new Error('previewExit 必须显式传入有效的 retirementView');
-  }
+  assertRetirementView(retirementView);
   const blockers = [];
   const leaves = await leavesInProgress(tx, ctx, employeeId);
   if (leaves.length)
@@ -84,6 +90,7 @@ export async function previewExit(
     await untickedEmploymentKeep(tx, ctx, lastWorkDate, kind),
   );
   const assessments = set?.assessments ?? [];
+  const flows = set?.flows.length ? await discloseFlows(tx, ctx, set.flows) : null;
   // 确认清单超上限时不给令牌（不能确认被截断的集合）；上方 warnings 已提示 EXIT_APPLICATIONS_TOO_MANY（F-241）
   const ack = set && !set.tooMany ? set : null;
   const landed = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['effective'], null, {
@@ -106,6 +113,7 @@ export async function previewExit(
           ackToken: ack.hash,
           ...(await batchDisclose(tx, ctx, employeeId, ack.rows)),
           ...(assessments.length ? { assessments: await assessmentNoticeItems(tx, ctx, employeeId, assessments) } : {}),
+          ...(flows ? { flows } : {}),
         }
       : null,
     warnings: [
@@ -125,6 +133,7 @@ export async function previewExit(
       ...(assessments.length
         ? [{ reason: 'IN_FLIGHT_ASSESSMENT', ...(await assessmentNoticeItems(tx, ctx, employeeId, assessments)) }]
         : []),
+      ...(flows ? [{ reason: 'EXIT_FLOWS_TO_TERMINATE', ...flows }] : []),
     ],
   };
 }
