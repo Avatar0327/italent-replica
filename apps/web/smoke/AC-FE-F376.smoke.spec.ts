@@ -65,11 +65,9 @@ async function application(page: Page, from = '/staff') {
   await page.route('**/employment/interns?*', (route) => {
     const query = new URL(route.request().url()).searchParams;
     const view = query.get('view') ?? 'interning';
-    const items = state.submitted
-      ? view === 'converting'
-        ? [{ ...rows.converting, revision: 2 }]
-        : []
-      : [rows[view as keyof typeof rows]];
+    // 提交后只有实习转正中有本单（revision 2）；提交前各视图按夹具一行
+    const converting = view === 'converting' ? [{ ...rows.converting, revision: 2 }] : [];
+    const items = state.submitted ? converting : [rows[view as keyof typeof rows]];
     return route.fulfill({ json: { items, page: Number(query.get('page')), pageSize: 30, hasDataPermission: true } });
   });
   await enterFrom(page, from);
