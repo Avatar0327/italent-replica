@@ -181,3 +181,83 @@ describe('AC-OA-38 AC-OA-43 第 2 轮：审批中编辑与提交同一套整单�
     expect(await w.businessVersion(view.id)).toBe(`revision:${before.state.revision + 1}`);
   });
 });
+
+/** n1 改为“编辑并同意”（with_approve），开放上级与改名（第 3 轮回归用）。 */
+const withApproveNodes = () =>
+  oaNodes([{ editMode: 'with_approve', editableFields: ['subject', 'orgItems.name', 'orgItems.parentOrgId'] }]);
+
+/** 当前待办（审批人 + 节点）：用来断言实例推进与否。 */
+async function pendingOf(w: FlowWorld, id: string) {
+  const view = await w.instance(id);
+  return view.tasks
+    .filter((task) => task.status === 'pending')
+    .map((task) => ({ nodeKey: task.nodeKey, assigneeUserId: task.assigneeUserId }));
+}
+
+/** 编辑并同意成功：200、revision 只 + 1、实例业务版本同步、n1 结束且推进到 n2 负责人。 */
+async function expectApprovedWithEdit(w: FlowWorld, id: string, revision: number, res: Response) {
+  expect(res.status, await res.clone().text()).toBe(200);
+  expect((await w.state(id)).revision).toBe(revision + 1);
+  expect(await w.businessVersion(id)).toBe(`revision:${revision + 1}`);
+  expect(await pendingOf(w, id)).toEqual([{ nodeKey: 'n2', assigneeUserId: w.head.userId }]);
+}
+
+describe('AC-OA-38 AC-OA-43 第 3 轮：编辑并同意按编辑后的完整候选态跑整单关口（§4.4）', () => {
+  it('提交后新增行的上级被停用，同意时随 fields 改到启用组织 → 200，revision + 1，实例推进', async () => {
+    const w = await flowWorld(testDb().db, 'oa-r3-inactive', { nodes: withApproveNodes() });
+    const parent = await w.org(`上级${randomUUID()}`, w.a);
+    const view = await w.created();
+    const live = (await w.item(view.id, newOrg(parent))).items[0]!.id;
+    await w.submitted(view.id);
+    await w.disable(parent);
+    const revision = (await w.state(view.id)).revision;
+    const res = await w.act(view.id, w.hrbp, 'approve', {
+      fields: { 'orgItems.parentOrgId': [{ itemId: live, value: w.a }] },
+    });
+    await expectApprovedWithEdit(w, view.id, revision, res);
+    expect((await w.rows(view.id))[0]).toMatchObject({ id: live, parent_org_id: w.a });
+  });
+
+  it('行上级被改指暂存行，同意时随 fields 改回已有组织 → 200，revision + 1，实例推进', async () => {
+    const w = await flowWorld(testDb().db, 'oa-r3-staged', { nodes: withApproveNodes() });
+    const { id, staged, live } = await stagedPair(w);
+    // 可信夹具：直接改库，模拟提交后才出现的整单问题
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE org_adjustment_org_items SET parent_org_id = NULL, parent_item_id = ${staged}
+        WHERE id = ${live}`),
+    );
+    const revision = (await w.state(id)).revision;
+    const res = await w.act(id, w.hrbp, 'approve', {
+      fields: { 'orgItems.parentOrgId': [{ itemId: live, value: w.a }] },
+    });
+    await expectApprovedWithEdit(w, id, revision, res);
+    expect((await w.rows(id)).find((row) => row.id === live)).toMatchObject({ parent_org_id: w.a });
+  });
+
+  it('带 fields 但编辑后候选态仍非法 → 400，头 / 明细 / revision / 实例版本 / 待办都不变', async () => {
+    const w = await flowWorld(testDb().db, 'oa-r3-invalid', { nodes: withApproveNodes() });
+    const parent = await w.org(`上级${randomUUID()}`, w.a);
+    const view = await w.created();
+    const live = (await w.item(view.id, newOrg(parent))).items[0]!.id;
+    await w.submitted(view.id);
+    await w.disable(parent);
+    const before = { ...(await snapshotOf(w, view.id)), pending: await pendingOf(w, view.id) };
+    const res = await w.act(view.id, w.hrbp, 'approve', {
+      fields: { subject: '只改主题', 'orgItems.name': [{ itemId: live, value: '只改名' }] },
+    });
+    await expectError(res, 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_ORG_INACTIVE');
+    expect({ ...(await snapshotOf(w, view.id)), pending: await pendingOf(w, view.id) }).toEqual(before);
+  });
+
+  it('普通同意（不带 fields）遇整单问题仍 400 兜底，待办不变', async () => {
+    const w = await flowWorld(testDb().db, 'oa-r3-plain', { nodes: withApproveNodes() });
+    const parent = await w.org(`上级${randomUUID()}`, w.a);
+    const view = await w.created();
+    await w.item(view.id, newOrg(parent));
+    await w.submitted(view.id);
+    await w.disable(parent);
+    const before = { ...(await snapshotOf(w, view.id)), pending: await pendingOf(w, view.id) };
+    await expectError(await w.act(view.id, w.hrbp, 'approve'), 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_ORG_INACTIVE');
+    expect({ ...(await snapshotOf(w, view.id)), pending: await pendingOf(w, view.id) }).toEqual(before);
+  });
+});
