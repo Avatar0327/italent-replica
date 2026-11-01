@@ -36,6 +36,7 @@ import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
+import { runDueMenuDutyTransfers } from '../duty-transfer/scheduler.js';
 
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
@@ -93,6 +94,8 @@ export async function runEmploymentActivations(
   for await (const tenant of activeTenants(db, normalized.tenantId)) {
     runs.push(await sweepTenant(db, meta, tenant, now, normalized));
     await drainExitAccounts(db, tenant.id, now);
+    // R2-T09a：职责转交菜单指定日期到期执行（F-408④）；在任职生效之后，离职当天生效的人先落地再转交
+    await runDueMenuDutyTransfers(db, tenant, now, meta.commandId);
   }
   const result: EmploymentActivationRunResult = { runs };
   return runPlatformCommand(db, meta, RUN_OPERATION, normalized, async (ctx) => {

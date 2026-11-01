@@ -100,6 +100,13 @@ const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.orgAdjustment.code,
 };
 
+/** R2-T09a、DEC-415：职责转交记录按被转交人控范围，看全部给本模块的预置管理员（人事专员不预置）。 */
+const DUTY_TRANSFER_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.dutyTransfer.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -410,6 +417,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       HR_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
+      DUTY_TRANSFER_SEE_ALL,
     ],
   },
   {
@@ -426,6 +434,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       HR_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
+      DUTY_TRANSFER_SEE_ALL,
     ],
   },
   {

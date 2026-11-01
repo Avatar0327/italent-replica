@@ -28,6 +28,7 @@ export * from './employment/late-execution.js';
 export * from './employment/execution-order.js';
 export * from './employment/exit-occupancy.js';
 export * from './employment/planned-date.js';
+export * from './employment/duty-transfer-menu.js';
 export * from './employment/intern.js';
 export * from './employment/exit.js';
 export * from './employment/retirement.js';
