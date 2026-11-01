@@ -7,19 +7,21 @@ import { exitEffects, type Tx } from '@italent/db';
 import { handleContractsOnExit } from '../contracts/ports.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { auditEmployment } from './context.js';
+import { exitTerminationOf } from './exit-termination-policy.js';
 import type { EmploymentContext } from './types.js';
 
 export async function handleContractsOnExitEffective(
   tx: Tx,
   ctx: EmploymentContext,
-  exit: { readonly id: string; readonly employeeId: string },
+  exit: { readonly id: string; readonly employeeId: string; readonly payload: { readonly kind: string } },
   lastWorkDate: string,
 ) {
   const { tenantId, userId, timezone, now, commandId, expectedRevision } = ctx;
+  const termination = await exitTerminationOf(tx, tenantId, exit.payload.kind);
   const outcome = await handleContractsOnExit(
     tx,
     { tenantId, userId, timezone, now, commandId, expectedRevision },
-    { employeeId: exit.employeeId, lastWorkDate },
+    { employeeId: exit.employeeId, lastWorkDate, termination },
   );
   const effect = (kind: string, targetType: string, targetId: string, detail: object) => ({
     tenantId,

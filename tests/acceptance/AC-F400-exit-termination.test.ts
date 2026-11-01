@@ -7,6 +7,7 @@
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
+import { EXIT_TERMINATION_PRESET } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import { leaveBody } from './AC-EXIT-gate-support.js';
 import { downstreamWorld, type DownstreamWorld } from './AC-EXIT-downstream-support.js';
@@ -38,6 +39,8 @@ describe('F-400 ① 按流程类型配置终止在途流程', () => {
     expect(source).toBe('system');
     expect(Object.keys(value)).toHaveLength(28);
     expect(Object.entries(value).filter(([, on]) => !on)).toEqual([['contract_create', false]]);
+    // 迁移 0180 的系统值与领域预置逐键一致
+    expect(value).toEqual(EXIT_TERMINATION_PRESET);
   });
 
   it('预置：勾选的转正（计划日早于 L）作废；未勾选的新建合同协议只撤回终止日期晚于 L 的，早于 L 的保留', async () => {

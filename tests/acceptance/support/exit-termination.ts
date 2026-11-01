@@ -7,6 +7,8 @@ import { withTenant, type Db } from '@italent/db';
 import { overrideSetting, readEffectiveSetting } from '../../../apps/api/src/modules/tenant-settings/service.js';
 
 export const EXIT_TERMINATION_KEY = 'exit.termination_flow_types';
+/** 取消勾选劳务转正式 / 实习转正：恢复“计划日 ≤ 最后工作日的审批中转正拦离职”（DEC-725 ②，§8B 原口径）。 */
+export const UNTICKED_REGULARIZATIONS = { intern_regularization: false, labor_regularization: false };
 
 export function setExitTermination(db: Db, tenantId: string, userId: string, changes: Record<string, boolean>) {
   return withTenant(db, tenantId, async (tx) => {

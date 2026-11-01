@@ -19,6 +19,7 @@ import {
   overdueTransferBlocker,
   pendingTransferAckSet,
   regularizationBlocker,
+  untickedEmploymentKeep,
   type InFlight,
 } from './exit-gate.js';
 import { trimWith, type ExitViewable } from './exit-queries.js';
@@ -67,9 +68,9 @@ export async function previewExit(
     blockers.push({ reason: 'EXIT_IN_PROGRESS', ...(await disclose(tx, ctx, employeeId, asRows(leaves))) });
   const overdue = await overdueTransferBlocker(tx, ctx, employeeId);
   if (overdue) blockers.push({ reason: 'EXIT_LATE_TRANSFER_PENDING', ...overdue });
-  const regularization = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate);
+  const regularization = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate, 'direct', kind);
   if (regularization) blockers.push({ reason: 'EXIT_REGULARIZATION_IN_FLIGHT', ...regularization });
-  const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
+  const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate, kind);
   // 已批准且计划生效日 ≤ 最后工作日的申请会先于离职落地（§5.0 队列），不在作废之列；条件在 SQL 里过滤（与生效时同一入口）
   const voided = await voidCandidates(
     tx,
@@ -80,6 +81,7 @@ export async function previewExit(
     kind === 'retirement'
       ? { effectiveDate: dayAfter(lastWorkDate), reEmployed: rehire.reEmployed === true }
       : undefined,
+    await untickedEmploymentKeep(tx, ctx, lastWorkDate, kind),
   );
   const assessments = set?.assessments ?? [];
   // 确认清单超上限时不给令牌（不能确认被截断的集合）；上方 warnings 已提示 EXIT_APPLICATIONS_TOO_MANY（F-241）

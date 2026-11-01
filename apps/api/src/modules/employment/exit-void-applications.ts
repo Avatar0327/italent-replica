@@ -19,7 +19,14 @@ import { lockEstablishment } from '../establishment/store.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment } from './context.js';
-import { exceedsVoidLimit, inFlightApplications, VOID_LIMIT, type InFlight } from './exit-gate.js';
+import {
+  exceedsVoidLimit,
+  inFlightApplications,
+  untickedEmploymentKeep,
+  VOID_LIMIT,
+  type InFlight,
+  type InFlightFilter,
+} from './exit-gate.js';
 import {
   bumpEmploymentBusiness,
   lockEmploymentBusiness,
@@ -44,6 +51,7 @@ export { exceedsVoidLimit, VOID_LIMIT };
  * 条件全部在 SQL 里过滤后再取 VOID_LIMIT + 1，所以返回超过上限即真实超限，不会被前序申请挤占名额（F-237）。
  * lastWorkDate：预览传最后工作日，已批准且计划生效日 ≤ 它的会先于离职落地，不算；生效时传 null——这些已由步骤 0a 落地，
  * 剩下的未落地申请全部作废。
+ * keepOnOrBefore：DEC-725 “离职生效时终止在途流程”未勾选的任职类型，计划生效日 ≤ L 的保留（untickedEmploymentKeep）。
  */
 export async function voidCandidates(
   tx: Tx,
@@ -52,6 +60,7 @@ export async function voidCandidates(
   lastWorkDate: string | null,
   excludeId?: string,
   retirement?: { readonly effectiveDate: string; readonly reEmployed: boolean },
+  keepOnOrBefore?: InFlightFilter['keepOnOrBefore'],
 ) {
   const excluding = retirement
     ? rehireSurvivesRetirement(
@@ -67,6 +76,7 @@ export async function voidCandidates(
     excluding,
     ...(excludeId ? { excludeId } : {}),
     ...(lastWorkDate ? { approvedAfter: lastWorkDate } : {}),
+    keepOnOrBefore,
   });
 }
 
@@ -283,6 +293,7 @@ export async function voidInFlightApplications(
     null,
     exit.id,
     retirement ? { effectiveDate: dayAfter(lastWorkDate), reEmployed: retirement.reEmployed } : undefined,
+    await untickedEmploymentKeep(tx, ctx, lastWorkDate, exit.payload.kind),
   );
   return voidApplications(tx, ctx, { kind: 'exit', exit, lastWorkDate }, candidates, heads);
 }

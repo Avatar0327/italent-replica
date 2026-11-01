@@ -15,6 +15,7 @@ import {
 } from '../../apps/api/src/modules/employment/status-hooks.js';
 import { exitActivationWorld, type ExitActivationWorld } from './AC-EXIT-activation-support.js';
 import { seedLegacyOrgDeactivation } from './AC-TRF-activation-support.js';
+import { setExitTermination, UNTICKED_REGULARIZATIONS } from './support/exit-termination.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-06';
@@ -220,6 +221,8 @@ describe('AC-DM-26 B-05c 区间边界（F-007 §2-2 位置规则）', () => {
 describe('AC-DM-25 / B-55d、B-56 步骤 0b：顺延后重验转正在途', () => {
   it('输入 L = 10-10、实际执行 10-16（L′ = 10-15），计划日 = E 的审批中实习转正 → failed 且离职不变', async () => {
     const x = await world('b55d');
+    // DEC-725 ②：未勾选实习转正时才拦（预置勾选则生效时作废）
+    await setExitTermination(database().db, x.session.tenant.id, x.session.user.id, UNTICKED_REGULARIZATIONS);
     const leave = await x.directLeave('2026-10-10');
     await x.synthetic(x.employee.id, {
       kind: 'intern_regularization',

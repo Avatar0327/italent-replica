@@ -11,7 +11,7 @@
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { buttonsOf, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
+import { assessmentTypeFlow, buttonsOf, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
@@ -22,6 +22,7 @@ import type { ExitActivationSource } from './exit-confirmation.js';
 import { assertExitDictionaryEnabled } from './exit-dictionaries.js';
 import type { ExitOptions } from './exit-initiation.js';
 import { exitListOrder } from './exit-list-order.js';
+import { exitTerminationOf, untickedFlows } from './exit-termination-policy.js';
 import { rowsOf } from './record-store.js';
 import { assertNoLiveRehire } from './retirement-application.js';
 import { plannedEffectiveDate } from './timeline.js';
@@ -239,6 +240,29 @@ export interface InFlightFilter {
   readonly approvedAfter?: string;
   /** 只要已落地且最新载荷生效日晚于该日的（已落地的未来生效调动）。 */
   readonly landedEffectiveAfter?: string;
+  /** DEC-725 未勾选的任职流程：这些 kind 中计划生效日 ≤ date 的保留（不终止），晚于的照旧终止。 */
+  readonly keepOnOrBefore?: { readonly kinds: readonly string[]; readonly date: string };
+}
+
+// 计划日为空（理论上不会）时 COALESCE 为 false：不保留、照旧终止，不因空值漏掉候选
+function keepClause(keep: InFlightFilter['keepOnOrBefore'], planned: SQL) {
+  if (!keep?.kinds.length) return sql``;
+  const kinds = `{${keep.kinds.join(',')}}`;
+  return sql`AND NOT (p.kind = ANY(${kinds}::text[]) AND COALESCE(${planned} <= ${keep.date}::date, false))`;
+}
+
+/** DEC-725：离职适用勾选下，未勾选的任职 kind 计划日 ≤ L 的保留；退休（policy = null）不保留。 */
+export async function untickedEmploymentKeep(
+  tx: Tx,
+  ctx: EmploymentContext,
+  lastWorkDate: string,
+  exitKind: string,
+  kinds?: readonly string[],
+): Promise<InFlightFilter['keepOnOrBefore']> {
+  const policy = await exitTerminationOf(tx, ctx.tenantId, exitKind);
+  if (!policy) return undefined;
+  const unticked: readonly string[] = untickedFlows(policy, 'employment');
+  return { kinds: unticked.filter((kind) => !kinds || kinds.includes(kind)), date: lastWorkDate };
 }
 
 /** 员工名下指定类型的未办结申请（最新载荷 + 最新状态；计划生效日只取 §5.0A）。 */
@@ -271,6 +295,7 @@ export async function inFlightApplications(
         ${filter.excludeId ? sql`AND b.id<>${filter.excludeId}::uuid` : sql``}
         ${filter.approvedAfter ? sql`AND (s.state<>'approved' OR ${planned} > ${filter.approvedAfter}::date)` : sql``}
         ${filter.excluding ? sql`AND NOT ${filter.excluding}` : sql``}
+        ${keepClause(filter.keepOnOrBefore, planned)}
       ORDER BY ${exitListOrder('inFlightApplications').order} LIMIT 1001`),
   );
 }
@@ -362,6 +387,8 @@ const plannedRows = (rows: readonly InFlight[]) =>
 
 /**
  * §8B：审批中、计划生效日 ≤ 最后工作日的劳务转正式 / 实习转正的披露；没有返回 null。
+ * DEC-725：只拦“离职生效时终止在途流程”里未勾选的转正类型；勾选的不拦，生效时由步骤 1 终止（与生效同一份配置）。
+ * 退休（exitKind = retirement）暂不接配置（F-351），两类都拦。
  * 例外只有一处（DEC-593③④）：免审批直接生效（结束实习）不被转正在途拦截——HR 在保存前已确认“结束实习将作废该申请”，
  * 申请随生效链步骤 1 一并作废。入口 409（createConditions）与顺延后重验（步骤 0b）都经这里，来源判定不散在调用方。
  * 经离职管理正常发起的离职（direct / approval）仍按 §8B 拦截。
@@ -372,9 +399,13 @@ export async function regularizationBlocker(
   employeeId: string,
   lastWorkDate: string,
   source: ExitActivationSource = 'direct',
+  exitKind: string = 'leave',
 ) {
   if (source === 'free_direct') return null;
-  const rows = (await inFlightApplications(tx, ctx, employeeId, REGULARIZATION_KINDS, ['in_review'])).filter(
+  const policy = await exitTerminationOf(tx, ctx.tenantId, exitKind);
+  const kinds = REGULARIZATION_KINDS.filter((kind) => !policy?.[kind]);
+  if (!kinds.length) return null;
+  const rows = (await inFlightApplications(tx, ctx, employeeId, kinds, ['in_review'])).filter(
     (row) => row.planned <= lastWorkDate,
   );
   return rows.length ? disclose(tx, ctx, employeeId, plannedRows(rows)) : null;
@@ -387,8 +418,9 @@ export async function assertNoRegularizationInFlight(
   employeeId: string,
   lastWorkDate: string,
   source?: ExitActivationSource,
+  exitKind?: string,
 ) {
-  const found = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate, source);
+  const found = await regularizationBlocker(tx, ctx, employeeId, lastWorkDate, source, exitKind);
   if (found) throw conflict('EXIT_REGULARIZATION_IN_FLIGHT', '存在审批中的转正流程，请先处理', found);
 }
 
@@ -457,12 +489,25 @@ export async function assessmentNoticeItems(
  * 返回 tooMany。同一时刻下 S 的调动部分是 voidCandidates 的子集，但这只是上限口径一致，不能据此推出生效时必然超限
  * （申请可在确认后被处理或落地）。
  */
-export async function pendingTransferAckSet(tx: Tx, ctx: EmploymentContext, employeeId: string, lastWorkDate: string) {
+export async function pendingTransferAckSet(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  lastWorkDate: string,
+  exitKind: string = 'leave',
+) {
+  // DEC-725：确认集合只列生效时真会终止的——未勾选调动时计划日 ≤ L 的保留，未勾选的考核类型保留
+  const policy = await exitTerminationOf(tx, ctx.tenantId, exitKind);
+  const keepOnOrBefore = await untickedEmploymentKeep(tx, ctx, lastWorkDate, exitKind, ['transfer']);
   const rows = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'], 'application', {
     unlanded: true,
     approvedAfter: lastWorkDate,
+    keepOnOrBefore,
   });
-  const assessments = await inFlightAssessments(tx, ctx.tenantId, employeeId);
+  const assessments = (await inFlightAssessments(tx, ctx.tenantId, employeeId)).filter((row) => {
+    const flow = assessmentTypeFlow(row.assessmentType);
+    return !policy || !flow || policy[flow];
+  });
   if (exceedsVoidLimit(rows)) return { tooMany: true as const, assessments };
   if (!rows.length && !assessments.length) return null;
   const ids = [...rows.map((row) => row.id), ...assessments.map((row) => row.id)].sort();
@@ -482,8 +527,9 @@ export async function checkPendingTransferAck(
   lastWorkDate: string,
   provided: string | undefined,
   stored: AckRecord | null,
+  exitKind?: string,
 ): Promise<AckRecord | null> {
-  const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate);
+  const set = await pendingTransferAckSet(tx, ctx, employeeId, lastWorkDate, exitKind);
   if (!set) return null;
   // DEC-626：超限不拦截，也不发（部分覆盖的）令牌；标记随离职单保存，生效日按当时状态重算
   if (set.tooMany) return OVER_LIMIT_ACK;
@@ -582,14 +628,16 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
   await assertLastWorkDateNotBeforeEntry(tx, ctx, target.employeeId, lastWorkDate);
   await assertNoLeaveInProgress(tx, ctx, target.employeeId);
   await assertNoOverdueTransfer(tx, ctx, target.employeeId);
+  const kind = kindOfTarget(target);
   await assertNoRegularizationInFlight(
     tx,
     ctx,
     target.employeeId,
     lastWorkDate,
     target.mode && exitSourceOf(target.mode, target.changeType),
+    kind,
   );
-  return checkPendingTransferAck(tx, ctx, target.employeeId, lastWorkDate, exit.pendingTransferAck, null);
+  return checkPendingTransferAck(tx, ctx, target.employeeId, lastWorkDate, exit.pendingTransferAck, null, kind);
 }
 
 async function submitConditions(
@@ -606,9 +654,10 @@ async function submitConditions(
     throw new AppError('FORBIDDEN', '只有原发起人可以提交该离职申请', { reason: 'EXIT_SUBMIT_INITIATOR_ONLY' });
   const lastWorkDate = business.payload.lastWorkDate!;
   await assertNoOverdueTransfer(tx, ctx, business.employeeId);
-  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, lastWorkDate);
+  const kind = business.payload.kind;
+  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, lastWorkDate, undefined, kind);
   const stored = (row.pendingTransferAck ?? null) as AckRecord | null;
-  return checkPendingTransferAck(tx, ctx, business.employeeId, lastWorkDate, provided, stored);
+  return checkPendingTransferAck(tx, ctx, business.employeeId, lastWorkDate, provided, stored, kind);
 }
 
 /**
