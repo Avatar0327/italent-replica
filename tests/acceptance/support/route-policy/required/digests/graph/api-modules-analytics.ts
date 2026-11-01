@@ -172,6 +172,9 @@ export const GRAPH: Graph = {
       'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_COMPONENTS',
     ],
   'apps/api/src/modules/analytics/hr-process-dashboard.ts#DURATION': ['#days'],
+  'apps/api/src/modules/analytics/hr-process-dashboard.ts#batchOffers': [
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
   'apps/api/src/modules/analytics/hr-process-dashboard.ts#businesses': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#SUBMITTED_OR_DIRECT_JOIN',
     '#approvedInstance',
@@ -187,6 +190,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
   ],
   'apps/api/src/modules/analytics/hr-process-dashboard.ts#facts': [
+    '#batchOffers',
     '#employmentAt',
     '#inWindow',
     '#localDate',
