@@ -74,19 +74,22 @@ function table<T>(key: string, name: string, columns: readonly Column<T>[], rows
   };
 }
 
+/** 时点人数只在期初 / 期末用到：各月页签取每月首尾两天，流动 / 各机构取期间首尾，流入 / 流出不取时点。 */
+function snapshotDays(code: HrMovementReportCode, months: readonly MovementMonth[], span: MovementMonth) {
+  if (code === 'monthly') return months.flatMap((m) => [m.start, m.end]);
+  if (code === 'flow' || code === 'institution') return [span.start, span.end];
+  return [];
+}
+
 /** 期间 [from, to]；年度报表 to = 年底与 asOf 较早者，月份报表为该月。 */
 export function reportWindow(code: HrMovementReportCode, period: ReportPeriod) {
   const months = yearMonths(period.year, period.asOf).filter((m): m is MovementMonth => m !== null);
   const year: MovementMonth = { key: `${period.year}`, start: months[0]!.start, end: months.at(-1)!.end };
   const span = code === 'institution' ? months[(period.month ?? 12) - 1]! : year;
-  const days =
-    code === 'monthly'
-      ? months.flatMap((m) => [m.start, m.end])
-      : code === 'inflow' || code === 'outflow'
-        ? []
-        : [span.start, span.end];
-  return { span, days, from: span.start, to: span.end };
+  return { span, days: snapshotDays(code, months, span), from: span.start, to: span.end };
 }
+
+const EMPTY_SLICE: Slice = { opening: [], closing: [], hires: [], transfers: [], exits: [] };
 
 function slice(data: MovementData, span: MovementMonth): Slice {
   return {
@@ -252,9 +255,9 @@ export function movementReport(code: HrMovementReportCode, period: ReportPeriod,
         return at < 0 ? null : (chain[Math.max(at - 1, 0)] ?? null);
       };
       const rows = sliceBy(whole, rowOf);
-      const all = x.parentId ? sliceBy(whole, (d) => (rowOf(d) === null ? null : 'all')).get('all') : whole;
-      const empty: Slice = { opening: [], closing: [], hires: [], transfers: [], exits: [] };
-      return [table('flow', '员工流动统计', flowColumns, orgRows(rows, x.tree), all ?? empty)];
+      // 合计只算进了某一行的记录（下钻时 parentId 以外的不算）；不下钻时每条都进一级组织行，即全部
+      const all = sliceBy(whole, (d) => (rowOf(d) === null ? null : 'all')).get('all') ?? EMPTY_SLICE;
+      return [table('flow', '员工流动统计', flowColumns, orgRows(rows, x.tree), all)];
     }
     case 'monthly': {
       const months = yearMonths(period.year, period.asOf);
