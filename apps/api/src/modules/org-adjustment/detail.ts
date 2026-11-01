@@ -1,7 +1,7 @@
 /**
  * 组织调整详情与明细分区（R2-T08 §10 路由 13 / 14、§4.5；BE-10d）。
  * - 详情：可见头字段（派生名称跟随源字段）+ revision（并发元数据）+ 最新审批实例 ID + 各分区 {count, hiddenRowCount}；
- *   分区没有行或该分区字段全不披露时不返回。本片只有组织分区，其它分区随 11c～11f。
+ *   分区没有可见行或该分区字段全不披露时不返回。本片只有组织分区，其它分区随 11c～11f。
  * - 明细：只有 org 分区，其它分区与未知分区 404；行可见性见 disclosure.visibleItems，列按 `orgItems.*` 字段裁剪，
  *   行身份列（id / seq / 连带发起行 / 基线）总返回，执行结果四列跟随所在行（§4.5“执行结果三列跟随所在行的可见性”）。
  */
@@ -27,7 +27,8 @@ export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosur
   const sections: Record<string, { count: number; hiddenRowCount: number }> = {};
   if (orgSectionDisclosed(disclosure)) {
     const { items, hiddenRowCount } = visibleItems(disclosure, await loadItems(tx, tenantId, head.id));
-    if (items.length + hiddenRowCount > 0) sections[ORG_SECTION] = { count: items.length, hiddenRowCount };
+    // §10 分区为空不返回：按查看人可见的行数判断，全部行被隐去时同样不返回（不经分区露出“有隐藏行”）。
+    if (items.length > 0) sections[ORG_SECTION] = { count: items.length, hiddenRowCount };
   }
   return { ...projected, revision: head.revision, approvalInstanceId: disclosure.instanceId, sections };
 }

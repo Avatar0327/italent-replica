@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { expectError } from './AC-OA-head-support.js';
 import { itemsWorld, newOrg, rename } from './AC-OA-items-support.js';
-import { approvalFixture, flatten, reader } from './AC-OA-read-support.js';
+import { approvalFixture, flatten, orgName, reader } from './AC-OA-read-support.js';
 
 const testDb = useTestDb();
 
@@ -45,7 +45,8 @@ describe('AC-OA-27 HR 读接口按字段查看权裁剪（§4.5 第一行）', (
     const addedNode = nodes.find((node) => node.itemId === addedId);
     expect(addedNode).toMatchObject({ mark: 'added', name: null });
     expect(addedNode!.masked).toEqual(expect.arrayContaining(['name', 'parentOrgId']));
-    expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: 'changed', name: null });
+    // 看不到新名称时保留可见的现名（调整范围可见），masked 记 name 表示调整后名称未披露
+    expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: 'changed', name: await orgName(w, w.a) });
     expect(nodes.find((node) => node.orgId === w.a)!.masked).toContain('name');
 
     const text = JSON.stringify([row, detail, items, nodes]);

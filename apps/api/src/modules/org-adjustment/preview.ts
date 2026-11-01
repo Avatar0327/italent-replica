@@ -4,10 +4,17 @@
  * 变更行标 changed 并按新上级挂接，停用行标 deactivated。已停用的组织不进树；暂存行不执行，不进预览。
  * 裁剪（§4.5）：HR 看不到的组织（组织对象范围外）不出节点，其可见下级挂到最近的可见祖先；被隐去的明细行不出节点
  * 也不改树；看不到的值给 null 并记入 masked。看不到新上级时节点不移动（变更）或放在根层（新建）。
- * 首版不带在岗 / 兼岗 / 编制数（不补“编制原值”，见结果文件“未决 / 假设”），增减数随 11c～11f。
+ * 既有节点的属性（现名、在岗 / 兼岗原值）是调整范围的展开：调整范围可见，或节点是一条可见明细的目标（targetOrgId
+ * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 name。
+ * 在岗 / 兼岗原值与组织停用校验同一取数（countDepartmentStaff / countDepartmentPartTimes：自生效日起、直属本组织、
+ * 按记录计），预览为 0 的组织停用不会被人员拦。“编制原值”与增减数随 11c～11f。
+ * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
  */
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { countDepartmentStaff } from '../employment/org-people.js';
+import { countDepartmentPartTimes } from '../employment/part-time/store.js';
+import type { OrgRecord } from '../org/read-model.js';
 import { scopeAllows } from '../permission/module-access.js';
 import { canSee, visibleItems, type Disclosure } from './disclosure.js';
 import type { OrgItem } from './items-store.js';
@@ -23,58 +30,90 @@ export interface PreviewNode {
   readonly orgId: string | null;
   readonly itemId: string | null;
   name: string | null;
+  /** 在岗 / 兼岗原值；本单新增节点为 0，看不到既有属性时为 null。 */
+  onDutyCount: number | null;
+  partTimeCount: number | null;
   mark: Mark | null;
   masked: string[];
   children: PreviewNode[];
+}
+
+/** 同级排序键（DEC-089 组织模块同级排序）。 */
+interface SortKey {
+  /** 行政顺序号；null 排最后。 */
+  sequence: number | null;
+  code: string | null;
+  /** 0 = 既有组织，1 = 本单新增。 */
+  readonly added: 0 | 1;
+  readonly tie: string;
 }
 
 interface Draft {
   readonly node: PreviewNode;
   /** 挂接目标：组织 ID 或明细 ID；null = 根层。 */
   parentKey: string | null;
-  readonly order: readonly [number, number, string];
+  readonly sort: SortKey;
 }
+
+const COUNT_FIELDS = ['onDutyCount', 'partTimeCount'] as const;
 
 const MARKS: Readonly<Record<OrgItem['adjustType'], Mark>> = { 1: 'added', 2: 'changed', 3: 'deactivated' };
 
 export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosure) {
   const view = disclosure.view;
   const world = await loadWorld(tx, tenantId, view);
-  const fields = disclosure.fields;
-  const see = (field: string) => canSee(fields, `orgItems.${field}`);
+  const see = (field: string) => canSee(disclosure.fields, `orgItems.${field}`);
   const scope = disclosure.orgScope;
   const orgVisible = (orgId: string) => !scope || scopeAllows(scope, { orgId });
-  // 未变更组织的名称属于调整范围的展开：审批人路径跟随 adjustmentRange 的披露，HR 已按组织范围裁过节点。
-  const rangeNamesVisible = disclosure.via === 'hr' || canSee(fields, 'adjustmentRange');
+  // 暂存行不执行，不进预览，也不让目标的既有属性变为可见。
+  const items = visibleItems(disclosure, world.items).items.filter((item) => !item.isStaged);
+  const targeted = new Set(items.flatMap((item) => (item.targetOrgId && see('targetOrgId') ? [item.targetOrgId] : [])));
+  const rangeVisible = canSee(disclosure.fields, 'adjustmentRange');
+  const attrsVisible = (orgId: string) => rangeVisible || targeted.has(orgId);
 
   const subtree = rangeSubtree(world.orgs, view.adjustmentRange);
   const drafts = new Map<string, Draft>();
   for (const orgId of subtree) {
-    const org = world.orgs.get(orgId)!;
-    if (!orgVisible(orgId)) continue;
-    drafts.set(orgId, {
-      node: node(orgId, orgId, null, rangeNamesVisible ? org.name : null, rangeNamesVisible ? [] : ['name']),
-      parentKey: org.parents.admin?.parentId ?? null,
-      order: [0, org.displayOrder ?? Number.MAX_SAFE_INTEGER, org.name],
-    });
+    if (orgVisible(orgId)) drafts.set(orgId, existingDraft(world.orgs.get(orgId)!, attrsVisible(orgId)));
   }
-
-  const items = visibleItems(disclosure, world.items).items.filter((item) => !item.isStaged);
   for (const item of items) overlay(item, drafts, see);
 
   if (drafts.size > PREVIEW_NODE_LIMIT) {
     throw new AppError('PAYLOAD_TOO_LARGE', `预览节点超过 ${PREVIEW_NODE_LIMIT} 个，请缩小调整范围`);
   }
+  const counted = [...drafts.values()].flatMap(({ node }) => (node.orgId && attrsVisible(node.orgId) ? [node] : []));
+  await fillCounts(tx, tenantId, view.effectiveDate, counted);
   const parentOf = (orgId: string) => world.orgs.get(orgId)?.parents.admin?.parentId ?? null;
   const roots = assemble(drafts, view.adjustmentRange, (key) => (subtree.has(key) ? parentOf(key) : null));
   return { adjustmentId: view.id, effectiveDate: view.effectiveDate, roots };
 }
 
-function node(key: string, orgId: string | null, itemId: string | null, name: string | null, masked: string[]) {
-  return { key, orgId, itemId, name, mark: null, masked, children: [] } satisfies PreviewNode;
+type OrgMap = Awaited<ReturnType<typeof loadWorld>>['orgs'];
+
+function existingDraft(org: OrgRecord, visible: boolean): Draft {
+  const masked = visible ? [] : ['name', ...COUNT_FIELDS];
+  return {
+    node: node(org.id, org.id, null, visible ? org.name : null, masked),
+    parentKey: org.parents.admin?.parentId ?? null,
+    sort: { sequence: org.parents.admin?.sequence ?? null, code: org.code, added: 0, tie: org.id },
+  };
 }
 
-type OrgMap = Awaited<ReturnType<typeof loadWorld>>['orgs'];
+/** 在岗 / 兼岗原值：与组织停用校验同一取数（org/deactivation.ts assertSubtreeVacant），只算直属本组织。 */
+async function fillCounts(tx: Tx, tenantId: string, from: string, nodes: readonly PreviewNode[]) {
+  const ids = nodes.map((n) => n.orgId!);
+  const staff = await countDepartmentStaff(tx, tenantId, ids, from);
+  const partTimes = await countDepartmentPartTimes(tx, tenantId, ids, from);
+  for (const n of nodes) {
+    n.onDutyCount = staff.get(n.orgId!) ?? 0;
+    n.partTimeCount = partTimes.get(n.orgId!) ?? 0;
+  }
+}
+
+function node(key: string, orgId: string | null, itemId: string | null, name: string | null, masked: string[]) {
+  const counts = { onDutyCount: null, partTimeCount: null };
+  return { key, orgId, itemId, name, ...counts, mark: null, masked, children: [] } satisfies PreviewNode;
+}
 
 /** 调整范围所选组织及其全部在用下级（行政维度）；所选组织之间互为上下级时只算一次。 */
 function rangeSubtree(orgs: OrgMap, range: readonly string[]) {
@@ -100,12 +139,15 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   const masked = new Set<string>();
   const mark = see('adjustType') ? MARKS[item.adjustType] : (masked.add('adjustType'), null);
   const parentKey = see('parentOrgId') ? (item.parentOrgId ?? item.parentItemId) : (masked.add('parentOrgId'), null);
+  const sequence = see('displayOrder') ? item.displayOrder : null;
+  const code = see('code') ? item.code : null;
   if (item.adjustType === 1) {
     const name = see('name') ? item.name : (masked.add('name'), null);
     drafts.set(item.id, {
-      node: { ...node(item.id, null, item.id, name, [...masked]), mark },
+      // 新增组织执行前没有人员：原值为 0。
+      node: { ...node(item.id, null, item.id, name, [...masked]), onDutyCount: 0, partTimeCount: 0, mark },
       parentKey,
-      order: [1, item.seq, item.id],
+      sort: { sequence, code, added: 1, tie: String(item.seq).padStart(10, '0') },
     });
     return;
   }
@@ -114,14 +156,29 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   if (!draft) return;
   const target = draft.node as { itemId: string | null } & PreviewNode;
   Object.assign(target, { itemId: item.id, mark });
+  // 看不到新名称时保留可见的现名（现名已按既有属性口径给出），masked 记 name 表示调整后名称未披露。
   const renamed = see('name') && item.name !== null;
-  if (!see('name')) {
-    target.name = null;
-    masked.add('name');
-  } else if (renamed) target.name = item.name;
+  if (!see('name')) masked.add('name');
+  else if (renamed) target.name = item.name;
   // 新名称本身可见时，原先因调整范围不披露而遮住的名称以新名称为准。
   target.masked = [...new Set([...target.masked.filter((code) => !(renamed && code === 'name')), ...masked])];
   if (item.adjustType === 2 && parentKey) draft.parentKey = parentKey;
+  if (item.adjustType === 2 && sequence !== null) draft.sort.sequence = sequence;
+  if (item.adjustType === 2 && code !== null) draft.sort.code = code;
+}
+
+/** 同级比较：顺序号（空排最后）→ 编码（空排最后）→ 既有在前 → 录入顺序 / 组织 ID。 */
+function compareSort(a: SortKey, b: SortKey) {
+  const nullsLast = <T>(x: T | null, y: T | null) => (x === null ? (y === null ? 0 : 1) : y === null ? -1 : 0);
+  const order = <T>(x: T, y: T) => (x < y ? -1 : x > y ? 1 : 0);
+  return (
+    nullsLast(a.sequence, b.sequence) ||
+    order(a.sequence ?? 0, b.sequence ?? 0) ||
+    nullsLast(a.code, b.code) ||
+    order(a.code ?? '', b.code ?? '') ||
+    a.added - b.added ||
+    order(a.tie, b.tie)
+  );
 }
 
 /**
@@ -149,9 +206,7 @@ function assemble(drafts: Map<string, Draft>, range: readonly string[], parentOf
       seen.add(up);
     }
   }
-  const compare = (a: Draft, b: Draft) =>
-    a.order[0] - b.order[0] || a.order[1] - b.order[1] || a.order[2].localeCompare(b.order[2]);
-  const sorted = [...drafts.values()].sort(compare);
+  const sorted = [...drafts.values()].sort((a, b) => compareSort(a.sort, b.sort));
   const roots: PreviewNode[] = [];
   for (const draft of sorted) {
     const up = parentKey.get(draft.node.key);
