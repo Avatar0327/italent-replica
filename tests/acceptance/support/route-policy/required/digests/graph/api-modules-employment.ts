@@ -1539,6 +1539,7 @@ export const GRAPH: Graph = {
     '#DEFAULT_CANCEL_REASON',
     '#assertRemark',
     '#logEntryAction',
+    'apps/api/src/modules/employment/rehire-account.ts#withdrawRehireAccount',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/entry-actions.ts#cancelPendingEntryForOfferRefusal': [
@@ -1872,6 +1873,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
     '#timeIn',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-account-worker.ts#fail': [
@@ -1889,6 +1891,7 @@ export const GRAPH: Graph = {
     '#facts',
     '#fail',
     '#members',
+    '#owesAction',
     '#reasonOf',
     '#settle',
   ],
@@ -5696,6 +5699,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
+  'apps/api/src/modules/employment/rehire-account.ts#lockTask': [
+    'apps/api/src/modules/employment/exit-account-store.ts#taskKey',
+  ],
+  'apps/api/src/modules/employment/rehire-account.ts#withdrawRehireAccount': [
+    'apps/api/src/modules/employment/exit-account-store.ts#consumeAccountAfterCommit',
+    'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#boundUser',
+    '#lockTask',
+  ],
   'apps/api/src/modules/employment/rehire-match.ts#endedPeople': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',

@@ -1268,6 +1268,13 @@
       "when": 1793376559729,
       "tag": "0180_employment_types",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1793383081812,
+      "tag": "0181_f328_rehire_login_email",
+      "breakpoints": true
     }
   ]
 }

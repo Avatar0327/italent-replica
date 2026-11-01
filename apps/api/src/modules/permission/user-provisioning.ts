@@ -5,10 +5,12 @@
  * DEC-128）；不提供手工绑定或改绑入口，数据库层也收回了应用角色的 UPDATE 权限（迁移 0032）。
  * 账号启用状态（users.status）与在职状态（任职记录）相互独立：这里不看在职状态，也不改账号状态。
  */
-import { eq, permissionUserPersonLinks, pgErrorCode, tenantMemberships, type Tx } from '@italent/db';
+import { eq, permissionUserPersonLinks, pgErrorCode, sql, tenantMemberships, type Tx } from '@italent/db';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { AppError } from '../../errors.js';
+import { auditActor } from '../../system-actor.js';
 import { audit, type WriteContext } from './audit.js';
+import { scopeRows } from './scope-hierarchy.js';
 import { getTenantUser, insertMembership, memberSnapshot, provisionAccount, updateMembership } from './tenant-users.js';
 
 /** 同一账号的并发建档串行化（租户 × 账号）。 */
@@ -108,7 +110,9 @@ async function keepBinding(
   request: EmployeeUserRequest,
 ): Promise<EmployeeUser> {
   const current = await getTenantUser(tx, userId);
-  if (request.loginEmail && request.loginEmail.trim().toLowerCase() !== current.email) {
+  const asked = request.loginEmail?.trim().toLowerCase();
+  // 同一事务里重聘刚把登录名改成联系邮箱（F-328）：请求里的原登录邮箱仍指同一账号，不算改绑
+  if (asked && asked !== current.email && renamedInTx.get(tx)?.get(userId) !== asked) {
     throw conflict('USER_REBIND_FORBIDDEN', '人员已绑定用户，不能改绑到另一登录账号');
   }
   if (current.membershipStatus === 'active') return { userId, created: false };
@@ -129,4 +133,65 @@ async function keepBinding(
     after: memberSnapshot(saved),
   });
   return { userId, created: false };
+}
+
+/** 本事务里重聘改过登录名的账号：账号 → 改名前的登录邮箱（供同一事务内的绑定校验认出原登录邮箱）。 */
+const renamedInTx = new WeakMap<Tx, Map<string, string>>();
+
+export interface RehireLoginChange {
+  readonly beforeRevision: number;
+  readonly afterRevision: number;
+}
+
+/**
+ * F-328 / DEC-707：重聘（合并人员）后把绑定账号的登录用户名改为员工联系邮箱（迁移 0172）。
+ * 与他人登录名冲突按现有唯一约束语义 409 EMAIL_TAKEN，整单回滚；账号同属其他租户时不改（全局登录名各租户共用）。
+ * @returns 实际改名时的账号 revision 前后值；未改（相同 / 同属其他租户）为 null
+ */
+export async function changeRehireLoginEmail(
+  tx: Tx,
+  write: WriteContext,
+  userId: string,
+  contactEmail: string,
+): Promise<RehireLoginChange | null> {
+  let row: { outcome: string; before_email: string; after_email: string; revision: number } | undefined;
+  try {
+    [row] = scopeRows<NonNullable<typeof row>>(
+      await tx.execute(sql`SELECT outcome, before_email, after_email, revision FROM tenant_rehire_login_email(
+        ${userId}::uuid, ${contactEmail}, ${auditActor(write.userId)}::uuid, ${write.commandId})`),
+    );
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw conflict('EMAIL_TAKEN', '登录邮箱已存在');
+    throw error;
+  }
+  if (row?.outcome !== 'changed') return null;
+  const renamed = renamedInTx.get(tx) ?? new Map<string, string>();
+  renamedInTx.set(tx, renamed.set(userId, row.before_email));
+  await audit(tx, write, {
+    action: 'tenant_user.login_email',
+    objectType: 'tenant_user',
+    objectId: userId,
+    before: { email: row.before_email, revision: row.revision - 1 },
+    after: { email: row.after_email, revision: row.revision },
+  });
+  return { beforeRevision: row.revision - 1, afterRevision: row.revision };
+}
+
+/**
+ * F-328 返工 P1-1：当天重聘在重聘事务内启用离职停用的账号（迁移 0172 tenant_rehire_enable_account），
+ * 启用写入失败随整单回滚。账号已不是 expectedRevision 的停用状态（人工改过）或同属其他租户时不动账号；
+ * 同属其他租户的按 DEC-717 豁免整单回滚，由提交后的离职账号任务按全局锁序启用。
+ * @returns 启用后的账号 revision；未启用为 null
+ */
+export async function enableRehireAccount(
+  tx: Tx,
+  write: WriteContext,
+  userId: string,
+  expectedRevision: number,
+): Promise<number | null> {
+  const [row] = scopeRows<{ outcome: string; revision: number }>(
+    await tx.execute(sql`SELECT outcome, revision FROM tenant_rehire_enable_account(
+      ${userId}::uuid, ${expectedRevision}, ${auditActor(write.userId)}::uuid, ${write.commandId})`),
+  );
+  return row?.outcome === 'enabled' ? row.revision : null;
 }
