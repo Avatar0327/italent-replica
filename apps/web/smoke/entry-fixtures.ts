@@ -76,6 +76,12 @@ export async function setupEntries(page: Page, baseURL: string) {
       },
     });
   });
+  // 合同主数据后端只登记了列表 GET（contracts/routes.ts），没有按 ID 的详情 GET：照 app.notFound 回 404。
+  await page.route('**/api/tenant/contracts/master-data/*/*', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: '接口不存在' } } })
+      : route.fallback(),
+  );
   await page.route(`**/api/tenant/org/organizations/${departmentId}*`, (route) =>
     route.fulfill({ json: { id: departmentId, name: '合成入职部门' } }),
   );
@@ -141,28 +147,30 @@ async function permissions(page: Page) {
   );
   await page.route('**/permission/me/objects/*', (route) => {
     const objectCode = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!);
-    const contract = objectCode === 'TenantBase.EmploymentContract';
-    return route.fulfill({
-      json: {
-        objectCode,
-        dataOperations: { create: true, update: true, delete: true },
-        viewableFields: [
-          'id',
-          'revision',
-          'name',
-          'code',
-          'employeeId',
-          'employeeStatus',
-          'entryStatus',
-          'kind',
-          ...entryFields,
-          ...contractFields,
-        ],
-        editableFields: contract ? contractFields : entryFields,
-        buttons: ['Employment.Edit', 'Employment.Delete'].map((buttonCode) => ({ buttonCode, level: 'detail' })),
-      },
-    });
+    return route.fulfill({ json: objectGrant(objectCode) });
   });
+}
+/** 字段权限（/permission/me/objects/:code 响应形状）；contractEditable 用于造合同字段只读。 */
+export function objectGrant(objectCode: string, contractEditable: readonly string[] = contractFields) {
+  const contract = objectCode === 'TenantBase.EmploymentContract';
+  return {
+    objectCode,
+    dataOperations: { create: true, update: true, delete: true },
+    viewableFields: [
+      'id',
+      'revision',
+      'name',
+      'code',
+      'employeeId',
+      'employeeStatus',
+      'entryStatus',
+      'kind',
+      ...entryFields,
+      ...contractFields,
+    ],
+    editableFields: contract ? contractEditable : entryFields,
+    buttons: ['Employment.Edit', 'Employment.Delete'].map((buttonCode) => ({ buttonCode, level: 'detail' })),
+  };
 }
 
 async function employmentRoutes(page: Page, state: EntryState) {
