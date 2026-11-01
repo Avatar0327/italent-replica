@@ -103,6 +103,18 @@ describe('AC-IN-F366 排序参数校验与字段权限', () => {
     for (const query of bad) expect((await w.session.request('GET', `/interns?${query}`)).status, query).toBe(400);
   });
 
+  it('排序不放宽数据范围：范围外部门的实习生照样不出现', async () => {
+    const w = await internWorld(testDb().db, 'f366-scope');
+    const outside = await org(w, '范围外部门', '部门', w.session.tenant.id, 1);
+    const inside = await intern(w, '范围内合成实习生', '2026-09-01', { departmentId: w.org.id });
+    await intern(w, '范围外合成实习生', '2026-09-10', { departmentId: outside.id });
+    const scoped = scopedRequest(w, [w.org.id], allFields());
+    for (const sortBy of ['institutionId', 'departmentId', 'directManagerId']) {
+      const response = await scoped('GET', `/interns?view=interning&sortBy=${sortBy}&direction=desc`);
+      expect(ids(((await response.json()) as { items: InternViewItem[] }).items), sortBy).toEqual([inside]);
+    }
+  });
+
   it('看不到的字段不能用来排序（403），看得到时照常排序', async () => {
     const w = await internWorld(testDb().db, 'f366-hidden');
     await intern(w, '字段权限合成实习生', '2026-09-01', { departmentId: w.org.id });

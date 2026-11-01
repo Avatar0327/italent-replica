@@ -3677,9 +3677,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/entry-routes.ts#parse',
     'apps/api/src/modules/employment/intern-actions.ts#internRowActions',
+    '#internSort',
     '#requireViewableInternFilters',
     '#trimInternItems',
     '#viewFilter',
+    '#viewSort',
     '#viewableIn',
     'apps/api/src/modules/employment/intern-views.ts#listInternView',
     'apps/api/src/modules/job/context.ts#pageQuery',
@@ -3745,6 +3747,9 @@ export const GRAPH: Graph = {
     '#trimProbation',
   ],
   'apps/api/src/modules/employment/intern-routes.ts#trimProbation': ['#PROBATION_FIELDS'],
+  'apps/api/src/modules/employment/intern-routes.ts#viewSort': [
+    'apps/api/src/modules/employment/intern-views.ts#INTERN_SORT_FIELDS',
+  ],
   'apps/api/src/modules/employment/intern-routes.ts#viewableIn': [
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
@@ -3775,6 +3780,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/intern-views.ts#filters': [
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
+  'apps/api/src/modules/employment/intern-views.ts#interningExtras': [
+    'apps/api/src/modules/employment/part-time/institution.ts#institutionsOf',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#employeeCodeOf',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#orgSortRank',
+    'apps/api/src/modules/employment/part-time/view-sort.ts#sortedBy',
+  ],
   'apps/api/src/modules/employment/intern-views.ts#listInternView': [
     'apps/api/src/modules/employment/entry-probation.ts#loadProbationVersions',
     '#convertingQuery',
@@ -3790,6 +3801,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/context.ts#employmentScopePredicate',
     '#filters',
+    '#interningExtras',
     '#recordPredicate',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
   ],
@@ -4034,6 +4046,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
   'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution': [
+    '#institutionsOf',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/part-time/linkage-participants.ts#hasRequestTables': [
@@ -5115,6 +5128,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/contracts/rules.ts#addDays',
   ],
   'apps/api/src/modules/employment/part-time/view-sort.ts#viewOrder': [
+    '#employeeCodeOf',
+    '#orgSortRank',
+    '#sortedBy',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_SERVICE_TYPES',
   ],
   'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks': ['#hooks'],
