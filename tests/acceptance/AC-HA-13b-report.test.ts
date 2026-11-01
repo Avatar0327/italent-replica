@@ -1,9 +1,10 @@
 /**
  * BE-13b / B54 流动情况报表六个页签（规格 35“流动情况各报表的算法”）：默认本年（asOf = 2026-10-06 → 2026 年）。
  * - AC-HA-13b-07 期初 / 期末各按日期取时点人数，不用“上月期末 + 入职 − 离职”推算（10 月期初 ≠ 9 月期末）；
- * - AC-HA-13b-08 流入 / 流出按任职记录开始日期取数（离职记录始于最后工作日次日），只算内部员工 + 实习生；
+ *   报表离职按最后工作日归月（DEC-729），最后工作日当天仍在职：期初 = 期间首日时点在职，不再补当天离职生效的人；
+ * - AC-HA-13b-08 流入按入职任职记录开始日期、流出按最后工作日归年 / 归月（DEC-729），只算内部员工 + 实习生；
  * - AC-HA-13b-09 流出合计 = BE-12b 人事看板“本年离职”；
- * - AC-HA-13b-10 组织编制无数据源，返回 unavailable；
+ * - AC-HA-13b-10 组织编制是按编制对象一行的表格（本世界没有编制，空表；有编制的场景见 AC-HA-13b-r2）；
  * - 授权与数据范围：AC-HA-13b-11 / AC-HA-05。
  */
 import { HR_MOVEMENT_OBJECT, HR_MOVEMENT_REPORT_OBJECT, presetSeeAllTargets, STANDARD_PROFILES } from '@italent/domain';
@@ -77,7 +78,8 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     });
     // 按组织层级下钻：甲部的下级
     const drill = await c.report('flow', `${AS_OF}&parentId=${w.A.id}`);
-    expect(row(drill, 'flow', w.A1.id)).toMatchObject({ yearStart: 0, transfers: 1, exits: 0, yearEnd: 1 });
+    // 甲一组：老员工 5/1 调入（调动 1），转正 / 组织调整 6 月把部门改到甲一组（不算调动），年底 3 人
+    expect(row(drill, 'flow', w.A1.id)).toMatchObject({ yearStart: 0, transfers: 1, exits: 0, yearEnd: 3 });
     expect(row(drill, 'flow', w.B.id)).toBeUndefined();
   });
 
@@ -87,8 +89,12 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     expect(monthly.rows.map((item) => item.key)).toEqual(
       Array.from({ length: 12 }, (_, index) => `2026-${String(index + 1).padStart(2, '0')}`),
     );
-    expect(row(report, 'monthly', '2026-02')).toEqual({ opening: 6, hires: 2, exits: 1, closing: 6, rate: 0.1667 });
-    expect(row(report, 'monthly', '2026-09')).toEqual({ opening: 6, hires: 1, exits: 1, closing: 5, rate: 0.1818 });
+    // 一月底离职（最后工作日 1/31）：1 月期末仍在职、计 1 月离职；2 月期初已不在
+    expect(row(report, 'monthly', '2026-01')).toEqual({ opening: 5, hires: 0, exits: 1, closing: 5, rate: 0.2 });
+    expect(row(report, 'monthly', '2026-02')).toEqual({ opening: 5, hires: 2, exits: 0, closing: 6, rate: 0 });
+    // 范围外离职（最后工作日 8/31）归 8 月，9 月期初不含
+    expect(row(report, 'monthly', '2026-08')).toEqual({ opening: 5, hires: 0, exits: 1, closing: 5, rate: 0.2 });
+    expect(row(report, 'monthly', '2026-09')).toEqual({ opening: 5, hires: 1, exits: 0, closing: 5, rate: 0 });
     expect(row(report, 'monthly', '2026-10')).toEqual({ opening: 6, hires: 1, exits: 0, closing: 6, rate: 0 });
     expect(row(report, 'monthly', '2026-11')).toEqual({
       opening: null,
@@ -102,9 +108,11 @@ describe('AC-HA-13b B54 流动情况报表', () => {
   it('各机构入离职：一级机构 × 期初 / 入职 / 离职 / 期末 / 离职率（指定年、月）', async () => {
     const report = await c.report('institution', `${AS_OF}&year=2026&month=4`);
     expect(report.month).toBe(4);
-    // 三十天离职 3/31 最后工作日 → 4/1 生效：4 月期初在职、4 月离职
-    expect(row(report, 'institution', w.A.id)).toEqual({ opening: 5, hires: 0, exits: 1, closing: 4, rate: 0.2222 });
-    // 三十一天离职 4/1 最后工作日：4/1 仍在职（期初），4/2 生效
+    // 三十天离职 3/31 最后工作日：归 3 月离职，4 月期初已不在
+    expect(row(report, 'institution', w.A.id)).toEqual({ opening: 4, hires: 0, exits: 0, closing: 4, rate: 0 });
+    const march = await c.report('institution', `${AS_OF}&year=2026&month=3`);
+    expect(row(march, 'institution', w.A.id)).toEqual({ opening: 5, hires: 1, exits: 1, closing: 5, rate: 0.2 });
+    // 三十一天离职 4/1 最后工作日：4/1 仍在职（期初），归 4 月离职
     expect(row(report, 'institution', w.B.id)).toEqual({ opening: 2, hires: 0, exits: 1, closing: 1, rate: 0.6667 });
     expect((await c.get(`${BASE}/reports/institution?${AS_OF}&year=2026&month=13`)).status).toBe(400);
   });
@@ -153,9 +161,19 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     expect(leaves).toBe(5);
   });
 
-  it('AC-HA-13b-10：组织编制无数据源 → unavailable；year 晚于 asOf 所在年 → 400；未知页签 → 404', async () => {
+  it('AC-HA-13b-10：组织编制是表格（没有编制时空表）；year 晚于 asOf 所在年 → 400；未知页签 → 404', async () => {
     const report = await c.report('establishment', AS_OF);
-    expect({ kind: report.kind, tables: report.tables }).toEqual({ kind: 'unavailable', tables: null });
+    expect(report.kind).toBe('table');
+    expect(table(report, 'establishment').rows).toEqual([]);
+    expect(table(report, 'establishment').columns.map((column) => column.key)).toEqual([
+      'localCapacity',
+      'inclusiveCapacity',
+      'actual',
+      'pendingIn',
+      'pendingOut',
+      'vacancy',
+      'executionRate',
+    ]);
     expect((await c.get(`${BASE}/reports/flow?${AS_OF}&year=2027`)).status).toBe(400);
     expect((await c.get(`${BASE}/reports/nope?${AS_OF}`)).status).toBe(404);
   });

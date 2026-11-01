@@ -2,7 +2,7 @@
  * BE-13b 人员流动分析看板 / 流动情况报表三个只读路由的 F-039 声明：权限是各自对象的查看权（入口以对象常量调
  * objectContext，再经 analyticsScope 解析同对象范围），范围按同一对象的数据范围解析（页面编码 <对象>.list）。
  * 取数 SQL 在时点 / 离职 / 入职 / 调动四类行集上先叠加可见谓词再计算（hr-movement.ts）。
- * 响应只含固定键的计数、分组与 ID；报表的列由出现的离职类型 / 原因与职务序列字典展开，单元格是范围内的计数 / 比率。
+ * 响应只含固定键的计数、分组与 ID；报表的列由离职类型 / 原因字典（零计数填 0）与职务序列字典展开，单元格是范围内的计数 / 比率。
  */
 import { HR_MOVEMENT_OBJECT, HR_MOVEMENT_REPORT_OBJECT } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';

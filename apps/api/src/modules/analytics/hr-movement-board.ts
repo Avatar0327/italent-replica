@@ -1,7 +1,8 @@
 /**
  * 人员流动分析看板 6.25～6.32、3.1.36 的计算（docs/02_业务建模/35“补充：BE-13…”B50）。
  * 输入是 loadMovement 的同一份行集（已叠加数据范围与部门筛选）；每个组件只定义“计入谁”和“分到哪组”，
- * 数字、分组计数与明细都从这一份定义得出，按员工去重，数字 = 明细条数。流动情况报表（B54）共用期初 / 期末等工具。
+ * 数字、分组计数与明细都从这一份定义得出，按员工去重，数字 = 明细条数。流动情况报表（B54）共用期末、入职等工具；
+ * 离职在看板按离职生效日（最后工作日 + 1）判断是否在职、归月（DEC-729），报表另按最后工作日归期。
  */
 import {
   HR_MOVEMENT_COMPONENTS,
@@ -14,7 +15,7 @@ import {
   type HrMovementCode,
   type MovementMonth,
 } from '@italent/domain';
-import type { MovementData, MovementExit } from './hr-movement.js';
+import type { MovementData, MovementEstablishment, MovementExit } from './hr-movement.js';
 import { ratio } from './hr-structure-board.js';
 import type { OrgTree } from './hr-structure.js';
 
@@ -40,6 +41,7 @@ export const closing = (data: MovementData, month: MovementMonth): Member[] =>
   unique(data.snapshots.get(month.end) ?? []);
 export const hiresIn = (data: MovementData, month: MovementMonth) =>
   unique(data.hires.filter((h) => within(h.startDate, month)));
+/** 看板的“当月离职”：离职生效日落在当月（报表按最后工作日，见 hr-movement-report.ts）。 */
 export const exitsIn = (data: MovementData, month: MovementMonth) =>
   unique(data.exits.filter((e) => within(e.effectiveDate, month)));
 
@@ -74,6 +76,18 @@ export interface MovementLookup {
   readonly months: readonly MovementMonth[];
   readonly tree: OrgTree;
   readonly data: MovementData;
+  /** asOf 时点的组织编制（已按部门筛选裁到所选组织及下级）。 */
+  readonly establishment: readonly MovementEstablishment[];
+}
+/** 编制表一行除人数以外的列；预增员 / 预减员 / 缺编数 / 执行率的取数接口尚未抽出（F-418），整列 null。 */
+export interface EstablishmentColumns {
+  readonly orgId: string;
+  readonly localCapacity: number | null;
+  readonly inclusiveCapacity: number | null;
+  readonly pendingIn: null;
+  readonly pendingOut: null;
+  readonly vacancy: null;
+  readonly executionRate: null;
 }
 interface Group {
   readonly key: string;
@@ -82,6 +96,7 @@ interface Group {
   readonly parent?: string | null;
   readonly opening?: number;
   readonly closing?: number;
+  readonly columns?: EstablishmentColumns;
 }
 /** members = null 表示组件只有按月分组、没有单一数值（series）。 */
 interface Computed {
@@ -118,7 +133,7 @@ function twoLevel(exits: readonly MovementExit[], second: (e: MovementExit) => {
   ]);
 }
 
-const RULES: Readonly<Record<HrMovementCode, ((x: MovementLookup) => Computed) | null>> = {
+const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> = {
   '6.25': (x) => ({
     members: null,
     groups: x.months.map((m) => ({ key: m.key, label: m.key, members: closing(x.data, m) })),
@@ -159,6 +174,7 @@ const RULES: Readonly<Record<HrMovementCode, ((x: MovementLookup) => Computed) |
       members: x.data.exits.filter((e) => tenureSegment(e.entryDate, e.lastWorkDate) === key),
     })),
   }),
+  // ratio = 该部门人数 ÷ 近 12 个月“入职一个月内离职”的总人数（不是部门在职人数）
   '6.32': (x) => {
     const early = x.data.exits.filter((e) => withinOneMonth(e.entryDate, e.lastWorkDate));
     return {
@@ -170,14 +186,43 @@ const RULES: Readonly<Record<HrMovementCode, ((x: MovementLookup) => Computed) |
       ),
     };
   },
-  // 编制执行率没有数据源（预增员 / 预减员），返回 null（规格 B50 编制统计表）
-  '3.1.36': null,
+  // 每个编制对象一组：实有人员 = asOf 时点在职（含下级），与 6.25 当月期末同一谓词
+  '3.1.36': (x) => ({
+    members: null,
+    groups: x.establishment.map((e) => ({
+      key: e.id,
+      label: x.tree.name(e.orgId),
+      members: actualStaff(x.data, x.months.at(-1)!.end, x.tree, e.orgId),
+      columns: establishmentColumns(e),
+    })),
+  }),
 };
 
-/** 组件明细（group 给出时只取该组）；series 组件必须指定分组，返回 undefined 由路由报 400。 */
+/** 某组织（含下级）在 day 的时点在职人员。 */
+export const actualStaff = (data: MovementData, day: string, tree: OrgTree, orgId: string) =>
+  unique((data.snapshots.get(day) ?? []).filter((m) => tree.chain(m.departmentId).includes(orgId)));
+export const establishmentColumns = (e: MovementEstablishment): EstablishmentColumns => ({
+  orgId: e.orgId,
+  localCapacity: e.localCapacity,
+  inclusiveCapacity: e.inclusiveCapacity,
+  pendingIn: null,
+  pendingOut: null,
+  vacancy: null,
+  executionRate: null,
+});
+
+/** 部门筛选（含下级）下只列所选组织及其下级的编制对象。 */
+export function filterEstablishment(
+  rows: readonly MovementEstablishment[],
+  tree: OrgTree,
+  departmentId?: string,
+): MovementEstablishment[] {
+  return departmentId ? rows.filter((e) => tree.chain(e.orgId).includes(departmentId)) : [...rows];
+}
+
+/** 组件明细（group 给出时只取该组）；series / table 组件必须指定分组，返回 undefined 由路由报 400。 */
 export function movementMembers(code: HrMovementCode, x: MovementLookup, group?: string): Member[] | undefined {
-  const computed = RULES[code]?.(x);
-  if (!computed) return [];
+  const computed = RULES[code](x);
   if (group === undefined) return computed.members ? unique(computed.members) : undefined;
   return unique(computed.groups.find((g) => g.key === group)?.members ?? []);
 }
@@ -185,11 +230,11 @@ export function movementMembers(code: HrMovementCode, x: MovementLookup, group?:
 /** 看板 9 个组件（与图形无关的数据）：value = 去重人数（series 为 null），groups 带各自的计数。 */
 export function movementComponents(x: MovementLookup) {
   return HR_MOVEMENT_COMPONENTS.map((component) => {
-    const computed = RULES[component.code]?.(x);
-    if (!computed) return { ...component, value: null, groups: null };
+    const computed = RULES[component.code](x);
     const value = computed.members ? unique(computed.members).length : null;
-    const groups = computed.groups.map(({ members, ...group }) => {
+    const groups = computed.groups.map(({ members, columns, ...group }) => {
       const count = unique(members).length;
+      if (columns) return { ...group, ...columns, count };
       if (component.code === '6.28')
         return { ...group, count, rate: leaveRate(count, group.opening ?? 0, group.closing ?? 0) };
       if (component.kind === 'ratio') return { ...group, count, ratio: ratio(count, value ?? 0) };

@@ -4,7 +4,8 @@
  * - AC-HA-13b-02 离职率 = 离职 ÷ ((期初 + 期末) ÷ 2)，分母为 0 返回 0；
  * - AC-HA-13b-03 入职一个月内离职 = 司龄 ≤ 0.083 年（30 天计入、31 天不计）；
  * - AC-HA-13b-04 调动只算业务类型“调动”：转正带调动、组织调整引起的调动不计；
- * - AC-HA-13b-05 外部人员不计；AC-HA-13b-06 编制执行率无数据源，返回 unavailable / null；
+ * - AC-HA-13b-05 外部人员不计；AC-HA-13b-06 编制统计表按编制对象一行（本世界没有编制，空表；有编制的场景见
+ *   AC-HA-13b-r2，预增 / 预减 / 缺编 / 执行率四列 null，F-418）；
  * - 每个组件：数字 = 明细条数 = 手写期望集合。
  */
 import { useTestDb } from '@italent/testkit';
@@ -23,7 +24,7 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
     c = movementClient(w.db, w.who);
   }, 600_000);
 
-  it('看板列出 9 个组件（近 12 个月），编制统计表无数据源（AC-HA-13b-06）', async () => {
+  it('看板列出 9 个组件（近 12 个月），编制统计表是按编制对象的表格（AC-HA-13b-06）', async () => {
     const board = await c.board(BASE, AS_OF);
     expect(board.asOf).toBe('2026-10-06');
     expect(board.hasDataPermission).toBe(true);
@@ -40,9 +41,9 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
     ]);
     const establishment = board.components.find((item) => item.code === '3.1.36')!;
     expect({ kind: establishment.kind, value: establishment.value, groups: establishment.groups }).toEqual({
-      kind: 'unavailable',
+      kind: 'table',
       value: null,
-      groups: null,
+      groups: [],
     });
     const months = (await c.groups('6.25', AS_OF)).map((group) => group.key);
     expect(months).toEqual([
@@ -98,6 +99,11 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
     expect((await c.group('6.27', AS_OF, 'cross_department'))?.label).toBe('跨部门调动');
     // 调动前后都在筛选范围外 → 不计
     await c.expectCount(BASE, '6.27', [], `${AS_OF}&departmentId=${w.B.id}`);
+    // 转正 / 组织调整确实把部门改到了甲一组（时点人数可见），但调动只计 p.old（审查 P3-1）
+    const inA1 = `${AS_OF}&departmentId=${w.A1.id}`;
+    await c.expectCount(BASE, '6.25', ids(p.old, p.reg, p.orgAdj), inA1, '2026-10');
+    await c.expectCount(BASE, '6.25', ids(p.old), inA1, '2026-05');
+    await c.expectCount(BASE, '6.27', ids(p.old), inA1);
   });
 
   it('AC-HA-13b-02：6.28 离职率 = 离职 ÷ ((期初 + 期末) ÷ 2)，期初含当天离职生效的人', async () => {
@@ -146,9 +152,9 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
     await c.expectCount(BASE, '6.32', [], AS_OF, w.B.id); // 3/1 → 4/1 共 31 天，不计
   });
 
-  it('asOf 不合法 → 400；未知组件 → 404', async () => {
+  it('asOf 不合法 → 400；未知组件 → 404；编制统计表不指定编制对象 → 400', async () => {
     expect((await c.get(`${BASE}?asOf=2026-13-01`)).status).toBe(400);
     expect((await c.get(`${BASE}/components/9.99?${AS_OF}`)).status).toBe(404);
-    expect((await c.get(`${BASE}/components/3.1.36?${AS_OF}`)).status).toBe(404);
+    expect((await c.get(`${BASE}/components/3.1.36?${AS_OF}`)).status).toBe(400);
   });
 });

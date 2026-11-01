@@ -166,6 +166,21 @@ export async function movementWorld(db: Db) {
     expect(response.status, await response.clone().text()).toBeLessThan(300);
   }
 
+  /** 直接办理带部门变化的非调动任职业务（转正 / 组织调整）。 */
+  async function departmentChange(employeeId: string, kind: string, effectiveDate: string, department: { id: string }) {
+    const response = await x.session.request('POST', `/employees/${employeeId}/businesses`, {
+      ifMatch: (await x.session.getEmployee(employeeId)).revision,
+      body: {
+        kind,
+        mode: 'direct',
+        effectiveDate,
+        fields: { departmentId: department.id },
+        ...(kind === 'regularization' ? { probationResult: 'normal' } : {}),
+      },
+    });
+    expect(response.status, await response.clone().text()).toBeLessThan(300);
+  }
+
   // ---- 组织：甲（含下级甲一组）、乙、范围外、空部门 ----
   const A = await org('甲部');
   const A1 = await org('甲一组', A);
@@ -203,9 +218,10 @@ export async function movementWorld(db: Db) {
   await leave(p.hidden.id, '2026-08-31', { type: T.vol });
   await retire(p.retired.id, '2026-06-30');
   await transfer(p.old.id, '2026-05-01', A1);
-  // 转正同时调动、组织架构调整引起的调动：业务类型不是“调动”，不计
-  await x.synthetic(p.reg.id, { kind: 'regularization', state: 'effective', effectiveDate: '2026-06-01' });
-  await x.synthetic(p.orgAdj.id, { kind: 'org_adjustment', state: 'effective', effectiveDate: '2026-06-02' });
+  // 转正同时调动、组织架构调整引起的调动：部门真的从甲部变到甲一组（甲的下级，按甲筛选不变），但业务类型不是“调动”，
+  // 6.27 / 调动列都不计（审查 P3-1）
+  await departmentChange(p.reg.id, 'regularization', '2026-06-01', A1);
+  await departmentChange(p.orgAdj.id, 'org_adjustment', '2026-06-02', A1);
 
   return {
     ...{ x, db, tenantId, who, A, A1, B, H, E, S1, T, R, W, p, from: x.from },

@@ -22,8 +22,14 @@ import { pageQuery } from '../job/context.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { analyticsScope } from './hr-dashboard-routes.js';
-import { loadMovement } from './hr-movement.js';
-import { filterMovement, movementComponents, movementMembers, type MovementLookup } from './hr-movement-board.js';
+import { loadEstablishment, loadExitDictionaries, loadMovement } from './hr-movement.js';
+import {
+  filterEstablishment,
+  filterMovement,
+  movementComponents,
+  movementMembers,
+  type MovementLookup,
+} from './hr-movement-board.js';
 import { movementReport, reportWindow, type ReportPeriod } from './hr-movement-report.js';
 import { jobDictionary, orgTree } from './hr-structure.js';
 import { groupQuery, uuidQuery } from './hr-structure-routes.js';
@@ -45,15 +51,26 @@ async function reportContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return analyticsScope(c, deps, base, HR_MOVEMENT_REPORT_OBJECT);
 }
 
-/** 近 12 个月的行集与组织树；部门筛选（含下级）先于一切计算。 */
+/**
+ * 近 12 个月的行集、组织树与编制；部门筛选（含下级）先于一切计算。asOf 在 0001 年时近 12 个月早于公元 1 年，
+ * 算不了，报 400（审查 P2-6）。离职按离职生效日归月（B50，DEC-729）。
+ */
 function loadBoard(deps: TenantRouteDeps, ctx: Analytics, departmentId?: string): Promise<MovementLookup> {
   const { base, scope, asOf } = ctx;
   const months = movementMonths(asOf);
-  const window = { days: months.flatMap((m) => [m.start, m.end]), from: months[0]!.start, to: asOf };
+  if (!months) throw new AppError('VALIDATION_FAILED', 'asOf 过早，近 12 个月超出可统计的日期范围');
+  const days = months.flatMap((m) => [m.start, m.end]);
+  const window = { days, from: months[0]!.start, to: asOf, exitDating: 'effectiveDate' as const };
   return withTenant(deps.db, base.tenantId, async (tx) => {
     const tree = await orgTree(tx, base.tenantId, asOf);
     const data = await loadMovement(tx, { tenantId: base.tenantId, asOf, scope }, window);
-    return { months, tree, data: filterMovement(data, tree, departmentId) };
+    const establishment = await loadEstablishment(tx, { tenantId: base.tenantId, asOf, scope });
+    return {
+      months,
+      tree,
+      data: filterMovement(data, tree, departmentId),
+      establishment: filterEstablishment(establishment, tree, departmentId),
+    };
   });
 }
 
@@ -86,12 +103,12 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
   router.get(`${HR_MOVEMENT_BASE}/components/:code`, async (c) => {
     const ctx = await boardContext(c, deps);
     const component = HR_MOVEMENT_COMPONENTS.find((item) => item.code === c.req.param('code'));
-    if (!component || component.kind === 'unavailable') throw new AppError('NOT_FOUND', '组件不存在或没有数据源');
+    if (!component) throw new AppError('NOT_FOUND', '组件不存在');
     const group = groupQuery(c);
     const departmentId = uuidQuery(c, 'departmentId');
     const page = pageQuery(c);
     const members = movementMembers(component.code, await loadBoard(deps, ctx, departmentId), group);
-    if (!members) throw new AppError('VALIDATION_FAILED', '按月统计的组件须指定 group（月份）');
+    if (!members) throw new AppError('VALIDATION_FAILED', '按月或按编制对象统计的组件须指定 group（月份或编制对象）');
     return c.json({
       asOf: ctx.asOf,
       ...component,
@@ -122,15 +139,21 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
       month: report.code === 'institution' ? period.month : null,
       hasDataPermission: ctx.scope.hasDataPermission,
     };
-    if (report.kind === 'unavailable') return c.json({ ...head, tables: null });
     const { base, scope, asOf } = ctx;
     const tables = await withTenant(deps.db, base.tenantId, async (tx) => {
+      const a = { tenantId: base.tenantId, asOf, scope };
       const tree = await orgTree(tx, base.tenantId, asOf);
       const sequences = await jobDictionary(tx, base.tenantId, asOf, 'sequence');
-      const window = reportWindow(report.code, period);
-      const data = await loadMovement(tx, { tenantId: base.tenantId, asOf, scope }, window);
-      const lookup = { tree, sequences, data: filterMovement(data, tree, departmentId), parentId };
-      return movementReport(report.code, period, lookup);
+      const data = await loadMovement(tx, a, reportWindow(report.code, period));
+      const establishment = report.code === 'establishment' ? await loadEstablishment(tx, a) : [];
+      return movementReport(report.code, period, {
+        tree,
+        sequences,
+        exitDictionaries: await loadExitDictionaries(tx, base.tenantId),
+        data: filterMovement(data, tree, departmentId),
+        establishment: filterEstablishment(establishment, tree, departmentId),
+        parentId,
+      });
     });
     return c.json({ ...head, tables });
   });

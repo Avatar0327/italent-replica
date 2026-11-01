@@ -75,7 +75,12 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
     // B50 仍按生效日：2026-01-01 生效，计 2026-01 离职
     await c.expectCount(BASE, '6.26', ids(person), scoped, 'exit:2026-01');
     const leaves = await leavesThisYear('2026-10-06');
-    expect(await outflowTotals('2026-10-06')).toEqual({ outflow: leaves, reasons: leaves, flow: leaves, monthly: leaves });
+    expect(await outflowTotals('2026-10-06')).toEqual({
+      outflow: leaves,
+      reasons: leaves,
+      flow: leaves,
+      monthly: leaves,
+    });
   });
 
   it('P2-1：最后工作日 = asOf 当天计入 B54 流出，与人事看板本年离职一致', async () => {
