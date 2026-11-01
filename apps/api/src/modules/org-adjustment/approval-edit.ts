@@ -133,7 +133,10 @@ export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string,
   await asApprover(tx, ctx, () => edit(tx, ctx, id, fields));
 }
 
-/** 同意前兜底（beforeApprove）：按库里的头与明细跑整单关口，与审批中编辑同一入口、同一裁剪。 */
+/**
+ * 同意前兜底（beforeApprove）：按库里的头与明细跑整单关口，与审批中编辑同一入口、同一裁剪。编辑并同意时引擎先落编辑
+ * 再调本函数（approval/actions.ts approveTask），库里即编辑后的最终候选态。
+ */
 export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string): Promise<void> {
   await asApprover(tx, ctx, async () => {
     const view = await loadAdjustment(tx, ctx.tenantId, id);
