@@ -94,7 +94,8 @@ export const ROSTER_EMPLOY_TYPES = ['internal', 'intern'] as const;
 /** 同步导出的行数上限（沿用现有导出常量 10000，超出提示缩小范围）。 */
 export const ROSTER_EXPORT_MAX_ROWS = 10_000;
 
-const TERM_TYPE_LABELS: Readonly<Record<string, string>> = {
+/** 合同期限类型的显示名（花名册列与合同情况看板“按期限类型”同用）。 */
+export const TERM_TYPE_LABELS: Readonly<Record<string, string>> = {
   fixed: '固定期限',
   indefinite: '无固定期限',
   task: '以完成一定工作任务为期限',

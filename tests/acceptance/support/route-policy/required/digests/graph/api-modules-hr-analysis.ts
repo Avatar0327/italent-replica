@@ -70,6 +70,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_EMPLOY_TYPES',
   ],
   'apps/api/src/modules/hr-analysis/roster-query.ts#rosterJoins': [
+    'apps/api/src/modules/contracts/queries.ts#contractInForce',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/probation-views.ts#probationInfo',
     'apps/api/src/modules/employment/probation.ts#cycleRegularization',
