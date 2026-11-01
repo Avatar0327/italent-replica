@@ -85,8 +85,8 @@ describe('AC-OA-43 路由 4～6、8～9 的按钮与入口（§9.3）', () => {
     await expectError(await w.addItem(view.id, newOrg(w.a), undefined, stranger), 403, 'FORBIDDEN');
     await w.setStatus(view.id, 1);
     await expectError(await w.addItem(view.id, newOrg(w.a)), 409, 'CONFLICT');
-    for (const path of ['submit', 'withdraw'])
-      expect((await w.call('POST', `${BASE}/${view.id}/${path}`, { ifMatch: 2, body: {} })).status, path).toBe(404);
+    // 10c 起提交 / 撤回已注册（行为见 AC-OA-12～15 / 26）：审批中的单据再提交 → 409
+    expect((await w.call('POST', `${BASE}/${view.id}/submit`, { ifMatch: 2, body: {} })).status).toBe(409);
   });
 });
 

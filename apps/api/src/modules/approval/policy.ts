@@ -39,6 +39,7 @@ import {
   MODULE_OBJECTS,
   OFFER_BATCH_OBJECT,
   OFFER_OBJECT,
+  ORG_ADJUSTMENT_OBJECT_CODE,
   PROBATION_ASSESSMENT_OBJECT,
   SUBSETS,
 } from '@italent/domain';
@@ -134,7 +135,8 @@ const processAdmin = (extra: PolicyBase = {}) => admin('process_matrix', { field
 // ---- 任务动作（§3.3 八个动作）-----------------------------------------------------------------------------------------
 /**
  * 任务所属业务快照的字段对象（adapters.ts snapshot.fieldObjectCode）：任职记录 / 合同 / 人员子集各对象 /
- * IDP 计划（idp/approval-adapter.ts，R3-T07）/ Offer 与 Offer 批量审批单（offer/approval-adapter.ts，R2 BE-14a3）。
+ * IDP 计划（idp/approval-adapter.ts，R3-T07）/ Offer 与 Offer 批量审批单（offer/approval-adapter.ts，R2 BE-14a3）/
+ * 组织调整申请（org-adjustment/snapshot.ts，R2-T08 BE-10c）。
  */
 const TASK_OBJECT_DOMAIN = [
   MODULE_OBJECTS.employmentRecord.code,
@@ -144,6 +146,7 @@ const TASK_OBJECT_DOMAIN = [
   OFFER_OBJECT,
   OFFER_BATCH_OBJECT,
   PROBATION_ASSESSMENT_OBJECT,
+  ORG_ADJUSTMENT_OBJECT_CODE,
 ];
 const TASK_OBJECT: ObjectSelector = {
   from: 'record',

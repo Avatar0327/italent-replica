@@ -1,23 +1,42 @@
 /**
- * 审批中心的组织调整适配器（R2-T08 设计 §4.1，BE-10a 占位）。
- * 本批只登记业务类型 org_adjustment，占住审批类型、适配器种类与适配器表的位置；模块没有公开路由，不会产生审批实例。
- * BE-10c 接入真适配器（快照、`beforeApprove` 基线判定、各状态回写、审批中编辑、`lockMany`）。
- * 在此之前任何回调都拒绝（409 ORG_ADJUSTMENT_NOT_AVAILABLE），不静默放行。
+ * 审批中心的组织调整适配器（R2-T08 设计 §4.1～4.5、§14.1，BE-10c）。
+ * - 锁：申请单行 FOR UPDATE（单张 / 批量按 ID 升序），不取组织锁——审批事务不改组织，组织写入只在 11a 执行时发生；
+ * - 快照：头（含调整范围）+ 组织分区（snapshot.ts）；
+ * - 同意前：只判非暂存行基线（与提交同一口径，DEC-644 A-8）；不同意 / 驳回不判；
+ * - 回写：通过 → 2（执行状态保持 1 未执行，本片不写执行队列）、驳回 → 6、不同意 → 3、审批侧撤回 → 0；
+ * - 重提：只接受已驳回单、不带修正，按提交口径重判（submission.ts）；
+ * - 审批中编辑：approval-edit.ts（OA-R7）。
  */
-import { AppError } from '../../errors.js';
+import { sql, type Tx } from '@italent/db';
+import { ORG_ADJUSTMENT_APPROVAL_STATUS as STATUS } from '@italent/domain';
 import type { BusinessAdapter } from '../approval/adapters.js';
+import type { ApprovalContext } from '../approval/context.js';
+import { editFromApproval } from './approval-edit.js';
+import { assertBaselines } from './baseline.js';
+import { orgAdjustmentSnapshot } from './snapshot.js';
+import { resubmitFromApproval, settleFromApproval } from './submission.js';
 
-const unavailable = (): never => {
-  throw new AppError('CONFLICT', '组织调整审批尚未开放', { reason: 'ORG_ADJUSTMENT_NOT_AVAILABLE' });
-};
+async function lockRows(tx: Tx, ctx: ApprovalContext, ids: readonly string[]) {
+  const sorted = [...new Set(ids)].sort();
+  if (!sorted.length) return;
+  await tx.execute(sql`SELECT id FROM org_adjustments
+    WHERE tenant_id = ${ctx.tenantId} AND id IN (${sql.join(
+      sorted.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    )}) ORDER BY id FOR UPDATE`);
+}
 
 export const orgAdjustmentAdapter: BusinessAdapter = {
-  lock: async () => unavailable(),
-  snapshot: async () => unavailable(),
-  approved: async () => unavailable(),
-  rejected: async () => unavailable(),
-  disapproved: async () => unavailable(),
-  withdrawn: async () => unavailable(),
-  resubmit: async () => unavailable(),
-  edit: async () => unavailable(),
+  lock: (tx, ctx, id) => lockRows(tx, ctx, [id]),
+  lockMany: (tx, ctx, ids) => lockRows(tx, ctx, ids),
+  snapshot: (tx, ctx, id) => orgAdjustmentSnapshot(tx, ctx.tenantId, id),
+  beforeApprove: async (tx, ctx, id, _nodeKey, decision) => {
+    if (decision === 'approve') await assertBaselines(tx, ctx.tenantId, id, 'approve');
+  },
+  approved: settleFromApproval(STATUS.approved, 'approved'),
+  rejected: settleFromApproval(STATUS.rejected, 'rejected'),
+  disapproved: settleFromApproval(STATUS.notApproved, 'disapproved'),
+  withdrawn: settleFromApproval(STATUS.staged, 'withdraw'),
+  resubmit: resubmitFromApproval,
+  edit: editFromApproval,
 };

@@ -1,8 +1,9 @@
 /**
  * BE-10c AC-OA-28-pg（R2-T08 §14.1、DEC-196 全局锁序：员工 → 业务 → 组织 → 编制 → 审批实例，成员行在组织锁之后）：
  * 组织调整的审批事务（批量交接合席推进到最后同意）不申请组织锁；与入职按登录邮箱首次绑定异常管理员账号交错时不死锁。
- * 场景：会签节点（主体组织 HRBP 为空 → 外部异常管理员 U 占一席；负责人一席），负责人先同意，剩 U 的待办；
- * 把 U 交接给负责人 → 合席 → 本节点办结 → 单据“审批通过 + 未执行”。同时入职一名员工，按 U 的邮箱绑定账号。
+ * 场景：首节点负责人单签（首节点有空席会拒绝提交，DEC-054）；第二节点会签（主体组织 HRBP 为空 → 外部异常管理员 U
+ * 占一席；负责人一席），负责人先后同意首节点与本席后剩 U 的待办；
+ * 由非发起人把 U 交接给负责人 → 合席 → 本节点办结 → 单据“审批通过 + 未执行”。同时入职一名员工，按 U 的邮箱绑定账号。
  * 锁序：交接先按 lockMany 锁申请单，再登记替代人（U 成员行 KEY SHARE），再锁实例。只在设了 TEST_DATABASE_URL 时运行。
  */
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,14 @@ import { cmd } from './support/tenant-api.js';
 const database = useTestDb();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 
+const HEAD_FIRST: NodeInput = {
+  key: 'head',
+  name: '负责人审批',
+  approver: approverSource('approval_subject_org_head'),
+  formFields: ORG_ADJUSTMENT_FORM_FIELDS,
+  exits: ['approve', 'disagree'],
+};
+
 const JOINT: NodeInput = {
   key: 'joint',
   name: '联合会签',
@@ -34,7 +43,7 @@ async function scene(label: string) {
   const email = `${label}-${randomUUID()}@example.com`;
   let sourceId = '';
   const w = await flowWorld(database().db, label, {
-    nodes: [JOINT],
+    nodes: [HEAD_FIRST, JOINT],
     process: async (world) => {
       const source = await createUser(world.db, { email, displayName: '外部异常管理员' }, cmd());
       await grantMembership(world.db, { tenantId: world.tenant.id, userId: source.id, expectedRevision: 0 }, cmd());
@@ -46,11 +55,14 @@ async function scene(label: string) {
   const { id } = await w.draft();
   await w.submitted(id);
   await w.acted(id, w.head, 'approve');
+  await w.acted(id, w.head, 'approve');
   const view = await w.instance(id);
   expect(view.tasks.filter((t) => t.status === 'pending')).toEqual([
     expect.objectContaining({ assigneeUserId: sourceId }),
   ]);
   const target = await w.employee('待绑定员工');
+  // 交接操作人不能是本单发起人（DEC-092 / DEC-329②，否则该实例被跳过 APPROVAL_ADMIN_SELF）
+  const operator = await w.member(`交接操作人${randomUUID()}`);
   return {
     w,
     id,
@@ -58,7 +70,7 @@ async function scene(label: string) {
     sourceId,
     target,
     handover: () =>
-      w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+      w.request(operator, 'POST', '/api/tenant/approval/exception-admins/handover', {
         ifMatch: 0,
         body: { fromUserId: sourceId, toUserId: w.head.userId },
       }),

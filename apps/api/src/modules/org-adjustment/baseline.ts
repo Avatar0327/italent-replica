@@ -13,8 +13,8 @@ import { auditItem, bumpRevision, loadItems, updateItem, type ItemsResult, type 
 import { ORG_INACTIVE } from './range.js';
 import { audit, editable, loadAdjustment, type WriteContext } from './service.js';
 
-/** 提交关口：任一非暂存行基线过期 → 409，列出行。 */
-export async function assertBaselines(tx: Tx, tenantId: string, adjustmentId: string, _stage: 'submit') {
+/** 提交 / 重提与同意（beforeApprove）关口：任一非暂存行（含连带行）基线过期 → 409，列出行；两处同一口径。 */
+export async function assertBaselines(tx: Tx, tenantId: string, adjustmentId: string, _stage: 'submit' | 'approve') {
   const view = await loadAdjustment(tx, tenantId, adjustmentId);
   if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
   const world = await loadWorld(tx, tenantId, view);

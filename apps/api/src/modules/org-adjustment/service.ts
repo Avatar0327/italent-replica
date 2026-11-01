@@ -1,6 +1,6 @@
 /**
  * 组织调整单一写服务的头部分（R2-T08 §6.1，BE-10b1）：建单、改头、作废、整单校验。组织明细见 org-items.ts、
- * 刷新基线见 baseline.ts（10b2）；提交 / 撤回随 10c。
+ * 刷新基线见 baseline.ts（10b2）；提交 / 撤回与审批回写见 submission.ts（10c）。
  * 每次写：锁申请单行 → 校验 revision → 申请人与状态（§3：只有 0 已暂存 / 6 已驳回可改、可作废）→ 生效日组织可用 →
  * 写头与调整范围（整体替换、去重保序）→ revision + 1 → 同事务审计。授权由调用方在命令守卫里先判（access.ts）。
  */
@@ -9,6 +9,7 @@ import { tenantLocalDate } from '@italent/domain';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
+import { auditActor } from '../../system-actor.js';
 import { rowsOf } from '../org/read-model.js';
 import { checkOrgItems } from './item-check.js';
 import { loadWorld, OUT_OF_RANGE, outOfRange } from './item-tree.js';
@@ -22,6 +23,8 @@ export interface WriteContext {
   readonly expectedRevision: number;
   readonly now: Date;
   readonly commandId: string;
+  /** 审计操作人；审批回调的系统身份记空（approval/context `actorOf` 同口径）。缺省为 userId。 */
+  readonly actorUserId?: string | null;
 }
 
 export interface AdjustmentView {
@@ -85,7 +88,20 @@ export async function updateAdjustmentHead(
   id: string,
   patch: HeadPatch,
 ): Promise<AdjustmentView> {
-  const before = await editable(tx, ctx, id);
+  return writeHead(tx, ctx, await editable(tx, ctx, id), patch);
+}
+
+/**
+ * 写头（申请人改头与审批人编辑共用，BE-10c）：生效日组织可用 → 已有明细仍在范围 → 写头与调整范围 → revision + 1 → 审计。
+ * 调用方已锁行并判过 revision、身份与状态。
+ */
+export async function writeHead(
+  tx: Tx,
+  ctx: WriteContext,
+  before: AdjustmentView,
+  patch: HeadPatch,
+): Promise<AdjustmentView> {
+  const id = before.id;
   const next = { ...before, ...patch };
   await assertOrgsActive(tx, ctx.tenantId, [next.approvalSubjectOrgId, ...next.adjustmentRange], next.effectiveDate);
   if (patch.adjustmentRange || patch.effectiveDate) await assertItemsInRange(tx, ctx.tenantId, next);
@@ -114,6 +130,9 @@ export async function voidAdjustment(tx: Tx, ctx: WriteContext, id: string): Pro
     WHERE tenant_id = ${ctx.tenantId} AND id = ${id}`);
   const view = (await loadAdjustment(tx, ctx.tenantId, id))!;
   await audit(tx, ctx, 'org-adjustment.void', before, view);
+  // 已驳回单作废：退回中的实例同事务结束（§3）；动态导入避开 审批引擎 ↔ 适配器 的循环依赖
+  const { cancelReturned } = await import('./submission.js');
+  await cancelReturned(tx, ctx, id);
   return view;
 }
 
@@ -185,7 +204,7 @@ async function nextCode(tx: Tx, ctx: WriteContext): Promise<string> {
 export function audit(tx: Tx, ctx: WriteContext, action: string, before: AdjustmentView | null, after: AdjustmentView) {
   return recordAudit(tx, {
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    actorUserId: ctx.actorUserId === undefined ? auditActor(ctx.userId) : ctx.actorUserId,
     action,
     objectType: 'org-adjustment',
     objectId: after.id,

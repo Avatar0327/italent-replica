@@ -158,8 +158,24 @@ export function withdrawGuard(deps: TenantRouteDeps, ctx: TenantContext, instanc
       // 意向退休申请：在撤回按钮 / 员工范围前置之外，再过写范围（申请时部门快照 + 发起人），两道都过才执行
       if (instance.businessType === 'retirement_intention')
         await authorizeIntentionApproval(tx, deps, ctx, instance.businessId);
+      if (instance.businessType === 'org_adjustment') await orgAdjustmentOwner(tx, deps, ctx, instance, 'withdraw');
     },
   };
+}
+
+/**
+ * 组织调整（R2-T08 §6.3，BE-10c）：审批中心撤回 / 重提与申请单路由 11 / 10 同一口径——撤回无按钮，重提按提交判编辑按钮
+ * 与全部明细涉及的组织；都锁申请单后判主体组织与调整范围。动态加载：组织调整适配器在审批模块的静态依赖链上。
+ */
+async function orgAdjustmentOwner(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: TenantContext,
+  instance: { readonly businessId: string },
+  mode: 'withdraw' | 'resubmit',
+) {
+  const { authorizeOwnerOf } = await import('../org-adjustment/submission.js');
+  await authorizeOwnerOf(tx, deps, ctx, instance.businessId, mode);
 }
 
 /**
@@ -179,6 +195,7 @@ export function resubmitGuard(
         await requireAssessmentResubmitRight(tx, deps, ctx, instance.businessId, corrections);
       if (instance.businessType === 'retirement_intention')
         await authorizeIntentionApproval(tx, deps, ctx, instance.businessId, { fields: corrections });
+      if (instance.businessType === 'org_adjustment') await orgAdjustmentOwner(tx, deps, ctx, instance, 'resubmit');
     },
   };
 }
@@ -197,6 +214,8 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
     await withTenant(deps.db, ctx.tenantId, (tx) => requireOfferOwnerRight(deps, ctx, tx, instanceId));
     return;
   }
+  // 组织调整：撤回没有按钮，权限只在命令守卫内（锁申请单后）判，见 withdrawGuard
+  if (instance.businessType === 'org_adjustment') return;
   // 发展计划（DEC-318 K-39）：所有者撤回按计划的编辑权、编辑按钮与 IDP 范围复核（IDP 没有单独的撤回按钮）
   const objectCode =
     instance.businessType === 'contract'
