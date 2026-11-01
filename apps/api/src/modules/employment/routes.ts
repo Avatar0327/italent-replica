@@ -117,7 +117,11 @@ import {
 import { installPartTime } from './part-time/install.js';
 import { registerPartTimeRequestRoutes } from './part-time/request-routes.js';
 import { registerPartTimeRoutes } from './part-time/routes.js';
-import { isRegularizationEntryKind } from './regularization.js';
+import {
+  isRegularizationEntryKind,
+  patchedProbationResult,
+  updateRegularizationApplication,
+} from './regularization.js';
 import { installExitAccount } from './exit-account-hooks.js';
 import { registerExitAccountRoutes } from './exit-account-routes.js';
 
@@ -363,6 +367,43 @@ function registerInheritancePreview(router: Hono<TenantEnv>, deps: TenantRouteDe
   });
 }
 
+/** 拆掉试用结果后什么都没剩的请求体（F-347 c：只改试用结果）。 */
+const isEmptyBody = (value: unknown) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length;
+
+/** F-347 c：转正申请可带试用结果（转正控制项，不进任职字段校验与字段权限）；只带它时其余修改为空。 */
+async function readBusinessPatch(c: Context<TenantEnv>) {
+  const split = splitProbationResult(await jsonBody(c));
+  const raw = split.probationResult;
+  const result = raw === undefined ? undefined : parse(patchedProbationResult, raw);
+  const onlyResult = result !== undefined && isEmptyBody(split.rawInput);
+  return { result, onlyResult, input: onlyResult ? {} : normalizeBusinessPatch(split.rawInput) };
+}
+type BusinessPatch = Awaited<ReturnType<typeof readBusinessPatch>>;
+/** 命令事务内：按调动目标复核上下文后改单；带试用结果的转正申请走 updateRegularizationApplication（F-347 c）。 */
+async function applyBusinessPatch(tx: Tx, context: EmploymentContext, id: string, patch: BusinessPatch) {
+  const { input, result, onlyResult } = patch;
+  const departmentId = input.fields?.departmentId;
+  let checked = await transferBusinessContext(
+    tx,
+    { ...context, transferTarget: undefined },
+    id,
+    'command',
+    departmentId,
+    input,
+  );
+  if (departmentId !== undefined && checked.transferTarget)
+    checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
+  if (result === undefined) return updateEmploymentBusiness(tx, checked, id, input);
+  return updateRegularizationApplication(tx, checked, id, onlyResult ? null : input, result);
+}
+function requireResultApplicable(result: string | undefined, kind: string) {
+  if (result !== undefined && kind !== 'regularization')
+    throw new AppError('VALIDATION_FAILED', '只有转正业务可修改试用结果', {
+      reason: 'PROBATION_RESULT_NOT_APPLICABLE',
+    });
+}
+
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
@@ -388,14 +429,17 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.patch('/businesses/:id', async (c) => {
     const id = uuidParam(c);
     let ctx = await readContext(c, deps, 'object.update', revision(c));
-    const input = normalizeBusinessPatch(await jsonBody(c));
+    const patch = await readBusinessPatch(c);
+    const { result, input } = patch;
+    const options = { commandOnly: patch.onlyResult };
     ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
       transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
+    requireResultApplicable(result, current.kind);
     const exitTarget = { employeeId: current.employeeId, kind: current.kind };
     await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
-    await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
+    await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options);
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
       ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
@@ -407,20 +451,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       c,
       deps,
       ctx,
-      input,
-      async (tx, context) => {
-        let checked = await transferBusinessContext(
-          tx,
-          { ...context, transferTarget: undefined },
-          id,
-          'command',
-          departmentId,
-          input,
-        );
-        if (departmentId !== undefined && checked.transferTarget)
-          checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
-        return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
-      },
+      result === undefined ? input : { ...input, probationResult: result },
+      async (tx, context) => ({ status: 200, body: await applyBusinessPatch(tx, context, id, patch) }),
       {
         guard: isExitKind(current.kind)
           ? exitCommandGuard(deps, ctx, 'update', { ...exitTarget, patch: input }, { businessId: id })
@@ -431,7 +463,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               referenceChange: input,
               authorize: async (tx, scoped) => {
                 await requireEmployeeTransferBusiness(tx, scoped, id, input);
-                await requireEmploymentWrite(scoped, 'update', input, 'Employment.Edit');
+                await requireEmploymentWrite(scoped, 'update', input, 'Employment.Edit', undefined, options);
                 if (departmentId !== undefined)
                   await requireScopedEmploymentObject(tx, scoped, current.employeeId, departmentId, id);
               },

@@ -18,8 +18,8 @@ export interface Readback {
   verify?(latest: Values): void;
 }
 export interface Send {
-  /** 编辑试用期是 PUT（共享客户端）；其余入口 POST，经局部通道保留 details.reason。 */
-  method?: 'POST' | 'PUT';
+  /** 编辑试用期、暂存是 PUT（共享客户端）；草稿单修改 PATCH 与其余入口 POST 经局部通道保留 details.reason。 */
+  method?: 'POST' | 'PUT' | 'PATCH';
   path: string;
   /** POST /regularizations 不读 If-Match（员工 revision 逐人在请求体里）。 */
   ifMatch?: boolean;
@@ -81,7 +81,7 @@ export function useProbationCommand(resource: string, target: Target, action: st
     const sent = send.ifMatch === false ? { ...command, revision: undefined } : command;
     return send.method === 'PUT'
       ? api.request<Values>(send.path, { method: 'PUT', command: sent })
-      : post(send.path, 'POST', sent);
+      : post(send.path, send.method ?? 'POST', sent);
   };
   return {
     ...cmd,

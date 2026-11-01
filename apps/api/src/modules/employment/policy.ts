@@ -2083,6 +2083,38 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
+  // 转正申请暂存（F-347，DEC-709）：读写同一口径：readContext('object.create', resource=id) 写入口径人员范围 404
+  // 「任职数据不存在」+ requireEmploymentWrite('create', {}, Employment.Create, 命令式：暂存内容是转正控制项不进字段协议）；
+  // 不在职 404；回执固定形状 { id, employeeId, revision, temporary, applicationId }
+  'GET /employees/:id/regularization-draft': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: fixed(
+      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
+      'F-347 暂存投影固定键（regularization-drafts.ts）',
+    ),
+    ...byId,
+  }),
+  // 暂存写入：If-Match = 暂存 revision（没有时 0，409 REVISION_CONFLICT）；body 严格 { effectiveDate?, probationResult? }
+  // （400，不校验必填；结果须为字典启用项 400）；覆盖写同一份，不建单、不发起审批；CommandGuard.before 在命令事务内
+  // 复核对象新增权、按钮与员工范围（probationWriteGuard）；不写任职记录，没有直接操作 / 联动守卫
+  'PUT /employees/:id/regularization-draft': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: fixed(
+      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
+      'F-347 暂存投影固定键（regularization-drafts.ts）',
+    ),
+    write: employmentWrite('body.fields+customFields', ['assertRevision'], {
+      commandOnly: true,
+      controls: ['effectiveDate', 'probationResult'],
+    }),
+    ...byId,
+  }),
   // 单个 / 批量转正（B7 / B8，PB-R8）：不要求 If-Match（items[*].revision 逐人比对员工 revision）；body 严格
   // { mode, effectiveDate?, probationResult, items[1～100] }，同一员工重复 400；试用结果须为字典启用项（400）；
   // requireEmploymentWrite('create', { kind, mode, effectiveDate? }, Employment.Create)；命令内逐人保存点：员工范围
