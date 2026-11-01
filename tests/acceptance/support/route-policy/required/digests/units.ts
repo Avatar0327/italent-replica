@@ -26,6 +26,13 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-dashboard': '3f0859908cca',
     'route:GET /api/tenant/analytics/hr-dashboard/indicators/:code': '34d6b762af0b',
   },
+  'apps/api/src/modules/analytics/hr-movement-routes.ts': {
+    boardContext: 'aa4bc1989f2b',
+    reportContext: '8ca27169ea99',
+    'route:GET /api/tenant/analytics/hr-movement': '0daf25180cc3',
+    'route:GET /api/tenant/analytics/hr-movement/components/:code': '75ea7df1450c',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'b00c87dd8fb3',
+  },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
     reportContext: '33293fcda1ae',
@@ -1633,6 +1640,10 @@ export const DIGESTS: Digests = {
   'packages/domain/src/analytics/hr-dashboard.ts': {
     HR_DASHBOARD_OBJECT: 'fd210121ca03',
   },
+  'packages/domain/src/analytics/hr-movement.ts': {
+    HR_MOVEMENT_OBJECT: '28e679058073',
+    HR_MOVEMENT_REPORT_OBJECT: '484824015f7c',
+  },
   'packages/domain/src/analytics/hr-structure.ts': {
     CONTRACT_BOARD_OBJECT: 'd8404150dfe9',
     HR_STRUCTURE_OBJECT: 'b811df5b64eb',
@@ -1763,6 +1774,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': 'bbddc4840c46',
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard/indicators/:code':
     '980851c99aab',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#boardContext': '75939c8efcfb',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#reportContext': '3b25725172cf',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement': 'c00629251c2e',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
+    'baaf86cd576d',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
+    'a95f3d2b4cbf',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
@@ -2944,6 +2962,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/transfer/service.ts#transferBusinessContext': 'c7b31c61e80d',
   'apps/api/src/modules/transfer/service.ts#transferTargetContext': '1f7f71f7d487',
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_REPORT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT': 'e3b0c44298fc',

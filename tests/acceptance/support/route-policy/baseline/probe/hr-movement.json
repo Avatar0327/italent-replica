@@ -1,0 +1,42 @@
+{
+  "GET /api/tenant/analytics/hr-movement": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrMovement/TenantBase.HrMovement.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrMovement:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-movement/components/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "172d83b2672c",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrMovement/TenantBase.HrMovement.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrMovement:view"
+    ]
+  },
+  "GET /api/tenant/analytics/hr-movement/reports/:report": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "409ae0b268e4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrMovementReport/TenantBase.HrMovementReport.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrMovementReport:view"
+    ]
+  }
+}
