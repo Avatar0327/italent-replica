@@ -16,7 +16,7 @@ import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { BusinessKind, EmploymentContext, EmploymentScope } from './types.js';
 
 export type ActivationOutcome = 'effective' | 'failed' | 'suspended' | 'replanned';
-export type ActivationTrigger = 'scheduler' | 'retry' | 'approval';
+export type ActivationTrigger = 'scheduler' | 'retry' | 'approval' | 'retirement_change';
 /** DEC-112：因前序业务失败挂起。 */
 export const PREDECESSOR_FAILED = 'PREDECESSOR_FAILED';
 /** DEC-278③：迟到执行区间内另有记录，需重建、待 HR 处理（late-transfer.ts 判定）。 */

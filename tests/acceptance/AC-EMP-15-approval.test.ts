@@ -69,7 +69,7 @@ async function scene(label: string) {
     nodes: [
       {
         key: 'out_head',
-        approver: 'latest_record_department_head',
+        approver: { type: 'department', value: 'latest_record_department_head' },
         formFields: ['departmentId', 'directManagerId', 'effectiveDate'],
         editableFields: ['directManagerId'],
         editMode: 'separate',

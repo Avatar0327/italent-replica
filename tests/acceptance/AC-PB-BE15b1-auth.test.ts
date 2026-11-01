@@ -4,7 +4,7 @@
  *   任何一项被拒都是 403 且不写入；
  * - 审批人“考核 - 考核对象本人”只能用于试用中考核 / 转正考核；考核两类审批也不能选 Offer、IDP 专用取值。
  */
-import { PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
+import { PROBATION_ASSESSMENT_OBJECT, approverSource, type ApproverExpression } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { assessmentWorld, reasonOf, type LaunchReceipt } from './AC-PB-BE15b1-support.js';
@@ -58,14 +58,14 @@ describe('AC-PB-01 考核对象权限（DEC-080）', () => {
 });
 
 describe('AC-PB-01 审批人取值的类型限制（DEC-094）', () => {
-  const process = (approvalType: string, approver: string) => ({
+  const process = (approvalType: string, approver: ApproverExpression) => ({
     code: `PB15_${approvalType}_${approver}`.slice(0, 60),
     name: '合成流程',
     approvalType,
     exceptionAdminUserId: null,
     isFallback: true,
     conditions: { items: [] },
-    nodes: [{ key: 'n1', approver }],
+    nodes: [{ key: 'n1', approver: approverSource(approver) }],
   });
 
   it('“考核对象本人”只用于两类考核；考核两类不能选 Offer / IDP 专用取值', async () => {
@@ -78,7 +78,7 @@ describe('AC-PB-01 审批人取值的类型限制（DEC-094）', () => {
       ['regularization_assessment', 'offer_department_head'],
     ] as const) {
       expect(await reasonOf(await post(process(type, approver))), `${type}/${approver}`).toMatchObject({
-        status: 400,
+        status: 422,
         reason: 'APPROVAL_DEFINITION_INVALID',
       });
     }

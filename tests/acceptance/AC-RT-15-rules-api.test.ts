@@ -1,7 +1,7 @@
 /**
  * R2 BE-5c1a（R2-T04 §9.1 / §12.1，DEC-640、DEC-638 A-4 / A-9 / A-20、DEC-636 c4；AC-RT-03 / 15 的配置侧）：
  * - 预计退休日期规则（purpose = expected_date，rule_type = fixed_age）的增删改查、复制、单条启停；
- *   条件只有性别、国籍、雇佣关系（必填）、个人身份四个固定槽位，操作符只有 in；没有“提前 / 延迟 N 月”两列；
+ *   原有性别、国籍、雇佣关系（必填）、个人身份槽位保持；F-263 补用工形式，操作符只有 in；
  * - 个人身份字典预置工人 = 10、干部 = 20，只读（无 POST / PUT）；规则条件与人事 identityType 只能取启用编码；
  * - 三个租户配置项 retirement.auto_expected_date / auto_flexible_range / upcoming_days。
  */
@@ -245,7 +245,7 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
     expect((await errorOf(response)).details?.reason).toBe('ORG_NOT_FOUND');
   });
 
-  it('条件：雇佣关系槽位必填；只开放四个槽位；操作符只有 in；每槽至多一条', async () => {
+  it('条件：雇佣关系槽位必填；原有四槽兼容；操作符只有 in；每槽至多一条', async () => {
     const w = await world('conditions');
     const only = (conditions: unknown) => w.body({ conditions });
     const cases: [string, unknown][] = [
@@ -255,10 +255,10 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
       ['not_in 不开放', [{ fieldCode: 'employType', operator: 'not_in', values: ['internal'] }]],
       ['is_empty 不开放', [{ fieldCode: 'employType', operator: 'is_empty', values: [] }]],
       [
-        '未知槽位（用工形式 / 人员类别未实现）',
+        '人员类别后补 F-323',
         [
           { fieldCode: 'employType', operator: 'in', values: ['internal'] },
-          { fieldCode: 'employmentForm', operator: 'in', values: ['a'] },
+          { fieldCode: 'employmentType', operator: 'in', values: ['a'] },
         ],
       ],
       [

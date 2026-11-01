@@ -39,8 +39,16 @@ describe('AC-APV-16 驳回意见必填（节点开关，出厂关）', () => {
     const s = await transferScene(w);
     const process = await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', rejectCommentRequired: true },
-        { key: 'in_head', approver: 'record_department_head', rejectResubmit: 'rejecting_node' },
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          rejectCommentRequired: true,
+        },
+        {
+          key: 'in_head',
+          approver: { type: 'department', value: 'record_department_head' },
+          rejectResubmit: 'rejecting_node',
+        },
       ],
     });
     expect(process.currentVersion!.nodes[1]).toMatchObject({ rejectCommentRequired: false });
@@ -83,10 +91,14 @@ describe('转交、加签、催办、撤销（节点动作开关与消息规则�
     const delegate = await w.member('转交对象');
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', actions: { urge: 'inherit' } },
+        {
+          key: 'out_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          actions: { urge: 'inherit' },
+        },
         {
           key: 'in_head',
-          approver: 'record_department_head',
+          approver: { type: 'department', value: 'record_department_head' },
           actions: { transfer: true, addSign: true, urge: 'inherit' },
           messageRules: [
             {

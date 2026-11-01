@@ -19,4 +19,14 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-577', 'DEC-045', 'DEC-464', 'DEC-502'],
     level: 'L2',
   },
+  'exit-account-stop': {
+    original:
+      '帮助中心目录里“账号停用时间”与“延迟离职生效时间”同属离职退休设置；本租户没有该入口，版式无截图（DM-R9）。',
+    decision:
+      '作为离职退休设置的第 4 个页签，一张表单：提前停用开关（默认关），开启后必填停用依据与停用时间（HH:mm），' +
+      '另有“审批中也停用”；关闭提前停用时依据与时间提交空。只有租户管理员（其他设置）可保存，其余只读。' +
+      '页签位置、版式与默认值未验证；账号处理任务列表与重试不在本页。',
+    decisions: ['DEC-685', 'DEC-684', 'DEC-577', 'DEC-045', 'DEC-502'],
+    level: 'L2',
+  },
 };

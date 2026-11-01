@@ -13,7 +13,7 @@ import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js'
 import { approvalError, rowsOf, type ApprovalContext } from '../approval/context.js';
 import { lockHandoverRequest, settleHandoverFromApproval } from './exit-handover.js';
 import { loadHandoverRequest } from './exit-handover-store.js';
-import { findCurrentRecord } from './read-model.js';
+import { findCurrentRecord, loadEmploymentBusiness } from './read-model.js';
 import { loadExitRequest } from './exit-gate.js';
 import type { EmploymentContext } from './types.js';
 
@@ -29,11 +29,18 @@ async function snapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<Busin
     await tx.execute(sql`SELECT code, name FROM employment_employees
       WHERE tenant_id=${ctx.tenantId} AND id=${row.employeeId}::uuid`),
   );
+  const business = await loadEmploymentBusiness(
+    tx,
+    ctx.tenantId,
+    row.exitRequestId,
+    tenantLocalDate(ctx.now, ctx.timezone),
+  );
   const current = await findCurrentRecord(tx, ctx.tenantId, row.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
   return {
     approvalType: 'exit_handover',
     businessType: 'exit_handover',
     businessId: id,
+    businessDate: business?.effectiveDate,
     fieldObjectCode: HANDOVER_OBJECT,
     profileFields: [],
     subjectEmployeeId: row.employeeId,

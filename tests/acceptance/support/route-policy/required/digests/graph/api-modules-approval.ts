@@ -707,6 +707,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
   ],
   'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -751,9 +752,9 @@ export const GRAPH: Graph = {
     '#codeList',
     '#emptyApproverPolicy',
     '#messageRule',
+    '#sourceSchema',
     '#text',
     '#transitionRule',
-    'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
     'packages/domain/src/approval/types.ts#AUTO_RESULTS',
     'packages/domain/src/approval/types.ts#EDIT_MODES',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_LIMIT',
@@ -763,11 +764,18 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#REJECT_RESUBMIT_MODES',
     'packages/domain/src/approval/types.ts#URGE_MODES',
   ],
+  'apps/api/src/modules/approval/definition-input.ts#sourceSchema': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    '#text',
+    'packages/domain/src/approval/sources.ts#APPROVER_SOURCE_TYPES',
+  ],
   'apps/api/src/modules/approval/definition-input.ts#toDefinition': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#assertEmptyApproverPolicies',
     '#nodeTypeViolations',
     '#toNode',
+    'packages/domain/src/approval/definition.ts#approverSourceViolations',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
     'packages/domain/src/approval/definition.ts#definitionViolations',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
@@ -783,8 +791,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/definitions.ts#assertFallbackUsers': [
     'apps/api/src/modules/approval/context.ts#approvalError',
-    'apps/api/src/modules/approval/context.ts#rowsOf',
-    '#uuidArray',
+    'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
   ],
   'apps/api/src/modules/approval/definitions.ts#assertUniquePriority': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -886,7 +893,11 @@ export const GRAPH: Graph = {
     '#nodeTypeColumns',
     '#textArray',
     '#uuidArray',
+    'apps/api/src/modules/approval/source-reference.ts#assertSourceReferences',
+    'packages/domain/src/approval/definition.ts#approverSourceViolations',
     'packages/domain/src/approval/definition.ts#avoidSubjectsViolations',
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
     'packages/domain/src/approval/types.ts#DEFAULT_AVOID_SUBJECTS_RESULT',
     'packages/domain/src/approval/types.ts#avoidsSelf',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
@@ -895,6 +906,35 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#rejectAllowed',
     'packages/domain/src/approval/types.ts#rejectToPreviousAllowed',
     'packages/domain/src/approval/types.ts#revokeAllowed',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#currentDate': [
+    'apps/api/src/audit/request-context.ts#currentAuditRequest',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#currentDate',
+    'apps/api/src/modules/employment/org-people.ts#activeEmployees',
+  ],
+  'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople': ['#eligibleDesignerPeople'],
+  'apps/api/src/modules/approval/designer-people.ts#querySchema': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+  ],
+  'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
+    'apps/api/src/modules/approval/source-reference.ts#jobReferenceRows',
+    'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
+    'apps/api/src/modules/approval/source-reference.ts#sourceDimension',
+  ],
+  'apps/api/src/modules/approval/designer-sources.ts#querySchema': [
+    'apps/api/src/modules/approval/context.ts#canonicalId',
+    'apps/api/src/modules/org/read-model.ts#validIsoDate',
+    'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
@@ -981,7 +1021,9 @@ export const GRAPH: Graph = {
     '#routingFacts',
     '#routingSubject',
     'apps/api/src/modules/approval/recusal.ts#recusalFactsOf',
+    'apps/api/src/modules/approval/source-resolver.ts#previousApproved',
     'apps/api/src/modules/approval/store.ts#loadTasks',
+    'packages/domain/src/approval/policies.ts#effectiveHistory',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/engine.ts#afterNodeApproved': [
@@ -1025,6 +1067,7 @@ export const GRAPH: Graph = {
     '#noAssignee',
     '#seatOf',
     '#seatUser',
+    'apps/api/src/modules/approval/source-resolver.ts#limitApprovers',
   ],
   'apps/api/src/modules/approval/engine.ts#currentRouting': [
     '#nodeIndex',
@@ -1034,8 +1077,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#loadTasks',
   ],
   'apps/api/src/modules/approval/engine.ts#decide': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/resolver.ts#directManagerOf',
-    'apps/api/src/modules/approval/resolver.ts#resolveCandidate',
+    'apps/api/src/modules/approval/source-resolver.ts#resolveSource',
     'packages/domain/src/approval/routing.ts#decideNode',
   ],
   'apps/api/src/modules/approval/engine.ts#endDisapproved': [
@@ -1163,6 +1207,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#cancelPending',
   ],
   'apps/api/src/modules/approval/engine.ts#routingFacts': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrievedApprovals',
     'packages/domain/src/approval/policies.ts#effectiveHistory',
     'packages/domain/src/approval/policies.ts#previousNodeComparand',
   ],
@@ -1212,13 +1257,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': [
+    'packages/domain/src/approval/sources.ts#expressionValue',
     'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
   ],
   'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers': [
     '#decideHandoverApprovers',
-    'apps/api/src/modules/approval/resolver.ts#resolveCandidates',
     'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    'apps/api/src/modules/approval/source-resolver.ts#resolveSource',
   ],
   'apps/api/src/modules/approval/handover.ts#assertTenantMember': [
     'apps/api/src/modules/approval/context.ts#approvalError',
@@ -1434,11 +1480,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/resolver.ts#orgRole': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#personOfUser': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#resolveCandidate': ['#memo', '#resolveFresh'],
-  'apps/api/src/modules/approval/resolver.ts#resolveCandidates': [
-    '#resolveCandidate',
-    '#resolveFallbackCandidates',
-    'packages/domain/src/approval/types.ts#HANDOVER_FALLBACK_APPROVERS',
-  ],
   'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates': [
     '#isEligibleApprover',
     '#memo',
@@ -1531,6 +1572,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/definitions.ts#newVersion',
     'apps/api/src/modules/approval/definitions.ts#publishProcess',
     'apps/api/src/modules/approval/definitions.ts#replaceDraft',
+    'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
+    'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
+    'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
+    'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
     '#command',
     '#processResponse',
     '#readCtx',
@@ -1593,6 +1638,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/queries.ts#listAdminLogs',
     '#readCtx',
     'apps/api/src/modules/job/context.ts#pageQuery',
+  ],
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/person-candidates': [
+    'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    'apps/api/src/modules/approval/designer-people.ts#designerPeopleQuery',
+    'apps/api/src/modules/approval/designer-people.ts#listDesignerPeople',
+    '#readCtx',
+  ],
+  'apps/api/src/modules/approval/routes.ts#route:GET /designer/source-candidates': [
+    'apps/api/src/modules/approval/access.ts#requireProcessButton',
+    'apps/api/src/modules/approval/designer-sources.ts#designerSourcesQuery',
+    'apps/api/src/modules/approval/designer-sources.ts#listDesignerSources',
+    '#readCtx',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
     'apps/api/src/modules/approval/queries.ts#listInstances',
@@ -1869,17 +1926,101 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/conditions.ts#evaluateCondition',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
-  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': ['#describe'],
+  'apps/api/src/modules/approval/simulation.ts#simulatedSeats': [
+    '#describe',
+    'apps/api/src/modules/approval/source-resolver.ts#limitApprovers',
+  ],
   'apps/api/src/modules/approval/simulation.ts#virtualDecisions': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers',
     '#NOBODY',
-    '#candidateOf',
     '#decideVirtual',
     '#virtualCandidate',
-    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+    '#virtualSources',
+    'packages/domain/src/approval/sources.ts#approverSourcesOf',
     'packages/domain/src/approval/types.ts#isCountersign',
   ],
   'apps/api/src/modules/approval/simulation.ts#virtualFacts': ['packages/domain/src/approval/recusal.ts#recusalFacts'],
+  'apps/api/src/modules/approval/simulation.ts#virtualSources': [
+    '#virtualCandidate',
+    'packages/domain/src/approval/sources.ts#expressionValue',
+    'packages/domain/src/approval/sources.ts#sourceKey',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#assertSourceReferences': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#dimensionEnabled',
+    '#orgDimensionMember',
+    '#sourceTable',
+    'packages/domain/src/approval/sources.ts#relationSource',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled': [
+    'apps/api/src/modules/org/settings.ts#readOrgSettings',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows': ['#historicalParent', '#orgDimensionMember'],
+  'apps/api/src/modules/approval/source-reference.ts#sourceDimension': [
+    'packages/domain/src/approval/sources.ts#SOURCE_DIMENSIONS',
+  ],
+  'apps/api/src/modules/approval/source-reference.ts#sourceTable': ['#sourceDimension'],
+  'apps/api/src/modules/approval/source-relations.ts#eligiblePerson': [
+    'apps/api/src/modules/approval/designer-people.ts#eligibleDesignerPeople',
+    'apps/api/src/modules/approval/resolver.ts#candidateOf',
+    'apps/api/src/modules/approval/resolver.ts#memo',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#jobHolders': [
+    '#ancestors',
+    '#eligiblePerson',
+    '#jobPeople',
+    '#orgGraph',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'apps/api/src/modules/job/read-model.ts#loadJobObject',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#jobPeople': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/source-relations.ts#orgGraph': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#organization': [
+    'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
+    '#ancestors',
+    '#eligiblePerson',
+    '#orgGraph',
+  ],
+  'apps/api/src/modules/approval/source-relations.ts#resolveRelation': [
+    '#jobHolders',
+    '#organization',
+    'packages/domain/src/approval/sources.ts#relationSource',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#fixed': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    'apps/api/src/modules/approval/resolver.ts#resolveCandidate',
+    'packages/domain/src/approval/sources.ts#expressionValue',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#limitApprovers': [
+    'packages/domain/src/approval/sources.ts#sampleApprovers',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#objectField': [
+    'apps/api/src/modules/approval/resolver.ts#candidateOf',
+    '#fixed',
+    '#nobody',
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#previousApproved': [
+    'apps/api/src/modules/approval/task-history.ts#actualApprovals',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#resolveSource': [
+    'apps/api/src/modules/approval/context.ts#approvalError',
+    '#nobody',
+    '#resolvers',
+    'packages/domain/src/approval/sources.ts#sourceViolation',
+  ],
+  'apps/api/src/modules/approval/source-resolver.ts#resolvers': [
+    'apps/api/src/modules/approval/resolver.ts#resolveFallbackCandidates',
+    'apps/api/src/modules/approval/source-relations.ts#resolveRelation',
+    '#fixed',
+    '#objectField',
+    'packages/domain/src/approval/sources.ts#expressionValue',
+  ],
   'apps/api/src/modules/approval/store.ts#activateTask': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#assertPendingRoom',
@@ -1983,6 +2124,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/subjects.ts#unknownSubject': [
     'apps/api/src/modules/approval/context.ts#approvalError',
   ],
+  'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrievedApprovals'],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/instance-state.ts#isActiveInstance',

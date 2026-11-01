@@ -1,9 +1,11 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect, snapshotFixture, tenant, user } from './fixtures.js';
+import { listFixture, offerPermission, offerRow } from './offer-list-fixture.js';
 import { mailFixture, mailRow, sentMailRow } from './offer-mail-fixture.js';
 
 const named = (name: string) => ({ name, exact: true });
-test.beforeEach(async ({ context, baseURL }) => {
+test.beforeEach(async ({ page, context, baseURL }) => {
+  await page.unroute('**/api/tenant/**');
   await context.addCookies([
     { name: 'italent_demo_tenant', value: tenant, url: baseURL! },
     { name: 'italent_demo_user', value: user, url: baseURL! },
@@ -12,11 +14,16 @@ test.beforeEach(async ({ context, baseURL }) => {
   await context.route('**/api/tenant/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/permission/me/snapshot')) return route.fulfill({ json: snapshotFixture });
-    if (path.includes('/permission/me/objects/'))
-      return route.fulfill({ json: { dataOperations: { read: true }, viewableFields: ['name'], buttons: [] } });
+    if (path.includes('/permission/me/objects/')) return route.fulfill({ json: offerPermission });
     if (path.endsWith(`/offers/${mailRow.id}/mail`)) return route.fulfill({ json: mailFixture });
     if (path.endsWith(`/offers/${sentMailRow.id}/mail`))
       return route.fulfill({ json: { ...mailFixture, offerId: sentMailRow.id, name: sentMailRow.name } });
+    if (path.endsWith('/offers')) {
+      const view = new URL(route.request().url()).searchParams.get('view');
+      return route.fulfill({
+        json: listFixture([view === 'onboarded' ? mailRow : view === 'sent' ? sentMailRow : offerRow]),
+      });
+    }
     return route.fulfill({ json: { items: [] } });
   });
 });
@@ -47,7 +54,7 @@ test('AC-FE-F234 已入职行打开新标签，列表保留，详情显示真实
 
 test('AC-FE-F234 下拉邮件入口同样打开新标签，待发没有邮件入口', async ({ page, context }) => {
   await page.goto('/offers');
-  await page.getByRole('row').filter({ hasText: '合成社招甲' }).getByRole('button', named('行操作')).click();
+  await page.getByRole('row').filter({ hasText: offerRow.name }).getByRole('button', named('行操作')).click();
   await expect(page.getByRole('menuitem', named('查看Offer邮件'))).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByRole('button', named('已发Offer')).click();

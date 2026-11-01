@@ -7,6 +7,9 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
+import { ACCOUNT_STOP_TAB } from './account-stop.js';
+import { a } from './account-stop-messages.js';
+import { AccountStopSettings } from './AccountStopSettings.js';
 import { exitStore } from './commands.js';
 import { DictionaryForm, RowCommands } from './DictionaryCommands.js';
 import { m } from './messages.js';
@@ -33,16 +36,17 @@ export function ExitSettingsPage() {
 function DictionaryTabs() {
   const { kind } = useParams();
   const navigate = useNavigate();
-  if (!isKind(kind)) return <PageState kind="not-found" />;
+  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB) return <PageState kind="not-found" />;
   return (
     <section className="exit-card">
       <Tabs
         activeKey={kind}
         // 相对当前页签切换，不写死入口路径（入口 id 由 pages.ts 登记）。
         onChange={(key) => void navigate(`../${key}`, { relative: 'path' })}
-        items={KINDS.map((key) => ({ key, label: m.dictionaries[key] }))}
+        // F-327：账号停用时间排在三个字典之后（帮助中心目录同属离职退休设置，位置未验证）。
+        items={[...KINDS.map((key) => ({ key, label: m.dictionaries[key] })), { key: ACCOUNT_STOP_TAB, label: a.tab }]}
       />
-      <Dictionary key={kind} kind={kind} />
+      {isKind(kind) ? <Dictionary key={kind} kind={kind} /> : <AccountStopSettings />}
     </section>
   );
 }

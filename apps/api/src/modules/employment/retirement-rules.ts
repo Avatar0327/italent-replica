@@ -2,7 +2,7 @@
  * R2 BE-5c1a / 5c1b 预计退休日期与弹性范围规则（R2-T04 §2.4 / §9.1 / §9.1A，DEC-640、DEC-641、DEC-636 c4）：
  * 规则增删改查、复制、单条启停，挂在任职设置配置对象上（tenant.employment.configuration.write，管理员 other_settings），
  * 审计 retirement_rule.save / delete / enabled。purpose = expected_date | flexible_range；rule_type = fixed_age（仅预计日期）
- * | builtin（选用内置法定函数）；条件是四个固定槽位（性别、国籍、雇佣关系（必填）、个人身份），每槽至多一条、操作符只有 in。
+ * | builtin（选用内置法定函数）；条件为性别、国籍、雇佣关系（必填）、个人身份、用工形式，每槽至多一条、操作符只有 in。
  * 预置法定规则（preset，覆盖全公司）不可编辑 / 删除，可启停、可复制。本批没有任何定时或立即执行入口，规则只能配置；
  * loadRetirementRulesForRun 把启用规则展开成纯函数入参，留给 5c2。
  */
@@ -32,6 +32,7 @@ import { auditActor } from '../../system-actor.js';
 import { requireEnabledIdentityTypes } from '../personnel/identity-types.js';
 import { assertOrgsExist, expandRuleScopes } from './auto-regularization-rules.js';
 import { assertRevision } from './context.js';
+import { requireEnabledEmploymentForms } from './employment-forms.js';
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -62,7 +63,10 @@ export interface RetirementRuleView {
 }
 
 const conditionInput = z.strictObject({
-  fieldCode: z.enum(RETIREMENT_CONDITION_FIELDS),
+  fieldCode: z.enum(RETIREMENT_CONDITION_FIELDS, {
+    error: (issue) =>
+      issue.input === 'employmentType' ? '人员类别条件暂不支持，后补 F-323' : '退休规则条件槽位暂不支持',
+  }),
   operator: z.literal('in'),
   values: z
     .array(
@@ -287,6 +291,9 @@ async function lockedRule(tx: Tx, ctx: EmploymentContext, id: string, mutate: bo
 }
 
 async function replaceConditions(tx: Tx, tenantId: string, ruleId: string, conditions: readonly RetirementCondition[]) {
+  // DEC-684⑤：新增、编辑与复制统一校验整组编码；停用不追溯改写已保存规则，不参与计算时校验。
+  const forms = conditions.find((condition) => condition.fieldCode === 'employmentForm');
+  if (forms) await requireEnabledEmploymentForms(tx, tenantId, forms.values);
   await tx.execute(sql`DELETE FROM retirement_rule_conditions WHERE tenant_id = ${tenantId}
     AND rule_id = ${ruleId}::uuid`);
   for (const condition of conditions)

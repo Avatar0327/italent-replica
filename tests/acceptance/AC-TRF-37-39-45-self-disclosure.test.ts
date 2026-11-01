@@ -92,7 +92,9 @@ beforeAll(async () => {
   postId = await job('original-post', '可信原职务');
   newPostId = await job('outside-post', '范围外职务秘密名称');
   self = await world.person('合成本人', sibling, { postId, directManagerId: outsider.employeeId });
-  await world.publishedProcess({ nodes: [{ key: 'owner_review', approver: 'owner' }] });
+  await world.publishedProcess({
+    nodes: [{ key: 'owner_review', approver: { type: 'custom_variable', value: 'owner' } }],
+  });
   admin = await permissionAdmin(world);
 });
 

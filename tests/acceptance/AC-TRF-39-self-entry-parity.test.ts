@@ -107,7 +107,7 @@ beforeAll(async () => {
     ).id;
   postId = await post('original-post');
   newPostId = await post('changed-post');
-  await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
+  await w.publishedProcess({ nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }] });
 });
 
 describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => {

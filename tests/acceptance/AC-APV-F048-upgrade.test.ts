@@ -50,7 +50,13 @@ it('升级前的在途实例：节点列值保持、无冻结行按单主体回�
         const w = await approvalWorld(handle.db, 'f048-upgrade');
         const s = await transferScene(w);
         const process = await w.publishedProcess({
-          nodes: [{ key: 'out_head', approver: 'latest_record_department_head', actions: { avoidSelf: true } }],
+          nodes: [
+            {
+              key: 'out_head',
+              approver: { type: 'department', value: 'latest_record_department_head' },
+              actions: { avoidSelf: true },
+            },
+          ],
         });
         const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
         return { w, s, process, view: await w.submit(draft) };

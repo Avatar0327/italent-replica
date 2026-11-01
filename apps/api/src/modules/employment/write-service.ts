@@ -8,6 +8,7 @@ import { saveAddedPendingEntryData } from './entry-pending-contract.js';
 import { saveCreatedProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
 import { assertNotBlacklisted } from './blacklist.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { employeeStatusHooks } from './status-hooks.js';
 import {
@@ -25,6 +26,12 @@ import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { assertNotBeforeCurrentCycle } from './cycles.js';
+import {
+  hasPendingRetirement,
+  RETIRE_REHIRE_REQUIRES_RETIREMENT,
+  sequencePredecessorKind,
+} from './retire-rehire-eligibility.js';
+import { alignApprovedRehire, bindRehireRetirement, retirementChanged } from './retire-rehire-waiting.js';
 import { EXIT_GATE_PASS, isExitKind, requireExitGate } from './exit-gate.js';
 import { assertInternRegularizationEligible, resolveInFlightRegularization } from './intern-eligibility.js';
 import { forwardUpdateEmployment } from './forward-update.js';
@@ -186,6 +193,7 @@ export async function createEmploymentBusiness(
   const business = initialBusiness(employee, payload, gatedDirect);
   if (normalized.mode === 'direct' && !gatedDirect) await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
+  await bindRehireRetirement(tx, ctx, business);
   await bumpEmploymentEmployee(tx, ctx, employee);
   // 待入职试用期、待入职合同是字段级变更（DEC-019），随创建进同一条审计（F-188 / F-194）
   const created = { ...payloadAudit(payload), ...pendingAudit };
@@ -337,9 +345,8 @@ export async function updateEmploymentBusiness(
   patch = remaining;
   await requireUnchangedExitDates(tx, ctx, business, patch, options);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
-  if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
+  if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state))
     throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
-  }
   // 审批中的单据只能由审批中心按当前节点的可编辑字段修改，业务端修改一律 409（PR #35 第二轮清单 1）。
   if (business.state === 'in_review' && !options.approvalEdit) {
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
@@ -391,6 +398,7 @@ export async function updateEmploymentBusiness(
     // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
     inheritedStatus(normalized.kind, selected?.predecessor ?? null),
   );
+  await bindRehireRetirement(tx, ctx, business);
   // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
   await auditEmployment(
     tx,
@@ -450,20 +458,26 @@ function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | '
 }
 
 /** 生效日当天及以前最后一条（同日取最后一次操作，DEC-108）决定本业务能否接在其后。 */
-async function assertBusinessSequence(
+export async function assertBusinessSequence(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
-  input: Pick<NormalizedEmploymentInput, 'kind' | 'effectiveDate'>,
+  input: Pick<NormalizedEmploymentInput, 'kind' | 'effectiveDate' | 'mode'>,
   beforeOrder?: number,
 ): Promise<void> {
   // 落地时按实际插入点判断前一条（同日插到中间时不是当日最后一条，DEC-108）。
-  const bound =
-    beforeOrder === undefined
-      ? sql`t.start_date <= ${input.effectiveDate}::date`
-      : sql`(t.start_date, t.sort_order) < (${input.effectiveDate}::date, ${beforeOrder})`;
-  const latest = await latestTimelineRecord(tx, ctx.tenantId, employeeId, bound);
-  const reason = sequenceViolation(latest?.kind, input.kind);
+  const previous = await sequencePredecessorKind(tx, ctx.tenantId, employeeId, input.effectiveDate, beforeOrder);
+  const reason = sequenceViolation(previous, input.kind);
+  // DEC-675：只放宽申请发起 / 改期 / 预览；物化传入真实插入点，直接方式也保持严格。
+  if (
+    reason === RETIRE_REHIRE_REQUIRES_RETIREMENT &&
+    input.mode === 'application' &&
+    beforeOrder === undefined &&
+    (await hasPendingRetirement(tx, ctx.tenantId, employeeId, input.effectiveDate))
+  )
+    return;
+  if (reason === RETIRE_REHIRE_REQUIRES_RETIREMENT)
+    throw new AppError('CONFLICT', '须先发起退休，返聘日须晚于退休日；直接方式须等待退休生效', { reason });
   if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
   // 实习转正另看插入点之后与前驱身份（F-215）：新增、申请改期、落地（审批通过后到期生效记生效失败，DEC-052）都经这里
   await assertInternRegularizationEligible(tx, ctx, employeeId, input);
@@ -492,7 +506,7 @@ export function sequenceViolation(previous: BusinessKind | undefined, kind: Busi
   const terminal = previous !== undefined && ['leave', 'retirement'].includes(previous);
   if (kind === 'hire' && previous && !terminal) return 'EMPLOYEE_ALREADY_EMPLOYED';
   if (kind === 'rehire' && previous !== 'leave') return 'REHIRE_REQUIRES_LEAVE';
-  if (kind === 'retire_rehire' && previous !== 'retirement') return 'RETIRE_REHIRE_REQUIRES_RETIREMENT';
+  if (kind === 'retire_rehire' && previous !== 'retirement') return RETIRE_REHIRE_REQUIRES_RETIREMENT;
   if (!NEW_CYCLE_KINDS.includes(kind) && (!previous || terminal)) return 'ACTIVE_EMPLOYMENT_REQUIRED';
   return undefined;
 }
@@ -661,6 +675,9 @@ export async function appendEmploymentState(
   });
   business.state = state;
   business.eventNo += 1;
+  if (state === 'in_review') await bindRehireRetirement(tx, ctx, business);
+  if (state === 'approved') await alignApprovedRehire(tx, ctx, business);
+  await retirementChanged(tx, ctx, business);
   await auditEmployment(
     tx,
     ctx,
@@ -953,6 +970,13 @@ async function checkMaterializedCapacity(
   fields: PresetFields,
   options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] },
 ) {
+  const { kind, effectiveDate } = business.payload;
+  // R2-T08 §7.6：落地（含定时生效）时员工主部门或落地部门正在执行组织调整即 409，由生效端口记失败后重试；
+  // 离职 / 退休不判。须先于编制锁（锁序 ④ → ⑤）。
+  if (!isExitKind(kind)) {
+    const target = { employeeId: business.employeeId, departmentIds: [fields.departmentId], date: effectiveDate };
+    await assertNotPausedByOrgAdjustment(tx, ctx, target);
+  }
   await assertEstablishmentCapacity(
     tx,
     ctx,
@@ -1002,6 +1026,11 @@ async function validatePreparedEmployment(
     NEW_CYCLE_KINDS.includes(kind),
     terminatingSnapshot,
   );
+  // R2-T08 §7.6：保存 / 修改时员工主部门或目标部门正在执行组织调整即 409；离职 / 退休不判。
+  if (!isExitKind(kind)) {
+    const target = { employeeId, departmentIds: [effectiveFields.departmentId], date: prepared.effectiveDate };
+    await assertNotPausedByOrgAdjustment(tx, ctx, target);
+  }
 }
 
 async function registerCompletion(

@@ -46,6 +46,24 @@ function subtree(tenantId: string, orgId: string | readonly string[], date: stri
   )`;
 }
 
+/** 生效日的在职主职及其部门（最新任职快照含后续更正）；选人、排期计数与暂停判定（R2-T08 §7.1 / §7.6）共用。 */
+function primaryAt(tenantId: string, date: string) {
+  return sql`employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    LEFT JOIN LATERAL (SELECT id,department_id FROM employment_payload_versions p
+      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+      ORDER BY version_no DESC LIMIT 1) p ON true
+    WHERE t.tenant_id=${tenantId} AND t.valid_during @> ${date}::date
+      AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'`;
+}
+const primaryDepartment = sql`(CASE WHEN p.id IS NULL THEN r.department_id ELSE p.department_id END)`;
+
+function targetsSql(tenantId: string, orgId: string | readonly string[], date: string) {
+  return sql`${subtree(tenantId, orgId, date)}
+    SELECT t.employee_id AS id FROM ${primaryAt(tenantId, date)}
+      AND ${primaryDepartment} IN (SELECT org_id FROM tree)`;
+}
+
 export async function orgEmploymentTargets(
   tx: Tx,
   ctx: EmploymentContext,
@@ -53,21 +71,32 @@ export async function orgEmploymentTargets(
   date: string,
 ) {
   const rows = rowsOf<{ id: string }>(
-    await tx.execute(sql`
-    ${subtree(ctx.tenantId, orgId, date)}
-    SELECT e.id FROM employment_employees e
-    JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.valid_during @> ${date}::date
-    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    LEFT JOIN LATERAL (SELECT id,department_id FROM employment_payload_versions p
-      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
-      ORDER BY version_no DESC LIMIT 1) p ON true
-    WHERE e.tenant_id=${ctx.tenantId} AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
-      AND (CASE WHEN p.id IS NULL THEN r.department_id ELSE p.department_id END) IN (SELECT org_id FROM tree)
-    ORDER BY e.id LIMIT ${ORG_EMPLOYMENT_LIMIT + 1}
-  `),
+    await tx.execute(sql`${targetsSql(ctx.tenantId, orgId, date)} ORDER BY id LIMIT ${ORG_EMPLOYMENT_LIMIT + 1}`),
   );
   if (rows.length > ORG_EMPLOYMENT_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '组织联动任职超过单次处理上限');
   return rows.map((row) => row.id);
+}
+
+/** R2-T08 §7.1：与 orgEmploymentTargets 同一选人口径的无截断计数，只用于排期与进度。 */
+export async function countOrgEmploymentTargets(tx: Tx, tenantId: string, orgId: string, date: string) {
+  const [row] = rowsOf<{ n: number }>(
+    await tx.execute(sql`SELECT count(*)::int AS n FROM (${targetsSql(tenantId, orgId, date)}) x`),
+  );
+  return row?.n ?? 0;
+}
+
+/** 生效日行政树上的整支（含自身）。 */
+export async function orgSubtreeAt(tx: Tx, tenantId: string, orgIds: readonly string[], date: string) {
+  if (!orgIds.length) return [];
+  const rows = rowsOf<{ org_id: string }>(
+    await tx.execute(sql`${subtree(tenantId, orgIds, date)} SELECT org_id FROM tree`),
+  );
+  return rows.map((row) => row.org_id);
+}
+
+/** 员工在 date 的现行主职部门（子查询片段）。 */
+export function primaryDepartmentSql(tenantId: string, employeeId: string, date: string) {
+  return sql`SELECT ${primaryDepartment} FROM ${primaryAt(tenantId, date)} AND t.employee_id=${employeeId}::uuid`;
 }
 
 /** F-008：全部员工按 UUID 在组织设置/对象和业务锁之前取锁；等待期间集合变化则整单 409，不能补锁倒序。 */

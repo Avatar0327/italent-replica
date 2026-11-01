@@ -74,6 +74,41 @@ export const retirementRequests = pgTable(
   ],
 );
 
+/** DEC-677：提前发起的返聘依赖哪笔退休；作废标记保留，不能被另一笔退休自动接管。 */
+export const retireRehireDependencies = pgTable(
+  'retire_rehire_dependencies',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    retirementId: uuid('retirement_id').notNull(),
+    invalidatedAt: timestamp('invalidated_at', { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    foreignKey({
+      name: 'retire_rehire_dependencies_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    foreignKey({
+      name: 'retire_rehire_dependencies_retirement_fk',
+      columns: [t.tenantId, t.employeeId, t.retirementId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    index('retire_rehire_dependencies_retirement').on(t.tenantId, t.employeeId, t.retirementId),
+    check('retire_rehire_dependencies_distinct', sql`${t.businessId} <> ${t.retirementId}`),
+  ],
+);
+
 /**
  * R2 BE-5c1a 预计退休日期规则与个人身份字典（docs/08_设计/R2-T04_退休设计.md §2.4，DEC-640）。
  * 规则表照自动转正规则形态（优先级 + 登记顺序号、整份保存、硬删除）；5c1b 放开 purpose = flexible_range 与
@@ -182,10 +217,10 @@ export const retirementRuleConditions = pgTable(
       columns: [t.tenantId, t.ruleId],
       foreignColumns: [retirementRules.tenantId, retirementRules.id],
     }).onDelete('cascade'),
-    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 4`),
+    check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 5`),
     check(
       'retirement_rule_conditions_field',
-      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType')`,
+      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')`,
     ),
     check('retirement_rule_conditions_operator', sql`${t.operator} = 'in'`),
     check('retirement_rule_conditions_values', sql`cardinality(${t.values}) BETWEEN 1 AND 50`),

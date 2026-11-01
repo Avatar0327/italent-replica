@@ -35,7 +35,7 @@ async function fixture() {
   const source = await w.org('合成原部门');
   const target = await w.org('合成待停用部门');
   const person = await w.person('合成自助员工', source);
-  await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
+  await w.publishedProcess({ nodes: [{ key: 'review', approver: { type: 'custom_variable', value: 'owner' } }] });
   const api = tenantApi(database().db, { authorize: undefined, clock: w.clock });
   const profile = await w.json<{ employee: { revision: number } }>(
     await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)),

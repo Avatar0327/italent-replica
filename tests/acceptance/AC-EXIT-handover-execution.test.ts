@@ -503,7 +503,7 @@ describe('兜底处理人配置（流程定义节点，DEC-663 ⑥）', () => {
       {
         key: 'work_handover',
         kind: 'countersign',
-        approvers: ['handover_work_owner'],
+        approvers: [{ type: 'object_field', value: 'handover_work_owner' }],
         transitionRule: { type: 'any' },
         fallbackUserIds: fallback,
       },
@@ -545,9 +545,14 @@ describe('兜底处理人配置（流程定义节点，DEC-663 ⑥）', () => {
     expect(await reasonOf(await post(x, processBody(x, [member, member])))).toMatchObject({ status: 400 });
     // 兜底只对离职交接申请的交接节点有意义：转调动流程上配置被拒
     const wrongType = { ...processBody(x, [member]), approvalType: 'transfer' };
-    expect((await post(x, { ...wrongType, nodes: [{ ...wrongType.nodes[0], approvers: ['owner'] }] })).status).toBe(
-      400,
-    );
+    expect(
+      (
+        await post(x, {
+          ...wrongType,
+          nodes: [{ ...wrongType.nodes[0], approvers: [{ type: 'custom_variable', value: 'owner' }] }],
+        })
+      ).status,
+    ).toBe(400);
   });
 });
 
