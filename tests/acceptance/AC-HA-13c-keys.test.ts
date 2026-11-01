@@ -225,3 +225,36 @@ describe('AC-HA-13c 7.1.23 转正正例', () => {
     expect(row.rate).toBe(0);
   });
 });
+
+describe('AC-HA-13c 7.1.20 Offer 业务总量（第 3 轮）', () => {
+  it('免审批 + 审批通过计入；驳回待重提、撤回、批量单驳回后回到“未发起审批”的不计', async () => {
+    const o = await offerApprovalWorld(database().db, 'ha13c-offer-rate');
+    o.setNow(at('2026-10-05'));
+    const free = await o.offer(o.applicant);
+    const passed = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(passed));
+    await o.decide(await o.instance(passed.id), o.head, 'approve');
+    const rejected = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(rejected));
+    const rejectedView = await o.instance(rejected.id);
+    await o.decide(rejectedView, o.head, 'reject');
+    expect((await o.instance(rejected.id)).status).toBe('returned');
+    const withdrawn = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(withdrawn));
+    const withdrawnView = await o.instance(withdrawn.id);
+    await o.json(await o.instanceAction(o.applicant.userId, withdrawnView.id, 'withdraw', withdrawnView.revision));
+    const batched = await o.offer(o.applicant);
+    const batch = await o.json<{ id: string }>(await o.batchRaw({ offerIds: [batched.id] }), 201);
+    await o.decide(await o.instance(batch.id), o.manager, 'reject');
+    for (const offer of [rejected, withdrawn, batched]) {
+      expect((await o.get(offer.id)).approvalStatus).toBe('unsubmitted');
+    }
+
+    const rate = processClient(o.db, { tenant: o.tenant.id, user: o.hr.id }, { now: () => new Date(at(AS_OF)) });
+    const row = await rate.expectComponent('offerApprovalRate', { all: [free.id, passed.id], hits: [passed.id] });
+    expect(row.rate).toBe(0.5);
+    expect(sorted((await rate.detail('offerApprovalRate')).map((item) => item.id))).toEqual(
+      sorted([free.id, passed.id]),
+    );
+  });
+});
