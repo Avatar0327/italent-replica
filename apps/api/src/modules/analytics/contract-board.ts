@@ -1,7 +1,7 @@
 /**
  * 合同情况看板（B55，docs/02_业务建模/35“补充：BE-13…”）的取数。每个组件是一份候选行（id / employee_id / org_id /
  * creator_id / group_key），先套看板筛选、再叠加 DEC-177 可见谓词（boardRows）；分组计数与分页明细都从这一份行集取，
- * 数字 = 明细条数。
+ * 数字 = 明细条数。签署情况三个分组组件在可见谓词之后按（组 × 员工）去重，数字是人数（F-387）。
  * - 变动统计：已生效的初签 / 变更 / 续签 / 终止申请单，日期取生效日（终止取实际终止日）；更正（edit）与在途单不计；
  * - 签署情况：asOf 当天有效（contractInForce，与时点花名册同一谓词）、本人当天在职的合同（🟡 推测口径，见 PR 假设）；
  * - 3.1.17：人事看板 contractExpiring30 的候选集（indicatorRows），只再套看板筛选。
@@ -65,7 +65,8 @@ const SIGN_GROUPS = {
 } as const;
 
 function signed({ a, filter }: ContractBoardContext, group: SQL): SQL {
-  return sql`SELECT k.id, k.employee_id, NULL::uuid AS org_id, k.created_by AS creator_id, ${group} AS group_key
+  return sql`SELECT k.id, k.employee_id, NULL::uuid AS org_id, k.created_by AS creator_id, ${group} AS group_key,
+      k.effective_date
     FROM contract_records k WHERE k.tenant_id=${a.tenantId} AND ${contractInForce(sql`k`, a.asOf)}
       AND ${filtered(sql`k`, filter)}
       AND EXISTS (SELECT 1 ${inServiceFrom(a, sql`r.employee_id=k.employee_id`)})`;
@@ -85,15 +86,23 @@ function candidates(code: ContractBoardCode, x: ContractBoardContext): SQL {
   return signed(x, SIGN_GROUPS[code as keyof typeof SIGN_GROUPS]);
 }
 
-/** 组件的候选集（可只取一组）：范围裁剪只在这里做一次（3.1.17 的候选集本身已裁剪）。 */
+export const isGroupedContractComponent = (code: ContractBoardCode) => code in SIGN_GROUPS;
+
+/**
+ * 组件的候选集（可只取一组）：范围裁剪只在这里做一次（3.1.17 的候选集本身已裁剪）。计数与明细共用这一个入口。
+ * 签署情况按人计（规格 35 B55“F-387 补”）：先裁剪再按（组 × 员工）去重——同一员工同组多份有效合同只计 1 人、
+ * 明细 1 行，取生效日最新、同日取 id 较大的那份；落在不同组时各组各计 1，所以组件合计（各组之和）可因维度而异。
+ */
 function boardRows(code: ContractBoardCode, x: ContractBoardContext, group?: string): SQL {
   const visible = code === '3.1.17' ? sql`true` : employmentVisible(x.a, sql`m`);
   const only = group === undefined ? sql`true` : sql`m.group_key=${group}`;
-  return sql`SELECT m.id, m.employee_id, m.org_id, m.group_key FROM (${candidates(code, x)}) m
-    WHERE ${visible} AND ${only}`;
+  if (!isGroupedContractComponent(code))
+    return sql`SELECT m.id, m.employee_id, m.org_id, m.group_key FROM (${candidates(code, x)}) m
+      WHERE ${visible} AND ${only}`;
+  return sql`SELECT DISTINCT ON (m.group_key, m.employee_id) m.id, m.employee_id, m.org_id, m.group_key
+    FROM (${candidates(code, x)}) m WHERE ${visible} AND ${only}
+    ORDER BY m.group_key, m.employee_id, m.effective_date DESC, m.id DESC`;
 }
-
-export const isGroupedContractComponent = (code: ContractBoardCode) => code in SIGN_GROUPS;
 
 export function contractBoardPage(
   tx: Tx,
