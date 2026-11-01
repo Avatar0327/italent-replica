@@ -227,7 +227,7 @@ describe('审批中编辑任职申请的人员类别（F-323 第 2 轮 P2-2）',
       nodes: [
         {
           key: 'out_head',
-          approver: 'latest_record_department_head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
           formFields: ['departmentId', 'employmentType', 'place', 'effectiveDate'],
           editableFields: ['employmentType', 'place'],
           editMode: 'separate',
