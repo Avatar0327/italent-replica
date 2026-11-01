@@ -94,6 +94,18 @@ describe('AC-OA-24 明细组织范围：读时整行隐去，只计 hiddenRowCou
     expect(nodes.map((node) => node.orgId)).not.toContain(w.b);
     expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: null });
   });
+
+  it('全部明细行都在组织范围外 → 详情不返回组织分区（sections = {}，§10 分区为空不返回）', async () => {
+    const w = await itemsWorld(testDb().db, 'oa24r');
+    const r = reader(w);
+    const view = await w.created(w.head({ adjustmentRange: [w.a, w.b] }));
+    await w.item(view.id, newOrg(w.b));
+    await w.item(view.id, rename(w.b));
+    w.access.org = only(w.a);
+
+    expect((await r.items(view.id)).items).toEqual([]);
+    expect((await r.detail(view.id)).sections).toEqual({});
+  });
 });
 
 describe('AC-OA-24 原上级（版本链上一条）同样按组织范围复核', () => {

@@ -2,9 +2,11 @@
  * R2-T08 BE-10d：AC-OA-42（读）——预览只展示调整范围子树并叠加增减标记；列表显示“组织名（包含下级）”
  * （设计 §5.6、§6.2 预览行、§10；F273A §4）。
  */
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
+import { type ItemsWorld, itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
+import { insertPartTimeRecord } from './AC-PT-support.js';
 import { flatten, orgName, type PreviewNode, reader } from './AC-OA-read-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -73,5 +75,105 @@ describe('AC-OA-42 预览：调整范围子树 + 增减标记', () => {
     const [row] = (await r.list()).items;
     const aName = await orgName(w, w.a);
     expect((row!.adjustmentRange as { label: string }[])[0]!.label).toBe(`${aName}（包含下级）`);
+  });
+});
+
+/** 在 parent 下建一个带行政顺序号的组织（组织模块写入口，与界面同路径）。 */
+async function orgWithSequence(w: ItemsWorld, name: string, parentId: string, sequence: number) {
+  const created = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', '/api/tenant/org/organizations', {
+      ifMatch: 0,
+      body: { name, establishedOn: '2020-01-01', parents: { admin: { parentId, sequence } } },
+    }),
+    201,
+  );
+  return created.id;
+}
+
+describe('AC-OA-42 预览节点带在岗 / 兼岗原值（§6.2:475；口径同组织停用校验）', () => {
+  it('HR 读预览：既有节点给直属在岗与兼岗原值，0 也返回；本单新增节点为 0', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    const c = await w.org(`丙${uniqueSuffix()}`, w.a);
+    const d = await w.org(`丁${uniqueSuffix()}`, w.a);
+    await w.person('甲在岗', w.a);
+    await w.person('丙在岗一', c);
+    const cStaff = await w.person('丙在岗二', c);
+    const other = await w.person('乙在岗', w.b);
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      await insertPartTimeRecord(tx, {
+        tenantId: w.tenant.id,
+        employeeId: other.employeeId,
+        departmentId: c,
+        startDate: '2026-09-01',
+        endDate: null,
+      });
+      // 生效日前已结束的兼职不计（同 countDepartmentPartTimes）
+      await insertPartTimeRecord(tx, {
+        tenantId: w.tenant.id,
+        employeeId: cStaff.employeeId,
+        departmentId: d,
+        startDate: '2026-09-01',
+        endDate: '2026-10-31',
+      });
+    });
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const added = (await w.item(view.id, newOrg(w.a))).items.at(-1)!;
+
+    const nodes = flatten((await r.preview(view.id)).roots);
+    const counts = (id: string) => {
+      const n = nodes.find((node) => node.orgId === id || node.itemId === id)!;
+      return { onDutyCount: n.onDutyCount, partTimeCount: n.partTimeCount };
+    };
+    expect(counts(w.a)).toEqual({ onDutyCount: 1, partTimeCount: 0 });
+    expect(counts(c)).toEqual({ onDutyCount: 2, partTimeCount: 1 });
+    expect(counts(d)).toEqual({ onDutyCount: 0, partTimeCount: 0 });
+    expect(counts(added.id)).toEqual({ onDutyCount: 0, partTimeCount: 0 });
+  });
+
+  it('HR 看不到调整范围：未被可见明细指向的既有节点名称与人数都给 null 并记入 masked', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    const c = await w.org(`丙${uniqueSuffix()}`, w.a);
+    await w.person('丙在岗', c);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    await w.item(view.id, rename(c));
+    w.access.hiddenFields = new Set(['adjustmentRange']);
+
+    const nodes = flatten((await r.preview(view.id)).roots);
+    const a = nodes.find((node) => node.orgId === w.a)!;
+    expect(a).toMatchObject({ name: null, onDutyCount: null, partTimeCount: null });
+    expect(a.masked).toEqual(expect.arrayContaining(['name', 'onDutyCount', 'partTimeCount']));
+    // 明细目标本身可见（targetOrgId 披露）：人数按同口径给出
+    expect(nodes.find((node) => node.orgId === c)).toMatchObject({ onDutyCount: 1, partTimeCount: 0 });
+    expect(JSON.stringify(a)).not.toContain(await orgName(w, w.a));
+  });
+});
+
+describe('AC-OA-42 预览同级按行政顺序号排序（明细指定值优先，其次组织现值；新增与变更同一规则）', () => {
+  it('同一上级下新增顺序号 100、-100 两个节点 → [-100, 100]', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    const view = await w.created(w.head({ adjustmentRange: [w.b] }));
+    const plus = (await w.item(view.id, newOrg(w.b, { displayOrder: 100 }))).items.at(-1)!;
+    const minus = (await w.item(view.id, newOrg(w.b, { displayOrder: -100 }))).items.at(-1)!;
+    const kids = (await r.preview(view.id)).roots[0]!.children.map((n) => n.itemId);
+    expect(kids).toEqual([minus.id, plus.id]);
+  });
+
+  it('既有组织按现顺序号排（不按名称）；变更行改顺序号后按新值排，与新增节点同一规则', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    // 名称与顺序号反着排，名称排序不能碰巧通过
+    const x = await orgWithSequence(w, `A${uniqueSuffix()}`, w.a, 30);
+    const y = await orgWithSequence(w, `Z${uniqueSuffix()}`, w.a, 10);
+    const z = await orgWithSequence(w, `M${uniqueSuffix()}`, w.a, 20);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const kids = async () => (await r.preview(view.id)).roots[0]!.children.map((n) => n.orgId ?? n.itemId);
+    expect(await kids()).toEqual([y, z, x]);
+
+    const plus = (await w.item(view.id, newOrg(w.a, { displayOrder: 25 }))).items.at(-1)!;
+    await w.item(view.id, { entry: 'detail.change', adjustType: 2, targetOrgId: x, displayOrder: 5 });
+    expect(await kids()).toEqual([x, y, z, plus.id]);
   });
 });
