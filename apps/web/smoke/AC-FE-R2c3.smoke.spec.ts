@@ -7,6 +7,7 @@ import {
   business,
   conflict,
   department,
+  detail,
   draftId,
   employeeRevision,
   intention,
@@ -18,6 +19,7 @@ import {
   setup,
   subordinate,
   switchView,
+  type Server,
 } from './retirement-fixtures.js';
 
 const personHeaders = [
@@ -465,19 +467,36 @@ test('AC-FE-R2c3-10 P2-2 单据提交被要求确认在途调动：确认后令�
   for (const item of sent) expect(item.url).toContain(`/retirements/${billId}/submit`);
 });
 
-/** 申请第一步建草稿（回执 = EmploymentBusiness，草稿 revision 1），员工 revision 加一。 */
-async function draftCreation(page: Page, server: { employeeRevision: number }) {
+/**
+ * 申请第一步建草稿（回执 = EmploymentBusiness，草稿 revision 1），员工 revision 加一，草稿进“全部退休记录”。
+ * 草稿详情（GET /retirements/:id）按退休详情形状（exitDetailPayload + 退休扩展）返回，revision 取服务端单据 revision；
+ * extra 模拟别的会话改过的扩展字段（PATCH /retirements/:id，如工作交接人）。
+ */
+async function draftCreation(page: Page, server: Server, extra: () => Record<string, unknown> = () => ({})) {
   let creates = 0;
   await page.route(`**/employment/retirements/employees/${employee}/preview`, (route) =>
     route.fulfill({ json: { ...preview('2026-11-29'), ack: null } }),
   );
   await page.route(`**/employment/retirements/employees/${employee}`, (route) => {
     creates += 1;
-    server.employeeRevision = employeeRevision + 1;
+    server.employeeRevision = employeeRevision + creates;
+    server.billRevision = 1;
+    server.views.all = [bill('draft', { id: draftId, mode: 'application', revision: 1 })];
     return route.fulfill({
       status: 201,
-      json: business({ id: draftId, mode: 'application', status: 'draft', revision: 1 }),
+      json: business({
+        id: draftId,
+        mode: 'application',
+        status: 'draft',
+        revision: 1,
+        employeeRevision: server.employeeRevision,
+      }),
     });
+  });
+  await page.route(`**/employment/retirements/${draftId}`, (route) => {
+    const row = (server.views.all.find((item) => item.id === draftId) ??
+      bill('draft', { id: draftId, mode: 'application' })) as ReturnType<typeof bill>;
+    return route.fulfill({ json: { ...detail({ ...row, revision: server.billRevision }), ...extra() } });
   });
   return () => creates;
 }
@@ -604,4 +623,121 @@ test('AC-FE-R2c3-13 P2-5 撤销成功后展示服务端返回的下游清单，�
   await expect(list.getByText('被作废的在途任职申请：需重新发起（2 件，其中 1 件无权查看）')).toBeVisible();
   // DEC-714：前端不补“合同需手工处理 / 已恢复”等文案，也不推算账号状态
   await expect(drawer.getByText(/手工|已恢复|账号/)).toHaveCount(0);
+});
+
+const cancellation = {
+  id: '80000000-0000-4000-8000-000000000099',
+  reason: '合成撤销原因',
+  case: 'approved_voided',
+  stateBefore: 'approved',
+  revision: 1,
+  createdAt: '2026-10-31T00:00:00.000Z',
+};
+
+test('复核-草稿冲突时交接人已经改为另一人，核对与重提须使用最新只读字段', async ({ page }) => {
+  const { server } = await setup(page);
+  let handover = receiver;
+  const creates = await draftCreation(page, server, () => ({ handoverEmployeeId: handover }));
+  const sent: ReturnType<typeof posted>[] = [];
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    sent.push(posted(route.request()));
+    if (sent.length === 1) {
+      // 另一会话经 PATCH /retirements/:id 把交接人从甲改成乙（updateExitFields 同时推进单据 revision）
+      handover = subordinate;
+      server.billRevision = 2;
+      return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+    }
+    server.billRevision = 3;
+    server.views.all = [bill('in_review', { id: draftId, mode: 'application', revision: 3 })];
+    return route.fulfill({ json: business({ id: draftId, mode: 'application', status: 'in_review', revision: 3 }) });
+  });
+  await enter(page, '退休申请');
+  await previewWith(page, '2026-11-29');
+  await choose(page, '工作交接人', '合成接收人');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  const resume = dialog(page).getByRole('button', { name: '已核对差异，继续编辑' });
+  await expect(resume).toBeVisible();
+  // 重读后表单显示服务端当前的交接人（乙），不是本窗口打开时的甲
+  const form = dialog(page).locator('form');
+  await expect(form).toContainText('合成下属');
+  await expect(form).not.toContainText('合成接收人');
+  // 差异表列出交接人：原值甲、最新值乙
+  const row = dialog(page).getByRole('row').filter({ hasText: '工作交接人' });
+  await expect(row).toContainText(receiver);
+  await expect(row).toContainText(subordinate);
+  await resume.click();
+  await expect(form).toContainText('合成下属');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(page.getByText('退休申请提交成功')).toBeVisible();
+  // 第二步仍是空体：不写字段，只按最新 revision 提交同一张草稿
+  expect(sent.map((item) => [item.body, item.ifMatch])).toEqual([
+    [{}, '1'],
+    [{}, '2'],
+  ]);
+  expect(creates()).toBe(1);
+});
+
+test('复核-已保存草稿从详情提交并撤销后，员工申请入口应能创建新单', async ({ page }) => {
+  const { server } = await setup(page);
+  const creates = await draftCreation(page, server);
+  let submits = 0;
+  await page.route(`**/employment/retirements/${draftId}/submit`, (route) => {
+    submits += 1;
+    if (submits === 1)
+      return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: '合成临时拒绝' } } });
+    // 详情提交成功后审批人审批通过：回读看到 approved 的更新版本
+    server.billRevision = 3;
+    server.views.all = [bill('approved', { id: draftId, mode: 'application', revision: 3 })];
+    server.views.processing = [...server.views.all];
+    server.views.upcoming = [];
+    return route.fulfill({ json: business({ id: draftId, mode: 'application', status: 'in_review', revision: 2 }) });
+  });
+  await page.route(`**/employment/retirements/${draftId}/cancel`, (route) => {
+    server.billRevision = 4;
+    server.views.all = [bill('voided', { id: draftId, mode: 'application', revision: 4, cancellation })];
+    server.views.processing = [];
+    server.views.upcoming = [person];
+    const voided = business({ id: draftId, mode: 'application', status: 'voided', revision: 4 });
+    return route.fulfill({ json: { ...voided, cancellation, downstream: { items: [], additional: [] } } });
+  });
+  // 新建草稿，第二步被明确拒绝：草稿留在页面层
+  await enter(page, '退休申请');
+  await previewWith(page, '2026-11-29');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect(dialog(page).getByText('合成临时拒绝')).toBeVisible();
+  await dialog(page)
+    .getByRole('button', { name: /取\s*消/ })
+    .click();
+  await page.locator('.ant-drawer-close').last().click();
+  // 在“全部退休记录”提交同一草稿，审批通过后撤销
+  await openRow(page, 'all');
+  await page
+    .locator('.ant-drawer')
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await page
+    .getByRole('tooltip')
+    .getByRole('button', { name: /确\s*定/ })
+    .click();
+  await expect(page.getByText('已提交', { exact: true })).toBeVisible();
+  await page.locator('.ant-drawer').getByRole('button', { name: '撤销退休', exact: true }).click();
+  await dialog(page).getByLabel('撤销原因').fill('合成撤销原因');
+  await confirm(page);
+  await expect(page.getByText('已撤销退休')).toBeVisible();
+  await page.locator('.ant-drawer-close').last().click();
+  // 回到员工入口：没有旧草稿提示，可预览，提交走新建
+  await enter(page, '退休申请');
+  await expect(dialog(page).getByText(/申请已保存，继续提交同一申请/)).toHaveCount(0);
+  await expect(dialog(page).getByRole('button', { name: /预\s*览/ })).toBeEnabled();
+  await previewWith(page, '2026-11-29');
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交/ })
+    .click();
+  await expect.poll(creates).toBe(2);
 });
