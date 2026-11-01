@@ -136,4 +136,43 @@ describe('AC-APV-F392 撤回后旧自动同意不再作为历史依据', () => {
     onlyPending(w, current, s.inHead.userId);
     expect(tasksOf(current, 'five').map((task) => task.status)).toEqual(['cancelled', 'pending']);
   });
+
+  it('会签节点撤回：下游旧自动同意失效、A 重新人工审批；同一激活内 B 的同意仍有效，节点三按历史相同自动同意', async () => {
+    const w = await approvalWorld(database().db, 'f392-countersign');
+    const s: Scene = await transferScene(w);
+    const a = { type: 'specified' as const, value: s.outHead.userId };
+    const b = { type: 'specified' as const, value: s.inHead.userId };
+    await w.publishedProcess({
+      nodes: [
+        {
+          key: 'one',
+          kind: 'countersign',
+          approvers: [a, b],
+          transitionRule: { type: 'all' },
+          actions: { retrieve: true, transfer: true },
+        },
+        { key: 'two', approver: a, ...historyApprove },
+        { key: 'three', approver: b, ...historyApprove },
+        { key: 'four', approver: a },
+      ],
+    });
+    let current = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const original = w.pending(current).find((task) => task.assigneeUserId === s.outHead.userId)!;
+    current = await act(await w.taskAction(s.outHead.userId, original.id, 'approve', current.revision));
+    current = await approvePending(w, current, s.inHead.userId);
+    expect(tasksOf(current, 'two')).toEqual([historySkipped(s.outHead.userId)]);
+    expect(tasksOf(current, 'three')).toEqual([historySkipped(s.inHead.userId)]);
+    current = await retrieve(w, current, s.outHead.userId, original.id);
+    const replacement = await w.person('会签接手人', s.from);
+    current = await transferPending(w, current, s.outHead.userId, replacement.userId);
+    current = await approvePending(w, current, replacement.userId);
+    expect(tasksOf(current, 'two').at(-1)).toEqual({
+      status: 'pending',
+      origin: 'resolved',
+      assigneeUserId: s.outHead.userId,
+    });
+    current = await approvePending(w, current, s.outHead.userId);
+    expect(tasksOf(current, 'three')).toEqual([historySkipped(s.inHead.userId), historySkipped(s.inHead.userId)]);
+    onlyPending(w, current, s.outHead.userId);
+  });
 });
