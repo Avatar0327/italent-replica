@@ -29,16 +29,32 @@ registerPersonScopedObject(HR_DASHBOARD_OBJECT);
  */
 const AS_OF_MIN = '0001-01-02';
 const AS_OF_MAX = '9999-12-01';
-const validAsOf = (value: string) => validIsoDate(value) && value >= AS_OF_MIN && value <= AS_OF_MAX;
+export const validBoardDate = (value: string) => validIsoDate(value) && value >= AS_OF_MIN && value <= AS_OF_MAX;
+/** 可选日期参数：缺省返回 undefined，不合法 400（BE-13a 合同变动日期区间同用）。 */
+export function dateQuery(c: Context, name: string): string | undefined {
+  const raw = c.req.query(name);
+  if (raw !== undefined && !validBoardDate(raw))
+    throw new AppError('VALIDATION_FAILED', `${name} 必须是 ${AS_OF_MIN} 至 ${AS_OF_MAX} 之间的 YYYY-MM-DD 日期`);
+  return raw;
+}
 
+/**
+ * 人事分析看板 / 报表的公共上下文（BE-13a 三个对象同用）：已过对象查看权的 base → 同对象的数据范围 → asOf（缺省租户当地今天）。
+ * 查看权由各入口以对象常量调用 objectContext，F-039 探测按常量识别对象，所以不收进这里。
+ */
+export async function analyticsScope(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  base: Awaited<ReturnType<typeof objectContext>>,
+  object: string,
+) {
+  const scope = await requestScope(c, deps, base, object);
+  const asOf = dateQuery(c, 'asOf') ?? tenantLocalDate(base.now, base.timezone);
+  return { base, scope, asOf };
+}
 async function dashboardContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   const base = await objectContext(c, deps, HR_DASHBOARD_OBJECT, 'view');
-  const scope = await requestScope(c, deps, base, HR_DASHBOARD_OBJECT);
-  const raw = c.req.query('asOf');
-  if (raw !== undefined && !validAsOf(raw))
-    throw new AppError('VALIDATION_FAILED', `asOf 必须是 ${AS_OF_MIN} 至 ${AS_OF_MAX} 之间的 YYYY-MM-DD 日期`);
-  const asOf = raw ?? tenantLocalDate(base.now, base.timezone);
-  return { base, scope, asOf };
+  return analyticsScope(c, deps, base, HR_DASHBOARD_OBJECT);
 }
 
 export function registerHrDashboardRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

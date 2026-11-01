@@ -78,8 +78,8 @@ const MATRIX = `${TR_APP}.Matrix`;
 const PRESET_COUNT = STANDARD_PROFILES.flatMap(presetSeeAllTargets).length;
 
 describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
-  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 13 个（评定字典不在内，DEC-503）', () => {
-    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(51);
+  it('批准清单每行写身份、应用、种类、目标编码与 DEC 号：DEC-374② 4 个 + DEC-384 32 个 + DEC-408② 2 个 + DEC-415 19 个（评定字典不在内，DEC-503）', () => {
+    expect(SEE_ALL_BACKFILL_APPROVED).toHaveLength(57);
     const byDec = (dec: string) => SEE_ALL_BACKFILL_APPROVED.filter((a) => a.dec === dec);
     expect(byDec('DEC-374②')).toEqual(
       APPROVED.map((targetCode) => ({
@@ -97,12 +97,16 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
         .filter((a) => a.profileCode === TR)
         .map((a) => a.targetCode),
     ).toEqual(DEC_415);
-    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、组织调整申请（BE-10a2）
+    // 组织员工模块的预置管理员：黑名单（BE-8a）、试用期考核（BE-15b1）、人事看板（BE-12b）、
+    // 人员结构分析 / 员工结构报表 / 合同情况（BE-13a）、组织调整申请（BE-10a2）
     expect(byDec('DEC-415').filter((a) => a.profileCode !== TR)).toEqual(
       [
         'TenantBase.Blacklist',
         'TenantBase.ProbationAssessment',
         'TenantBase.HrDashboard',
+        'TenantBase.HrStructure',
+        'TenantBase.HrStructureReport',
+        'TenantBase.ContractBoard',
         'TenantBase.OrganizationApproval',
       ].flatMap((targetCode) =>
         DEC_415_BLACKLIST.map((profileCode) => ({
@@ -124,7 +128,7 @@ describe('AC-PLAT-F061 D3 批准清单守卫（DEC-374②、DEC-384）', () => {
     const unique = new Set(
       SEE_ALL_BACKFILL_APPROVED.map((a) => `${a.profileCode}|${a.appCode}|${a.targetKind}|${a.targetCode}`),
     );
-    expect(unique.size).toBe(51);
+    expect(unique.size).toBe(57);
   });
 
   it('批准的目标就是身份定义里全部预置看全部的目标：unapprovedSeeAllTargets() 为空，看全部编码与批准清单逐项一致', () => {
