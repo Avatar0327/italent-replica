@@ -7,6 +7,7 @@ import './support/exit-gate-enforced.js';
  * - 退回（没有待办）的在途流程，等待分档为空，不落进“≤3 天”；
  * - 7.1.23 转正正例：直接转正计入业务总量、不计审批总量；走流程且审批通过的两者都计；审批中的转正不算业务总量；
  * - 7.1.20 Offer 业务总量（第 3 轮）：免审批 + 审批通过计入；驳回待重提、撤回、批量单驳回后回到“未发起审批”的不计。
+ * - 7.1.20 第 4 轮：关联过实例、未在审批中通过，但之后免审批发送 / 转已接受（已脱离待发）的，算业务总量、不算审批总量。
  * 期望值一律是手写的实例 / 任务 / 业务单据 ID 集合。
  */
 import type { Authorizer } from '@italent/api';
@@ -16,7 +17,7 @@ import { registerScopeProvider } from '../../apps/api/src/modules/permission/mod
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import type { InstanceView, Person } from './AC-APV-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
-import { offerApprovalWorld } from './AC-OF-BE14a3-support.js';
+import { offerApprovalWorld, type OfferView } from './AC-OF-BE14a3-support.js';
 import { hire, pbWorld, regularizeOk } from './AC-PB-support.js';
 import { processClient, sorted, type ProcessClient } from './AC-HA-13c-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -275,5 +276,76 @@ describe('AC-HA-13c 7.1.20 Offer 业务总量（第 3 轮）', () => {
     expect(sorted((await rate.detail('offerApprovalRate')).map((item) => item.id))).toEqual(
       sorted([free.id, passed.id]),
     );
+  });
+  it('关联过实例、未在审批中通过，但已免审批发送 / 转已接受的计入业务总量、不计审批总量（第 4 轮）', async () => {
+    const o = await offerApprovalWorld(database().db, 'ha13c-offer-life');
+    o.setNow(at('2026-10-05'));
+    const write = async (offer: OfferView, action: string, body: Record<string, unknown>) =>
+      o.json<OfferView>(
+        await o.request(o.applicant.userId, 'POST', `/api/tenant/offers/${offer.id}/${action}`, {
+          ifMatch: offer.revision,
+          body,
+        }),
+      );
+    const accept = { target: 'accepted', acceptTime: '2026-10-05' };
+    const refuse = { target: 'rejected', refusalTime: '2026-10-05', refusalReasonCode: 'personal' };
+    const passed = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(passed));
+    await o.decide(await o.instance(passed.id), o.head, 'approve');
+    // ① 审批通过 → 发送 → 已拒绝 → 退回待发（审批子状态重置为未发起，rules.ts 已拒绝 → 待发）→ 免审批再次发送
+    const resent = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(resent));
+    await o.decide(await o.instance(resent.id), o.head, 'approve');
+    const back = await write(
+      await write(await write(await o.get(resent.id), 'send', {}), 'transfer', refuse),
+      'transfer',
+      {
+        target: 'pending',
+      },
+    );
+    expect(back.approvalStatus).toBe('unsubmitted');
+    await write(back, 'send', {});
+    // ② 撤回后直接转已接受
+    const withdrawn = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(withdrawn));
+    const withdrawnView = await o.instance(withdrawn.id);
+    await o.json(await o.instanceAction(o.applicant.userId, withdrawnView.id, 'withdraw', withdrawnView.revision));
+    await write(await o.get(withdrawn.id), 'transfer', accept);
+    // ③ 驳回后直接转已接受
+    const rejected = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(rejected));
+    await o.decide(await o.instance(rejected.id), o.head, 'reject');
+    await write(await o.get(rejected.id), 'transfer', accept);
+    // ④ 同类（DEC-431①）：否决后免审批直接发送
+    const disagreed = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(disagreed));
+    await o.decide(await o.instance(disagreed.id), o.head, 'disagree');
+    expect((await o.get(disagreed.id)).approvalStatus).toBe('disapproved');
+    await write(await o.get(disagreed.id), 'send', {});
+    // 对照：驳回后仍待发（待重提）、否决后仍待发，都不计
+    const waiting = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(waiting));
+    await o.decide(await o.instance(waiting.id), o.head, 'reject');
+    const vetoed = await o.offer(o.applicant);
+    await o.json(await o.submitRaw(vetoed));
+    await o.decide(await o.instance(vetoed.id), o.head, 'disagree');
+    const states = [resent, withdrawn, rejected, disagreed, waiting, vetoed].map(async (offer) => {
+      const view = await o.get(offer.id);
+      return [view.status, view.approvalStatus];
+    });
+    expect(await Promise.all(states)).toEqual([
+      ['sent', 'unsubmitted'],
+      ['accepted', 'unsubmitted'],
+      ['accepted', 'unsubmitted'],
+      ['sent', 'disapproved'],
+      ['pending', 'unsubmitted'],
+      ['pending', 'disapproved'],
+    ]);
+
+    const rate = processClient(o.db, { tenant: o.tenant.id, user: o.hr.id }, { now: () => new Date(at(AS_OF)) });
+    const counted = [passed.id, resent.id, withdrawn.id, rejected.id, disagreed.id];
+    const row = await rate.expectComponent('offerApprovalRate', { all: counted, hits: [passed.id] });
+    expect(row.rate).toBe(0.2);
+    expect(sorted((await rate.detail('offerApprovalRate')).map((item) => item.id))).toEqual(sorted(counted));
   });
 });
