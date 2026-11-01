@@ -50,12 +50,8 @@ export function viewOrder(
     return approval ? sql`${columns.start} DESC, q.created_at DESC, ${id}` : sql`${columns.start} DESC, ${id}`;
   }
   const ranks = {
-    institutionId: sql`(SELECT rank.sort_number FROM personnel_org_sort_ranks rank
-      WHERE rank.tenant_id=${tenantId} AND rank.org_id=${columns.institution}
-        AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`,
-    departmentId: sql`(SELECT rank.sort_number FROM personnel_org_sort_ranks rank
-      WHERE rank.tenant_id=${tenantId} AND rank.org_id=${columns.department}
-        AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`,
+    institutionId: orgSortRank(tenantId, today, columns.institution),
+    departmentId: orgSortRank(tenantId, today, columns.department),
     postId: sql`(SELECT rank.sort_number FROM personnel_post_sort_ranks rank
       WHERE rank.tenant_id=${tenantId} AND rank.post_id=${columns.post}
         AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`,
@@ -67,9 +63,25 @@ export function viewOrder(
     endDate: columns.end,
     serviceType: sql`array_position(ARRAY[${sql.join(types, sql`, `)}]::text[], ${columns.serviceType})`,
     ...ranks,
-    directManagerId: sql`(SELECT manager.code FROM employment_employees manager
-      WHERE manager.tenant_id=${tenantId} AND manager.id=${columns.directManager})`,
+    directManagerId: employeeCodeOf(tenantId, columns.directManager),
   };
-  const direction = input.direction === 'desc' ? sql`DESC` : sql`ASC`;
-  return sql`${values[input.sortBy]} ${direction} NULLS LAST, ${id} ASC`;
+  return sortedBy(values[input.sortBy], input.direction, id);
+}
+
+/** 组织的 DEC-089 名次（today 当天有效）；兼职与实习生列表的机构 / 部门排序共用（F-366）。 */
+export function orgSortRank(tenantId: string, today: string, org: SQL): SQL {
+  return sql`(SELECT rank.sort_number FROM personnel_org_sort_ranks rank
+      WHERE rank.tenant_id=${tenantId} AND rank.org_id=${org}
+        AND rank.valid_from<=${today}::date AND rank.valid_to>${today}::date)`;
+}
+
+/** 引用人员按工号排序（兼职 / 实习生直线经理共用，F-366）。 */
+export function employeeCodeOf(tenantId: string, employee: SQL): SQL {
+  return sql`(SELECT manager.code FROM employment_employees manager
+      WHERE manager.tenant_id=${tenantId} AND manager.id=${employee})`;
+}
+
+/** 单列排序：值 方向 NULLS LAST，再按行 ID 升序保证分页稳定。 */
+export function sortedBy(value: SQL, direction: 'asc' | 'desc' | undefined, id: SQL): SQL {
+  return sql`${value} ${direction === 'desc' ? sql`DESC` : sql`ASC`} NULLS LAST, ${id} ASC`;
 }

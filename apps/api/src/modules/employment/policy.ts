@@ -1065,7 +1065,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
   // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403
   // 「筛选字段不可查看」）；readPageContext(list) + scopeSql 列表范围（空范围看不到任何行）；任职字段按任职记录、姓名 / 工号按
-  // 人员对象可见字段裁剪；state / probation 是视图控制项，行可见即可见
+  // 人员对象可见字段裁剪；state / probation 是视图控制项，行可见即可见。F-366：只有实习中收 sortBy（实习机构 / 实习部门 /
+  // 直线经理）/ direction，别的页签带排序或 direction 不带 sortBy 400；排序列同样须任职记录字段可见，否则 403（同一守卫）
   'GET /interns': object({
     object: EMPLOYMENT,
     operation: 'view',

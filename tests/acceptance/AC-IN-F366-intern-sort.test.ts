@@ -116,6 +116,10 @@ describe('AC-IN-F366 排序参数校验与字段权限', () => {
       const denied = await hidden('GET', `/interns?view=interning&sortBy=${field}&direction=asc`);
       expect(denied.status, field).toBe(403);
       expect(((await denied.json()) as { error: { code: string } }).error.code, field).toBe('FORBIDDEN');
+      // 不排序时照常列出，但看不到的列不在响应里（新增的机构 / 经理两列同样按字段裁剪）
+      const listed = (await (await hidden('GET', '/interns?view=interning')).json()) as { items: object[] };
+      expect(listed.items.length, field).toBe(1);
+      expect(Object.hasOwn(listed.items[0]!, field), field).toBe(false);
       const shown = scopedRequest(w, [], allFields(), true);
       expect((await shown('GET', `/interns?view=interning&sortBy=${field}&direction=asc`)).status, field).toBe(200);
     }
