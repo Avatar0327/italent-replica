@@ -504,7 +504,13 @@ describe('AC-QL-subset 自助不开放 🟡（Q-M0-133 剩余，DEC-365③）', 
       approvalType: 'personnel_change',
       priority: 1,
       conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-      nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'] }],
+      nodes: [
+        {
+          key: 'head',
+          approver: { type: 'department', value: 'latest_record_department_head' },
+          formFields: ['school'],
+        },
+      ],
     });
     const created = await w.request(s.subject.userId, 'POST', REQUESTS, {
       ifMatch: 0,

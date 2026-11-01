@@ -7,6 +7,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -275,3 +276,99 @@ export const orgAdjustmentOrgItems = pgTable('org_adjustment_org_items', itemCol
   ...itemReferences(t),
   ...itemChecks(t),
 ]);
+
+const adjustmentFk = (name: string, t: { tenantId: AnyPgColumn; adjustmentId: AnyPgColumn }) =>
+  foreignKey({
+    name,
+    columns: [t.tenantId, t.adjustmentId],
+    foreignColumns: [orgAdjustments.tenantId, orgAdjustments.id],
+  });
+
+/** §2.3 / §7.6：审批通过时按执行组写入的涉及组织集合 S；选单相交判定（§7.3）与开始复核（§7.6A）的基准。 */
+export const orgAdjustmentScopeOrgs = pgTable(
+  'org_adjustment_scope_orgs',
+  {
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    groupItemId: uuid('group_item_id').notNull(),
+    orgId: uuid('org_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.adjustmentId, t.groupItemId, t.orgId] }),
+    adjustmentFk('org_adjustment_scope_adjustment_fk', t),
+    index('org_adjustment_scope_org').on(t.tenantId, t.orgId),
+  ],
+);
+
+/** §7.1 执行队列：每单一行；run_on_date 为租户业务日，run_from_hour 0 或 3（> 5000 次日 03:00）。 */
+export const orgAdjustmentExecutions = pgTable(
+  'org_adjustment_executions',
+  {
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    runOnDate: date('run_on_date', { mode: 'string' }).notNull(),
+    runFromHour: smallint('run_from_hour').notNull(),
+    state: text('state').notNull().default('pending'),
+    startedAt: utc('started_at'),
+    finishedAt: utc('finished_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.adjustmentId] }),
+    adjustmentFk('org_adjustment_executions_adjustment_fk', t),
+    index('org_adjustment_executions_state').on(t.tenantId, t.state),
+    check('org_adjustment_executions_hour', sql`${t.runFromHour} IN (0, 3)`),
+    check('org_adjustment_executions_state', sql`${t.state} IN ('pending', 'running', 'done')`),
+  ],
+);
+
+/** §7.2 每租户一行执行权：领取时 fencing_no + 1，组事务首句 FOR UPDATE 比对，旧持有者迟到提交被拒。 */
+export const orgAdjustmentTenantRunners = pgTable(
+  'org_adjustment_tenant_runners',
+  {
+    tenantId: tenantId().primaryKey(),
+    holderToken: text('holder_token'),
+    fencingNo: bigint('fencing_no', { mode: 'number' }).notNull().default(0),
+    leaseUntil: utc('lease_until'),
+    currentAdjustmentId: uuid('current_adjustment_id'),
+  },
+  (t) => [
+    foreignKey({
+      name: 'org_adjustment_runners_current_fk',
+      columns: [t.tenantId, t.currentAdjustmentId],
+      foreignColumns: [orgAdjustments.tenantId, orgAdjustments.id],
+    }),
+  ],
+);
+
+/** §7.6 OA-R9 暂停：执行开始时写、收尾同事务删；(tenant_id, org_id) 主键保证一个组织只被一张单暂停。 */
+export const orgAdjustmentPauses = pgTable(
+  'org_adjustment_pauses',
+  {
+    tenantId: tenantId(),
+    orgId: uuid('org_id').notNull(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.orgId] }),
+    adjustmentFk('org_adjustment_pauses_adjustment_fk', t),
+    index('org_adjustment_pauses_adjustment').on(t.tenantId, t.adjustmentId),
+  ],
+);
+
+/** §7.7 执行组的可恢复基础设施失败：连续 5 次记 EXECUTION_ERROR 并继续后续组。 */
+export const orgAdjustmentGroupAttempts = pgTable(
+  'org_adjustment_group_attempts',
+  {
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    groupItemId: uuid('group_item_id').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    updatedAt: utc('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.adjustmentId, t.groupItemId] }),
+    adjustmentFk('org_adjustment_attempts_adjustment_fk', t),
+    check('org_adjustment_attempts_positive', sql`${t.attempts} >= 0`),
+  ],
+);

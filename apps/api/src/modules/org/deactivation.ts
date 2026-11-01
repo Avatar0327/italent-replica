@@ -74,17 +74,25 @@ export async function assertDeactivationAfterEstablished(
   throw deactivationNotAfterEstablished(target.name, from, target.establishedOn);
 }
 
+export interface DeactivationSubtree {
+  readonly root: OrgRecord;
+  readonly from: string;
+  /** from 及以后每个版本边界上的各级下级之并集（不含本组织）。 */
+  readonly descendants: readonly string[];
+  readonly atFrom: readonly OrgRecord[];
+}
+
 /**
- * 校验并返回需要级联停用的下级（from 当天仍启用的）。整支取 from 及以后每个版本边界上的各级下级之并集：
- * 有未来版本的下级会让级联版本被覆盖（或之后才挂到本组织下），一律拒绝，提示先处理未来版本（`10` §15 同口径）。
+ * 停用整支的展开与下级数据范围校验（R2-T08 组织调整停用明细同一口径）。整支取 from 及以后每个版本边界上的
+ * 各级下级之并集；超过级联上限拒绝。
  */
-export async function planDeactivation(
+export async function planDeactivationSubtree(
   tx: Tx,
   ctx: OrgWriteContext,
   root: OrgRecord,
   from: string,
   authorize: CascadeAuthorizer | undefined,
-): Promise<OrgRecord[]> {
+): Promise<DeactivationSubtree> {
   // 可信内部调用也统一标识；HTTP 入口已在权限判断前规范化。
   root = { ...root, id: root.id.toLowerCase() };
   const descendants = new Set<string>();
@@ -102,11 +110,32 @@ export async function planDeactivation(
     if (!authorize) throw new AppError('FORBIDDEN', '级联停用必须校验下级组织的数据范围');
     await authorize(tx, ids);
   }
+  return { root, from, descendants: ids, atFrom };
+}
+
+/** 整支（含本组织）自 from 起不能有在职人员或启用中的职位；组织调整校验把它转成校验问题。 */
+export function assertDeactivationVacant(tx: Tx, ctx: OrgWriteContext, plan: DeactivationSubtree): Promise<void> {
+  return assertSubtreeVacant(tx, ctx, plan.root, plan.descendants, plan.from, plan.atFrom);
+}
+
+/**
+ * 校验并返回需要级联停用的下级（from 当天仍启用的）。有未来版本的下级会让级联版本被覆盖（或之后才挂到本组织下），
+ * 一律拒绝，提示先处理未来版本（`10` §15 同口径）。
+ */
+export async function planDeactivation(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  root: OrgRecord,
+  from: string,
+  authorize: CascadeAuthorizer | undefined,
+): Promise<OrgRecord[]> {
+  const plan = await planDeactivationSubtree(tx, ctx, root, from, authorize);
   // 本组织的停用日已在 updateOrganization 入口判断（要早于 recordAt 等其他版本判断，才能给出同一条文案）。
-  await assertDeactivationAfterEstablished(tx, ctx, ids, from);
-  await rejectFutureDescendantVersions(tx, ctx, ids, from);
-  await assertSubtreeVacant(tx, ctx, root, ids, from, atFrom);
-  return atFrom.filter((node) => descendants.has(node.id) && node.enabled);
+  await assertDeactivationAfterEstablished(tx, ctx, plan.descendants, from);
+  await rejectFutureDescendantVersions(tx, ctx, plan.descendants, from);
+  await assertDeactivationVacant(tx, ctx, plan);
+  const ids = new Set(plan.descendants);
+  return plan.atFrom.filter((node) => ids.has(node.id) && node.enabled);
 }
 
 /** 按行政维度向下遍历；本组织在该时点已失效时，仍按下级记录的上级 ID 找到它们。 */

@@ -1,6 +1,6 @@
 {
   "byModule": {
-    "approval": 34,
+    "approval": 36,
     "audit": 4,
     "avatar": 5,
     "command-result": 1,
@@ -16,7 +16,7 @@
     "job": 14,
     "offers": 21,
     "org": 14,
-    "org-adjustment": 4,
+    "org-adjustment": 9,
     "permission": 44,
     "personnel": 18,
     "platform": 9,
@@ -34,5 +34,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 811
+  "total": 818
 }

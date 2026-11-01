@@ -162,11 +162,22 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
         key: 'joint',
         name: '调入部门会签',
         kind: 'countersign' as const,
-        approvers: ['record_department_head', 'record_department_hrbp'] as const,
+        approvers: [
+          { type: 'department', value: 'record_department_head' },
+          { type: 'department', value: 'record_department_hrbp' },
+        ] as const,
         transitionRule: { type: 'all' as const },
       };
-      const first = { key: 'out_head', name: '调出负责人审批', approver: 'latest_record_department_head' as const };
-      const final = { key: 'final', name: '调出负责人确认', approver: 'latest_record_department_head' as const };
+      const first = {
+        key: 'out_head',
+        name: '调出负责人审批',
+        approver: { type: 'department', value: 'latest_record_department_head' } as const,
+      };
+      const final = {
+        key: 'final',
+        name: '调出负责人确认',
+        approver: { type: 'department', value: 'latest_record_department_head' } as const,
+      };
       await w.publishedProcess({ nodes: last ? [first, joint] : [first, joint, final] });
       const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
       const submitted = await w.submit(draft);

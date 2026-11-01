@@ -85,9 +85,9 @@ export const injectFrozen = (w: ApprovalWorld, instanceId: string, userId: strin
 
 /** 只有指定节点的调动流程（节点 key 与审批人表达式沿用 TRANSFER_NODES 的命名）。 */
 export const NODES = {
-  outHead: { key: 'out_head', approver: 'latest_record_department_head' },
-  inHrbp: { key: 'in_hrbp', approver: 'record_department_hrbp' },
-  inHead: { key: 'in_head', approver: 'record_department_head' },
+  outHead: { key: 'out_head', approver: { type: 'department', value: 'latest_record_department_head' } },
+  inHrbp: { key: 'in_hrbp', approver: { type: 'department', value: 'record_department_hrbp' } },
+  inHead: { key: 'in_head', approver: { type: 'department', value: 'record_department_head' } },
 } as const;
 
 /**

@@ -30,6 +30,7 @@ import { activeTenants, type TenantRow } from './active-tenants.js';
 import { runAutoAssessmentSlot } from './auto-assessment-scheduler.js';
 import { runAutoRegularizationSlot } from './auto-regularization-scheduler.js';
 import { runRetirementSlot } from './retirement-scheduler.js';
+import { runOrgAdjustmentSlot } from '../org-adjustment/execution-runner.js';
 import { EmploymentError } from './errors.js';
 import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.js';
 import { rowsOf } from './record-store.js';
@@ -166,6 +167,7 @@ async function sweepTenant(
 /**
  * 有事可做的员工：有到期的审批通过申请，且它不是“失败待 HR 重试”，也不是“挂起且所等前序仍失败未修正”。
  * 只从审批通过的状态事件出发（部分索引），再确认它仍是该业务的最新状态。
+ * 前序在审批当场生效时没有尝试行，NULL 不等于失败，不能挡住 DEC-677 的自动续办。
  */
 async function dueEmployees(
   tx: Tx,
@@ -193,8 +195,8 @@ async function dueEmployees(
       AND (a.outcome IS NULL OR a.outcome='replanned' OR (a.outcome='suspended' AND NOT (
         (SELECT x.state FROM employment_state_events x WHERE x.tenant_id=b.tenant_id
           AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) IN ('approved','effective')
-        AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
-          AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed')))
+        AND COALESCE((SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
+          AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed', false))))
     UNION SELECT "employeeId"::text FROM (${completionCandidates({
       tenantId,
       timezone,
@@ -279,4 +281,6 @@ async function runSlot(db: Db, slot: number, clock: () => Date, onError: (error:
   await runAutoAssessmentSlot(db, slot, clock, onError);
   // BE-5c2（R2-T04 §9.2）：预计退休日期 / 弹性范围的每日批次，预计日期先于弹性范围
   await runRetirementSlot(db, slot, clock, onError);
+  // BE-11a（R2-T08 §7.2）：已排期的组织调整按租户串行执行，同一定时器、同一时间槽
+  await runOrgAdjustmentSlot(db, clock, onError);
 }

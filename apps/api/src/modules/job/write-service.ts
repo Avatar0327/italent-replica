@@ -7,6 +7,7 @@ import { jobCreationSchema, jobPatchSchema, normalizeFields } from './fields.js'
 import { jobTables, type JobKind } from './metadata.js';
 import { employmentJobPersonnel } from './employment-port.js';
 import { applyPositionPersonnelRules } from './personnel.js';
+import { assertNotPausedByOrgAdjustment } from '../org-adjustment/pause.js';
 import { latestJobObject, loadJobObject, type JobRecord } from './read-model.js';
 import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf } from './store.js';
@@ -39,6 +40,7 @@ export async function createJobObject(
   );
   await lockJobTenant(tx, ctx);
   const fields = await validateJobFields(tx, ctx, kind, id, normalized);
+  await assertOrgNotPaused(tx, ctx, kind, fields);
   await assertJobCodeAvailable(tx, ctx, kind, fields);
   if (kind === 'positions') await assertPositionNameAvailable(tx, ctx, fields);
   await insertRow(tx, jobTables(kind).objectTable, {
@@ -85,6 +87,7 @@ export async function updateJobObject(
     const options = { adjustEmployeeDirectManager };
     managerSync = await applyPositionPersonnelRules(tx, ctx, current, fields, options, personnel);
   }
+  await assertOrgNotPaused(tx, ctx, kind, fields, current);
   await updateRevision(tx, ctx, kind, id, current.revision + 1);
   const saved = await appendVersion(tx, ctx, kind, id, current.revision + 1, fields, current.versionId);
   await assertFutureHierarchy(tx, ctx, kind, id, fields);
@@ -102,6 +105,16 @@ export async function updateJobObject(
     await synchronizeDescendantTrees(tx, ctx, kind, id, effectiveDate);
   }
   return managerSync ? { ...saved, managerSync } : saved;
+}
+
+/**
+ * R2-T08 §7.6：职位新旧所属组织正在执行组织调整时 409，先于任何写入。锁序 J → O；更新入口放在经理同步之后
+ * （同步会锁员工，J → E → O），放在之前会与任职写入的 E → O 成环。
+ */
+async function assertOrgNotPaused(tx: Tx, ctx: JobWriteContext, kind: JobKind, fields: JobFields, current?: JobRecord) {
+  if (kind !== 'positions') return;
+  const departmentIds = [fields.orgId as string | undefined, current?.orgId];
+  await assertNotPausedByOrgAdjustment(tx, ctx, { departmentIds, date: fields.startDate });
 }
 
 export function assertTemporalOrder(current: { startDate: string }, effectiveDate: string): void {
