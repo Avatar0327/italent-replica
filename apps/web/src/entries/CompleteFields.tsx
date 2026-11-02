@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from 'react';
 import type { FormField, FormGroup } from '../foundation/FormOverlay.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
-import { NameOf, RefSelect, RefLabels, refPaths } from '../contracts/references.js';
+import { NameOf, RefLabel, RefSelect, RefLabels, refPaths } from '../contracts/references.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
 import { isBlank, type Values } from '../foundation/forms/values.js';
 import { contractObject, contractRequired, endOfTerm } from './model.js';
@@ -137,6 +137,8 @@ function displayFields(data: Values, email: ReactNode) {
   };
   return (labels: string) => labels.split('|').map((label) => readOnly(label, displays[label] ?? '--'));
 }
+/** 合同区引用字段只读时显示名称：合同主数据只有列表 GET（contracts/routes.ts），按列表取名，不请求详情。 */
+const contractRefs: Partial<Record<string, string>> = { companyId: refPaths.companyId, typeId: refPaths.typeId };
 function fieldBuilders(data: Values, canEdit: boolean, create: boolean, permission: ReturnType<typeof usePermissions>) {
   const writable = (
     name: keyof typeof m.fields,
@@ -154,7 +156,7 @@ function fieldBuilders(data: Values, canEdit: boolean, create: boolean, permissi
   const contract = (name: keyof typeof m.fields, control: ReactNode): FormField => ({
     ...writable(name, control, create && permission.field(name).editable, []),
     // 预填的法人公司在只读时显示名称而不是 ID（F-423）
-    ...(name === 'companyId' ? { display: <NameOf path={refPaths.companyId} id={data.companyId} /> } : {}),
+    ...(contractRefs[name] ? { display: <RefLabel path={contractRefs[name]} id={data[name]} /> } : {}),
     rules: [
       ({ getFieldsValue }) => ({
         validator: async (_, value) => {
