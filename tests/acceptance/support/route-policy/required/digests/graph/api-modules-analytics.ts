@@ -234,10 +234,12 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/segments.ts#segmentAverage',
   ],
   'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers': ['#RULES', '#member'],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#departmentMatch': ['#ANY'],
   'apps/api/src/modules/analytics/hr-structure-board.ts#dictionaryLabel': [
     '#NONE',
     'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
   ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople': ['#departmentMatch', '#institutionMatch'],
   'apps/api/src/modules/analytics/hr-structure-board.ts#genders': [
     '#count',
     'packages/domain/src/hr-analysis/segments.ts#GENDER_SEGMENTS',
@@ -249,6 +251,7 @@ export const GRAPH: Graph = {
     '#ratio',
     'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
   ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#institutionMatch': ['#ANY', '#NOBODY'],
   'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped': ['#RULES'],
   'apps/api/src/modules/analytics/hr-structure-board.ts#positionColumns': [
     '#EMPLOY_TYPES',
@@ -291,7 +294,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
     'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT',
   ],
-  'apps/api/src/modules/analytics/hr-structure-routes.ts#boardFilter': ['#textQuery', '#uuidQuery'],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#boardFilter': [
+    '#departmentFilter',
+    '#includeChildrenQuery',
+    '#textQuery',
+    '#uuidQuery',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#departmentFilter': ['#includeChildrenQuery', '#uuidQuery'],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery': ['#canonicalUuid'],
   'apps/api/src/modules/analytics/hr-structure-routes.ts#loadPeople': [
     'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople',
@@ -332,9 +341,9 @@ export const GRAPH: Graph = {
     [
       'apps/api/src/modules/analytics/hr-structure-board.ts#structureReport',
       '#HR_STRUCTURE_BASE',
+      '#departmentFilter',
       '#loadPeople',
       '#reportContext',
-      '#uuidQuery',
       'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORTS',
       'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_EMPLOY_TYPES',
     ],
