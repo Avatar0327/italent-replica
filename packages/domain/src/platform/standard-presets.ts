@@ -81,6 +81,17 @@ const HR_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
   targetKind: 'entity',
   targetCode: MODULE_OBJECTS.hrDashboard.code,
 };
+/** DEC-415：R2 BE-13a 的三个只读看板 / 报表对象同人事看板，看全部给本模块的预置管理员。 */
+const ANALYTICS_BE13A_OBJECTS = [
+  MODULE_OBJECTS.hrStructure.code,
+  MODULE_OBJECTS.hrStructureReport.code,
+  MODULE_OBJECTS.contractBoard.code,
+];
+const ANALYTICS_BE13A_SEE_ALL: readonly PresetSeeAllTarget[] = ANALYTICS_BE13A_OBJECTS.map((targetCode) => ({
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode,
+}));
 
 /** R2-T08 §9.2、DEC-415：申请单按主体组织控范围，明细没有独立范围。 */
 const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
@@ -123,7 +134,7 @@ const CONFIG_OBJECTS = new Set<string>([
 ]);
 
 /** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */
-const READ_ONLY_OBJECTS = new Set<string>([MODULE_OBJECTS.hrDashboard.code]);
+const READ_ONLY_OBJECTS = new Set<string>([MODULE_OBJECTS.hrDashboard.code, ...ANALYTICS_BE13A_OBJECTS]);
 const grant = (definition: ObjectDefinition) =>
   READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
 
@@ -393,7 +404,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
+    seeAll: [
+      BLACKLIST_SEE_ALL,
+      ASSESSMENT_SEE_ALL,
+      HR_DASHBOARD_SEE_ALL,
+      ...ANALYTICS_BE13A_SEE_ALL,
+      ORG_ADJUSTMENT_SEE_ALL,
+    ],
   },
   {
     code: 'standard_hr_admin',
@@ -403,7 +420,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.map(grant),
     hr: true,
-    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, HR_DASHBOARD_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL],
+    seeAll: [
+      BLACKLIST_SEE_ALL,
+      ASSESSMENT_SEE_ALL,
+      HR_DASHBOARD_SEE_ALL,
+      ...ANALYTICS_BE13A_SEE_ALL,
+      ORG_ADJUSTMENT_SEE_ALL,
+    ],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象

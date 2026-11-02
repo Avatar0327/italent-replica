@@ -13,6 +13,7 @@ import { canCreatePerson, type CreateReceipt } from './create-model.js';
 import { c } from './create-messages.js';
 import { ApplicationLocation, useApplicationLocation } from './ApplicationLocation.js';
 import { InternDetail } from './InternDetail.js';
+import { useNavigationGuard, type NavigationGuard } from './navigation.js';
 import { m } from './messages.js';
 import {
   allowedFilters,
@@ -73,7 +74,8 @@ function useInternList() {
     select(undefined);
     locate(undefined);
   };
-  const create = useInternCreation(() => {
+  const guard = useNavigationGuard();
+  const create = useInternCreation(guard, () => {
     switchView('interning');
     result.refresh();
   });
@@ -83,14 +85,16 @@ function useInternList() {
     setPage(page);
     locate(undefined);
   }, []);
-  const refresh = async (destination?: ApplicationDestination) => {
-    if (!destination) return result.reload();
-    setParams({ view: destination.view });
-    setPage(1);
-    setFilters({});
-    locate(destination);
-    result.refresh();
-  };
+  const refresh = () => result.reload();
+  // 申请确认后切到目标视图并独立定位；提交开始时领票，离页或期间已导航则丢弃（F-376）
+  const navigation = () =>
+    guard((destination: ApplicationDestination) => {
+      setParams({ view: destination.view });
+      setPage(1);
+      setFilters({});
+      locate(destination);
+      result.refresh();
+    });
   const changePage = (next: number) => {
     locate(undefined);
     setPage(next);
@@ -118,6 +122,7 @@ function useInternList() {
     switchView,
     located,
     refresh,
+    navigation,
     create,
     createAllowed,
   };
@@ -139,6 +144,7 @@ function InternList() {
     switchView,
     located,
     refresh,
+    navigation,
     create,
     createAllowed,
   } = useInternList();
@@ -192,6 +198,7 @@ function InternList() {
           row={selected.row}
           onClose={close}
           refresh={refresh}
+          navigation={navigation}
         />
       )}
     </>
@@ -301,18 +308,22 @@ function InternTable({
   );
 }
 
-function useInternCreation(onInterning: () => void) {
+function useInternCreation(guard: NavigationGuard, onInterning: () => void) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const route = (receipt: CreateReceipt) => (receipt.view === 'pendingEntry' ? navigate('/entries') : onInterning());
   return {
     open: () => setOpen(true),
     props: {
       open,
       onClose: () => setOpen(false),
-      onDone(receipt: CreateReceipt) {
-        setOpen(false);
-        if (receipt.view === 'pendingEntry') navigate('/entries');
-        else onInterning();
+      // 保存开始时领票：回执迟到时页面已离开或已导航，只关弹窗、不再跳转（F-376）
+      begin() {
+        const go = guard(route);
+        return (receipt: CreateReceipt) => {
+          setOpen(false);
+          go(receipt);
+        };
       },
     },
   };

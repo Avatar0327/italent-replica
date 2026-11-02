@@ -2,18 +2,94 @@
  * 直接依赖图：区域 api-modules-analytics（节点 → 直接依赖，字典序；同文件的依赖写作 #名字；没有依赖的叶子不登记）。
  * 生成文件（F-072）：改源码后用 `ROUTE_POLICY_UPDATE_DIGESTS=1` 重算，不要手改；冲突时取任一侧后重算。
  */
+/* eslint-disable max-len -- 生成文件，键含完整路径 */
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
-  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': [
-    '#AS_OF_MAX',
-    '#AS_OF_MIN',
-    '#validAsOf',
+  'apps/api/src/modules/analytics/contract-board-routes.ts#boardContext': [
+    '#boardFilter',
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_OBJECT',
+  ],
+  'apps/api/src/modules/analytics/contract-board-routes.ts#boardFilter': [
+    'apps/api/src/modules/analytics/contract-board.ts#CONTRACT_TERM_TYPES',
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery',
+  ],
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board': [
+    '#CONTRACT_BOARD_BASE',
+    '#boardContext',
+    'apps/api/src/modules/analytics/contract-board.ts#contractBoardComponents',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#dashboardRenewalTypes',
+  ],
+  'apps/api/src/modules/analytics/contract-board-routes.ts#route:GET /api/tenant/analytics/contract-board/components/:code':
+    [
+      '#CONTRACT_BOARD_BASE',
+      '#boardContext',
+      'apps/api/src/modules/analytics/contract-board.ts#contractBoardPage',
+      'apps/api/src/modules/analytics/contract-board.ts#isGroupedContractComponent',
+      'apps/api/src/modules/analytics/hr-dashboard.ts#dashboardRenewalTypes',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
+      'apps/api/src/modules/job/context.ts#pageQuery',
+      'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/contract-board.ts#SIGN_GROUPS': [
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#boardRows': [
+    '#candidates',
+    '#isGroupedContractComponent',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#candidates': [
+    '#CHANGE_OPERATIONS',
+    '#SIGN_GROUPS',
+    '#changes',
+    '#expiring',
+    '#signed',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#changes': ['#filtered'],
+  'apps/api/src/modules/analytics/contract-board.ts#contractBoardComponents': [
+    '#CONTRACT_TERM_TYPES',
+    '#boardRows',
+    '#isGroupedContractComponent',
+    '#masterNames',
+    'apps/api/src/modules/analytics/hr-structure-board.ts#ratio',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_COMPONENTS',
+    'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_TOP_COMPANIES',
+    'packages/domain/src/hr-analysis/roster.ts#TERM_TYPE_LABELS',
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#contractBoardPage': [
+    '#boardRows',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#pageRows',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#expiring': [
+    '#filtered',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#indicatorRows',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#isGroupedContractComponent': ['#SIGN_GROUPS'],
+  'apps/api/src/modules/analytics/contract-board.ts#masterNames': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/contract-board.ts#signed': [
+    '#filtered',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom',
+    'apps/api/src/modules/contracts/queries.ts#contractInForce',
+  ],
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope': [
+    '#dateQuery',
     'apps/api/src/modules/permission/module-route-access.ts#requestScope',
-    'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dashboardContext': [
+    '#analyticsScope',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT',
+  ],
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery': ['#AS_OF_MAX', '#AS_OF_MIN', '#validBoardDate'],
   'apps/api/src/modules/analytics/hr-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-dashboard': [
     '#HR_DASHBOARD_BASE',
     '#dashboardContext',
@@ -30,7 +106,7 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/job/context.ts#pageQuery',
       'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_INDICATORS',
     ],
-  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#validAsOf': [
+  'apps/api/src/modules/analytics/hr-dashboard-routes.ts#validBoardDate': [
     '#AS_OF_MAX',
     '#AS_OF_MIN',
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
@@ -69,6 +145,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#departments': ['#NULL_UUID', '#pick'],
   'apps/api/src/modules/analytics/hr-dashboard.ts#employType': ['#current', '#list'],
+  'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
+  ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#entries': [
     '#SNAPSHOT',
     '#WORKING_TYPES',
@@ -96,19 +176,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_INDICATORS',
   ],
-  'apps/api/src/modules/analytics/hr-dashboard.ts#hrDashboardPage': [
-    '#indicatorRows',
-    'apps/api/src/modules/employment/read-model.ts#rowsOf',
-  ],
-  'apps/api/src/modules/analytics/hr-dashboard.ts#inService': [
+  'apps/api/src/modules/analytics/hr-dashboard.ts#hrDashboardPage': ['#indicatorRows', '#pageRows'],
+  'apps/api/src/modules/analytics/hr-dashboard.ts#inService': ['#current', '#inServiceFrom', '#pick'],
+  'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom': [
     '#SNAPSHOT',
-    '#current',
-    '#pick',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
   ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#indicatorRows': ['#METRICS', '#visible'],
   'apps/api/src/modules/analytics/hr-dashboard.ts#noWorkStartDate': ['#dayEnd'],
   'apps/api/src/modules/analytics/hr-dashboard.ts#offerRows': ['#NULL_UUID', '#pick'],
+  'apps/api/src/modules/analytics/hr-dashboard.ts#pageRows': ['apps/api/src/modules/employment/read-model.ts#rowsOf'],
   'apps/api/src/modules/analytics/hr-dashboard.ts#pick': ['#NULL_UUID'],
   'apps/api/src/modules/analytics/hr-dashboard.ts#probation': [
     '#pick',
@@ -126,8 +203,158 @@ export const GRAPH: Graph = {
     'packages/domain/src/offer/views.ts#offerView',
   ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#visible': [
-    'apps/api/src/modules/employment/context.ts#employmentCreator',
-    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
+    '#employmentVisible',
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#NONE': [
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#RULES': [
+    '#STATUS',
+    '#dictionaryLabel',
+    '#institution',
+    '#orgLabel',
+    '#probation',
+    '#withNone',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_TOP_INSTITUTIONS',
+    'packages/domain/src/hr-analysis/segments.ts#AGE_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#BACHELOR_OR_ABOVE',
+    'packages/domain/src/hr-analysis/segments.ts#EDUCATION_TIERS',
+    'packages/domain/src/hr-analysis/segments.ts#GENDER_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+    'packages/domain/src/hr-analysis/segments.ts#TENURE_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#ageSample',
+    'packages/domain/src/hr-analysis/segments.ts#ageSegment',
+    'packages/domain/src/hr-analysis/segments.ts#educationTier',
+    'packages/domain/src/hr-analysis/segments.ts#genderSegment',
+    'packages/domain/src/hr-analysis/segments.ts#tenureSample',
+    'packages/domain/src/hr-analysis/segments.ts#tenureSegment',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#average': [
+    'packages/domain/src/hr-analysis/segments.ts#segmentAverage',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers': ['#RULES', '#member'],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#dictionaryLabel': [
+    '#NONE',
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#genders': [
+    '#count',
+    'packages/domain/src/hr-analysis/segments.ts#GENDER_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#genderSegment',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#groups': [
+    '#member',
+    '#option',
+    '#ratio',
+    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped': ['#RULES'],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#positionColumns': [
+    '#EMPLOY_TYPES',
+    '#count',
+    '#genders',
+    '#present',
+    '#probation',
+    '#ratio',
+    '#total',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#probation': [
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#qualityColumns': [
+    '#average',
+    '#count',
+    '#genders',
+    '#total',
+    'packages/domain/src/hr-analysis/segments.ts#AGE_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#EDUCATION_TIERS',
+    'packages/domain/src/hr-analysis/segments.ts#TENURE_SEGMENTS',
+    'packages/domain/src/hr-analysis/segments.ts#ageSample',
+    'packages/domain/src/hr-analysis/segments.ts#ageSegment',
+    'packages/domain/src/hr-analysis/segments.ts#educationTier',
+    'packages/domain/src/hr-analysis/segments.ts#tenureSample',
+    'packages/domain/src/hr-analysis/segments.ts#tenureSegment',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#structureComponents': [
+    '#RULES',
+    '#componentMembers',
+    '#groups',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
+    'packages/domain/src/hr-analysis/segments.ts#segmentAverage',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#structureReport': ['#positionColumns', '#qualityColumns'],
+  'apps/api/src/modules/analytics/hr-structure-board.ts#withNone': ['#NONE'],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': [
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#boardFilter': ['#textQuery', '#uuidQuery'],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery': ['#canonicalUuid'],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#loadPeople': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople',
+    '#lookupOf',
+    'apps/api/src/modules/analytics/hr-structure.ts#structurePeople',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#lookupOf': [
+    'apps/api/src/modules/analytics/hr-structure.ts#jobDictionary',
+    'apps/api/src/modules/analytics/hr-structure.ts#orgTree',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': [
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#analyticsScope',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#structureComponents',
+    '#BOARD_EMPLOY_TYPES',
+    '#HR_STRUCTURE_BASE',
+    '#boardContext',
+    '#boardFilter',
+    '#loadPeople',
+  ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
+    [
+      'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
+      'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
+      '#BOARD_EMPLOY_TYPES',
+      '#HR_STRUCTURE_BASE',
+      '#boardContext',
+      '#boardFilter',
+      '#groupQuery',
+      '#loadPeople',
+      'apps/api/src/modules/job/context.ts#pageQuery',
+      'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
+    [
+      'apps/api/src/modules/analytics/hr-structure-board.ts#structureReport',
+      '#HR_STRUCTURE_BASE',
+      '#loadPeople',
+      '#reportContext',
+      '#uuidQuery',
+      'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORTS',
+      'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_EMPLOY_TYPES',
+    ],
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery': ['#canonicalUuid'],
+  'apps/api/src/modules/analytics/hr-structure.ts#attribute': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#current',
+  ],
+  'apps/api/src/modules/analytics/hr-structure.ts#jobDictionary': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/hr-structure.ts#orgTree': [
+    '#MAX_DEPTH',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#current',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#employType',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
+    'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom',
+    '#attribute',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
 };

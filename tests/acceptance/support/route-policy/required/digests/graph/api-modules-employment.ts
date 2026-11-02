@@ -2601,6 +2601,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-handover-retry.ts#consume': [
     'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    '#WAITING_ACCOUNT',
     '#receipt',
     '#unfinished',
     'apps/api/src/modules/employment/exit-handover.ts#launchExitHandover',
@@ -2625,6 +2626,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-retry.ts#receipt': [
+    '#WAITING_ACCOUNT',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-handover-routes.ts#SETTINGS': [
