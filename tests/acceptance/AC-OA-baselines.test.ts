@@ -2,19 +2,24 @@ import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { assertBaselines } from '../../apps/api/src/modules/org-adjustment/baseline.js';
+import { assertWorldBaselines } from '../../apps/api/src/modules/org-adjustment/baseline.js';
+import { loadWorld } from '../../apps/api/src/modules/org-adjustment/item-tree.js';
+import { loadAdjustment } from '../../apps/api/src/modules/org-adjustment/service.js';
 import { expectError } from './AC-OA-head-support.js';
 import { itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
 
 const testDb = useTestDb();
 
 describe('§2.5 基线（组织）：提交时判外部变更，刷新基线后通过', () => {
-  it('目标组织被外部改动 → assertBaselines(submit) 409 BASELINE_CHANGED 列出行；单行刷新后通过', async () => {
+  it('目标组织被外部改动 → assertWorldBaselines（按库里的申请单）409 BASELINE_CHANGED 列出行；单行刷新后通过', async () => {
     const w = await itemsWorld(testDb().db, 'oabase');
     const view = await w.created();
     const itemId = (await w.item(view.id, rename(w.a))).items[0]!.id;
     await w.item(view.id, newOrg(w.a));
-    const judge = () => withTenant(w.db, w.tenant.id, (tx) => assertBaselines(tx, w.tenant.id, view.id, 'submit'));
+    const judge = () =>
+      withTenant(w.db, w.tenant.id, async (tx) =>
+        assertWorldBaselines(await loadWorld(tx, w.tenant.id, (await loadAdjustment(tx, w.tenant.id, view.id))!)),
+      );
     await expect(judge()).resolves.toBeUndefined();
     await w.touchOrg(w.a);
     await expect(judge()).rejects.toMatchObject({

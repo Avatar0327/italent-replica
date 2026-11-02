@@ -8,16 +8,16 @@ import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import { BASELINE_CHANGED, baselineIssues } from './item-check.js';
-import { loadWorld } from './item-tree.js';
+import type { ItemWorld } from './item-tree.js';
 import { auditItem, bumpRevision, loadItems, updateItem, type ItemsResult, type OrgItem } from './items-store.js';
 import { ORG_INACTIVE } from './range.js';
-import { audit, editable, loadAdjustment, type WriteContext } from './service.js';
+import { audit, editable, type WriteContext } from './service.js';
 
-/** 提交关口：任一非暂存行基线过期 → 409，列出行。 */
-export async function assertBaselines(tx: Tx, tenantId: string, adjustmentId: string, _stage: 'submit') {
-  const view = await loadAdjustment(tx, tenantId, adjustmentId);
-  if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
-  const world = await loadWorld(tx, tenantId, view);
+/**
+ * 整单关口的第一步（whole-check.ts，提交 / 重提、审批中编辑、同意前同一口径）：任一非暂存行（含连带行）基线过期
+ * → 409，列出行。
+ */
+export function assertWorldBaselines(world: ItemWorld) {
   const live = world.items.filter((item) => !item.isStaged);
   const stale = baselineIssues(world, live);
   if (stale.length) {

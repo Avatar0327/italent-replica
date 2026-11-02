@@ -49,6 +49,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_BUTTONS',
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_FIELDS',
     'packages/domain/src/employment/assessment.ts#ASSESSMENT_SYSTEM_FIELDS',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_FIELDS',
+    'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_SET_RECEIVER_BUTTON',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_BATCH_SUBMIT_BUTTON',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ROW_SUBMIT_BUTTON',

@@ -35,7 +35,7 @@ import type { BusinessKind, EmploymentContext, NormalizedEmploymentInput } from 
 import { createEmploymentBusiness, latestTimelineRecord, sequenceViolation } from './write-service.js';
 
 /** 起始日 = 入职日（不接受请求指定）；终止日必填（R2f1）。 */
-const internContract = entryContractSchema.omit({ effectiveDate: true }).extend({ endDate: z.iso.date() });
+const internContract = entryContractSchema.extend({ endDate: z.iso.date() });
 
 export const internCreateInput = z
   .strictObject({

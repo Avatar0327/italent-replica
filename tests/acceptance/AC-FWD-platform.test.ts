@@ -7,7 +7,8 @@ import { resultRows } from './AC-ORG-support.js';
 import { errorCode } from './support/tenant-api.js';
 
 const testDb = useTestDb();
-const changedFields = { place: '追溯后地点', employmentType: '追溯后类别' };
+// F-323 后人员类别是字典引用：追溯变化字段改用自由文本的人员来源
+const changedFields = { place: '追溯后地点', employmentSource: '追溯后来源' };
 
 async function fixture(db: Db, label: string) {
   const session = await employmentSession(db, label);
@@ -19,7 +20,7 @@ async function fixture(db: Db, label: string) {
       kind: 'hire',
       mode: 'direct',
       effectiveDate: '2026-09-01',
-      fields: { departmentId: org.id, place: '原地点', employmentType: '原类别' },
+      fields: { departmentId: org.id, place: '原地点', employmentSource: '原来源' },
     },
     employee.revision,
   );
@@ -75,7 +76,7 @@ describe('AC-FWD-01/02 DEC-019 版本追加、幂等与事务边界', () => {
       trigger_business_id: source.id,
       is_record_snapshot: true,
       place: changedFields.place,
-      employment_type: changedFields.employmentType,
+      employment_source: changedFields.employmentSource,
     });
     const audited = await withTenant(db, session.tenant.id, async (tx) =>
       resultRows(
@@ -86,7 +87,7 @@ describe('AC-FWD-01/02 DEC-019 版本追加、幂等与事务边界', () => {
     expect(audited).toContainEqual(
       expect.objectContaining({
         actor_user_id: session.user.id,
-        before: expect.objectContaining({ place: '原地点', employmentType: '原类别' }),
+        before: expect.objectContaining({ place: '原地点', employmentSource: '原来源' }),
         after: expect.objectContaining(changedFields),
       }),
     );

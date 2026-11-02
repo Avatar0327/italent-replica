@@ -244,7 +244,8 @@ export const LEAVE_SOURCE: CandidateSource = { kind: 'leave', columns: sql``, jo
 /**
  * 候选行（范围过滤后、分页前），ord 是 order 下的全局名次。部门 / 职务：前驱任职记录 = 最终最后工作日当天或之前的
  * 最后一条时间轴记录（离职记录自己从最后工作日次日起，不会取到自己），取它最新的记录快照；
- * 单据部门（可见谓词用）优先取离职载荷自己的部门。
+ * 单据部门（可见谓词用）优先取离职载荷自己的部门。前驱的序列 / 关键人员只供人员流动（analytics/hr-movement.ts）
+ * 经 source.columns 读取，按“有没有快照”选值，快照里清空的字段不回落到底表旧值（BE-13b 审查 P2-4）。
  */
 function candidates(
   tenantId: string,
@@ -287,10 +288,13 @@ function candidates(
     LEFT JOIN exit_cancellations c ON c.tenant_id=x.tenant_id AND c.business_id=x.business_id
     LEFT JOIN LATERAL (
       SELECT COALESCE(snap.department_id, r.department_id) AS department_id,
-        COALESCE(snap.position_id, r.position_id) AS position_id
+        COALESCE(snap.position_id, r.position_id) AS position_id,
+        CASE WHEN snap.id IS NULL THEN r.sequence_id ELSE snap.sequence_id END AS sequence_id,
+        COALESCE(CASE WHEN snap.id IS NULL THEN r.is_key_person ELSE snap.is_key_person END, false) AS is_key_person
       FROM employment_timeline t
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-      LEFT JOIN LATERAL (SELECT v.department_id, v.position_id FROM employment_payload_versions v
+      LEFT JOIN LATERAL (SELECT v.id, v.department_id, v.position_id, v.sequence_id, v.is_key_person
+        FROM employment_payload_versions v
         WHERE v.tenant_id=r.tenant_id AND v.business_id=r.id AND v.is_record_snapshot
         ORDER BY v.version_no DESC LIMIT 1) snap ON true
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.last_work_date

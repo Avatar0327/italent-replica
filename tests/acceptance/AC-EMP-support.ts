@@ -78,6 +78,27 @@ export async function installProbationSeeds(db: Db, tenantId: string): Promise<v
         { tenantId, actorUserId: null, now: new Date(), commandId: `forms-seed-${randomUUID()}` },
         { modules: ['employment-forms'] },
       );
+    // F-323：人员类别预置 8 条（新租户开通即装）
+    const types = await tx.execute(sql`SELECT to_regclass('employment_types') IS NOT NULL AS ready`);
+    const [typesReady] = (Array.isArray(types) ? types : (types as { rows: unknown[] }).rows) as { ready: boolean }[];
+    if (typesReady?.ready)
+      await installMissingSeeds(
+        tx,
+        { tenantId, actorUserId: null, now: new Date(), commandId: `types-seed-${randomUUID()}` },
+        { modules: ['employment-types'] },
+      );
+  });
+}
+
+/** F-323：按名称取本租户人员类别 ID（预置项名称见 17 §F-323）。 */
+export async function employmentTypeId(db: Db, tenantId: string, name: string): Promise<string> {
+  return withTenant(db, tenantId, async (tx) => {
+    const result = await tx.execute(
+      sql`SELECT id FROM employment_types WHERE tenant_id=${tenantId} AND name=${name} AND deleted_at IS NULL`,
+    );
+    const [row] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[];
+    if (!row) throw new Error(`人员类别不存在：${name}`);
+    return row.id;
   });
 }
 

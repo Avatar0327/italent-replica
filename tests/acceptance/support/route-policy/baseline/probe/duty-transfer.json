@@ -1,0 +1,83 @@
+{
+  "GET /api/tenant/duty-transfers/departed": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.DutyTransferCommon/TenantBase.DutyTransferCommon.list"
+    ],
+    "trace": [
+      "obj:TenantBase.DutyTransferCommon:view"
+    ]
+  },
+  "GET /api/tenant/duty-transfers/people/:id/duties": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.DutyTransferCommon"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.DutyTransferCommon/TenantBase.DutyTransferCommon.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.DutyTransferCommon:view"
+    ]
+  },
+  "GET /api/tenant/duty-transfers/records": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.DutyTransferCommon"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.DutyTransferCommon/TenantBase.DutyTransferCommon.list"
+    ],
+    "trace": [
+      "obj:TenantBase.DutyTransferCommon:view"
+    ]
+  },
+  "POST /api/tenant/duty-transfers/people/:id": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.DutyTransferCommon:create"
+    ]
+  },
+  "POST /api/tenant/duty-transfers/people/:id/check": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "bdaefa44195c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.DutyTransferCommon:create"
+    ]
+  }
+}

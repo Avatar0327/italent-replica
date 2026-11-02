@@ -1,13 +1,21 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import * as linkage from '../../apps/api/src/modules/employment/transfer-linkage.js';
+import { employmentTypeId } from './AC-EMP-support.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 /** capacity 为 null 时不建编制（F-296：含编制的组织在 11e 前不能直接停用，停用类用例要用无编制的组织）。 */
-async function fixture(label: string, capacity: number | null = 1, occupancyRanges = [{ employmentType: 'internal' }]) {
+type Ranges = readonly { employmentType: string; conditions?: Record<string, string[]> }[];
+/** occupancyRanges 可传函数：人员类别条件值是租户字典 ID（F-323），要等夹具租户建好后再取。 */
+async function fixture(
+  label: string,
+  capacity: number | null = 1,
+  ranges: Ranges | ((tenantId: string) => Promise<Ranges>) = [{ employmentType: 'internal' }],
+) {
   const w = await activationWorld(database().db, label);
+  const occupancyRanges = typeof ranges === 'function' ? await ranges(w.session.tenant.id) : ranges;
   const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
   async function request(method: string, path: string, body: object, revision = 0) {
     return api.request(method, `/api/tenant/establishment${path}`, {
@@ -322,13 +330,17 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
   });
 
   it('Q-M0-15 同条件字段且/同字段值或/多条件并集，与雇佣关系匹配', async () => {
-    const ranges = [
-      {
-        employmentType: 'internal',
-        conditions: { employmentForm: ['full_time', 'part_time'], employmentType: ['engineer'] },
-      },
-      { employmentType: 'intern', conditions: { employmentSource: ['campus'] } },
-    ];
+    let engineer = '';
+    const ranges = async (tenantId: string): Promise<Ranges> => {
+      engineer = await employmentTypeId(database().db, tenantId, '技术开发');
+      return [
+        {
+          employmentType: 'internal',
+          conditions: { employmentForm: ['full_time', 'part_time'], employmentType: [engineer] },
+        },
+        { employmentType: 'intern', conditions: { employmentSource: ['campus'] } },
+      ];
+    };
     const w = await fixture('trf-est-ranges', 0, ranges);
     const { employee, hire } = await w.hired();
     const create = (fields: object) =>
@@ -342,8 +354,8 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
           fields: { departmentId: w.to.id, ...fields },
         },
       });
-    expect((await create({ employmentForm: 'part_time', employmentType: 'engineer' })).status).toBe(409);
-    expect((await create({ employmentForm: 'regular', employmentType: 'engineer' })).status).toBe(201);
+    expect((await create({ employmentForm: 'part_time', employmentType: engineer })).status).toBe(409);
+    expect((await create({ employmentForm: 'regular', employmentType: engineer })).status).toBe(201);
   });
 
   it('申请通过后真实满编 → 到期失败 → 调整编制 → 按执行日重试，幂等关闭待办', async () => {
