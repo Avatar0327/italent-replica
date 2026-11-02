@@ -276,7 +276,7 @@ describe('DT-R7 / AC-DT-04：菜单转交下属生成任职记录（第 2 轮 P2
   });
 });
 
-describe('接收人为空即不转交（第 2 轮 P2-2）', () => {
+describe('接收人为空即不转交（DEC-726，第 2 轮 P2-2）', () => {
   async function twoSubordinates(label: string) {
     const x = await world(label);
     const one = await x.subordinateOf(x.employee.id, '下属甲');
@@ -360,7 +360,7 @@ describe('接收人为空即不转交（第 2 轮 P2-2）', () => {
   });
 });
 
-describe('转交日期须是合法日历日（第 2 轮 P2-5）', () => {
+describe('转交日期须是合法日历日（DEC-726，第 2 轮 P2-5）', () => {
   it('不存在的日期 400，职责、记录、命令台账都不变；闰日与合法未来日期可提交；今天 / 过去 400', async () => {
     const x = await world('calendar');
     const subordinate = await x.subordinateOf(x.employee.id, '下属');

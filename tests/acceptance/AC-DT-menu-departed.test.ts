@@ -107,7 +107,7 @@ async function cloneDeparted(
   return mapping.map((row) => row.eid);
 }
 
-describe('检查离职退休人员：规模与分页（P2-6）', () => {
+describe('检查离职退休人员：规模与分页（DEC-726，第 2 轮 P2-6）', () => {
   it('1000 余名有职责的离职人员混有无职责者：total 准确，分页不重不漏、排序稳定，按范围过滤', async () => {
     const x = await menuWorld(database().db, 'departed-scale', TODAY);
     const holder = await x.peer('合成离职负责人');

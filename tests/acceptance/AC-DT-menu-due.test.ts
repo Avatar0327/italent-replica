@@ -28,7 +28,7 @@ async function disableOrg(x: MenuWorld, orgId: string, effectiveDate: string) {
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
-describe('到期前组织已停用（P2-3）', () => {
+describe('F-408 到期前组织已停用（DEC-726，第 2 轮 P2-3）', () => {
   it('该条记失败、不生成组织新版本、不自动重试；同批下属转交照常成功', async () => {
     const x = await world('due-disabled');
     const org = await x.session.org('合成空组织', { establishedOn: '2026-01-01' });
@@ -58,7 +58,7 @@ describe('到期前组织已停用（P2-3）', () => {
   });
 });
 
-describe('迟到执行按执行日校验接收人（P2-4）', () => {
+describe('F-408 迟到执行按执行日校验接收人（DT-R6，第 2 轮 P2-4）', () => {
   it('接收人在转交日期之后、执行日之前离职 / 退休：该条失败；同批其他接收人照常成功、启用日仍取转交日期', async () => {
     const x = await world('due-late');
     await x.setHead(x.from.id, x.employee.id);
@@ -97,7 +97,7 @@ describe('迟到执行按执行日校验接收人（P2-4）', () => {
   });
 });
 
-describe('到期失败的形态与恢复（P3-6）', () => {
+describe('F-408 到期失败的形态与恢复（DEC-052，第 2 轮 P3-6）', () => {
   it('失败：未完成、带原因、次数 1；重跑不重试；菜单覆盖后清掉失败，到期正常执行', async () => {
     const x = await world('due-failure');
     const subordinate = await x.subordinateOf(x.employee.id, '下属');

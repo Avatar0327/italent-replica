@@ -54,7 +54,7 @@ async function scheduledFor(x: Awaited<ReturnType<typeof world>>, holderId: stri
   return { subordinate, receiver, recordId: saved.records[0]!.id };
 }
 
-describe('到期执行逐人兜底（P3-1）', () => {
+describe('F-408 到期执行逐人兜底（DEC-052，第 2 轮 P3-1）', () => {
   it('前一名被转交人抛非业务异常：记入 errors 与次数、不记失败原因；后一名照常完成；下轮重试成功', async () => {
     const x = await world('fault-person');
     const second = await x.peer('第二被转交人');
