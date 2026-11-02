@@ -328,6 +328,34 @@ describe('接收人为空即不转交（DEC-726，第 2 轮 P2-2）', () => {
     expect(await x.managerOf(one.id)).toBe(x.employee.id);
   });
 
+  it('预览与提交“全部为空”同口径（F-448，第 2 轮交叉审 P3-5）：全空且无待生效记录时预览也 400', async () => {
+    const { x, one, two, receiver } = await twoSubordinates('blank-check');
+    for (const timing of ['immediate', 'scheduled'] as const) {
+      const response = await x.request('POST', `/people/${x.employee.id}/check`, {
+        body: {
+          timing,
+          ...(timing === 'scheduled' ? { transferDate: LATER } : {}),
+          items: [subordinateItem(one.id, null), subordinateItem(two.id, null)],
+        },
+      });
+      expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'DUTY_TRANSFER_EMPTY' });
+    }
+
+    // 空接收人但有待生效记录：提交会撤回该记录（不报全空），预览同样放行。
+    await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [subordinateItem(one.id, receiver.id)],
+    });
+    const revision = (await x.duties(x.employee.id)).items.find((item) => item.subordinateId === one.id)!.pending!
+      .revision;
+    const withdraw = await x.check(x.employee.id, {
+      timing: 'immediate',
+      items: [subordinateItem(one.id, null, revision), subordinateItem(two.id, null)],
+    });
+    expect(withdraw).toMatchObject({ count: 0, receivers: [] });
+  });
+
   it('已有待生效记录的空接收人带 revision 撤回，同批无记录的空接收人跳过、其余立即转交', async () => {
     const { x, one, two, receiver } = await twoSubordinates('blank-void');
     const third = await x.subordinateOf(x.employee.id, '下属丙');
