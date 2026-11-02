@@ -3,11 +3,11 @@
  * 退化为实习开始日期（实习入职日）降序、同日记录 id 升序；表头只有实习机构 / 实习部门 / 直线经理三列可排，单列，
  * 值 方向 NULLS LAST、再 id 升序。其余三个页签未取证，不收排序参数。排序列须可查看，否则 403（不让排序成为探针）。
  */
-import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { internWorld, scopedRequest, type InternViewItem, type InternWorld } from './AC-IN-BE6a-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const ids = (items: readonly InternViewItem[]) => items.map((item) => item.id);
@@ -16,7 +16,7 @@ const allFields = () =>
 
 /** 根下行政维度的组织，sequence 决定 DEC-089 名次。 */
 const org = (w: InternWorld, name: string, broadType: string, parentId: string, sequence: number) =>
-  w.session.org(`${name}-${randomUUID()}`, {
+  w.session.org(`${name}-${uniqueSuffix()}`, {
     broadType,
     establishedOn: '2024-01-01',
     parents: { admin: { parentId, sequence } },
@@ -28,7 +28,7 @@ const intern = async (w: InternWorld, name: string, effectiveDate: string, field
 
 /** 工号受控的在职经理：直线经理按工号排序（同兼职直线经理，view-sort.ts）。 */
 async function manager(w: InternWorld, prefix: string, departmentId: string) {
-  const created = await w.session.employee(`合成经理${prefix}`, `${prefix}_${randomUUID().replaceAll('-', '')}`);
+  const created = await w.session.employee(`合成经理${prefix}`, `${prefix}_${uniqueSuffix(32)}`);
   const hire = { kind: 'hire', mode: 'direct', effectiveDate: '2026-08-01', fields: { departmentId } };
   await w.session.business(created.id, hire, created.revision);
   return created.id;
