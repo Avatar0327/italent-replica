@@ -61,7 +61,6 @@ export const s = {
   initiatorType: '发起人',
   probationResult: '试用结果',
   assessmentType: '考核类型',
-  operator: '最后保存人',
   yes: '是',
   no: '否',
   orgLimit: '最多选择 50 个组织',

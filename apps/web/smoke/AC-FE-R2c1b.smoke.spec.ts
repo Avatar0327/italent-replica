@@ -386,7 +386,9 @@ test('AC-FE-R2c1b-05 考核并行规则：打开开关出现多选，按候选�
   await expect(panel.getByRole('checkbox')).toHaveCount(0);
   await toggle.click();
   await expect(panel.getByRole('checkbox')).toHaveCount(2);
-  await panel.getByRole('checkbox', { name: '转正', exact: true }).check();
+  // 受控多选经表单回写后才变为选中，用点击 + 断言等待，不用 check() 的即时判定。
+  await panel.getByRole('checkbox', { name: '转正', exact: true }).click();
+  await expect(panel.getByRole('checkbox', { name: '转正', exact: true })).toBeChecked();
   await panel.getByRole('button', save).click();
   await expect(panel.getByRole('checkbox', { name: '转正', exact: true })).toBeChecked();
   await toggle.click();
@@ -413,6 +415,6 @@ test('AC-FE-R2c1b-06 无配置权限：字典只读，规则与配置页签明�
       await expect(root(page).getByRole('button', named(name))).toHaveCount(0);
   }
   await open(page, 'regularization');
-  await expect(root(page).getByText('无权访问').first()).toBeVisible();
+  await expect(root(page).getByText('暂无访问权限').first()).toBeVisible();
   expect(server.writes).toEqual([]);
 });
