@@ -152,6 +152,9 @@ describe('AC-IN-F366 排序参数校验与字段权限', () => {
       const response = await scoped('GET', `/interns?view=interning&sortBy=${sortBy}&direction=desc`);
       expect(ids(((await response.json()) as { items: InternViewItem[] }).items), sortBy).toEqual([inside]);
     }
+    // 默认顺序（DEC-742 关联人员排序码）同样只在范围内取数
+    const fallback = await scoped('GET', '/interns?view=interning');
+    expect(ids(((await fallback.json()) as { items: InternViewItem[] }).items)).toEqual([inside]);
   });
 
   it('看不到的字段不能用来排序（403），看得到时照常排序', async () => {
