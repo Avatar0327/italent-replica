@@ -7,6 +7,7 @@ import { sql, type SQLWrapper } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -348,6 +349,12 @@ export const approvalInstances = pgTable(
     title: text('title').notNull(),
     /** 审批人所读的业务载荷版本：业务单绕过审批被改动后，旧审批一律 409（AGENTS §10「并发」）。 */
     businessVersion: text('business_version').notNull().default(''),
+    /**
+     * 规格 35 B51 人事流程看板的统计维度：审批类别（Offer / 入职 / 转正 / 调动 / 离职 / 合同 6 类核心流程 + 其他）由审批类型派生，
+     * 业务日期（Offer = 入职日期、离职 = 最后工作日、其余 = 生效日期）由业务适配器给出。发起时写入，存量为空（DEC-402 不回填）。
+     */
+    approvalCategory: text('approval_category'),
+    businessDate: date('business_date'),
     status: text('status').notNull().default('running'),
     currentNodeKey: text('current_node_key'),
     returnedFromNodeKey: text('returned_from_node_key'),
@@ -394,6 +401,11 @@ export const approvalInstances = pgTable(
       'approval_instances_business_type',
       sql`${t.businessType} IN ('employment','personnel_change','contract','idp','talent_review','part_time',
         'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')`,
+    ),
+    check(
+      'approval_instances_category',
+      sql`${t.approvalCategory} IS NULL OR ${t.approvalCategory} IN ('offer','entry','regularization','transfer','exit',
+        'contract','other')`,
     ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],

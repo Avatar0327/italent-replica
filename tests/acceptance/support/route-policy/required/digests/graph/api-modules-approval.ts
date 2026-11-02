@@ -502,6 +502,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
+    '#employmentDashboardDate',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
@@ -1146,6 +1147,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#insertInstance': [
     'apps/api/src/modules/approval/store.ts#loadInstance',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#approvalCategoryOf',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/engine.ts#launch': [

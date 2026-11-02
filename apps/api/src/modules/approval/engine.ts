@@ -23,6 +23,7 @@ import {
   isCountersign,
   mayResubmit,
   nodeExits,
+  approvalCategoryOf,
   previousNodeComparand,
   STALLED_COUNTERSIGN_HANDLING,
   submitBlockers,
@@ -140,6 +141,9 @@ function instanceAudit(instance: InstanceRow): Row {
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
 export async function persistRun(tx: Tx, run: Run, action: string, created = false): Promise<InstanceRow> {
+  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新看板日期，与审批人所读的版本一致
+  if (run.instance.businessVersion !== run.before.businessVersion)
+    run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
   await auditApproval(tx, run.ctx, {
     action,
@@ -953,10 +957,11 @@ async function insertInstance(
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_instances
     (id,tenant_id,process_id,version_id,approval_type,object_code,business_type,business_id,subject_employee_id,
-     initiator_user_id,process_code,title,business_version,status,created_at,updated_at)
+     initiator_user_id,process_code,title,business_version,approval_category,business_date,status,created_at,updated_at)
     VALUES (${id},${ctx.tenantId},${matched.processId}::uuid,${matched.version.id}::uuid,${snapshot.approvalType},
       ${APPROVAL_TYPES[snapshot.approvalType].objectCode},${request.businessType},${request.businessId}::uuid,
       ${snapshot.subjectEmployeeId},${ctx.userId},${snapshot.processCode},${snapshot.title},${snapshot.version},
+      ${approvalCategoryOf(snapshot.approvalType)},${snapshot.dashboardDate ?? null}::date,
       'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
   return loadInstance(tx, ctx.tenantId, id, true);
 }

@@ -59,6 +59,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
   ],
+  'packages/domain/src/platform/standard-presets.ts#HR_PROCESS_DASHBOARD_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+  ],
   'packages/domain/src/platform/standard-presets.ts#IDP_PROFILES': [
     'packages/domain/src/idp/catalog.ts#IDP_APP',
     'packages/domain/src/idp/catalog.ts#IDP_OBJECTS',
@@ -99,6 +103,7 @@ export const GRAPH: Graph = {
     '#CORE_HR',
     '#EMPLOYEE_PROFILE',
     '#HR_DASHBOARD_SEE_ALL',
+    '#HR_PROCESS_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',
     '#MANAGER_OBJECTS',
     '#ORG_ADJUSTMENT_SEE_ALL',

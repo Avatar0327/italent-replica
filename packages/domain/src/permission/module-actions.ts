@@ -386,6 +386,8 @@ export const MODULE_OBJECTS = {
   // 看全部默认给本模块的预置管理员（DEC-415）
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
+  // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
+  hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),
   // R2 BE-13a 人事分析 - 人员结构分析（B49）/ 员工结构报表（B53，素质与任职两张同一对象）/ 合同情况（B55）：同人事看板，
   // 只读、无业务字段；“组件明细”只登记不授予
   hrStructure: object('HrStructure', [], [button('detail', 'list')]),
