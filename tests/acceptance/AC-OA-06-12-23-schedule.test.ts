@@ -70,7 +70,7 @@ describe('AC-OA-06 排期与执行期间暂停', () => {
     const small = await world.adjustment(org.id);
     await seedItem(world.db, world.tenant.id, small.id, { seq: 1, target_org_id: org.id });
     expect(await world.schedule(small.id, lateEvening)).toEqual({ runOnDate: TODAY, runFromHour: 0, dataVolume: 1 });
-  });
+  }, 120_000); // 6000 行批量写入，CI 负载下超过默认 30s（#526）
 
   it('执行期间：相关部门入职 / 调入 409；执行完成后照常', async () => {
     const world = await scheduleWorld('oa06-pause');

@@ -6173,13 +6173,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/retirement-rehire.ts#rehireContract': [
-    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
-  ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireEntry': [
     'apps/api/src/modules/employment/entry-options.ts#probationTerms',
   ],
-  'apps/api/src/modules/employment/retirement-rehire.ts#rehireEnvelope': ['#rehireContract', '#rehireEntry'],
+  'apps/api/src/modules/employment/retirement-rehire.ts#rehireEnvelope': [
+    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+    '#rehireEntry',
+  ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireFailure': [
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
   ],

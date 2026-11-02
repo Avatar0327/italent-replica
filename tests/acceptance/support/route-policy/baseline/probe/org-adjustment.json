@@ -17,6 +17,74 @@
       "obj:TenantBase.OrganizationApproval:update"
     ]
   },
+  "GET /api/tenant/org-adjustment/adjustments": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.OrganizationApproval"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationApproval/-"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationApproval:view"
+    ]
+  },
+  "GET /api/tenant/org-adjustment/adjustments/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3120bed0fa2a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/org-adjustment/adjustments/:id/items/:section": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3120bed0fa2a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/org-adjustment/adjustments/:id/preview": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3120bed0fa2a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "PATCH /api/tenant/org-adjustment/adjustments/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
@@ -133,6 +201,24 @@
       "obj:TenantBase.OrganizationApproval:update"
     ]
   },
+  "POST /api/tenant/org-adjustment/adjustments/:id/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3120bed0fa2a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.OrganizationApproval#EditAdjustOrgDetailBtn@detail",
+      "obj:TenantBase.OrganizationApproval:update"
+    ]
+  },
   "POST /api/tenant/org-adjustment/adjustments/:id/void": {
     "all": {
       "code": "NOT_FOUND",
@@ -148,6 +234,23 @@
     "scopeQueries": [],
     "trace": [
       "btn:TenantBase.OrganizationApproval#OrganizationApprovalDelete@list_row",
+      "obj:TenantBase.OrganizationApproval:update"
+    ]
+  },
+  "POST /api/tenant/org-adjustment/adjustments/:id/withdraw": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3120bed0fa2a",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
       "obj:TenantBase.OrganizationApproval:update"
     ]
   }

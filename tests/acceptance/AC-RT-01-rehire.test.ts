@@ -165,6 +165,16 @@ describe('AC-RT-22② 创建时校验（结构与业务），失败整单不留�
     expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 
+  it('rehire.contract 带 effectiveDate（合同起始日固定 = 返聘日 R，F-423 / DEC-735）→ 400，前后读取逐项相等', async () => {
+    const x = await world('rt22-contract-date');
+    const master = await x.contractMaster();
+    const before = await x.stateOf(x.employee.id);
+    const contract = x.contractPlan(master, { effectiveDate: '2026-10-07' });
+    const response = await x.postRehire(x.rehireBody('2026-10-04', 'direct', x.rehirePlan({ contract })));
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
+  });
+
   it('返聘部门在返聘日 R 已停用（创建时干跑）→ 400，前后读取逐项相等', async () => {
     const x = await world('rt22-business');
     await seedLegacyOrgDeactivation(x, '2026-10-07', x.to);

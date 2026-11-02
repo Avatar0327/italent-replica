@@ -1,21 +1,11 @@
 {
-  "reason": "R2 BE-13a：新增人事分析只读对象 TenantBase.HrStructure（人员结构分析）、TenantBase.HrStructureReport（员工结构报表）、TenantBase.ContractBoard（合同情况）的查看授权（同人事看板进业务身份），两个预置管理员看全部（DEC-415）",
+  "reason": "R2-T09a：新增职责转交记录对象 TenantBase.DutyTransferCommon（查看 / 设置接收人等，三个标准 HR 身份同组织员工其他对象），两个预置管理员看全部（DEC-415）",
   "add": [
-    "standard_org_system_admin/TenantBase.HrStructure/*",
-    "standard_org_system_admin/TenantBase.HrStructureReport/*",
-    "standard_org_system_admin/TenantBase.ContractBoard/*",
-    "standard_hr_admin/TenantBase.HrStructure/*",
-    "standard_hr_admin/TenantBase.HrStructureReport/*",
-    "standard_hr_admin/TenantBase.ContractBoard/*",
-    "standard_hr_specialist/TenantBase.HrStructure/*",
-    "standard_hr_specialist/TenantBase.HrStructureReport/*",
-    "standard_hr_specialist/TenantBase.ContractBoard/*",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard"
+    "standard_org_system_admin/TenantBase.DutyTransferCommon/*",
+    "standard_hr_admin/TenantBase.DutyTransferCommon/*",
+    "standard_hr_specialist/TenantBase.DutyTransferCommon/*",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.DutyTransferCommon",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.DutyTransferCommon"
   ],
   "remove": []
 }
