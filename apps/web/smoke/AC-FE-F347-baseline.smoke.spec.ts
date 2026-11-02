@@ -116,7 +116,8 @@ async function stageCell(page: Page, cell: Cell) {
     await stageButton(form).click();
   }
   await expect.poll(() => server.writes.length).toBe(cell.writes.length);
-  await expect(page.getByText('已暂存', { exact: true })).toBeVisible();
+  // again 格前后两次暂存成功，两条“已暂存”提示可能同时在屏上：断言最后一条
+  await expect(page.getByText('已暂存', { exact: true }).last()).toBeVisible();
   return { server, final: server.temporary };
 }
 
