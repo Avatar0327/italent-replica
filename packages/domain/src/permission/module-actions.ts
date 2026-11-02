@@ -15,6 +15,7 @@ import {
   RETIREMENT_BUTTONS,
 } from '../employment/exit.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
+import { DUTY_TRANSFER_FIELDS, DUTY_TRANSFER_SET_RECEIVER_BUTTON } from '../employment/duty-transfer-menu.js';
 import {
   HANDOVER_RESUBMIT_BUTTON,
   HANDOVER_SUBMIT_BUTTON,
@@ -397,6 +398,11 @@ export const MODULE_OBJECTS = {
   // “组件明细”只登记不授予
   hrMovement: object('HrMovement', [], [button('detail', 'list')]),
   hrMovementReport: object('HrMovementReport', [], [button('detail', 'list')]),
+  // R2-T09a 职责转交菜单（DEC-602② / DEC-726）：记录按被转交人裁剪（DT-R9）；“设置接收人”为列表级、需新建权。
+  // 记录字段全部由系统写入（提交只带接收人与转交日期）
+  dutyTransfer: object('DutyTransferCommon', DUTY_TRANSFER_FIELDS, [
+    button(DUTY_TRANSFER_SET_RECEIVER_BUTTON, 'list', 'create'),
+  ]),
   // R2 BE-15b1（B2，29 PB-R3）：试用中考核 / 转正考核。发起 = Assessment.Create，审批通过后改意见 = Assessment.Edit（都是详情级）；
   // 审批流转（自评 / 评价）走审批中心，不在这里授按钮。状态、发起方式、发起人、生成的转正记录由系统写入，只可查看
   probationAssessment: object(

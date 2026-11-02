@@ -5,18 +5,14 @@
 import { and, eq, sql, transferLinkageItems, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
-import { assignTransferOrganizationPeople } from '../../org/write-service.js';
-import { ruleRejection } from '../../employment/activation-checks.js';
 import { auditEmployment, assertRevision, requireLinkedEmploymentRecord } from '../../employment/context.js';
-import { ineligibleOrgPeople } from '../../employment/org-people.js';
-import { editEmploymentRecord } from '../../employment/record-edit.js';
 import { findCurrentRecord } from '../../employment/read-model.js';
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
+import { dutyItemFailure, executeDutyItem, type DutyItemFailure } from './duty-execution.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { transferPartTimePort } from './part-time.js';
-import { RELATION_FIELDS, ROLE_FIELDS, requireReportingSubordinate, requireRoleHolder } from './validation.js';
 
 export type LinkageItemRow = typeof transferLinkageItems.$inferSelect;
 
@@ -58,21 +54,13 @@ export function itemView(row: LinkageItemRow): LinkageItemView {
   };
 }
 
-function itemFailure(error: unknown) {
-  if (error instanceof AppError && error.code === 'LINKED_RECORD_OUT_OF_SCOPE') return null;
-  const rejected = ruleRejection(error);
-  if (!rejected) return null;
-  const detail = rejected.detail as { code: string; message: string; rule?: unknown };
-  return { code: detail.code, message: detail.message, rule: typeof detail.rule === 'string' ? detail.rule : null };
-}
-
 /** 执行一次并记结果；结果与审计、outbox 同事务（AGENTS.md §10）。 */
 export async function attemptLinkageItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow) {
-  let failure: ReturnType<typeof itemFailure> = null;
+  let failure: DutyItemFailure | null = null;
   try {
     await tx.transaction((savepoint) => executeItem(savepoint, ctx, item));
   } catch (error) {
-    failure = itemFailure(error);
+    failure = dutyItemFailure(error);
     if (!failure) throw error;
   }
   const [saved] = await tx
@@ -112,28 +100,15 @@ async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow)
     });
     return;
   }
-  // `30` DT-R6：接收人已离职等不再在职时报错。
-  if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId!], item.effectiveDate)).length)
-    throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
-  if (item.itemType === 'duty_org_role') {
-    const role = item.orgRole as OrgRole;
-    await requireRoleHolder(tx, ctx, item.employeeId, item.orgId!, role, item.effectiveDate);
-    // DT-R7：业务内转交的组织变更记录取业务生效日。
-    const people: Partial<Record<(typeof ROLE_FIELDS)[OrgRole], string>> = { [ROLE_FIELDS[role]]: item.receiverId! };
-    await assignTransferOrganizationPeople(tx, ctx, item.orgId!, item.effectiveDate, people);
-    return;
-  }
-  const relation = item.relation as DutyRelation;
-  const record = await requireReportingSubordinate(tx, ctx, item.employeeId, item.subordinateId!, relation);
-  // 与新增下属同一口径（`08` 附表 W-013）：原地改写下属当前任职的上级，不新增任职记录；汇报线循环在此报错。
-  await editEmploymentRecord(
+  const common = { employeeId: item.employeeId, receiverId: item.receiverId!, effectiveDate: item.effectiveDate };
+  await executeDutyItem(
     tx,
-    { ...ctx, expectedRevision: record.revision },
-    record.id,
-    { fields: { [RELATION_FIELDS[relation]]: item.receiverId! } },
-    'api',
-    // P2-1：新经理按联动生效日判定在职，循环汇报从联动日起校验（不按下属记录的开始日）。
-    { forwardUpdate: false, linkageDate: item.effectiveDate },
+    ctx,
+    item.itemType === 'duty_org_role'
+      ? { kind: 'org_role', ...common, orgId: item.orgId!, orgRole: item.orgRole as OrgRole }
+      : { kind: 'subordinate', ...common, subordinateId: item.subordinateId!, relation: item.relation as DutyRelation },
+    // 离职 / 调动内转交保持现行为（下属原地改写、不复核组织启用），菜单口径见 duty-execution.ts（DEC-385③）。
+    { caller: 'linkage' },
   );
 }
 

@@ -218,13 +218,17 @@ function kindRule(name: string, kind: AnyPgColumn) {
  * “变动类型”（原站与业务类型、异动类型并列的分类，W-416）。职位变更同步直线经理写入“职位调整”（F-006）；
  * 实习转正写入“实习转正”（BE-6a，R2f B41 / 31 Q-M0-122 ④）；结束实习写入“实习结束”（BE-6b，R2d B41）。
  * 审批路径的组织调整写入“组织调整”（R2-T08 DEC-526①）；直接改组织路径仍为空（DEC-137）。
+ * 职责转交菜单转交下属写入“数据调整”（`30` DT-R7 / AC-DT-04，R2-T09a）。
  * 其余业务与存量记录没有原站依据，保持空值，不回填。
  */
+const CHANGE_TYPES = sql.raw(
+  ['position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment', 'data_adjustment']
+    .map((type) => `'${type}'`)
+    .join(', '),
+);
+
 function changeTypeRule(name: string, changeType: AnyPgColumn) {
-  return check(
-    name,
-    sql`${changeType} IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')`,
-  );
+  return check(name, sql`${changeType} IN (${CHANGE_TYPES})`);
 }
 
 export const employmentPayloadVersions = pgTable(

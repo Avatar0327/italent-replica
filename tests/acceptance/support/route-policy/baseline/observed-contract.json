@@ -4260,6 +4260,96 @@
         ]
       }
     },
+    "GET /api/tenant/duty-transfers/departed": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "duty-transfer",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.DutyTransferCommon:view"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/duty-transfers/people/:id/duties": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "duty-transfer",
+      "primitives": {
+        "guard": [
+          "dutyTransfer.person"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.DutyTransferCommon:view"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/duty-transfers/records": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "duty-transfer",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.DutyTransferCommon:view"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "GET /api/tenant/employment/activation-todos": {
       "edge": {
         "anonymous": {
@@ -17004,6 +17094,92 @@
         ]
       }
     },
+    "POST /api/tenant/duty-transfers/people/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "duty-transfer",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite",
+          "requireObjectWrite",
+          "writeFields"
+        ],
+        "guard": [
+          "dutyTransfer.person",
+          "employment.linkage"
+        ],
+        "object": [
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.DutyTransferCommon:create"
+        ],
+        "scope": [
+          "employment scope",
+          "employment visibility",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/duty-transfers/people/:id/check": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "duty-transfer",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "guard": [
+          "dutyTransfer.person"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.DutyTransferCommon:create"
+        ],
+        "scope": [
+          "requestScope",
+          "scopeSql"
+        ]
+      }
+    },
     "POST /api/tenant/employment/auto-assessment-rules": {
       "edge": {
         "anonymous": {
@@ -20480,7 +20656,6 @@
         ],
         "scope": [
           "employment visibility",
-          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ]

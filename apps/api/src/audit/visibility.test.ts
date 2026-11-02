@@ -118,6 +118,7 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'approval-process',
       'approval-task',
       'audit_retention',
+      'duty-transfer-record',
       'employment-business',
       'employment-record',
       'employment_assignment',
