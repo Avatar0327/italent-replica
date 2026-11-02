@@ -452,6 +452,15 @@ export const DISJUNCTIONS: readonly Disjunction[] = [
     absorbs: ['object', 'scope'],
   },
   {
+    // org-adjustment/disclosure.ts orgAdjustmentDisclosure（BE-10d 读接口）：HR（对象查看权 + 主体组织在范围）或 可打开
+    // 最新审批实例（assertCanOpen）；HR 分支查看权为假不拒绝，转判审批实例，都不是 404
+    name: 'orgAdjustment.disclosure',
+    pattern: call('orgAdjustmentDisclosure'),
+    modules: ['org-adjustment'],
+    branches: [['object'], ['relation']],
+    absorbs: ['object', 'scope'],
+  },
+  {
     // talent/candidates.ts candidateContext：所选对象的新建权；人才标准另接受 编辑数据操作权 + 编辑按钮（DEC-316③）
     name: 'talent.candidateContext',
     pattern: call('candidateContext'),

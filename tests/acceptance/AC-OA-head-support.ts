@@ -55,6 +55,8 @@ export interface HeadAccess {
   hiddenFields: Set<string>;
   /** 只对某个用户看不到的字段编码（审批人盲审用例按人区分）。 */
   hiddenByUser: Map<string, Set<string>>;
+  /** 没有申请单对象查看权（object.view）。 */
+  viewDenied?: boolean;
 }
 
 const catalogFields = (objectCode: string) =>
@@ -82,6 +84,7 @@ export async function headWorld(db: Db, label: string) {
     if (req.action === 'object.button') return !access.deniedButtons.has(req.resource!.split('#')[1]!.split('@')[0]!);
     if (req.action === 'object.create' || req.action === 'object.update')
       return !(req.fields ?? []).some((f) => access.deniedFields.has(f));
+    if (req.action === 'object.view' && req.resource === MAIN) return !access.viewDenied;
     return true;
   };
   const authorize: Authorizer = decide;

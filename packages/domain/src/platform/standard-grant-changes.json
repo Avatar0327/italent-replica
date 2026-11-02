@@ -1,18 +1,16 @@
 {
-  "reason": "列车 B1：汇总 F-305 重新提交、F-250 详情首次发起、F-317 列表行与批量首次发起授权，供合入 main 后动态基线核对",
+  "reason": "R2 BE-13b：新增人事分析只读对象 TenantBase.HrMovement（人员流动分析）、TenantBase.HrMovementReport（流动情况报表）的查看授权（同人事看板进业务身份），两个预置管理员看全部（DEC-415）",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.HandoverReSubmit@detail",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdDetailDimissionHandoverApproval@detail",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:EmploymentRecrdLineOpDimissionHandoverApproval@list_row",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:BatchDimissionHandoverApproval@list"
+    "standard_org_system_admin/TenantBase.HrMovement/*",
+    "standard_org_system_admin/TenantBase.HrMovementReport/*",
+    "standard_hr_admin/TenantBase.HrMovement/*",
+    "standard_hr_admin/TenantBase.HrMovementReport/*",
+    "standard_hr_specialist/TenantBase.HrMovement/*",
+    "standard_hr_specialist/TenantBase.HrMovementReport/*",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrMovement",
+    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrMovementReport",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovement",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovementReport"
   ],
   "remove": []
 }

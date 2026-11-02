@@ -1,0 +1,4 @@
+/* F-327：HH:mm 只有 5 个字符，输入框不铺满整行。另起文件：exit.css 有在途片同时修改。 */
+.exit-account-stop-time {
+  width: 120px;
+}

@@ -1,5 +1,6 @@
 /**
- * 组织调整申请路由（R2-T08 §9.3 路由 1～11；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，BE-10c 提交 / 撤回）。
+ * 组织调整申请路由（R2-T08 §9.3 路由 1～11；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，BE-10c 提交 / 撤回）；
+ * 读路由 12～15 见 read-routes.ts（BE-10d）。
  * 提交（10）按编辑按钮 + 主体组织与调整范围 + 全部明细涉及的组织（新建口径）判；撤回（11）没有按钮，只限申请人本人。
  * 两者都只交审批引擎、不执行（执行队列在 11a）。
  * 路由在命令外按当前权限判数据操作、字段、按钮；命令守卫在事务内经 `authorizeHead` 判主体组织与调整范围
@@ -39,6 +40,7 @@ import {
 import { rebaseAll, rebaseItem } from './baseline.js';
 import { trimIssues, trimError } from './envelope.js';
 import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
+import { registerReadRoutes } from './read-routes.js';
 import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
 import { addOrgItem, deleteOrgItem, patchOrgItem, type ItemWrite } from './org-items.js';
 import {
@@ -62,6 +64,7 @@ export function registerOrgAdjustmentRoutes(router: Hono<TenantEnv>, deps: Tenan
   registerHeadRoutes(router, deps);
   registerSubmitRoutes(router, deps);
   registerItemRoutes(router, deps);
+  registerReadRoutes(router, deps);
 }
 
 function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

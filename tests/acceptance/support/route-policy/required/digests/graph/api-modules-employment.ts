@@ -2481,6 +2481,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-handover-retry.ts#consume': [
     'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    '#WAITING_ACCOUNT',
     '#receipt',
     '#unfinished',
     'apps/api/src/modules/employment/exit-handover.ts#launchExitHandover',
@@ -2505,6 +2506,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-handover-retry.ts#receipt': [
+    '#WAITING_ACCOUNT',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-handover-routes.ts#SETTINGS': [
@@ -6092,13 +6094,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/retirement-rehire.ts#rehireContract': [
-    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
-  ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireEntry': [
     'apps/api/src/modules/employment/entry-options.ts#probationTerms',
   ],
-  'apps/api/src/modules/employment/retirement-rehire.ts#rehireEnvelope': ['#rehireContract', '#rehireEntry'],
+  'apps/api/src/modules/employment/retirement-rehire.ts#rehireEnvelope': [
+    'apps/api/src/modules/employment/entry-contract.ts#entryContractSchema',
+    '#rehireEntry',
+  ],
   'apps/api/src/modules/employment/retirement-rehire.ts#rehireFailure': [
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
   ],

@@ -1,4 +1,5 @@
 import type { FormGroup } from '../foundation/FormOverlay.js';
+import { assessmentApprovalTypes, assessmentField, assessmentLabels } from './AssessmentFields.js';
 import { RequestControl, requestFieldLabel } from '../part-time/RequestControl.js';
 import { refPaths } from '../part-time/references.js';
 import { r } from '../part-time/request-messages.js';
@@ -17,13 +18,17 @@ export function approvalEditGroup(detail: ApprovalDetail, action: ApprovalAction
   const fields = editFields(detail, action);
   if (!fields.length) return [];
   const kind = kinds[detail.approvalType];
+  const assessment = assessmentApprovalTypes.includes(detail.approvalType);
+  const current = { ...detail.form.values, ...Object.fromEntries(fields.map(({ key, value }) => [key, value])) };
   return [
     {
       title: m.values,
       fields: fields.map(({ key, required, value }) => {
+        const mapped = assessment ? assessmentField(key, required, current) : undefined;
+        if (mapped) return { ...mapped, name: key, access: { visible: true, editable: true } };
         const field = key === 'partTimeType' ? 'serviceType' : key;
         const supported = !!kind && (['serviceType', 'endDate', 'requestRemark'].includes(field) || !!refPaths[field]);
-        const label = kind ? requestFieldLabel(field, kind) : (fieldLabels[key] ?? key);
+        const label = kind ? requestFieldLabel(field, kind) : (fieldLabels[key] ?? assessmentLabels[key] ?? key);
         return {
           name: key,
           label,

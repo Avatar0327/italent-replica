@@ -23,6 +23,7 @@ import {
   isCountersign,
   mayResubmit,
   nodeExits,
+  approvalCategoryOf,
   previousNodeComparand,
   STALLED_COUNTERSIGN_HANDLING,
   submitBlockers,
@@ -66,7 +67,7 @@ import {
   type InstanceRow,
   type TaskRow,
 } from './store.js';
-import { withoutRetrievedApprovals } from './task-history.js';
+import { withoutRetrieved, withoutRewoundDownstream } from './task-history.js';
 
 /** 一次命令内的流转现场：实例状态在内存中推进，命令结束时一次落库（revision 只加一）。 */
 export interface Run {
@@ -140,6 +141,9 @@ function instanceAudit(instance: InstanceRow): Row {
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
 export async function persistRun(tx: Tx, run: Run, action: string, created = false): Promise<InstanceRow> {
+  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新看板日期，与审批人所读的版本一致
+  if (run.instance.businessVersion !== run.before.businessVersion)
+    run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
   await auditApproval(tx, run.ctx, {
     action,
@@ -187,14 +191,16 @@ function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusa
   // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const history = effectiveHistory(tasks, run.instance);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
-  // F-379 / DEC-097：撤回的同意已失效，撤回后转交也不恢复；系统自动同意仍计入（不用 actualApprovals，口径不变）
-  const approvals = withoutRetrievedApprovals(history).filter(approvedBy);
+  // F-379 / F-392 / DEC-097：撤回的同意及撤回点之后的旧下游结果已失效，撤回后转交也不恢复；
+  // 仍有效的系统自动同意照常计入（不用 actualApprovals，口径不变）
+  const approvals = withoutRetrieved(history).filter(approvedBy);
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
+  const previousNode = withoutRewoundDownstream(history).filter((task) => task.nodeKey === previousKey);
   return {
     ...recusal,
     isFirstNode: index === 0,
     exceptionAdminUserId: run.version.exceptionAdminUserId!,
-    previousApproverUserIds: previousNodeComparand(history.filter((task) => task.nodeKey === previousKey)),
+    previousApproverUserIds: previousNodeComparand(previousNode),
     approvedUserIds: approvals.map((task) => task.assigneeUserId!),
     chainUserIds: tasks
       .filter((task) => task.assigneeUserId !== null && task.origin !== 'self_skip')
@@ -951,10 +957,11 @@ async function insertInstance(
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_instances
     (id,tenant_id,process_id,version_id,approval_type,object_code,business_type,business_id,subject_employee_id,
-     initiator_user_id,process_code,title,business_version,status,created_at,updated_at)
+     initiator_user_id,process_code,title,business_version,approval_category,business_date,status,created_at,updated_at)
     VALUES (${id},${ctx.tenantId},${matched.processId}::uuid,${matched.version.id}::uuid,${snapshot.approvalType},
       ${APPROVAL_TYPES[snapshot.approvalType].objectCode},${request.businessType},${request.businessId}::uuid,
       ${snapshot.subjectEmployeeId},${ctx.userId},${snapshot.processCode},${snapshot.title},${snapshot.version},
+      ${approvalCategoryOf(snapshot.approvalType)},${snapshot.dashboardDate ?? null}::date,
       'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
   return loadInstance(tx, ctx.tenantId, id, true);
 }

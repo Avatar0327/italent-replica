@@ -66,13 +66,19 @@ describe('BE-2b 办理入职生成合同', () => {
     ]);
   });
 
-  it('合同可显式给生效日；入职日在将来时合同按自己的生效日排期', async () => {
+  // F-423 / DEC-735：合同生效日固定取入职日，不再接受 contract.effectiveDate（DEC-402 不留兼容，见 AC-EN-F423）
+  it('入职日在将来时合同生效日 = 入职日；显式给生效日 → 400', async () => {
     const { w, contract, contracts } = await contractWorld('be2b-ct-future');
     const { employee, recordId } = await addPending(w, '2026-10-10');
-    const body = { probation: false, contract: { ...contract, effectiveDate: '2026-10-12', endDate: '2027-10-11' } };
+    const explicit = {
+      probation: false,
+      contract: { ...contract, effectiveDate: '2026-10-12', endDate: '2027-10-11' },
+    };
+    expect((await entryAction(w, recordId, 'complete', explicit)).status).toBe(400);
+    const body = { probation: false, contract: { ...contract, endDate: '2027-10-11' } };
     const response = await entryAction(w, recordId, 'complete', body);
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(await contracts()).toMatchObject([{ employeeId: employee.id, effectiveDate: '2026-10-12' }]);
+    expect(await contracts()).toMatchObject([{ employeeId: employee.id, effectiveDate: '2026-10-10' }]);
   });
 
   it('不带合同信息：行为同 BE-2a，不生成合同', async () => {
