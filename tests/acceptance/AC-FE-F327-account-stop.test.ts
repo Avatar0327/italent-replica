@@ -153,6 +153,10 @@ describe('AC-FE-F327 纯规则', () => {
 
   it('不新增菜单入口：仍是“离职退休设置”一个入口，账号停用时间是其中的页签', () => {
     const exit = MENU_ROUTES.filter((route) => route.module === 'exit');
-    expect(exit.map((route) => [route.id, route.path])).toEqual([['exit-settings', '/exit-settings']]);
+    // 离职管理（FE-R2c2，/exits）是独立的列表页，不是 F-327 新增的入口；F-327 只要求账号停用时间不单独成菜单。
+    expect(exit.map((route) => [route.id, route.path])).toEqual([
+      ['exit-settings', '/exit-settings'],
+      ['exits', '/exits'],
+    ]);
   });
 });

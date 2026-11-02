@@ -4,6 +4,8 @@
  * - 变动计数按已生效的初签 / 变更 / 续签 / 终止申请单（更正与在途单不计），日期取生效日（终止取实际终止日）；
  * - 签署情况 = asOf 当天在职且有有效合同的员工（🟡 推测口径），按法人前 10（带占比）/ 合同类型 / 期限类型；
  * - 3.1.17 复用人事看板 contractExpiring30 的同一谓词，再套看板筛选。
+ * F-387（规格 35 B55“F-387 补”）：签署情况三个分组组件按员工去重计人数——同一员工同组多份有效合同只计 1 人、
+ * 明细 1 行（取生效日最新、同日取 id 较大的那份）；落在不同组时各组各计 1；组件合计 = 各组之和。
  */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -11,6 +13,8 @@ import {
   boardClient,
   CONTRACT_BOARD_BASE,
   contractKit,
+  managementScope,
+  restrictedAuthorizer,
   sorted,
   structureWorld,
   type BoardClient,
@@ -247,5 +251,105 @@ describe('AC-HA-13a B55 合同情况', () => {
       expect((await c.get(`${B}?${bad}`)).status, bad).toBe(400);
     expect((await c.get(`${B}/components/nope?${AS_OF}`)).status).toBe(404);
     expect((await c.get(`${B}/components/changeCreate?${AS_OF}&page=0`)).status).toBe(400);
+  });
+});
+
+/** F-387：同一员工多份有效合同（规格 35 B55“F-387 补”取证样本：劳动合同 + 多点执业协议，均无固定期限）。 */
+async function buildDistinctWorld() {
+  const w = await structureWorld(database().db, 'ha13a-sign-distinct');
+  const k = await contractKit(w);
+  const inside = await w.org('范围内部门');
+  const outside = await w.org('范围外部门');
+  const company = await k.master('companies', '合成法人丙');
+  const labor = await k.master('types', '劳动合同');
+  const multi = await k.master('types', '多点执业协议');
+  const hire = (name: string, department: { id: string }) => w.hire(name, { date: '2020-01-01', department });
+  const sign = async (employeeId: string, typeId: string, effectiveDate: string, termType = 'indefinite') =>
+    k.command({
+      operation: 'create',
+      employeeId,
+      fields: {
+        typeId,
+        companyId: company.id,
+        effectiveDate,
+        termType,
+        signingDate: effectiveDate,
+        ...(termType === 'fixed' ? { endDate: '2028-12-31' } : {}),
+      },
+    });
+  const p = {
+    dual: await hire('两份合同', inside),
+    tie: await hire('两份合同同日生效', inside),
+    single: await hire('一份合同', inside),
+    outside: await hire('范围外两份合同', outside),
+  };
+  const dual = {
+    labor: await sign(p.dual.id, labor.id, '2024-01-01'),
+    multi: await sign(p.dual.id, multi.id, '2025-01-01'),
+  };
+  const tie = {
+    labor: await sign(p.tie.id, labor.id, '2025-06-01'),
+    multi: await sign(p.tie.id, multi.id, '2025-06-01'),
+  };
+  const single = await sign(p.single.id, labor.id, '2025-01-01', 'fixed');
+  const out = {
+    labor: await sign(p.outside.id, labor.id, '2024-01-01'),
+    multi: await sign(p.outside.id, multi.id, '2025-01-01'),
+  };
+  // 同组多份时取生效日最新、同日取 id 较大的那份
+  const tiePick = [tie.labor.id, tie.multi.id].sort().at(-1)!;
+  return { w, inside, company, labor, multi, dual, tie, tiePick, single, out };
+}
+
+describe('AC-HA-13a B55 签署情况按员工去重（F-387）', () => {
+  let x: Awaited<ReturnType<typeof buildDistinctWorld>>;
+  beforeAll(async () => {
+    x = await buildDistinctWorld();
+  }, 300_000);
+  const values = async (c: BoardClient) => {
+    const board = await c.board(B, AS_OF);
+    const of = (code: string) => board.components.find((item) => item.code === code)!;
+    return ['signByCompany', 'signByType', 'signByTermType'].map((code) => {
+      const item = of(code);
+      return [code, item.value, item.groups!.reduce((sum, group) => sum + group.count, 0)];
+    });
+  };
+
+  it('AC-HA-13a-08 / F-387：同一员工两份有效合同、期限类型相同 → 该条计 1 人、明细 1 行；类型不同 → 合同类型两条各计 1', async () => {
+    const c = boardClient(database().db, x.w.who);
+    const picks = [x.dual.multi.id, x.tiePick, x.out.multi.id];
+    await c.expectCount(B, 'signByTermType', picks, AS_OF, 'indefinite');
+    await c.expectCount(B, 'signByTermType', [x.single.id], AS_OF, 'fixed');
+    await c.expectCount(B, 'signByCompany', [...picks, x.single.id], AS_OF, x.company.id);
+    const labor = [x.dual.labor.id, x.tie.labor.id, x.single.id, x.out.labor.id];
+    await c.expectCount(B, 'signByType', labor, AS_OF, x.labor.id);
+    await c.expectCount(B, 'signByType', [x.dual.multi.id, x.tie.multi.id, x.out.multi.id], AS_OF, x.multi.id);
+    const company = (await c.component(B, 'signByCompany', AS_OF)).groups!;
+    expect(company.map((g) => [g.key, g.count, g.ratio])).toEqual([[x.company.id, 4, 1]]);
+  });
+
+  it('AC-HA-13a-08 / F-387：组件合计 = 各组人数之和（各维度合计可以不同，均小于有效合同条数 7）', async () => {
+    const c = boardClient(database().db, x.w.who);
+    expect(await values(c)).toEqual([
+      ['signByCompany', 4, 4],
+      ['signByType', 7, 7],
+      ['signByTermType', 4, 4],
+    ]);
+  });
+
+  it('AC-HA-13a-08 / F-387：范围裁剪后去重——范围外员工的多份合同不计，范围内仍按人计', async () => {
+    const c = boardClient(
+      database().db,
+      x.w.who,
+      restrictedAuthorizer({ scope: managementScope(x.w.tenantId, [x.inside.id]) }),
+    );
+    await c.expectCount(B, 'signByTermType', [x.dual.multi.id, x.tiePick], AS_OF, 'indefinite');
+    await c.expectCount(B, 'signByCompany', [x.dual.multi.id, x.tiePick, x.single.id], AS_OF, x.company.id);
+    await c.expectCount(B, 'signByType', [x.dual.multi.id, x.tie.multi.id], AS_OF, x.multi.id);
+    expect(await values(c)).toEqual([
+      ['signByCompany', 3, 3],
+      ['signByType', 5, 5],
+      ['signByTermType', 3, 3],
+    ]);
   });
 });
