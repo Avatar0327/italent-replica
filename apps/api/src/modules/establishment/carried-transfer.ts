@@ -1,4 +1,4 @@
-import { and, eq, establishmentObjects, sql, transferEstablishmentAllocations, type Tx } from '@italent/db';
+import { and, eq, establishmentObjects, inArray, sql, transferEstablishmentAllocations, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
@@ -218,11 +218,22 @@ export async function carriedAllocations(tx: Tx, tenantId: string, businessId: s
 
 /** 删除/撤销反向追加原分配；不删除旧版本，不重新匹配可能已改变的职位细分。 */
 export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext, businessId: string) {
+  return (await reverseCarriedEstablishmentGroup(tx, ctx, [businessId])).get(businessId) ?? [];
+}
+
+/**
+ * 一组业务的带编分配整组回退（F-400 r3，离职生效一次作废多条带编调动）：各单之间可能首尾相接（10-20 A→B、10-21 B→A），
+ * 逐笔回退的中间状态会出现负额度，结果取决于处理顺序。这里把整组的反向增减合在一起，先加后减：
+ * 加的阶段各额度只增不减，减的阶段单调减到最终值，所以每一步的非负校验等价于只校验整组最终状态，与业务 ID 顺序无关。
+ * 最终仍不足时照常报 ESTABLISHMENT_CAPACITY_INSUFFICIENT，由调用方整单回滚。返回各业务被回退的原分配。
+ */
+export async function reverseCarriedEstablishmentGroup(tx: Tx, ctx: EmploymentContext, businessIds: readonly string[]) {
+  const released = new Map<string, Allocation[]>();
   const context = await employmentCapacityContext(tx, ctx);
   // 无带编分配的普通业务无需额外取得编制锁。
-  if (!(await carriedAllocations(tx, ctx.tenantId, businessId)).length) return [];
+  if (!(await groupAllocations(tx, ctx.tenantId, businessIds)).length) return released;
   await lockEstablishment(tx, context, { initializeDefault: false });
-  const allocations = await carriedAllocations(tx, ctx.tenantId, businessId);
+  const allocations = await groupAllocations(tx, ctx.tenantId, businessIds);
   // 回退按原分配授权全部对象，不能在授权另一侧前暴露任一侧的细分、预留或额度状态。
   for (const id of new Set(allocations.map((row) => row.capacityId))) {
     const [object] = await tx
@@ -233,13 +244,18 @@ export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext
     await context.authorizeCapacityScope?.(tx, { operation: 'update', id, orgId: object.orgId });
   }
   const date = tenantLocalDate(ctx.now, ctx.timezone);
-  for (const row of [...allocations].sort(
-    (a, b) => a.localDelta + a.inclusiveDelta - b.localDelta - b.inclusiveDelta,
-  )) {
+  // 原分配为减（反向为加）的排在前；同号之间的次序不影响结果，只为写入顺序确定
+  const ordered = [...allocations].sort(
+    (a, b) =>
+      a.localDelta + a.inclusiveDelta - b.localDelta - b.inclusiveDelta ||
+      a.businessId.localeCompare(b.businessId) ||
+      a.id.localeCompare(b.id),
+  );
+  for (const row of ordered) {
     await applyDelta(
       tx,
       context,
-      businessId,
+      row.businessId,
       {
         capacityId: row.capacityId,
         positionId: row.positionId,
@@ -260,10 +276,25 @@ export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext
           eq(transferEstablishmentAllocations.id, row.id),
         ),
       );
+    released.set(row.businessId, [...(released.get(row.businessId) ?? []), row]);
   }
   for (const id of new Set(allocations.map((row) => row.capacityId)))
     await validateCapacity(tx, context, await readCapacity(tx, ctx.tenantId, id, date));
-  return allocations;
+  return released;
+}
+
+async function groupAllocations(tx: Tx, tenantId: string, businessIds: readonly string[]) {
+  if (!businessIds.length) return [];
+  return tx
+    .select()
+    .from(transferEstablishmentAllocations)
+    .where(
+      and(
+        eq(transferEstablishmentAllocations.tenantId, tenantId),
+        inArray(transferEstablishmentAllocations.businessId, [...businessIds]),
+        eq(transferEstablishmentAllocations.reversed, false),
+      ),
+    );
 }
 
 /** 编辑、重提与迟到跨周期复查使用当前任职插入点；相同分配幂等，不在到期时再次加编。 */

@@ -2,7 +2,8 @@
  * F-400 第 2 轮（DEC-725）：个人信息类在途流程（意向退休日期申请、员工子集变更申请）的离职终止。
  * ③ 预览、确认令牌、生效执行三处用同一个“实际终止候选”入口：预览列出的、409 要求确认的、生效时终止的是同一个集合；
  *    未勾选的不在其中；看不到的只计 hiddenCount、不露 ID，令牌仍覆盖它。
- * ④ 终止的专项审计按业务对象登记（人事申请 / 意向申请），有权限的 HR 能经审计查询接口读到。
+ * ④ 终止的专项审计按业务对象登记（人事申请 / 意向申请），有权限的 HR 能经审计查询接口读到；
+ *    范围外的 HR 读不到（意向申请一条：列表不返回、详情 404，F-400 r3 P3-3）。
  */
 import './support/exit-gate-enforced.js';
 import type { Authorizer } from '@italent/api';
@@ -13,11 +14,13 @@ import { registerScopeProvider } from '../../apps/api/src/modules/permission/mod
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { auditApi } from './AC-AUD-support.js';
+import { restricted as auditRestricted } from './AC-PT-http-support.js';
 import { exitActivator } from './AC-EXIT-activation-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
 import { intentionWorld, type IntentionWorld } from './AC-RT-intention-support.js';
 import { setExitTermination } from './support/exit-termination.js';
+import { orgScope } from './support/revocable-rights.js';
 import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -210,6 +213,28 @@ describe('F-400 r2 ④ 终止的专项审计按业务对象登记，能经审计
       expect(page.items.map((item) => item.id)).toContain(raw!.id);
       expect((await audit.get(`/data-changes/${raw!.id}`, as)).status).toBe(200);
     }
+  });
+
+  it('范围外的 HR 经审计查询接口读不到意向申请的 employment.exit.flow_terminated_by_exit；范围内照常读到', async () => {
+    const { w, intention, hr } = await world('audit-scope');
+    await saveSubmitActivate(w, hr, await previewAck(hr, w));
+    const action = 'employment.exit.flow_terminated_by_exit';
+    const [raw] = await w.rows<{ id: string }>(sql`SELECT id::text FROM audit_events WHERE tenant_id=${w.tenant.id}
+      AND object_id=${intention.id} AND action=${action}`);
+    expect(raw).toBeDefined();
+    const as = { tenant: w.tenant.id, user: w.hr.id };
+    // 同 AC-AUD-F278：意向申请审计按申请时部门快照（部门B）归属；只看部门A 的 HR 在范围外
+    const scoped = (orgId: string) =>
+      auditApi(database().db, '2026-10-06T01:00:00Z', {
+        authorize: auditRestricted({ scope: orgScope(w.tenant.id, '2026-10-06', orgId) }),
+      });
+    const outside = scoped(w.deptA);
+    expect((await outside.dataChanges(as, { objectId: intention.id, action })).items).toEqual([]);
+    expect((await outside.get(`/data-changes/${raw!.id}`, as)).status).toBe(404);
+    const inside = scoped(w.deptB);
+    expect((await inside.dataChanges(as, { objectId: intention.id, action })).items.map((row) => row.id)).toContain(
+      raw!.id,
+    );
   });
 });
 

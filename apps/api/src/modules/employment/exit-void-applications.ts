@@ -2,9 +2,10 @@
  * 离职生效步骤 1：作废全部在途任职申请（R2-T03 设计 §5.1-1、§5.5，DEC-496①；DEC-263③ / DEC-220 是其特例）。
  * 候选 = 该员工除本单外全部未落地的任职业务（最新状态 ∈ 草稿 / 审批中 / 已驳回 / 已批准未落地），不论 kind、不论载荷日期，
  * 与离职预览的“将作废”清单（exit-preview.ts）同一来源。排在离职之前的已批准申请已由步骤 0a 保证先落地，这里剩下的都排在离职之后。
- * 逐条按业务 ID 升序（§5.2 ③ 预锁）：状态置作废 → 审批实例 cancel → 带编调动回退 → 台账 → 审计 / outbox → 站内消息。
+ * 逐条按业务 ID 升序（§5.2 ③ 预锁）：状态置作废 → 审批实例 cancel → 台账 → 审计 / outbox → 站内消息；
+ * 一组作废完后，本组带编调动的分配整组回退并按最终状态校验（releaseVoidedEstablishment，F-400 r3）。
  * 晚于最后工作日、已落地的未来调动（DEC-725 ③）在离职落地摘下后也走这里（voidLandedTransfers）：先立墓碑，再同一套作废步骤，
- * 带编分配同样回退并校验，回退不合法时整单回滚。
+ * 带编分配同样整组回退并校验，回退不合法时整单回滚。
  * 任一条失败即整单失败，由调用方的保存点回滚（含已作废的前几条）。
  * 作废实现（voidApplications / voidOne）只有一份：直接实习转正自动作废在途转正申请（DEC-593③③，voidSupersededRegularizations）
  * 复用它，只是原因不同——离职记台账 exit_effects（B4 撤销按它核对），转正不记，审计动作与站内消息模板按原因区分。
@@ -17,7 +18,7 @@ import { cancel } from '../approval/actions.js';
 import { schedulerAwareContext } from '../approval/context.js';
 import { notifyMessage } from '../approval/notifications.js';
 import { userOfPerson } from '../approval/resolver.js';
-import { assertReleasedEstablishment, reverseCarriedEstablishment } from '../establishment/carried-transfer.js';
+import { assertReleasedEstablishment, reverseCarriedEstablishmentGroup } from '../establishment/carried-transfer.js';
 import { lockEstablishment } from '../establishment/store.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { auditActor } from '../../system-actor.js';
@@ -144,6 +145,9 @@ export async function lockExitOrganizationResources(
 /**
  * 员工其他业务是否还有未回退的带编分配：已落地的未来带编调动被离职作废时要回退（voidLandedTransfers），编制锁须先于审批实例取齐。
  * 只看“有未回退分配”，不判断是否晚于最后工作日（此时还不知道哪些会被摘下）：取锁范围是超集，多取一次编制锁只多一点串行，不会漏锁成环。
+ * 有意保守（F-400 r3 P3-4，不收窄为“分配所属业务生效日 > 最后工作日”）：本函数被激活、撤销、改期与审批回调多个入口共用，
+ * 改期 / 迟到顺延会在取锁之后才改变最后工作日，摘下集合要到 detach 之后才确定；收窄后须逐入口证明仍是超集，漏一处即锁序倒置。
+ * 整组回退（releaseVoidedEstablishment）在站内消息之后执行，更依赖这里预先取齐编制锁。
  */
 async function hasCarriedAllocation(tx: Tx, tenantId: string, employeeId: string, exitId: string | null) {
   const [row] = rowsOf<{ found: boolean }>(
@@ -204,20 +208,6 @@ async function voidOne(
   const instance = active ?? (await latestInstanceOf(tx, ctx.tenantId, 'employment', business.id));
   await appendEmploymentState(tx, ctx, business, 'voided', described.meta);
   if (active) await cancel(tx, approvalCtx, active.id);
-  const released = kind === 'transfer' ? await reverseCarriedEstablishment(tx, ctx, business.id) : [];
-  try {
-    await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
-  } catch (error) {
-    // 回退带编分配会使原岗位超出严格编制：离职生效失败 ESTABLISHMENT_EXCEEDED，交 HR 处理（§5.1 / B-12）
-    if (
-      error instanceof AppError &&
-      (error.details as { reason?: string } | undefined)?.reason === 'ESTABLISHMENT_EXCEEDED'
-    )
-      throw new AppError('CONFLICT', error.message, {
-        activationFailure: { reason: 'ESTABLISHMENT_EXCEEDED', detail: { voidedBusinessId: business.id } },
-      });
-    throw error;
-  }
   const detail = { kind, stateBefore, effectiveDate, instanceId: instance?.id ?? null };
   if (cause.kind === 'exit')
     await tx.insert(exitEffects).values({
@@ -264,6 +254,37 @@ async function notifyVoided(
     await notifyMessage(tx, schedulerAwareContext(ctx), target, { recipientUserId, templateCode });
 }
 
+/**
+ * 一组作废（同一次离职的在途申请、同一次离职摘下的已落地调动、直接转正作废的转正申请）完成后，带编调动的分配整组回退：
+ * 先加后减，只按整组最终状态判额度是否足够（reverseCarriedEstablishmentGroup），不因业务 ID 顺序在中间状态误判失败；
+ * 回退后再逐单复核原调入方的严格控编（此时整组都已作废，复核看到的就是最终占用）。失败随调用方保存点 / 事务整体回滚。
+ */
+async function releaseVoidedEstablishment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  voided: readonly VoidedApplication[],
+) {
+  const transfers = voided.filter((row) => row.kind === 'transfer').map((row) => row.id);
+  if (!transfers.length) return;
+  const released = await reverseCarriedEstablishmentGroup(tx, ctx, transfers);
+  for (const [businessId, rows] of released) {
+    try {
+      await assertReleasedEstablishment(tx, ctx, businessId, employeeId, rows);
+    } catch (error) {
+      // 回退带编分配会使原岗位超出严格编制：离职生效失败 ESTABLISHMENT_EXCEEDED，交 HR 处理（§5.1 / B-12）
+      if (
+        error instanceof AppError &&
+        (error.details as { reason?: string } | undefined)?.reason === 'ESTABLISHMENT_EXCEEDED'
+      )
+        throw new AppError('CONFLICT', error.message, {
+          activationFailure: { reason: 'ESTABLISHMENT_EXCEEDED', detail: { voidedBusinessId: businessId } },
+        });
+      throw error;
+    }
+  }
+}
+
 async function businessCreator(tx: Tx, tenantId: string, businessId: string) {
   const [row] = rowsOf<{ creator: string | null }>(
     await tx.execute(sql`SELECT ${employmentCreator(tenantId, sql`${businessId}::uuid`, true)} AS creator`),
@@ -288,7 +309,7 @@ function tooManyToVoid(cause: VoidCause) {
  * ① 候选被截断（至多取 VOID_LIMIT + 1 条）时在任何写入之前整单拒绝，不会作废一部分就返回成功；
  * ② 锁序：调用方已持员工锁与全部业务头（heads），先取齐组织 / 编制资源，再锁审批实例并发站内消息
  *   （全局序 员工 → 业务头 → 组织 → 编制 → 实例；通知插入会取成员行的外键锁，晚于组织锁才不会与先持组织锁、再锁成员行的路径成环）。
- * 逐条按业务 ID 升序：先锁审批实例，再逐条锁业务头、作废。heads 是调用方已预锁的各业务头 revision。
+ * 逐条按业务 ID 升序：先锁审批实例，再逐条锁业务头、作废；最后整组回退带编分配。heads 是调用方已预锁的各业务头 revision。
  */
 async function voidApplications(
   tx: Tx,
@@ -316,6 +337,7 @@ async function voidApplications(
     business.employee = employee;
     voided.push(await voidOne(tx, ctx, cause, business));
   }
+  await releaseVoidedEstablishment(tx, ctx, employee.id, voided);
   return voided;
 }
 
@@ -368,7 +390,9 @@ export async function voidSupersededRegularizations(
 /**
  * DEC-725 ③：离职落地摘下的、晚于最后工作日的已落地调动（detachAndRecord 台账 future_transfer_detached）一律作废
  * （保留 DEC-520②“任职显示作废 / 已终止”）。逐条：墓碑（记录永久离开时间轴，覆盖校验与编制占用都按墓碑排除；
- * 撤销离职时 reattachFutureTransfers 跳过墓碑，不再挂回）→ 与在途申请同一个 voidOne（作废、带编回退与校验、台账、审计、站内消息）。
+ * 撤销离职时 reattachFutureTransfers 跳过墓碑，不再挂回）→ 与在途申请同一个 voidOne（作废、台账、审计、站内消息）；
+ * 全部作废后整组回退带编分配并校验（releaseVoidedEstablishment）。这些调动可能首尾相接，不能逐笔回退。
+ * 步骤 1 的在途调动先于本组回退：在途申请不落时间轴，不会成为已落地调动的调出来源，所以先回退在途、再回退已落地是依赖逆序。
  * 退休暂不作废（F-351），保持只摘下。锁序：员工（已持有）→ 业务头（heads，生效链开头已预锁）→ 组织设置 / 编制（激活入口
  * lockExitOrganizationResources 已按“有未回退带编分配”取齐，这里只是重入）→ 通知。
  */
@@ -396,5 +420,6 @@ export async function voidLandedTransfers(
     });
     voided.push(await voidOne(tx, ctx, { kind: 'exit', exit, lastWorkDate }, business));
   }
+  await releaseVoidedEstablishment(tx, ctx, exit.employeeId, voided);
   return voided;
 }
