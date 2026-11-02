@@ -29,4 +29,28 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-685', 'DEC-684', 'DEC-577', 'DEC-045', 'DEC-502'],
     level: 'L2',
   },
+  'exit-handover-items': {
+    original: '交接事项按事项类别分组，含序号、待办类别、待办事项、办理表单、备注（B64）。',
+    decision: '整份保存；全部字段可看可改且有其他设置权才可增删改，否则只读。列序 / 列宽 / 页签位置未验证。',
+    decisions: ['DEC-622', 'DEC-632', 'DEC-045', 'DEC-067'],
+    level: 'L2',
+  },
+  'exit-handover-trigger': {
+    original: '交接发起规则：开关、发起方式、发起人、催办（B65）。',
+    decision: '整份保存到租户设置；发起人只有员工本人（DEC-683），审批节点只能填标识。版式未验证。',
+    decisions: ['DEC-632', 'DEC-683', 'DEC-067'],
+    level: 'L2',
+  },
+  'exit-blacklist': {
+    original: '黑名单列表与手工加黑、编辑、移出、删除（B68）。',
+    decision: '裁剪的列显示占位且不进筛选；无总数只能上下翻页；选择员工加黑与导入未做。列序未验证。',
+    decisions: ['DEC-583', 'DEC-569', 'DEC-067'],
+    level: 'L2',
+  },
+  'exit-blacklist-rules': {
+    original: '自动加黑总开关与规则：名称、优先级、适用组织、说明、条件、期限、原因、加黑说明（B68）。',
+    decision: '规则在后端执行；条件只有离职次数 ≥ N，期限无“指定期限”（后端未实现）；退休不加黑（DEC-716）。',
+    decisions: ['DEC-632', 'DEC-645', 'DEC-716', 'DEC-067'],
+    level: 'L2',
+  },
 };
