@@ -13,6 +13,7 @@ import { ESTABLISHMENT } from './establishment.js';
 import { EVALUATION } from './evaluation.js';
 import { HR_DASHBOARD } from './hr-dashboard.js';
 import { HR_STRUCTURE } from './hr-structure.js';
+import { HR_MOVEMENT } from './hr-movement.js';
 import { CONTRACT_BOARD } from './contract-board.js';
 import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
@@ -59,6 +60,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   succession: SUCCESSION,
   'hr-dashboard': HR_DASHBOARD,
   'hr-structure': HR_STRUCTURE,
+  'hr-movement': HR_MOVEMENT,
   'contract-board': CONTRACT_BOARD,
   'org-adjustment': ORG_ADJUSTMENT,
 };
