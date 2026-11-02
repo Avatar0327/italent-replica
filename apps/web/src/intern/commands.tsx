@@ -1,24 +1,78 @@
 import { Modal } from 'antd';
-import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { ApiError, type Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { FormCommands, type CommandForm } from '../foundation/forms/useCommandForm.js';
-import type { Latest } from '../foundation/forms/store.js';
+import { createFormStore, type Latest } from '../foundation/forms/store.js';
 import { projectFields, sameValue, type Values } from '../foundation/forms/values.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { useDirectApi } from '../part-time/direct-api.js';
 import { m } from './messages.js';
 import { apiRoot, businesses, confirmationOf, type Confirmation } from './model.js';
 
-/** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开后仍在。 */
+// F-436 R1 P2-1：命令存储挂在 intern 模块级（同 idp/commands.tsx，F-164）。实习生页随路由卸载重建，
+// 提交在途时离开模块、落库前回来，迟到的确认只能作用在旧页面实例上；存储与确认代次留在模块里，
+// 新挂载的列表 / 详情经同一份存储的 subscribe 看到代次变化。键仍按会话（租户 + 身份）隔离。
+const store = createFormStore();
+const confirmations = new Map<string, number>();
+const sessionKey = (session: ReturnType<typeof useSession>) => JSON.stringify([session.tenantId, session.identityKey]);
+
+/** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开、页面卸载重建后仍在。 */
 export function InternCommands({ children }: { children: ReactNode }) {
   const [drafts, setDrafts] = useState<Record<string, ApplicationDraft | undefined>>({});
   return (
     <Drafts.Provider value={{ drafts, put: (key, draft) => setDrafts((old) => ({ ...old, [key]: draft })) }}>
-      <FormCommands>{children}</FormCommands>
+      <FormCommands store={store}>{children}</FormCommands>
     </Drafts.Provider>
   );
+}
+
+/** 本会话的实习写确认代次：只增不减；不同租户、身份各自计数。 */
+export function useConfirmedGeneration() {
+  const key = sessionKey(useSession());
+  return useSyncExternalStore(store.subscribe, () => confirmations.get(key) ?? 0);
+}
+
+/**
+ * 列表等读取的唯一失效入口（F-436，DEC-431①）：本会话确认代次变了就调用 refresh。
+ * 挂载时的代次只记下、不刷新（挂载本来就读）；换会话只换基准，不算确认。
+ */
+export function useConfirmedRefresh(refresh: () => void) {
+  const key = sessionKey(useSession());
+  const generation = useConfirmedGeneration();
+  const latest = useRef(refresh);
+  const seen = useRef({ key, generation });
+  useEffect(() => {
+    latest.current = refresh;
+  });
+  useEffect(() => {
+    const changed = seen.current.key === key && seen.current.generation !== generation;
+    seen.current = { key, generation };
+    if (changed) latest.current();
+  }, [key, generation]);
+}
+
+/**
+ * 写确认后的刷新回调（交 useInternCommand，内核在写入与本单回读核验都成功后、完成通知前调用）：
+ * 直接转正照旧刷新当前视图；两步申请只有第二步（提交草稿）递增本会话确认代次，建草稿不算最终确认。
+ * 递增本身不通知：紧接着内核写入完成状态时 store 通知订阅者（失败、409、取消、结果未知都走不到这里）。
+ */
+export function useSettledRefresh(application: boolean, draft: boolean, refresh: () => Promise<unknown>) {
+  const key = sessionKey(useSession());
+  return async () => {
+    if (!application) return refresh();
+    if (draft) confirmations.set(key, (confirmations.get(key) ?? 0) + 1);
+  };
 }
 
 export interface ApplicationDraft {
