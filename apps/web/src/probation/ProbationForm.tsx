@@ -15,7 +15,14 @@ import type { ApplicationDraft } from '../intern/commands.js';
 import { acceptBusiness } from '../intern/model.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
 import { useRead } from '../part-time/useRead.js';
-import { targetOf, useProbationCommand, type Confirmed, type ProbationCommand, type Send } from './commands.js';
+import {
+  regularizeSend,
+  targetOf,
+  useProbationCommand,
+  type Confirmed,
+  type ProbationCommand,
+  type Send,
+} from './commands.js';
 import { useRegularizationRecovery, type Recovery } from './draft.js';
 import { m } from './messages.js';
 import {
@@ -494,7 +501,7 @@ function RegularizeEditor(props: RegularizeProps) {
   const locked = cmd.disabled || (staged && staging.cmd.disabled) || !allowed;
   // 新建提交要有启用的试用结果；已存草稿带着已存结果提交，不受启用字典为空限制（F-347 e）
   const submitLocked = !draft && !results.options.length;
-  const { direct, step, patch, destination } = useSends(employeeId, (made, values) =>
+  const { destination, ...sends } = useSends(employeeId, (made, values) =>
     setOwn({ draft: { ...made, values: projectFields(values, regularizeFields) }, created: true }),
   );
   const { error, submit } = useSubmit(form, async (values) => {
@@ -502,7 +509,7 @@ function RegularizeEditor(props: RegularizeProps) {
     // 与当前已确认 revision 的服务端值比（rf347_2 P2-1）：409 核对后改回打开时的值也要先 PATCH，不能跳过直接提交
     const confirmed = cmd.confirmedValues(regularizeFields);
     const changed = !!draft && regularizeFields.some((field) => !sameValue(values[field], confirmed[field]));
-    const send = !application ? direct : changed ? patch(draft!.id, values) : step(draft?.id, values);
+    const send = regularizeSend(sends, { application, draft, changed }, values);
     if (!(await cmd.submit(values, regularizeFields, send))) return;
     // 建草稿 / 改草稿已确认才自动进入提交（同实习）；提交失败时草稿保留，由用户显式重提同一张单
     if (application && (!draft || changed)) return void (autoSubmit.current = true);
