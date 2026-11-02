@@ -1,12 +1,15 @@
 /**
- * F-366 实习生「实习中」排序（规格 31 末尾 F-366 补充）：原站默认 OrderCode 升序 + 实习开始日期降序，复刻没有 OrderCode，
- * 退化为实习开始日期（实习入职日）降序、同日记录 id 升序；表头只有实习机构 / 实习部门 / 直线经理三列可排，单列，
- * 值 方向 NULLS LAST、再 id 升序。其余三个页签未取证，不收排序参数。排序列须可查看，否则 403（不让排序成为探针）。
+ * F-366 实习生「实习中」排序（规格 31 末尾 F-366 补充，DEC-742 照搬原站默认顺序）：默认人员排序码（OrderCode，
+ * personnel_employee_order_codes）升序、空值最后，再实习开始日期（实习入职日）降序、记录 id 升序；租户没启用排序规则时
+ * 排序码全空，自然退化为开始日期降序。表头只有实习机构 / 实习部门 / 直线经理三列可排，单列，值 方向 NULLS LAST、
+ * 再 id 升序。其余三个页签未取证，不收排序参数。排序列须可查看，否则 403（不让排序成为探针）。
  */
+import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { internWorld, scopedRequest, type InternViewItem, type InternWorld } from './AC-IN-BE6a-support.js';
+import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -41,7 +44,43 @@ describe('AC-IN-F366 实习中默认顺序', () => {
     const newer = await intern(w, '晚入职合成实习生', '2026-09-10', { departmentId: w.org.id });
     expect(ids(await w.view('interning'))).toEqual([newer, older]);
   });
+
+  it('DEC-742：启用人员排序规则后先按排序码升序（空值最后），同码再按开始日期降序', async () => {
+    const w = await internWorld(testDb().db, 'f366-order-code');
+    const front = await org(w, '排序码前部门', '部门', w.session.tenant.id, 1);
+    const back = await org(w, '排序码后部门', '部门', w.session.tenant.id, 2);
+    // 排序码小的反而入职最早：旧的“开始日期降序”会把它排在最后
+    const first = await intern(w, '排序码一合成实习生', '2026-09-01', { departmentId: front.id });
+    const tiedOld = await intern(w, '同码早合成实习生', '2026-09-02', { departmentId: back.id });
+    const tiedNew = await intern(w, '同码晚合成实习生', '2026-09-08', { departmentId: back.id });
+    await rankByDepartment(w);
+    // 重算之后才入职：排序码为空，开始日期最新，旧顺序排第一，新顺序必须排最后
+    const unranked = await intern(w, '无排序码合成实习生', '2026-09-20', { departmentId: front.id });
+    expect(ids(await w.view('interning'))).toEqual([first, tiedNew, tiedOld, unranked]);
+    // 表头排序不受默认顺序影响：仍是“值 方向 NULLS LAST, id 升序”
+    const byDepartment = await w.view('interning', '&sortBy=departmentId&direction=desc');
+    expect(ids(byDepartment).slice(0, 2).sort()).toEqual([tiedOld, tiedNew].sort());
+  });
 });
+
+/** 经人员信息的排序规则入口启用“部门升序”（DEC-148 / DEC-170 的组合名次），再手动重算一次。 */
+async function rankByDepartment(w: InternWorld) {
+  const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
+  const as = { user: w.session.user.id, tenant: w.session.tenant.id };
+  const send = async (method: string, path: string, body: object, ifMatch: number, idempotencyKey?: string) => {
+    const response = await api.request(method, `/api/tenant/personnel/${path}`, {
+      ...as,
+      body,
+      ifMatch,
+      idempotencyKey,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return response.json() as Promise<{ outcome?: string }>;
+  };
+  const items = [{ field: 'department', direction: 'asc', enabled: true }];
+  await send('PUT', 'order-code/settings', { enabled: true, items }, 0);
+  expect(await send('POST', 'order-code/recompute', {}, 1, randomUUID())).toMatchObject({ outcome: 'computed' });
+}
 
 describe('AC-IN-F366 三列单列排序', () => {
   it('实习机构：按部门上溯的最近机构名次升 / 降，行上返回同源的 institutionId', async () => {
