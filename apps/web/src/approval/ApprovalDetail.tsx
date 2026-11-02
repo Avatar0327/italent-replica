@@ -5,6 +5,7 @@ import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
 import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
+import { NAME_KEYS, namedValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
 import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
@@ -27,17 +28,17 @@ export function displayValue(value: unknown): string {
 }
 /** 原站申请信息：标签 + 值；改变后的值橙色显示，下方浅灰“原：旧值”。 */
 export function ApprovalFields({ detail }: { detail: Detail }) {
-  const rows = Object.entries(detail.form.values);
+  const rows = Object.entries(detail.form.values).filter(([key]) => !NAME_KEYS.has(key));
   if (!rows.length) return <Empty description={m.noValues} />;
   const originals = detail.form.originals ?? {};
   return (
     <dl className="approval-fields">
-      {rows.map(([key, value]) => (
+      {rows.map(([key]) => (
         <div key={key} className="approval-field">
           <dt>{fieldLabels[key] ?? presetLabels[key] ?? key}</dt>
           <dd className={key in originals ? 'approval-changed' : undefined}>
-            <span>{displayValue(value)}</span>
-            {key in originals && <small>{d.original(displayValue(originals[key]))}</small>}
+            <span>{displayValue(namedValue(detail.form.values, key))}</span>
+            {key in originals && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
           </dd>
         </div>
       ))}

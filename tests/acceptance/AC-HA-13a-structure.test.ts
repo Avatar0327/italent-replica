@@ -23,6 +23,8 @@ async function buildWorld() {
   const l2 = await w.job('levels', '职级二', { level: 2 });
   const forms = (await (await w.session.request('GET', '/employment-forms')).json()) as { items: { code: string }[] };
   const form = forms.items[0]!.code;
+  // 人员类别存字典 ID（F-323a），看板按名称分组 / 筛选
+  const category = await w.category('合成类别甲');
 
   const p = {
     // 恰满 6 个月、恰 25 岁
@@ -30,7 +32,7 @@ async function buildWorld() {
       date: '2026-04-01',
       department: a1,
       profile: { gender: '男', birthday: '2001-10-01', educationLevel: '本科' },
-      fields: { sequenceId: s1.id, levelId: l1.id, employmentForm: form, employmentType: '合成类别甲' },
+      fields: { sequenceId: s1.id, levelId: l1.id, employmentForm: form, employmentType: category.id },
     }),
     // 恰满 1 年、恰 30 岁、试用中（试用期最长 6 个月；没办转正，人员状态仍是试用）
     p2: await w.hire('结构乙', {

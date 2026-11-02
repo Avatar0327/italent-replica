@@ -45,6 +45,9 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   // F-261 叠在 F-140b 上：当前任职写入与离职读取已依赖人工计划、替代来源两列。
   { table: 'employment_payload_versions', column: 'manual_plan', type: 'boolean', migration: 'ancient_nitro' },
   { table: 'exit_requests', column: 'supersedes_business_id', type: 'uuid', migration: 'ancient_nitro' },
+  // BE-13c：当前审批发起代码会写审批类别与业务日期（规格 35 B51）。
+  { table: 'approval_instances', column: 'approval_category', type: 'text', migration: 'be13c_approval_category' },
+  { table: 'approval_instances', column: 'business_date', type: 'date', migration: 'be13c_approval_category' },
 ];
 
 export interface PreUpgradeTableShim {

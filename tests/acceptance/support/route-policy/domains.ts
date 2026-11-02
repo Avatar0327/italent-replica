@@ -5,6 +5,7 @@
  */
 import { JOB_OBJECT_CODES } from '@italent/api';
 import {
+  ORG_ADJUSTMENT_OBJECT_CODE,
   APPROVAL_TYPES,
   type ButtonLevel,
   CONTRACT_FLOW,
@@ -62,6 +63,8 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   'TYPE.objectCode': { adapter: 'retirement_intention', codes: [APPROVAL_TYPES.retirement_intention.objectCode] },
   // employment/exit-handover-adapter.ts（R2 BE-8b2）：离职交接申请，字段权限沿用任职记录对象
   HANDOVER_OBJECT: { adapter: 'exit_handover', codes: [APPROVAL_TYPES.exit_handover.objectCode] },
+  // org-adjustment/snapshot.ts（R2-T08 BE-10c）：组织调整申请，字段权限按申请单对象（§4.5）
+  ORG_ADJUSTMENT_OBJECT_CODE: { adapter: 'org_adjustment', codes: [ORG_ADJUSTMENT_OBJECT_CODE] },
 };
 
 /**
@@ -71,8 +74,6 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
 export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
   // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
   talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
-  // org-adjustment/approval-adapter.ts：R2-T08 BE-10a 占位，BE-10c 接入真适配器前任何回调 409
-  org_adjustment: 'ORG_ADJUSTMENT_NOT_AVAILABLE',
 };
 
 function sourceFiles(dir: string): string[] {
