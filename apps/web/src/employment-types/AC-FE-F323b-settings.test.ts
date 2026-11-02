@@ -48,7 +48,7 @@ const settle = async () => {
 };
 async function render() {
   expect(entry(), '人员类别设置页登记').toBeDefined();
-  const Page = entry()!.page.Component;
+  const Page = entry()!.page!.Component;
   await act(async () =>
     root.render(
       h(SessionProvider, {
@@ -66,6 +66,8 @@ async function render() {
       }),
     ),
   );
+  // 首个用例懒加载页面模块较慢：等 Suspense 换出页面后再等请求落定
+  for (let i = 0; i < 200 && !host.firstElementChild; i += 1) await settle();
   await settle();
 }
 const buttons = (scope: ParentNode = document) =>
