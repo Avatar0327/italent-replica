@@ -1,7 +1,8 @@
 /**
  * FE-R2c2b：离职设置页（B64 交接事项、B65 交接发起规则、B68 黑名单与自动加黑规则）的夹具与真实接口一致。
  *   - 冒烟夹具的行 / 设置 / 权限逐键照抄真实返回（exit-settings-fixtures.ts）；
- *   - 页面的请求体（itemBody / ruleBody / triggerBody / batchBody / blacklistQuery）真实接口接受；
+ *   - 页面的请求体（itemBody / ruleBody / triggerBody / entryBody / batchBody / blacklistQuery）真实接口接受；
+ *   - 前端上限表 FIELD_MAX 与真实接口的边界一致（恰好上限被接受，超 1 被拒）；
  *   - 回执校验器按真实回执形状通过，错版本 / 错对象拒绝；
  *   - 黑名单写能力：管理员全开；人事专员有对象权限但无看全部数据范围，列表为空、写入被拒，页面据此不给写。
  */
@@ -23,11 +24,13 @@ import {
   BLACKLIST_PAGE_SIZE,
   BLACKLIST_PATH,
   BLACKLIST_RULES_PATH,
+  FIELD_MAX,
   HANDOVER_ITEMS_PATH,
   TRIGGER_PATH,
   batchBody,
   blacklistAccess,
   blacklistQuery,
+  entryBody,
   itemBody,
   parseAutoBlacklist,
   parseBlacklistDeleteReceipt,
@@ -179,12 +182,13 @@ describe('AC-FE-R2c2b 自动加黑规则（B68）夹具与真实接口一致', (
 describe('AC-FE-R2c2b 黑名单（B68）夹具与真实接口一致', () => {
   it('手工加黑 / 编辑 / 移出 / 删除：行与夹具同键；分页查询串被接受；回执核对', async () => {
     const { call } = await world('blacklist');
-    const created = await call(
-      'POST',
-      BLACKLIST_PATH,
-      { name: '外部人员甲', mobilePhone: '13800000001', reason: 'other' },
-      0,
+    // 页面的 entryBody：新增去掉空项（后端严格 DTO、文本至少 1 字）。
+    const create = entryBody(
+      { name: ' 外部人员甲 ', idNumber: '', mobilePhone: '13800000001', email: '  ', reason: 'other', note: '' },
+      true,
     );
+    expect(create).toEqual({ name: '外部人员甲', mobilePhone: '13800000001', reason: 'other' });
+    const created = await call('POST', BLACKLIST_PATH, create, 0);
     expect(created.status, await created.clone().text()).toBe(201);
     const row = await created.json();
     expect(sortedKeys(row)).toEqual(sortedKeys(blacklistEntry));
@@ -201,9 +205,13 @@ describe('AC-FE-R2c2b 黑名单（B68）夹具与真实接口一致', () => {
     expect(parseBlacklistPage(page, 1)).toMatchObject({ items: [row], hasNext: false });
     expect(() => parseBlacklistPage(page, 2)).toThrow();
 
-    const edited = await call('PUT', rowPath(BLACKLIST_PATH, row.id), { note: '合成说明' }, 1);
+    // 编辑是补丁：清空的截止日期提交 null。
+    const patch = entryBody({ note: ' 合成说明 ', expiryDate: undefined }, false);
+    expect(patch).toEqual({ note: '合成说明', expiryDate: null });
+    const edited = await call('PUT', rowPath(BLACKLIST_PATH, row.id), patch, 1);
     expect(edited.status, await edited.clone().text()).toBe(200);
     const receipt = await edited.json();
+    expect(receipt).toMatchObject({ note: '合成说明', expiryDate: null });
     expect(parseRowReceipt(receipt, 'blacklist', { id: row.id, revision: 1 })).toEqual({ id: row.id });
 
     const removed = await call('POST', `${BLACKLIST_PATH}/remove`, batchBody(row.id, 2));
@@ -272,5 +280,28 @@ describe('AC-FE-R2c2b 黑名单（B68）夹具与真实接口一致', () => {
       ifMatch: 0,
     });
     expect(denied.status).toBe(403);
+  });
+});
+
+describe('AC-FE-R2c2b 上限表 FIELD_MAX 与真实接口边界一致（第 2 轮 P2-1）', () => {
+  it('黑名单筛选：恰好上限被接受，超 1 被拒；规则适用组织超过上限被拒', async () => {
+    const { call } = await world('limits');
+    const everything = () => true;
+    for (const field of ['name', 'idNumber', 'mobilePhone'] as const) {
+      const max = FIELD_MAX.blacklist[field];
+      const at = await call('GET', blacklistQuery({ status: 'active', [field]: '1'.repeat(max) }, 1, everything));
+      expect(at.status, `${field} ${await at.clone().text()}`).toBe(200);
+      const over = await call('GET', blacklistQuery({ status: 'active', [field]: '1'.repeat(max + 1) }, 1, everything));
+      expect(over.status, field).toBe(400);
+    }
+    const orgIds = Array.from(
+      { length: FIELD_MAX.rule.orgIds + 1 },
+      (_, i) => `63000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    );
+    const create = ruleBody(
+      {},
+      { name: '组织过多', priority: 1, orgIds, exitCount: 3, term: 'permanent', reason: 'instability' },
+    );
+    expect((await call('POST', BLACKLIST_RULES_PATH, create, 0)).status).toBe(400);
   });
 });

@@ -1,5 +1,10 @@
 // FE-R2c2b 离职设置页纯规则：形状校验（裁剪键允许缺失）、回执、写能力 fail-closed、查询串、分组、请求体。
-import { HANDOVER_TRIGGER_DEFAULT } from '@italent/domain';
+import {
+  BLACKLIST_NOTE_MAX,
+  BLACKLIST_RULE_TEXT_MAX,
+  HANDOVER_REMIND_DAYS_MAX,
+  HANDOVER_TRIGGER_DEFAULT,
+} from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import {
   blacklistEntry,
@@ -216,5 +221,79 @@ describe('请求体', () => {
     expect(
       model.parseSettingReceipt({ ...setting, source: 'tenant', revision: 1 }, 'exit.handover_trigger', 0),
     ).toEqual({ id: 'exit.handover_trigger' });
+  });
+});
+
+// ---- 第 2 轮返工（Sol P2-1～P2-3、Claude P3-2 / P3-6 / P3-7） ----------------------------------------------------------
+describe('第 2 轮：上限、隐藏字段、多条件、截止日期、可覆盖、黑名单请求体', () => {
+  it('P2-3 多条件规则按 AND 取最大阈值显示；没改阈值原样保留，改了才合并为一条', () => {
+    const multi = {
+      ...blacklistRule,
+      conditions: [
+        { field: 'exitCount', operator: 'gte', value: 3 },
+        { field: 'exitCount', operator: 'gte', value: 9 },
+      ],
+    };
+    expect(model.ruleValues(multi).exitCount).toBe(9);
+    expect(model.ruleBody(multi, { priority: 5 }).conditions).toEqual(multi.conditions);
+    expect(model.ruleBody(multi, { exitCount: 10 }).conditions).toEqual([
+      { field: 'exitCount', operator: 'gte', value: 10 },
+    ]);
+  });
+
+  it('P2-1 上限表与后端 zod 一致（筛选与表单共用）', () => {
+    expect(model.FIELD_MAX).toEqual({
+      blacklist: { name: 100, idNumber: 64, mobilePhone: 32, email: 254, note: BLACKLIST_NOTE_MAX },
+      rule: { name: 100, priority: 9999, exitCount: 999, orgIds: 50, text: BLACKLIST_RULE_TEXT_MAX },
+      item: { category: 50, sequenceNo: 9999, title: 200, formRef: 200, remark: 500 },
+      trigger: { nodeKey: 200, days: HANDOVER_REMIND_DAYS_MAX },
+    });
+  });
+
+  it('P2-2 发起规则只校验 / 提交可见字段：催办关闭时天数不进表单口径，提交取最新全量的有效值', () => {
+    const values = model.triggerValues(HANDOVER_TRIGGER_DEFAULT);
+    expect(model.triggerVisibleFields({ ...values, remindEnabled: false })).toEqual([
+      'enabled',
+      'method',
+      'includePastLastWorkDate',
+      'remindEnabled',
+    ]);
+    expect(
+      model.triggerVisibleFields({ ...values, method: 'days_before_last_work_date', remindEnabled: true }),
+    ).toEqual([
+      'enabled',
+      'method',
+      'daysBeforeLastWorkDate',
+      'includePastLastWorkDate',
+      'remindEnabled',
+      'remindBefore',
+      'remindAfter',
+    ]);
+    expect(model.triggerVisibleFields({ ...values, method: 'on_node_approved' })).toContain('nodeKey');
+  });
+
+  it('P3-2 有效截止日期：早于今天（租户时区）的日期禁选，今天及以后可选', () => {
+    expect(model.isBeforeDay('2026-10-12', '2026-10-13')).toBe(true);
+    expect(model.isBeforeDay('2026-10-13', '2026-10-13')).toBe(false);
+    expect(model.isBeforeDay('2027-01-01', '2026-10-13')).toBe(false);
+    expect(model.isBeforeDay('2026-10-12', undefined)).toBe(false);
+  });
+
+  it('P3-6 租户设置可写：须其他设置菜单可编辑且该键可覆盖', () => {
+    expect(model.settingWritable(menus(true), { overridable: true })).toBe(true);
+    expect(model.settingWritable(menus(true), { overridable: false })).toBe(false);
+    expect(model.settingWritable(menus(false), { overridable: true })).toBe(false);
+  });
+
+  it('P3-7 黑名单请求体：新增去掉空项；编辑是补丁，空值提交 null', () => {
+    expect(model.entryBody({ name: ' 甲 ', idNumber: '', mobilePhone: '  ', email: 'a@example.com' }, true)).toEqual({
+      name: '甲',
+      email: 'a@example.com',
+    });
+    expect(model.entryBody({ note: ' ', expiryDate: undefined, reason: 'other' }, false)).toEqual({
+      note: null,
+      expiryDate: null,
+      reason: 'other',
+    });
   });
 });

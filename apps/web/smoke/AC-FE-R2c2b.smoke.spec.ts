@@ -376,3 +376,146 @@ test('AC-FE-R2c2b-06 无其他设置权时各页只读；被裁剪的列显示�
   expect(readonly.queries.every((query) => !query.includes('mobilePhone'))).toBe(true);
   expect(readonly.writes).toEqual([]);
 });
+
+// ---- 第 2 轮返工：Sol P2-1～P2-3、Claude P3-2 / P3-6，以及新建结果未知后重开的锁定探针 ----------------------------------
+const filterBox = (page: Page, label: string) =>
+  page.locator('.exit-settings-filter').getByRole('textbox', { name: label });
+
+test('AC-FE-R2c2b-07 输入上限与后端一致：65 字姓名精确查询；手机号第 33 字输不进；第 51 个组织被拦', async ({
+  page,
+}) => {
+  const server = await setup(page);
+  const prefix = '甲'.repeat(64);
+  server.blacklist = [
+    { ...blacklistEntry, id: '64000000-0000-4000-8000-000000000065', name: `${prefix}乙` },
+    { ...blacklistEntry, id: '64000000-0000-4000-8000-000000000066', name: `${prefix}丙` },
+  ];
+  await openTab(page, 'blacklist', '黑名单');
+  await filterBox(page, '姓名').fill(`${prefix}乙`);
+  await expect(filterBox(page, '姓名')).toHaveValue(`${prefix}乙`);
+  await page.getByRole('button', named('查询')).click();
+  await expect(page.locator('.ant-table-tbody .ant-table-row')).toHaveCount(1);
+  await expect(row(page, `${prefix}乙`)).toBeVisible();
+  expect(new URLSearchParams(server.queries.at(-1)).get('name')).toBe(`${prefix}乙`);
+  await filterBox(page, '手机号').fill('1'.repeat(33));
+  await expect(filterBox(page, '手机号')).toHaveValue('1'.repeat(32));
+
+  // 规则已选 50 个组织，再选第 51 个：表单给出可见提示，保存不发请求。
+  const orgs = Array.from({ length: 51 }, (_, i) => ({
+    id: `63000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    name: `合成组织${String(i + 1).padStart(2, '0')}`,
+  }));
+  await page.route('**/api/tenant/org/organizations?*', (route) =>
+    route.fulfill({ json: { items: orgs, total: orgs.length, page: 1, pageSize: 200 } }),
+  );
+  server.rules[0] = { ...server.rules[0]!, orgIds: orgs.slice(0, 50).map((org) => org.id) };
+  await openTab(page, 'blacklist-rules', '自动加黑规则');
+  await row(page, '离职三次永久').getByRole('button', named('编辑')).click();
+  await item(dialog(page), '适用组织').locator('.ant-select-selector').click();
+  await page.keyboard.type('合成组织51');
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: '合成组织51' }).click();
+  await expect(dialog(page).getByText('适用组织最多选择 50 个')).toBeVisible();
+  await dialog(page).getByRole('button', save).click();
+  await expect(dialog(page).getByText('适用组织最多选择 50 个')).toBeVisible();
+  expect(server.writes).toEqual([]);
+});
+
+test('AC-FE-R2c2b-08 关闭催办后隐藏的天数不挡保存：清空天数 → 关闭催办 → 保存发出 PUT，天数取有效值', async ({
+  page,
+}) => {
+  const server = await setup(page);
+  await openTab(page, 'handover-trigger', '交接发起规则');
+  const form = page.getByRole('region', { name: '交接发起规则' });
+  await item(form, '最后工作日前（天）').getByRole('spinbutton').fill('');
+  await form.getByRole('switch', { name: '交接催办' }).click();
+  await form.getByRole('button', save).click();
+  await expect(page.getByText('已保存')).toBeVisible();
+  expect(server.writes.map(({ method, revision, body }) => [method, revision, body])).toEqual([
+    [
+      'PUT',
+      '0',
+      {
+        value: {
+          ...(triggerDefault.value as object),
+          remind: { enabled: false, daysBeforeLastWorkDate: 5, daysAfterLastWorkDate: 15 },
+        },
+      },
+    ],
+  ]);
+});
+
+test('AC-FE-R2c2b-09 多条件规则：显示最大阈值；不改阈值原样保留，改了合并为一条并提示', async ({ page }) => {
+  const server = await setup(page);
+  const conditions = [
+    { field: 'exitCount', operator: 'gte', value: 3 },
+    { field: 'exitCount', operator: 'gte', value: 9 },
+  ];
+  server.rules[0] = { ...server.rules[0]!, conditions };
+  await openTab(page, 'blacklist-rules', '自动加黑规则');
+  await row(page, '离职三次永久').getByRole('button', named('编辑')).click();
+  await expect(spin(page, '离职次数大于等于（次）')).toHaveValue('9');
+  await expect(dialog(page).getByText('保存后合并为一条')).toHaveCount(0);
+  await spin(page, '优先级').fill('5');
+  await dialog(page).getByRole('button', save).click();
+  await expect(dialog(page)).toHaveCount(0);
+
+  await row(page, '离职三次永久').getByRole('button', named('编辑')).click();
+  await spin(page, '离职次数大于等于（次）').fill('10');
+  await expect(dialog(page).getByText('该规则原有 2 条条件，保存后合并为一条')).toBeVisible();
+  await dialog(page).getByRole('button', save).click();
+  await expect(row(page, '离职三次永久')).toContainText('离职次数 ≥ 10');
+  expect(server.writes.map(({ revision, body }) => [revision, (body as Row).conditions])).toEqual([
+    ['1', conditions],
+    ['2', [{ field: 'exitCount', operator: 'gte', value: 10 }]],
+  ]);
+});
+
+test('AC-FE-R2c2b-10 手工加黑的有效截止日期：早于今天（租户时区）的日期禁选', async ({ page }) => {
+  await setup(page);
+  await openTab(page, 'blacklist', '黑名单');
+  await page.getByRole('button', named('手工加黑')).click();
+  await item(dialog(page), '有效截止日期').getByPlaceholder('选择日期').click();
+  const cell = (date: string) => page.locator(`.ant-picker-dropdown:visible td[title="${date}"]`);
+  await expect(cell(snapshotFixture.session.today)).not.toHaveClass(/ant-picker-cell-disabled/);
+  await expect(cell('2026-10-12')).toHaveClass(/ant-picker-cell-disabled/);
+});
+
+test('AC-FE-R2c2b-11 设置不可覆盖（overridable=false）时只读：不给保存与开关', async ({ page }) => {
+  const server = await setup(page);
+  for (const key of Object.keys(server.settings))
+    server.settings[key] = { ...server.settings[key]!, overridable: false };
+  await openTab(page, 'handover-trigger', '交接发起规则');
+  const form = page.getByRole('region', { name: '交接发起规则' });
+  await expect(form.getByText('该设置由系统统一管控，本租户不可修改。')).toBeVisible();
+  await expect(form.getByRole('button', save)).toHaveCount(0);
+  await openTab(page, 'blacklist-rules', '自动加黑规则');
+  await expect(page.getByRole('switch', { name: '离职后自动加入黑名单' })).toBeDisabled();
+  expect(server.writes).toEqual([]);
+});
+
+test('AC-FE-R2c2b-12 新建结果未知：关闭重开、切页签回来后仍锁定，不重复提交', async ({ page }) => {
+  const server = await setup(page);
+  await openTab(page, 'blacklist-rules', '自动加黑规则');
+  await page.getByRole('button', named('新增')).click();
+  await textbox(page, '规则名称').fill('结果未知规则');
+  await choose(dialog(page), '适用组织', '合成总部');
+  await spin(page, '离职次数大于等于（次）').fill('2');
+  await choose(dialog(page), '加黑原因', '稳定性差');
+  server.override = () => 'abort';
+  await dialog(page).getByRole('button', save).click();
+  await expect(dialog(page).getByText('处理中 / 结果待确认')).toBeVisible();
+  const lockedAgain = async () => {
+    await page.getByRole('button', named('新增')).click();
+    await expect(dialog(page).getByText('处理中 / 结果待确认')).toBeVisible();
+    await expect(dialog(page).getByRole('button', save)).toBeDisabled();
+    await dialog(page).getByRole('button', named('取消')).click();
+    await expect(dialog(page)).toHaveCount(0);
+  };
+  await dialog(page).getByRole('button', named('取消')).click();
+  await lockedAgain();
+  await page.getByRole('tab', { name: '黑名单' }).click();
+  await expect(page.getByRole('tab', { name: '黑名单', selected: true })).toBeVisible();
+  await page.getByRole('tab', { name: '自动加黑规则' }).click();
+  await lockedAgain();
+  expect(server.writes).toHaveLength(1);
+});
