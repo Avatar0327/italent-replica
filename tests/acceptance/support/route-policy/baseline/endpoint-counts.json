@@ -19,7 +19,7 @@
     "job": 14,
     "offers": 21,
     "org": 14,
-    "org-adjustment": 13,
+    "org-adjustment": 15,
     "permission": 44,
     "personnel": 18,
     "platform": 9,
@@ -37,5 +37,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 832
+  "total": 834
 }
