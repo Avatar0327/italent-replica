@@ -11,6 +11,7 @@ import { useSubsetAccess, type ProfileSubset } from './useSubsetAccess.js';
 import { displayValue, fieldValue, profileSections, recordPeriod, type Row } from './model.js';
 import { m, subsetLabels } from './messages.js';
 import type { ObjectPermission } from '../foundation/permission-model.js';
+import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { RecordEdit, SubsetCreate, SubsetRowCommands } from './EditCommands.js';
 
 export function FieldGrid({
@@ -31,7 +32,7 @@ export function FieldGrid({
       items={visible.map((key) => ({
         key,
         label: m.labels[key],
-        children: fieldValue(key, row[key], 'long'),
+        children: key === EMPLOYMENT_TYPE_FIELD ? employmentTypeLabel(row) : fieldValue(key, row[key], 'long'),
       }))}
     />
   ) : (
@@ -189,7 +190,15 @@ export function EmploymentRecords({ employeeId }: { employeeId: string }) {
               <FieldGrid
                 row={(row.fields ?? {}) as Record<string, unknown>}
                 allowed={allowed}
-                fields={['departmentId', 'companyId', 'postId', 'positionId', 'levelId', 'directManagerId']}
+                fields={[
+                  'departmentId',
+                  'companyId',
+                  'postId',
+                  'positionId',
+                  'levelId',
+                  'directManagerId',
+                  'employmentType',
+                ]}
               />
             </section>
           ))}

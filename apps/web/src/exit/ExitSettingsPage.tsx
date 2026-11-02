@@ -1,6 +1,6 @@
 // R2-T03 FE2b：离职类型 / 离职原因 / 离职去向三个字典设置页（设计 §2.1、§3；DEC-577）。
 import { Button, Table, Tabs, Tag } from 'antd';
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router';
 import { useRead } from '../contracts/useRead.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
@@ -10,11 +10,17 @@ import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { ACCOUNT_STOP_TAB } from './account-stop.js';
 import { a } from './account-stop-messages.js';
 import { AccountStopSettings } from './AccountStopSettings.js';
+import { Blacklist } from './Blacklist.js';
+import { BlacklistRules } from './BlacklistRules.js';
 import { exitStore } from './commands.js';
 import { DictionaryForm, RowCommands } from './DictionaryCommands.js';
+import { HandoverItems } from './HandoverItems.js';
+import { HandoverTrigger } from './HandoverTrigger.js';
 import { m } from './messages.js';
 import { EXIT_SETTINGS_OBJECT, KINDS, dictionaryPath, isKind, parseEntries, writeAccess } from './model.js';
 import type { Entry, Kind } from './model.js';
+import { s } from './settings-messages.js';
+import { SETTINGS_TABS, isSettingsTab, type SettingsTab } from './settings-model.js';
 import './exit.css';
 
 export function ExitSettingsPage() {
@@ -36,18 +42,41 @@ export function ExitSettingsPage() {
 function DictionaryTabs() {
   const { kind } = useParams();
   const navigate = useNavigate();
-  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB) return <PageState kind="not-found" />;
+  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB && !isSettingsTab(kind)) return <PageState kind="not-found" />;
   return (
     <section className="exit-card">
       <Tabs
         activeKey={kind}
         // 相对当前页签切换，不写死入口路径（入口 id 由 pages.ts 登记）。
         onChange={(key) => void navigate(`../${key}`, { relative: 'path' })}
-        // F-327：账号停用时间排在三个字典之后（帮助中心目录同属离职退休设置，位置未验证）。
-        items={[...KINDS.map((key) => ({ key, label: m.dictionaries[key] })), { key: ACCOUNT_STOP_TAB, label: a.tab }]}
+        // F-327：账号停用时间排在三个字典之后；FE-R2c2b 的交接 / 黑名单四页接在其后（位置均未验证）。
+        items={[
+          ...KINDS.map((key) => ({ key, label: m.dictionaries[key] })),
+          { key: ACCOUNT_STOP_TAB, label: a.tab },
+          ...SETTINGS_TABS.map((key) => ({ key, label: s.tabs[key] })),
+        ]}
       />
-      {isKind(kind) ? <Dictionary key={kind} kind={kind} /> : <AccountStopSettings />}
+      {isKind(kind) && <Dictionary key={kind} kind={kind} />}
+      {isSettingsTab(kind) && <SettingsTabPage tab={kind} />}
+      {kind === ACCOUNT_STOP_TAB && <AccountStopSettings />}
     </section>
+  );
+}
+
+// B63 终止在途设置没有读写接口（DEC-578 归入离职生效作废在途），不出页签。
+const SETTINGS_PAGES: Record<SettingsTab, ComponentType> = {
+  'handover-items': HandoverItems,
+  'handover-trigger': HandoverTrigger,
+  blacklist: Blacklist,
+  'blacklist-rules': BlacklistRules,
+};
+function SettingsTabPage({ tab }: { tab: SettingsTab }) {
+  const Page = SETTINGS_PAGES[tab];
+  return (
+    <>
+      <DecisionNote id={`exit-${tab}`} />
+      <Page />
+    </>
   );
 }
 

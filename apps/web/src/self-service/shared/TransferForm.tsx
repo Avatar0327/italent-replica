@@ -3,6 +3,7 @@ import { LinkageFields } from '../../transfer/LinkageFields.js';
 import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
 import { text, presetLabels, jobReferences } from '../../transfer/messages.js';
 import type { Choice, FieldValue, TransferFormModel, TransferFormProps } from '../../transfer/types.js';
+import { EMPLOYMENT_TYPE_FIELD } from '../../employment-types/labels.js';
 
 function valueText(value: FieldValue | undefined, choices?: readonly Choice[]): string {
   if (value == null || value === '') return text.empty;
@@ -22,7 +23,17 @@ function choicesFor(model: TransferFormModel, code: string): readonly Choice[] |
     ];
   if (code === 'addedSubordinateIds') return model.references?.[code] ?? model.employees;
   if (code === 'directManagerId' || code === 'dottedManagerId') return model.references?.[code] ?? model.employees;
+  if (code === EMPLOYMENT_TYPE_FIELD) return employmentTypeChoices(model);
   return code in jobReferences ? (model.references?.[code] ?? []) : undefined;
+}
+/** F-323b（DEC-706）：字典选项 + 预览当前值 / 原值的名称（后端 employmentTypeName），停用的原值也按名称显示。 */
+function employmentTypeChoices(model: TransferFormModel): readonly Choice[] {
+  const named = [model.preview?.fields, model.preview?.before?.fields]
+    .filter((fields) => typeof fields?.employmentType === 'string' && typeof fields.employmentTypeName === 'string')
+    .map((fields) => ({ id: String(fields!.employmentType), name: String(fields!.employmentTypeName) }));
+  const choices = [...(model.references?.[EMPLOYMENT_TYPE_FIELD] ?? [])];
+  for (const item of named) if (!choices.some((choice) => choice.id === item.id)) choices.push(item);
+  return choices;
 }
 
 export function TransferForm(props: TransferFormProps) {
@@ -264,7 +275,7 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
   return (
     <div className="transfer-reference">
       <ReferenceSelect {...props} loading={loading} />
-      {onReferenceQuery && code !== 'employType' && (
+      {onReferenceQuery && code !== 'employType' && code !== EMPLOYMENT_TYPE_FIELD && (
         <div className="transfer-reference-search">
           {code !== 'departmentId' && (
             <>
