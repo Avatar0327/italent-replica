@@ -33,12 +33,18 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
     'route:GET /api/tenant/analytics/hr-movement/reports/:report': '6ae255ae73f3',
   },
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
+    approvalVisible: '2e0c654e1a67',
+    processContext: 'e09e4e721826',
+    'route:GET /api/tenant/analytics/hr-process-dashboard': '6b3a6cfa7302',
+    'route:GET /api/tenant/analytics/hr-process-dashboard/components/:code': '910cb6f5a545',
+  },
   'apps/api/src/modules/analytics/hr-structure-routes.ts': {
     boardContext: '42546e84f947',
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report': '1f0252f75cd3',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
@@ -1660,6 +1666,9 @@ export const DIGESTS: Digests = {
     HR_MOVEMENT_OBJECT: '28e679058073',
     HR_MOVEMENT_REPORT_OBJECT: '484824015f7c',
   },
+  'packages/domain/src/analytics/hr-process-dashboard.ts': {
+    HR_PROCESS_DASHBOARD_OBJECT: '4d129b52ca20',
+  },
   'packages/domain/src/analytics/hr-structure.ts': {
     CONTRACT_BOARD_OBJECT: 'd8404150dfe9',
     HR_STRUCTURE_OBJECT: 'b811df5b64eb',
@@ -1797,13 +1806,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '6aa0671e386b',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
     'bcf263b693ad',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
+    '16d80c7c9dbf',
+  'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard/components/:code':
+    '88d86191c204',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#boardContext': '9f65210d159b',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#reportContext': '5a3beab87101',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure': '472176817c4d',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
-    'e7e25e52013b',
+    '4f9a6b459de0',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
@@ -2993,6 +3008,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'packages/domain/src/analytics/hr-dashboard.ts#HR_DASHBOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-movement.ts#HR_MOVEMENT_REPORT_OBJECT': 'e3b0c44298fc',
+  'packages/domain/src/analytics/hr-process-dashboard.ts#HR_PROCESS_DASHBOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#CONTRACT_BOARD_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_OBJECT': 'e3b0c44298fc',
   'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_REPORT_OBJECT': 'e3b0c44298fc',

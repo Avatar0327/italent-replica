@@ -100,6 +100,12 @@ const ANALYTICS_BE13B_SEE_ALL: readonly PresetSeeAllTarget[] = ANALYTICS_BE13B_O
   targetKind: 'entity',
   targetCode,
 }));
+/** DEC-415：人事流程看板（R2 BE-13c）同人事看板，看全部默认给本模块的预置管理员。 */
+const HR_PROCESS_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.hrProcessDashboard.code,
+};
 
 /** R2-T08 §9.2、DEC-415：申请单按主体组织控范围，明细没有独立范围。 */
 const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
@@ -144,6 +150,7 @@ const CONFIG_OBJECTS = new Set<string>([
 /** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */
 const READ_ONLY_OBJECTS = new Set<string>([
   MODULE_OBJECTS.hrDashboard.code,
+  MODULE_OBJECTS.hrProcessDashboard.code,
   ...ANALYTICS_BE13A_OBJECTS,
   ...ANALYTICS_BE13B_OBJECTS,
 ]);
@@ -420,6 +427,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       BLACKLIST_SEE_ALL,
       ASSESSMENT_SEE_ALL,
       HR_DASHBOARD_SEE_ALL,
+      HR_PROCESS_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
       ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
@@ -437,6 +445,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       BLACKLIST_SEE_ALL,
       ASSESSMENT_SEE_ALL,
       HR_DASHBOARD_SEE_ALL,
+      HR_PROCESS_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
       ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
