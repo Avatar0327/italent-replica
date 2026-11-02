@@ -19,7 +19,7 @@ interface OrgView {
   parents: { admin?: { parentId: string; sequence: number | null } };
 }
 
-describe('F-438 组织直改：只改上级不填顺序号 → 沿用原顺序号', () => {
+describe('F-438 / DEC-745 组织直改：只改上级不填顺序号 → 沿用原顺序号', () => {
   it('PATCH 只给新上级 → 顺序号仍为 7；显式给 null → 清空', async () => {
     const s = await orgSession(testDb().db, 'f438seq');
     const p1 = await s.create(`原上级${uniqueSuffix()}`);
@@ -66,7 +66,7 @@ async function orgWithSequence(w: ItemsWorld, name: string, parentId: string, se
   return created.id;
 }
 
-describe('F-438 组织调整明细改上级不填顺序号 → 明细存空，预览按原顺序号排', () => {
+describe('F-438 / DEC-745 组织调整明细改上级不填顺序号 → 明细存空，预览按原顺序号排', () => {
   for (const entry of ['detail.change', 'editor.drag'] as const) {
     it(`${entry}：x（原顺序号 30）挂到 b 下，排在 b 的 10 与 50 之间`, async () => {
       const w = await itemsWorld(testDb().db, 'f438seq');
