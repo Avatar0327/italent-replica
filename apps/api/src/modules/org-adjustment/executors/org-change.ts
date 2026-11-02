@@ -21,7 +21,8 @@ export function orgChangeExecutor(scopeOf: ApplicantScopeOf): GroupExecutor {
     if (item!.execPhase === 1) return linkEmploymentPage(tx, scopeOf, input, item!);
     await lockOrganizationSettings(tx, input.tenantId);
     const parentId = await parentOf(tx, input, item!);
-    await applicantScopes(tx, scopeOf, input, input.adjustment).orgs([item!.targetOrgId, item!.parentOrgId]);
+    // 新上级按解析后的正式 ID 复核（同单新增行引用时原始列为空），见 org-create.ts。
+    await applicantScopes(tx, scopeOf, input, input.adjustment).orgs([item!.targetOrgId, parentId]);
     await assertBaseline(tx, input, [item!]);
     const patch = await changePatch(tx, input, item!, parentId);
     const ctx = await orgWriteContext(tx, input, item!.targetOrgId!);
