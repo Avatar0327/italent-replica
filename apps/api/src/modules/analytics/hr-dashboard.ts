@@ -62,7 +62,7 @@ const dayEnd = (c: DashboardAsOf) => sql`((${c.asOf}::date + 1)::timestamp AT TI
 
 // ---- 在职人员（1、2、20、21）：asOf 当天主职时间轴上的非终止、非待入职记录 -----------------------------------------------
 
-const SNAPSHOT = sql`LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
+export const SNAPSHOT = sql`LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
   WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
   ORDER BY p.version_no DESC LIMIT 1) snap ON true`;
 /** 记录当前值：有最新快照取快照，否则取底表行（同 currentPersons 的口径）。 */
@@ -136,7 +136,8 @@ const finished = (c: DashboardAsOf, since: string) =>
  * 直接办理的调动 / 转正没有审批事件，保存即 effective（生效日在未来 = 已落地待执行，审批通过未生效的同一语义），
  * 所以“已提交”的时点取首个 in_review / approved / effective 事件；退休 / 离职走门禁，一定先经审批事件。
  */
-const SUBMITTED_OR_DIRECT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
+export const SUBMITTED_OR_DIRECT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at
+  FROM employment_state_events ev
   WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id
     AND ev.state IN ('in_review','approved','effective')) sub ON true`;
 
