@@ -903,6 +903,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/org-adjustment/adjustments/:id': 'e605fd0db96f',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': 'd217289095cb',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
@@ -2482,6 +2483,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '440a7f65fb5d',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview':
     '5f60833989d6',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export':
+    '06879342edd3',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
   'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',
