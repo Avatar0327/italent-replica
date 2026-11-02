@@ -457,6 +457,19 @@ for (const stale of ['success', 'error'] as const) {
   });
 }
 
+async function editInAllView(page: Page, recordId: string) {
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // 切视图使用异步导航；等待目标列表完成，避免点击旧视图的行后被视图重置关闭。
+  const refreshed = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/employment/part-times') && url.searchParams.get('view') === 'all';
+  });
+  await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
+  await refreshed;
+  await expect(page.locator('.ant-spin-spinning')).toHaveCount(0);
+  await page.locator(`tr[data-row-key="${recordId}"]`).getByRole('button', { name: '编辑', exact: true }).click();
+}
+
 for (const action of ['create', 'edit', 'batch'] as const) {
   test(`AC-FE-R2d2a-11 ${action} 写成功后读取失败，关闭换视图重开仍锁定`, async ({ page }) => {
     await ready(page);
@@ -521,16 +534,7 @@ for (const action of ['create', 'edit', 'batch'] as const) {
       .getByRole('dialog')
       .getByRole('button', { name: /^取\s*消$/ })
       .click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    // 切视图使用异步导航；等待目标列表完成，避免点击旧视图的行后被视图重置关闭。
-    const refreshed = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname.endsWith('/employment/part-times') && url.searchParams.get('view') === 'all';
-    });
-    await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
-    await refreshed;
-    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0);
-    await page.locator(`tr[data-row-key="${returnedId}"]`).getByRole('button', { name: '编辑', exact: true }).click();
+    await editInAllView(page, returnedId);
     // 新增回执的新 ID / 批量中的单条也必须沿用未确认命令。
     await expect(save(page)).toBeDisabled();
     await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
