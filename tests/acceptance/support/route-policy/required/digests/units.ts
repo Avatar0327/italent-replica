@@ -181,7 +181,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/duty-transfer/service.ts': {
     authorizeDuty: '67161ee474f6',
-    submitMenuTransfer: 'd3cce5655ece',
+    submitMenuTransfer: 'bc90fc106a1d',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
@@ -1957,7 +1957,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id': 'fc161ff8fb19',
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id/check': '934eaa763551',
   'apps/api/src/modules/duty-transfer/service.ts#authorizeDuty': 'd94930ffb7e9',
-  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': '367ecf102f2d',
+  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': 'aee8a9ded615',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': '068fd9fcc31a',
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '8bb8fb420ee3',
