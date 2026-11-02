@@ -17,4 +17,5 @@ export const GRAPH: Graph = {
   'packages/domain/src/org-adjustment/plan.ts#planOrgTree': ['#nodeOf', '#reportLevels'],
   'packages/domain/src/org-adjustment/plan.ts#reportLevels': ['#ORG_MAX_LEVEL'],
   'packages/domain/src/org-adjustment/range.ts#isInAdjustmentRange': ['#keyOf'],
+  'packages/domain/src/org-adjustment/status.ts#statusFilterApprovalStatus': ['#ORG_ADJUSTMENT_STATUS_FILTERS'],
 };

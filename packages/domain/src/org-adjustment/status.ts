@@ -64,3 +64,12 @@ export const ORG_ADJUSTMENT_DEACTIVATION_MODE = { reduceParents: 1, transferToTa
 export const ORG_ADJUSTMENT_ITEM_RESULT = { success: 1, failed: 2 } as const;
 /** 明细执行阶段（exec_phase，§7.5）：0 未执行 / 1 组织已写入、任职联动待续 / 2 已完成。 */
 export const ORG_ADJUSTMENT_EXEC_PHASE = { pending: 0, employmentPending: 1, done: 2 } as const;
+
+/** 明细列文案（§10 明细列：调整类型、暂存、执行结果）。 */
+export const ORG_ADJUSTMENT_ORG_ITEM_TYPE_LABELS: Readonly<Record<1 | 2 | 3, string>> = {
+  1: '新建',
+  2: '变更',
+  3: '停用',
+};
+export const ORG_ADJUSTMENT_ITEM_RESULT_LABELS: Readonly<Record<1 | 2, string>> = { 1: '成功', 2: '失败' };
+export const ORG_ADJUSTMENT_STAGED_LABEL = '暂存（未执行）';
