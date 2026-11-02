@@ -127,14 +127,23 @@ export const GRAPH: Graph = {
     '#carryEstablishment',
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
-  'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment': [
+  'apps/api/src/modules/establishment/carried-transfer.ts#reverseAllocations': [
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
     '#applyDelta',
-    '#carriedAllocations',
     'apps/api/src/modules/establishment/constraints.ts#validateCapacity',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment': [
+    '#groupAllocations',
+    '#reverseAllocations',
     'apps/api/src/modules/establishment/store.ts#lockEstablishment',
     'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishmentGroup': [
+    '#groupAllocations',
+    '#reverseAllocations',
+    'apps/api/src/modules/establishment/store.ts#lockEstablishment',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext',
   ],
   'apps/api/src/modules/establishment/constraints.ts#sumChildren': [
     'apps/api/src/modules/establishment/org-reader.ts#subtreeIds',

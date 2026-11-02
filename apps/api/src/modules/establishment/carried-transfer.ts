@@ -218,7 +218,12 @@ export async function carriedAllocations(tx: Tx, tenantId: string, businessId: s
 
 /** 删除/撤销反向追加原分配；不删除旧版本，不重新匹配可能已改变的职位细分。 */
 export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext, businessId: string) {
-  return (await reverseCarriedEstablishmentGroup(tx, ctx, [businessId])).get(businessId) ?? [];
+  const context = await employmentCapacityContext(tx, ctx);
+  // 无带编分配的普通业务无需额外取得编制锁。
+  if (!(await groupAllocations(tx, ctx.tenantId, [businessId])).length) return [];
+  await lockEstablishment(tx, context, { initializeDefault: false });
+  const allocations = await groupAllocations(tx, ctx.tenantId, [businessId]);
+  return (await reverseAllocations(tx, ctx, context, allocations)).get(businessId) ?? [];
 }
 
 /**
@@ -228,12 +233,21 @@ export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext
  * 最终仍不足时照常报 ESTABLISHMENT_CAPACITY_INSUFFICIENT，由调用方整单回滚。返回各业务被回退的原分配。
  */
 export async function reverseCarriedEstablishmentGroup(tx: Tx, ctx: EmploymentContext, businessIds: readonly string[]) {
-  const released = new Map<string, Allocation[]>();
   const context = await employmentCapacityContext(tx, ctx);
-  // 无带编分配的普通业务无需额外取得编制锁。
-  if (!(await groupAllocations(tx, ctx.tenantId, businessIds)).length) return released;
+  if (!(await groupAllocations(tx, ctx.tenantId, businessIds)).length) return new Map<string, Allocation[]>();
   await lockEstablishment(tx, context, { initializeDefault: false });
   const allocations = await groupAllocations(tx, ctx.tenantId, businessIds);
+  return reverseAllocations(tx, ctx, context, allocations);
+}
+
+/** 单笔与整组共用：授权 → 先加后减逐行反向追加 → 置 reversed → 按最终状态校验；调用方已取得编制锁。 */
+async function reverseAllocations(
+  tx: Tx,
+  ctx: EmploymentContext,
+  context: EstablishmentContext,
+  allocations: readonly Allocation[],
+) {
+  const released = new Map<string, Allocation[]>();
   // 回退按原分配授权全部对象，不能在授权另一侧前暴露任一侧的细分、预留或额度状态。
   for (const id of new Set(allocations.map((row) => row.capacityId))) {
     const [object] = await tx

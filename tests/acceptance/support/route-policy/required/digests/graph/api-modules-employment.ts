@@ -3324,6 +3324,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/resolver.ts#userOfPerson',
     '#businessCreator',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#releaseVoidedEstablishment': [
+    'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
+    'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishmentGroup',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#tooManyToVoid': [
     'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
   ],
@@ -3332,6 +3336,7 @@ export const GRAPH: Graph = {
     '#describeCause',
     '#lockExitOrganizationResources',
     '#lockInstances',
+    '#releaseVoidedEstablishment',
     '#tooManyToVoid',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
@@ -3353,6 +3358,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidLandedTransfers': [
     '#lockExitOrganizationResources',
+    '#releaseVoidedEstablishment',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
@@ -3367,8 +3373,6 @@ export const GRAPH: Graph = {
     '#notifyVoided',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
-    'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
-    'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidSupersededRegularizations': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
