@@ -165,7 +165,7 @@ export function RulesTab({ kind }: { kind: RuleKind }) {
           </Button>
         )}
       </header>
-      <p className="probation-settings-hint">{s.priorityHint}</p>
+      <p className="probation-settings-hint">{s.rules[kind].priorityHint}</p>
       {ready && access.run && <RunPanel kind={kind} ruleNames={ruleNames} />}
       {forbidden && <PageState kind="forbidden" />}
       {!!error && !forbidden && <PageState kind="error" error={error} retry={reload} />}

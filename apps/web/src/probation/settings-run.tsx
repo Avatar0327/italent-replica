@@ -56,6 +56,7 @@ export function RunPanel({ kind, ruleNames }: { kind: RuleKind; ruleNames: Recor
       </Space>
       {receipt && (
         <RunResult
+          kind={kind}
           receipt={receipt}
           ruleNames={ruleNames}
           more={
@@ -71,10 +72,14 @@ export function RunPanel({ kind, ruleNames }: { kind: RuleKind; ruleNames: Recor
 
 const Employee = ({ id }: { id: string }) => <RefLabels path={refPaths.employeeId} ids={[id]} />;
 
-/** 回执：业务日期、已发起 / 未发起人数与明细；还有下一批时给“继续执行”。 */
-function RunResult(props: { receipt: RunReceipt; ruleNames: Record<string, string>; more: ReactNode }) {
+/** 失败原因统一经此转成中文，不直接显示后端原因码（DEC-045）。 */
+const reasonText = (code: string) => s.runReasons[code] ?? s.runOther(code);
+
+/** 回执：业务日期、已发起 / 未发起计数（口径按规则类型，见 s.rules）与明细；还有下一批时给“继续执行”。 */
+function RunResult(props: { kind: RuleKind; receipt: RunReceipt; ruleNames: Record<string, string>; more: ReactNode }) {
   const { receipt, ruleNames } = props;
   const rule = (id: string) => ruleNames[id] ?? id;
+  const unit = s.rules[props.kind].unit;
   return (
     <section aria-label={s.runTitle}>
       <h2>{s.runTitle}</h2>
@@ -82,8 +87,8 @@ function RunResult(props: { receipt: RunReceipt; ruleNames: Record<string, strin
         <span>
           {s.runDate}：{receipt.businessDate}
         </span>
-        <span>{s.runLaunched(receipt.launched.length)}</span>
-        <span>{s.runFailed(receipt.failed.length)}</span>
+        <span>{s.runLaunched(receipt.launched.length, unit)}</span>
+        <span>{s.runFailed(receipt.failed.length, unit)}</span>
       </Space>
       {receipt.launched.length > 0 && (
         <Table
@@ -107,7 +112,7 @@ function RunResult(props: { receipt: RunReceipt; ruleNames: Record<string, strin
           columns={[
             { key: 'employee', title: s.runEmployee, render: (_, row) => <Employee id={row.employeeId} /> },
             { key: 'rule', title: s.runRule, render: (_, row) => rule(row.ruleId) },
-            { key: 'reason', title: s.runReason, dataIndex: 'reason' },
+            { key: 'reason', title: s.runReason, render: (_, row) => reasonText(row.reason) },
           ]}
         />
       )}

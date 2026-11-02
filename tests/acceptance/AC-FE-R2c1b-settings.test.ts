@@ -50,6 +50,7 @@ import {
   settingWritable,
   type RuleKind,
 } from '../../apps/web/src/probation/settings-model.js';
+import { s } from '../../apps/web/src/probation/settings-messages.js';
 import { exitWorld } from './AC-EXIT-support.js';
 import { autoAssessmentWorld } from './AC-PB-BE15b2-support.js';
 import { hire, pbWorld } from './AC-PB-support.js';
@@ -213,6 +214,8 @@ function checkFailures(kind: RuleKind, receipt: Record<string, unknown>, expecte
   expect(failed.map(keysOf)).toEqual(expected.map(keysOf));
   expect(failed).toEqual(expected);
   expect(parseRunReceipt(kind, receipt).failed).toEqual(expected);
+  // 真实后端给出的原因码都已登记中文（DEC-045），不会落到“其他原因（编码）”
+  for (const { reason } of expected) expect(s.runReasons[reason], reason).toBeTruthy();
 }
 
 describe('AC-FE-R2c1b 立即执行失败项：夹具与真实接口一致', () => {

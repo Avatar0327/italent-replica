@@ -42,16 +42,26 @@ export const s = {
   resultsHint: '停用后转正时不能再选择该项，已保存的记录仍显示原名称。',
   resultsEmpty: '暂无试用结果',
   resultLabel: '试用结果',
-  // 规则（B57 / B58 共用）
+  // 规则（B57 / B58 共用）。立即执行的计数口径按类型：B57 每人只按优先级最小的一条规则办理，回执一人至多一条，按人计；
+  // B58 按规则逐条办理（auto-assessment.ts dueRulesOf），同一人可有多条发起 / 失败，按规则条数计、明细全留（第 2 轮 P2-1）。
   rules: {
-    regularization: { switch: '自动转正', rule: '自动转正规则' },
-    assessment: { switch: '自动发起考核', rule: '自动发起考核规则' },
+    regularization: {
+      switch: '自动转正',
+      rule: '自动转正规则',
+      priorityHint: '数字越小越优先；多条规则命中同一人时取优先级最小的一条',
+      unit: '人',
+    },
+    assessment: {
+      switch: '自动发起考核',
+      rule: '自动发起考核规则',
+      priorityHint: '数字越小越优先；同一员工同一天命中多条规则时，按优先级逐条发起，执行结果按规则条数统计',
+      unit: '条',
+    },
   },
   switchHint: '开关关闭时，规则不会自动执行，也不能立即执行。',
   rulesEmpty: '暂无规则',
   ruleName: '规则名称',
   priority: '优先级',
-  priorityHint: '数字越小越优先；多条规则命中同一人时取优先级最小的一条',
   priorityRange: '请输入 0～9999 的整数',
   orgIds: '适用组织',
   includeSubordinates: '包含下级组织',
@@ -73,14 +83,23 @@ export const s = {
   runMore: '继续执行',
   runTitle: '执行结果',
   runDate: '业务日期',
-  runLaunched: (count: number) => `已发起 ${count} 人`,
-  runFailed: (count: number) => `未发起 ${count} 人`,
+  runLaunched: (count: number, unit: string) => `已发起 ${count} ${unit}`,
+  runFailed: (count: number, unit: string) => `未发起 ${count} ${unit}`,
   runHasMore: '本次未扫描完，可继续执行。',
   runDone: '本次已扫描完。',
   runEmployee: '员工',
   runRule: '规则',
   runBusiness: '业务单据',
   runReason: '原因',
+  // 失败原因码 → 中文（DEC-045；措辞按 PB-R20 / PB-R21 失败条件）。后端拿不到 details.reason 时退回通用错误码（reasonOf），
+  // 未登记的编码显示“其他原因（编码）”，供核对。
+  runReasons: {
+    REGULARIZATION_EXISTS: '本任职周期已有转正记录',
+    ASSESSMENT_BLOCKS_REGULARIZATION: '本任职周期的考核未满足自动转正条件',
+    INITIATOR_NOT_FOUND: '找不到规则配置的发起人',
+    AUTO_ASSESSMENT_CYCLE_CONFLICT: '本任职周期已有转正记录或审批中的考核',
+  } as Record<string, string>,
+  runOther: (code: string) => `其他原因（${code}）`,
   runInvalid: '执行回执无效，请刷新后核对',
   runLocked: '上次执行结果待确认，请刷新页面核对后再执行',
   // 并行规则（B59）
