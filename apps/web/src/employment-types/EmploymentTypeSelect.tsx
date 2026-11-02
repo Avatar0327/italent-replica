@@ -1,5 +1,5 @@
 // F-323b（DEC-431①）：人员类别下拉的唯一入口。选项取 /employment-types/options（只含启用项，按任职查看权开放），
-// 提交字典 ID；当前值已停用或不在选项里时仍按已保存的名称显示，不显示 ID。
+// 提交字典 ID；当前值已停用或不在选项里时仍按已保存的名称显示，不显示 ID；选项读不到（无权 / 失败）时下拉给出提示。
 import { Select } from 'antd';
 import { useRead } from '../contracts/useRead.js';
 import { m } from './messages.js';
@@ -44,6 +44,8 @@ export function EmploymentTypeSelect({
       onChange={(next) => onChange?.(typeof next === 'string' ? next : null)}
       disabled={disabled}
       loading={read.loading}
+      status={read.error ? 'warning' : undefined}
+      notFoundContent={read.error ? m.optionsUnavailable : undefined}
       options={options}
       allowClear
       showSearch

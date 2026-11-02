@@ -25,5 +25,6 @@ export const m = {
   invalidReceipt: '保存回执无效，请刷新后核对',
   rowGone: '该人员类别已不在列表中，请刷新列表',
   savedValue: '已保存的值',
+  optionsUnavailable: '人员类别选项暂时读取不到（无权限或网络异常），请稍后重试',
   missing: '--',
 };

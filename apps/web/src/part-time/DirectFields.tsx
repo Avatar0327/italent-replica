@@ -34,13 +34,7 @@ export function DirectField({
   if (!field.editable)
     return (
       <Form.Item label={label}>
-        <span>
-          {name === 'serviceType'
-            ? (m.serviceTypes[String(baseline[name])] ?? m.missing)
-            : name === EMPLOYMENT_TYPE_FIELD
-              ? employmentTypeLabel(baseline)
-              : value(baseline[name])}
-        </span>
+        <span>{readonlyText(name, baseline)}</span>
       </Form.Item>
     );
   const control = directControl(name, label, baseline);
@@ -49,6 +43,11 @@ export function DirectField({
       <LockedField>{control}</LockedField>
     </Form.Item>
   );
+}
+function readonlyText(name: string, baseline: Values) {
+  if (name === 'serviceType') return m.serviceTypes[String(baseline[name])] ?? m.missing;
+  if (name === EMPLOYMENT_TYPE_FIELD) return employmentTypeLabel(baseline);
+  return value(baseline[name]);
 }
 function directControl(name: string, label: string, baseline: Values) {
   if (name === EMPLOYMENT_TYPE_FIELD)

@@ -98,6 +98,7 @@ export async function loadReferences(
   });
   const types = employmentTypeChoices(tenantId, preview, model, signal);
   const results = await Promise.allSettled(requests);
+  const typeResult = await types;
   return {
     references: {
       ...Object.fromEntries(
@@ -105,18 +106,18 @@ export async function loadReferences(
           result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
         ),
       ),
-      ...(types ? { employmentType: await types } : {}),
+      ...(typeResult ? { employmentType: typeResult.items } : {}),
     },
     beforeReferences: Object.fromEntries(
       results.map((result, index) =>
         result.status === 'fulfilled' ? [result.value[0], result.value[2]] : [entries[index]![0], []],
       ),
     ),
-    unavailable: results.some((result) => result.status === 'rejected'),
+    unavailable: results.some((result) => result.status === 'rejected') || typeResult?.ok === false,
   };
 }
 /**
- * F-323b（DEC-706）：HR 入口可编辑人员类别时读字典选项（只含启用项）；读不到给空，原值仍按预览带的名称显示。
+ * F-323b（DEC-706）：HR 入口可编辑人员类别时读字典选项（只含启用项）；读不到给空并提示参照不可用，原值仍按预览带的名称显示。
  * 经理 / 员工入口没有字典参照接口，候选只有预览的当前值（名称取 employmentTypeName / 自助 valueLabels）。
  */
 function employmentTypeChoices(
@@ -128,8 +129,8 @@ function employmentTypeChoices(
   if (model.initiator === 'manager' || model.initiator === 'employee') return undefined;
   if (preview.form.fieldModes['preset:employmentType'] !== 'editable') return undefined;
   return transferRequest<{ items: Choice[] }>(tenantId, EMPLOYMENT_TYPE_OPTIONS, { signal }).then(
-    (result) => result.items,
-    () => [],
+    (result) => ({ ok: true, items: result.items }),
+    () => ({ ok: false, items: [] as Choice[] }),
   );
 }
 /** 保存载荷：HR 入口带联动（R1-T10），本人申请不带（`12` 附录）。 */

@@ -87,3 +87,16 @@ it('AC-FE-F323b HR 入口可编辑人员类别时读取字典选项接口；只�
   await loadReferences('tenant', readonly.preview!, readonly, new AbortController().signal);
   expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 });
+
+it('AC-FE-F323b HR 入口人员类别选项读取失败：候选为空并提示参照不可用，原值仍按名称显示', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify({ code: 'FORBIDDEN', message: '无权查看' }), { status: 403 })),
+  );
+  const editable = model('editable');
+  const loaded = await loadReferences('tenant', editable.preview!, editable, new AbortController().signal);
+  expect(loaded.references.employmentType).toEqual([]);
+  expect(loaded.unavailable).toBe(true);
+  const html = await render({ ...editable, references: loaded.references });
+  expect(html).toContain(`<option value="${BEFORE}" selected="">合成类别甲</option>`);
+});
