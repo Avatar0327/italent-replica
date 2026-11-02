@@ -2280,13 +2280,13 @@ export const GRAPH: Graph = {
     '#TIMING_OF',
     'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer',
   ],
-  'apps/api/src/modules/employment/exit-flow-candidates.ts#FLOW_OBJECT': [
-    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
-    'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
-  ],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows': ['#visibleFlows'],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#flowCoordinates': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#flowObjects': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
   ],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#terminableOtherFlows': [
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
@@ -2294,8 +2294,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit-termination.ts#personnelSubsetFlow',
   ],
   'apps/api/src/modules/employment/exit-flow-candidates.ts#visibleFlows': [
-    '#FLOW_OBJECT',
     '#flowCoordinates',
+    '#flowObjects',
     'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],

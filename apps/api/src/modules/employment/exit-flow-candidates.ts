@@ -76,23 +76,25 @@ async function flowCoordinates(tx: Tx, tenantId: string, refs: readonly FlowRef[
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-const FLOW_OBJECT: Record<OtherFlowType, string> = {
+/** 调用时才取值：本模块与 context.js 在 CLI 启动链上成环，模块顶层读 EMPLOYMENT_OBJECT 会在其初始化前触发 ReferenceError。 */
+const flowObjects = (): Record<OtherFlowType, string> => ({
   retirement_intention: EMPLOYMENT_OBJECT,
   personnel_change: PERSONNEL_REQUEST_OBJECT,
-};
+});
 
 /** 逐项判定查看人能否看到这张申请单（与 refs 同序）。没有授权器（可信端口 / 定时任务）时按 ctx.scope 判定。 */
 export async function visibleFlows(tx: Tx, ctx: EmploymentContext, refs: readonly FlowRef[]): Promise<boolean[]> {
   if (!refs.length) return [];
   const coordinates = await flowCoordinates(tx, ctx.tenantId, refs);
   const result = refs.map(() => false);
-  for (const type of Object.keys(FLOW_OBJECT) as OtherFlowType[]) {
+  const flowObject = flowObjects();
+  for (const type of Object.keys(flowObject) as OtherFlowType[]) {
     const indexes = refs.flatMap((ref, index) => (ref.businessType === type ? [index] : []));
     const present = indexes.filter((index) => coordinates.has(refs[index]!.businessId));
     if (!present.length) continue;
     let scope = ctx.scope;
     if (ctx.authorize) {
-      const resource = FLOW_OBJECT[type];
+      const resource = flowObject[type];
       if (!(await ctx.authorize({ ...ctx, action: 'object.view', resource }))) continue;
       const deps = { authorize: ctx.authorize, clock: () => ctx.now };
       scope =
