@@ -127,3 +127,66 @@ test('AC-FE-F436-02 正常路径：页面仍在、确认后导航到实习转正
   expect(created).toHaveLength(1);
   expect(submitted).toHaveLength(1);
 });
+
+/** 站内 PUSH 回到实习生页（新挂载一个页面实例），等它读完落库前的列表。 */
+async function remount(page: Page, path: string, view: string) {
+  const stale = page.waitForResponse((response) => response.url().includes(`view=${view}`));
+  await page.evaluate((target) => {
+    history.pushState({ ...history.state, key: 'f436-remount' }, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+  }, path);
+  await stale;
+  await expect(heading(page)).toBeVisible();
+}
+
+/** 提交在途时后退离开实习生模块（页面卸载），确认旧页面实例已不在。 */
+async function leaveModule(page: Page) {
+  await page.goBack();
+  await expect(page).toHaveURL(/\/staff$/);
+  await expect(heading(page)).toHaveCount(0);
+}
+
+// F-436 R1 P2-1（Sol 受控复现）：确认回调作用在已卸载的旧页面实例上，新挂载的列表必须也随写确认重读。
+test('AC-FE-F436-03 跨模块离开后在落库前返回实习转正中，确认成功后新列表出现本单，无需手动刷新', async ({ page }) => {
+  const { created, submitted, lists, state } = await application(page, '/staff');
+  const initial = lists.length;
+  await submitAndHold(page, state);
+  // 第一步建草稿已确认、第二步在途：草稿不算最终确认，不触发列表重读
+  expect(lists.length).toBe(initial);
+  await leaveModule(page);
+  await remount(page, '/interns?view=converting', 'converting');
+  // 落库前新挂载的列表：还没有本单
+  await expect(page.locator('.intern-table')).toContainText('暂无实习生');
+  const before = lists.length;
+  state.release!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect(pending(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/interns\?view=converting$/);
+  expect(lists.slice(before)).toContain('converting');
+  expect(created).toHaveLength(1);
+  expect(submitted).toHaveLength(1);
+});
+
+test('AC-FE-F436-04 跨模块离开后在落库前返回并重开员工详情，确认成功后列表与详情都重读', async ({ page }) => {
+  const { lists, state } = await application(page, '/staff');
+  const details: string[] = [];
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    details.push(route.request().method());
+    return route.fulfill({ json: { id: employee, name: rows.interning.name, code: rows.interning.code, revision: 1 } });
+  });
+  await submitAndHold(page, state);
+  await leaveModule(page);
+  await remount(page, '/interns', 'interning');
+  await openDetail(page, 'interning');
+  // 开发模式下详情挂载可能读两次（StrictMode）：等读取稳定后再记基数
+  await expect.poll(() => details.length).toBeGreaterThan(0);
+  await page.waitForTimeout(1000);
+  const opened = details.length;
+  const before = lists.length;
+  state.release!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  // 落库后此人已不在“实习中”：新挂载的列表重读，不再显示旧行；提前重开的详情也重读一次
+  await expect(page.locator('.intern-table')).toContainText('暂无实习生');
+  expect(lists.slice(before)).toContain('interning');
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+});
