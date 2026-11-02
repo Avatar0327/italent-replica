@@ -14,6 +14,7 @@ import { menuNodes, type ServerSnapshot } from '../foundation/permission-snapsho
 import { SessionProvider } from '../foundation/Session.js';
 import { PermissionsProvider } from '../foundation/Permissions.js';
 import { tenantDate } from '../foundation/dates.js';
+import { typeStore } from './commands.js';
 import { employmentTypePermission, employmentTypeRow } from '../../smoke/employment-type-fixtures.js';
 
 const OBJECT = 'TenantBase.EmploymentType';
@@ -224,5 +225,67 @@ describe('AC-FE-F323b 人员类别设置页', () => {
     await click('停用人员类别');
     await click('合成类别乙');
     expect(buttons(drawer())).not.toContain('启用');
+  });
+});
+
+describe('AC-FE-F455 人员类别审查后补', () => {
+  it('P3-1 编辑清空失效日期时提交数据库默认的无限期日期', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).includes(`${API}?view=enabled`))
+        return Response.json({ items: [{ ...enabledRow, expiryDate: '2030-12-31' }] });
+      return original(input, init);
+    });
+    await render();
+    await click('合成类别甲');
+    await click('编辑', document.querySelector('.detail-drawer')!);
+    const dialog = document.querySelector<HTMLElement>('.ant-modal')!;
+    const input = [...dialog.querySelectorAll<HTMLInputElement>('input')].find((item) => item.value === '2030-12-31')!;
+    expect(input.value).toBe('2030-12-31');
+    const clear = input.closest('.ant-picker')!.querySelector<HTMLElement>('.ant-picker-clear')!;
+    await act(async () => clear.click());
+    await settle();
+    await click('保存', dialog);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.method).toBe('PUT');
+    expect(posts[0]!.headers.get('if-match')).toBe('1');
+    expect(posts[0]!.body).toEqual({ expiryDate: '9999-12-31' });
+  });
+
+  it('P3-4 顺序号不可编辑时不显示新建入口', async () => {
+    permission = {
+      ...employmentTypePermission,
+      editableFields: employmentTypePermission.editableFields.filter((field) => field !== 'displayOrder'),
+    };
+    await render();
+    expect(buttons()).not.toContain('新建');
+    expect(posts).toEqual([]);
+  });
+
+  it('P3-5 删除回执丢失后回查确认记录消失，应关闭详情并释放原命令槽', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let removed = false;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (init?.method === 'DELETE') {
+        posts.push({ url: String(input), method: 'DELETE', body: {}, headers: new Headers(init.headers) });
+        removed = true;
+        throw new TypeError('合成断网：删除已成功但回执丢失');
+      }
+      if (removed && String(input).includes(`${API}?view=`)) return Response.json({ items: [] });
+      return original(input, init);
+    });
+    await render();
+    await click('合成类别甲');
+    await click('删除', document.querySelector('.detail-drawer')!);
+    const confirm = [...document.querySelectorAll('.ant-popconfirm button')].at(-1) as HTMLButtonElement;
+    await act(async () => confirm.click());
+    await settle();
+    expect(text()).toContain('结果待确认');
+    await click('回查原单');
+    expect(posts).toHaveLength(1);
+    expect(document.querySelector('.detail-drawer') === null, '删除确认后关闭详情').toBe(true);
+    const slot = JSON.stringify(['synthetic-tenant', 'synthetic-admin', `${API}/${enabledRow.id}`]);
+    const holder = typeStore.holder([slot]);
+    expect(holder && typeStore.get(holder), '删除确认后释放原命令').toBeUndefined();
   });
 });
