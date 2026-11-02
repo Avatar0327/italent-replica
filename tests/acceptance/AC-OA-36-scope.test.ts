@@ -28,7 +28,7 @@ const orgAdjusted = async (w: ExecWorld, employeeId: string) =>
   (await w.records(employeeId)).some((r) => r.kind === 'org_adjustment');
 
 describe('AC-OA-36 涉及集合扩大', () => {
-  it('审批后把 X 移到 A 下：A 组 SCOPE_CHANGED、X 员工无记录、X 不暂停；更早改 X 下级的单先执行；其余组照常', async () => {
+  it('审批后把 X 移到 A 下：A 组 SCOPE_CHANGED、X 员工无记录、X 不暂停；更早改 X 下级的单照常执行；其余组照常', async () => {
     const w = await execWorld(testDb().db, 'oa36-wide');
     const big = await w.org('ZZ_扩大A', w.a);
     const x = await w.org('ZZ_移入X', w.b);
@@ -41,7 +41,9 @@ describe('AC-OA-36 涉及集合扩大', () => {
 
     const result = await w.run();
 
-    expect(result.completed).toEqual([earlier.id, later.id]);
+    // 两单审批时的 S 不相交（X 是审批后才移入），§7.3 不约束二者领取先后；扩大的组直接失败，
+    // 无论先后结果都与串行一致，故只比完成集合，不比顺序（第 1 轮 P2-1）。
+    expect([...result.completed].sort()).toEqual([earlier.id, later.id].sort());
     expect([...(await w.outcomes(earlier.id)).values()].map((o) => o.execution_result)).toEqual([1]);
     expect((await w.orgAt(x1))!.name).toBe('ZZ_更早单改名');
     const [widened, kept] = [...(await w.outcomes(later.id)).values()];
