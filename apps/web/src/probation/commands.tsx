@@ -33,6 +33,26 @@ export interface Send {
   /** 明确拒绝后重读；409 revision 冲突由内核展示差异、显式确认。 */
   rejected?(): Promise<void>;
 }
+/** 转正表单的三种提交命令（ProbationForm useSends 给出）。 */
+export interface RegularizeSends {
+  direct: Send;
+  patch(id: string, values: Values): Send;
+  step(id?: string, values?: Values): Send;
+}
+/**
+ * 转正表单这次提交走哪条命令（F-445 拆原嵌套三元，行为不变）：直接转正走 POST /regularizations；
+ * 申请改过已确认值时先 PATCH 同一张草稿（rf347_2 P2-1），否则没有草稿建单、有草稿直接提交（同单重提，DEC-103）。
+ * changed 只在有草稿时为真（调用方 `!!draft && …`）。
+ */
+export function regularizeSend(
+  sends: RegularizeSends,
+  choice: { application?: boolean; draft?: { id: string }; changed: boolean },
+  values: Values,
+): Send {
+  if (!choice.application) return sends.direct;
+  if (choice.changed) return sends.patch(choice.draft!.id, values);
+  return sends.step(choice.draft?.id, values);
+}
 /**
  * 已确认的服务端版本（rf347_2，DEC-431①）：revision 与 values 必须来自同一次读取 / 同一张回执。
  * 冲突基线的唯一来源：提交点只用 targetOf 组 Target，不另持一份“打开时的值”当基线。

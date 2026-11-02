@@ -3,6 +3,7 @@
  * - 到期前组织已停用：该条记失败、不改角色、不自动重试，同批另一条合法职责仍成功；
  * - 迟到执行：接收人资格按执行当日（租户时区）判断，组织新版本启用日仍取转交日期；
  * - 失败形态：仍为未完成、带失败原因；重跑不重试；菜单覆盖设置后清掉失败原因，到期正常执行。
+ * - 组织当日已失效：与组织层级读取器同口径判“未启用”（F-448，第 2 轮交叉审 P3-3）。
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
@@ -55,6 +56,38 @@ describe('F-408 到期前组织已停用（DEC-726，第 2 轮 P2-3）', () => {
     await x.runScheduler(`${LATER}T03:00:00Z`);
     expect((await x.records()).items).toEqual(rows);
     expect(await x.ledger(head.id)).toMatchObject({ attempts: 1, status: 0 });
+  });
+});
+
+describe('F-448 组织当日是否启用与组织层级读取器同口径（DEC-726，第 2 轮交叉审 P3-3）', () => {
+  it('转交日期前组织已失效（失效日期早于转交日期）：该条按“组织已停用”失败，不写组织新版本', async () => {
+    const x = await world('due-expired');
+    const org = await x.session.org('合成空组织', { establishedOn: '2026-01-01' });
+    await x.setHead(org.id, x.employee.id);
+    const receiver = await x.peer('接收人');
+    await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [headItem(org.id, receiver.id)],
+    });
+    // 组织新版本 10-08 起、10-10 失效：10-20 当日已没有有效版本（更早的版本仍是开放式失效日，不能拿来判启用）。
+    const as = { user: x.session.user.id, tenant: x.session.tenant.id };
+    const api = tenantApi(database().db, { clock: () => new Date('2026-10-06T02:00:00Z') });
+    const current = await api.request('GET', `/api/tenant/org/organizations/${org.id}`, as);
+    const { revision } = (await current.json()) as { revision: number };
+    const expired = await api.request('PATCH', `/api/tenant/org/organizations/${org.id}`, {
+      ...as,
+      ifMatch: revision,
+      body: { effectiveDate: '2026-10-08', stopDate: '2026-10-10' },
+    });
+    expect(expired.status, await expired.clone().text()).toBe(200);
+    const versions = await x.orgVersions(org.id);
+
+    await x.runScheduler(`${LATER}T02:00:00Z`);
+    const [head] = (await x.records()).items;
+    expect(head).toMatchObject({ status: 0, transferTime: null });
+    expect(head!.failure).toMatchObject({ code: 'VALIDATION_FAILED', rule: 'TRANSFER_ORG_DISABLED' });
+    expect(await x.orgVersions(org.id)).toEqual(versions);
   });
 });
 

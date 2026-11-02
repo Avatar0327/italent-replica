@@ -238,7 +238,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder',
   ],
   'apps/api/src/modules/transfer/linkage/duty-execution.ts#requireEnabledOrg': [
-    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/establishment/org-reader.ts#createTxOrgHierarchyReader',
   ],
   'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer': [
     '#createItems',
