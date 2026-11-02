@@ -1,6 +1,7 @@
 /**
  * AC-OA-37（DEC-644 A-3，R2-T08 §6.3 授权矩阵“执行”列；11b：主体层 / 组织层 / 改名逐员工）：执行时按申请人当时的范围复核。
  * 员工、合同层随 11c。
+ * 组织层的“新上级”按解析后的正式 ID 复核：引用同单新增行时，组间撤权后不得沿用前一组的授权（第 1 轮 P1-1）。
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -8,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { type ExecWorld, execWorld } from './AC-OA-exec-support.js';
 import { only } from './AC-OA-head-support.js';
-import { rename } from './AC-OA-items-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
+import { newOrg, rename } from './AC-OA-items-support.js';
 import { executionAudits } from './support/org-adjustment-execution.js';
 
 const testDb = useTestDb();
@@ -97,5 +99,41 @@ describe('AC-OA-37 改名逐员工', () => {
     expect((await w.records(kept)).some((r) => r.kind === 'org_adjustment')).toBe(true);
     expect((await w.records(lost)).some((r) => r.kind === 'org_adjustment')).toBe(false);
     expect(await w.headRow(adjustment.id)).toMatchObject({ success_count: 0, failure_count: 1 });
+  });
+});
+
+const versionsNamed = (w: ExecWorld, name: string) =>
+  withTenant(w.db, w.tenant.id, async (tx) => {
+    const sqlText = sql`SELECT count(*)::int AS n FROM org_versions WHERE name=${name}`;
+    return resultRows<{ n: number }>(await tx.execute(sqlText))[0]!.n;
+  });
+
+describe('AC-OA-37 组织层：同单新增上级', () => {
+  it('A 建成后申请人组织范围收窄到不含 A → 引用 A 的新增与变更行 APPLICANT_OUT_OF_SCOPE，不写组织', async () => {
+    const w = await execWorld(testDb().db, 'oa37-new-parent');
+    const y = await w.org('ZZ_改挂Y', w.a);
+    const yVersions = await w.versionCount(y);
+    const view = await w.created(w.headBody({ adjustmentRange: [w.a] }));
+    const itemA = (await w.item(view.id, newOrg(w.a, { name: 'ZZ_新上级A' }))).items[0]!.id;
+    await w.item(view.id, newOrg(w.a, { name: 'ZZ_挂A新增B', parent: { itemId: itemA } }));
+    await w.item(view.id, rename(y, { name: 'ZZ_挂A改名Y', parent: { itemId: itemA } }));
+    await w.submitted(view.id);
+    await w.acted(view.id, w.hrbp, 'approve');
+    await w.acted(view.id, w.head, 'approve');
+    // 组间是独立 fenced 事务、范围按执行时刻重取：A 组提交后撤掉申请人对 A 的组织范围（Y 与原上级仍在）。
+    const narrow = (group: { items: readonly { id: string }[] }) => {
+      if (group.items.some((item) => item.id === itemA)) w.access.org = only(w.subject, w.a, w.b, y);
+    };
+
+    await w.run({ hooks: { afterGroup: narrow } });
+
+    const denied = [2, 'APPLICANT_OUT_OF_SCOPE'];
+    expect(await reasons(w, view.id)).toEqual([[1, null], denied, denied]);
+    const [a, b] = [...(await w.outcomes(view.id)).values()];
+    expect(a!.created_org_id).toEqual(expect.any(String));
+    expect(b!.created_org_id).toBeNull();
+    expect(await versionsNamed(w, 'ZZ_挂A新增B')).toBe(0);
+    expect(await w.versionCount(y)).toBe(yVersions);
+    expect((await w.orgAt(y))!).toMatchObject({ name: 'ZZ_改挂Y', parent_id: w.a });
   });
 });
