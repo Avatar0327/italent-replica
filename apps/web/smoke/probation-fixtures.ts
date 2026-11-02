@@ -422,7 +422,10 @@ async function routeWrites(page: Page, server: Server) {
   });
   await routeDrafts(page, server);
   await page.route(`**/employment/businesses/${businessId}/submit`, (route) => {
-    server.writes.push(posted(route.request()));
+    const write = posted(route.request());
+    server.writes.push(write);
+    // transitions.ts submit：If-Match = 单据 revision，不符 409（rf347_2 P2-1 第二条路径）
+    if (write.ifMatch !== String(server.business?.revision)) return route.fulfill({ status: 409, json: conflict });
     if (server.rejectSubmits) {
       server.rejectSubmits -= 1;
       // approval/matching.ts：同类型流程都不满足即 409 CONFLICT（APPROVAL_PROCESS_NOT_MATCHED），单据仍是草稿

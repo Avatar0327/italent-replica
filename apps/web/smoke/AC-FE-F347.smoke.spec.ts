@@ -352,3 +352,91 @@ test('AC-FE-F347-13 字典改名后：已存结果仍显示保存时名称（等
   await page.keyboard.press('Escape');
   await expect(selected(form)).toHaveText('保存时名称');
 });
+
+// rf347_2 P2-1：冲突核对后用户明确做出的选择必须原样送达服务端，差异基准是当前已确认 revision 的服务端值
+const reviewed = async (form: ReturnType<typeof dialog>) => {
+  await expect(form).toContainText('版本冲突');
+  await actionButton(form, '已核对差异，继续编辑').click();
+  await expect(selected(form)).toHaveText('合成延期');
+};
+async function conflictedDraft(page: Page) {
+  const { server } = await setup(page);
+  server.results.push({ code: 'extend', name: '合成延期', enabled: true });
+  server.business = draftOf('pass');
+  await page.reload();
+  const form = await openApply(page);
+  await recovered(form);
+  // 另一会话把结果改成 extend
+  server.business = { ...server.business, revision: 4, probationResult: 'extend', probationResultName: '合成延期' };
+  return { server, form };
+}
+
+test('AC-FE-F347-14 草稿单 PATCH 409：核对差异后选回合成通过再提交，结果按用户选择写入（rf347_2 P2-1）', async ({
+  page,
+}) => {
+  const { server, form } = await conflictedDraft(page);
+  await form.getByLabel('转正日期', { exact: true }).fill('2026-11-10');
+  await actionButton(form, '提交').click();
+  await reviewed(form);
+  await pick(page, form, '合成通过');
+  await actionButton(form, '提交').click();
+  await expect(form).toHaveCount(0);
+  expect(sentPaths(server)).toEqual([
+    ['PATCH', businessPath, '3'],
+    ['PATCH', businessPath, '4'],
+    ['POST', submitPath, '5'],
+  ]);
+  expect(server.writes[1]!.body).toEqual({ effectiveDate: '2026-11-10', probationResult: 'pass' });
+  expect(server.business?.probationResult).toBe('pass');
+  expect(server.business).toMatchObject({ status: 'in_review', effectiveDate: '2026-11-10' });
+});
+
+test('AC-FE-F347-15 未改字段直接提交遇 409：核对后改回合成通过，先 PATCH 再提交（rf347_2 P2-1 第二条路径）', async ({
+  page,
+}) => {
+  const { server, form } = await conflictedDraft(page);
+  await actionButton(form, '提交').click();
+  await reviewed(form);
+  await pick(page, form, '合成通过');
+  await actionButton(form, '提交').click();
+  await expect(form).toHaveCount(0);
+  expect(sentPaths(server)).toEqual([
+    ['POST', submitPath, '3'],
+    ['PATCH', businessPath, '4'],
+    ['POST', submitPath, '5'],
+  ]);
+  expect(server.writes[1]!.body).toEqual({ probationResult: 'pass' });
+  expect(server.business?.probationResult).toBe('pass');
+  expect(server.business).toMatchObject({ status: 'in_review', effectiveDate: '2026-11-01' });
+});
+
+test('AC-FE-F347-16 恢复暂存后 409：未改的结果跟随服务器、改过的日期保留，重提不覆盖他人（rf347_2 P2-2）', async ({
+  page,
+}) => {
+  const { server } = await setup(page);
+  server.results.push({ code: 'extend', name: '合成延期', enabled: true });
+  server.temporary = { effectiveDate: '2026-11-15', probationResult: 'pass' };
+  server.temporaryRevision = 1;
+  await page.reload();
+  const form = await openApply(page);
+  await expect(form).toContainText('已带出上次暂存信息');
+  await expect(selected(form)).toHaveText('合成通过');
+  // 另一会话把暂存的结果改成 extend
+  server.temporary = { effectiveDate: '2026-11-15', probationResult: 'extend' };
+  server.temporaryRevision = 2;
+  await form.getByLabel('转正日期', { exact: true }).fill('2026-11-20');
+  await stageButton(form).click();
+  await expect(form).toContainText('版本冲突');
+  await actionButton(form, '重读最新版本').click();
+  await actionButton(form, '已核对差异，继续编辑').click();
+  await expect(form.getByLabel('转正日期', { exact: true })).toHaveValue('2026-11-20');
+  await expect(selected(form)).toHaveText('合成延期');
+  await stageButton(form).click();
+  await expect.poll(() => server.temporaryRevision).toBe(3);
+  expect(sentPaths(server)).toEqual([
+    ['PUT', draftPath, '1'],
+    ['PUT', draftPath, '2'],
+  ]);
+  expect(server.writes[1]!.body).toEqual({ effectiveDate: '2026-11-20', probationResult: 'extend' });
+  expect(server.temporary).toEqual({ effectiveDate: '2026-11-20', probationResult: 'extend' });
+});
