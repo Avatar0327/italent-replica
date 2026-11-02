@@ -7,14 +7,22 @@
  * 既有节点的属性（现名、在岗 / 兼岗原值）是调整范围的展开：调整范围可见，或节点是一条可见明细的目标（targetOrgId
  * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 name。
  * 在岗 / 兼岗原值与组织停用校验同一取数（countDepartmentStaff / countDepartmentPartTimes：自生效日起、直属本组织、
- * 按记录计），预览为 0 的组织停用不会被人员拦。“编制原值”与增减数随 11c～11f。
+ * 按记录计），预览为 0 的组织停用不会被人员拦。负责人与“编制原值”（DEC-653，BE-10e 导出用）同属既有属性：
+ * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值，姓名取人员版本链的最新姓名；
+ * 编制原值口径同编制详情（readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总，
+ * 复用 batchLocalSums），新增节点无编制；多方案时按 pickScheme 取一个。
+ * 编制增减数随 11e / 11f 的编制生成行。
  * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
  */
-import type { Tx } from '@italent/db';
+import { and, employmentEmployees, eq, inArray, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { countDepartmentStaff } from '../employment/org-people.js';
 import { countDepartmentPartTimes } from '../employment/part-time/store.js';
-import type { OrgRecord } from '../org/read-model.js';
+import { batchLocalSums } from '../establishment/capacity-read.js';
+import { DEFAULT_SCHEME_CODE } from '../establishment/default-scheme.js';
+import { loadSchemeBatch } from '../establishment/schemes.js';
+import { currentPersonName } from '../personnel/employee-projection.js';
+import { type OrgRecord, rowsOf } from '../org/read-model.js';
 import { scopeAllows } from '../permission/module-access.js';
 import { canSee, visibleItems, type Disclosure } from './disclosure.js';
 import type { OrgItem } from './items-store.js';
@@ -33,6 +41,10 @@ export interface PreviewNode {
   /** 在岗 / 兼岗原值；本单新增节点为 0，看不到既有属性时为 null。 */
   onDutyCount: number | null;
   partTimeCount: number | null;
+  /** 负责人姓名；没有负责人或看不到时为 null。 */
+  personInChargeName: string | null;
+  /** 编制原值（含下级）；没有编制、本单新增或看不到时为 null。 */
+  establishment: number | null;
   mark: Mark | null;
   masked: string[];
   children: PreviewNode[];
@@ -53,9 +65,11 @@ interface Draft {
   /** 挂接目标：组织 ID 或明细 ID；null = 根层。 */
   parentKey: string | null;
   readonly sort: SortKey;
+  /** 待解析姓名的负责人员工 ID。 */
+  head: string | null;
 }
 
-const COUNT_FIELDS = ['onDutyCount', 'partTimeCount'] as const;
+const ATTR_FIELDS = ['onDutyCount', 'partTimeCount', 'personInChargeName', 'establishment'] as const;
 
 const MARKS: Readonly<Record<OrgItem['adjustType'], Mark>> = { 1: 'added', 2: 'changed', 3: 'deactivated' };
 
@@ -83,6 +97,8 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
   }
   const counted = [...drafts.values()].flatMap(({ node }) => (node.orgId && attrsVisible(node.orgId) ? [node] : []));
   await fillCounts(tx, tenantId, view.effectiveDate, counted);
+  await fillEstablishment(tx, tenantId, view.effectiveDate, counted);
+  await fillHeads(tx, tenantId, [...drafts.values()]);
   const parentOf = (orgId: string) => world.orgs.get(orgId)?.parents.admin?.parentId ?? null;
   const roots = assemble(drafts, view.adjustmentRange, (key) => (subtree.has(key) ? parentOf(key) : null));
   return { adjustmentId: view.id, effectiveDate: view.effectiveDate, roots };
@@ -91,12 +107,100 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
 type OrgMap = Awaited<ReturnType<typeof loadWorld>>['orgs'];
 
 function existingDraft(org: OrgRecord, visible: boolean): Draft {
-  const masked = visible ? [] : ['name', ...COUNT_FIELDS];
+  const masked = visible ? [] : ['name', ...ATTR_FIELDS];
   return {
     node: node(org.id, org.id, null, visible ? org.name : null, masked),
     parentKey: org.parents.admin?.parentId ?? null,
     sort: { sequence: org.parents.admin?.sequence ?? null, code: org.code, added: 0, tie: org.id },
+    head: visible ? org.personInChargeId : null,
   };
+}
+
+/** 负责人姓名与组织详情、人员档案同口径：人员版本链的最新姓名（任职头表的姓名不随改名更新）；一次批量查询。 */
+async function fillHeads(tx: Tx, tenantId: string, drafts: readonly Draft[]) {
+  const ids = [...new Set(drafts.flatMap((draft) => (draft.head ? [draft.head] : [])))];
+  if (!ids.length) return;
+  const name = currentPersonName(tenantId, sql`${employmentEmployees.id}`, sql`${employmentEmployees.name}`);
+  const rows = await tx
+    .select({ id: employmentEmployees.id, name: sql<string>`${name}` })
+    .from(employmentEmployees)
+    .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, ids)));
+  const names = new Map(rows.map((row) => [row.id, row.name]));
+  for (const draft of drafts) draft.node.personInChargeName = draft.head ? (names.get(draft.head) ?? null) : null;
+}
+
+interface CapacityRow {
+  objectId: string;
+  orgId: string;
+  schemeId: string;
+  periodStart: string;
+  inclusive: number | null;
+}
+
+/**
+ * 编制原值：组织在生效日有多个方案的编制时按 `pickScheme` 取一个。
+ * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
+ */
+async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: readonly PreviewNode[]) {
+  const ids = nodes.map((n) => n.orgId!);
+  if (!ids.length) return;
+  const rows = rowsOf<CapacityRow>(
+    await tx.execute(sql`SELECT o.id::text AS "objectId", o.org_id::text AS "orgId", o.scheme_id::text AS "schemeId",
+        o.period_start::text AS "periodStart", v.inclusive_capacity AS inclusive
+      FROM establishment_objects o
+      JOIN LATERAL (SELECT inclusive_capacity FROM establishment_versions v
+        WHERE v.tenant_id = o.tenant_id AND v.object_id = o.id AND v.start_date <= ${date}::date
+        ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1) v ON true
+      WHERE o.tenant_id = ${tenantId} AND o.org_id = ANY(${`{${ids.join(',')}}`}::uuid[])
+        AND o.period_start <= ${date}::date AND o.period_end >= ${date}::date`),
+  );
+  const schemes = new Map(
+    (await loadSchemeBatch(tx, tenantId, [...new Set(rows.map((r) => r.schemeId))], date)).map((s) => [s.id, s]),
+  );
+  const byOrg = new Map<string, (CapacityRow & SchemeKey)[]>();
+  for (const row of rows) {
+    const scheme = schemes.get(row.schemeId);
+    if (!scheme) continue;
+    const list = byOrg.get(row.orgId) ?? [];
+    list.push({ ...row, code: scheme.code, enabled: scheme.enabled });
+    byOrg.set(row.orgId, list);
+  }
+  const chosen = new Map<string, CapacityRow>();
+  for (const [orgId, list] of byOrg) {
+    const row = pickScheme(list);
+    if (row) chosen.set(orgId, row);
+  }
+  const local = [...chosen.values()].filter((row) => schemes.get(row.schemeId)!.maintenanceMode === 'local');
+  const sums = await batchLocalSums(
+    tx,
+    tenantId,
+    local.map((row) => ({ ...row, id: row.objectId })),
+    date,
+  );
+  for (const n of nodes) {
+    const row = chosen.get(n.orgId!);
+    n.establishment = row ? (sums.get(row.objectId) ?? row.inclusive) : null;
+  }
+}
+
+interface SchemeKey {
+  readonly code: string;
+  readonly enabled: boolean;
+}
+
+/**
+ * 同一组织在生效日有多个方案的编制时选哪一个（复刻系统的临时口径，BE-10e 第 2 轮总编排补充）：
+ * 先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；其余按方案编码升序取第一个。
+ * 多方案并存属上游既有问题（DEC-279 / DEC-295 要求重叠周期唯一编制），本函数只做确定性兜底，待取证。
+ * TODO(需取证)：原站同一组织多方案时编制原值取哪个方案。
+ */
+export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {
+  const rank = (row: T) => (row.code === DEFAULT_SCHEME_CODE ? 0 : 1);
+  const enabled = candidates.filter((row) => row.enabled);
+  // 按 UTF-16 码元比较编码，结果不随区域设置变化
+  const byCode = (a: T, b: T) => Number(a.code > b.code) - Number(a.code < b.code);
+  enabled.sort((a, b) => rank(a) - rank(b) || byCode(a, b));
+  return enabled[0] ?? null;
 }
 
 /** 在岗 / 兼岗原值：与组织停用校验同一取数（org/deactivation.ts assertSubtreeVacant），只算直属本组织。 */
@@ -111,7 +215,7 @@ async function fillCounts(tx: Tx, tenantId: string, from: string, nodes: readonl
 }
 
 function node(key: string, orgId: string | null, itemId: string | null, name: string | null, masked: string[]) {
-  const counts = { onDutyCount: null, partTimeCount: null };
+  const counts = { onDutyCount: null, partTimeCount: null, personInChargeName: null, establishment: null };
   return { key, orgId, itemId, name, ...counts, mark: null, masked, children: [] } satisfies PreviewNode;
 }
 
@@ -141,6 +245,8 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   const parentKey = see('parentOrgId') ? (item.parentOrgId ?? item.parentItemId) : (masked.add('parentOrgId'), null);
   const sequence = see('displayOrder') ? item.displayOrder : null;
   const code = see('code') ? item.code : null;
+  // 负责人只给 null、不记 masked：保持 10d 预览 masked 的既有口径（名称 / 类型 / 上级），导出看不到同样显示“--”。
+  const head = see('personInChargeId') ? item.personInChargeId : null;
   if (item.adjustType === 1) {
     const name = see('name') ? item.name : (masked.add('name'), null);
     drafts.set(item.id, {
@@ -148,6 +254,7 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
       node: { ...node(item.id, null, item.id, name, [...masked]), onDutyCount: 0, partTimeCount: 0, mark },
       parentKey,
       sort: { sequence, code, added: 1, tie: String(item.seq).padStart(10, '0') },
+      head,
     });
     return;
   }
@@ -165,6 +272,7 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   if (item.adjustType === 2 && parentKey) draft.parentKey = parentKey;
   if (item.adjustType === 2 && sequence !== null) draft.sort.sequence = sequence;
   if (item.adjustType === 2 && code !== null) draft.sort.code = code;
+  if (item.adjustType === 2 && head !== null) draft.head = head;
 }
 
 /** 同级比较：顺序号（空排最后）→ 编码（空排最后）→ 既有在前 → 录入顺序 / 组织 ID。 */
