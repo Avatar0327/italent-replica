@@ -2,7 +2,7 @@ import { actionButton } from './action-button.js';
 import type { Page, Locator } from '@playwright/test';
 import { test, expect } from './fixtures.js';
 import { item, named, pickDate, save } from './contracts-fixtures.js';
-import { companyId, entryId, nextId, setupEntries, typeId } from './entry-fixtures.js';
+import { companyId, contractFields, entryId, nextId, objectGrant, setupEntries, typeId } from './entry-fixtures.js';
 
 // 首个行为门禁：旧实现没有 entries 菜单；不靠 import 不存在的文件制造红测。
 // DEC-546/548：取消入口由 F-192 另派；已取消场景用夹具造数据。
@@ -71,7 +71,11 @@ test('AC-FE-R2b2-02 已取消不能入职，已入职只读', async ({ page, bas
 
 test('AC-FE-R2b2-03 AC-EN-08 日期自动计算、手改、终止日必填和办理入职', async ({ page, baseURL }) => {
   const state = await entryPage(page, baseURL!);
+  // F-423：法人公司从待入职合同预填（北森同）
+  state.row.contractCompanyId = companyId;
+  await page.reload();
   const dialog = await onboard(page);
+  await expect(item(dialog, '法人公司')).toContainText('合成法人公司');
   for (const title of ['员工信息', '汇报关系', '合同协议', '入职定薪', '社保信息'])
     await expect(dialog.getByRole('heading', { name: title, exact: true })).toBeAttached();
   await expect(dialog.getByRole('button', named('暂存'))).toBeDisabled();
@@ -110,6 +114,28 @@ test('AC-FE-R2b2-03 AC-EN-08 日期自动计算、手改、终止日必填和办
   await expect(row(page)).toHaveCount(0);
   await tab(page, '已入职').click();
   await expect(row(page)).toContainText('试用');
+});
+
+test('AC-FE-R2b2-03b F-423 法人公司无编辑权：只读显示预填公司名称，提交不带公司', async ({ page, baseURL }) => {
+  const state = await entryPage(page, baseURL!);
+  state.row.contractCompanyId = companyId;
+  // 合同对象可创建，但「法人公司」不在可编辑字段里（其余合同字段可编辑）
+  const editable = contractFields.filter((name) => name !== 'companyId');
+  await page.route('**/permission/me/objects/TenantBase.EmploymentContract', (route) =>
+    route.fulfill({ json: objectGrant('TenantBase.EmploymentContract', editable) }),
+  );
+  await page.reload();
+  const dialog = await onboard(page);
+  const company = item(dialog, '法人公司');
+  await expect(company).toContainText('合成法人公司');
+  await expect(company).not.toContainText(companyId);
+  await expect(company.locator('.ant-select')).toHaveCount(0);
+  await expect(dialog).not.toContainText(companyId);
+  await choose(dialog, '是否有试用期', '否');
+  await dialog.getByRole('button', save).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes).toHaveLength(1);
+  expect(state.writes[0]!.body).toEqual({ probation: false });
 });
 
 test('AC-FE-R2b2-04 后端错误原文呈现', async ({ page, baseURL }) => {
