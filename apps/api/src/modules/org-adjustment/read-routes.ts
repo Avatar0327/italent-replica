@@ -1,12 +1,15 @@
 /**
- * 组织调整读路由（R2-T08 §9.3 路由 12～15、§10、§4.5；BE-10d）。没有导出入口（10e）。
+ * 组织调整读路由（R2-T08 §9.3 路由 12～15、28，§10、§10A、§4.5；BE-10d / 10e）。
  * - 12 列表：对象查看权（无权 403）→ 主体组织按 OrganizationApproval 范围在 SQL 里先过滤再分页；列按字段查看权裁剪。
  * - 13 详情 / 14 明细 / 15 预览：同一事务内经 `orgAdjustmentDisclosure` 判一次（HR 读权 + 范围，或可打开最新审批实例），
  *   不通过与不存在同一 404 文案。只读，不进命令台账。
+ * - 28 架构图导出：与 15 同一判定与数据（DEC-650①：不单设权限、不注册按钮），`after` 只收 true / false，
+ *   先于披露判定校验（400）；文件名日期取下载当天的租户时区日期（DEC-056）。
  */
 import { withTenant } from '@italent/db';
-import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import { ORG_ADJUSTMENT_OBJECT_CODE, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
+import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { pageQuery, uuidParam } from '../job/context.js';
@@ -18,6 +21,7 @@ import {
 import { objectContext } from '../permission/module-route-access.js';
 import { readDetail, readItems } from './detail.js';
 import { orgAdjustmentDisclosure } from './disclosure.js';
+import { readExport } from './export-svg.js';
 import { readPreview } from './preview.js';
 import { listAdjustments, listColumns, parseListFilter, projectHeads } from './queries.js';
 
@@ -64,6 +68,18 @@ export function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     const id = uuidParam(c);
     const body = await withTenant(deps.db, ctx.tenantId, async (tx) =>
       readPreview(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id)),
+    );
+    return c.json(body, 200);
+  });
+
+  router.get(`${BASE}/:id/preview/export`, async (c) => {
+    const ctx = tenantOf(c);
+    const id = uuidParam(c);
+    const after = c.req.query('after');
+    if (after !== 'true' && after !== 'false') throw new AppError('VALIDATION_FAILED', 'after 只能为 true 或 false');
+    const today = tenantLocalDate(deps.clock(), ctx.timezone);
+    const body = await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      readExport(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id), after === 'true', today),
     );
     return c.json(body, 200);
   });
