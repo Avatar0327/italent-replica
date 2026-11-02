@@ -7,11 +7,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
+import { Window } from 'happy-dom';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { ALL, BASE, expectError, only } from './AC-OA-head-support.js';
 import { type ItemsWorld, itemsWorld, newOrg, rename, stop } from './AC-OA-items-support.js';
-import { approvalFixture, orgName } from './AC-OA-read-support.js';
+import { approvalFixture, orgName, reader } from './AC-OA-read-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
@@ -53,6 +54,7 @@ async function capacityOf(
   values: { inclusive?: number; local?: number },
   mode: 'local' | 'inclusive' | 'both' = 'inclusive',
   sharedScheme?: string,
+  scheme: { code?: string; enabled?: boolean } = {},
 ) {
   const schemeId = sharedScheme ?? randomUUID();
   const objectId = randomUUID();
@@ -62,9 +64,9 @@ async function capacityOf(
         sql`INSERT INTO establishment_scheme_objects (id, tenant_id) VALUES (${schemeId}, ${w.tenant.id})`,
       );
       await tx.execute(sql`INSERT INTO establishment_scheme_versions
-        (tenant_id, scheme_id, version_no, code, name, cycle, maintenance_mode, start_date)
-        VALUES (${w.tenant.id}, ${schemeId}, 1, ${`ZZ_S${uniqueSuffix()}`}, 'ZZ_合成方案', 'annual', ${mode},
-          '2020-01-01')`);
+        (tenant_id, scheme_id, version_no, code, name, cycle, maintenance_mode, enabled, start_date)
+        VALUES (${w.tenant.id}, ${schemeId}, 1, ${scheme.code ?? `ZZ_S${uniqueSuffix()}`}, 'ZZ_合成方案', 'annual',
+          ${mode}, ${scheme.enabled ?? true}, '2020-01-01')`);
     }
     await tx.execute(sql`INSERT INTO establishment_objects (id, tenant_id, org_id, scheme_id, period_start, period_end)
       VALUES (${objectId}, ${w.tenant.id}, ${orgId}, ${schemeId}, '2026-01-01', '2026-12-31')`);
@@ -231,5 +233,99 @@ describe('AC-OA-44 架构图导出：权限随详情、参数校验、不可见�
       expect(result.svg).not.toContain(aName);
       expect(result.svg).not.toContain(headName);
     }
+  });
+});
+
+/** XML 1.0 Char 产生式之外的码点（含孤立代理项）；合规解析器遇到即判文档不良构。 */
+const XML_INVALID = /[^\t\n\r -퟿-�\u{10000}-\u{10FFFF}]/u;
+
+/** XML 解析器校验：结构用 DOMParser（image/svg+xml）解析无 parsererror，字符按 XML 1.0 Char 产生式校验。 */
+function expectWellFormedXml(svg: string) {
+  expect(XML_INVALID.test(svg), JSON.stringify(svg.match(XML_INVALID)?.[0])).toBe(false);
+  const doc = new new Window().DOMParser().parseFromString(svg, 'image/svg+xml');
+  expect(doc.getElementsByTagName('parsererror')).toHaveLength(0);
+  expect(doc.documentElement.tagName.toLowerCase()).toBe('svg');
+}
+
+describe('AC-OA-44 第 2 轮返工：姓名口径、XML 字符、编制汇总范围、多方案选择', () => {
+  it('负责人经人员档案改名后：人员 GET、路由 15 预览、路由 28 导出三处是同一个新姓名', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const suffix = uniqueSuffix();
+    const head = await w.employee(`ZZ_旧名${suffix}`);
+    await w.setOrgRoles(w.a, { head: head.id });
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const newName = `ZZ_新名${suffix}`;
+    const personnel = `/api/tenant/personnel/employees/${head.id}`;
+    const patched = await w.request(w.hr.id, 'PATCH', personnel, { ifMatch: 0, body: { name: newName } });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+
+    const person = await w.request(w.hr.id, 'GET', personnel);
+    expect(person.status, await person.clone().text()).toBe(200);
+    expect(((await person.json()) as { name: string }).name).toBe(newName);
+    const preview = await reader(w).preview(view.id);
+    expect(preview.roots[0]!.personInChargeName).toBe(newName);
+    for (const after of [false, true]) {
+      const svg = (await exported(w, view.id, after)).svg;
+      expect(nodes(svg)[0]).toEqual([await orgName(w, w.a), ...FIELDS(newName, '--')]);
+      expect(svg).not.toContain(`ZZ_旧名${suffix}`);
+    }
+  });
+
+  it('组织名称、负责人姓名、文件名含 XML 1.0 不允许的控制字符：导出仍是良构 XML，非法控制字符被滤掉', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const suffix = uniqueSuffix();
+    const range = await w.org(`ZZ_范\u0001围${suffix}`);
+    const head = await w.employee(`ZZ_负责人${suffix}`);
+    const personnel = `/api/tenant/personnel/employees/${head.id}`;
+    const headName = `ZZ_负\u000B责\u001F人${suffix}`;
+    const patched = await w.request(w.hr.id, 'PATCH', personnel, { ifMatch: 0, body: { name: headName } });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    await w.setOrgRoles(range, { head: head.id });
+    const view = await w.created(w.head({ adjustmentRange: [range] }));
+    const added = (await w.item(view.id, newOrg(range, { name: `ZZ_A\u0001B${suffix}` }))).items.at(-1)!;
+    expect(added.name).toBe(`ZZ_A\u0001B${suffix}`);
+    w.setNow(DOWNLOAD_AT);
+
+    for (const after of [false, true]) {
+      const result = await exported(w, view.id, after);
+      expectWellFormedXml(result.svg);
+      expect(result.fileName).toBe(`架构图（ZZ_范围${suffix}）_${DOWNLOAD_DAY}`);
+      const list = nodes(result.svg);
+      expect(list[0]).toEqual([`ZZ_范围${suffix}`, ...FIELDS(`ZZ_负责人${suffix}`, '--')]);
+      expect(list[1]![0]).toBe(`ZZ_AB${suffix}`);
+    }
+  });
+
+  it('“仅本级”方案：上级本级编制 2147483647、下级 1，预览与导出都成功，含下级为 2147483648', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const child = await w.org(`ZZ_下级${uniqueSuffix()}`, w.b);
+    const scheme = await capacityOf(w, w.b, { local: 2147483647 }, 'local');
+    await capacityOf(w, child, { local: 1 }, 'local', scheme);
+    const view = await w.created(w.head({ adjustmentRange: [w.b] }));
+
+    const preview = await w.call('GET', `${BASE}/${view.id}/preview`);
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    const roots = ((await preview.json()) as { roots: { establishment: number | null }[] }).roots;
+    expect(roots[0]!.establishment).toBe(2147483648);
+    const list = nodes((await exported(w, view.id, false)).svg);
+    expect(list.map((texts) => texts.at(-1))).toEqual(['2147483648', '1']);
+  });
+
+  it('同一组织多个方案的编制：排除已停用方案；启用方案里 DEFAULT 优先，其余按编码升序取第一个', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const suffix = uniqueSuffix();
+    const c = await w.org(`ZZ_丙${suffix}`);
+    await capacityOf(w, w.a, { inclusive: 11 }, 'inclusive', undefined, { code: `ZZ_A${suffix}`, enabled: false });
+    await capacityOf(w, w.a, { inclusive: 22 }, 'inclusive', undefined, { code: `ZZ_B${suffix}` });
+    await capacityOf(w, w.b, { inclusive: 33 }, 'inclusive', undefined, { code: 'A01' });
+    await capacityOf(w, w.b, { inclusive: 44 }, 'inclusive', undefined, { code: 'DEFAULT' });
+    await capacityOf(w, c, { inclusive: 55 }, 'inclusive', undefined, { code: `ZZ_D${suffix}` });
+    await capacityOf(w, c, { inclusive: 66 }, 'inclusive', undefined, { code: `ZZ_C${suffix}` });
+    const view = await w.created(w.head({ adjustmentRange: [w.a, w.b, c] }));
+
+    const preview = await reader(w).preview(view.id);
+    expect(preview.roots.map((root) => root.establishment)).toEqual([22, 44, 66]);
+    const list = nodes((await exported(w, view.id, false)).svg);
+    expect(list.map((texts) => texts.at(-1))).toEqual(['22', '44', '66']);
   });
 });
