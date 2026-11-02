@@ -2372,7 +2372,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
     '165ca84d781d',
     'e2327140b6bb',
   ],
-  'apps/api/src/modules/employment/regularization-drafts.ts#currentAnchor': ['095c56191891', 'c5574728ccfb'],
+  'apps/api/src/modules/employment/regularization-drafts.ts#currentAnchor': ['4ee117bd07ec', 'c5574728ccfb'],
   'apps/api/src/modules/employment/regularization-drafts.ts#draftInput': ['8d8c25007261', 'd4c8d57c01ae'],
   'apps/api/src/modules/employment/regularization-drafts.ts#draftRow': ['7889a4a656d3', 'a64b95b305ea'],
   'apps/api/src/modules/employment/regularization-drafts.ts#loadRegularizationDraft': ['ea508881c8d4', 'ee90d1a31475'],
