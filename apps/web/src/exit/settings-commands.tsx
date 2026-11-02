@@ -8,7 +8,7 @@ import { rejectionMessage, type Command } from '../foundation/client.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import type { useApiClient } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { useConflictCommand, type Run } from '../foundation/forms/ConflictCommands.js';
 import type { Values } from '../foundation/forms/store.js';
 import { changedFields } from '../foundation/forms/values.js';
 import { s } from './settings-messages.js';
@@ -117,16 +117,8 @@ export function RowActions(props: {
   const snapshot = { id: row.id, revision: row.revision, values: {} };
   const writer = useConflictCommand(props.resource, snapshot, props.read, { action: 'row' });
   const locked = writer.form.locked || writer.invalid;
-  const run = async (action: RowAction) => {
-    try {
-      await writer.run({ values: {}, editableFields: [], send: ({ command }) => action.send(command) });
-    } catch (error) {
-      if (writer.form.peek()?.status === 'unknown') return;
-      void message.error(rejectionMessage(error));
-      writer.form.clear();
-    }
-    reload();
-  };
+  const run = (action: RowAction) =>
+    runInline(writer, { values: {}, editableFields: [], send: ({ command }) => action.send(command) }, reload);
   return (
     <Space direction="vertical" size={0}>
       <Space size={4} wrap>
@@ -153,6 +145,18 @@ export function RowActions(props: {
       <CommandStatus submission={writer.form} labels={props.labels} />
     </Space>
   );
+}
+
+/** 行内动作 / 开关：明确拒绝与冲突提示原因并清掉，按最新版本重新操作；结果未知保持锁定；最后刷新。 */
+export async function runInline(writer: ReturnType<typeof useConflictCommand>, input: Run, reload: () => void) {
+  try {
+    await writer.run(input);
+  } catch (error) {
+    if (writer.form.peek()?.status === 'unknown') return;
+    void message.error(rejectionMessage(error));
+    writer.form.clear();
+  }
+  reload();
 }
 
 /** 字段被裁剪（键缺失）或为空时显示占位；裁剪的列不参与筛选排序（列表本身不提供排序）。 */

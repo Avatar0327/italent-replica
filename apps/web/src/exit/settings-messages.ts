@@ -84,6 +84,7 @@ export const s = {
   },
   rules: {
     enabled: '离职后自动加入黑名单',
+    switchForbidden: '无权查看“离职后自动加入黑名单”开关（需要其他设置权限），规则仍可查看。',
     switchHint: '开启后，员工离职生效时按下面的规则自动加入黑名单；无论是否开启，黑名单人员都无法重聘。',
     name: '规则名称',
     priority: '优先级',

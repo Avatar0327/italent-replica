@@ -266,7 +266,7 @@ function EntryForm(props: {
     control: controls[name],
     // 编辑时姓名只读回显；其余按字段权限可看、按写能力可改。
     access: { visible: access.viewable(name), editable: allowed.includes(name) },
-    display: row ? cell(row, name, name === 'reason' ? label(BLACKLIST_REASONS) : String) : undefined,
+    display: row && cell(row, name, CHOICES[name] && label(CHOICES[name])),
     rules: rules[name] ?? [],
   }));
   return (

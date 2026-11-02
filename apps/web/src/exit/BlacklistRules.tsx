@@ -1,15 +1,20 @@
 // B68 自动加黑规则页（FE-R2c2b）：总开关“离职后自动加入黑名单”（租户设置 exit.auto_blacklist_enabled）与规则增删改。
 // 规则执行在后端（离职生效时匹配），前端不做。条件只实现“离职次数 ≥ N”，期限只有永久 / 离职当月（“指定期限”后端未实现，未决）。
-import { BLACKLIST_REASONS, BLACKLIST_RULE_TERMS, BLACKLIST_RULE_TEXT_MAX } from '@italent/domain';
-import { Button, Input, InputNumber, Radio, Select, Switch, Table, message } from 'antd';
+import {
+  AUTO_BLACKLIST_SETTING_KEY as SWITCH_KEY,
+  BLACKLIST_REASONS,
+  BLACKLIST_RULE_TERMS,
+  BLACKLIST_RULE_TEXT_MAX,
+} from '@italent/domain';
+import { Button, Input, InputNumber, Radio, Select, Switch, Table } from 'antd';
 import { useState } from 'react';
 import { RefLabels, RefSelect, refPaths } from '../contracts/references.js';
-import { ApiError, rejectionMessage } from '../foundation/client.js';
+import { ApiError } from '../foundation/client.js';
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
-import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
+import { useConflictCommand, type Run } from '../foundation/forms/ConflictCommands.js';
 import { projectFields } from '../foundation/forms/values.js';
 import {
   RecordForm,
@@ -19,6 +24,7 @@ import {
   label,
   options,
   rowReader,
+  runInline,
   useParsed,
 } from './settings-commands.js';
 import { s } from './settings-messages.js';
@@ -41,7 +47,6 @@ import {
 import { EXIT_SETTINGS_OBJECT } from './model.js';
 
 const r = s.rules;
-const SWITCH_KEY = 'exit.auto_blacklist_enabled';
 const FORM_FIELDS = ['name', 'priority', 'orgIds', 'description', 'exitCount', 'term', 'reason', 'note'] as const;
 const LABELS: Record<string, string> = r;
 const field = configField(LABELS);
@@ -95,10 +100,10 @@ export function BlacklistRules() {
   );
 }
 
-/** 总开关：单个布尔租户设置，切换即保存（带版本）；读不到（无其他设置权 403）就不显示。 */
+/** 总开关：单个布尔租户设置，切换即保存（带版本）；读不到（无其他设置权 403）只提示，不挡规则列表。 */
 function AutoBlacklistSwitch() {
   const { data, error, reload } = useParsed(AUTO_BLACKLIST_PATH, parseAutoBlacklist);
-  if (error instanceof ApiError && error.status === 403) return null;
+  if (error instanceof ApiError && error.status === 403) return <p className="exit-hint">{r.switchForbidden}</p>;
   if (error) return <PageState kind="error" error={error} retry={reload} />;
   return data ? <SwitchCommand key={data.revision} setting={data} reload={reload} /> : null;
 }
@@ -115,24 +120,13 @@ function SwitchCommand({ setting, reload }: { setting: Setting<boolean>; reload(
     },
     { action: 'row' },
   );
-  const toggle = async (enabled: boolean) => {
-    try {
-      await writer.run({
-        values: { enabled },
-        editableFields: ['enabled'],
-        send: async ({ edited, command }) => {
-          const body = { value: edited.enabled === true };
-          const raw = await api.request<unknown>(AUTO_BLACKLIST_PATH, { method: 'PUT', command: { ...command, body } });
-          return parseSettingReceipt(raw, SWITCH_KEY, command.revision ?? setting.revision);
-        },
-      });
-    } catch (error) {
-      if (writer.form.peek()?.status === 'unknown') return;
-      void message.error(rejectionMessage(error));
-      writer.form.clear();
-    }
-    reload();
+  const send: Run['send'] = async ({ edited, command }) => {
+    const body = { value: edited.enabled === true };
+    const raw = await api.request<unknown>(AUTO_BLACKLIST_PATH, { method: 'PUT', command: { ...command, body } });
+    return parseSettingReceipt(raw, SWITCH_KEY, command.revision ?? setting.revision);
   };
+  const toggle = (enabled: boolean) =>
+    runInline(writer, { values: { enabled }, editableFields: ['enabled'], send }, reload);
   return (
     <div className="exit-settings-switch">
       <label>

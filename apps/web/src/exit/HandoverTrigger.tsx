@@ -1,7 +1,12 @@
 // B65 交接发起规则（FE-R2c2b）：租户设置 exit.handover_trigger（两层配置，整份替换）。读写接口都有，做成内嵌表单，
 // 同账号停用时间：只有其他设置权可保存，其余只读。发起人只开放“员工本人”（F-250 / DEC-683，其他发起人后补）；
 // 审批节点没有候选接口，只能填节点标识（未决）。
-import { HANDOVER_METHODS, HANDOVER_REMIND_DAYS_MAX } from '@italent/domain';
+import {
+  EXIT_HANDOVER_TRIGGER_KEY as KEY,
+  HANDOVER_METHODS,
+  HANDOVER_REMIND_DAYS_MAX,
+  type HandoverTriggerSetting,
+} from '@italent/domain';
 import { Button, Form, Input, InputNumber, Select, Switch, message, type FormItemProps } from 'antd';
 import type { ReactNode } from 'react';
 import { ApiError } from '../foundation/client.js';
@@ -25,10 +30,8 @@ import {
   triggerValues,
   type Setting,
 } from './settings-model.js';
-import type { HandoverTriggerSetting } from '@italent/domain';
 
 const t = s.trigger;
-const KEY = 'exit.handover_trigger';
 const LABELS: Record<string, string> = t;
 const days = { required: true, type: 'integer' as const, min: 0, max: HANDOVER_REMIND_DAYS_MAX, message: t.daysRange };
 
@@ -97,7 +100,8 @@ function TriggerForm({ setting, reload }: { setting: Setting<HandoverTriggerSett
 
   return (
     <section className="exit-settings-form" aria-label={s.tabs['handover-trigger']}>
-      <p className="exit-hint">{writable ? (setting.source === 'system' ? t.systemValue : '') : s.readonlyHint}</p>
+      {!writable && <p className="exit-hint">{s.readonlyHint}</p>}
+      {writable && setting.source === 'system' && <p className="exit-hint">{t.systemValue}</p>}
       <CommandStatus submission={submission} labels={LABELS} />
       <FormLock locked={locked}>
         <Form form={form} layout="vertical" initialValues={initial} disabled={!writable}>
