@@ -12,7 +12,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ids } from './AC-HA-13a-support.js';
+import { ids, managementScope, restrictedAuthorizer } from './AC-HA-13a-support.js';
 import {
   MOVEMENT_BASE as BASE,
   movementClient,
@@ -40,22 +40,23 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
   }, 600_000);
 
   const named = (name: string) => `${name}-${uniqueSuffix()}`;
-  async function leavesThisYear(asOf: string) {
-    const response = await c.get(`/api/tenant/analytics/hr-dashboard?asOf=${asOf}`);
+  async function leavesThisYear(asOf: string, client = c) {
+    const response = await client.get(`/api/tenant/analytics/hr-dashboard?asOf=${asOf}`);
     expect(response.status, await response.clone().text()).toBe(200);
     const body = (await response.json()) as { indicators: { code: string; value: number | null }[] };
     return body.indicators.find((item) => item.code === 'leavesThisYear')!.value;
   }
-  /** B54 三处流出合计：流出统计合计、流动统计离职合计、各月离职行之和。 */
-  async function outflowTotals(asOf: string) {
-    const outflow = await c.report('outflow', `asOf=${asOf}`);
-    const flow = await c.report('flow', `asOf=${asOf}`);
-    const monthly = table(await c.report('monthly', `asOf=${asOf}`), 'monthly');
+  /**
+   * B54 年度流出合计：流出统计合计、原因表合计、流动统计离职合计（按人数）。月表合计按月累加，重聘同年多次离职时
+   * 与年度人数可不等，不在这里比（第 3 轮聚合契约）。
+   */
+  async function outflowTotals(asOf: string, client = c) {
+    const outflow = await client.report('outflow', `asOf=${asOf}`);
+    const flow = await client.report('flow', `asOf=${asOf}`);
     return {
       outflow: table(outflow, 'sequences').summary.cells.total,
       reasons: table(outflow, 'reasons').summary.cells.count,
       flow: table(flow, 'flow').summary.cells.exits,
-      monthly: monthly.rows.reduce((sum, item) => sum + (item.cells.exits ?? 0), 0),
     };
   }
 
@@ -75,28 +76,26 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
     // B50 仍按生效日：2026-01-01 生效，计 2026-01 离职
     await c.expectCount(BASE, '6.26', ids(person), scoped, 'exit:2026-01');
     const leaves = await leavesThisYear('2026-10-06');
-    expect(await outflowTotals('2026-10-06')).toEqual({
-      outflow: leaves,
-      reasons: leaves,
-      flow: leaves,
-      monthly: leaves,
-    });
+    expect(await outflowTotals('2026-10-06')).toEqual({ outflow: leaves, reasons: leaves, flow: leaves });
   });
 
-  it('P2-1：最后工作日 = asOf 当天计入 B54 流出，与人事看板本年离职一致', async () => {
-    // 夹具：一月底离职 1/31、三十天离职 3/31 是最后工作日
-    for (const asOf of ['2026-01-31', '2026-03-31']) {
-      const leaves = await leavesThisYear(asOf);
-      expect(await outflowTotals(asOf), asOf).toEqual({
-        outflow: leaves,
-        reasons: leaves,
-        flow: leaves,
-        monthly: leaves,
-      });
+  it('P2-1：最后工作日 = asOf 当天计入 B54 流出，与人事看板本年离职一致（独立部门，第 3 轮第 6 项）', async () => {
+    const D = await w.org(named('截止日部'));
+    const january = await w.hire('一月底截止日离职', '2026-01-05', D);
+    await w.leave(january.id, '2026-01-31', { type: w.T.vol });
+    const march = await w.hire('三月底截止日离职', '2026-02-02', D);
+    await w.leave(march.id, '2026-03-31', { type: w.T.vol });
+    // 数据范围只到 D：看板与报表都不受共享夹具里其他离职的影响
+    const scoped = movementClient(w.db, w.who, restrictedAuthorizer({ scope: managementScope(w.tenantId, [D.id]) }));
+    for (const [asOf, expected] of [
+      ['2026-01-31', 1],
+      ['2026-03-31', 2],
+    ] as const) {
+      expect(await leavesThisYear(asOf, scoped), asOf).toBe(expected);
+      expect(await outflowTotals(asOf, scoped), asOf).toEqual({ outflow: expected, reasons: expected, flow: expected });
     }
-    expect(await leavesThisYear('2026-01-31')).toBe(1);
-    const january = await c.report('monthly', 'asOf=2026-01-31');
-    expect(row(january, 'monthly', '2026-01')).toMatchObject({ exits: 1 });
+    const months = await scoped.report('monthly', 'asOf=2026-01-31');
+    expect(row(months, 'monthly', '2026-01')).toMatchObject({ exits: 1 });
   });
 
   it('P2-2：有组织编制时 3.1.36 与组织编制统计取本级 / 含下级编制与实有人员（含下级），其余列 null', async () => {
@@ -199,6 +198,7 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
   });
 
   it('P2-5 / P2-7：同一人年内跨部门两段任职——月表页尾 = 各月行之和，全表组织行 = 单筛该组织', async () => {
+    // 第 3 轮聚合契约：月表按月计（两段各在自己的月份、部门计一次）；年度表（流动统计）按人数，归最后一段（Q）
     const P = await w.org(named('首段部'));
     const Q = await w.org(named('重聘部'));
     const person = await w.hire('年内重聘', '2026-01-05', P);
@@ -226,10 +226,13 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
     expect(onlyP).toMatchObject({ hires: 1, exits: 1 });
 
     const full = await c.report('flow', AS_OF);
-    for (const org of [P, Q]) {
+    for (const [org, count] of [
+      [P, 0],
+      [Q, 1],
+    ] as const) {
       const single = table(await c.report('flow', `${AS_OF}&departmentId=${org.id}`), 'flow');
-      expect(row(full, 'flow', org.id), org.id).toEqual(single.summary.cells);
-      expect(single.summary.cells).toMatchObject({ hires: 1, exits: 1 });
+      expect(row(full, 'flow', org.id) ?? null, org.id).toEqual(count ? single.summary.cells : null);
+      expect(single.summary.cells).toMatchObject({ hires: count, exits: count });
     }
     for (const month of [3, 6, 9]) {
       const filters = `${AS_OF}&year=2026&month=${month}`;

@@ -175,25 +175,23 @@ describe('AC-HA-13b 第 3 轮返工回归', () => {
     await rehire(person.id, '2026-05-01', P);
     await w.leave(person.id, '2026-08-31', { type: w.T.inv, reason: w.R.dev });
 
-    // 全租户联合断言：原因行和 = 原因合计 = 属性表合计 = 类型列 + 退休列之和 = 流动统计离职合计 = 本年离职
+    // 全租户联合断言：原因行和 = 原因合计 = 属性表合计 = 流动统计离职合计 = 本年离职
+    // （类型列之和不在此比较：同租户里有空类型的离职，按第 3 项不进任何类型列；类型列在下面的部门范围内核对）
     const leaves = await leavesThisYear('2026-10-06');
     const outflow = await c.report('outflow', AS_OF);
     const reasons = table(outflow, 'reasons');
     const sequences = table(outflow, 'sequences');
-    const typed = sequences.columns.filter((item) => item.key.startsWith('type:') || item.key === 'retirement');
     const flow = table(await c.report('flow', AS_OF), 'flow');
     expect({
       reasonRows: sumOf(reasons.rows, 'count'),
       reasonTotal: reasons.summary.cells.count,
       sequenceTotal: sequences.summary.cells.total,
-      typeColumns: typed.reduce((total, item) => total + (sequences.summary.cells[item.key] ?? 0), 0),
       flowTotal: flow.summary.cells.exits,
       flowRows: sumOf(flow.rows, 'exits'),
     }).toEqual({
       reasonRows: leaves,
       reasonTotal: leaves,
       sequenceTotal: leaves,
-      typeColumns: leaves,
       flowTotal: leaves,
       flowRows: leaves,
     });
@@ -204,7 +202,10 @@ describe('AC-HA-13b 第 3 轮返工回归', () => {
     expect(Object.fromEntries(table(mine, 'reasons').rows.map((item) => [item.key, item.cells.count]))).toEqual({
       [key('leave', w.T.inv, w.R.dev)]: 1,
     });
-    expect(table(mine, 'sequences').summary.cells).toMatchObject({
+    const mineSequences = table(mine, 'sequences');
+    const typed = mineSequences.columns.filter((item) => item.key.startsWith('type:') || item.key === 'retirement');
+    expect(typed.reduce((total, item) => total + (mineSequences.summary.cells[item.key] ?? 0), 0)).toBe(1);
+    expect(mineSequences.summary.cells).toMatchObject({
       total: 1,
       [`type:${w.T.inv}`]: 1,
       [`type:${w.T.vol}`]: 0,

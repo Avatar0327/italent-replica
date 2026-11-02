@@ -22,7 +22,7 @@ import { pageQuery } from '../job/context.js';
 import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { analyticsScope } from './hr-dashboard-routes.js';
-import { loadEstablishment, loadExitDictionaries, loadMovement } from './hr-movement.js';
+import { loadEstablishment, loadExitDictionaries, loadMovement, loadSnapshots } from './hr-movement.js';
 import {
   filterEstablishment,
   filterMovement,
@@ -53,9 +53,15 @@ async function reportContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
 
 /**
  * 近 12 个月的行集、组织树与编制；部门筛选（含下级）先于一切计算。asOf 在 0001 年时近 12 个月早于公元 1 年，
- * 算不了，报 400（审查 P2-6）。离职按离职生效日归月（B50，DEC-729）。
+ * 算不了，报 400（审查 P2-6）。离职按离职生效日归月（B50，DEC-729）。编制只有看板与 3.1.36 明细加载
+ * （withEstablishment），其余组件明细不读编制，编制数据异常也不影响它们。
  */
-function loadBoard(deps: TenantRouteDeps, ctx: Analytics, departmentId?: string): Promise<MovementLookup> {
+function loadBoard(
+  deps: TenantRouteDeps,
+  ctx: Analytics,
+  departmentId: string | undefined,
+  withEstablishment: boolean,
+): Promise<MovementLookup> {
   const { base, scope, asOf } = ctx;
   const months = movementMonths(asOf);
   if (!months) throw new AppError('VALIDATION_FAILED', 'asOf 过早，近 12 个月超出可统计的日期范围');
@@ -64,7 +70,9 @@ function loadBoard(deps: TenantRouteDeps, ctx: Analytics, departmentId?: string)
   return withTenant(deps.db, base.tenantId, async (tx) => {
     const tree = await orgTree(tx, base.tenantId, asOf);
     const data = await loadMovement(tx, { tenantId: base.tenantId, asOf, scope }, window);
-    const establishment = await loadEstablishment(tx, { tenantId: base.tenantId, asOf, scope });
+    const establishment = withEstablishment
+      ? await loadEstablishment(tx, { tenantId: base.tenantId, scope }, asOf)
+      : [];
     return {
       months,
       tree,
@@ -92,7 +100,7 @@ function periodOf(c: Context, asOf: string): ReportPeriod {
 export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_MOVEMENT_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
-    const lookup = await loadBoard(deps, ctx, uuidQuery(c, 'departmentId'));
+    const lookup = await loadBoard(deps, ctx, uuidQuery(c, 'departmentId'), true);
     return c.json({
       asOf: ctx.asOf,
       hasDataPermission: ctx.scope.hasDataPermission,
@@ -107,7 +115,8 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const group = groupQuery(c);
     const departmentId = uuidQuery(c, 'departmentId');
     const page = pageQuery(c);
-    const members = movementMembers(component.code, await loadBoard(deps, ctx, departmentId), group);
+    const lookup = await loadBoard(deps, ctx, departmentId, component.code === '3.1.36');
+    const members = movementMembers(component.code, lookup, group);
     if (!members) throw new AppError('VALIDATION_FAILED', '按月或按编制对象统计的组件须指定 group（月份或编制对象）');
     return c.json({
       asOf: ctx.asOf,
@@ -144,8 +153,11 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
       const a = { tenantId: base.tenantId, asOf, scope };
       const tree = await orgTree(tx, base.tenantId, asOf);
       const sequences = await jobDictionary(tx, base.tenantId, asOf, 'sequence');
-      const data = await loadMovement(tx, a, reportWindow(report.code, period));
-      const establishment = report.code === 'establishment' ? await loadEstablishment(tx, a) : [];
+      const window = reportWindow(report.code, period);
+      // 组织编制页签只要年度取数日（年底与 asOf 较早者）的编制与实有人员，不加载整年流动数据
+      const onEstablishment = report.code === 'establishment';
+      const data = onEstablishment ? await loadSnapshots(tx, a, window.days) : await loadMovement(tx, a, window);
+      const establishment = onEstablishment ? await loadEstablishment(tx, a, window.to) : [];
       return movementReport(report.code, period, {
         tree,
         sequences,

@@ -11,7 +11,13 @@
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ids } from './AC-HA-13a-support.js';
-import { MOVEMENT_BASE as BASE, movementClient, movementWorld, type MovementWorld } from './AC-HA-13b-support.js';
+import {
+  groupKey as key,
+  MOVEMENT_BASE as BASE,
+  movementClient,
+  movementWorld,
+  type MovementWorld,
+} from './AC-HA-13b-support.js';
 
 const database = useTestDb();
 const AS_OF = 'asOf=2026-10-06';
@@ -95,8 +101,8 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
   it('AC-HA-13b-04：6.27 调动只算业务类型“调动”（按异动类型），转正 / 组织调整不计', async () => {
     const { p } = w;
     await c.expectCount(BASE, '6.27', ids(p.old), AS_OF);
-    await c.expectCount(BASE, '6.27', ids(p.old), AS_OF, 'cross_department');
-    expect((await c.group('6.27', AS_OF, 'cross_department'))?.label).toBe('跨部门调动');
+    await c.expectCount(BASE, '6.27', ids(p.old), AS_OF, key('cross_department'));
+    expect((await c.group('6.27', AS_OF, key('cross_department')))?.label).toBe('跨部门调动');
     // 调动前后都在筛选范围外 → 不计
     await c.expectCount(BASE, '6.27', [], `${AS_OF}&departmentId=${w.B.id}`);
     // 转正 / 组织调整确实把部门改到了甲一组（时点人数可见），但调动只计 p.old（审查 P3-1）
@@ -123,17 +129,20 @@ describe('AC-HA-13b B50 人员流动分析看板', () => {
     const { p, T, R, W } = w;
     const all = ids(p.lastYear, p.jan31, p.m30, p.m31, p.retired, p.hidden);
     await c.expectCount(BASE, '6.29', all, AS_OF);
-    await c.expectCount(BASE, '6.29', ids(p.jan31, p.m30, p.hidden), AS_OF, T.vol);
-    await c.expectCount(BASE, '6.29', ids(p.lastYear, p.m31), AS_OF, T.inv);
-    await c.expectCount(BASE, '6.29', ids(p.retired), AS_OF, 'retirement');
-    await c.expectCount(BASE, '6.29', ids(p.jan31), AS_OF, `${T.vol}|${R.pay}`);
-    await c.expectCount(BASE, '6.29', ids(p.m30), AS_OF, `${T.vol}|${R.dev}`);
-    await c.expectCount(BASE, '6.29', ids(p.hidden), AS_OF, `${T.vol}|none`);
-    expect(await c.group('6.29', AS_OF, `${T.vol}|${R.pay}`)).toMatchObject({ label: '薪酬', parent: T.vol });
-    expect(await c.group('6.29', AS_OF, T.vol)).toMatchObject({ label: '主动离职', parent: null });
+    await c.expectCount(BASE, '6.29', ids(p.jan31, p.m30, p.hidden), AS_OF, key('leave', T.vol));
+    await c.expectCount(BASE, '6.29', ids(p.lastYear, p.m31), AS_OF, key('leave', T.inv));
+    await c.expectCount(BASE, '6.29', ids(p.retired), AS_OF, key('retirement'));
+    await c.expectCount(BASE, '6.29', ids(p.jan31), AS_OF, key('leave', T.vol, R.pay));
+    await c.expectCount(BASE, '6.29', ids(p.m30), AS_OF, key('leave', T.vol, R.dev));
+    await c.expectCount(BASE, '6.29', ids(p.hidden), AS_OF, key('leave', T.vol, null));
+    expect(await c.group('6.29', AS_OF, key('leave', T.vol, R.pay))).toMatchObject({
+      label: '薪酬',
+      parent: key('leave', T.vol),
+    });
+    expect(await c.group('6.29', AS_OF, key('leave', T.vol))).toMatchObject({ label: '主动离职', parent: null });
     await c.expectCount(BASE, '6.30', all, AS_OF);
-    await c.expectCount(BASE, '6.30', ids(p.jan31), AS_OF, `${T.vol}|${W.peer}`);
-    await c.expectCount(BASE, '6.30', ids(p.m30, p.hidden), AS_OF, `${T.vol}|none`);
+    await c.expectCount(BASE, '6.30', ids(p.jan31), AS_OF, key('leave', T.vol, W.peer));
+    await c.expectCount(BASE, '6.30', ids(p.m30, p.hidden), AS_OF, key('leave', T.vol, null));
   });
 
   it('6.31：离职人员司龄 6 段（算到最后工作日）', async () => {

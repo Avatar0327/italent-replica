@@ -13,6 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { ids, managementScope, restrictedAuthorizer } from './AC-HA-13a-support.js';
 import {
+  groupKey as key,
   MOVEMENT_BASE as BASE,
   movementClient,
   movementWorld,
@@ -135,11 +136,11 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     const { T, R } = w;
     const report = await c.report('outflow', AS_OF);
     expect(report.tables!.map((item) => item.key)).toEqual(['reasons', 'sequences']);
-    expect(row(report, 'reasons', `${T.vol}|${R.pay}`)).toEqual({ count: 1 });
-    expect(row(report, 'reasons', `${T.vol}|${R.dev}`)).toEqual({ count: 1 });
-    expect(row(report, 'reasons', `${T.vol}|none`)).toEqual({ count: 1 });
-    expect(row(report, 'reasons', `${T.inv}|none`)).toEqual({ count: 1 }); // 去年离职不进本年
-    expect(row(report, 'reasons', 'retirement|none')).toEqual({ count: 1 });
+    expect(row(report, 'reasons', key('leave', T.vol, R.pay))).toEqual({ count: 1 });
+    expect(row(report, 'reasons', key('leave', T.vol, R.dev))).toEqual({ count: 1 });
+    expect(row(report, 'reasons', key('leave', T.vol, null))).toEqual({ count: 1 });
+    expect(row(report, 'reasons', key('leave', T.inv, null))).toEqual({ count: 1 }); // 去年离职不进本年
+    expect(row(report, 'reasons', key('retirement', null))).toEqual({ count: 1 });
     expect(table(report, 'reasons').summary.cells).toEqual({ count: 5 });
     expect(row(report, 'sequences', w.S1.id)).toMatchObject({
       total: 1,
@@ -151,7 +152,8 @@ describe('AC-HA-13b B54 流动情况报表', () => {
       [`reason:${R.dev}`]: 1,
       keyPerson: 0,
     });
-    expect(row(report, 'sequences', 'none')).toMatchObject({ total: 4, keyPerson: 1, 'type:retirement': 1 });
+    // 退休独立一列（键 retirement），不混进离职类型列（第 3 轮第 8 项）
+    expect(row(report, 'sequences', 'none')).toMatchObject({ total: 4, keyPerson: 1, retirement: 1 });
 
     const dashboard = (await (await c.get(`/api/tenant/analytics/hr-dashboard?${AS_OF}`)).json()) as {
       indicators: { code: string; value: number | null }[];

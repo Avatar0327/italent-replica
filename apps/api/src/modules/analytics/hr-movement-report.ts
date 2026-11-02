@@ -1,9 +1,13 @@
 /**
  * 流动情况报表六个页签（docs/02_业务建模/35“流动情况各报表的算法”B54）：行 × 列，单元格是对一组记录求值的列函数，
- * 行与合计共用同一列函数。期初 / 期末各按日期取时点人数（不用“上期期末 + 入职 − 离职”推算）；流入按入职任职记录开始
- * 日期、流出按最后工作日归年 / 归月（与人事看板“本年离职”一致，DEC-729），口径内部员工 + 实习生。
- * 每个统计格先按自己的行键分组、再在格内按员工去重；合计对全部记录去重（各月页签的合计 = 各月行之和）。
- * 组织编制取编制模块的组织编制与同一时点的实有人员（含下级），预增员 / 预减员等四列整列 null（F-418）。
+ * 行与合计共用同一列函数。期初、期末按各自日期取时点（规格 35 第 122 行），不用“上期期末 + 入职 − 离职”推算，
+ * 也不保证收支等式；流入按入职任职记录开始日期、流出按最后工作日归年 / 归月（与人事看板“本年离职”一致，DEC-729），
+ * 口径内部员工 + 实习生。
+ * 聚合契约（第 3 轮）：年度各表（流动统计、各机构、流入、流出）按人数，读 data.window——同一员工窗口内多次入职 / 调动 /
+ * 离职只计一次，归入最后一次（单一入口 attributeWindow，hr-movement.ts），与人事看板“本年离职”同为人数；
+ * 各月入离职表读原始行、每月内按员工去重，页尾 = 已到月份行之和。月表合计按月累加；年度各表按人数，重聘同年多次离职时
+ * 二者可不等。
+ * 组织编制取所选年度取数日（年底与 asOf 较早者）的组织编制与同日实有人员（含下级），预增员 / 预减员等四列整列 null（F-418）。
  */
 import {
   AGE_SEGMENTS,
@@ -33,6 +37,7 @@ import type {
   MovementExit,
   MovementHire,
   MovementPerson,
+  MovementRecords,
 } from './hr-movement.js';
 import type { DictionaryItem, OrgTree } from './hr-structure.js';
 
@@ -75,13 +80,13 @@ function table<T>(key: string, name: string, columns: readonly Column<T>[], rows
 }
 
 /**
- * 时点人数只在期初 / 期末与编制实有人员用到：各月页签取每月首尾两天，流动 / 各机构取期间首尾，组织编制取 asOf，
- * 流入 / 流出不取时点。
+ * 时点人数只在期初 / 期末与编制实有人员用到：各月页签取每月首尾两天，流动 / 各机构取期间首尾，组织编制取年度取数日
+ * （年底与 asOf 较早者），流入 / 流出不取时点。
  */
-function snapshotDays(code: HrMovementReportCode, months: readonly MovementMonth[], span: MovementMonth, asOf: string) {
+function snapshotDays(code: HrMovementReportCode, months: readonly MovementMonth[], span: MovementMonth) {
   if (code === 'monthly') return months.flatMap((m) => [m.start, m.end]);
   if (code === 'flow' || code === 'institution') return [span.start, span.end];
-  if (code === 'establishment') return [asOf];
+  if (code === 'establishment') return [span.end];
   return [];
 }
 
@@ -90,7 +95,7 @@ export function reportWindow(code: HrMovementReportCode, period: ReportPeriod) {
   const months = yearMonths(period.year, period.asOf).filter((m): m is MovementMonth => m !== null);
   const year: MovementMonth = { key: `${period.year}`, start: months[0]!.start, end: months.at(-1)!.end };
   const span = code === 'institution' ? months[(period.month ?? 12) - 1]! : year;
-  const window = { days: snapshotDays(code, months, span, period.asOf), from: span.start, to: span.end };
+  const window = { days: snapshotDays(code, months, span), from: span.start, to: span.end };
   return { span, ...window, exitDating: 'lastWorkDate' as const };
 }
 
@@ -99,19 +104,19 @@ const EMPTY_SLICE: Slice = { opening: [], closing: [], hires: [], transfers: [],
 const inSpan = (date: string, span: MovementMonth) => date >= span.start && date <= span.end;
 
 /**
- * 期间内的全部记录（未去重）：期初 = 期间首日的时点在职（报表按最后工作日归期，最后工作日当天仍在职，不再补
- * “当天离职生效”的人），期末 = 期间末日时点在职，离职按最后工作日落在期间内。
+ * 期间内的记录：期初 = 期间首日的时点在职（报表按最后工作日归期，最后工作日当天仍在职，不再补“当天离职生效”的人），
+ * 期末 = 期间末日时点在职，离职按最后工作日落在期间内。records 是年度表的 data.window（每人一条）或月表的原始行。
  */
-function rawSlice(data: MovementData, span: MovementMonth): Slice {
+function rawSlice(data: MovementData, span: MovementMonth, records: MovementRecords): Slice {
   return {
     opening: data.snapshots.get(span.start) ?? [],
     closing: data.snapshots.get(span.end) ?? [],
-    hires: data.hires.filter((h) => inSpan(h.startDate, span)),
-    transfers: data.transfers.filter((t) => inSpan(t.effectiveDate, span)),
-    exits: data.exits.filter((e) => inSpan(e.lastWorkDate, span)),
+    hires: records.hires.filter((h) => inSpan(h.startDate, span)),
+    transfers: records.transfers.filter((t) => inSpan(t.effectiveDate, span)),
+    exits: records.exits.filter((e) => inSpan(e.lastWorkDate, span)),
   };
 }
-/** 一个统计格内按员工去重（同一人在格内只算一次，保留最早一条）。 */
+/** 一个统计格内按员工去重（月表同一人一个月内多条只算一次；年度表的记录已是每人一条）。 */
 const dedupe = (raw: Slice): Slice => ({
   opening: unique(raw.opening),
   closing: unique(raw.closing),
@@ -121,9 +126,9 @@ const dedupe = (raw: Slice): Slice => ({
 });
 
 /**
- * 按组织分行：每类记录按自己的归属部门映射到行键，先分组再在各格内去重（同一人两段任职分属两个组织时，两行各计一次，
- * 全表组织行 = 单独筛选该组织，审查 P2-7）。键为 null 的记录不进任何行；员工流动下钻（parentId）时，parentId 以外的
- * 记录键为 null，合计同样不计（审查 P3-2）。
+ * 按组织分行：每类记录按自己的归属部门映射到行键，先分组再在各格内去重。入职 / 调动 / 离职已按窗口归属到每人最后一条，
+ * 重聘跨部门时只进最后一次的组织行（全表组织行 = 单独筛选该组织，审查 P2-7）；期初 / 期末是时点，按当天部门。
+ * 键为 null 的记录不进任何行；员工流动下钻（parentId）时，parentId 以外的记录键为 null，合计同样不计（审查 P3-2）。
  */
 function sliceBy(raw: Slice, rowOf: (departmentId: string | null) => string | null) {
   const rows = new Map<string, { [K in keyof Slice]: Slice[K][number][] }>();
@@ -200,7 +205,7 @@ function sequenceRows<T extends MovementPerson>(items: readonly T[], sequences: 
   }));
 }
 
-/** hires 为期间内未去重的入职记录；合计对全部记录去重。 */
+/** hires 为窗口归属后的入职（每人一条）。 */
 function inflow(hires: readonly MovementHire[], sequences: readonly DictionaryItem[], asOf: string) {
   const columns: Column<readonly MovementHire[]>[] = [
     ...profileColumns<MovementHire>(),
@@ -218,31 +223,37 @@ function inflow(hires: readonly MovementHire[], sequences: readonly DictionaryIt
 
 /**
  * 离职类型 / 原因列（审查 P2-8）：租户字典的启用项（按显示顺序，未用到的填 0），再补期间内出现但不在启用字典里的编码
- * （已停用等），离职类型最后补“退休”。编码按小写匹配字典（与离职列表的字典关联同口径）。
+ * （已停用等）。编码按小写匹配字典（与离职列表的字典关联同口径）。code 为 null（空值、退休没有类型 / 原因）不进任何列，
+ * 字典里真实存在的编码 none 照常计数（第 3 轮审查）；退休另起独立列，见 outflow。
  */
 function codeColumns(
   exits: readonly MovementExit[],
   dictionary: readonly { code: string; name: string }[],
-  pick: (e: MovementExit) => { key: string; label: string },
-  extra: readonly { code: string; name: string }[] = [],
+  pick: (e: MovementExit) => { code: string | null; label: string },
 ) {
   const known = new Map(dictionary.map((item) => [item.code.toLowerCase(), item]));
   const keyOf = (e: MovementExit) => {
-    const { key } = pick(e);
-    return known.get(key.toLowerCase())?.code ?? key;
+    const { code } = pick(e);
+    return code === null ? null : (known.get(code.toLowerCase())?.code ?? code);
   };
-  const present = new Map(exits.map((e) => [keyOf(e), pick(e).label]));
-  const listed = [...dictionary, ...extra.filter((item) => !known.has(item.code.toLowerCase()))];
+  const present = new Map<string, string>();
+  for (const e of exits) {
+    const key = keyOf(e);
+    if (key !== null && !present.has(key)) present.set(key, pick(e).label);
+  }
   const others = [...present]
-    .filter(([key]) => key !== SEGMENT_NONE && !listed.some((item) => item.code === key))
+    .filter(([key]) => !known.has(key.toLowerCase()))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([code, name]) => ({ code, name }));
-  return { keyOf, columns: [...listed, ...others] };
+  return { keyOf, columns: [...dictionary, ...others] };
 }
 
-/** exits 为期间内未去重的离职记录；各行在行内去重，合计对全部记录去重。 */
+/**
+ * exits 为窗口归属后的离职（每人一条，类型 / 原因取最后一次）。原因行键 = JSON 元组 [...离职类型段, 原因编码 | null]；
+ * 类型列只数离职（kind = leave），退休单独一列（键 retirement，与字典编码 retirement 的列 type:retirement 分开）。
+ */
 function outflow(exits: readonly MovementExit[], sequences: readonly DictionaryItem[], dictionaries: ExitDictionaries) {
-  const reasonKey = (e: MovementExit) => `${exitType(e).key}|${exitReason(e).key}`;
+  const reasonKey = (e: MovementExit) => JSON.stringify([...exitType(e).parts, exitReason(e).code]);
   const reasonRows = [...new Map(exits.map((e) => [reasonKey(e), e])).entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, e]) => ({
@@ -250,8 +261,11 @@ function outflow(exits: readonly MovementExit[], sequences: readonly DictionaryI
       label: `${exitType(e).label} / ${exitReason(e).label}`,
       group: unique(exits.filter((item) => reasonKey(item) === key)),
     }));
-  const retirement = [{ code: MOVEMENT_RETIREMENT_TYPE.code, name: MOVEMENT_RETIREMENT_TYPE.name }];
-  const types = codeColumns(exits, dictionaries.types, exitType, retirement);
+  const leaveType = (e: MovementExit) =>
+    e.kind === 'leave' && e.typeCode
+      ? { code: e.typeCode, label: e.typeName ?? e.typeCode }
+      : { code: null, label: '' };
+  const types = codeColumns(exits, dictionaries.types, leaveType);
   const reasons = codeColumns(exits, dictionaries.reasons, exitReason);
   const columns: Column<readonly MovementExit[]>[] = [
     ...profileColumns<MovementExit>(),
@@ -265,6 +279,7 @@ function outflow(exits: readonly MovementExit[], sequences: readonly DictionaryI
         segmentAverage(items.map((e) => tenureSample(e.entryDate, e.lastWorkDate)).filter((v) => v !== null)),
     },
     ...types.columns.map(({ code, name }) => count<MovementExit>(`type:${code}`, name, (e) => types.keyOf(e) === code)),
+    count<MovementExit>(MOVEMENT_RETIREMENT_TYPE.code, MOVEMENT_RETIREMENT_TYPE.name, (e) => e.kind === 'retirement'),
     ...reasons.columns.map(({ code, name }) =>
       count<MovementExit>(`reason:${code}`, name, (e) => reasons.keyOf(e) === code),
     ),
@@ -282,8 +297,11 @@ function outflow(exits: readonly MovementExit[], sequences: readonly DictionaryI
   ];
 }
 
-/** 组织编制统计：每个编制对象一行；合计只汇总本级编制（含下级编制与实有人员逐级包含，相加会重复计数）。 */
-function establishmentTable(x: ReportLookup, asOf: string) {
+/**
+ * 组织编制统计：每个编制对象一行，编制与实有人员都取 day（年底与 asOf 较早者）；合计只汇总本级编制（含下级编制与
+ * 实有人员逐级包含，相加会重复计数）。
+ */
+function establishmentTable(x: ReportLookup, day: string) {
   interface Cell {
     readonly local: number | null;
     readonly inclusive: number | null;
@@ -307,7 +325,7 @@ function establishmentTable(x: ReportLookup, asOf: string) {
       group: {
         local: e.localCapacity,
         inclusive: e.inclusiveCapacity,
-        actual: actualStaff(x.data, asOf, x.tree, e.orgId).length,
+        actual: actualStaff(x.data, day, x.tree, e.orgId).length,
       },
     }))
     .sort((a, b) => a.label.localeCompare(b.label, 'zh') || a.key.localeCompare(b.key));
@@ -328,7 +346,7 @@ export interface ReportLookup {
   readonly data: MovementData;
   readonly sequences: readonly DictionaryItem[];
   readonly exitDictionaries: ExitDictionaries;
-  /** asOf 时点的组织编制（已按部门筛选裁剪），只有组织编制页签用。 */
+  /** 年度取数日的组织编制（已按部门筛选裁剪），只有组织编制页签用。 */
   readonly establishment: readonly MovementEstablishment[];
   /** 流动统计按组织层级下钻：给出时行 = 该组织的直接下级（人员直接挂在它上面时归它自己）。 */
   readonly parentId?: string;
@@ -337,7 +355,7 @@ export interface ReportLookup {
 /** 一个页签的表格。 */
 export function movementReport(code: HrMovementReportCode, period: ReportPeriod, x: ReportLookup) {
   const { span } = reportWindow(code, period);
-  const raw = rawSlice(x.data, span);
+  const raw = rawSlice(x.data, span, x.data.window);
   const whole = dedupe(raw);
   switch (code) {
     case 'flow': {
@@ -356,7 +374,7 @@ export function movementReport(code: HrMovementReportCode, period: ReportPeriod,
       const months = yearMonths(period.year, period.asOf);
       const rows = months.map((m, index) => {
         const key = `${String(period.year).padStart(4, '0')}-${String(index + 1).padStart(2, '0')}`;
-        return { key, label: key, group: m ? dedupe(rawSlice(x.data, m)) : null };
+        return { key, label: key, group: m ? dedupe(rawSlice(x.data, m, x.data)) : null };
       });
       const result = table('monthly', '各月入离职统计', monthColumns, rows, EMPTY_SLICE);
       return [{ ...result, summary: { cells: monthlyTotal(rows) } }];
@@ -371,6 +389,6 @@ export function movementReport(code: HrMovementReportCode, period: ReportPeriod,
     case 'outflow':
       return outflow(raw.exits, x.sequences, x.exitDictionaries);
     case 'establishment':
-      return establishmentTable(x, period.asOf);
+      return establishmentTable(x, span.end);
   }
 }

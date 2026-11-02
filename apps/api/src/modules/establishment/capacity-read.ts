@@ -126,11 +126,28 @@ export async function capacityFor(
   }
 }
 
+/** 期间覆盖 day，且方案在 day 的最新版本未停用（与 loadSchemeBatch 的“该时点存在”同一判断）。 */
+const covering = (day: string) => sql`o.period_start <= ${day}::date AND o.period_end >= ${day}::date
+  AND EXISTS (
+    SELECT 1 FROM (
+      SELECT sv.stop_date FROM establishment_scheme_versions sv
+      WHERE sv.tenant_id = o.tenant_id AND sv.scheme_id = o.scheme_id AND sv.start_date <= ${day}::date
+      ORDER BY sv.start_date DESC, sv.version_no DESC LIMIT 1
+    ) sv WHERE sv.stop_date >= ${day}::date
+  )`;
+
 export async function listCapacities(
   tx: Tx,
   tenantId: string,
   asOf: string,
-  filters: { orgId?: string; schemeId?: string; periodStart?: string; scope?: Parameters<typeof scopeSql>[0] },
+  filters: {
+    orgId?: string;
+    schemeId?: string;
+    periodStart?: string;
+    scope?: Parameters<typeof scopeSql>[0];
+    /** 只取期间覆盖该日、方案在该日有效的对象（人员流动看板 / 组织编制统计按时点取数用）。 */
+    covering?: string;
+  },
   page: { limit: number; offset: number },
 ): Promise<CapacityRecord[]> {
   if (
@@ -153,6 +170,7 @@ export async function listCapacities(
   if (filters.orgId) conditions.push(sql`o.org_id = ${filters.orgId}::uuid`);
   if (filters.schemeId) conditions.push(sql`o.scheme_id = ${filters.schemeId}::uuid`);
   if (filters.periodStart) conditions.push(sql`o.period_start = ${filters.periodStart}::date`);
+  if (filters.covering) conditions.push(covering(filters.covering));
   const result = await tx.execute(sql`
     SELECT o.id FROM establishment_objects o
     WHERE ${sql.join(conditions, sql` AND `)} AND EXISTS (

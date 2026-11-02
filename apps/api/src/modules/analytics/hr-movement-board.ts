@@ -3,6 +3,10 @@
  * 输入是 loadMovement 的同一份行集（已叠加数据范围与部门筛选）；每个组件只定义“计入谁”和“分到哪组”，
  * 数字、分组计数与明细都从这一份定义得出，按员工去重，数字 = 明细条数。流动情况报表（B54）共用期末、入职等工具；
  * 离职在看板按离职生效日（最后工作日 + 1）判断是否在职、归月（DEC-729），报表另按最后工作日归期。
+ * 按近 12 个月窗口计人数的组件（6.27、6.29～6.32）读 data.window（每人最后一条，见 hr-movement.ts attributeWindow），
+ * 按月的组件（6.25 / 6.26 / 6.28）读原始行、每月内按员工去重。
+ * 分组键：离职类型 / 原因 / 去向、调动类型这类“字典编码 + 空值”的分组，键是 JSON 元组（空值为 null），不用字符串哨兵，
+ * 字典里真实存在的编码 none 不会与空值撞键（第 3 轮审查）；司龄段、部门、序列的空值仍用 SEGMENT_NONE（取值不可能是它）。
  */
 import {
   HR_MOVEMENT_COMPONENTS,
@@ -45,7 +49,10 @@ export const hiresIn = (data: MovementData, month: MovementMonth) =>
 export const exitsIn = (data: MovementData, month: MovementMonth) =>
   unique(data.exits.filter((e) => within(e.effectiveDate, month)));
 
-/** 部门筛选含下级：按记录归属部门（时点取当天部门、离职取离职前部门、调动取调动后部门）在行政上级链里查找。 */
+/**
+ * 部门筛选含下级：按记录归属部门（时点取当天部门、离职取离职前部门、调动取调动后部门）在行政上级链里查找。
+ * 窗口归属在筛选之前已定（重聘跨部门时人只归最后一次离职的部门），筛选只裁剪不重算。
+ */
 export function filterMovement(data: MovementData, tree: OrgTree, departmentId?: string): MovementData {
   if (!departmentId) return data;
   const inside = (m: { departmentId: string | null }) => tree.chain(m.departmentId).includes(departmentId);
@@ -55,28 +62,44 @@ export function filterMovement(data: MovementData, tree: OrgTree, departmentId?:
     exits: data.exits.filter(inside),
     hires: data.hires.filter(inside),
     transfers: data.transfers.filter(inside),
+    window: {
+      exits: data.window.exits.filter(inside),
+      hires: data.window.hires.filter(inside),
+      transfers: data.window.transfers.filter(inside),
+    },
   };
 }
 
-/** 离职类型键：退休没有离职类型，归入“退休”；离职没填类型归入空值。 */
-export const exitType = (e: MovementExit) =>
+/** 字典编码类分组的一段：parts 组成 JSON 元组键，code 为 null 即空值（排最后）。 */
+export interface CodeSegment {
+  readonly parts: readonly (string | null)[];
+  readonly label: string;
+}
+const segmentKey = (parts: readonly (string | null)[]) => JSON.stringify(parts);
+const isEmpty = (parts: readonly (string | null)[]) => parts.at(-1) === null;
+/** 字典编码：空串与 null 同为空值。 */
+const codeOf = (value: string | null) => (value ? value : null);
+
+/** 离职类型段：退休没有离职类型，单独一段 ["retirement"]；离职为 ["leave", 类型编码 | null]。 */
+export const exitType = (e: MovementExit): CodeSegment =>
   e.kind === 'retirement'
-    ? { key: MOVEMENT_RETIREMENT_TYPE.code, label: MOVEMENT_RETIREMENT_TYPE.name }
-    : { key: e.typeCode ?? SEGMENT_NONE, label: e.typeName ?? e.typeCode ?? NONE_LABEL };
-export const exitReason = (e: MovementExit) =>
-  e.kind === 'retirement' || !e.reasonCode
-    ? { key: SEGMENT_NONE, label: NONE_LABEL }
-    : { key: e.reasonCode, label: e.reasonName ?? e.reasonCode };
-const exitWhereabouts = (e: MovementExit) =>
-  e.kind === 'retirement' || !e.whereaboutsCode
-    ? { key: SEGMENT_NONE, label: NONE_LABEL }
-    : { key: e.whereaboutsCode, label: e.whereaboutsName ?? e.whereaboutsCode };
+    ? { parts: [MOVEMENT_RETIREMENT_TYPE.code], label: MOVEMENT_RETIREMENT_TYPE.name }
+    : { parts: ['leave', codeOf(e.typeCode)], label: codeOf(e.typeCode) ? (e.typeName ?? e.typeCode!) : NONE_LABEL };
+/** 离职原因 / 去向：退休没有，按空值；编码原样（不按字典改写大小写）。 */
+export const exitReason = (e: MovementExit) => {
+  const code = e.kind === 'retirement' ? null : codeOf(e.reasonCode);
+  return { code, label: code ? (e.reasonName ?? code) : NONE_LABEL };
+};
+const exitWhereabouts = (e: MovementExit) => {
+  const code = e.kind === 'retirement' ? null : codeOf(e.whereaboutsCode);
+  return { code, label: code ? (e.whereaboutsName ?? code) : NONE_LABEL };
+};
 
 export interface MovementLookup {
   readonly months: readonly MovementMonth[];
   readonly tree: OrgTree;
   readonly data: MovementData;
-  /** asOf 时点的组织编制（已按部门筛选裁到所选组织及下级）。 */
+  /** asOf 时点的组织编制（已按部门筛选裁到所选组织及下级）；只有看板与 3.1.36 明细加载，其余明细为空。 */
   readonly establishment: readonly MovementEstablishment[];
 }
 /** 编制表一行除人数以外的列；预增员 / 预减员 / 缺编数 / 执行率的取数接口尚未抽出（F-418），整列 null。 */
@@ -104,31 +127,41 @@ interface Computed {
   readonly groups: readonly Group[];
 }
 
+interface Keyed {
+  readonly key: string;
+  readonly label: string;
+  /** 空值段，排最后。 */
+  readonly empty: boolean;
+}
 /** 按出现的键分组：人数降序，空值段排最后。 */
-function grouped<T extends Member>(items: readonly T[], keyOf: (item: T) => { key: string; label: string }) {
-  const groups = new Map<string, { key: string; label: string; members: T[] }>();
+function grouped<T extends Member>(items: readonly T[], keyOf: (item: T) => Keyed) {
+  const groups = new Map<string, Keyed & { members: T[] }>();
   for (const item of items) {
-    const { key, label } = keyOf(item);
-    const group = groups.get(key) ?? { key, label, members: [] };
+    const keyed = keyOf(item);
+    const group = groups.get(keyed.key) ?? { ...keyed, members: [] };
     group.members.push(item);
-    groups.set(key, group);
+    groups.set(keyed.key, group);
   }
   const size = (g: { members: T[] }) => unique(g.members).length;
-  return [...groups.values()].sort(
-    (a, b) =>
-      (a.key === SEGMENT_NONE ? 1 : 0) - (b.key === SEGMENT_NONE ? 1 : 0) ||
-      size(b) - size(a) ||
-      a.key.localeCompare(b.key),
-  );
+  return [...groups.values()]
+    .sort((a, b) => Number(a.empty) - Number(b.empty) || size(b) - size(a) || a.key.localeCompare(b.key))
+    .map(({ empty: _empty, ...group }) => group);
 }
+const bySegment = (segment: CodeSegment): Keyed => ({
+  key: segmentKey(segment.parts),
+  label: segment.label,
+  empty: isEmpty(segment.parts),
+});
+const byId = (id: string | null, label: (id: string) => string): Keyed =>
+  id ? { key: id, label: label(id), empty: false } : { key: SEGMENT_NONE, label: NONE_LABEL, empty: true };
 
-/** 两层分组（6.29 / 6.30）：先离职类型（parent = null），再“类型|原因（去向）”（parent = 类型）。 */
-function twoLevel(exits: readonly MovementExit[], second: (e: MovementExit) => { key: string; label: string }) {
-  return grouped(exits, exitType).flatMap((type) => [
+/** 两层分组（6.29 / 6.30）：先离职类型（parent = null），再 [...类型, 原因（去向）| null]（parent = 类型键）。 */
+function twoLevel(exits: readonly MovementExit[], second: (e: MovementExit) => { code: string | null; label: string }) {
+  return grouped(exits, (e) => bySegment(exitType(e))).flatMap((type) => [
     { ...type, parent: null },
     ...grouped(type.members, (e) => {
       const sub = second(e);
-      return { key: `${type.key}|${sub.key}`, label: sub.label };
+      return bySegment({ parts: [...exitType(e).parts, sub.code], label: sub.label });
     }).map((group) => ({ ...group, parent: type.key })),
   ]);
 }
@@ -146,12 +179,11 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
     ]),
   }),
   '6.27': (x) => ({
-    members: x.data.transfers,
-    groups: grouped(x.data.transfers, (t) =>
-      t.typeCode
-        ? { key: t.typeCode, label: x.data.transferTypes.get(t.typeCode) ?? t.typeCode }
-        : { key: SEGMENT_NONE, label: NONE_LABEL },
-    ),
+    members: x.data.window.transfers,
+    groups: grouped(x.data.window.transfers, (t) => {
+      const code = codeOf(t.typeCode);
+      return bySegment({ parts: [code], label: code ? (x.data.transferTypes.get(code) ?? code) : NONE_LABEL });
+    }),
   }),
   '6.28': (x) => ({
     members: null,
@@ -163,29 +195,23 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
       closing: closing(x.data, m).length,
     })),
   }),
-  '6.29': (x) => ({ members: x.data.exits, groups: twoLevel(x.data.exits, exitReason) }),
-  '6.30': (x) => ({ members: x.data.exits, groups: twoLevel(x.data.exits, exitWhereabouts) }),
+  '6.29': (x) => ({ members: x.data.window.exits, groups: twoLevel(x.data.window.exits, exitReason) }),
+  '6.30': (x) => ({ members: x.data.window.exits, groups: twoLevel(x.data.window.exits, exitWhereabouts) }),
   // 司龄算到最后工作日（离职时的累计司龄），固定 6 段 + 空值
   '6.31': (x) => ({
-    members: x.data.exits,
+    members: x.data.window.exits,
     groups: [...TENURE_SEGMENTS, { key: SEGMENT_NONE, label: NONE_LABEL }].map(({ key, label }) => ({
       key,
       label,
-      members: x.data.exits.filter((e) => tenureSegment(e.entryDate, e.lastWorkDate) === key),
+      members: x.data.window.exits.filter((e) => tenureSegment(e.entryDate, e.lastWorkDate) === key),
     })),
   }),
   // 窗口 = 近 12 个自然月（含 asOf 所在月），司龄 ≤ 0.083 年（F-431②）；
-  // ratio = 该部门人数 ÷ 近 12 个月“入职一个月内离职”的总人数（不是部门在职人数）
+  // ratio = 该部门人数 ÷ 近 12 个月“入职一个月内离职”的总人数（不是部门在职人数）；先取每人最后一次离职，再看它是否
+  // 入职一个月内离职（司龄按那次离职所在任职周期的入职日期算）
   '6.32': (x) => {
-    const early = x.data.exits.filter((e) => withinOneMonth(e.entryDate, e.lastWorkDate));
-    return {
-      members: early,
-      groups: grouped(early, (e) =>
-        e.departmentId
-          ? { key: e.departmentId, label: x.tree.name(e.departmentId) }
-          : { key: SEGMENT_NONE, label: NONE_LABEL },
-      ),
-    };
+    const early = x.data.window.exits.filter((e) => withinOneMonth(e.entryDate, e.lastWorkDate));
+    return { members: early, groups: grouped(early, (e) => byId(e.departmentId, (id) => x.tree.name(id))) };
   },
   // 每个编制对象一组：实有人员 = asOf 时点在职（含下级），与 6.25 当月期末同一谓词
   '3.1.36': (x) => ({

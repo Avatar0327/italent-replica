@@ -6,8 +6,13 @@
  *   离职生效日 = 最后工作日 + 1 判断是否在职、归月，报表（B54）按最后工作日归年 / 归月，与人事看板“本年离职”一致（DEC-729）；
  * - 入职：entriesFrom（与“本年入职”同源），按入职任职记录开始日期取；
  * - 调动：业务类型“调动”已生效的单据，按生效日期取，部门为调动后部门，类型取调动申请的异动类型；
- * - 编制：编制模块的组织编制（listCapacities），只用于 3.1.36 与组织编制统计。
+ * - 编制：编制模块的组织编制（listCapacities），只取期间覆盖取数日、方案在该日有效的对象，只用于 3.1.36 与组织编制统计。
  * 人员口径都是内部员工 + 实习生（WORKING_TYPES）。
+ *
+ * 窗口归属（第 3 轮聚合契约，单一入口 attributeWindow）：数据范围在 SQL 里裁剪之后、部门筛选之前，同一员工在统计窗口内
+ * 的多条离职 / 入职 / 调动各只留最后一条（日期最晚、同日取单据 / 记录 id 最大），类型 / 原因 / 序列 / 组织 / 属性都取那条。
+ * 按窗口计人数的出口（B54 流动统计、各机构、流入、流出；B50 6.27、6.29～6.32）读 window；按月计的出口（B54 各月入离职、
+ * B50 6.26 / 6.28、期初）读原始行、在每个月内按员工去重。月表合计按月累加；年度各表按人数，重聘同年多次离职时二者可不等。
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
@@ -38,6 +43,8 @@ export interface MovementPerson {
   readonly educationLevel: string | null;
 }
 export interface MovementExit extends MovementPerson {
+  /** 离职 / 退休单据 ID（窗口归属同日并列时取最大）。 */
+  readonly billId: string;
   readonly kind: 'leave' | 'retirement';
   readonly lastWorkDate: string;
   /** 离职生效日 = 最后工作日 + 1（最后工作日当天仍在职）。 */
@@ -52,9 +59,11 @@ export interface MovementExit extends MovementPerson {
   readonly whereaboutsName: string | null;
 }
 export interface MovementHire extends MovementPerson {
+  readonly recordId: string;
   readonly startDate: string;
 }
 export interface MovementTransfer {
+  readonly businessId: string;
   readonly employeeId: string;
   readonly departmentId: string | null;
   readonly effectiveDate: string;
@@ -66,8 +75,44 @@ export interface MovementData {
   readonly exits: readonly MovementExit[];
   readonly hires: readonly MovementHire[];
   readonly transfers: readonly MovementTransfer[];
+  /** 统计窗口内每人最后一条（attributeWindow），按窗口计人数的出口只读这里。 */
+  readonly window: MovementRecords;
   /** 调动异动类型编码 → 名称（asOf 当天的调动字典）。 */
   readonly transferTypes: ReadonlyMap<string, string>;
+}
+
+export interface MovementRecords {
+  readonly exits: readonly MovementExit[];
+  readonly hires: readonly MovementHire[];
+  readonly transfers: readonly MovementTransfer[];
+}
+
+/** 同一员工只留 order 最大的一条（按字符串逐项比较：日期 YYYY-MM-DD、ID 小写 uuid，与 SQL 的排序一致）。 */
+function latestPerEmployee<T extends { employeeId: string }>(
+  items: readonly T[],
+  order: (item: T) => readonly string[],
+) {
+  const later = (a: readonly string[], b: readonly string[]) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
+    return false;
+  };
+  const latest = new Map<string, T>();
+  for (const item of items) {
+    const kept = latest.get(item.employeeId);
+    if (!kept || later(order(item), order(kept))) latest.set(item.employeeId, item);
+  }
+  return items.filter((item) => latest.get(item.employeeId) === item);
+}
+/**
+ * 窗口归属的唯一实现：离职按（最后工作日, 单据 id）、入职按（开始日期, 任职记录 id）、调动按（生效日期, 单据 id）取最后一条。
+ * 离职生效日 = 最后工作日 + 1，看板按生效日开窗也是同一顺序。
+ */
+export function attributeWindow(records: MovementRecords): MovementRecords {
+  return {
+    exits: latestPerEmployee(records.exits, (e) => [e.lastWorkDate, e.billId]),
+    hires: latestPerEmployee(records.hires, (h) => [h.startDate, h.recordId]),
+    transfers: latestPerEmployee(records.transfers, (t) => [t.effectiveDate, t.businessId]),
+  };
 }
 
 /** 离职按哪个日期落进统计区间：看板按离职生效日（B50），报表按最后工作日（B54，DEC-729）。 */
@@ -117,7 +162,7 @@ function exitRows(a: MovementContext, kind: 'leave' | 'retirement', window: Exit
   };
   const where = sql`s.state='effective' AND ${EXIT_DATED[window.dating](window.from, window.to)}
     AND dc.employ_type IN (${WORKING})`;
-  return sql`SELECT ${kind}::text AS kind, x."employeeId" AS employee_id, x."departmentId" AS org_id,
+  return sql`SELECT ${kind}::text AS kind, x.id AS "billId", x."employeeId" AS employee_id, x."departmentId" AS org_id,
       NULL::uuid AS creator_id, ${a.tenantId}::uuid AS tenant_id, x."employeeId", x."departmentId", x."sequenceId",
       x."lastWorkDate", x."entryDate", x."keyPerson", x."exitTypeCode", x."exitTypeName", x."reasonCode",
       x."reasonName", x."whereaboutsCode", x."whereaboutsName"
@@ -131,7 +176,7 @@ interface ExitWindow {
 }
 async function exits(tx: Tx, a: MovementContext, window: ExitWindow) {
   return rowsOf<MovementExit>(
-    await tx.execute(sql`SELECT m.kind, m."employeeId", m."departmentId", m."sequenceId", m."lastWorkDate",
+    await tx.execute(sql`SELECT m.kind, m."billId", m."employeeId", m."departmentId", m."sequenceId", m."lastWorkDate",
         (m."lastWorkDate"::date + 1)::text AS "effectiveDate", m."entryDate", m."keyPerson",
         m."exitTypeCode" AS "typeCode", m."exitTypeName" AS "typeName", m."reasonCode", m."reasonName",
         m."whereaboutsCode", m."whereaboutsName", pv.*
@@ -144,9 +189,10 @@ async function exits(tx: Tx, a: MovementContext, window: ExitWindow) {
 
 async function hires(tx: Tx, a: MovementContext, from: string, to: string) {
   return rowsOf<MovementHire>(
-    await tx.execute(sql`SELECT m.employee_id AS "employeeId", m.org_id AS "departmentId", m."sequenceId",
-        m."startDate", pv.*
-      FROM (SELECT r.tenant_id, r.employee_id, ${current('department_id')} AS org_id, NULL::uuid AS creator_id,
+    await tx.execute(sql`SELECT m.record_id AS "recordId", m.employee_id AS "employeeId", m.org_id AS "departmentId",
+        m."sequenceId", m."startDate", pv.*
+      FROM (SELECT r.tenant_id, r.id AS record_id, r.employee_id, ${current('department_id')} AS org_id,
+          NULL::uuid AS creator_id,
           ${current('sequence_id')} AS "sequenceId", t.start_date::text AS "startDate"
         ${entriesFrom({ tenantId: a.tenantId, asOf: to }, 'hired', from)}) m
       ${PROFILE}
@@ -161,9 +207,9 @@ async function hires(tx: Tx, a: MovementContext, from: string, to: string) {
  */
 async function transfers(tx: Tx, a: MovementContext, from: string, to: string) {
   return rowsOf<MovementTransfer>(
-    await tx.execute(sql`SELECT m.employee_id AS "employeeId", m.org_id AS "departmentId", m."effectiveDate",
-        m."typeCode"
-      FROM (SELECT b.employee_id, p.department_id AS org_id, NULL::uuid AS creator_id,
+    await tx.execute(sql`SELECT m.business_id AS "businessId", m.employee_id AS "employeeId",
+        m.org_id AS "departmentId", m."effectiveDate", m."typeCode"
+      FROM (SELECT b.id AS business_id, b.employee_id, p.department_id AS org_id, NULL::uuid AS creator_id,
           p.effective_date::text AS "effectiveDate", tr.transfer_type_code AS "typeCode"
         FROM employment_business_objects b
         JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
@@ -195,16 +241,26 @@ export interface MovementWindow {
 export async function loadMovement(tx: Tx, a: MovementContext, window: MovementWindow): Promise<MovementData> {
   const { from, to } = window;
   const catalog = await readTransferCatalog(tx, a.tenantId, a.asOf);
-  return {
-    snapshots: await snapshots(tx, a, [...new Set(window.days)]),
+  const records = {
     exits: await exits(tx, a, { from, to, dating: window.exitDating }),
     hires: await hires(tx, a, from, to),
     transfers: await transfers(tx, a, from, to),
+  };
+  return {
+    snapshots: await snapshots(tx, a, [...new Set(window.days)]),
+    ...records,
+    window: attributeWindow(records),
     transferTypes: new Map(catalog.types.map((type) => [type.code, type.name])),
   };
 }
 
-/** 3.1.36 / 组织编制统计的一行：一个组织在 asOf 所在编制期间的组织编制（本级 / 含下级）。 */
+/** 只取时点人数（组织编制页签只用实有人员，不加载整年流动数据）。 */
+export async function loadSnapshots(tx: Tx, a: MovementContext, days: readonly string[]): Promise<MovementData> {
+  const none = { exits: [], hires: [], transfers: [] };
+  return { snapshots: await snapshots(tx, a, [...new Set(days)]), ...none, window: none, transferTypes: new Map() };
+}
+
+/** 3.1.36 / 组织编制统计的一行：一个组织在取数日所在编制期间的组织编制（本级 / 含下级）。 */
 export interface MovementEstablishment {
   readonly id: string;
   readonly orgId: string;
@@ -215,27 +271,33 @@ const CAPACITY_PAGE = 200;
 const CAPACITY_LIMIT = 5_000;
 
 /**
- * 编制模块的组织编制：同一 asOf、各编制对象的最新版本、编制期间覆盖 asOf（开始 ≤ asOf ≤ 结束），按数据范围裁剪。
+ * 编制模块的组织编制：取数日 day 时各编制对象的最新版本，只取期间覆盖 day（开始 ≤ day ≤ 结束）、方案在 day 有效的对象，
+ * 过滤在 SQL 里做（listCapacities 的 covering），按数据范围裁剪（scopeSql / 创建人范围照旧）。已结束方案的历史对象
+ * 不进候选，不会因“方案在该时点不存在”让整板报 404，也不占 5000 的上限。取满 5000 条后再探第 5001 条，确有才报 413。
  * 预增员 / 预减员按组织汇总的读接口尚未抽出（F-418），这里只取编制数。
  */
 export async function loadEstablishment(
   tx: Tx,
-  a: Pick<DashboardAsOf, 'tenantId' | 'asOf' | 'scope'>,
+  a: Pick<DashboardAsOf, 'tenantId' | 'scope'>,
+  day: string,
 ): Promise<MovementEstablishment[]> {
+  const read = (limit: number, offset: number) =>
+    listCapacities(tx, a.tenantId, day, { scope: a.scope, covering: day }, { limit, offset });
   const rows: MovementEstablishment[] = [];
-  for (let offset = 0; ; offset += CAPACITY_PAGE) {
-    const page = await listCapacities(tx, a.tenantId, a.asOf, { scope: a.scope }, { limit: CAPACITY_PAGE, offset });
-    for (const capacity of page)
-      if (capacity.periodStart <= a.asOf && a.asOf <= capacity.periodEnd)
-        rows.push({
-          id: capacity.id,
-          orgId: capacity.orgId,
-          localCapacity: capacity.localCapacity,
-          inclusiveCapacity: capacity.inclusiveCapacity,
-        });
+  for (let offset = 0; offset < CAPACITY_LIMIT; offset += CAPACITY_PAGE) {
+    const page = await read(CAPACITY_PAGE, offset);
+    rows.push(
+      ...page.map((capacity) => ({
+        id: capacity.id,
+        orgId: capacity.orgId,
+        localCapacity: capacity.localCapacity,
+        inclusiveCapacity: capacity.inclusiveCapacity,
+      })),
+    );
     if (page.length < CAPACITY_PAGE) return rows;
-    if (offset + CAPACITY_PAGE >= CAPACITY_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '编制对象超过单次统计上限');
   }
+  if ((await read(1, CAPACITY_LIMIT)).length) throw new AppError('PAYLOAD_TOO_LARGE', '编制对象超过单次统计上限');
+  return rows;
 }
 
 /** 离职类型 / 原因字典（启用项，按显示顺序）：流出统计按它展开列，未用到的填 0（审查 P2-8）。 */
