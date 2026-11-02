@@ -47,3 +47,9 @@ CREATE INDEX "duty_transfer_records_employee" ON "duty_transfer_records" USING b
 SELECT enable_tenant_isolation('duty_transfer_records');
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON duty_transfer_records TO app_user;
+--> statement-breakpoint
+-- R2-T09a 第 2 轮：菜单转交下属写入异动类型“数据调整”（`30` DT-R7 / AC-DT-04）。
+ALTER TABLE "employment_payload_versions" DROP CONSTRAINT "employment_payload_versions_change_type";--> statement-breakpoint
+ALTER TABLE "employment_records" DROP CONSTRAINT "employment_records_change_type";--> statement-breakpoint
+ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_change_type" CHECK ("employment_payload_versions"."change_type" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment', 'data_adjustment'));--> statement-breakpoint
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_change_type" CHECK ("employment_records"."change_type" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment', 'data_adjustment'));

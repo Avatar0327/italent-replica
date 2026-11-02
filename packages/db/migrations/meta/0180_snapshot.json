@@ -11822,7 +11822,7 @@
         },
         "employment_payload_versions_change_type": {
           "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')"
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment', 'data_adjustment')"
         },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
@@ -12568,7 +12568,7 @@
         },
         "employment_records_change_type": {
           "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment')"
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment', 'intern_regularization', 'intern_end', 'org_adjustment', 'data_adjustment')"
         },
         "employment_records_service_type": {
           "name": "employment_records_service_type",

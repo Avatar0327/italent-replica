@@ -107,6 +107,8 @@ async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow)
     item.itemType === 'duty_org_role'
       ? { kind: 'org_role', ...common, orgId: item.orgId!, orgRole: item.orgRole as OrgRole }
       : { kind: 'subordinate', ...common, subordinateId: item.subordinateId!, relation: item.relation as DutyRelation },
+    // 离职 / 调动内转交保持现行为（下属原地改写、不复核组织启用），菜单口径见 duty-execution.ts（DEC-385③）。
+    { caller: 'linkage' },
   );
 }
 

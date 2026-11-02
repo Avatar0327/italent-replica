@@ -2,7 +2,8 @@
  * 职责转交菜单的写服务（R2-T09a；DEC-602② / DEC-726 / F-408；规格 `30` §补充“菜单立即转交实测”“菜单指定日期转交实测”）。
  * - 立即生效：经单一执行入口 executeDutyItem（DEC-431①）当天执行，记录已完成并写转交时间（W-607：组织新版本启用日 = 当天）；
  * - 指定日期：只记未完成记录（转交时间空、带转交日期），职责不动；到期由定时任务执行（runDueMenuDutyTransfers）；
- * - 待生效期间再次提交同一被转交人：带记录 revision 覆盖（改接收人 / 改日期 / 改为立即），接收人清空即作废（撤回）。
+ * - 待生效期间再次提交同一被转交人：带记录 revision 覆盖（改接收人 / 改日期 / 改为立即），接收人清空即作废（撤回）；
+ * - 接收人为空且无待生效记录的条目跳过（原站“部分设置”）；整批没有可写的条目时 400 DUTY_TRANSFER_EMPTY（第 2 轮 P2-2）。
  * 一次提交整体成功或整体失败（AGENTS §10 批量）；不走审批，不发通知。
  */
 import { dutyTransferRecords, sql, type Tx } from '@italent/db';
@@ -44,7 +45,7 @@ export interface MenuSubmitInput {
 
 const uuidArray = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
-/** 转交日期：立即 = 租户今天；指定日期须晚于今天（F-408，“不得早于明天”）。 */
+/** 转交日期：立即 = 租户今天；指定日期须晚于今天（F-408，“不得早于明天”）。合法日历日由路由的 businessDate 先校验。 */
 function transferDateOf(ctx: EmploymentContext, input: MenuSubmitInput): string {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   if (input.timing === 'immediate') {
@@ -68,6 +69,7 @@ function checkItems(employeeId: string, items: readonly MenuItemInput[]) {
 export async function checkMenuTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: MenuSubmitInput) {
   checkItems(employeeId, input.items);
   const date = transferDateOf(ctx, input);
+  // 空接收人不计入（跳过或撤回）；与提交同口径（P2-2）。
   const assigned = input.items.filter((item) => item.receiverId);
   const counts = new Map<string, number>();
   assigned.forEach((item) => counts.set(item.receiverId!, (counts.get(item.receiverId!) ?? 0) + 1));
@@ -184,20 +186,22 @@ export async function submitMenuTransfer(
         reason: 'DUTY_TRANSFER_STALE',
       });
     if (!item.receiverId) {
-      if (!existing)
-        throw new AppError('VALIDATION_FAILED', '请选择接收人', { reason: 'DUTY_TRANSFER_RECEIVER_REQUIRED' });
-      saved.push(await voidRecord(tx, ctx, existing));
+      // 无待生效记录 = 本条不设置，跳过；有 = 撤回（revision 已在上面核对）。
+      if (existing) saved.push(await voidRecord(tx, ctx, existing));
       continue;
     }
     const duty = duties.get(key);
     if (!duty) throw new AppError('VALIDATION_FAILED', '被转交人当前未承担该职责', { reason: 'DUTY_NOT_HELD' });
     await authorizeDuty(tx, ctx, access, duty, today);
     if (input.timing === 'immediate')
-      await executeDutyItem(tx, ctx, dutyItemOf(duty, employeeId, item.receiverId, date));
+      await executeDutyItem(tx, ctx, dutyItemOf(duty, employeeId, item.receiverId, date), { caller: 'menu' });
     else if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId], today)).length)
       throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
     saved.push(await saveRecord(tx, ctx, { duty, existing, receiverId: item.receiverId, date, batchId, input }));
   }
+  // 全部为空且都没有待生效记录：没有可写的东西。原站此时的提示未取证，取最保守做法拒绝（见 PR 描述“未决”）。
+  if (!saved.length)
+    throw new AppError('VALIDATION_FAILED', '请至少为一项职责选择接收人', { reason: 'DUTY_TRANSFER_EMPTY' });
   return { batchId, count: saved.length, records: saved.map(recordView) };
 }
 

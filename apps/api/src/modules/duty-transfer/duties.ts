@@ -57,7 +57,7 @@ function dutiesSql(tenantId: string, asOf: string, holder: (column: SQL) => SQL)
   `;
 }
 
-type DutyRow = Omit<Duty, 'key' | 'description'> & { readonly name: string };
+type DutyRow = Omit<Duty, 'key' | 'description'> & { readonly name: string; readonly sort: string };
 
 /** 某人在 asOf 当日承担的职责：组织角色在前、下属在后，各按编码排序。 */
 export async function currentDuties(tx: Tx, tenantId: string, employeeId: string, asOf: string): Promise<Duty[]> {
@@ -65,7 +65,8 @@ export async function currentDuties(tx: Tx, tenantId: string, employeeId: string
     await tx.execute(sql`SELECT * FROM (${dutiesSql(tenantId, asOf, (c) => sql`${c}=${employeeId}::uuid`)}) d
       ORDER BY "dutyType", sort, "orgRole", relation`),
   );
-  return rows.map(({ name, ...row }) => {
+  // sort 只用于排序，不进响应（第 2 轮 P2-6 顺带）。
+  return rows.map(({ name, sort: _sort, ...row }) => {
     const duty = { ...row, dutyType: Number(row.dutyType) as 1 | 2 };
     return { ...duty, key: dutyKey(duty), description: dutyDescription(duty, name) };
   });
@@ -100,28 +101,52 @@ export interface DepartedPerson {
 
 /**
  * 检查离职退休人员（DEC-726）：当日任职为离职 / 退休、生效日在最近 3 个月内，且仍承担职责（离职生效不清空职责）。
- * visible 为调用方的数据范围谓词（列 t.employee_id）。
+ * visible 为调用方的数据范围谓词（列 t.employee_id）。“仍承担职责”在分页前过滤，total 按完整过滤集计（第 2 轮 P2-6）；
+ * 排序稳定：生效日倒序、员工 ID 升序。
  */
-export async function departedWithDuties(tx: Tx, tenantId: string, today: string, visible: SQL) {
-  return rowsOf<DepartedPerson>(
+export interface DepartedPage {
+  readonly total: number;
+  readonly items: DepartedPerson[];
+}
+
+export async function departedWithDuties(
+  tx: Tx,
+  tenantId: string,
+  today: string,
+  visible: SQL,
+  page: { readonly limit: number; readonly offset: number },
+): Promise<DepartedPage> {
+  const rows = rowsOf<DepartedPerson & { total: number }>(
     await tx.execute(sql`
       WITH departed AS (
-        SELECT t.employee_id, r.kind, lower(t.valid_during) AS since,
-          ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name, e.code
+        SELECT t.employee_id, r.kind, lower(t.valid_during) AS since
         FROM employment_timeline t
         JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-        JOIN employment_employees e ON e.tenant_id=t.tenant_id AND e.id=t.employee_id
         WHERE t.tenant_id=${tenantId} AND t.valid_during @> ${today}::date AND r.kind IN ('leave','retirement')
           AND r.service_type='primary'
           AND lower(t.valid_during) >= ${today}::date - ${`${DEPARTED_LOOKBACK_MONTHS} months`}::interval
           AND ${visible}
-        LIMIT 1000
+      ),
+      holding AS (
+        SELECT d.employee_id, d.kind, d.since, count(*)::int AS duty_count, count(*) OVER ()::int AS total
+        FROM departed d
+        JOIN (${dutiesSql(tenantId, today, (c) => sql`${c} IN (SELECT employee_id FROM departed)`)}) duty
+          ON duty."holderId"=d.employee_id::text
+        GROUP BY d.employee_id, d.kind, d.since
+        ORDER BY d.since DESC, d.employee_id
+        LIMIT ${page.limit} OFFSET ${page.offset}
       )
-      SELECT d.employee_id::text AS "employeeId", d.name, d.kind, d.since::text AS date, count(*)::int AS "dutyCount"
-      FROM departed d
-      JOIN (${dutiesSql(tenantId, today, (c) => sql`${c} IN (SELECT employee_id FROM departed)`)}) duty
-        ON duty."holderId"=d.employee_id::text
-      GROUP BY d.employee_id, d.name, d.kind, d.since, d.code
-      ORDER BY d.since DESC, d.code`),
+      SELECT h.employee_id::text AS "employeeId",
+        ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
+        h.kind, h.since::text AS date, h.duty_count AS "dutyCount", h.total
+      FROM holding h JOIN employment_employees e ON e.tenant_id=${tenantId} AND e.id=h.employee_id
+      ORDER BY h.since DESC, h.employee_id`),
   );
+  // 越过末页时没有行可带 total：再数一次（只在翻过头时发生）。
+  const total = rows[0]?.total ?? (page.offset > 0 ? await departedTotal(tx, tenantId, today, visible) : 0);
+  return { total, items: rows.map(({ total: _total, ...row }) => row) };
+}
+
+async function departedTotal(tx: Tx, tenantId: string, today: string, visible: SQL): Promise<number> {
+  return (await departedWithDuties(tx, tenantId, today, visible, { limit: 1, offset: 0 })).total;
 }

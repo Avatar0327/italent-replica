@@ -36,7 +36,7 @@ import { dueLinkageEmployees, runDuePartTimeLinkage } from './part-time/linkage.
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 import { drainExitAccounts, startExitAccountScheduler } from './exit-account-worker.js';
-import { runDueMenuDutyTransfers } from '../duty-transfer/scheduler.js';
+import { runDueMenuDutyTransfers, runErrorCode, type DutyTransferRun } from '../duty-transfer/scheduler.js';
 
 const RUN_OPERATION = 'employment.activation.run';
 const DEFAULT_LIMIT = 200;
@@ -62,6 +62,8 @@ export interface EmploymentActivationRun {
   /** 存储 / 依赖不可用等非业务错误：不记失败，下次运行重试。 */
   readonly errors: { readonly employeeId: string; readonly code: string }[];
   readonly nextCursor: string | null;
+  /** R2-T09a：本租户职责转交菜单到期执行的汇总（F-408④）。 */
+  readonly dutyTransfer?: DutyTransferRun;
 }
 
 export interface EmploymentActivationRunResult {
@@ -92,10 +94,10 @@ export async function runEmploymentActivations(
   const now = (options.clock ?? (() => new Date()))();
   const runs: EmploymentActivationRun[] = [];
   for await (const tenant of activeTenants(db, normalized.tenantId)) {
-    runs.push(await sweepTenant(db, meta, tenant, now, normalized));
+    const run = await sweepTenant(db, meta, tenant, now, normalized);
     await drainExitAccounts(db, tenant.id, now);
     // R2-T09a：职责转交菜单指定日期到期执行（F-408④）；在任职生效之后，离职当天生效的人先落地再转交
-    await runDueMenuDutyTransfers(db, tenant, now, meta.commandId);
+    runs.push({ ...run, dutyTransfer: await dueDutyTransfers(db, tenant, now, meta.commandId) });
   }
   const result: EmploymentActivationRunResult = { runs };
   return runPlatformCommand(db, meta, RUN_OPERATION, normalized, async (ctx) => {
@@ -115,6 +117,15 @@ export async function runEmploymentActivations(
     });
     return result;
   });
+}
+
+/** 单租户这一步出错不中断整轮（第 2 轮 P3-1）：记在该租户结果上，下轮重试。 */
+async function dueDutyTransfers(db: Db, tenant: TenantRow, now: Date, commandId: string): Promise<DutyTransferRun> {
+  try {
+    return await runDueMenuDutyTransfers(db, tenant, now, commandId);
+  } catch (error) {
+    return { completed: 0, failed: 0, skippedLocked: 0, errors: [{ employeeId: null, code: runErrorCode(error) }] };
+  }
 }
 
 async function sweepTenant(

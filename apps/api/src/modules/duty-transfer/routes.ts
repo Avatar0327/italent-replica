@@ -25,6 +25,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../job/context.js';
+import { businessDate } from '../job/fields.js';
 import {
   authorizeInTransaction,
   getModuleViewableFields,
@@ -44,7 +45,6 @@ const OBJECT = DUTY_TRANSFER_OBJECT;
 
 registerPersonScopedObject(OBJECT);
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuid = z.string().uuid();
 const itemSchema = z.union([
   z.strictObject({
@@ -65,7 +65,8 @@ const itemSchema = z.union([
 // 批量上限（AGENTS §10）：一人承担的职责条数在原站页面一次展示，200 条足够且有界。
 const submitSchema = z.strictObject({
   timing: z.enum(['immediate', 'scheduled']),
-  transferDate: isoDate.optional(),
+  // 第 2 轮 P2-5：合法日历日（2026-11-31 之类 400，不进台账、不落库）。
+  transferDate: businessDate.optional(),
   items: z.array(itemSchema).min(1).max(200),
 });
 
@@ -219,15 +220,19 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     return c.json({ total: page.total, items: await trimRecords(deps, ctx, page.items) });
   });
 
-  router.get(`${DUTY_TRANSFER_BASE}/departed`, async (c) => {
-    const ctx = await objectContext(c, deps, OBJECT, 'view');
-    const scope = await requestScope(c, deps, ctx, OBJECT);
-    const today = tenantLocalDate(ctx.now, ctx.timezone);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      departedWithDuties(tx, ctx.tenantId, today, scopeSql(scope, { person: sql`t.employee_id` })),
-    );
-    return c.json({ total: items.length, items });
-  });
+  router.get(`${DUTY_TRANSFER_BASE}/departed`, (c) => departed(c, deps));
+}
+
+/** 检查离职退休人员：page / pageSize 分页（默认 50、上限 200），total 为完整过滤集（第 2 轮 P2-6）。 */
+async function departed(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const ctx = await objectContext(c, deps, OBJECT, 'view');
+  const scope = await requestScope(c, deps, ctx, OBJECT);
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const visible = scopeSql(scope, { person: sql`t.employee_id` });
+  const page = pageQuery(c);
+  return c.json(
+    await withTenant(deps.db, ctx.tenantId, (tx) => departedWithDuties(tx, ctx.tenantId, today, visible, page)),
+  );
 }
 
 const optionalInt = (c: Context, name: string, allowed: readonly number[]) => {
