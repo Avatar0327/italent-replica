@@ -11,6 +11,7 @@ import {
   useInternCommand,
   useInternDraft,
   useSettledRefresh,
+  type ApplicationDraft,
   type Send,
 } from './commands.js';
 import { apiRoot, interns } from './model.js';
@@ -187,7 +188,7 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
 
   it('申请草稿与命令存储同在模块级：页面卸载重建后仍在，按租户 + 身份隔离', async () => {
     const seen: Record<string, unknown> = {};
-    const saved: { put?: (draft?: { id: string; revision: number; values: object }) => void } = {};
+    const saved: { put?: (draft?: ApplicationDraft) => void } = {};
     function Draft({ name }: { name: string }) {
       const draft = useInternDraft(employeeId);
       saved.put = draft.put;
