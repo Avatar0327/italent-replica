@@ -287,7 +287,6 @@ export async function approveTask(
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const { run, task, node } = scene;
-  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   if (input.fields && Object.keys(input.fields).length) {
     assertApprovalEdit(run, await loadTasks(tx, ctx.tenantId, run.instance.id), task, node, 'with_approve');
     await applyEdit(
@@ -298,6 +297,9 @@ export async function approveTask(
     );
     assertNotBlindAfterEdit(run, viewable);
   }
+  // 【编辑并同意】＝先编辑、再按编辑后的单据同意：同意前提放在编辑之后，校验对象是最终候选态而非编辑前的库内状态
+  // （BE-10c 第 3 轮）；同一事务内任一步失败整体回滚。
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
   await closeTask(tx, ctx, task.id, 'approved', input.comment);
   await appendLog(tx, ctx, run.instance, {
     event: 'approve',

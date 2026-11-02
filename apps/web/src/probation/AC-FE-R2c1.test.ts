@@ -207,7 +207,7 @@ describe('AC-FE-R2c1 ③ 提交体与回执按真实接口形状', () => {
     expect(() => model.regularizationReceipt({ total: 2, items: [failed('e1')] }, one)).toThrow('回执与原单不符');
   });
   it('找回草稿只认这名员工仍停在草稿的转正申请，否则按没有草稿（P2-4，DEC-103）', () => {
-    // 形状照 employment/businesses.ts GET /businesses/:id（EmploymentBusiness，不含试用结果）
+    // 形状照 employment/businesses.ts GET /businesses/:id（EmploymentBusiness；F-347 b 起转正单带试用结果与保存时名称）
     const id = '50000000-0000-4000-8000-000000000001';
     const draft = {
       id,
@@ -222,8 +222,15 @@ describe('AC-FE-R2c1 ③ 提交体与回执按真实接口形状', () => {
       effectiveDate: '2026-11-01',
       fields: {},
       customFields: {},
+      probationResult: 'pass',
+      probationResultName: '合成通过',
     };
-    expect(model.recoveredDraft(draft, 'e1', id)).toEqual({ id, revision: 3, values: { effectiveDate: '2026-11-01' } });
+    expect(model.recoveredDraft(draft, 'e1', id)).toEqual({
+      id,
+      revision: 3,
+      values: { effectiveDate: '2026-11-01', probationResult: 'pass' },
+      names: { pass: '合成通过' },
+    });
     for (const other of [
       { status: 'in_review' },
       { mode: 'direct' },

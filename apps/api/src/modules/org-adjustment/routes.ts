@@ -1,6 +1,8 @@
 /**
- * 组织调整申请路由（R2-T08 §9.3 路由 1～9；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线）；读路由 12～15 见
- * read-routes.ts（BE-10d）。提交 / 撤回（10～11）属 BE-10c，不在本文件注册。
+ * 组织调整申请路由（R2-T08 §9.3 路由 1～11；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，BE-10c 提交 / 撤回）；
+ * 读路由 12～15 见 read-routes.ts（BE-10d）。
+ * 提交（10）按编辑按钮 + 主体组织与调整范围 + 全部明细涉及的组织（新建口径）判；撤回（11）没有按钮，只限申请人本人。
+ * 两者都只交审批引擎、不执行（执行队列在 11a）。
  * 路由在命令外按当前权限判数据操作、字段、按钮；命令守卫在事务内经 `authorizeHead` 判主体组织与调整范围
  * （首次与幂等重放都经过，§6.3“五处共用”），改头 / 作废另对锁住的现值判一次，新旧两侧都要在范围内。
  * 明细（4～6、8～9）的字段按 OrganizationApproval 的 `orgItems.*` 判；守卫经 `authorizeItem` 判按钮、主体组织与行涉及的
@@ -20,23 +22,23 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { parseBody, requireNew, revision, uuidParam } from '../job/context.js';
-import {
-  authorizeInTransaction,
-  getModuleViewableFields,
-  resolveModuleScopeInTransaction,
-  scopeAllows,
-} from '../permission/module-access.js';
+import { getModuleViewableFields, getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
+import type { FieldAccess } from '../approval/context.js';
 import { objectContext, button, trimModuleResponse, writeFields } from '../permission/module-route-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import {
   authorizeHead,
   authorizeHeadAction,
+  authorizeHeadScopes,
   authorizeItem,
+  authorizeOwnerAction,
+  authorizeWithdraw,
   HEAD_BUTTONS,
   orgScopeAuthorizer,
   type ItemAuthorization,
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
+import { trimIssues, trimError } from './envelope.js';
 import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
 import { registerReadRoutes } from './read-routes.js';
 import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
@@ -49,6 +51,7 @@ import {
   voidAdjustment,
   type AdjustmentView,
 } from './service.js';
+import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
@@ -59,6 +62,7 @@ const ROW_EDIT = [DETAIL, 'EditOrgApprovalDetail', 'list_row'] as const;
 
 export function registerOrgAdjustmentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerHeadRoutes(router, deps);
+  registerSubmitRoutes(router, deps);
   registerItemRoutes(router, deps);
   registerReadRoutes(router, deps);
 }
@@ -145,6 +149,50 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return checkAdjustment(tx, ctx.tenantId, stored, deps.clock());
     });
     return c.json(await trimCheck(deps, ctx, result), 200);
+  });
+}
+
+/** 提交 / 撤回交审批引擎时的字段访问：按请求人当前字段权限（盲审、首节点同人跳过都据此判）。 */
+const approvalFields = (deps: TenantRouteDeps, ctx: ScopeBusinessContext): FieldAccess => ({
+  viewable: (tx, userId, objectCode) => getModuleViewableFieldsInTransaction(deps, { ...ctx, userId }, objectCode, tx),
+});
+
+function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // 路由 10：全部明细（含暂存行）涉及的组织按新建口径逐个在组织范围（§6.3，before = null）；校验类错误按查看权裁剪
+  router.post(`${BASE}/:id/submit`, async (c) => {
+    const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c));
+    const id = uuidParam(c);
+    const input = await parseBody(c, z.strictObject({}));
+    await button(deps, ctx, OBJECT, 'EditAdjustOrgDetailBtn', 'detail');
+    return headCommand(c, deps, ctx, input, 200, {
+      before: async (tx) => {
+        await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
+          authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
+        );
+        await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, id)));
+      },
+      execute: async (tx, commandCtx) => {
+        try {
+          return await submitAdjustment(tx, commandCtx, id, approvalFields(deps, ctx));
+        } catch (error) {
+          throw trimError(error, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+        }
+      },
+    });
+  });
+
+  // 路由 11：没有按钮；主体组织 + 调整范围（同路由 1），申请人本人与状态由写服务在锁内判
+  router.post(`${BASE}/:id/withdraw`, async (c) => {
+    const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c));
+    const id = uuidParam(c);
+    const input = await parseBody(c, z.strictObject({}));
+    return headCommand(c, deps, ctx, input, 200, {
+      before: (tx) =>
+        authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
+          authorizeWithdraw(tx, deps, ctx, { subjectOrgId, rangeOrgIds }),
+        ),
+      execute: (tx, commandCtx) => withdrawAdjustment(tx, commandCtx, id, approvalFields(deps, ctx)),
+    });
   });
 }
 
@@ -259,7 +307,10 @@ interface HeadCommand {
   execute(tx: Tx, ctx: ScopeBusinessContext): Promise<AdjustmentView>;
 }
 
-/** 头写入命令：台账幂等（同键同内容重放）；重放时结果的主体组织仍须在当前范围；ETag 取裁剪前的 revision。 */
+/**
+ * 头写入命令：台账幂等（同键同内容重放）；重放时结果的主体组织与调整范围仍须在当前范围（与现值同口径，F-339 ①）；
+ * ETag 取裁剪前的 revision。
+ */
 async function headCommand(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -276,12 +327,9 @@ async function headCommand(
         await command.before(tx);
       },
       replayed: async (tx, stored) => {
-        const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
-        const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
         const view = stored.body as AdjustmentView;
-        if (!scopeAllows(scope, { orgId: view.approvalSubjectOrgId })) {
-          throw new AppError('NOT_FOUND', '组织调整申请不存在');
-        }
+        const head = { subjectOrgId: view.approvalSubjectOrgId, rangeOrgIds: view.adjustmentRange };
+        await authorizeHeadScopes(tx, deps, ctx, head);
       },
     },
     execute: async (tx, commandId) => ({ status, body: await command.execute(tx, { ...ctx, commandId }) }),
@@ -370,18 +418,11 @@ async function trimItems(deps: TenantRouteDeps, ctx: ScopeBusinessContext, resul
   };
 }
 
-/** 校验信封：看不到 `orgItems.targetOrgId` 时，明细问题不带组织 ID（行 ID 与原因照常返回）。 */
+/** 校验信封按查看权裁剪问题里的组织 ID（envelope.ts，与提交 / 审批编辑的错误同口径，F-339 ②）。 */
 async function trimCheck<T extends { readonly errors: readonly object[] }>(
   deps: TenantRouteDeps,
   ctx: ScopeBusinessContext,
   result: T,
 ): Promise<T> {
-  const fields = await getModuleViewableFields(deps, ctx, OBJECT);
-  if (!fields || fields.has('orgItems.targetOrgId')) return result;
-  const errors = result.errors.map((error) => {
-    if (!('section' in error) || !('orgId' in error)) return error;
-    const { orgId: _hidden, ...rest } = error;
-    return rest;
-  });
-  return { ...result, errors };
+  return { ...result, errors: trimIssues(result.errors, await getModuleViewableFields(deps, ctx, OBJECT)) };
 }

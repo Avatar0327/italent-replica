@@ -16,10 +16,19 @@ import { AppError } from '../../errors.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { auditEmployment, requireEmployeeInScope } from './context.js';
 import { loadProbationCycle } from './probation.js';
-import { requireEnabledProbationResult } from './probation-results.js';
+import { requireEnabledProbationEntry } from './probation-results.js';
+import { clearSubmittedRegularizationDraft } from './regularization-drafts.js';
 import { transitionEmployment } from './transitions.js';
-import type { CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
-import { createEmploymentBusiness } from './write-service.js';
+import type {
+  CustomFields,
+  EmploymentBusiness,
+  EmploymentBusinessPatch,
+  EmploymentContext,
+  PresetFields,
+} from './types.js';
+import { loadRegularizationResult } from './read-model.js';
+import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
+import { createEmploymentBusiness, requireSavedBusiness, updateEmploymentBusiness } from './write-service.js';
 
 /** 经本入口办理的业务类型；BE-6a 加入 intern_regularization。 */
 export const REGULARIZATION_ENTRY_KINDS = ['regularization'] as const;
@@ -42,10 +51,51 @@ export interface RegularizationRequest {
   readonly generatedByAssessment?: true;
 }
 
-/** 试用结果必填且须为字典启用项（B7）；返回库里的编码写法。 */
+/** 试用结果必填且须为字典启用项（B7）；返回库里的编码写法与当时的名称。 */
 export async function requireRegularizationResult(tx: Tx, tenantId: string, code: string | undefined) {
   if (!code) throw new AppError('VALIDATION_FAILED', '转正须填写试用结果', { reason: 'PROBATION_RESULT_REQUIRED' });
-  return requireEnabledProbationResult(tx, tenantId, code);
+  return requireEnabledProbationEntry(tx, tenantId, code);
+}
+
+/** 追加一版试用结果（只追加）：第 1 版随建单写入，草稿 / 撤回单改结果再追加（F-347 c），名称按保存时固化（F-347 b）。 */
+async function appendRegularizationResult(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  entry: { readonly code: string; readonly name: string },
+) {
+  await tx.execute(sql`INSERT INTO employment_regularization_results(tenant_id, employee_id, business_id, version_no,
+      result_code, result_name, command_id, created_at)
+    SELECT ${ctx.tenantId}, ${employeeId}::uuid, ${businessId}::uuid, COALESCE(max(version_no), 0) + 1, ${entry.code},
+      ${entry.name}, ${ctx.commandId}, ${ctx.now.toISOString()}::timestamptz
+    FROM employment_regularization_results WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`);
+}
+
+/**
+ * 草稿 / 撤回单改试用结果（F-347 c，由 PATCH /businesses/:id 调用，单据 revision 已在那里校验并递增）：
+ * 与当前一版相同（编码不区分大小写、去空白）直接返回，不追加、不校验启用——撤回单的结果已停用时只改日期仍可保存
+ * （rf347_1 P2-4）；换成别的结果才须为启用项。审计挂在任职业务上，与单据其他字段的修改同一事务。
+ */
+export async function changeRegularizationResult(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: { readonly id: string; readonly employeeId: string },
+  code: string,
+) {
+  const current = await loadRegularizationResult(tx, ctx.tenantId, business.id);
+  if (current && current.code.trim().toLowerCase() === code.trim().toLowerCase()) return;
+  const entry = await requireEnabledProbationEntry(tx, ctx.tenantId, code);
+  await appendRegularizationResult(tx, ctx, business.employeeId, business.id, entry);
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.regularization.result',
+    'employment-business',
+    business.id,
+    current ? { probationResult: current.code } : null,
+    { probationResult: entry.code },
+  );
 }
 
 /**
@@ -58,7 +108,7 @@ export async function createRegularizationBusiness(
   employeeId: string,
   request: RegularizationRequest,
 ): Promise<EmploymentBusiness> {
-  const resultCode = await requireRegularizationResult(tx, ctx.tenantId, request.probationResult);
+  const result = await requireRegularizationResult(tx, ctx.tenantId, request.probationResult);
   const effectiveDate = await regularizationDate(tx, ctx, employeeId, request.effectiveDate);
   const created = await createEmploymentBusiness(
     tx,
@@ -74,14 +124,41 @@ export async function createRegularizationBusiness(
     },
     request.generatedByAssessment ? { generatedByAssessment: true } : {},
   );
-  await tx.execute(sql`INSERT INTO employment_regularization_results(tenant_id, employee_id, business_id, result_code,
-      command_id, created_at)
-    VALUES (${ctx.tenantId}, ${employeeId}::uuid, ${created.id}::uuid, ${resultCode}, ${ctx.commandId},
-      ${ctx.now.toISOString()}::timestamptz)`);
+  await appendRegularizationResult(tx, ctx, employeeId, created.id, result);
   await auditEmployment(tx, ctx, 'employment.regularization.result', 'employment-business', created.id, null, {
-    probationResult: resultCode,
+    probationResult: result.code,
   });
+  // 直接转正（含考核生成的）与提交申请同一清暂存入口、同一事务（rf347_1 P3）；申请只建草稿，提交时再清
+  if (request.mode === 'direct')
+    await clearSubmittedRegularizationDraft(tx, ctx, { employeeId, payload: { kind: created.kind } });
   return created;
+}
+
+/** PATCH /businesses/:id 带的试用结果（F-347 c）：只认非空编码，去掉首尾空白。 */
+export const patchedProbationResult = z.string().trim().min(1).max(100);
+
+/**
+ * PATCH /businesses/:id 带试用结果（F-347 c）：只限转正申请的草稿（含撤回回草稿）/ 被驳回单，同单改后重提（DEC-053）。
+ * 先追加试用结果版本，其余字段（如转正日期）照常走 updateEmploymentBusiness；只改结果时单据 revision 同样递增一次。
+ */
+export async function updateRegularizationApplication(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  patch: EmploymentBusinessPatch | null,
+  code: string,
+): Promise<EmploymentBusiness> {
+  const business = await lockEmploymentBusiness(tx, ctx, id);
+  if (business.payload.kind !== 'regularization')
+    throw new AppError('VALIDATION_FAILED', '只有转正业务可修改试用结果', {
+      reason: 'PROBATION_RESULT_NOT_APPLICABLE',
+    });
+  if (business.payload.mode !== 'application' || !['draft', 'rejected'].includes(business.state))
+    throw new AppError('CONFLICT', '只有草稿或被驳回的转正申请可以修改试用结果', { reason: 'PAYLOAD_IMMUTABLE' });
+  await changeRegularizationResult(tx, ctx, business, code);
+  if (patch) return updateEmploymentBusiness(tx, ctx, id, patch);
+  await bumpEmploymentBusiness(tx, ctx, business);
+  return requireSavedBusiness(tx, ctx, id);
 }
 
 export const MAX_BATCH_REGULARIZATION = 100;

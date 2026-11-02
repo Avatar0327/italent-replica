@@ -71,6 +71,7 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
   settings: codes([
     MODULE_OBJECTS.employmentSettings,
     MODULE_OBJECTS.employmentCustomField,
+    MODULE_OBJECTS.employmentType,
     MODULE_OBJECTS.contractSettings,
     MODULE_OBJECTS.contractRules,
   ]),

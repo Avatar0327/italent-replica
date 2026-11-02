@@ -233,15 +233,13 @@ async function applyOnce(page: Page) {
   await form.getByRole('button', named('提交')).click();
   return form;
 }
-/** 重开“转正申请”：应找回服务端仍是草稿的原申请单，只读展示后提交同一张单。 */
+/** 重开“转正申请”：按服务端读投影找回仍是草稿的原申请单（F-347 起可改），提交同一张单。 */
 async function submitRecovered(page: Page) {
   await expect(rowCount(page)).toHaveCount(1);
   await openDetail(page);
   await page.getByRole('button', named('转正申请')).click();
   const form = dialog(page, '转正申请');
-  await expect(form).toContainText('申请已保存，继续提交同一申请；已保存的字段只读。');
-  // 本机存储可写时指针已持久化，不出“找回记录未保存”的限制提示
-  await expect(form).not.toContainText('本机无法保存这份申请的找回记录');
+  await expect(form).toContainText('已带出原申请，修改后提交的仍是同一申请。');
   await form.getByRole('button', { name: /提\s*交$/ }).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByRole('button', { name: '转正审批中', exact: true, pressed: true })).toBeVisible();
@@ -276,7 +274,7 @@ test('AC-FE-R2c1-11 申请第二步失败后重新进入页面：找回原草稿
   ]);
 });
 
-test('AC-FE-R2c1-13 本机存储写不进时关闭重开：按页面内存指针找回原草稿同单提交，不再建第二张（P2）', async ({
+test('AC-FE-R2c1-13 本机存储写不进时关闭重开：按服务端草稿找回原单同单提交，不再建第二张（P2，F-347）', async ({
   page,
 }) => {
   // 配额已满 / 浏览器策略禁止写入：读照常，写一律抛错
@@ -293,8 +291,7 @@ test('AC-FE-R2c1-13 本机存储写不进时关闭重开：按页面内存指针
   await expect(form).toHaveCount(0);
   // 不刷新、不离开：详情仍开着，直接再点“转正申请”
   await page.getByRole('button', named('转正申请')).click();
-  await expect(form).toContainText('申请已保存，继续提交同一申请；已保存的字段只读。');
-  await expect(form).toContainText('本机无法保存这份申请的找回记录');
+  await expect(form).toContainText('已带出原申请，修改后提交的仍是同一申请。');
   await form.getByRole('button', { name: /提\s*交$/ }).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByRole('button', { name: '转正审批中', exact: true, pressed: true })).toBeVisible();

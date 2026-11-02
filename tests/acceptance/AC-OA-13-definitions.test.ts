@@ -2,7 +2,8 @@
  * R2-T08 BE-10a：组织调整的审批契约（设计 §4.1 / §4.2 / §14.1 第 10a 行；DEC-526②、DEC-644 A-2 / A-14）。
  * - AC-OA-13（定义 / 解析）：流程编码 OrganizationProcess、预置两节点；审批人按审批主体组织取 HRBP / 负责人；
  * - 审批类型 / 适配器种类：objectCode 只在一个常量里定义；`approvalTypeOfBusiness('org_adjustment')` 返回 null；
- * - 占位适配器：任何钩子调用都 409 ORG_ADJUSTMENT_NOT_AVAILABLE；通用任职入口对 application 方式 400 KIND_RESERVED。
+ * - 适配器：BE-10a 占位（任何钩子 409 ORG_ADJUSTMENT_NOT_AVAILABLE）已由 BE-10c 换成真适配器，这里只核对钩子齐全（含 lockMany、
+ *   beforeApprove），行为见 AC-OA-12～15 / 26 / 27 / 38 / 39 / 43；通用任职入口对 application 方式 400 KIND_RESERVED。
  * 授权 / 对象 / DEC-415 的断言不在本批（A-14 取证后随 BE-10a2）。
  */
 import {
@@ -21,7 +22,6 @@ import { describe, expect, it } from 'vitest';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
 import { resolveCandidate, type RoutingSubject } from '../../apps/api/src/modules/approval/resolver.js';
 import { parseEmploymentInput } from '../../apps/api/src/modules/employment/fields.js';
-import { AppError } from '../../apps/api/src/errors.js';
 import { approvalWorld } from './AC-APV-support.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -156,27 +156,12 @@ describe('审批人解析（AC-OA-13）：按审批主体组织取 HRBP / 负责
   });
 });
 
-describe('占位适配器与 KIND_RESERVED（本批无公开路由）', () => {
-  it('适配器任何钩子都 409 ORG_ADJUSTMENT_NOT_AVAILABLE', async () => {
+describe('适配器钩子与 KIND_RESERVED', () => {
+  it('BE-10c 真适配器：全部钩子都已实现（含 lockMany、beforeApprove），不再是占位', () => {
     const adapter = ADAPTERS.org_adjustment;
-    const args = [undefined as never, undefined as never, 'x'] as const;
-    const calls = [
-      () => adapter.lock(...args),
-      () => adapter.snapshot(...args),
-      () => adapter.approved(...args),
-      () => adapter.rejected(...args),
-      () => adapter.disapproved(...args),
-      () => adapter.withdrawn(...args),
-      () => adapter.resubmit(...args, {}),
-      () => adapter.edit(...args, {}),
-    ];
-    for (const call of calls) {
-      const error = await call().then(
-        () => null,
-        (e: unknown) => e,
-      );
-      expect(error).toBeInstanceOf(AppError);
-      expect(error).toMatchObject({ code: 'CONFLICT', details: { reason: 'ORG_ADJUSTMENT_NOT_AVAILABLE' } });
+    const hooks = ['lock', 'lockMany', 'snapshot', 'beforeApprove', 'approved', 'rejected', 'disapproved'] as const;
+    for (const hook of [...hooks, 'withdrawn', 'resubmit', 'edit'] as const) {
+      expect(typeof adapter[hook], hook).toBe('function');
     }
   });
 
