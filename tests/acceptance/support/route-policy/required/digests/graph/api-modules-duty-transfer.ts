@@ -11,7 +11,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'packages/domain/src/employment/duty-transfer-menu.ts#dutyDescription',
   ],
+  'apps/api/src/modules/duty-transfer/duties.ts#departedTotal': ['#departedWithDuties'],
   'apps/api/src/modules/duty-transfer/duties.ts#departedWithDuties': [
+    '#departedTotal',
     '#dutiesSql',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
@@ -49,6 +51,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/duty-transfer/routes.ts#OBJECT': [
     'packages/domain/src/employment/duty-transfer-menu.ts#DUTY_TRANSFER_OBJECT',
   ],
+  'apps/api/src/modules/duty-transfer/routes.ts#departed': [
+    'apps/api/src/modules/duty-transfer/duties.ts#departedWithDuties',
+    '#OBJECT',
+    'apps/api/src/modules/job/context.ts#pageQuery',
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'apps/api/src/modules/permission/module-route-access.ts#requestScope',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/duty-transfer/routes.ts#dutyMenu': [
     'apps/api/src/modules/duty-transfer/duties.ts#currentDuties',
     'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords',
@@ -72,13 +83,8 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/duty-transfer/routes.ts#requireVisiblePerson': ['#personVisible'],
   'apps/api/src/modules/duty-transfer/routes.ts#requireVisibleReceivers': ['#personVisible'],
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': [
-    'apps/api/src/modules/duty-transfer/duties.ts#departedWithDuties',
     '#DUTY_TRANSFER_BASE',
-    '#OBJECT',
-    'apps/api/src/modules/permission/module-access.ts#scopeSql',
-    'apps/api/src/modules/permission/module-route-access.ts#objectContext',
-    'apps/api/src/modules/permission/module-route-access.ts#requestScope',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+    '#departed',
   ],
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/people/:id/duties': [
     '#DUTY_TRANSFER_BASE',
@@ -144,7 +150,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
-  'apps/api/src/modules/duty-transfer/routes.ts#submitSchema': ['#isoDate', '#itemSchema'],
+  'apps/api/src/modules/duty-transfer/routes.ts#submitSchema': [
+    '#itemSchema',
+    'apps/api/src/modules/job/fields.ts#businessDate',
+  ],
   'apps/api/src/modules/duty-transfer/routes.ts#trimRecords': ['#hiddenFields'],
   'apps/api/src/modules/duty-transfer/service.ts#auditRecord': [
     'apps/api/src/audit/record.ts#recordAudit',

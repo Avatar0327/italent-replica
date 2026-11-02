@@ -160,7 +160,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/duty-transfer/routes.ts': {
     OBJECT: '7083a98e9a98',
     requireVisiblePerson: 'abca1730966f',
-    'route:GET /api/tenant/duty-transfers/departed': '7795c01bc8c5',
+    'route:GET /api/tenant/duty-transfers/departed': 'a54c5c483e55',
     'route:GET /api/tenant/duty-transfers/people/:id/duties': '160365b4dc2f',
     'route:GET /api/tenant/duty-transfers/records': 'db1c98ce076a',
     'route:POST /api/tenant/duty-transfers/people/:id': 'a12559e187cc',
@@ -168,7 +168,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/duty-transfer/service.ts': {
     authorizeDuty: '67161ee474f6',
-    submitMenuTransfer: '424c2f70f1d1',
+    submitMenuTransfer: 'd3cce5655ece',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
@@ -1882,13 +1882,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/todos.ts#registerMergedTodos': '73b57b28a247',
   'apps/api/src/modules/duty-transfer/routes.ts#OBJECT': '2bcef067731e',
   'apps/api/src/modules/duty-transfer/routes.ts#requireVisiblePerson': 'dd0006514593',
-  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': 'd11fec3078fb',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': 'b423a2e797ad',
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/people/:id/duties': 'ea5ba0c36c25',
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/records': 'b81f902b2bb7',
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id': 'fc161ff8fb19',
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id/check': '934eaa763551',
   'apps/api/src/modules/duty-transfer/service.ts#authorizeDuty': 'd94930ffb7e9',
-  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': '36b44d45eb9e',
+  'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': '367ecf102f2d',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': '068fd9fcc31a',
   'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '8bb8fb420ee3',

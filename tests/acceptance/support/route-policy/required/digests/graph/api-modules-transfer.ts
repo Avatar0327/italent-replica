@@ -220,6 +220,9 @@ export const GRAPH: Graph = {
     '#assertNoInFlightContract',
     '#loadTarget',
   ],
+  'apps/api/src/modules/transfer/linkage/duty-execution.ts#appendDataAdjustment': [
+    'apps/api/src/modules/employment/write-service.ts#createEmploymentBusiness',
+  ],
   'apps/api/src/modules/transfer/linkage/duty-execution.ts#dutyItemFailure': [
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
   ],
@@ -227,10 +230,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople',
     'apps/api/src/modules/employment/record-edit.ts#editEmploymentRecord',
     'apps/api/src/modules/org/write-service.ts#assignTransferOrganizationPeople',
+    '#appendDataAdjustment',
+    '#requireEnabledOrg',
     'apps/api/src/modules/transfer/linkage/validation.ts#RELATION_FIELDS',
     'apps/api/src/modules/transfer/linkage/validation.ts#ROLE_FIELDS',
     'apps/api/src/modules/transfer/linkage/validation.ts#requireReportingSubordinate',
     'apps/api/src/modules/transfer/linkage/validation.ts#requireRoleHolder',
+  ],
+  'apps/api/src/modules/transfer/linkage/duty-execution.ts#requireEnabledOrg': [
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer': [
     '#createItems',
