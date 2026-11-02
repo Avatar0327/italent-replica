@@ -4,6 +4,7 @@
 import { BLACKLIST_REASONS, BLACKLIST_SOURCES } from '@italent/domain';
 import { Button, DatePicker, Form, Input, Radio, Select, Space, Table, type FormInstance } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import 'dayjs/locale/zh-cn.js';
 import { useState, type ReactNode } from 'react';
 import { useToday } from '../contracts/references.js';
 import type { Command } from '../foundation/client.js';

@@ -19,9 +19,9 @@ import { s } from './settings-messages.js';
 import {
   FIELD_MAX,
   TRIGGER_PATH,
-  otherSettingsEditable,
   parseSettingReceipt,
   parseTrigger,
+  settingReadonlyHint,
   settingWritable,
   triggerBody,
   triggerValues,
@@ -106,7 +106,7 @@ function TriggerForm({ setting, reload }: { setting: Setting<HandoverTriggerSett
 
   return (
     <section className="exit-settings-form" aria-label={s.tabs['handover-trigger']}>
-      {!writable && <p className="exit-hint">{readonlyHint(permission.menus, setting)}</p>}
+      {!writable && <p className="exit-hint">{settingReadonlyHint(permission.menus, setting)}</p>}
       {writable && setting.source === 'system' && <p className="exit-hint">{t.systemValue}</p>}
       <CommandStatus submission={submission} labels={LABELS} />
       <FormLock locked={locked}>
@@ -168,8 +168,4 @@ function TriggerFields({ method, remind }: { method?: string; remind: boolean })
       </div>
     </>
   );
-}
-/** 只读原因：没有其他设置权，或该键不可覆盖（系统统一管控）。 */
-export function readonlyHint(menus: Parameters<typeof otherSettingsEditable>[0], setting: { overridable: boolean }) {
-  return otherSettingsEditable(menus) && !setting.overridable ? s.notOverridable : s.readonlyHint;
 }

@@ -236,6 +236,9 @@ export function otherSettingsEditable(menus: readonly MenuNode[]) {
 /** 租户设置可写：其他设置权之外，该键还须可覆盖（overridable=false 时后端回 403 SETTING_READ_ONLY）。 */
 export const settingWritable = (menus: readonly MenuNode[], setting: { overridable: boolean }) =>
   otherSettingsEditable(menus) && setting.overridable;
+/** 租户设置只读的原因：有其他设置权但该键不可覆盖时说明系统管控，否则说明缺权限。 */
+export const settingReadonlyHint = (menus: readonly MenuNode[], setting: { overridable: boolean }) =>
+  otherSettingsEditable(menus) && !setting.overridable ? s.notOverridable : s.readonlyHint;
 // 交接事项 / 规则是整份保存（严格 DTO，后端按载荷全部字段核对编辑权）：全部字段可看可改、且持有 other_settings 才开放；
 // 新增看 create，修改与删除看 update（配置对象没有删除数据操作，后端删除按 update 判断）。
 export function configAccess(

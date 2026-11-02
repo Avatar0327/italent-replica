@@ -37,6 +37,7 @@ import {
   rowPath,
   ruleBody,
   ruleValues,
+  settingReadonlyHint,
   settingWritable,
   type Row,
   type Setting,
@@ -108,7 +109,8 @@ function AutoBlacklistSwitch() {
 
 function SwitchCommand({ setting, reload }: { setting: Setting<boolean>; reload(): void }) {
   const api = useApiClient();
-  const writable = settingWritable(usePermissions().menus, setting);
+  const { menus } = usePermissions();
+  const writable = settingWritable(menus, setting);
   const writer = useConflictCommand(
     AUTO_BLACKLIST_PATH,
     { id: SWITCH_KEY, revision: setting.revision, values: { enabled: setting.value } },
@@ -137,6 +139,7 @@ function SwitchCommand({ setting, reload }: { setting: Setting<boolean>; reload(
         <span>{r.enabled}</span>
       </label>
       <p className="exit-hint">{r.switchHint}</p>
+      {!writable && <p className="exit-hint">{settingReadonlyHint(menus, setting)}</p>}
       <CommandStatus submission={writer.form} labels={LABELS} />
     </div>
   );
