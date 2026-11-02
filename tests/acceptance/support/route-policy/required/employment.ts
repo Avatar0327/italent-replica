@@ -1055,6 +1055,9 @@ const accountRead = (call: Evidence): Obligation =>
     ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
     [call, READ, RECORD_CONST],
   );
+const DRAFT_BUTTON =
+  "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })";
+
 export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/exit-account/settings': [
     ob(
@@ -1988,7 +1991,13 @@ export const EMPLOYMENT: RequiredTable = {
       `btn:${RECORD}#Employment.Edit@detail`,
       ['button:requireEmploymentWrite(按钮)'],
       [
-        at(EMP, 'PATCH', '/businesses/:id', "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit')"),
+        // F-347 c：只改试用结果时 options = { commandOnly: true }（命令式校验，不按字段）
+        at(
+          EMP,
+          'PATCH',
+          '/businesses/:id',
+          "await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit', undefined, options)",
+        ),
         WRITE_BUTTON,
       ],
     ),
@@ -3034,6 +3043,46 @@ export const EMPLOYMENT: RequiredTable = {
     ),
     linkage(at(PROBATION, 'PUT', '/employees/:id/probation', 'await adjustProbation(tx, context, id, adjustment)')),
   ],
+  // F-347 转正申请暂存（DEC-709）：读写同一口径（对象新增 + 写入口径员工范围 + Employment.Create 按钮）
+  ...Object.fromEntries(
+    (
+      [
+        ['GET', "const ctx = await readContext(c, deps, 'object.create', 0, id)"],
+        ['PUT', "const ctx = await readContext(c, deps, 'object.create', revision(c), id)"],
+      ] as const
+    ).map(([method, context]) => {
+      const path = '/employees/:id/regularization-draft';
+      const call = at(PROBATION, method, path, context);
+      return [
+        `${method} /api/tenant/employment${path}`,
+        [
+          ob(
+            `obj:${RECORD}:create`,
+            ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+            [call, READ, WRITE_OBJECT],
+          ),
+          ob(
+            `btn:${RECORD}#Employment.Create@detail`,
+            ['button:requireEmploymentWrite(按钮)'],
+            [at(PROBATION, method, path, DRAFT_BUTTON), WRITE_BUTTON],
+          ),
+          ob(
+            'guard:employment.scope',
+            [],
+            [
+              call,
+              {
+                role: 'impl',
+                unit: `${CTX}#readContext`,
+                anchor: '(tx) => requireEmployeeInScope(tx, result, resource)',
+              },
+              EMPLOYEE_IN_SCOPE,
+            ],
+          ),
+        ] satisfies Obligation[],
+      ];
+    }),
+  ),
   'POST /api/tenant/employment/regularizations': [
     ob(
       `obj:${RECORD}:create`,

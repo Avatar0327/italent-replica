@@ -204,6 +204,9 @@ export interface EmploymentBusiness {
   readonly record: EmploymentRecord | null;
   /** R1-T08 生效结果（DEC-052 / DEC-112）：审批通过的申请与经定时任务 / 重试生效的业务才有。 */
   readonly activation: ActivationSummary | null;
+  /** F-347 b：转正单才有，试用结果编码与保存时的字典名称（历史行无名称快照时取当前名称）。 */
+  readonly probationResult?: string | null;
+  readonly probationResultName?: string | null;
 }
 
 export interface PageQuery {
