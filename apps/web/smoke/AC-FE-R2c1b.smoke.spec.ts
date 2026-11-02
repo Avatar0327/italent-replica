@@ -18,6 +18,7 @@ import {
   revisionConflict,
   rowId,
   runDisabled,
+  runFailure,
   runReceipt,
   setting,
   settingsPermission,
@@ -334,6 +335,81 @@ test('AC-FE-R2c1b-03 立即执行：开关关闭明确拒绝；打开后显示�
   await page.getByRole('tab', { name: '自动转正' }).click();
   await expect(actionButton(root(page), '立即执行')).toBeDisabled();
   expect(server.writes).toHaveLength(4);
+});
+
+/** 立即执行回执里的失败项：桩按真实回执形态（runFailure）返回，验证原因显示中文、统计口径按规则类型区分。 */
+const failedRun = (server: Server, kind: Kind, receipt: unknown) => {
+  server.settings.set(SWITCH_KEYS[kind], { value: true, revision: 1 });
+  server.override = (write) => (write.path === RUN_PATHS[kind] ? { status: 200, json: receipt } : undefined);
+};
+const others = ['30000000-0000-4000-8000-0000000000b2', '30000000-0000-4000-8000-0000000000b3'];
+
+test('AC-FE-R2c1b-07 立即执行回执：失败原因显示中文，不露后端原因码', async ({ page }) => {
+  const server = await setup(page);
+  const rule = regularizationRule() as Rule;
+  server.rules.regularization.push(rule);
+  failedRun(server, 'regularization', {
+    ...runReceipt.regularization(employeeId, rule.id),
+    launched: [],
+    failed: [
+      runFailure(employeeId, rule.id, 'REGULARIZATION_EXISTS'),
+      runFailure(others[0]!, rule.id, 'ASSESSMENT_BLOCKS_REGULARIZATION'),
+      runFailure(others[1]!, rule.id, 'INITIATOR_NOT_FOUND'),
+    ],
+  });
+  await open(page, 'regularization');
+  await actionButton(root(page), '立即执行').click();
+  await confirmPop(page);
+  const result = region(page, '执行结果');
+  await expect(result).toContainText('未发起 3 人');
+  for (const reason of ['本任职周期已有转正记录', '本任职周期的考核未满足自动转正条件', '找不到规则配置的发起人'])
+    await expect(result).toContainText(reason);
+  await expect(result).not.toContainText(/REGULARIZATION_EXISTS|ASSESSMENT_BLOCKS|INITIATOR_NOT_FOUND/);
+
+  // B58 的冲突原因，以及后端退回通用错误码（reasonOf）等未登记编码：显示“其他原因（编码）”。
+  const assessment = assessmentRule() as Rule;
+  server.rules.assessment.push(assessment);
+  failedRun(server, 'assessment', {
+    ...runReceipt.assessment(employeeId, assessment.id),
+    launched: [],
+    failed: [
+      runFailure(employeeId, assessment.id, 'AUTO_ASSESSMENT_CYCLE_CONFLICT'),
+      runFailure(others[0]!, assessment.id, 'CONFLICT'),
+    ],
+  });
+  await open(page, 'assessment');
+  await actionButton(root(page), '立即执行').click();
+  await confirmPop(page);
+  await expect(result).toContainText('本任职周期已有转正记录或审批中的考核');
+  await expect(result).not.toContainText('AUTO_ASSESSMENT_CYCLE_CONFLICT');
+  await expect(result).toContainText('其他原因（CONFLICT）');
+});
+
+test('AC-FE-R2c1b-08 自动发起考核立即执行：一名员工多条规则失败，按规则条数计、明细全留', async ({ page }) => {
+  const server = await setup(page);
+  // B58 逐条办理：一名员工同日命中三条规则，优先级最小的发起，其余两条因本周期已有审批中的考核失败（PB-R20）。
+  const rules = [1, 2, 3].map((priority) => assessmentRule({ name: `ZZ_考核规则${priority}`, priority }) as Rule);
+  server.rules.assessment.push(...rules);
+  failedRun(server, 'assessment', {
+    ...runReceipt.assessment(employeeId, rules[0]!.id),
+    failed: rules.slice(1).map((row) => runFailure(employeeId, row.id, 'AUTO_ASSESSMENT_CYCLE_CONFLICT')),
+  });
+  await open(page, 'assessment');
+  await actionButton(root(page), '立即执行').click();
+  await confirmPop(page);
+  const result = region(page, '执行结果');
+  await expect(result).toContainText('已发起 1 条');
+  await expect(result).toContainText('未发起 2 条');
+  await expect(result).not.toContainText(/未发起 \d+ 人/);
+  const failedRows = result.locator('.ant-table-tbody').last().getByRole('row');
+  await expect(failedRows).toHaveCount(2);
+  for (const name of ['ZZ_考核规则2', 'ZZ_考核规则3'])
+    await expect(failedRows.filter({ hasText: name })).toHaveCount(1);
+  // 优先级提示按类型：B58 逐条发起，不是“取优先级最小的一条”（那是 B57 的口径）。
+  await expect(root(page)).not.toContainText('取优先级最小的一条');
+  await expect(root(page)).toContainText('同一员工同一天命中多条规则时，按优先级逐条发起');
+  await open(page, 'regularization');
+  await expect(root(page)).toContainText('多条规则命中同一人时取优先级最小的一条');
 });
 
 test('AC-FE-R2c1b-04 自动发起考核：新增 → 编辑遇版本冲突重读后按最新版本整份重提', async ({ page }) => {

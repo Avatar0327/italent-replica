@@ -21,6 +21,7 @@ import {
   resultPresets,
   revisionConflict,
   runDisabled,
+  runFailure,
   runReceipt,
   setting,
   settingsPermission,
@@ -203,6 +204,44 @@ describe('AC-FE-R2c1b 立即执行与总开关：夹具与真实接口一致', (
       person.employeeId,
       () => w.enableSwitch(),
     );
+  });
+});
+
+/** 失败项与夹具 runFailure 同形（三个键），解析后原样保留（明细不合并、不去重）。 */
+function checkFailures(kind: RuleKind, receipt: Record<string, unknown>, expected: ReturnType<typeof runFailure>[]) {
+  const failed = receipt.failed as Record<string, unknown>[];
+  expect(failed.map(keysOf)).toEqual(expected.map(keysOf));
+  expect(failed).toEqual(expected);
+  expect(parseRunReceipt(kind, receipt).failed).toEqual(expected);
+}
+
+describe('AC-FE-R2c1b 立即执行失败项：夹具与真实接口一致', () => {
+  it('自动转正：发起人找不到时失败项与夹具同形（每人至多一条）', async () => {
+    const w = await world('regularization-failed');
+    const input = { ...ruleInput(w, 'regularization'), initiatorType: 'department_hrbp' };
+    const rule = await w.json(await w.call('POST', RULES.regularization.path, input, 0), 201);
+    const due = await hire(w, { date: '2026-09-01', months: 1, name: 'ZZ_无发起人员工' });
+    await w.json(await w.call('PUT', settingPath(RULES.regularization.setting), { value: true }, 0), 200);
+    const receipt = await w.json(
+      await w.session.request('POST', '/auto-regularization/run', { ifMatch: 0, body: {} }),
+      200,
+    );
+    expect(receipt.launched).toEqual([]);
+    checkFailures('regularization', receipt, [runFailure(due.employee.id, String(rule.id), 'INITIATOR_NOT_FOUND')]);
+  });
+
+  it('自动发起考核：一名员工同日命中三条规则，1 条发起、2 条失败，失败明细按规则逐条列出', async () => {
+    const w = await autoAssessmentWorld(testDb().db, `fe-r2c1b-multi-${randomUUID()}`);
+    const rules = [];
+    for (const priority of [1, 2, 3]) rules.push(await w.created(w.body({ name: `ZZ_考核规则${priority}`, priority })));
+    const person = await w.probationer('ZZ_多规则员工');
+    await w.enableSwitch();
+    const receipt = (await w.ran()) as unknown as Record<string, unknown>;
+    expect((receipt.launched as { ruleId: string }[]).map((item) => item.ruleId)).toEqual([rules[0]!.id]);
+    const expected = rules
+      .slice(1)
+      .map((rule) => runFailure(person.employeeId, rule.id, 'AUTO_ASSESSMENT_CYCLE_CONFLICT'));
+    checkFailures('assessment', receipt, expected);
   });
 });
 

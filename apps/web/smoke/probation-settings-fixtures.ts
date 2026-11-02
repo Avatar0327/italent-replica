@@ -77,18 +77,23 @@ export const PARALLEL_KEYS = {
 } as const;
 export const parallelDefault = { enabled: false, allowed: [] as string[] };
 
+/**
+ * 立即执行的失败项（auto-regularization.ts AutoRegularizationFailed / auto-assessment.ts AutoAssessmentFailed）：三个键，
+ * reason 为 details.reason，拿不到时退回通用错误码（reasonOf）。B57 每人至多一条；B58 按规则逐条办理，同一人可有多条。
+ */
+export const runFailure = (employeeId: string, ruleId: string, reason: string) => ({ employeeId, ruleId, reason });
 /** 立即执行回执（auto-regularization.ts / auto-assessment.ts）：逐人列出发起 / 失败与续跑游标。 */
 export const runReceipt = {
   regularization: (employeeId: string, ruleId: string, nextCursor: string | null = null) => ({
     businessDate: '2026-10-01',
     launched: [{ employeeId, ruleId, businessId: rowId(), businessStatus: 'in_review', initiatorUserId: operator }],
-    failed: [] as { employeeId: string; ruleId: string; reason: string }[],
+    failed: [] as ReturnType<typeof runFailure>[],
     nextCursor,
   }),
   assessment: (employeeId: string, ruleId: string, nextCursor: string | null = null) => ({
     businessDate: '2026-10-01',
     launched: [{ employeeId, ruleId, assessmentId: rowId(), assessmentStatus: 'in_review', initiatorUserId: operator }],
-    failed: [] as { employeeId: string; ruleId: string; reason: string }[],
+    failed: [] as ReturnType<typeof runFailure>[],
     nextCursor,
   }),
 };
