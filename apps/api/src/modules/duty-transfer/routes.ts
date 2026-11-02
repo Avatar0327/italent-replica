@@ -208,6 +208,11 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     return c.json({ ...view, records: await trimRecords(deps, ctx, view.records) }, 200);
   });
 
+  registerRecordRoutes(router, deps);
+}
+
+/** 只读列表：转交记录三页签、检查离职退休人员。 */
+function registerRecordRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${DUTY_TRANSFER_BASE}/records`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT, 'view');
     const filter = recordFilter(c);
@@ -220,19 +225,18 @@ export function registerDutyTransferRoutes(router: Hono<TenantEnv>, deps: Tenant
     return c.json({ total: page.total, items: await trimRecords(deps, ctx, page.items) });
   });
 
-  router.get(`${DUTY_TRANSFER_BASE}/departed`, (c) => departed(c, deps));
-}
-
-/** 检查离职退休人员：page / pageSize 分页（默认 50、上限 200），total 为完整过滤集（第 2 轮 P2-6）。 */
-async function departed(c: Context<TenantEnv>, deps: TenantRouteDeps) {
-  const ctx = await objectContext(c, deps, OBJECT, 'view');
-  const scope = await requestScope(c, deps, ctx, OBJECT);
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const visible = scopeSql(scope, { person: sql`t.employee_id` });
-  const page = pageQuery(c);
-  return c.json(
-    await withTenant(deps.db, ctx.tenantId, (tx) => departedWithDuties(tx, ctx.tenantId, today, visible, page)),
-  );
+  // 检查离职退休人员：page / pageSize 分页（默认 50、上限 200），total 为完整过滤集（第 2 轮 P2-6）。
+  router.get(`${DUTY_TRANSFER_BASE}/departed`, async (c) => {
+    const ctx = await objectContext(c, deps, OBJECT, 'view');
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const today = tenantLocalDate(ctx.now, ctx.timezone);
+    const visible = scopeSql(scope, { person: sql`t.employee_id` });
+    return c.json(
+      await withTenant(deps.db, ctx.tenantId, (tx) =>
+        departedWithDuties(tx, ctx.tenantId, today, visible, pageQuery(c)),
+      ),
+    );
+  });
 }
 
 const optionalInt = (c: Context, name: string, allowed: readonly number[]) => {
