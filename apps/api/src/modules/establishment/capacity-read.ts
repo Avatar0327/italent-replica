@@ -126,11 +126,28 @@ export async function capacityFor(
   }
 }
 
+/** 期间覆盖 day，且方案在 day 的最新版本未停用（与 loadSchemeBatch 的“该时点存在”同一判断）。 */
+const covering = (day: string) => sql`o.period_start <= ${day}::date AND o.period_end >= ${day}::date
+  AND EXISTS (
+    SELECT 1 FROM (
+      SELECT sv.stop_date FROM establishment_scheme_versions sv
+      WHERE sv.tenant_id = o.tenant_id AND sv.scheme_id = o.scheme_id AND sv.start_date <= ${day}::date
+      ORDER BY sv.start_date DESC, sv.version_no DESC LIMIT 1
+    ) sv WHERE sv.stop_date >= ${day}::date
+  )`;
+
 export async function listCapacities(
   tx: Tx,
   tenantId: string,
   asOf: string,
-  filters: { orgId?: string; schemeId?: string; periodStart?: string; scope?: Parameters<typeof scopeSql>[0] },
+  filters: {
+    orgId?: string;
+    schemeId?: string;
+    periodStart?: string;
+    scope?: Parameters<typeof scopeSql>[0];
+    /** 只取期间覆盖该日、方案在该日有效的对象（人员流动看板 / 组织编制统计按时点取数用）。 */
+    covering?: string;
+  },
   page: { limit: number; offset: number },
 ): Promise<CapacityRecord[]> {
   if (
@@ -153,6 +170,7 @@ export async function listCapacities(
   if (filters.orgId) conditions.push(sql`o.org_id = ${filters.orgId}::uuid`);
   if (filters.schemeId) conditions.push(sql`o.scheme_id = ${filters.schemeId}::uuid`);
   if (filters.periodStart) conditions.push(sql`o.period_start = ${filters.periodStart}::date`);
+  if (filters.covering) conditions.push(covering(filters.covering));
   const result = await tx.execute(sql`
     SELECT o.id FROM establishment_objects o
     WHERE ${sql.join(conditions, sql` AND `)} AND EXISTS (
@@ -248,10 +266,17 @@ async function readCapacityBatch(
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
 
-async function batchLocalSums(
+/** 编制对象在汇总里用到的键（组织调整预览按同一口径复用，BE-10e）。 */
+export type LocalSumRoot = Pick<typeof establishmentObjects.$inferSelect, 'id' | 'orgId' | 'schemeId' | 'periodStart'>;
+
+/**
+ * “仅本级”方案的含下级 = 生效日行政子树（未停用）内同方案同期间的本级编制之和；按对象 ID 返回。
+ * 汇总以文本取回再转数值，不在库里强转 int（多个本级之和可超过 int32）；子树超过预算时 503。
+ */
+export async function batchLocalSums(
   tx: Tx,
   tenantId: string,
-  local: readonly (typeof establishmentObjects.$inferSelect)[],
+  local: readonly LocalSumRoot[],
   asOf: string,
 ): Promise<Map<string, number>> {
   const sums = new Map<string, number>();

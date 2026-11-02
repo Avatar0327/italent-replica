@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { SUBSETS } from '@italent/domain';
 import type { EmploymentContext, EmploymentRecord } from '../employment/types.js';
+import { employmentTypeName } from '../employment/employment-types.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
 import { resolveOrgPaths } from '../org/read-model.js';
 import { rows, camel, type Row } from './store.js';
@@ -96,7 +97,8 @@ async function syncOne(
     endDate: record.stopDate === '9999-12-31' ? null : record.stopDate,
     entryDate: record.entryDate,
     leaveDate,
-    employmentType: fields.employmentType,
+    // 履历快照记人员类别名称（F-323：任职存字典 ID）
+    employmentType: await employmentTypeName(tx, ctx.tenantId, fields.employmentType),
     ...(await referenceNames(tx, ctx, fields, record.effectiveDate)),
   };
   if (before && Object.entries(snapshot).every(([key, value]) => (before[key] ?? null) === value)) return;

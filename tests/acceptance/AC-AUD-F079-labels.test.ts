@@ -33,6 +33,11 @@ describe('AC-AUD-F079 审计字段中文标签（DEC-374⑦）', () => {
     ['expectedDateSnapshot', '申请时预计退休日期'],
     ['earliestSnapshot', '申请时最早退休日期'],
     ['latestSnapshot', '申请时最晚退休日期'],
+    // R2-T09a 职责转交记录（duty_transfer.menu.*）的变更内容
+    ['receiverId', '接收人'],
+    ['dutyType', '职责类型'],
+    ['dutyDetails', '职责描述'],
+    ['transferDate', '转交日期'],
   ])('%s 显示为「%s」', (field, label) => {
     expect(auditFieldLabel(field)).toBe(label);
   });

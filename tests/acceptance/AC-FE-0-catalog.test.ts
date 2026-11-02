@@ -40,7 +40,8 @@ const expected = {
   approval: APPROVAL_OBJECTS.map((object) => object.code),
   self: [PERSONNEL_REQUEST_OBJECT],
   manager: [],
-  settings: [M.employmentSettings, M.employmentCustomField, M.contractSettings, M.contractRules].map(
+  // F-323（DEC-706）：设置 / 员工 / 人员类别字典与 app-directory 顺序一致。
+  settings: [M.employmentSettings, M.employmentCustomField, M.employmentType, M.contractSettings, M.contractRules].map(
     (object) => object.code,
   ),
   talent: Object.values(TALENT_OBJECTS).map((object) => object.code),
@@ -88,7 +89,7 @@ describe('AC-FE-0-07 公共对象目录与后端逐应用核对', () => {
       app,
       ...(code === M.contract.code ? ['contracts'] : []),
       ...(app === 'transfer' && code === M.employmentRecord.code
-        ? ['entries', 'exit-settings', 'interns', 'offers', 'part-time', 'probations']
+        ? ['entries', 'exit-settings', 'exits', 'interns', 'offers', 'part-time', 'probations', 'retirements']
         : []),
       // F-190b：带教信息分组，子项仍沿用原路径。
       ...(app === 'idp' && code === 'IDP.TutorShip' ? ['tutorship-information-group'] : []),

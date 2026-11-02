@@ -1,4 +1,5 @@
 import { employmentForms } from './employment-forms.js';
+import { employmentTypes } from './employment-types.js';
 /**
  * BE-7 兼职（docs/08_设计/R2-T05_兼职设计.md §1.2 / §1.4）：兼职期限链与兼职申请三表。
  * 兼职记录本身复用 employment_records（service_type ≠ primary、kind = part_time，不进时间轴，§1.1），这里只放
@@ -157,7 +158,7 @@ export const partTimeRequestVersions = pgTable(
     levelId: uuid('level_id'),
     directManagerId: uuid('direct_manager_id'),
     dottedManagerId: uuid('dotted_manager_id'),
-    employmentType: text('employment_type'),
+    employmentType: uuid('employment_type'),
     employmentForm: text('employment_form'),
     isDepartmentHead: boolean('is_department_head'),
     addedSubordinateIds: uuid('added_subordinate_ids').array(),
@@ -177,6 +178,11 @@ export const partTimeRequestVersions = pgTable(
       name: 'part_time_request_versions_form_fk',
       columns: [t.tenantId, t.employmentForm],
       foreignColumns: [employmentForms.tenantId, employmentForms.code],
+    }),
+    foreignKey({
+      name: 'part_time_request_versions_type_fk',
+      columns: [t.tenantId, t.employmentType],
+      foreignColumns: [employmentTypes.tenantId, employmentTypes.id],
     }),
     unique('part_time_request_versions_tenant_id').on(t.tenantId, t.id),
     unique('part_time_request_versions_request_id').on(t.tenantId, t.employeeId, t.requestId, t.id),

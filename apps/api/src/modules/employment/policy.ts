@@ -211,6 +211,32 @@ function blacklistPolicy(
   return object({ object: BLACKLIST, operation, button: buttonRef, scope, fields: BLACKLIST_FIELDS, ...extra });
 }
 
+/** F-323 人员类别（TenantBase.EmploymentType）：租户字典，按本对象字段查看权平铺裁剪；readContext 不解析范围。 */
+const EMPLOYMENT_TYPE = MODULE_OBJECTS.employmentType.code;
+const EMPLOYMENT_TYPE_FIELDS = projector('employment.employmentType', 'employment.employmentType');
+/** 写入：数据操作 + 字段编辑权 → 按钮在 CommandGuard.before 内按当前权限复核（requireTypeWrite），审计同事务。 */
+function employmentTypeWrite(fields: FieldsFrom) {
+  return write(fields, 'employment.employmentTypeGuard', none('租户字典无范围，命令内已复核，返回后只投影'), {
+    preconditions: ['assertRevision'],
+  });
+}
+function employmentTypePolicy(
+  operation: 'view' | 'create' | 'update' | 'delete',
+  buttonRef: ButtonPolicy,
+  extra: PolicyBase = {},
+): RoutePolicy {
+  return object({
+    object: EMPLOYMENT_TYPE,
+    operation,
+    button: buttonRef,
+    scope: noScope('人员类别是租户字典，无组织 / 人员字段'),
+    fields: EMPLOYMENT_TYPE_FIELDS,
+    ...extra,
+  });
+}
+/** 启停 / 删除无请求体：字段编辑权与按钮同在命令内 requireTypeWrite 复核（载荷为空）。 */
+const NO_TYPE_BODY: FieldsFrom = { guard: 'employment.employmentTypeGuard' };
+
 /** 调动发起人 → 按钮：hr → Transfer.Hr、manager → Transfer.Manager、employee → Transfer.Self（detail；access.ts ROLE_BUTTONS）。 */
 const TRANSFER_INITIATORS = ['hr', 'manager', 'employee'] as const satisfies readonly TransferInitiator[];
 const INITIATOR_BUTTON: ButtonPolicy = {
@@ -2084,6 +2110,36 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ),
     ...byId,
   }),
+  // 转正申请暂存（F-347，DEC-709）：读写同一口径：readContext('object.create', resource=id) 写入口径人员范围 404
+  // 「任职数据不存在」+ requireEmploymentWrite('create', {}, Employment.Create, 命令式：暂存内容是转正控制项不进字段协议）；
+  // 不在职 404；回执固定形状 { id, employeeId, revision, temporary, applicationId }
+  'GET /employees/:id/regularization-draft': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    scope: guardScope('employment.scope', NF_DATA),
+    fields: fixed(
+      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
+      'F-347 暂存投影固定键（regularization-drafts.ts）',
+    ),
+    ...byId,
+  }),
+  // 暂存写入：If-Match = 暂存 revision（没有时 0，409 REVISION_CONFLICT）；body 严格 { effectiveDate?, probationResult? }
+  // （400，不校验必填；结果须为字典启用项 400）；覆盖写同一份，不建单、不发起审批；CommandGuard.before 在命令事务内
+  // 复核对象新增权、按钮与员工范围（probationWriteGuard）；不写任职记录，没有直接操作 / 联动守卫
+  'PUT /employees/:id/regularization-draft': object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button('Employment.Create', 'detail'),
+    scope: guardScope('employment.scope', NF_DATA),
+    // 回执是暂存读投影（与 GET 同形状）：runWrite 的 project 原样返回，首次与重放同一出口
+    fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
+    write: employmentWrite('body.fields+customFields', ['assertRevision'], {
+      commandOnly: true,
+      controls: ['effectiveDate', 'probationResult'],
+    }),
+    ...byId,
+  }),
   // 单个 / 批量转正（B7 / B8，PB-R8）：不要求 If-Match（items[*].revision 逐人比对员工 revision）；body 严格
   // { mode, effectiveDate?, probationResult, items[1～100] }，同一员工重复 400；试用结果须为字典启用项（400）；
   // requireEmploymentWrite('create', { kind, mode, effectiveDate? }, Employment.Create)；命令内逐人保存点：员工范围
@@ -2169,6 +2225,34 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     auditedConfigWrite('employment_form'),
     byId,
   ),
+  // F-323：设置页视图 enabled / disabled / all（默认 enabled，非法 400）；删除为软删，被任职引用 409
+  'GET /employment-types': employmentTypePolicy('view', noButton('列表只按对象查看权')),
+  'GET /employment-types/options': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('员工表单下拉无按钮'),
+    scope: noScope('人员类别是租户字典，无组织 / 人员字段'),
+    fields: fixed(['items', 'id', 'name', 'displayOrder'], 'F-323：下拉只给启用项固定键'),
+  }),
+  'POST /employment-types': employmentTypePolicy('create', button('create', 'list'), {
+    write: employmentTypeWrite('body'),
+  }),
+  'PUT /employment-types/:id': employmentTypePolicy('update', button('update', 'detail'), {
+    write: employmentTypeWrite('body'),
+    ...byId,
+  }),
+  'POST /employment-types/:id/disable': employmentTypePolicy('update', button('disable', 'detail'), {
+    write: employmentTypeWrite(NO_TYPE_BODY),
+    ...byId,
+  }),
+  'POST /employment-types/:id/enable': employmentTypePolicy('update', button('enable', 'detail'), {
+    write: employmentTypeWrite(NO_TYPE_BODY),
+    ...byId,
+  }),
+  'DELETE /employment-types/:id': employmentTypePolicy('delete', button('delete', 'detail'), {
+    write: employmentTypeWrite(NO_TYPE_BODY),
+    ...byId,
+  }),
   'GET /probation-results': object({
     object: EMPLOYMENT,
     operation: 'view',

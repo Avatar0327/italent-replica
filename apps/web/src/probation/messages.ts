@@ -75,9 +75,13 @@ export const m = {
   invalidReceipt: '回执与原单不符，请刷新后核对结果。',
   invalidMonths: '试用期(月)必须为1～6的整数',
   invalidEnd: '预计试用结束日期不能早于试用开始日期',
-  draftCreated: '申请已保存，继续提交同一申请；已保存的字段只读。',
-  draftRecovered: '试用结果已随原申请保存，单据详情不回显。',
-  draftVolatile: '本机无法保存这份申请的找回记录：刷新或离开本页后将找不回，请在本页完成提交。',
+  draftCreated: '申请已保存，继续提交同一申请。',
+  // F-347：草稿单（撤回 / 第二步失败）同单修改重提；暂存只是表单内容，不建单（DEC-709 / DEC-713）
+  draftRecovered: '已带出原申请，修改后提交的仍是同一申请。',
+  temporaryRecovered: '已带出上次暂存信息',
+  clearTemporary: '点击清除',
+  stage: '暂存',
+  staged: '已暂存',
   noResults: '没有启用的试用结果，请先在设置中维护试用结果字典。',
   success: {
     edit: '试用期信息已保存',
