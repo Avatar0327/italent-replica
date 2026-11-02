@@ -240,6 +240,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       41: '8ccd03148dfe5d7d',
       // R2-T09a：新增职责转交记录对象 TenantBase.DutyTransferCommon 及两个预置管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
       42: 'a453a0856ab8f655',
+      // F-323（DEC-706）：人员类别字典对象授权项（两预置管理员）
+      43: '10be3d89590b6cf1',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

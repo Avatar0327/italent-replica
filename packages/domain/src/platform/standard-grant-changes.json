@@ -1,11 +1,5 @@
 {
-  "reason": "R2-T09a：新增职责转交记录对象 TenantBase.DutyTransferCommon（查看 / 设置接收人等，三个标准 HR 身份同组织员工其他对象），两个预置管理员看全部（DEC-415）",
-  "add": [
-    "standard_org_system_admin/TenantBase.DutyTransferCommon/*",
-    "standard_hr_admin/TenantBase.DutyTransferCommon/*",
-    "standard_hr_specialist/TenantBase.DutyTransferCommon/*",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.DutyTransferCommon",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.DutyTransferCommon"
-  ],
+  "reason": "F-323（DEC-706）：两预置管理员新增人员类别字典对象字段、数据操作与新建/编辑/停用/启用/删除按钮；租户字典无范围，其他身份不扩权",
+  "add": ["standard_org_system_admin/TenantBase.EmploymentType/*", "standard_hr_admin/TenantBase.EmploymentType/*"],
   "remove": []
 }

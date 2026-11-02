@@ -1282,6 +1282,20 @@
       "when": 1793538476838,
       "tag": "0182_f347_regularization_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1793538476839,
+      "tag": "0183_employment_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1793538476840,
+      "tag": "0184_f328_rehire_login_email",
+      "breakpoints": true
     }
   ]
 }

@@ -691,6 +691,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-structure.ts#attribute': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
   ],
+  'apps/api/src/modules/analytics/hr-structure.ts#categoryName': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#current',
+  ],
   'apps/api/src/modules/analytics/hr-structure.ts#jobDictionary': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
@@ -704,6 +707,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
     'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom',
     '#attribute',
+    '#categoryName',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
 };

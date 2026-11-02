@@ -1,4 +1,5 @@
 import { registerEmploymentFormRoutes } from './employment-form-routes.js';
+import { registerEmploymentTypeRoutes } from './employment-type-routes.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -159,6 +160,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerAutoRegularizationRoutes(module, deps);
   registerRetirementRuleRoutes(module, deps);
   registerEmploymentFormRoutes(module, deps);
+  registerEmploymentTypeRoutes(module, deps);
   registerRetirementIntentionRoutes(module, deps);
   registerAutoAssessmentRoutes(module, deps);
   registerAssessmentRoutes(module, deps);

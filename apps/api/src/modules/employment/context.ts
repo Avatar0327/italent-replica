@@ -1,4 +1,5 @@
 import { employmentFormNames } from './employment-forms.js';
+import { employmentTypeNames } from './employment-types.js';
 import { sql, withTenant, type Tx } from '@italent/db';
 import { buttonResource, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -54,7 +55,12 @@ export async function readContext(
   });
   const now = deps.clock();
   const context = { ...tenant, now, expectedRevision, commandId: '' };
-  const configuration = ['TenantBase.EmploymentSettings', 'TenantBase.EmploymentCustomField'].includes(objectCode);
+  // 配置对象与租户字典（F-323 人员类别）没有人员范围
+  const configuration = [
+    'TenantBase.EmploymentSettings',
+    'TenantBase.EmploymentCustomField',
+    'TenantBase.EmploymentType',
+  ].includes(objectCode);
   const scope = configuration
     ? undefined
     : await resolveModuleScope(deps, context, tenantLocalDate(now, tenant.timezone), objectCode, pageCode);
@@ -293,7 +299,9 @@ async function projectActivationFailures(
 }
 
 function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
-  return withTenant(deps.db, ctx.tenantId, (tx) => employmentFormNames(tx, ctx.tenantId, value));
+  return withTenant(deps.db, ctx.tenantId, async (tx) =>
+    employmentTypeNames(tx, ctx.tenantId, await employmentFormNames(tx, ctx.tenantId, value)),
+  );
 }
 
 /** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */
