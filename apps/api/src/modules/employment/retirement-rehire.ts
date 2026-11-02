@@ -32,15 +32,14 @@ import { createEmploymentBusiness, validateNewCycleEmployment } from './write-se
 
 /** 返聘计划里的入职控制项：没有 pendingEntry（返聘直接生效，不走待入职）。 */
 const rehireEntry = z.strictObject({ probation: z.boolean().optional(), ...probationTerms });
-/** 返聘合同：生效日不由请求给出（起始日 = 返聘日 R，顺延时跟着变）。 */
-const rehireContract = entryContractSchema.omit({ effectiveDate: true });
 
 const rehireEnvelope = z.strictObject({
   fields: z.record(z.string(), z.unknown()).optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   formId: z.string().optional(),
   entry: rehireEntry.optional(),
-  contract: rehireContract.optional(),
+  /** 返聘合同：生效日不由请求给出（起始日 = 返聘日 R，顺延时跟着变；entryContractSchema 已不含 effectiveDate）。 */
+  contract: entryContractSchema.optional(),
 });
 
 /** 落库的返聘计划（retirement_requests.rehire_plan）：字段已按任职业务规范化，不含日期。 */
@@ -53,7 +52,7 @@ export interface RehirePlan {
     readonly probationMonths?: number;
     readonly probationEndDate?: string;
   };
-  readonly contract?: Omit<EntryContract, 'effectiveDate'>;
+  readonly contract?: EntryContract;
 }
 
 const invalid = (message: string, reason: string, extra: object = {}) =>

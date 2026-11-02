@@ -20,6 +20,10 @@ export const editable = ['probation', 'probationMonths', 'probationEndDate', ...
 export const endOfTerm = (date: string, months: number) =>
   dayjs(date).add(months, 'month').subtract(1, 'day').format('YYYY-MM-DD');
 export const hasContract = (values: Values) => contractFields.some((field) => !isBlank(values[field]));
+/** 合同区有任一值才校验：公司 / 类型 / 期限类型必填，固定期限再要终止日期；全空不校验（EN-R10，F-434）。 */
+export const contractRequired = (name: string, values: Values) =>
+  hasContract(values) &&
+  (['companyId', 'typeId', 'termType'].includes(name) || (name === 'endDate' && values.termType === 'fixed'));
 export function completeBody(values: Values, date: string, fields: readonly string[]) {
   const selected = projectFields(
     values,
@@ -56,6 +60,8 @@ export async function readEntry(api: ApiClient, row: Row, fresh = false): Promis
         code: employee.code,
         probation: row.probation ?? null,
         cancelRemark: row.cancelRemark ?? null,
+        // F-423：北森入职表单从待入职合同预填「法人公司」（34 补充 F-434）；与 probation 同取自同版本的列表行
+        companyId: row.contractCompanyId ?? null,
       };
     // 列表与详情必须属于同一版本；更新列表后整条重读，不能把新 revision 配给旧值。
     row = await latestEntry(api, business);
