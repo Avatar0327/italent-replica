@@ -99,15 +99,14 @@ export async function loadReferences(
   const types = employmentTypeChoices(tenantId, preview, model, signal);
   const results = await Promise.allSettled(requests);
   const typeResult = await types;
+  const references: Record<string, Choice[]> = Object.fromEntries(
+    results.map((result, index) =>
+      result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
+    ),
+  );
+  if (typeResult) references.employmentType = typeResult.items;
   return {
-    references: {
-      ...Object.fromEntries(
-        results.map((result, index) =>
-          result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
-        ),
-      ),
-      ...(typeResult ? { employmentType: typeResult.items } : {}),
-    },
+    references,
     beforeReferences: Object.fromEntries(
       results.map((result, index) =>
         result.status === 'fulfilled' ? [result.value[0], result.value[2]] : [entries[index]![0], []],
