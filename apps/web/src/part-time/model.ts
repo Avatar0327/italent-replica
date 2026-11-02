@@ -1,4 +1,5 @@
 import { PART_TIME_EXPIRING_DAYS } from '@italent/domain';
+import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { m } from './messages.js';
 export const object = 'TenantBase.EmploymentRecord';
 export const personObject = 'TenantBase.Employee';
@@ -141,6 +142,7 @@ export function cellValue(row: Row, key: string, view: View): string {
   if (key === 'serviceType') return m.serviceTypes[String(row.serviceType)] ?? value(row.serviceType);
   if (key === 'kind') return m.kinds[String(row.kind)] ?? value(row.kind);
   if (key === 'serviceStatus') return m.serviceStatuses[String(row.serviceStatus)] ?? value(row.serviceStatus);
+  if (key === EMPLOYMENT_TYPE_FIELD) return employmentTypeLabel(row.fields ?? row);
   return value(row[key] ?? row.fields?.[key]);
 }
 export function rangeInvalid(filters: Filters): boolean {

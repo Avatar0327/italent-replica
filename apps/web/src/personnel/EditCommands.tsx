@@ -14,6 +14,8 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useConflictCommand, validObject } from '../foundation/forms/ConflictCommands.js';
 import { changedFields, type Values } from '../foundation/forms/values.js';
 import { RefSelect, refPaths } from '../contracts/references.js';
+import { EmploymentTypeSelect } from '../employment-types/EmploymentTypeSelect.js';
+import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { PersonnelCommands } from './commands.js';
 import {
   canDeleteSubset,
@@ -53,8 +55,10 @@ const references: Record<string, string> = {
   dottedManagerId: refPaths.employeeId,
 };
 
-function control(name: string, kind: Kind): ReactNode {
+function control(name: string, kind: Kind, row: Values): ReactNode {
   if (references[name]) return <RefSelect path={references[name]} ariaLabel={label(name)} />;
+  if (name === EMPLOYMENT_TYPE_FIELD)
+    return <EmploymentTypeSelect ariaLabel={label(name)} currentName={row.employmentTypeName} />;
   if (kind === 'date') return <TenantDatePicker />;
   if (kind === 'boolean') return <Switch aria-label={label(name)} />;
   if (kind === 'integer') return <InputNumber min={0} precision={0} />;
@@ -64,9 +68,9 @@ function control(name: string, kind: Kind): ReactNode {
 const field = (name: string, kind: Kind, access: FormField['access'], row: Values): FormField => ({
   name,
   label: label(name),
-  control: control(name, kind),
+  control: control(name, kind, row),
   access,
-  display: fieldValue(name, row[name], 'long'),
+  display: name === EMPLOYMENT_TYPE_FIELD ? employmentTypeLabel(row) : fieldValue(name, row[name], 'long'),
 });
 /** 读回最新版本：内核核对差异后按最新版本重提（DEC-067 先回查再重提）。 */
 const reader = (api: Api, path: string, values: (raw: Row) => Values) => async () => {
