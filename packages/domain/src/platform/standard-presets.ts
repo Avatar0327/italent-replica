@@ -93,6 +93,13 @@ const ANALYTICS_BE13A_SEE_ALL: readonly PresetSeeAllTarget[] = ANALYTICS_BE13A_O
   targetCode,
 }));
 
+/** DEC-415：R2 BE-13b 的人员流动分析 / 流动情况报表同人事看板，看全部给本模块的预置管理员。 */
+const ANALYTICS_BE13B_OBJECTS = [MODULE_OBJECTS.hrMovement.code, MODULE_OBJECTS.hrMovementReport.code];
+const ANALYTICS_BE13B_SEE_ALL: readonly PresetSeeAllTarget[] = ANALYTICS_BE13B_OBJECTS.map((targetCode) => ({
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode,
+}));
 /** DEC-415：人事流程看板（R2 BE-13c）同人事看板，看全部默认给本模块的预置管理员。 */
 const HR_PROCESS_DASHBOARD_SEE_ALL: PresetSeeAllTarget = {
   appCode: ORG_EMPLOYEE_APP,
@@ -145,6 +152,7 @@ const READ_ONLY_OBJECTS = new Set<string>([
   MODULE_OBJECTS.hrDashboard.code,
   MODULE_OBJECTS.hrProcessDashboard.code,
   ...ANALYTICS_BE13A_OBJECTS,
+  ...ANALYTICS_BE13B_OBJECTS,
 ]);
 const grant = (definition: ObjectDefinition) =>
   READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
@@ -421,6 +429,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       HR_DASHBOARD_SEE_ALL,
       HR_PROCESS_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
+      ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
     ],
   },
@@ -438,6 +447,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       HR_DASHBOARD_SEE_ALL,
       HR_PROCESS_DASHBOARD_SEE_ALL,
       ...ANALYTICS_BE13A_SEE_ALL,
+      ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
     ],
   },

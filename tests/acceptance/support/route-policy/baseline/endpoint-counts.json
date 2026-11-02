@@ -11,6 +11,7 @@
     "evaluation": 34,
     "hr-analysis": 2,
     "hr-dashboard": 2,
+    "hr-movement": 3,
     "hr-process-dashboard": 2,
     "hr-structure": 3,
     "idp": 58,
@@ -35,5 +36,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 824
+  "total": 827
 }

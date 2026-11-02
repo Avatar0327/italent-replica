@@ -31,6 +31,7 @@ import { GRAPH as api_modules_transfer } from './api-modules-transfer.js';
 import { GRAPH as api_root } from './api-root.js';
 import { GRAPH as api_route_policy } from './api-route-policy.js';
 import { GRAPH as api_seeds } from './api-seeds.js';
+import { GRAPH as domain_analytics } from './domain-analytics.js';
 import { GRAPH as domain_approval } from './domain-approval.js';
 import { GRAPH as domain_audit } from './domain-audit.js';
 import { GRAPH as domain_contracts } from './domain-contracts.js';
@@ -81,6 +82,7 @@ export const GRAPH: Graph = {
   ...api_root,
   ...api_route_policy,
   ...api_seeds,
+  ...domain_analytics,
   ...domain_approval,
   ...domain_audit,
   ...domain_contracts,
