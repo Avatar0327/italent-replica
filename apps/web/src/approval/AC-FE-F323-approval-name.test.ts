@@ -94,3 +94,29 @@ it('AC-FE-F323-approval-name：名称查不到时显示“已保存的值”占�
   expect(host.textContent).not.toContain(AFTER);
   expect(host.textContent).not.toContain(BEFORE);
 });
+
+it('AC-FE-F323-approval-name：审批中编辑的人员类别只读展示也显示名称，不显示 UUID', async () => {
+  const value = detail('合成类别新', '合成类别原');
+  await render({
+    ...value,
+    taskId: '50000000-0000-4000-8000-000000000001',
+    actions: ['approve', 'edit'],
+    form: {
+      ...value.form,
+      edit: {
+        taskId: '50000000-0000-4000-8000-000000000002',
+        mode: 'separate',
+        fields: [{ key: 'employmentType', required: false, value: AFTER }],
+      },
+    },
+  });
+  const edit = [...host.querySelectorAll('button')].find((node) => node.textContent?.replace(/\s/g, '') === '编辑');
+  expect(edit, '编辑按钮').toBeDefined();
+  await act(async () => {
+    edit!.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+  expect(dialog?.textContent).toContain('合成类别新');
+  expect(dialog?.textContent).not.toContain(AFTER);
+});
