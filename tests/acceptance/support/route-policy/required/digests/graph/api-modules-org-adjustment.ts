@@ -132,9 +132,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': [
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#escapeXml': ['#xmlChars'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#establishmentMark': ['#NONE'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#exportCards': ['#NONE', '#TAGS', '#exportCards'],
-  'apps/api/src/modules/org-adjustment/export-svg.ts#exportFileName': ['#NONE'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#exportFileName': ['#NONE', '#xmlChars'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#flatten': ['#flatten'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#links': ['#COLORS', '#GAP_Y', '#H', '#W'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#readExport': [
@@ -181,7 +182,8 @@ export const GRAPH: Graph = {
     '#renderCard',
   ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#text': ['#escapeXml'],
-  'apps/api/src/modules/org-adjustment/export-svg.ts#truncate': ['#textUnits'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#truncate': ['#textUnits', '#xmlChars'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#xmlChars': ['#XML_INVALID'],
   'apps/api/src/modules/org-adjustment/item-check.ts#baselineIssues': ['#BASELINE_CHANGED', '#issue'],
   'apps/api/src/modules/org-adjustment/item-check.ts#checkOrgItems': [
     '#baselineIssues',
@@ -375,12 +377,18 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes',
   ],
   'apps/api/src/modules/org-adjustment/preview.ts#fillEstablishment': [
+    'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums',
     'apps/api/src/modules/establishment/schemes.ts#loadSchemeBatch',
-    '#localSums',
+    '#pickScheme',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
   ],
-  'apps/api/src/modules/org-adjustment/preview.ts#localSums': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
+  'apps/api/src/modules/org-adjustment/preview.ts#fillHeads': [
+    'apps/api/src/modules/personnel/employee-projection.ts#currentPersonName',
+  ],
   'apps/api/src/modules/org-adjustment/preview.ts#overlay': ['#MARKS', '#node'],
+  'apps/api/src/modules/org-adjustment/preview.ts#pickScheme': [
+    'apps/api/src/modules/establishment/default-scheme.ts#DEFAULT_SCHEME_CODE',
+  ],
   'apps/api/src/modules/org-adjustment/preview.ts#readPreview': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
