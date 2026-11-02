@@ -160,6 +160,7 @@ export interface BusinessAdapter {
   /**
    * 办理决定前的业务前提（R3-T07 无目标校验 IDP-R10）；同意、不同意、驳回都会调用，`decision` 标明是哪一种，
    * 只该拦“同意 / 提交”的前提（F-155 回顾必填）据此跳过另两种。不满足时抛错，任务不动。
+   * 同意带编辑（with_approve 的 fields）时在编辑之后调用，看到的是编辑后的业务单（BE-10c 第 3 轮）。
    */
   beforeApprove?(
     tx: Tx,

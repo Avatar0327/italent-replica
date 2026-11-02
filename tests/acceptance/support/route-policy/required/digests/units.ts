@@ -56,7 +56,7 @@ export const DIGESTS: Digests = {
     requireProcessButton: '782f172bb6ca',
     requireProcessView: '06663664d062',
     requireResubmitRight: 'b40f94bd56fe',
-    requireWithdrawRight: '5a47d8c76327',
+    requireWithdrawRight: 'b95cb7cf7782',
   },
   'apps/api/src/modules/approval/actions.ts': {
     adminAct: 'd76e0f4e36c7',
@@ -854,7 +854,10 @@ export const DIGESTS: Digests = {
     authorizeHead: '9c1815c29cd6',
     authorizeHeadAction: '45a4e2cfc6e7',
     authorizeItem: 'a9765a0f5029',
-    requireButtons: '733084dc052f',
+    authorizeOwnerAction: 'aa1fa6e34d54',
+    authorizeWithdraw: '700023580fd9',
+    orgScopeAuthorizer: 'd76693380788',
+    requireButtons: 'f06bfc3c4e63',
     requireScopes: 'ec285517eea1',
   },
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
@@ -885,7 +888,9 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': 'fdaad898c549',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '8f7156ce0bb3',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
   'apps/api/src/modules/org/employment-linkage.ts': {
     authorizeOrgEmploymentReplay: 'fc158c7c64c2',
@@ -2407,7 +2412,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeItem': '3771393c935a',
-  'apps/api/src/modules/org-adjustment/access.ts#requireButtons': '7f0d931cf235',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction': 'e715b5a1fc8c',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeWithdraw': '7c693d2c2b2a',
+  'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer': '52d75b1182d5',
+  'apps/api/src/modules/org-adjustment/access.ts#requireButtons': 'f3f82540978f',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen': '1240eb889365',
@@ -2440,8 +2448,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'd0c2f163388b',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
     'bff89d82db76',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
+    '151ca7adf4ff',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
+  'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':
+    '6ff7710d5889',
   'apps/api/src/modules/org/employment-linkage.ts#authorizeOrgEmploymentReplay': 'e8222d212587',
   'apps/api/src/modules/org/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/org/routes.ts#anyPersonFieldEditable': '7c428d724e80',

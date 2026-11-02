@@ -329,6 +329,7 @@ export const ORG_ADJUSTMENT_AUDIT_ACTIONS = [
   'org-adjustment.void',
   'org-adjustment.submit',
   'org-adjustment.withdraw',
+  'org-adjustment.resubmit',
   'org-adjustment.rebase',
   'org-adjustment.item.create',
   'org-adjustment.item.update',

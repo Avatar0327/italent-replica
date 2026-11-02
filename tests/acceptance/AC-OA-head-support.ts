@@ -53,6 +53,8 @@ export interface HeadAccess {
   deniedFields: Set<string>;
   /** 看不到的字段编码（查看权）。 */
   hiddenFields: Set<string>;
+  /** 只对某个用户看不到的字段编码（审批人盲审用例按人区分）。 */
+  hiddenByUser: Map<string, Set<string>>;
   /** 没有申请单对象查看权（object.view）。 */
   viewDenied?: boolean;
 }
@@ -76,6 +78,7 @@ export async function headWorld(db: Db, label: string) {
     deniedButtons: new Set(),
     deniedFields: new Set(),
     hiddenFields: new Set(),
+    hiddenByUser: new Map(),
   };
   const decide = (req: AuthorizationRequest) => {
     if (req.action === 'object.button') return !access.deniedButtons.has(req.resource!.split('#')[1]!.split('@')[0]!);
@@ -88,8 +91,12 @@ export async function headWorld(db: Db, label: string) {
   registerScopeProvider(authorize, {
     scope: async (q) => (q.objectCode === MAIN ? access.main : q.objectCode === ORG ? access.org : ALL),
     authorize: async (req) => decide(req),
-    fields: async (_tenantId, _userId, objectCode) =>
-      new Set([...catalogFields(objectCode)].filter((f) => !access.hiddenFields.has(f))),
+    fields: async (_tenantId, userId, objectCode) =>
+      new Set(
+        [...catalogFields(objectCode)].filter(
+          (f) => !access.hiddenFields.has(f) && !access.hiddenByUser.get(userId)?.has(f),
+        ),
+      ),
   });
   const api = tenantApi(w.db, { authorize, clock: w.clock });
   const call = (method: string, path: string, options: RequestOptions = {}, user = w.hr.id) =>
