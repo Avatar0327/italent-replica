@@ -263,7 +263,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/actions.ts#adminAct': ['d76e0f4e36c7', 'ceaaad3064d4'],
   'apps/api/src/modules/approval/actions.ts#adminJump': ['6f2b885bc110', '2e07d35a429f'],
   'apps/api/src/modules/approval/actions.ts#applyEdit': ['f04d01af93c5', '9a5747b6f559'],
-  'apps/api/src/modules/approval/actions.ts#approveTask': ['ab2bee1a076f', '98e92057cad9'],
+  'apps/api/src/modules/approval/actions.ts#approveTask': ['38e6a3097da9', 'cf627fe9cdcf'],
   'apps/api/src/modules/approval/actions.ts#assertAddSignType': ['d711eab8cbf2', '0352604aef9c'],
   'apps/api/src/modules/approval/actions.ts#assertAddSigners': ['6fb4b9e7475f', 'f0755aa5fd68'],
   'apps/api/src/modules/approval/actions.ts#assertApprovalEdit': ['9ad148e53257', 'e3f244f6d7ab'],
