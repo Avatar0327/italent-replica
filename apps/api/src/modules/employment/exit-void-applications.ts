@@ -3,9 +3,9 @@
  * 候选 = 该员工除本单外全部未落地的任职业务（最新状态 ∈ 草稿 / 审批中 / 已驳回 / 已批准未落地），不论 kind、不论载荷日期，
  * 与离职预览的“将作废”清单（exit-preview.ts）同一来源。排在离职之前的已批准申请已由步骤 0a 保证先落地，这里剩下的都排在离职之后。
  * 逐条按业务 ID 升序（§5.2 ③ 预锁）：状态置作废 → 审批实例 cancel → 台账 → 审计 / outbox → 站内消息；
- * 一组作废完后，本组带编调动的分配整组回退并按最终状态校验（releaseVoidedEstablishment，F-400 r3）。
- * 晚于最后工作日、已落地的未来调动（DEC-725 ③）在离职落地摘下后也走这里（voidLandedTransfers）：先立墓碑，再同一套作废步骤，
- * 带编分配同样整组回退并校验，回退不合法时整单回滚。
+ * 晚于最后工作日、已落地的未来调动（DEC-725 ③）在离职落地摘下后也走这里（voidLandedTransfers）：先立墓碑，再同一套作废步骤。
+ * 一次离职实际作废的全部带编调动（在途组 + 已落地组）是同一个回退单元（F-400 r4）：两组都作废完后，由离职生效链
+ * 调一次 releaseVoidedEstablishment，按编制对象汇总净变化、只校验最终状态；回退不合法时整单回滚。
  * 任一条失败即整单失败，由调用方的保存点回滚（含已作废的前几条）。
  * 作废实现（voidApplications / voidOne）只有一份：直接实习转正自动作废在途转正申请（DEC-593③③，voidSupersededRegularizations）
  * 复用它，只是原因不同——离职记台账 exit_effects（B4 撤销按它核对），转正不记，审计动作与站内消息模板按原因区分。
@@ -255,11 +255,13 @@ async function notifyVoided(
 }
 
 /**
- * 一组作废（同一次离职的在途申请、同一次离职摘下的已落地调动、直接转正作废的转正申请）完成后，带编调动的分配整组回退：
- * 先加后减，只按整组最终状态判额度是否足够（reverseCarriedEstablishmentGroup），不因业务 ID 顺序在中间状态误判失败；
- * 回退后再逐单复核原调入方的严格控编（此时整组都已作废，复核看到的就是最终占用）。失败随调用方保存点 / 事务整体回滚。
+ * 一个回退单元作废完后，带编调动的分配整组回退（F-400 r3 / r4）。离职：同一次离职的在途申请与摘下的已落地调动合并成一个单元，
+ * 由 exit-activation.ts 在两组都作废后调用一次；直接转正：作废的转正申请（候选只有 intern_regularization，没有带编分配）。
+ * 按编制对象汇总净变化、每个对象写一次最终值（reverseCarriedEstablishmentGroup → applyCapacityNet），不因业务 ID 顺序、
+ * 分组或上下限附近的中间值误判失败；回退后再逐单复核原调入方的严格控编（此时整组都已作废，复核看到的就是最终占用）。
+ * 失败随调用方保存点 / 事务整体回滚。
  */
-async function releaseVoidedEstablishment(
+export async function releaseVoidedEstablishment(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
@@ -309,7 +311,8 @@ function tooManyToVoid(cause: VoidCause) {
  * ① 候选被截断（至多取 VOID_LIMIT + 1 条）时在任何写入之前整单拒绝，不会作废一部分就返回成功；
  * ② 锁序：调用方已持员工锁与全部业务头（heads），先取齐组织 / 编制资源，再锁审批实例并发站内消息
  *   （全局序 员工 → 业务头 → 组织 → 编制 → 实例；通知插入会取成员行的外键锁，晚于组织锁才不会与先持组织锁、再锁成员行的路径成环）。
- * 逐条按业务 ID 升序：先锁审批实例，再逐条锁业务头、作废；最后整组回退带编分配。heads 是调用方已预锁的各业务头 revision。
+ * 逐条按业务 ID 升序：先锁审批实例，再逐条锁业务头、作废。heads 是调用方已预锁的各业务头 revision。
+ * 带编回退：直接转正在这里整组回退；离职不在这里回退，交给离职生效链与已落地组合并后一次回退（F-400 r4，见 releaseVoidedEstablishment）。
  */
 async function voidApplications(
   tx: Tx,
@@ -337,10 +340,14 @@ async function voidApplications(
     business.employee = employee;
     voided.push(await voidOne(tx, ctx, cause, business));
   }
-  await releaseVoidedEstablishment(tx, ctx, employee.id, voided);
+  if (cause.kind === 'direct_regularization') await releaseVoidedEstablishment(tx, ctx, employee.id, voided);
   return voided;
 }
 
+/**
+ * 离职生效步骤 1。只作废、不回退带编分配：返回的作废清单须由调用方与已落地组（voidLandedTransfers）合并后
+ * 调一次 releaseVoidedEstablishment（F-400 r4）；分两段回退时中间状态可能超编或越界，而最终状态合法。
+ */
 export async function voidInFlightApplications(
   tx: Tx,
   ctx: EmploymentContext,
@@ -391,9 +398,8 @@ export async function voidSupersededRegularizations(
  * DEC-725 ③：离职落地摘下的、晚于最后工作日的已落地调动（detachAndRecord 台账 future_transfer_detached）一律作废
  * （保留 DEC-520②“任职显示作废 / 已终止”）。逐条：墓碑（记录永久离开时间轴，覆盖校验与编制占用都按墓碑排除；
  * 撤销离职时 reattachFutureTransfers 跳过墓碑，不再挂回）→ 与在途申请同一个 voidOne（作废、台账、审计、站内消息）；
- * 全部作废后整组回退带编分配并校验（releaseVoidedEstablishment）。这些调动可能首尾相接，不能逐笔回退。
- * 步骤 1 的在途调动先于本组回退：在途申请不落时间轴，不会成为已落地调动的调出来源，所以先回退在途、再回退已落地是依赖逆序。
- * 退休暂不作废（F-351），保持只摘下。锁序：员工（已持有）→ 业务头（heads，生效链开头已预锁）→ 组织设置 / 编制（激活入口
+ * 只作废、不回退：返回的作废清单由调用方与步骤 1 的在途组合并，调一次 releaseVoidedEstablishment（F-400 r4）。
+ * 这些调动可能首尾相接、也可能与在途调动首尾相接，不能逐笔或分组回退。退休暂不作废（F-351），保持只摘下。锁序：员工（已持有）→ 业务头（heads，生效链开头已预锁）→ 组织设置 / 编制（激活入口
  * lockExitOrganizationResources 已按“有未回退带编分配”取齐，这里只是重入）→ 通知。
  */
 export async function voidLandedTransfers(
@@ -420,6 +426,5 @@ export async function voidLandedTransfers(
     });
     voided.push(await voidOne(tx, ctx, { kind: 'exit', exit, lastWorkDate }, business));
   }
-  await releaseVoidedEstablishment(tx, ctx, exit.employeeId, voided);
   return voided;
 }

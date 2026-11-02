@@ -49,8 +49,10 @@ import {
 import {
   lockExitOrganizationResources,
   lockOtherBusinessHeads,
+  releaseVoidedEstablishment,
   voidInFlightApplications,
   voidLandedTransfers,
+  type VoidedApplication,
 } from './exit-void-applications.js';
 import { assertInternEndable } from './intern-eligibility.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
@@ -382,7 +384,11 @@ async function followingTransfers(
   return following.filter((row) => row.bizType === 'transfer').map((row) => row.docId);
 }
 
-/** §5.8 摘下排在离职之后的已落地调动，随即作废（DEC-725 ③；退休只摘下，F-351）；返回摘下条数。 */
+/**
+ * §5.8 摘下排在离职之后的已落地调动，随即作废（DEC-725 ③；退休只摘下，F-351）；返回摘下条数。
+ * 带编回退：步骤 1 作废的在途组（inFlight）与这里作废的已落地组是同一个回退单元，合并后只回退一次、只校验最终状态
+ * （F-400 r4）；退休时已落地组为空，仍回退在途组。
+ */
 async function detachAndVoid(
   tx: Tx,
   ctx: EmploymentContext,
@@ -390,9 +396,11 @@ async function detachAndVoid(
   detachable: readonly string[] | undefined,
   lastWorkDate: string,
   heads: ReadonlyMap<string, number>,
+  inFlight: readonly VoidedApplication[],
 ) {
   const detached = await detachAndRecord(tx, ctx, business, detachable);
-  await voidLandedTransfers(tx, ctx, business, detached, lastWorkDate, heads);
+  const landed = await voidLandedTransfers(tx, ctx, business, detached, lastWorkDate, heads);
+  await releaseVoidedEstablishment(tx, ctx, business.employeeId, [...inFlight, ...landed]);
   return detached.length;
 }
 
@@ -435,7 +443,7 @@ async function runSteps(
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
-  const detached = await detachAndVoid(tx, ctx, business, detachable, late.lastWorkDate, heads);
+  const detached = await detachAndVoid(tx, ctx, business, detachable, late.lastWorkDate, heads, voided);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
     tx,

@@ -141,7 +141,7 @@ async function crossGroup(label: string) {
   return { w, landed, pending, exit };
 }
 
-describe('F-400 r4 在途组与已落地组合并为一个回退单元，只按最终状态校验', () => {
+describe('F-400 r4（DEC-725③、DEC-181）在途组与已落地组合并为一个回退单元，只按最终状态校验', () => {
   it('A 职位额度调为 1：分组回退中途超编，合并后最终合法，离职生效、两单作废、额度恢复', async () => {
     const { w, landed, pending, exit } = await crossGroup('f400r4-cross-legal');
     // E 离职、两调动作废后：A 一人 / 一份职位额度，B 无人 / 零额度，严格控编合法
@@ -191,7 +191,7 @@ async function upperBoundChain(label: string, laterHasSmallerId: boolean) {
   return { w, person, initial, out, back };
 }
 
-describe('F-400 r4 额度处于接口上限时，净零回退不产生越界中间值', () => {
+describe('F-400 r4（DEC-431①）额度处于接口上限时，净零回退不产生越界中间值', () => {
   for (const laterHasSmallerId of [false, true])
     it(`A→B→A 已落地链（后一条 UUID ${laterHasSmallerId ? '较小' : '较大'}）：离职生效，额度回到上限`, async () => {
       const { w, person, initial, out, back } = await upperBoundChain(
@@ -247,7 +247,7 @@ describe('F-400 r4 额度处于接口上限时，净零回退不产生越界中�
   });
 });
 
-describe('F-400 r4 三种维护方式、三个编制对象、五条相接调动：整组回退恢复全部额度', () => {
+describe('F-400 r4（DEC-431①）三种维护方式、三个编制对象、五条相接调动：整组回退恢复全部额度', () => {
   for (const mode of ['local', 'inclusive', 'both'] as const satisfies readonly CarriedWorldOptions['mode'][])
     it(`${mode}：离职生效，五单作废，三个编制对象额度与细分恢复，分配全部回退`, async () => {
       const w = await carriedWorld(database().db, `f400r4-matrix-${mode}`, { mode });
