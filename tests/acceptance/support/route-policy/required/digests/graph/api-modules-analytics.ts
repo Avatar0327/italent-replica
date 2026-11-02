@@ -39,6 +39,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/contract-board.ts#boardRows': [
     '#candidates',
+    '#isGroupedContractComponent',
     'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
   ],
   'apps/api/src/modules/analytics/contract-board.ts#candidates': [

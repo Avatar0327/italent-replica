@@ -66,7 +66,7 @@ import {
   type InstanceRow,
   type TaskRow,
 } from './store.js';
-import { withoutRetrievedApprovals } from './task-history.js';
+import { withoutRetrieved, withoutRewoundDownstream } from './task-history.js';
 
 /** 一次命令内的流转现场：实例状态在内存中推进，命令结束时一次落库（revision 只加一）。 */
 export interface Run {
@@ -187,14 +187,16 @@ function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusa
   // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const history = effectiveHistory(tasks, run.instance);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
-  // F-379 / DEC-097：撤回的同意已失效，撤回后转交也不恢复；系统自动同意仍计入（不用 actualApprovals，口径不变）
-  const approvals = withoutRetrievedApprovals(history).filter(approvedBy);
+  // F-379 / F-392 / DEC-097：撤回的同意及撤回点之后的旧下游结果已失效，撤回后转交也不恢复；
+  // 仍有效的系统自动同意照常计入（不用 actualApprovals，口径不变）
+  const approvals = withoutRetrieved(history).filter(approvedBy);
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
+  const previousNode = withoutRewoundDownstream(history).filter((task) => task.nodeKey === previousKey);
   return {
     ...recusal,
     isFirstNode: index === 0,
     exceptionAdminUserId: run.version.exceptionAdminUserId!,
-    previousApproverUserIds: previousNodeComparand(history.filter((task) => task.nodeKey === previousKey)),
+    previousApproverUserIds: previousNodeComparand(previousNode),
     approvedUserIds: approvals.map((task) => task.assigneeUserId!),
     chainUserIds: tasks
       .filter((task) => task.assigneeUserId !== null && task.origin !== 'self_skip')
