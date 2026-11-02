@@ -86,15 +86,18 @@ function useInternList() {
     locate(undefined);
   }, []);
   const refresh = () => result.reload();
-  // 申请确认后切到目标视图并独立定位；提交开始时领票，离页或期间已导航则丢弃（F-376）
+  // 申请确认后切到目标视图并独立定位；提交开始时领票，离页或期间已导航则丢弃（F-376）。
+  // 列表重读不随导航丢弃：写确认成功就重读，HR 已后退到别的视图时也拿到新数据（F-436）
   const navigation = () =>
-    guard((destination: ApplicationDestination) => {
-      setParams({ view: destination.view });
-      setPage(1);
-      setFilters({});
-      locate(destination);
-      result.refresh();
-    });
+    guard(
+      (destination: ApplicationDestination) => {
+        setParams({ view: destination.view });
+        setPage(1);
+        setFilters({});
+        locate(destination);
+      },
+      () => refreshList.current(),
+    );
   const changePage = (next: number) => {
     locate(undefined);
     setPage(next);

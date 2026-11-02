@@ -21,15 +21,18 @@ export function observe(state: NavigationState, entry: unknown) {
 /**
  * 领票时记下序号；执行时页面仍在且序号没变（期间没有发生过任何导航）才执行，否则丢弃。
  * 序号只增不减，a → b → a 回到同一历史项后旧票据也永久失效（F-376 R1 P2-1）。
+ * confirmed 是写确认后的非导航副作用（如列表重读）：写已成功，不论导航是否被丢弃都先执行（F-436）。
  */
 export function ticket<A extends unknown[]>(
   state: NavigationState,
   navigate: (...args: A) => void,
   entry: () => unknown,
+  confirmed?: (...args: A) => void,
 ) {
   observe(state, entry());
   const seq = state.seq;
   return (...args: A) => {
+    confirmed?.(...args);
     observe(state, entry());
     if (state.alive && state.seq === seq) navigate(...args);
   };
@@ -58,7 +61,8 @@ export function useNavigationGuard() {
     };
   }, []);
   return useCallback(
-    <A extends unknown[]>(navigate: (...args: A) => void) => ticket(state.current, navigate, currentEntry),
+    <A extends unknown[]>(navigate: (...args: A) => void, confirmed?: (...args: A) => void) =>
+      ticket(state.current, navigate, currentEntry, confirmed),
     [],
   );
 }
