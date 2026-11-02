@@ -8,7 +8,8 @@
  * 同一份读投影还带 applicationId：本周期最近一张停在草稿的转正申请（含撤回回草稿的），前端据此同单重提（DEC-103），
  * 取代原先记在本机存储里的草稿指针。
  * 第 2 轮（rf347_1 P2-2 / P2-3 / P2-8）：暂存先锁员工行串行化同员工的写（首次暂存没有行可锁）；读写都要求今天在职
- * （与转正申请入口同一顺序口径 sequenceViolation）；已有申请草稿单时暂存按版本冲突拒绝，前端重读后进入那张单。
+ * （与转正申请入口共用顺序规则 sequenceViolation，但按今天判，见 currentAnchor）；已有申请草稿单时暂存按版本冲突
+ * 拒绝，前端重读后进入那张单。
  */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -55,9 +56,14 @@ interface DraftRow {
 }
 
 /**
- * 在职才有暂存：不在职（未入职、离职 / 退休已生效）与员工不存在同样 404，文案也同转正申请入口的“员工不存在”
- * （rf347_2 P3：读写一致，PUT 先锁员工行时报的就是它）。在职口径同转正申请入口
- * （write-service.ts assertBusinessSequence：今天及以前最后一条不能是离职 / 退休）；周期取不到也算不在职。
+ * 在职才有暂存：按租户今天判，今天及以前最后一条任职记录须过 sequenceViolation（不能没有、不能是离职 / 退休），
+ * 本周期开启记录也须取得到。不在职（未入职、离职 / 退休已生效）与员工不存在同样 404“员工不存在”
+ * （rf347_2 P3：GET / PUT 一致，PUT 先锁员工行时报的就是它）。
+ * 与转正申请入口（regularization.ts createRegularizationBusiness → write-service.ts assertBusinessSequence）
+ * 只共用 sequenceViolation 这一顺序规则，口径不同（F-445 实测）：申请入口按转正生效日判、不按今天；
+ * 不在职时不带生效日 400 PROBATION_END_DATE_MISSING（今天取不到周期，如未入职），否则 409“任职业务前后顺序
+ * 不合法”（ACTIVE_EMPLOYMENT_REQUIRED）；生效日落在在职区间时照常建单（如待入职员工填入职日之后、离职员工填
+ * 离职日之前）。暂存没有必填的生效日，只能按今天判，所以不照搬申请入口的状态码与文案。
  */
 async function currentAnchor(tx: Tx, ctx: EmploymentContext, employeeId: string) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
