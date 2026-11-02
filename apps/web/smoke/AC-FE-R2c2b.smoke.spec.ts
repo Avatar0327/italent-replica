@@ -491,6 +491,8 @@ test('AC-FE-R2c2b-11 设置不可覆盖（overridable=false）时只读：不给
   await expect(form.getByRole('button', save)).toHaveCount(0);
   await openTab(page, 'blacklist-rules', '自动加黑规则');
   await expect(page.getByRole('switch', { name: '离职后自动加入黑名单' })).toBeDisabled();
+  // 开关禁用须说明原因（无权限 / 只读要有明确提示）。
+  await expect(page.locator('.exit-settings-switch').getByText('该设置由系统统一管控，本租户不可修改。')).toBeVisible();
   expect(server.writes).toEqual([]);
 });
 
