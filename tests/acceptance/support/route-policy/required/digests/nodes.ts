@@ -1928,7 +1928,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employment/intern-views.ts#INTERN_SORT_FIELDS': ['abf36a177721', 'e3b0c44298fc'],
   'apps/api/src/modules/employment/intern-views.ts#convertingQuery': ['6852cbf060eb', 'de26d00068f5'],
   'apps/api/src/modules/employment/intern-views.ts#filters': ['17f898563338', '9d6a2a1a8f21'],
-  'apps/api/src/modules/employment/intern-views.ts#interningExtras': ['7aaa11eeaa32', '9114493a6eab'],
+  'apps/api/src/modules/employment/intern-views.ts#interningExtras': ['079470720d05', '9114493a6eab'],
   'apps/api/src/modules/employment/intern-views.ts#listInternView': ['21202d95a2e2', '3dfc9e7e8848'],
   'apps/api/src/modules/employment/intern-views.ts#recordPredicate': ['f8f1c814a5e3', '6b12597feebb'],
   'apps/api/src/modules/employment/intern-views.ts#recordQuery': ['5be841e12697', 'e5b82732b992'],
