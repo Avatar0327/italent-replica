@@ -1,7 +1,7 @@
 import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
-import { setup, record, recordId, listRecord, fields } from './part-time-fixtures.js';
+import { setup, record, recordId, listRecord, fields, partTimeEmploymentType } from './part-time-fixtures.js';
 const department = record.fields.departmentId;
 const manager = '60000000-0000-4000-8000-000000000002';
 const second = '40000000-0000-4000-8000-000000000002';
@@ -135,6 +135,7 @@ test('AC-FE-R2d2a-01 新增必填拦截、预览带出经理、保存真实载�
       .getByRole('combobox', { name: '直线经理', exact: true })
       .locator('xpath=ancestor::div[contains(@class,"ant-select-selector")]'),
   ).toContainText('合成经理');
+  await choose(page, '人员类别', partTimeEmploymentType.name);
   await save(page).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(saved).toMatchObject({
@@ -143,6 +144,7 @@ test('AC-FE-R2d2a-01 新增必填拦截、预览带出经理、保存真实载�
     fields: {
       departmentId: department,
       directManagerId: manager,
+      employmentType: partTimeEmploymentType.id,
     },
   });
   expect(JSON.stringify(saved)).not.toMatch(/isDepartmentHead|addedSubordinateIds/);
@@ -159,7 +161,14 @@ test('AC-FE-R2d2a-02 编辑改部门、只读开始日、清空结束日拦截',
   });
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await expect(page.getByRole('dialog').getByLabel('开始日期', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('dialog').getByRole('textbox', { name: '人员类别', exact: true })).toHaveCount(0);
+  const typeField = page
+    .getByRole('dialog')
+    .locator('.ant-form-item')
+    .filter({
+      has: page.locator('label').getByText('人员类别', { exact: true }),
+    });
+  await expect(typeField).toContainText(partTimeEmploymentType.name);
+  await expect(typeField.getByRole('combobox')).toHaveCount(0);
   await date(page, '结束日期', '');
   await save(page).click();
   await expect(page.getByText('已有结束日期不可清空', { exact: true })).toBeVisible();
@@ -512,8 +521,16 @@ for (const action of ['create', 'edit', 'batch'] as const) {
       .getByRole('dialog')
       .getByRole('button', { name: /^取\s*消$/ })
       .click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // 切视图使用异步导航；等待目标列表完成，避免点击旧视图的行后被视图重置关闭。
+    const refreshed = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname.endsWith('/employment/part-times') && url.searchParams.get('view') === 'all';
+    });
     await page.getByRole('button', { name: '全部兼职记录', exact: true }).click();
-    await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+    await refreshed;
+    await expect(page.locator('.ant-spin-spinning')).toHaveCount(0);
+    await page.locator(`tr[data-row-key="${returnedId}"]`).getByRole('button', { name: '编辑', exact: true }).click();
     // 新增回执的新 ID / 批量中的单条也必须沿用未确认命令。
     await expect(save(page)).toBeDisabled();
     await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
