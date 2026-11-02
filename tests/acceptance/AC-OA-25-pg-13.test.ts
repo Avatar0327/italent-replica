@@ -82,7 +82,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-OA-25-pg ③ 执行 v
     const direct = () =>
       w.call('PATCH', `/api/tenant/org/organizations/${x}`, {
         ifMatch: revision,
-        body: { name: 'ZZ_直接改名', effectiveDate: E },
+        body: { name: 'ZZ_直接改名', effectiveDate: E, addEmployment: false },
       });
 
     const response = await race(w, order, direct);
