@@ -13,6 +13,8 @@ import { pinExitGate, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 export const MOVEMENT_BASE = '/api/tenant/analytics/hr-movement';
+/** 字典编码类分组键（离职类型 / 原因 / 去向、调动类型）：JSON 元组，空值为 null（第 3 轮，不用字符串哨兵）。 */
+export const groupKey = (...parts: (string | null)[]) => JSON.stringify(parts);
 export const MOVEMENT_TODAY = '2026-10-06';
 const LONG_AGO = '2000-01-01';
 
@@ -225,7 +227,7 @@ export async function movementWorld(db: Db) {
 
   return {
     ...{ x, db, tenantId, who, A, A1, B, H, E, S1, T, R, W, p, from: x.from },
-    ...{ call, org, sequence, hire, leave, transfer },
+    ...{ call, org, sequence, hire, leave, retire, transfer },
   };
 }
 export type MovementWorld = Awaited<ReturnType<typeof movementWorld>>;
