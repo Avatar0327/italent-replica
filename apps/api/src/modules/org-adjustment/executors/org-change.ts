@@ -8,13 +8,12 @@
  */
 import { type Tx } from '@italent/db';
 import { lockOrganizationSettings } from '../../org/locks.js';
-import { requiresEmploymentChoice } from '../../org/employment-linkage.js';
+import { orgEmploymentTargetsPage, requiresEmploymentChoice } from '../../org/employment-linkage.js';
 import { updateOrganization, type OrganizationPatch } from '../../org/write-service.js';
 import type { GroupExecutor, GroupInput } from '../execution-groups.js';
 import { applicantScopes, type ApplicantScopeOf } from './applicant-scope.js';
 import { assertBaseline, groupItems, liveOrg, markItem, orgWriteContext, parentOf, type ExecItem } from './context.js';
 import { linkEmploymentPage } from './org-employment.js';
-import { orgEmploymentTargetsPage } from '../../org/employment-linkage.js';
 
 export function orgChangeExecutor(scopeOf: ApplicantScopeOf): GroupExecutor {
   return async (tx, input) => {
