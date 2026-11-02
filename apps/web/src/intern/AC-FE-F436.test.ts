@@ -9,6 +9,7 @@ import {
   useConfirmedGeneration,
   useConfirmedRefresh,
   useInternCommand,
+  useInternDraft,
   useSettledRefresh,
   type Send,
 } from './commands.js';
@@ -182,5 +183,27 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     expect(await submit()).toBe(true);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(generations.list).toBe(0);
+  });
+
+  it('申请草稿与命令存储同在模块级：页面卸载重建后仍在，按租户 + 身份隔离', async () => {
+    const seen: Record<string, unknown> = {};
+    const saved: { put?: (draft?: { id: string; revision: number; values: object }) => void } = {};
+    function Draft({ name }: { name: string }) {
+      const draft = useInternDraft(employeeId);
+      saved.put = draft.put;
+      seen[name] = draft.draft;
+      return null;
+    }
+    const first = await mount(tenant, h(Draft, { name: 'first' }));
+    await act(async () => saved.put!({ id: businessId, revision: 1, values: {} }));
+    expect(seen.first).toMatchObject({ id: businessId });
+    await act(async () => first.unmount());
+    // 第二步结果未知 / 被拒的命令留在模块级存储里；草稿若随页面丢失，重开会按第一步处理而读错对象
+    await mount(tenant, h(Draft, { name: 'remounted' }));
+    await mount(session(`${tenant.tenantId}-other`), h(Draft, { name: 'otherTenant' }));
+    await mount(session(tenant.tenantId, 'synthetic-other-user'), h(Draft, { name: 'otherIdentity' }));
+    expect(seen.remounted).toMatchObject({ id: businessId, revision: 1 });
+    expect(seen.otherTenant).toBeUndefined();
+    expect(seen.otherIdentity).toBeUndefined();
   });
 });
