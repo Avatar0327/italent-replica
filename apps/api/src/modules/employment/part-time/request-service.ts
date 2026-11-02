@@ -415,7 +415,7 @@ async function rewriteVersion(
   const remark = assertRemark(merged.remark);
   if (normalized.departmentId !== request.version.departmentId)
     await requireScopedEmploymentObject(tx, ctx, employee.id, normalized.departmentId);
-  const checked = await checkNewPartTime(tx, ctx, employee, normalized, request.id);
+  const checked = await checkNewPartTime(tx, ctx, employee, normalized, request.id, request.version.employmentType);
   const updated = await appendRequestVersion(
     tx,
     ctx,
@@ -557,7 +557,9 @@ async function recheckForSubmit(
   target: PartTimeRecordRow | null,
 ) {
   if (request.requestType === 'add') {
-    const checked = await checkNewPartTime(tx, ctx, employee, normalizeNewPartTime(inputOf(request)), request.id);
+    const normalized = normalizeNewPartTime(inputOf(request));
+    const saved = request.version.employmentType;
+    const checked = await checkNewPartTime(tx, ctx, employee, normalized, request.id, saved);
     return { request, warnings: checked.warnings };
   }
   const record = dateTarget(target);
@@ -699,7 +701,8 @@ async function landAddRequest(
   const normalized = normalizeNewPartTime(inputOf(approved));
   // 记录、联动（负责人 / 下属）在同一保存点：联动在落地时被业务拒绝则整体回滚，申请作废，不留半套记录（§4.8）
   return tx.transaction(async (savepoint) => {
-    const checked = await checkNewPartTime(savepoint, ctx, employee, normalized, approved.id);
+    const saved = approved.version.employmentType;
+    const checked = await checkNewPartTime(savepoint, ctx, employee, normalized, approved.id, saved);
     const record = await insertCheckedPartTime(savepoint, ctx, employee.id, normalized, checked, {
       sourceId: approved.id,
     });

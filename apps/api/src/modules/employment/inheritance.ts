@@ -1,4 +1,5 @@
 import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
+import { validateSelectedEmploymentType } from './employment-types.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
@@ -197,6 +198,19 @@ async function selfServiceForm(
   return configured;
 }
 
+/** 人员类别（F-323）：新建以合格前驱为沿用基准，新周期无前驱；修改既有申请（带冻结表单）不在此判定，
+ * 由 prepareEmploymentPatch 在字段合并后以本单旧值为基准判定。 */
+async function validateInheritedEmploymentType(
+  tx: Tx,
+  tenantId: string,
+  fields: EmploymentRecord['fields'],
+  eligible: EmploymentRecord | null,
+  frozenForm: TrustedFormSnapshot | undefined,
+) {
+  if (!frozenForm)
+    await validateSelectedEmploymentType(tx, tenantId, fields.employmentType, eligible?.fields.employmentType);
+}
+
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
@@ -263,6 +277,7 @@ export async function prepareInheritance(
     derivedOrigins,
     employee.code,
   );
+  await validateInheritedEmploymentType(tx, ctx.tenantId, fields, eligible, frozenForm);
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
   const explicit = new Set(explicitFieldCodes);
   for (const origin of derivedOrigins) explicit.add(`preset:${derivationFields(origin).field}`);
@@ -287,7 +302,23 @@ export async function prepareEmploymentPatch(
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
   const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
-  if (input.effectiveDate !== previous.effectiveDate) return prepared;
+  const merged =
+    input.effectiveDate === previous.effectiveDate ? restoreFrozenDefaults(input, previous, prepared) : prepared;
+  // F-323 第 2 轮 P2-2：字段最终合并后，以锁内本单旧值为沿用基准判断是否改选，不以前驱类别为准；
+  // 改期且未显式填写时类别按 DEC-041 从新前驱重新带出（人员类别无派生来源），带出值即沿用基准
+  const reinherited =
+    input.effectiveDate !== previous.effectiveDate && !merged.explicitFieldCodes.includes('preset:employmentType');
+  const baseline = reinherited ? merged.fields.employmentType : previous.fields.employmentType;
+  await validateSelectedEmploymentType(tx, ctx.tenantId, merged.fields.employmentType, baseline);
+  return merged;
+}
+
+/** 日期不变：恢复创建时冻结的默认值，本次显式填写与上一版显式 / 延后字段除外。 */
+function restoreFrozenDefaults(
+  input: InheritanceInput,
+  previous: PreparedInheritance,
+  prepared: PreparedInheritance,
+): PreparedInheritance {
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
   const oldExplicit = new Set(previous.explicitFieldCodes);

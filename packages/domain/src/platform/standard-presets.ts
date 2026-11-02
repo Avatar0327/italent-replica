@@ -436,11 +436,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
     // DEC-415（BE-12a）、R2-T08 §9.2：花名册与组织调整仅给两预置管理员，专员不自动扩权。
+    // F-323：人员类别在“设置”菜单下，专员不含。
     objects: BUSINESS_OBJECTS.filter(
       (o) =>
         ![
           APPROVAL_PROCESS_OBJECT,
           MODULE_OBJECTS.hrRoster.code,
+          MODULE_OBJECTS.employmentType.code,
           MODULE_OBJECTS.orgAdjustment.code,
           MODULE_OBJECTS.orgAdjustmentDetail.code,
         ].includes(o.code),

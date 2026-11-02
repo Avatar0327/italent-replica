@@ -1188,6 +1188,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/context.ts#withEmploymentFormNames': [
     'apps/api/src/modules/employment/employment-forms.ts#employmentFormNames',
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/employment/context.ts#withReplayRecheck': [
     '#commandContext',
@@ -1412,6 +1413,122 @@ export const GRAPH: Graph = {
     'apps/api/src/system-actor.ts#auditActor',
   ],
   'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm': ['#requireEnabledEmploymentForms'],
+  'apps/api/src/modules/employment/employment-type-routes.ts#requireTypeWrite': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:DELETE /employment-types/:id': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#runTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#deleteEmploymentType',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#listEmploymentTypes',
+    'apps/api/src/modules/employment/employment-types.ts#parseEmploymentTypeView',
+    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:GET /employment-types/options': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#listEmploymentTypes',
+    'apps/api/src/tenant-context.ts#tenantOf',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:POST /employment-types': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#runTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#parseEmploymentType',
+    'apps/api/src/modules/employment/employment-types.ts#saveEmploymentType',
+    'apps/api/src/modules/job/context.ts#revision',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:POST /employment-types/:id/disable': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#runTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#setEmploymentTypeEnabled',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:POST /employment-types/:id/enable': [
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#runTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#setEmploymentTypeEnabled',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#route:PUT /employment-types/:id': [
+    'apps/api/src/modules/employment/context.ts#jsonBody',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    '#runTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/employment/employment-types.ts#parseEmploymentType',
+    'apps/api/src/modules/employment/employment-types.ts#saveEmploymentType',
+    'apps/api/src/modules/job/context.ts#revision',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/employment-type-routes.ts#runTypeWrite': [
+    'apps/api/src/modules/employment/context.ts#runWrite',
+    '#requireTypeWrite',
+    'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#EMPLOYMENT_TYPE_OBJECT': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#audit': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/employment/employment-types.ts#current': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    '#columns',
+    '#live',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#date': ['apps/api/src/modules/org/read-model.ts#validIsoDate'],
+  'apps/api/src/modules/employment/employment-types.ts#deleteEmploymentType': [
+    '#audit',
+    '#current',
+    '#lock',
+    '#writerOf',
+    'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#inputSchema': ['#date'],
+  'apps/api/src/modules/employment/employment-types.ts#listEmploymentTypes': ['#LIMIT', '#columns', '#live'],
+  'apps/api/src/modules/employment/employment-types.ts#lock': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#parseEmploymentType': ['#inputSchema'],
+  'apps/api/src/modules/employment/employment-types.ts#parseEmploymentTypeView': [
+    'packages/domain/src/employment/employment-types.ts#EMPLOYMENT_TYPE_VIEWS',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#requireEmploymentTypes': ['#LIMIT', '#live'],
+  'apps/api/src/modules/employment/employment-types.ts#saveEmploymentType': [
+    'apps/api/src/modules/employment/context.ts#assertRevision',
+    '#LIMIT',
+    '#audit',
+    '#columns',
+    '#current',
+    '#live',
+    '#lock',
+    '#write',
+    '#writerOf',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#setEmploymentTypeEnabled': ['#current', '#lock', '#write'],
+  'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType': ['#validateSelectedEmploymentType'],
+  'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType': [
+    '#requireEmploymentTypes',
+    '#typeId',
+  ],
+  'apps/api/src/modules/employment/employment-types.ts#write': ['#audit', '#columns', '#writerOf'],
+  'apps/api/src/modules/employment/employment-types.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
   'apps/api/src/modules/employment/entry-actions.ts#assertRemark': [
     'packages/domain/src/employment/entry.ts#ENTRY_REMARK_MAX',
   ],
@@ -1422,6 +1539,7 @@ export const GRAPH: Graph = {
     '#DEFAULT_CANCEL_REASON',
     '#assertRemark',
     '#logEntryAction',
+    'apps/api/src/modules/employment/rehire-account.ts#withdrawRehireAccount',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
   'apps/api/src/modules/employment/entry-actions.ts#cancelPendingEntryForOfferRefusal': [
@@ -1755,6 +1873,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-account-store.ts#readAccountSettings',
     '#timeIn',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-account-worker.ts#fail': [
@@ -1772,6 +1891,7 @@ export const GRAPH: Graph = {
     '#facts',
     '#fail',
     '#members',
+    '#owesAction',
     '#reasonOf',
     '#settle',
   ],
@@ -3513,10 +3633,9 @@ export const GRAPH: Graph = {
     '#setField',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch': [
-    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
-    '#owns',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     '#prepareInheritance',
-    '#setField',
+    '#restoreFrozenDefaults',
   ],
   'apps/api/src/modules/employment/inheritance.ts#prepareInheritance': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
@@ -3532,6 +3651,7 @@ export const GRAPH: Graph = {
     '#selfServiceForm',
     '#setField',
     '#snapshotForm',
+    '#validateInheritedEmploymentType',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'apps/api/src/modules/transfer/form-configuration.ts#resolveTransferForm',
@@ -3541,12 +3661,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
     '#setField',
   ],
+  'apps/api/src/modules/employment/inheritance.ts#restoreFrozenDefaults': [
+    'apps/api/src/modules/employment/fields.ts#INHERITED_FIELDS',
+    '#owns',
+    '#setField',
+  ],
   'apps/api/src/modules/employment/inheritance.ts#selfServiceForm': [
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
   ],
   'apps/api/src/modules/employment/inheritance.ts#snapshotForm': [
     'apps/api/src/modules/employment/fields.ts#PRESET_FIELDS',
+  ],
+  'apps/api/src/modules/employment/inheritance.ts#validateInheritedEmploymentType': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
   ],
   'apps/api/src/modules/employment/intern-actions.ts#internRowActions': [
     'apps/api/src/modules/employment/context.ts#tryWriteContext',
@@ -4717,6 +4845,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/part-time/request-store.ts#insertVersion': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
+    'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType',
     'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -4909,6 +5038,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#checkNewPartTime': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
     'apps/api/src/modules/employment/part-time/linkage.ts#validatePartTimeLinkage',
@@ -4934,6 +5064,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],
   'apps/api/src/modules/employment/part-time/service.ts#editPartTime': [
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageDelta',
@@ -4968,6 +5099,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/part-time/service.ts#previewPartTime': [
     'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/part-time/boundary.ts#assertPartTimeWithinCycle',
     'apps/api/src/modules/employment/part-time/linkage.ts#linkageOf',
@@ -5399,6 +5531,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/record-edit.ts#editedValues': [
     'apps/api/src/modules/employment/configuration.ts#getCustomFieldsForInheritance',
     'apps/api/src/modules/employment/context.ts#requireScopedEmploymentObject',
+    'apps/api/src/modules/employment/employment-types.ts#validateSelectedEmploymentType',
     'apps/api/src/modules/employment/field-derivations.ts#sequenceForNewPost',
     'apps/api/src/modules/employment/fields.ts#validateCustomValue',
   ],
@@ -5408,6 +5541,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['#camelCase'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
+    'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType',
     '#ARRAY_COLUMNS',
     '#JSON_COLUMNS',
     '#TABLES',
@@ -5452,6 +5586,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/references.ts#validateEmploymentReferences': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
+    'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     '#validatePositionRanges',
     'apps/api/src/modules/employment/reporting-cycle.ts#assertNoReportingCycle',
@@ -5476,6 +5611,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/references.ts#validateTerminatingReferences': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
+    'apps/api/src/modules/employment/employment-types.ts#validateEmploymentType',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     '#JOB_REFERENCES',
     'apps/api/src/modules/job/read-model.ts#latestJobObject',
@@ -5565,6 +5701,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationResult',
   ],
   'apps/api/src/modules/employment/regularization.ts#schema': ['#MAX_BATCH_REGULARIZATION'],
+  'apps/api/src/modules/employment/rehire-account.ts#lockTask': [
+    'apps/api/src/modules/employment/exit-account-store.ts#taskKey',
+  ],
+  'apps/api/src/modules/employment/rehire-account.ts#withdrawRehireAccount': [
+    'apps/api/src/modules/employment/exit-account-store.ts#consumeAccountAfterCommit',
+    'apps/api/src/modules/employment/exit-account-store.ts#saveTask',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#boundUser',
+    '#lockTask',
+  ],
   'apps/api/src/modules/employment/rehire-match.ts#endedPeople': [
     'apps/api/src/modules/employment/context.ts#employmentCreator',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',

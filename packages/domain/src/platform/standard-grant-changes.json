@@ -1,21 +1,5 @@
 {
-  "reason": "R2 BE-13a：新增人事分析只读对象 TenantBase.HrStructure（人员结构分析）、TenantBase.HrStructureReport（员工结构报表）、TenantBase.ContractBoard（合同情况）的查看授权（同人事看板进业务身份），两个预置管理员看全部（DEC-415）",
-  "add": [
-    "standard_org_system_admin/TenantBase.HrStructure/*",
-    "standard_org_system_admin/TenantBase.HrStructureReport/*",
-    "standard_org_system_admin/TenantBase.ContractBoard/*",
-    "standard_hr_admin/TenantBase.HrStructure/*",
-    "standard_hr_admin/TenantBase.HrStructureReport/*",
-    "standard_hr_admin/TenantBase.ContractBoard/*",
-    "standard_hr_specialist/TenantBase.HrStructure/*",
-    "standard_hr_specialist/TenantBase.HrStructureReport/*",
-    "standard_hr_specialist/TenantBase.ContractBoard/*",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
-    "standard_org_system_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard"
-  ],
+  "reason": "F-323（DEC-706）：两预置管理员新增人员类别字典对象字段、数据操作与新建/编辑/停用/启用/删除按钮；租户字典无范围，其他身份不扩权",
+  "add": ["standard_org_system_admin/TenantBase.EmploymentType/*", "standard_hr_admin/TenantBase.EmploymentType/*"],
   "remove": []
 }
