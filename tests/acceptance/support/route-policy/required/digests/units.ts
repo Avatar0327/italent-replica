@@ -31,7 +31,7 @@ export const DIGESTS: Digests = {
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report': '1f0252f75cd3',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
@@ -843,6 +843,22 @@ export const DIGESTS: Digests = {
     authorizeItem: 'a9765a0f5029',
     requireButtons: '733084dc052f',
     requireScopes: 'ec285517eea1',
+  },
+  'apps/api/src/modules/org-adjustment/disclosure.ts': {
+    OBJECT: 'b007f3f6067a',
+    canOpen: 'a54884c13823',
+    hrDisclosure: 'a6cf9fc390e1',
+    orgAdjustmentDisclosure: '9ea7662b1ad8',
+  },
+  'apps/api/src/modules/org-adjustment/queries.ts': {
+    listAdjustments: '6cfed9d36f18',
+  },
+  'apps/api/src/modules/org-adjustment/read-routes.ts': {
+    OBJECT: 'b007f3f6067a',
+    'route:GET /api/tenant/org-adjustment/adjustments': 'e0c3c10c92b7',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id': 'e605fd0db96f',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
@@ -1769,7 +1785,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
-    'e7e25e52013b',
+    '4f9a6b459de0',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
@@ -2360,6 +2376,19 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#authorizeItem': '3771393c935a',
   'apps/api/src/modules/org-adjustment/access.ts#requireButtons': '7f0d931cf235',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen': '1240eb889365',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '3cf281b573da',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '64fc68887303',
+  'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': 'ab799c90b5dd',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':
+    '2fb93d34b5cf',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section':
+    '440a7f65fb5d',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview':
+    '5f60833989d6',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
   'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',

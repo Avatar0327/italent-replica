@@ -1,6 +1,6 @@
 /**
- * 组织调整申请路由（R2-T08 §9.3 路由 1～9；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线）。
- * 提交 / 撤回（10～）不在本片注册：本片的单据不可提交、不可执行（§14.1）。
+ * 组织调整申请路由（R2-T08 §9.3 路由 1～9；BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线）；读路由 12～15 见
+ * read-routes.ts（BE-10d）。提交 / 撤回（10～11）属 BE-10c，不在本文件注册。
  * 路由在命令外按当前权限判数据操作、字段、按钮；命令守卫在事务内经 `authorizeHead` 判主体组织与调整范围
  * （首次与幂等重放都经过，§6.3“五处共用”），改头 / 作废另对锁住的现值判一次，新旧两侧都要在范围内。
  * 明细（4～6、8～9）的字段按 OrganizationApproval 的 `orgItems.*` 判；守卫经 `authorizeItem` 判按钮、主体组织与行涉及的
@@ -38,6 +38,7 @@ import {
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
 import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
+import { registerReadRoutes } from './read-routes.js';
 import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
 import { addOrgItem, deleteOrgItem, patchOrgItem, type ItemWrite } from './org-items.js';
 import {
@@ -59,6 +60,7 @@ const ROW_EDIT = [DETAIL, 'EditOrgApprovalDetail', 'list_row'] as const;
 export function registerOrgAdjustmentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerHeadRoutes(router, deps);
   registerItemRoutes(router, deps);
+  registerReadRoutes(router, deps);
 }
 
 function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

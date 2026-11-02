@@ -1,5 +1,6 @@
 /**
- * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～9，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线）。对象 OrganizationApproval：
+ * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～9、12～15，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，
+ * BE-10d 读取）。对象 OrganizationApproval：
  * 主体组织按 OrganizationApproval 范围，调整范围所选组织逐个按组织对象范围（`authorizeHead`，§6.3）；范围外与不存在同为 404。
  * 写入口经 runCommand（同键同内容重放），守卫 before 在命令事务内（首次与重放都经过）跑 `authorizeHead`，改头 / 作废先锁行读现值，
  * 现值与改后值两侧都判；replayed 再按当前 OrganizationApproval 范围复核结果的主体组织。
@@ -16,6 +17,9 @@
  *    删行为 DelteOrgApprovalDetail@list_row，整单刷新为主对象编辑按钮。命令守卫 before 锁申请单后经 `authorizeItem`
  *    再判同一按钮、主体组织与行涉及的组织（请求里的与库里现有行及其连带行的；停用连带下级在写服务内逐个判），
  *    范围外与不存在同为 404；replayed 按当前组织范围复核结果行涉及的组织。响应按 `orgItems.*` 查看权裁剪。
+ * 6. 读取（BE-10d，路由 12～15）：列表为主对象 view + 主体组织列表范围（谓词 orgAdjustment.subjectScope）；详情 / 明细 /
+ *    预览为 any（主对象 view + 守卫 orgAdjustment.disclosure，或关系 orgAdjustment.approvalCanOpen），都不是 → 404。
+ *    §4.5 写“无查看权或范围外 → 404”，列表无对象查看权按 objectContext 现行口径 403（偏离记结果文件）。
  * 本文件新起的登记名：守卫 orgAdjustment.head（authorizeHead / authorizeHeadAction）、orgAdjustment.headReplay
  * （replayed 复核）、校验复核 orgAdjustment.rangeOrgs、形状 orgAdjustment.adjustment、
  * 前提 orgAdjustment.lock / assertRevision / applicant / editableStatus / orgsActive；BE-10b2 起：守卫 orgAdjustment.item
@@ -32,11 +36,14 @@ import {
   buttonOnly,
   FORBIDDEN,
   guardScope,
+  listScope,
   noButton,
   noFields,
   none,
   NOT_FOUND,
   object,
+  projector,
+  relation,
   shape,
   write,
 } from '../../route-policy/presets.js';
@@ -83,7 +90,45 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
     { write: itemWrite(fields), ...byId },
   );
 
+// ---- 读取（BE-10d，路由 12～15）----------------------------------------------------------------------------------
+/** 读接口投影：头列按 OrganizationApproval 字段查看权，明细按 `orgItems.*`，派生列跟随源字段（§4.5）。 */
+const readView = projector('orgAdjustment.readView', 'orgAdjustment.read');
+/**
+ * 详情 / 明细 / 预览共用 `orgAdjustmentDisclosure`：HR（主对象 view + 主体组织在 OrganizationApproval 范围），或可打开
+ * 最新审批实例（assertCanOpen：发起人 / 审批人 / 抄送人 / 范围内流程管理员）；都不是 → 404，文案与不存在相同。
+ */
+const reader = any(
+  [
+    object({
+      object: OBJECT,
+      operation: 'view',
+      button: noButton('读接口按对象查看权，不设按钮'),
+      scope: guardScope('orgAdjustment.disclosure', NOT_FOUND),
+      fields: readView,
+    }),
+    relation({
+      relation: 'orgAdjustment.approvalCanOpen',
+      target: { param: 'id' },
+      denied: NOT_FOUND,
+      fields: readView,
+    }),
+  ],
+  byId,
+);
+
 export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
+  // 路由 12：主对象 view（无权 403）；主体组织范围在 SQL 里先过滤再分页，没有范围为空
+  [`GET ${BASE}`]: object({
+    object: OBJECT,
+    operation: 'view',
+    button: noButton('列表按对象查看权，不设按钮'),
+    scope: listScope('orgAdjustment.subjectScope'),
+    fields: readView,
+  }),
+  [`GET ${BASE}/:id`]: reader,
+  // 路由 14：section 只认 org，其它 404
+  [`GET ${BASE}/:id/items/:section`]: reader,
+  [`GET ${BASE}/:id/preview`]: reader,
   [`POST ${BASE}`]: object({
     object: OBJECT,
     operation: 'create',

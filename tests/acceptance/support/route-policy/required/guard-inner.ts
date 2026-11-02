@@ -45,6 +45,33 @@ const CORE_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
       },
     ],
   },
+  // 组织调整读接口（BE-10d，路由 13～15）：可打开最新审批实例，与审批中心详情同一 assertCanOpen
+  'orgAdjustment.approvalCanOpen': {
+    group: 'canOpen',
+    alts: {
+      initiator: 'data:approval.initiator',
+      participant: 'data:approval.participant',
+      adminTransfer: ['btn:TenantBase.ApprovalInstance#adminTransfer@detail'],
+      adminIntervene: ['btn:TenantBase.ApprovalInstance#adminIntervene@detail'],
+    },
+    at: [
+      {
+        role: 'call',
+        unit: 'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen',
+        anchor: 'await assertCanOpen(tx, command, instance, viewer)',
+      },
+      {
+        role: 'impl',
+        unit: `${APPROVAL}/disclosure.ts#assertCanOpen`,
+        anchor: 'if (instance.initiatorUserId === viewer.userId) return;',
+      },
+      {
+        role: 'impl',
+        unit: `${APPROVAL}/disclosure.ts#assertCanOpen`,
+        anchor: 'for (const scope of [viewer.transferScope, viewer.interveneScope])',
+      },
+    ],
+  },
   // IDP 执行写入：HR（计划查看权且员工在其范围内）或计划参与人，之后还要求当前待办节点与节点按钮
   'idp.executor': {
     group: 'executor',
