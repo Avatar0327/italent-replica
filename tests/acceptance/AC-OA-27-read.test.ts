@@ -91,10 +91,16 @@ describe('AC-OA-27 审批人读接口按披露集（§4.5 第二行）', () => {
     const approverNodes = flatten((await r.preview(view.id, approver)).roots);
     const addedNode = approverNodes.find((node) => node.itemId === addedId);
     expect(addedNode).toMatchObject({ mark: 'added', name: added.items.at(-1)!.name, masked: [] });
-    // formFields 不含 adjustmentRange：范围展开出的既有节点名称与人数都不披露
+    // formFields 不含 adjustmentRange：范围展开出的既有节点名称、负责人、编制都不披露；预览不带人数（DEC-745）
     const rangeNode = approverNodes.find((node) => node.orgId === w.a)!;
-    expect(rangeNode).toMatchObject({ name: null, onDutyCount: null, partTimeCount: null });
-    expect(rangeNode.masked).toEqual(expect.arrayContaining(['name', 'onDutyCount', 'partTimeCount']));
+    expect(rangeNode).toMatchObject({ name: null, personInChargeName: null, establishment: null });
+    expect(rangeNode.masked).toEqual(expect.arrayContaining(['name', 'personInChargeName', 'establishment']));
+    for (const node of approverNodes) {
+      expect(node).not.toHaveProperty('onDutyCount');
+      expect(node).not.toHaveProperty('partTimeCount');
+      expect(node.masked).not.toContain('onDutyCount');
+      expect(node.masked).not.toContain('partTimeCount');
+    }
     expect(JSON.stringify(approverNodes)).not.toContain(await orgName(w, w.a));
 
     await expectError(await r.listRes('', approver), 403, 'FORBIDDEN');
