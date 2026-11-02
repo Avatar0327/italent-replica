@@ -87,8 +87,8 @@ async function offerSnapshot(tx: Tx, ctx: ApprovalContext, id: string): Promise<
     recordDepartmentId: row?.departmentId ?? null,
     version: `revision:${row?.revision ?? 0}`,
     processCode: APPROVAL_TYPES.offer.defaultProcessCode,
-    // 规格 35 B51：Offer 的业务日期 = 入职日期（预计入职日期）
-    businessDate: row?.plannedEntryDate ?? null,
+    // 规格 35 B51：Offer 的看板日期 = 入职日期（预计入职日期）；不填 F-318a 来源日期 businessDate
+    dashboardDate: row?.plannedEntryDate ?? null,
   };
 }
 

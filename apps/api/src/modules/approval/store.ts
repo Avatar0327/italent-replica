@@ -64,8 +64,11 @@ export interface InstanceRow {
   readonly processCode: string | null;
   readonly title: string;
   readonly businessVersion: string;
-  /** 业务日期（规格 35 B51）：发起时由适配器给出，业务版本变化时随之刷新；存量实例为空（DEC-402）。 */
-  readonly businessDate: string | null;
+  /**
+   * 看板日期（规格 35 B51，列 business_date）：发起时取快照 dashboardDate，业务版本变化时随之刷新；存量实例为空（DEC-402）。
+   * 不是 F-318a 的审批人来源日期（快照 businessDate），后者不落实例。
+   */
+  readonly dashboardDate: string | null;
   readonly status: InstanceStatus;
   readonly currentNodeKey: string | null;
   readonly returnedFromNodeKey: string | null;
@@ -115,7 +118,7 @@ function instanceOf(row: Row): InstanceRow {
     processCode: (row.process_code as string | null) ?? null,
     title: String(row.title),
     businessVersion: String(row.business_version ?? ''),
-    businessDate: row.business_date ? String(row.business_date).slice(0, 10) : null,
+    dashboardDate: row.business_date ? String(row.business_date).slice(0, 10) : null,
     status: row.status as InstanceStatus,
     currentNodeKey: (row.current_node_key as string | null) ?? null,
     returnedFromNodeKey: (row.returned_from_node_key as string | null) ?? null,
@@ -486,7 +489,7 @@ export async function updateInstance(
       | 'returnedFromNodeKey'
       | 'round'
       | 'businessVersion'
-      | 'businessDate'
+      | 'dashboardDate'
       | 'historyFromSeq'
     >
   >,
@@ -496,7 +499,7 @@ export async function updateInstance(
   await tx.execute(sql`UPDATE approval_instances SET status=${next.status},current_node_key=${next.currentNodeKey},
       returned_from_node_key=${next.returnedFromNodeKey},round=${next.round},revision=${next.revision},
       history_from_seq=${next.historyFromSeq},
-      business_version=${next.businessVersion},business_date=${next.businessDate}::date,
+      business_version=${next.businessVersion},business_date=${next.dashboardDate}::date,
       updated_at=${ctx.now.toISOString()},completed_at=${done ? ctx.now.toISOString() : null}
     WHERE tenant_id=${ctx.tenantId} AND id=${instance.id}::uuid AND revision=${instance.revision}`);
   return { ...next, completedAt: done ? ctx.now.toISOString() : null };

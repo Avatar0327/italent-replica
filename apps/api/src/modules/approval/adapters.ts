@@ -80,6 +80,7 @@ export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
   readonly businessType: BusinessType;
   readonly businessId: string;
+  /** 审批人来源日期（F-318a，DEC-686）：按该日解析组织 / 任职记录类来源；不填时这类来源取不到人。 */
   readonly businessDate?: string;
   /** 字段权限所在对象：最小披露与盲审都按该对象的可查看字段判断（DEC-057 / DEC-058）。 */
   readonly fieldObjectCode: string;
@@ -100,10 +101,12 @@ export interface BusinessSnapshot {
   /** 离职交接申请的工作交接人（离职申请的交接人，审批人表达式 handover_work_owner，R2 BE-8b2）；其他业务为空。 */
   readonly handoverEmployeeId?: string | null;
   /**
-   * 业务日期（规格 35 B51，人事流程看板判“业务已过期 / 晚提交 / 晚审批”）：Offer = 入职日期、离职 = 最后工作日，其余 = 生效日期；
-   * 业务没有这类日期时不填。实例发起与重提时写入审批实例（DEC-402 不回填存量）。
+   * 看板日期（规格 35 B51，人事流程看板判“业务已过期 / 晚提交 / 晚审批”）：Offer = 入职日期、离职 = 最后工作日，
+   * 其余 = 生效日期；业务没有这类日期时不填。实例发起与重提时写入审批实例 business_date 列（DEC-402 不回填存量）。
+   * 与上面的 businessDate（F-318a 审批人来源日期）不是一回事：离职单两者不同，合同 / Offer 只填本字段，
+   * 不得互相代用，否则会改变审批人来源的解析结果。
    */
-  readonly businessDate?: string | null;
+  readonly dashboardDate?: string | null;
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
@@ -353,7 +356,7 @@ async function completedTransferDates(
 }
 
 /** 规格 35 B51：离职（及同走最后工作日的退休）取最后工作日，其余任职业务取生效日期。 */
-const employmentBusinessDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
+const employmentDashboardDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
   ['leave', 'retirement'].includes(kind) ? (lastWorkDate ?? effectiveDate) : effectiveDate;
 
 const employmentAdapter: BusinessAdapter = {
@@ -423,10 +426,9 @@ const employmentAdapter: BusinessAdapter = {
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
     const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
-    const exit =
-      business.kind === 'leave' || business.kind === 'retirement'
-        ? await exitMetadata(tx, ctx.tenantId, businessId, business.kind)
-        : {};
+    const exit = ['leave', 'retirement'].includes(business.kind)
+      ? await exitMetadata(tx, ctx.tenantId, businessId, business.kind)
+      : {};
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
     const originals = originalsOf(before, exit);
     const values: Row = {
@@ -488,7 +490,7 @@ const employmentAdapter: BusinessAdapter = {
       // 离职扩展字段不在任职载荷里：其指纹也进审批版本，HR 改了离职类型等内容，旧审批页面随即失效（#388 P2-1）
       version: [payload.version, linkage.version, exitVersion(exit)].filter(Boolean).join(':'),
       processCode,
-      businessDate: employmentBusinessDate(business.kind, payload.lastWorkDate, business.effectiveDate),
+      dashboardDate: employmentDashboardDate(business.kind, payload.lastWorkDate, business.effectiveDate),
     };
   },
   async persisted(tx, ctx, snapshot) {

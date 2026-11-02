@@ -141,9 +141,9 @@ function instanceAudit(instance: InstanceRow): Row {
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
 export async function persistRun(tx: Tx, run: Run, action: string, created = false): Promise<InstanceRow> {
-  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新业务日期，与审批人所读的版本一致
+  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新看板日期，与审批人所读的版本一致
   if (run.instance.businessVersion !== run.before.businessVersion)
-    run.instance = { ...run.instance, businessDate: run.snapshot.businessDate ?? null };
+    run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
   await auditApproval(tx, run.ctx, {
     action,
@@ -961,7 +961,7 @@ async function insertInstance(
     VALUES (${id},${ctx.tenantId},${matched.processId}::uuid,${matched.version.id}::uuid,${snapshot.approvalType},
       ${APPROVAL_TYPES[snapshot.approvalType].objectCode},${request.businessType},${request.businessId}::uuid,
       ${snapshot.subjectEmployeeId},${ctx.userId},${snapshot.processCode},${snapshot.title},${snapshot.version},
-      ${approvalCategoryOf(snapshot.approvalType)},${snapshot.businessDate ?? null}::date,
+      ${approvalCategoryOf(snapshot.approvalType)},${snapshot.dashboardDate ?? null}::date,
       'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
   return loadInstance(tx, ctx.tenantId, id, true);
 }

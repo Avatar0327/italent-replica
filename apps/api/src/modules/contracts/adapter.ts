@@ -69,8 +69,8 @@ export const contractAdapter: BusinessAdapter = {
       recordDepartmentId: current?.fields.departmentId ?? null,
       version: `revision:${request.revision}`,
       processCode: CONTRACT_FLOW[operation],
-      // 规格 35 B51：终止合同的业务日期是实际终止日，其余是生效日期
-      businessDate: operation === 'terminate' ? request.actualTerminationDate : request.effectiveDate,
+      // 规格 35 B51：终止合同的看板日期是实际终止日，其余是生效日期（不填 F-318a 来源日期 businessDate）
+      dashboardDate: operation === 'terminate' ? request.actualTerminationDate : request.effectiveDate,
     };
   },
   async approved(tx, ctx, id) {

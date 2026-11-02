@@ -141,7 +141,11 @@ const CONFIG_OBJECTS = new Set<string>([
 ]);
 
 /** 只读聚合对象：只授查看（无数据操作、无按钮、字段不可编辑），不能用 full 授增删改。 */
-const READ_ONLY_OBJECTS = new Set<string>([MODULE_OBJECTS.hrDashboard.code, MODULE_OBJECTS.hrProcessDashboard.code, ...ANALYTICS_BE13A_OBJECTS]);
+const READ_ONLY_OBJECTS = new Set<string>([
+  MODULE_OBJECTS.hrDashboard.code,
+  MODULE_OBJECTS.hrProcessDashboard.code,
+  ...ANALYTICS_BE13A_OBJECTS,
+]);
 const grant = (definition: ObjectDefinition) =>
   READ_ONLY_OBJECTS.has(definition.code) ? readOnly(definition) : full(definition);
 

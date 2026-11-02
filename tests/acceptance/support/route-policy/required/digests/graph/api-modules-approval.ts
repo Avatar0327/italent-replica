@@ -502,7 +502,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
-    '#employmentBusinessDate',
+    '#employmentDashboardDate',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
