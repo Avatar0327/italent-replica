@@ -146,7 +146,8 @@ describe('检查离职退休人员：规模与分页（P2-6）', () => {
     expect(scoped.total).toBe(2);
     expect(scoped.items.map((row) => row.employeeId).sort()).toEqual([holders[3], holders[500]].sort());
     expect(scoped.items[0]).not.toHaveProperty('sort');
-  }, 120_000);
+    // 1400 名克隆人员 + 7 次翻页：PGlite 长跑串行时单条可达 2 分钟以上，放宽到 5 分钟。
+  }, 300_000);
 
   it('默认分页：未带页码时返回第一页（每页 50），total 仍为完整数量', async () => {
     const x = await menuWorld(database().db, 'departed-default', TODAY);
