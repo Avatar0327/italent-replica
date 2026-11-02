@@ -366,6 +366,7 @@ test('AC-FE-R2c2b-06 无其他设置权时各页只读；被裁剪的列显示�
   await openTab(page, 'blacklist-rules', '自动加黑规则');
   await expect(row(page, '离职三次永久')).toBeVisible();
   await expect(page.getByRole('switch', { name: '离职后自动加入黑名单' })).toHaveCount(0);
+  await expect(page.getByText('无权查看“离职后自动加入黑名单”开关')).toBeVisible();
   await expect(page.getByRole('button', named('新增'))).toHaveCount(0);
   await openTab(page, 'blacklist', '黑名单');
   await expect(row(page, '外部人员甲').getByRole('cell').nth(2)).toHaveText('—');
