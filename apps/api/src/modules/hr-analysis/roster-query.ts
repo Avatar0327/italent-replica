@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import { ageOn, ROSTER_EMPLOY_TYPES, ROSTER_EMPLOYEE_STATUSES, tenureYears, type RosterColumn } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
+import { contractInForce } from '../contracts/queries.js';
 import { ENTRY_LIKE_KINDS } from '../employment/employee-status.js';
 import { probationInfo } from '../employment/probation-views.js';
 import { cycleRegularization } from '../employment/probation.js';
@@ -74,9 +75,7 @@ function rosterJoins(ctx: AccessContext, asOf: string): SQL {
     LEFT JOIN LATERAL (${cycleRegularization(ctx.tenantId, sql`e.id`, sql`r.staff_id`, true)}) reg ON true
     LEFT JOIN LATERAL (SELECT k.*, kt.name AS type_name FROM contract_records k
       LEFT JOIN contract_types kt ON kt.tenant_id=k.tenant_id AND kt.id=k.type_id
-      WHERE k.tenant_id=e.tenant_id AND k.employee_id=e.id AND NOT k.deleted AND k.status<>'void'
-        AND k.approval_status='effective' AND k.effective_date<=${asOf}::date
-        AND COALESCE(k.actual_termination_date, k.end_date, 'infinity'::date)>=${asOf}::date
+      WHERE k.tenant_id=e.tenant_id AND k.employee_id=e.id AND ${contractInForce(sql`k`, asOf)}
       ORDER BY k.effective_date DESC, k.version_no DESC LIMIT 1) ct ON true`;
 }
 
@@ -102,7 +101,8 @@ export async function listRoster(
         r.current_employee_status AS employee_status, r.last_work_date::text AS own_last_work_date,
         nx.last_work_date AS next_last_work_date, jl.name AS level_name,
         r.current_fields->>'department_id' AS department_id, r.current_fields->>'place' AS place,
-        r.current_fields->>'employment_type' AS employment_type,
+        (SELECT et.name FROM employment_types et WHERE et.tenant_id=${ctx.tenantId}
+          AND et.id::text=r.current_fields->>'employment_type') AS employment_type,
         r.current_fields->>'employment_form' AS employment_form,
         COALESCE(dmv.name, dm.name) AS direct_manager_name, dmv.work_email AS direct_manager_email,
         pi.has_probation, pi.start_date::text AS probation_start_date, pi.end_date::text AS probation_end_date,

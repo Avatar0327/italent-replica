@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { employmentTypeId } from './AC-EMP-support.js';
 import { customField } from './AC-EMP-inheritance-support.js';
 import { forwardFixture, forwardJobApi, preview } from './AC-FWD-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -373,13 +374,14 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
 
   it('AC-FWD-12 DEC-041 默认取插入点前一条，保留后续独立类别并传播匹配部门', async () => {
     const { session, employee, org, nextOrg, hired } = await forwardFixture(testDb().db, 'fwd12');
+    const engineering = await employmentTypeId(testDb().db, session.tenant.id, '技术开发');
     const later = await session.business(
       employee.id,
       {
         kind: 'transfer',
         mode: 'direct',
         effectiveDate: '2026-09-20',
-        fields: { employmentType: '技术开发' },
+        fields: { employmentType: engineering },
       },
       hired.employeeRevision,
     );
@@ -398,7 +400,7 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
     expect(inserted.record!.previousRecordId).toBe(hired.id);
     expect((await session.record(later.id)).fields).toMatchObject({
       departmentId: nextOrg.id,
-      employmentType: '技术开发',
+      employmentType: engineering,
     });
   });
 });

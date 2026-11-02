@@ -19,6 +19,7 @@ export {
 export * from './permission/index.js';
 export * from './personnel/index.js';
 export * from './hr-analysis/roster.js';
+export * from './hr-analysis/segments.js';
 export * from './approval/index.js';
 
 export * from './contracts/rules.js';
@@ -27,6 +28,7 @@ export * from './employment/late-execution.js';
 export * from './employment/execution-order.js';
 export * from './employment/exit-occupancy.js';
 export * from './employment/planned-date.js';
+export * from './employment/duty-transfer-menu.js';
 export * from './employment/intern.js';
 export * from './employment/exit.js';
 export * from './employment/exit-termination.js';
@@ -69,6 +71,10 @@ export * from './talent-review/index.js';
 export * from './succession/index.js';
 export * from './offer/index.js';
 export * from './analytics/hr-dashboard.js';
+export * from './analytics/hr-process-dashboard.js';
+export * from './analytics/hr-structure.js';
+export * from './analytics/hr-movement.js';
 export * from './org-adjustment/index.js';
 export * from './employment/exit-handover.js';
 export * from './employment/employment-forms.js';
+export * from './employment/employment-types.js';

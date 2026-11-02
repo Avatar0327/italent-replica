@@ -190,6 +190,27 @@ export async function findCurrentRecord(tx: Tx, tenantId: string, employeeId: st
 }
 
 /**
+ * 转正单当前的试用结果：最新一版；F-347 之前写的行没有名称快照，回落到当前字典名称。
+ * 非转正单（或历史上没写结果）返回 null。
+ */
+export async function loadRegularizationResult(tx: Tx, tenantId: string, businessId: string) {
+  const [row] = rowsOf<{ code: string; name: string | null }>(
+    await tx.execute(sql`SELECT rr.result_code AS code, COALESCE(rr.result_name, d.name) AS name
+    FROM employment_regularization_results rr
+    LEFT JOIN employment_probation_results d ON d.tenant_id=rr.tenant_id AND lower(d.code)=lower(rr.result_code)
+    WHERE rr.tenant_id=${tenantId} AND rr.business_id=${businessId}::uuid
+    ORDER BY rr.version_no DESC LIMIT 1`),
+  );
+  return row ? { code: row.code, name: row.name } : null;
+}
+
+/** 转正单详情的试用结果（F-347 b）：控制项，同试用视图的 probationResult，员工可见即可见。 */
+async function regularizationResultFields(tx: Tx, tenantId: string, id: string) {
+  const result = await loadRegularizationResult(tx, tenantId, id);
+  return { probationResult: result?.code ?? null, probationResultName: result?.name ?? null };
+}
+
+/**
  * access='read' 按 DEC-177 可见口径（详情、预览）；access='write' 是写入前的取数，用记录部门、员工、创建人三个坐标
  * 按数据范围各项的维度判定（组织维度只看记录部门，汇报关系维度只看员工，使用用户维度只看创建人，其余维度部门与员工
  * 同时命中），不套 DEC-177 对“看”的放宽（可见但部门在范围外的记录能否直接改，TODO(需取证 #72)）。
@@ -258,5 +279,6 @@ export async function loadEmploymentBusiness(
       : (statusCode(row.entry_status) as EntryStatusCode | null),
     record: effectiveRecord,
     activation,
+    ...(row.kind === 'regularization' ? await regularizationResultFields(tx, tenantId, id) : {}),
   };
 }

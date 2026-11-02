@@ -1,11 +1,15 @@
 /**
- * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～9，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线）。对象 OrganizationApproval：
+ * 组织调整申请路由的现状声明（F-039；R2-T08 §9.3 路由 1～15、28，BE-10b1 头字段与调整范围，BE-10b2 组织明细与基线，
+ * BE-10c 提交 / 撤回，BE-10d 读取，BE-10e 导出）。对象 OrganizationApproval：
  * 主体组织按 OrganizationApproval 范围，调整范围所选组织逐个按组织对象范围（`authorizeHead`，§6.3）；范围外与不存在同为 404。
  * 写入口经 runCommand（同键同内容重放），守卫 before 在命令事务内（首次与重放都经过）跑 `authorizeHead`，改头 / 作废先锁行读现值，
- * 现值与改后值两侧都判；replayed 再按当前 OrganizationApproval 范围复核结果的主体组织。
+ * 现值与改后值两侧都判；replayed 再按当前权限复核结果的主体组织与调整范围（与现值同口径，F-339 ①）。
  *
  * 与附录 A 的差异 / 本片取舍：
- * 1. 提交 / 撤回（10～）本片不注册，访问为 404。
+ * 1. 提交（10）：编辑按钮 EditAdjustOrgDetailBtn@detail + 主体组织与调整范围（`authorizeOwnerAction`），全部明细涉及的组织
+ *    按新建口径逐个在组织范围（before = null，守卫 orgAdjustment.item）；非暂存行基线过期 409、整单校验不过 400（信封按查看权裁剪），通过后交审批
+ *    引擎（前提 orgAdjustment.submitGate）。撤回（11）没有按钮（`authorizeWithdraw`），主体组织与调整范围同路由 1，申请人本人、状态 1 在锁内判
+ *    （前提 orgAdjustment.reviewingStatus）。两者都不执行、不写执行队列。
  * 2. POST /adjustments：路由层 requireNew（If-Match 须为 0）。
  * 3. POST /:id/check：只读校验，不进台账、不写数据；结果为校验信封（valid / errors / warnings），看不到
  *    `orgItems.targetOrgId` 时隐去明细问题里的组织 ID。
@@ -16,6 +20,10 @@
  *    删行为 DelteOrgApprovalDetail@list_row，整单刷新为主对象编辑按钮。命令守卫 before 锁申请单后经 `authorizeItem`
  *    再判同一按钮、主体组织与行涉及的组织（请求里的与库里现有行及其连带行的；停用连带下级在写服务内逐个判），
  *    范围外与不存在同为 404；replayed 按当前组织范围复核结果行涉及的组织。响应按 `orgItems.*` 查看权裁剪。
+ * 6. 读取（BE-10d，路由 12～15）：列表为主对象 view + 主体组织列表范围（谓词 orgAdjustment.subjectScope）；详情 / 明细 /
+ *    预览为 any（主对象 view + 守卫 orgAdjustment.disclosure，或关系 orgAdjustment.approvalCanOpen），都不是 → 404。
+ *    路由 28 架构图导出（BE-10e）与预览同一声明（DEC-650①：能看详情即能导出，不注册按钮）。
+ *    §4.5 写“无查看权或范围外 → 404”，列表无对象查看权按 objectContext 现行口径 403（偏离记结果文件）。
  * 本文件新起的登记名：守卫 orgAdjustment.head（authorizeHead / authorizeHeadAction）、orgAdjustment.headReplay
  * （replayed 复核）、校验复核 orgAdjustment.rangeOrgs、形状 orgAdjustment.adjustment、
  * 前提 orgAdjustment.lock / assertRevision / applicant / editableStatus / orgsActive；BE-10b2 起：守卫 orgAdjustment.item
@@ -32,11 +40,14 @@ import {
   buttonOnly,
   FORBIDDEN,
   guardScope,
+  listScope,
   noButton,
   noFields,
   none,
   NOT_FOUND,
   object,
+  projector,
+  relation,
   shape,
   write,
 } from '../../route-policy/presets.js';
@@ -83,7 +94,46 @@ const itemRoute = (buttons: RoutePolicy, fields: FieldsFrom) =>
     { write: itemWrite(fields), ...byId },
   );
 
+// ---- 读取（BE-10d，路由 12～15）----------------------------------------------------------------------------------
+/** 读接口投影：头列按 OrganizationApproval 字段查看权，明细按 `orgItems.*`，派生列跟随源字段（§4.5）。 */
+const readView = projector('orgAdjustment.readView', 'orgAdjustment.read');
+/**
+ * 详情 / 明细 / 预览共用 `orgAdjustmentDisclosure`：HR（主对象 view + 主体组织在 OrganizationApproval 范围），或可打开
+ * 最新审批实例（assertCanOpen：发起人 / 审批人 / 抄送人 / 范围内流程管理员）；都不是 → 404，文案与不存在相同。
+ */
+const reader = any(
+  [
+    object({
+      object: OBJECT,
+      operation: 'view',
+      button: noButton('读接口按对象查看权，不设按钮'),
+      scope: guardScope('orgAdjustment.disclosure', NOT_FOUND),
+      fields: readView,
+    }),
+    relation({
+      relation: 'orgAdjustment.approvalCanOpen',
+      target: { param: 'id' },
+      denied: NOT_FOUND,
+      fields: readView,
+    }),
+  ],
+  byId,
+);
+
 export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
+  // 路由 12：主对象 view（无权 403）；主体组织范围在 SQL 里先过滤再分页，没有范围为空
+  [`GET ${BASE}`]: object({
+    object: OBJECT,
+    operation: 'view',
+    button: noButton('列表按对象查看权，不设按钮'),
+    scope: listScope('orgAdjustment.subjectScope'),
+    fields: readView,
+  }),
+  [`GET ${BASE}/:id`]: reader,
+  // 路由 14：section 只认 org，其它 404
+  [`GET ${BASE}/:id/items/:section`]: reader,
+  [`GET ${BASE}/:id/preview`]: reader,
+  [`GET ${BASE}/:id/preview/export`]: reader,
   [`POST ${BASE}`]: object({
     object: OBJECT,
     operation: 'create',
@@ -119,6 +169,33 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     scope: headScope,
     fields: noFields('校验结果信封（valid / errors / warnings），不是对象字段'),
     write: write(none('只读校验，空请求体'), none('只读校验，不进台账'), 'orgAdjustment.rangeOrgs'),
+    ...byId,
+  }),
+  // 路由 10：提交；审批引擎拒绝（无流程 / 首节点为空）时整笔回滚
+  [`POST ${BASE}/:id/submit`]: object({
+    object: OBJECT,
+    operation: 'update',
+    button: button('EditAdjustOrgDetailBtn', 'detail'),
+    scope: headScope,
+    // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
+    guards: ['orgAdjustment.item'],
+    fields: adjustmentShape,
+    write: headWrite(none('提交无请求体，不提取字段'), [...EDIT, 'orgAdjustment.submitGate']),
+    ...byId,
+  }),
+  // 路由 11：撤回；没有按钮，只限申请人本人
+  [`POST ${BASE}/:id/withdraw`]: object({
+    object: OBJECT,
+    operation: 'update',
+    button: noButton('撤回没有按钮（§6.3 路由 11）'),
+    scope: headScope,
+    fields: adjustmentShape,
+    write: headWrite(none('撤回无请求体，不提取字段'), [
+      'orgAdjustment.lock',
+      'orgAdjustment.assertRevision',
+      'orgAdjustment.applicant',
+      'orgAdjustment.reviewingStatus',
+    ]),
     ...byId,
   }),
   // 路由 4：入口九选一决定调整类型与按钮；入口与类型不符 400（在按钮之前）

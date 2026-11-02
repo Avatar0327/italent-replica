@@ -230,6 +230,18 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       // F-250 / DEC-683、DEC-684：HR 首次发起交接原站详情编码，前序 33 + 1 占位；合并时统一定号。
       // F-317：列表行与批量首次发起按钮，前序 34 + 1 占位；合并窗口统一定号。
       38: '60c89fdeb79dd5a2',
+      // R2 BE-13a：新增只读对象 TenantBase.HrStructure / HrStructureReport / ContractBoard（人员结构分析、员工结构报表、合同情况 查看）
+      // 及管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
+      39: 'cae83cbcf38de49c',
+      // R2 BE-13c：新增只读对象 TenantBase.HrProcessDashboard（人事流程看板 查看）及管理员看全部（版本占位，合并时按 main + 1 定号）
+      40: '51ec9097c46fd902',
+      // R2 BE-13b：新增只读对象 TenantBase.HrMovement / HrMovementReport（人员流动分析、流动情况报表 查看）
+      // 及管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
+      41: '8ccd03148dfe5d7d',
+      // R2-T09a：新增职责转交记录对象 TenantBase.DutyTransferCommon 及两个预置管理员看全部（DEC-415；版本占位，合并时按 main + 1 定号）
+      42: 'a453a0856ab8f655',
+      // F-323（DEC-706）：人员类别字典对象授权项（两预置管理员）
+      43: '10be3d89590b6cf1',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

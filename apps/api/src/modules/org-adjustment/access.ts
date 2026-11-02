@@ -3,7 +3,8 @@
  * ① 按钮 + OrganizationApproval 字段编辑权，审批主体组织在 OrganizationApproval 范围；
  * ② 调整范围所选组织逐个在组织对象范围（与 `authorizeOrgResult` 同口径）。范围外一律 404（同无范围口径）。
  * 不写字段的动作（作废、整单校验）走 `authorizeHeadAction`：同样的按钮与范围，没有字段这一层。
- * 当前审批人（审批编辑，入口随 10c）另须 `EditApprovalIngApply@detail`，范围按审批人自己的权限判，不豁免主体组织。
+ * 当前审批人（审批编辑，BE-10c）另须 `EditApprovalIngApply@detail`，范围按审批人自己的权限判，不豁免主体组织。
+ * 撤回（路由 11）没有按钮：主对象 update 数据操作 + 主体组织与调整范围（`authorizeWithdraw`）。
  * 调用方在事务内调用：命令守卫（首次与重放都经过）与审批适配器 `edit` 共用这一个入口。
  * 组织明细（10b2）走 `authorizeItem`：入口 / 行按钮 + 主体组织在主对象范围 + 行涉及的组织（目标、新上级、转移目标）
  * 逐个在组织对象范围；停用整支的连带下级在写服务展开时经 `orgScopeAuthorizer` 同口径判。调整范围本身不在这一层重判。
@@ -34,8 +35,11 @@ export interface HeadAuthorization {
   readonly fields: readonly string[];
   readonly subjectOrgId: string;
   readonly rangeOrgIds: readonly string[];
-  /** 默认按操作取新建 / 编辑按钮；作废传 `HEAD_BUTTONS.void`。 */
-  readonly button?: HeadButton;
+  /**
+   * 默认按操作取新建 / 编辑按钮；作废传 `HEAD_BUTTONS.void`。
+   * 审批人编辑传 `null`，按钮只取 `EditApprovalIngApply@detail`（§6.3“不再逐入口判”）；撤回不经这里（`authorizeWithdraw`）。
+   */
+  readonly button?: HeadButton | null;
 }
 
 type ActionInput = Omit<HeadAuthorization, 'fields'>;
@@ -65,10 +69,47 @@ export async function authorizeHeadAction(tx: Tx, deps: Deps, ctx: TenantContext
   await requireScopes(tx, bound, ctx, input);
 }
 
+type OwnerScope = Pick<ActionInput, 'subjectOrgId' | 'rangeOrgIds'>;
+
+/**
+ * 申请人提交（路由 10 / 审批中心重提的发起人复核）：主对象 update 数据操作 + 编辑按钮（`button`）+ 主体组织与调整范围。
+ * 数据范围与路由 1 同一口径（主体组织 + 调整范围）。
+ */
+export async function authorizeOwnerAction(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  owner: OwnerScope & { readonly button: HeadButton },
+): Promise<void> {
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  const input = { ...owner, actor: 'applicant', operation: 'update' } as const;
+  await requireObjectWrite(bound.authorize, ctx, { objectCode: OBJECT, operation: 'update', payload: {} });
+  await requireButtons(bound, ctx, input);
+  await requireScopes(tx, bound, ctx, input);
+}
+
+/** 申请人撤回（路由 11 / 审批中心撤回）：没有按钮（§6.3），只判主对象 update 数据操作 + 主体组织与调整范围。 */
+export async function authorizeWithdraw(tx: Tx, deps: Deps, ctx: TenantContext, owner: OwnerScope): Promise<void> {
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  await requireObjectWrite(bound.authorize, ctx, { objectCode: OBJECT, operation: 'update', payload: {} });
+  await requireScopes(tx, bound, ctx, { ...owner, actor: 'applicant', operation: 'update' });
+}
+
+/** 命令重放复核（F-339 ①）：结果里的主体组织与调整范围按当前权限判，与现值同一口径（`requireScopes`）。 */
+export async function authorizeHeadScopes(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  input: Pick<ActionInput, 'subjectOrgId' | 'rangeOrgIds'>,
+): Promise<void> {
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  await requireScopes(tx, bound, ctx, { ...input, actor: 'applicant', operation: 'update' });
+}
+
 async function requireButtons(bound: Deps, ctx: TenantContext, input: ActionInput) {
-  const [code, level] = input.button ?? HEAD_BUTTONS[input.operation];
-  const buttons: HeadButton[] = [[code, level]];
-  if (input.actor === 'current_approver') buttons.push(HEAD_BUTTONS.approve);
+  const own = input.button === undefined ? HEAD_BUTTONS[input.operation] : input.button;
+  const buttons: HeadButton[] = own ? [own] : [];
+  if (input.actor === 'current_approver' && own?.[0] !== HEAD_BUTTONS.approve[0]) buttons.push(HEAD_BUTTONS.approve);
   for (const [buttonCode, buttonLevel] of buttons) {
     await requirePermission(bound.authorize, {
       ...ctx,

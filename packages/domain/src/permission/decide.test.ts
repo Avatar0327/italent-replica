@@ -227,7 +227,17 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
         adminRoles: [],
         objectPermissions: [{ ...moduleGrant(object.code, true), profileApps: ['OtherApp'] }],
       };
-      if (object.code === MODULE_OBJECTS.hrDashboard.code) {
+      // 人事看板（BE-12b）、人事流程看板（BE-13c）、BE-13a 人员结构分析 / 员工结构报表 / 合同情况、BE-13b 人员流动分析 / 流动情况报表都是只读聚合对象
+      const readOnlyAggregates: string[] = [
+        MODULE_OBJECTS.hrDashboard.code,
+        MODULE_OBJECTS.hrProcessDashboard.code,
+        MODULE_OBJECTS.hrStructure.code,
+        MODULE_OBJECTS.hrStructureReport.code,
+        MODULE_OBJECTS.contractBoard.code,
+        MODULE_OBJECTS.hrMovement.code,
+        MODULE_OBJECTS.hrMovementReport.code,
+      ];
+      if (readOnlyAggregates.includes(object.code)) {
         expect(businessField).toBeUndefined();
         // 规格 35 §2.1：看板是无业务字段的只读聚合，不应为了构造写用例而要求它提供业务字段。
         expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);

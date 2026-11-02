@@ -15,4 +15,14 @@ export const GRAPH: Graph = {
     '#day',
     'packages/domain/src/personnel/tenure.ts#decimalYears',
   ],
+  'packages/domain/src/hr-analysis/segments.ts#ageSample': ['packages/domain/src/personnel/tenure.ts#ageOn'],
+  'packages/domain/src/hr-analysis/segments.ts#ageSegment': [
+    '#AGE_SEGMENTS',
+    '#SEGMENT_NONE',
+    'packages/domain/src/personnel/tenure.ts#ageOn',
+  ],
+  'packages/domain/src/hr-analysis/segments.ts#educationTier': ['#EDUCATION_TIERS', '#SEGMENT_NONE', '#blank'],
+  'packages/domain/src/hr-analysis/segments.ts#genderSegment': ['#GENDER_ALIASES', '#SEGMENT_NONE', '#blank'],
+  'packages/domain/src/hr-analysis/segments.ts#tenureSample': ['packages/domain/src/hr-analysis/roster.ts#tenureYears'],
+  'packages/domain/src/hr-analysis/segments.ts#tenureSegment': ['#SEGMENT_NONE', '#TENURE_SEGMENTS', '#wholeMonths'],
 };

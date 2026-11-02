@@ -47,6 +47,7 @@ import {
   TALENT_REVIEW_OBJECTS,
   PART_TIME_AUDIT_OBJECTS,
   PROBATION_ASSESSMENT_OBJECT,
+  DUTY_TRANSFER_OBJECT,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -548,6 +549,12 @@ const RULES: readonly Rule[] = [
     objectCode: PROBATION_ASSESSMENT_OBJECT,
     visible: (scope, row) => anchored(scope, row.employee, scopeSql(scope, { person: row.employee, org: row.org })),
   },
+  {
+    // R2-T09a 职责转交记录：写入时显式归属被转交人，与转交记录列表同一口径（DT-R9，只按人员维度）
+    types: ['duty-transfer-record'],
+    objectCode: DUTY_TRANSFER_OBJECT,
+    visible: (scope, row) => anchored(scope, row.employee, scopeSql(scope, { person: row.employee })),
+  },
   personRule(['employment_employee'], 'TenantBase.Employee', (row, viewer) =>
     employmentCreator(viewer.tenantId, row.employee),
   ),
@@ -842,6 +849,7 @@ const CONFIG_FIELDS_BY_TYPE: Readonly<Record<string, ConfigFields>> = {
   employment_settings: { code: 'TenantBase.EmploymentSettings' },
   transfer_settings: { code: 'TenantBase.EmploymentSettings' },
   employment_form: { code: 'TenantBase.EmploymentSettings' },
+  employment_type: { code: MODULE_OBJECTS.employmentType.code },
   exit_dictionary: { code: 'TenantBase.EmploymentSettings' },
   offer_dictionary: { code: 'TenantBase.EmploymentSettings' },
   blacklist_rule: { code: 'TenantBase.EmploymentSettings' },

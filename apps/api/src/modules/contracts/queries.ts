@@ -27,6 +27,16 @@ export function currentPrimarySummary(tenantId: string, asOf: string): SQL {
   `;
 }
 
+/**
+ * asOf 当天有效的合同（未删除、未作废、已生效，生效日 ≤ asOf ≤ 实际终止日 / 终止日）：k 是 contract_records 的别名。
+ * 时点花名册（BE-12a）与合同情况看板“签署情况”（BE-13a）共用这一份谓词。
+ */
+export function contractInForce(k: SQL, asOf: string): SQL {
+  return sql`NOT ${k}.deleted AND ${k}.status<>'void' AND ${k}.approval_status='effective'
+    AND ${k}.effective_date<=${asOf}::date
+    AND COALESCE(${k}.actual_termination_date, ${k}.end_date, 'infinity'::date)>=${asOf}::date`;
+}
+
 /** 下一份合同已接上（同员工、同类型或同属续签类型、生效日为本合同终止日次日）。 */
 function successorExists(
   c: { tenantId: SQL; employeeId: SQL; typeId: SQL; endDate: SQL },

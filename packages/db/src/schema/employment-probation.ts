@@ -2,7 +2,9 @@
  * 试用期与转正（R2 BE-3；docs/02_业务建模/29 §1、§2.3，15 §5）：
  * - 试用期信息版本链：键 = 开启本段试用的入职 / 实习转正业务（任职记录与业务同一 ID），入职写第 1 版，调整试用信息追加，
  *   只追加不改写（AGENTS §2 版本链）；转正日期不在这里存，取本周期生效的转正记录的生效日（PB-R13 由投影保证）；
- * - 转正的“试用结果”：每张转正业务一行，创建时写入，只追加；
+ * - 转正的“试用结果”：每张转正业务按版本只追加，创建时写第 1 版，草稿 / 撤回单改结果追加新版（F-347 c），
+ *   同时固化保存时的字典名称（F-347 b：字典改名 / 停用后仍显示保存时的名称）；
+ * - 转正申请暂存（F-347，DEC-709）：按 员工 × 表单 每人一份，覆盖写，不校验必填、不建业务单；
  * - 试用结果字典：照离职字典形态（编码租户内唯一不分大小写、保存后不可改、可改名 / 停用 / 调顺序，不提供删除）。
  */
 import { sql } from 'drizzle-orm';
@@ -22,7 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { employmentBusinessObjects } from './employment.js';
+import { employmentBusinessObjects, employmentEmployees } from './employment.js';
 import { tenants } from './tenancy.js';
 
 const tenant = () =>
@@ -79,17 +81,55 @@ export const employmentRegularizationResults = pgTable(
     tenantId: tenant(),
     employeeId: uuid('employee_id').notNull(),
     businessId: uuid('business_id').notNull(),
+    versionNo: integer('version_no').notNull().default(1),
     resultCode: text('result_code').notNull(),
+    /** 保存时的字典名称；F-347 之前的行为空，读取时回落到当前字典名。 */
+    resultName: text('result_name'),
     commandId: text('command_id').notNull(),
     createdAt: utc(),
   },
   (t) => [
-    primaryKey({ name: 'employment_regularization_results_pk', columns: [t.tenantId, t.businessId] }),
+    primaryKey({ name: 'employment_regularization_results_pk', columns: [t.tenantId, t.businessId, t.versionNo] }),
+    check('employment_regularization_results_version_positive', sql`${t.versionNo} > 0`),
     foreignKey({
       name: 'employment_regularization_results_business_fk',
       columns: [t.tenantId, t.employeeId, t.businessId],
       foreignColumns: [...business],
     }),
+  ],
+);
+
+/**
+ * 转正申请暂存（F-347，docs/02_业务建模/29 DEC-709）：每员工 × 表单一行，暂存覆盖写，revision 只增不减；
+ * anchorId 记暂存时的本周期开启记录，周期变了视为没有暂存。提交成功只清空内容（saved=false），不物理删除。
+ */
+export const employmentRegularizationDrafts = pgTable(
+  'employment_regularization_drafts',
+  {
+    tenantId: tenant(),
+    employeeId: uuid('employee_id').notNull(),
+    formId: text('form_id').notNull().default('standard'),
+    anchorId: uuid('anchor_id'),
+    saved: boolean('saved').notNull().default(false),
+    effectiveDate: date('effective_date', { mode: 'string' }),
+    probationResult: text('probation_result'),
+    revision: integer('revision').notNull().default(1),
+    savedByUserId: uuid('saved_by_user_id'),
+    commandId: text('command_id').notNull(),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'employment_regularization_drafts_pk', columns: [t.tenantId, t.employeeId, t.formId] }),
+    foreignKey({
+      name: 'employment_regularization_drafts_employee_fk',
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    check('employment_regularization_drafts_revision_positive', sql`${t.revision} > 0`),
+    check(
+      'employment_regularization_drafts_cleared',
+      sql`${t.saved} OR (${t.effectiveDate} IS NULL AND ${t.probationResult} IS NULL)`,
+    ),
   ],
 );
 

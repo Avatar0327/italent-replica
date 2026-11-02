@@ -47,14 +47,15 @@ interface Metric {
 
 const NULL_UUID = sql`NULL::uuid`;
 /** 候选行的四列约定：明细 ID、所属员工、记录所在部门 / 组织、创建人（Offer / 合同用）。 */
-const pick = (id: SQL, employee: SQL = NULL_UUID, org: SQL = NULL_UUID, creator: SQL = NULL_UUID) =>
+export const pick = (id: SQL, employee: SQL = NULL_UUID, org: SQL = NULL_UUID, creator: SQL = NULL_UUID) =>
   sql`${id} AS id, ${employee} AS employee_id, ${org} AS org_id, ${creator} AS creator_id`;
 const list = (items: readonly string[]) =>
   sql.join(
     items.map((item) => sql`${item}`),
     sql`, `,
   );
-const WORKING_TYPES = ['internal', 'intern'];
+/** 人事看板与人员流动（BE-13b）共用的“在职口径”雇佣关系：内部员工 + 实习生（外部人员不计）。 */
+export const WORKING_TYPES = ['internal', 'intern'];
 const yearStart = (asOf: string) => `${asOf.slice(0, 4)}-01-01`;
 const monthStart = (asOf: string) => `${asOf.slice(0, 7)}-01`;
 /** asOf 当日结束（次日 0 点，租户时区）：记录时间严格早于它即“asOf 时已知”（同退休视图）。 */
@@ -62,31 +63,39 @@ const dayEnd = (c: DashboardAsOf) => sql`((${c.asOf}::date + 1)::timestamp AT TI
 
 // ---- 在职人员（1、2、20、21）：asOf 当天主职时间轴上的非终止、非待入职记录 -----------------------------------------------
 
-const SNAPSHOT = sql`LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
+export const SNAPSHOT = sql`LEFT JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
   WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
   ORDER BY p.version_no DESC LIMIT 1) snap ON true`;
 /** 记录当前值：有最新快照取快照，否则取底表行（同 currentPersons 的口径）。 */
-const current = (column: string) => sql.raw(`CASE WHEN snap.id IS NULL THEN r.${column} ELSE snap.${column} END`);
+export const current = (column: string) =>
+  sql.raw(`CASE WHEN snap.id IS NULL THEN r.${column} ELSE snap.${column} END`);
 
-function inService(c: DashboardAsOf, extra: SQL): SQL {
-  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))}
-    FROM employment_timeline t
+/**
+ * 在职人员的 FROM … WHERE（别名 t / r / snap / s）：人事看板 1、2、20、21 与人员结构分析 / 员工结构报表（BE-13a）共用，
+ * 调用方只在 extra 里加雇佣关系等自己的口径。asOf 也可以是 SQL 列（人员流动一条语句取多个时点，BE-13b）。
+ */
+export function inServiceFrom(c: { readonly tenantId: string; readonly asOf: string | SQL }, extra: SQL): SQL {
+  return sql`FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     ${SNAPSHOT}
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
     WHERE t.tenant_id=${c.tenantId} AND t.valid_during @> ${c.asOf}::date AND r.service_type='primary'
       AND r.kind NOT IN ('leave','retirement') AND s.employee_status<>${EMPLOYEE_STATUS.pendingEntry} AND ${extra}`;
 }
-const employType = (types: readonly string[]) => sql`${current('employ_type')} IN (${list(types)})`;
+function inService(c: DashboardAsOf, extra: SQL): SQL {
+  const columns = pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'));
+  return sql`SELECT ${columns} ${inServiceFrom(c, extra)}`;
+}
+export const employType = (types: readonly string[]) => sql`${current('employ_type')} IN (${list(types)})`;
 const noWorkStartDate = (c: DashboardAsOf) => sql`(SELECT v.work_date FROM personnel_employee_versions v
   WHERE v.tenant_id=r.tenant_id AND v.employee_id=r.employee_id AND v.created_at < ${dayEnd(c)}
   ORDER BY v.revision DESC LIMIT 1) IS NULL`;
 
 // ---- 入职（3、11、12）：入职类任职记录，已入职 / 待入职的判定就是入职视图自己的谓词 -------------------------------------------
 
-function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
-  return sql`SELECT ${pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'))}
-    FROM employment_records r
+/** 入职类任职记录的 FROM … WHERE（别名 r / t / snap / s）；人员流动的流入（BE-13b）同用，asOf 即期间末日。 */
+export function entriesFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, view: 'hired' | 'all', since?: string): SQL {
+  return sql`FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     ${SNAPSHOT}
     LEFT JOIN LATERAL employment_record_status(r.tenant_id, r.id) s ON true
@@ -97,11 +106,16 @@ function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
           : sql`true`
       }`;
 }
+function entries(c: DashboardAsOf, view: 'hired' | 'all', since?: string): SQL {
+  const columns = pick(sql`r.employee_id`, sql`r.employee_id`, current('department_id'));
+  return sql`SELECT ${columns} ${entriesFrom(c, view, since)}`;
+}
 
 // ---- 离职 / 退休（4、14、18）：离职视图与退休视图共用的候选集 exitCandidates，一份谓词两种业务 --------------------------------
 
 const CYCLE_JOIN = sql`LEFT JOIN employment_cycles dc ON dc.tenant_id=x.tenant_id AND dc.id=x.staff_id`;
-const exitSource = (kind: 'leave' | 'retirement'): CandidateSource =>
+/** 离职 / 退休候选的来源：带任职周期 dc（雇佣关系、入职日期），人员流动（BE-13b）在此之上加列。 */
+export const exitSource = (kind: 'leave' | 'retirement'): CandidateSource =>
   kind === 'leave'
     ? { ...LEAVE_SOURCE, joins: sql`${SUBMITTED_AT_JOIN} ${CYCLE_JOIN}` }
     : { ...RETIREMENT_SOURCE, joins: sql`${RETIREMENT_SOURCE.joins} ${CYCLE_JOIN}` };
@@ -128,7 +142,8 @@ const finished = (c: DashboardAsOf, since: string) =>
  * 直接办理的调动 / 转正没有审批事件，保存即 effective（生效日在未来 = 已落地待执行，审批通过未生效的同一语义），
  * 所以“已提交”的时点取首个 in_review / approved / effective 事件；退休 / 离职走门禁，一定先经审批事件。
  */
-const SUBMITTED_OR_DIRECT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at FROM employment_state_events ev
+export const SUBMITTED_OR_DIRECT_JOIN = sql`LEFT JOIN LATERAL (SELECT min(ev.created_at) AS at
+  FROM employment_state_events ev
   WHERE ev.tenant_id=b.tenant_id AND ev.business_id=b.id
     AND ev.state IN ('in_review','approved','effective')) sub ON true`;
 
@@ -265,10 +280,14 @@ const METRICS: Readonly<Record<HrDashboardCode, Metric>> = {
 function visible(a: DashboardAsOf, kind: Visibility): SQL {
   if (kind === 'org') return scopeSql(a.scope, { org: sql`m.org_id` });
   if (kind === 'offer') return scopeSql(a.scope, { org: sql`m.org_id`, creator: sql`m.creator_id` });
+  return employmentVisible(a, sql`m`);
+}
+/** 任职类范围（DEC-177 可见谓词）：alias 是带 employee_id / org_id / creator_id 三列的候选行；BE-13a 两个看板同用。 */
+export function employmentVisible(a: Pick<DashboardAsOf, 'tenantId' | 'scope'>, alias: SQL): SQL {
   return employmentVisibilitySql(a.scope, {
-    employee: sql`m.employee_id`,
-    department: sql`m.org_id`,
-    creator: sql`COALESCE(m.creator_id, ${employmentCreator(a.tenantId, sql`m.employee_id`)})`,
+    employee: sql`${alias}.employee_id`,
+    department: sql`${alias}.org_id`,
+    creator: sql`COALESCE(${alias}.creator_id, ${employmentCreator(a.tenantId, sql`${alias}.employee_id`)})`,
   });
 }
 
@@ -298,17 +317,25 @@ export async function hrDashboardPage(
   a: DashboardAsOf,
   page: { readonly limit: number; readonly offset: number },
 ) {
-  const rows = rowsOf<{ total: number; id: string | null; employeeId: string | null }>(
+  const result = await pageRows(tx, indicatorRows(code, a), page);
+  return { total: result.total, items: result.items.map(({ id, employeeId }) => ({ id, employeeId })) };
+}
+
+/** 候选行（id / employee_id / org_id 三列，id 唯一）的一页，按 id 排序；BE-13a 合同情况看板同用。 */
+export async function pageRows(tx: Tx, base: SQL, page: { readonly limit: number; readonly offset: number }) {
+  const rows = rowsOf<{ total: number; id: string | null; employeeId: string | null; organizationId: string | null }>(
     await tx.execute(sql`
-    WITH base AS MATERIALIZED (${indicatorRows(code, a)}),
+    WITH base AS MATERIALIZED (${base}),
       counted AS (SELECT count(*)::int AS total FROM base)
-    SELECT counted.total, page.id, page.employee_id AS "employeeId" FROM counted
+    SELECT counted.total, page.id, page.employee_id AS "employeeId", page.org_id AS "organizationId" FROM counted
     LEFT JOIN LATERAL (SELECT * FROM base ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}) page ON true
     ORDER BY page.id`),
   );
   return {
     total: Number(rows[0]?.total ?? 0),
-    items: rows.filter((row) => row.id).map((row) => ({ id: row.id!, employeeId: row.employeeId })),
+    items: rows
+      .filter((row) => row.id)
+      .map((row) => ({ id: row.id!, employeeId: row.employeeId, organizationId: row.organizationId })),
   };
 }
 
