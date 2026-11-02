@@ -161,7 +161,9 @@ async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: 
   for (const row of rows) {
     const scheme = schemes.get(row.schemeId);
     if (!scheme) continue;
-    byOrg.set(row.orgId, [...(byOrg.get(row.orgId) ?? []), { ...row, code: scheme.code, enabled: scheme.enabled }]);
+    const list = byOrg.get(row.orgId) ?? [];
+    list.push({ ...row, code: scheme.code, enabled: scheme.enabled });
+    byOrg.set(row.orgId, list);
   }
   const chosen = new Map<string, CapacityRow>();
   for (const [orgId, list] of byOrg) {
@@ -195,7 +197,9 @@ interface SchemeKey {
 export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {
   const rank = (row: T) => (row.code === DEFAULT_SCHEME_CODE ? 0 : 1);
   const enabled = candidates.filter((row) => row.enabled);
-  enabled.sort((a, b) => rank(a) - rank(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  // 按 UTF-16 码元比较编码，结果不随区域设置变化
+  const byCode = (a: T, b: T) => Number(a.code > b.code) - Number(a.code < b.code);
+  enabled.sort((a, b) => rank(a) - rank(b) || byCode(a, b));
   return enabled[0] ?? null;
 }
 
