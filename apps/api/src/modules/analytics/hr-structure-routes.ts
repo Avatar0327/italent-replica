@@ -1,8 +1,11 @@
 /**
  * 人员结构分析看板（B49）与员工结构两张报表（B53）的只读路由（R2 BE-13a，规格 35“补充：BE-13…”）：
  * - GET /api/tenant/analytics/hr-structure?asOf=&<看板筛选>：6.01～6.14 的数据（编码、名称、形态、数值 / 分组）；
+ *   看板筛选 = institutionId / institutionIncludeChildren、departmentId / departmentIncludeChildren、sequenceId、
+ *   employmentForm、employmentType（两个“包含下级”缺省 true）；
  * - GET …/hr-structure/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的人员明细，分页；
- * - GET …/hr-structure/reports/:report?asOf=&employType=&departmentId=：一级组织 × 列的报表（字典维度按字典展开）。
+ * - GET …/hr-structure/reports/:report?asOf=&employType=&departmentId=&departmentIncludeChildren=：
+ *   一级组织 × 列的报表（字典维度按字典展开）。
  * 看板对象 TenantBase.HrStructure、报表对象 TenantBase.HrStructureReport，各自的查看权与数据范围；只读，不写台账 / 审计。
  * 下载归前端（DEC-708），这里没有导出接口。
  */
@@ -59,11 +62,24 @@ export function groupQuery(c: Context): string | undefined {
   return raw === undefined ? undefined : canonicalUuid(raw);
 }
 const textQuery = (c: Context, name: string) => c.req.query(name) || undefined;
+/** “包含下级”开关：只收 true / false（同 part-time 等列表的 includeChildren），缺省 = 勾选（规格 35 B49「F-437 补」）。 */
+function includeChildrenQuery(c: Context, name: string): boolean {
+  const raw = c.req.query(name);
+  if (raw !== undefined && raw !== 'true' && raw !== 'false')
+    throw new AppError('VALIDATION_FAILED', `${name} 只能是 true / false`);
+  return raw !== 'false';
+}
+/** 任职部门筛选（看板与报表同一写法）。 */
+const departmentFilter = (c: Context) => ({
+  departmentId: uuidQuery(c, 'departmentId'),
+  departmentIncludeChildren: includeChildrenQuery(c, 'departmentIncludeChildren'),
+});
 
 function boardFilter(c: Context): StructureFilter {
   return {
     institutionId: uuidQuery(c, 'institutionId'),
-    departmentId: uuidQuery(c, 'departmentId'),
+    institutionIncludeChildren: includeChildrenQuery(c, 'institutionIncludeChildren'),
+    ...departmentFilter(c),
     sequenceId: uuidQuery(c, 'sequenceId'),
     employmentForm: textQuery(c, 'employmentForm'),
     employmentType: textQuery(c, 'employmentType'),
@@ -143,7 +159,7 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
     if (!(HR_STRUCTURE_REPORT_EMPLOY_TYPES as readonly string[]).includes(employType))
       throw new AppError('VALIDATION_FAILED', `employType 只能是 ${HR_STRUCTURE_REPORT_EMPLOY_TYPES.join(' / ')}`);
     const types = employType === 'all' ? ['internal', 'intern'] : [employType];
-    const filter = { departmentId: uuidQuery(c, 'departmentId') };
+    const filter = departmentFilter(c);
     const { lookup, people } = await loadPeople(deps, ctx, types, filter);
     return c.json({
       asOf: ctx.asOf,
