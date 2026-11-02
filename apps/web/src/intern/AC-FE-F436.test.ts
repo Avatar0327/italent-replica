@@ -8,6 +8,7 @@ import {
   InternCommands,
   useConfirmedGeneration,
   useConfirmedRefresh,
+  useConfirmedReload,
   useInternCommand,
   useInternDraft,
   useSettledRefresh,
@@ -206,5 +207,20 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     expect(seen.remounted).toMatchObject({ id: businessId, revision: 1 });
     expect(seen.otherTenant).toBeUndefined();
     expect(seen.otherIdentity).toBeUndefined();
+  });
+
+  it('详情原位重读信号（第 3 轮）：挂载不加，草稿不加，最终确认加一，与列表同一入口', async () => {
+    const reloads: number[] = [];
+    function Detail() {
+      reloads.push(useConfirmedReload());
+      return null;
+    }
+    await mount(tenant, h(Detail));
+    await mount(tenant, h(Writer, { application: true, draft: false, refresh: async () => undefined }));
+    expect(await submit()).toBe(true);
+    expect(new Set(reloads)).toEqual(new Set([0]));
+    await mount(tenant, h(Writer, { application: true, draft: true, refresh: async () => undefined }));
+    expect(await submit()).toBe(true);
+    expect(reloads.at(-1)).toBe(1);
   });
 });

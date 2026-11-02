@@ -49,6 +49,16 @@ export function useConfirmedRefresh(refresh: () => void) {
 }
 
 /**
+ * 原位重读的信号（F-436 第 3 轮）：经同一入口 useConfirmedRefresh，本会话每次最终确认加一；挂载、换会话不加。
+ * 交给人员详情的 reload，不用来换 key——换 key 会卸载详情里正在编辑的抽屉与页签表单。
+ */
+export function useConfirmedReload() {
+  const [reload, setReload] = useState(0);
+  useConfirmedRefresh(() => setReload((n) => n + 1));
+  return reload;
+}
+
+/**
  * 写确认后的刷新回调（交 useInternCommand，内核在写入与本单回读核验都成功后、完成通知前调用）：
  * 直接转正照旧刷新当前视图；两步申请只有第二步（提交草稿）递增本会话确认代次，建草稿不算最终确认。
  * 递增本身不通知：紧接着内核写入完成状态时 store 通知订阅者（失败、409、取消、结果未知都走不到这里）。

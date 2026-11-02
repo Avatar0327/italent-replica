@@ -313,3 +313,22 @@ test('AC-FE-F436-06 迟到确认不得卸载页签内的「编辑任职」表单
   await expect(remarks).toHaveValue('合成尚未保存备注');
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 });
+
+test('AC-FE-F436-07 迟到确认重读失败（已撤权 403）：不沿用旧档案，页签按当前权限收起', async ({ page }) => {
+  const { state } = await application(page, '/staff', recordEditable);
+  const details = await reopenDetailInFlight(page, state);
+  const tab = page.getByRole('tab', { name: '任职记录', exact: true });
+  await expect(tab).toBeVisible();
+  const opened = details.length;
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    details.push(route.request().method());
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'FORBIDDEN', message: '合成撤权', details: {} } },
+    });
+  });
+  state.release!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+  await expect(tab).toHaveCount(0);
+});

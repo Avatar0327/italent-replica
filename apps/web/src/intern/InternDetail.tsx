@@ -4,7 +4,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
-import { useBusinessRead, useConfirmedGeneration, useInternCommand } from './commands.js';
+import { useBusinessRead, useConfirmedReload, useInternCommand } from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
@@ -37,7 +37,8 @@ export function InternDetail({
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
-  const detailKey = useDetailKey(!!open);
+  // 提前重开的详情随本会话确认原位重读，不重新挂载：详情里正在编辑的抽屉、页签表单都保留（F-436 第 3 轮）
+  const reload = useConfirmedReload();
   // 写后回读已确认；申请列表定位由页面独立处理，这里只关闭表单与详情
   const done = () => {
     setOpen(undefined);
@@ -65,23 +66,12 @@ export function InternDetail({
   );
   return (
     <>
-      <StaffDetail key={detailKey} employeeId={row.employeeId!} onClose={onClose} actions={actions} />
+      <StaffDetail employeeId={row.employeeId!} onClose={onClose} actions={actions} reload={reload} />
       {open === 'regularize' && <RegularizeForm {...form} />}
       {open === 'apply' && <RegularizeForm {...form} application />}
       {open === 'terminate' && <TerminateForm {...form} />}
     </>
   );
-}
-
-/**
- * 人员详情随本会话确认代次重读（F-436）：离开模块后在落库前回来、提前重开的详情不经本实例的 onDone 关闭，
- * 换 key 重新挂载即重读。入口表单开着时先不换（重挂载的抽屉会盖住表单弹窗），表单关闭后再跟上最新代次。
- */
-function useDetailKey(formOpen: boolean) {
-  const generation = useConfirmedGeneration();
-  const [key, setKey] = useState(generation);
-  if (!formOpen && key !== generation) setKey(generation);
-  return key;
 }
 
 /** 实习转正中的申请：撤回（发起人）/ 撤销（HR）按单据 revision 提交空体，资格由服务端判定。 */
