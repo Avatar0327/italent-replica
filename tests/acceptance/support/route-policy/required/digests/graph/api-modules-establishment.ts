@@ -94,9 +94,11 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/carried-candidates.ts#carriedCandidates': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
-  'apps/api/src/modules/establishment/carried-transfer.ts#applyDelta': [
+  'apps/api/src/modules/establishment/carried-transfer.ts#applyCapacityNet': [
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
     'apps/api/src/modules/establishment/capacity-service.ts#updateCapacity',
+    '#netAudit',
+    '#sum',
     'apps/api/src/modules/establishment/schemes.ts#loadScheme',
     'apps/api/src/modules/establishment/store.ts#audit',
   ],
@@ -108,11 +110,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/carried-transfer.ts#carryEstablishment': [
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
     'apps/api/src/modules/establishment/carried-candidates.ts#carriedCandidates',
-    '#applyDelta',
+    '#applyCapacityNet',
     '#assertReleasedEstablishment',
+    '#authorizeAllocationCapacities',
+    '#byCapacity',
     '#carriedAllocations',
     '#delta',
-    '#reverseCarriedEstablishment',
+    '#markReversed',
+    '#reversal',
     '#signature',
     'apps/api/src/modules/establishment/constraints.ts#validateCapacity',
     'apps/api/src/modules/establishment/schemes.ts#loadScheme',
@@ -121,6 +126,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/establishment/carried-transfer.ts#netAudit': ['#sum'],
   'apps/api/src/modules/establishment/carried-transfer.ts#reconcileCarriedEstablishment': [
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
@@ -129,7 +135,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/establishment/carried-transfer.ts#reverseAllocations': [
     'apps/api/src/modules/establishment/capacity-read.ts#readCapacity',
-    '#applyDelta',
+    '#applyCapacityNet',
+    '#byCapacity',
+    '#markReversed',
+    '#reversal',
     'apps/api/src/modules/establishment/constraints.ts#validateCapacity',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],

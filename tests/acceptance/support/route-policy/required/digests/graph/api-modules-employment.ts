@@ -1821,6 +1821,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-activation.ts#detachAndVoid': [
     '#detachAndRecord',
+    'apps/api/src/modules/employment/exit-void-applications.ts#releaseVoidedEstablishment',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidLandedTransfers',
   ],
   'apps/api/src/modules/employment/exit-activation.ts#followingTransfers': [
@@ -3358,7 +3359,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidLandedTransfers': [
     '#lockExitOrganizationResources',
-    '#releaseVoidedEstablishment',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
