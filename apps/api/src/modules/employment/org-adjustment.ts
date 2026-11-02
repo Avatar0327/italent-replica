@@ -9,15 +9,29 @@ import { findPredecessor } from './read-model.js';
 import { bumpEmploymentEmployee, insertEmploymentRow, lockEmploymentEmployee } from './record-store.js';
 import { employmentTimelineNeighbors, insertEmploymentTimeline } from './timeline.js';
 import { appendEmploymentPayload, appendEmploymentState } from './write-service.js';
-import type { EmploymentContext, EmploymentRecord } from './types.js';
+import type { ChangeType, EmploymentContext, EmploymentRecord } from './types.js';
 
-/** 调用方已按 UUID 锁住整个批次的员工，再锁组织；此端口不启动独立事务。 */
+const adjustmentInput = (effectiveDate: string) => ({
+  kind: 'org_adjustment' as const,
+  mode: 'direct' as const,
+  effectiveDate,
+  lastWorkDate: null,
+  formId: 'standard',
+  fields: {},
+  customFields: {},
+});
+
+/**
+ * 调用方已按 UUID 锁住整个批次的员工，再锁组织；此端口不启动独立事务。
+ * `changeType`：组织调整单执行（R2-T08 §7.5）传 'org_adjustment'；直接改组织联动不传（保持空值）。
+ */
 export async function appendOrgAdjustment(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   effectiveDate: string,
   organizationId: string,
+  changeType?: ChangeType,
 ) {
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId);
   const previous = await findPredecessor(tx, ctx.tenantId, employeeId, effectiveDate);
@@ -35,17 +49,10 @@ export async function appendOrgAdjustment(
     revision: 1,
     createdAt: now,
   });
-  const input = {
-    kind: 'org_adjustment' as const,
-    mode: 'direct' as const,
-    effectiveDate,
-    lastWorkDate: null,
-    formId: 'standard',
-    fields: {},
-    customFields: {},
-  };
+  const input = adjustmentInput(effectiveDate);
   const prepared = adjustmentSnapshot(previous, effectiveDate);
-  const payload = await appendEmploymentPayload(tx, ctx, employeeId, id, 1, input, prepared, null, previous.staffId);
+  const { staffId } = previous;
+  const payload = await appendEmploymentPayload(tx, ctx, employeeId, id, 1, input, prepared, null, staffId, changeType);
   await insertEmploymentRow(tx, 'employment_records', {
     ...previous.fields,
     id,
@@ -55,7 +62,7 @@ export async function appendOrgAdjustment(
     staffId: previous.staffId,
     entryDate: previous.entryDate,
     kind: 'org_adjustment',
-    changeType: null,
+    changeType: changeType ?? null,
     startDate: effectiveDate,
     lastWorkDate: null,
     serviceType: 'primary',
