@@ -12,4 +12,15 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-473', 'DEC-524', 'DEC-625'],
     level: 'L2',
   },
+  'probation-settings': {
+    original:
+      '组织人事设置下的试用期设置：自动转正（B57）、自动发起试用期考核（B58）、考核并行规则（B59），' +
+      '规则列表含适用组织、到期前 / 入职后天数、业务处理规则、发起人等；试用结果为可维护字典。',
+    decision:
+      'FE-R2c1b 只出有后端接口的四项：试用结果字典（增改、启停，DEC-361）；B57 / B58 总开关 + 规则（复刻加规则名称，' +
+      'DEC-539②；复制默认停用、单条启停、删除，DEC-533②）与立即执行（分批续跑，DEC-539①）；B59 两个开关与可发起流程多选。' +
+      '写入全部经 F-123 内核；原站列序、文案与页签位置未验证。',
+    decisions: ['DEC-539', 'DEC-533', 'DEC-361', 'DEC-045', 'DEC-502'],
+    level: 'L2',
+  },
 };
