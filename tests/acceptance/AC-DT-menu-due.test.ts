@@ -59,7 +59,7 @@ describe('F-408 到期前组织已停用（DEC-726，第 2 轮 P2-3）', () => {
   });
 });
 
-describe('F-448 组织当日是否启用与组织层级读取器同口径（第 2 轮交叉审 P3-3）', () => {
+describe('F-448 组织当日是否启用与组织层级读取器同口径（DEC-726，第 2 轮交叉审 P3-3）', () => {
   it('转交日期前组织已失效（失效日期早于转交日期）：该条按“组织已停用”失败，不写组织新版本', async () => {
     const x = await world('due-expired');
     const org = await x.session.org('合成空组织', { establishedOn: '2026-01-01' });

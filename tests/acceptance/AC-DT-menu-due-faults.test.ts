@@ -142,7 +142,7 @@ describe('F-408 到期执行逐人兜底（DEC-052，第 2 轮 P3-1）', () => {
 /** 同类定时任务（组织调整执行 MAX_GROUP_ATTEMPTS、360 凭据维护 FAILING_ATTEMPTS）的出错上限。 */
 const ERROR_ATTEMPTS = 5;
 
-describe('F-448 非业务异常的重试上限（第 2 轮交叉审 P3-4）', () => {
+describe('F-448 非业务异常的重试上限（DEC-052，第 2 轮交叉审 P3-4）', () => {
   /** 两名被转交人，排在前面的那位持续出非业务异常，执行次数预置为 attempts。 */
   async function stuck(label: string, attempts: number) {
     const x = await world(label);

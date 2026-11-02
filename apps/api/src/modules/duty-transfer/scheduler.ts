@@ -85,16 +85,7 @@ export async function runDueMenuDutyTransfers(
  */
 async function countAttempt(db: Db, ctx: EmploymentContext, employeeId: string, today: string) {
   await withTenant(db, ctx.tenantId, async (tx) => {
-    const due = await tx
-      .select()
-      .from(dutyTransferRecords)
-      .where(
-        sql`tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND status=${DUTY_TRANSFER_STATUS.unfinished}
-          AND failure_code IS NULL AND transfer_date<=${today}::date`,
-      )
-      .orderBy(dutyTransferRecords.transferDate, dutyTransferRecords.id)
-      .for('update');
-    for (const record of due) {
+    for (const record of await lockDueRecords(tx, ctx, employeeId, today)) {
       if (record.attemptCount + 1 >= MAX_ERROR_ATTEMPTS) await settle(tx, ctx, record, EXECUTION_ERROR);
       else
         await tx
@@ -103,6 +94,19 @@ async function countAttempt(db: Db, ctx: EmploymentContext, employeeId: string, 
           .where(sql`tenant_id=${ctx.tenantId} AND id=${record.id}::uuid`);
     }
   });
+}
+
+/** 该被转交人到期待办的记录（未完成、无失败原因、转交日期已到），行锁后返回。 */
+function lockDueRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, today: string) {
+  return tx
+    .select()
+    .from(dutyTransferRecords)
+    .where(
+      sql`tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND status=${DUTY_TRANSFER_STATUS.unfinished}
+        AND failure_code IS NULL AND transfer_date<=${today}::date`,
+    )
+    .orderBy(dutyTransferRecords.transferDate, dutyTransferRecords.id)
+    .for('update');
 }
 
 async function runPerson(tx: Tx, ctx: EmploymentContext, employeeId: string, today: string) {
@@ -114,15 +118,7 @@ async function runPerson(tx: Tx, ctx: EmploymentContext, employeeId: string, tod
   const lock = await lockTransferParticipants(tx, ctx, employeeId, subordinates, { skipLocked: true });
   if (lock !== 'acquired') return lock;
   // 锁后重读：等锁期间菜单可能已覆盖 / 撤回。
-  const due = await tx
-    .select()
-    .from(dutyTransferRecords)
-    .where(
-      sql`tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND status=${DUTY_TRANSFER_STATUS.unfinished}
-        AND failure_code IS NULL AND transfer_date<=${today}::date`,
-    )
-    .orderBy(dutyTransferRecords.transferDate, dutyTransferRecords.id)
-    .for('update');
+  const due = await lockDueRecords(tx, ctx, employeeId, today);
   const outcome = { completed: 0, failed: 0 };
   for (const record of due) {
     const failure = await attempt(tx, ctx, record, today);
