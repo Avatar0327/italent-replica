@@ -12,6 +12,7 @@ import {
   renderSvg,
   textUnits,
   truncate,
+  xmlChars,
 } from '../../apps/api/src/modules/org-adjustment/export-svg.js';
 import type { PreviewNode } from '../../apps/api/src/modules/org-adjustment/preview.js';
 
@@ -79,6 +80,16 @@ describe('AC-OA-44 名称截断与转义', () => {
     expect(svg).not.toContain('<script>');
     expect(svg).not.toContain('<b>');
     expect(svg).toContain('&lt;script&gt;&amp;&quot;&#39;');
+  });
+
+  it('XML 1.0 不允许的码点（C0 控制符、U+FFFE / U+FFFF、孤立代理项）滤掉；TAB / LF / CR 与成对代理项保留', () => {
+    const raw = `A\u0000\u0008\u000B\u000C\u000E\u001FB\uFFFE\uFFFF\uD800C\uDC00\t\n\r😀`;
+    expect(xmlChars(raw)).toBe('ABC\t\n\r😀');
+    const svg = renderSvg([card({ name: raw, head: `X\u0001Y` })]);
+    expect(svg).toContain('>ABC');
+    expect(svg).toContain('>XY<');
+    expect(xmlChars(svg)).toBe(svg);
+    expect(exportFileName([`ZZ_甲\u0001乙`], '2026-10-02')).toBe('架构图（ZZ_甲乙）_20261002');
   });
 });
 

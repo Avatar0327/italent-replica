@@ -248,10 +248,17 @@ async function readCapacityBatch(
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
 
-async function batchLocalSums(
+/** 编制对象在汇总里用到的键（组织调整预览按同一口径复用，BE-10e）。 */
+export type LocalSumRoot = Pick<typeof establishmentObjects.$inferSelect, 'id' | 'orgId' | 'schemeId' | 'periodStart'>;
+
+/**
+ * “仅本级”方案的含下级 = 生效日行政子树（未停用）内同方案同期间的本级编制之和；按对象 ID 返回。
+ * 汇总以文本取回再转数值，不在库里强转 int（多个本级之和可超过 int32）；子树超过预算时 503。
+ */
+export async function batchLocalSums(
   tx: Tx,
   tenantId: string,
-  local: readonly (typeof establishmentObjects.$inferSelect)[],
+  local: readonly LocalSumRoot[],
   asOf: string,
 ): Promise<Map<string, number>> {
   const sums = new Map<string, number>();

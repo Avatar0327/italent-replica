@@ -8,8 +8,9 @@
  * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 name。
  * 在岗 / 兼岗原值与组织停用校验同一取数（countDepartmentStaff / countDepartmentPartTimes：自生效日起、直属本组织、
  * 按记录计），预览为 0 的组织停用不会被人员拦。负责人与“编制原值”（DEC-653，BE-10e 导出用）同属既有属性：
- * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值；编制原值口径同编制详情
- * （readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总），新增节点无编制。
+ * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值，姓名取人员版本链的最新姓名；
+ * 编制原值口径同编制详情（readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总，
+ * 复用 batchLocalSums），新增节点无编制；多方案时按 pickScheme 取一个。
  * 编制增减数随 11e / 11f 的编制生成行。
  * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
  */
@@ -17,7 +18,10 @@ import { and, employmentEmployees, eq, inArray, sql, type Tx } from '@italent/db
 import { AppError } from '../../errors.js';
 import { countDepartmentStaff } from '../employment/org-people.js';
 import { countDepartmentPartTimes } from '../employment/part-time/store.js';
+import { batchLocalSums } from '../establishment/capacity-read.js';
+import { DEFAULT_SCHEME_CODE } from '../establishment/default-scheme.js';
 import { loadSchemeBatch } from '../establishment/schemes.js';
+import { currentPersonName } from '../personnel/employee-projection.js';
 import { type OrgRecord, rowsOf } from '../org/read-model.js';
 import { scopeAllows } from '../permission/module-access.js';
 import { canSee, visibleItems, type Disclosure } from './disclosure.js';
@@ -112,11 +116,13 @@ function existingDraft(org: OrgRecord, visible: boolean): Draft {
   };
 }
 
+/** 负责人姓名与组织详情、人员档案同口径：人员版本链的最新姓名（任职头表的姓名不随改名更新）；一次批量查询。 */
 async function fillHeads(tx: Tx, tenantId: string, drafts: readonly Draft[]) {
   const ids = [...new Set(drafts.flatMap((draft) => (draft.head ? [draft.head] : [])))];
   if (!ids.length) return;
+  const name = currentPersonName(tenantId, sql`${employmentEmployees.id}`, sql`${employmentEmployees.name}`);
   const rows = await tx
-    .select({ id: employmentEmployees.id, name: employmentEmployees.name })
+    .select({ id: employmentEmployees.id, name: sql<string>`${name}` })
     .from(employmentEmployees)
     .where(and(eq(employmentEmployees.tenantId, tenantId), inArray(employmentEmployees.id, ids)));
   const names = new Map(rows.map((row) => [row.id, row.name]));
@@ -132,8 +138,8 @@ interface CapacityRow {
 }
 
 /**
- * 编制原值：组织在生效日有多个方案的编制时取方案编码最小的一个（复刻假设，原站样本只有一个方案）。
- * “仅本级”方案的含下级 = 生效日行政子树（未停用）内同方案同期间的本级编制之和（同 capacity-read batchLocalSums）。
+ * 编制原值：组织在生效日有多个方案的编制时按 `pickScheme` 取一个。
+ * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
  */
 async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: readonly PreviewNode[]) {
   const ids = nodes.map((n) => n.orgId!);
@@ -151,47 +157,46 @@ async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: 
   const schemes = new Map(
     (await loadSchemeBatch(tx, tenantId, [...new Set(rows.map((r) => r.schemeId))], date)).map((s) => [s.id, s]),
   );
-  const chosen = new Map<string, CapacityRow>();
+  const byOrg = new Map<string, (CapacityRow & SchemeKey)[]>();
   for (const row of rows) {
-    const code = schemes.get(row.schemeId)?.code;
-    const current = chosen.get(row.orgId);
-    if (code !== undefined && (!current || code < schemes.get(current.schemeId)!.code)) chosen.set(row.orgId, row);
+    const scheme = schemes.get(row.schemeId);
+    if (!scheme) continue;
+    byOrg.set(row.orgId, [...(byOrg.get(row.orgId) ?? []), { ...row, code: scheme.code, enabled: scheme.enabled }]);
+  }
+  const chosen = new Map<string, CapacityRow>();
+  for (const [orgId, list] of byOrg) {
+    const row = pickScheme(list);
+    if (row) chosen.set(orgId, row);
   }
   const local = [...chosen.values()].filter((row) => schemes.get(row.schemeId)!.maintenanceMode === 'local');
-  const sums = await localSums(tx, tenantId, date, local);
+  const sums = await batchLocalSums(
+    tx,
+    tenantId,
+    local.map((row) => ({ ...row, id: row.objectId })),
+    date,
+  );
   for (const n of nodes) {
     const row = chosen.get(n.orgId!);
     n.establishment = row ? (sums.get(row.objectId) ?? row.inclusive) : null;
   }
 }
 
-async function localSums(tx: Tx, tenantId: string, date: string, roots: readonly CapacityRow[]) {
-  if (!roots.length) return new Map<string, number>();
-  const values = sql.join(
-    roots.map((r) => sql`(${r.objectId}::uuid, ${r.orgId}::uuid, ${r.schemeId}::uuid, ${r.periodStart}::date)`),
-    sql`, `,
-  );
-  const result = await tx.execute(sql`
-    WITH RECURSIVE roots(object_id, org_id, scheme_id, period_start) AS (VALUES ${values}),
-    orgs AS (
-      SELECT DISTINCT ON (org_id) id, org_id, stop_date FROM org_versions
-      WHERE tenant_id = ${tenantId} AND start_date <= ${date}::date ORDER BY org_id, start_date DESC, version_no DESC
-    ), tree(object_id, org_id) AS (
-      SELECT object_id, org_id FROM roots UNION
-      SELECT tree.object_id, child.org_id FROM tree
-      JOIN org_hierarchy_links link ON link.tenant_id = ${tenantId}
-        AND link.parent_org_id = tree.org_id AND link.dimension = 'admin'
-      JOIN orgs child ON child.id = link.version_id AND child.stop_date >= ${date}::date
-    ), versions AS (
-      SELECT DISTINCT ON (object_id) object_id, local_capacity FROM establishment_versions
-      WHERE tenant_id = ${tenantId} AND start_date <= ${date}::date ORDER BY object_id, start_date DESC, version_no DESC
-    )
-    SELECT r.object_id::text AS id, COALESCE(SUM(v.local_capacity), 0)::int AS total FROM roots r
-    JOIN tree ON tree.object_id = r.object_id
-    LEFT JOIN establishment_objects o ON o.tenant_id = ${tenantId} AND o.org_id = tree.org_id
-      AND o.scheme_id = r.scheme_id AND o.period_start = r.period_start
-    LEFT JOIN versions v ON v.object_id = o.id GROUP BY r.object_id`);
-  return new Map(rowsOf<{ id: string; total: number }>(result).map((row) => [row.id, Number(row.total)]));
+interface SchemeKey {
+  readonly code: string;
+  readonly enabled: boolean;
+}
+
+/**
+ * 同一组织在生效日有多个方案的编制时选哪一个（复刻系统的临时口径，BE-10e 第 2 轮总编排补充）：
+ * 先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；其余按方案编码升序取第一个。
+ * 多方案并存属上游既有问题（DEC-279 / DEC-295 要求重叠周期唯一编制），本函数只做确定性兜底，待取证。
+ * TODO(需取证)：原站同一组织多方案时编制原值取哪个方案。
+ */
+export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {
+  const rank = (row: T) => (row.code === DEFAULT_SCHEME_CODE ? 0 : 1);
+  const enabled = candidates.filter((row) => row.enabled);
+  enabled.sort((a, b) => rank(a) - rank(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  return enabled[0] ?? null;
 }
 
 /** 在岗 / 兼岗原值：与组织停用校验同一取数（org/deactivation.ts assertSubtreeVacant），只算直属本组织。 */

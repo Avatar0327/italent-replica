@@ -52,7 +52,7 @@ export async function readExport(
 
 /** `架构图（{调整范围组织名}）_{yyyyMMdd}`：日期是下载当天（租户时区），多个组织按选择顺序以“、”连接。 */
 export function exportFileName(rangeNames: readonly string[], today: string): string {
-  return `架构图（${rangeNames.length ? rangeNames.join('、') : NONE}）_${today.replaceAll('-', '')}`;
+  return xmlChars(`架构图（${rangeNames.length ? rangeNames.join('、') : NONE}）_${today.replaceAll('-', '')}`);
 }
 
 /** 预览树 → 导出卡片；调整后视图剪掉被停用组织（含下级）并去掉状态标记。 */
@@ -97,8 +97,9 @@ export function textUnits(text: string): number {
   return units;
 }
 
-/** 超过 max 个单位时截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。 */
-export function truncate(text: string, max: number): string {
+/** 超过 max 个单位时截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。先去掉非法码点再量宽度。 */
+export function truncate(raw: string, max: number): string {
+  const text = xmlChars(raw);
   if (textUnits(text) <= max) return text;
   let units = 0;
   let kept = '';
@@ -111,8 +112,20 @@ export function truncate(text: string, max: number): string {
   return `${kept}…`;
 }
 
+/** XML 1.0 Char 产生式之外的码点：U+0000–U+0008、U+000B、U+000C、U+000E–U+001F、U+FFFE、U+FFFF、孤立代理项。 */
+const XML_INVALID = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
+
+/**
+ * 导出文本的唯一字符入口：去掉 XML 1.0 不允许的码点，保留 TAB / LF / CR。名称写入口只去首尾空白，这类字符
+ * 能合法存进库；原样写进 SVG 会让整份文件不是良构 XML（浏览器解析、PNG 栅格化都失败）。SVG 里的文字都经
+ * `escapeXml` 走到这里；文件名同样经过这里，与图中文字一致。
+ */
+export function xmlChars(text: string): string {
+  return text.replace(XML_INVALID, '');
+}
+
 export function escapeXml(text: string): string {
-  return text
+  return xmlChars(text)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
