@@ -15,6 +15,7 @@ import { assertRegularizationNotPropagated } from './employee-status.js';
 import { releasePendingContract } from './entry-pending-contract.js';
 import { clearPendingProbation } from './entry-probation.js';
 import { assertProbationProcessesIdle } from './probation-guard.js';
+import { clearSubmittedRegularizationDraft } from './regularization-drafts.js';
 import { retireRehireActivationDecision } from './retire-rehire-eligibility.js';
 import {
   activationPredecessors,
@@ -221,10 +222,10 @@ export async function transitionEmployment(
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
-    const state = STATE_AFTER[input.action];
-    await appendEmploymentState(tx, ctx, business, state);
+    await appendEmploymentState(tx, ctx, business, STATE_AFTER[input.action]);
   }
   await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
+  if (input.action === 'submit') await clearSubmittedRegularizationDraft(tx, ctx, business);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);

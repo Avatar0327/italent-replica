@@ -67,6 +67,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'exit-cancellation': { label: '撤销的离职记录', app: ORG_PEOPLE },
   'exit-account-task': { label: '离退休账号处理任务', app: ORG_PEOPLE },
   'exit-effect': { label: '离职下游效果', app: ORG_PEOPLE },
+  'duty-transfer-record': { label: '职责转交记录', app: ORG_PEOPLE },
   employment_form: { label: '用工形式字典', app: ORG_PEOPLE },
   employment_type: { label: '人员类别', app: ORG_PEOPLE },
   exit_dictionary: { label: '离职字典', app: ORG_PEOPLE },
@@ -321,7 +322,22 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // F-222：codex-F185b B1/B2 的 Offer 批量审批单功能权限原文。
   PartDisAgree: '部分不同意',
   AllDisAgree: '全部不同意',
+  // R2-T09a 职责转交记录（结构照原站 DutyTransferCommon）
+  receiverId: '接收人',
+  dutyType: '职责类型',
+  dutyDetails: '职责描述',
+  transferDate: '转交日期',
+  failureCode: '失败原因',
 };
+
+/** 职责转交菜单的审计动作（R2-T09a）：设置 / 改期 / 撤回 / 到期执行成功或失败；改写组织与任职的审计由执行入口照常写。 */
+export const DUTY_TRANSFER_AUDIT_ACTIONS = [
+  'duty_transfer.menu.scheduled',
+  'duty_transfer.menu.rescheduled',
+  'duty_transfer.menu.voided',
+  'duty_transfer.menu.completed',
+  'duty_transfer.menu.failed',
+] as const;
 
 /** 组织调整的审计动作（R2-T08 §9.4）；被调端口各自的 org.* / employment.* / transfer.* 审计照常写，带 trigger。 */
 export const ORG_ADJUSTMENT_AUDIT_ACTIONS = [
@@ -330,6 +346,7 @@ export const ORG_ADJUSTMENT_AUDIT_ACTIONS = [
   'org-adjustment.void',
   'org-adjustment.submit',
   'org-adjustment.withdraw',
+  'org-adjustment.resubmit',
   'org-adjustment.rebase',
   'org-adjustment.item.create',
   'org-adjustment.item.update',
@@ -390,6 +407,7 @@ const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   hrbpId: 'employee',
   shopOwnerId: 'employee',
   employeeId: 'employee',
+  receiverId: 'employee',
 };
 
 export function auditReferenceKind(field: string): AuditReferenceKind | undefined {

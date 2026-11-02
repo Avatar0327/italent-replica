@@ -16,8 +16,12 @@ import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../perm
 import type { TenantRouteDeps } from '../../routes.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
 
-/** 合同字段沿用合同模块的白名单；employmentRecordId 由系统关联，不接受请求指定。 */
-export const entryContractSchema = fieldsSchema.omit({ employmentRecordId: true });
+/**
+ * 合同字段沿用合同模块的白名单；employmentRecordId 由系统关联，不接受请求指定。
+ * 生效日固定取业务日（办理入职 / 新增实习生 = 入职日，退休同时返聘 = 返聘日 R），请求带 effectiveDate 一律 400
+ * （F-423，DEC-735；DEC-402 不留兼容）。三个入口共用这一个 schema，不各自 omit。
+ */
+export const entryContractSchema = fieldsSchema.omit({ employmentRecordId: true, effectiveDate: true });
 export type EntryContract = z.infer<typeof entryContractSchema>;
 
 async function contractContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentContext): Promise<ContractContext> {
@@ -34,10 +38,10 @@ async function contractContext(tx: Tx, deps: TenantRouteDeps, ctx: EmploymentCon
   };
 }
 
-/** 合同生效日缺省取入职日（EN-R11）；可显式给不同的日期。 */
+/** 合同生效日 = 业务日（EN-R11，DEC-735）；放在最后，不让合同字段覆盖。 */
 const contractFields = (record: Pick<EmploymentRecord, 'effectiveDate'>, contract: EntryContract) => ({
-  effectiveDate: record.effectiveDate,
   ...contract,
+  effectiveDate: record.effectiveDate,
 });
 
 /**

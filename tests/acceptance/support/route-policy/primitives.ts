@@ -385,6 +385,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     // 组织调整明细：按钮 + 主体组织 + 行涉及的组织（命令守卫内 authorizeItem；停用连带下级在写服务内逐个判）
     ['orgAdjustment.item', calls('authorizeItem', 'orgScopeAuthorizer'), { modules: ['org-adjustment'] }],
+    // R2-T09a 职责转交：被转交人按 DutyTransferCommon 范围判定，范围外与不存在同为 404（routes.ts requireVisiblePerson）
+    ['dutyTransfer.person', call('requireVisiblePerson'), { modules: ['duty-transfer'] }],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
   // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）

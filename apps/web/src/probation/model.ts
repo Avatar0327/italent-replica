@@ -8,7 +8,8 @@ import {
   type ProbationView,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
-import { isBlank, type Values } from '../foundation/forms/values.js';
+import { slotKey } from '../foundation/forms/slot.js';
+import { isBlank, sameValue, type Values } from '../foundation/forms/values.js';
 import { canButton, type ObjectPermission } from '../foundation/permission-model.js';
 import { DirectError } from '../part-time/direct-api.js';
 import { m } from './messages.js';
@@ -275,9 +276,56 @@ export function recoveredDraft(latest: Values, employeeId: string, id: string) {
     !Number.isSafeInteger(latest.revision)
   )
     return undefined;
-  const values: Values = latest.effectiveDate === undefined ? {} : { effectiveDate: latest.effectiveDate };
-  return { id, revision: Number(latest.revision), values };
+  // 草稿单详情带试用结果编码与保存时名称（F-347 b）：字典项停用 / 改名后仍按保存时的名称显示
+  const values: Values = {
+    effectiveDate: typeof latest.effectiveDate === 'string' ? latest.effectiveDate : null,
+    probationResult: typeof latest.probationResult === 'string' ? latest.probationResult : null,
+  };
+  const names: Values =
+    typeof latest.probationResult === 'string' && typeof latest.probationResultName === 'string'
+      ? { [latest.probationResult]: latest.probationResultName }
+      : {};
+  return { id, revision: Number(latest.revision), values, names };
 }
+
+export const regularizationDraftPath = (employeeId: string) => `${slotKey(employees, employeeId)}/regularization-draft`;
+/** 暂存内容（regularization-drafts.ts 的 temporary）：只取两项转正控制项。 */
+export interface Temporary {
+  values: Values;
+  names: Values;
+}
+export function temporaryOf(raw: unknown): Temporary | undefined {
+  const temporary = raw as Values | null | undefined;
+  if (!temporary || typeof temporary !== 'object') return undefined;
+  const text = (value: unknown) => (typeof value === 'string' && value ? value : null);
+  const result = text(temporary.probationResult);
+  const name = text(temporary.probationResultName);
+  return {
+    values: { effectiveDate: text(temporary.effectiveDate), probationResult: result },
+    names: result && name ? { [result]: name } : {},
+  };
+}
+/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，没填的项写 null。 */
+export const temporaryBody = (values: Values): Values => ({
+  effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null,
+  probationResult: typeof values.probationResult === 'string' && values.probationResult ? values.probationResult : null,
+});
+/** 暂存回执：员工一致、revision 比提交时大，返回新的暂存 revision。 */
+export function acceptTemporary(raw: unknown, employeeId: string, sent: number): number {
+  const view = raw as Values | null | undefined;
+  if (view?.employeeId !== employeeId || !Number.isSafeInteger(view.revision) || Number(view.revision) <= sent)
+    throw new Error(m.invalidReceipt);
+  return Number(view.revision);
+}
+/**
+ * 草稿单修改（PATCH /businesses/:id，F-347 c）：只带与 base 不同的项（rf347_1 P2-4）——撤回单的结果已停用时只改日期
+ * 不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。base 是 If-Match 那个 revision 的服务端值
+ * （commands.tsx confirmedValues，rf347_2 P2-1）：409 核对后改回打开时的值也算差异，照样送达。
+ */
+export const draftPatchBody = (values: Values, base: Values): Values =>
+  Object.fromEntries(
+    regularizeFields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
+  );
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */
 const destinations: Record<string, ProbationView> = {

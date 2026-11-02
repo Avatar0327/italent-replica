@@ -153,6 +153,52 @@ async function dragOnto(
   return { adjustmentId: world.view.id, ...(await rewrite(tx, ctx, world, before, after, [])) };
 }
 
+export type ItemChange = readonly [before: OrgItem, after: OrgItem];
+
+/**
+ * 审批人编辑明细的规划（OA-R7，BE-10c）：一次改多行，规则与申请人改行相同（内容完整 → 逐行规则 → 叠树），只在内存里
+ * 算出候选明细，不写库；`world` 是改后的头 + 库里的明细。行不存在 / 是连带行一律 400 且不回显行 ID（别的单、别的
+ * 租户的行同口径）。状态（只限审批中）与授权由调用方先判；整单校验与写入见 approval-edit.ts。
+ */
+export async function planRevisions(
+  tx: Tx,
+  now: Date,
+  world: ItemWorld,
+  patches: ReadonlyMap<string, ItemPatch>,
+): Promise<{ items: OrgItem[]; changes: readonly ItemChange[] }> {
+  let items = world.items;
+  const changes: ItemChange[] = [];
+  for (const [itemId, patch] of patches) {
+    const before = world.items.find((item) => item.id === itemId && !item.cascadedFromItemId);
+    if (!before) throw invalid('orgItems', '组织调整明细不存在或不能单独修改');
+    assertItemFields(before.adjustType, patch);
+    const after: OrgItem = { ...before, ...toContent(patch) };
+    const current = before.targetOrgId ? existingOrg(world, before.targetOrgId) : undefined;
+    if (!after.isStaged) validateContent(after, current);
+    items = items.map((item) => (item.id === after.id ? after : item));
+    changes.push([before, after]);
+  }
+  for (const [, after] of changes) {
+    await assertItemRules(tx, now, world, items, after, Object.keys(patches.get(after.id)!));
+  }
+  assertPlan(world, world.items, items);
+  return { items, changes };
+}
+
+/** 写入规划好的明细，每行一条审计；revision 由调用方统一 + 1（整次编辑只 + 1）。 */
+export async function persistRevisions(
+  tx: Tx,
+  ctx: WriteContext,
+  view: AdjustmentView,
+  changes: readonly ItemChange[],
+): Promise<void> {
+  const scope = { adjustmentId: view.id, subjectOrgId: view.approvalSubjectOrgId };
+  for (const [before, after] of changes) {
+    await updateItem(tx, ctx.tenantId, view.id, after);
+    await auditItem(tx, ctx, 'org-adjustment.item.update', scope, before, after);
+  }
+}
+
 /** 改一行（修改 / 拖拽共用）：内容完整 → 逐行规则 → 叠树（比较改前改后）→ 写行与审计。 */
 async function rewrite(
   tx: Tx,

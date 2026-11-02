@@ -1,5 +1,5 @@
 {
-  "id": "3a7e7653-127e-4d83-8811-31fe035ca5ab",
+  "id": "2af1dbb3-d74f-49e2-a506-b390ae1bc017",
   "prevId": "0e2b9fbe-ecf2-4f05-bda7-9faf0bfd275a",
   "version": "7",
   "dialect": "postgresql",
@@ -11233,7 +11233,7 @@
         },
         "employment_type": {
           "name": "employment_type",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -11757,21 +11757,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "employment_payload_versions_type_fk": {
-          "name": "employment_payload_versions_type_fk",
-          "tableFrom": "employment_payload_versions",
-          "tableTo": "employment_types",
-          "columnsFrom": [
-            "tenant_id",
-            "employment_type"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -12122,7 +12107,7 @@
         },
         "employment_type": {
           "name": "employment_type",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -12510,21 +12495,6 @@
           "columnsFrom": [
             "tenant_id",
             "professional_line_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_records_type_fk": {
-          "name": "employment_records_type_fk",
-          "tableFrom": "employment_records",
-          "tableTo": "employment_types",
-          "columnsFrom": [
-            "tenant_id",
-            "employment_type"
           ],
           "columnsTo": [
             "tenant_id",
@@ -23216,6 +23186,18 @@
           "notNull": true,
           "default": "''"
         },
+        "approval_category": {
+          "name": "approval_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -23462,6 +23444,10 @@
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
           "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp','talent_review','part_time',\n        'offer','offer_batch','probation_assessment','retirement_intention','org_adjustment','exit_handover')"
+        },
+        "approval_instances_category": {
+          "name": "approval_instances_category",
+          "value": "\"approval_instances\".\"approval_category\" IS NULL OR \"approval_instances\".\"approval_category\" IN ('offer','entry','regularization','transfer','exit',\n        'contract','other')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -60205,7 +60191,7 @@
         },
         "employment_type": {
           "name": "employment_type",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -60450,21 +60436,6 @@
           "columnsFrom": [
             "tenant_id",
             "dotted_manager_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "part_time_request_versions_type_fk": {
-          "name": "part_time_request_versions_type_fk",
-          "tableFrom": "part_time_request_versions",
-          "tableTo": "employment_types",
-          "columnsFrom": [
-            "tenant_id",
-            "employment_type"
           ],
           "columnsTo": [
             "tenant_id",
@@ -64382,157 +64353,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.employment_types": {
-      "name": "employment_types",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "display_order": {
-          "name": "display_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "effective_date": {
-          "name": "effective_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expiry_date": {
-          "name": "expiry_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'9999-12-31'"
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "preset_key": {
-          "name": "preset_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "employment_types_tenant_preset": {
-          "name": "employment_types_tenant_preset",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "preset_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"employment_types\".\"preset_key\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "employment_types_tenant_id_tenants_id_fk": {
-          "name": "employment_types_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_types",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "employment_types_tenant_id": {
-          "name": "employment_types_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "employment_types_nonempty": {
-          "name": "employment_types_nonempty",
-          "value": "btrim(\"employment_types\".\"name\") <> ''"
-        },
-        "employment_types_dates": {
-          "name": "employment_types_dates",
-          "value": "\"employment_types\".\"effective_date\" <= \"employment_types\".\"expiry_date\""
-        },
-        "employment_types_revision_order": {
-          "name": "employment_types_revision_order",
-          "value": "\"employment_types\".\"revision\" > 0 AND \"employment_types\".\"display_order\" >= 0"
-        }
-      },
       "isRLSEnabled": false
     }
   },

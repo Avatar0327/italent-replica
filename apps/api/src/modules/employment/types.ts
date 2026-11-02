@@ -17,9 +17,9 @@ export type BusinessKind = (typeof BUSINESS_KINDS)[number];
 /**
  * 变动类型（原站与业务类型、异动类型并列，W-416）。只由系统写入：职位变更同步直线经理记“职位调整”
  * （`19` §3.1，F-006）；实习转正记“实习转正”（BE-6a，R2f B41）；结束实习记“实习结束”（BE-6b，R2d B41）。
- * 其他业务与存量记录没有原站依据，保持空值。
+ * 职责转交菜单转交下属记“数据调整”（`30` DT-R7 / AC-DT-04，R2-T09a）。其他业务与存量记录没有原站依据，保持空值。
  */
-export const CHANGE_TYPES = ['position_adjustment', 'intern_regularization', 'intern_end'] as const;
+export const CHANGE_TYPES = ['position_adjustment', 'intern_regularization', 'intern_end', 'data_adjustment'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 /**
  * disapproved：审批沿「不同意」流转到结束，申请办结、不生效（F-003 第二轮，DEC-144）。
@@ -204,6 +204,9 @@ export interface EmploymentBusiness {
   readonly record: EmploymentRecord | null;
   /** R1-T08 生效结果（DEC-052 / DEC-112）：审批通过的申请与经定时任务 / 重试生效的业务才有。 */
   readonly activation: ActivationSummary | null;
+  /** F-347 b：转正单才有，试用结果编码与保存时的字典名称（历史行无名称快照时取当前名称）。 */
+  readonly probationResult?: string | null;
+  readonly probationResultName?: string | null;
 }
 
 export interface PageQuery {

@@ -34,6 +34,7 @@ export interface ItemWorld {
   readonly orgs: ReadonlyMap<string, OrgRecord>;
 }
 
+/** `view` 可以是改后的头（审批中编辑的候选状态）；组织快照按它的生效日取。 */
 export async function loadWorld(tx: Tx, tenantId: string, view: AdjustmentView): Promise<ItemWorld> {
   const items = await loadItems(tx, tenantId, view.id);
   const snapshot = await loadOrgSnapshot(tx, tenantId, view.effectiveDate);

@@ -305,6 +305,25 @@ function withEmploymentFormNames(deps: TenantRouteDeps, ctx: EmploymentContext, 
 }
 
 /** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */
+/**
+ * 不是任职字段、照原样返回的键：total / succeeded / failed 是批量编辑回执的协议元数据（R1-T16），
+ * contractNotice 是改期入职的合同提示（F-194）；probationResult(Name) 是转正单的试用结果（转正控制项，
+ * 不在任职字段目录，同试用视图，F-347 b）。
+ */
+const PROTOCOL_KEYS = new Set([
+  'notice',
+  'contractNotice',
+  'hasDataPermission',
+  'page',
+  'pageSize',
+  'emptyReason',
+  'total',
+  'succeeded',
+  'failed',
+  'probationResult',
+  'probationResultName',
+]);
+
 export async function trimEmploymentResponse(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,
@@ -362,22 +381,7 @@ export async function trimEmploymentResponse(
               : {}),
           };
         });
-      else if (
-        // total / succeeded / failed 是批量编辑回执的协议元数据（R1-T16），contractNotice 是改期入职的合同提示（F-194），都不是任职字段
-        [
-          'notice',
-          'contractNotice',
-          'hasDataPermission',
-          'page',
-          'pageSize',
-          'emptyReason',
-          'total',
-          'succeeded',
-          'failed',
-        ].includes(key) ||
-        viewable.has(key)
-      )
-        result[key] = field;
+      else if (PROTOCOL_KEYS.has(key) || viewable.has(key)) result[key] = field;
     }
     return result;
   };

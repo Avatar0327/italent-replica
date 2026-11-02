@@ -124,6 +124,7 @@ describe('审计标签（§9.4）', () => {
       'org-adjustment.void',
       'org-adjustment.submit',
       'org-adjustment.withdraw',
+      'org-adjustment.resubmit',
       'org-adjustment.rebase',
       'org-adjustment.item.create',
       'org-adjustment.item.update',
