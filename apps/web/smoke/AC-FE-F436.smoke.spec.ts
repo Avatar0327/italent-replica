@@ -1,6 +1,17 @@
 import type { Page, Request } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
-import { applicationId, business, employeeRevision, openDetail, rows, setup } from './intern-fixtures.js';
+import {
+  allButtons,
+  applicationId,
+  business,
+  department,
+  employeeRevision,
+  openDetail,
+  recordId,
+  rows,
+  setup,
+  viewable,
+} from './intern-fixtures.js';
 
 // F-436（F-376 审查 P3）：实习转正申请写确认成功后，HR 所在的列表随之重读，不论迟到回调是否还能导航。
 const dialog = (page: Page) => page.getByRole('dialog', { name: '实习转正申请', exact: true });
@@ -28,7 +39,7 @@ async function enterFrom(page: Page, from: string) {
  * 落库前“实习转正中”没有本单、“实习中”有此人；落库后本单进“实习转正中”（审批中，revision 2），“实习中”不再有此人。
  * 形态同 intern-fixtures（intern-routes.ts trimInternItems / types.ts EmploymentBusiness）。
  */
-async function application(page: Page, from: string) {
+async function application(page: Page, from: string, before?: (page: Page) => Promise<void>) {
   const fixture = await setup(page);
   const created: ReturnType<typeof posted>[] = [];
   const submitted: ReturnType<typeof posted>[] = [];
@@ -73,6 +84,7 @@ async function application(page: Page, from: string) {
           : [rows[view]];
     return route.fulfill({ json: { items, page: Number(query.get('page')), pageSize: 30, hasDataPermission: true } });
   });
+  await before?.(page);
   await enterFrom(page, from);
   await openDetail(page, 'interning');
   await page.getByRole('button', { name: '实习转正申请', exact: true }).click();
@@ -189,4 +201,115 @@ test('AC-FE-F436-04 跨模块离开后在落库前返回并重开员工详情，
   await expect(page.locator('.intern-table')).toContainText('暂无实习生');
   expect(lists.slice(before)).toContain('interning');
   await expect.poll(() => details.length).toBeGreaterThan(opened);
+});
+
+/** 合成档案权限：人员信息可编辑姓名、邮箱，详情级「编辑」按钮（EditPersonButton）。 */
+async function personEditable(page: Page) {
+  await page.route('**/permission/me/objects/TenantBase.EmployeeInformation', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TenantBase.EmployeeInformation',
+        dataOperations: { view: true, update: true },
+        viewableFields: ['id', 'revision', 'name', 'email', 'code'],
+        editableFields: ['name', 'email'],
+        buttons: [{ buttonCode: 'update', level: 'detail' }],
+      },
+    }),
+  );
+}
+
+/** 合成任职权限与任职页签数据：一条生效的入职记录，可「编辑任职」改备注（recordEditable）。 */
+async function recordEditable(page: Page) {
+  await page.route('**/permission/me/objects/TenantBase.EmploymentRecord', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TenantBase.EmploymentRecord',
+        dataOperations: { read: true, create: true, update: true },
+        viewableFields: [...viewable, 'kind', 'isCurrent', 'remarks'],
+        editableFields: [...viewable, 'remarks'],
+        buttons: [...allButtons, 'Employment.Edit'].map((buttonCode) => ({ buttonCode, level: 'detail' })),
+      },
+    }),
+  );
+  await page.route(`**/employment/employees/${employee}/records?page=1&pageSize=15`, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: recordId,
+            employeeId: employee,
+            revision: 2,
+            kind: 'hire',
+            status: 'effective',
+            serviceType: 'primary',
+            isCurrent: true,
+            effectiveDate: '2026-09-01',
+            fields: { departmentId: department, remarks: '合成原备注' },
+          },
+        ],
+        page: 1,
+        pageSize: 15,
+        hasDataPermission: true,
+      },
+    }),
+  );
+}
+
+/** 提交在途 → 跨模块离开 → 落库前回来并重开同一员工详情；返回详情读取计数（含 StrictMode 双读）。 */
+async function reopenDetailInFlight(page: Page, state: { hold: boolean; release?: () => void }) {
+  const details: string[] = [];
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    details.push(route.request().method());
+    return route.fulfill({ json: { id: employee, name: rows.interning.name, code: rows.interning.code, revision: 1 } });
+  });
+  await submitAndHold(page, state);
+  await leaveModule(page);
+  await remount(page, '/interns', 'interning');
+  await openDetail(page, 'interning');
+  await expect.poll(() => details.length).toBeGreaterThan(0);
+  return details;
+}
+
+// F-436 R2 P2（Sol 受控复现）：迟到确认重读详情时不得卸载详情里正在编辑的子树，未提交输入不丢；详情仍重读一次。
+test('AC-FE-F436-05 迟到确认不得关闭「编辑人员」抽屉或丢失未提交输入，详情仍随确认重读', async ({ page }) => {
+  const { state } = await application(page, '/staff', personEditable);
+  const details = await reopenDetailInFlight(page, state);
+  await page.getByRole('button', { name: '编辑人员', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑人员', exact: true });
+  const name = editor
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('.ant-form-item-label').getByText('员工姓名', { exact: true }) })
+    .getByRole('textbox');
+  await name.fill('合成尚未保存姓名');
+  await page.waitForTimeout(500);
+  const opened = details.length;
+  state.release!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+  await page.waitForTimeout(500);
+  await expect(editor).toHaveCount(1);
+  await expect(name).toHaveValue('合成尚未保存姓名');
+});
+
+test('AC-FE-F436-06 迟到确认不得卸载页签内的「编辑任职」表单，所在页签与未提交输入保留', async ({ page }) => {
+  const { state } = await application(page, '/staff', recordEditable);
+  const details = await reopenDetailInFlight(page, state);
+  const tab = page.getByRole('tab', { name: '任职记录', exact: true });
+  await tab.click();
+  await page.getByRole('button', { name: '编辑任职', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑任职', exact: true });
+  const remarks = editor
+    .locator('.ant-form-item')
+    .filter({ has: page.locator('.ant-form-item-label').getByText('备注', { exact: true }) })
+    .getByRole('textbox');
+  await remarks.fill('合成尚未保存备注');
+  await page.waitForTimeout(500);
+  const opened = details.length;
+  state.release!();
+  await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+  await page.waitForTimeout(500);
+  await expect(editor).toHaveCount(1);
+  await expect(remarks).toHaveValue('合成尚未保存备注');
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
 });
