@@ -10,6 +10,7 @@
  * （守卫 orgAdjustment.item）。
  * 读取（BE-10d，路由 12～15）：列表经 objectContext 判 view，主体组织范围在 SQL 里过滤；详情 / 明细 / 预览经
  * read-routes → disclosure.orgAdjustmentDisclosure（HR 读权 + 范围，或可打开最新审批实例），都不是 404。
+ * 架构图导出（BE-10e，路由 28）与预览同一判定（DEC-650①）。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -438,4 +439,5 @@ export const ORG_ADJUSTMENT: RequiredTable = {
   [`GET ${BASE}/:id`]: reader(`${BASE}/:id`, READER_ANCHOR),
   [`GET ${BASE}/:id/items/:section`]: reader(`${BASE}/:id/items/:section`, READER_ANCHOR),
   [`GET ${BASE}/:id/preview`]: reader(`${BASE}/:id/preview`, READER_ANCHOR),
+  [`GET ${BASE}/:id/preview/export`]: reader(`${BASE}/:id/preview/export`, READER_ANCHOR),
 };
