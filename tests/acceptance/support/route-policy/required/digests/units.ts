@@ -160,7 +160,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/duty-transfer/routes.ts': {
     OBJECT: '7083a98e9a98',
     requireVisiblePerson: 'abca1730966f',
-    'route:GET /api/tenant/duty-transfers/departed': 'a54c5c483e55',
+    'route:GET /api/tenant/duty-transfers/departed': '846a41837667',
     'route:GET /api/tenant/duty-transfers/people/:id/duties': '160365b4dc2f',
     'route:GET /api/tenant/duty-transfers/records': 'db1c98ce076a',
     'route:POST /api/tenant/duty-transfers/people/:id': 'a12559e187cc',
@@ -1882,7 +1882,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/todos.ts#registerMergedTodos': '73b57b28a247',
   'apps/api/src/modules/duty-transfer/routes.ts#OBJECT': '2bcef067731e',
   'apps/api/src/modules/duty-transfer/routes.ts#requireVisiblePerson': 'dd0006514593',
-  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': 'b423a2e797ad',
+  'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/departed': 'd6f03105ff3d',
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/people/:id/duties': 'ea5ba0c36c25',
   'apps/api/src/modules/duty-transfer/routes.ts#route:GET /api/tenant/duty-transfers/records': 'b81f902b2bb7',
   'apps/api/src/modules/duty-transfer/routes.ts#route:POST /api/tenant/duty-transfers/people/:id': 'fc161ff8fb19',

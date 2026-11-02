@@ -902,7 +902,6 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/duty-transfer/records.ts#unionView': ['4096377f318f', '4001bd5ca79a'],
   'apps/api/src/modules/duty-transfer/routes.ts#DUTY_TRANSFER_BASE': ['20bbe33f414f', 'e3b0c44298fc'],
   'apps/api/src/modules/duty-transfer/routes.ts#OBJECT': ['7083a98e9a98', '2bcef067731e'],
-  'apps/api/src/modules/duty-transfer/routes.ts#departed': ['4d58014c356a', 'dbbb99e2cb07'],
   'apps/api/src/modules/duty-transfer/routes.ts#dutyMenu': ['9371f49e31b4', 'bc7d962268ff'],
   'apps/api/src/modules/duty-transfer/routes.ts#hiddenFields': ['ae84ad81d6f5', '20c00bb6e68b'],
   'apps/api/src/modules/duty-transfer/routes.ts#itemSchema': ['50eccad47f61', '91aba28ceb94'],
