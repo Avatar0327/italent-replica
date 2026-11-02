@@ -15,7 +15,7 @@ import type { ApplicationDraft } from '../intern/commands.js';
 import { acceptBusiness } from '../intern/model.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
 import { useRead } from '../part-time/useRead.js';
-import { useProbationCommand, type ProbationCommand, type Send } from './commands.js';
+import { targetOf, useProbationCommand, type Confirmed, type ProbationCommand, type Send } from './commands.js';
 import { useRegularizationRecovery, type Recovery } from './draft.js';
 import { m } from './messages.js';
 import {
@@ -151,7 +151,7 @@ function AdjustEditor({ row, onClose, onDone, refresh, opening, read }: EditorPr
   const employeeId = row.employeeId!;
   const permissions = usePermissions(object);
   const [form] = Form.useForm();
-  const target = { id: employeeId, revision: opening.revision, baseline: opening.values, read };
+  const target = targetOf(employeeId, opening, read);
   const cmd = useProbationCommand(employees, target, 'adjust-probation', () => refresh());
   useDraftRefill(cmd.form, adjustFields, form);
   const locked =
@@ -268,7 +268,8 @@ export function RegularizeForm(props: FormProps & { application?: boolean }) {
 /**
  * 直接转正（/regularizations 单人）与申请两步的提交定义；写后回读按单据状态定目的视图。
  * 直接转正的员工 revision 在请求体里：取内核本次命令的版本，冲突核对后重提即带最新版本。
- * 草稿单（撤回单 / 第二步失败的单）改了内容先 PATCH 同一张单（F-347 c），确认后再提交。
+ * 草稿单（撤回单 / 第二步失败的单）改了内容先 PATCH 同一张单（F-347 c），确认后再提交；PATCH 只带与内核给的
+ * base（If-Match 那个 revision 的服务端值）不同的项，不另持打开时的值（rf347_2 P2-1）。
  */
 function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Values) => void) {
   const destination = useRef<ProbationView>(undefined);
@@ -304,10 +305,10 @@ function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Val
       return { path: slotKey(businesses, made.id), ...made };
     },
   });
-  const patch = (id: string, values: Values, base: Values): Send => ({
+  const patch = (id: string, values: Values): Send => ({
     method: 'PATCH',
     path: slotKey(businesses, id),
-    body: (sent) => draftPatchBody(sent, base),
+    body: (sent, _revision, base) => draftPatchBody(sent, base),
     accept: (raw, sent) => {
       const made = kept(raw, sent, id);
       saved({ ...made, values: {} }, values);
@@ -348,19 +349,21 @@ function useDraftRead(employeeId: string) {
  * 暂存（DEC-709）：PUT 覆盖写同一份，If-Match = 暂存 revision；不校验必填、不建单。
  * 409 重读（rf347_1 P2-6）读同一个暂存视图：revision 与暂存内容来自同一次 GET，已改的输入保留，核对后显式重提；
  * 视图里有申请草稿单（别人在本页打开后建的，P2-3）时交 found 进入那张单。
+ * 冲突基线（rf347_2 P2-2）：打开时是恢复的暂存（没有暂存则员工默认值），每次暂存成功换成回执里的暂存，与 revision
+ * 同步更新；服务端没有暂存时最新值即 defaults。
  */
-function useStage(employeeId: string, revision: number, baseline: Values, found: (draft: FoundDraft) => void) {
+function useStage(employeeId: string, opened: Confirmed, defaults: Values, found: (draft: FoundDraft) => void) {
   const api = useApiClient();
   const readDraft = useDraftRead(employeeId);
-  const [current, setCurrent] = useState(revision);
+  const [confirmed, setConfirmed] = useState(opened);
   const read = async (): Promise<Latest> => {
     const view = await api.request<Values>(regularizationDraftPath(employeeId));
     if (view.employeeId !== employeeId || !Number.isSafeInteger(view.revision)) throw new Error(m.invalidReceipt);
     if (typeof view.applicationId === 'string') found(await readDraft(view.applicationId));
-    const values = temporaryOf(view.temporary)?.values ?? baseline;
+    const values = temporaryOf(view.temporary)?.values ?? defaults;
     return { id: employeeId, revision: Number(view.revision), values };
   };
-  const target = { id: employeeId, revision: current, baseline, read };
+  const target = targetOf(employeeId, confirmed, read);
   const cmd = useProbationCommand(employees, target, 'stage-regularization', async () => undefined);
   const stage = async (values: Values) => {
     const send: Send = {
@@ -369,7 +372,7 @@ function useStage(employeeId: string, revision: number, baseline: Values, found:
       body: temporaryBody,
       accept: (raw, sent) => {
         const next = acceptTemporary(raw, employeeId, sent);
-        setCurrent(next);
+        setConfirmed({ revision: next, values: temporaryOf((raw as Values).temporary)?.values ?? defaults });
         return { path: regularizationDraftPath(employeeId), id: employeeId, revision: next };
       },
     };
@@ -474,10 +477,11 @@ function RegularizeEditor(props: RegularizeProps) {
         return { id: employeeId, revision: latest.revision, values: latest.values };
       }
     : read;
-  const baseline = draft?.values ?? opening.values;
-  const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: reread };
+  // 冲突基线只来自 targetOf：草稿单的 revision 与值同一张单，否则员工打开时的同一次 GET（rf347_2，DEC-431①）
+  const target = targetOf(employeeId, draft ?? opening, reread);
   const cmd = useProbationCommand(employees, target, application ? 'apply' : 'regularize', () => refresh());
-  const staging = useStage(employeeId, recovery?.revision ?? 0, opening.values, setFound);
+  const stagedAt = { revision: recovery?.revision ?? 0, values: temporary?.values ?? opening.values };
+  const staging = useStage(employeeId, stagedAt, opening.values, setFound);
   const staged = application && !draft;
   useDraftRefill(cmd.form, regularizeFields, form);
   useDraftRefill(staged ? staging.cmd.form : undefined, regularizeFields, form);
@@ -495,8 +499,10 @@ function RegularizeEditor(props: RegularizeProps) {
   );
   const { error, submit } = useSubmit(form, async (values) => {
     validateRegularize(values);
-    const changed = !!draft && regularizeFields.some((field) => !sameValue(values[field], draft.values[field]));
-    const send = !application ? direct : changed ? patch(draft!.id, values, draft!.values) : step(draft?.id, values);
+    // 与当前已确认 revision 的服务端值比（rf347_2 P2-1）：409 核对后改回打开时的值也要先 PATCH，不能跳过直接提交
+    const confirmed = cmd.confirmedValues(regularizeFields);
+    const changed = !!draft && regularizeFields.some((field) => !sameValue(values[field], confirmed[field]));
+    const send = !application ? direct : changed ? patch(draft!.id, values) : step(draft?.id, values);
     if (!(await cmd.submit(values, regularizeFields, send))) return;
     // 建草稿 / 改草稿已确认才自动进入提交（同实习）；提交失败时草稿保留，由用户显式重提同一张单
     if (application && (!draft || changed)) return void (autoSubmit.current = true);

@@ -55,7 +55,8 @@ interface DraftRow {
 }
 
 /**
- * 在职才有暂存：不在职（未入职、离职 / 退休已生效）与员工不存在同样 404。在职口径同转正申请入口
+ * 在职才有暂存：不在职（未入职、离职 / 退休已生效）与员工不存在同样 404，文案也同转正申请入口的“员工不存在”
+ * （rf347_2 P3：读写一致，PUT 先锁员工行时报的就是它）。在职口径同转正申请入口
  * （write-service.ts assertBusinessSequence：今天及以前最后一条不能是离职 / 退休）；周期取不到也算不在职。
  */
 async function currentAnchor(tx: Tx, ctx: EmploymentContext, employeeId: string) {
@@ -64,7 +65,7 @@ async function currentAnchor(tx: Tx, ctx: EmploymentContext, employeeId: string)
   const cycle = sequenceViolation(previous, 'regularization')
     ? undefined
     : await loadProbationCycle(tx, ctx.tenantId, employeeId, today);
-  if (!cycle) throw new AppError('NOT_FOUND', '任职数据不存在');
+  if (!cycle) throw new AppError('NOT_FOUND', '员工不存在');
   return cycle.anchor;
 }
 

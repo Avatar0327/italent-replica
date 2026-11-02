@@ -6,6 +6,7 @@
  * e 已存草稿提交不受启用字典为空限制（新建仍要启用项）。
  * 第 2 轮返工（rf347_1）：停用结果同值 PATCH、首写并发、已有申请草稿时暂存、离职后暂存、直接转正清暂存。
  */
+import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
 import { sql, withTenant, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -138,6 +139,18 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
     expect(unknown.status).toBe(400);
     const stranger = await w.session.employee('未入职合成员工');
     expect((await w.session.request('GET', draftPath(stranger.id))).status).toBe(404);
+    // 读写同一 404 文案（rf347_2 P3）：未入职与员工不存在都按“员工不存在”，同转正申请入口
+    const notFound = async (id: string) => {
+      const replies = [
+        await w.session.request('GET', draftPath(id)),
+        await w.session.request('PUT', draftPath(id), { ifMatch: 0, body: {} }),
+      ];
+      const message = async (reply: Response) => ((await reply.json()) as { error: { message: string } }).error.message;
+      return Promise.all(replies.map(async (reply) => [reply.status, await message(reply)]));
+    };
+    const expected = [404, '员工不存在'];
+    expect(await notFound(stranger.id)).toEqual([expected, expected]);
+    expect(await notFound(randomUUID())).toEqual([expected, expected]);
   });
 
   it('提交成功后清掉暂存；建草稿未提交时暂存仍在，草稿单经 applicationId 找回', async () => {

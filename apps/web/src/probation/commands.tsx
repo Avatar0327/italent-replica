@@ -23,13 +23,30 @@ export interface Send {
   path: string;
   /** POST /regularizations 不读 If-Match（员工 revision 逐人在请求体里）。 */
   ifMatch?: boolean;
-  /** revision 是内核本次命令的版本（冲突核对后即最新版本），请求体里带员工 revision 的入口须用它。 */
-  body(values: Values, revision: number): Values;
+  /**
+   * revision 是内核本次命令的版本（冲突核对后即最新版本），请求体里带员工 revision 的入口须用它。
+   * base 是这个 revision 对应的服务端值（confirmedValues），只带差异的入口（草稿单 PATCH）以它为差异基准。
+   */
+  body(values: Values, revision: number, base: Values): Values;
   /** 回执校验用实际提交的 revision；不符抛错，内核按结果未知锁定。不返回回读对象时只刷新列表（批量）。 */
   accept(raw: Values, sent: number): Readback | undefined;
   /** 明确拒绝后重读；409 revision 冲突由内核展示差异、显式确认。 */
   rejected?(): Promise<void>;
 }
+/**
+ * 已确认的服务端版本（rf347_2，DEC-431①）：revision 与 values 必须来自同一次读取 / 同一张回执。
+ * 冲突基线的唯一来源：提交点只用 targetOf 组 Target，不另持一份“打开时的值”当基线。
+ */
+export interface Confirmed {
+  revision: number;
+  values: Values;
+}
+export const targetOf = (id: string, confirmed: Confirmed, read?: () => Promise<Latest>): Target => ({
+  id,
+  revision: confirmed.revision,
+  baseline: confirmed.values,
+  read,
+});
 export interface Target {
   id?: string;
   revision: number | undefined;
@@ -83,8 +100,11 @@ export function useProbationCommand(resource: string, target: Target, action: st
       ? api.request<Values>(send.path, { method: 'PUT', command: sent })
       : post(send.path, send.method ?? 'POST', sent);
   };
+  /** 当前已确认 revision 的服务端值：409 重读并核对后是读回的最新值，否则是 Target.baseline。差异判断一律对它比。 */
+  const confirmedValues = (fields: readonly string[]) => projectFields(cmd.full, fields);
   return {
     ...cmd,
+    confirmedValues,
     disabled: cmd.form.locked || cmd.invalid || !!(cmd.form as CommandForm).blocked,
     /** 返回是否真正写入完成：并发的第二次点击直接返回 false，调用方不得据此提示成功。 */
     async submit(values: Values, editableFields: readonly string[], send: Send) {
@@ -98,8 +118,9 @@ export function useProbationCommand(resource: string, target: Target, action: st
               values,
               editableFields,
               send: async ({ edited, command }) => {
-                // 未改的可提交字段取最新全量：重读后服务端的新值不会被打开时的旧值覆盖
-                const body = send.body({ ...projectFields(cmd.full, editableFields), ...edited }, command.revision!);
+                // 未改的可提交字段取最新全量：重读后服务端的新值不会被打开时的旧值覆盖；差异基准与 If-Match 同一版本
+                const base = confirmedValues(editableFields);
+                const body = send.body({ ...base, ...edited }, command.revision!, base);
                 const raw = await transmit(send, { ...command, body: { ...body, ...extra } });
                 await settle(send.accept(raw, command.revision!));
                 return { id: target.id ?? resource };

@@ -325,7 +325,8 @@ test('AC-FE-F347-12 草稿单 409：重读投影最新全部字段，只改的�
     ['PATCH', businessPath, '4'],
     ['POST', submitPath, '5'],
   ]);
-  expect(server.writes[1]!.body).toEqual({ effectiveDate: '2026-11-10', probationResult: 'extend' });
+  // 差异基准是 rev4 的服务端值：结果已是 extend、没改，PATCH 只带改了的日期（rf347_2 P3）
+  expect(server.writes[1]!.body).toEqual({ effectiveDate: '2026-11-10' });
   expect(server.business).toMatchObject({
     status: 'in_review',
     effectiveDate: '2026-11-10',

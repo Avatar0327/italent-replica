@@ -318,14 +318,13 @@ export function acceptTemporary(raw: unknown, employeeId: string, sent: number):
   return Number(view.revision);
 }
 /**
- * 草稿单修改（PATCH /businesses/:id，F-347 c）：只带与 base（打开的草稿单内容）不同的项（rf347_1 P2-4）——
- * 撤回单的结果已停用时只改日期不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。
+ * 草稿单修改（PATCH /businesses/:id，F-347 c）：只带与 base 不同的项（rf347_1 P2-4）——撤回单的结果已停用时只改日期
+ * 不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。base 是 If-Match 那个 revision 的服务端值
+ * （commands.tsx confirmedValues，rf347_2 P2-1）：409 核对后改回打开时的值也算差异，照样送达。
  */
 export const draftPatchBody = (values: Values, base: Values): Values =>
   Object.fromEntries(
-    (['effectiveDate', 'probationResult'] as const)
-      .filter((field) => !sameValue(values[field], base[field]))
-      .map((field) => [field, values[field]]),
+    regularizeFields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
   );
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */
