@@ -25,6 +25,7 @@ export const s = {
   invalidReceipt: '保存回执无效，请刷新后核对',
   rowGone: '该项已不在列表中，请刷新列表',
   readonlyHint: '当前身份只能查看，修改需要租户管理员（其他设置）权限。',
+  notOverridable: '该设置由系统统一管控，本租户不可修改。',
   item: {
     category: '事项类别',
     sequenceNo: '序号',
@@ -45,6 +46,8 @@ export const s = {
   blacklistStatus: { active: '在名单', removed: '已移出' } as Record<string, string>,
   page: (page: number) => `第 ${page} 页`,
   conditionText: (count: unknown) => `离职次数 ≥ ${String(count)}`,
+  orgIdsRange: (max: number) => `适用组织最多选择 ${max} 个`,
+  mergeHint: (count: number) => `该规则原有 ${count} 条条件，保存后合并为一条`,
   // 以下各组的键与字段名一致，兼作表单 / 命令状态的字段标签。
   trigger: {
     enabled: '启用离职交接',

@@ -3,11 +3,18 @@
 // 本文件被页面与 vitest 引用，不依赖 React 或浏览器 API；权威校验仍在服务端。B63 终止在途设置没有接口，不做。
 import {
   AUTO_BLACKLIST_SETTING_KEY,
+  BLACKLIST_NOTE_MAX,
   BLACKLIST_REASON_CODES,
+  BLACKLIST_RULE_TEXT_MAX,
   BLACKLIST_RULE_TERM_CODES,
   BLACKLIST_SOURCE_CODES,
   BLACKLIST_STATUSES,
   EXIT_HANDOVER_TRIGGER_KEY,
+  HANDOVER_CATEGORY_MAX,
+  HANDOVER_FORM_REF_MAX,
+  HANDOVER_REMARK_MAX,
+  HANDOVER_REMIND_DAYS_MAX,
+  HANDOVER_TITLE_MAX,
   HANDOVER_TODO_TYPE_CODES,
   HANDOVER_TRIGGER_DEFAULT,
   HANDOVER_VERIFIED_INITIATOR,
@@ -17,6 +24,7 @@ import {
 import type { Values } from '../foundation/forms/store.js';
 import type { MenuNode } from '../foundation/permission-snapshot.js';
 import { canButton, type ObjectPermission } from '../foundation/permission-model.js';
+import { OTHER_SETTINGS_MENU } from './account-stop.js';
 import { s } from './settings-messages.js';
 
 /** 页签路径段，与三个字典、账号停用时间同级（/exit-settings/<tab>）。 */
@@ -34,6 +42,23 @@ export const TRIGGER_PATH = settingPath(EXIT_HANDOVER_TRIGGER_KEY);
 export const AUTO_BLACKLIST_PATH = settingPath(AUTO_BLACKLIST_SETTING_KEY);
 export const BLACKLIST_OBJECT = 'TenantBase.Blacklist';
 export const rowPath = (collection: string, id: string) => `${collection}/${encodeURIComponent(id)}`;
+
+/**
+ * 输入上限的唯一来源，与后端 zod 一致（blacklist.ts createInput / listQuery、blacklist-rules.ts ruleInput、
+ * exit-handover-items.ts itemInput、domain checkHandoverTrigger）；筛选框与表单都从这里取，不在页面里另写数字。
+ */
+export const FIELD_MAX = {
+  blacklist: { name: 100, idNumber: 64, mobilePhone: 32, email: 254, note: BLACKLIST_NOTE_MAX },
+  rule: { name: 100, priority: 9999, exitCount: 999, orgIds: 50, text: BLACKLIST_RULE_TEXT_MAX },
+  item: {
+    category: HANDOVER_CATEGORY_MAX,
+    sequenceNo: 9999,
+    title: HANDOVER_TITLE_MAX,
+    formRef: HANDOVER_FORM_REF_MAX,
+    remark: HANDOVER_REMARK_MAX,
+  },
+  trigger: { nodeKey: 200, days: HANDOVER_REMIND_DAYS_MAX },
+} as const;
 
 // ---- 形状校验：字段被裁剪时键缺失（trimModuleResponse 平铺裁剪），出现的键必须类型正确 ----------------------------
 type Check = (value: unknown) => boolean;
@@ -164,6 +189,16 @@ export const BLACKLIST_UPDATE_FIELDS = ['reason', 'expiryDate', 'note'] as const
 /** 手工加黑须填姓名，证件号码 / 手机号 / 邮箱至少一项（后端 createInput）：本地先拦，不进内核。 */
 export const hasIdentity = (values: Values) =>
   BLACKLIST_IDENTITIES.some((field) => typeof values[field] === 'string' && values[field].trim() !== '');
+/** 新增只带填了的项（后端严格 DTO、文本至少 1 字）；编辑是补丁，清空的说明 / 截止日期提交 null。 */
+export function entryBody(edited: Values, create: boolean) {
+  const entries = Object.entries(edited).map(([field, value]) => {
+    const trimmed = typeof value === 'string' ? value.trim() : value;
+    return [field, trimmed === '' || trimmed === undefined ? null : trimmed] as const;
+  });
+  return Object.fromEntries(create ? entries.filter(([, value]) => value !== null) : entries);
+}
+/** 有效截止日期不得早于加黑日期（后端 assertExpiry）：按租户时区的今天禁选更早的日期；今天未知时不禁。 */
+export const isBeforeDay = (day: string, today: string | undefined) => !!today && day < today;
 
 // 黑名单写能力：数据操作 + 列表按钮（新增 / 移出 / 删除为 list，编辑为 list_row）+ 字段编辑权。
 // 新增须姓名、原因可编辑且至少一种联系标识可编辑；编辑按字段逐项给。明细未懒加载（summary）时都不给。
@@ -196,8 +231,11 @@ export type BlacklistAccess = ReturnType<typeof blacklistAccess>;
 /** 租户设置与任职设置配置写入的准入都是管理员能力 other_settings；前端唯一对应信号是“管理单元设置”菜单可编辑。 */
 export function otherSettingsEditable(menus: readonly MenuNode[]) {
   const settings = menus.find((menu) => menu.key === 'settings')?.children ?? [];
-  return settings.find((menu) => menu.key === 'other.mou_settings')?.editable === true;
+  return settings.find((menu) => menu.key === OTHER_SETTINGS_MENU)?.editable === true;
 }
+/** 租户设置可写：其他设置权之外，该键还须可覆盖（overridable=false 时后端回 403 SETTING_READ_ONLY）。 */
+export const settingWritable = (menus: readonly MenuNode[], setting: { overridable: boolean }) =>
+  otherSettingsEditable(menus) && setting.overridable;
 // 交接事项 / 规则是整份保存（严格 DTO，后端按载荷全部字段核对编辑权）：全部字段可看可改、且持有 other_settings 才开放；
 // 新增看 create，修改与删除看 update（配置对象没有删除数据操作，后端删除按 update 判断）。
 export function configAccess(
@@ -239,12 +277,17 @@ export function groupByCategory(rows: readonly Row[]) {
   return [...groups].map(([category, items]) => ({ category, items }));
 }
 
-/** 规则表单把条件展开成“离职次数 ≥ N”一项（后端只接受这一种条件）。 */
+/** 规则的条件条数（多条时表单提示改阈值会合并）。 */
+export const conditionCount = (row: Values) => (Array.isArray(row.conditions) ? row.conditions.length : 0);
+/**
+ * 规则表单把条件投影成“离职次数 ≥ N”一项（后端只接受这一种条件）。多条按 AND 判定（domain matchBlacklistRule
+ * conditions.every），等价阈值是各条的最大值，不能只取第一条。
+ */
 export function ruleValues(row: Row): Values {
-  const conditions = Array.isArray(row.conditions) ? (row.conditions as { value: number }[]) : [];
-  return { ...row, exitCount: conditions[0]?.value };
+  const values = Array.isArray(row.conditions) ? (row.conditions as { value: number }[]).map((c) => c.value) : [];
+  return { ...row, exitCount: values.length ? Math.max(...values) : undefined };
 }
-/** 规则整份保存：没改离职次数就原样带回条件（含多条），改了就按一条“离职次数 ≥ N”提交。 */
+/** 规则整份保存：没改离职次数就原样带回条件（含多条），改了才按一条“离职次数 ≥ N”提交（表单上已提示合并）。 */
 export function ruleBody(full: Values, edited: Values) {
   const merged = { ...full, ...edited };
   return {
@@ -297,6 +340,17 @@ export function triggerValues(value: HandoverTriggerSetting): Values {
     remindBefore: value.remind.daysBeforeLastWorkDate,
     remindAfter: value.remind.daysAfterLastWorkDate,
   };
+}
+/**
+ * 当前可见（即可校验、可提交）的发起规则字段：提前天数只在“最后工作日前若干天”、节点标识只在“指定节点同意后”、
+ * 催办天数只在催办开启时可见。隐藏字段不校验也不提交，整份提交时由 triggerBody 取最新全量的有效值（后端必填）。
+ */
+export function triggerVisibleFields(values: Values) {
+  const hidden = new Set<string>();
+  if (values.method !== 'days_before_last_work_date') hidden.add('daysBeforeLastWorkDate');
+  if (values.method !== 'on_node_approved') hidden.add('nodeKey');
+  if (values.remindEnabled !== true) ['remindBefore', 'remindAfter'].forEach((field) => hidden.add(field));
+  return TRIGGER_FIELDS.filter((field) => !hidden.has(field));
 }
 // 发起规则整份替换（结构严格，不接受未知键）：未改项取最新全量；提前天数只在“最后工作日前若干天”、节点标识只在
 // “指定节点同意后”提交，不把隐藏的旧值带回去。发起人只接受员工本人（F-250 / DEC-683）。

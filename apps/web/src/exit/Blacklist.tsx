@@ -1,9 +1,11 @@
 // B68 黑名单名单页（FE-R2c2b）：在名单 / 已移出两种状态，按姓名、证件号码、手机号、加黑原因、数据来源筛选，
 // 上一页 / 下一页翻页（接口无总数）；手工加黑、编辑、移出、删除按对象权限与按钮给出。被裁剪的字段列显示占位，
 // 不出现在筛选里（服务端按不可查看字段筛选回 403）。选择员工加黑与导入未做（未决）。
-import { BLACKLIST_NOTE_MAX, BLACKLIST_REASONS, BLACKLIST_SOURCES } from '@italent/domain';
-import { Button, Form, Input, Radio, Select, Space, Table, type FormInstance } from 'antd';
+import { BLACKLIST_REASONS, BLACKLIST_SOURCES } from '@italent/domain';
+import { Button, DatePicker, Form, Input, Radio, Select, Space, Table, type FormInstance } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useState, type ReactNode } from 'react';
+import { useToday } from '../contracts/references.js';
 import type { Command } from '../foundation/client.js';
 import type { FormField } from '../foundation/FormOverlay.js';
 import { PageState } from '../foundation/PageState.js';
@@ -11,7 +13,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import type { Values } from '../foundation/forms/store.js';
 import { projectFields } from '../foundation/forms/values.js';
-import { TenantDatePicker } from '../foundation/selectors.js';
+import { ui } from '../foundation/messages.js';
 import {
   RecordForm,
   RowActions,
@@ -31,10 +33,13 @@ import {
   BLACKLIST_OBJECT,
   BLACKLIST_PATH,
   BLACKLIST_UPDATE_FIELDS,
+  FIELD_MAX,
   batchBody,
   blacklistAccess,
   blacklistQuery,
+  entryBody,
   hasIdentity,
+  isBeforeDay,
   parseBlacklistDeleteReceipt,
   parseBlacklistPage,
   parseRemoveReceipt,
@@ -47,6 +52,7 @@ import {
 } from './settings-model.js';
 
 const b = s.blacklist;
+const MAX: Readonly<Record<string, number>> = FIELD_MAX.blacklist;
 const LABELS: Record<string, string> = b;
 // 有选项的列按原站文案显示，筛选也给下拉。
 const CHOICES: Record<string, Readonly<Record<string, string>>> = {
@@ -157,7 +163,7 @@ function Filters(props: {
             {CHOICES[field] ? (
               <Select allowClear placeholder={b[field]} aria-label={b[field]} options={options(CHOICES[field])} />
             ) : (
-              <Input allowClear placeholder={b[field]} aria-label={b[field]} maxLength={64} />
+              <Input allowClear placeholder={b[field]} aria-label={b[field]} maxLength={MAX[field]} />
             )}
           </Form.Item>
         ))}
@@ -213,13 +219,26 @@ function rowActions(api: ReturnType<typeof useApiClient>, row: Row, access: Blac
   return [...(access.remove && row.status !== 'removed' ? [remove] : []), ...(access.delete ? [deletion] : [])];
 }
 
-/** 新增只带填了的项（后端严格 DTO、文本至少 1 字）；编辑是补丁，清空的说明 / 截止日期提交 null。 */
-function entryBody(edited: Values, create: boolean) {
-  const entries = Object.entries(edited).map(([field, value]) => {
-    const trimmed = typeof value === 'string' ? value.trim() : value;
-    return [field, trimmed === '' || trimmed === undefined ? null : trimmed] as const;
-  });
-  return Object.fromEntries(create ? entries.filter(([, value]) => value !== null) : entries);
+const DAY = 'YYYY-MM-DD';
+/**
+ * 有效截止日期：按租户时区的今天禁选更早的日期（后端 assertExpiry 要求不早于加黑日期），面板默认停在租户今天。
+ * 值仍是 YYYY-MM-DD 字符串，同 TenantDatePicker；该组件不收 disabledDate，后补可给它加 minDate 后改回。
+ */
+function ExpiryPicker(props: { value?: string | null; onChange?(value: string | null): void; disabled?: boolean }) {
+  const today = useToday();
+  return (
+    <DatePicker
+      value={props.value ? dayjs(props.value).locale('zh-cn') : null}
+      defaultPickerValue={today ? dayjs(today) : undefined}
+      disabledDate={(day: Dayjs) => isBeforeDay(day.format(DAY), today)}
+      showNow={false}
+      format={DAY}
+      disabled={props.disabled || !today}
+      aria-label={ui.date}
+      placeholder={ui.date}
+      onChange={(day: Dayjs | null) => props.onChange?.(day ? day.format(DAY) : null)}
+    />
+  );
 }
 
 function EntryForm(props: {
@@ -236,13 +255,13 @@ function EntryForm(props: {
   const firstIdentity = BLACKLIST_IDENTITIES.find((field) => allowed.includes(field));
   const required = { required: true, whitespace: true, message: s.required };
   const controls: Record<string, ReactNode> = {
-    name: <Input maxLength={100} />,
-    idNumber: <Input maxLength={64} />,
-    mobilePhone: <Input maxLength={32} />,
-    email: <Input maxLength={254} />,
+    name: <Input maxLength={MAX.name} />,
+    idNumber: <Input maxLength={MAX.idNumber} />,
+    mobilePhone: <Input maxLength={MAX.mobilePhone} />,
+    email: <Input maxLength={MAX.email} />,
     reason: <Select aria-label={b.reason} options={options(BLACKLIST_REASONS)} />,
-    expiryDate: <TenantDatePicker />,
-    note: <Input.TextArea maxLength={BLACKLIST_NOTE_MAX} rows={3} />,
+    expiryDate: <ExpiryPicker />,
+    note: <Input.TextArea maxLength={MAX.note} rows={3} />,
   };
   const rules: Record<string, FormField['rules']> = {
     name: [required],

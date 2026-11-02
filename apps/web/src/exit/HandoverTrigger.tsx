@@ -1,12 +1,7 @@
 // B65 交接发起规则（FE-R2c2b）：租户设置 exit.handover_trigger（两层配置，整份替换）。读写接口都有，做成内嵌表单，
 // 同账号停用时间：只有其他设置权可保存，其余只读。发起人只开放“员工本人”（F-250 / DEC-683，其他发起人后补）；
 // 审批节点没有候选接口，只能填节点标识（未决）。
-import {
-  EXIT_HANDOVER_TRIGGER_KEY as KEY,
-  HANDOVER_METHODS,
-  HANDOVER_REMIND_DAYS_MAX,
-  type HandoverTriggerSetting,
-} from '@italent/domain';
+import { EXIT_HANDOVER_TRIGGER_KEY as KEY, HANDOVER_METHODS, type HandoverTriggerSetting } from '@italent/domain';
 import { Button, Form, Input, InputNumber, Select, Switch, message, type FormItemProps } from 'antd';
 import type { ReactNode } from 'react';
 import { ApiError } from '../foundation/client.js';
@@ -18,22 +13,26 @@ import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import type { Values } from '../foundation/forms/store.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
+import { projectFields } from '../foundation/forms/values.js';
 import { useParsed } from './settings-commands.js';
 import { s } from './settings-messages.js';
 import {
-  TRIGGER_FIELDS,
+  FIELD_MAX,
   TRIGGER_PATH,
   otherSettingsEditable,
   parseSettingReceipt,
   parseTrigger,
+  settingWritable,
   triggerBody,
   triggerValues,
+  triggerVisibleFields,
   type Setting,
 } from './settings-model.js';
 
 const t = s.trigger;
 const LABELS: Record<string, string> = t;
-const days = { required: true, type: 'integer' as const, min: 0, max: HANDOVER_REMIND_DAYS_MAX, message: t.daysRange };
+const DAYS_MAX = FIELD_MAX.trigger.days;
+const days = { required: true, type: 'integer' as const, min: 0, max: DAYS_MAX, message: t.daysRange };
 
 export function HandoverTrigger() {
   const { data, error, reload } = useParsed(TRIGGER_PATH, parseTrigger);
@@ -55,7 +54,7 @@ export function HandoverTrigger() {
 function TriggerForm({ setting, reload }: { setting: Setting<HandoverTriggerSetting>; reload(): void }) {
   const api = useApiClient();
   const permission = usePermissions();
-  const writable = otherSettingsEditable(permission.menus);
+  const writable = settingWritable(permission.menus, setting);
   const [form] = Form.useForm<Values>();
   const initial = triggerValues(setting.value);
   const writer = useConflictCommand(
@@ -67,23 +66,30 @@ function TriggerForm({ setting, reload }: { setting: Setting<HandoverTriggerSett
     },
   );
   const submission = writer.form;
-  useDraftRefill(submission, writable ? TRIGGER_FIELDS : [], form);
   const method = Form.useWatch('method', form) as string | undefined;
   const remind = Form.useWatch('remindEnabled', form) === true;
+  // 只有可见字段可校验、可提交、重读时保留草稿；隐藏字段由 triggerBody 取最新全量的有效值（后端必填）。
+  const visible = triggerVisibleFields({ method, remindEnabled: remind });
+  useDraftRefill(submission, writable ? visible : [], form);
   const locked = submission.locked || !writable;
 
   const save = async () => {
-    if (locked || !(await form.validateFields().catch(() => undefined))) return;
+    if (locked) return;
     const values = form.getFieldsValue(true) as Values;
-    // 按提交口径整理后比对：隐藏的天数 / 节点标识不算改动。
-    if (JSON.stringify(triggerBody(values, {})) === JSON.stringify(triggerBody(writer.full, {}))) {
+    const fields = triggerVisibleFields(values);
+    // 校验失败都落在可见字段上，由表单项显示原因。
+    if (!(await form.validateFields(fields).catch(() => undefined))) return;
+    if (
+      JSON.stringify(triggerBody(writer.full, projectFields(values, fields))) ===
+      JSON.stringify(triggerBody(writer.full, {}))
+    ) {
       void message.info(s.unchanged);
       return;
     }
     try {
       await writer.run({
         values,
-        editableFields: TRIGGER_FIELDS,
+        editableFields: fields,
         send: async ({ edited, command }) => {
           const body = { value: triggerBody(writer.full, edited) };
           const receipt = await api.request<unknown>(TRIGGER_PATH, { method: 'PUT', command: { ...command, body } });
@@ -100,7 +106,7 @@ function TriggerForm({ setting, reload }: { setting: Setting<HandoverTriggerSett
 
   return (
     <section className="exit-settings-form" aria-label={s.tabs['handover-trigger']}>
-      {!writable && <p className="exit-hint">{s.readonlyHint}</p>}
+      {!writable && <p className="exit-hint">{readonlyHint(permission.menus, setting)}</p>}
       {writable && setting.source === 'system' && <p className="exit-hint">{t.systemValue}</p>}
       <CommandStatus submission={submission} labels={LABELS} />
       <FormLock locked={locked}>
@@ -129,7 +135,7 @@ const toggle = (name: string) => (
   <Field name={name} valuePropName="checked" control={<Switch aria-label={LABELS[name]} />} />
 );
 const dayCount = (name: string) => (
-  <Field name={name} rules={[days]} control={<InputNumber min={0} max={HANDOVER_REMIND_DAYS_MAX} precision={0} />} />
+  <Field name={name} rules={[days]} control={<InputNumber min={0} max={DAYS_MAX} precision={0} />} />
 );
 const methods = HANDOVER_METHODS.map((value) => ({ value, label: s.methods[value] }));
 
@@ -149,17 +155,21 @@ function TriggerFields({ method, remind }: { method?: string; remind: boolean })
           name="nodeKey"
           extra={t.nodeKeyHint}
           rules={[{ required: true, whitespace: true, message: s.required }]}
-          control={<Input maxLength={200} />}
+          control={<Input maxLength={FIELD_MAX.trigger.nodeKey} />}
         />
       )}
       {toggle('includePastLastWorkDate')}
       <Form.Item label={t.initiator}>{t.initiatorSelf}</Form.Item>
       {toggle('remindEnabled')}
-      {/* 催办关闭时天数仍随整份提交（后端必填），只是不显示。 */}
+      {/* 催办关闭时天数只隐藏、不校验也不提交；整份提交取最新全量的有效值（后端必填）。 */}
       <div hidden={!remind}>
         {dayCount('remindBefore')}
         {dayCount('remindAfter')}
       </div>
     </>
   );
+}
+/** 只读原因：没有其他设置权，或该键不可覆盖（系统统一管控）。 */
+export function readonlyHint(menus: Parameters<typeof otherSettingsEditable>[0], setting: { overridable: boolean }) {
+  return otherSettingsEditable(menus) && !setting.overridable ? s.notOverridable : s.readonlyHint;
 }

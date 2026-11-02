@@ -411,7 +411,8 @@ test('AC-FE-R2c2b-07 输入上限与后端一致：65 字姓名精确查询；�
   server.rules[0] = { ...server.rules[0]!, orgIds: orgs.slice(0, 50).map((org) => org.id) };
   await openTab(page, 'blacklist-rules', '自动加黑规则');
   await row(page, '离职三次永久').getByRole('button', named('编辑')).click();
-  await item(dialog(page), '适用组织').locator('.ant-select-selector').click();
+  // 已选 50 个标签时选择框中心落在标签上，直接聚焦搜索框输入。
+  await item(dialog(page), '适用组织').getByRole('combobox').click();
   await page.keyboard.type('合成组织51');
   await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: '合成组织51' }).click();
   await expect(dialog(page).getByText('适用组织最多选择 50 个')).toBeVisible();

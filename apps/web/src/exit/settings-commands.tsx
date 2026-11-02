@@ -147,7 +147,10 @@ export function RowActions(props: {
   );
 }
 
-/** 行内动作 / 开关：明确拒绝与冲突提示原因并清掉，按最新版本重新操作；结果未知保持锁定；最后刷新。 */
+/**
+ * 行内动作 / 开关：明确拒绝提示原因并清掉；冲突也提示，但 clear 对已锁的冲突无效，靠随后刷新到新版本（换恢复槽键）
+ * 解锁，刷新失败则保持锁定到下次刷新成功；结果未知保持锁定、不提示。最后刷新。
+ */
 export async function runInline(writer: ReturnType<typeof useConflictCommand>, input: Run, reload: () => void) {
   try {
     await writer.run(input);

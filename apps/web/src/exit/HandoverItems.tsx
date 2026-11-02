@@ -1,12 +1,6 @@
 // B64 交接事项设置（FE-R2c2b）：按事项类别分组列出，新增 / 编辑 / 删除。字段与校验取后端 exit-handover-items.ts；
 // 整份保存（严格 DTO），所以只有全部字段可看可改、且持有其他设置权时才开放写入。列序 / 列宽未验证。
-import {
-  HANDOVER_CATEGORY_MAX,
-  HANDOVER_FORM_REF_MAX,
-  HANDOVER_REMARK_MAX,
-  HANDOVER_TITLE_MAX,
-  HANDOVER_TODO_TYPES,
-} from '@italent/domain';
+import { HANDOVER_TODO_TYPES } from '@italent/domain';
 import { Button, Input, InputNumber, Select, Table } from 'antd';
 import { useState } from 'react';
 import { PageState } from '../foundation/PageState.js';
@@ -25,6 +19,7 @@ import {
 } from './settings-commands.js';
 import { s } from './settings-messages.js';
 import {
+  FIELD_MAX,
   HANDOVER_ITEMS_PATH,
   HANDOVER_ITEM_FIELDS,
   configAccess,
@@ -36,6 +31,8 @@ import {
   type Row,
 } from './settings-model.js';
 import { EXIT_SETTINGS_OBJECT } from './model.js';
+
+const MAX = FIELD_MAX.item;
 
 const LABELS: Record<string, string> = s.item;
 const field = configField(LABELS);
@@ -100,19 +97,19 @@ function ItemForm(props: { row?: Row; rows: Row[]; close(): void; reload(): void
       resource={HANDOVER_ITEMS_PATH}
       title={`${row ? s.edit : s.create}${s.tabs['handover-items']}`}
       row={row}
-      values={row ? values(row) : { todoType: 'work_handover', sequenceNo: Math.min(next, 9999) }}
+      values={row ? values(row) : { todoType: 'work_handover', sequenceNo: Math.min(next, MAX.sequenceNo) }}
       read={row && rowReader(api, HANDOVER_ITEMS_PATH, parse, row.id, values)}
       fields={[
-        field('category', <Input maxLength={HANDOVER_CATEGORY_MAX} />, [required]),
-        field('sequenceNo', <InputNumber min={1} max={9999} precision={0} />, [
-          { required: true, type: 'integer', min: 1, max: 9999, message: s.item.sequenceRange },
+        field('category', <Input maxLength={MAX.category} />, [required]),
+        field('sequenceNo', <InputNumber min={1} max={MAX.sequenceNo} precision={0} />, [
+          { required: true, type: 'integer', min: 1, max: MAX.sequenceNo, message: s.item.sequenceRange },
         ]),
         field('todoType', <Select aria-label={s.item.todoType} options={options(HANDOVER_TODO_TYPES)} />, [
           { required: true, message: s.required },
         ]),
-        field('title', <Input maxLength={HANDOVER_TITLE_MAX} />, [required]),
-        field('formRef', <Input maxLength={HANDOVER_FORM_REF_MAX} />),
-        field('remark', <Input.TextArea maxLength={HANDOVER_REMARK_MAX} rows={3} />),
+        field('title', <Input maxLength={MAX.title} />, [required]),
+        field('formRef', <Input maxLength={MAX.formRef} />),
+        field('remark', <Input.TextArea maxLength={MAX.remark} rows={3} />),
       ]}
       send={async (full, edited, command) => {
         const path = row ? rowPath(HANDOVER_ITEMS_PATH, row.id) : HANDOVER_ITEMS_PATH;
