@@ -1,6 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { employmentSession } from './AC-EMP-support.js';
+import { employmentSession, employmentTypeId } from './AC-EMP-support.js';
 
 const testDb = useTestDb();
 
@@ -170,6 +170,8 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
   it('DEC-041 补录继承插入点前一条，后续匹配字段追加更新且独立值保留', async () => {
     const session = await employmentSession(testDb().db, 'empbackfill');
     const employee = await session.employee('补录合成员工');
+    const original = await employmentTypeId(testDb().db, session.tenant.id, '技术开发');
+    const laterType = await employmentTypeId(testDb().db, session.tenant.id, '运维服务');
     const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
     const hire = await session.business(
       employee.id,
@@ -181,7 +183,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
           employType: 'internal',
           departmentId: org.id,
           place: '原始地点',
-          employmentType: '原始类别',
+          employmentType: original,
           remarks: '原始备注',
         },
       },
@@ -193,7 +195,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
         kind: 'transfer',
         mode: 'direct',
         effectiveDate: '2026-09-20',
-        fields: { place: '后来地点', employmentType: '后来类别' },
+        fields: { place: '后来地点', employmentType: laterType },
       },
       hire.employeeRevision,
     );
@@ -212,7 +214,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
     expect(backfill.record!.previousRecordId).toBe(hire.record!.id);
     expect(backfill.record!.fields).toMatchObject({
       place: '原始地点',
-      employmentType: '原始类别',
+      employmentType: original,
       remarks: '补录备注',
     });
     const laterAfter = await session.record(later.record!.id);

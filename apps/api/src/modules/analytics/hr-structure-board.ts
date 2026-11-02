@@ -204,7 +204,8 @@ function positionColumns(people: readonly Person[], x: StructureLookup): Column[
     }),
     count(`status:${EMPLOYEE_STATUS.probation}`, '试用', probation),
     count(`status:${EMPLOYEE_STATUS.regular}`, '正式', (p) => p.employeeStatus === EMPLOYEE_STATUS.regular),
-    // 人员来源 / 人员类别是自由文本（复刻没有字典），按范围内出现的值展开；序列与职级按 asOf 当天有效的字典展开
+    // 人员来源是自由文本、人员类别取字典名称（取数时已由 ID 换成名称），都按范围内出现的值展开；
+    // 序列与职级按 asOf 当天有效的字典展开
     ...present(people, (p) => p.employmentSource).map((v) => count(`source:${v}`, v, (p) => p.employmentSource === v)),
     ...present(people, (p) => p.employmentType).map((v) => count(`category:${v}`, v, (p) => p.employmentType === v)),
     ...active(x.sequences).map((s) => count(`sequence:${s.id}`, s.name, (p) => p.sequenceId === s.id)),

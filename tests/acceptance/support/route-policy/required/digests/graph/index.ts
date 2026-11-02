@@ -9,6 +9,7 @@ import { GRAPH as api_modules_approval } from './api-modules-approval.js';
 import { GRAPH as api_modules_avatar } from './api-modules-avatar.js';
 import { GRAPH as api_modules_command_result } from './api-modules-command-result.js';
 import { GRAPH as api_modules_contracts } from './api-modules-contracts.js';
+import { GRAPH as api_modules_duty_transfer } from './api-modules-duty-transfer.js';
 import { GRAPH as api_modules_employee_self_service } from './api-modules-employee-self-service.js';
 import { GRAPH as api_modules_employment } from './api-modules-employment.js';
 import { GRAPH as api_modules_establishment } from './api-modules-establishment.js';
@@ -60,6 +61,7 @@ export const GRAPH: Graph = {
   ...api_modules_avatar,
   ...api_modules_command_result,
   ...api_modules_contracts,
+  ...api_modules_duty_transfer,
   ...api_modules_employee_self_service,
   ...api_modules_employment,
   ...api_modules_establishment,

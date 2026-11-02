@@ -114,6 +114,13 @@ const ORG_ADJUSTMENT_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.orgAdjustment.code,
 };
 
+/** R2-T09a、DEC-415：职责转交记录按被转交人控范围，看全部给本模块的预置管理员（人事专员不预置）。 */
+const DUTY_TRANSFER_SEE_ALL: PresetSeeAllTarget = {
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode: MODULE_OBJECTS.dutyTransfer.code,
+};
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -431,6 +438,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       ...ANALYTICS_BE13A_SEE_ALL,
       ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
+      DUTY_TRANSFER_SEE_ALL,
     ],
   },
   {
@@ -449,6 +457,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       ...ANALYTICS_BE13A_SEE_ALL,
       ...ANALYTICS_BE13B_SEE_ALL,
       ORG_ADJUSTMENT_SEE_ALL,
+      DUTY_TRANSFER_SEE_ALL,
     ],
   },
   {
@@ -459,11 +468,13 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
     // DEC-415（BE-12a）、R2-T08 §9.2：花名册与组织调整仅给两预置管理员，专员不自动扩权。
+    // F-323：人员类别在“设置”菜单下，专员不含。
     objects: BUSINESS_OBJECTS.filter(
       (o) =>
         ![
           APPROVAL_PROCESS_OBJECT,
           MODULE_OBJECTS.hrRoster.code,
+          MODULE_OBJECTS.employmentType.code,
           MODULE_OBJECTS.orgAdjustment.code,
           MODULE_OBJECTS.orgAdjustmentDetail.code,
         ].includes(o.code),

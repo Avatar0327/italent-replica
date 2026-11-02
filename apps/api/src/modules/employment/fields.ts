@@ -31,7 +31,7 @@ export const presetFieldsSchema = z.strictObject({
   sequenceId: uuid,
   professionalLineId: uuid,
   place: text,
-  employmentType: text,
+  employmentType: uuid,
   employmentSource: text,
   employmentForm: text,
   dimension1: text,

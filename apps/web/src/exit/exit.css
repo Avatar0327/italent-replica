@@ -18,3 +18,26 @@
   margin: 0 0 8px;
   color: #8c8c8c;
 }
+.exit-settings-group {
+  margin-bottom: 16px;
+}
+.exit-settings-group h2 {
+  margin: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.exit-settings-filter,
+.exit-settings-switch {
+  margin-bottom: 12px;
+}
+.exit-settings-pager {
+  margin-top: 12px;
+}
+.exit-settings-form {
+  max-width: 560px;
+}
+.exit-settings-switch label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}

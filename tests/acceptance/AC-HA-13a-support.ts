@@ -170,6 +170,27 @@ export async function structureWorld(db: Db, label: string) {
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as { id: string };
   }
+  /**
+   * 人员类别字典项（F-323a / DEC-706：任职按字典 ID 引用；看板 / 报表按名称出列）。
+   * 返回 ID 与 revision；rename / disable 用于验证“当前名称出列、停用项照常显示”。
+   */
+  async function category(name: string) {
+    const response = await call('POST', '/api/tenant/employment/employment-types', {
+      ifMatch: 0,
+      body: { name, displayOrder: 0, effectiveDate: LONG_AGO },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return (await response.json()) as { id: string; revision: number };
+  }
+  async function editCategory(item: { id: string; revision: number }, action: { name: string } | 'disable') {
+    const path = `/api/tenant/employment/employment-types/${item.id}`;
+    const response =
+      action === 'disable'
+        ? await call('POST', `${path}/disable`, { ifMatch: item.revision })
+        : await call('PUT', path, { ifMatch: item.revision, body: action });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (await response.json()) as { id: string; revision: number };
+  }
   /** 学历（educationLevel）是人员上的系统字段，取自“最高学历”教育经历，经教育子集写入。 */
   async function patchProfile(employeeId: string, { educationLevel, ...profile }: Record<string, unknown>) {
     if (educationLevel !== undefined) {
@@ -213,7 +234,7 @@ export async function structureWorld(db: Db, label: string) {
       return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
     });
 
-  return { db, session, tenantId, who, call, org, job, hire, patchProfile, sqlRows };
+  return { db, session, tenantId, who, call, org, job, category, editCategory, hire, patchProfile, sqlRows };
 }
 export type StructureWorld = Awaited<ReturnType<typeof structureWorld>>;
 

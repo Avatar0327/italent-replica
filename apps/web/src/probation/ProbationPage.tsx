@@ -25,7 +25,6 @@ import {
   type Row,
 } from './model.js';
 import { ProbationDetail } from './ProbationDetail.js';
-import { DraftPointers } from './draft.js';
 import { BatchForm } from './ProbationForm.js';
 // 视图卡片、工具栏、分页与实习管理同一套页面样式
 import '../intern/intern.css';
@@ -35,9 +34,7 @@ export function ProbationPage() {
     <div className="intern-page">
       <DecisionNote id="probations" />
       <InternCommands>
-        <DraftPointers>
-          <ProbationList />
-        </DraftPointers>
+        <ProbationList />
       </InternCommands>
     </div>
   );
