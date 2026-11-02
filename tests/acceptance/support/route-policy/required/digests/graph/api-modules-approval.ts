@@ -981,6 +981,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
@@ -1617,6 +1620,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
     'apps/api/src/modules/approval/disclosure.ts#detailView',
+    'apps/api/src/modules/approval/disclosure.ts#namedForm',
     'apps/api/src/modules/approval/disclosure.ts#readDetail',
     '#detailViewable',
     '#readCtx',
