@@ -15,7 +15,7 @@ export interface StructurePerson {
   readonly sequenceId: string | null;
   readonly levelId: string | null;
   readonly employmentForm: string | null;
-  /** 人员类别（任职字段 employment_type）。 */
+  /** 人员类别名称（任职字段 employment_type 是字典 ID，取数时换成字典名称）。 */
   readonly employmentType: string | null;
   readonly employmentSource: string | null;
   /** 雇佣关系（internal / intern）。 */
@@ -29,6 +29,12 @@ export interface StructurePerson {
 
 type StructureContext = Pick<DashboardAsOf, 'tenantId' | 'asOf' | 'scope'>;
 const attribute = (column: string, alias: string) => sql`${current(column)} AS ${sql.identifier(alias)}`;
+/**
+ * 人员类别：任职存字典 ID（F-323a / DEC-706），看板分组键、报表列与 employmentType 筛选都按名称（同 roster-query）。
+ * 取当前名称；停用 / 软删的字典项照常取名（历史引用仍显示）。
+ */
+const categoryName = (tenantId: string) => sql`(SELECT et.name FROM employment_types et
+  WHERE et.tenant_id=${tenantId} AND et.id=${current('employment_type')}) AS "employmentType"`;
 
 /** 范围内、asOf 当天在职且雇佣关系属于 employTypes 的人员（每人取当天最新一段主职任职），按员工 ID 排序。 */
 export async function structurePeople(
@@ -41,7 +47,7 @@ export async function structurePeople(
     attribute('sequence_id', 'sequenceId'),
     attribute('level_id', 'levelId'),
     attribute('employment_form', 'employmentForm'),
-    attribute('employment_type', 'employmentType'),
+    categoryName(a.tenantId),
     attribute('employment_source', 'employmentSource'),
     attribute('employ_type', 'employType'),
   ];
