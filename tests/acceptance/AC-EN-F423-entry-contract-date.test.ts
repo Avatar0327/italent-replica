@@ -67,9 +67,24 @@ async function setPendingCompany(w: EntryWorld, businessId: string, companyId: s
 
 async function releaseEvents(w: EntryWorld) {
   return withTenant(w.db, w.session.tenant.id, async (tx) =>
-    rowsOf<{ objectId: string; payload: { before: unknown; after: unknown; meta?: { reason?: string } } }>(
-      await tx.execute(sql`SELECT object_id AS "objectId", payload FROM employment_outbox
+    rowsOf<{
+      objectId: string;
+      commandId: string | null;
+      payload: { before: unknown; after: unknown; meta?: { reason?: string } };
+    }>(
+      await tx.execute(sql`SELECT object_id AS "objectId", command_id AS "commandId", payload FROM employment_outbox
         WHERE tenant_id=${w.session.tenant.id} AND event_type=${RELEASE} ORDER BY created_at, id`),
+    ),
+  );
+}
+
+/** 统一审计表（audit_events，DEC-019）里的待入职合同清理记录；reason 只在 outbox 的 meta 里（审计表无 meta 列）。 */
+async function releaseAudits(w: EntryWorld) {
+  return withTenant(w.db, w.session.tenant.id, async (tx) =>
+    rowsOf<{ objectType: string; objectId: string; before: unknown; after: unknown; commandId: string | null }>(
+      await tx.execute(sql`SELECT object_type AS "objectType", object_id AS "objectId", before, after,
+        command_id AS "commandId" FROM audit_events
+        WHERE tenant_id=${w.session.tenant.id} AND action=${RELEASE} ORDER BY occurred_at, id`),
     ),
   );
 }
@@ -113,8 +128,15 @@ describe('F-423 ④ 办理入职的合同生效日固定取入职日', () => {
 
 describe('F-423 ② 锁定回归：合同区全空办理入职（F-434）', () => {
   it('有待入职合同、不带合同字段 → 成功；清掉待入职合同、不生成正式合同、留一条清理审计；进「入职缺失」', async () => {
-    const { w, companyId, contracts } = await contractWorld('f423-empty');
+    const { w, companyId, contract, contracts } = await contractWorld('f423-empty');
     const { employee, recordId } = await addPending(w, '2026-09-01');
+    // 对照人：同日入职、带合同办理。「入职缺失」不按待入职状态过滤（contracts/queries.ts，范围外），
+    // 两人入职前都已在列，所以“前无后有”不成立；改用入职后的对照：带合同的出列、全空的留在列里。
+    const control = await addPending(w, '2026-09-01');
+    const missing = async () => (await contracts('missing')).map((item) => item.employeeId);
+    expect(await missing()).toEqual(expect.arrayContaining([employee.id, control.employee.id]));
+    const signed = await entryAction(w, control.recordId, 'complete', { probation: false, contract });
+    expect(signed.status, await signed.clone().text()).toBe(200);
     await setPendingCompany(w, recordId, companyId);
     expect(await pendingContracts(w)).toHaveLength(1);
 
@@ -124,8 +146,8 @@ describe('F-423 ② 锁定回归：合同区全空办理入职（F-434）', () =
     // 不带试用期 → 正式（EMPLOYEE_STATUS.regular = 3）
     expect((await entryRecords(w, employee.id))[0]).toMatchObject({ employeeStatus: 3 });
     expect(await pendingContracts(w)).toEqual([]);
-    expect(await contracts()).toEqual([]);
-    const released = await releaseEvents(w);
+    expect((await contracts()).map((item) => item.employeeId)).toEqual([control.employee.id]);
+    const released = (await releaseEvents(w)).filter((event) => event.objectId === recordId);
     expect(released).toHaveLength(1);
     expect(released[0]).toMatchObject({
       objectId: recordId,
@@ -135,6 +157,14 @@ describe('F-423 ② 锁定回归：合同区全空办理入职（F-434）', () =
         meta: { reason: 'complete' },
       },
     });
-    expect((await contracts('missing')).map((item) => item.employeeId)).toContain(employee.id);
+    expect(await missing()).toContain(employee.id);
+    expect(await missing()).not.toContain(control.employee.id);
+    // 统一审计表：同一条命令写一条，与 outbox 事件同事务（command_id 相同），前值留快照、后值为空
+    const before = { contractStartDate: '2026-09-01', contractEndDate: null, contractCompanyId: companyId };
+    const audits = (await releaseAudits(w)).filter((audit) => audit.objectId === recordId);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ objectType: 'employment-business', objectId: recordId, before, after: null });
+    expect(audits[0]!.commandId).toBeTruthy();
+    expect(released[0]!.commandId).toBe(audits[0]!.commandId);
   });
 });
