@@ -207,7 +207,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-movement-board.ts#RULES': [
     '#NONE_LABEL',
     '#actualStaff',
+    '#byId',
+    '#bySegment',
     '#closing',
+    '#codeOf',
     '#establishmentColumns',
     '#exitReason',
     '#exitWhereabouts',
@@ -222,25 +225,21 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/segments.ts#tenureSegment',
   ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#actualStaff': ['#unique'],
-  'apps/api/src/modules/analytics/hr-movement-board.ts#closing': ['#unique'],
-  'apps/api/src/modules/analytics/hr-movement-board.ts#exitReason': [
+  'apps/api/src/modules/analytics/hr-movement-board.ts#byId': [
     '#NONE_LABEL',
     'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
   ],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#bySegment': ['#isEmpty', '#segmentKey'],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#closing': ['#unique'],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#exitReason': ['#NONE_LABEL', '#codeOf'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitType': [
     '#NONE_LABEL',
+    '#codeOf',
     'packages/domain/src/analytics/hr-movement.ts#MOVEMENT_RETIREMENT_TYPE',
-    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
   ],
-  'apps/api/src/modules/analytics/hr-movement-board.ts#exitWhereabouts': [
-    '#NONE_LABEL',
-    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
-  ],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#exitWhereabouts': ['#NONE_LABEL', '#codeOf'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitsIn': ['#unique', '#within'],
-  'apps/api/src/modules/analytics/hr-movement-board.ts#grouped': [
-    '#unique',
-    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
-  ],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#grouped': ['#unique'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#hiresIn': ['#unique', '#within'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#movementComponents': [
     '#RULES',
@@ -251,10 +250,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#movementMembers': ['#RULES', '#unique'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#opening': ['#unique'],
-  'apps/api/src/modules/analytics/hr-movement-board.ts#twoLevel': ['#exitType', '#grouped'],
-  'apps/api/src/modules/analytics/hr-movement-report.ts#codeColumns': [
-    'packages/domain/src/hr-analysis/segments.ts#SEGMENT_NONE',
-  ],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#twoLevel': ['#bySegment', '#exitType', '#grouped'],
   'apps/api/src/modules/analytics/hr-movement-report.ts#dedupe': [
     'apps/api/src/modules/analytics/hr-movement-board.ts#unique',
   ],
@@ -381,6 +377,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment',
     'apps/api/src/modules/analytics/hr-movement.ts#loadExitDictionaries',
     'apps/api/src/modules/analytics/hr-movement.ts#loadMovement',
+    'apps/api/src/modules/analytics/hr-movement.ts#loadSnapshots',
     'apps/api/src/modules/analytics/hr-structure-routes.ts#uuidQuery',
     'apps/api/src/modules/analytics/hr-structure.ts#jobDictionary',
     'apps/api/src/modules/analytics/hr-structure.ts#orgTree',
@@ -389,6 +386,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/hr-movement.ts#WORKING': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#WORKING_TYPES',
   ],
+  'apps/api/src/modules/analytics/hr-movement.ts#attributeWindow': ['#latestPerEmployee'],
   'apps/api/src/modules/analytics/hr-movement.ts#exitRows': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#exitSource',
     '#EXIT_DATED',
@@ -417,12 +415,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary',
   ],
   'apps/api/src/modules/analytics/hr-movement.ts#loadMovement': [
+    '#attributeWindow',
     '#exits',
     '#hires',
     '#snapshots',
     '#transfers',
     'apps/api/src/modules/transfer/configuration.ts#readTransferCatalog',
   ],
+  'apps/api/src/modules/analytics/hr-movement.ts#loadSnapshots': ['#snapshots'],
   'apps/api/src/modules/analytics/hr-movement.ts#snapshots': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#WORKING_TYPES',
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
