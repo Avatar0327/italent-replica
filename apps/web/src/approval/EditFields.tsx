@@ -6,6 +6,7 @@ import { r } from '../part-time/request-messages.js';
 import type { RequestKind } from '../part-time/request-model.js';
 import { editFields } from './edit-model.js';
 import { fieldLabels, messages as m } from './messages.js';
+import { namedValue } from './named-fields.js';
 import type { ApprovalAction, ApprovalDetail } from './types.js';
 
 const kinds: Record<string, RequestKind> = {
@@ -23,7 +24,7 @@ export function approvalEditGroup(detail: ApprovalDetail, action: ApprovalAction
   return [
     {
       title: m.values,
-      fields: fields.map(({ key, required, value }) => {
+      fields: fields.map(({ key, required }) => {
         const mapped = assessment ? assessmentField(key, required, current) : undefined;
         if (mapped) return { ...mapped, name: key, access: { visible: true, editable: true } };
         const field = key === 'partTimeType' ? 'serviceType' : key;
@@ -34,7 +35,7 @@ export function approvalEditGroup(detail: ApprovalDetail, action: ApprovalAction
           label,
           access: { visible: true, editable: supported },
           control: supported ? <RequestControl field={field} label={label} /> : null,
-          display: readonlyValue(value),
+          display: readonlyValue(namedValue(current, key)),
           rules: required ? [{ required: true, message: r.required }] : [],
         };
       }),

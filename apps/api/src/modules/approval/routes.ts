@@ -77,6 +77,7 @@ import {
 } from './definitions.js';
 import {
   detailView,
+  namedForm,
   disclosedFields,
   projectLog,
   readDetail,
@@ -203,7 +204,8 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
-  return c.json(detailView(data, ctx.userId, await detailViewable(deps, ctx, data)));
+  const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data));
+  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx.tenantId, view)));
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
