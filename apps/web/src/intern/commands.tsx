@@ -1,14 +1,5 @@
 import { Modal } from 'antd';
-import {
-  createContext,
-  useContext,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError, type Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -29,12 +20,7 @@ const sessionKey = (session: ReturnType<typeof useSession>) => JSON.stringify([s
 
 /** 页面根部：未确认命令的存储（F-123 内核，DEC-473），详情与表单关闭重开、页面卸载重建后仍在。 */
 export function InternCommands({ children }: { children: ReactNode }) {
-  const [drafts, setDrafts] = useState<Record<string, ApplicationDraft | undefined>>({});
-  return (
-    <Drafts.Provider value={{ drafts, put: (key, draft) => setDrafts((old) => ({ ...old, [key]: draft })) }}>
-      <FormCommands store={store}>{children}</FormCommands>
-    </Drafts.Provider>
-  );
+  return <FormCommands store={store}>{children}</FormCommands>;
 }
 
 /** 本会话的实习写确认代次：只增不减；不同租户、身份各自计数。 */
@@ -80,19 +66,25 @@ export interface ApplicationDraft {
   revision: number;
   values: Values;
 }
-const Drafts = createContext<
-  | {
-      drafts: Record<string, ApplicationDraft | undefined>;
-      put(key: string, draft: ApplicationDraft | undefined): void;
-    }
-  | undefined
->(undefined);
+// 草稿与第二步命令同生命周期：命令存储在模块级，草稿也必须在模块级（F-436 自检），
+// 否则第二步未确认 / 被拒后离开模块再回来，槽里是第二步的命令，表单却按第一步建草稿处理。
+const drafts = new Map<string, ApplicationDraft>();
+const draftListeners = new Set<() => void>();
+const subscribeDrafts = (listener: () => void) => {
+  draftListeners.add(listener);
+  return () => void draftListeners.delete(listener);
+};
 /** 两步申请已确认创建的草稿按会话、员工保留；第二步失败不得重新创建。 */
 export function useInternDraft(employeeId: string) {
-  const context = useContext(Drafts)!;
   const session = useSession();
   const key = JSON.stringify([session.tenantId, session.identityKey, employeeId]);
-  return { draft: context.drafts[key], put: (draft?: ApplicationDraft) => context.put(key, draft) };
+  const draft = useSyncExternalStore(subscribeDrafts, () => drafts.get(key));
+  const put = (next?: ApplicationDraft) => {
+    if (next) drafts.set(key, next);
+    else drafts.delete(key);
+    draftListeners.forEach((listener) => listener());
+  };
+  return { draft, put };
 }
 
 export const employeePath = (employeeId: string) => slotKey(`${apiRoot}/employees`, employeeId);
