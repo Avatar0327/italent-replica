@@ -120,9 +120,10 @@ function recordPredicate(view: Exclude<InternView, 'converting'>, today: string,
 }
 
 /**
- * 实习中的机构 / 直线经理列与顺序（F-366）。原站默认 OrderCode 升序 + 实习开始日期降序；复刻没有 OrderCode 对应字段
- * （时间轴 sort_order 是同日次序，不是它），退化为实习开始日期（实习入职日）降序、同日按记录 id 升序。表头单列排序
- * 复用兼职的取值：机构 / 部门按 DEC-089 名次，直线经理按工号；值 方向 NULLS LAST，再 id 升序。
+ * 实习中的机构 / 直线经理列与顺序（F-366）。默认照搬原站（DEC-742）：人员排序码 OrderCode 升序、空值最后（personnel 重算
+ * 存储的组合名次，同人员列表默认序 personnel/lists.ts），再实习开始日期（实习入职日）降序、记录 id 升序；租户没启用
+ * 排序规则时排序码全空，自然退化为开始日期降序。表头单列排序复用兼职的取值：机构 / 部门按 DEC-089 名次，直线经理
+ * 按工号；值 方向 NULLS LAST，再 id 升序。
  */
 function interningExtras(tenantId: string, input: InternViewQuery, department: SQL) {
   const manager = sql`(CASE WHEN snap.present IS NULL THEN r.direct_manager_id ELSE snap.direct_manager_id END)`;
@@ -137,11 +138,13 @@ function interningExtras(tenantId: string, input: InternViewQuery, department: S
   };
   return {
     columns: sql`, ${institution} AS "institutionId", ${manager} AS "directManagerId"`,
-    // 显示与排序同一表达式；映射整次请求只算一次，不逐行递归
-    join: sql`LEFT JOIN (${institutionsOf(tenantId, origins, input.today)}) inst ON inst.origin=${department}`,
+    // 显示与排序同一表达式；映射整次请求只算一次，不逐行递归。人员排序码按人员主键（= employment_employees.id）取
+    join: sql`LEFT JOIN (${institutionsOf(tenantId, origins, input.today)}) inst ON inst.origin=${department}
+      LEFT JOIN personnel_employee_order_codes person_rank ON person_rank.tenant_id=r.tenant_id
+        AND person_rank.employee_id=r.employee_id`,
     order: input.sort
       ? sortedBy(values[input.sort.sortBy], input.sort.direction, sql`r.id`)
-      : sql`r.entry_date DESC, r.id ASC`,
+      : sql`person_rank.order_code ASC NULLS LAST, r.entry_date DESC, r.id ASC`,
   };
 }
 
