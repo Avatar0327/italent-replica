@@ -41,6 +41,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/access.ts#listScopeOf': [
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
   ],
+  'apps/api/src/modules/approval/access.ts#memberInstanceScope': [
+    '#byBusinessScope',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
   'apps/api/src/modules/approval/access.ts#offerInstanceScopeSql': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
@@ -498,6 +502,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
+    '#employmentDashboardDate',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
@@ -1142,6 +1147,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#insertInstance': [
     'apps/api/src/modules/approval/store.ts#loadInstance',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#approvalCategoryOf',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/engine.ts#launch': [

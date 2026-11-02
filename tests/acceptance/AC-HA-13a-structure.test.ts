@@ -163,11 +163,13 @@ describe('AC-HA-13a B49 人员结构分析', () => {
     }
   });
 
-  it('AC-HA-13a-04：看板筛选——任职机构、任职部门（含下级）、职位序列、用工形式、人员类别；数字与明细同一筛选', async () => {
+  it('AC-HA-13a-04：看板筛选——任职机构、任职部门（默认含下级）、职位序列、用工形式、人员类别；数字与明细同一筛选', async () => {
     const { p1, p2, p3, p4 } = x.p;
     const cases: [string, readonly { id: string }[]][] = [
       [`institutionId=${x.institution.id}`, [p1, p2]],
-      [`institutionId=${x.w.tenantId}`, [p3, p4]],
+      // F-437：任职机构默认含下级；根 + 含下级 = 全部，不含下级 = 落到根的人
+      [`institutionId=${x.w.tenantId}`, [p1, p2, p3, p4]],
+      [`institutionId=${x.w.tenantId}&institutionIncludeChildren=false`, [p3, p4]],
       [`departmentId=${x.a1.id}`, [p1, p2]],
       [`departmentId=${x.a1x.id}`, [p2]],
       [`sequenceId=${x.s1.id}`, [p1, p4]],
@@ -205,9 +207,107 @@ describe('AC-HA-13a B49 人员结构分析', () => {
   });
 
   it('AC-HA-13a-04：参数校验——asOf / 筛选 ID 不合法 400，未知组件 404', async () => {
-    for (const bad of ['asOf=2026-02-30', 'asOf=abc', 'departmentId=abc', 'institutionId=1', 'sequenceId=x'])
+    const bads = ['asOf=2026-02-30', 'asOf=abc', 'departmentId=abc', 'institutionId=1', 'sequenceId=x'];
+    for (const bad of [...bads, 'institutionIncludeChildren=yes', 'departmentIncludeChildren=1'])
       expect((await c.get(`${B}?${bad}`)).status, bad).toBe(400);
     expect((await c.get(`${B}/components/6.99?${AS_OF}`)).status).toBe(404);
     expect((await c.get(`${B}/components/6.01?${AS_OF}&pageSize=0`)).status).toBe(400);
+  });
+});
+
+/**
+ * F-437：任职机构 / 任职部门的“包含下级”开关（规格 35 B49「F-437 补」）。两个开关各自独立，缺省 = 勾选。
+ * 夹具：北京公司（机构）→ 朝阳店（机构）→ 朝阳前厅（部门）；北京公司 → 昌平店（机构）；
+ * 北京公司 → 综合部（部门）→ 综合一组（部门）；另有根下的部门其他。
+ */
+async function childrenWorld() {
+  const w = await structureWorld(database().db, 'ha13a-f437');
+  const beijing = await w.org('北京公司', undefined, '机构');
+  const chaoyang = await w.org('朝阳店', beijing, '机构');
+  const front = await w.org('朝阳前厅', chaoyang);
+  const changping = await w.org('昌平店', beijing, '机构');
+  const general = await w.org('综合部', beijing);
+  const team = await w.org('综合一组', general);
+  const other = await w.org('部门其他');
+  const at = (department: { id: string }, name: string) => w.hire(name, { date: '2026-01-01', department });
+  const p = {
+    own: await at(beijing, '挂北京公司'),
+    general: await at(general, '综合部员工'),
+    team: await at(team, '综合一组员工'),
+    chaoyang: await at(chaoyang, '朝阳店员工'),
+    front: await at(front, '朝阳前厅员工'),
+    changping: await at(changping, '昌平店员工'),
+    other: await at(other, '其他员工'),
+  };
+  return { w, beijing, chaoyang, front, changping, general, team, p };
+}
+
+describe('AC-HA-13a B49 F-437 任职机构 / 任职部门“包含下级”', () => {
+  let x: Awaited<ReturnType<typeof childrenWorld>>;
+  let c: BoardClient;
+  beforeAll(async () => {
+    x = await childrenWorld();
+    c = boardClient(database().db, x.w.who);
+  }, 300_000);
+  const count = (filter: string, people: readonly { id: string }[]) =>
+    c.expectCount(B, '6.01', ids(...people), `${AS_OF}&${filter}`);
+
+  it('① 任职机构选上级机构、勾“包含下级”（缺省同）→ 含下级机构的人；6.04 分到各自机构', async () => {
+    const { own, general, team, chaoyang, front, changping } = x.p;
+    const all = [own, general, team, chaoyang, front, changping];
+    await count(`institutionId=${x.beijing.id}`, all);
+    await count(`institutionId=${x.beijing.id}&institutionIncludeChildren=true`, all);
+    const bars = (await c.component(B, '6.04', `${AS_OF}&institutionId=${x.beijing.id}`)).groups!;
+    expect(new Map(bars.map((g) => [g.key, g.count]))).toEqual(
+      new Map([
+        [x.beijing.id, 3],
+        [x.chaoyang.id, 2],
+        [x.changping.id, 1],
+      ]),
+    );
+  });
+
+  it('② 任职机构不勾“包含下级”→ 只算任职机构就是该机构本身的人', async () => {
+    const { own, general, team, chaoyang, front } = x.p;
+    await count(`institutionId=${x.beijing.id}&institutionIncludeChildren=false`, [own, general, team]);
+    await count(`institutionId=${x.chaoyang.id}&institutionIncludeChildren=false`, [chaoyang, front]);
+  });
+
+  it('③ 部门类型节点放进任职机构 → 勾或不勾都是 0，不报错', async () => {
+    for (const node of [x.general, x.front])
+      for (const flag of ['', '&institutionIncludeChildren=true', '&institutionIncludeChildren=false']) {
+        await count(`institutionId=${node.id}${flag}`, []);
+        expect((await c.component(B, '6.04', `${AS_OF}&institutionId=${node.id}${flag}`)).groups).toEqual([]);
+      }
+  });
+
+  it('④ 任职部门勾“包含下级”（缺省同）→ 含子部门的人', async () => {
+    const { general, team, chaoyang, front } = x.p;
+    await count(`departmentId=${x.general.id}`, [general, team]);
+    await count(`departmentId=${x.general.id}&departmentIncludeChildren=true`, [general, team]);
+    await count(`departmentId=${x.chaoyang.id}`, [chaoyang, front]);
+  });
+
+  it('⑤ 任职部门不勾“包含下级”→ 只算本部门的人', async () => {
+    const { general, chaoyang } = x.p;
+    await count(`departmentId=${x.general.id}&departmentIncludeChildren=false`, [general]);
+    await count(`departmentId=${x.chaoyang.id}&departmentIncludeChildren=false`, [chaoyang]);
+  });
+
+  it('两个开关互不影响，两个筛选同时用取交集', async () => {
+    const { general, team, front } = x.p;
+    const beijing = `institutionId=${x.beijing.id}`;
+    await count(`${beijing}&departmentId=${x.general.id}&departmentIncludeChildren=false`, [general]);
+    await count(`${beijing}&institutionIncludeChildren=false&departmentId=${x.general.id}`, [general, team]);
+    await count(`institutionId=${x.chaoyang.id}&departmentId=${x.general.id}`, []);
+    await count(`institutionId=${x.chaoyang.id}&institutionIncludeChildren=false&departmentId=${x.front.id}`, [front]);
+  });
+
+  it('员工结构报表的任职部门筛选接同一开关（缺省勾选）', async () => {
+    const total = async (filter: string) => (await c.report('quality', `${AS_OF}&${filter}`)).summary.cells.total;
+    expect(await total(`departmentId=${x.general.id}`)).toBe(2);
+    expect(await total(`departmentId=${x.general.id}&departmentIncludeChildren=true`)).toBe(2);
+    expect(await total(`departmentId=${x.general.id}&departmentIncludeChildren=false`)).toBe(1);
+    expect((await c.get(`${B}/reports/quality?departmentIncludeChildren=no`)).status).toBe(400);
   });
 });

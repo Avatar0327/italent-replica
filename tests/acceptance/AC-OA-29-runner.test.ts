@@ -452,3 +452,78 @@ describe('AC-OA-29 提交结果未知', () => {
     expect(await world.pauses(adjustment.id)).toEqual([]);
   });
 });
+
+/** 事务照常提交，但下一次提交后调用方收到错误：与“提交后连接断开、结果未知”同形（F-353）。 */
+function receiptLosingDb(db: ReturnType<typeof testDb>['db']) {
+  let armed = false;
+  const proxy = new Proxy(db, {
+    get(target, key, receiver) {
+      if (key !== 'transaction') return Reflect.get(target, key, receiver);
+      return async (...args: unknown[]) => {
+        const out = await (target.transaction as (...a: unknown[]) => Promise<unknown>)(...args);
+        if (!armed) return out;
+        armed = false;
+        throw new Error('计次提交回执丢失');
+      };
+    },
+  });
+  return { db: proxy, loseNextReceipt: () => (armed = true) };
+}
+
+describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
+  /** 每次执行都抛可恢复错误；第 loseAt 次执行后的那次提交（计次事务）回执丢失。 */
+  async function countingWorld(label: string, loseAt: number) {
+    const world = await runnerWorld(label);
+    const a = await world.w.org('A');
+    const { adjustment, groups } = await world.scheduledAdjustment([a.id]);
+    const flaky = receiptLosingDb(world.db);
+    let calls = 0;
+    const executor: GroupExecutor = () => {
+      // 执行器事务自身回滚，不消耗“丢回执”；紧随其后提交的是计次事务。
+      if (++calls === loseAt) flaky.loseNextReceipt();
+      throw new Error('数据库连接中断');
+    };
+    const run = () =>
+      runOrgAdjustmentTenant(flaky.db, world.tenant, world.clock, { holderToken: 'p', executors: { 2: executor } });
+    const attempts = async () =>
+      (
+        await tableRows<{ attempts: number }>(world.db, world.tenant.id, 'org_adjustment_group_attempts', adjustment.id)
+      ).map((row) => row.attempts);
+    return { world, adjustment, group: groups[0]!, run, attempts, calls: () => calls };
+  }
+
+  it('第 5 次计次已提交但回执丢失：下一刻不再执行第 6 次，组以 EXECUTION_ERROR 收尾、解除暂停', async () => {
+    const { world, adjustment, group, run, attempts, calls } = await countingWorld('oa29-count-ack-max', 5);
+    for (let attempt = 1; attempt < 5; attempt++) expect((await run()).stopped, `第 ${attempt} 次`).toBe('retry');
+    await expect(run()).rejects.toThrow('计次提交回执丢失');
+    expect(await attempts(), '第 5 次计次已落库').toEqual([5]);
+
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(calls(), '计满 5 次后不得再执行').toBe(5);
+    expect((await itemResults(world.db, world.tenant.id, adjustment.id)).get(group)).toMatchObject({
+      execution_result: 2,
+      execution_reason: 'EXECUTION_ERROR',
+      exec_phase: 2,
+    });
+    expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, success_count: 0, failure_count: 1 });
+    expect(await attempts()).toEqual([5]);
+    expect(await world.pauses(adjustment.id), '不永久暂停').toEqual([]);
+  });
+
+  it('对照：未计满时计次回执丢失，下一刻仍重试，执行总次数仍为 5 后记 EXECUTION_ERROR', async () => {
+    const { world, adjustment, group, run, attempts, calls } = await countingWorld('oa29-count-ack-below', 3);
+    for (let attempt = 1; attempt < 3; attempt++) expect((await run()).stopped, `第 ${attempt} 次`).toBe('retry');
+    await expect(run()).rejects.toThrow('计次提交回执丢失');
+    expect(await attempts()).toEqual([3]);
+
+    expect((await run()).stopped, '回执丢失后仍可重试').toBe('retry');
+    expect([calls(), ...(await attempts())]).toEqual([4, 4]);
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(calls()).toBe(5);
+    expect((await itemResults(world.db, world.tenant.id, adjustment.id)).get(group)).toMatchObject({
+      execution_result: 2,
+      execution_reason: 'EXECUTION_ERROR',
+    });
+    expect(await world.state(adjustment.id)).toMatchObject({ success_count: 0, failure_count: 1 });
+  });
+});

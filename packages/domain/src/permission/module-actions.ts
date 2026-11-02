@@ -387,11 +387,17 @@ export const MODULE_OBJECTS = {
   // 看全部默认给本模块的预置管理员（DEC-415）
   // 目录要求每个对象至少登记一个按钮：“指标明细”是列表级的钻取入口，只登记不授予（看板的准入只认对象查看权）
   hrDashboard: object('HrDashboard', [], [button('detail', 'list')]),
+  // R2 BE-13c 人事分析 - 人事流程看板（规格 35 B51）：同人事看板，只读聚合、无业务字段；“查看详情”只登记不授予
+  hrProcessDashboard: object('HrProcessDashboard', [], [button('detail', 'list')]),
   // R2 BE-13a 人事分析 - 人员结构分析（B49）/ 员工结构报表（B53，素质与任职两张同一对象）/ 合同情况（B55）：同人事看板，
   // 只读、无业务字段；“组件明细”只登记不授予
   hrStructure: object('HrStructure', [], [button('detail', 'list')]),
   hrStructureReport: object('HrStructureReport', [], [button('detail', 'list')]),
   contractBoard: object('ContractBoard', [], [button('detail', 'list')]),
+  // R2 BE-13b 人事分析 - 人员流动分析（B50）/ 流动情况报表（B54，六个页签同一对象）：同人事看板，只读、无业务字段；
+  // “组件明细”只登记不授予
+  hrMovement: object('HrMovement', [], [button('detail', 'list')]),
+  hrMovementReport: object('HrMovementReport', [], [button('detail', 'list')]),
   // R2-T09a 职责转交菜单（DEC-602② / DEC-726）：记录按被转交人裁剪（DT-R9）；“设置接收人”为列表级、需新建权。
   // 记录字段全部由系统写入（提交只带接收人与转交日期）
   dutyTransfer: object('DutyTransferCommon', DUTY_TRANSFER_FIELDS, [
