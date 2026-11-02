@@ -56,7 +56,7 @@ function Probe() {
   return null;
 }
 const lastList = () => lists.at(-1)!.searchParams;
-const header = (title: string) => {
+const header = (title: string | undefined) => {
   const cell = [...document.querySelectorAll('th')].find((node) => node.textContent === title);
   expect(cell, title).toBeDefined();
   return cell!;
