@@ -12,7 +12,8 @@ const testDb = useTestDb();
 const MOVED_ON = '2026-10-15';
 
 const move = async (w: ExecWorld, orgId: string, parentId: string) => {
-  const res = await w.patchOrg(orgId, { effectiveDate: MOVED_ON, parents: { admin: { parentId } } });
+  const body = { effectiveDate: MOVED_ON, parents: { admin: { parentId } }, addEmployment: false };
+  const res = await w.patchOrg(orgId, body);
   expect(res.status, await res.clone().text()).toBe(200);
 };
 
@@ -85,7 +86,7 @@ describe('AC-OA-36 设立日期更正两种先后', () => {
   it('更正先于执行开始：X 首版提前到 E，开始时 S′ 含 X → A 组 SCOPE_CHANGED', async () => {
     const w = await execWorld(testDb().db, 'oa36-corr-first');
     const big = await w.org('ZZ_更正A', w.a);
-    const adjustment = await w.approved([w.a], [rename(big)]);
+    const adjustment = await w.approved([w.a], [rename(big, { addEmployment: true })]);
     const x = await w.orgOn('ZZ_次日X', big, '2026-11-02');
     const res = await correct(w, x);
     expect(res.status, await res.clone().text()).toBe(200);

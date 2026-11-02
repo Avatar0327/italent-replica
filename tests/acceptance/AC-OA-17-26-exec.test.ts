@@ -41,7 +41,7 @@ describe('AC-OA-26 执行侧基线', () => {
     const target = await w.org('ZZ_基线目标', w.a);
     const other = await w.org('ZZ_基线其他', w.a);
     const adjustment = await w.approved([w.a], [rename(target, { name: 'ZZ_单据名' }), rename(other)]);
-    const v2 = await w.patchOrg(target, { name: 'ZZ_直接V2', effectiveDate: E });
+    const v2 = await w.patchOrg(target, { name: 'ZZ_直接V2', effectiveDate: E, addEmployment: false });
     expect(v2.status, await v2.clone().text()).toBe(200);
     const versions = await w.versionCount(target);
 

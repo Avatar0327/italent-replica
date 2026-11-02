@@ -1,8 +1,10 @@
 /**
  * R2-T08 §8.1 组织新增执行器：设立日期 = 单据生效日；上级引用同单新增行时解析为其正式 ID（§2.6）。
  * 建成后同事务回写 created_org_id / executed_version_id：接管重入见到 created_org_id 即视为已建，不重复创建。
- * 编码空 → 写服务按自动编码规则取；新上级为既有组织时须仍在申请人组织范围（§6.3）。
+ * 编码空 → 按自动编码规则先取号再按指定编码消费（系统身份不建预占，见 `allocateCode`）；
+ * 新上级为既有组织时须仍在申请人组织范围（§6.3）。
  */
+import { allocateCode } from '../../org/codes.js';
 import { lockOrganizationSettings } from '../../org/locks.js';
 import { createOrganization, type OrganizationInput } from '../../org/write-service.js';
 import { AppError } from '../../../errors.js';
@@ -18,17 +20,18 @@ export function orgCreateExecutor(scopeOf: ApplicantScopeOf): GroupExecutor {
     await applicantScopes(tx, scopeOf, input, input.adjustment).orgs([item!.parentOrgId]);
     const parentId = await parentOf(tx, input, item!);
     if (!parentId) throw new AppError('CONFLICT', '所依赖的同单明细未执行成功', { reason: 'DEPENDENCY_FAILED' });
+    const ctx = await orgWriteContext(tx, input);
     const organization: OrganizationInput = {
       name: item!.name ?? '',
       parents: { admin: { parentId } },
       establishedOn: input.adjustment.effectiveDate,
-      ...(item!.code !== null && { code: item!.code }),
+      code: item!.code ?? (await allocateCode(tx, ctx)),
       ...(item!.shortName !== null && { shortName: item!.shortName }),
       displayOrder: item!.displayOrder,
       personInChargeId: item!.personInChargeId,
       hrbpId: item!.hrbpId,
     };
-    const saved = await createOrganization(tx, await orgWriteContext(tx, input), organization);
+    const saved = await createOrganization(tx, ctx, organization);
     await markItem(tx, input, item!.id, { createdOrgId: saved.id, executedVersionId: saved.versionId });
     return 'done';
   };

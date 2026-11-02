@@ -1,5 +1,5 @@
 /**
- * AC-OA-38（执行侧，DEC-644 A-8，R2-T08 §3 / §7.1 / §7.6 / §7.8）：暂存行（含其连带行）不执行、不进数据量与暂停，
+ * AC-OA-38（执行侧，DEC-644 A-8，R2-T08 §3 / §7.1 / §7.6 / §7.8）：暂存行（其下级随之）不执行、不进数据量与暂停，
  * 执行结果为空、不计入 N / M；详情标“暂存（未执行）”，其余行照常执行。
  */
 import { useTestDb } from '@italent/testkit';
@@ -18,14 +18,14 @@ describe('AC-OA-38 暂存行执行侧', () => {
     const child = await w.org('ZZ_暂存下级', parked);
     const live = await w.org('ZZ_照常改名', w.a);
     const adjustment = await w.approved([w.a], [stop(parked, { isStaged: true }), rename(live, { name: 'ZZ_已改名' })]);
-    expect(adjustment.rows).toHaveLength(3);
+    // 暂存停用不生成连带行（org-items.ts，11a）：下级随发起行不执行，只需验证其仍启用。
+    expect(adjustment.rows).toHaveLength(2);
     expect((await w.headRow(adjustment.id)).data_volume).toBe(1);
 
     await w.run();
 
     const rows = [...(await w.outcomes(adjustment.id)).values()];
     expect(rows.map((r) => [r.is_staged, r.execution_result, r.exec_phase])).toEqual([
-      [true, null, 0],
       [true, null, 0],
       [false, 1, 2],
     ]);
@@ -44,7 +44,6 @@ describe('AC-OA-38 暂存行执行侧', () => {
     expect(res.status, await res.clone().text()).toBe(200);
     const items = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(items.map((i) => [i.stagedLabel, i.executionResult])).toEqual([
-      ['暂存（未执行）', null],
       ['暂存（未执行）', null],
       [null, 1],
     ]);
