@@ -236,3 +236,160 @@ describe('DT-R6（DEC-726）', () => {
     expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
   });
 });
+
+describe('DT-R7 / AC-DT-04：菜单转交下属生成任职记录（第 2 轮 P2-1）', () => {
+  it('立即：自转交日起插入“数据调整”记录，转交日前仍是原经理', async () => {
+    const x = await world('history-now');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const receiver = await x.peer('接收人');
+    const before = await x.segments(subordinate.id);
+
+    await x.submitted(x.employee.id, { timing: 'immediate', items: [subordinateItem(subordinate.id, receiver.id)] });
+
+    const after = await x.segments(subordinate.id);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)).toEqual({ start: MENU_TODAY, kind: 'org_adjustment', changeType: 'data_adjustment' });
+    expect(await x.managerOf(subordinate.id, '2026-09-15')).toBe(x.employee.id);
+    expect(await x.managerOf(subordinate.id, '2026-10-05')).toBe(x.employee.id);
+    expect(await x.managerOf(subordinate.id, MENU_TODAY)).toBe(receiver.id);
+  });
+
+  it('到期：自转交日期起插入“数据调整”记录，到期前一天仍是原经理', async () => {
+    const x = await world('history-due');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const receiver = await x.peer('接收人');
+    const before = await x.segments(subordinate.id);
+    await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [subordinateItem(subordinate.id, receiver.id)],
+    });
+    expect(await x.segments(subordinate.id)).toEqual(before);
+
+    await x.runScheduler(`${LATER}T02:00:00Z`);
+    const after = await x.segments(subordinate.id);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)).toEqual({ start: LATER, kind: 'org_adjustment', changeType: 'data_adjustment' });
+    expect(await x.managerOf(subordinate.id, '2026-10-19')).toBe(x.employee.id);
+    expect(await x.managerOf(subordinate.id, LATER)).toBe(receiver.id);
+    expect((await x.records('tab=completed')).total).toBe(1);
+  });
+});
+
+describe('接收人为空即不转交（第 2 轮 P2-2）', () => {
+  async function twoSubordinates(label: string) {
+    const x = await world(label);
+    const one = await x.subordinateOf(x.employee.id, '下属甲');
+    const two = await x.subordinateOf(x.employee.id, '下属乙');
+    const receiver = await x.peer('接收人');
+    return { x, one, two, receiver };
+  }
+
+  it('立即 · 部分设置：设置了接收人的转交，空的跳过；确认数量与持久化条数一致', async () => {
+    const { x, one, two, receiver } = await twoSubordinates('blank-now');
+    const body = {
+      timing: 'immediate' as const,
+      items: [subordinateItem(one.id, receiver.id), subordinateItem(two.id, null)],
+    };
+    expect((await x.check(x.employee.id, body)).count).toBe(1);
+    const result = await x.submitted(x.employee.id, body);
+    expect(result.count).toBe(1);
+    expect(result.records.map((row) => [row.receiverId, row.status])).toEqual([[receiver.id, 1]]);
+    expect(await x.managerOf(one.id)).toBe(receiver.id);
+    expect(await x.managerOf(two.id)).toBe(x.employee.id);
+    expect((await x.records()).total).toBe(1);
+  });
+
+  it('指定日期 · 部分设置：只为设置了接收人的职责记待生效', async () => {
+    const { x, one, two, receiver } = await twoSubordinates('blank-later');
+    const result = await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [subordinateItem(one.id, null), subordinateItem(two.id, receiver.id)],
+    });
+    expect(result.count).toBe(1);
+    expect((await x.records('tab=pending')).items.map((row) => row.receiverId)).toEqual([receiver.id]);
+    const menu = await x.duties(x.employee.id);
+    expect(menu.pendingCount).toBe(1);
+    expect(menu.items.find((item) => item.subordinateId === one.id)?.pending).toBeNull();
+  });
+
+  it('全空且无待生效记录：400，不写记录', async () => {
+    const { x, one, two } = await twoSubordinates('blank-all');
+    for (const timing of ['immediate', 'scheduled'] as const) {
+      const response = await x.submit(x.employee.id, {
+        timing,
+        ...(timing === 'scheduled' ? { transferDate: LATER } : {}),
+        items: [subordinateItem(one.id, null), subordinateItem(two.id, null)],
+      });
+      expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'DUTY_TRANSFER_EMPTY' });
+    }
+    expect((await x.records()).total).toBe(0);
+    expect(await x.managerOf(one.id)).toBe(x.employee.id);
+  });
+
+  it('已有待生效记录的空接收人带 revision 撤回，同批无记录的空接收人跳过、其余立即转交', async () => {
+    const { x, one, two, receiver } = await twoSubordinates('blank-void');
+    const third = await x.subordinateOf(x.employee.id, '下属丙');
+    await x.submitted(x.employee.id, {
+      timing: 'scheduled',
+      transferDate: LATER,
+      items: [subordinateItem(one.id, receiver.id)],
+    });
+    const revision = (await x.duties(x.employee.id)).items.find((item) => item.subordinateId === one.id)!.pending!
+      .revision;
+
+    const result = await x.submitted(x.employee.id, {
+      timing: 'immediate',
+      items: [
+        subordinateItem(one.id, null, revision),
+        subordinateItem(two.id, null),
+        subordinateItem(third.id, receiver.id),
+      ],
+    });
+    expect(result.count).toBe(2);
+    expect(result.records.map((row) => row.status).sort()).toEqual([1, 2]);
+    expect((await x.records('tab=pending')).total).toBe(0);
+    expect((await x.records()).total).toBe(2);
+    expect(await x.managerOf(one.id)).toBe(x.employee.id);
+    expect(await x.managerOf(two.id)).toBe(x.employee.id);
+    expect(await x.managerOf(third.id)).toBe(receiver.id);
+
+    await x.runScheduler(`${LATER}T02:00:00Z`);
+    expect(await x.managerOf(one.id, LATER)).toBe(x.employee.id);
+  });
+});
+
+describe('转交日期须是合法日历日（第 2 轮 P2-5）', () => {
+  it('不存在的日期 400，职责、记录、命令台账都不变；闰日与合法未来日期可提交；今天 / 过去 400', async () => {
+    const x = await world('calendar');
+    const subordinate = await x.subordinateOf(x.employee.id, '下属');
+    const receiver = await x.peer('接收人');
+    const body = (transferDate: string) => ({
+      timing: 'scheduled' as const,
+      transferDate,
+      items: [subordinateItem(subordinate.id, receiver.id)],
+    });
+
+    for (const day of ['2026-11-31', '2027-02-29']) {
+      const check = await x.request('POST', `/people/${x.employee.id}/check`, { body: body(day) });
+      expect(await x.reason(check)).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
+      const response = await x.submit(x.employee.id, body(day), `calendar-${day}`);
+      expect(await x.reason(response)).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
+    }
+    expect((await x.records()).total).toBe(0);
+    expect((await x.duties(x.employee.id)).pendingCount).toBe(0);
+    expect(await x.managerOf(subordinate.id)).toBe(x.employee.id);
+
+    for (const day of [MENU_TODAY, '2026-10-01'])
+      expect(await x.reason(await x.submit(x.employee.id, body(day)))).toMatchObject({
+        status: 400,
+        reason: 'DUTY_TRANSFER_DATE_NOT_FUTURE',
+      });
+
+    // 同一命令 ID 改成合法日期重提：失败的请求没有进入命令台账，不报同键异内容。
+    const leap = await x.submit(x.employee.id, body('2028-02-29'), 'calendar-2026-11-31');
+    expect(leap.status, await leap.clone().text()).toBe(200);
+    expect((await x.records('tab=pending')).items.map((row) => row.transferDate)).toEqual(['2028-02-29']);
+  });
+});

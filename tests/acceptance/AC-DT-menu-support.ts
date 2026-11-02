@@ -10,7 +10,8 @@ import { registerScopeProvider } from '../../apps/api/src/modules/permission/mod
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { everyField } from './AC-LNK-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { retireBody } from './AC-RT-support.js';
+import { pinExitGate, tenantApi } from './support/tenant-api.js';
 
 export const MENU_OBJECT = 'TenantBase.DutyTransferCommon';
 export const MENU_TODAY = '2026-10-06';
@@ -51,7 +52,7 @@ export interface RecordView {
   readonly batchId: string | null;
   readonly source: 1 | 2 | 3 | 4;
   readonly operatorId: string | null;
-  readonly failure: { readonly code: string; readonly message: string } | null;
+  readonly failure: { readonly code: string; readonly message: string; readonly rule: string | null } | null;
 }
 
 export interface SubmitItem {
@@ -139,14 +140,41 @@ export async function menuWorld(db: Db, label: string, today = MENU_TODAY) {
     return (await response.json()) as { total: number; items: RecordView[] };
   }
 
-  async function departed() {
-    const response = await request('GET', '/departed');
+  async function departed(query = '', send = request) {
+    const response = await send('GET', `/departed${query ? `?${query}` : ''}`);
     expect(response.status, await response.clone().text()).toBe(200);
     return (await response.json()) as {
       total: number;
       items: { employeeId: string; kind: 'leave' | 'retirement'; date: string; dutyCount: number }[];
     };
   }
+
+  /** 已生效的退休（与 effectiveExit 同口径：临时切回可信造数端口办直接退休）。 */
+  async function effectiveRetire(employeeId: string, lastWorkDate: string) {
+    const previous = pinExitGate('seed');
+    try {
+      const created = await x.createdLeave(employeeId, retireBody(lastWorkDate, 'direct'));
+      expect(created.status).toBe('effective');
+      return created;
+    } finally {
+      pinExitGate(previous);
+    }
+  }
+
+  /** 员工时间轴逐段：开始日、业务类型、异动类型（change_type）。 */
+  const segments = (employeeId: string) =>
+    x.sqlRows<{ start: string; kind: string; changeType: string | null }>(sql`
+      SELECT t.start_date::text AS start, r.kind, r.change_type AS "changeType"
+      FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+      WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}::uuid ORDER BY t.start_date, t.sort_order`);
+
+  /** 转交记录的执行台账（次数 / 失败原因不在记录接口的字段里）。 */
+  const ledger = async (recordId: string) =>
+    (
+      await x.sqlRows<{ attempts: number; failure: string | null; status: number }>(sql`
+        SELECT attempt_count AS attempts, failure_code AS failure, status
+        FROM duty_transfer_records WHERE tenant_id=${tenantId} AND id=${recordId}::uuid`)
+    ).at(0);
 
   async function reason(response: Response) {
     const body = (await response.json()) as { error?: { code: string; details?: { reason?: string } } };
@@ -186,6 +214,9 @@ export async function menuWorld(db: Db, label: string, today = MENU_TODAY) {
     check,
     records,
     departed,
+    effectiveRetire,
+    segments,
+    ledger,
     reason,
     scopedRequest,
     setNow(iso: string) {
