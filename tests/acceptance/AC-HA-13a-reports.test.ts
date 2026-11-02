@@ -5,7 +5,14 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { boardClient, structureWorld, type BoardClient, type Report } from './AC-HA-13a-support.js';
+import {
+  boardClient,
+  ids,
+  STRUCTURE_BASE,
+  structureWorld,
+  type BoardClient,
+  type Report,
+} from './AC-HA-13a-support.js';
 
 const database = useTestDb();
 const AS_OF = 'asOf=2026-10-01';
@@ -21,11 +28,13 @@ async function buildWorld() {
   const s3 = await w.job('sequences', '序列丙');
   const l1 = await w.job('levels', '职级一', { level: 1 });
   const l2 = await w.job('levels', '职级二', { level: 2 });
-  await w.hire('报表甲', {
+  // 人员类别存字典 ID（F-323a），报表按名称展开列
+  const category = await w.category('合成类别甲');
+  const jia = await w.hire('报表甲', {
     date: '2026-04-01',
     department: a1,
     profile: { gender: '男', birthday: '2001-10-01', educationLevel: '本科' },
-    fields: { sequenceId: s1.id, levelId: l1.id, employmentType: '合成类别甲', employmentSource: '内部推荐' },
+    fields: { sequenceId: s1.id, levelId: l1.id, employmentType: category.id, employmentSource: '内部推荐' },
   });
   await w.hire('报表乙', {
     date: '2025-10-01',
@@ -47,7 +56,7 @@ async function buildWorld() {
     profile: { gender: '男', birthday: '2004-01-01', educationLevel: '本科' },
     fields: { employType: 'intern' },
   });
-  return { w, a, a1, b, s1, s2, s3, l1, l2 };
+  return { w, a, a1, b, s1, s2, s3, l1, l2, category, jia };
 }
 type World = Awaited<ReturnType<typeof buildWorld>>;
 
@@ -145,6 +154,9 @@ describe('AC-HA-13a B53 员工结构报表', () => {
     ])
       expect(keys, key).toContain(key);
     expect(report.columns.find((column) => column.key === `sequence:${x.s3.id}`)!.label).toBe('序列丙');
+    // 人员类别：任职存字典 ID，列键与表头都是名称（F-323a × BE-13a）
+    expect(report.columns.find((column) => column.key === 'category:合成类别甲')!.label).toBe('合成类别甲');
+    expect(keys.some((key) => key === `category:${x.category.id}`)).toBe(false);
     expect(row(report, x.a.id)).toMatchObject({
       total: 2,
       'employType:internal': 2,
@@ -189,5 +201,30 @@ describe('AC-HA-13a B53 员工结构报表', () => {
     for (const bad of ['employType=external', 'asOf=2026-13-01', 'departmentId=bad'])
       expect((await c.get(`/api/tenant/analytics/hr-structure/reports/quality?${bad}`)).status, bad).toBe(400);
     expect((await c.get('/api/tenant/analytics/hr-structure/reports/unknown')).status).toBe(404);
+  });
+
+  // 放在最后：会改名 / 停用共用夹具里的人员类别字典项
+  it('AC-HA-13a-06：人员类别字典项改名后按当前名称出列（报表列与看板筛选），停用后仍按名称显示', async () => {
+    const categoryKeys = async () =>
+      (await c.report('position', AS_OF)).columns.filter((column) => column.key.startsWith('category:'));
+    const renamed = await x.w.editCategory(x.category, { name: '合成类别乙' });
+    expect(await categoryKeys()).toEqual([{ key: 'category:合成类别乙', label: '合成类别乙' }]);
+    expect(row(await c.report('position', AS_OF), x.a.id)).toMatchObject({ 'category:合成类别乙': 1 });
+    await c.expectCount(
+      STRUCTURE_BASE,
+      '6.01',
+      ids(x.jia),
+      `${AS_OF}&employmentType=${encodeURIComponent('合成类别乙')}`,
+    );
+    await c.expectCount(STRUCTURE_BASE, '6.01', [], `${AS_OF}&employmentType=${encodeURIComponent('合成类别甲')}`);
+    // 停用不影响已有引用的显示
+    await x.w.editCategory(renamed, 'disable');
+    expect(await categoryKeys()).toEqual([{ key: 'category:合成类别乙', label: '合成类别乙' }]);
+    await c.expectCount(
+      STRUCTURE_BASE,
+      '6.01',
+      ids(x.jia),
+      `${AS_OF}&employmentType=${encodeURIComponent('合成类别乙')}`,
+    );
   });
 });

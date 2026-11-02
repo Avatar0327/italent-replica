@@ -120,13 +120,18 @@ export async function saveProbationResult(tx: Tx, ctx: EmploymentContext, raw: u
 
 /** 新选用时只能选启用项：编码不存在 → PROBATION_RESULT_UNKNOWN，已停用 → PROBATION_RESULT_DISABLED，均为 400。返回库里的编码写法。 */
 export async function requireEnabledProbationResult(tx: Tx, tenantId: string, code: string): Promise<string> {
+  return (await requireEnabledProbationEntry(tx, tenantId, code)).code;
+}
+
+/** 同上，另带当时的字典名称：转正单与暂存按保存时的名称展示（F-347 b）。 */
+export async function requireEnabledProbationEntry(tx: Tx, tenantId: string, code: string) {
   const entry = await findByCode(tx, tenantId, code);
   if (!entry || !entry.enabled)
     throw new AppError('VALIDATION_FAILED', entry ? '试用结果已停用' : '试用结果不存在', {
       reason: entry ? 'PROBATION_RESULT_DISABLED' : 'PROBATION_RESULT_UNKNOWN',
       code,
     });
-  return entry.code;
+  return { code: entry.code, name: entry.name };
 }
 
 const writerOf = (ctx: EmploymentContext): SeedWriteContext => ({

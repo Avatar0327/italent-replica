@@ -791,6 +791,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/tenant-users.ts#provisionAccount',
     'apps/api/src/modules/permission/tenant-users.ts#updateMembership',
     '#conflict',
+    '#renamedInTx',
   ],
   'apps/api/src/modules/permission/user-provisioning.ts#lockPersonLink': [
     'apps/api/src/advisory-lock.ts#advisoryLock',

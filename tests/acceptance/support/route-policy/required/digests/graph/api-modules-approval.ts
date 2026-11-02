@@ -51,6 +51,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/access.ts#orgAdjustmentInstanceScopeSql': [
     'apps/api/src/modules/permission/module-access.ts#scopeSql',
   ],
+  'apps/api/src/modules/approval/access.ts#orgAdjustmentOwner': [
+    'apps/api/src/modules/org-adjustment/submission.ts#authorizeOwnerOf',
+  ],
   'apps/api/src/modules/approval/access.ts#requireIdpOwnerRight': [
     'apps/api/src/authorization.ts#requirePermission',
     '#IDP_PLAN_OBJECT',
@@ -126,12 +129,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/approval/access.ts#resubmitGuard': [
+    '#orgAdjustmentOwner',
     'apps/api/src/modules/approval/store.ts#loadInstance',
     'apps/api/src/modules/employment/assessment-access.ts#requireAssessmentResubmitRight',
     'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
   ],
   'apps/api/src/modules/approval/access.ts#withdrawGuard': [
     '#isOfferBusiness',
+    '#orgAdjustmentOwner',
     '#requireOfferOwnerRight',
     'apps/api/src/modules/approval/store.ts#loadInstance',
     'apps/api/src/modules/employment/retirement-intention-access.ts#authorizeIntentionApproval',
@@ -502,6 +507,7 @@ export const GRAPH: Graph = {
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
+    '#employmentDashboardDate',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
@@ -981,6 +987,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/rules.ts#urgeOpen',
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
+  'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
+  ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
     'apps/api/src/modules/approval/adapters.ts#ADAPTERS',
     'apps/api/src/modules/approval/definitions.ts#loadVersion',
@@ -1146,6 +1155,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/engine.ts#insertInstance': [
     'apps/api/src/modules/approval/store.ts#loadInstance',
+    'packages/domain/src/analytics/hr-process-dashboard.ts#approvalCategoryOf',
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/engine.ts#launch': [
@@ -1617,6 +1627,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
     'apps/api/src/modules/approval/disclosure.ts#detailView',
+    'apps/api/src/modules/approval/disclosure.ts#namedForm',
     'apps/api/src/modules/approval/disclosure.ts#readDetail',
     '#detailViewable',
     '#readCtx',

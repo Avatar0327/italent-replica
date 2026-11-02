@@ -19,6 +19,7 @@ import { auditEmployment } from './context.js';
 import { entryOfferHooks } from './entry-offer-hooks.js';
 import { changePendingEntryStatus, lockPendingEntry } from './employee-status.js';
 import { businessDate } from './fields.js';
+import { withdrawRehireAccount } from './rehire-account.js';
 import {
   clearPendingContract,
   loadPendingContract,
@@ -82,6 +83,8 @@ async function cancelEntryCore(
   if (!mode.rejectUnchanged && before.entryStatus === ENTRY_STATUS.cancelled) return { record: before, changed: false };
   const reason = input.reason ?? DEFAULT_CANCEL_REASON;
   const record = await changePendingEntryStatus(tx, ctx, recordId, 'cancelled', mode);
+  // F-328 返工 P2-1：取消待重聘同时撤回对离职账号的恢复（已启用的按离职事实重新停用）
+  await withdrawRehireAccount(tx, ctx, record);
   await logEntryAction(tx, ctx, {
     employeeId: record.employeeId,
     businessId: recordId,

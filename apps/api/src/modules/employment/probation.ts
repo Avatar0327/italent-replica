@@ -46,7 +46,8 @@ export function cycleRegularization(tenantId: string, employee: SQL, staff: SQL,
     JOIN LATERAL (SELECT s.state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id
       AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     LEFT JOIN employment_records rg ON rg.tenant_id=b.tenant_id AND rg.id=b.id
-    LEFT JOIN employment_regularization_results rr ON rr.tenant_id=b.tenant_id AND rr.business_id=b.id
+    LEFT JOIN LATERAL (SELECT rr.result_code FROM employment_regularization_results rr
+      WHERE rr.tenant_id=b.tenant_id AND rr.business_id=b.id ORDER BY rr.version_no DESC LIMIT 1) rr ON true
     WHERE b.tenant_id=${tenantId} AND b.employee_id=${employee} AND p.kind='regularization'
       AND s.state IN ${states} AND COALESCE(rg.staff_id, p.selected_staff_id)=${staff}
     ORDER BY (s.state='in_review') DESC, p.effective_date DESC, b.id LIMIT 1`;

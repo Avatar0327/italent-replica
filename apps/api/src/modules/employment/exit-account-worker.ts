@@ -12,7 +12,7 @@ import {
   type PlatformCommandContext,
   type User,
 } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { ENTRY_STATUS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { activeTenants, type TenantRow } from './active-tenants.js';
@@ -21,7 +21,7 @@ import { readAccountSettings, saveTask, type AccountTask } from './exit-account-
 import { rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
-type EnterTenant = PlatformCommandContext['inTenant'];
+export type EnterTenant = PlatformCommandContext['inTenant'];
 type Fact = { task: AccountTask; tenant: TenantRow; due: boolean; terminal: boolean };
 const context = (f: Fact, now: Date, commandId: string): EmploymentContext => ({
   tenantId: f.tenant.id,
@@ -39,13 +39,20 @@ const timeIn = (now: Date, timezone: string) =>
     hourCycle: 'h23',
   }).format(now);
 
-async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userId: string, now: Date): Promise<Fact[]> {
+/** 各租户该账号的离职账号任务及其当前事实；重聘在当天入职的同一事务里也用它判定能否启用（rehire-account.ts）。 */
+export async function facts(
+  inTenant: EnterTenant,
+  tenants: readonly TenantRow[],
+  userId: string,
+  now: Date,
+): Promise<Fact[]> {
   const result: Fact[] = [];
   for (const tenant of tenants)
     await inTenant(tenant.id, async (tx) => {
       // 配置修改不获取员工锁，因此可在全局预锁后锁配置，保证判定与状态写入看到同一版设置。
       await tx.execute(sql`SELECT tenant_id FROM exit_account_settings WHERE tenant_id=${tenant.id} FOR SHARE`);
       const settings = await readAccountSettings(tx, tenant.id);
+      const today = tenantLocalDate(now, tenant.timezone);
       let after: string | null = null;
       for (;;) {
         const tasks: AccountTask[] = await tx
@@ -61,9 +68,22 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
           .orderBy(exitAccountTasks.businessId)
           .limit(100);
         for (const task of tasks) {
-          const [source] = rowsOf<{ state: string; last: string; actual: string | null; reEmployed: boolean }>(
+          const [source] = rowsOf<{
+            state: string;
+            last: string;
+            actual: string | null;
+            reEmployed: boolean;
+            rehired: boolean;
+          }>(
             await tx.execute(sql`SELECT s.state, p.last_work_date::text AS last, e.actual_leave_date::text AS actual,
-            COALESCE(r.re_employed,false) AS "reEmployed"
+            COALESCE(r.re_employed,false) AS "reEmployed",
+            EXISTS(SELECT 1 FROM employment_timeline lt JOIN employment_timeline rt
+                ON rt.tenant_id=lt.tenant_id AND rt.employee_id=lt.employee_id
+              JOIN employment_records rr ON rr.tenant_id=rt.tenant_id AND rr.id=rt.record_id AND rr.kind='rehire'
+              WHERE lt.tenant_id=e.tenant_id AND lt.record_id=e.business_id AND rt.start_date<=${today}::date
+                AND (rt.start_date, rt.sort_order) > (lt.start_date, lt.sort_order)
+                AND (SELECT st.entry_status FROM employment_record_status(rr.tenant_id, rr.id) st)
+                  IS DISTINCT FROM ${ENTRY_STATUS.cancelled}) AS rehired
             FROM exit_requests e JOIN permission_user_person_links l
               ON l.tenant_id=e.tenant_id AND l.employee_id=e.employee_id AND l.user_id=${userId}::uuid
             JOIN LATERAL (SELECT state FROM employment_state_events s
@@ -73,7 +93,12 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
             LEFT JOIN retirement_requests r ON r.tenant_id=e.tenant_id AND r.business_id=e.business_id
             WHERE e.tenant_id=${tenant.id} AND e.business_id=${task.businessId}::uuid`),
           );
-          const terminal = !source || source.reEmployed || ['deleted', 'voided', 'disapproved'].includes(source.state);
+          // F-328：其后的重聘入职已到入职日且未取消入职，这段离职不再要求停用（DEC-707；取消的重聘不算，返工 P2-1）
+          const terminal =
+            !source ||
+            source.reEmployed ||
+            source.rehired ||
+            ['deleted', 'voided', 'disapproved'].includes(source.state);
           let due = !terminal && source?.state === 'effective';
           if (
             !terminal &&
@@ -83,7 +108,6 @@ async function facts(inTenant: EnterTenant, tenants: readonly TenantRow[], userI
             (source.state === 'approved' || (source.state === 'in_review' && settings.inReview))
           ) {
             const day = settings.basis === 'actual_leave_date' ? (source.actual ?? source.last) : source.last;
-            const today = tenantLocalDate(now, tenant.timezone);
             due = due || day < today || (day === today && settings.time <= timeIn(now, tenant.timezone));
           }
           result.push({ task, tenant, due, terminal });
@@ -129,7 +153,9 @@ async function settle(
     const waitingRestore =
       t.restoreRequested && user.status === 'disabled' && t.autoRevision === user.revision && hasDue;
     const status = !f.due && waitingRestore ? 'pending' : settledStatus(f, user);
-    const autoRevision = automatic && user.status === 'disabled' && f.due ? user.revision : t.autoRevision;
+    // 自动停用与重聘的自动启用都记下改后的 revision：重聘失效时据此区分“仍是自动启用的状态”与人工改动（F-328）
+    const automated = user.status === 'disabled' ? f.due : status === 'restored' && t.restoreRequested;
+    const autoRevision = automatic && automated ? user.revision : t.autoRevision;
     const restoreRequested = t.restoreRequested && (f.due || waitingRestore);
     if (status === t.status && autoRevision === t.autoRevision && restoreRequested === t.restoreRequested) continue;
     await inTenant(f.tenant.id, async (tx) => {
@@ -165,10 +191,15 @@ const reasonOf = (error: unknown) => {
   const e = error as { code?: string; details?: { reason?: string } };
   return e?.details?.reason ?? e?.code ?? 'EXIT_ACCOUNT_STORAGE_UNAVAILABLE';
 };
+/** 失败记在本次要办的那一方向的任务上：停用记到期任务，恢复记由本规则停用、仍在等恢复的任务（F-348，口径同停用）。 */
+const owesAction = (f: Fact, target: 'active' | 'disabled', user: User) =>
+  target === 'disabled'
+    ? f.due && ['pending', 'failed'].includes(f.task.status)
+    : f.task.restoreRequested && f.task.autoRevision === user.revision;
 async function fail(db: Db, plan: readonly Fact[], now: Date, commandId: string, error: unknown) {
   const reason = reasonOf(error);
   const blocked = reason === 'APPROVAL_EXCEPTION_ADMIN_HANDOVER_REQUIRED';
-  for (const f of plan.filter((f) => f.due && ['pending', 'failed'].includes(f.task.status))) {
+  for (const f of plan) {
     await withTenant(db, f.tenant.id, async (tx) => {
       const admins = rowsOf<{ id: string }>(
         await tx.execute(sql`SELECT DISTINCT a.user_id AS id FROM permission_admins a
@@ -227,7 +258,8 @@ async function processUser(db: Db, userId: string, now: Date, origin: TenantRow)
   } catch (error) {
     // 保存点/账号事务回滚后另记待办；失败绝不传回已提交的离退休事务。
     if (reasonOf(error) === 'EXIT_ACCOUNT_RECHECK' || reasonOf(error) === 'REVISION_CONFLICT') return;
-    await fail(db, locked.length ? locked : initial, now, commandId, error);
+    const plan = (locked.length ? locked : initial).filter((f) => owesAction(f, target, user));
+    await fail(db, plan, now, commandId, error);
   }
 }
 
