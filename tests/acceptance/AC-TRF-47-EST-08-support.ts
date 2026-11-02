@@ -6,7 +6,15 @@ import { tenantApi } from './support/tenant-api.js';
 import { readCapacity } from '../../apps/api/src/modules/establishment/capacity-read.js';
 import { rowsOf } from '../../apps/api/src/modules/establishment/store.js';
 
-export async function carriedWorld(db: Db, label: string, options: { matched?: boolean; reserve?: number } = {}) {
+/** mode：编制方案维护方式（默认仅本级）；inclusive / both 时细分与预留按含下级维护（F-400 r4 三种方式的整组回退回归）。 */
+export interface CarriedWorldOptions {
+  readonly matched?: boolean;
+  readonly reserve?: number;
+  readonly mode?: 'local' | 'inclusive' | 'both';
+}
+
+export async function carriedWorld(db: Db, label: string, options: CarriedWorldOptions = {}) {
+  const mode = options.mode ?? 'local';
   const w = await activationWorld(db, label);
   const api = tenantApi(db, { clock: () => new Date('2026-10-01T01:00:00Z') });
   const write = (path: string, body: object) =>
@@ -35,7 +43,7 @@ export async function carriedWorld(db: Db, label: string, options: { matched?: b
   const schemeResponse = await write('establishment/schemes', {
     name: '带编验收方案',
     periodType: 'annual',
-    maintenanceMode: 'local',
+    maintenanceMode: mode,
     subdivision: 'position',
     startDate: '2026-01-01',
   });
@@ -47,8 +55,15 @@ export async function carriedWorld(db: Db, label: string, options: { matched?: b
       schemeId: scheme.id,
       periodStart: '2026-01-01',
       strictControl: true,
-      reservedLocal: reserve,
-      subdivisions: [{ positionId, localCapacity: count, inclusiveCapacity: null }],
+      reservedLocal: mode === 'inclusive' ? 0 : reserve,
+      ...(mode === 'local' ? {} : { reservedInclusive: reserve }),
+      subdivisions: [
+        {
+          positionId,
+          localCapacity: mode === 'inclusive' ? null : count,
+          inclusiveCapacity: mode === 'local' ? null : count,
+        },
+      ],
     });
     expect(response.status, await response.clone().text()).toBe(201);
     return ((await response.json()) as { id: string }).id;
@@ -108,5 +123,7 @@ export async function carriedWorld(db: Db, label: string, options: { matched?: b
     targetCapacity,
     write,
     scheme,
+    position,
+    capacity,
   };
 }
