@@ -38,7 +38,14 @@ export async function linkEmploymentPage(
   // 接管不再写组织、不做基线；但 T1 写下的版本须仍是生效日现行版本，否则组织已被外部改动，不在其上续追加。
   if ((await liveOrg(tx, input, orgId))?.versionId !== item.executedVersionId)
     throw new AppError('CONFLICT', '组织在本单执行期间已被改动', { reason: 'EXECUTION_STATE_DIVERGED' });
-  const ids = await orgEmploymentTargetsPage(tx, input.tenantId, orgId, date, item.employmentCursor, PAGE);
+  const ids = await orgEmploymentTargetsPage(
+    tx,
+    input.tenantId,
+    orgId,
+    date,
+    item.employmentCursor,
+    EMPLOYMENT_PAGE_SIZE,
+  );
   const ctx = await employmentContext(tx, scopeOf, input);
   if (!ids.length) return finish(tx, ctx, input, item);
   await lockOrgEmploymentEmployees(tx, ctx, ids);
@@ -57,8 +64,6 @@ export async function linkEmploymentPage(
     WHERE tenant_id=${input.tenantId} AND id=${item.id}::uuid`);
   return 'pending';
 }
-
-const PAGE = EMPLOYMENT_PAGE_SIZE;
 
 async function employmentContext(tx: Tx, scopeOf: ApplicantScopeOf, input: GroupInput): Promise<EmploymentContext> {
   const scope = await applicantScopes(tx, scopeOf, input, input.adjustment).employment();
