@@ -126,7 +126,8 @@ function facts(c: ProcessContext): SQL {
       creator: sql`x.creator_id`,
     })} END`;
   return sql`SELECT x.*, s.second_id,
-      x.category<>'other' AS core, x.status IN ('running','returned') AS in_flight,
+      x.category<>'other' AS core, (x.status='running'
+        OR (x.status='returned' AND x.business_type NOT IN ('offer','offer_batch'))) AS in_flight,
       x.business_date IS NOT NULL AND x.started_on > x.business_date AS late_submit,
       x.business_date IS NOT NULL AND x.completed_on > x.business_date AND x.started_on < x.business_date
         AS late_approval,
