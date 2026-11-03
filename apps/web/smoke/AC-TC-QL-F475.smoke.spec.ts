@@ -353,7 +353,7 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
   for (const view of ['categories', 'levels']) {
     await page.goto(`/qualification?view=${view}`);
     await expect
-      .soft(page.locator('.page-heading').getByRole('button').filter({ visible: true }))
+      .soft(page.locator('.page-heading > .ant-space').getByRole('button').filter({ visible: true }))
       .toHaveText(['引入岗职务', /新\s*建/, /导\s*入/]);
   }
 });
