@@ -73,6 +73,7 @@ export * from './offer/index.js';
 export * from './analytics/hr-dashboard.js';
 export * from './analytics/hr-process-dashboard.js';
 export * from './analytics/hr-structure.js';
+export * from './analytics/team-dashboard.js';
 export * from './analytics/hr-movement.js';
 export * from './org-adjustment/index.js';
 export * from './employment/exit-handover.js';
