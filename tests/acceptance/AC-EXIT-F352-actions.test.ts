@@ -80,6 +80,44 @@ describe('F-352① 离职逐单 actions', () => {
     }
   });
 
+  it.each(['draft', 'rejected'])('AC-EXIT-F352 非原发起人查看 %s：不含 submit，同身份提交返回 403', async (state) => {
+    const x = await world(`f352-other-${state}`);
+    const made = await x.exit('另一 HR 的申请');
+    if (state === 'rejected') await x.force(made.id, state);
+    const other = await x.w.otherUser();
+    const full = x.viewer();
+    const api: typeof full = (method, path, init = {}) => full(method, path, { ...init, user: other.id });
+    const denied = await api('POST', `/exits/${made.id}/submit`, { ifMatch: made.revision, body: {} });
+    expect(await x.w.reason(denied)).toMatchObject({
+      status: 403,
+      code: 'FORBIDDEN',
+      reason: 'EXIT_SUBMIT_INITIATOR_ONLY',
+    });
+    expect((await x.detail(api, made.id)).actions).not.toContain('submit');
+    expect((await x.row(api, made.id))?.actions).not.toContain('submit');
+    expect((await x.detail(x.viewer(), made.id)).actions).toContain('submit');
+  });
+
+  it('AC-EXIT-F352 审批中无 adminIntervene：不含 edit，同身份编辑返回 403', async () => {
+    const x = await world('f352-no-admin');
+    const made = await x.exit('审批中员工');
+    const submitted = await x.w.session.request('POST', `/exits/${made.id}/submit`, {
+      ifMatch: made.revision,
+      body: {},
+    });
+    expect(submitted.status, await submitted.clone().text()).toBe(200);
+    const current = (await submitted.json()) as { revision: number };
+    const api = x.viewer('adminIntervene');
+    const denied = await api('PATCH', `/exits/${made.id}`, {
+      ifMatch: current.revision,
+      body: { whereaboutsCode: 'startup' },
+    });
+    expect(await x.w.reason(denied)).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect((await x.detail(api, made.id)).actions).not.toContain('edit');
+    expect((await x.row(api, made.id))?.actions).not.toContain('edit');
+    expect((await x.detail(x.viewer(), made.id)).actions).toContain('edit');
+  });
+
   it('直接离职单没有 submit；状态决定编辑 / 撤销是否可用（已办结的单什么都没有）', async () => {
     const x = await world('f352-states');
     const direct = await x.exit('直接员工', 'direct', '2026-10-25');
