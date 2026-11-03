@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { APPROVAL_TYPES, type ApproverSource } from '@italent/domain';
 import { flowFixture } from '../../../../../tests/acceptance/support/f315-fixture.js';
 import { buildDraft, nodeField } from './model.js';
-import { changeSourceType, sourceInputError, sourceOptions } from './sources.js';
+import { acceptCandidates, candidateParams, modeOptions } from './source-candidates.js';
+import { changeSourceType, referenceOf, referenceValue, sourceInputError, sourceOptions } from './sources.js';
 
 const ID = 'b3960000-0000-4000-8000-000000000001';
 const OPENED = ['department', 'business_org', 'profit_center', 'reserve4', 'reserve5', 'position', 'job', 'identity'];
@@ -18,7 +19,7 @@ describe('AC-FE-F396 新来源放开', () => {
       const option = options.find((o) => o.value === type)!;
       expect(option, type).toMatchObject({ disabled: false, status: 'enabled' });
       expect(
-        option.children.some((child) => child.status === 'pending'),
+        option.children.some((child) => child.value === '$pending'),
         type,
       ).toBe(false);
     }
@@ -84,5 +85,47 @@ describe('AC-FE-F396 新来源放开', () => {
     const named = { type: 'identity', value: 'handover_hr_admin' } as const;
     expect(error(named, 'transfer')).toBeTruthy();
     expect(error(named, 'exit_handover')).toBeUndefined();
+  });
+  it('07 候选接口按后端真实形状验收，缺字段 / 错类型拒绝', () => {
+    // 与 designer-sources.ts 的返回同形：{ items:[{id,name,enabled,parentId}], page, pageSize, hasMore }
+    const body = {
+      items: [{ id: ID, name: '合成部门', enabled: true, parentId: null }],
+      page: 1,
+      pageSize: 50,
+      hasMore: false,
+    };
+    expect(acceptCandidates(body)).toEqual({ items: body.items, hasMore: false });
+    for (const bad of [
+      null,
+      { items: [{ id: ID, name: '合成部门', parentId: null }], hasMore: false },
+      { items: [{ id: ID, name: '合成部门', enabled: 'true', parentId: null }], hasMore: false },
+      { items: [], hasMore: 'no' },
+      { hasMore: false },
+    ])
+      expect(() => acceptCandidates(bad)).toThrow();
+  });
+  it('08 候选查询：搜索取启用项并固定页长；已选对象按 ID 回查含已停用，不跨类型', () => {
+    expect(candidateParams({ type: 'job', asOf: '2026-10-01', keyword: '合成' }).toString()).toBe(
+      new URLSearchParams({ type: 'job', asOf: '2026-10-01', pageSize: '50', keyword: '合成' }).toString(),
+    );
+    const byId = candidateParams({ type: 'position', asOf: '2026-10-01', ids: [ID] });
+    expect(Object.fromEntries(byId)).toEqual({
+      type: 'position',
+      asOf: '2026-10-01',
+      ids: ID,
+      includeInactive: 'true',
+    });
+  });
+  it('09 取值方式与领域同源：含下级只给组织维度，相对向上只给职务，职位 / 身份无方式', () => {
+    for (const type of DIMENSIONS)
+      expect(modeOptions(type as ApproverSource['type']).map((o) => o.value)).toEqual(['self', 'descendants']);
+    expect(modeOptions('job').map((o) => o.value)).toEqual(['self', 'relative']);
+    expect(modeOptions('position')).toEqual([]);
+    expect(modeOptions('identity')).toEqual([]);
+    expect(referenceOf({ type: 'job', value: `${ID}:relative` })).toEqual({ id: ID, mode: 'relative' });
+    expect(referenceOf({ type: 'identity', value: ID })).toEqual({ id: ID, mode: 'self' });
+    expect(referenceOf({ type: 'department', value: 'latest_record_department_head' })).toBeNull();
+    expect(referenceValue(ID, 'self')).toBe(ID);
+    expect(referenceValue(ID, 'descendants')).toBe(`${ID}:descendants`);
   });
 });

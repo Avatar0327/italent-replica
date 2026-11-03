@@ -12,6 +12,14 @@ export const sourcePeople = [1, 2].map((n) => ({
   departmentName: '合成部门',
   departmentId: 'a5000000-0000-4000-8000-000000000001',
 }));
+/** 与 designer-sources.ts 的返回同形：{ id, name, enabled, parentId }；合成对象 ID。 */
+export const sourceObjects = {
+  department: { id: 'a6000000-0000-4000-8000-000000000001', name: '合成研发部', enabled: true, parentId: null },
+  job: { id: 'a6000000-0000-4000-8000-000000000002', name: '合成工程师', enabled: true, parentId: null },
+  identity: { id: 'a6000000-0000-4000-8000-000000000003', name: '合成薪酬专员', enabled: true, parentId: null },
+  retired: { id: 'a6000000-0000-4000-8000-000000000004', name: '合成旧职务', enabled: false, parentId: null },
+};
+export const candidateReads: URL[] = [];
 export async function setupSources(page: Page, baseURL: string, single = false, writable = true) {
   await page.context().addCookies([
     { name: 'italent_demo_tenant', value: tenant, url: baseURL },
@@ -107,7 +115,25 @@ async function installSourcePermissions(page: Page, writable: boolean) {
 }
 
 async function installSourceCandidates(page: Page) {
-  await page.route('**/approval/designer/person-candidates**', (route) => {
+  candidateReads.length = 0;
+  await page.route('**/api/**/approval/designer/source-candidates**', (route) => {
+    const url = new URL(route.request().url());
+    candidateReads.push(url);
+    const type = url.searchParams.get('type') as keyof typeof sourceObjects;
+    const ids = url.searchParams.get('ids')?.split(',');
+    const keyword = url.searchParams.get('keyword') ?? '';
+    const pool = Object.values(sourceObjects).filter((o) => (ids ? ids.includes(o.id) : o.enabled));
+    const own = pool.filter((o) => o === sourceObjects[type] || (type === 'job' && o === sourceObjects.retired));
+    return route.fulfill({
+      json: {
+        items: own.filter((o) => o.name.includes(keyword)),
+        page: 1,
+        pageSize: ids?.length ?? 50,
+        hasMore: false,
+      },
+    });
+  });
+  await page.route('**/api/**/approval/designer/person-candidates**', (route) => {
     const ids = new URL(route.request().url()).searchParams.get('userIds')?.split(',');
     return route.fulfill({
       json: {
