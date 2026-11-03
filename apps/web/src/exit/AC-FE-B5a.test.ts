@@ -44,12 +44,36 @@ describe('AC-FE-B5a F-394 离职状态中文映射', () => {
 });
 
 describe('AC-FE-B5a F-393 详情加黑三项展示与编辑', () => {
-  it('加黑单的详情列出加入黑名单与三项；未加黑只列“加入黑名单”', () => {
-    const keys = model.detailKeys(detail);
-    expect(keys).toEqual(expect.arrayContaining(['addToBlacklist', ...model.blacklistFields]));
-    const plain = model.detailKeys({ ...detail, addToBlacklist: false });
-    expect(plain).toContain('addToBlacklist');
-    for (const field of model.blacklistFields) expect(plain, field).not.toContain(field);
+  it('AC-FE-B5a F-393 三项各按响应键存在展示，与加入黑名单的可见值无关', () => {
+    for (const addToBlacklist of [true, false]) {
+      expect(model.detailKeys({ ...detail, addToBlacklist })).toEqual(
+        expect.arrayContaining(['addToBlacklist', ...model.blacklistFields]),
+      );
+    }
+    for (const hidden of model.blacklistFields) {
+      const projected = { ...detail };
+      delete projected[hidden];
+      expect(model.detailKeys(projected)).not.toContain(hidden);
+      expect(model.detailValues(projected)).not.toHaveProperty(hidden);
+    }
+  });
+  it('AC-FE-B5a F-393 无 addToBlacklist 查看权：三项真实值仍展示，编辑初值不补造总开关', () => {
+    const projected = { ...detail };
+    delete projected.addToBlacklist;
+    const baseline = model.detailValues(projected);
+    expect(model.detailKeys(projected)).toEqual(expect.arrayContaining(model.blacklistFields));
+    expect(model.cellValue(projected, 'blacklistExpiryDate')).toBe('2027-12-31');
+    expect(model.cellValue(projected, 'blacklistReason')).toBe('诚信问题');
+    expect(model.cellValue(projected, 'blacklistNote')).toBe('合成说明');
+    expect(baseline).toMatchObject({
+      blacklistExpiryDate: '2027-12-31',
+      blacklistReason: 'integrity',
+      blacklistNote: '合成说明',
+    });
+    expect(baseline).not.toHaveProperty('addToBlacklist');
+    expect(model.patchBody({ blacklistNote: '新的合成说明' }, {}, baseline)).toEqual({
+      blacklistNote: '新的合成说明',
+    });
   });
   it('三项按真实数据取值：原因显示字典名，截止日期为空显示“永久”，缺键（无字段权）显示占位', () => {
     expect(model.cellValue(detail, 'addToBlacklist')).toBe('是');

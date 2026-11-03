@@ -156,3 +156,42 @@ test('AC-FE-B5a-08 F-393 详情展示并可编辑真实加黑三项', async ({ p
   await expect(detail.getByText('2027-12-31')).toBeVisible();
   await expect(detail.getByText('合成加黑说明')).toBeVisible();
 });
+
+test('AC-FE-B5a-09 F-393 总开关被裁剪：三项仍显示真实值且编辑初值正确', async ({ page }) => {
+  const server = await setupExits(page);
+  const fields = ['lastWorkDate', 'blacklistExpiryDate', 'blacklistReason', 'blacklistNote'];
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
+        dataOperations: { read: true, update: true },
+        viewableFields: fields,
+        editableFields: fields,
+        buttons: [],
+      },
+    }),
+  );
+  await page.route(`**/exits/${ids.inProgress}`, (route) =>
+    route.fulfill({
+      json: {
+        ...server.rows.find((row) => row.id === ids.inProgress),
+        actions: ['edit'],
+        blacklistExpiryDate: '2027-12-31',
+        blacklistReason: 'integrity',
+        blacklistNote: '合成加黑说明',
+      },
+    }),
+  );
+  await page.reload();
+  await openDetail(page, names.inProgress);
+  await expect(dialog(page).getByText('诚信问题')).toBeVisible();
+  await expect(dialog(page).getByText('2027-12-31')).toBeVisible();
+  await expect(dialog(page).getByText('合成加黑说明')).toBeVisible();
+  await dialog(page)
+    .getByRole('button', { name: /^编\s*辑$/ })
+    .click();
+  await expect(dialog(page).getByLabel('有效截止日期')).toHaveValue('2027-12-31');
+  await expect(dialog(page).locator('.ant-form-item').filter({ hasText: '加黑原因' })).toContainText('诚信问题');
+  await expect(dialog(page).getByLabel('加黑说明')).toHaveValue('合成加黑说明');
+  await expect(dialog(page).getByRole('radiogroup', { name: '加入黑名单' })).toHaveCount(0);
+});

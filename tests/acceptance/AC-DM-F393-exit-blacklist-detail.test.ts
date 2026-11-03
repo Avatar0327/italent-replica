@@ -77,6 +77,22 @@ describe('F-393 离职详情加黑三项', () => {
     }
   });
 
+  it('AC-DM-F393 无 addToBlacklist 查看权时，三项仍按各自字段权返回真实值', async () => {
+    const x = await setup('f393-no-flag');
+    const api = x.w.restricted(
+      denyButtons(),
+      undefined,
+      FULL.filter((field) => field !== 'addToBlacklist'),
+    );
+    const seen = await x.detail(api);
+    expect(seen).not.toHaveProperty('addToBlacklist');
+    expect(seen).toMatchObject({
+      blacklistExpiryDate: '2026-12-31',
+      blacklistReason: 'integrity',
+      blacklistNote: '合成加黑说明',
+    });
+  });
+
   it('列表行不带加黑三项（只在详情披露）', async () => {
     const x = await setup('f393-list');
     const api = x.w.restricted(denyButtons(), undefined, FULL);
