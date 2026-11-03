@@ -68,6 +68,10 @@ export const GRAPH: Graph = {
     'packages/domain/src/hr-analysis/reports.ts#EMPLOYMENT_HISTORY_COLUMNS',
     'packages/domain/src/hr-analysis/reports.ts#MOVEMENT_DETAIL_COLUMNS',
   ],
+  'apps/api/src/modules/hr-analysis/report-routes.ts#OBJECT_OF': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
   'apps/api/src/modules/hr-analysis/report-routes.ts#SCHEMAS': [
     '#ROSTER_BASES',
     '#isoDate',
@@ -76,6 +80,13 @@ export const GRAPH: Graph = {
     '#rosterSchema',
     '#text',
     'packages/domain/src/hr-analysis/reports.ts#MOVEMENT_CATEGORIES',
+  ],
+  'apps/api/src/modules/hr-analysis/report-routes.ts#availability': [
+    '#LABEL_OF',
+    '#OBJECT_OF',
+    '#REQUIRED_LABEL',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/hr-analysis/report-routes.ts#cellText': [
     'packages/domain/src/hr-analysis/reports.ts#reportCellLabel',
@@ -93,6 +104,11 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/hr-analysis/report-routes.ts#requireReportObjects': ['#REQUIRED_LABEL'],
   'apps/api/src/modules/hr-analysis/report-routes.ts#rosterSchema': ['#isoDate', '#paging', '#person', '#text'],
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports': [
+    '#BASE',
+    '#availability',
+    'packages/domain/src/hr-analysis/reports.ts#PERSONNEL_REPORTS',
+  ],
   'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code': [
     '#BASE',
     '#DEDICATED_COLUMNS',

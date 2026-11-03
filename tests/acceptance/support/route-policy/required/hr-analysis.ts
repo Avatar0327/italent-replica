@@ -21,7 +21,7 @@ const impl = (anchor: string): Evidence => ({ role: 'impl', unit: `${ACCESS}#ros
 const REPORTS = `${M}/hr-analysis/report-routes.ts`;
 const call = (route: string, anchor: string): Evidence => ({
   role: 'call',
-  unit: `${route.startsWith(REPORT_PREFIX) ? REPORTS : `${M}/hr-analysis/roster-routes.ts`}#route:${route}`,
+  unit: `${route.startsWith(REPORT_CATALOG) ? REPORTS : `${M}/hr-analysis/roster-routes.ts`}#route:${route}`,
   anchor,
 });
 const ROSTER_CONST: Evidence = {
@@ -40,7 +40,8 @@ const ACCESS_IMPL: Evidence = {
   anchor: 'await authorize(deps.authorize, ctx, operation, payload, button)',
 };
 
-const REPORT_PREFIX = 'GET /api/tenant/hr-analysis/reports/';
+const REPORT_CATALOG = 'GET /api/tenant/hr-analysis/reports';
+const REPORT_PREFIX = `${REPORT_CATALOG}/`;
 const GET = 'GET /api/tenant/hr-analysis/roster';
 const EXPORT = 'GET /api/tenant/hr-analysis/roster/export';
 const REPORT = `${REPORT_PREFIX}:code`;
@@ -115,7 +116,46 @@ const columns = (route: string, branch: keyof typeof BRANCHES): Obligation => {
   };
 };
 
+/**
+ * 具名守卫 hrAnalysis.reportObjects（F-465a 第 2 轮 P2-2）：1.06 须合同对象、1.07 / 1.1.01 / 1.1.02 须任职记录对象的查看权，
+ * 缺失 403。按路径参数 :code 取值，表结构表达不了“某些值才要”，故登记为：守卫调用点 + 拒绝实现（throw FORBIDDEN）
+ * + 两个 when 条件准入对象；与披露分支（只裁列）分属不同用途，删守卫或把拒绝改成只裁列都会让证据 / 比对失败。
+ */
+const GUARD = 'hrAnalysis.reportObjects';
+const objectGuard = (route: string): Obligation => ({
+  perm: `guard:${GUARD}`,
+  facts: [`guard:${GUARD}`],
+  note: '条件守卫：按报表编码核对合同 / 任职记录对象查看权，缺失 403（不是裁列）',
+  at: [
+    call(route, 'requireReportObjects(rights, report);'),
+    {
+      role: 'impl',
+      unit: `${REPORTS}#requireReportObjects`,
+      anchor: "if (!rights.viewable[source]) throw new AppError('FORBIDDEN',",
+    },
+  ],
+});
+const required = (route: string, object: string, key: 'record' | 'contract', constant: string): Obligation => ({
+  perm: `obj:${object}:view`,
+  purpose: `when:${GUARD}`,
+  facts: ['object:object.* 动作'],
+  at: [
+    call(route, 'requireReportObjects(rights, report);'),
+    {
+      role: 'impl',
+      unit: `${ACCESS}#rosterAccess`,
+      anchor: `${key}: await deps.authorize({ ...ctx, action: 'object.view', resource: ${constant} })`,
+    },
+    {
+      role: 'const',
+      unit: `${ACCESS}#${constant}`,
+      anchor: `MODULE_OBJECTS.${key === 'record' ? 'employmentRecord' : 'contract'}.code`,
+    },
+  ],
+});
+
 function entry(route: string, exporting: boolean): Obligation[] {
+  const reports = route.startsWith(REPORT_PREFIX);
   return withNeeds(
     [
       person(route),
@@ -123,6 +163,13 @@ function entry(route: string, exporting: boolean): Obligation[] {
       ...(exporting ? [exportButton(route)] : []),
       columns(route, 'recordColumns'),
       columns(route, 'contractColumns'),
+      ...(reports
+        ? [
+            objectGuard(route),
+            required(route, RECORD, 'record', 'RECORD_OBJECT'),
+            required(route, CONTRACT, 'contract', 'CONTRACT_OBJECT'),
+          ]
+        : []),
     ],
     {
       [`obj:${PERSON}:view`]: bound(list('personnel.personScope'), [SCOPE]),
@@ -133,11 +180,40 @@ function entry(route: string, exporting: boolean): Obligation[] {
   );
 }
 
+/**
+ * 目录可用性：availability() 逐对象问查看权并标注，不拒绝请求（披露，不是准入）；每个对象一个同名 optional 分支。
+ * 与各入口共用 domain 的 requires 元数据，对象集合变化时探测器的轨迹与此表一并失败。
+ */
+const CATALOG = 'GET /api/tenant/hr-analysis/reports';
+const AVAILABILITY: readonly (readonly [string, string])[] = [
+  ['availPerson', PERSON],
+  ['availRoster', ROSTER],
+  ['availRecord', RECORD],
+  ['availContract', CONTRACT],
+  ['availMovement', 'TenantBase.HrMovementReport'],
+  ['availStructure', 'TenantBase.HrStructureReport'],
+];
+const availability = ([branch, object]: readonly [string, string]): Obligation => ({
+  perm: `obj:${object}:view`,
+  purpose: `disclosure:${branch}`,
+  need: NONE,
+  facts: ['object:object.* 动作'],
+  note: '目录只把该对象的查看权结果标进可用性，不拒绝请求、不含业务数据',
+  at: [
+    call(CATALOG, 'items.push({ code, name, group, endpoint, ...(await availability(c, deps, report)) });'),
+    {
+      role: 'impl',
+      unit: `${REPORTS}#availability`,
+      anchor: "if (!(await deps.authorize({ ...tenant, action: 'object.view', resource: need.resource })))",
+    },
+  ],
+});
+
 export const HR_ANALYSIS: RequiredTable = {
   'GET /api/tenant/hr-analysis/roster': entry(GET, false),
   'GET /api/tenant/hr-analysis/roster/export': entry(EXPORT, true),
-  // F-465a：目录只返回元数据与按各对象查看权算出的可用性，无准入节点
-  'GET /api/tenant/hr-analysis/reports': [],
+  // F-465a：目录只返回元数据与按各对象查看权算出的可用性（披露，非准入）
+  [CATALOG]: AVAILABILITY.map(availability),
   [REPORT]: entry(REPORT, false),
   [REPORT_EXPORT]: entry(REPORT_EXPORT, true),
 };

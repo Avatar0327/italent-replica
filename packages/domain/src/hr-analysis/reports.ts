@@ -3,7 +3,7 @@
  * 12 张预置报表：员工名册分析 8 张（本文件定义其中 1.06 / 1.07 / 1.1.02 的专用列，其余沿用花名册列）、
  * 人事报表 3 张与员工花名册（沿用既有接口，目录只引用）。每列声明受哪个对象的哪个字段权约束，列表与导出共用。
  */
-import type { RosterColumn } from './roster.js';
+import type { RosterColumn, RosterSource } from './roster.js';
 
 export type ReportGroup = '员工名册分析' | '人事报表' | '员工花名册';
 /** 目录条目依赖的“人事分析”权限对象（MODULE_OBJECTS 的键）。 */
@@ -15,8 +15,12 @@ export interface PersonnelReport {
   readonly group: ReportGroup;
   readonly endpoint: string;
   readonly permission: ReportPermission;
-  /** 除花名册查看权与员工档案范围外，另须查看权的对象（缺失 → 403；比花名册“缺列”更保守）。 */
-  readonly requires: readonly ('record' | 'contract')[];
+  /**
+   * 除“人事分析”报表对象外，入口准入链另须查看权的数据对象（缺失 → 403）；目录可用性与各入口共用这一份：
+   * 名册类（8 张新报表与 roster）先查员工档案（person，rosterAccess 的第一道准入），1.06 / 1.07 / 1.1.01 / 1.1.02
+   * 另须合同 / 任职记录（比花名册“缺列”更保守）；入离职 / 员工结构报表只按各自报表对象准入。
+   */
+  readonly requires: readonly RosterSource[];
 }
 
 const BASE = '/api/tenant/hr-analysis/reports';
@@ -26,7 +30,7 @@ const analysis = (code: string, name: string, requires: PersonnelReport['require
   group: '员工名册分析',
   endpoint: `${BASE}/${code}`,
   permission: 'hrRoster',
-  requires,
+  requires: ['person', ...requires],
 });
 
 /** 目录顺序 = 页面展示顺序。 */
@@ -44,7 +48,7 @@ export const PERSONNEL_REPORTS: readonly PersonnelReport[] = [
     name: '员工花名册',
     group: '员工花名册',
     permission: 'hrRoster',
-    requires: [],
+    requires: ['person'],
     endpoint: '/api/tenant/hr-analysis/roster',
   },
   {

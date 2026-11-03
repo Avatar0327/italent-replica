@@ -674,8 +674,11 @@ export const DIGESTS: Digests = {
     requireOwnerOrg: 'e9b77971c7e3',
   },
   'apps/api/src/modules/hr-analysis/report-routes.ts': {
-    'route:GET /api/tenant/hr-analysis/reports/:code': 'b165b4dfbd2d',
-    'route:GET /api/tenant/hr-analysis/reports/:code/export': '71dc427276d8',
+    availability: '2938f47d9001',
+    requireReportObjects: '8546092ff1f1',
+    'route:GET /api/tenant/hr-analysis/reports': 'fd52c67d130b',
+    'route:GET /api/tenant/hr-analysis/reports/:code': '21ab2ea237d9',
+    'route:GET /api/tenant/hr-analysis/reports/:code/export': '59d5a0a2a304',
   },
   'apps/api/src/modules/hr-analysis/roster-access.ts': {
     CONTRACT_OBJECT: '76ce5952c0a8',
@@ -2314,6 +2317,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#availability': '084687eb2a6d',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#requireReportObjects': '5fb30443d332',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports': '66f34bc05808',
   'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code': '6e4a3044efb0',
   'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code/export':
     '49a51e6aa8bb',

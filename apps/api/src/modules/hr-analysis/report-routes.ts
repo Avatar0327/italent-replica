@@ -13,6 +13,7 @@ import {
   MODULE_OBJECTS,
   MOVEMENT_CATEGORIES,
   MOVEMENT_DETAIL_COLUMNS,
+  PERSONNEL_OBJECT,
   PERSONNEL_REPORTS,
   ROSTER_EXPORT_MAX_ROWS,
   reportCellLabel,
@@ -20,6 +21,7 @@ import {
   tenantLocalDate,
   type PersonnelReport,
   type RosterColumn,
+  type RosterSource,
 } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -48,7 +50,8 @@ const text = z.string().min(1).max(200);
 const paging = { page: z.unknown().optional(), pageSize: z.unknown().optional() };
 const person = { name: text.optional() };
 
-const OBJECT_OF: Readonly<Record<'record' | 'contract', string>> = {
+const OBJECT_OF: Readonly<Record<RosterSource, string>> = {
+  person: PERSONNEL_OBJECT,
   record: MODULE_OBJECTS.employmentRecord.code,
   contract: MODULE_OBJECTS.contract.code,
 };
@@ -57,7 +60,7 @@ const LABEL_OF = {
   hrMovementReport: '入离职报表',
   hrStructureReport: '员工结构报表',
 } as const;
-const REQUIRED_LABEL = { record: '任职记录', contract: '合同' } as const;
+const REQUIRED_LABEL = { person: '员工档案', record: '任职记录', contract: '合同' } as const;
 
 /** 名册类报表的人员口径（asOf 当天的主职任职状态 + 雇佣关系）。1.1.01 含退休 / 离职。 */
 const ROSTER_BASES: Readonly<Record<string, RosterBase>> = {
@@ -121,7 +124,10 @@ const DEDICATED_COLUMNS: Readonly<Record<string, readonly RosterColumn[]>> = {
   '1.1.02': EMPLOYMENT_HISTORY_COLUMNS,
 };
 
-/** 本报表必需的任职 / 合同对象查看权（花名册只让列缺席，报表缺失直接 403，比花名册更严）。 */
+/**
+ * 具名守卫 hrAnalysis.reportObjects（F-039 required 表登记其调用与拒绝语义）：本报表 requires 里的任职 / 合同对象
+ * 缺查看权直接 403，比花名册“只让列缺席”更严；person 已由 rosterAccess 先行拒绝（viewable.person 恒为真）。
+ */
 function requireReportObjects(rights: RosterAccess, report: PersonnelReport) {
   for (const source of report.requires)
     if (!rights.viewable[source]) throw new AppError('FORBIDDEN', `缺少${REQUIRED_LABEL[source]}对象的查看权限`);

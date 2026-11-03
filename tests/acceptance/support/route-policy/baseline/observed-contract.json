@@ -6870,6 +6870,9 @@
       },
       "module": "hr-analysis",
       "primitives": {
+        "guard": [
+          "hrAnalysis.reportObjects"
+        ],
         "object": [
           "object.* 动作"
         ],
@@ -6899,6 +6902,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "guard": [
+          "hrAnalysis.reportObjects"
         ],
         "object": [
           "object.* 动作"
