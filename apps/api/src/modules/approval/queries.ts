@@ -1,5 +1,6 @@
 /** “我的”列表：待办、通知、我发起 / 参与的实例，按接收人过滤；管理员留痕日志按数据范围过滤。均为有界分页。 */
 import { sql, type Tx } from '@italent/db';
+import { renderExitNotice } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { rowsOf } from './context.js';
 import { visibleRecordInstances } from './disclosure.js';
@@ -41,22 +42,34 @@ export async function listTodos(tx: Tx, tenantId: string, userId: string, page: 
 }
 
 export async function listNotifications(tx: Tx, tenantId: string, userId: string, page: Page) {
+  // 业务引用：挂业务单的消息用自己的，挂审批实例的取实例所属业务单，收件人据此回到业务单（F-420，F-400 R2 P3-5）
   const rows = rowsOf(
-    await tx.execute(sql`SELECT * FROM approval_notifications
-      WHERE tenant_id=${tenantId} AND recipient_user_id=${userId}::uuid
-      ORDER BY created_at DESC,id LIMIT ${page.limit} OFFSET ${page.offset}`),
+    await tx.execute(sql`SELECT n.*,COALESCE(n.business_type,i.business_type) AS ref_type,
+        COALESCE(n.business_id,i.business_id) AS ref_id
+      FROM approval_notifications n
+      LEFT JOIN approval_instances i ON i.tenant_id=n.tenant_id AND i.id=n.instance_id
+      WHERE n.tenant_id=${tenantId} AND n.recipient_user_id=${userId}::uuid
+      ORDER BY n.created_at DESC,n.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
-  return rows.map((row) => ({
-    id: String(row.id),
-    // 没有审批实例的业务消息（F-400）为 null；业务单引用暂不进响应，待消息中心（F-419 / F-420）定契约
-    instanceId: (row.instance_id as string | null) ?? null,
-    taskId: (row.task_id as string | null) ?? null,
-    kind: String(row.kind),
-    channel: String(row.channel),
-    template: (row.template_code as string | null) ?? null,
-    status: String(row.status),
-    createdAt: iso(row.created_at),
-  }));
+  return rows.map((row) => {
+    const template = (row.template_code as string | null) ?? null;
+    // 目录里有的模板码渲染标题 / 正文（DEC-045：界面不显示模板码）；没有的为 null
+    const rendered = renderExitNotice(template, (row.payload as Record<string, unknown> | null) ?? null);
+    return {
+      id: String(row.id),
+      instanceId: (row.instance_id as string | null) ?? null,
+      businessType: (row.ref_type as string | null) ?? null,
+      businessId: (row.ref_id as string | null) ?? null,
+      taskId: (row.task_id as string | null) ?? null,
+      kind: String(row.kind),
+      channel: String(row.channel),
+      template,
+      title: rendered?.title ?? null,
+      body: rendered?.body ?? null,
+      status: String(row.status),
+      createdAt: iso(row.created_at),
+    };
+  });
 }
 
 export async function listInstances(
