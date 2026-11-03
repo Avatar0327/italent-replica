@@ -96,16 +96,3 @@ export function presetRows(kind: Kind): EntryRow[] {
     revision: 1,
   }));
 }
-
-/**
- * F-358：离职退休设置入口挂企业设置应用，入口对象 = 任职设置对象；演示快照的 settings 应用没有入口对象，
- * 这里补上，与真实快照（管理员 other_settings 可见任职设置对象）同形。三个离职设置冒烟共用，入口判定只此一处。
- */
-export function withExitSettingsEntry<T extends { apps: { app: string; entryObjects: string[] }[] }>(snapshot: T): T {
-  return {
-    ...snapshot,
-    apps: snapshot.apps.map((app) =>
-      app.app === 'settings' ? { ...app, entryObjects: [...app.entryObjects, settingsPermission.objectCode] } : app,
-    ),
-  };
-}

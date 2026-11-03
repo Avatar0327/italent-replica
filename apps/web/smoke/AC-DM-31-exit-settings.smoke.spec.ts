@@ -1,16 +1,9 @@
 import { actionButton } from './action-button.js';
 // R2-T03 FE2b：离职类型 / 离职原因 / 离职去向三个字典设置页（接口全部为合成桩，形态按 exit-dictionaries.ts）。
-import { test, expect, snapshotFixture, user } from './fixtures.js';
+import { test, expect, user } from './fixtures.js';
 import type { Locator, Page } from '@playwright/test';
 import { capture, item, named, save, type Write } from './contracts-fixtures.js';
-import {
-  presetRows,
-  rowId,
-  settingsPermission,
-  withExitSettingsEntry,
-  type EntryRow,
-  type Kind,
-} from './exit-fixtures.js';
+import { presetRows, rowId, settingsPermission, type EntryRow, type Kind } from './exit-fixtures.js';
 
 const base = '/api/tenant/employment/exits/dictionaries';
 const labels: [Kind, string][] = [
@@ -29,9 +22,6 @@ async function setupExit(page: Page, { admin = true } = {}) {
     whereabouts: presetRows('whereabouts'),
   };
   const server = { rows, writes: [] as Write[], override: undefined as Override | undefined };
-  await page.route('**/permission/me/snapshot', (route) =>
-    route.fulfill({ json: withExitSettingsEntry(structuredClone(snapshotFixture)) }),
-  );
   await page.route('**/permission/me/objects/*', (route) => {
     const code = decodeURIComponent(route.request().url().split('/').at(-1)!);
     if (code !== settingsPermission.objectCode) return route.fallback();

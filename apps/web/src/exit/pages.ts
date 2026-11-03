@@ -2,17 +2,17 @@ import { lazyPage, type ModulePages } from '../foundation/page-registry.js';
 import { m, x } from './messages.js';
 
 // 原站在组织员工设置 > 离职退休（与“调动管理 > 调动类型”同层）；本系统没有组织员工设置菜单，
-// 按 DEC-577 最保守做法挂在企业设置应用下、与人员类别同层的独立入口（F-358）。入口对象 = 配置接口授权的任职设置对象
-// （读 / 写都按企业管理员 other_settings 判定），不再额外要求任职记录查看权：没有任职权限的租户管理员也能进入并读取配置。
+// 按 DEC-577 最保守做法挂在任职应用下、与入职管理 / Offer管理同层的独立入口；读取按任职记录查看权，入口对象同。
+// F-358 / DEC-780：入口不挪、不改成任职设置对象；三个配置读取接口同样要求任职记录查看权，与入口同口径。
 export const pages: ModulePages = {
   entries: [
     {
       id: 'exit-settings',
-      app: 'settings',
+      app: 'transfer',
       label: m.settingsTitle,
-      group: 'settings',
-      // 与 model.ts EXIT_SETTINGS_OBJECT 相同；Playwright 在 Node 侧加载本文件，不能经 model.ts 引入未构建的 domain。
-      objectCode: 'TenantBase.EmploymentSettings',
+      group: 'people',
+      // 与 model.ts EXIT_RECORD_OBJECT 相同；Playwright 在 Node 侧加载本文件，不能经 model.ts 引入未构建的 domain。
+      objectCode: 'TenantBase.EmploymentRecord',
       page: lazyPage('ExitSettingsPage', () => import('./ExitSettingsPage.js')),
     },
     {

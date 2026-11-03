@@ -4,7 +4,7 @@
  *   - 写能力只看任职设置对象的数据操作与可编辑字段（DEC-502① c）：只有任职记录查看权的成员页面只读；
  *   - 回执按实际提交的版本核对（DEC-502① a）：新增 0 → 1，修改 n → n + 1；
  *   - 调序只改本条显示顺序，取严格落在相邻两条之间的值，不依赖编码排序；没有空位时不猜；
- *   - 菜单：企业设置应用下的独立入口（F-358），入口对象 = 任职设置对象，与配置接口同口径。
+ *   - 菜单：任职应用（调动管理）下的独立入口，与入职 / Offer 同层，只在入口对象含任职记录时显示。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
 import { EXIT_DICTIONARY_KINDS, MODULE_OBJECTS } from '@italent/domain';
@@ -146,20 +146,20 @@ describe('AC-DM-31 FE2b 调序（只改本条显示顺序）', () => {
 });
 
 describe('AC-DM-31 FE2b 菜单登记', () => {
-  it('离职退休设置挂企业设置应用（F-358），入口对象 = 任职设置对象，与配置接口同口径，不再要求任职记录查看权', () => {
+  it('离职退休设置在任职应用下独立登记（与入职 / Offer 同层），只在入口对象含任职记录时显示', () => {
     const entry = PAGES.entries.find((item) => item.id === 'exit-settings');
     expect(entry).toMatchObject({
-      app: 'settings',
+      app: 'transfer',
       module: 'exit',
       label: '离职退休设置',
-      objectCode: EXIT_SETTINGS_OBJECT,
+      objectCode: 'TenantBase.EmploymentRecord',
       path: '/exit-settings',
     });
     const snapshot = (entryObjects: string[]) =>
-      ({ apps: [{ app: 'settings', visible: true, entryObjects }], adminMenus: [] }) as unknown as ServerSnapshot;
+      ({ apps: [{ app: 'transfer', visible: true, entryObjects }], adminMenus: [] }) as unknown as ServerSnapshot;
     expect(menuNodes(PAGES.menus, snapshot([])).some((item) => item.key === 'exit-settings')).toBe(false);
-    expect(menuNodes(PAGES.menus, snapshot([EXIT_SETTINGS_OBJECT])).some((item) => item.key === 'exit-settings')).toBe(
-      true,
-    );
+    expect(
+      menuNodes(PAGES.menus, snapshot(['TenantBase.EmploymentRecord'])).some((item) => item.key === 'exit-settings'),
+    ).toBe(true);
   });
 });
