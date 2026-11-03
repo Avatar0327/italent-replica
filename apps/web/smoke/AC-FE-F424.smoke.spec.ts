@@ -32,16 +32,15 @@ async function open(page: Page, baseURL: string, withoutDate: boolean) {
       }),
     );
   }
+  await page.reload();
+  const row = page.getByRole('row').filter({ hasText: '合成入职甲' });
+  await expect(row).toBeVisible();
+  // 列表页自己的部门名称按行日期取，不算弹窗：列表就绪后才开始记录
   const asOf: string[] = [];
   page.on('request', (request) => {
     if (request.url().includes('asOf=2026-10-15')) asOf.push(request.url());
   });
-  await page.reload();
-  await page
-    .getByRole('row')
-    .filter({ hasText: '合成入职甲' })
-    .getByRole('button', { name: /更多|▾/ })
-    .click();
+  await row.getByRole('button', { name: /更多|▾/ }).click();
   await page.getByRole('menuitem', { name: '入职', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: /^入职(?:\s|$)/ });
   await expect(dialog).toBeVisible();
