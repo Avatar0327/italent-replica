@@ -5,6 +5,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { endWorld, type EndWorld } from './AC-INTERN-end-support.js';
 import { installExitSeeds } from './AC-EXIT-support.js';
+import { setExitTermination, UNTICKED_REGULARIZATIONS } from './support/exit-termination.js';
 
 const database = useTestDb();
 const current = async (w: EndWorld, id: string) => (await w.session.request('GET', `/businesses/${id}`)).json();
@@ -78,9 +79,11 @@ describe('AC-F140 第 2 轮 P2-1：结束实习改期沿用原单来源', () => 
     expect(await w.statusOf(applicationId)).toBe('in_review');
   });
 
-  it.each(['direct', 'application'])('普通离职 %s 改期仍被 §8B 拦截且无写入', async (mode) => {
+  it.each(['direct', 'application'])('未勾选实习转正时，普通离职 %s 改期仍被 §8B 拦截且无写入', async (mode) => {
     const { w, employeeId, applicationId } = await fixture(mode);
     await installExitSeeds(w.db, w.tenantId);
+    // DEC-725 ②：未勾选实习转正时才拦
+    await setExitTermination(w.db, w.tenantId, w.session.user.id, UNTICKED_REGULARIZATIONS);
     const created = await w.session.request('POST', `/exits/employees/${employeeId}`, {
       ifMatch: await w.revision(employeeId),
       body: { mode, lastWorkDate: '2026-10-10', fields: {}, exit: { exitTypeCode: 'voluntary' } },

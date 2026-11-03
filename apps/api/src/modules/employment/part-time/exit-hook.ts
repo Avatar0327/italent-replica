@@ -6,6 +6,8 @@
  * 撤销（删除）离职不自动恢复，HR 用编辑兼职改结束日恢复（A-4）。同一事务里还作废该员工全部未办结（草稿 / 审批中 / 驳回）的
  * 兼职申请（reason = exit）：实例走 approval/actions cancel 关闭待办，站内消息走 notifyMessage，没有实例的草稿只留 outbox
  * （R2f2 B63，PT-4a；做法同 employment/exit-void-applications.ts）。订阅方只在存储错误时抛。
+ * DEC-725：离职按“离职生效时终止在途流程”配置作废——新增 / 延长 / 结束兼职勾选的全部作废，未勾选的只作废日期晚于 L′ 的
+ * （新增取开始日，延长 / 结束取结束日，空视为晚于）；退休暂不接配置（F-351），全部作废。
  * 锁序（§4.6）：员工行（调用方已持有）→ 兼职记录头按 ID 升序 → 申请头按 ID 升序 → 审批实例按 ID 升序。
  */
 import {
@@ -14,9 +16,11 @@ import {
   PART_TIME_TERMINATION_KINDS,
   partTimeCutoffEnd,
   partTimeExitEndDate,
+  partTimeRequestFlow,
 } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { auditEmployment } from '../context.js';
+import { exitTerminationOf, terminates } from '../exit-termination-policy.js';
 import { rowsOf } from '../record-store.js';
 import type { EmployeeStatusHookContext, EmployeeStatusHooks, EmploymentRecordEvent } from '../status-hooks.js';
 import type { EmploymentContext } from '../types.js';
@@ -53,7 +57,12 @@ async function endPartTimesByExit(tx: Tx, hook: EmployeeStatusHookContext, event
 
 async function voidRequestsByExit(tx: Tx, hook: EmployeeStatusHookContext, event: EmploymentRecordEvent) {
   const ctx: EmploymentContext = { ...hook, expectedRevision: 0 };
-  const requests = await lockOpenRequests(tx, ctx, event.employeeId);
+  const policy = await exitTerminationOf(tx, ctx.tenantId, event.kind);
+  const lastDay = partTimeExitEndDate(event.effectiveDate);
+  const requests = (await lockOpenRequests(tx, ctx, event.employeeId)).filter((request) => {
+    const date = request.requestType === 'add' ? request.version.startDate : request.version.endDate;
+    return terminates(policy, partTimeRequestFlow(request.requestType), date ?? null, lastDay);
+  });
   await lockOpenInstances(tx, ctx, requests);
   for (const request of requests)
     await voidPartTimeRequest(tx, ctx, request, {

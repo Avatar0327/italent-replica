@@ -1,5 +1,6 @@
 /** 对外事务端口：由调用方统一命令台账、权限、业务事务，合同侧仍写审计与 outbox。 */
 import { pgErrorCode, and, eq, contractRecords, contractRequests, type Tx } from '@italent/db';
+import { contractOperationFlow, terminatedByExit, type ExitTerminationSetting } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { settings } from './configuration.js';
 import { schedulerAwareContext } from '../approval/context.js';
@@ -22,13 +23,14 @@ export interface ExitContractOutcome {
 }
 
 /**
- * 离职生效时（编排器步骤 4，L′ 为最终最后工作日）：撤回全部在途合同申请（不分生效日，DEC-496①；“离职后可签类型”豁免），
- * 起始日晚于 L′ 的合同软删除，有效且终止日为空或晚于 L′ 的合同原地终止。
+ * 离职生效时（编排器步骤 4，L′ 为最终最后工作日）：按“离职生效时终止在途流程”配置撤回在途合同申请（DEC-725，取代 DEC-496①；
+ * “离职后可签类型”豁免），起始日晚于 L′ 的合同软删除，有效且终止日为空或晚于 L′ 的合同原地终止。
+ * termination 为离职适用的勾选；不传（退休，F-351 前）= 原口径，全部撤回。
  */
 export async function handleContractsOnExit(
   tx: Tx,
   ctx: ContractContext,
-  input: { employeeId: string; lastWorkDate: string },
+  input: { employeeId: string; lastWorkDate: string; termination?: ExitTerminationSetting | null },
 ): Promise<ExitContractOutcome> {
   await lockEmployee(tx, ctx, input.employeeId);
   await checkScope(tx, ctx, input.employeeId);
@@ -88,10 +90,23 @@ export function assertNoInFlightForTransfer(tx: Tx, ctx: ContractContext, employ
   return assertNoInFlight(tx, ctx, employeeId, typeId, 'change');
 }
 
+type ContractRequestRow = typeof contractRequests.$inferSelect;
+
+/** DEC-725：勾选的合同流程一律撤回；未勾选的只撤回“终止日期”晚于 L 的（终止申请取实际终止日，其余取合同终止日，空 = 无固定期限）。 */
+function withdrawnByExit(
+  request: ContractRequestRow,
+  input: { lastWorkDate: string; termination?: ExitTerminationSetting | null },
+) {
+  const flow = contractOperationFlow(request.operation);
+  if (!input.termination || !flow) return true;
+  const date = request.operation === 'terminate' ? request.actualTerminationDate : request.endDate;
+  return terminatedByExit(input.termination, flow, date, input.lastWorkDate);
+}
+
 async function cancelExitRequests(
   tx: Tx,
   ctx: ContractContext,
-  input: { employeeId: string },
+  input: { employeeId: string; lastWorkDate: string; termination?: ExitTerminationSetting | null },
   allowedTypes: string[],
 ): Promise<ExitContractOutcome['withdrawnRequests'][number][]> {
   const requests = await tx
@@ -106,6 +121,7 @@ async function cancelExitRequests(
   for (const request of requests) {
     if (allowedTypes.includes(request.typeId) || !['approved', 'in_review', 'returned'].includes(request.status))
       continue;
+    if (!withdrawnByExit(request, input)) continue;
     // 只取消活动实例；通知挂在最近相关的实例上（审批已通过的申请没有活动实例，发起人仍应收到消息）
     const active = await activeInstanceOf(tx, ctx.tenantId, 'contract', request.id);
     if (active) await cancel(tx, approvalCtx, active.id);

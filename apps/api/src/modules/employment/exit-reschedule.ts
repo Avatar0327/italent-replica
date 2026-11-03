@@ -235,7 +235,8 @@ async function prepareReschedule(
     });
   // DEC-593：来源跟随原单；结束实习改期仍须复用在途转正确认，不能只豁免 §8B。
   const source = exitSourceOf(business.payload.mode, business.payload.changeType);
-  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, change.lastWorkDate!, source);
+  const kind = business.payload.kind;
+  await assertNoRegularizationInFlight(tx, ctx, business.employeeId, change.lastWorkDate!, source, kind);
   if (source === 'free_direct')
     await confirmInFlightRegularizations(tx, ctx, business.employeeId, {
       endDate: change.lastWorkDate!,
@@ -248,6 +249,7 @@ async function prepareReschedule(
     change.lastWorkDate!,
     options.pendingTransferAck,
     null,
+    kind,
   );
   return { queue, ack, today };
 }

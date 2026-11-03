@@ -22,16 +22,24 @@ interface Notice {
  * 不伪造接收人）；停用尚在进行（未提交、可能回滚）时照常登记（pending），发送意图不因临时的停用而丢失，
  * 外发时再按当时的状态处理。登记引用其成员行的外键不会等待：撤销只在接管完成后的最后一步才锁成员行。
  */
-async function insertNotice(
-  tx: Tx,
-  ctx: ApprovalContext,
-  instance: Pick<InstanceRow, 'id'>,
-  notice: Notice,
-): Promise<void> {
+/** 没有审批实例时消息挂在业务单上（F-400：直接办理的业务被离职作废），不伪造审批实例。 */
+export interface BusinessTarget {
+  readonly businessType: string;
+  readonly businessId: string;
+}
+
+type NoticeTarget = Pick<InstanceRow, 'id'> | BusinessTarget;
+
+async function insertNotice(tx: Tx, ctx: ApprovalContext, target: NoticeTarget, notice: Notice): Promise<void> {
   if (!(await isActiveAccount(tx, ctx.tenantId, notice.recipientUserId))) return;
+  // 挂实例的登记与 F-400 之前逐列相同（升级前夹具在旧结构上用当前代码发起审批，不能依赖 0181 新列）；只有挂业务单才写新列
+  const [columns, owner] =
+    'id' in target
+      ? [sql`instance_id`, sql`${target.id}::uuid`]
+      : [sql`business_type,business_id`, sql`${target.businessType},${target.businessId}::uuid`];
   await tx.execute(sql`INSERT INTO approval_notifications
-    (id,tenant_id,instance_id,task_id,recipient_user_id,kind,channel,template_code,command_id,created_at)
-    VALUES (${randomUUID()},${ctx.tenantId},${instance.id}::uuid,${notice.taskId},${notice.recipientUserId}::uuid,
+    (id,tenant_id,${columns},task_id,recipient_user_id,kind,channel,template_code,command_id,created_at)
+    VALUES (${randomUUID()},${ctx.tenantId},${owner},${notice.taskId},${notice.recipientUserId}::uuid,
       ${notice.kind},${notice.channel},${notice.templateCode},${ctx.commandId},${ctx.now.toISOString()})`);
 }
 
@@ -47,15 +55,15 @@ export async function notifyTodo(tx: Tx, ctx: ApprovalContext, instance: Instanc
 
 /**
  * 业务侧的站内消息（R2-T03 §5.5：申请被离职作废时通知发起人，模板 application_voided_by_exit 等）。
- * 不挂任务；接收人无账号 / 已停用时不发，与节点消息同一口径。
+ * 挂审批实例，或没有审批实例时挂业务单（BusinessTarget）；不挂任务；接收人无账号 / 已停用时不发，与节点消息同一口径。
  */
 export async function notifyMessage(
   tx: Tx,
   ctx: ApprovalContext,
-  instance: Pick<InstanceRow, 'id'>,
+  target: NoticeTarget,
   message: { readonly recipientUserId: string; readonly templateCode: string },
 ) {
-  await insertNotice(tx, ctx, instance, {
+  await insertNotice(tx, ctx, target, {
     recipientUserId: message.recipientUserId,
     kind: 'message',
     channel: 'inbox',

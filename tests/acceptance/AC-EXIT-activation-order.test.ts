@@ -176,8 +176,8 @@ describe('AC-DM-26 B-87 计划日取首次顺延前的日期，同日已落地�
   });
 });
 
-describe('AC-DM-14 B-10 / DEC-263② 已落地未来直接调动 T：离职照常生效，T 的时间轴行摘下', () => {
-  it('摘下 T（记录保留）、员工自 E′ 起离职；台账与审计；T 到期复查 failed，HR 可删除 T', async () => {
+describe('AC-DM-14 B-10 / DEC-725③（取代 DEC-263②）已落地未来直接调动 T：离职照常生效，T 摘下并作废', () => {
+  it('摘下 T 并作废（记录保留、墓碑）、员工自 E′ 起离职；台账与审计；T 到期不再复查、不记失败', async () => {
     const x = await world('b10');
     const employee = await x.session.getEmployee(x.employee.id);
     const transfer = await x.session.business(
@@ -192,21 +192,19 @@ describe('AC-DM-14 B-10 / DEC-263② 已落地未来直接调动 T：离职照�
       ['leave', '[2026-10-21,)'],
     ]);
     expect(await x.sqlRows(sql`SELECT 1 FROM employment_records WHERE id=${transfer.id}::uuid`)).toHaveLength(1);
-    const detached = (await x.effects(leave.id)).find((row) => row.kind === 'future_transfer_detached');
+    const effects = await x.effects(leave.id);
+    const detached = effects.find((row) => row.kind === 'future_transfer_detached');
     expect(detached).toMatchObject({ phase: 'effective', target_id: transfer.id });
     expect(detached!.detail).toMatchObject({ window: { from: '2026-10-25', to: null } });
+    expect(effects.filter((row) => row.kind === 'application_voided')).toMatchObject([
+      { phase: 'effective', target_id: transfer.id, detail: { kind: 'transfer', effectiveDate: '2026-10-25' } },
+    ]);
     expect((await x.audits(leave.id, 'employment.exit.future_transfer_warning')).length).toBe(1);
-    // 到期复查：不执行联动，记失败交 HR（DEC-052）
-    expect(await x.runScheduler('2026-10-25T01:00:00Z')).toMatchObject({ failed: [transfer.id] });
-    expect((await x.attempts(transfer.id)).at(-1)).toMatchObject({
-      outcome: 'failed',
-      reason: 'EMPLOYEE_DEPARTED_BEFORE_TRANSFER',
-    });
-    x.setNow('2026-10-26T01:00:00Z');
-    const current = await x.business(transfer.id);
-    expect(
-      (await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision })).status,
-    ).toBe(200);
+    expect((await x.audits(transfer.id, 'employment.transfer.voided_by_exit')).length).toBe(1);
+    expect(await x.stateOfBusiness(transfer.id)).toBe('voided');
+    // 已作废：到期调度不再复查，不产生失败尝试（DEC-725③）
+    expect(await x.runScheduler('2026-10-25T01:00:00Z')).toMatchObject({ failed: [] });
+    expect(await x.attempts(transfer.id)).not.toContainEqual(expect.objectContaining({ outcome: 'failed' }));
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave']);
   });
 });

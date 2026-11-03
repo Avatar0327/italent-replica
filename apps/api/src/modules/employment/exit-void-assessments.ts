@@ -8,14 +8,17 @@
  * 终态对齐原站（F-248，DEC-633）：考核状态值仍是 cancelled（不迁移、不回写存量），是否“已终止”由 voided_by_exit 审计派生
  * （assessment-store.ts terminatedByExit）；审批实例走系统撤销：日志操作人“系统”、动作“撤销”、理由见 EXIT_VOID_REASON。
  * 生效后撤销离职不恢复考核（DEC-617“终止作废”）。
+ * DEC-725：离职只作废“离职生效时终止在途流程”里勾选的考核类型（试用中考核 / 转正考核），未勾选的保留；退休暂不接配置（F-351）。
  */
 import type { Tx } from '@italent/db';
+import { assessmentTypeFlow } from '@italent/domain';
 import { revokeBySystem } from '../approval/actions.js';
 import { schedulerAwareContext } from '../approval/context.js';
 import { activeInstanceOf } from '../approval/store.js';
 import { inFlightAssessments } from './assessment-in-flight.js';
 import { loadAssessment, saveAssessment } from './assessment-store.js';
 import { exitPostEffectHooks, type ExitEffectiveEvent } from './exit-confirmation.js';
+import { exitTerminationOf, terminates } from './exit-termination-policy.js';
 import type { EmploymentContext } from './types.js';
 
 /** 原站日志理由原文（F234A）。 */
@@ -31,11 +34,13 @@ export interface VoidedAssessment {
 export async function voidInFlightAssessments(
   tx: Tx,
   ctx: EmploymentContext,
-  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'effectiveDate'>,
+  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'effectiveDate' | 'kind'>,
 ): Promise<VoidedAssessment[]> {
   const approvalCtx = schedulerAwareContext(ctx);
+  const policy = await exitTerminationOf(tx, ctx.tenantId, event.kind);
   const voided: VoidedAssessment[] = [];
   for (const candidate of await inFlightAssessments(tx, ctx.tenantId, event.employeeId, true)) {
+    if (!terminates(policy, assessmentTypeFlow(candidate.assessmentType), null, event.lastWorkDate)) continue;
     const row = await loadAssessment(tx, ctx.tenantId, candidate.id, true);
     const active = await activeInstanceOf(tx, ctx.tenantId, 'probation_assessment', row.id);
     await saveAssessment(tx, ctx, row, { status: 'cancelled' }, 'voided_by_exit', {
