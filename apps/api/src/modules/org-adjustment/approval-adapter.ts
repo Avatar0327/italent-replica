@@ -3,7 +3,7 @@
  * - 锁：申请单行 FOR UPDATE（单张 / 批量按 ID 升序），不取组织锁——审批事务不改组织，组织写入只在 11a 执行时发生；
  * - 快照：头（含调整范围）+ 组织分区（snapshot.ts）；
  * - 同意前：整单关口兜底（基线 + 整单校验，与提交 / 审批中编辑同一入口 whole-check，DEC-644 A-8）；不同意 / 驳回不判；
- * - 回写：通过 → 2（执行状态保持 1 未执行，本片不写执行队列）、驳回 → 6、不同意 → 3、审批侧撤回 → 0；
+ * - 回写：通过 → 2 并在同一事务排期入队（BE-11b，§7.1 数据量与 S 不含暂存行）、驳回 → 6、不同意 → 3、审批侧撤回 → 0；
  * - 重提：只接受已驳回单、不带修正，按提交口径重判（submission.ts）；
  * - 审批中编辑：approval-edit.ts（OA-R7）。
  */
@@ -12,8 +12,9 @@ import { ORG_ADJUSTMENT_APPROVAL_STATUS as STATUS } from '@italent/domain';
 import type { BusinessAdapter } from '../approval/adapters.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { assertApprovable, editFromApproval } from './approval-edit.js';
+import { scheduleOrgAdjustmentExecution } from './schedule.js';
 import { orgAdjustmentSnapshot } from './snapshot.js';
-import { resubmitFromApproval, settleFromApproval } from './submission.js';
+import { resubmitFromApproval, settleApproval, settleFromApproval } from './submission.js';
 
 async function lockRows(tx: Tx, ctx: ApprovalContext, ids: readonly string[]) {
   const sorted = [...new Set(ids)].sort();
@@ -32,7 +33,10 @@ export const orgAdjustmentAdapter: BusinessAdapter = {
   beforeApprove: async (tx, ctx, id, _nodeKey, decision) => {
     if (decision === 'approve') await assertApprovable(tx, ctx, id);
   },
-  approved: settleFromApproval(STATUS.approved, 'approved'),
+  approved: async (tx, ctx, id) => {
+    if (await settleApproval(tx, ctx, id, STATUS.approved, 'approved'))
+      await scheduleOrgAdjustmentExecution(tx, ctx, id);
+  },
   rejected: settleFromApproval(STATUS.rejected, 'rejected'),
   disapproved: settleFromApproval(STATUS.notApproved, 'disapproved'),
   withdrawn: settleFromApproval(STATUS.staged, 'withdraw'),

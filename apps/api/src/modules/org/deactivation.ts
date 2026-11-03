@@ -146,10 +146,12 @@ function subtree(snapshot: readonly OrgRecord[], rootId: string): string[] {
     if (parentId) children.set(parentId, [...(children.get(parentId) ?? []), node.id]);
   }
   const found: string[] = [];
+  const seen = new Set<string>(); // 去重改 Set 查找（F-440）；found 仍按遍历顺序输出
   const queue = [...(children.get(rootId) ?? [])];
   while (queue.length) {
     const id = queue.shift()!;
-    if (id === rootId || found.includes(id)) continue;
+    if (id === rootId || seen.has(id)) continue;
+    seen.add(id);
     found.push(id);
     queue.push(...(children.get(id) ?? []));
   }

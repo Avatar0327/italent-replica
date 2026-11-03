@@ -1,6 +1,6 @@
 /**
  * BE-10c 组织调整审批（R2-T08 §3 状态机、§4.1～4.4）：提交 / 撤回路由、两节点取主体组织 HRBP / 负责人、审批中编辑只给
- * 当前节点审批人、驳回 / 撤回 / 作废 / 不同意。最后一节点同意后停在“审批通过 + 未执行”，BE-10c 不写执行队列（§14.1）。
+ * 当前节点审批人、驳回 / 撤回 / 作废 / 不同意。最后一节点同意后“审批通过 + 未执行”，同一事务写执行队列与涉及集合（BE-11b 拆关口，§7.1 / §14.1）。
  */
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
@@ -11,7 +11,7 @@ import { BASE, bodyOf, expectError } from './AC-OA-head-support.js';
 const testDb = useTestDb();
 
 describe('AC-OA-12 状态流转：已暂存 → 审批中 → 审批通过 + 未执行', () => {
-  it('提交 0 → 1；两节点同意后 2 / 1，不写执行队列；审计记提交与通过', async () => {
+  it('提交 0 → 1；两节点同意后 2 / 1 并入队；审计记提交、通过与排期', async () => {
     const w = await flowWorld(testDb().db, 'oa12');
     const { id } = await w.draft();
     const before = await w.state(id);
@@ -22,9 +22,17 @@ describe('AC-OA-12 状态流转：已暂存 → 审批中 → 审批通过 + 未
     await w.acted(id, w.hrbp, 'approve');
     expect((await w.state(id)).approval).toBe(1);
     await w.acted(id, w.head, 'approve');
-    expect(await w.state(id)).toMatchObject({ approval: 2, execution: 1, queued: 0 });
+    const approved = await w.state(id);
+    expect(approved).toMatchObject({ approval: 2, execution: 1 });
+    expect(approved.queued, '审批通过即入队（BE-11b）').toBeGreaterThan(0);
     expect((await w.instance(id)).status).toBe('approved');
-    expect(await w.audits(id)).toEqual(expect.arrayContaining(['org-adjustment.submit', 'org-adjustment.approved']));
+    expect(await w.audits(id)).toEqual(
+      expect.arrayContaining([
+        'org-adjustment.submit',
+        'org-adjustment.approved',
+        'org-adjustment.execution.scheduled',
+      ]),
+    );
   });
 
   it('提交带旧 revision → 409 且不建实例；重放同一命令得同一结果', async () => {

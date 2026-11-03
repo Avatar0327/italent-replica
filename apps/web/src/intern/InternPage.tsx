@@ -1,4 +1,4 @@
-import { Button, Input, Space, Table } from 'antd';
+import { Button, Input, Space, Table, type TableProps } from 'antd';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { NameOf, RefSelect } from '../contracts/references.js';
@@ -20,11 +20,15 @@ import {
   cellValue,
   columns,
   listPath,
+  nextSort,
   object,
   pageSize,
   personObject,
+  sortable,
   views,
   type Filters,
+  type Sort,
+  type SortKey,
   type ApplicationDestination,
   type InternView,
   type ListResult,
@@ -53,6 +57,31 @@ function useFilterPermission() {
       : employment.field('departmentId').visible;
 }
 
+/**
+ * F-366 表头单列排序：排序列须任职记录字段可见，否则不给表头排序、也不进请求（服务端同样 403）。
+ * 点击循环交给 nextSort（升 → 降 → 取消，换列替换）；排序一变回到第 1 页。
+ * 排序跟着页签走：view 一变（点页签、申请定位，或浏览器后退 / 前进改了 URL）就清空，回来不套用旧排序。
+ */
+function useInternSort(view: InternView, firstPage: () => void) {
+  const employment = usePermissions(object);
+  const [chosen, setChosen] = useState<{ view: InternView; sort?: Sort }>({ view });
+  if (chosen.view !== view) setChosen({ view });
+  const canSort = (key: string): key is SortKey => sortable(view, key) && employment.field(key).visible;
+  const sort = chosen.view === view && chosen.sort && canSort(chosen.sort.sortBy) ? chosen.sort : undefined;
+  const apply = (next: Sort | undefined) => {
+    firstPage();
+    setChosen({ view, sort: next });
+  };
+  return {
+    sort,
+    canSort,
+    change: (key: SortKey) => apply(nextSort(sort, key)),
+    cancel: () => apply(undefined),
+    reset: () => setChosen({ view }),
+  };
+}
+type InternSorting = ReturnType<typeof useInternSort>;
+
 function useInternList() {
   const [params, setParams] = useSearchParams();
   const person = usePermissions(personObject);
@@ -64,7 +93,8 @@ function useInternList() {
   // 入口按行所属视图判定：选中时连同视图一起记下，切换视图的瞬间点到旧行也不会张冠李戴
   const [selected, select] = useState<{ view: InternView; row: Row }>();
   const allowed = useFilterPermission();
-  const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed)));
+  const sorting = useInternSort(view, () => changePage(1));
+  const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed), sorting.sort));
   const [detailReload, reloadDetail] = useState(0);
   const confirmedReload = useConfirmedReload();
   // 列表刷新与已打开档案重读走同一入口；不能只在写确认时刷新档案，也不能换 key 丢掉编辑输入。
@@ -78,6 +108,7 @@ function useInternList() {
     setParams({ view: next });
     setPage(1);
     setFilters({});
+    sorting.reset();
     select(undefined);
     locate(undefined);
   };
@@ -102,6 +133,7 @@ function useInternList() {
       setParams({ view: destination.view });
       setPage(1);
       setFilters({});
+      sorting.reset();
       locate(destination);
     });
   const changePage = (next: number) => {
@@ -121,6 +153,7 @@ function useInternList() {
     page,
     changePage,
     applyFilters,
+    sorting,
     location,
     selected,
     close: () => select(undefined),
@@ -144,6 +177,7 @@ function InternList() {
     page,
     changePage,
     applyFilters,
+    sorting,
     location,
     selected,
     close,
@@ -189,6 +223,7 @@ function InternList() {
             loading={result.loading}
             noScope={result.data?.hasDataPermission === false}
             onOpen={open}
+            sorting={sorting}
           />
         )}
         <div className="intern-pagination">
@@ -272,22 +307,41 @@ function FilterBar({
 }
 
 const references: Record<string, string | undefined> = {
+  institutionId: refPaths.institutionId,
   departmentId: refPaths.departmentId,
   positionId: refPaths.positionId,
+  directManagerId: refPaths.directManagerId,
 };
+/** F-366：受控 sortOrder，表头显示的就是请求里的排序。 */
+function sortColumn(key: string, sort: Sort | undefined) {
+  const order = sort?.direction === 'desc' ? ('descend' as const) : ('ascend' as const);
+  return { sorter: true, sortOrder: sort?.sortBy === key ? order : null };
+}
+type TableChange = NonNullable<TableProps<Row>['onChange']>;
 function InternTable({
   view,
   rows,
   loading,
   noScope,
   onOpen,
+  sorting: { sort, canSort, change, cancel },
 }: {
   view: InternView;
   rows: Row[];
   loading: boolean;
   noScope: boolean;
   onOpen(row: Row): void;
+  sorting: InternSorting;
 }) {
+  const changed: TableChange = (_, __, sorter, extra) => {
+    if (extra.action !== 'sort') return;
+    const picked = Array.isArray(sorter) ? sorter[0] : sorter;
+    // 第三次点同列时 antd 回调的 columnKey、order 都是 undefined（受控单列排序下只会是当前列被取消），
+    // 要先当取消处理；拿 String(undefined) 去过字段白名单会被拦掉，排序就停在降序（F-366 R1 P2-1）
+    if (!picked?.order) return cancel();
+    const key = String(picked.columnKey);
+    if (canSort(key)) change(key);
+  };
   return (
     <Table<Row>
       className="intern-table"
@@ -298,10 +352,12 @@ function InternTable({
       dataSource={rows}
       scroll={{ x: 'max-content' }}
       locale={{ emptyText: noScope ? m.noScope : m.empty }}
+      onChange={changed}
       columns={[
         ...columns[view].map((key) => ({
           key,
           title: m.fields[key],
+          ...(canSort(key) ? sortColumn(key, sort) : {}),
           render: (_: unknown, row: Row) =>
             references[key] ? <NameOf path={references[key]} id={row[key as keyof Row]} /> : cellValue(row, key),
         })),
