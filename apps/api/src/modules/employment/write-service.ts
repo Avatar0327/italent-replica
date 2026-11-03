@@ -768,7 +768,7 @@ async function materializedFields(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  inherited: PreparedInheritance,
+  inherited: Pick<PreparedInheritance, 'fields' | 'customFields'>,
   employType: EmployType,
   order: number,
 ) {
