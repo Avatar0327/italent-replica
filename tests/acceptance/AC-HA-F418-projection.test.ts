@@ -183,6 +183,39 @@ describe('AC-HA-F418 编制业务投影', () => {
     const scoped = movementClient(w.db, w.who, restrictedAuthorizer({ scope: managementScope(w.tenantId, [s.A.id]) }));
     expect(await cells(s.a.id, scoped)).toMatchObject({ actual: 0, pendingIn: 0, pendingOut: 0, vacancy: 10 });
   });
+  it.each(['未来调入', '调出与离职组合', '历史可见当前隐藏'] as const)(
+    'AC-HA-F418-09 P1-1 %s不能扩大取数日员工范围',
+    async (scenario) => {
+      const s = await setup();
+      const hidden = await w.org(name('隐藏子部门'), s.A);
+      const scoped = movementClient(
+        w.db,
+        w.who,
+        restrictedAuthorizer({ scope: managementScope(w.tenantId, [s.A.id]) }),
+      );
+      const expected = { actual: 0, pendingIn: 0, pendingOut: 0, vacancy: 10, executionRate: 0 };
+      async function unchanged() {
+        // 两个真实 HTTP 读取都先执行，旧码的预增与预减泄露须分别留下断言证据。
+        const report = await cells(s.a.id, scoped);
+        const board = await scoped.group('3.1.36', `asOf=${DAY}`, s.a.id);
+        const { actual, ...columns } = expected;
+        expect.soft(report, `${scenario} B54`).toMatchObject(expected);
+        expect.soft(board, `${scenario} 3.1.36`).toMatchObject({ count: actual, ...columns });
+      }
+      await unchanged();
+      const person = await w.hire(name('范围外员工'), '2026-02-01', scenario === '历史可见当前隐藏' ? s.A : hidden);
+      if (scenario === '历史可见当前隐藏') await w.transfer(person.id, '2026-09-01', hidden);
+      await w.transfer(person.id, '2026-10-15', s.A);
+      if (scenario === '调出与离职组合') {
+        await w.transfer(person.id, '2026-11-15', hidden);
+        const leaving = await w.hire(name('隐藏离职员工'), '2026-02-01', hidden);
+        await w.transfer(leaving.id, '2026-10-15', s.A);
+        await w.x.directLeave('2026-10-20', undefined, leaving.id);
+      }
+      await unchanged();
+    },
+  );
+
   it('AC-HA-F418-10 复用占编范围：不匹配人员条件的未来调动不计', async () => {
     const s = await setup({ occupancyRanges: [{ employmentType: 'intern' }] });
     const p = await w.hire(name('非占编人员'), '2026-02-01', s.A);
