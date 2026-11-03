@@ -53,9 +53,9 @@ async function receipt(tx: Tx, ctx: EmploymentContext, id: string, state: 'sent'
     FROM employment_outbox_attempts WHERE tenant_id=${ctx.tenantId} AND outbox_id=${id}::uuid
     ORDER BY attempt_no DESC LIMIT 1`),
   );
-  // F-336：上一条已是同因等账号失败时不再追加，意图仍待办，账号恢复后照常补发；其它失败仍逐次记次数与原因。
-  const waiting = state === 'failed' && reason === WAITING_ACCOUNT;
-  if (waiting && last?.state === 'failed' && last.reason === WAITING_ACCOUNT) return;
+  // F-336 / F-350：上一条已是同因失败时不再追加（等账号、发起失败、抛出的业务拒绝一视同仁），意图仍待办；
+  // 失败原因变化或成功办结照常记新回执。
+  if (state === 'failed' && last?.state === 'failed' && last.reason === reason) return;
   await tx.insert(employmentOutboxAttempts).values({
     tenantId: ctx.tenantId,
     outboxId: id,
