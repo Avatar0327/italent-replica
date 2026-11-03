@@ -110,8 +110,17 @@ async function orgWithSequence(w: ItemsWorld, name: string, parentId: string, se
   return created.id;
 }
 
-describe('AC-OA-42 预览节点带在岗 / 兼岗原值（§6.2:475；口径同组织停用校验）', () => {
-  it('HR 读预览：既有节点给直属在岗与兼岗原值，0 也返回；本单新增节点为 0', async () => {
+/** 预览节点不得出现的人数字段（DEC-745：北森预览各视图都没有在岗 / 兼岗人数，F273A §8.1）。 */
+const HEADCOUNT_FIELDS = ['onDutyCount', 'partTimeCount'] as const;
+const expectNoHeadcount = (node: PreviewNode) => {
+  for (const field of HEADCOUNT_FIELDS) {
+    expect(node).not.toHaveProperty(field);
+    expect(node.masked).not.toContain(field);
+  }
+};
+
+describe('AC-OA-42 预览节点不带在岗 / 兼岗人数（§6.2 预览行；DEC-745 照北森）', () => {
+  it('HR 读预览：有在岗、有兼职、空组织与本单新增节点都不带人数字段，其余属性照常', async () => {
     const w = await itemsWorld(testDb().db, 'oa42r');
     const r = reader(w);
     const c = await w.org(`丙${uniqueSuffix()}`, w.a);
@@ -128,7 +137,6 @@ describe('AC-OA-42 预览节点带在岗 / 兼岗原值（§6.2:475；口径同�
         startDate: '2026-09-01',
         endDate: null,
       });
-      // 生效日前已结束的兼职不计（同 countDepartmentPartTimes）
       await insertPartTimeRecord(tx, {
         tenantId: w.tenant.id,
         employeeId: cStaff.employeeId,
@@ -140,18 +148,19 @@ describe('AC-OA-42 预览节点带在岗 / 兼岗原值（§6.2:475；口径同�
     const view = await w.created(w.head({ adjustmentRange: [w.a] }));
     const added = (await w.item(view.id, newOrg(w.a))).items.at(-1)!;
 
-    const nodes = flatten((await r.preview(view.id)).roots);
-    const counts = (id: string) => {
-      const n = nodes.find((node) => node.orgId === id || node.itemId === id)!;
-      return { onDutyCount: n.onDutyCount, partTimeCount: n.partTimeCount };
-    };
-    expect(counts(w.a)).toEqual({ onDutyCount: 1, partTimeCount: 0 });
-    expect(counts(c)).toEqual({ onDutyCount: 2, partTimeCount: 1 });
-    expect(counts(d)).toEqual({ onDutyCount: 0, partTimeCount: 0 });
-    expect(counts(added.id)).toEqual({ onDutyCount: 0, partTimeCount: 0 });
+    const preview = await r.preview(view.id);
+    const nodes = flatten(preview.roots);
+    const find = (id: string) => nodes.find((node) => node.orgId === id || node.itemId === id)!;
+    for (const id of [w.a, c, d, added.id]) expectNoHeadcount(find(id));
+    expect(JSON.stringify(preview)).not.toMatch(/onDutyCount|partTimeCount/);
+    // 名称、负责人、编制等既有属性不受影响（导出仍用，§10A）
+    expect(find(c)).toMatchObject({ name: await orgName(w, c), masked: [] });
+    expect(find(c)).toHaveProperty('personInChargeName');
+    expect(find(c)).toHaveProperty('establishment');
+    expect(find(added.id)).toMatchObject({ name: added.name, mark: 'added', establishment: null });
   });
 
-  it('HR 看不到调整范围：未被可见明细指向的既有节点名称与人数都给 null 并记入 masked', async () => {
+  it('HR 看不到调整范围：未被可见明细指向的既有节点名称给 null 并记入 masked，masked 不再列人数', async () => {
     const w = await itemsWorld(testDb().db, 'oa42r');
     const r = reader(w);
     const c = await w.org(`丙${uniqueSuffix()}`, w.a);
@@ -162,10 +171,13 @@ describe('AC-OA-42 预览节点带在岗 / 兼岗原值（§6.2:475；口径同�
 
     const nodes = flatten((await r.preview(view.id)).roots);
     const a = nodes.find((node) => node.orgId === w.a)!;
-    expect(a).toMatchObject({ name: null, onDutyCount: null, partTimeCount: null });
-    expect(a.masked).toEqual(expect.arrayContaining(['name', 'onDutyCount', 'partTimeCount']));
-    // 明细目标本身可见（targetOrgId 披露）：人数按同口径给出
-    expect(nodes.find((node) => node.orgId === c)).toMatchObject({ onDutyCount: 1, partTimeCount: 0 });
+    expect(a).toMatchObject({ name: null, personInChargeName: null, establishment: null });
+    expect(a.masked).toEqual(expect.arrayContaining(['name', 'personInChargeName', 'establishment']));
+    expectNoHeadcount(a);
+    // 明细目标本身可见（targetOrgId 披露）：既有属性按同口径给出，同样不带人数
+    const target = nodes.find((node) => node.orgId === c)!;
+    expect(target.masked).not.toContain('establishment');
+    expectNoHeadcount(target);
     expect(JSON.stringify(a)).not.toContain(await orgName(w, w.a));
   });
 });

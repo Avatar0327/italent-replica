@@ -4,20 +4,19 @@
  * 变更行标 changed 并按新上级挂接，停用行标 deactivated。已停用的组织不进树；暂存行不执行，不进预览。
  * 裁剪（§4.5）：HR 看不到的组织（组织对象范围外）不出节点，其可见下级挂到最近的可见祖先；被隐去的明细行不出节点
  * 也不改树；看不到的值给 null 并记入 masked。看不到新上级时节点不移动（变更）或放在根层（新建）。
- * 既有节点的属性（现名、在岗 / 兼岗原值）是调整范围的展开：调整范围可见，或节点是一条可见明细的目标（targetOrgId
+ * 既有节点的属性（现名、负责人、编制原值）是调整范围的展开：调整范围可见，或节点是一条可见明细的目标（targetOrgId
  * 可见）时给出，否则给 null。HR 与审批人同一口径。看不到 `orgItems.name` 时保留现名，并在 masked 记 name。
- * 在岗 / 兼岗原值与组织停用校验同一取数（countDepartmentStaff / countDepartmentPartTimes：自生效日起、直属本组织、
- * 按记录计），预览为 0 的组织停用不会被人员拦。负责人与“编制原值”（DEC-653，BE-10e 导出用）同属既有属性：
+ * 节点不带在岗 / 兼岗人数（DEC-745，照北森：调整预览各视图都没有人数，也没有调整前后对比，F273A §8.1）。
+ * 负责人与“编制原值”（DEC-653，BE-10e 导出用）：
  * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值，姓名取人员版本链的最新姓名；
  * 编制原值口径同编制详情（readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总，
  * 复用 batchLocalSums），新增节点无编制；多方案时按 pickScheme 取一个。
  * 编制增减数随 11e / 11f 的编制生成行。
  * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
+ * 改上级不填顺序号即沿用组织原顺序号（DEC-745，F273A §8.2）。
  */
 import { and, employmentEmployees, eq, inArray, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { countDepartmentStaff } from '../employment/org-people.js';
-import { countDepartmentPartTimes } from '../employment/part-time/store.js';
 import { batchLocalSums } from '../establishment/capacity-read.js';
 import { DEFAULT_SCHEME_CODE } from '../establishment/default-scheme.js';
 import { loadSchemeBatch } from '../establishment/schemes.js';
@@ -38,9 +37,6 @@ export interface PreviewNode {
   readonly orgId: string | null;
   readonly itemId: string | null;
   name: string | null;
-  /** 在岗 / 兼岗原值；本单新增节点为 0，看不到既有属性时为 null。 */
-  onDutyCount: number | null;
-  partTimeCount: number | null;
   /** 负责人姓名；没有负责人或看不到时为 null。 */
   personInChargeName: string | null;
   /** 编制原值（含下级）；没有编制、本单新增或看不到时为 null。 */
@@ -69,7 +65,7 @@ interface Draft {
   head: string | null;
 }
 
-const ATTR_FIELDS = ['onDutyCount', 'partTimeCount', 'personInChargeName', 'establishment'] as const;
+const ATTR_FIELDS = ['personInChargeName', 'establishment'] as const;
 
 const MARKS: Readonly<Record<OrgItem['adjustType'], Mark>> = { 1: 'added', 2: 'changed', 3: 'deactivated' };
 
@@ -95,9 +91,8 @@ export async function readPreview(tx: Tx, tenantId: string, disclosure: Disclosu
   if (drafts.size > PREVIEW_NODE_LIMIT) {
     throw new AppError('PAYLOAD_TOO_LARGE', `预览节点超过 ${PREVIEW_NODE_LIMIT} 个，请缩小调整范围`);
   }
-  const counted = [...drafts.values()].flatMap(({ node }) => (node.orgId && attrsVisible(node.orgId) ? [node] : []));
-  await fillCounts(tx, tenantId, view.effectiveDate, counted);
-  await fillEstablishment(tx, tenantId, view.effectiveDate, counted);
+  const existing = [...drafts.values()].flatMap(({ node }) => (node.orgId && attrsVisible(node.orgId) ? [node] : []));
+  await fillEstablishment(tx, tenantId, view.effectiveDate, existing);
   await fillHeads(tx, tenantId, [...drafts.values()]);
   const parentOf = (orgId: string) => world.orgs.get(orgId)?.parents.admin?.parentId ?? null;
   const roots = assemble(drafts, view.adjustmentRange, (key) => (subtree.has(key) ? parentOf(key) : null));
@@ -203,20 +198,9 @@ export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | n
   return enabled[0] ?? null;
 }
 
-/** 在岗 / 兼岗原值：与组织停用校验同一取数（org/deactivation.ts assertSubtreeVacant），只算直属本组织。 */
-async function fillCounts(tx: Tx, tenantId: string, from: string, nodes: readonly PreviewNode[]) {
-  const ids = nodes.map((n) => n.orgId!);
-  const staff = await countDepartmentStaff(tx, tenantId, ids, from);
-  const partTimes = await countDepartmentPartTimes(tx, tenantId, ids, from);
-  for (const n of nodes) {
-    n.onDutyCount = staff.get(n.orgId!) ?? 0;
-    n.partTimeCount = partTimes.get(n.orgId!) ?? 0;
-  }
-}
-
 function node(key: string, orgId: string | null, itemId: string | null, name: string | null, masked: string[]) {
-  const counts = { onDutyCount: null, partTimeCount: null, personInChargeName: null, establishment: null };
-  return { key, orgId, itemId, name, ...counts, mark: null, masked, children: [] } satisfies PreviewNode;
+  const attrs = { personInChargeName: null, establishment: null };
+  return { key, orgId, itemId, name, ...attrs, mark: null, masked, children: [] } satisfies PreviewNode;
 }
 
 /** 调整范围所选组织及其全部在用下级（行政维度）；所选组织之间互为上下级时只算一次。 */
@@ -250,8 +234,7 @@ function overlay(item: OrgItem, drafts: Map<string, Draft>, see: (field: string)
   if (item.adjustType === 1) {
     const name = see('name') ? item.name : (masked.add('name'), null);
     drafts.set(item.id, {
-      // 新增组织执行前没有人员：原值为 0。
-      node: { ...node(item.id, null, item.id, name, [...masked]), onDutyCount: 0, partTimeCount: 0, mark },
+      node: { ...node(item.id, null, item.id, name, [...masked]), mark },
       parentKey,
       sort: { sequence, code, added: 1, tie: String(item.seq).padStart(10, '0') },
       head,
