@@ -5,6 +5,10 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_VIEW_FIELDS': [
+    '#EMPLOYEE_DEFAULT_EDIT_FIELDS',
+    '#EMPLOYEE_READONLY_FIELDS',
+  ],
   'packages/domain/src/platform/sha256.ts#sha256Hex': ['#K', '#rotr', '#utf8'],
   'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest': [
     'packages/domain/src/platform/sha256.ts#sha256Hex',
@@ -55,8 +59,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_CREATE',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_EDIT_FIELDS',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_VIEW_FIELDS',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_PAGES',
-    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_READONLY_FIELDS',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_CODE',
     '#fieldSubset',

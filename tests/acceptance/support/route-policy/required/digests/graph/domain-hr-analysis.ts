@@ -11,10 +11,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS_LABELS',
     '#TERM_TYPE_LABELS',
   ],
-  'packages/domain/src/hr-analysis/roster.ts#tenureYears': [
-    '#day',
-    'packages/domain/src/personnel/tenure.ts#decimalYears',
-  ],
+  'packages/domain/src/hr-analysis/roster.ts#tenureYears': ['#day'],
   'packages/domain/src/hr-analysis/segments.ts#ageSample': ['packages/domain/src/personnel/tenure.ts#ageOn'],
   'packages/domain/src/hr-analysis/segments.ts#ageSegment': [
     '#AGE_SEGMENTS',
@@ -24,5 +21,5 @@ export const GRAPH: Graph = {
   'packages/domain/src/hr-analysis/segments.ts#educationTier': ['#EDUCATION_TIERS', '#SEGMENT_NONE', '#blank'],
   'packages/domain/src/hr-analysis/segments.ts#genderSegment': ['#GENDER_ALIASES', '#SEGMENT_NONE', '#blank'],
   'packages/domain/src/hr-analysis/segments.ts#tenureSample': ['packages/domain/src/hr-analysis/roster.ts#tenureYears'],
-  'packages/domain/src/hr-analysis/segments.ts#tenureSegment': ['#SEGMENT_NONE', '#TENURE_SEGMENTS', '#wholeMonths'],
+  'packages/domain/src/hr-analysis/segments.ts#tenureSegment': ['#SEGMENT_NONE', '#TENURE_SEGMENTS', '#tenureSample'],
 };
