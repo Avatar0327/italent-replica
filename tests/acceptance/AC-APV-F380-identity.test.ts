@@ -8,6 +8,7 @@ import { relationWorld, source, resolved, save, type RelationWorld } from './AC-
 import { permissionAdmin } from './AC-APV-support.js';
 import { BASE, createProfile, grant, makeGrantable } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { acceptCandidates } from '../../apps/web/src/approval/designer/source-candidates.js';
 
 const database = useTestDb();
 const identity = (id: string) => source('identity', id);
@@ -136,10 +137,10 @@ describe('AC-APV-F380 身份展开', () => {
     const other = await relationWorld(database().db, 'f380-candidates-other');
     const mine = await profileWith(w, 'f380c', []);
     const foreign = await profileWith(other, 'f380d', []);
-    const get = (query: string, allow = true) =>
+    const get = (query: string, allow = true, type = 'identity') =>
       tenantApi(w.db, { authorize: (q) => allow && q.action === 'admin.process_matrix', clock: w.clock }).request(
         'GET',
-        `/api/tenant/approval/designer/source-candidates?type=identity&asOf=2026-10-01&${query}`,
+        `/api/tenant/approval/designer/source-candidates?type=${type}&asOf=2026-10-01&${query}`,
         w.as(w.hr.id),
       );
     expect((await get('', false)).status).toBe(403);
@@ -151,5 +152,10 @@ describe('AC-APV-F380 身份展开', () => {
     const keyword = await (await get(`keyword=${encodeURIComponent(`身份${mine.profile.code}`)}`)).json();
     expect(keyword.items.map((item: { id: string }) => item.id)).toContain(mine.profile.id);
     expect((await get('pageSize=1')).status).toBe(200);
+    // F-396：前端候选解析（acceptCandidates）直接吃后端真实响应，身份与部门两类都要被接受且逐项不丢字段。
+    expect(acceptCandidates(found).items).toEqual(found.items);
+    const departments = await (await get('', true, 'department')).json();
+    expect(departments.items.length).toBeGreaterThan(0);
+    expect(acceptCandidates(departments).items).toEqual(departments.items);
   });
 });
