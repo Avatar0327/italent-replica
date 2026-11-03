@@ -87,7 +87,9 @@ describe('F-310 / F-365 等账号补发的持久未发起记录', () => {
     const exitId = await waitingSuccessor(x);
     await setStatus(x, 'disabled');
     await x.runScheduler(round(5));
-    const [waiting] = await x.requestRows(exitId);
+    const waitingRows = await x.requestRows(exitId);
+    expect(waitingRows, '等账号时应已落未发起记录').toHaveLength(1);
+    const [waiting] = waitingRows;
     const before = await x.handoverInstanceCount();
     await setStatus(x, 'active');
     await x.runScheduler(round(10));
@@ -111,7 +113,9 @@ describe('F-310 / F-365 等账号补发的持久未发起记录', () => {
     const exitId = await waitingSuccessor(x);
     await setStatus(x, 'disabled');
     await x.runScheduler(round(5));
-    const [waiting] = await x.requestRows(exitId);
+    const waitingRows = await x.requestRows(exitId);
+    expect(waitingRows, '等账号时应已落未发起记录').toHaveLength(1);
+    const [waiting] = waitingRows;
     const before = await x.handoverInstanceCount();
     await setStatus(x, 'active');
     const request = (await x.statusOf(exitId)).request as unknown as { revision: number };
