@@ -1,6 +1,12 @@
 /** DEC-691：保存、候选与解析共用来源引用和维度判断；不把当前状态当作历史业务日。 */
 import { sql, type Tx } from '@italent/db';
-import { identityProfileId, relationSource, SOURCE_DIMENSIONS, type ApproverSource, type RelationSourceType } from '@italent/domain';
+import {
+  identityProfileId,
+  relationSource,
+  SOURCE_DIMENSIONS,
+  type ApproverSource,
+  type RelationSourceType,
+} from '@italent/domain';
 import { readOrgSettings } from '../org/settings.js';
 import { approvalError, rowsOf } from './context.js';
 
@@ -31,7 +37,11 @@ export async function assertSourceReferences(tx: Tx, tenantId: string, sources: 
         await tx.execute(sql`SELECT id FROM permission_profiles WHERE tenant_id=${tenantId} AND id=${profileId}::uuid`),
       );
       if (!row)
-        throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_REFERENCE_INVALID', '审批来源引用不存在或不可用');
+        throw approvalError(
+          'APPROVAL_SOURCE_INVALID',
+          'APPROVAL_SOURCE_REFERENCE_INVALID',
+          '审批来源引用不存在或不可用',
+        );
       continue;
     }
     const ref = relationSource(source);
