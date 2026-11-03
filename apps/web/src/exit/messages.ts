@@ -75,6 +75,7 @@ export const x = {
     handover: '发起离职交接',
     resubmit: '重新提交交接',
     batchHandover: '批量发起离职交接',
+    handleMenu: '离职处理',
   },
   missing: '—',
   refresh: '刷新',

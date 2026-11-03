@@ -1,4 +1,4 @@
-import { Modal, message } from 'antd';
+import { App } from 'antd';
 import { useCallback, useRef, useState } from 'react';
 import type { Command } from '../foundation/client.js';
 import { useConflictCommand } from '../foundation/forms/ConflictCommands.js';
@@ -29,20 +29,28 @@ export function useExitRead(id: string) {
   }, [api, id]);
 }
 
-export const ask = (title: string, content: string) =>
-  new Promise<boolean>((resolve) =>
-    Modal.confirm({
-      title,
-      content,
-      okText: x.confirm,
-      cancelText: x.cancel,
-      onOk: () => resolve(true),
-      onCancel: () => resolve(false),
-    }),
+/** 二次确认走 App 上下文（F-352③）：静态 Modal.confirm 拿不到主题 / 语言上下文，antd 会告警。 */
+export function useAsk() {
+  const { modal } = App.useApp();
+  return useCallback(
+    (title: string, content: string) =>
+      new Promise<boolean>((resolve) =>
+        modal.confirm({
+          title,
+          content,
+          okText: x.confirm,
+          cancelText: x.cancel,
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        }),
+      ),
+    [modal],
   );
+}
 
 /** 表单提交：字段校验错误留在表单项上，其余（本地校验 / 拒绝）显示在表单上方；写入完成后提示并关闭。 */
 export function useFormSubmit(locked: boolean, run: () => Promise<boolean | undefined>, onClose: () => void) {
+  const { message } = App.useApp();
   const [error, setError] = useState<unknown>();
   const submit = async () => {
     if (locked) return;
@@ -83,6 +91,7 @@ export function useExitCommand(
 ) {
   const post = useDirectApi();
   const api = useApiClient();
+  const ask = useAsk();
   const snapshot = { id: target.id, revision: target.revision ?? -1, values: target.baseline, objects };
   const cmd = useConflictCommand(resource, snapshot, target.read, { action });
   const running = useRef(false);

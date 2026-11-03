@@ -162,7 +162,11 @@ export function notLaunched(exitRequestId: string): Handover {
  * exit-actions.ts 的形态：提交 = 离职申请的草稿 / 已驳回；编辑 = 草稿 / 审批中 / 通过 / 已驳回 / 已生效；
  * 撤销同可撤销状态；handle 只在列表行、单据已办结（拒绝 / 作废）时给。按钮全授权的查看人。
  */
-export function actionsOf(server: ExitServer, row: { id: string; status: string; mode: string }, list: boolean) {
+export function actionsOf(
+  server: ExitServer,
+  row: { id: string; status: string } & Record<string, unknown>,
+  list: boolean,
+) {
   const given = server.actions[row.id];
   if (given) return given.filter((code) => list || code !== 'handle');
   const open = ['draft', 'in_review', 'approved', 'rejected', 'effective'].includes(row.status);

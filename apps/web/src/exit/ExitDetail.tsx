@@ -1,4 +1,4 @@
-import { Alert, Button, Descriptions, Modal, Popconfirm, Space, Table, Tag, message } from 'antd';
+import { Alert, App, Button, Descriptions, Modal, Popconfirm, Space, Table, Tag } from 'antd';
 import { useCallback, useState } from 'react';
 import { NameOf } from '../contracts/references.js';
 import { useRead } from '../part-time/useRead.js';
@@ -40,10 +40,9 @@ export const fieldValue = (row: Row, key: string) =>
     cellValue(row, key)
   );
 
-/** 离职详情（B13）：动作按单据状态与权限快照推导；交接区只读展示，发起 / 重新提交按服务端状态。 */
+/** 离职详情（B13）：动作读服务端 actions（F-352①）；交接区只读展示，发起 / 重新提交按服务端状态。 */
 export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): void; refresh(): Promise<unknown> }) {
   const detail = useRead<Row>(slotKey(exits, id));
-  const permission = usePermissions(object).snapshot.objects[object];
   const [open, setOpen] = useState<'submit' | 'edit' | 'cancel'>();
   const row = detail.data;
   const reload = async () => {
@@ -57,7 +56,7 @@ export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): vo
       ) : (
         <>
           <Space wrap>
-            {detailEntries(row, permission).map((entry) => (
+            {detailEntries(row).map((entry) => (
               <Button key={entry} danger={entry === 'cancel'} onClick={() => setOpen(entry)}>
                 {x.entries[entry]}
               </Button>
@@ -159,6 +158,7 @@ export function HandoverButton(props: {
   refresh(): Promise<unknown>;
 }) {
   const { kind, target } = props;
+  const { message } = App.useApp();
   const resubmit = kind === 'resubmit';
   const label = resubmit ? x.entries.resubmit : x.entries.handover;
   const [baseline] = useState<Values>({});

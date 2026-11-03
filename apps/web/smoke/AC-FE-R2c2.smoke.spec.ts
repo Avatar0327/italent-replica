@@ -84,7 +84,7 @@ test('AC-FE-R2c2-01 三视图各按 view 读，列按投影，切换视图不串
     await page.getByRole('button', { name: views[view], exact: true }).click();
     await expect(page.getByRole('button', { name: views[view], exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => server.queries.at(-1)?.get('view')).toBe(view);
-    await expect(list(page).locator('.ant-table-thead th')).toHaveText([...headers[view], '操作']);
+    await expect(list(page).locator('.ant-table-thead th')).toHaveText(['', ...headers[view], '操作']);
     for (const name of Object.values(names))
       await expect(rowOf(page, name)).toHaveCount(expected[view].includes(name) ? 1 : 0);
   }
@@ -241,18 +241,26 @@ test('AC-FE-R2c2-08 重新提交交接 409：重读交接单（不是离职单�
   expect(writes(server, '/resubmit').map((item) => item.ifMatch)).toEqual(['1', '2']);
 });
 
-test('AC-FE-R2c2-09 批量发起整批未发起成功：刷新后没有可操作行，逐人结果仍在', async ({ page }) => {
+test('AC-FE-R2c2-09 批量发起整批未发起成功：刷新后勾选行没有可操作项，逐人结果仍在', async ({ page }) => {
   const server = await setupExits(page);
   server.rowActions = { [ids.inProgress]: [rowSubmit] };
   server.batchOutcome = { outcome: 'not_launched', reason: 'NO_INITIATOR_ACCOUNT' };
   await page.getByRole('button', { name: /^刷\s*新$/ }).click();
-  await list(page).getByRole('button', { name: '批量发起离职交接', exact: true }).click();
+  await rowOf(page, names.inProgress).getByRole('checkbox').check();
+  await list(page)
+    .getByRole('button', { name: /离职处理/ })
+    .click();
+  await page.getByRole('menuitem', { name: '批量发起离职交接' }).click();
   const result = page.getByRole('dialog').filter({ hasText: '批量发起结果' });
   await expect(result.getByRole('listitem')).toHaveText([`${names.inProgress}：未发起成功（NO_INITIATOR_ACCOUNT）`]);
   expect(writes(server, '/batch-submit')).toHaveLength(1);
-  // 写后刷新：服务端不再给行动作，批量按钮消失，回执不随之消失
-  await expect(list(page).getByRole('button', { name: '批量发起离职交接', exact: true })).toHaveCount(0);
+  // 写后刷新：回执不随之消失；服务端不再给行动作，批量菜单项不可点
   await expect(result.getByRole('listitem')).toHaveCount(1);
+  await result.getByRole('button', { name: 'Close' }).click();
+  await list(page)
+    .getByRole('button', { name: /离职处理/ })
+    .click();
+  await expect(page.getByRole('menuitem', { name: '批量发起离职交接' })).toHaveAttribute('aria-disabled', 'true');
 });
 
 test('AC-FE-R2c2-10 已加黑单（详情无加黑三项）只改日期可保存，PATCH 不带加黑字段；改动加黑组仍校验', async ({

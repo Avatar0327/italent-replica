@@ -38,6 +38,8 @@ export interface Row {
   name?: string;
   status?: string;
   revision?: number;
+  /** F-352①：服务端逐单动作（状态 × 按钮权 × 写范围）；状态字段被裁剪时整体缺席。 */
+  actions?: string[];
   rowActions?: string[];
   [key: string]: unknown;
 }
@@ -96,10 +98,7 @@ export const detailKeys = (row: Row): string[] => [
 
 const validObject = (id: unknown, revision: unknown) =>
   typeof id === 'string' && id !== '' && Number.isSafeInteger(revision) && Number(revision) >= 0;
-/** 编辑 / 撤销的状态口径（exit-gate.ts 撤销可用状态；编辑同此，资格由服务端判）。 */
-const OPEN_STATUSES = ['draft', 'in_review', 'approved', 'rejected', 'effective'];
 const HANDOVER_STATUSES = ['in_review', 'approved', 'effective'];
-const IN_PROGRESS_STATUSES = ['draft', 'in_review', 'approved', 'rejected'];
 
 const pick = <T extends keyof typeof EXIT_BUTTONS>(p: ObjectPermission, entries: readonly T[]) =>
   entries.filter((entry) => canButton(p, EXIT_BUTTONS[entry], 'detail'));
@@ -107,37 +106,31 @@ const pick = <T extends keyof typeof EXIT_BUTTONS>(p: ObjectPermission, entries:
 export const createEntries = (p: ObjectPermission | undefined) =>
   p?.dataOperations.create ? pick(p, ['application', 'direct'] as const) : [];
 
-/** 提交审批（transitions.ts submit）：只有离职申请的草稿 / 已驳回单，按钮同新建申请（policy.ts exitTransition）。 */
-const SUBMIT_STATUSES = ['draft', 'rejected'];
-
+const DETAIL_ACTIONS = ['submit', 'edit', 'cancel'] as const;
 /**
- * 详情动作：读接口没有逐单动作（同 F-268），按单据状态与权限快照推导；restore 后端一律拒绝，不提供。
- * 状态被裁剪或单据标识无效时不给任何写入口。
+ * 详情动作（F-352①）：只认服务端 actions，前端不再按状态与权限快照推导；restore 后端一律拒绝，不提供。
+ * actions 是披露而非准入，写入口仍由服务端逐次复核；单据标识无效时不给写入口。
  */
-export function detailEntries(row: Row, p: ObjectPermission | undefined): ('submit' | 'edit' | 'cancel')[] {
-  if (!p?.dataOperations.update || !validObject(row.id, row.revision)) return [];
-  if (!OPEN_STATUSES.includes(String(row.status))) return [];
-  const submit = row.mode === 'application' && SUBMIT_STATUSES.includes(String(row.status));
-  return [
-    ...(submit ? pick(p, ['application'] as const).map(() => 'submit' as const) : []),
-    ...pick(p, ['edit', 'cancel'] as const),
-  ];
+export function detailEntries(row: Row): (typeof DETAIL_ACTIONS)[number][] {
+  if (!validObject(row.id, row.revision)) return [];
+  return DETAIL_ACTIONS.filter((code) => row.actions?.includes(code));
 }
 
 /**
- * 行内动作：发起交接只认服务端 rowActions；“离职处理”（B15，办理结果未验证）按直接离职权限，
- * 只给当前没有在途 / 已生效离职单的行（在途的人服务端会以 EXIT_IN_PROGRESS 拦下）。
+ * 行内动作：发起交接认服务端 rowActions，“离职处理”（B15，办理结果未验证）认服务端 actions 的 handle
+ * （已办结且员工在写范围内、有直接离职按钮，由 exit-actions.ts 判定）。
  */
-export function rowEntries(row: Row, p: ObjectPermission | undefined): ('handover' | 'handle')[] {
+export function rowEntries(row: Row): ('handover' | 'handle')[] {
   const entries: ('handover' | 'handle')[] = [];
   if (validObject(row.id, row.revision) && row.rowActions?.includes(ROW_SUBMIT.code)) entries.push('handover');
-  const settled = typeof row.status === 'string' && ![...IN_PROGRESS_STATUSES, 'effective'].includes(row.status);
-  if (settled && typeof row.employeeId === 'string' && createEntries(p).includes('direct')) entries.push('handle');
+  if (typeof row.employeeId === 'string' && row.actions?.includes('handle')) entries.push('handle');
   return entries;
 }
-/** 批量发起交接：列表级按钮有权，且只对带行动作的行（服务端逐条复核）。 */
+/** 批量入口（“离职处理▾”）：列表级按钮有权才显示。 */
+export const batchEntryVisible = (p: ObjectPermission | undefined) => canButton(p, BATCH.code, BATCH.level);
+/** 批量发起交接：列表级按钮有权，且只对已勾选里带行动作的行（服务端逐条复核）。 */
 export const batchHandoverRows = (rows: readonly Row[], p: ObjectPermission | undefined) =>
-  canButton(p, BATCH.code, BATCH.level) ? rows.filter((row) => rowEntries(row, p).includes('handover')) : [];
+  batchEntryVisible(p) ? rows.filter((row) => rowEntries(row).includes('handover')) : [];
 
 /** GET /exits/:id/handover（exit-handover-routes）。 */
 export type HandoverItem = { id: string; category?: string; sequenceNo?: number; title?: string; done?: boolean };
