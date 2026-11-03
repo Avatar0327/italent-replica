@@ -20,7 +20,7 @@ vi.mock('../../apps/web/src/foundation/templates.js', () => ({
     ),
 }));
 vi.mock('../../apps/web/src/foundation/Permissions.js', () => ({
-  usePermissions: () => ({ field: () => ({ visible: true }) }),
+  usePermissions: vi.fn(() => ({ field: () => ({ visible: true }) })),
 }));
 vi.mock('../../apps/web/src/foundation/DecisionNote.js', () => ({ DecisionNote: () => null }));
 vi.mock('../../apps/web/src/personnel/EditCommands.js', () => ({ EditPersonButton: () => null }));
@@ -40,6 +40,7 @@ vi.mock('../../apps/web/src/foundation/PageState.js', () => ({
   PageState: ({ kind, retry }: { kind: string; retry?: () => void }) =>
     h('button', { onClick: retry, 'data-state': kind }, kind === 'error' ? '重试读取' : '读取中'),
 }));
+const permissions = await import(resolve('apps/web/src/foundation/Permissions.tsx'));
 const session = {
   tenantId: 'synthetic-f444',
   identityKey: 'synthetic-user',
@@ -81,6 +82,7 @@ async function edit() {
 describe('AC-FE-F444 人员详情临时读失败保留编辑子树', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.clearAllMocks();
     reads = 0;
     response = async () => Response.json({ id: 'synthetic-employee', name: '合成人员' });
     vi.stubGlobal(
@@ -131,6 +133,13 @@ describe('AC-FE-F444 人员详情临时读失败保留编辑子树', () => {
     response = () => new Promise(() => undefined);
     await act(async () => (host.querySelector('[data-state="error"]') as HTMLButtonElement).click());
     expect(input()).toBeNull();
+  });
+
+  it('AC-FE-F444-10 未传 reload：读成功不产生缓存引起的额外渲染', async () => {
+    await render(undefined);
+    expect(reads).toBe(1);
+    expect(permissions.usePermissions).toHaveBeenCalledTimes(2);
+    expect(input()).not.toBeNull();
   });
 
   it('AC-FE-F444-07 换员工或身份的请求失败，不借用上一份档案；未传 reload 沿用原读取行为', async () => {

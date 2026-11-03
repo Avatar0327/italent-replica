@@ -175,7 +175,18 @@ describe('AC-FE-F444 草稿命名空间与共用命令生命周期', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path.endsWith('/regularization-draft'))
-        return Response.json({ employeeId: employee, revision: 4, temporary: { result: 'pass' } });
+        return Response.json({ employeeId: employee, revision: 4, applicationId: 'probation-draft' });
+      if (path.endsWith('/businesses/probation-draft'))
+        return Response.json({
+          id: 'probation-draft',
+          employeeId: employee,
+          revision: 2,
+          kind: 'regularization',
+          mode: 'application',
+          status: 'draft',
+          effectiveDate: '2026-11-02',
+          probationResult: 'pass',
+        });
       throw new Error(`unexpected request: ${path}`);
     });
     vi.stubGlobal('fetch', fetcher);
@@ -190,9 +201,57 @@ describe('AC-FE-F444 草稿命名空间与共用命令生命周期', () => {
     await mount(h(Recovery));
     expect(recovery.error).toBeUndefined();
     expect(recovery.recovery?.revision).toBe(4);
-    expect(recovery.recovery?.draft).toBeUndefined();
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(recovery.recovery?.draft?.id).toBe('probation-draft');
+    expect(intern.draft?.id).toBe('intern-draft');
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
+
+  it.each(['post-409', 'post-500', 'readback-500', 'list-500'])(
+    'AC-FE-F444-11 新建 %s：拒绝可改正、未知保留原锁，均不发布成功刷新',
+    async (failure) => {
+      let reads = 0;
+      let writes = 0;
+      const rejected = (status: number) =>
+        Response.json(
+          {
+            error: {
+              code: status === 409 ? 'BUSINESS_CONFLICT' : 'INTERNAL',
+              message: '合成失败',
+            },
+          },
+          { status },
+        );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const path = String(input);
+          if (init?.method === 'POST') {
+            writes += 1;
+            if (failure.startsWith('post')) return rejected(failure === 'post-409' ? 409 : 500);
+            return Response.json(receipt);
+          }
+          if (path.includes('watcher=f444')) {
+            reads += 1;
+            return Response.json({ items: [] });
+          }
+          if (path.includes('/businesses/'))
+            return failure === 'readback-500' ? rejected(500) : Response.json({ id: receipt.id, revision: 1 });
+          return rejected(500);
+        }),
+      );
+      await mount(h(List));
+      await mount(h(Creator));
+      await act(async () => {
+        await expect(creation.submit(values, Object.keys(values), undefined, false)).rejects.toBeInstanceOf(Error);
+      });
+      expect(reads).toBe(1);
+      expect(writes).toBe(1);
+      expect(creation.form.locked).toBe(failure !== 'post-409');
+      const command = creation.form.peek()?.command?.id;
+      await mount(h(Creator));
+      expect(creation.form.peek()?.command?.id).toBe(command);
+    },
+  );
 
   it('AC-FE-F444-04 新建实习生在途离页后返回：确认回执与本单后，新挂载列表重读', async () => {
     let release!: () => void;

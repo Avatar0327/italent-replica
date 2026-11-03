@@ -153,7 +153,7 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     await flush();
     expect(server.listReads['direct-remount']).toBe(2);
     expect(generations['direct-remount']).toBe(1);
-    expect(refresh).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('两步申请第一步（建草稿）确认成功：不算最终确认，代次不变、列表不重读', async () => {
@@ -202,7 +202,7 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     const refresh = vi.fn(async () => undefined);
     await mount(tenant, h(Writer, { application: false, draft: false, refresh }));
     expect(await submit()).toBe(true);
-    expect(refresh).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(generations.list).toBe(1);
     expect(server.listReads.list).toBe(2);
   });
