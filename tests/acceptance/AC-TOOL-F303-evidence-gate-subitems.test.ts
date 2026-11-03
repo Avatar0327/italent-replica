@@ -342,7 +342,6 @@ describe('AC-TOOL-F313 DEC-684⑦ 真实文档对账', () => {
       'Q-M0-112',
       'Q-M0-114',
       'Q-M0-117',
-      'Q-M0-120',
       'Q-M0-134',
       'Q-M0-145',
       'Q-M0-148',
@@ -400,9 +399,14 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
     ['Q-M0-118', ['R2-T04']],
     ['Q-M0-121', ['R2-T05']],
     ['Q-M0-122', ['R2-T07']],
-    ['Q-M0-123', ['R2-T10']],
+    ['Q-M0-120', ['R2-T09']],
   ])('AC-TOOL-F367：%s 残项保留为 🟡 可后补，任务范围不变', (id, tasks) => {
     expect(state(id)).toEqual({ st: '🟡 部分', level: '可后补', pendingItems: [], tasks });
+  });
+
+  // DEC-761 / DEC-763：⑤ 由 F-464 实测闭合，整行 ✅、无待决子项。
+  it('AC-TOOL-F367：Q-M0-123 按 DEC-763 闭合，✅ 且无待决子项', () => {
+    expect(state('Q-M0-123')).toEqual({ st: '✅', level: '开工前', pendingItems: [], tasks: ['R2-T10'] });
   });
 
   it.each(['Q-M0-162', 'Q-M0-165', 'Q-M0-166'])('AC-TOOL-F367：%s 已由 DEC 定口径，✅ 且无待决子项', (id) => {
@@ -412,18 +416,17 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
   it.each([
     ['Q-M0-112', ['R3-T03', 'F-040']],
     ['Q-M0-114', ['R3-T06']],
-    ['Q-M0-120', ['R2-T09']],
   ])('AC-TOOL-F367：%s 残项仍需开工前取证，继续阻塞', (id, tasks) => {
     expect(state(id)).toEqual({ st: '🟡 部分', level: '开工前', pendingItems: [], tasks });
   });
 
-  // 第 2 轮 P2-1：③ 指定日期挂起仍待实测（DEC-296② 不覆盖，规格 30 要求写入实测），阻塞列恢复基线写法。
-  it('AC-TOOL-F367：Q-M0-120 阻塞列为基线“R2-T09（开工前：①②③）”，状态列写明 ③ 仍待实测与 DEC-726', () => {
+  // F-459：③ 指定日期挂起已由 F-408 / W-1011 写入实测并复查到期执行，开工前 ①②③ 满足，残项 ⑤ 可后补。
+  it('AC-TOOL-F459：Q-M0-120 开工前 ①②③ 已满足，状态列与末尾 F-408 实测原文一致', () => {
     const row = realRow('Q-M0-120');
-    expect(row.blocks).toBe('R2-T09（开工前：①②③）');
-    expect(row.status).toContain('③ 指定日期挂起仍待实测（开工前）');
-    expect(row.status).toContain('⑤ 可后补');
-    expect(row.status).toContain('DEC-726：R2-T09 派发前先补测指定日期挂起形态（取证单 F-408）');
+    expect(row.blocks).toBe('R2-T09（开工前：①②③ 已满足；⑤ 残项可后补，依据 DEC-726 前序指定日期写入实测已完成）');
+    expect(row.status).not.toContain('仍待实测');
+    expect(row.status).toContain('F-408 / W-1011');
+    expect(row.status).toMatch(/残项 = ⑤ /);
   });
 
   // 第 2 轮 P2-2：③ 套卷共享只挡 F-040；①② 属 R3-T03（DEC-289① 不挡），对 R3-T03 只列为后补提示。
@@ -440,8 +443,9 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
     ['F-033', 0],
     ['F-076', 0],
     ['R3-T03', 0],
+    ['R2-T09', 0],
+    ['R2-T10', 0],
     ['F-040', 1],
-    ['R2-T09', 1],
   ])('AC-TOOL-F367：真实 CLI node scripts/evidence-gate.mjs %s 退出 %i', (target, code) => {
     const script = fileURLToPath(new URL('../../scripts/evidence-gate.mjs', import.meta.url));
     const env = { ...process.env };
@@ -453,11 +457,11 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
   });
 
   // 第 2 轮 P3-3～P3-5：依据与残项说明。
-  it('AC-TOOL-F367：Q-M0-122 / 123 / 118 依据与残项写法', () => {
+  it('AC-TOOL-F367：Q-M0-122 / 123 / 118 依据与残项写法（123 按 DEC-763 闭合）', () => {
     expect(realRow('Q-M0-122').blocks).toContain('基线开工前仅 ①②');
     expect(realRow('Q-M0-122').status).toContain('⑤ 已读到表单，在途记录形态无样本');
-    expect(realRow('Q-M0-123').blocks).toContain('docs/02_业务建模/35_人事数据分析_规格.md:66 AC-HA-05');
-    expect(realRow('Q-M0-123').status).toContain('AC-HA-05 与官方权限矩阵 HRBP 无菜单矛盾');
+    expect(realRow('Q-M0-123').blocks).toBe('R2-T10');
+    expect(realRow('Q-M0-123').status).toMatch(/^✅ .*F-464.*DEC-763/);
     expect(realRow('Q-M0-118').status).toMatch(/残项 = [^；]*随 F-351/);
   });
 
@@ -478,11 +482,12 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
         .find((l) => l.startsWith(`| ${id} `))!
         .split('|')[6]!;
     expect(statusOf('Q-M0-166')).not.toMatch(/🟡|待(?:实测|取证|定|确认|复核|用户|原站)/);
-    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122', 'Q-M0-123']) {
+    expect(statusOf('Q-M0-123')).not.toMatch(/🟡|待(?:实测|取证|定|确认|复核|用户|原站)/);
+    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122']) {
       expect(statusOf(id)).not.toContain('✅');
     }
     // 第 2 轮 P3-6：仍为 🟡 的后补行必须分清残项与取证原文。
-    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-121', 'Q-M0-122', 'Q-M0-123']) {
+    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122']) {
       expect(statusOf(id)).toContain('残项 =');
       expect(statusOf(id)).toContain('以下为取证原文');
     }
