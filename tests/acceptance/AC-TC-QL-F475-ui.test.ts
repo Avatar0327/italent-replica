@@ -92,7 +92,7 @@ const resource = (module: string, key: string) => {
   return found!;
 };
 const headers = (html: string) =>
-  [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)]
+  [...(html.match(/<thead\b[^>]*>[\s\S]*?<\/thead>/)?.[0] ?? '').matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)]
     .map((match) =>
       match[1]!
         .replace(/<[^>]*>/g, '')
