@@ -86,6 +86,25 @@ describe('AC-HA-F465a 人事报表目录与名册分析报表', () => {
       expect((await noContract(w.reportPath('1.01'))).status).toBe(200);
     });
 
+    it('有 HrRoster / 合同 / 任职但无员工档案查看权：目录里 8 张新报表与花名册都不可用且 403，其余照常（P2-1）', async () => {
+      const noPerson = w.restricted(deny(PERSON_OBJECT));
+      const { items } = await w.catalog(noPerson);
+      const blocked = [...NEW_REPORT_CODES, 'roster'];
+      for (const code of blocked) {
+        const item = items.find((entry) => entry.code === code)!;
+        expect(item.available, code).toBe(false);
+        expect(item.reason, code).toBeTruthy();
+      }
+      for (const code of NEW_REPORT_CODES) {
+        expect((await noPerson(w.reportPath(code, ...params(code)))).status, code).toBe(403);
+        expect((await w.exported(code, params(code), noPerson)).status, `${code} 导出`).toBe(403);
+      }
+      expect((await noPerson('/api/tenant/hr-analysis/roster')).status).toBe(403);
+      // 入离职 / 结构报表只按各自的报表对象准入，与员工档案对象无关，目录与入口一致
+      for (const code of ['monthly', 'institution', 'quality'])
+        expect(items.find((entry) => entry.code === code)?.available, code).toBe(true);
+    });
+
     it('无导出按钮权：列表可读，导出 403；未知报表编码 404', async () => {
       const noExport = w.restricted(
         (request) =>
