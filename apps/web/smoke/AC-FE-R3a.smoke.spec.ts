@@ -310,7 +310,7 @@ test('AC-FE-R3a 已选员工无当前资格时显示真实空态', async ({ page
 for (const changeName of [false, true]) {
   test(`AC-FE-R3a P2-1 清空层级${changeName ? '并改名' : '单独保存'}`, async ({ page }) => {
     const body: unknown[] = [];
-    let saved = { ...rows[0], layerId: rows[0]!.id as string | null };
+    let saved = { ...rows[0]!, layerId: rows[0]!.id as string | null };
     await page.route('**/api/tenant/qualification/levels/*', (route) => {
       if (route.request().method() === 'PATCH') {
         body.push(route.request().postDataJSON());
