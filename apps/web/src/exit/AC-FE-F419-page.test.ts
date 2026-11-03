@@ -194,6 +194,77 @@ describe('AC-FE-F419 离职终止配置页', () => {
     expect(writes).toHaveLength(1);
   });
 
+  it('回执版本错误也按结果未知锁定，双击只发送一条命令', async () => {
+    let finish!: (reply: Response) => void;
+    response = () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    await render();
+    await toggle('调动');
+    await click('保存');
+    await click('保存');
+    expect(writes).toHaveLength(1);
+    await act(async () => finish(Response.json({ ...setting, source: 'tenant', revision: 9 })));
+    await settle();
+    expect(host.textContent).toContain('处理中 / 结果待确认');
+    expect(checkbox('调动').disabled).toBe(true);
+  });
+
+  it('保存回执迟到：切到别的页签不跳转；回来读取已保存的新值', async () => {
+    let finish!: (reply: Response) => void;
+    response = () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    await render();
+    await toggle('调动');
+    await click('保存');
+    await click('离职类型');
+    setting = { ...setting, revision: 1, source: 'tenant', value: writes[0]!.body.value };
+    await act(async () => finish(Response.json(setting)));
+    await settle();
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('离职类型');
+    await click(TITLE);
+    expect(checkbox('调动').checked).toBe(false);
+    expect(checkbox('调动').disabled).toBe(false);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('保存未回执就离开并返回：持续锁定，成功后当前页重读新值与版本', async () => {
+    let finish!: (reply: Response) => void;
+    response = () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    await render();
+    await toggle('调动');
+    await click('保存');
+    await click('离职类型');
+    await click(TITLE);
+    expect(checkbox('调动').disabled).toBe(true);
+    setting = { ...setting, revision: 1, source: 'tenant', value: writes[0]!.body.value };
+    await act(async () => finish(Response.json(setting)));
+    await settle();
+    response = undefined;
+    await toggle('机构间调动');
+    await click('保存');
+    expect(writes[1]!.headers.get('if-match')).toBe('1');
+    expect(setting.value).toMatchObject({ transfer: false, inter_org_transfer: false });
+  });
+
+  it('重读发现配置改为系统只读，原单正常显示、草稿不可重提', async () => {
+    await render();
+    setting = { ...setting, revision: 1, overridable: false };
+    await toggle('调动');
+    await click('保存');
+    await click('重读最新版本');
+    expect(checkbox('调动').disabled).toBe(true);
+    expect(checkbox('调动').checked).toBe(true);
+    expect(host.textContent).toContain('该设置由系统统一管控');
+    expect(writes).toHaveLength(1);
+  });
+
   it.each(['permission', 'overridable'])('无编辑能力 %s 时只读展示，不显示保存', async (reason) => {
     if (reason === 'permission') permissions.editable = false;
     else setting.overridable = false;

@@ -57,6 +57,7 @@ test('AC-FE-F419-01 28 类四组、固定项、三类调动独立保存；409 �
   await expect(box(page, '新增兼职')).toBeChecked();
   await expect(box(page, '新增兼职')).toBeDisabled();
   await expect(box(page, '新建合同协议')).not.toBeChecked();
+  await page.screenshot({ path: '../../.dev_inputs/f419-page.png', fullPage: true });
   await box(page, '机构间调动').uncheck();
   await box(page, '批量调动').uncheck();
   await saveButton(page).click();

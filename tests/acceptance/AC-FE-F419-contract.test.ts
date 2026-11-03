@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { terminationDefault, terminationRejected } from '../../apps/web/smoke/exit-termination-fixtures.js';
 import { seedTenantWithMember, tenantApi, cmd } from './support/tenant-api.js';
 
+import { parseTermination, parseTerminationReceipt } from '../../apps/web/src/exit/termination-model.js';
+
 const database = useTestDb();
 const PATH = `/api/tenant/settings/${terminationDefault.key}`;
 
@@ -17,11 +19,16 @@ describe('AC-FE-F419 两层配置接口契约', () => {
     const session = { tenant: owner.tenant.id, user: owner.user.id };
     const initial = await api.request('GET', PATH, session);
     expect(initial.status).toBe(200);
-    expect(await initial.json()).toEqual(terminationDefault);
+    const initialBody = await initial.json();
+    expect(initialBody).toEqual(terminationDefault);
+    expect(parseTermination(initialBody).value).toEqual(terminationDefault.value);
     const value = { ...terminationDefault.value, inter_org_transfer: false, batch_transfer: false };
     const saved = await api.request('PUT', PATH, { ...session, ifMatch: 0, body: { value } });
     expect(saved.status, await saved.clone().text()).toBe(200);
-    expect(await saved.json()).toEqual({ ...terminationDefault, value, source: 'tenant', revision: 1 });
+    const savedBody = await saved.json();
+    expect(savedBody).toEqual({ ...terminationDefault, value, source: 'tenant', revision: 1 });
+    expect(parseTerminationReceipt(savedBody, 0)).toEqual({ id: terminationDefault.key });
+    expect(() => parseTerminationReceipt(savedBody, 1)).toThrow();
     const denied = await api.request('PUT', PATH, {
       ...session,
       ifMatch: 1,
