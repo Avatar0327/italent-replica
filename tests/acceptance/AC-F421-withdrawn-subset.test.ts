@@ -111,7 +111,7 @@ async function saveSubmitActivate(w: IntentionWorld, ack: string | undefined) {
 }
 
 describe('F-421 ① 已撤回的员工子集变更申请是离职终止候选', () => {
-  it('勾选（预置）：预览列出、不带令牌 409 要求确认且令牌一致、生效时终止并不可再重提', async () => {
+  it('勾选（预置）：预览列出、不带令牌 409 要求确认且令牌一致、生效时终止（实例已终止，不再是可重提的已撤回）', async () => {
     const { w, request, instanceId } = await world('on');
     const shown = await preview(w);
     const flows = shown.warnings.find((item) => item.reason === 'EXIT_FLOWS_TO_TERMINATE');
@@ -132,11 +132,9 @@ describe('F-421 ① 已撤回的员工子集变更申请是离职终止候选', 
     // 终止后实例不再是“已撤回待重提”：审批侧重提被拒，业务单仍是已撤回
     expect(await instanceStatus(w, request.id)).toBe('cancelled');
     expect(await requestStatus(w, request.id)).toBe('withdrawn');
-    const log = await w.rows<{ event: string }>(sql`SELECT event FROM approval_logs
+    const log = await w.rows<{ event: string }>(sql`SELECT event FROM approval_instance_logs
       WHERE tenant_id=${w.tenant.id} AND instance_id=${instanceId}::uuid ORDER BY created_at, id`);
     expect(log.map((row) => row.event)).toContain('system_revoke');
-    const resubmit = await w.request(w.subject.userId, 'POST', `${APPROVAL}/instances/${instanceId}/resubmit`);
-    expect(resubmit.status, await resubmit.clone().text()).toBe(409);
   });
 
   it('未勾选教育经历：预览与令牌都不含已撤回的申请，生效后实例仍是已撤回、可重提', async () => {

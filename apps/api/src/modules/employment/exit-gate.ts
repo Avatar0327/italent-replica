@@ -258,7 +258,8 @@ const TRANSFER_FLOWS = ['transfer', 'inter_org_transfer', 'batch_transfer'] as c
 function flowSql() {
   const interOrg = `{${INTER_ORG_TRANSFER_FORM_IDS.join(',')}}`;
   return sql`CASE WHEN p.kind='transfer' AND p.form_id = ANY(${interOrg}::text[]) THEN 'inter_org_transfer'
-    WHEN p.kind='transfer' AND left(p.form_id, ${BATCH_TRANSFER_FORM_ID_PREFIX.length}) = ${BATCH_TRANSFER_FORM_ID_PREFIX}
+    WHEN p.kind='transfer'
+      AND left(p.form_id, ${BATCH_TRANSFER_FORM_ID_PREFIX.length}) = ${BATCH_TRANSFER_FORM_ID_PREFIX}
       THEN 'batch_transfer'
     ELSE p.kind END`;
 }

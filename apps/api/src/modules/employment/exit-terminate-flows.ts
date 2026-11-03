@@ -3,6 +3,7 @@
  * 员工子集变更（个人信息变更与各子集变更）与意向退休日期申请。勾选才终止，不勾一律保留；退休暂不接配置（F-351），不处理。
  * 订阅 exitPostEffectHooks.onEffective，与离职生效同一事务、同一保存点：失败即整单回滚。
  * 候选集合取自 exit-flow-candidates.ts（预览、§8 确认令牌、生效执行三处共用）。
+ * 候选含已撤回的员工子集变更申请（DEC-740）：只把实例置已终止（重提即被拒），业务单已是“已撤回”。
  * 每条在途实例：按业务侧锁序锁业务单（员工已由离职持有 → 业务单）→ 系统撤销实例（日志操作人“系统”、理由 EXIT_VOID_REASON，
  * 与在途考核同一做法）→ 业务单置“已撤回” → 台账 application_voided → 审计 → 给发起人与申请人发站内消息（沿用离职作废通道）。
  * 撤销离职不恢复被终止的流程（与在途考核、任职申请一致）。
@@ -72,8 +73,10 @@ export async function terminateOtherFlows(
     const { flowType } = row;
     const adapter = ADAPTERS[row.businessType];
     await adapter.lock(tx, approvalCtx, row.businessId);
-    await revokeBySystem(tx, approvalCtx, row.instanceId, EXIT_VOID_REASON);
-    await adapter.withdrawn(tx, approvalCtx, row.businessId);
+    const alreadyWithdrawn = row.instanceStatus === 'withdrawn';
+    await revokeBySystem(tx, approvalCtx, row.instanceId, EXIT_VOID_REASON, { includeWithdrawn: alreadyWithdrawn });
+    // 已撤回的申请业务单本就是“已撤回”（DEC-740）：只终止实例，使其不能再重提，不重复回调业务侧
+    if (!alreadyWithdrawn) await adapter.withdrawn(tx, approvalCtx, row.businessId);
     const detail = { approvalType: row.businessType, flowType, instanceId: row.instanceId };
     await tx.insert(exitEffects).values({
       tenantId: ctx.tenantId,

@@ -284,7 +284,8 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
           (id,tenant_id,employee_id,business_id,version_no,command_id,kind,mode,effective_date,form_id,employ_type,
            created_at,is_department_head)
         SELECT ${versionId}::uuid,tenant_id,employee_id,${businessId}::uuid,1,NULL,${input.kind},'application',
-          ${input.effectiveDate}::date,COALESCE(${input.formId ?? null}::text,form_id),employ_type,'2026-10-01T01:00:00Z'::timestamptz,
+          ${input.effectiveDate}::date,COALESCE(${input.formId ?? null}::text,form_id),employ_type,
+          '2026-10-01T01:00:00Z'::timestamptz,
           ${input.linked && !input.reminderOnly ? true : null}
         FROM employment_payload_versions WHERE tenant_id=${t} AND employee_id=${employeeId}::uuid
           AND business_id<>${businessId}::uuid ORDER BY created_at, version_no LIMIT 1`);
