@@ -6,14 +6,14 @@
  * 只有任职记录查看权、无配置权：字典读取 200（表单下拉不受影响）、配置读取仍 403。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
-import { EXIT_DICTIONARY_KINDS, MODULE_OBJECTS } from '@italent/domain';
+import { EXIT_DICTIONARY_KINDS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { menuNodes, type ServerSnapshot } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { PAGES } from '../../apps/web/src/foundation/routes.js';
 import { dictionaryPath, EXIT_RECORD_OBJECT } from '../../apps/web/src/exit/model.js';
-import { exitWorld } from './AC-EXIT-support.js';
-import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
+import { createRecordViewProfile, exitWorld } from './AC-EXIT-support.js';
+import { addMember, grant } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -37,18 +37,13 @@ async function world(label: string) {
     asAdmin: { tenant: w.tenant.id, user: w.user.id },
   };
   // 只有任职记录查看权的身份（不含任职设置对象，也不是企业管理员）
-  const profile = await createProfile(seed, `f358-${label}`);
-  const record = MODULE_OBJECTS.employmentRecord;
-  const fields = record.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false }));
-  const permission = { dataOperations: { create: false, update: false, delete: false }, fields, buttons: [] };
-  expect((await setObjectPermission(seed, profile, permission, record.code)).status).toBe(200);
-  await makeGrantable(seed, [profile.id]);
+  const profileId = await createRecordViewProfile(seed, label);
   const viewer = await addMember(seed, '任职记录查看人');
-  expect((await grant(seed, viewer.id, profile.id)).status).toBe(201);
+  expect((await grant(seed, viewer.id, profileId)).status).toBe(201);
   const as = (user: string, path: string) => api.request('GET', path, { tenant: w.tenant.id, user });
   const snapshotOf = async (user: string) =>
     (await (await as(user, '/api/tenant/permission/me/snapshot')).json()) as ServerSnapshot;
-  return { seed, as, snapshotOf, admin: w.user.id, viewer: viewer.id, profileId: profile.id };
+  return { seed, as, snapshotOf, admin: w.user.id, viewer: viewer.id, profileId };
 }
 const menuKeys = (snapshot: ServerSnapshot) => menuNodes(PAGES.menus, snapshot).map((item) => item.key);
 
