@@ -5,7 +5,13 @@ interface OverlayProps {
   mode?: string;
   groups: {
     title: string;
-    fields: { name: string; label: string; control: unknown; access: { visible: boolean } }[];
+    fields: {
+      name: string;
+      label: string;
+      control: unknown;
+      access: { visible: boolean; editable?: boolean };
+      display?: unknown;
+    }[];
   }[];
 }
 import type { ObjectPermission } from '../../apps/web/src/foundation/permission-model.js';
@@ -14,6 +20,7 @@ import type { Resource, Row } from '../../apps/web/src/talent/catalog/types.js';
 const state = vi.hoisted(() => ({
   row: { id: 'synthetic', revision: 1, name: '合成标准' } as Row,
   names: new Map<string, string>(),
+  latest: undefined as Record<string, unknown> | undefined,
 }));
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h } = requireWeb('react');
@@ -32,7 +39,9 @@ vi.mock('../../apps/web/src/talent/catalog/hooks.js', () => ({
   }),
 }));
 vi.mock('../../apps/web/src/foundation/DecisionNote.js', () => ({ DecisionNote: () => null }));
-vi.mock('../../apps/web/src/foundation/forms/useCommandForm.js', () => ({ useCommandForm: () => ({}) }));
+vi.mock('../../apps/web/src/foundation/forms/useCommandForm.js', () => ({
+  useCommandForm: () => ({ state: state.latest ? { latest: { values: state.latest } } : undefined }),
+}));
 vi.mock('../../apps/web/src/foundation/FormOverlay.js', () => ({
   FormOverlay: (props: OverlayProps) =>
     h(
@@ -45,7 +54,14 @@ vi.mock('../../apps/web/src/foundation/FormOverlay.js', () => ({
           h('legend', null, group.title),
           group.fields
             .filter((field) => field.access.visible)
-            .map((field) => h('label', { key: field.name }, field.label, field.control)),
+            .map((field) =>
+              h(
+                'label',
+                { key: field.name },
+                field.label,
+                field.access.editable ? field.control : (field.display ?? field.control),
+              ),
+            ),
         ),
       ),
     ),
@@ -111,6 +127,7 @@ const headers = (html: string) =>
     .filter(Boolean);
 beforeEach(() => {
   state.names = new Map();
+  state.latest = undefined;
   state.row = { id: 'synthetic', revision: 1, name: '合成标准', enabled: true };
 });
 
@@ -176,6 +193,32 @@ describe('AC-TC / AC-QL F-475 详情与表单结构', () => {
       );
       expect(html).toContain('data-mode="modal"');
     }
+  });
+  it('任职类别弹窗按名称、编码、关联类型、所属分类排列，编辑时保留分类展示', () => {
+    const html = render(
+      h(ResourceForm, {
+        resource: resource('qualification', 'categories'),
+        original: { ...state.row, code: 'C01', classId: 'class', jobLinkType: 'sequence' },
+        permission,
+        onClose() {},
+        onSaved() {},
+      }),
+    );
+    expect(html).toContain('所属分类');
+    expect(html.indexOf('关联岗职务类型')).toBeLessThan(html.indexOf('所属分类'));
+  });
+  it('重读裁剪等级明细后不回填旧的只读内容', () => {
+    state.latest = { id: state.row.id, revision: 2, name: '最新方案' };
+    const html = render(
+      h(ResourceForm, {
+        resource: resource('qualification', 'grade-schemes'),
+        original: { ...state.row, details: [{ id: 'grade', name: '已被裁剪的旧内容', grade: 1 }] },
+        permission: { ...permission, editableFields: ['name'] },
+        onClose() {},
+        onSaved() {},
+      }),
+    );
+    expect(html).not.toContain('已被裁剪的旧内容');
   });
   it('等级方案编辑包含等级方案信息和等级明细', () => {
     const html = render(
