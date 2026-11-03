@@ -656,7 +656,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/engine.ts#noAssignee': ['f9f8ab4c64cf', '5d65fb6e7d40'],
   'apps/api/src/modules/approval/engine.ts#nodeIndex': ['b612490a0ca4', '5d65fb6e7d40'],
   'apps/api/src/modules/approval/engine.ts#openRun': ['f92a22491f3f', 'f1aa87df512f'],
-  'apps/api/src/modules/approval/engine.ts#persistRun': ['dd2b165a26dc', '93ea6706fa4c'],
+  'apps/api/src/modules/approval/engine.ts#persistRun': ['52f147c829b9', 'ab7629ba546a'],
   'apps/api/src/modules/approval/engine.ts#recordSelfSkip': ['16c1d5ab70cb', 'f13cc2d0ca9f'],
   'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion': ['d0ac12f4b5cd', '3c988652fc60'],
   'apps/api/src/modules/approval/engine.ts#resume': ['c70467920df9', 'f94abf657416'],
