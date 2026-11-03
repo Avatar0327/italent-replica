@@ -98,8 +98,9 @@ test.beforeEach(async ({ page }) => {
       return route.fulfill({ json: { editableFields: fields, requiredFields: ['name', 'categoryId'] } });
     return route.fulfill({ json: path.endsWith(id) ? row : { items: [row] } });
   });
-  await page.goto('/staff');
+  await page.goto('/talent');
   await page.getByLabel('切换演示身份').selectOption(user);
+  await page.waitForURL('**/staff');
 });
 
 test('AC-TC 四页签整页详情，潜力/经历不带能力列，成就不制造空表', async ({ page }) => {
