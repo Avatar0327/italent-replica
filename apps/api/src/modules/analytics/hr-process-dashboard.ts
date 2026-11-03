@@ -399,6 +399,7 @@ interface DetailRow {
   total: number;
   id: string | null;
   instance_id: string | null;
+  visible_instance: string | null;
   grp: string | null;
   series: string | null;
   value: string | null;
@@ -427,7 +428,10 @@ export async function hrProcessPage(
         sql`, picked AS MATERIALIZED (SELECT DISTINCT ON (id) * FROM candidates WHERE ${sql.join(where, sql` AND `)}
             ORDER BY id, grp, series),
           counted AS (SELECT count(*)::int AS total FROM picked)
-        SELECT counted.total, page.* FROM counted
+        SELECT counted.total, page.*,
+          (SELECT i.id FROM approval_instances i WHERE i.tenant_id=${c.tenantId} AND i.id::text=page.instance_id
+            AND ${c.approval}) AS visible_instance
+        FROM counted
         LEFT JOIN LATERAL (SELECT * FROM picked ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}) page ON true
         ORDER BY page.id`,
       ),
@@ -439,7 +443,8 @@ export async function hrProcessPage(
       .filter((row) => row.id)
       .map((row) => ({
         id: row.id!,
-        instanceId: row.instance_id,
+        // 业务类组件的实例 ID 取自业务单自己的关联，没过 facts 的审批披露谓词：这里按调用者的审批可见面再裁一次（F-415）
+        instanceId: row.visible_instance,
         group: row.grp,
         series: row.series,
         value: round(row.value),
