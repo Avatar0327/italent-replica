@@ -9,7 +9,7 @@ import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { CascadeAuthorizer } from '../org/deactivation.js';
 import type { OrgRecord } from '../org/read-model.js';
-import { invalid, type OrganizationPatch } from '../org/validation.js';
+import { invalid } from '../org/validation.js';
 import {
   activeOrg,
   assertItemRules,
