@@ -429,7 +429,7 @@ export async function hrProcessPage(
             ORDER BY id, grp, series),
           counted AS (SELECT count(*)::int AS total FROM picked)
         SELECT counted.total, page.*,
-          (SELECT i.id FROM approval_instances i WHERE i.tenant_id=${c.tenantId} AND i.id::text=page.instance_id
+          (SELECT i.id FROM approval_instances i WHERE i.tenant_id=${c.tenantId} AND i.id=page.instance_id::uuid
             AND ${c.approval}) AS visible_instance
         FROM counted
         LEFT JOIN LATERAL (SELECT * FROM picked ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}) page ON true
