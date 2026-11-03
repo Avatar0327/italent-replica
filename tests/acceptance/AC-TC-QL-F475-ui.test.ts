@@ -11,6 +11,7 @@ interface OverlayProps {
       control: unknown;
       access: { visible: boolean; editable?: boolean };
       display?: unknown;
+      rules?: { required?: boolean }[];
     }[];
   }[];
 }
@@ -57,7 +58,7 @@ vi.mock('../../apps/web/src/foundation/FormOverlay.js', () => ({
             .map((field) =>
               h(
                 'label',
-                { key: field.name },
+                { key: field.name, 'data-required': field.rules?.some((rule) => rule.required) },
                 field.label,
                 field.access.editable ? field.control : (field.display ?? field.control),
               ),
@@ -204,6 +205,7 @@ describe('AC-TC / AC-QL F-475 详情与表单结构', () => {
         onSaved() {},
       }),
     );
+    expect(html).toContain('data-required="true">编码');
     expect(html).toContain('所属分类');
     expect(html.indexOf('关联岗职务类型')).toBeLessThan(html.indexOf('所属分类'));
   });

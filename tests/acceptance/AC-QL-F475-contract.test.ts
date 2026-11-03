@@ -10,7 +10,7 @@ const testDb = useTestDb();
 it('AC-QL F-475 补页使用真实接口回执，编辑等级保留行 ID，指标采用接口字段', async () => {
   const world = await qualificationWorld(testDb().db, 'f475-contract');
   const api: ApiClient = {
-    async request<T>(path, options = {}) {
+    async request<T>(path: string, options: Parameters<ApiClient['request']>[1] = {}) {
       const method = options.method ?? 'GET';
       const response = await world.request(method, path.replace('/api/tenant/qualification', ''), {
         body: options.command?.body,
@@ -44,6 +44,7 @@ it('AC-QL F-475 补页使用真实接口回执，编辑等级保留行 ID，指�
     targets,
     {
       name: '合成指标',
+      code: 'F475_TARGET',
       typeId: type.id,
       evalMode: 'score',
       description: '合成指标说明',
