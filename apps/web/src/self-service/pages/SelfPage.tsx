@@ -1,6 +1,6 @@
-import { Alert, Button, Descriptions, Space, Tabs, Tooltip, type TableColumnsType } from 'antd';
+import { Alert, Button, Descriptions, Space, Tabs, type TableColumnsType } from 'antd';
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { DetailPage, ListPage, PageState, pageQuery, useSession, type PageResult } from '../../foundation/index.js';
 import { PersonAvatar } from '../../shared/PersonAvatar.js';
 import { ApplicationDrawer } from './ApplicationDrawer.js';
@@ -9,6 +9,9 @@ import { selfServiceDemo } from '../../demo-stubs/self-service.js';
 import { canApplySelf, instant, recordItems, SELF, statusText, valueText } from './model.js';
 import { DemoSection, Notes, ReadState, RecordInfo, Refresh, ServiceHeading, ServiceNav } from './parts.js';
 import { useRead } from './useRead.js';
+import { SelfRequest, SelfRequestInfo, SelfApprovalProgress } from './SelfRequest.js';
+import { selfRequestAllowed, type RequestKind } from './request-model.js';
+import { q } from './request-messages.js';
 import { messages as m } from './messages.js';
 
 export function SelfPage() {
@@ -17,7 +20,8 @@ export function SelfPage() {
   return (
     <div className="service-page" key={`${session.tenantId}/${session.identityKey}`}>
       <ServiceNav />
-      {['/self', '/self/profile', '/self/applications', '/self/records', '/self/requests'].includes(path) ? (
+      {/^\/self\/(exit|partTime)\/(new|[a-fA-F0-9-]+)$/.test(path) ||
+      ['/self', '/self/profile', '/self/applications', '/self/records', '/self/requests'].includes(path) ? (
         <SelfWorkspace key={path} path={path} />
       ) : (
         <PageState kind="not-found" />
@@ -28,6 +32,13 @@ export function SelfPage() {
 function SelfWorkspace({ path }: { path: string }) {
   const profile = useRead<Profile>(`${SELF}/profile`);
   if (!profile.data) return <ReadState state={profile} />;
+  const request = /^\/self\/(exit|partTime)\/(new|[a-fA-F0-9-]+)$/.exec(path);
+  if (request)
+    return selfRequestAllowed(profile.data.selfServiceButtons ?? [], request[1] as RequestKind) ? (
+      <SelfRequest kind={request[1] as RequestKind} id={request[2]!.toLowerCase()} />
+    ) : (
+      <PageState kind="forbidden" />
+    );
   return path === '/self' || path === '/self/profile' ? (
     <ProfilePage profile={profile.data} refresh={profile.refresh} />
   ) : (
@@ -116,6 +127,7 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
     (profile.selfServiceButtons ?? []).some((b) => b.buttonCode === code && b.level === level),
   );
   const { tenantId } = useSession();
+  const navigate = useNavigate();
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
   const [form, setForm] = useState(false);
   const [selected, setSelected] = useState<Application | null>(null);
@@ -160,11 +172,13 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
                   {m.transfer}
                 </Button>
               )}
-              {[m.leave, m.partTime].map((title) => (
-                <Tooltip key={title} title={m.unavailable}>
-                  <Button disabled>{title}</Button>
-                </Tooltip>
-              ))}
+              {(['exit', 'partTime'] as const)
+                .filter((kind) => selfRequestAllowed(profile.selfServiceButtons ?? [], kind))
+                .map((kind) => (
+                  <Button key={kind} onClick={() => navigate(`/self/${kind}/new`)}>
+                    {q.titles[kind]}
+                  </Button>
+                ))}
               <Refresh onClick={rows.refresh} />
             </Space>
           }
@@ -216,7 +230,9 @@ function applicationColumns(timezone: string, select: (item: Application) => voi
   ];
 }
 function ApplicationDetail({ item, onClose }: { item: Application; onClose(): void }) {
-  const detail = useRead<{ status: string; record: OwnRecord }>(`${SELF}/applications/${encodeURIComponent(item.id)}`);
+  const detail = useRead<{ status: string; record: OwnRecord & Record<string, unknown> }>(
+    `${SELF}/applications/${encodeURIComponent(item.id)}`,
+  );
   return (
     <DetailPage
       open
@@ -229,12 +245,22 @@ function ApplicationDetail({ item, onClose }: { item: Application; onClose(): vo
           children: detail.data ? (
             <>
               <Descriptions items={[{ key: 'status', label: m.approval, children: statusText(detail.data.status) }]} />
-              <RecordInfo record={detail.data.record} />
+              {item.applicationKind ? (
+                <SelfRequestInfo kind={item.applicationKind} record={detail.data.record} />
+              ) : (
+                <RecordInfo record={detail.data.record} />
+              )}
+              {item.applicationKind && ['draft', 'rejected'].includes(String(detail.data.record.status)) && (
+                <Link to={`/self/${item.applicationKind}/${item.businessId}`}>{q.draft}</Link>
+              )}
             </>
           ) : (
             <ReadState state={detail} />
           ),
         },
+        ...(item.applicationKind
+          ? [{ key: 'progress', label: q.progress, children: <SelfApprovalProgress id={item.id} /> }]
+          : []),
       ]}
     />
   );

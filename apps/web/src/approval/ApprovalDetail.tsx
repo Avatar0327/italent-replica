@@ -169,7 +169,7 @@ function DetailColumns({ detail }: { detail: Detail }) {
   );
 }
 /** 原站进度：开始 → 各节点 → 结束；已走过绿、当前蓝、后续灰。接口只给已产生的任务，后续节点暂缺。 */
-function ApprovalProgress({ detail }: { detail: Detail }) {
+export function ApprovalProgress({ detail }: { detail: Detail }) {
   const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
   const running = detail.status === 'running';
   return (

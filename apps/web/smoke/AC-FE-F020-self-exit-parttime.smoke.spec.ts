@@ -122,6 +122,10 @@ async function createDraft(page: Page, world: Awaited<ReturnType<typeof installS
     await page.getByRole('link', { name: '返回人事申请' }).click();
     await page.goBack();
     await expect(page.getByRole('button', { name: /^暂\s*存$/ })).toBeDisabled();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/self\/applications$/);
+    await page.goBack();
+    await expect(page.getByRole('button', { name: /^暂\s*存$/ })).toBeDisabled();
     await page.getByRole('button', { name: '回查并重放原命令' }).click();
   }
   await expect(page).toHaveURL(new RegExp(`/self/${kind}/${id}$`));

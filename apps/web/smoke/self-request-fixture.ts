@@ -153,7 +153,7 @@ function writeSelfRequest(route: Route, world: World) {
     ...body,
     id,
     employeeId: employee,
-    employeeRevision: 7,
+    employeeRevision: world.employeeRevision,
     revision: Number(row.revision ?? 0) + 1,
     status: url.pathname.endsWith('/submit') ? 'in_review' : 'draft',
     kind: kind === 'exit' ? 'exit' : 'add',
@@ -165,6 +165,7 @@ function writeSelfRequest(route: Route, world: World) {
         }
       : {}),
   };
+  delete row.pendingTransferAck;
   delete row.partTimeType;
   delete row.startDate;
   receipts.set(key, structuredClone(row));
