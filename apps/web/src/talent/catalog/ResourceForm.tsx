@@ -104,7 +104,7 @@ export function ResourceForm({
     !original &&
     resource.fields.some(
       (field) =>
-        (field.required || field.kind === 'targets') &&
+        (field.required || field.createRequiresEdit || field.kind === 'targets') &&
         !fields.find((item) => item.name === field.key)?.access.editable,
     );
   const blocked =
@@ -123,6 +123,7 @@ export function ResourceForm({
     details.display = <GradeDetails value={latestDetails} disabled />;
   let noticeText = data.data?.contract?.blockedReason ?? m.unavailable;
   if (!original && resource.owner && !owners.length) noticeText = m.ownerMissing;
+  if (missingRequired) noticeText = m.createFieldPermissionMissing;
   if (data.loading) noticeText = m.choose;
   const notice = data.error ? (
     <PageState kind="error" error={data.error} />
@@ -137,7 +138,7 @@ export function ResourceForm({
       mode={['categories', 'criteria', 'grade-schemes'].includes(resource.key) ? 'modal' : 'drawer'}
       className={`catalog-form catalog-form-${resource.key}`}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
-      submission={submission}
+      submission={{ ...submission, locked: blocked || submission.locked }}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open
       onClose={onClose}

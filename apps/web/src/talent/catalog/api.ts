@@ -87,8 +87,7 @@ export function commandRequestBody(
     ),
   );
   // 标准的明细为整组替换；基础编辑绝不携带旧明细，创建空标准按已有契约提交空格集合。
-  if (!original && resource.module === 'qualification' && ['standards', 'grade-schemes'].includes(resource.key))
-    sent.details ??= [];
+  if (!original && resource.module === 'qualification' && resource.key === 'standards') sent.details ??= [];
   return sent;
 }
 

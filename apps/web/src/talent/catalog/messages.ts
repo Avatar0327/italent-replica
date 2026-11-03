@@ -43,6 +43,7 @@ export const m = {
   targetDescription: '指标说明',
   schemeDescription: '描述',
   scheme: '等级方案',
+  createFieldPermissionMissing: '缺少创建必需字段的编辑权限，无法创建；请联系管理员。',
   schemeInfo: '等级方案信息',
   schemeDetails: '等级明细',
   gradeNumber: '等级',

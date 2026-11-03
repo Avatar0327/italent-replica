@@ -9,6 +9,8 @@ export interface Field {
   label: string;
   kind?: 'number' | 'text' | 'boolean' | 'select' | 'targets' | 'references' | 'grades';
   required?: boolean;
+  /** 创建请求必须包含此字段；与数组是否允许为空的值校验分开。 */
+  createRequiresEdit?: boolean;
   nullable?: boolean;
   createOnly?: boolean;
   multiple?: boolean;
