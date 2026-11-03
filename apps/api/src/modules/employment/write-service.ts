@@ -764,6 +764,26 @@ function validateMaterializedReferences(
   return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, terminating);
 }
 
+async function materializedFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  inherited: PreparedInheritance,
+  employType: EmployType,
+  order: number,
+) {
+  return applyRehireSeniority(
+    tx,
+    ctx,
+    business,
+    {
+      fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
+      customFields: inherited.customFields,
+    },
+    order,
+  );
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
@@ -785,16 +805,7 @@ export async function materializeEmploymentRecord(
     predecessor: selected?.predecessor ?? null,
   });
   const employType = effectiveEmployType(payload, selected);
-  const fields = await applyRehireSeniority(
-    tx,
-    ctx,
-    business,
-    {
-      fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
-      customFields: inherited.customFields,
-    },
-    position.order,
-  );
+  const fields = await materializedFields(tx, ctx, business, inherited, employType, position.order);
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
