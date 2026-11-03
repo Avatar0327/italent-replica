@@ -8,6 +8,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { PageState } from '../foundation/PageState.js';
+import type { ObjectPermission } from '../foundation/permission-model.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { exitStore } from './commands.js';
@@ -68,6 +69,36 @@ const handle = (row: Row): Opened => ({
   props: { mode: 'direct', employee: { value: row.employeeId!, label: row.name ?? x.missing } },
 });
 
+function Heading(props: { permission: ObjectPermission | undefined; open(o: Opened): void }) {
+  return (
+    <div className="exit-heading">
+      <h1>{x.title}</h1>
+      <Space>
+        {createEntries(props.permission).map((mode) => (
+          <Button key={mode} type="primary" onClick={() => props.open({ kind: 'form', props: { mode } })}>
+            {x.entries[mode]}
+          </Button>
+        ))}
+      </Space>
+    </div>
+  );
+}
+
+function Pager(props: { page: number; total: number; loading: boolean; hasNext: boolean; go(page: number): void }) {
+  const { page, loading } = props;
+  return (
+    <Space className="exit-pagination">
+      <Button disabled={page === 1 || loading} onClick={() => props.go(page - 1)}>
+        {x.previous}
+      </Button>
+      <span>{x.page(page, props.total)}</span>
+      <Button disabled={!props.hasNext || loading} onClick={() => props.go(page + 1)}>
+        {x.next}
+      </Button>
+    </Space>
+  );
+}
+
 function ExitList() {
   const [params, setParams] = useSearchParams();
   const requested = params.get('view');
@@ -96,16 +127,7 @@ function ExitList() {
   const selected = items.filter((row) => picked.scope === scope && picked.ids.includes(row.id));
   return (
     <>
-      <div className="exit-heading">
-        <h1>{x.title}</h1>
-        <Space>
-          {createEntries(permission).map((mode) => (
-            <Button key={mode} type="primary" onClick={() => open({ kind: 'form', props: { mode } })}>
-              {x.entries[mode]}
-            </Button>
-          ))}
-        </Space>
-      </div>
+      <Heading permission={permission} open={open} />
       <nav className="exit-views" aria-label={x.title}>
         {VIEWS.map((key) => (
           <Button
@@ -139,15 +161,13 @@ function ExitList() {
             refresh={result.reload}
           />
         )}
-        <Space className="exit-pagination">
-          <Button disabled={page === 1 || result.loading} onClick={() => setPage(page - 1)}>
-            {x.previous}
-          </Button>
-          <span>{x.page(page, result.data?.total ?? 0)}</span>
-          <Button disabled={items.length < pageSize || result.loading} onClick={() => setPage(page + 1)}>
-            {x.next}
-          </Button>
-        </Space>
+        <Pager
+          page={page}
+          total={result.data?.total ?? 0}
+          loading={result.loading}
+          hasNext={items.length >= pageSize}
+          go={setPage}
+        />
       </section>
       {opened?.kind === 'detail' && (
         <ExitDetail key={opened.id} id={opened.id} onClose={() => open(undefined)} refresh={result.reload} />
