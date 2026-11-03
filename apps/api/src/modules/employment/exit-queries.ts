@@ -88,6 +88,9 @@ export interface ExitRow {
   total?: unknown;
 }
 
+/** F-352①：逐单动作编码（exit-actions.ts 判定；路由并入后随状态字段权一起裁剪）。 */
+export type ExitActionCode = 'submit' | 'edit' | 'cancel' | 'handle';
+
 export interface ExitItem {
   readonly id: string;
   readonly employeeId: string;
@@ -106,6 +109,8 @@ export interface ExitItem {
   readonly whereaboutsCode: string | null;
   readonly whereaboutsName: string | null;
   readonly status: EmploymentState;
+  /** 路由层并入；读模型本身不产生。 */
+  readonly actions?: readonly ExitActionCode[];
   readonly mode: 'application' | 'direct';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
@@ -555,6 +560,9 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   ...Object.fromEntries(OWN_FIELDS.map((field) => [field, on(field)])),
   name: { field: 'name', object: 'employee' },
   code: { field: 'code', object: 'employee' },
+  // F-352①：逐单动作由单据状态派生，无状态查看权的人不下发（路由层按此判定，不让动作反推隐藏的状态）
+  actions: on('status'),
+  'actions[]': on('status'),
   // 派生显示名 / 原定日期：跟随所属字段
   plannedLastWorkDate: on('lastWorkDate'),
   exitTypeName: on('exitTypeCode'),

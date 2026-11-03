@@ -109,6 +109,19 @@ describe('F-352① 离职逐单 actions', () => {
     expect((await x.row(full, live.id))?.actions ?? []).not.toContain('handle');
   });
 
+  it('无“状态”字段权：详情与列表行都不下发 actions（动作不能反推被裁剪的状态）', async () => {
+    const x = await world('f352-nostatus');
+    const made = await x.exit('裁剪员工');
+    const blind = x.w.restricted(
+      denyButtons(),
+      undefined,
+      FULL.filter((field) => field !== 'status'),
+    );
+    expect(await x.detail(blind, made.id)).not.toHaveProperty('actions');
+    expect(await x.row(blind, made.id)).not.toHaveProperty('actions');
+    expect((await x.detail(x.viewer(), made.id)).actions).toContain('edit');
+  });
+
   it('动作是披露，不放宽准入：范围外的单详情仍 404，且不泄露 actions', async () => {
     const x = await world('f352-scope');
     const mine = await x.exit('本人创建');

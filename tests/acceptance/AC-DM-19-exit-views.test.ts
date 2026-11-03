@@ -478,7 +478,9 @@ const FULL = [...CATALOG, 'name', 'code'];
 /** 响应键与字段目录的对应：派生的显示名跟随编码；这些结构 / 汇总键没有自己的字段编码，行可见即可见。 */
 const DERIVED = ['plannedLastWorkDate', 'exitTypeName', 'reasonName', 'whereaboutsName'];
 // F-317：rowActions 是服务端按对象 / 行按钮 / 当前写范围判定的控制项，行为另由 F-317 验收守卫。
+// F-352①：actions 是逐单动作（状态 × 按钮权 × 写范围），依赖状态字段权，行为另由 AC-EXIT-F352-actions 守卫。
 const STRUCTURES = [
+  'actions',
   'cancellation',
   'events',
   'versions',
@@ -525,7 +527,7 @@ describe('AC-DM-19 系统字段按各自字段权裁剪（第 2 轮 P2-1，设�
       ['createdAt', ['createdAt']],
       ['activation', ['activation']],
       ['revision', ['revision']],
-      ['status', ['status']],
+      ['status', ['status', 'actions']],
       ['exitTypeCode', ['exitTypeCode', 'exitTypeName']],
       ['reasonCode', ['reasonCode', 'reasonName']],
       ['whereaboutsCode', ['whereaboutsCode', 'whereaboutsName']],
@@ -687,6 +689,7 @@ const NESTED: [string, string][] = [
   ['versions[].lastWorkDate', 'lastWorkDate'],
   ['events[].state', 'status'],
   ['events[].createdAt', 'createdAt'],
+  ['actions[]', 'status'],
   ['cancellation.id', 'id'],
   ['cancellation.stateBefore', 'status'],
   ['cancellation.case', 'status'],
@@ -905,6 +908,7 @@ const ITEM_SAMPLE = {
     },
   },
   cancellation: { id: '', reason: '', case: '', stateBefore: '', revision: 1, createdAt: '' },
+  actions: ['submit'],
 } satisfies ExitItem;
 const DETAIL_SAMPLE = {
   ...ITEM_SAMPLE,
