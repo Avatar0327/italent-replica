@@ -190,7 +190,7 @@ describe('F-343 ⑤ 缩小调整范围的 400 不带出看不到的明细 / 组�
     const text = JSON.stringify(await bodyOf(res));
     expect(text).not.toContain(child);
     expect(text).not.toContain(hidden);
-    const { details } = (await bodyOf(res)).error as { details: { items: Record<string, unknown>[] } };
+    const { details } = (await bodyOf(res)).error as unknown as { details: { items: Record<string, unknown>[] } };
     expect(details.items.find((item) => item.itemId === visible)).toMatchObject({ orgId: w.a });
     expect(details.items.find((item) => item.itemId === undefined)).toMatchObject({
       section: 'org',
@@ -205,12 +205,13 @@ describe('F-343 ⑤ 缩小调整范围的 400 不带出看不到的明细 / 组�
     w.access.hiddenFields = new Set(['orgItems.targetOrgId']);
     const hidden = await w.patch(view.id, { adjustmentRange: [w.b] }, 3);
     await expectError(hidden, 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_OUT_OF_RANGE');
-    const hiddenItems = ((await bodyOf(hidden)).error as { details: { items: object[] } }).details.items;
+    const hiddenItems = ((await bodyOf(hidden)).error as unknown as { details: { items: object[] } }).details.items;
     for (const item of hiddenItems) expect(item).not.toHaveProperty('orgId');
 
     w.access.hiddenFields = new Set();
     const shown = await w.patch(view.id, { adjustmentRange: [w.b] }, 3);
-    const shownItems = ((await bodyOf(shown)).error as { details: { items: Record<string, unknown>[] } }).details.items;
+    const shownItems = ((await bodyOf(shown)).error as unknown as { details: { items: Record<string, unknown>[] } })
+      .details.items;
     expect(shownItems.find((item) => item.itemId === visible)).toMatchObject({ orgId: w.a });
   });
 });
