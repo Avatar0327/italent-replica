@@ -124,7 +124,10 @@ for (const kind of ['exit', 'partTime'])
             }),
           ),
       });
-      await vi.waitFor(() => expect(calls).toHaveLength(1));
+      await vi.waitFor(() => {
+        expect(calls).toHaveLength(1);
+        expect(model.pendingReplay?.(path)).toBeDefined();
+      });
       expect(store.get(path)?.status).toBe('submitting');
       expect(model.pendingReplay?.(path)).toBeDefined();
       // 原命令未完成，关闭/重开使用同一槽仍不能建第二条命令。
