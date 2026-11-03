@@ -6,6 +6,9 @@
       "status": 403
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
     "scopeQueries": [],
     "trace": []
   },

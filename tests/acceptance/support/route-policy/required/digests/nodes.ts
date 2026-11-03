@@ -1122,7 +1122,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employee-self-service/queries.ts#currentRecord': ['52c82126a192', 'aef38a47a550'],
   'apps/api/src/modules/employee-self-service/queries.ts#employmentStatus': ['956ab3b70b3e', 'e3b0c44298fc'],
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': ['a4a35b04bb32', '8a95f51afdbb'],
-  'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': ['bbb7813e158e', 'd2e565abc9a5'],
+  'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': ['ce169bec0934', 'e968821b8727'],
   'apps/api/src/modules/employee-self-service/queries.ts#ownRecords': ['96ab0004a93c', '0ae188633346'],
   'apps/api/src/modules/employee-self-service/references.ts#JOB_FIELDS': ['54c20ac2ddf2', 'e3b0c44298fc'],
   'apps/api/src/modules/employee-self-service/references.ts#PERSON_FIELDS': ['7335ee9dfd0a', '82583603a31b'],

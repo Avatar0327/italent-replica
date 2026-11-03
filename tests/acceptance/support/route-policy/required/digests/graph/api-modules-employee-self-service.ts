@@ -236,6 +236,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': ['#ownApplications'],
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_BUTTONS',
   ],
   'apps/api/src/modules/employee-self-service/queries.ts#ownRecords': [
     '#employmentStatus',
@@ -274,6 +275,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employee-self-service/queries.ts#applicationStatus',
   ],
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications': [
+    'apps/api/src/modules/employee-self-service/access.ts#grantedSelfServiceButtons',
     'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
     'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess',
     'apps/api/src/modules/employee-self-service/application-access.ts#projectApplication',
