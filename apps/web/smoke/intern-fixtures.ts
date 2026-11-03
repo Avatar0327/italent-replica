@@ -5,6 +5,7 @@ import { employee, snapshotFixture, user } from './fixtures.js';
 export const department = '60000000-0000-4000-8000-000000000001';
 export const target = '60000000-0000-4000-8000-000000000002';
 export const manager = '60000000-0000-4000-8000-000000000003';
+export const institution = '60000000-0000-4000-8000-000000000004';
 export const recordId = '40000000-0000-4000-8000-000000000011';
 export const applicationId = '70000000-0000-4000-8000-000000000001';
 export const employeeRevision = 5;
@@ -97,12 +98,23 @@ export const allButtons = [
 export const viewable = [
   'name',
   'code',
+  'institutionId',
   'departmentId',
   'positionId',
   'effectiveDate',
   'directManagerId',
   'dottedManagerId',
 ];
+/**
+ * F-366：实习中行另投影实习机构、直线经理（intern-views.ts columns），两者都是任职记录字段，
+ * 按可见字段裁剪（trimEmploymentResponse）；其余三个页签不投影这两列。
+ */
+const interningProjection = { institutionId: institution, directManagerId: manager };
+function listed(view: InternViewKey, visible: readonly string[]) {
+  if (view !== 'interning') return rows[view];
+  const extra = Object.entries(interningProjection).filter(([key]) => visible.includes(key));
+  return { ...rows.interning, ...Object.fromEntries(extra) };
+}
 export interface Options {
   buttons?: string[];
   viewableFields?: string[];
@@ -161,7 +173,12 @@ export async function setup(page: Page, options: Options = {}) {
         json: { error: { code: 'UNAVAILABLE', message: '暂不可用' } },
       });
     return route.fulfill({
-      json: { items: [rows[view]], page: Number(query.get('page')), pageSize: 30, hasDataPermission: true },
+      json: {
+        items: [listed(view, options.viewableFields ?? viewable)],
+        page: Number(query.get('page')),
+        pageSize: 30,
+        hasDataPermission: true,
+      },
     });
   });
   await page.route('**/org/organizations?*', (route) =>
@@ -174,11 +191,18 @@ export async function setup(page: Page, options: Options = {}) {
       },
     }),
   );
-  await page.route(/\/org\/organizations\/[^/?]+/, (route) =>
-    route.fulfill({ json: { id: department, name: '合成实习部门' } }),
-  );
+  // 按 ID 返回名称，列表里实习机构与实习部门两列才能各自验到取值；未登记的 ID 维持原先的部门回执。
+  const organizations: Record<string, string> = { [institution]: '合成实习机构', [target]: '合成转正部门' };
+  await page.route(/\/org\/organizations\/[^/?]+/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    const name = organizations[id];
+    return route.fulfill({ json: name ? { id, name } : { id: department, name: '合成实习部门' } });
+  });
   await page.route('**/personnel/employees?*', (route) =>
     route.fulfill({ json: { items: [{ id: manager, name: '合成经理' }], page: 1, pageSize: 20 } }),
+  );
+  await page.route(`**/personnel/employees/${manager}`, (route) =>
+    route.fulfill({ json: { id: manager, name: '合成经理', code: 'MG-DEMO-001', revision: 1 } }),
   );
   await page.route(`**/personnel/employees/${employee}`, (route) =>
     route.fulfill({ json: { id: employee, name: base.name, code: base.code, revision: 1 } }),

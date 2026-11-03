@@ -125,14 +125,15 @@ describe('P2-3 通用 DELETE 撤销的同键重放（撤销后状态变为 voide
   );
 });
 
-describe('P2-4 挂回调动后“员工已离职”失败待办收敛', () => {
-  it('T 到期调度记失败 → 撤销离职后待办消失（历史尝试保留）；未到期的 T 对照仍正常待执行', async () => {
+describe('P2-4 已落地未来调动随离职作废：到期不记“员工已离职”失败待办（DEC-725③，原挂回收敛场景不再出现）', () => {
+  it('T 随离职生效作废 → 到期调度不记失败、无待办；撤销离职后 T 仍作废、仍无待办', async () => {
     const x = await world('r2-todo');
     const transfer = await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-20');
     await x.runScheduler('2026-10-21T01:00:00Z');
-    await x.runScheduler('2026-10-25T01:00:00Z');
-    expect((await x.todos()).map((todo) => todo.id)).toContain(transfer.id);
+    expect(await x.stateOfBusiness(transfer.id)).toBe('voided');
+    expect(await x.runScheduler('2026-10-25T01:00:00Z')).not.toMatchObject({ failed: [transfer.id] });
+    expect((await x.todos()).map((todo) => todo.id)).not.toContain(transfer.id);
     const attempts = (await x.attempts(transfer.id)).length;
     x.setNow('2026-10-26T01:00:00Z');
 
@@ -140,10 +141,10 @@ describe('P2-4 挂回调动后“员工已离职”失败待办收敛', () => {
 
     expect((await x.todos()).map((todo) => todo.id)).not.toContain(transfer.id);
     expect((await x.attempts(transfer.id)).length).toBe(attempts);
-    expect(await x.stateOfBusiness(transfer.id)).toBe('effective');
+    expect(await x.stateOfBusiness(transfer.id)).toBe('voided');
   });
 
-  it('对照：撤销时 T 尚未到期 → 无待办，T 仍在待执行队列（不被标为已完成）', async () => {
+  it('对照：撤销时 T 尚未到期 → 无待办，T 不被标为已完成、到期不记失败', async () => {
     const x = await world('r2-todo-future');
     const transfer = await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-20');

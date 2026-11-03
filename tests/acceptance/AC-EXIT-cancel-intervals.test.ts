@@ -242,8 +242,8 @@ describe('B-85a / B-85b 撤销入口：共同迟到收敛后', () => {
   });
 });
 
-describe('AC-DM-29 撤销已生效离职：挂回被摘下的未来调动，下游钩子通知', () => {
-  it('B-10 撤销 → T 按台账窗口挂回原位，员工不再读为离职；清单列出“已挂回”', async () => {
+describe('AC-DM-29 撤销已生效离职：被离职作废的未来调动不再挂回（DEC-725③，取代 DEC-263② 的挂回）', () => {
+  it('B-10 撤销 → 员工不再读为离职；T 已随离职生效作废（墓碑），不挂回、清单不列“已挂回”', async () => {
     const x = await world('reattach');
     const transfer = await x.directTransfer(x.to, '2026-10-25');
     const leave = await x.directLeave('2026-10-20');
@@ -256,15 +256,13 @@ describe('AC-DM-29 撤销已生效离职：挂回被摘下的未来调动，下�
 
     const result = await x.cancelled(leave.id);
 
-    expect((await x.timeline()).map((row) => [row.kind, row.valid])).toEqual([
-      ['hire', '[2026-09-01,2026-10-25)'],
-      ['transfer', '[2026-10-25,)'],
-    ]);
-    expect(await x.stateOfBusiness(transfer.id)).toBe('effective');
-    const reattached = result.downstream.additional.find((entry) => entry.kind === 'future_transfer_detached')!;
-    expect(reattached).toMatchObject({ action: 'reattached' });
-    expect(reattached.targets.map((target) => target.id)).toEqual([transfer.id]);
-    // 台账只追加：摘下记录仍在
-    expect((await x.effects(leave.id)).map((row) => row.kind)).toContain('future_transfer_detached');
+    expect((await x.timeline()).map((row) => [row.kind, row.valid])).toEqual([['hire', '[2026-09-01,)']]);
+    expect(await x.stateOfBusiness(transfer.id)).toBe('voided');
+    expect(await x.tombstoned(transfer.id)).toBe(true);
+    expect(result.downstream.additional).not.toContainEqual(expect.objectContaining({ action: 'reattached' }));
+    // 台账只追加：摘下与作废记录仍在
+    expect((await x.effects(leave.id)).map((row) => row.kind)).toEqual(
+      expect.arrayContaining(['future_transfer_detached', 'application_voided']),
+    );
   });
 });

@@ -11,6 +11,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { endWorld, strictCapacity, type EndWorld } from './AC-INTERN-end-support.js';
 import { names } from './AC-IN-BE6a-support.js';
+import { setExitTermination, UNTICKED_REGULARIZATIONS } from './support/exit-termination.js';
 
 const testDb = useTestDb();
 const WILL_BE_VOIDED = '此人有转正申请在审批中，结束实习将作废该申请，确定？';
@@ -92,8 +93,10 @@ describe('AC-INTERN-end-10 DEC-593④ 结束实习遇转正审批中：先确认
     expect(await w.statusOf(draft.id)).toBe('voided');
   });
 
-  it('经离职管理正常发起的离职仍按 §8B 拦截（审批中、计划日 ≤ 最后工作日）→ 409 EXIT_REGULARIZATION_IN_FLIGHT', async () => {
+  it('未勾选实习转正时，经离职管理正常发起的离职仍按 §8B 拦截（审批中、计划日 ≤ 最后工作日）→ 409 EXIT_REGULARIZATION_IN_FLIGHT', async () => {
     const w = await endWorld(testDb().db, 'end-reg-8b');
+    // DEC-725 ②：未勾选实习转正时才拦
+    await setExitTermination(testDb().db, w.tenantId, w.session.user.id, UNTICKED_REGULARIZATIONS);
     const { intern } = await reviewing(w, '八B合成实习生');
     const response = await w.session.request('POST', `/exits/employees/${intern.employee.id}`, {
       ifMatch: await w.revision(intern.employee.id),

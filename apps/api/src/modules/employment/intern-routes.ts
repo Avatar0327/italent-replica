@@ -37,7 +37,7 @@ import { projectInternProfile } from './intern-profile.js';
 import { internRowActions } from './intern-actions.js';
 import { internRegularizationInput, regularizationBusiness, regularizeIntern } from './intern-regularization.js';
 import { internTerminationGate, internTerminationInput, terminateIntern } from './intern-termination.js';
-import { listInternView, type InternViewItem } from './intern-views.js';
+import { INTERN_SORT_FIELDS, listInternView, type InternViewItem, type InternViewSort } from './intern-views.js';
 import { matchRehire, rehireMatchInput } from './rehire-match.js';
 import { exitCommandGuard, internRegularizationGuard } from './replay-guard.js';
 import type { EmploymentContext } from './types.js';
@@ -45,6 +45,10 @@ import type { EmploymentContext } from './types.js';
 const viewFilter = z.strictObject({
   departmentId: z.uuid().optional(),
   keyword: z.string().trim().min(1).max(100).optional(),
+});
+const viewSort = z.strictObject({
+  sortBy: z.enum(INTERN_SORT_FIELDS).optional(),
+  direction: z.enum(['asc', 'desc']).optional(),
 });
 
 export function registerInternRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -154,14 +158,18 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const view = parse(z.enum(INTERN_VIEWS), c.req.query('view'));
     const filter = parse(viewFilter, { departmentId: c.req.query('departmentId'), keyword: c.req.query('keyword') });
+    const sort = internSort(
+      view,
+      parse(viewSort, { sortBy: c.req.query('sortBy'), direction: c.req.query('direction') }),
+    );
     const page = pageQuery(c);
     const show = await viewableIn(deps, ctx);
-    requireViewableInternFilters(filter, show);
+    requireViewableInternFilters(filter, show, sort);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listInternView(
         tx,
         ctx.tenantId,
-        { view, today: tenantLocalDate(ctx.now, ctx.timezone), page, filter },
+        { view, today: tenantLocalDate(ctx.now, ctx.timezone), page, filter, sort },
         ctx.scope,
       ),
     );
@@ -179,11 +187,29 @@ function registerInternViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 type Viewable = Awaited<ReturnType<typeof viewableIn>>;
 
-/** 按部门筛选须部门可见，按关键字（姓名 / 工号）筛选须两者都可见；否则 403，不让筛选成为看不见字段的探针。 */
-function requireViewableInternFilters(filter: z.infer<typeof viewFilter>, show: Viewable) {
+/**
+ * F-366：只有实习中收排序（其余三个页签未取证）；direction 不带 sortBy、或别的页签带排序一律 400，同兼职视图。
+ * 不带参数 = 默认顺序（取消排序即回到默认）。
+ */
+function internSort(view: string, input: z.infer<typeof viewSort>): InternViewSort | undefined {
+  if ((input.direction && !input.sortBy) || (input.sortBy && view !== 'interning'))
+    throw new AppError('VALIDATION_FAILED', '该视图不支持此排序');
+  return input.sortBy ? { sortBy: input.sortBy, direction: input.direction } : undefined;
+}
+
+/**
+ * 按部门筛选须部门可见，按关键字（姓名 / 工号）筛选须两者都可见，排序列（F-366，都是任职记录字段）须可见；
+ * 否则 403，不让筛选或排序成为看不见字段的探针。
+ */
+function requireViewableInternFilters(
+  filter: z.infer<typeof viewFilter>,
+  show: Viewable,
+  sort: InternViewSort | undefined,
+) {
   const hidden =
     (filter.departmentId !== undefined && !show.employment('departmentId')) ||
-    (filter.keyword !== undefined && !(show.employee('name') && show.employee('code')));
+    (filter.keyword !== undefined && !(show.employee('name') && show.employee('code'))) ||
+    (sort !== undefined && !show.employment(sort.sortBy));
   if (hidden) throw new AppError('FORBIDDEN', '筛选字段不可查看');
 }
 
