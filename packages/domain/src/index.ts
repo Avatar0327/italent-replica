@@ -31,6 +31,7 @@ export * from './employment/planned-date.js';
 export * from './employment/duty-transfer-menu.js';
 export * from './employment/intern.js';
 export * from './employment/exit.js';
+export * from './employment/exit-notice-templates.js';
 export * from './employment/exit-termination.js';
 export * from './employment/retirement.js';
 export * from './employment/retirement-intention.js';
