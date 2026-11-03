@@ -79,3 +79,37 @@ describe('AC-FE-B5a F-393 详情加黑三项展示与编辑', () => {
     });
   });
 });
+
+/** 形态对照 exit-actions.ts：actions 随列表条目 / 详情下发（F-352①）；按钮权已含在内，前端不再推导。 */
+const noButtons: ObjectPermission = { ...permission, dataOperations: { create: false, update: false }, buttons: [] };
+const order: model.Row = {
+  id: 'exit-1',
+  employeeId: 'employee-1',
+  status: 'in_review',
+  mode: 'application',
+  revision: 2,
+};
+
+describe('AC-FE-B5a F-352① 详情 / 行内入口读服务端 actions', () => {
+  it('详情按钮 = 服务端 actions 里的 submit / edit / cancel，与前端权限快照、状态无关', () => {
+    const all = { ...order, actions: ['submit', 'edit', 'cancel'] };
+    expect(model.detailEntries(all, noButtons)).toEqual(['submit', 'edit', 'cancel']);
+    expect(model.detailEntries({ ...order, status: 'voided', actions: ['edit'] }, permission)).toEqual(['edit']);
+    expect(model.detailEntries({ ...order, actions: ['cancel'] }, permission)).toEqual(['cancel']);
+  });
+  it('没有 actions（状态字段被裁剪时服务端不下发）或为空：不给任何写入口；未知码与列表专属的 handle 不进详情', () => {
+    expect(model.detailEntries(order, permission)).toEqual([]);
+    expect(model.detailEntries({ ...order, actions: [] }, permission)).toEqual([]);
+    expect(model.detailEntries({ ...order, actions: ['handle', 'restore', 'edit'] }, permission)).toEqual(['edit']);
+  });
+  it('单据标识无效时即使服务端给了动作也不开写入口', () => {
+    expect(model.detailEntries({ ...order, revision: undefined, actions: ['edit'] }, permission)).toEqual([]);
+  });
+  it('行内“离职处理”只认 actions 里的 handle（不再按状态 + 直接离职按钮推导）', () => {
+    const settled = { ...order, status: 'voided' };
+    expect(model.rowEntries(settled, permission)).toEqual([]);
+    expect(model.rowEntries({ ...settled, actions: ['handle'] }, noButtons)).toEqual(['handle']);
+    expect(model.rowEntries({ ...order, actions: ['handle'] }, permission)).toEqual(['handle']);
+    expect(model.rowEntries({ ...settled, employeeId: undefined, actions: ['handle'] }, permission)).toEqual([]);
+  });
+});

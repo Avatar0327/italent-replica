@@ -2,8 +2,8 @@ import type { Page, Request, Route } from '@playwright/test';
 import { employee, snapshotFixture, user } from './fixtures.js';
 import { presetRows, type Kind } from './exit-fixtures.js';
 
-// 形态对照（FE-R2c2）：列表 = exit-queries.ts ExitItem 经 trimExit 后平铺 + rowActions（exit-routes.ts GET /exits）；
-// 详情 = exitDetailPayload（多 dates 与 ExitExtension 字段）；提交前检查 = exit-preview.ts previewExit；
+// 形态对照（FE-R2c2）：列表 = exit-queries.ts ExitItem 经 trimExit 后平铺 + actions + rowActions（exit-routes.ts GET /exits）；
+// 详情 = exitDetailPayload（多 dates 与 ExitExtension 字段，F-352① 起带 actions）；提交前检查 = exit-preview.ts previewExit；
 // 交接区 = exit-handover.ts exitHandoverStatus；写回执 = EmploymentBusiness / 业务头（kind: 'leave'）。数据全部为合成值。
 // 第 2 轮：新建按 mode（申请 = draft，transitions.ts submit 后 in_review）；撤销 = exit-cancel.ts（在途 / 通过 voided、
 // 已生效 deleted，回执带 cancellation + downstream）；改期 = exit-routes.ts PATCH 投影（改了日期才带 downstreamHints）；
@@ -55,8 +55,9 @@ function exitItem(id: string, employeeId: string, name: string, extra: Record<st
 /** 详情 = 列表条目 + 原定 / 最终日期块 + 扩展字段（未登记的扩展字段对查看人裁剪，这里只留一个）。 */
 const detailOf = (row: Record<string, unknown>, server: ExitServer) => ({
   ...row,
-  // 详情投影只登记了 addToBlacklist，加黑三项不回（后端缺口，F 任务）
   addToBlacklist: server.blacklisted.includes(String(row.id)),
+  // F-393：加黑三项按字段权投影；缺省 = 查看人无这三项字段权（键整体缺席），给了才如实返回
+  ...server.blacklistDetail[String(row.id)],
   dates: {
     planned: { lastWorkDate: row.plannedLastWorkDate, effectiveDate: '2026-12-01' },
     final: { lastWorkDate: row.lastWorkDate, effectiveDate: row.effectiveDate },
@@ -133,6 +134,13 @@ export interface ExitServer {
   blacklisted: string[];
   /** GET /exits/:id/handover：按离职单 id，缺省为未发起。 */
   handovers: Record<string, Handover>;
+  /** 详情的加黑三项（exit-queries.ts loadExitDetail，F-393）：按离职单 id 给；缺省 = 无字段权，键缺席。 */
+  blacklistDetail: Record<
+    string,
+    { blacklistExpiryDate: string | null; blacklistReason: string | null; blacklistNote: string | null }
+  >;
+  /** 服务端逐单动作覆盖（按 exit-actions.ts 形态）：缺省按单据状态推出，模拟权限 / 范围收窄时直接给定。 */
+  actions: Record<string, string[]>;
 }
 type Handover = { status: string; request: null | (Record<string, unknown> & { id: string; revision: number }) };
 /** 未发起成功的交接单（exit-handover.ts recordNotLaunched）：可重新提交，If-Match = 交接单 revision。 */
@@ -148,6 +156,18 @@ export function notLaunched(exitRequestId: string): Handover {
     items: [],
   };
   return { status: 'not_launched', request };
+}
+
+/**
+ * exit-actions.ts 的形态：提交 = 离职申请的草稿 / 已驳回；编辑 = 草稿 / 审批中 / 通过 / 已驳回 / 已生效；
+ * 撤销同可撤销状态；handle 只在列表行、单据已办结（拒绝 / 作废）时给。按钮全授权的查看人。
+ */
+export function actionsOf(server: ExitServer, row: { id: string; status: string; mode: string }, list: boolean) {
+  const given = server.actions[row.id];
+  if (given) return given.filter((code) => list || code !== 'handle');
+  const open = ['draft', 'in_review', 'approved', 'rejected', 'effective'].includes(row.status);
+  const submit = row.mode === 'application' && ['draft', 'rejected'].includes(row.status);
+  return [...(submit ? ['submit'] : []), ...(open ? ['edit', 'cancel'] : []), ...(list && !open ? ['handle'] : [])];
 }
 const record = (request: Request, path: string): Sent => ({
   method: request.method(),
@@ -179,6 +199,8 @@ export async function setupExits(page: Page) {
     downstream: 'none',
     blacklisted: [],
     handovers: { [ids.completed]: handover },
+    actions: {},
+    blacklistDetail: {},
   };
   await routePermissions(page);
   await routeReferences(page);
@@ -249,7 +271,7 @@ function read(server: ExitServer, path: string, query: URLSearchParams) {
     const items = server.rows.filter((row) => !viewStatuses[view] || viewStatuses[view].includes(row.status));
     const rowActions = (row: { id: string }) => server.rowActions[row.id] ?? [];
     return {
-      items: items.map((row) => ({ ...row, rowActions: rowActions(row) })),
+      items: items.map((row) => ({ ...row, actions: actionsOf(server, row, true), rowActions: rowActions(row) })),
       total: items.length,
       page: 1,
       pageSize: 30,
@@ -259,10 +281,8 @@ function read(server: ExitServer, path: string, query: URLSearchParams) {
     return { id: employee, code: 'EX-NEW', name: '合成待离职员工', revision: server.employeeRevision };
   const id = path.split('/')[2]!;
   if (path.endsWith('/handover')) return server.handovers[id] ?? { status: 'not_started', request: null };
-  return detailOf(
-    server.rows.find((row) => row.id === id)!,
-    server,
-  );
+  const row = server.rows.find((item) => item.id === id)!;
+  return { ...detailOf(row, server), actions: actionsOf(server, row, false) };
 }
 
 const conflict = { status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '数据已被他人修改' } } };
@@ -319,6 +339,7 @@ function handoverSubmit(server: ExitServer, row: ReturnType<typeof exitItem>, se
     row.revision += 1;
   }
   if (sent.ifMatch !== String(row.revision)) return conflict;
+  delete server.rowActions[row.id]; // 发起成功后服务端不再下发行动作
   const requestId = '72000000-0000-4000-8000-000000000009';
   return { json: { exitRequestId: row.id, requestId, outcome: 'launched', revision: row.revision } };
 }
