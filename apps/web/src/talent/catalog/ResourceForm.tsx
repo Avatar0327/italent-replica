@@ -186,7 +186,10 @@ function formFields(
       },
       rules: [
         {
-          required: field.required || data?.contract?.requiredFields.includes(field.key),
+          required:
+            field.required ||
+            (resource.key === 'categories' && !!original && field.key === 'code') ||
+            data?.contract?.requiredFields.includes(field.key),
           ...validationType(field),
           message: m.required,
         },
