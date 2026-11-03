@@ -5,7 +5,7 @@
  * - AC-HA-13b-08 流入按入职任职记录开始日期、流出按最后工作日归年 / 归月（DEC-729），只算内部员工 + 实习生；
  * - AC-HA-13b-09 流出合计 = BE-12b 人事看板“本年离职”；
  * - AC-HA-13b-10 组织编制是按编制对象一行的表格（本世界没有编制，空表；有编制的场景见 AC-HA-13b-r2）；
- * - 授权与数据范围：AC-HA-13b-11 / AC-HA-05。
+ * - 授权与数据范围：AC-HA-13b-11 / AC-HA-05（人员流动分析 / 流动情况不在 DEC-763② 改写范围，沿用“按调用者数据范围、空范围 fail-closed”）。
  */
 import { HR_MOVEMENT_OBJECT, HR_MOVEMENT_REPORT_OBJECT, presetSeeAllTargets, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';

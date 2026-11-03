@@ -1,8 +1,11 @@
 /**
- * BE-13a / AC-HA-13a-10 + AC-HA-05：三个只读授权对象（人员结构分析 / 员工结构报表 / 合同情况）与数据范围。
+ * BE-13a / AC-HA-13a-10 + AC-HA-05（DEC-763②，F-466 改写口径）：三个只读授权对象（人员结构分析 / 员工结构报表 / 合同情况）与数据范围。
  * - 没有对象“查看”→ 403（看板、明细、报表都拦）；
- * - 范围 = HRBP 管理单元：只统计范围内人员，数字 = 明细；空范围（默认）全为 0、hasDataPermission = false，不退回“全部”；
- * - 授权项默认给人事模块预置管理员看全部（DEC-415），人事专员只有对象查看权。
+ * - 员工结构报表（B53）：人事管理员按管理单元取数——只统计范围内人员，数字 = 明细；
+ * - 人员结构分析（B49）/ 合同情况（B55）是看板类：只给 HR 专员 / HR 经理 / 管理员，人事管理员没有人事看板；
+ *   这里只验有权看的身份“按其数据范围统计、数字 = 明细”；
+ * - 空范围（默认）全为 0、hasDataPermission = false，不退回“全部”；
+ * - 预置授权现状仍是 DEC-415（人事管理员看全部、含三个看板类对象），与 DEC-763② 的差异见最后一条的注释。
  */
 import {
   CONTRACT_BOARD_OBJECT,
@@ -65,7 +68,7 @@ describe('AC-HA-13a 授权与数据范围', () => {
     x = await buildWorld();
   }, 300_000);
 
-  it('AC-HA-13a-10：没有对象“查看”授权项 → 403；各对象互不放行', async () => {
+  it('AC-HA-13a-10：没有对象“查看”授权项 → 403（看板、明细、报表都拦）；各对象互不放行', async () => {
     const paths: [string, string[]][] = [
       [HR_STRUCTURE_OBJECT, [`${STRUCTURE_BASE}?${AS_OF}`, `${STRUCTURE_BASE}/components/6.01?${AS_OF}`]],
       [
@@ -83,7 +86,24 @@ describe('AC-HA-13a 授权与数据范围', () => {
     }
   });
 
-  it('AC-HA-05：HRBP 管理单元范围——人员结构、报表、合同看板只统计范围内人员，数字 = 明细', async () => {
+  it('AC-HA-05：人事管理员按管理单元看员工结构报表——只统计范围内人员，范围外不出现，数字 = 明细', async () => {
+    const c = boardClient(
+      x.w.db,
+      x.w.who,
+      restrictedAuthorizer({ scope: managementScope(x.w.tenantId, [x.inside.id]) }),
+    );
+    const report = await c.report('position', AS_OF);
+    expect(report.hasDataPermission).toBe(true);
+    expect(report.rows.map((row) => row.organizationId)).toEqual([x.inside.id]);
+    expect(report.summary.cells).toMatchObject({ total: 2 });
+
+    // 同一批数据，全范围看到范围外的组织
+    const admin = boardClient(x.w.db, x.w.who);
+    expect((await admin.report('position', AS_OF)).rows.map((row) => row.organizationId)).toContain(x.outside.id);
+  });
+
+  it('AC-HA-05：看板类（人员结构分析、合同情况）按调用者的数据范围统计，数字 = 明细；谁有看板由授权决定，不由管理单元', async () => {
+    // 管理单元范围在这里只是“一份受限数据范围”的夹具：看板只给 HR 专员 / HR 经理 / 管理员，人事管理员没有（DEC-763②）
     const c = boardClient(
       x.w.db,
       x.w.who,
@@ -92,9 +112,6 @@ describe('AC-HA-13a 授权与数据范围', () => {
     expect((await c.board(STRUCTURE_BASE, AS_OF)).hasDataPermission).toBe(true);
     await c.expectCount(STRUCTURE_BASE, '6.01', ids(x.p.in1, x.p.in2), AS_OF);
     await c.expectCount(STRUCTURE_BASE, '6.08', ids(x.p.in1, x.p.in2), AS_OF, '5to10y');
-    const report = await c.report('position', AS_OF);
-    expect(report.rows.map((row) => row.organizationId)).toEqual([x.inside.id]);
-    expect(report.summary.cells).toMatchObject({ total: 2 });
     await c.expectCount(CONTRACT_BOARD_BASE, 'signByCompany', [x.contracts.in1.id], AS_OF, x.company.id);
     await c.expectCount(CONTRACT_BOARD_BASE, 'changeCreate', await x.k.requestIds(x.p.in1.id, 'create'), AS_OF);
     await c.expectCount(CONTRACT_BOARD_BASE, '3.1.17', [x.contracts.in1.id], AS_OF);
@@ -105,7 +122,7 @@ describe('AC-HA-13a 授权与数据范围', () => {
     await admin.expectCount(CONTRACT_BOARD_BASE, '3.1.17', [x.contracts.in1.id, x.contracts.out.id], AS_OF);
   });
 
-  it('AC-HA-05：空范围（默认）全为 0，hasDataPermission = false，不退回“全部”', async () => {
+  it('AC-HA-05：空范围（默认）fail-closed——报表与看板全为 0，hasDataPermission = false，不退回“全部”', async () => {
     const c = boardClient(x.w.db, x.w.who, restrictedAuthorizer({ scope: { ...EMPTY_SCOPE } }));
     const board = await c.board(STRUCTURE_BASE, AS_OF);
     expect(board.hasDataPermission).toBe(false);
@@ -118,7 +135,10 @@ describe('AC-HA-13a 授权与数据范围', () => {
     for (const code of ['changeCreate', '3.1.17']) await c.expectCount(CONTRACT_BOARD_BASE, code, [], AS_OF);
   });
 
-  it('AC-HA-13a-10：三个授权项默认给人事模块预置管理员看全部（DEC-415），人事专员只有对象查看权', () => {
+  // 现状断言（DEC-415）：与 DEC-763② 的目标口径有差距——目标是人事管理员没有人事看板类对象（B49 / B55 等），
+  // 员工结构报表给人事管理员但按管理单元取数而非看全部。预置授权属产品代码（standard-presets / standard-grants），
+  // 不在 F-466（规格 + 测试）范围；调整后这里要改成“人事管理员没有看板类对象 / 看全部”，并补“人事管理员调看板接口被拒”。
+  it('AC-HA-13a-10：（现状）三个授权项给人事模块预置管理员看全部（DEC-415），人事专员只有对象查看权', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
     for (const object of [HR_STRUCTURE_OBJECT, HR_STRUCTURE_REPORT_OBJECT, CONTRACT_BOARD_OBJECT]) {
