@@ -1,4 +1,5 @@
 import './support/exit-gate-enforced.js';
+import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
@@ -11,7 +12,7 @@ import { tenantApi } from './support/tenant-api.js';
 import { processClient } from './AC-HA-13c-support.js';
 
 const database = useTestDb();
-it('F-417③：审批通过后修改 Offer 入职日期，同事务刷新实例 business_date 和看板晚审批统计', async () => {
+it('AC-HA-F417③：审批通过后修改 Offer 入职日期，同事务刷新实例 business_date 和看板晚审批统计', async () => {
   const w = await offerApprovalWorld(database().db, 'f417-date');
   w.setNow('2026-10-01T01:00:00.000Z');
   const offer = await w.offer(w.applicant);
@@ -21,8 +22,11 @@ it('F-417③：审批通过后修改 Offer 入职日期，同事务刷新实例 
   const approved = await w.get(offer.id);
   const path = `/api/tenant/offers/${offer.id}`;
   const body = { plannedEntryDate: '2026-10-05' };
-  const request = () => w.request(w.applicant.userId, 'PUT', path, { ifMatch: approved.revision, body });
-  const saved = await w.json<OfferView>(await request());
+  const key = randomUUID();
+  const request = (idempotencyKey = randomUUID()) =>
+    w.request(w.applicant.userId, 'PUT', path, { ifMatch: approved.revision, body, idempotencyKey });
+  const saved = await w.json<OfferView>(await request(key));
+  expect(await w.json<OfferView>(await request(key)), '丢失回执后按原命令重放不重复写入').toEqual(saved);
   expect(saved).toMatchObject({ id: offer.id, approvalStatus: 'approved', plannedEntryDate: '2026-10-05' });
   const dates = await withTenant(w.db, w.tenant.id, async (tx) =>
     rowsOf<{ date: string }>(
@@ -31,6 +35,14 @@ it('F-417③：审批通过后修改 Offer 入职日期，同事务刷新实例 
     WHERE tenant_id=${w.tenant.id} AND business_id=${offer.id}::uuid AND status='approved'`),
     ),
   );
+  const events = await withTenant(w.db, w.tenant.id, async (tx) =>
+    rowsOf<{ n: number }>(
+      await tx.execute(sql`
+    SELECT count(*)::int AS n FROM approval_outbox WHERE tenant_id=${w.tenant.id}
+    AND event_type='approval.instance.dashboard_date_refreshed'`),
+    ),
+  );
+  expect(events).toEqual([{ n: 1 }]);
   expect(dates, '已通过实例的业务日期必须随改单刷新').toEqual([{ date: '2026-10-05' }]);
   const board = processClient(
     w.db,
@@ -60,7 +72,7 @@ async function stamp(db: Db, tenant: string, business: string) {
   );
 }
 
-it('F-417③：已批准离职改期和已生效离职重定位均刷新最后工作日', async () => {
+it('AC-HA-F417③：已批准离职改期和已生效离职重定位均刷新最后工作日', async () => {
   const w = await approvalWorld(database().db, 'f417-exit-date');
   await installExitSeeds(w.db, w.tenant.id);
   const org = await w.org('合成离职部门');
@@ -111,7 +123,7 @@ it('F-417③：已批准离职改期和已生效离职重定位均刷新最后�
   ]);
 });
 
-it('F-417③：转正批准后改期、落地后再改期均刷新日期', async () => {
+it('AC-HA-F417③：转正批准后改期、落地后再改期均刷新日期', async () => {
   const w = await pbWorld(database().db, 'f417-regular-date', { approval: true });
   const { employee } = await hire(w, { months: 3 });
   const receipt = await regularizeOk(w, { mode: 'application', effectiveDate: '2026-12-01' }, [employee.id]);
