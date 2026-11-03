@@ -158,53 +158,102 @@ test('AC-QL 指标页使用真实字段结构，等级方案按两组字段编�
   await expect(dialog.getByRole('heading', { name: '等级方案信息', exact: true })).toBeVisible();
   await expect(dialog.getByRole('heading', { name: '等级明细', exact: true })).toBeVisible();
   await dialog.getByLabel('名称', { exact: true }).fill('合成等级方案乙');
+  await dialog.getByLabel('等级名称 1', { exact: true }).fill('基础乙');
   await actionButton(page, '保存').click();
   await expect(dialog).toHaveCount(0);
-  expect(writes).toEqual([{ name: '合成等级方案乙' }]);
+  expect(writes).toEqual([{ name: '合成等级方案乙', details: [{ ...scheme.details[0], name: '基础乙' }] }]);
 });
 
-test('AC-QL 等级方案 409 重读后改回原值仍可提交，采用最新 revision', async ({ page }) => {
-  let current = scheme;
-  const sent: { revision: string | undefined; body: unknown }[] = [];
-  await page.route('**/qualification/grade-schemes/*', (route) => {
-    if (route.request().method() === 'PATCH') {
-      sent.push({ revision: route.request().headers()['if-match'], body: route.request().postDataJSON() });
-      if (sent.length === 1) {
-        current = { ...scheme, revision: 2, name: '服务端名称' };
-        return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+for (const scenario of [
+  { module: 'qualification', key: 'grade-schemes', label: '等级方案', other: '任职级别', row: scheme },
+  {
+    module: 'qualification',
+    key: 'targets',
+    label: '指标',
+    other: '任职级别',
+    row: {
+      id,
+      revision: 1,
+      name: '合成指标',
+      code: 'T01',
+      typeId: id,
+      enabled: true,
+      description: '合成指标说明',
+      evalMode: 'score',
+      isCommon: false,
+      gradeSchemeId: null,
+      displayOrder: 1,
+      publicDown: false,
+    },
+  },
+  {
+    module: 'talent',
+    key: 'criterion-categories',
+    label: '人才标准的分类',
+    other: '指标库',
+    row: {
+      id,
+      revision: 1,
+      name: '合成分类',
+      displayOrder: 1,
+      ownerOrgId: id,
+    },
+  },
+]) {
+  test(`AC-TC/QL ${scenario.label} 409 重读后改回原值仍可提交，采用最新 revision`, async ({ page }) => {
+    let current = scenario.row;
+    const sent: { revision: string | undefined; body: unknown }[] = [];
+    await page.route(`**/${scenario.module}/${scenario.key}/*`, (route) => {
+      if (route.request().method() === 'PATCH') {
+        sent.push({ revision: route.request().headers()['if-match'], body: route.request().postDataJSON() });
+        if (sent.length === 1) {
+          current = { ...scenario.row, revision: 2, name: '服务端名称' };
+          return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: '版本冲突' } } });
+        }
+        return route.fulfill({ json: { ...current, ...route.request().postDataJSON(), revision: 3 } });
       }
-      return route.fulfill({ json: { ...current, ...route.request().postDataJSON(), revision: 3 } });
-    }
-    return route.fulfill({ json: current });
+      return route.fulfill({ json: current });
+    });
+    await page.goto(`/${scenario.module}?view=${scenario.key}`);
+    await actionButton(page, '编辑').click();
+    await page
+      .getByRole('dialog')
+      .getByLabel(scenario.key === 'criterion-categories' ? '分类名称' : '名称', { exact: true })
+      .fill('用户修改');
+    await actionButton(page, '保存').click();
+    await page.getByRole('button', { name: '重读最新版本' }).click();
+    await page.getByRole('button', { name: '已核对差异，继续编辑' }).click();
+    await page
+      .getByRole('dialog')
+      .getByLabel(scenario.key === 'criterion-categories' ? '分类名称' : '名称', { exact: true })
+      .fill(scenario.row.name);
+    await actionButton(page, '保存').click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(sent.at(-1)).toEqual({ revision: '2', body: { name: scenario.row.name } });
   });
-  await page.goto('/qualification?view=grade-schemes');
-  await actionButton(page, '编辑').click();
-  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('用户修改');
-  await actionButton(page, '保存').click();
-  await page.getByRole('button', { name: '重读最新版本' }).click();
-  await page.getByRole('button', { name: '已核对差异，继续编辑' }).click();
-  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill(scheme.name);
-  await actionButton(page, '保存').click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(sent.at(-1)).toEqual({ revision: '2', body: { name: scheme.name } });
-});
 
-test('AC-QL 等级方案回执丢失关闭后重开仍锁定，不发送第二个命令', async ({ page }) => {
-  let writes = 0;
-  await page.route('**/qualification/grade-schemes/*', (route) => {
-    if (route.request().method() === 'PATCH') {
-      writes++;
-      return route.abort('failed');
-    }
-    return route.fulfill({ json: scheme });
+  test(`AC-TC/QL ${scenario.label} 回执丢失关闭并切换页面后重开仍锁定，不发送第二个命令`, async ({ page }) => {
+    let writes = 0;
+    await page.route(`**/${scenario.module}/${scenario.key}/*`, (route) => {
+      if (route.request().method() === 'PATCH') {
+        writes++;
+        return route.abort('failed');
+      }
+      return route.fulfill({ json: scenario.row });
+    });
+    await page.goto(`/${scenario.module}?view=${scenario.key}`);
+    await actionButton(page, '编辑').click();
+    await page
+      .getByRole('dialog')
+      .getByLabel(scenario.key === 'criterion-categories' ? '分类名称' : '名称', { exact: true })
+      .fill('结果未知名称');
+    await actionButton(page, '保存').click();
+    await expect(actionButton(page, '保存')).toBeDisabled();
+    await actionButton(page, '取消').click();
+    await page.getByRole('menuitem', { name: scenario.other, exact: true }).click();
+    await page.getByRole('menuitem', { name: scenario.label, exact: true }).click();
+    await actionButton(page, '编辑').click();
+    await expect(actionButton(page, '保存')).toBeDisabled();
+    expect(writes).toBe(1);
   });
-  await page.goto('/qualification?view=grade-schemes');
-  await actionButton(page, '编辑').click();
-  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('结果未知名称');
-  await actionButton(page, '保存').click();
-  await expect(actionButton(page, '保存')).toBeDisabled();
-  await actionButton(page, '取消').click();
-  await actionButton(page, '编辑').click();
-  await expect(actionButton(page, '保存')).toBeDisabled();
-  expect(writes).toBe(1);
-});
+}

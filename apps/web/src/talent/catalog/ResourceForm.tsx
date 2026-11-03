@@ -114,24 +114,20 @@ export function ResourceForm({
     !!data.data?.contract?.blockedReason ||
     (!original && !!resource.owner && !owners.length) ||
     !fields.some((field) => field.access.editable);
-  const initialValues = original ? { ...original } : resource.key === 'grade-schemes' ? { details: [] } : {};
+  const emptyValues = resource.key === 'grade-schemes' ? { details: [] } : {};
+  const initialValues = original ? { ...original } : emptyValues;
   const { submit, submission } = useSaveResource(resource, original, fields, blocked, onSaved);
   const details = fields.find((field) => field.name === 'details');
-  const latestDetails = submission.state?.latest?.values.details ?? original?.details;
+  const latestDetails = (submission.state?.latest?.values ?? original)?.details;
   if (resource.key === 'grade-schemes' && details && !details.access.editable && Array.isArray(latestDetails))
     details.display = <GradeDetails value={latestDetails} disabled />;
+  let noticeText = data.data?.contract?.blockedReason ?? m.unavailable;
+  if (!original && resource.owner && !owners.length) noticeText = m.ownerMissing;
+  if (data.loading) noticeText = m.choose;
   const notice = data.error ? (
     <PageState kind="error" error={data.error} />
   ) : (
-    <Alert
-      type="info"
-      message={
-        data.loading
-          ? m.choose
-          : (data.data?.contract?.blockedReason ??
-            (!original && resource.owner && !owners.length ? m.ownerMissing : m.unavailable))
-      }
-    />
+    <Alert type="info" message={noticeText} />
   );
   const shown = blocked
     ? [{ name: '_notice', label: '', control: null, display: notice, access: { visible: true, editable: false } }]
@@ -206,7 +202,7 @@ function formFields(
       access: { visible: true, editable: false },
     });
   if (resource.key === 'categories' && fieldAccess(permission, 'jobLinkType').visible)
-    fields.push({
+    fields.splice(2, 0, {
       name: 'jobLinkType',
       label: m.jobLinkType,
       control: null,

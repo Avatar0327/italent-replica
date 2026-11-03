@@ -20,8 +20,8 @@ export function GradeDetails({
       <Table
         pagination={false}
         size="small"
-        rowKey={(row, index) => row.id ?? String(index)}
-        dataSource={value}
+        rowKey="key"
+        dataSource={value.map((row, index) => ({ ...row, key: row.id ?? `new:${index}` }))}
         columns={gradeColumns(value, lock.disabled, change)}
       />
       <Button disabled={lock.disabled || value.length >= 50} onClick={() => change([...value, {}])}>

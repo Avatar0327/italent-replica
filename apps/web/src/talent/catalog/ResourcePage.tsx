@@ -81,22 +81,7 @@ function resourceColumns(resource: Resource, permission: ObjectPermission, state
       dataIndex: key,
       title: layout[key]?.label ?? resource.fields.find((field) => field.key === key)?.label ?? key,
       width: layout[key]?.width,
-      render: (value: unknown, row: Row) =>
-        key === 'name' ? (
-          <Button type="link" className="catalog-name" onClick={() => state.setView(row.id)}>
-            {display(value)}
-          </Button>
-        ) : resource.key === 'standards' && key === 'classId' ? (
-          (state.names.data?.get(`class:${row.categoryId}`) ?? m.unknown)
-        ) : layout[key]?.unavailable || key === 'createdBy' || key === 'jobLinks' ? (
-          m.unknown
-        ) : key === 'createdAt' ? (
-          timestamp(value, state.timezone)
-        ) : key === 'jobLinkType' ? (
-          display(m.jobTypes[value as keyof typeof m.jobTypes])
-        ) : (
-          display(typeof value === 'string' ? (state.names.data?.get(value) ?? value) : value)
-        ),
+      render: (value: unknown, row: Row) => resourceCell(resource, key, value, row, state, layout[key]?.unavailable),
     }));
   return [
     ...((resource.module === 'talent' && ['criteria', 'libraries', 'criterion-categories'].includes(resource.key)) ||
@@ -141,6 +126,29 @@ function resourceColumns(resource: Resource, permission: ObjectPermission, state
       : []),
   ];
 }
+function resourceCell(resource: Resource, key: string, value: unknown, row: Row, state: State, unavailable?: boolean) {
+  if (key === 'name') {
+    if (['targets', 'grade-schemes'].includes(resource.key)) return display(value);
+    return (
+      <Button type="link" className="catalog-name" onClick={() => state.setView(row.id)}>
+        {display(value)}
+      </Button>
+    );
+  }
+  if (resource.key === 'standards' && key === 'classId')
+    return state.names.data?.get(`class:${row.categoryId}`) ?? m.unknown;
+  if (unavailable || key === 'createdBy' || key === 'jobLinks') return m.unknown;
+  if (key === 'createdAt') return timestamp(value, state.timezone);
+  if (key === 'jobLinkType') return display(m.jobTypes[value as keyof typeof m.jobTypes]);
+  return display(typeof value === 'string' ? (state.names.data?.get(value) ?? value) : value);
+}
+function filterKeys(resource: Resource) {
+  const keys = ['enabled'];
+  if (resource.module === 'qualification' && ['categories', 'levels'].includes(resource.key)) keys.unshift('code');
+  if (resource.key === 'criteria') keys.push('categoryId');
+  if (resource.key === 'libraries') keys.push('type');
+  return keys;
+}
 function actionWidth(resource: Resource) {
   if (resource.key === 'libraries') return 147;
   if (resource.key === 'grade-schemes') return 148;
@@ -169,7 +177,9 @@ function timestamp(value: unknown, timezone: string) {
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).format(new Date(value));
+  })
+    .format(new Date(value))
+    .replaceAll('/', '-');
 }
 function toolbar(resource: Resource) {
   if (resource.key === 'grade-schemes') return [];
@@ -253,11 +263,7 @@ function ResourceFilters({
             />
           </Tooltip>
         )}
-        {[
-          ...(resource.module === 'qualification' && ['categories', 'levels'].includes(resource.key) ? ['code'] : []),
-          'enabled',
-          ...(resource.key === 'criteria' ? ['categoryId'] : resource.key === 'libraries' ? ['type'] : []),
-        ]
+        {filterKeys(resource)
           .filter((key) => resource.key !== 'grade-schemes' && fieldAccess(permission, key).visible)
           .map((key) => (
             <Select
@@ -277,6 +283,8 @@ function ResourceFilters({
 
 export function ResourcePage({ resource, permission }: { resource: Resource; permission: ObjectPermission }) {
   const state = useResourceState(resource, permission);
+  const treeFields: Record<string, string> = { targets: 'typeId', categories: 'classId', standards: 'categoryId' };
+  const treeField = treeFields[resource.key];
   return (
     <div className="catalog-page" data-aligned={!!Object.keys(alignment(resource)).length}>
       <DecisionNote id={resource.note} />
@@ -286,10 +294,8 @@ export function ResourcePage({ resource, permission }: { resource: Resource; per
         <div className="catalog-list-body">
           {resource.module === 'qualification' &&
             ['categories', 'standards', 'targets'].includes(resource.key) &&
-            fieldAccess(
-              permission,
-              resource.key === 'targets' ? 'typeId' : resource.key === 'categories' ? 'classId' : 'categoryId',
-            ).visible && (
+            !!treeField &&
+            fieldAccess(permission, treeField).visible && (
               <CatalogTree
                 resource={resource}
                 selected={state.scope}
