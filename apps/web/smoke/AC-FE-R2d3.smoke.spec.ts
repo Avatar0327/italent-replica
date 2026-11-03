@@ -14,7 +14,8 @@ import {
 } from './intern-fixtures.js';
 
 const headers = {
-  interning: ['姓名', '工号', '部门', '职位', '入职日期', '人员状态'],
+  // F-366：实习中另有实习机构、直线经理两列（model.ts columns.interning）
+  interning: ['姓名', '工号', '实习机构', '部门', '职位', '直线经理', '入职日期', '人员状态'],
   converting: ['姓名', '工号', '部门', '职位', '实习转正日期', '审批状态'],
   converted: [
     '姓名',
@@ -60,6 +61,18 @@ test('AC-FE-R2d3-01 四视图各按 view 读，列按投影，筛选 / 分页 / 
   await expect(page.getByRole('heading', { name: '实习生', exact: true })).toBeVisible();
   expect(queries[0]?.get('view')).toBe('interning');
   expect(queries[0]?.get('pageSize')).toBe('30');
+  // 两列按 ID 取到各自的名称（不是只验表头）：实习机构与部门不串值，职位为空显示占位
+  await expect(page.locator('.intern-table tr.ant-table-row').first().locator('td')).toHaveText([
+    rows.interning.name,
+    rows.interning.code,
+    '合成实习机构',
+    '合成实习部门',
+    '--',
+    '合成经理',
+    rows.interning.entryDate,
+    '正式',
+    '查看详情',
+  ]);
   for (const view of ['interning', 'converting', 'converted', 'left'] as const) {
     await page.getByRole('button', { name: labels[view], exact: true }).click();
     await expect(page.getByRole('button', { name: labels[view], exact: true })).toHaveAttribute('aria-pressed', 'true');
