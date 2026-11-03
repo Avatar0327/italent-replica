@@ -207,25 +207,17 @@ export async function exitDictionaryNames(
   const wanted = [...new Set(codes)];
   if (wanted.length === 0) return new Map();
   const t = TABLES[kind];
+  // F-174：Unicode 折叠统一交给数据库，直接返回请求原文，避免 JS 与 PostgreSQL 的 lower 语义不同。
+  const requested = sql`(values ${sql.join(
+    wanted.map((code) => sql`(${code}::text)`),
+    sql`, `,
+  )}) as requested(code)`;
   const rows = await tx
-    .select({ code: sql<string>`lower(${t.code})`, name: t.name })
+    .select({ code: sql<string>`requested.code`, name: t.name })
     .from(t)
-    .where(
-      and(
-        eq(t.tenantId, tenantId),
-        inArray(
-          sql`lower(${t.code})`,
-          wanted.map((code) => code.toLowerCase()),
-        ),
-      ),
-    );
-  const byLower = new Map(rows.map((row) => [row.code, row.name]));
-  const names = new Map<string, string>();
-  for (const code of wanted) {
-    const name = byLower.get(code.toLowerCase());
-    if (name !== undefined) names.set(code, name);
-  }
-  return names;
+    .innerJoin(requested, sql`lower(${t.code}) = lower(requested.code)`)
+    .where(eq(t.tenantId, tenantId));
+  return new Map(rows.map((row) => [row.code, row.name]));
 }
 
 // ---- 预置项（DEC-361 登记表：新租户开通即装，存量租户经平台回补命令补装；只补缺失编码，不覆盖租户改名 / 停用）----
