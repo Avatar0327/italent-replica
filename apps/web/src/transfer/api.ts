@@ -117,7 +117,7 @@ export async function loadReferences(
 }
 /**
  * F-323b（DEC-706）：HR 入口可编辑人员类别时读字典选项（只含启用项）；读不到给空并提示参照不可用，原值仍按预览带的名称显示。
- * 经理 / 员工入口没有字典参照接口，候选只有预览的当前值（名称取 employmentTypeName / 自助 valueLabels）。
+ * 经理 / 员工入口没有字典参照接口，字段只读显示名称（employmentTypeName / 自助 valueLabels）。
  */
 function employmentTypeChoices(
   tenantId: string,

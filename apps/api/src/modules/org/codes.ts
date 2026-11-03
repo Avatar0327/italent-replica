@@ -95,6 +95,27 @@ export async function assertCodeAvailable(
 }
 
 export async function reserveCode(tx: Tx, ctx: OrgSetupContext) {
+  const code = await allocateCode(tx, ctx);
+  const [reservation] = await tx
+    .insert(orgCodeReservations)
+    .values({
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      code,
+      reservedAt: ctx.now,
+      expiresAt: new Date(ctx.now.getTime() + 30 * 60 * 1000),
+    })
+    .returning();
+  if (!reservation) throw new AppError('SERVICE_UNAVAILABLE', '编码预占失败');
+  await reservationAudit(tx, ctx, reservation.id, 'org.code.reserve', null, reservation);
+  return { id: reservation.id, code: reservation.code, revision: reservation.revision };
+}
+
+/**
+ * 按自动编码规则取一个当前可用的编码（先复用已释放的，再取号），不建预占。
+ * 组织调整单由系统身份执行（R2-T08 §8.1、§14 执行身份），预占行须挂真实用户，故执行器取号后按“指定编码”同事务消费。
+ */
+export async function allocateCode(tx: Tx, ctx: OrgSetupContext): Promise<string> {
   await ensureOrgSetup(tx, ctx);
   await tx
     .update(orgCodeReservations)
@@ -118,21 +139,7 @@ export async function reserveCode(tx: Tx, ctx: OrgSetupContext) {
   const reusableRows = (Array.isArray(reusable) ? reusable : (reusable as { rows: { code: string }[] }).rows) as {
     code: string;
   }[];
-  let code = reusableRows[0]?.code;
-  if (!code) code = await nextCode(tx, ctx);
-  const [reservation] = await tx
-    .insert(orgCodeReservations)
-    .values({
-      tenantId: ctx.tenantId,
-      userId: ctx.userId,
-      code,
-      reservedAt: ctx.now,
-      expiresAt: new Date(ctx.now.getTime() + 30 * 60 * 1000),
-    })
-    .returning();
-  if (!reservation) throw new AppError('SERVICE_UNAVAILABLE', '编码预占失败');
-  await reservationAudit(tx, ctx, reservation.id, 'org.code.reserve', null, reservation);
-  return { id: reservation.id, code: reservation.code, revision: reservation.revision };
+  return reusableRows[0]?.code ?? (await nextCode(tx, ctx));
 }
 
 async function available(tx: Tx, code: string): Promise<boolean> {

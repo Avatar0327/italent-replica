@@ -116,7 +116,7 @@ export async function flowWorld(db: Db, label: string, options: FlowOptions = {}
     const view = await instance(id);
     return w.call('POST', `${APPROVAL}/instances/${view.id}/${action}`, { ifMatch: view.revision, body: {} }, user);
   };
-  /** 审批 / 执行状态 + revision + 执行队列行数（BE-10c 不写队列）。 */
+  /** 审批 / 执行状态 + revision + 执行队列行数（审批通过时入队，BE-11b）。 */
   async function state(id: string) {
     return withTenant(w.db, w.tenant.id, async (tx) => {
       const [row] = resultRows<{ approval: number; execution: number; revision: number; queued: number }>(

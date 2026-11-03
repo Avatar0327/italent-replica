@@ -1,26 +1,37 @@
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { rowsOf } from '../record-store.js';
 
 /** F255A / DEC-673：只在保存时派生；行政链跳过公司 / 部门，没有机构则回落租户根。
  * 时点沿用兼职引用校验的开始日，原站的历史 / 未来日期取值细节未验证。
  */
 export async function partTimeInstitution(tx: Tx, tenantId: string, departmentId: string, asOf: string) {
+  const origins = sql`SELECT ${departmentId}::uuid AS origin`;
   const [row] = rowsOf<{ id: string }>(
-    await tx.execute(sql`
+    await tx.execute(sql`SELECT institution_id AS id FROM (${institutionsOf(tenantId, origins, asOf)}) found`),
+  );
+  return row?.id ?? tenantId;
+}
+
+/**
+ * 机构推导（兼职保存时固化与实习生列表读时派生共用，F-366）：origins 是一列 origin（组织 ID）的子查询，结果每个能推导到
+ * 机构的 origin 一行（origin, institution_id）；推导不到（行政链上没有机构）的 origin 不出现，由调用方回落租户根。
+ * 一次递归覆盖全部 origin，列表不必逐行上溯。
+ */
+export function institutionsOf(tenantId: string, origins: SQL, asOf: string): SQL {
+  return sql`
     WITH RECURSIVE versions AS (
       SELECT DISTINCT ON (org_id) id, org_id, broad_type FROM org_versions
       WHERE tenant_id=${tenantId} AND start_date<=${asOf}::date
       ORDER BY org_id, start_date DESC, version_no DESC
     ), chain AS (
-      SELECT v.*, ARRAY[v.org_id] AS path, 0 AS depth FROM versions v WHERE org_id=${departmentId}::uuid
+      SELECT o.origin, v.*, ARRAY[v.org_id] AS path, 0 AS depth FROM (${origins}) o JOIN versions v ON v.org_id=o.origin
       UNION ALL
-      SELECT v.*, chain.path || v.org_id, chain.depth + 1 FROM chain
+      SELECT chain.origin, v.*, chain.path || v.org_id, chain.depth + 1 FROM chain
       JOIN org_hierarchy_links l ON l.tenant_id=${tenantId} AND l.version_id=chain.id AND l.dimension='admin'
       JOIN versions v ON v.org_id=l.parent_org_id
       WHERE chain.broad_type<>'机构' AND NOT v.org_id=ANY(chain.path) AND chain.depth<64
     )
-    SELECT org_id AS id FROM chain WHERE broad_type='机构' ORDER BY depth LIMIT 1
-  `),
-  );
-  return row?.id ?? tenantId;
+    SELECT DISTINCT ON (origin) origin, org_id AS institution_id FROM chain WHERE broad_type='机构'
+    ORDER BY origin, depth`;
 }

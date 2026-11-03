@@ -226,3 +226,38 @@ describe('AC-FE-F323b 人员类别设置页', () => {
     expect(buttons(drawer())).not.toContain('启用');
   });
 });
+
+describe('AC-FE-F455 人员类别审查后补', () => {
+  it('P3-1 编辑清空失效日期时提交数据库默认的无限期日期', async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).includes(`${API}?view=enabled`))
+        return Response.json({ items: [{ ...enabledRow, expiryDate: '2030-12-31' }] });
+      return original(input, init);
+    });
+    await render();
+    await click('合成类别甲');
+    await click('编辑', document.querySelector('.detail-drawer')!);
+    const dialog = document.querySelector<HTMLElement>('.ant-modal')!;
+    const input = [...dialog.querySelectorAll<HTMLInputElement>('input')].find((item) => item.value === '2030-12-31')!;
+    expect(input.value).toBe('2030-12-31');
+    const clear = input.closest('.ant-picker')!.querySelector<HTMLElement>('.ant-picker-clear')!;
+    await act(async () => clear.click());
+    await settle();
+    await click('保存', dialog);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.method).toBe('PUT');
+    expect(posts[0]!.headers.get('if-match')).toBe('1');
+    expect(posts[0]!.body).toEqual({ expiryDate: '9999-12-31' });
+  });
+
+  it('P3-4 顺序号不可编辑时不显示新建入口', async () => {
+    permission = {
+      ...employmentTypePermission,
+      editableFields: employmentTypePermission.editableFields.filter((field) => field !== 'displayOrder'),
+    };
+    await render();
+    expect(buttons()).not.toContain('新建');
+    expect(posts).toEqual([]);
+  });
+});

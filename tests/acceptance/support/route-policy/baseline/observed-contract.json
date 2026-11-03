@@ -574,6 +574,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -674,6 +675,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -12833,6 +12835,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -13103,6 +13106,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -13306,6 +13310,7 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -17889,6 +17894,7 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -18285,6 +18291,7 @@
           "requireObjectWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -19090,6 +19097,7 @@
           "writeFields"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -19149,6 +19157,7 @@
           "writeFields"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -19208,6 +19217,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -19303,6 +19313,7 @@
           "requireObjectWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -19348,6 +19359,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "fieldsOut": [
+          "disclose*"
         ],
         "object": [
           "object.* 动作",
@@ -19545,6 +19559,7 @@
           "requireObjectWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -20005,6 +20020,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -20680,6 +20696,7 @@
           "writeFields"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -20739,6 +20756,7 @@
           "writeFields"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -20804,6 +20822,7 @@
           "requireObjectWrite"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -20849,6 +20868,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "fieldsOut": [
+          "disclose*"
         ],
         "object": [
           "object.* 动作",
@@ -20904,6 +20926,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [
@@ -24397,6 +24420,7 @@
           "transfer write"
         ],
         "fieldsOut": [
+          "disclose*",
           "employment runWrite()"
         ],
         "guard": [

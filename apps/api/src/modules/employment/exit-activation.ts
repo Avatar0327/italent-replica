@@ -26,6 +26,7 @@ import { runExitDutyTransfer } from './exit-duty-transfer.js';
 import { runExitEffectiveHooks, type ExitActivationSource } from './exit-confirmation.js';
 // 订阅方在加载时登记到 effective 端口（F-229 作废在途考核）；编排器是唯一调用端口的地方，随它一起加载
 import './exit-void-assessments.js';
+import './exit-terminate-flows.js';
 // 离职生效写黑名单（BE-8b1）同样订阅 effective 端口
 import './exit-blacklist.js';
 // 交接自动发起（BE-8b2，DM-R14）订阅 onConfirmed、撤销离职终止交接订阅 onCancelled，随入口一起加载
@@ -48,7 +49,10 @@ import {
 import {
   lockExitOrganizationResources,
   lockOtherBusinessHeads,
+  releaseVoidedEstablishment,
   voidInFlightApplications,
+  voidLandedTransfers,
+  type VoidedApplication,
 } from './exit-void-applications.js';
 import { assertInternEndable } from './intern-eligibility.js';
 import { assertNoRebuildRequired } from './late-transfer.js';
@@ -181,7 +185,7 @@ async function reconcileConfirmedSet(
   lastWorkDate: string,
 ) {
   const stored = (exit.pendingTransferAck ?? null) as AckRecord | null;
-  const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate);
+  const recomputed = await pendingTransferAckSet(tx, ctx, business.employeeId, lastWorkDate, business.payload.kind);
   if (recomputed?.tooMany)
     throw new AppError('CONFLICT', '在途任职申请过多，请先处理后再办理离职', {
       activationFailure: { reason: 'EXIT_APPLICATIONS_TOO_MANY', detail: { limit: VOID_LIMIT } },
@@ -218,7 +222,14 @@ async function revalidateAfterPostponement(
   lastWorkDate: string,
   source: ExitActivationSource,
 ) {
-  const blocker = await regularizationBlocker(tx, ctx, business.employeeId, lastWorkDate, source);
+  const blocker = await regularizationBlocker(
+    tx,
+    ctx,
+    business.employeeId,
+    lastWorkDate,
+    source,
+    business.payload.kind,
+  );
   if (blocker)
     throw new AppError('CONFLICT', '存在审批中的转正流程，请先处理', {
       activationFailure: { reason: 'EXIT_REGULARIZATION_IN_FLIGHT', detail: { ...blocker } },
@@ -307,7 +318,7 @@ export async function detachAndRecord(
       { employeeId: business.employeeId },
     );
   }
-  return detached.length;
+  return detached;
 }
 
 /**
@@ -373,6 +384,26 @@ async function followingTransfers(
   return following.filter((row) => row.bizType === 'transfer').map((row) => row.docId);
 }
 
+/**
+ * §5.8 摘下排在离职之后的已落地调动，随即作废（DEC-725 ③；退休只摘下，F-351）；返回摘下条数。
+ * 带编回退：步骤 1 作废的在途组（inFlight）与这里作废的已落地组是同一个回退单元，合并后只回退一次、只校验最终状态
+ * （F-400 r4）；退休时已落地组为空，仍回退在途组。
+ */
+async function detachAndVoid(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  detachable: readonly string[] | undefined,
+  lastWorkDate: string,
+  heads: ReadonlyMap<string, number>,
+  inFlight: readonly VoidedApplication[],
+) {
+  const detached = await detachAndRecord(tx, ctx, business, detachable);
+  const landed = await voidLandedTransfers(tx, ctx, business, detached, lastWorkDate, heads);
+  await releaseVoidedEstablishment(tx, ctx, business.employeeId, [...inFlight, ...landed]);
+  return detached.length;
+}
+
 /** 保存点内的步骤 0 → 8；返回最终日期。 */
 async function runSteps(
   tx: Tx,
@@ -405,14 +436,14 @@ async function runSteps(
     await assertInternEndable(tx, ctx, business.employeeId, late.lastWorkDate);
   // DEC-507 步骤 0d：先检查同一插入位置之后的集合，再分流；失败连顺延版本一起回滚。
   const detachable = await followingTransfers(tx, ctx, business, exit, planned, late.effectiveDate);
-  // 步骤 1：作废全部在途任职申请（DEC-496①）；失败随保存点整体回滚
+  // 步骤 1：按离职终止配置作废在途任职申请（DEC-725，取代 DEC-496①）；失败随保存点整体回滚
   const voided = await voidInFlightApplications(tx, ctx, business, late.lastWorkDate, heads);
   if (isOverLimitAck((exit.pendingTransferAck ?? null) as AckRecord | null))
     await auditIncompleteAck(tx, ctx, business, voided, late.lastWorkDate);
   // 离职不作为向后更新 / 状态传播的来源（§5.6）；落地时的部门可用性由 materialize 对离职跳过（R-O6）
   await materializeEmploymentRecord(tx, ctx, business, { forwardUpdate: false, skipStatusPropagation: true });
   if (business.payload.kind === 'retirement') await syncActualRetirementDate(tx, ctx, business, late);
-  const detached = await detachAndRecord(tx, ctx, business, detachable);
+  const detached = await detachAndVoid(tx, ctx, business, detachable, late.lastWorkDate, heads, voided);
   const detail = { effectiveDate: late.effectiveDate, lastWorkDate: late.lastWorkDate, postponed: late.postponed };
   await assertNoNewEstablishmentOccupancy(
     tx,

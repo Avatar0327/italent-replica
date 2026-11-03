@@ -98,11 +98,17 @@ export async function resubmitFromApproval(tx: Tx, ctx: ApprovalContext, id: str
   await setStatus(tx, ctx, before, STATUS.reviewing, 'resubmit');
 }
 
-/** 审批结果回写：只改仍在审批中的单据（重复回调不覆盖别处的新状态）。 */
+/** 审批结果回写：只改仍在审批中的单据（重复回调不覆盖别处的新状态）；返回本次是否回写（通过后据此入队）。 */
+export async function settleApproval(tx: Tx, ctx: ApprovalContext, id: string, status: number, action: string) {
+  const before = await lockStored(tx, ctx, id);
+  if (before.approvalStatus !== STATUS.reviewing) return false;
+  await setStatus(tx, ctx, before, status, action);
+  return true;
+}
+
 export function settleFromApproval(status: number, action: string) {
   return async (tx: Tx, ctx: ApprovalContext, id: string) => {
-    const before = await lockStored(tx, ctx, id);
-    if (before.approvalStatus === STATUS.reviewing) await setStatus(tx, ctx, before, status, action);
+    await settleApproval(tx, ctx, id, status, action);
   };
 }
 

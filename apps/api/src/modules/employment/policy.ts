@@ -428,14 +428,17 @@ const EXIT_CREATE_BUTTON: ButtonPolicy = {
   domain: ['application', 'direct'],
 };
 const EXIT_CREATE_PRECONDITIONS = ['lockEmploymentEmployee', 'requireExitGate', 'assertRevision'];
-const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings'] as const;
+/**
+ * 离职 / 退休预览（R2-T03 设计 §4）：响应键固定，但清单逐项按可见性与字段查看权披露；F-400 起要终止的其它流程
+ * 也按申请单查看权裁剪（discloseFlows，看不到的只计 hiddenCount），出口随权限而定，登记为投影。
+ */
 const exitPreview = (code: string) =>
   object({
     object: EMPLOYMENT,
     operation: 'view',
     button: button(code, 'detail'),
     scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
-    fields: fixed(EXIT_PREVIEW_KEYS, 'R2-T03 设计 §4 preview：固定键，清单逐项按可见性与字段查看权披露'),
+    fields: projector('employment.exitPreview', 'employment.exitPreview'),
     write: write(
       'body',
       none('只读预览：没有命令事务，没有提交前足迹'),
@@ -1091,7 +1094,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // ---- employment/intern-routes.ts：R2 BE-6a 实习生（B34～B38、B41、A48）-------------------------------------------------
   // 实习四视图：view / departmentId / keyword 不合法 400；按部门筛选须 departmentId 可见、按关键字须 name / code 可见（否则 403
   // 「筛选字段不可查看」）；readPageContext(list) + scopeSql 列表范围（空范围看不到任何行）；任职字段按任职记录、姓名 / 工号按
-  // 人员对象可见字段裁剪；state / probation 是视图控制项，行可见即可见
+  // 人员对象可见字段裁剪；state / probation 是视图控制项，行可见即可见。F-366：只有实习中收 sortBy（实习机构 / 实习部门 /
+  // 直线经理）/ direction，别的页签带排序或 direction 不带 sortBy 400；排序列同样须任职记录字段可见，否则 403（同一守卫）
   'GET /interns': object({
     object: EMPLOYMENT,
     operation: 'view',
