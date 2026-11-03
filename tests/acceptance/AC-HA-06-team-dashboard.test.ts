@@ -74,7 +74,6 @@ describe('AC-HA-06 团队人事看板', () => {
 
   it('① 负责人只看到本人 + 负责部门内 + 汇报链（含隔级）的在职员工，数字 = 明细；虚线下属 / 无关人员 / 离职人员不在内', async () => {
     const team = ids(x.p.leader, x.p.a, x.p.b, x.p.c, x.p.d);
-    expect((await lead.board(TEAM_BASE, AS_OF)).hasDataPermission).toBe(true);
     await lead.expectCount(TEAM_BASE, '6.01', team, AS_OF);
     await lead.expectCount(TEAM_BASE, '6.03', team, AS_OF); // 平均值类按样本数核对
     const segments: [string, { id: string }][] = [
@@ -105,7 +104,6 @@ describe('AC-HA-06 团队人事看板', () => {
   it('② 没有下属也不负责部门的员工直接调接口：200，只有本人', async () => {
     const lonely = boardClient(x.w.db, { tenant: x.w.tenantId, user: await userOf(x.w, x.p.f.id) });
     await lonely.expectCount(TEAM_BASE, '6.01', ids(x.p.f), AS_OF);
-    expect((await lonely.board(TEAM_BASE, AS_OF)).hasDataPermission).toBe(true);
   });
 
   it('③ A1 直链回归：没有任何看板授权 / 没有菜单的普通员工直接访问，也只得本人', async () => {
@@ -125,12 +123,18 @@ describe('AC-HA-06 团队人事看板', () => {
     await admin.expectCount(STRUCTURE_BASE, '6.01', ids(x.p.leader, x.p.a, x.p.b, x.p.c, x.p.d, x.p.e, x.p.f), AS_OF);
   });
 
-  it('空范围 fail-closed：没有绑定人员档案的账号 → 全为 0、hasDataPermission = false，不退回全部', async () => {
+  it('无员工身份的活跃成员（外部用户）→ 概览与明细都与“组件不存在”同一响应（状态、错误码、文案），不暴露存在性', async () => {
     const unbound = boardClient(x.w.db, x.w.who); // 夹具的管理员账号没有绑定人员档案
-    const board = await unbound.board(TEAM_BASE, AS_OF);
-    expect(board.hasDataPermission).toBe(false);
-    await unbound.expectCount(TEAM_BASE, '6.01', [], AS_OF);
-    expect(board.components.find((item) => item.code === '6.03')!.value).toBeNull();
+    const baseline = await unbound.get(`${TEAM_BASE}/components/9.99?${AS_OF}`);
+    expect(baseline.status).toBe(404);
+    const expected = { status: 404, body: await baseline.clone().json() };
+    for (const path of [`${TEAM_BASE}?${AS_OF}`, `${TEAM_BASE}/components/6.01?${AS_OF}`]) {
+      const response = await unbound.get(path);
+      expect({ path, status: response.status, body: await response.json() }).toEqual({ path, ...expected });
+    }
+    // 已绑定的普通员工不受影响：200，只得本人（A1 直链口径，见上面的 ② ③）
+    const bound = boardClient(x.w.db, { tenant: x.w.tenantId, user: await userOf(x.w, x.p.f.id) });
+    expect((await bound.get(`${TEAM_BASE}?${AS_OF}`)).status).toBe(200);
   });
 
   it('跨租户：不是该租户成员 → 403；别的租户的负责人在自己租户只看到自己的团队（本人 + 直属下属）', async () => {
