@@ -78,6 +78,8 @@ export interface Run {
   snapshot: BusinessSnapshot;
   instance: InstanceRow;
   readonly events: string[];
+  /** 业务批准出口已完成后的看板日期；不改变审批版本或审批中改单语义。 */
+  approvedDashboardDate?: string | null;
   /** 本次命令内的回避事实缓存（读冻结行；冻结写入后清空，见 recusal.ts）。 */
   recusal?: RecusalFacts;
 }
@@ -141,8 +143,10 @@ function instanceAudit(instance: InstanceRow): Row {
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
 export async function persistRun(tx: Tx, run: Run, action: string, created = false): Promise<InstanceRow> {
-  // 规格 35 B51：业务版本换了（中途改单、重提）就按新载荷刷新看板日期，与审批人所读的版本一致
-  if (run.instance.businessVersion !== run.before.businessVersion)
+  // 规格 35 B51 / F-417③：最终批准优先取业务出口完成后的日期；中途改单、重提仍取审批快照。
+  if (run.approvedDashboardDate !== undefined)
+    run.instance = { ...run.instance, dashboardDate: run.approvedDashboardDate };
+  else if (run.instance.businessVersion !== run.before.businessVersion)
     run.instance = { ...run.instance, dashboardDate: run.snapshot.dashboardDate ?? null };
   const saved = await updateInstance(tx, run.ctx, run.before, run.instance);
   await auditApproval(tx, run.ctx, {
@@ -824,7 +828,8 @@ export async function returnInstance(tx: Tx, run: Run, nodeKey: string): Promise
 async function complete(tx: Tx, run: Run): Promise<void> {
   run.instance = { ...run.instance, status: 'approved', currentNodeKey: null, returnedFromNodeKey: null };
   await appendLog(tx, run.ctx, run.instance, { event: 'complete', actorUserId: null });
-  await ADAPTERS[run.instance.businessType].approved(tx, run.ctx, run.instance.businessId);
+  const approved = await ADAPTERS[run.instance.businessType].approved(tx, run.ctx, run.instance.businessId);
+  if (approved) run.approvedDashboardDate = approved.dashboardDate;
   run.events.push('approval.instance.approved');
 }
 

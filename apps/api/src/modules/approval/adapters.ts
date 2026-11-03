@@ -128,7 +128,8 @@ export interface BusinessAdapter {
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   /** 实例推进的同事务出口；包括只改任务/实例、尚未改变业务状态的办理。不得在这里更新全局账号。 */
   persisted?(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<void>;
-  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  /** 批准可能自动顺延业务日期；只回传看板投影，不替换审批人所读的业务版本。 */
+  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void | { readonly dashboardDate: string | null }>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
   disapproved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
@@ -496,7 +497,12 @@ const employmentAdapter: BusinessAdapter = {
     if (!['leave', 'retirement'].includes(snapshot.approvalType)) return;
     await queueExitAccount(tx, ctx, snapshot.businessId);
   },
-  approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
+  async approved(tx, ctx, id) {
+    await employmentTransition(tx, ctx, id, 'approve');
+    // F-417③：退休先生效、返聘后批准时，批准链才顺延日期；复用适配器口径读取同事务最新日期。
+    const latest = await employmentAdapter.snapshot(tx, ctx, id);
+    return { dashboardDate: latest.dashboardDate ?? null };
+  },
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
   disapproved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'disapprove'),
   withdrawn: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'withdraw'),
