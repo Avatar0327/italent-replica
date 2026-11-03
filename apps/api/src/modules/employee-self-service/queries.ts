@@ -71,6 +71,7 @@ export interface OwnApplication {
   title: string;
   reasonCode: string | null;
   currentHandlers: string[];
+  applicationKind: 'exit' | 'partTime' | null;
 }
 
 /** 文案唯一来源在 domain（approval/application-status.ts）：被退回的申请显示“已退回”，不再混在“审批中”里。 */
@@ -87,9 +88,10 @@ export async function ownApplications(
 ) {
   return rowsOf<OwnApplication>(
     await tx.execute(sql`
-    SELECT i.id,i.business_id AS "businessId",b.revision,i.status AS state,i.created_at::text AS "createdAt",
+    SELECT i.id,i.business_id AS "businessId",COALESCE(b.revision,q.revision) AS revision,i.status AS state,i.created_at::text AS "createdAt",
       p.effective_date::text AS "effectiveDate",p.department_id AS "departmentId",i.title,
       tr.reason_code AS "reasonCode",
+      CASE WHEN q.id IS NOT NULL THEN 'partTime' WHEN er.initiator='self' THEN 'exit' ELSE NULL END AS "applicationKind",
       CASE WHEN i.status IN ('running','returned') THEN ARRAY(
         SELECT DISTINCT a.display_name FROM approval_tasks t
         CROSS JOIN LATERAL tenant_member_accounts(ARRAY[t.assignee_user_id]::uuid[]) a
@@ -97,12 +99,21 @@ export async function ownApplications(
         ORDER BY a.display_name
       ) ELSE ARRAY[]::text[] END AS "currentHandlers"
     FROM approval_instances i
-    JOIN employment_business_objects b ON b.tenant_id=i.tenant_id AND b.id=i.business_id
+    LEFT JOIN employment_business_objects b ON b.tenant_id=i.tenant_id AND b.id=i.business_id
+      AND i.business_type='employment'
+    LEFT JOIN exit_requests er ON er.tenant_id=b.tenant_id AND er.business_id=b.id
+    LEFT JOIN part_time_requests q ON q.tenant_id=i.tenant_id AND q.id=i.business_id AND i.business_type='part_time'
     LEFT JOIN transfer_requests tr ON tr.tenant_id=b.tenant_id AND tr.business_id=b.id
-    JOIN LATERAL (SELECT effective_date,department_id FROM employment_payload_versions p
-      WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true
+    JOIN LATERAL (
+      (SELECT effective_date,department_id FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1)
+      UNION ALL
+      (SELECT start_date AS effective_date,department_id FROM part_time_request_versions p
+        WHERE p.tenant_id=q.tenant_id AND p.request_id=q.id ORDER BY version_no DESC LIMIT 1)
+    ) p ON true
     WHERE i.tenant_id=${ctx.tenantId} AND i.initiator_user_id=${ctx.userId}::uuid
-      AND i.business_type='employment' AND b.employee_id=${employeeId}::uuid
+      AND (b.employee_id=${employeeId}::uuid OR (q.employee_id=${employeeId}::uuid
+        AND q.initiator='self' AND q.request_type='add'))
       ${id ? sql`AND i.id=${id}::uuid` : sql``}
     ORDER BY i.created_at DESC,i.id DESC LIMIT ${page.limit} OFFSET ${page.offset}
   `),

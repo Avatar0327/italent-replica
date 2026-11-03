@@ -26,6 +26,8 @@
 import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { sql, type Tx } from '@italent/db';
 import {
+  SELF_APPLICATION_OBJECTS,
+  type SelfApplicationKind,
   EMPLOYEE_DEFAULT_CREATE,
   EMPLOYEE_DEFAULT_EDIT_FIELDS,
   EMPLOYEE_SELF_SERVICE_BUTTONS,
@@ -34,6 +36,7 @@ import {
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
 import { loadObjectPermissions } from '../permission/subject.js';
+import { SELF_APPLICATION_POLICIES } from './application-policy.js';
 import { defineTable } from '../../route-policy/index.js';
 import { BAD_REQUEST, button, fixed, none, projector, self, write } from '../../route-policy/presets.js';
 
@@ -58,11 +61,16 @@ export interface EmployeeFieldPolicy {
   readonly view: Set<string>;
   readonly edit: Set<string>;
   readonly create: boolean;
+  readonly update: boolean;
   /** 员工身份在任职对象上授予的 detail 级按钮编码（本人调动三个按钮的实际开关，DEC-402②）。 */
   readonly buttons: Set<string>;
 }
 
-export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<EmployeeFieldPolicy> {
+export async function employeeFieldPolicy(
+  tx: Tx,
+  tenantId: string,
+  kind?: SelfApplicationKind,
+): Promise<EmployeeFieldPolicy> {
   const [profile] = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT p.id FROM permission_profiles p
@@ -70,20 +78,25 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<Emp
     WHERE p.tenant_id=${tenantId} AND p.code=${EMPLOYEE_PROFILE_CODE}
   `),
   );
+  const definition = kind ? SELF_APPLICATION_OBJECTS[kind] : undefined;
   if (!profile) {
     return {
-      view: new Set([...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS]),
-      edit: new Set(EMPLOYEE_DEFAULT_EDIT_FIELDS),
+      view: new Set(
+        definition?.fields.map((f) => f.code) ?? [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS],
+      ),
+      edit: new Set(definition?.fields.filter((f) => !f.system).map((f) => f.code) ?? EMPLOYEE_DEFAULT_EDIT_FIELDS),
       create: EMPLOYEE_DEFAULT_CREATE,
+      update: !!kind,
       buttons: new Set(DEFAULT_BUTTONS),
     };
   }
-  const [permission] = await loadObjectPermissions(tx, [profile.id], EMPLOYMENT_OBJECT);
+  const [permission] = await loadObjectPermissions(tx, [profile.id], definition?.code ?? EMPLOYMENT_OBJECT);
   return {
     buttons: new Set(permission?.buttons.filter((b) => b.level === 'detail').map((b) => b.buttonCode) ?? []),
     view: new Set(permission?.fields.filter((field) => field.view).map((field) => field.fieldCode) ?? []),
     edit: new Set(permission?.fields.filter((field) => field.view && field.edit).map((field) => field.fieldCode) ?? []),
     create: permission?.dataOperations.create ?? false,
+    update: permission?.dataOperations.update ?? false,
   };
 }
 
@@ -144,6 +157,7 @@ const DEVELOPMENT_CHANNEL_PAGE = 'selfService.developmentChannelPage';
 const DEVELOPMENT_CHANNEL_BUTTON = button('EmployeeDevelopmentChannel', 'app_page');
 
 export const SELF_SERVICE_POLICIES = defineTable('self-service', {
+  ...SELF_APPLICATION_POLICIES,
   // ---- registerProfileRoutes：本人档案与任职记录 -----------------------------------------------------------------
   // 响应 { employee, timezone, today, record }：record 为当前任职（无则 null），经 discloseOwnRecord 裁剪
   'GET /profile': self({ fields: ownRecord }),

@@ -24,6 +24,8 @@ import { visibleFields } from './field-disclosure.js';
 import { referenceChoices } from './references.js';
 import { loadEmploymentBusiness } from '../employment/read-model.js';
 import { policedSub } from '../../route-policy/index.js';
+import { registerSelfApplicationRoutes } from './application-routes.js';
+import { ownRequest, projectApplication, requireApplicationAccess } from './application-access.js';
 import { SELF_SERVICE_POLICIES } from './policy.js';
 
 export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, deps) => {
@@ -34,6 +36,7 @@ export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, dep
       ? c.json({ error: { code: error.code, message: error.message, details: error.details } }, error.status)
       : handleError(error, c),
   );
+  registerSelfApplicationRoutes(module, deps);
   registerProfileRoutes(module, deps);
   registerTransferRoutes(module, deps);
   registerApplicationRoutes(module, deps);
@@ -145,36 +148,66 @@ function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
     });
     const visible = await withTenant(deps.db, self.ctx.tenantId, (tx) => transferFieldAccess(tx, deps, self.ctx));
     const items = await Promise.all(
-      rows.map(async ({ state, departmentId, reasonCode, ...item }) => ({
-        id: item.id,
-        businessId: item.businessId,
-        revision: item.revision,
-        title: item.title,
-        currentHandlers: item.currentHandlers,
-        createdAt: item.createdAt,
-        ...visibleFields({ effectiveDate: item.effectiveDate }, visible),
-        status: applicationStatus(state),
-        category: '人事变动',
-        initiator: self.employee.name,
-        reason:
-          reasonCode && visible.has('reasonCode')
-            ? await withTenant(
-                deps.db,
-                self.ctx.tenantId,
-                async (tx) =>
-                  (await readTransferCatalog(tx, self.ctx.tenantId, item.effectiveDate)).reasons.find(
-                    (r) => r.code === reasonCode,
-                  )?.name ?? '',
-              )
-            : '',
-        fields: visibleFields({ departmentId }, visible),
-      })),
+      rows.map(async ({ state, departmentId, reasonCode, applicationKind, ...item }) => {
+        if (applicationKind) {
+          const access = await selfAccess(c, deps, 0, applicationKind);
+          const projected = await projectApplication(access, {
+            effectiveDate: item.effectiveDate,
+            fields: { departmentId },
+          });
+          return {
+            ...item,
+            ...projected,
+            effectiveDate: projected.effectiveDate,
+            status: applicationStatus(state),
+            category: applicationKind === 'exit' ? '离职申请' : '新增兼职申请',
+            initiator: self.employee.name,
+            reason: '',
+            applicationKind,
+          };
+        }
+        return {
+          id: item.id,
+          businessId: item.businessId,
+          revision: item.revision,
+          title: item.title,
+          currentHandlers: item.currentHandlers,
+          createdAt: item.createdAt,
+          ...visibleFields({ effectiveDate: item.effectiveDate }, visible),
+          status: applicationStatus(state),
+          category: '人事变动',
+          initiator: self.employee.name,
+          reason:
+            reasonCode && visible.has('reasonCode')
+              ? await withTenant(
+                  deps.db,
+                  self.ctx.tenantId,
+                  async (tx) =>
+                    (await readTransferCatalog(tx, self.ctx.tenantId, item.effectiveDate)).reasons.find(
+                      (r) => r.code === reasonCode,
+                    )?.name ?? '',
+                )
+              : '',
+          fields: visibleFields({ departmentId }, visible),
+        };
+      }),
     );
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   module.get('/applications/:id', async (c) => {
     const self = await selfAccess(c, deps);
     const id = uuidParam(c);
+    const item = await withTenant(deps.db, self.ctx.tenantId, (tx) =>
+      ownApplication(tx, self.ctx, self.employee.id, id),
+    );
+    if (item.applicationKind) {
+      const access = await selfAccess(c, deps, 0, item.applicationKind);
+      const record = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
+        await requireApplicationAccess(tx, access, item.applicationKind!);
+        return ownRequest(tx, access, item.applicationKind!, item.businessId);
+      });
+      return c.json({ status: applicationStatus(item.state), record: await projectApplication(access, record) });
+    }
     const result = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
       await self.check(tx);
       const item = await ownApplication(tx, self.ctx, self.employee.id, id);

@@ -242,6 +242,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       42: 'a453a0856ab8f655',
       // F-323（DEC-706）：人员类别字典对象授权项（两预置管理员）
       43: '10be3d89590b6cf1',
+      // F-020 / DEC-790：本人离职、兼职专属授权（占位 44，合并时按 main + 1 定号）。
+      44: '5c6894ca554f500a',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

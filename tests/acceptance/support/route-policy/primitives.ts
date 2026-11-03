@@ -370,6 +370,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.templatePublicDownReadonly', /\bTEMPLATE_PUBLIC_DOWN_READONLY\b/, { modules: ['talent-review'] }],
     // 人才评定配置字典：按 enabled 筛选须有该字段查看权（R3-T02 B1a 路由声明）
     ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],
+    ['selfService.application', call('requireApplicationAccess'), { modules: ['self-service'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

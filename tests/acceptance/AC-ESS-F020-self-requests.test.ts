@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { applyInitiationSubset } from '../../apps/api/src/modules/employment/exit-initiation.js';
 import { approvalWorld, permissionAdmin, type Person } from './AC-APV-support.js';
 import { createProfile, setObjectPermission } from './AC-PRM-support.js';
+import { installExitSeeds } from './AC-EXIT-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { legacyWorld, runBackfill, permissionOf } from './support/f061.js';
 
@@ -36,6 +37,7 @@ const create = async (actor: Person, kind: string, body: object) => {
 
 beforeAll(async () => {
   w = await approvalWorld(database().db, 'ess-f020');
+  await installExitSeeds(database().db, w.tenant.id);
   api = tenantApi(database().db, { authorize: undefined, clock: w.clock });
   department = await w.org('合成主职部门');
   target = await w.org('合成范围外部门');
@@ -86,7 +88,12 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
     ])
       expect((await send(actor, '/exit-requests', 'POST', body, form.employee.revision)).status).toBe(400);
     const draft = await create(actor, 'exit-requests', { lastWorkDate: '2026-12-01' });
-    expect(draft).toMatchObject({ employeeId: actor.employeeId, status: 'draft', reasonCode: 'personal' });
+    expect(draft).toMatchObject({
+      employeeId: actor.employeeId,
+      status: 'draft',
+      reasonCode: 'personal',
+      lastWorkDate: '2026-12-01',
+    });
     const path = `/exit-requests/${draft.id}`;
     const changed = await w.json<Receipt>(
       await send(
