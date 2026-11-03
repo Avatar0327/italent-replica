@@ -21,6 +21,7 @@ import {
   orgScopeAuthorizer,
 } from './access.js';
 import { storedItemFieldCodes } from './item-validation.js';
+import { trimmedForViewer } from './envelope.js';
 import { loadWorld } from './item-tree.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
@@ -92,6 +93,11 @@ async function lockStored(tx: Tx, ctx: WriteContext, id: string) {
 
 /** 审批侧重提（openOwn 已判发起人与实例 revision）：只接受已驳回单，按提交口径重判后 → 1；不带修正。 */
 export async function resubmitFromApproval(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
+  // 校验类错误按重提人的字段查看权裁剪（与路由 10 同口径，F-427）
+  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections));
+}
+
+async function resubmit(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
   if (Object.keys(corrections).length > 0) {
     throw new AppError('VALIDATION_FAILED', '组织调整重提不带修正，请在申请单上修改后提交', {
       reason: 'ORG_ADJUSTMENT_CORRECTIONS_UNSUPPORTED',
