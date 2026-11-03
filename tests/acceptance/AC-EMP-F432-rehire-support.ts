@@ -79,8 +79,10 @@ export async function rehireWorld(db: Db, label: string) {
         Number((r as { value: string }).value),
       );
     });
+  let approvalInstalled = false;
   const approve = async (b: EmploymentBusiness) => {
-    await installApprovalFallbacks(db, s.tenant.id, s.user.id);
+    if (!approvalInstalled) await installApprovalFallbacks(db, s.tenant.id, s.user.id);
+    approvalInstalled = true;
     const submitted = await s.request('POST', `/businesses/${b.id}/submit`, { ifMatch: b.revision, body: {} });
     expect(submitted.status, await submitted.clone().text()).toBe(200);
     return transition((await submitted.json()) as EmploymentBusiness, 'approve', '2026-10-01T01:00:00Z');
