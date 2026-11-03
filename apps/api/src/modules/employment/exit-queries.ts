@@ -362,6 +362,10 @@ export interface ExitExtension {
   readonly attachmentRefs: readonly string[] | null;
   readonly handoverEmployeeId: string | null;
   readonly addToBlacklist: boolean;
+  /** F-393：加黑三项（有效截止日期空 = 永久）；只在详情披露，按任职记录同名字段的查看权裁剪。 */
+  readonly blacklistExpiryDate: string | null;
+  readonly blacklistReason: string | null;
+  readonly blacklistNote: string | null;
   readonly compensationAmount: number | null;
   readonly nonCompeteAmount: number | null;
   readonly lastPayDate: string | null;
@@ -398,7 +402,9 @@ async function loadDetailParts(tx: Tx, tenantId: string, id: string) {
   const [extension] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     SELECT attachment_refs AS "attachmentRefs", handover_employee_id AS "handoverEmployeeId",
-      add_to_blacklist AS "addToBlacklist", compensation_amount AS "compensationAmount",
+      add_to_blacklist AS "addToBlacklist", blacklist_expiry_date::text AS "blacklistExpiryDate",
+      blacklist_reason AS "blacklistReason", blacklist_note AS "blacklistNote",
+      compensation_amount AS "compensationAmount",
       non_compete_amount AS "nonCompeteAmount", last_pay_date::text AS "lastPayDate",
       social_insurance_end_month AS "socialInsuranceEndMonth", annual_leave_settled AS "annualLeaveSettled",
       tax_period AS "taxPeriod", tax_year AS "taxYear", employer_name AS "employerName",
@@ -463,6 +469,9 @@ export async function loadExitDetail(
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
+    blacklistExpiryDate: (ext.blacklistExpiryDate as string | null) ?? null,
+    blacklistReason: (ext.blacklistReason as string | null) ?? null,
+    blacklistNote: (ext.blacklistNote as string | null) ?? null,
     compensationAmount: amount(ext.compensationAmount),
     nonCompeteAmount: amount(ext.nonCompeteAmount),
     lastPayDate: (ext.lastPayDate as string | null) ?? null,
@@ -525,6 +534,9 @@ const OWN_FIELDS = [
   'createdAt',
   'handoverEmployeeId',
   'addToBlacklist',
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
   'compensationAmount',
   'nonCompeteAmount',
   'lastPayDate',
