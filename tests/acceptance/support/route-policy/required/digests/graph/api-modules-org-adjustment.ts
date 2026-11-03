@@ -394,7 +394,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/item-validation.ts#fields': ['#INT32', '#opt', '#orgRef', '#uuid'],
   'apps/api/src/modules/org-adjustment/item-validation.ts#orgRef': ['#uuid'],
   'apps/api/src/modules/org-adjustment/item-validation.ts#patchItemSchema': ['#fields'],
-  'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes': [
+  'apps/api/src/modules/org-adjustment/item-validation.ts#writtenItemFieldCodes': [
     '#STORED_FIELD_NAME',
     'apps/api/src/modules/org-adjustment/items-store.ts#CONTENT_KEYS',
   ],
@@ -405,6 +405,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/items-store.ts#auditItem': ['apps/api/src/audit/record.ts#recordAudit'],
   'apps/api/src/modules/org-adjustment/items-store.ts#bumpRevision': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org-adjustment/items-store.ts#insertItem': ['#COLUMNS'],
+  'apps/api/src/modules/org-adjustment/items-store.ts#loadItemTrail': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org-adjustment/items-store.ts#loadItems': [
     '#SELECT',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
@@ -765,7 +766,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
     'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
-    'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes',
+    'apps/api/src/modules/org-adjustment/item-validation.ts#writtenItemFieldCodes',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItemTrail',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#BASE',
     '#OBJECT',
@@ -924,7 +926,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/access.ts#authorizeItemFieldWrites',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
-    'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes',
+    'apps/api/src/modules/org-adjustment/item-validation.ts#writtenItemFieldCodes',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItemTrail',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#rowOrgIds',
   ],
