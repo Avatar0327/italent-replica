@@ -160,7 +160,10 @@ export function gapColumnWidth(page: keyof typeof gapPages, view: GapView, title
   if (page === 'processes') {
     return [128, 128, 118, 128, 98, 128, 146, 128, 128, 160][view.columns.indexOf(title)];
   }
-  if (title === d.operation) return view.key === 'active' ? 148 : page === 'delegations' ? 80 : 100;
+  if (title === d.operation) {
+    if (view.key === 'active') return 148;
+    return page === 'delegations' ? 80 : 100;
+  }
   if (title === d.principal) return 160;
   if ([d.delegate, d.creator, d.revokedBy].includes(title)) return 118;
   if ([d.startAt, d.endAt, d.createdAt, d.revokedAt].includes(title)) return 146;

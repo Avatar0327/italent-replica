@@ -193,12 +193,13 @@ function FilterSelect(props: {
 }
 
 /** 列按原站各视图；审批状态与“进行中 / 已完成”交接状态在原站是蓝色链接，这里没有可打开的对象，只保留蓝色文字。 */
+const transferWidths: Partial<Record<TransferColumn, number>> = { effectiveDate: 105, approver: 110, operation: 164 };
 function columnsOf(view: TransferView, onOpen: (row: TransferListRow) => void): TableColumnsType<TransferListRow> {
   return transferColumns[view].map((column) => ({
     key: column,
     title: columnLabels[column],
     fixed: fixedOf(column),
-    width: column === 'effectiveDate' ? 105 : column === 'approver' ? 110 : column === 'operation' ? 164 : 140,
+    width: transferWidths[column] ?? 140,
     render: (_: unknown, row: TransferListRow) => cell(column, row, onOpen),
   }));
 }

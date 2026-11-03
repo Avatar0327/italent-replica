@@ -287,6 +287,7 @@ function OrgFilters({ s, access }: { s: Catalog; access: PageAccess }) {
 }
 // 原站「启用的组织」顶部提示（01）；架构图与变更页签保留各自的操作提示。
 const hints = { list: m.listHint, tree: m.treeHint, changes: m.changeHint };
+const orgListWidths: Record<string, number> = { name: 240, establishedOn: 93, startDate: 93, stopDate: 93 };
 function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: PageAccess; view: ListView }) {
   return (
     <ListPage
@@ -313,7 +314,7 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
           key: field,
           title: orgLabel(field, 'list'),
           dataIndex: field,
-          width: field === 'name' ? 240 : ['establishedOn', 'startDate', 'stopDate'].includes(field) ? 93 : 128,
+          width: orgListWidths[field] ?? 128,
           render: (value: unknown, row: OrgRow) =>
             field === 'name' ? (
               <Button type="link" onClick={() => s.setSelected(row.id)}>
