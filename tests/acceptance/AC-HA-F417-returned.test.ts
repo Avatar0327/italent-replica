@@ -5,7 +5,7 @@ import { offerApprovalWorld, type OfferView } from './AC-OF-BE14a3-support.js';
 import { processClient } from './AC-HA-13c-support.js';
 
 const database = useTestDb();
-it('F-417④：单份和批量 Offer 驳回及随后直接发送均不计在途，重提恢复在途', async () => {
+it('AC-HA-F417④：单份和批量 Offer 驳回及随后直接发送均不计在途，重提恢复在途', async () => {
   const w = await offerApprovalWorld(database().db, 'f417-returned');
   const now = '2026-10-20T01:00:00.000Z';
   w.setNow(now);

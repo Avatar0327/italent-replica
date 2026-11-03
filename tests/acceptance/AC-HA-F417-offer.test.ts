@@ -7,7 +7,7 @@ import { processClient } from './AC-HA-13c-support.js';
 const database = useTestDb();
 const now = '2026-10-20T01:00:00.000Z';
 
-it('F-417①：批量 Offer 审批通过后每份业务明细关联同一个审批实例', async () => {
+it('AC-HA-F417①：批量 Offer 审批通过后每份业务明细关联同一个审批实例', async () => {
   const w = await offerApprovalWorld(database().db, 'f417-batch');
   w.setNow(now);
   const a = await w.offer(w.applicant);
