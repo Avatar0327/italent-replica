@@ -123,7 +123,7 @@ export function restrictedAuthorizer(options: { deny?: string; scope?: ModuleSco
   });
   return authorize;
 }
-/** HRBP 的管理单元范围（AC-HA-05 同口径）：管理单元内组织，及其中按 asOf 任职的人员。 */
+/** 人事管理员的管理单元范围（AC-HA-05，DEC-763②）：管理单元内组织，及其中按 asOf 任职的人员；看板类用例也拿它当“一份受限范围”。 */
 export const managementScope = (tenantId: string, orgIds: string[]): ModuleScope => ({
   ...EMPTY_SCOPE,
   hasDataPermission: true,
