@@ -32,7 +32,7 @@ export function RetirementPage() {
   return (
     <div className="retirement-page">
       <DecisionNote id="retirements" />
-      {/* 草稿上下文与未确认命令放页面层（claude_fe_rules e）：关掉详情、换视图后锁仍在 */}
+      {/* F-444：与试用期 / 实习共用模块级命令存储，资源路径隔离；关详情、换视图或离页不清未确认命令。 */}
       <InternCommands>
         <RetirementList />
       </InternCommands>

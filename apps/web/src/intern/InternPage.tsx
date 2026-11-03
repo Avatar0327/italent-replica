@@ -7,7 +7,7 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
-import { InternCommands, useConfirmedRefresh } from './commands.js';
+import { InternCommands, useConfirmedRefresh, useConfirmedReload } from './commands.js';
 import { CreateIntern } from './CreateIntern.js';
 import { canCreatePerson, type CreateReceipt } from './create-model.js';
 import { c } from './create-messages.js';
@@ -65,8 +65,15 @@ function useInternList() {
   const [selected, select] = useState<{ view: InternView; row: Row }>();
   const allowed = useFilterPermission();
   const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed)));
-  const refreshList = useRef(result.refresh);
-  refreshList.current = result.refresh;
+  const [detailReload, reloadDetail] = useState(0);
+  const confirmedReload = useConfirmedReload();
+  // 列表刷新与已打开档案重读走同一入口；不能只在写确认时刷新档案，也不能换 key 丢掉编辑输入。
+  const refreshListAndDetail = () => {
+    result.refresh();
+    reloadDetail((n) => n + 1);
+  };
+  const refreshList = useRef(refreshListAndDetail);
+  refreshList.current = refreshListAndDetail;
   const switchView = (next: InternView) => {
     setParams({ view: next });
     setPage(1);
@@ -75,17 +82,17 @@ function useInternList() {
     locate(undefined);
   };
   const guard = useNavigationGuard();
-  const create = useInternCreation(guard, () => {
-    switchView('interning');
-    result.refresh();
-  });
+  const create = useInternCreation(guard, () => switchView('interning'));
   const items = result.data?.items ?? [];
   const located = useCallback((page: number) => {
     refreshList.current();
     setPage(page);
     locate(undefined);
   }, []);
-  const refresh = () => result.reload();
+  const refresh = () => {
+    reloadDetail((n) => n + 1);
+    return result.reload();
+  };
   // 列表重读不随导航票据：本会话确认代次一变就重读当前视图，HR 后退到别的视图、离开模块后在落库前回来
   // （新挂载的页面实例）都拿到新数据（F-436）
   useConfirmedRefresh(result.refresh);
@@ -119,7 +126,8 @@ function useInternList() {
     close: () => select(undefined),
     open,
     allowed,
-    result,
+    result: { ...result, refresh: refreshListAndDetail },
+    detailReload: detailReload + confirmedReload,
     items,
     switchView,
     located,
@@ -142,6 +150,7 @@ function InternList() {
     open,
     allowed,
     result,
+    detailReload,
     items,
     switchView,
     located,
@@ -200,6 +209,7 @@ function InternList() {
           row={selected.row}
           onClose={close}
           refresh={refresh}
+          reload={detailReload}
           navigation={navigation}
         />
       )}

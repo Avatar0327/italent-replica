@@ -4,7 +4,7 @@ import { isLocked, type Latest } from '../foundation/forms/store.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
 import { useApiClient } from '../foundation/Session.js';
-import { type ApplicationDraft, useInternDraft } from '../intern/commands.js';
+import { type ApplicationDraft, useApplicationDraft } from '../intern/commands.js';
 import { m } from './messages.js';
 import { retirements, retireSlot } from './model.js';
 
@@ -27,11 +27,11 @@ const reopened = (action: DraftAction, status: unknown) =>
 
 /**
  * 退休申请草稿的唯一入口（DEC-431①）：接续、重读、冲突核对、清理都在这里，RetireForm 与 RetirementDetail 只调用它。
- * 草稿存页面层（intern InternCommands，按会话 + 员工）；恢复槽仍是员工（slotKey 稳定），读回的 id 用员工 id。
+ * 草稿存模块级（InternCommands 共用存储，指针按退休 + 会话 + 员工隔离）；恢复槽仍是员工（slotKey 稳定），读回的 id 用员工 id。
  */
 export function useRetireDraft(employeeId: string) {
   const api = useApiClient();
-  const cache = useInternDraft(employeeId);
+  const cache = useApplicationDraft('retirement', employeeId);
   const slot = useCommandForm(slotKey(retireSlot, employeeId));
   // 打开读与重读在异步流程里取存储的当前值；回调保持稳定，避免打开读随缓存刷新反复触发
   const live = useRef({ cache, slot });
