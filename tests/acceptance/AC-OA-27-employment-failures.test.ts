@@ -32,7 +32,8 @@ describe('AC-OA-27 F-414③ 逐员工失败按查看人员工范围裁剪', () =
     const row = (await w.item(view.id, rename(w.a))).items.at(-1)!;
     await setItemResult(w, row.id, 2, 'EMPLOYMENT_PARTIAL');
     const failure = (employeeId: string, reason: string, message: string) =>
-      sql`INSERT INTO org_adjustment_employment_failures (tenant_id, adjustment_id, item_id, employee_id, reason, message)
+      sql`INSERT INTO org_adjustment_employment_failures
+          (tenant_id, adjustment_id, item_id, employee_id, reason, message)
         VALUES (${w.tenant.id}, ${view.id}, ${row.id}, ${employeeId}, ${reason}, ${message})`;
     await withTenant(w.db, w.tenant.id, async (tx) => {
       await tx.execute(failure(seen.id, 'OUT_OF_SCOPE', `可见原因${s}`));
