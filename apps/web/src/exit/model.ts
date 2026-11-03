@@ -9,7 +9,7 @@ import { m } from './messages.js';
 export type Kind = ExitDictionaryKind;
 export const KINDS: readonly Kind[] = EXIT_DICTIONARY_KINDS;
 export const isKind = (value: string | undefined): value is Kind => (KINDS as readonly string[]).includes(value ?? '');
-/** 读取按任职记录查看权（菜单入口对象）；写入按任职设置配置对象授权（exit-routes.ts）。 */
+/** 入口与读写同按任职设置配置对象授权（F-358）；任职记录对象只用于表单下拉读取字典（exit-routes.ts）。 */
 export const EXIT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 export const EXIT_SETTINGS_OBJECT = 'TenantBase.EmploymentSettings';
 export const dictionaryPath = (kind: Kind) => `/api/tenant/employment/exits/dictionaries/${kind}`;

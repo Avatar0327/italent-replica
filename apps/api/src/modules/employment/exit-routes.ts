@@ -98,9 +98,22 @@ export function registerExitRoutes(
   registerExitCancel(router, deps, authorizeBusinessWrite);
 }
 
+/**
+ * 字典读取：任职设置对象查看权（设置页，配置类、只认 admin.other_settings）或任职记录查看权（表单下拉）二者有其一即可；
+ * 设置页入口只认前者，不能再被任职记录查看权卡住（F-358）。两者都没有仍是 403。
+ */
+async function readDictionaryContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  try {
+    return await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
+  } catch (error) {
+    if (!(error instanceof AppError) || error.code !== 'FORBIDDEN') throw error;
+    return readContext(c, deps, 'object.view', 0);
+  }
+}
+
 function registerExitDictionaries(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/exits/dictionaries/:dict', async (c) => {
-    const ctx = await readContext(c, deps, 'object.view', 0);
+    const ctx = await readDictionaryContext(c, deps);
     const kind = exitDictionaryKind(c.req.param('dict'));
     const enabled = enabledQuery.safeParse(c.req.query('enabled'));
     if (!enabled.success) throw new AppError('VALIDATION_FAILED', 'enabled 只能为 true 或 false');

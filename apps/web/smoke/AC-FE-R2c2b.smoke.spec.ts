@@ -4,7 +4,7 @@ import type { Page, Route } from '@playwright/test';
 import { actionButton } from './action-button.js';
 import { otherSettingsMenu } from './account-stop-fixtures.js';
 import { capture, choose, item, named, save, type Write } from './contracts-fixtures.js';
-import { settingsPermission } from './exit-fixtures.js';
+import { settingsPermission, withExitSettingsEntry } from './exit-fixtures.js';
 import {
   autoBlacklistDefault,
   blacklistEntry,
@@ -48,7 +48,7 @@ type Server = ReturnType<typeof createServer>;
 async function setup(page: Page, { admin = true, permission = blacklistPermission } = {}) {
   const server = { ...createServer(), admin };
   await page.route('**/permission/me/snapshot', (route) => {
-    const body = structuredClone(snapshotFixture);
+    const body = withExitSettingsEntry(structuredClone(snapshotFixture));
     if (admin) body.adminMenus = [...body.adminMenus, otherSettingsMenu];
     return route.fulfill({ json: body });
   });

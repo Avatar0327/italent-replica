@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { actionButton } from './action-button.js';
 import { accountStopDefault, accountStopRejected, otherSettingsMenu } from './account-stop-fixtures.js';
 import { capture, item, named, save, type Write } from './contracts-fixtures.js';
-import { settingsPermission } from './exit-fixtures.js';
+import { settingsPermission, withExitSettingsEntry } from './exit-fixtures.js';
 import { expect, snapshotFixture, test, user } from './fixtures.js';
 
 const path = '/api/tenant/employment/exit-account/settings';
@@ -19,7 +19,7 @@ async function setup(page: Page, { admin = true } = {}) {
     override: undefined as ((write: Write) => Reply | undefined) | undefined,
   };
   await page.route('**/permission/me/snapshot', (route) => {
-    const body = structuredClone(snapshotFixture);
+    const body = withExitSettingsEntry(structuredClone(snapshotFixture));
     if (admin) body.adminMenus = [...body.adminMenus, otherSettingsMenu];
     return route.fulfill({ json: body });
   });
