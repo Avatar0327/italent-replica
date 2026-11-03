@@ -94,7 +94,11 @@ function TransferFilters(props: FilterProps) {
         <h3>{t.advancedGroup}</h3>
         <Space direction="vertical" className="transfer-advanced">
           <FilterControls
-            keys={[...keys, 'beforeDepartment', 'beforePost']}
+            keys={
+              view === 'progress'
+                ? ['person', 'date', 'beforeDepartment', 'beforePost', 'department', 'post', 'status']
+                : [...keys, 'beforeDepartment', 'beforePost']
+            }
             rows={props.rows}
             value={draft ?? {}}
             onChange={setDraft}
@@ -194,6 +198,7 @@ function columnsOf(view: TransferView, onOpen: (row: TransferListRow) => void): 
     key: column,
     title: columnLabels[column],
     fixed: fixedOf(column),
+    width: column === 'effectiveDate' ? 105 : column === 'approver' ? 110 : column === 'operation' ? 164 : 140,
     render: (_: unknown, row: TransferListRow) => cell(column, row, onOpen),
   }));
 }
@@ -202,10 +207,10 @@ const fixedOf = (column: TransferColumn) => {
   return column === 'operation' ? ('right' as const) : undefined;
 };
 function cell(column: TransferColumn, row: TransferListRow, onOpen: (row: TransferListRow) => void) {
-  if (column === 'name')
+  if (column === 'name' || column === 'effectiveDate')
     return (
       <Button type="link" className="transfer-name-link" onClick={() => onOpen(row)}>
-        {row.name}
+        {row[column]}
       </Button>
     );
   if (column === 'status') return <span className="transfer-link-text">{statusLabels[row.status]}</span>;

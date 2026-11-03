@@ -138,7 +138,7 @@ export const gapPages: Record<'delegations' | 'processes' | 'admin-delegations',
         tools: [d.create, d.batchRevoke, d.export],
         banner: d.adminBanner,
         columns: [d.principal, d.delegate, ...delegationColumns, d.existingTodos, d.operation],
-        selectable: false,
+        selectable: true,
       },
       {
         key: 'completed',
@@ -154,3 +154,15 @@ export const gapPages: Record<'delegations' | 'processes' | 'admin-delegations',
     ],
   },
 };
+
+/** 原站已确认的表头宽度，按语义键匹配不同委托视图。 */
+export function gapColumnWidth(page: keyof typeof gapPages, view: GapView, title: string) {
+  if (page === 'processes') {
+    return [128, 128, 118, 128, 98, 128, 146, 128, 128, 160][view.columns.indexOf(title)];
+  }
+  if (title === d.operation) return view.key === 'active' ? 148 : page === 'delegations' ? 80 : 100;
+  if (title === d.principal) return 160;
+  if ([d.delegate, d.creator, d.revokedBy].includes(title)) return 118;
+  if ([d.startAt, d.endAt, d.createdAt, d.revokedAt].includes(title)) return 146;
+  return title === d.existingTodos ? 95 : 128;
+}
