@@ -199,6 +199,18 @@ export const retirementRules = pgTable(
   ],
 );
 
+/** 条件槽位白名单；与迁移 0189 的 CHECK 文本一致（拼接结果不变，仅为不超行宽）。 */
+const CONDITION_FIELD_CODES = [
+  'gender',
+  'nationality',
+  'employType',
+  'identityType',
+  'employmentForm',
+  'employmentType',
+]
+  .map((code) => `'${code}'`)
+  .join(', ');
+
 export const retirementRuleConditions = pgTable(
   'retirement_rule_conditions',
   {
@@ -218,10 +230,7 @@ export const retirementRuleConditions = pgTable(
       foreignColumns: [retirementRules.tenantId, retirementRules.id],
     }).onDelete('cascade'),
     check('retirement_rule_conditions_seq', sql`${t.seq} BETWEEN 1 AND 6`),
-    check(
-      'retirement_rule_conditions_field',
-      sql`${t.fieldCode} IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm', 'employmentType')`,
-    ),
+    check('retirement_rule_conditions_field', sql`${t.fieldCode} IN (${sql.raw(CONDITION_FIELD_CODES)})`),
     check('retirement_rule_conditions_operator', sql`${t.operator} = 'in'`),
     check('retirement_rule_conditions_values', sql`cardinality(${t.values}) BETWEEN 1 AND 50`),
   ],

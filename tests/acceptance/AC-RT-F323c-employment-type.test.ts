@@ -131,7 +131,7 @@ describe('AC-RT-F323c 固定年龄人员类别条件', () => {
       const w = await world(kind);
       const [valid, other] = await w.types();
       const existing = await w.saved([]);
-      let id = randomUUID();
+      let id: string = randomUUID();
       if (kind === 'foreign') {
         const owner = await world('foreign-owner');
         id = (await owner.types())[0]!.id;
