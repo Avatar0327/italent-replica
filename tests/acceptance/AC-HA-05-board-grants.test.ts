@@ -28,7 +28,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { installProfileRows } from '../../apps/api/src/modules/permission/standard-profiles.js';
 import { structureWorld, TODAY } from './AC-HA-13a-support.js';
-import { legacyWorld, runBackfill, type World } from './support/f061.js';
+import { legacyWorld, runBackfill, type World as PlatformWorld } from './support/f061.js';
 import { holderOfProfile } from './support/ql-presets.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -95,7 +95,7 @@ async function buildWorld() {
   });
   const api = tenantApi(db, { authorize: undefined, clock: () => new Date(`${TODAY}T01:00:00Z`) });
   const asAdmin = { user: w.who.user, tenant: tenantId };
-  const kit: Pick<World, 'db' | 'api' | 'asAdmin' | 'profileIds'> = { db, api, asAdmin, profileIds };
+  const kit: Pick<PlatformWorld, 'db' | 'api' | 'asAdmin' | 'profileIds'> = { db, api, asAdmin, profileIds };
   const holder = (code: string, label: string) => {
     expect(profileIds.has(code), `${code} 应是预置身份`).toBe(true);
     return holderOfProfile(kit, code, label);
