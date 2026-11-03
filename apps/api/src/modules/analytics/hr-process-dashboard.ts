@@ -150,8 +150,12 @@ const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id,
 
 /** 已通过实例 ID（业务单据的“审批总量”：走了流程且审批通过）。 */
 const approvedInstance = (c: ProcessContext, type: string, id: SQL) => sql`(SELECT ai.id FROM approval_instances ai
-  WHERE ai.tenant_id=${c.tenantId} AND ai.business_type=${type}
-    AND ai.business_id=${id} AND ai.status='approved' ORDER BY ai.completed_at DESC LIMIT 1)`;
+  WHERE ai.tenant_id=${c.tenantId} AND ai.status='approved'
+    AND ((ai.business_type=${type} AND ai.business_id=${id})
+      OR (${type}='offer' AND ai.business_type='offer_batch' AND EXISTS (
+        SELECT 1 FROM offer_batch_approval_items bi WHERE bi.tenant_id=ai.tenant_id
+          AND bi.batch_id=ai.business_id AND bi.offer_id=${id})))
+    ORDER BY ai.completed_at DESC, ai.id LIMIT 1)`;
 
 /**
  * Offer 是否计入 ④ 业务总量（单一入口，明细与总量只经此处）。规格 35 ④：业务总量 = 近 30 天实际发生量（不论是否走流程）。
