@@ -1,14 +1,15 @@
 /** DEC-796：只做离职重聘；实习转正、退休返聘不使用这个开关。 */
 import { sql, type Tx } from '@italent/db';
-import { tenureYears } from '@italent/domain';
+import { EMPLOYEE_STATUS, tenureYears } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting, registerSettingValidator } from '../tenant-settings/service.js';
 import { auditEmployment } from './context.js';
 import { appendForwardPayload } from './forward-store.js';
+import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
 import { findPredecessor } from './read-model.js';
 import { rowsOf, type LockedEmploymentBusiness } from './record-store.js';
-import type { EmploymentContext } from './types.js';
+import type { EmploymentContext, EmploymentRecord } from './types.js';
 
 const SETTING = 'employment.rehire_accumulate_seniority';
 registerSettingValidator(SETTING, (value) => typeof value === 'boolean');
@@ -20,8 +21,10 @@ export async function applyRehireSeniority(
   business: LockedEmploymentBusiness,
   values: ForwardValues,
   beforeOrder: number,
+  completingPendingEntry = false,
 ) {
   if (business.payload.kind !== 'rehire') return values.fields;
+  if (!completingPendingEntry && business.payload.employeeStatus === EMPLOYEE_STATUS.pendingEntry) return values.fields;
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SETTING);
   if (setting.value !== true) return values.fields;
   const previous = await findPredecessor(
@@ -50,9 +53,15 @@ export async function applyRehireSeniority(
   await tx.execute(sql`INSERT INTO employment_rehire_seniority_snapshots
     (tenant_id,employee_id,business_id,snapshot_version_id,created_at)
     VALUES(${ctx.tenantId},${business.employeeId},${business.id},${business.payload.id},${ctx.now.toISOString()})`);
-  business.payload = await appendForwardPayload(tx, ctx, business.payload, { ...values, fields }, business.id, true, [
-    { field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore },
-  ]);
+  business.payload = await appendForwardPayload(
+    tx,
+    ctx,
+    business.payload,
+    { fields, customFields: values.customFields },
+    business.id,
+    true,
+    [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }],
+  );
   await auditEmployment(
     tx,
     ctx,
@@ -99,4 +108,32 @@ export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, bus
     { workYearCompanyBefore: fields.workYearCompanyBefore },
     business.payload.id,
   );
+}
+
+/** 待入职记录已在时间轴上：办理入职时才写入，并沿用既有向后更新规则。 */
+export async function completeRehireSeniority(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  record: EmploymentRecord,
+) {
+  if (record.kind !== 'rehire') return record.fields;
+  const [point] = rowsOf<{ sortOrder: number }>(
+    await tx.execute(sql`
+    SELECT sort_order AS "sortOrder" FROM employment_timeline
+    WHERE tenant_id=${ctx.tenantId} AND employee_id=${record.employeeId} AND record_id=${record.id}`),
+  );
+  if (!point) throw new AppError('CONFLICT', '待重聘记录不在任职时间轴上');
+  const fields = await applyRehireSeniority(tx, ctx, business, record, point.sortOrder, true);
+  if (fields.workYearCompanyBefore !== record.fields.workYearCompanyBefore) {
+    await forwardUpdateEmployment(tx, ctx, {
+      employeeId: record.employeeId,
+      businessId: record.id,
+      staffId: record.staffId,
+      effectiveDate: record.effectiveDate,
+      before: record,
+      after: { fields, customFields: record.customFields },
+    });
+  }
+  return fields;
 }

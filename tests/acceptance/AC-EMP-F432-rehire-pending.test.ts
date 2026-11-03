@@ -31,6 +31,16 @@ it.each([false, true])(
     });
     expect(edit.status, await edit.clone().text()).toBe(200);
     await w.setting(true);
+    const future = await w.s.business(
+      prior.e.id,
+      {
+        kind: 'org_adjustment',
+        mode: 'direct',
+        effectiveDate: '2026-10-02',
+        fields: { remarks: '合成后继' },
+      },
+      (await w.s.getEmployee(prior.e.id)).revision,
+    );
     const current = await w.saved(b.id);
     const commandId = randomUUID();
     const complete = () =>
@@ -43,9 +53,14 @@ it.each([false, true])(
     expect(completed.status, await completed.clone().text()).toBe(200);
     expect((await w.s.record(b.id)).fields.workYearCompanyBefore).toBe(3);
     expect(await completed.json()).toMatchObject({ employeeStatus: 3 });
+    expect((await w.s.record(future.id, '2026-10-02')).fields.workYearCompanyBefore).toBe(3);
     const versions = await w.versions(b.id);
     expect((await complete()).status).toBe(200);
     expect(await w.versions(b.id)).toEqual(versions);
+    const futureState = await w.saved(future.id);
+    expect((await w.s.request('DELETE', `/businesses/${future.id}`, { ifMatch: futureState.revision })).status).toBe(
+      200,
+    );
     const after = await w.saved(b.id);
     expect((await w.s.request('DELETE', `/businesses/${b.id}`, { ifMatch: after.revision })).status).toBe(200);
     expect((await w.saved(b.id)).fields.workYearCompanyBefore).toBe(1.25);

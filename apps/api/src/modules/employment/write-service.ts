@@ -804,7 +804,7 @@ export async function materializeEmploymentRecord(
       ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
       : undefined;
   await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle);
-  assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
+  assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
