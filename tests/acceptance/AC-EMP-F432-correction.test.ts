@@ -137,7 +137,7 @@ it('AC-EMP-F432-05：累计司龄加校正后向下舍位；365 天年、空值�
   expect(segment('2026-10-01', '2026-10-01', 0.5)).toBe('6mto1y');
 });
 
-it('AC-EMP-F432-06：同周期继承校正值；新周期默认 0，编辑只追加、不串租户', async () => {
+it('AC-EMP-F432-06：同周期继承校正值；另一新人默认 0', async () => {
   const w = await world('inherit');
   const created = await w.create(2.01);
   expect(created.status, await created.clone().text()).toBe(201);

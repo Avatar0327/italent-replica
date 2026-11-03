@@ -94,7 +94,7 @@ describe('AC-QL-employee-profile 必测 1：开通后员工身份存在且内容
     expect(detail.objects.map((o) => o.objectCode).sort()).toEqual([PAGES, RECORD]);
 
     const record = detail.objects.find((o) => o.objectCode === RECORD)!;
-    const readable = [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS];
+    const readable = [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS, 'workYearCompanyBefore'];
     expect(
       record.fields
         .filter((f) => f.view)
@@ -220,20 +220,21 @@ describe('AC-QL-employee-profile 必测 2：autoHeld 不可授予、不进可授
   });
 });
 
-describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的字面量抄在这里作“旧值”）', () => {
+describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（DEC-793 增补司龄校正默认查看权）', () => {
   // 改动前 employee-self-service/policy.ts 与 access.ts 的字面量
   const OLD_EDIT = ['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId'];
-  const OLD_READ = [...OLD_EDIT, 'postId', 'levelId', 'sequenceId'];
+  // DEC-793：校正值默认只读，但不加入不可配置的只读上限。
+  const EXPECTED_READ = [...OLD_EDIT, 'postId', 'levelId', 'sequenceId', 'workYearCompanyBefore'];
   const OLD_BUTTONS = ['Transfer.Self', 'Employment.Create', 'Employment.Submit'];
 
-  it('身份定义算出的 { view, edit, create, buttons } 等于旧字面量（AC-QL-employee-profile）', () => {
+  it('身份定义算出的 { view, edit, create, buttons } 等于明确的默认字段集合（AC-QL-employee-profile）', () => {
     const record = EMP_DEF.objects.find((o) => o.objectCode === RECORD)!;
     expect(
       record.fields
         .filter((f) => f.view)
         .map((f) => f.fieldCode)
         .sort(),
-    ).toEqual([...OLD_READ].sort());
+    ).toEqual([...EXPECTED_READ].sort());
     expect(
       record.fields
         .filter((f) => f.view && f.edit)
@@ -246,10 +247,10 @@ describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的
     expect(EMP_DEF).toMatchObject({ autoHeld: true, licenseType: null, name: '员工', hr: false });
   });
 
-  it('没有身份行的租户：employeeFieldPolicy 兜底值等于旧字面量，并带三个按钮（AC-QL-employee-profile）', async () => {
+  it('没有身份行的租户：employeeFieldPolicy 兜底值等于明确的默认字段集合，并带三个按钮（AC-QL-employee-profile）', async () => {
     const w = await legacyWorld(testDb().db, 'emp-fallback', [], [EMP]);
     const policy = await withTenant(w.db, w.tenantId, (tx) => employeeFieldPolicy(tx, w.tenantId));
-    expect([...policy.view].sort()).toEqual([...OLD_READ].sort());
+    expect([...policy.view].sort()).toEqual([...EXPECTED_READ].sort());
     expect([...policy.edit].sort()).toEqual([...OLD_EDIT].sort());
     expect(policy.create).toBe(true);
     expect([...policy.buttons].sort()).toEqual([...OLD_BUTTONS].sort());
@@ -258,7 +259,7 @@ describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的
   it('装有标准身份的租户：读标准行得到同一结果（AC-QL-employee-profile）', async () => {
     const w = await provisionWorld(testDb().db, 'emp-policy-row');
     const policy = await withTenant(w.db, w.tenantId, (tx) => employeeFieldPolicy(tx, w.tenantId));
-    expect([...policy.view].sort()).toEqual([...OLD_READ].sort());
+    expect([...policy.view].sort()).toEqual([...EXPECTED_READ].sort());
     expect([...policy.edit].sort()).toEqual([...OLD_EDIT].sort());
     expect(policy.create).toBe(true);
     expect([...policy.buttons].sort()).toEqual([...OLD_BUTTONS].sort());

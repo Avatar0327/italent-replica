@@ -13,7 +13,7 @@ it('AC-EMP-F432-05 / DEC-793：累计司龄先加校正再舍位，分段与短�
   expect(years('2026-09-01', '2026-10-01', 0.02)).toBe('0.1');
   expect(sample('2025-07-20', '2026-10-01', 2)).toBe(3.2);
   expect(segment('2025-07-20', '2026-10-01', 2)).toBe('2to5y');
-  expect(segment('2026-04-02', '2026-10-01', 0)).toBe('6mto1y');
+  expect(segment('2026-04-02', '2026-10-01', 0)).toBe('under6m');
   expect(early('2026-09-01', '2026-09-15', 2)).toBe(false);
   expect(early('2026-09-01', '2026-09-15', 0)).toBe(true);
 });
