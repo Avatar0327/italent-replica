@@ -18,8 +18,8 @@ import {
   acceptResubmit,
   activationNotice,
   cellValue,
-  columns,
   detailEntries,
+  detailKeys,
   exits,
   handoverEntries,
   handoverRequests,
@@ -29,7 +29,6 @@ import {
   type Row,
 } from './exit-model.js';
 
-const shown = [...columns.all, 'whereaboutsCode'];
 const references: Record<string, string | undefined> = {
   departmentId: refPaths.departmentId,
   positionId: refPaths.positionId,
@@ -66,7 +65,7 @@ export function ExitDetail({ id, onClose, refresh }: { id: string; onClose(): vo
           </Space>
           {notice && <Alert type="error" showIcon message={notice} />}
           <Descriptions size="small" column={2} bordered>
-            {shown.map((key) => (
+            {detailKeys(row).map((key) => (
               <Descriptions.Item key={key} label={x.fields[key]}>
                 {fieldValue(row, key)}
               </Descriptions.Item>

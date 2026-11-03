@@ -76,9 +76,23 @@ export function cellValue(row: Row, key: string): string {
   if (!(key in row)) return x.missing;
   if (key === 'status') return x.statuses[String(row.status)] ?? text(row.status);
   if (key === 'mode') return x.modes[String(row.mode)] ?? text(row.mode);
+  if (key === 'addToBlacklist')
+    return typeof row.addToBlacklist === 'boolean' ? x[row.addToBlacklist ? 'yes' : 'no'] : x.missing;
+  if (key === 'blacklistReason')
+    return (BLACKLIST_REASONS as Record<string, string>)[String(row.blacklistReason)] ?? text(row.blacklistReason);
+  // 有效截止日期为空 = 永久（仅加黑单；被裁剪的键走上面的占位）
+  if (key === 'blacklistExpiryDate' && row.blacklistExpiryDate === null) return x.permanentValue;
   if (named[key]) return text(row[named[key]] ?? row[key]);
   return text(row[key]);
 }
+
+/** 详情展示的字段：加黑三项只在加黑单里列出（F-393，值取详情真实返回，无字段权的键显示占位）。 */
+export const detailKeys = (row: Row): string[] => [
+  ...columns.all,
+  'whereaboutsCode',
+  'addToBlacklist',
+  ...(row.addToBlacklist === true ? blacklistFields : []),
+];
 
 const validObject = (id: unknown, revision: unknown) =>
   typeof id === 'string' && id !== '' && Number.isSafeInteger(revision) && Number(revision) >= 0;
@@ -244,8 +258,8 @@ function invalid(field: string, message: string): never {
   });
 }
 /**
- * 已加黑且加黑组原样保留：详情投影不回加黑三项（缺席 = 未知），只改别的字段时不得要求重填加黑原因，
- * 请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
+ * 已加黑且加黑组原样保留：基线取详情真实的加黑三项（F-393；无字段权的键缺席，按空），只改别的字段时
+ * 不得要求重填加黑原因，请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
  */
 export const blackGroupKept = (values: Values, baseline: Values) =>
   baseline.addToBlacklist === true &&
