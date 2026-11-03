@@ -12,6 +12,7 @@ import { countDepartmentPartTimes } from '../employment/part-time/store.js';
 import { rowsOf } from '../employment/read-model.js';
 import { countEnabledPositions } from '../job/read-model.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
+import { adminSubtree } from './subtree.js';
 import { deactivationNotAfterEstablished, type NormalizedOrganization, type OrgWriteContext } from './validation.js';
 
 /** 级联涉及的组织须都在操作人数据范围内，由路由按当前范围逐个校验（范围外一律按不存在处理，不列名称）。 */
@@ -100,7 +101,7 @@ export async function planDeactivationSubtree(
   for (const boundary of await futureBoundaries(tx, ctx.tenantId, from)) {
     const snapshot = await loadOrgSnapshot(tx, ctx.tenantId, boundary);
     if (boundary === from) atFrom = snapshot;
-    for (const id of subtree(snapshot, root.id)) descendants.add(id);
+    for (const id of adminSubtree(snapshot, root.id)) descendants.add(id);
     if (descendants.size > CASCADE_LIMIT) {
       throw new AppError('PAYLOAD_TOO_LARGE', `单次停用最多级联 ${CASCADE_LIMIT} 个下级组织`);
     }
@@ -136,26 +137,6 @@ export async function planDeactivation(
   await assertDeactivationVacant(tx, ctx, plan);
   const ids = new Set(plan.descendants);
   return plan.atFrom.filter((node) => ids.has(node.id) && node.enabled);
-}
-
-/** 按行政维度向下遍历；本组织在该时点已失效时，仍按下级记录的上级 ID 找到它们。 */
-function subtree(snapshot: readonly OrgRecord[], rootId: string): string[] {
-  const children = new Map<string, string[]>();
-  for (const node of snapshot) {
-    const parentId = node.parents.admin?.parentId;
-    if (parentId) children.set(parentId, [...(children.get(parentId) ?? []), node.id]);
-  }
-  const found: string[] = [];
-  const seen = new Set<string>(); // 去重改 Set 查找（F-440）；found 仍按遍历顺序输出
-  const queue = [...(children.get(rootId) ?? [])];
-  while (queue.length) {
-    const id = queue.shift()!;
-    if (id === rootId || seen.has(id)) continue;
-    seen.add(id);
-    found.push(id);
-    queue.push(...(children.get(id) ?? []));
-  }
-  return found;
 }
 
 async function rejectFutureDescendantVersions(tx: Tx, ctx: OrgWriteContext, ids: readonly string[], from: string) {

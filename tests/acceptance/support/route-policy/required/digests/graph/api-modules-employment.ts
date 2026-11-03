@@ -2184,7 +2184,9 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-confirmation.ts#runExitEffectiveHooks': ['#effectiveHooks'],
   'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks': ['#replannedHooks'],
   'apps/api/src/modules/employment/exit-contract-effects.ts#handleContractsOnExitEffective': [
+    'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
     'apps/api/src/modules/approval/notifications.ts#notifyMessage',
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
     'apps/api/src/modules/contracts/ports.ts#handleContractsOnExit',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
@@ -2368,12 +2370,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
+  'apps/api/src/modules/employment/exit-gate.ts#flowSql': [
+    'packages/domain/src/employment/exit-termination.ts#BATCH_TRANSFER_FORM_ID_PREFIX',
+    'packages/domain/src/employment/exit-termination.ts#INTER_ORG_TRANSFER_FORM_IDS',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
     '#keepClause',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#keepClause': ['#flowSql'],
   'apps/api/src/modules/employment/exit-gate.ts#leavesInProgress': ['#inFlightApplications'],
   'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2385,6 +2392,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet': [
     'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments',
     'apps/api/src/modules/employment/exit-flow-candidates.ts#terminableOtherFlows',
+    '#TRANSFER_FLOWS',
     '#ackToken',
     '#exceedsVoidLimit',
     '#inFlightApplications',
@@ -2983,6 +2991,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
+  'apps/api/src/modules/employment/exit-preview-effects.ts#contractExitWarning': [
+    'apps/api/src/modules/contracts/ports.ts#previewContractsOnExit',
+    'apps/api/src/modules/employment/exit-downstream.ts#allowed',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-preview-effects.ts#partTimeExitWarning': [
+    'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
+    'apps/api/src/modules/employment/part-time/exit-preview.ts#previewPartTimesOnExit',
+  ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
     'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows',
     'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
@@ -2996,6 +3014,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
     'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep',
+    'apps/api/src/modules/employment/exit-preview-effects.ts#contractExitWarning',
+    'apps/api/src/modules/employment/exit-preview-effects.ts#partTimeExitWarning',
     '#asRows',
     '#assertRetirementView',
     '#rehirePreview',
@@ -3413,6 +3433,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_PRESET',
     'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_SETTING_KEY',
     'packages/domain/src/employment/exit-termination.ts#exitTerminationPolicy',
+  ],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#terminates': [
+    'packages/domain/src/employment/exit-termination.ts#terminatedByExit',
   ],
   'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows': [
     'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_FLOWS',
@@ -4249,6 +4272,23 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/validation.ts#endBeforeStartViolation',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
   ],
+  'apps/api/src/modules/employment/part-time/exit-hook.ts#partTimesToEnd': [
+    'packages/domain/src/employment/part-time.ts#partTimeCutoffEnd',
+  ],
+  'apps/api/src/modules/employment/part-time/exit-hook.ts#requestsToVoid': [
+    'apps/api/src/modules/employment/exit-termination-policy.ts#terminates',
+    'packages/domain/src/employment/exit-termination.ts#partTimeRequestFlow',
+  ],
+  'apps/api/src/modules/employment/part-time/exit-preview.ts#previewPartTimesOnExit': [
+    'apps/api/src/modules/employment/exit-occupancy-store.ts#cycleOn',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'apps/api/src/modules/employment/fields.ts#dayAfter',
+    'apps/api/src/modules/employment/part-time/exit-hook.ts#partTimesToEnd',
+    'apps/api/src/modules/employment/part-time/exit-hook.ts#requestsToVoid',
+    'apps/api/src/modules/employment/part-time/request-store.ts#readOpenRequests',
+    'apps/api/src/modules/employment/part-time/store.ts#readEmployeePartTimeRecords',
+    'packages/domain/src/employment/part-time.ts#partTimeExitEndDate',
+  ],
   'apps/api/src/modules/employment/part-time/institution.ts#partTimeInstitution': [
     '#institutionsOf',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -4944,9 +4984,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/part-time/store.ts#latestSnapshot',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/request-store.ts#openRequests': [
+    '#loadPartTimeRequest',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/part-time-request.ts#PART_TIME_REQUEST_OPEN_STATES',
+  ],
   'apps/api/src/modules/employment/part-time/request-store.ts#partTimeRequestOwner': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/request-store.ts#readOpenRequests': ['#openRequests'],
   'apps/api/src/modules/employment/part-time/routes.ts#VIEW_QUERY_KEYS': ['#viewQuery'],
   'apps/api/src/modules/employment/part-time/routes.ts#createSchema': [
     'apps/api/src/modules/employment/fields.ts#customFields',
@@ -5240,6 +5286,7 @@ export const GRAPH: Graph = {
     '#uuidArray',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/part-time/store.ts#readEmployeePartTimeRecords': ['#partTimeRows'],
   'apps/api/src/modules/employment/part-time/store.ts#readPartTimeRecords': ['#partTimeRows'],
   'apps/api/src/modules/employment/part-time/succession-port.ts#riskPartTimeIncumbents': [
     'apps/api/src/modules/employment/part-time/read.ts#PART_TIME_END',

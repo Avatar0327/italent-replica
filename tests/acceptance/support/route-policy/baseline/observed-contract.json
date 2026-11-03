@@ -19277,6 +19277,9 @@
           "buttonResource",
           "object.button"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "disclose*"
         ],
@@ -20785,6 +20788,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsOut": [
           "disclose*"

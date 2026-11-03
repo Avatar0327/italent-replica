@@ -1,5 +1,5 @@
 {
-  "id": "49c3f8c6-45fd-447e-8fdf-38e36844361d",
+  "id": "da790c80-c6a9-432d-9260-92ccefd0c6d7",
   "prevId": "a0f32b4a-a526-41a0-9064-fbc9ba417e1c",
   "version": "7",
   "dialect": "postgresql",
@@ -23664,6 +23664,12 @@
         "template_code": {
           "name": "template_code",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -55094,7 +55100,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
