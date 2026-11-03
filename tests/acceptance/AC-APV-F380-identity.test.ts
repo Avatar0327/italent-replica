@@ -3,11 +3,14 @@ import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { sql, withTenant } from '@italent/db';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { relationWorld, source, resolved, save, type RelationWorld } from './AC-APV-F318c-support.js';
 import { permissionAdmin } from './AC-APV-support.js';
 import { BASE, createProfile, grant, makeGrantable } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { eligibleDesignerPeople } from '../../apps/api/src/modules/approval/designer-people.js';
+import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
+import { limitApprovers, resolveSource } from '../../apps/api/src/modules/approval/source-resolver.js';
 import { acceptCandidates } from '../../apps/web/src/approval/designer/source-candidates.js';
 
 const database = useTestDb();
@@ -130,6 +133,63 @@ describe('AC-APV-F380 身份展开', () => {
     const ids = w.pending(instance).map((t) => t.assigneeUserId);
     expect(ids).toHaveLength(100);
     expect(ids.every((id) => users.includes(id!))).toBe(true);
+  }, 300_000);
+
+  it('AC-APV-F380：501 名有效成员正序与逆序返回时，同一 seed 抽取相同 100 人', async () => {
+    const w = await relationWorld(database().db, 'f380-stable');
+    const { profile } = await profileWith(w, 'f380stable', []);
+    const users: string[] = [];
+    for (let i = 0; i < 501; i++) users.push((await w.person(`合成稳定成员${i}`, w.staff)).userId);
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id,source,status)
+        SELECT ${w.tenant.id},u::uuid,${profile.id}::uuid,'manual','active'
+        FROM unnest(${`{${users.join(',')}}`}::text[]) u`),
+    );
+    const eligible = await withTenant(w.db, w.tenant.id, (tx) =>
+      eligibleDesignerPeople(tx, w.tenant.id, { userIds: users, limit: 501, offset: 0, asOf: '2026-10-01' }),
+    );
+    expect(eligible).toHaveLength(501);
+    // 用真实资格查询顺序及其逆序造输入，避免随机 UUID 恰好使两次抽样重合。
+    const order = new Map(eligible.map((person, index) => [person.userId, index]));
+    const sample = (direction: 1 | -1) =>
+      withTenant(w.db, w.tenant.id, async (tx) => {
+        const execute = tx.execute.bind(tx);
+        let reordered = 0;
+        // 只改变真实成员查询的返回顺序；资格查询、500 人切批与固定 seed 抽样均执行生产逻辑。
+        const spy = vi.spyOn(tx, 'execute').mockImplementation((async (query) => {
+          const result = await execute(query);
+          const rows = rowsOf<{ user_id: string }>(result);
+          if (rows.length && Object.keys(rows[0]!).length === 1 && 'user_id' in rows[0]!) {
+            rows.sort((a, b) => direction * (order.get(a.user_id)! - order.get(b.user_id)!));
+            reordered += rows.length;
+          }
+          return result;
+        }) as typeof tx.execute);
+        try {
+          const candidates = await resolveSource(
+            tx,
+            {
+              tenantId: w.tenant.id,
+              asOf: '2026-10-01',
+              initiatorUserId: w.hr.id,
+              subjectEmployeeId: w.subject.employeeId,
+              latestDepartmentId: w.child,
+              recordDepartmentId: w.child,
+            },
+            identity(profile.id),
+          );
+          expect(reordered).toBe(501);
+          expect(candidates.map((candidate) => candidate.userId).sort()).toEqual([...users].sort());
+          const sampled = limitApprovers(candidates, (candidate) => candidate.userId, 'f380-instance:1:many');
+          expect(sampled).toHaveLength(100);
+          return sampled.map((candidate) => candidate.userId).sort();
+        } finally {
+          spy.mockRestore();
+        }
+      });
+    const ascending = await sample(1);
+    const descending = await sample(-1);
+    expect(descending, '同一成员集合和 seed 的最终 100 人集合必须一致').toEqual(ascending);
   }, 300_000);
 
   it('身份候选：仅流程编辑者可读、最少字段、分页搜索、跨租户不回显', async () => {
