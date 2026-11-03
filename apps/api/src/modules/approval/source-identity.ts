@@ -48,7 +48,8 @@ export async function resolveIdentity(tx: Tx, subject: RoutingSubject, source: A
       WHERE tenant_id=${subject.tenantId} AND id=${profileId}::uuid`),
   );
   if (!profile) return [];
-  const members = await memberUserIds(tx, subject, profile);
+  // F-380：合并全部来源后按规范 UUID 去重排序，稳定分批边界，保证同一 seed 抽样一致。
+  const members = [...new Set(await memberUserIds(tx, subject, profile))].sort();
   const found: Candidate[] = [];
   for (let from = 0; from < members.length; from += BATCH) {
     const batch = members.slice(from, from + BATCH);
