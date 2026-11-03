@@ -313,6 +313,7 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
           key: field,
           title: orgLabel(field, 'list'),
           dataIndex: field,
+          width: field === 'name' ? 240 : ['establishedOn', 'startDate', 'stopDate'].includes(field) ? 93 : 128,
           render: (value: unknown, row: OrgRow) =>
             field === 'name' ? (
               <Button type="link" onClick={() => s.setSelected(row.id)}>
@@ -324,6 +325,7 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
         })),
         {
           key: 'actions',
+          width: 204,
           // 原站操作列表头带齿轮，打开「设置显示字段」（01、B2_03）。
           title: (
             <Space size={4}>

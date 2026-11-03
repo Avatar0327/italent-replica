@@ -122,7 +122,7 @@ export function JobEditor(props: EditorProps) {
   // 业务时点只从槽里取：提示、候选、重读与请求体都用它，换列表日期不另起命令。
   const { date } = record.context;
   const timing = jobTiming(original, date, date, access.field('startDate'));
-  const sections = jobFormGroups(kind).map((group) => ({
+  const sections = jobFormGroups(kind, Boolean(original)).map((group) => ({
     title: m[group.key as 'basic'],
     fields: group.fields.map((name): FormField => {
       const control = jobControl(name, kind, timing.asOf, original?.id);
@@ -130,7 +130,10 @@ export function JobEditor(props: EditorProps) {
         name,
         label: jobLabel(kind, name, 'form'),
         control,
-        access: access.field(jobPermissionField(name)),
+        // 生效日期沿用页面级恢复槽的实际时点，只展示、不另造一个提交日期。
+        display: name === 'startDate' ? timing.asOf : undefined,
+        access:
+          name === 'startDate' ? { ...access.field(name), editable: false } : access.field(jobPermissionField(name)),
         rules:
           name === 'name' || (!original && ['orgId', 'postId'].includes(name))
             ? [{ required: true, message: m.required }]
@@ -144,6 +147,7 @@ export function JobEditor(props: EditorProps) {
   return (
     <FormOverlay
       mode="modal"
+      className={kind === 'posts' || kind === 'positions' ? 'job-form' : 'job-form job-form-single'}
       recordKey={original?.id ?? 'new'}
       submission={record.command}
       open
