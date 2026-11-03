@@ -90,7 +90,9 @@ describe('F-368 发起预检失败落持久未发起记录', () => {
     const x = await world('resubmit');
     await setExceptionAdmin(x, x.leaverUserId);
     const { draft } = await x.approvedApplication(x.employee.id);
-    const [row] = await rowsOfExit(x, draft.id);
+    const existing = await rowsOfExit(x, draft.id);
+    expect(existing, '预检失败应已落未发起记录').toHaveLength(1);
+    const [row] = existing;
     const stillBroken = await resubmit(x, row!.id, row!.revision);
     expect(stillBroken.status).toBe(409);
     expect(await stillBroken.json()).toMatchObject({ error: { details: { reason: SELF } } });
