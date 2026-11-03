@@ -303,8 +303,8 @@ export interface Confirmation {
   pendingEntry: boolean;
 }
 /**
- * 服务端要求二次确认的 409：超编 / 在途转正（CONFIRMATION_REQUIRED → confirmed）、在途调动或考核
- * （EXIT_*_ACK_REQUIRED → pendingTransferAck，沿用离职 §8 令牌）。其余 409 是确定的拒绝。
+ * 服务端要求二次确认的 409：超编 / 在途转正（CONFIRMATION_REQUIRED → confirmed）、在途调动或考核、离职生效要终止的
+ * 其他流程（F-400，EXIT_*_ACK_REQUIRED → pendingTransferAck，沿用离职 §8 令牌）。其余 409 是确定的拒绝。
  */
 export function confirmationOf(error: unknown): Confirmation | undefined {
   const failure = error as { status?: number; message?: string; details?: Values } | null;
@@ -314,7 +314,11 @@ export function confirmationOf(error: unknown): Confirmation | undefined {
   const warnings = Array.isArray(details.warnings) ? (details.warnings as Values[]) : [];
   if (details.reason === 'CONFIRMATION_REQUIRED')
     return { message, extra: { confirmed: true }, pendingEntry: warnings.some((item) => item.state === 'approved') };
-  const ack = ['EXIT_PENDING_TRANSFER_ACK_REQUIRED', 'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED'];
+  const ack = [
+    'EXIT_PENDING_TRANSFER_ACK_REQUIRED',
+    'EXIT_IN_FLIGHT_ASSESSMENT_ACK_REQUIRED',
+    'EXIT_FLOW_TERMINATION_ACK_REQUIRED',
+  ];
   if (ack.includes(String(details.reason)) && typeof details.ackToken === 'string')
     return { message, extra: { pendingTransferAck: details.ackToken }, pendingEntry: false };
   return undefined;

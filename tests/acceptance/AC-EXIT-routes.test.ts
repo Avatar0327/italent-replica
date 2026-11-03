@@ -12,6 +12,7 @@ import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, type GateWorld } from './AC-EXIT-gate-support.js';
+import { setExitTermination, UNTICKED_REGULARIZATIONS } from './support/exit-termination.js';
 
 const database = useTestDb();
 const LATER = '2026-10-20';
@@ -46,6 +47,8 @@ const denyOperation =
 describe('AC-DM-22 POST exits/employees/:id/preview', () => {
   it('列出在途调动确认清单与令牌、将被作废的申请、转正在途阻断；只读不写；带回令牌即可创建', async () => {
     const { w, employee } = await world('routes-preview');
+    // DEC-725 ②：未勾选实习转正时才阻断；计划日 ≤ L 的未勾选转正离职后保留，不进“将被作废”
+    await setExitTermination(database().db, w.session.tenant.id, w.session.user.id, UNTICKED_REGULARIZATIONS);
     const transfer = await w.apply(employee.id, '2026-10-25', { departmentId: w.to.id });
     const blocker = await w.synthetic(employee.id, {
       kind: 'intern_regularization',
@@ -74,7 +77,7 @@ describe('AC-DM-22 POST exits/employees/:id/preview', () => {
       },
     ]);
     const voided = body.warnings.find((warning) => warning.reason === 'EXIT_APPLICATIONS_TO_VOID');
-    expect(voided?.items.map((item) => item.businessId).sort()).toEqual([blocker, transfer.id].sort());
+    expect(voided?.items.map((item) => item.businessId)).toEqual([transfer.id]);
     expect(await w.stateOf(employee.id)).toEqual(before);
     const later = await world('routes-preview-ack');
     const pending = await later.w.apply(later.employee.id, '2026-10-25', { departmentId: later.w.to.id });

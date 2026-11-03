@@ -178,6 +178,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/store.ts#activeInstanceOf',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     'apps/api/src/modules/contracts/context.ts#audit',
+    '#withdrawnByExit',
   ],
   'apps/api/src/modules/contracts/ports.ts#changeContractForTransfer': ['#portCommand'],
   'apps/api/src/modules/contracts/ports.ts#generateContractForBusiness': ['#portCommand'],
@@ -192,6 +193,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/contracts/ports.ts#portCommand': [
     '#constraintName',
     'apps/api/src/modules/contracts/service.ts#createCommand',
+  ],
+  'apps/api/src/modules/contracts/ports.ts#withdrawnByExit': [
+    'packages/domain/src/employment/exit-termination.ts#contractOperationFlow',
+    'packages/domain/src/employment/exit-termination.ts#terminatedByExit',
   ],
   'apps/api/src/modules/contracts/quarantine.ts#assertNotQuarantined': ['#isQuarantined'],
   'apps/api/src/modules/contracts/quarantine.ts#isQuarantined': ['apps/api/src/modules/approval/context.ts#rowsOf'],

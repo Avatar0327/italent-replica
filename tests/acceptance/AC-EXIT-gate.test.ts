@@ -9,6 +9,7 @@ import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { denyButtons, gateWorld, leaveBody } from './AC-EXIT-gate-support.js';
+import { setExitTermination, UNTICKED_REGULARIZATIONS } from './support/exit-termination.js';
 
 const database = useTestDb();
 const LATER = '2026-10-20';
@@ -199,12 +200,16 @@ describe('B-47a / B-18 / B-53 在途调动确认令牌（§8）：通用入口�
   });
 });
 
-describe('AC-DM-25 B-55～B-55c 转正在途拦截（§8B）', () => {
+// DEC-725 ②：只有“离职生效时终止在途流程”未勾选劳务转正式 / 实习转正时才拦；预置勾选时不拦（见 AC-F400-exit-termination）
+describe('AC-DM-25 B-55～B-55c 转正在途拦截（§8B，未勾选时）', () => {
+  const untick = (w: Awaited<ReturnType<typeof world>>['w']) =>
+    setExitTermination(database().db, w.session.tenant.id, w.session.user.id, UNTICKED_REGULARIZATIONS);
   const regularization = (w: Awaited<ReturnType<typeof world>>['w'], id: string, date: string) =>
     w.synthetic(id, { kind: 'intern_regularization', state: 'in_review', effectiveDate: date });
 
   it('B-55 计划生效日 ≤ 最后工作日的审批中实习转正：创建 409 EXIT_REGULARIZATION_IN_FLIGHT，给出该项；B-55a 晚于最后工作日放行', async () => {
     const { w, employee } = await world('gate-reg');
+    await untick(w);
     const blocker = await regularization(w, employee.id, '2026-10-18');
     const before = await w.stateOf(employee.id);
     const rejected = await w.reason(await w.createLeave(employee.id, leaveBody(LATER)));
@@ -212,12 +217,14 @@ describe('AC-DM-25 B-55～B-55c 转正在途拦截（§8B）', () => {
     expect(rejected.items).toEqual([{ businessId: blocker, effectiveDate: '2026-10-18' }]);
     expect(await w.stateOf(employee.id)).toEqual(before);
     const later = await world('gate-reg-later');
+    await untick(later.w);
     await regularization(later.w, later.employee.id, '2026-10-25');
     expect((await later.w.createLeave(later.employee.id, leaveBody(LATER))).status).toBe(201);
   });
 
   it('B-55b 范围外的转正在途只计件数；B-55c 提交时同样拦截', async () => {
     const { w, employee } = await world('gate-reg-hidden');
+    await untick(w);
     const hr = w.restricted(denyButtons(), w.session.user.id);
     const draft = await w.createdLeave(employee.id, leaveBody(LATER));
     const blocker = await regularization(w, employee.id, '2026-10-18');

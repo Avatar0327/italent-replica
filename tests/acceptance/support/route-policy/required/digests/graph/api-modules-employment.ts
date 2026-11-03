@@ -1940,6 +1940,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/timeline.ts#detachFutureTransfers',
   ],
+  'apps/api/src/modules/employment/exit-activation.ts#detachAndVoid': [
+    '#detachAndRecord',
+    'apps/api/src/modules/employment/exit-void-applications.ts#releaseVoidedEstablishment',
+    'apps/api/src/modules/employment/exit-void-applications.ts#voidLandedTransfers',
+  ],
   'apps/api/src/modules/employment/exit-activation.ts#followingTransfers': [
     'apps/api/src/modules/employment/exit-later-records.ts#assertNoLaterExitRecords',
     'apps/api/src/modules/employment/exit-later-records.ts#exitFollowingRecords',
@@ -1966,7 +1971,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#auditIncompleteAck',
     '#createRehireIfPlanned',
-    '#detachAndRecord',
+    '#detachAndVoid',
     '#followingTransfers',
     '#postponeLateExit',
     '#reconcileConfirmedSet',
@@ -2182,6 +2187,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/notifications.ts#notifyMessage',
     'apps/api/src/modules/contracts/ports.ts#handleContractsOnExit',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertBelowLimit': ['#EXIT_DICTIONARY_LIMIT', '#atLimit'],
   'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled': ['#findByCode'],
@@ -2274,6 +2280,25 @@ export const GRAPH: Graph = {
     '#TIMING_OF',
     'apps/api/src/modules/transfer/linkage/execute.ts#applyDutyTransfer',
   ],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows': ['#visibleFlows'],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#flowCoordinates': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#flowObjects': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_REQUEST_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#terminableOtherFlows': [
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'packages/domain/src/employment/exit-termination.ts#personnelSubsetFlow',
+  ],
+  'apps/api/src/modules/employment/exit-flow-candidates.ts#visibleFlows': [
+    '#flowCoordinates',
+    '#flowObjects',
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#assertDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
     '#assertHandoverEmployee',
@@ -2312,7 +2337,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/retirement-application.ts#assertNoLiveRehire',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#checkPendingTransferAck': [
+    'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows',
     '#OVER_LIMIT_ACK',
+    '#ackMessage',
+    '#ackReason',
     '#assessmentNoticeItems',
     '#conflict',
     '#disclose',
@@ -2341,6 +2369,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
+    '#keepClause',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
@@ -2355,10 +2384,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet': [
     'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments',
+    'apps/api/src/modules/employment/exit-flow-candidates.ts#terminableOtherFlows',
     '#ackToken',
     '#exceedsVoidLimit',
     '#inFlightApplications',
     '#plannedRows',
+    '#untickedEmploymentKeep',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'packages/domain/src/employment/exit-termination.ts#assessmentTypeFlow',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#permissionSpec': ['#buttonsFor', '#createPayload', '#kindOfTarget'],
   'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker': [
@@ -2366,6 +2399,7 @@ export const GRAPH: Graph = {
     '#disclose',
     '#inFlightApplications',
     '#plannedRows',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#requireExitGate': [
     '#assertActualLeaveDate',
@@ -2385,6 +2419,10 @@ export const GRAPH: Graph = {
     '#assertNoRegularizationInFlight',
     '#checkPendingTransferAck',
     '#loadExitRequest',
+  ],
+  'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep': [
+    'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
+    'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings': [
     '#VOID_LIMIT',
@@ -2946,6 +2984,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
   'apps/api/src/modules/employment/exit-preview.ts#previewExit': [
+    'apps/api/src/modules/employment/exit-flow-candidates.ts#discloseFlows',
     'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
     'apps/api/src/modules/employment/exit-gate.ts#assessmentNoticeItems',
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
@@ -2956,7 +2995,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#overdueTransferBlocker',
     'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet',
     'apps/api/src/modules/employment/exit-gate.ts#regularizationBlocker',
+    'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep',
     '#asRows',
+    '#assertRetirementView',
     '#rehirePreview',
     'apps/api/src/modules/employment/exit-queries.ts#trimWith',
     'apps/api/src/modules/employment/exit-void-applications.ts#voidCandidates',
@@ -3366,12 +3407,30 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf': ['#readExitTermination'],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#readExitTermination': [
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_PRESET',
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_SETTING_KEY',
+    'packages/domain/src/employment/exit-termination.ts#exitTerminationPolicy',
+  ],
+  'apps/api/src/modules/employment/exit-termination-policy.ts#untickedFlows': [
+    'packages/domain/src/employment/exit-termination.ts#EXIT_TERMINATION_FLOWS',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#VOIDABLE_KINDS': [
     'apps/api/src/modules/employment/types.ts#BUSINESS_KINDS',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#businessCreator': [
+    'apps/api/src/modules/employment/context.ts#employmentCreator',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#hasCarriedAllocation': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
     '#OPEN_STATES',
+    '#hasCarriedAllocation',
     'apps/api/src/modules/employment/retirement-application.ts#loadRetirementRequest',
     'apps/api/src/modules/establishment/store.ts#lockEstablishment',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
@@ -3381,6 +3440,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#notifyVoided': [
+    'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
+    'apps/api/src/modules/approval/notifications.ts#notifyMessage',
+    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
+    '#businessCreator',
+  ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#releaseVoidedEstablishment': [
+    'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
+    'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishmentGroup',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#tooManyToVoid': [
     'apps/api/src/modules/employment/exit-gate.ts#VOID_LIMIT',
   ],
@@ -3389,6 +3458,7 @@ export const GRAPH: Graph = {
     '#describeCause',
     '#lockExitOrganizationResources',
     '#lockInstances',
+    '#releaseVoidedEstablishment',
     '#tooManyToVoid',
     '#voidOne',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
@@ -3402,24 +3472,28 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/timeline.ts#timelinePosition',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidInFlightApplications': [
+    'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep',
     '#voidApplications',
     '#voidCandidates',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
     'apps/api/src/modules/employment/retirement-application.ts#loadRetirementRequest',
   ],
+  'apps/api/src/modules/employment/exit-void-applications.ts#voidLandedTransfers': [
+    '#lockExitOrganizationResources',
+    '#voidOne',
+    'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+  ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidOne': [
     'apps/api/src/modules/approval/actions.ts#cancel',
     'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
-    'apps/api/src/modules/approval/notifications.ts#notifyMessage',
-    'apps/api/src/modules/approval/resolver.ts#userOfPerson',
     'apps/api/src/modules/approval/store.ts#activeInstanceOf',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     '#describeCause',
+    '#notifyVoided',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
-    'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',
-    'apps/api/src/modules/establishment/carried-transfer.ts#reverseCarriedEstablishment',
   ],
   'apps/api/src/modules/employment/exit-void-applications.ts#voidSupersededRegularizations': [
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',

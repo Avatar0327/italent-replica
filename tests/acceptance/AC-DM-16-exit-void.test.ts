@@ -81,11 +81,11 @@ describe('AC-DM-16 步骤 1：作废全部在途任职申请', () => {
     }
     const voided = (await x.effects(leave.id)).filter((row) => row.kind === 'application_voided');
     expect(voided.map((row) => row.target_id).sort()).toEqual([...ids].sort());
-    // 没有审批实例的单据不挂站内消息，只写 outbox（A-7）
+    // 没有审批实例的单据写 outbox（A-7）；站内消息挂业务单引用、不伪造实例（F-400 第 2 轮）
     expect(await x.outboxCount(ids[0]!, 'employment.business.voided_by_exit')).toBe(1);
   });
 
-  it('B-07 / B-10a 已批未生效、草稿、已驳回的调动：均作废；草稿无实例只写 outbox，已驳回有实例则 cancelled 并发消息', async () => {
+  it('B-07 / B-10a 已批未生效、草稿、已驳回的调动：均作废并写 outbox；草稿无实例，已驳回有实例则 cancelled 并发消息', async () => {
     const x = await world('b07');
     const leave = await x.directLeave('2026-10-05');
     const approved = await x.transferIn('approved', '2026-10-25');

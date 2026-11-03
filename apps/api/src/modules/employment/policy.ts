@@ -428,14 +428,17 @@ const EXIT_CREATE_BUTTON: ButtonPolicy = {
   domain: ['application', 'direct'],
 };
 const EXIT_CREATE_PRECONDITIONS = ['lockEmploymentEmployee', 'requireExitGate', 'assertRevision'];
-const EXIT_PREVIEW_KEYS = ['lastWorkDate', 'effectiveDate', 'blockers', 'ack', 'warnings'] as const;
+/**
+ * 离职 / 退休预览（R2-T03 设计 §4）：响应键固定，但清单逐项按可见性与字段查看权披露；F-400 起要终止的其它流程
+ * 也按申请单查看权裁剪（discloseFlows，看不到的只计 hiddenCount），出口随权限而定，登记为投影。
+ */
 const exitPreview = (code: string) =>
   object({
     object: EMPLOYMENT,
     operation: 'view',
     button: button(code, 'detail'),
     scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
-    fields: fixed(EXIT_PREVIEW_KEYS, 'R2-T03 设计 §4 preview：固定键，清单逐项按可见性与字段查看权披露'),
+    fields: projector('employment.exitPreview', 'employment.exitPreview'),
     write: write(
       'body',
       none('只读预览：没有命令事务，没有提交前足迹'),

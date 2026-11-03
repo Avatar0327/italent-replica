@@ -1,5 +1,6 @@
 /**
- * BE-12a / AC-HA-05 + 导出：时点花名册的功能权、数据范围、字段权与 CSV 导出。
+ * BE-12a / AC-HA-05（DEC-763②，F-466 改写口径）+ 导出：时点花名册的功能权、数据范围、字段权与 CSV 导出。
+ * 名册属名册类报表：人事管理员按管理单元（角色管理范围）取数（人事看板是另一回事，只给 HR 专员 / HR 经理 / 管理员）。
  * 列表与导出同一套过滤——管理单元内人员（范围外不出现、不计入总数）、字段无权的列在行里缺席、在 CSV 表头里也缺席；
  * 导出的行与列不得多于同一用户同一查询的列表。
  */
@@ -42,10 +43,10 @@ const deny =
     !(resources.includes(String(request.resource)) && ['object.view', 'object.button'].includes(request.action));
 
 describe('AC-HA-05 数据范围与字段权', () => {
-  it('HRBP 只见管理单元内人员：范围外不出现、不计入总数；范围为空 fail-closed', async () => {
+  it('人事管理员按管理单元看名册：范围外不出现、不计入总数；范围为空 fail-closed（不退回全部）', async () => {
     const { w, mine } = await fixture('ha05-scope');
-    const hrbp = w.restricted(allow, { personIds: [mine.id] });
-    const page = await w.rosterOk(ASOF, '', hrbp);
+    const hrAdmin = w.restricted(allow, { personIds: [mine.id] });
+    const page = await w.rosterOk(ASOF, '', hrAdmin);
     expect(w.codes(page)).toEqual(['HE0001']);
     expect(page.total).toBe(1);
     expect(page.hasDataPermission).toBe(true);
@@ -55,7 +56,7 @@ describe('AC-HA-05 数据范围与字段权', () => {
     const nobody = w.restricted(allow, { personIds: [] });
     expect(await w.rosterOk(ASOF, '', nobody)).toMatchObject({ items: [], total: 0 });
     // 筛选命中范围外的人也不泄露
-    expect(await w.rosterOk(ASOF, 'name=' + encodeURIComponent('范围外乙'), hrbp)).toMatchObject({ total: 0 });
+    expect(await w.rosterOk(ASOF, 'name=' + encodeURIComponent('范围外乙'), hrAdmin)).toMatchObject({ total: 0 });
   });
 
   it('无敏感字段（手机 / 证件号码 / 个人邮箱）查看权：行里键缺席；筛选敏感字段 403；其余列照常', async () => {
@@ -125,11 +126,11 @@ describe('BE-12a 导出：同步 CSV（UTF-8 带 BOM），与列表同一套过�
 
   it('不导出比列表更多的行或列：范围外人员、无权字段列都不在 CSV 里；筛选与列表一致', async () => {
     const { w, mine } = await fixture('ha05-export-scope');
-    const hrbp = w.restricted(allow, {
+    const hrAdmin = w.restricted(allow, {
       personIds: [mine.id],
       hidden: { [PERSON_OBJECT]: ['mobilePhone', 'idNumber', 'backupMail'] },
     });
-    const response = await w.exported(ASOF, '', hrbp);
+    const response = await w.exported(ASOF, '', hrAdmin);
     expect(response.status, await response.clone().text()).toBe(200);
     const text = await response.text();
     const lines = parseCsv(stripBom(text));
