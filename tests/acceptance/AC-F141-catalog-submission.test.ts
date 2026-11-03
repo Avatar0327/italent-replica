@@ -78,7 +78,17 @@ beforeEach(() => {
         return json({ session: { tenantId: 't', userId: 'u' }, apps: [], scope: [], adminMenus: [] });
       if (url.includes('/permission/me/objects/')) {
         const objectCode = url.split('/').at(-1)!;
-        const fields = ['name', 'code', 'parentId', 'displayOrder', 'enabled', 'publicDown', 'classId', 'layerId'];
+        const fields = [
+          'name',
+          'code',
+          'parentId',
+          'displayOrder',
+          'enabled',
+          'publicDown',
+          'classId',
+          'layerId',
+          ...(collection === 'grade-schemes' ? ['details'] : []),
+        ];
         return json({
           objectCode,
           dataOperations: { create: true, update: true, delete: false },
@@ -357,4 +367,16 @@ it('AC-QL F475 P2-1 有创建按钮和名称权限但无等级明细编辑权时
   expect.soft(buttonOf('保存')?.hasAttribute('disabled')).toBe(true);
   expect.soft(text()).toContain('缺少创建必需字段的编辑权限');
   expect(posts).toHaveLength(0);
+});
+
+it('AC-QL F475 P2-1 有明细编辑权时空等级数组从表单经过内核提交', async () => {
+  collection = 'grade-schemes';
+  editableOverride = ['name', 'details'];
+  postMode = 'rejected';
+  await openPage();
+  await openCreate();
+  await type(document.body.querySelector<HTMLInputElement>('.ant-modal input')!, '合成授权方案');
+  await click(buttonOf('保存'));
+  await vi.waitFor(() => expect(posts).toHaveLength(1));
+  expect(JSON.parse(posts[0]!.body)).toEqual({ name: '合成授权方案', details: [] });
 });

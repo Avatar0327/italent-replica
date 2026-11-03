@@ -116,6 +116,7 @@ test('AC-TC 四页签整页详情，潜力/经历不带能力列，成就不制�
     '指标名称',
     '指标定义',
     '操作',
+    '',
   ]);
   await detail.getByRole('tab', { name: '经历', exact: true }).click();
   await expect(detail.getByText('这里什么都没有...')).toBeVisible();
@@ -124,6 +125,7 @@ test('AC-TC 四页签整页详情，潜力/经历不带能力列，成就不制�
     '指标名称',
     '类别名称',
     '操作',
+    '',
   ]);
   await detail.getByRole('tab', { name: '成就', exact: true }).click();
   await expect(detail.getByRole('tabpanel').filter({ visible: true }).getByRole('table')).toHaveCount(0);
@@ -258,3 +260,124 @@ for (const scenario of [
     expect(writes).toBe(1);
   });
 }
+
+test('F475 P2-2 人才标准无重复摘要，概览有根节点和连线，三个表格完整列序', async ({ page }) => {
+  await page.goto('/talent?view=criteria');
+  await page.getByRole('button', { name: '合成标准', exact: true }).click();
+  const detail = page.locator('.catalog-detail-page');
+  await expect.soft(detail.locator('.catalog-detail-summary')).toHaveCount(0);
+  await expect.soft(detail.getByText('合成能力说明', { exact: true })).toHaveCount(1);
+  await expect.soft(detail.locator('.catalog-overview-root')).toHaveText('能力标准概览');
+  const connector = detail.locator('.catalog-overview-connector');
+  await expect.soft(connector).toHaveCount(1);
+  if (await connector.count()) {
+    await expect(connector).toHaveCSS('border-left-width', '1px');
+    expect((await connector.boundingBox())!.height).toBeGreaterThan(0);
+  }
+  for (const [tab, columns] of [
+    ['能力', ['', '指标名称', '指标定义', '指标类别', '目标', '权重', '操作', '']],
+    ['潜力', ['', '指标名称', '指标定义', '操作', '']],
+    ['经历', ['', '指标名称', '类别名称', '操作', '']],
+  ] as const) {
+    await detail.getByRole('tab', { name: tab, exact: true }).click();
+    const panel = detail.getByRole('tabpanel').filter({ visible: true });
+    await expect.soft(panel.getByRole('columnheader')).toHaveText([...columns]);
+    await expect.soft(panel.getByRole('button', { name: '列设置', exact: true })).toBeDisabled();
+  }
+});
+
+test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及两层明细', async ({ page }) => {
+  await page.route('**/api/tenant/qualification/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/levels'))
+      return route.fulfill({
+        json: {
+          items: [
+            { id, name: '合成一级' },
+            { id: level, name: '合成二级' },
+          ],
+        },
+      });
+    if (path.includes('/standards')) {
+      const row = {
+        id,
+        revision: 1,
+        name: '合成资格标准',
+        levelIds: [id, level],
+        details: [
+          {
+            levelId: id,
+            targetId: grade,
+            targetValue: 60,
+            weight: 70,
+            abilities: [{ content: '一级能力', targetValue: 80, weight: 90 }],
+          },
+          {
+            levelId: level,
+            targetId: grade,
+            targetValue: 61,
+            weight: 71,
+            abilities: [{ content: '二级能力', targetValue: 81, weight: 91 }],
+          },
+        ],
+      };
+      return route.fulfill({ json: path.endsWith(id) ? row : { items: [row] } });
+    }
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto('/qualification?view=standards');
+  await page.getByRole('button', { name: '合成资格标准', exact: true }).click();
+  const detail = page.locator('.catalog-detail-page');
+  await expect.soft(detail.locator('header').getByRole('button')).toHaveText(['返回', '编辑基本信息', '查看图谱']);
+  await expect.soft(detail.getByRole('heading', { name: '任职级别', exact: true })).toBeVisible();
+  await expect.soft(detail.getByRole('textbox', { name: '搜索任职级别', exact: true })).toBeDisabled();
+  for (const name of ['合成一级', '合成二级']) {
+    await detail.getByRole('tab', { name, exact: true }).click();
+    const panel = detail.getByRole('tabpanel').filter({ visible: true });
+    await expect.soft(panel.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(panel.getByRole('columnheader')).toHaveText([
+      '指标',
+      '指标目标值',
+      '指标权重',
+      '内容',
+      '能力目标值',
+      '目标等级',
+      '能力权重',
+    ]);
+    await expect(panel.getByRole('row').last()).toContainText(
+      name === '合成一级' ? ['60', '70', '一级能力', '80', '90'] : ['61', '71', '二级能力', '81', '91'],
+    );
+  }
+  for (const view of ['categories', 'levels']) {
+    await page.goto(`/qualification?view=${view}`);
+    await expect
+      .soft(page.locator('.page-heading').getByRole('button').filter({ visible: true }))
+      .toHaveText(['引入岗职务', '新建', '导入']);
+  }
+});
+
+test('F475 P2-4 人才标准新增只标名称红星，分类仍按接口必填校验', async ({ page }) => {
+  let posts = 0;
+  await page.route('**/api/tenant/talent/criteria', (route) => {
+    posts++;
+    return route.fulfill({ status: 422, json: { error: { code: 'VALIDATION_FAILED', message: '分类必填' } } });
+  });
+  await page.goto('/talent?view=criteria');
+  await actionButton(page, '新增').click();
+  const dialog = page.getByRole('dialog');
+  const markers = await dialog.locator('.ant-form-item-label > label').evaluateAll((labels) =>
+    labels
+      .filter((label) => {
+        const style = getComputedStyle(label, '::before');
+        return style.content.includes('*') && style.display !== 'none' && style.visibility !== 'hidden';
+      })
+      .map((label) => label.textContent),
+  );
+  expect.soft(markers).toEqual(['名称']);
+  await dialog.getByLabel('名称', { exact: true }).fill('合成新标准');
+  await actionButton(page, '保存').click();
+  await expect(
+    dialog.locator('.ant-form-item').filter({ has: dialog.getByLabel('分类', { exact: true }) }),
+  ).toContainText('请填写此项');
+  expect(posts).toBe(0);
+});
