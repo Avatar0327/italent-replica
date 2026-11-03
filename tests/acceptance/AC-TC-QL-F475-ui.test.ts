@@ -1,16 +1,25 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FormOverlayProps } from '../../apps/web/src/foundation/FormOverlay.js';
+interface OverlayProps {
+  mode?: string;
+  groups: {
+    title: string;
+    fields: { name: string; label: string; control: unknown; access: { visible: boolean } }[];
+  }[];
+}
 import type { ObjectPermission } from '../../apps/web/src/foundation/permission-model.js';
 import type { Resource, Row } from '../../apps/web/src/talent/catalog/types.js';
 
-const state = vi.hoisted(() => ({ row: { id: 'synthetic', revision: 1, name: '合成标准' } as Row }));
+const state = vi.hoisted(() => ({
+  row: { id: 'synthetic', revision: 1, name: '合成标准' } as Row,
+  names: new Map<string, string>(),
+}));
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h } = requireWeb('react');
 const { renderToStaticMarkup: render } = requireWeb('react-dom/server');
 vi.mock('../../apps/web/src/talent/catalog/hooks.js', () => ({
-  useReferenceNames: () => ({ data: new Map(), loading: false }),
+  useReferenceNames: () => ({ data: state.names, loading: false }),
   useRemote: (key: string) => ({
     loading: false,
     data: key.startsWith('list:')
@@ -25,7 +34,7 @@ vi.mock('../../apps/web/src/talent/catalog/hooks.js', () => ({
 vi.mock('../../apps/web/src/foundation/DecisionNote.js', () => ({ DecisionNote: () => null }));
 vi.mock('../../apps/web/src/foundation/forms/useCommandForm.js', () => ({ useCommandForm: () => ({}) }));
 vi.mock('../../apps/web/src/foundation/FormOverlay.js', () => ({
-  FormOverlay: (props: FormOverlayProps) =>
+  FormOverlay: (props: OverlayProps) =>
     h(
       'section',
       { 'data-mode': props.mode },
@@ -101,6 +110,7 @@ const headers = (html: string) =>
     )
     .filter(Boolean);
 beforeEach(() => {
+  state.names = new Map();
   state.row = { id: 'synthetic', revision: 1, name: '合成标准', enabled: true };
 });
 
@@ -126,6 +136,12 @@ describe('AC-TC / AC-QL F-475 R3a 列表真实渲染', () => {
     expect(html).toContain('aria-label="名称"');
     expect(html).toContain('aria-label="状态"');
     expect(html).toContain('aria-label="分类"');
+  });
+  it('任职标准分类名称使用可见类别与分类接口的关联，不把已有契约当成缺字段', () => {
+    state.row.categoryId = 'category';
+    state.names.set('class:category', '合成分类');
+    const html = render(h(ResourcePage, { resource: resource('qualification', 'standards'), permission }));
+    expect(html).toContain('合成分类');
   });
   it('字段裁剪后不渲染对应列或筛选入口', () => {
     const html = render(
