@@ -79,7 +79,8 @@ test('AC-FE-F344-04 转正申请：没有转正日期编辑权，暂存只存试
   await form.getByRole('button', { name: /暂\s*存$/ }).click();
   await expect(page.getByText('已暂存', { exact: true })).toBeVisible();
   expect(server.writes).toHaveLength(1);
-  expect(server.writes[0]).toMatchObject({ method: 'PUT', body: { effectiveDate: null, probationResult: 'pass' } });
+  expect(server.writes[0]!.method).toBe('PUT');
+  expect(server.writes[0]!.body).toEqual({ probationResult: 'pass' });
 });
 
 test('AC-FE-F344-05 转正申请：有转正日期编辑权，可改日期并随建草稿请求发送', async ({ page }) => {
@@ -117,4 +118,40 @@ test('AC-FE-F344-07 批量转正：有转正日期编辑权，可填统一日期
   await form.getByRole('button', { name: /保\s*存$/ }).click();
   await expect(page.getByText('1 人转正成功')).toBeVisible();
   expect(server.writes[0]!.body).toMatchObject({ mode: 'direct', effectiveDate: '2026-11-05' });
+});
+
+test('AC-FE-F344-08 暂存日期被服务端裁掉时，申请表单仍可恢复试用结果', async ({ page }) => {
+  await setup(page, { editableFields: withoutDate });
+  await page.route('**/permission/me/objects/*', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TenantBase.EmploymentRecord',
+        dataOperations: { read: true, create: true, update: true },
+        viewableFields: ['name', 'code', 'departmentId', 'postId'],
+        editableFields: withoutDate,
+        buttons: [{ buttonCode: 'Employment.Create', level: 'detail' }],
+      },
+    }),
+  );
+  await page.route('**/regularization-draft', (route) =>
+    route.fulfill({
+      json: {
+        id: employee,
+        employeeId: employee,
+        revision: 1,
+        applicationId: null,
+        temporary: { probationResult: 'pass', probationResultName: '合成通过', savedAt: '2026-10-01T01:00:00.000Z' },
+      },
+    }),
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.reload();
+  await openDetail(page);
+  await page.getByRole('button', named('转正申请')).click();
+  const form = dialog(page, '转正申请');
+  await expect(form.getByText('已带出上次暂存信息', { exact: true })).toBeVisible();
+  await expect(form.getByText('合成通过', { exact: true })).toBeVisible();
+  await expect(dateOf(form)).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

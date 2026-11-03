@@ -38,7 +38,12 @@ const VIEWABLE = [
 ];
 
 /** 对象新增 / 编辑放行，但 denied 里的字段没有编辑权（授权器按载荷键判，任一不可写整单 403）。 */
-function operator(w: PbWorld, staff: readonly { id: string }[], denied: readonly string[]) {
+function operator(
+  w: PbWorld,
+  staff: readonly { id: string }[],
+  denied: readonly string[],
+  hidden: readonly string[] = [],
+) {
   const authorize: Authorizer = (request) =>
     !['object.create', 'object.update'].includes(request.action) ||
     !(request.fields ?? []).some((field) => denied.includes(field));
@@ -51,10 +56,10 @@ function operator(w: PbWorld, staff: readonly { id: string }[], denied: readonly
       terms: [{ dimension: 'organization' as const, orgIds, personIds: staff.map((employee) => employee.id) }],
     }),
     authorize: async (request) => authorize(request),
-    fields: async () => new Set(VIEWABLE),
+    fields: async () => new Set(VIEWABLE.filter((field) => !hidden.includes(field))),
   });
   const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00.000Z') });
-  return (method: string, path: string, options: { body?: unknown; ifMatch?: number } = {}) =>
+  return (method: string, path: string, options: { body?: unknown; ifMatch?: number; idempotencyKey?: string } = {}) =>
     api.request(method, `/api/tenant/employment${path}`, {
       user: w.session.user.id,
       tenant: w.session.tenant.id,
@@ -209,7 +214,7 @@ describe('F-344 ③ 转正申请：建草稿、改草稿、暂存都受 editable
 
     const withoutDate = await denyDate('PUT', path, {
       ifMatch: 0,
-      body: { effectiveDate: null, probationResult: 'normal' },
+      body: { probationResult: 'normal' },
     });
     expect(withoutDate.status, await withoutDate.clone().text()).toBe(200);
     const revision = ((await withoutDate.json()) as { revision: number }).revision;
@@ -220,5 +225,77 @@ describe('F-344 ③ 转正申请：建草稿、改草稿、暂存都受 editable
     });
     expect(allowed.status, await allowed.clone().text()).toBe(200);
     expect(await allowed.json()).toMatchObject({ temporary: { effectiveDate: '2026-10-20' } });
+  });
+});
+
+describe('AC-PB-F344 暂存日期字段权限返工', () => {
+  it('P2-1：无编辑权携带 null → 同字段越权的 403，已有日期与 revision 不变', async () => {
+    const { w, staff } = await world('f344-null');
+    const path = `/employees/${staff[0]!.id}/regularization-draft`;
+    const allowed = operator(w, staff, []);
+    const saved = await allowed('PUT', path, {
+      ifMatch: 0,
+      body: { effectiveDate: '2026-10-20', probationResult: 'normal' },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    const { revision } = (await saved.json()) as { revision: number };
+    const denied = operator(w, staff, ['effectiveDate']);
+    const response = await denied('PUT', path, {
+      ifMatch: revision,
+      body: { effectiveDate: null, probationResult: 'normal' },
+    });
+    expect.soft(response.status).toBe(403);
+    expect.soft(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN', message: '无权执行该操作' } });
+    const latest = await allowed('GET', path);
+    expect(latest.status).toBe(200);
+    expect(await latest.json()).toMatchObject({ revision, temporary: { effectiveDate: '2026-10-20' } });
+  });
+
+  it('P2-2：无查看权 GET 裁掉日期，有查看权 GET 保留日期与暂存协议字段', async () => {
+    const { w, staff } = await world('f344-read');
+    const path = `/employees/${staff[0]!.id}/regularization-draft`;
+    const allowed = operator(w, staff, []);
+    const saved = await allowed('PUT', path, {
+      ifMatch: 0,
+      body: { effectiveDate: '2026-10-20', probationResult: 'normal' },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(200);
+    const visible = await allowed('GET', path);
+    expect(visible.status).toBe(200);
+    expect(await visible.json()).toMatchObject({ revision: 1, temporary: { effectiveDate: '2026-10-20' } });
+    const hidden = await operator(w, staff, ['effectiveDate'], ['effectiveDate'])('GET', path);
+    expect(hidden.status).toBe(200);
+    const body = (await hidden.json()) as { temporary: Record<string, unknown> };
+    expect(body).toMatchObject({
+      id: staff[0]!.id,
+      employeeId: staff[0]!.id,
+      revision: 1,
+      applicationId: null,
+      temporary: { probationResult: 'normal', probationResultName: expect.any(String), savedAt: expect.any(String) },
+    });
+    expect(body.temporary).not.toHaveProperty('effectiveDate');
+  });
+
+  it('P2-2：PUT 首次回执及撤查看权后同键重放都按当前查看权裁剪', async () => {
+    const { w, staff } = await world('f344-receipt');
+    const path = `/employees/${staff[0]!.id}/regularization-draft`;
+    const hiddenFields: string[] = ['effectiveDate'];
+    const request = operator(w, staff, [], hiddenFields);
+    const options = {
+      ifMatch: 0,
+      idempotencyKey: 'f344-receipt-current-view',
+      body: { effectiveDate: '2026-10-20', probationResult: 'normal' },
+    };
+    const first = await request('PUT', path, options);
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect.soft(((await first.json()) as { temporary: object }).temporary).not.toHaveProperty('effectiveDate');
+    hiddenFields.length = 0;
+    const visible = await request('PUT', path, options);
+    expect(visible.status, await visible.clone().text()).toBe(200);
+    expect(await visible.json()).toMatchObject({ revision: 1, temporary: { effectiveDate: '2026-10-20' } });
+    hiddenFields.push('effectiveDate');
+    const replay = await request('PUT', path, options);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(((await replay.json()) as { temporary: object }).temporary).not.toHaveProperty('effectiveDate');
   });
 });
