@@ -2,7 +2,7 @@
  * F-344：转正三入口（直接转正 / 转正申请 / 批量转正）的转正日期（effectiveDate）受任职对象 editableFields 管：
  * 没有该字段编辑权的人带日期提交一律 403（整单拒绝、不落库），不带日期走服务端默认；有编辑权的人照常带日期。
  * 暂存（PUT /regularization-draft）把日期当控制项，之前不过字段校验，同在本文件补齐。
- * 前端侧另见 apps/web/src/probation/AC-FE-F344-effective-date.test.ts。
+ * 前端侧见 apps/web/smoke/AC-FE-F344.smoke.spec.ts。
  */
 import type { Authorizer } from '@italent/api';
 import { useTestDb } from '@italent/testkit';

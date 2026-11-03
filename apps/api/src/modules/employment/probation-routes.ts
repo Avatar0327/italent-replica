@@ -194,6 +194,12 @@ export function registerProbationRoutes(
   registerProbationResults(router, deps);
 }
 
+/** 暂存里带了转正日期才把它当字段写入校验（F-344）：没有日期编辑权的人只能暂存试用结果，日期走服务端默认。 */
+function draftDateControl(input: unknown): { effectiveDate?: unknown } {
+  const value = (input as { effectiveDate?: unknown } | null)?.effectiveDate;
+  return typeof value === 'string' && value.trim() !== '' ? { effectiveDate: value } : {};
+}
+
 /**
  * 转正申请暂存（F-347，DEC-709）：读写同一口径，都要任职对象新增 + Employment.Create（转正申请按钮）与员工在范围内；
  * 暂存内容是转正控制项（不进任职字段目录），按命令式空字段集合校验（同调整试用信息）。
@@ -211,7 +217,8 @@ function registerRegularizationDraft(router: Hono<TenantEnv>, deps: TenantRouteD
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const input = await jsonBody(c);
-    await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true });
+    const controls = draftDateControl(input);
+    await requireEmploymentWrite(ctx, 'create', controls, 'Employment.Create', undefined, { commandOnly: true });
     return runWrite(
       c,
       deps,
@@ -219,7 +226,7 @@ function registerRegularizationDraft(router: Hono<TenantEnv>, deps: TenantRouteD
       { id, action: 'save-regularization-draft', input },
       async (tx, context) => ({ status: 200, body: await saveRegularizationDraft(tx, context, id, input) }),
       // 回执是固定形状（暂存内容是转正控制项），不含任职字段值
-      { guard: probationWriteGuard(deps, ctx, 'create', {}, [id]), project: (body) => body },
+      { guard: probationWriteGuard(deps, ctx, 'create', controls, [id]), project: (body) => body },
     );
   });
 }
