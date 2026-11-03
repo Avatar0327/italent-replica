@@ -43,12 +43,12 @@ describe('AC-PB-F456 今天在职资格与入口', () => {
     const { employee } = await hire(w, {
       date: state === 'future' ? '2026-11-01' : '2026-09-01',
       probation: state !== 'regular',
-      months: 3,
+      ...(state !== 'regular' ? { months: 3 } : {}),
     });
     if (state === 'left')
       await w.session.business(
         employee.id,
-        { kind: 'leave', mode: 'direct', effectiveDate: '2026-09-20' },
+        { kind: 'leave', mode: 'direct', effectiveDate: '2026-09-20', lastWorkDate: '2026-09-19' },
         await employeeRevision(w, employee.id),
       );
     const effectiveDate = state === 'future' ? '2026-11-15' : '2026-09-15';
@@ -77,7 +77,7 @@ describe('AC-PB-F456 今天在职资格与入口', () => {
     const draft = (await response.json()) as { id: string; revision: number };
     await w.session.business(
       employee.id,
-      { kind: 'leave', mode: 'direct', effectiveDate: '2026-10-01' },
+      { kind: 'leave', mode: 'direct', effectiveDate: '2026-10-01', lastWorkDate: '2026-09-30' },
       await employeeRevision(w, employee.id),
     );
     for (const body of [{ effectiveDate: '2026-09-16' }, { probationResult: 'early' }]) {
