@@ -10,7 +10,7 @@ import type { Context } from 'hono';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
@@ -47,6 +47,37 @@ async function selfButtonGranted(tx: Tx, tenantId: string, request: Parameters<A
   return SELF_BUTTONS.has(button) && (await employeeFieldPolicy(tx, tenantId)).buttons.has(button);
 }
 
+function selfFieldReader(
+  deps: TenantRouteDeps,
+  tenant: TenantContext,
+  kind: SelfApplicationKind | undefined,
+  check: (tx: Tx) => Promise<void>,
+) {
+  return async (tenantId: string, userId: string, objectCode: string, tx: Tx) => {
+    const existing = await getModuleViewableFieldsInTransaction(
+      deps,
+      { ...tenant, tenantId, userId },
+      kind && tenantId === tenant.tenantId && userId === tenant.userId && objectCode === EMPLOYMENT_OBJECT
+        ? SELF_APPLICATION_OBJECTS[kind].code
+        : objectCode,
+      tx,
+    );
+    if (tenantId !== tenant.tenantId || userId !== tenant.userId || objectCode !== EMPLOYMENT_OBJECT)
+      return existing ?? new Set<string>();
+    await check(tx);
+    return new Set([...PROTOCOL_FIELDS, ...(await employeeFieldPolicy(tx, tenantId, kind)).view, ...(existing ?? [])]);
+  };
+}
+
+function selfScope(employeeId: string) {
+  return {
+    ...EMPTY_SCOPE,
+    hasDataPermission: true,
+    personIds: [employeeId],
+    terms: [{ dimension: 'reporting' as const, orgIds: [], personIds: [employeeId] }],
+  };
+}
+
 /** 只供本人路由使用，不给 HR / 审批接口增加任何隐式授权或租户范围。 */
 export async function selfAccess(
   c: Context<TenantEnv>,
@@ -56,12 +87,7 @@ export async function selfAccess(
 ) {
   const tenant = tenantOf(c);
   const employee = await withTenant(deps.db, tenant.tenantId, (tx) => boundEmployee(tx, tenant));
-  const scope = {
-    ...EMPTY_SCOPE,
-    hasDataPermission: true,
-    personIds: [employee.id],
-    terms: [{ dimension: 'reporting' as const, orgIds: [], personIds: [employee.id] }],
-  };
+  const scope = selfScope(employee.id);
   const check = async (tx: Tx) => {
     if ((await boundEmployee(tx, tenant)).id !== employee.id) throw new AppError('FORBIDDEN', '员工绑定已变化，请刷新');
   };
@@ -93,20 +119,7 @@ export async function selfAccess(
     return base(request);
   };
   const authorize: Authorizer = (request) => withTenant(deps.db, tenant.tenantId, (tx) => evaluate(request, tx));
-  const fields = async (tenantId: string, userId: string, objectCode: string, tx: Tx) => {
-    const existing = await getModuleViewableFieldsInTransaction(
-      deps,
-      { ...tenant, tenantId, userId },
-      kind && tenantId === tenant.tenantId && userId === tenant.userId && objectCode === EMPLOYMENT_OBJECT
-        ? SELF_APPLICATION_OBJECTS[kind].code
-        : objectCode,
-      tx,
-    );
-    if (tenantId !== tenant.tenantId || userId !== tenant.userId || objectCode !== EMPLOYMENT_OBJECT)
-      return existing ?? new Set<string>();
-    await check(tx);
-    return new Set([...PROTOCOL_FIELDS, ...(await employeeFieldPolicy(tx, tenantId, kind)).view, ...(existing ?? [])]);
-  };
+  const fields = selfFieldReader(deps, tenant, kind, check);
   registerScopeProvider(authorize, {
     authorize: evaluate,
     fields: (tenantId, userId, objectCode, tx) =>

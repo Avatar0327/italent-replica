@@ -222,5 +222,9 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   'GET /applications': self({ fields: projector('selfService.application', 'selfService.application') }),
   // uuidParam 非 UUID → 400；ownApplication 非本人发起 / 非绑定本人 / 不存在 → 404 NOT_FOUND「申请不存在」；
   // 响应 { status, record }，record 经 discloseOwnRecord 裁剪
-  'GET /applications/:id': self({ invalidId: BAD_REQUEST, guards: ['selfService.ownApplication'], fields: ownRecord }),
+  'GET /applications/:id': self({
+    invalidId: BAD_REQUEST,
+    guards: ['selfService.ownApplication', 'selfService.application'],
+    fields: ownRecord,
+  }),
 });

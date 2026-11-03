@@ -1,6 +1,6 @@
 import { withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -15,7 +15,14 @@ import {
   selfAccess,
   transferFieldAccess,
 } from './access.js';
-import { applicationStatus, currentRecord, ownApplication, ownApplications, ownRecords } from './queries.js';
+import {
+  applicationStatus,
+  currentRecord,
+  ownApplication,
+  ownApplications,
+  ownRecords,
+  type OwnApplication,
+} from './queries.js';
 import { ownDevelopmentChannel } from './development-channel.js';
 import { ownTransferInput, ownTransferPreview } from './transfer.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
@@ -138,7 +145,18 @@ function selfTransferGuard(self: SelfAccess): CommandGuard {
   return { before: (tx) => requireSelfServiceButtons(tx, self.ctx) };
 }
 
+async function readSelfApplication(c: Context<TenantEnv>, deps: TenantRouteDeps, item: OwnApplication) {
+  const kind = item.applicationKind!;
+  const access = await selfAccess(c, deps, 0, kind);
+  const record = await withTenant(deps.db, access.ctx.tenantId, async (tx) => {
+    await requireApplicationAccess(tx, access, kind);
+    return ownRequest(tx, access, kind, item.businessId);
+  });
+  return { status: applicationStatus(item.state), record: await projectApplication(access, record) };
+}
+
 function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerApplicationDetailRoute(module, deps);
   module.get('/applications', async (c) => {
     const self = await selfAccess(c, deps);
     const page = pageQuery(c);
@@ -194,20 +212,16 @@ function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
     );
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
+}
+
+function registerApplicationDetailRoute(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/applications/:id', async (c) => {
     const self = await selfAccess(c, deps);
     const id = uuidParam(c);
     const item = await withTenant(deps.db, self.ctx.tenantId, (tx) =>
       ownApplication(tx, self.ctx, self.employee.id, id),
     );
-    if (item.applicationKind) {
-      const access = await selfAccess(c, deps, 0, item.applicationKind);
-      const record = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
-        await requireApplicationAccess(tx, access, item.applicationKind!);
-        return ownRequest(tx, access, item.applicationKind!, item.businessId);
-      });
-      return c.json({ status: applicationStatus(item.state), record: await projectApplication(access, record) });
-    }
+    if (item.applicationKind) return c.json(await readSelfApplication(c, deps, item));
     const result = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
       await self.check(tx);
       const item = await ownApplication(tx, self.ctx, self.employee.id, id);

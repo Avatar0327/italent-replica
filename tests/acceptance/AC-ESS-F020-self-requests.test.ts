@@ -141,6 +141,10 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
     const actor = await fresh();
     const form = await opening(actor, 'part-time-requests');
     expect(form.fieldModes).toMatchObject({ partTimeType: 'editable', postId: 'readonly', levelId: 'readonly' });
+    for (const employeeId of [manager.employeeId, randomUUID()])
+      expect(
+        (await send(actor, '/part-time-requests', 'POST', { ...pt(), employeeId }, form.employee.revision)).status,
+      ).toBe(400);
     const choices = await w.json<{ items: { id: string; selectable: boolean }[] }>(
       await send(actor, '/part-time-requests/references/departmentId?asOf=2026-11-01'),
     );
@@ -171,7 +175,23 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
     const path = `/part-time-requests/${draft.id}`;
     const saved = await w.json<Receipt>(await send(actor, path, 'PATCH', { endDate: '2027-01-01' }, draft.revision));
     expect((await send(actor, path, 'PATCH', { endDate: '2027-02-01' }, draft.revision)).status).toBe(409);
-    const submitted = await w.json<Receipt>(await send(actor, `${path}/submit`, 'POST', {}, saved.revision));
+    const current = await w.json<Receipt>(await send(actor, path));
+    expect(current.revision).toBe(saved.revision);
+    const restoreKey = randomUUID();
+    const restored = await w.json<Receipt>(
+      await send(actor, path, 'PATCH', { endDate: null }, current.revision, restoreKey),
+    );
+    expect(
+      await w.json(await send(actor, path, 'PATCH', { endDate: null }, current.revision, restoreKey)),
+    ).toMatchObject({ id: restored.id, revision: restored.revision });
+    const submitKey = randomUUID();
+    const submitted = await w.json<Receipt>(
+      await send(actor, `${path}/submit`, 'POST', {}, restored.revision, submitKey),
+    );
+    expect(await w.json(await send(actor, `${path}/submit`, 'POST', {}, restored.revision, submitKey))).toMatchObject({
+      id: submitted.id,
+      status: 'in_review',
+    });
     expect(submitted.status).toBe('in_review');
     expect((await send(manager, path)).status).toBe(404);
     const list = await w.json<{ items: { id: string; businessId: string }[] }>(await send(actor, '/applications'));

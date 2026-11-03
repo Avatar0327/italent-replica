@@ -88,10 +88,12 @@ export async function ownApplications(
 ) {
   return rowsOf<OwnApplication>(
     await tx.execute(sql`
-    SELECT i.id,i.business_id AS "businessId",COALESCE(b.revision,q.revision) AS revision,i.status AS state,i.created_at::text AS "createdAt",
+    SELECT i.id,i.business_id AS "businessId",COALESCE(b.revision,q.revision) AS revision,
+      i.status AS state,i.created_at::text AS "createdAt",
       p.effective_date::text AS "effectiveDate",p.department_id AS "departmentId",i.title,
       tr.reason_code AS "reasonCode",
-      CASE WHEN q.id IS NOT NULL THEN 'partTime' WHEN er.initiator='self' THEN 'exit' ELSE NULL END AS "applicationKind",
+      CASE WHEN q.id IS NOT NULL THEN 'partTime' WHEN er.initiator='self' THEN 'exit'
+        ELSE NULL END AS "applicationKind",
       CASE WHEN i.status IN ('running','returned') THEN ARRAY(
         SELECT DISTINCT a.display_name FROM approval_tasks t
         CROSS JOIN LATERAL tenant_member_accounts(ARRAY[t.assignee_user_id]::uuid[]) a

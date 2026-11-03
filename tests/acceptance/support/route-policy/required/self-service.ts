@@ -8,7 +8,7 @@
  * transfer.direct 守卫只在 mode = direct（requireDirectTransfer）或
  * initiator = hr（预览 allowedActions）时求值，本人入口固定 application / employee，恒不触发——按代码路径上的具名守卫登记。
  */
-import { SELF_APPLICATIONS } from './self-applications.js';
+import { SELF_APPLICATIONS, OWN_APPLICATION_ACCESS } from './self-applications.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/employee-self-service/routes.ts';
@@ -347,6 +347,7 @@ export const SELF_SERVICE: RequiredTable = {
     self('GET', '/applications', ['self:selfAccess', 'self:transferFieldAccess', 'own:ownRecords / ownApplications']),
   ],
   'GET /api/tenant/self-service/applications/:id': [
+    ...OWN_APPLICATION_ACCESS,
     self('GET', '/applications/:id', ['self:selfAccess', 'own:ownRecords / ownApplications']),
     {
       perm: 'guard:selfService.ownApplication',

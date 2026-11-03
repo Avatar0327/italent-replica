@@ -35,6 +35,7 @@ const exitCreate = exitFields.extend({ lastWorkDate: day, pendingTransferAck: z.
 const exitUpdate = exitCreate.partial();
 const submit = z.strictObject({ pendingTransferAck: z.string().max(200).optional() });
 const remark = z.string().max(32766).nullable().optional();
+const present = (value: unknown) => value !== null && value !== undefined;
 export type SelfRequestAction = 'create' | 'update' | 'submit';
 
 export function applicationInput(
@@ -72,13 +73,13 @@ export async function checkApplication(
         ? {
             partTimeType: current!.serviceType,
             effectiveDate: current!.effectiveDate,
-            ...(current!.endDate == null ? {} : { endDate: current!.endDate }),
+            ...(!present(current!.endDate) ? {} : { endDate: current!.endDate }),
             fields: Object.fromEntries(
               Object.entries(current!.fields as object).filter(
-                ([key, value]) => ['departmentId', 'directManagerId'].includes(key) && value != null,
+                ([key, value]) => ['departmentId', 'directManagerId'].includes(key) && present(value),
               ),
             ),
-            ...(current!.requestRemark == null ? {} : { requestRemark: current!.requestRemark }),
+            ...(!present(current!.requestRemark) ? {} : { requestRemark: current!.requestRemark }),
           }
         : {
             ...(action === 'create' ? writeBusiness(raw) : editBusiness(raw)),
@@ -92,7 +93,7 @@ export async function checkApplication(
     const current = existing as Record<string, unknown>;
     payload = Object.fromEntries(
       ['lastWorkDate', 'reasonCode', 'whereaboutsCode']
-        .filter((key) => current[key] != null)
+        .filter((key) => present(current[key]))
         .map((key) => [key, current[key]]),
     );
   }
