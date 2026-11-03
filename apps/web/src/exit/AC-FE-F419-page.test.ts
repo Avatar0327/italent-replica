@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT_TERMINATION_FLOWS, EXIT_TERMINATION_PRESET } from '@italent/domain';
+import { message } from 'antd';
 import { ExitSettingsPage } from './ExitSettingsPage.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { uniqueSuffix } from '../../../../tests/acceptance/support/unique.js';
@@ -210,6 +211,40 @@ describe('AC-FE-F419 离职终止配置页', () => {
     expect(host.textContent).toContain('处理中 / 结果待确认');
     expect(checkbox('调动').disabled).toBe(true);
   });
+
+  it.each(['开关与发送值相反', '缺一个预置为 true 的键'])(
+    'P2-1 回执 revision / source 正确但%s：保留草稿、锁定原命令，不提示成功',
+    async (fault) => {
+      const success = vi.spyOn(message, 'success');
+      response = async () => {
+        const write = writes.at(-1)!;
+        const value = { ...write.body.value };
+        if (fault === '开关与发送值相反') value.inter_org_transfer = !value.inter_org_transfer;
+        else delete value.regularization;
+        return Response.json({
+          ...setting,
+          source: 'tenant',
+          revision: Number(write.headers.get('if-match')) + 1,
+          value,
+        });
+      };
+      await render();
+      await toggle('机构间调动');
+      await click('保存');
+      expect(host.textContent).toContain('处理中 / 结果待确认');
+      expect(success).not.toHaveBeenCalled();
+      expect(checkbox('机构间调动').checked).toBe(false);
+      expect(checkbox('机构间调动').disabled).toBe(true);
+      await click('离职类型');
+      await click(TITLE);
+      expect(host.textContent).toContain('处理中 / 结果待确认');
+      expect(checkbox('机构间调动').checked).toBe(false);
+      expect(checkbox('机构间调动').disabled).toBe(true);
+      await click('保存');
+      expect(writes).toHaveLength(1);
+      expect(success).not.toHaveBeenCalled();
+    },
+  );
 
   it('保存回执迟到：切到别的页签不跳转；回来读取已保存的新值', async () => {
     let finish!: (reply: Response) => void;

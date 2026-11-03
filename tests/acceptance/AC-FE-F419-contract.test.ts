@@ -9,6 +9,9 @@ import { parseTermination, parseTerminationReceipt } from '../../apps/web/src/ex
 
 const database = useTestDb();
 const PATH = `/api/tenant/settings/${terminationDefault.key}`;
+// 旧解析器忽略第三参数仍可运行，使负例按业务断言失败，而不是因调用形状或导入失败。
+const verifyReceipt: (raw: unknown, revision: number, sent: Readonly<Record<string, boolean>>) => { id: string } =
+  parseTerminationReceipt;
 
 describe('AC-FE-F419 两层配置接口契约', () => {
   it('管理员读取预置、保存三个独立开关；拒绝固定项 false 保持原值；普通成员读写均 403', async () => {
@@ -27,8 +30,8 @@ describe('AC-FE-F419 两层配置接口契约', () => {
     expect(saved.status, await saved.clone().text()).toBe(200);
     const savedBody = await saved.json();
     expect(savedBody).toEqual({ ...terminationDefault, value, source: 'tenant', revision: 1 });
-    expect(parseTerminationReceipt(savedBody, 0)).toEqual({ id: terminationDefault.key });
-    expect(() => parseTerminationReceipt(savedBody, 1)).toThrow();
+    expect(verifyReceipt(savedBody, 0, value)).toEqual({ id: terminationDefault.key });
+    expect(() => verifyReceipt(savedBody, 1, value)).toThrow();
     const denied = await api.request('PUT', PATH, {
       ...session,
       ifMatch: 1,
