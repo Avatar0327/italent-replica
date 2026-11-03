@@ -5651,7 +5651,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/record-events.ts#eventColumns': ['#TIMELINE_ALIAS'],
   'apps/api/src/modules/employment/record-events.ts#recordEventDueSql': ['#RECORD_CREATE_EVENT', '#eventColumns'],
-  'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness': ['#bumpEmploymentEmployee'],
+  'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness': [
+    'apps/api/src/modules/approval/dashboard-date.ts#employmentDashboardDate',
+    'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate',
+    '#bumpEmploymentEmployee',
+    '#rowsOf',
+  ],
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['#camelCase'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
@@ -6052,6 +6057,7 @@ export const GRAPH: Graph = {
     '#shiftRehireDate',
   ],
   'apps/api/src/modules/employment/retire-rehire-waiting.ts#shiftRehireDate': [
+    'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',

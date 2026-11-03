@@ -507,7 +507,6 @@ export const GRAPH: Graph = {
     '#businessRevision',
     '#completedTransferDates',
     '#customValues',
-    '#employmentDashboardDate',
     '#employmentPatch',
     '#employmentTransition',
     '#exitInitiation',
@@ -524,6 +523,7 @@ export const GRAPH: Graph = {
     '#transferProcessCode',
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/dashboard-date.ts#employmentDashboardDate',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
@@ -718,6 +718,13 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
+  ],
+  'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate': [
+    'apps/api/src/modules/approval/context.ts#auditApproval',
+    'apps/api/src/modules/approval/context.ts#emitOutbox',
+    'apps/api/src/modules/approval/context.ts#schedulerAwareContext',
+    'apps/api/src/modules/approval/store.ts#latestInstanceOf',
+    'apps/api/src/modules/approval/store.ts#loadInstance',
   ],
   'apps/api/src/modules/approval/definition-input.ts#approvalTypeOf': [
     'apps/api/src/modules/approval/context.ts#approvalError',
