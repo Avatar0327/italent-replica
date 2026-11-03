@@ -61,7 +61,7 @@ describe('F-351 退休不收加黑字段（DEC-716）', () => {
     });
     expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'RETIREMENT_FIELD_NOT_ALLOWED' });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
-    expect((await x.exitRow(draft.id)).add_to_blacklist).toBe(false);
+    expect((await x.exitRow(draft.id))?.add_to_blacklist).toBe(false);
   });
 
   it('不带加黑字段的直接退休照常生效，且不写黑名单', async () => {
