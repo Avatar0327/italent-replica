@@ -16,6 +16,9 @@
       "status": 403
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
     "invalidId": {
       "code": "FORBIDDEN",
       "error": "be409e90433c",

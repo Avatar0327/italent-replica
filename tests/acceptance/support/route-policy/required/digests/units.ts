@@ -186,9 +186,10 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
     requireSelfServiceButtons: '7f698f21231d',
-    selfAccess: '167baf5a1553',
+    selfAccess: 'b01b7eb6a4ad',
   },
   'apps/api/src/modules/employee-self-service/application-access.ts': {
+    applicationForm: '8bd2b35c784c',
     requireApplicationAccess: '0be1452afd0b',
   },
   'apps/api/src/modules/employee-self-service/application-routes.ts': {
@@ -212,14 +213,15 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/employee-self-service/queries.ts': {
     ownApplication: 'a4a35b04bb32',
-    ownApplications: '5970102fd885',
+    ownApplications: 'bbb7813e158e',
   },
   'apps/api/src/modules/employee-self-service/references.ts': {
     referenceChoices: 'e1a63cdaad1f',
   },
   'apps/api/src/modules/employee-self-service/routes.ts': {
+    readSelfApplication: '871912d0e2ad',
     'route:GET /applications': '81886943ad47',
-    'route:GET /applications/:id': 'bd959a15f2df',
+    'route:GET /applications/:id': '5e26795265eb',
     'route:GET /development-channel': 'a16d08080fc3',
     'route:GET /employees/:id/development-channel': '5f30168dc69b',
     'route:GET /employees/:id/records': '5c144ecc6adf',
@@ -1977,7 +1979,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/duty-transfer/service.ts#submitMenuTransfer': 'aee8a9ded615',
   'apps/api/src/modules/employee-self-service/access.ts#boundEmployee': '107479715613',
   'apps/api/src/modules/employee-self-service/access.ts#requireSelfServiceButtons': 'ea35ebbfdbae',
-  'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '470ddfbdca4f',
+  'apps/api/src/modules/employee-self-service/access.ts#selfAccess': '09540a596503',
+  'apps/api/src/modules/employee-self-service/application-access.ts#applicationForm': 'ea116acde9ec',
   'apps/api/src/modules/employee-self-service/application-access.ts#requireApplicationAccess': '2fab7274a816',
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /exit-requests/:id': '5081d49b56ff',
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /exit-requests/form': '42221f66bf20',
@@ -1999,8 +2002,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': '8a95f51afdbb',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': 'd2e565abc9a5',
   'apps/api/src/modules/employee-self-service/references.ts#referenceChoices': '5ed5d8993877',
+  'apps/api/src/modules/employee-self-service/routes.ts#readSelfApplication': '6fc3bff2ccf9',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications': '7832704e4a79',
-  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications/:id': '76b9661a14a9',
+  'apps/api/src/modules/employee-self-service/routes.ts#route:GET /applications/:id': '488d2a1b4145',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /development-channel': 'f59babe60074',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/development-channel': 'b856b8a50770',
   'apps/api/src/modules/employee-self-service/routes.ts#route:GET /employees/:id/records': '8ad2fdc94082',
