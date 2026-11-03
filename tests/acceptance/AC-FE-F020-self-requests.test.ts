@@ -83,9 +83,9 @@ afterEach(() => vi.unstubAllGlobals());
 for (const kind of ['exit', 'partTime'])
   for (const action of ['create', 'edit', 'submit']) {
     it(`AC-FE-F020 ${kind}/${action} 结果未知同路径同内容同版本同键重放`, async () => {
-      const path =
-        `/api/tenant/self-service/${kind === 'exit' ? 'exit' : 'part-time'}-requests` +
-        (action === 'create' ? '' : `/draft${action === 'submit' ? '/submit' : ''}`);
+      const collection = `/api/tenant/self-service/${kind === 'exit' ? 'exit' : 'part-time'}-requests`;
+      const target = action === 'submit' ? '/draft/submit' : '/draft';
+      const path = collection + (action === 'create' ? '' : target);
       const api = createApiClient(() => ({ tenantId: 'tenant', identityKey: 'identity' }));
       const store = createFormStore();
       const calls: { path: string; body: string; revision: string | null; key: string | null }[] = [];

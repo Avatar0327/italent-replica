@@ -120,7 +120,8 @@ function writeSelfRequest(route: Route, world: World) {
     revision: req.headers()['if-match'],
     key: req.headers()['idempotency-key'],
   });
-  const action = url.pathname === path ? 'create' : url.pathname.endsWith('/submit') ? 'submit' : 'edit';
+  let action = url.pathname.endsWith('/submit') ? 'submit' : 'edit';
+  if (url.pathname === path) action = 'create';
   const key = req.headers()['idempotency-key']!;
   if (receipts.has(key)) return route.fulfill({ status: action === 'create' ? 201 : 200, json: receipts.get(key) });
   if (recovery && !conflicts.has(action)) {
