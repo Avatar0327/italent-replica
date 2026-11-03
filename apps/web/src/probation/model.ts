@@ -308,9 +308,11 @@ export function temporaryOf(raw: unknown): Temporary | undefined {
     names: result && name ? { [result]: name } : {},
   };
 }
-/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，没填的项写 null。 */
+/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，可编辑但没填的项写 null；无编辑权的日期保持省略。 */
 export const temporaryBody = (values: Values): Values => ({
-  effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null,
+  ...(Object.hasOwn(values, 'effectiveDate')
+    ? { effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null }
+    : {}),
   probationResult: typeof values.probationResult === 'string' && values.probationResult ? values.probationResult : null,
 });
 /** 暂存回执：员工一致、revision 比提交时大，返回新的暂存 revision。 */
