@@ -7,7 +7,7 @@
     "contract-board": 2,
     "contracts": 25,
     "duty-transfer": 5,
-    "employment": 176,
+    "employment": 177,
     "establishment": 16,
     "evaluation": 34,
     "hr-analysis": 2,
@@ -37,5 +37,5 @@
     "talent-review-platform": 1,
     "tenant-settings": 3
   },
-  "total": 843
+  "total": 844
 }

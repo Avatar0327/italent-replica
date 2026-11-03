@@ -17,9 +17,10 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { pageQuery, readPageContext, uuidParam } from './context.js';
+import { pageQuery, readContext, readPageContext, uuidParam } from './context.js';
 import { resolveDepartmentIds, type ExitViewFilter } from './exit-queries.js';
 import { day, parse, requireViewableExitFilters, viewableIn } from './exit-routes.js';
+import { inFlightApplications } from './exit-gate.js';
 import { normalizedUuid } from './fields.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import {
@@ -31,6 +32,7 @@ import {
 } from './retirement-views.js';
 
 const FALLBACK_UPCOMING_DAYS = 30;
+const IN_FLIGHT_STATES = ['draft', 'in_review', 'approved', 'rejected'] as const;
 
 const viewQuery = z.object({
   view: z.enum([...RETIREMENT_VIEWS, RETIREMENT_CANCELLED_VIEW]),
@@ -53,7 +55,24 @@ async function upcomingDaysOf(requested: number | undefined, read: () => Promise
   return typeof configured === 'number' ? configured : FALLBACK_UPCOMING_DAYS;
 }
 
+function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // F-410：员工当前在途的退休单（草稿 / 审批中 / 已批准 / 已驳回，与互斥门禁同一集合）；没有则 item 为 null。
+  // 入口以此接续草稿，不再只信页面缓存（DEC-727）。员工范围外与不存在同一个 404；单据内容走详情同一裁剪。
+  router.get('/retirements/employees/:id/in-flight', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.view', 0, id);
+    const detail = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const [flight] = await inFlightApplications(tx, ctx, id, ['retirement'], IN_FLIGHT_STATES, null);
+      return flight ? loadRetirementDetail(tx, ctx.tenantId, flight.id, ctx.scope) : null;
+    });
+    if (!detail) return c.json({ item: null });
+    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
+    return c.json({ item: trimRetirementDetail(detail, await viewableIn(deps, ctx)) });
+  });
+}
+
 export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerRetirementInFlight(router, deps);
   router.get('/retirements', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
     const query = parse(viewQuery, {

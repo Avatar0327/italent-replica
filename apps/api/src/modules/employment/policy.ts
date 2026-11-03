@@ -2014,6 +2014,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.retirementViews'),
   }),
+  // F-410：员工在途退休单（草稿 / 审批中 / 已批准 / 已驳回）；readContext(object.view) 按员工范围先行，范围外 / 不存在同一个 404，
+  // 没有在途退休单 → { item: null }；有则走详情同一字段裁剪
+  'GET /retirements/employees/:id/in-flight': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('在途查询无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
+    fields: projector('employment.response', 'employment.retirementDetail'),
+    ...byId,
+  }),
   // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
   'GET /retirements/:id': object({
     object: EMPLOYMENT,
