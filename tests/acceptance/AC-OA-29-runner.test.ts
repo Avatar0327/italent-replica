@@ -570,3 +570,161 @@ describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
     ]);
   });
 });
+
+/**
+ * 分页执行的步间提交回执（F-409）。executor 每页把 employment_done +1 并返回 'pending'，满 pages 页后 'done'；
+ * 页进度与本页写入同一事务提交，所以“进度已前进”即“该页已落库”。
+ * 第 armAt 页的执行事务按 mode 出事：lose = 已提交但调用方收到错误；rollback = 回调跑完后提交失败、整页回滚；
+ * lose-blind = 已提交且紧随的复核事务也失败（无法判定）。
+ */
+describe('AC-OA-29 分页中间页提交回执丢失（F-409）', () => {
+  type Mode = 'lose' | 'rollback' | 'lose-blind';
+  async function pagedWorld(label: string, mode: Mode, armAt = 2, repeat = 1) {
+    const world = await runnerWorld(label);
+    const a = await world.w.org('A');
+    const { adjustment, groups } = await world.scheduledAdjustment([a.id]);
+    const flags = { lose: false, rollback: false, blockNext: 0 };
+    const flaky = new Proxy(world.db, {
+      get(target, key, receiver) {
+        if (key !== 'transaction') return Reflect.get(target, key, receiver);
+        return async (callback: (tx: unknown) => Promise<unknown>, ...rest: unknown[]) => {
+          if (flags.blockNext > 0) {
+            flags.blockNext--;
+            throw new Error('数据库连接已断开');
+          }
+          const guarded = async (tx: unknown) => {
+            const out = await callback(tx);
+            if (flags.rollback) {
+              flags.rollback = false;
+              throw new Error('提交失败，整页回滚');
+            }
+            return out;
+          };
+          const out = await (target.transaction as (...a: unknown[]) => Promise<unknown>)(guarded, ...rest);
+          if (!flags.lose) return out;
+          flags.lose = false;
+          throw new Error('提交回执丢失');
+        };
+      },
+    });
+    const pages = 3;
+    const seen: number[] = [];
+    let armed = 0;
+    const executor: GroupExecutor = async (tx, { group }) => {
+      const [row] = resultRows<{ employment_done: number }>(
+        await tx.execute(sql`SELECT employment_done FROM org_adjustment_org_items
+          WHERE tenant_id=${world.tenant.id} AND id=${group.id}::uuid`),
+      );
+      const done = row!.employment_done;
+      seen.push(done);
+      if (done >= pages) return 'done';
+      await tx.execute(sql`UPDATE org_adjustment_org_items SET employment_done=employment_done+1
+        WHERE tenant_id=${world.tenant.id} AND id=${group.id}::uuid`);
+      if (done + 1 === armAt && armed < repeat) {
+        armed++;
+        if (mode === 'rollback') flags.rollback = true;
+        else flags.lose = true;
+        if (mode === 'lose-blind') flags.blockNext = 1;
+      }
+      return 'pending';
+    };
+    const run = () => {
+      world.advance(1000);
+      return runOrgAdjustmentTenant(flaky, world.tenant, world.clock, { holderToken: 'p', executors: { 2: executor } });
+    };
+    const attempts = async () =>
+      (
+        await tableRows<{ attempts: number }>(world.db, world.tenant.id, 'org_adjustment_group_attempts', adjustment.id)
+      ).map((row) => row.attempts);
+    const progress = async () =>
+      (
+        await tableRows<{ employment_done: number }>(
+          world.db,
+          world.tenant.id,
+          'org_adjustment_org_items',
+          adjustment.id,
+        )
+      )
+        .map((row) => row.employment_done)
+        .join();
+    const actions = async () =>
+      (await executionAudits(world.db, world.tenant.id, adjustment.id)).map((row) =>
+        row.action.replace('org-adjustment.execution.', ''),
+      );
+    return { world, adjustment, group: groups[0]!, run, attempts, progress, actions, seen };
+  }
+
+  it('中间页已落库但回执丢失：重查进度已前进，按成功续跑，同一刻跑完，不计失败、不重复写页', async () => {
+    const { world, adjustment, group, run, attempts, progress, actions, seen } = await pagedWorld(
+      'oa29-page-lost',
+      'lose',
+    );
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(seen, '第 2 页只执行一次，其后接第 3 页与收尾').toEqual([0, 1, 2, 3]);
+    expect(await progress(), '三页各写一次').toBe('3');
+    expect(await attempts(), '回执丢失不是失败：不计次').toEqual([]);
+    expect(await actions()).not.toContain('group.retry');
+    expect((await itemResults(world.db, world.tenant.id, adjustment.id)).get(group)).toMatchObject({
+      execution_result: 1,
+      exec_phase: 2,
+    });
+    expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, success_count: 1, failure_count: 0 });
+    expect(await world.pauses(adjustment.id)).toEqual([]);
+  });
+
+  it('中间页回执丢失且未落库（提交回滚）：按既有重试计次，下一刻重做该页后成功', async () => {
+    const { world, adjustment, run, attempts, progress, actions, seen } = await pagedWorld(
+      'oa29-page-rollback',
+      'rollback',
+    );
+    expect((await run()).stopped).toBe('retry');
+    expect(await progress(), '第 2 页已回滚').toBe('1');
+    expect(await attempts()).toEqual([1]);
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(seen, '第 2 页重做一次').toEqual([0, 1, 1, 2, 3]);
+    expect(await progress()).toBe('3');
+    expect(await attempts()).toEqual([1]);
+    expect((await actions()).filter((action) => action === 'group.retry')).toHaveLength(1);
+    expect(await world.state(adjustment.id)).toMatchObject({ success_count: 1, failure_count: 0 });
+  });
+
+  it('中间页每次都回滚：按既有上限 5 次记 EXECUTION_ERROR，不因回执判定多算或少算', async () => {
+    const { world, adjustment, group, run, attempts, seen } = await pagedWorld('oa29-page-cap', 'rollback', 2, 99);
+    for (let tick = 1; tick < 5; tick++) expect((await run()).stopped, `第 ${tick} 刻`).toBe('retry');
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(seen, '第 1 页一次 + 第 2 页 5 次').toEqual([0, 1, 1, 1, 1, 1]);
+    expect(await attempts()).toEqual([5]);
+    expect((await itemResults(world.db, world.tenant.id, adjustment.id)).get(group)).toMatchObject({
+      execution_result: 2,
+      execution_reason: 'EXECUTION_ERROR',
+    });
+  });
+
+  it('中间页回执丢失且无法判定落库结果：待确认，停在该页，不计失败也不记失败；下一刻按进度续跑', async () => {
+    const { world, adjustment, group, run, attempts, progress, actions, seen } = await pagedWorld(
+      'oa29-page-unknown',
+      'lose-blind',
+    );
+    // 基线：复核事务失败的错误直接从运行器抛出（落入计次分支）；应改为本刻平稳停下并报待确认。
+    await expect(run(), '待确认：本刻停在该页').resolves.toEqual({
+      claimed: true,
+      completed: [],
+      stopped: 'unconfirmed',
+    });
+    expect(seen, '没有继续下一页').toEqual([0, 1]);
+    expect(await progress(), '第 2 页其实已落库').toBe('2');
+    expect(await attempts(), '不计失败').toEqual([]);
+    expect(await actions()).not.toContain('group.retry');
+    expect(await actions()).not.toContain('group.failed');
+    expect((await itemResults(world.db, world.tenant.id, adjustment.id)).get(group)).toMatchObject({
+      execution_result: null,
+      exec_phase: 0,
+    });
+
+    expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
+    expect(seen, '从已落库的进度续跑，第 2 页不重复写').toEqual([0, 1, 2, 3]);
+    expect(await progress()).toBe('3');
+    expect(await attempts()).toEqual([]);
+    expect(await world.state(adjustment.id)).toMatchObject({ success_count: 1, failure_count: 0 });
+  });
+});
