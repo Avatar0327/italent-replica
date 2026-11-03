@@ -190,6 +190,21 @@ describe('DEC-089 组织排序号预计算', () => {
     expect((await w.list()).find((item) => item.id === eb)?.organizationSortNumber).toBe(3);
   });
 
+  it('F-441 负数顺序号按数值排序：员工名次与顺序号大小一致，NULL 排最后', async () => {
+    const w = await world(database().db, 'rank-negative');
+    // 字符串比较会把 -1 排在 -5 前面；预览与组织列表按数值比较，名次必须同口径
+    const sequences = [3, -1, 0, -5, null] as const;
+    const orgs = [];
+    for (const sequence of sequences) orgs.push(await w.org(`序${sequence}`, undefined, sequence ?? undefined));
+    const ids: string[] = [];
+    for (const org of orgs) ids.push(await w.employee(`员${org.id.slice(0, 4)}`, { departmentId: org.id }));
+    const expected = [3, 1, 2, 0, 4].map((index) => ids[index]!); // -5, -1, 0, 3, null
+    expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual(expected);
+    const shown = await w.list();
+    const rank = (index: number) => shown.find((item) => item.id === ids[index])!.organizationSortNumber!;
+    expect([3, 1, 2, 0, 4].map(rank)).toEqual([...[3, 1, 2, 0, 4].map(rank)].sort((a, b) => a - b));
+  });
+
   it('调整组织顺序号与上级：名次随之刷新，列表取值与排序一致', async () => {
     const w = await world(database().db, 'rank-move');
     const a = await w.org('A部门', undefined, 2);
