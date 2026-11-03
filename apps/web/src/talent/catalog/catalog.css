@@ -194,3 +194,66 @@
   color: #ff4d4f;
   margin-right: 4px;
 }
+
+.catalog-overview-tree {
+  padding: 32px 0;
+  overflow-x: auto;
+}
+.catalog-overview-root {
+  position: relative;
+  width: 150px;
+  padding: 12px;
+  margin: 0 auto;
+  border-radius: 6px;
+  background: #eef2f5;
+  text-align: center;
+}
+.catalog-overview-root::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  height: 24px;
+  border-left: 1px solid var(--shell-border);
+}
+.catalog-overview-tree ul {
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.catalog-overview-tree li {
+  position: relative;
+  padding: 0 20px;
+}
+.catalog-overview-tree li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border-top: 1px solid var(--shell-border);
+}
+.catalog-overview-tree li:first-child::before {
+  left: 50%;
+  width: 50%;
+}
+.catalog-overview-tree li:last-child::before {
+  width: 50%;
+}
+.catalog-overview-tree li:only-child::before {
+  display: none;
+}
+.catalog-overview-connector {
+  height: 60px;
+  width: 0;
+  margin: auto;
+  border-left: 1px solid var(--shell-border);
+}
+.catalog-overview-tree article {
+  width: 200px;
+  margin: 0;
+}

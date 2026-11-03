@@ -85,7 +85,7 @@ export function ResourceDetail({
           <PageState kind="error" error={state.error} />
         ) : !row ? (
           <PageState kind="loading" />
-        ) : (
+        ) : resource.key === 'criteria' ? null : (
           <Descriptions
             column={2}
             items={resource.fields
@@ -141,20 +141,7 @@ function CriterionDetails({ row }: { row: Row }) {
                   <Button disabled>{m.modelSettings}</Button>
                 </section>
               )}
-              {type === 'ability' && data.length > 0 && (
-                <div className="catalog-overview">
-                  <h2>{m.abilityOverview}</h2>
-                  {data.map((item) => (
-                    <article key={String(item.dimensionId)}>
-                      <h3>{display(item.name)}</h3>
-                      <p>{display(item.definition)}</p>
-                      <span>
-                        {m.weight}：{display(item.weight)}
-                      </span>
-                    </article>
-                  ))}
-                </div>
-              )}
+              {type === 'ability' && data.length > 0 && <AbilityOverview data={data} />}
               {type !== 'achievement' && (
                 <section className="catalog-indicators">
                   <h2>{m[type]}</h2>
@@ -184,6 +171,31 @@ function CriterionDetails({ row }: { row: Row }) {
         };
       })}
     />
+  );
+}
+
+function AbilityOverview({ data }: { data: Record<string, unknown>[] }) {
+  return (
+    <section className="catalog-overview">
+      <h2>{m.abilityOverview}</h2>
+      <div className="catalog-overview-tree">
+        <div className="catalog-overview-root">{m.abilityRoot}</div>
+        <ul>
+          {data.map((item) => (
+            <li key={String(item.dimensionId)}>
+              <div className="catalog-overview-connector" aria-hidden="true" />
+              <article>
+                <h3>{display(item.name)}</h3>
+                <p>{display(item.definition)}</p>
+                <span>
+                  {m.weight}：{display(item.weight)}
+                </span>
+              </article>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -234,6 +246,11 @@ function criterionColumns(type: string) {
           )}
         </Space>
       ),
+    },
+    {
+      key: 'settings',
+      width: 24,
+      title: <Button className="catalog-column-settings" aria-label={m.columnSettings} disabled />,
     },
   ];
 }

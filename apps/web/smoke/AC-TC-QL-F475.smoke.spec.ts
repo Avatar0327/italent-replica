@@ -328,7 +328,7 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
   await page.goto('/qualification?view=standards');
   await page.getByRole('button', { name: '合成资格标准', exact: true }).click();
   const detail = page.locator('.catalog-detail-page');
-  await expect.soft(detail.locator('header').getByRole('button')).toHaveText(['返回', '编辑基本信息', '查看图谱']);
+  await expect.soft(detail.locator('header').getByRole('button')).toHaveText([/返\s*回/, '编辑基本信息', '查看图谱']);
   await expect.soft(detail.getByRole('heading', { name: '任职级别', exact: true })).toBeVisible();
   await expect.soft(detail.getByRole('textbox', { name: '搜索任职级别', exact: true })).toBeDisabled();
   for (const name of ['合成一级', '合成二级']) {
@@ -352,7 +352,7 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
     await page.goto(`/qualification?view=${view}`);
     await expect
       .soft(page.locator('.page-heading').getByRole('button').filter({ visible: true }))
-      .toHaveText(['引入岗职务', '新建', '导入']);
+      .toHaveText(['引入岗职务', /新\s*建/, /导\s*入/]);
   }
 });
 
@@ -376,8 +376,8 @@ test('F475 P2-4 人才标准新增只标名称红星，分类仍按接口必填�
   expect.soft(markers).toEqual(['名称']);
   await dialog.getByLabel('名称', { exact: true }).fill('合成新标准');
   await actionButton(page, '保存').click();
-  await expect(
-    dialog.locator('.ant-form-item').filter({ has: dialog.getByLabel('分类', { exact: true }) }),
-  ).toContainText('请填写此项');
+  await expect(dialog.locator('.ant-form-item').filter({ has: page.locator('label[for="categoryId"]') })).toContainText(
+    '请填写此项',
+  );
   expect(posts).toBe(0);
 });

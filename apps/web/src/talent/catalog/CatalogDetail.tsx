@@ -21,7 +21,7 @@ export function CatalogDetail(props: {
           </Button>
         </Space>
       </header>
-      <div className="catalog-detail-summary">{props.summary}</div>
+      {props.summary && <div className="catalog-detail-summary">{props.summary}</div>}
       {props.sections.map((section) => (
         <section key={section.key}>{section.children}</section>
       ))}
