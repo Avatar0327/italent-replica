@@ -12,9 +12,12 @@ import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
 const identity = (id: string) => source('identity', id);
 
+/** 同一租户只开通一次管理员（重复开通会撞唯一约束）。 */
+const admins = new WeakMap<RelationWorld, ReturnType<typeof permissionAdmin>>();
+const adminOf = (w: RelationWorld) => admins.get(w) ?? admins.set(w, permissionAdmin(w)).get(w)!;
 /** 建自定义身份并（可选）手工授予若干账号，返回身份与各授权行。 */
 async function profileWith(w: RelationWorld, code: string, users: string[]) {
-  const admin = await permissionAdmin(w);
+  const admin = await adminOf(w);
   const profile = await createProfile(admin, `${code}${randomUUID().slice(0, 8)}`);
   await makeGrantable(admin, [profile.id]);
   const grants: { id: string; revision: number }[] = [];
@@ -78,7 +81,7 @@ describe('AC-APV-F380 身份展开', () => {
   it('D5 身份取全部成员而交接 HR 管理员命名值仍只取第一人', async () => {
     const w = await relationWorld(database().db, 'f380-hr-admin');
     const hr = await standardProfile(w, 'standard_hr_admin');
-    const admin = await permissionAdmin(w);
+    const admin = await adminOf(w);
     await makeGrantable(admin, [hr]);
     for (const user of [w.head.userId, w.near.userId]) expect((await grant(admin, user, hr)).status).toBe(201);
     expect(await resolved(w, identity(hr))).toHaveLength(2);
@@ -145,7 +148,7 @@ describe('AC-APV-F380 身份展开', () => {
     const found = await listed.json();
     expect(found.items.map((item: { id: string }) => item.id)).toEqual([mine.profile.id]);
     expect(Object.keys(found.items[0]).sort()).toEqual(['enabled', 'id', 'name', 'parentId']);
-    const keyword = await (await get(`keyword=${encodeURIComponent(mine.profile.name)}`)).json();
+    const keyword = await (await get(`keyword=${encodeURIComponent(`身份${mine.profile.code}`)}`)).json();
     expect(keyword.items.map((item: { id: string }) => item.id)).toContain(mine.profile.id);
     expect((await get('pageSize=1')).status).toBe(200);
   });
