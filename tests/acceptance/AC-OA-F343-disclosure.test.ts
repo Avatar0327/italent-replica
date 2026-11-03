@@ -18,6 +18,13 @@ import { resultRows } from './AC-ORG-people-support.js';
 
 const testDb = useTestDb();
 
+/** 隐藏行汇总的固定形状：不带 itemId / orgId / 原因明细，也不带任何可表示隐藏行数量的字段（F-339 ②）。 */
+const HIDDEN_SUMMARY = {
+  section: 'org',
+  reason: 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID',
+  message: '有无权查看的明细行未通过校验',
+};
+
 /** 范围甲下有下级；一条可见行（甲）与一条隐藏行（下级，组织对象范围只含甲）。 */
 async function hiddenWorld(label: string) {
   const w = await itemsWorld(testDb().db, label);
@@ -192,12 +199,35 @@ describe('F-343 ⑤ 缩小调整范围的 400 不带出看不到的明细 / 组�
     expect(text).not.toContain(hidden);
     const { details } = (await bodyOf(res)).error as unknown as { details: { items: Record<string, unknown>[] } };
     expect(details.items.find((item) => item.itemId === visible)).toMatchObject({ orgId: w.a });
-    expect(details.items.find((item) => item.itemId === undefined)).toMatchObject({
-      section: 'org',
-      reason: 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID',
-      hiddenRowCount: 1,
-    });
+    expect(details.items.find((item) => item.itemId === undefined)).toEqual(HIDDEN_SUMMARY);
+    expect(text).not.toContain('hiddenRowCount');
     expect((await w.stored(view.id))!.revision).toBe(3);
+  });
+
+  it('隐藏失败行 1 个与 2 个：400 里的汇总同形，不含 hiddenRowCount / itemId / orgId', async () => {
+    const shapes: unknown[] = [];
+    for (const [label, extra] of [
+      ['f343-narrow-shape-one', 0],
+      ['f343-narrow-shape-two', 1],
+    ] as const) {
+      const { w, view, child, visible, hidden } = await narrowWorld(label);
+      const extraHidden: string[] = [];
+      for (let i = 0; i < extra; i += 1) {
+        extraHidden.push((await w.item(view.id, rename(await w.org(`下级${randomUUID()}`, w.a)))).items.at(-1)!.id);
+      }
+      w.access.org = only(w.a, w.b);
+      const res = await w.patch(view.id, { adjustmentRange: [w.b] }, 3 + extra);
+      await expectError(res, 400, 'VALIDATION_FAILED', 'ORG_ADJUSTMENT_OUT_OF_RANGE');
+      const text = JSON.stringify(await bodyOf(res));
+      for (const id of [child, hidden, ...extraHidden]) expect(text).not.toContain(id);
+      expect(text).not.toContain('hiddenRowCount');
+      const { details } = (await bodyOf(res)).error as unknown as { details: { items: Record<string, unknown>[] } };
+      const summaries = details.items.filter((item) => item.reason === 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID');
+      expect(summaries).toEqual([HIDDEN_SUMMARY]);
+      expect(details.items.at(-1)).toEqual(HIDDEN_SUMMARY);
+      shapes.push([summaries, details.items.filter((item) => item !== summaries[0]).map((i) => i.itemId === visible)]);
+    }
+    expect(shapes[1]).toEqual(shapes[0]);
   });
 
   it('字段查看权：看不到 orgItems.targetOrgId → 问题不带 orgId；看得到时原样给出（正向对照）', async () => {

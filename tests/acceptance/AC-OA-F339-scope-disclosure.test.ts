@@ -12,6 +12,13 @@ import { type CheckResult, itemsWorld, stop } from './AC-OA-items-support.js';
 
 const testDb = useTestDb();
 
+/** 隐藏行汇总的固定形状：不带 itemId / orgId / 原因明细，也不带任何可表示隐藏行数量的字段（F-339 ②）。 */
+const HIDDEN_SUMMARY = {
+  section: 'org',
+  reason: 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID',
+  message: '有无权查看的明细行未通过校验',
+};
+
 describe('F-339 ① 命令重放回执按当前组织范围复核', () => {
   it('创建：范围不变时重放得首次结果；调整范围移出组织范围后重放 404，且不披露回执内容', async () => {
     const w = await itemsWorld(testDb().db, 'f339-replay-create');
@@ -54,16 +61,28 @@ describe('F-339 ① 命令重放回执按当前组织范围复核', () => {
 
 describe('F-339 ② 整单校验信封 errors[] 的裁剪', () => {
   /** 范围甲下有下级甲一；停用甲连带甲一，两者在生效日都有编制 → 发起行与连带行各报一条编制关口问题。 */
-  async function stopWorld(label: string, parentCapacity = true) {
+  async function stopWorld(label: string, parentCapacity = true, childCount = 1) {
     const w = await itemsWorld(testDb().db, label);
-    const child = await w.org(`下级${randomUUID()}`, w.a);
+    const children: string[] = [];
+    for (let i = 0; i < childCount; i += 1) {
+      const child = await w.org(`下级${randomUUID()}`, w.a);
+      await w.capacity(child);
+      children.push(child);
+    }
     if (parentCapacity) await w.capacity(w.a);
-    await w.capacity(child);
     const view = await w.created(w.head({ adjustmentRange: [w.a] }));
     const written = await w.item(view.id, stop(w.a));
     const rows = await w.rows(view.id);
-    const cascaded = rows.find((row) => row.target_org_id === child)!;
-    return { w, view, child, startId: written.items[0]!.id, cascadedId: cascaded.id };
+    const cascadedIds = children.map((child) => rows.find((row) => row.target_org_id === child)!.id);
+    return {
+      w,
+      view,
+      child: children[0]!,
+      children,
+      startId: written.items[0]!.id,
+      cascadedId: cascadedIds[0]!,
+      cascadedIds,
+    };
   }
   const errorsOf = async (w: Awaited<ReturnType<typeof stopWorld>>['w'], id: string) =>
     (await (await w.check(id)).json()) as CheckResult;
@@ -86,11 +105,26 @@ describe('F-339 ② 整单校验信封 errors[] 的裁剪', () => {
     expect(text).not.toContain(cascadedId);
     expect(trimmed.errors.find((e) => e.itemId === startId)).toMatchObject({ orgId: w.a });
     expect(trimmed.errors.filter((e) => e.itemId === startId || e.itemId === undefined)).toHaveLength(2);
-    expect(trimmed.errors.find((e) => e.itemId === undefined)).toMatchObject({
-      section: 'org',
-      reason: 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID',
-      hiddenRowCount: 1,
-    });
+    expect(trimmed.errors.find((e) => e.itemId === undefined)).toEqual(HIDDEN_SUMMARY);
+  });
+
+  it('隐藏失败行 1 个与 2 个：汇总同形（不含 hiddenRowCount / itemId / orgId），可见行问题的相对顺序不变', async () => {
+    const one = await stopWorld('f339-check-shape-one', true, 1);
+    const two = await stopWorld('f339-check-shape-two', true, 2);
+    const shapes: unknown[][] = [];
+    for (const world of [one, two]) {
+      world.w.access.org = only(world.w.a);
+      const trimmed = await errorsOf(world.w, world.view.id);
+      const text = JSON.stringify(trimmed);
+      for (const id of [...world.children, ...world.cascadedIds]) expect(text).not.toContain(id);
+      expect(text).not.toContain('hiddenRowCount');
+      const summaries = trimmed.errors.filter((e) => e.reason === 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID');
+      expect(summaries).toEqual([HIDDEN_SUMMARY]);
+      expect(trimmed.errors.at(-1)).toEqual(HIDDEN_SUMMARY);
+      const visible = trimmed.errors.filter((e) => e.reason !== 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID');
+      shapes.push([summaries, visible.map((e) => [e.itemId === world.startId, e.orgId === world.w.a])]);
+    }
+    expect(shapes[1]).toEqual(shapes[0]);
   });
 
   it('只有隐藏行有问题 → valid 仍为 false，errors 只有汇总一条', async () => {
@@ -99,7 +133,7 @@ describe('F-339 ② 整单校验信封 errors[] 的裁剪', () => {
     const trimmed = await errorsOf(w, view.id);
     expect(trimmed.valid).toBe(false);
     expect(trimmed.errors).toHaveLength(1);
-    expect(trimmed.errors[0]).toMatchObject({ reason: 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID', hiddenRowCount: 1 });
+    expect(trimmed.errors[0]).toEqual(HIDDEN_SUMMARY);
     expect(JSON.stringify(trimmed)).not.toContain(child);
   });
 
