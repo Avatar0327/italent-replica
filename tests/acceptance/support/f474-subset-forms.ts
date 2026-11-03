@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect } from 'vitest';
-import { act, h, permission, uiHarness } from './f474-ui.js';
+import { act, h, permission, type uiHarness } from './f474-ui.js';
 const { SubsetCreate, SubsetRowCommands } = await import(resolve('apps/web/src/personnel/EditCommands.tsx'));
 // 独立列举本批已排序、已有接口支持的普通字段；附件和系统字段继续排除。
 export const subsetFormFields: Record<string, string[]> = {
