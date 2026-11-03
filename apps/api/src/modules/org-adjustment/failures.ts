@@ -3,7 +3,7 @@
  * 只列满足全部条件的行，其余一律不出现（不出现“有隐藏行”的计数，姓名 / 原因 / 说明也不经别处露出）：
  * ① 查看人走 HR 路径，且对任职记录对象有查看权（审批人路径没有员工范围，fail-closed 不列）；
  * ② 失败所属明细行对查看人可见（沿用 `visibleItems`，组织分区字段全不披露时整体不列）；
- * ③ 员工在查看人的任职记录数据范围内（沿用 DEC-177 的 `visibleEmploymentRecords`，范围为空一律不可见）。
+ * ③ 记录部门或员工当前任职部门在范围内（沿用 DEC-177 的 `visibleEmploymentRecords`，范围为空一律不可见）。
  */
 import { sql, type Tx } from '@italent/db';
 import { rowsOf } from '../org/read-model.js';
@@ -40,6 +40,7 @@ export async function readEmploymentFailures(
   const { items } = visibleItems(disclosure, await loadItems(tx, ctx.tenantId, adjustmentId));
   if (!items.length) return [];
   const seqOf = new Map(items.map((item) => [item.id, item.seq]));
+  const departmentOf = new Map(items.map((item) => [item.id, item.targetOrgId]));
   const rows = rowsOf<FailureRow>(
     await tx.execute(sql`SELECT f.item_id AS "itemId", f.employee_id AS "employeeId", e.code AS "employeeCode",
         e.name AS "employeeName", f.reason, f.message
@@ -50,7 +51,10 @@ export async function readEmploymentFailures(
   );
   if (!rows.length) return [];
   const scope = await resolveModuleScopeInTransaction(bound, ctx, tx, EMPLOYMENT_OBJECT);
-  const targets = rows.map((row) => ({ employeeId: row.employeeId, departmentId: null }));
+  const targets = rows.map((row) => ({
+    employeeId: row.employeeId,
+    departmentId: departmentOf.get(row.itemId) ?? null,
+  }));
   const visible = await visibleEmploymentRecords(tx, ctx.tenantId, scope, targets);
   return rows
     .filter((_, index) => visible[index])
