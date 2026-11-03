@@ -116,6 +116,11 @@ function withResumed<G extends { fields: FormField[] }>([first, ...rest]: G[], d
   };
   return first ? [{ ...first, fields: [notice, ...first.fields] }, ...rest] : rest;
 }
+function jobFormClass(kind: JobKind, original?: JobRow) {
+  // 本批只验证六类新建弹窗；编辑、职层和专业条线保持既有布局。
+  if (original || kind === 'layers' || kind === 'professional-lines') return undefined;
+  return kind === 'posts' || kind === 'positions' ? 'job-form' : 'job-form job-form-single';
+}
 export function JobEditor(props: EditorProps) {
   const { kind, original, access } = props;
   const record = useJobCommand(props);
@@ -147,7 +152,7 @@ export function JobEditor(props: EditorProps) {
   return (
     <FormOverlay
       mode="modal"
-      className={kind === 'posts' || kind === 'positions' ? 'job-form' : 'job-form job-form-single'}
+      className={jobFormClass(kind, original)}
       recordKey={original?.id ?? 'new'}
       submission={record.command}
       open
