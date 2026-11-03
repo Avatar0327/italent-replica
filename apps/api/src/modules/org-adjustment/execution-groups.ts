@@ -34,21 +34,30 @@ export interface AdjustmentHead {
   readonly subject: string;
   readonly effectiveDate: string;
   readonly createdBy: string;
+  readonly subjectOrgId: string;
 }
 
 export type ExecutionOutcome = 'done' | 'pending';
 
+export interface GroupInput {
+  readonly tenantId: string;
+  readonly timezone: string;
+  readonly now: Date;
+  readonly adjustment: AdjustmentHead;
+  /** 本事务内重读的组快照（F-341）：exec_phase / 执行结果是本次调用前的最新值。 */
+  readonly group: ExecutionGroup;
+  readonly commandId: string;
+}
+
 /** 明细执行器：在 fenced 组事务内写入；'pending' 表示分页未完（§7.5），运行器另起事务再调。 */
-export type GroupExecutor = (
-  tx: Tx,
-  input: { readonly adjustment: AdjustmentHead; readonly group: ExecutionGroup; readonly commandId: string },
-) => Promise<ExecutionOutcome>;
+export type GroupExecutor = (tx: Tx, input: GroupInput) => Promise<ExecutionOutcome>;
 
 export type GroupExecutors = Partial<Record<ExecutionItem['adjustType'], GroupExecutor>>;
 
 export async function loadAdjustmentHead(tx: Tx, tenantId: string, id: string): Promise<AdjustmentHead> {
   const [row] = rowsOf<AdjustmentHead>(
-    await tx.execute(sql`SELECT id, code, subject, effective_date::text AS "effectiveDate", created_by AS "createdBy"
+    await tx.execute(sql`SELECT id, code, subject, effective_date::text AS "effectiveDate", created_by AS "createdBy",
+        approval_subject_org_id AS "subjectOrgId"
       FROM org_adjustments WHERE tenant_id=${tenantId} AND id=${id}::uuid`),
   );
   return row!;
