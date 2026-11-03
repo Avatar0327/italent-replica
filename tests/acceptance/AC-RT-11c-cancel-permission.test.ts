@@ -1,7 +1,7 @@
 /**
  * R2-T04 BE-5a′ / AC-RT-11c：撤销权限分离（设计 §6 接线点 2，§3.1 同一函数）。
  * 撤销退休只认 Employment.RetireCancel，撤销离职只认 Employment.DimissionCancel，互不复用；
- * 通用 DELETE 映射、restore、修改撤销原因同样按单据 kind 取按钮；权限链：功能权 → 按钮权 → 范围（范围外 404）。
+ * 通用 DELETE 映射、restore 同样按单据 kind 取按钮；权限链：功能权 → 按钮权 → 范围（范围外 404）。
  */
 import './support/exit-gate-enforced.js';
 import { useTestDb } from '@italent/testkit';
@@ -37,7 +37,6 @@ describe('AC-RT-11c 撤销权限分离', () => {
 
     const allowed = await hr('POST', `/retirements/${retire.id}/cancel`, {
       ifMatch: (await x.business(retire.id)).revision,
-      body: { reason: '撤销' },
     });
     expect(allowed.status, await allowed.clone().text()).toBe(200);
     expect(await x.stateOfBusiness(retire.id)).toBe('voided');
@@ -51,7 +50,6 @@ describe('AC-RT-11c 撤销权限分离', () => {
 
     const denied = await hr('POST', `/retirements/${retire.id}/cancel`, {
       ifMatch: (await x.business(retire.id)).revision,
-      body: { reason: '撤销' },
     });
     expect(denied.status).toBe(403);
     expect(await x.stateOf(x.employee.id)).toEqual(before);
@@ -69,7 +67,6 @@ describe('AC-RT-11c 撤销权限分离', () => {
     const send = async (api: typeof x.session.request) =>
       api('DELETE', `/businesses/${retire.id}`, {
         ifMatch: (await x.business(retire.id)).revision,
-        body: { reason: '撤销' },
       });
     expect((await send(x.restricted(denyButtons('Employment.RetireCancel')))).status).toBe(403);
     expect(await x.stateOfBusiness(retire.id)).toBe('approved');
@@ -78,23 +75,16 @@ describe('AC-RT-11c 撤销权限分离', () => {
     expect(await x.cancellationOf(retire.id)).toMatchObject({ case: 'approved_voided' });
   });
 
-  it('restore 与修改撤销原因：按钮同样是 RetireCancel；范围外 404', async () => {
-    const { x, retire } = await scene('rt11c-restore-patch');
-    const result = await x.retireCancelled(retire.id);
+  it('restore：按钮同样是 RetireCancel；范围外 404（F-351：退休不再有修改撤销原因的入口）', async () => {
+    const { x, retire } = await scene('rt11c-restore');
+    await x.retireCancelled(retire.id);
     const restore = (api: typeof x.session.request) =>
       api('POST', `/retirements/${retire.id}/restore`, { ifMatch: 1, body: {} });
-    const patch = (api: typeof x.session.request) =>
-      api('PATCH', `/retirements/cancellations/${result.cancellation.id}`, { ifMatch: 1, body: { reason: '篡改' } });
 
-    const noRetireCancel = x.restricted(denyButtons('Employment.RetireCancel'));
-    expect((await restore(noRetireCancel)).status).toBe(403);
-    expect((await patch(noRetireCancel)).status).toBe(403);
-    const noDimissionCancel = x.restricted(denyButtons('Employment.DimissionCancel'));
-    expect((await restore(noDimissionCancel)).status).toBe(409);
-    expect((await patch(noDimissionCancel)).status).toBe(200);
+    expect((await restore(x.restricted(denyButtons('Employment.RetireCancel')))).status).toBe(403);
+    expect((await restore(x.restricted(denyButtons('Employment.DimissionCancel')))).status).toBe(409);
     const other = await x.otherUser();
     expect((await restore(x.restricted(denyButtons(), other.id))).status).toBe(404);
-    expect((await patch(x.restricted(denyButtons(), other.id))).status).toBe(404);
   });
 
   it('缺功能权（对象 update）→ 403；范围外 → 404；撤权后同键重放 → 403', async () => {
@@ -102,14 +92,13 @@ describe('AC-RT-11c 撤销权限分离', () => {
     const send = (api: typeof x.session.request, key?: string) =>
       api('POST', `/retirements/${retire.id}/cancel`, {
         ifMatch: 1,
-        body: { reason: '撤销' },
         ...(key ? { idempotencyKey: key } : {}),
       });
     expect((await send(x.restricted((request) => request.action !== 'object.update'))).status).toBe(403);
     const other = await x.otherUser();
     expect((await send(x.restricted(denyButtons(), other.id))).status).toBe(404);
 
-    const first = await x.cancelRetire(retire.id, { reason: '撤销' }, { idempotencyKey: 'rt11c-replay' });
+    const first = await x.cancelRetire(retire.id, {}, { idempotencyKey: 'rt11c-replay' });
     expect(first.status).toBe(200);
     const replay = await send(x.restricted(denyButtons('Employment.RetireCancel')), 'rt11c-replay');
     expect(replay.status).toBe(403);

@@ -1350,27 +1350,6 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
-  "PATCH /api/tenant/employment/retirements/cancellations/:id": {
-    "all": {
-      "code": "NOT_FOUND",
-      "error": "41f5c596716f",
-      "status": 404
-    },
-    "fieldQueries": [],
-    "invalidId": {
-      "code": "VALIDATION_FAILED",
-      "error": "17147722c2a8",
-      "status": 400
-    },
-    "scopeQueries": [
-      "scope:TenantBase/TenantBase.EmploymentRecord/-",
-      "scope:data.scope.all:"
-    ],
-    "trace": [
-      "btn:TenantBase.EmploymentRecord#Employment.RetireCancel@detail",
-      "obj:TenantBase.EmploymentRecord:update"
-    ]
-  },
   "POST /api/tenant/employment/auto-assessment-rules": {
     "all": {
       "code": "VALIDATION_FAILED",

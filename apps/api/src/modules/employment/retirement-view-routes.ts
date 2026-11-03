@@ -18,7 +18,9 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { pageQuery, readPageContext, uuidParam } from './context.js';
-import { day, parse, viewableIn } from './exit-routes.js';
+import { resolveDepartmentIds, type ExitViewFilter } from './exit-queries.js';
+import { day, parse, requireViewableExitFilters, viewableIn } from './exit-routes.js';
+import { normalizedUuid } from './fields.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import {
   listRetirementBills,
@@ -39,6 +41,10 @@ const viewQuery = z.object({
     .transform(Number)
     .refine((days) => days >= RETIREMENT_UPCOMING_DAYS.min && days <= RETIREMENT_UPCOMING_DAYS.max)
     .optional(),
+  // F-351：同离职视图的 departmentId / includeChildren / keyword（参数校验同 exit-routes viewQuery）
+  departmentId: normalizedUuid.optional(),
+  includeChildren: z.enum(['true', 'false']).optional(),
+  keyword: z.string().trim().min(1).max(100).optional(),
 });
 
 async function upcomingDaysOf(requested: number | undefined, read: () => Promise<unknown>) {
@@ -54,12 +60,35 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
       view: c.req.query('view'),
       asOf: c.req.query('asOf'),
       upcomingDays: c.req.query('upcomingDays'),
+      departmentId: c.req.query('departmentId'),
+      includeChildren: c.req.query('includeChildren'),
+      keyword: c.req.query('keyword'),
     });
     const page = pageQuery(c);
     const show = await viewableIn(deps, ctx);
+    const requested: ExitViewFilter = {
+      ...(query.keyword ? { keyword: query.keyword } : {}),
+      ...(query.departmentId ? { departmentIds: [query.departmentId] } : {}),
+    };
+    requireViewableExitFilters(requested, show);
     const asOf = query.asOf ?? tenantLocalDate(ctx.now, ctx.timezone);
     const at = { asOf, timezone: ctx.timezone };
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      // 部门不存在 / 在范围外都只是空结果（范围谓词先行），不单独报错，避免成为部门存在性的探针
+      const filter = {
+        ...(query.keyword ? { keyword: query.keyword } : {}),
+        ...(query.departmentId
+          ? {
+              departmentIds: await resolveDepartmentIds(
+                tx,
+                ctx.tenantId,
+                query.departmentId,
+                query.includeChildren !== 'false',
+                asOf,
+              ),
+            }
+          : {}),
+      };
       if (query.view === 'upcoming' || query.view === 'overdue') {
         const upcomingDays = await upcomingDaysOf(
           query.upcomingDays,
@@ -68,12 +97,12 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
         const persons = await listRetirementPersons(
           tx,
           ctx.tenantId,
-          { view: query.view, at, upcomingDays, page, show },
+          { view: query.view, at, upcomingDays, page, show, filter },
           ctx.scope,
         );
         return { ...persons, ...(query.view === 'upcoming' ? { upcomingDays } : {}) };
       }
-      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show }, ctx.scope);
+      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show, filter }, ctx.scope);
     });
     return c.json({
       ...result,

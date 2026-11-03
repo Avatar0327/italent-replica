@@ -88,7 +88,7 @@ describe('AC-RT-04 通用入口 kind=retirement：经门禁与申请服务', () 
     const colleague = await x.session.employee('交接人');
     const created = await x.createdRetire(
       x.employee.id,
-      retireBody(LATER, 'application', { handoverEmployeeId: colleague.id, addToBlacklist: false }),
+      retireBody(LATER, 'application', { handoverEmployeeId: colleague.id }),
     );
     expect(await x.exitRow(created.id)).toMatchObject({ handover_employee_id: colleague.id, add_to_blacklist: false });
   });

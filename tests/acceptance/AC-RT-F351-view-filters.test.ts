@@ -119,7 +119,15 @@ describe('F-351 退休视图的关键字与部门筛选', () => {
   it('数据范围照旧：范围外的人带筛选也看不到；范围外部门与不存在的部门同一个空结果（同状态同文案）', async () => {
     const w = await world('f351-vf-scope');
     await w.people();
-    const nobody = w.x.restricted(denyButtons(), '00000000-0000-4000-8000-000000000001');
+    const nobody = w.x.restricted(denyButtons(), '00000000-0000-4000-8000-000000000001', [
+      'id',
+      'employeeId',
+      'status',
+      'revision',
+      'name',
+      'code',
+      'departmentId',
+    ]);
     for (const view of ['all', 'upcoming']) {
       const keyword = await w.page(view, '&keyword=张筛', nobody);
       expect(keyword, view).toMatchObject({ items: [], total: 0 });

@@ -1932,15 +1932,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: write('body', none('只读拒绝：没有命令事务，没有提交前足迹'), none('只读拒绝：没有业务响应')),
     ...byId,
   }),
-  'PATCH /retirements/cancellations/:id': object({
-    object: EMPLOYMENT,
-    operation: 'update',
-    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
-    scope: guardScope('employment.exitCancellation', NF_BUSINESS),
-    fields: projector('employment.response', 'employment.exitCancellation'),
-    write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
-    ...byId,
-  }),
   // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
   // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
   // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective

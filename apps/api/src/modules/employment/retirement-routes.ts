@@ -20,12 +20,11 @@ import {
 } from './context.js';
 import { createExitApplication, parseExitPatch, updateExitFields, type ExitPatch } from './exit-application.js';
 import { submitExit } from './exit-batch.js';
-import { rejectRestore, updateCancellationReason } from './exit-cancel.js';
+import { rejectRestore } from './exit-cancel.js';
 import {
   parse,
   day,
   parseExitCreate,
-  requireCancellationOwner,
   requireExitBusiness,
   requirePreviewButton,
   runExitCancel,
@@ -84,7 +83,7 @@ function registerRetirementCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
     const { rawInput, ...rehireInput } = splitRehireOptions(await jsonBody(c));
     const input = parseExitCreate(ctx, rawInput, KIND);
-    const rehire = resolveRehirePlan(ctx, rehireInput, input.lastWorkDate, input.exit);
+    const rehire = resolveRehirePlan(ctx, rehireInput, input.lastWorkDate);
     const departmentId = input.fields.departmentId;
     if (departmentId !== undefined) requireEmploymentScope(ctx, id, departmentId);
     if (rehire) await requireRehireWrite(ctx, id, rehire);
@@ -188,24 +187,5 @@ function registerRetirementCancel(
     await authorizeBusinessWrite(deps, ctx, id);
     await requireExitBusiness(deps, ctx, id, KIND);
     return rejectRestore(KIND);
-  });
-  // 修改撤销原因（DM-R5）：只有 reason 可改；If-Match = 撤销记录 revision；范围按所属员工；离职的撤销记录 404
-  router.patch('/retirements/cancellations/:id', async (c) => {
-    const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.update', revision(c));
-    await requireEmploymentWrite(ctx, 'update', {}, RETIREMENT_BUTTONS.cancel, undefined, { commandOnly: true });
-    const owner = await requireCancellationOwner(deps, ctx, id, KIND);
-    const { reason } = parse(z.strictObject({ reason: z.string().max(500) }), await jsonBody(c));
-    return runWrite(
-      c,
-      deps,
-      ctx,
-      { id, reason },
-      async (tx, context) => ({ status: 200, body: await updateCancellationReason(tx, context, id, reason) }),
-      {
-        guard: exitCommandGuard(deps, ctx, 'cancel', { employeeId: owner.employeeId, kind: KIND }, {}),
-        project: (body) => body,
-      },
-    );
   });
 }

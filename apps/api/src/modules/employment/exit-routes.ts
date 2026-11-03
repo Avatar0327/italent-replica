@@ -355,6 +355,8 @@ function registerExitChanges(
 // ---- 撤销离职（B4，设计 §7.1 / §7.3 / §9.1）------------------------------------------------------------------------
 
 const cancelSchema = z.strictObject({ reason: z.string().max(500), confirmed: z.boolean().optional() });
+/** 撤销退休不收原因（DEC-714）：带 reason 一律 400，不是静默忽略。 */
+const retirementCancelSchema = z.strictObject({ confirmed: z.boolean().optional() });
 
 /**
  * 撤销回执响应前的按查看人裁剪：业务头按任职字段权，撤销清单目标按各自对象的可见性（不可见只计 hiddenCount）。
@@ -373,10 +375,26 @@ async function projectCancelReceipt(deps: TenantRouteDeps, ctx: EmploymentContex
   return { ...trimmed, cancellation, downstream: visible };
 }
 
+function parseRetirementCancel(raw: unknown): { confirmed?: boolean } {
+  const parsed = retirementCancelSchema.safeParse(raw);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '撤销退休不收撤销原因', { issues: parsed.error.issues });
+  return parsed.data;
+}
+
+function parseLeaveCancel(raw: unknown, kind: 'leave' | 'retirement') {
+  const parsed = cancelSchema.safeParse(raw);
+  if (!parsed.success || !parsed.data.reason.trim())
+    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
+      reason: 'EXIT_CANCEL_REASON_REQUIRED',
+      issues: parsed.success ? [] : parsed.error.issues,
+    });
+  return parsed.data;
+}
+
 /**
  * POST exits/:id/cancel、POST retirements/:id/cancel 与通用 DELETE businesses/:id（对离职 / 退休单映射到撤销）共用：
- * 解析 { reason, confirmed? }，命令内复核权限（按钮取 buttonsOf(kind).cancel）与范围，同一事务执行 cancelExit。
- * reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
+ * 解析 { reason, confirmed? }（退休只收 { confirmed? }，DEC-714），命令内复核权限（按钮取 buttonsOf(kind).cancel）与范围，同一事务执行 cancelExit。
+ * 离职 reason 缺失 / 空白 400；超编走 DEC-258 确认（confirmed: true 重提）。
  */
 export async function runExitCancel(
   c: Context<TenantEnv>,
@@ -389,13 +407,8 @@ export async function runExitCancel(
 ) {
   // 权限链先于校验（§9.1）：无 DimissionCancel / RetireCancel 者先得 403，不因缺原因而得 400
   await requireExitPermission(ctx, 'cancel', { employeeId, deleting, kind });
-  const parsed = cancelSchema.safeParse(await jsonBody(c).catch(() => ({})));
-  if (!parsed.success || !parsed.data.reason.trim())
-    throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
-      reason: 'EXIT_CANCEL_REASON_REQUIRED',
-      issues: parsed.success ? [] : parsed.error.issues,
-    });
-  const input = parsed.data;
+  const raw = await jsonBody(c).catch(() => ({}));
+  const input = kind === 'retirement' ? parseRetirementCancel(raw) : parseLeaveCancel(raw, kind);
   return runWrite(
     c,
     deps,
@@ -511,7 +524,7 @@ export async function viewableIn(deps: TenantRouteDeps, ctx: EmploymentContext):
 }
 
 /** 筛选用到的字段必须可见，否则 403，不让筛选成为看不见字段的探针（同实习视图）。 */
-function requireViewableExitFilters(filter: ExitViewFilter, show: ExitViewable) {
+export function requireViewableExitFilters(filter: ExitViewFilter, show: ExitViewable) {
   const fields = filterFieldsOf(filter);
   if (!fields.employee.every(show.employee) || !fields.employment.every(show.employment))
     throw new AppError('FORBIDDEN', '筛选字段不可查看');

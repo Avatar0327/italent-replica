@@ -5641,6 +5641,9 @@
       },
       "module": "employment",
       "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
         "object": [
           "readPageContext"
         ],
@@ -13246,54 +13249,6 @@
           "employment visibility",
           "scope.all",
           "scopeSql"
-        ],
-        "scopePoint": [
-          "employment point"
-        ]
-      }
-    },
-    "PATCH /api/tenant/employment/retirements/cancellations/:id": {
-      "edge": {
-        "anonymous": {
-          "code": "UNAUTHENTICATED",
-          "status": 401
-        },
-        "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
-        },
-        "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
-        }
-      },
-      "module": "employment",
-      "primitives": {
-        "command": [
-          "revision(c)",
-          "runCommand / runWrite"
-        ],
-        "domain": [
-          "employment.exitMode",
-          "transfer.initiator"
-        ],
-        "fieldsIn": [
-          "requireEmploymentWrite"
-        ],
-        "fieldsOut": [
-          "employment runWrite()"
-        ],
-        "object": [
-          "object.* 动作",
-          "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:update"
-        ],
-        "scope": [
-          "employment scope",
-          "employment visibility",
-          "readContext（非配置对象）"
         ],
         "scopePoint": [
           "employment point"

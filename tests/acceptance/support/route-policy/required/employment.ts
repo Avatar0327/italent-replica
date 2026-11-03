@@ -3638,7 +3638,6 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5a′ 撤销退休（同一套，按钮 RetireCancel）----
   'POST /api/tenant/employment/retirements/:id/cancel': exitCancelCommand(RETIRE_CANCEL),
   'POST /api/tenant/employment/retirements/:id/restore': exitCancelRestore(RETIRE_CANCEL),
-  'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     ...[
