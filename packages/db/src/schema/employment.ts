@@ -773,3 +773,28 @@ export const employmentActivationAttempts = pgTable(
     check('employment_activation_attempts_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],
 );
+
+/** DEC-796：自动重聘累计只保存写入前版本指针；值仍从不可变任职版本链读取。 */
+export const employmentRehireSenioritySnapshots = pgTable(
+  'employment_rehire_seniority_snapshots',
+  {
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    snapshotVersionId: uuid('snapshot_version_id').notNull(),
+    createdAt: utc(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.businessId] }),
+    foreignKey({
+      name: 'employment_rehire_seniority_snapshot_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId, t.snapshotVersionId],
+      foreignColumns: [
+        employmentPayloadVersions.tenantId,
+        employmentPayloadVersions.employeeId,
+        employmentPayloadVersions.businessId,
+        employmentPayloadVersions.id,
+      ],
+    }),
+  ],
+);

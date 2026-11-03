@@ -1,3 +1,4 @@
+import { applyRehireSeniority } from './rehire-seniority.js';
 import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
@@ -784,7 +785,16 @@ export async function materializeEmploymentRecord(
     predecessor: selected?.predecessor ?? null,
   });
   const employType = effectiveEmployType(payload, selected);
-  const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
+  const fields = await applyRehireSeniority(
+    tx,
+    ctx,
+    business,
+    {
+      fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
+      customFields: inherited.customFields,
+    },
+    position.order,
+  );
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
@@ -802,7 +812,7 @@ export async function materializeEmploymentRecord(
     id: business.id,
     tenantId: ctx.tenantId,
     employeeId: business.employeeId,
-    payloadVersionId: payload.id,
+    payloadVersionId: business.payload.id,
     staffId,
     entryDate,
     kind: payload.kind,
