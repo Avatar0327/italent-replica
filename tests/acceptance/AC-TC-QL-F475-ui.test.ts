@@ -234,6 +234,9 @@ describe('AC-TC / AC-QL F-475 详情与表单结构', () => {
     );
     expect(html).toContain('data-mode="modal"');
     expect(html).toContain('等级方案信息');
+    expect(html).toContain('data-required="true">描述');
+    expect(headers(html)).toEqual(['级别', '名称', '描述', '分值', '操作']);
+    expect(html).toContain('width:540px');
     expect(html).toContain('等级明细');
   });
 });
