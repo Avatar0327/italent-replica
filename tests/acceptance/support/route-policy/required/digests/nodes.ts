@@ -781,7 +781,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/rules.ts#addSignLink': ['ca7ccb53783f', '24501e76baff'],
   'apps/api/src/modules/approval/rules.ts#countersignRetrievable': ['cdb2b356365f', '4b356a11fa7d'],
   'apps/api/src/modules/approval/rules.ts#nodeOf': ['aacd6023f66c', 'e3b0c44298fc'],
-  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': ['d09792768874', '42b783282289'],
+  'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': ['41f352469fbe', '6262077a8d59'],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': ['a03b256eb3a1', '8d803d3a7628'],
   'apps/api/src/modules/approval/rules.ts#startedAddSign': ['dc5566924007', '0b0ccc7d5383'],
   'apps/api/src/modules/approval/rules.ts#untouchedStatus': ['3d04deff0678', 'a3a2449734a5'],
