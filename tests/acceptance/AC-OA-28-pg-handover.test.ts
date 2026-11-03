@@ -90,11 +90,13 @@ async function scene(label: string) {
 
 type Scene = Awaited<ReturnType<typeof scene>>;
 
-/** 两个请求都成功（无 40P01 / 409），结果与串行一致：单据 2 / 1、不入队，实例通过，U 已绑定入职员工。 */
+/** 两个请求都成功（无 40P01 / 409），结果与串行一致：单据 2 / 1、已入队（BE-11b），实例通过，U 已绑定入职员工。 */
 async function expectSerialOutcome(f: Scene, handed: Response, hired: Response) {
   expect(handed.status, await handed.clone().text()).toBe(200);
   expect(hired.status, await hired.clone().text()).toBe(201);
-  expect(await f.w.state(f.id)).toMatchObject({ approval: 2, execution: 1, queued: 0 });
+  const state = await f.w.state(f.id);
+  expect(state).toMatchObject({ approval: 2, execution: 1 });
+  expect(state.queued, '审批通过即入队（BE-11b）').toBeGreaterThan(0);
   expect((await f.w.instance(f.id)).status).toBe('approved');
   const link = await withTenant(f.w.db, f.w.tenant.id, async (tx) =>
     rowsOf<{ employee_id: string }>(
@@ -152,6 +154,8 @@ describe.runIf(realPostgres)('AC-OA-28-pg 组织调整审批事务 × 入职绑�
       expect(await settledOrBlocked(f.w.db, handed, 1)).toBe('settled');
     });
     expect((await handed).status).toBe(200);
-    expect(await f.w.state(f.id)).toMatchObject({ approval: 2, execution: 1, queued: 0 });
+    const state = await f.w.state(f.id);
+    expect(state).toMatchObject({ approval: 2, execution: 1 });
+    expect(state.queued, '入队不申请组织锁').toBeGreaterThan(0);
   });
 });

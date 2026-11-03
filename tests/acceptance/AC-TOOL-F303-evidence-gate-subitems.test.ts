@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { decisionSettled, evidenceState, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
+import { decisionSettled, evidenceState, gateReport, parseEvidence } from '../../scripts/evidence-gate-lib.mjs';
 
 const TARGET = 'R9-T01';
 const OTHER_TARGET = 'R9-T02';
@@ -335,29 +335,161 @@ describe('AC-TOOL-F313 DEC-684⑦ 真实文档对账', () => {
     });
   });
 
-  it('AC-TOOL-F313：仅解除四条对账记录，其他开工前阻塞集合保持不变', () => {
+  it('AC-TOOL-F313 / F367：仅解除对账记录，其他开工前阻塞集合保持不变', () => {
     expect(evidence.filter((row) => row.st !== '✅' && row.level === '开工前').map((row) => row.id)).toEqual([
       'Q-M0-31',
-      'Q-M0-105',
       'Q-M0-107',
       'Q-M0-112',
       'Q-M0-114',
-      'Q-M0-115',
       'Q-M0-117',
-      'Q-M0-118',
-      'Q-M0-120',
-      'Q-M0-121',
-      'Q-M0-122',
-      'Q-M0-123',
       'Q-M0-134',
       'Q-M0-145',
       'Q-M0-148',
-      'Q-M0-166',
       'Q-M0-172',
       'Q-M0-173',
       'Q-M0-174',
       'Q-M0-175',
       'Q-M0-176',
     ]);
+  });
+});
+
+describe('AC-TOOL-F367 阻塞列“不挡本任务”分段（合成夹具，真实 CLI）', () => {
+  const run = (blocks: string, target: string) => runCli([evidenceRow('🟡 合成残项', blocks)], [], [target]);
+
+  it('标“不挡本任务”的分段只对该任务列为可后补，同行其余任务仍开工前阻塞', () => {
+    const blocks = `${OTHER_TARGET}（开工前：③）、${TARGET}（不挡本任务：①②）`;
+    const other = run(blocks, OTHER_TARGET);
+    expect(other.code).toBe(1);
+    expect(other.out).toContain('⛔ 开工前须完成的取证 1 项：');
+    const target = run(blocks, TARGET);
+    expect(target.code).toBe(0);
+    expect(target.out).toContain('⚠️ 可先按暂定口径开发、合并后补的取证 1 项：');
+    expect(target.out).not.toContain('⛔');
+  });
+
+  it.each([
+    ['同一任务另有开工前分段', `${TARGET}（开工前：③）、${TARGET}（不挡本任务：①②）`, TARGET],
+    ['只写“不挡”不算本任务放行', `${TARGET}（写代码前清零；不挡设计修订）`, TARGET],
+    ['“不挡本任务”须紧跟分段开头的任务号', `${OTHER_TARGET}（开工前：③，${TARGET} 不挡本任务）`, OTHER_TARGET],
+    ['分段内另写开工前不放行', `${TARGET}（不挡本任务；③ 开工前）`, TARGET],
+  ])('%s：仍退出 1', (_name, blocks, target) => {
+    expect(run(blocks, target).code).toBe(1);
+  });
+});
+
+describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => {
+  const evidence = parseEvidence(readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8'));
+  const state = (id: string) => {
+    const row = evidence.find((entry) => entry.id === id);
+    return row && { st: row.st, level: row.level, pendingItems: row.pendingItems, tasks: [...row.tasks] };
+  };
+  const realRow = (id: string) => {
+    const c = readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith(`| ${id} `))!
+      .split('|')
+      .map((cell) => cell.trim());
+    return { blocks: c[5]!, status: c[6]! };
+  };
+
+  it.each([
+    ['Q-M0-105', ['F-032', 'F-033']],
+    ['Q-M0-115', ['R3-T07']],
+    ['Q-M0-118', ['R2-T04']],
+    ['Q-M0-121', ['R2-T05']],
+    ['Q-M0-122', ['R2-T07']],
+    ['Q-M0-120', ['R2-T09']],
+  ])('AC-TOOL-F367：%s 残项保留为 🟡 可后补，任务范围不变', (id, tasks) => {
+    expect(state(id)).toEqual({ st: '🟡 部分', level: '可后补', pendingItems: [], tasks });
+  });
+
+  // DEC-761 / DEC-763：⑤ 由 F-464 实测闭合，整行 ✅、无待决子项。
+  it('AC-TOOL-F367：Q-M0-123 按 DEC-763 闭合，✅ 且无待决子项', () => {
+    expect(state('Q-M0-123')).toEqual({ st: '✅', level: '开工前', pendingItems: [], tasks: ['R2-T10'] });
+  });
+
+  it.each(['Q-M0-162', 'Q-M0-165', 'Q-M0-166'])('AC-TOOL-F367：%s 已由 DEC 定口径，✅ 且无待决子项', (id) => {
+    expect(state(id)).toMatchObject({ st: '✅', pendingItems: [], tasks: ['F-076'] });
+  });
+
+  it.each([
+    ['Q-M0-112', ['R3-T03', 'F-040']],
+    ['Q-M0-114', ['R3-T06']],
+  ])('AC-TOOL-F367：%s 残项仍需开工前取证，继续阻塞', (id, tasks) => {
+    expect(state(id)).toEqual({ st: '🟡 部分', level: '开工前', pendingItems: [], tasks });
+  });
+
+  // F-459：③ 指定日期挂起已由 F-408 / W-1011 写入实测并复查到期执行，开工前 ①②③ 满足，残项 ⑤ 可后补。
+  it('AC-TOOL-F459：Q-M0-120 开工前 ①②③ 已满足，状态列与末尾 F-408 实测原文一致', () => {
+    const row = realRow('Q-M0-120');
+    expect(row.blocks).toBe('R2-T09（开工前：①②③ 已满足；⑤ 残项可后补，依据 DEC-726 前序指定日期写入实测已完成）');
+    expect(row.status).not.toContain('仍待实测');
+    expect(row.status).toContain('F-408 / W-1011');
+    expect(row.status).toMatch(/残项 = ⑤ /);
+  });
+
+  // 第 2 轮 P2-2：③ 套卷共享只挡 F-040；①② 属 R3-T03（DEC-289① 不挡），对 R3-T03 只列为后补提示。
+  it('AC-TOOL-F367：Q-M0-112 只对 F-040 开工前阻塞，对 R3-T03 列为可后补', () => {
+    const lines = (target: string) => gateReport(evidence, [], [target]).lines.join('\n');
+    expect(gateReport(evidence, [], ['F-040']).exitCode).toBe(1);
+    expect(lines('F-040')).toMatch(/⛔ 开工前须完成的取证[^⚠]*Q-M0-112/);
+    expect(lines('R3-T03')).not.toMatch(/⛔[^⚠]*Q-M0-112/);
+    expect(lines('R3-T03')).toMatch(/⚠️ 可先按暂定口径开发[\s\S]*Q-M0-112/);
+  });
+
+  it.each([
+    ['F-032', 0],
+    ['F-033', 0],
+    ['F-076', 0],
+    ['R3-T03', 0],
+    ['R2-T09', 0],
+    ['R2-T10', 0],
+    ['F-040', 1],
+  ])('AC-TOOL-F367：真实 CLI node scripts/evidence-gate.mjs %s 退出 %i', (target, code) => {
+    const script = fileURLToPath(new URL('../../scripts/evidence-gate.mjs', import.meta.url));
+    const env = { ...process.env };
+    delete env.EVIDENCE_GATE_ROOT;
+    const run = spawnSync(process.execPath, [script, target], { encoding: 'utf8', env, timeout: 10_000 });
+    expect(run.error).toBeUndefined();
+    expect(run.stderr).toBe('');
+    expect(run.status).toBe(code);
+  });
+
+  // 第 2 轮 P3-3～P3-5：依据与残项说明。
+  it('AC-TOOL-F367：Q-M0-122 / 123 / 118 依据与残项写法（123 按 DEC-763 闭合）', () => {
+    expect(realRow('Q-M0-122').blocks).toContain('基线开工前仅 ①②');
+    expect(realRow('Q-M0-122').status).toContain('⑤ 已读到表单，在途记录形态无样本');
+    expect(realRow('Q-M0-123').blocks).toBe('R2-T10');
+    expect(realRow('Q-M0-123').status).toMatch(/^✅ .*F-464.*DEC-763/);
+    expect(realRow('Q-M0-118').status).toMatch(/残项 = [^；]*随 F-351/);
+  });
+
+  it('AC-TOOL-F367：门禁对 F-032 / F-033 / F-076 退出 0，F-040 仍退出 1', () => {
+    const report = (target: string) => gateReport(evidence, [], [target]);
+    expect(report('F-032').exitCode).toBe(0);
+    expect(report('F-033').exitCode).toBe(0);
+    expect(report('F-076').exitCode).toBe(0);
+    expect(report('F-040').exitCode).toBe(1);
+    expect(report('F-040').lines.join('\n')).toContain('Q-M0-112');
+  });
+
+  it('AC-TOOL-F367：已 ✅ 的行状态列不残留 🟡 / 待决写法，🟡 后补行不残留 ✅ 完成标记', () => {
+    const md = readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8');
+    const statusOf = (id: string) =>
+      md
+        .split('\n')
+        .find((l) => l.startsWith(`| ${id} `))!
+        .split('|')[6]!;
+    expect(statusOf('Q-M0-166')).not.toMatch(/🟡|待(?:实测|取证|定|确认|复核|用户|原站)/);
+    expect(statusOf('Q-M0-123')).not.toMatch(/🟡|待(?:实测|取证|定|确认|复核|用户|原站)/);
+    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122']) {
+      expect(statusOf(id)).not.toContain('✅');
+    }
+    // 第 2 轮 P3-6：仍为 🟡 的后补行必须分清残项与取证原文。
+    for (const id of ['Q-M0-105', 'Q-M0-115', 'Q-M0-118', 'Q-M0-120', 'Q-M0-121', 'Q-M0-122']) {
+      expect(statusOf(id)).toContain('残项 =');
+      expect(statusOf(id)).toContain('以下为取证原文');
+    }
   });
 });
