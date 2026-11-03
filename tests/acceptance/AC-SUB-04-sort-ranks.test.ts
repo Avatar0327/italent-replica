@@ -27,7 +27,9 @@ async function expectedOrgRanks(tx: Tx, tenantId: string, date: string) {
         SELECT org_id,ARRAY[code]::text[],ARRAY[org_id] FROM cur
         WHERE org_id=${tenantId}::uuid AND enabled AND stop_date>=${date}::date
         UNION ALL
-        SELECT c.org_id,p.sort_path || (lpad(COALESCE(h.sequence,2147483647)::text,10,'0') || ':' || c.code),
+        SELECT c.org_id,
+          p.sort_path || (lpad((COALESCE(h.sequence,2147483647)::bigint + 2147483648)::text,10,'0')
+            || ':' || c.code),
           p.visited || c.org_id
         FROM cur c JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.version_id=c.id AND h.dimension='admin'
         JOIN paths p ON p.org_id=h.parent_org_id
