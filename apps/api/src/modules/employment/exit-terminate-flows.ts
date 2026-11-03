@@ -9,7 +9,11 @@
  * 撤销离职不恢复被终止的流程（与在途考核、任职申请一致）。
  */
 import { exitEffects, sql, type Tx } from '@italent/db';
-import { PERSONNEL_REQUEST_OBJECT } from '@italent/domain';
+import {
+  FLOW_TERMINATED_BY_EXIT_TEMPLATE,
+  PERSONNEL_REQUEST_OBJECT,
+  type FlowTerminatedPayload,
+} from '@italent/domain';
 import { revokeBySystem } from '../approval/actions.js';
 import { ADAPTERS } from '../approval/adapters.js';
 import { schedulerAwareContext } from '../approval/context.js';
@@ -24,7 +28,7 @@ import { rowsOf } from './record-store.js';
 import { INTENTION_AUDIT_TYPE } from './retirement-intention-store.js';
 import type { EmploymentContext } from './types.js';
 
-export const FLOW_TERMINATED_TEMPLATE = 'flow_terminated_by_exit';
+export const FLOW_TERMINATED_TEMPLATE = FLOW_TERMINATED_BY_EXIT_TEMPLATE;
 
 /** 意向申请的部门快照（审计 scope.orgId，与意向申请自身审计同一归属，审计查询按它判 DEC-177）。 */
 async function intentionDepartment(tx: Tx, tenantId: string, id: string) {
@@ -61,10 +65,27 @@ async function auditTerminated(
   );
 }
 
+/** 消息模板变量（F-420）：员工取任职员工名，流程名称取审批实例标题（终止不改标题）。 */
+async function employeeNameOf(tx: Tx, tenantId: string, employeeId: string) {
+  const [row] = rowsOf<{ name: string }>(
+    await tx.execute(sql`SELECT name FROM employment_employees
+      WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid`),
+  );
+  return row?.name ?? '';
+}
+
+async function flowNameOf(tx: Tx, tenantId: string, instanceId: string) {
+  const [row] = rowsOf<{ title: string }>(
+    await tx.execute(sql`SELECT title FROM approval_instances
+      WHERE tenant_id=${tenantId} AND id=${instanceId}::uuid`),
+  );
+  return row?.title ?? '';
+}
+
 export async function terminateOtherFlows(
   tx: Tx,
   ctx: EmploymentContext,
-  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'kind'>,
+  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'effectiveDate' | 'kind'>,
 ) {
   const approvalCtx = schedulerAwareContext(ctx);
   const terminated: OtherFlow[] = [];
@@ -92,12 +113,17 @@ export async function terminateOtherFlows(
     });
     await auditTerminated(tx, ctx, row, event, detail);
     const applicant = await userOfPerson(tx, ctx.tenantId, event.employeeId);
+    const payload: FlowTerminatedPayload = {
+      flowName: await flowNameOf(tx, ctx.tenantId, row.instanceId),
+      employeeName: await employeeNameOf(tx, ctx.tenantId, event.employeeId),
+      effectiveDate: event.effectiveDate,
+    };
     for (const recipientUserId of new Set([row.initiatorUserId, applicant].filter((id): id is string => !!id)))
       await notifyMessage(
         tx,
         approvalCtx,
         { id: row.instanceId },
-        { recipientUserId, templateCode: FLOW_TERMINATED_TEMPLATE },
+        { recipientUserId, templateCode: FLOW_TERMINATED_TEMPLATE, payload },
       );
     terminated.push(row);
   }
