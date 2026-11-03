@@ -31,7 +31,7 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
     expect(ui.widths()).toEqual([30, 128, 128, 118, 128, 98, 128, 146, 128, 128, 160].map((n) => `${n}px`));
     expect(
       [...ui.host.querySelectorAll<HTMLButtonElement>('.approval-gap-head button')].find(
-        (button) => button.textContent === '导出',
+        (button) => button.textContent?.replace(/\s/g, '') === '导出',
       )?.disabled,
     ).toBe(true);
   });
@@ -48,4 +48,15 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
     expect(ui.headers()).toEqual(['标题', '类别', '审批状态', '申请时间']);
     expect(ui.widths()).toEqual(['174px', '174px', '174px', '192px']);
   });
+});
+
+it('AC-TRF F-474 调动中高级筛选的前后部门与职务按取证顺序', async () => {
+  await ui.render(h(TransferList, { view: 'progress' }));
+  await act(async () =>
+    [...ui.host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === '高级筛选')!.click(),
+  );
+  const fields = [...document.querySelectorAll('.transfer-advanced input[aria-label]')]
+    .map((node) => node.getAttribute('aria-label'))
+    .filter((name) => ['人员', '调动前部门', '调动前职务', '调动后部门', '调动后职务', '审批状态'].includes(name!));
+  expect(fields).toEqual(['人员', '调动前部门', '调动前职务', '调动后部门', '调动后职务', '审批状态']);
 });

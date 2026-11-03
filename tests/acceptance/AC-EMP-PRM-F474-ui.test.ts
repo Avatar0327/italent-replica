@@ -3,6 +3,7 @@
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, h, permission, uiHarness } from './support/f474-ui.js';
+const { SelfPage } = await import(resolve('apps/web/src/self-service/pages/SelfPage.tsx'));
 const { StaffPage } = await import(resolve('apps/web/src/personnel/StaffPage.tsx'));
 const { SubsetCreate } = await import(resolve('apps/web/src/personnel/EditCommands.tsx'));
 const { userColumns } = await import(resolve('apps/web/src/settings/user-columns.tsx'));
@@ -80,5 +81,31 @@ describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
   it('变更日志已有七列采用原站宽度', async () => {
     await ui.render(h(AuditPage));
     expect(ui.widths()).toEqual([128, 118, 146, 128, 128, 128, 128].map((n) => `${n}px`));
+  });
+});
+
+describe('AC-EMP F-474 自助任职记录', () => {
+  it('只将已返回字段排成姓名、部门、职位、日期、审批状态，不补不可见字段', async () => {
+    const employee = { id: '30000000-0000-4000-8000-000000000474', name: '合成用户', code: 'SYNTH-474' };
+    const record = {
+      id: '40000000-0000-4000-8000-000000000474',
+      effectiveDate: '2026-11-03',
+      stopDate: null,
+      approvalStatus: 'effective',
+      fields: { positionId: null, departmentId: null },
+      fieldLabels: {},
+    };
+    await ui.render(h(SelfPage), '/self/applications', undefined, {
+      '/api/tenant/self-service/profile': {
+        employee,
+        record,
+        timezone: 'Asia/Shanghai',
+        today: '2026-11-03',
+        selfServiceButtons: [],
+      },
+      [`/api/tenant/self-service/employees/${employee.id}/records`]: { items: [record], total: 1 },
+    });
+    expect(ui.headers()).toEqual(['姓名', '部门', '职位', '开始日期', '结束日期', '审批状态']);
+    expect(ui.widths()).toEqual([140, 140, 140, 105, 105, 140].map((n) => `${n}px`));
   });
 });

@@ -69,7 +69,7 @@ export function uiHarness() {
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
-  const render = async (node: unknown, path = '/', fields = allFields) => {
+  const render = async (node: unknown, path = '/', fields = allFields, responses: Record<string, unknown> = {}) => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (raw: string) => {
@@ -81,6 +81,7 @@ export function uiHarness() {
             ...permission(fields),
             objectCode: decodeURIComponent(url.pathname.split('/').at(-1)!),
           });
+        if (Object.hasOwn(responses, url.pathname)) return Response.json(responses[url.pathname]);
         return Response.json({ items: [], today: '2026-11-03', hasDataPermission: true });
       }),
     );
