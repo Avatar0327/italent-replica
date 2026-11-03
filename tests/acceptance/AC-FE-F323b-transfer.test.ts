@@ -15,7 +15,7 @@ const web = (file: string) => new URL(`../../apps/web/src/${file}`, import.meta.
 const BEFORE = '11111111-1111-4111-8111-111111111111';
 const AFTER = '22222222-2222-4222-8222-222222222222';
 
-function model(mode: 'editable' | 'readonly', initiator: 'hr' | 'manager' = 'hr'): TransferFormModel {
+function model(mode: 'editable' | 'readonly', initiator: 'hr' | 'manager' | 'employee' = 'hr'): TransferFormModel {
   return {
     initiator,
     employees: [],
@@ -99,4 +99,19 @@ it('AC-FE-F323b HR 入口人员类别选项读取失败：候选为空并提示�
   expect(loaded.unavailable).toBe(true);
   const html = await render({ ...editable, references: loaded.references });
   expect(html).toContain(`<option value="${BEFORE}" selected="">合成类别甲</option>`);
+});
+
+it('AC-FE-F455 经理 / 员工入口无字典参照：即使配置可编辑，也只读显示人员类别名称', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  for (const initiator of ['manager', 'employee'] as const) {
+    const current = model('editable', initiator);
+    const loaded = await loadReferences('tenant', current.preview!, current, new AbortController().signal);
+    const html = await render({ ...current, references: loaded.references });
+    expect(html).not.toMatch(/<select[^>]*name="employmentType"/);
+    expect(html).toMatch(/<input(?=[^>]*name="employmentType")(?=[^>]*readOnly="")(?=[^>]*value="合成类别甲")[^>]*>/);
+    expect(html).not.toContain('已保存的值');
+    expect(transferBody(current, 'submit').fields).not.toHaveProperty('employmentType');
+  }
+  expect(fetcher).not.toHaveBeenCalled();
 });

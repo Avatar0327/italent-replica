@@ -177,7 +177,12 @@ export function EmploymentFields(props: TransferFormProps) {
               source={source}
               code={code}
               label={label}
-              readonly={mode === 'readonly'}
+              readonly={
+                mode === 'readonly' ||
+                (source === 'preset' &&
+                  code === EMPLOYMENT_TYPE_FIELD &&
+                  (props.model.initiator === 'manager' || props.model.initiator === 'employee'))
+              }
               required={source === 'preset' && required.has(code)}
               valueType={custom?.valueType}
             />
