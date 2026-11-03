@@ -138,11 +138,11 @@ function facts(c: ProcessContext): SQL {
 }
 
 /**
- * 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。节点身份 = 流程版本 + 节点键（approval_process_nodes 主键），
- * node_id 是概览分组与钻取共用的节点键：不同流程里同名的节点键不合并。
+ * 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。
+ * F-416 / 规格 35 B51：节点按名称跨流程、版本归并；概览与钻取共用原始名称，不截断或规范化。
  */
 const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id,
-    f.version_id::text || ':' || t.node_key AS node_id, t.assignee_user_id AS approver,
+    t.assignee_user_id AS approver,
     n.name AS node_name, ${days(sql`t.created_at`, sql`t.acted_at`)} AS duration, f.core, f.late_approval
   FROM facts f JOIN approval_tasks t ON t.tenant_id=${c.tenantId} AND t.instance_id=f.id AND t.status='approved'
     AND t.acted_at IS NOT NULL AND t.assignee_user_id IS NOT NULL
@@ -304,7 +304,7 @@ function specs(c: ProcessContext): Readonly<Record<HrProcessComponentCode, Spec>
     inFlightList: { cols: listColumns(c), from: IN_FLIGHT },
     durationByWeek: { grp: week(sql`f.started_on`), value: DURATION, from: APPROVED },
     durationByCategory: { grp: sql`f.category`, value: DURATION, from: APPROVED },
-    taskDurationByNode: task({ grp: sql`t.node_id`, label: sql`t.node_name` }, sql`true`),
+    taskDurationByNode: task({ grp: sql`t.node_name`, label: sql`t.node_name` }, sql`true`),
     taskDurationByApprover: task({ grp: sql`t.approver` }, sql`true`),
     durationByOrg: { grp: sql`f.second_id`, value: DURATION, from: APPROVED },
     nonCompliantByWeek: { grp: week(sql`f.started_on`), hit: sql`f.late_submit OR f.late_approval`, from: QUALITY },

@@ -3,7 +3,7 @@ import './support/exit-gate-enforced.js';
  * AC-HA-13c 人事流程看板（规格 35 B51，R2 BE-13c 第 2 轮返工）：分组 / 筛选键的回归。
  * - 批量 Offer 的流程所属部门 = 单内各 Offer 的录用部门：同部门批量单筛该部门可见；跨部门批量单筛其中任一部门都可见；
  *   数据范围要求单内每一份 Offer 都在范围内（同审批中心 access.ts offerInstanceScopeSql）；
- * - 节点身份含流程版本：不同流程里同名的节点键分别统计，概览与钻取共用同一个组键；
+ * - 节点按名称归并：不同名称仍分组，概览与钻取共用同一个组键；
  * - 退回（没有待办）的在途流程，等待分档为空，不落进“≤3 天”；
  * - 7.1.23 转正正例：直接转正计入业务总量、不计审批总量；走流程且审批通过的两者都计；审批中的转正不算业务总量；
  * - 7.1.20 Offer 业务总量（第 3 轮）：免审批 + 审批通过计入；驳回待重提、撤回、批量单驳回后回到“未发起审批”的不计。
@@ -182,8 +182,8 @@ describe('AC-HA-13c 批量 Offer 的流程所属部门', () => {
   });
 });
 
-describe('AC-HA-13c 节点身份含流程版本', () => {
-  it('7.2.08 不同流程的同名节点键分别统计（调动 2、离职 1），钻取明细与组计数一致', async () => {
+describe('AC-HA-13c 不同名称节点分别统计', () => {
+  it('7.2.08 不同流程的不同名称节点分别统计（调动 2、离职 1），钻取明细与组计数一致', async () => {
     const row = await board.component('taskDurationByNode');
     const groups = row.groups.map((g) => [g.label, g.count]);
     expect(sorted(groups.map((g) => JSON.stringify(g)))).toEqual(
