@@ -11,6 +11,7 @@ import type { CascadeAuthorizer } from '../org/deactivation.js';
 import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import type { OrgRecord } from '../org/read-model.js';
 import { invalid, type OrganizationPatch } from '../org/validation.js';
+import { assertRefsReachable, assertRowReachable, ROW_NOT_FOUND } from './hidden-rows.js';
 import { activeOrg, assertItemRules, createdRow, existingOrg, planStop, type Submitted } from './item-rules.js';
 import { assertPlan, loadWorld, type ItemWorld } from './item-tree.js';
 import { type AddItemInput, assertItemFields, CHANGE_FIELDS, type ItemPatch, toContent } from './item-validation.js';
@@ -42,8 +43,10 @@ export async function addOrgItem(
   id: string,
   input: AddItemInput,
   authorize: CascadeAuthorizer,
+  hidden: ReadonlySet<string>,
 ): Promise<ItemWrite> {
   const view = await editable(tx, ctx, id);
+  assertRefsReachable(input, hidden);
   const drag = input.entry === 'editor.drag';
   assertItemFields(drag ? 'drag' : input.adjustType, input);
   if (drag && !input.parent) throw invalid('parent', '拖拽必须选择上级组织');
@@ -100,20 +103,28 @@ export async function patchOrgItem(
   id: string,
   itemId: string,
   patch: ItemPatch,
+  hidden: ReadonlySet<string>,
 ): Promise<ItemsResult> {
   const view = await editable(tx, ctx, id);
   const world = await loadWorld(tx, ctx.tenantId, view);
-  const before = ownRow(world.items, itemId);
+  const before = ownRow(world.items, itemId, hidden);
+  assertRefsReachable(patch, hidden);
   assertItemFields(before.adjustType, patch);
   const after: OrgItem = { ...before, ...toContent(patch) };
   return { adjustmentId: id, ...(await rewrite(tx, ctx, world, before, after, Object.keys(patch))) };
 }
 
 /** 路由 6：删一行及其连带行；被本单其它行引用（上级 / 转移组织指向它）时拒绝。返回被删的行（供重放复核范围）。 */
-export async function deleteOrgItem(tx: Tx, ctx: WriteContext, id: string, itemId: string): Promise<ItemsResult> {
+export async function deleteOrgItem(
+  tx: Tx,
+  ctx: WriteContext,
+  id: string,
+  itemId: string,
+  hidden: ReadonlySet<string>,
+): Promise<ItemsResult> {
   const view = await editable(tx, ctx, id);
   const items = await loadItems(tx, ctx.tenantId, id);
-  ownRow(items, itemId);
+  ownRow(items, itemId, hidden);
   const removed = items.filter((item) => item.id === itemId || item.cascadedFromItemId === itemId);
   const ids = new Set(removed.map((item) => item.id));
   const referencing = items.find(
@@ -307,10 +318,11 @@ function validateContent(item: OrgItem, current: OrgRecord | undefined) {
   }
 }
 
-/** 本单的行；连带行不能单独改删。 */
-function ownRow(items: readonly OrgItem[], itemId: string): OrgItem {
+/** 本单的行；隐藏行与不存在的行同一 404（F-343 ①）；连带行不能单独改删。 */
+function ownRow(items: readonly OrgItem[], itemId: string, hidden: ReadonlySet<string>): OrgItem {
   const row = items.find((item) => item.id === itemId);
-  if (!row) throw new AppError('NOT_FOUND', '组织调整明细不存在');
+  if (!row) throw new AppError('NOT_FOUND', ROW_NOT_FOUND);
+  assertRowReachable(items, itemId, hidden);
   if (row.cascadedFromItemId) {
     throw new AppError('CONFLICT', '连带停用的明细随发起行，不能单独修改或删除', {
       reason: 'ORG_ADJUSTMENT_ITEM_CASCADED',

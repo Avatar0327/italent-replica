@@ -2,7 +2,9 @@
  * 校验信封与校验类错误的字段裁剪（R2-T08 §6.3，F-339 ②）：信封不是对象字段，但问题里带的组织 ID 会泄露看不到的字段值。
  * - 明细问题（带 section）与顶层 `orgId` 随 `orgItems.targetOrgId` 查看权；
  * - 头问题（`ORG_INACTIVE`）的 `orgIds` 随 `approvalSubjectOrgId` 与 `adjustmentRange` 查看权（两者都可见才给）。
- * 整单校验（路由 7）、提交 / 重提（路由 10）的 400 / 409、审批人编辑的错误共用；`viewable` 为 undefined 表示不受限。
+ * - 编码重复（`ORG_CODE_DUPLICATE`）带出的被占用编码随 `orgItems.code` 查看权（F-343 ②）。
+ * 整单校验（路由 7）、提交 / 重提（路由 10）的 400 / 409、审批人编辑、明细与头写入的错误共用；
+ * `viewable` 为 undefined 表示不受限。
  */
 import { AppError } from '../../errors.js';
 
@@ -12,12 +14,29 @@ type Issue = Readonly<Record<string, unknown>>;
 const sees = (viewable: Viewable, ...codes: string[]) => !viewable || codes.every((code) => viewable.has(code));
 const without = (issue: Issue, key: string) => Object.fromEntries(Object.entries(issue).filter(([k]) => k !== key));
 
+export const ORG_CODE_DUPLICATE = 'ORG_CODE_DUPLICATE';
+/** 编码重复的文案；看不到 `orgItems.code` 时不带编码（保存的 409 与整单校验问题共用）。 */
+export const codeUsedMessage = (code?: string) =>
+  code ? `组织编码【${code}】在生效日已被使用` : '组织编码在生效日已被使用';
+
+/** 编码重复的问题 / 错误：看不到 `orgItems.code` 时去掉 `code` 并换成不带编码的文案。 */
+function hideUsedCode(issue: Issue, viewable: Viewable): Issue {
+  const holder = issue.details && typeof issue.details === 'object' ? (issue.details as Issue) : issue;
+  if (holder.reason !== ORG_CODE_DUPLICATE || sees(viewable, 'orgItems.code')) return issue;
+  const message = codeUsedMessage();
+  return holder === issue
+    ? { ...without(issue, 'code'), message }
+    : { ...issue, message, details: without(holder, 'code') };
+}
+
 /** 逐条裁剪问题；看得见时原样返回。 */
 export function trimIssues<T extends object>(issues: readonly T[], viewable: Viewable): T[] {
   const itemOrg = sees(viewable, 'orgItems.targetOrgId');
   const headOrgs = sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange');
   return issues.map((issue) => {
-    if ('section' in issue) return (itemOrg ? issue : without(issue as Issue, 'orgId')) as T;
+    if ('section' in issue) {
+      return hideUsedCode(itemOrg ? issue : without(issue as Issue, 'orgId'), viewable) as T;
+    }
     return (headOrgs ? issue : without(issue as Issue, 'orgIds')) as T;
   });
 }
@@ -41,12 +60,23 @@ export function foldHiddenRowIssues<T extends object>(issues: readonly T[], hidd
   return [...issues.filter((issue) => !isHidden(issue)), summary];
 }
 
+/** 错误 details 里的 `items` 同样折叠隐藏行（缩小调整范围的 400 等，F-343 ⑤）；没有 `items` 或没有隐藏行问题原样返回。 */
+export function foldHiddenError(error: unknown, hiddenItemIds: ReadonlySet<string>): unknown {
+  if (!(error instanceof AppError) || !error.details || typeof error.details !== 'object') return error;
+  const details = error.details as Issue;
+  if (!Array.isArray(details.items)) return error;
+  const items = foldHiddenRowIssues(details.items as Issue[], hiddenItemIds);
+  return new AppError(error.code, error.message, { ...details, items });
+}
+
 /** 校验类错误的 details：`items` 逐条裁剪；顶层 `orgIds` / `orgId` 与头 / 明细问题同口径。其它错误原样返回。 */
 export function trimError(error: unknown, viewable: Viewable): unknown {
   if (!(error instanceof AppError) || !viewable || !error.details || typeof error.details !== 'object') return error;
-  let details = error.details as Issue;
+  const hidden = hideUsedCode({ message: error.message, details: error.details }, viewable);
+  const message = hidden.message as string;
+  let details = hidden.details as Issue;
   if (Array.isArray(details.items)) details = { ...details, items: trimIssues(details.items as Issue[], viewable) };
   if (!sees(viewable, 'orgItems.targetOrgId')) details = without(details, 'orgId');
   if (!sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange')) details = without(details, 'orgIds');
-  return new AppError(error.code, error.message, details);
+  return new AppError(error.code, message, details);
 }

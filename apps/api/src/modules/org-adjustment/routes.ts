@@ -33,6 +33,7 @@ import {
   authorizeHeadAction,
   authorizeHeadScopes,
   authorizeItem,
+  authorizeOrgFields,
   authorizeOwnerAction,
   authorizeWithdraw,
   HEAD_BUTTONS,
@@ -40,8 +41,8 @@ import {
   type ItemAuthorization,
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
-import { foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
-import { hiddenItemIds } from './hidden-rows.js';
+import { foldHiddenError, foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
+import { hiddenAmong, hiddenItemIds } from './hidden-rows.js';
 import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
 import { registerReadRoutes } from './read-routes.js';
 import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
@@ -115,7 +116,7 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
             input.adjustmentRange ?? stored.adjustmentRange,
           ],
         ),
-      execute: (tx, commandCtx) => updateAdjustmentHead(tx, commandCtx, id, input),
+      execute: (tx, commandCtx) => updateHead(tx, deps, ctx, commandCtx, id, input),
     });
   });
 
@@ -139,8 +140,12 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
   });
 
-  // 整单只读校验：不进台账、不写数据，结果为校验信封（不是对象字段；看不到目标组织字段时隐去问题里的组织 ID）
-  router.post(`${BASE}/:id/check`, async (c) => {
+  router.post(`${BASE}/:id/check`, checkHandler(deps));
+}
+
+/** 整单只读校验：不进台账、不写数据，结果为校验信封（不是对象字段；看不到目标组织字段时隐去问题里的组织 ID）。 */
+function checkHandler(deps: TenantRouteDeps) {
+  return async (c: Context<TenantEnv>) => {
     const ctx = await objectContext(c, deps, OBJECT, 'update');
     const id = uuidParam(c);
     await parseBody(c, z.strictObject({}));
@@ -153,7 +158,7 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return { result: checked, hidden: await hiddenItemIds(tx, deps, ctx, id) };
     });
     return c.json(await trimCheck(deps, ctx, result, hidden), 200);
-  });
+  };
 }
 
 /** 提交 / 撤回交审批引擎时的字段访问：按请求人当前字段权限（盲审、首节点同人跳过都据此判）。 */
@@ -213,12 +218,14 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await writeFields(deps, ctx, OBJECT, 'update', itemFieldCodes(Object.keys(input)));
     return itemCommand(c, deps, ctx, id, input, {
       button: [entry.objectCode, entry.code, entry.level],
-      orgIds: async () => [
+      orgIds: () => [
         input.targetOrgId,
         input.siblingOf && 'orgId' in input.siblingOf ? input.siblingOf.orgId : undefined,
         ...inputOrgs(input),
       ],
-      execute: (tx, commandCtx) => addOrgItem(tx, commandCtx, id, input, orgScopeAuthorizer(deps, ctx)),
+      write: { keys: Object.keys(input), adjustType: input.adjustType },
+      execute: async (tx, commandCtx) =>
+        addOrgItem(tx, commandCtx, id, input, orgScopeAuthorizer(deps, ctx), await hiddenItemIds(tx, deps, ctx, id)),
     });
   });
 
@@ -231,10 +238,11 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await writeFields(deps, ctx, OBJECT, 'update', itemFieldCodes(Object.keys(input)));
     return itemCommand(c, deps, ctx, id, input, {
       button: ROW_EDIT,
-      orgIds: async (tx) => [...(await storedRowOrgs(tx, ctx, id, itemId)), ...inputOrgs(input)],
+      orgIds: (rows) => [...storedRowOrgs(rows, itemId), ...inputOrgs(input)],
+      write: { keys: Object.keys(input), rowId: itemId },
       execute: async (tx, commandCtx) => ({
         status: 200,
-        result: await patchOrgItem(tx, commandCtx, id, itemId, input),
+        result: await patchOrgItem(tx, commandCtx, id, itemId, input, await hiddenItemIds(tx, deps, ctx, id)),
       }),
     });
   });
@@ -253,12 +261,19 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       {},
       {
         button: rowDelete,
-        orgIds: (tx) => storedRowOrgs(tx, ctx, id, itemId),
-        execute: async (tx, commandCtx) => ({ status: 200, result: await deleteOrgItem(tx, commandCtx, id, itemId) }),
+        orgIds: (rows) => storedRowOrgs(rows, itemId),
+        execute: async (tx, commandCtx) => ({
+          status: 200,
+          result: await deleteOrgItem(tx, commandCtx, id, itemId, await hiddenItemIds(tx, deps, ctx, id)),
+        }),
       },
     );
   });
 
+  registerRebaseRoutes(router, deps);
+}
+
+function registerRebaseRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // 路由 8：单行刷新基线；本片只有组织明细，其它 section 一律 404
   router.post(`${BASE}/:id/items/:section/:itemId/rebase`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT, 'update', revision(c));
@@ -269,8 +284,11 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await button(deps, ctx, ...ROW_EDIT);
     return itemCommand(c, deps, ctx, id, input, {
       button: ROW_EDIT,
-      orgIds: (tx) => storedRowOrgs(tx, ctx, id, itemId),
-      execute: async (tx, commandCtx) => ({ status: 200, result: await rebaseItem(tx, commandCtx, id, itemId) }),
+      orgIds: (rows) => storedRowOrgs(rows, itemId),
+      execute: async (tx, commandCtx) => ({
+        status: 200,
+        result: await rebaseItem(tx, commandCtx, id, itemId, await hiddenItemIds(tx, deps, ctx, id)),
+      }),
     });
   });
 
@@ -283,7 +301,8 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await button(deps, ctx, OBJECT, code, level);
     return itemCommand(c, deps, ctx, id, input, {
       button: [OBJECT, code, level],
-      orgIds: async (tx) => rowOrgs(await loadItems(tx, ctx.tenantId, id)),
+      orgIds: ({ items }) => rowOrgs(items),
+      whole: true,
       execute: async (tx, commandCtx) => ({ status: 200, result: await rebaseAll(tx, commandCtx, id) }),
     });
   });
@@ -348,21 +367,58 @@ async function headCommand(
 type OrgIds = readonly (string | null | undefined)[];
 const rowOrgs = (rows: readonly OrgItem[]): OrgIds =>
   rows.flatMap((row) => [row.targetOrgId, row.parentOrgId, row.transferToOrgId]);
+async function updateHead(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: ScopeBusinessContext,
+  commandCtx: ScopeBusinessContext,
+  id: string,
+  input: Parameters<typeof updateAdjustmentHead>[3],
+) {
+  try {
+    return await updateAdjustmentHead(tx, commandCtx, id, input);
+  } catch (error) {
+    throw await trimHeadError(tx, deps, ctx, id, error);
+  }
+}
+
+/** 头 PATCH 失败的错误：已有明细不在新范围内的 400 把隐藏行折叠，再按查看权裁剪（F-343 ⑤）。 */
+async function trimHeadError(tx: Tx, deps: TenantRouteDeps, ctx: ScopeBusinessContext, id: string, error: unknown) {
+  const folded = foldHiddenError(error, await hiddenItemIds(tx, deps, ctx, id));
+  return trimError(folded, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+}
+
 const inputOrgs = (input: Parameters<typeof toContent>[0]): OrgIds => {
   const content = toContent(input);
   return [content.parentOrgId, content.transferToOrgId];
 };
 
-/** 库里现有行（含其连带行）涉及的组织；行不存在时为空，由写服务报 404。 */
-async function storedRowOrgs(tx: Tx, ctx: ScopeBusinessContext, id: string, itemId: string): Promise<OrgIds> {
-  const items = await loadItems(tx, ctx.tenantId, id);
-  return rowOrgs(items.filter((item) => item.id === itemId || item.cascadedFromItemId === itemId));
+/** 本单库里现有的明细与其中的隐藏行（组织范围外，F-343）。 */
+interface StoredRows {
+  readonly items: readonly OrgItem[];
+  readonly hidden: ReadonlySet<string>;
+}
+
+/**
+ * 库里现有行（含其连带行）涉及的组织；行不存在时为空，由写服务报 404。
+ * 隐藏行不在这里判：它的组织在范围外，判了会报“组织不存在”而与行不存在的错误不同，交写服务取行时报同一 404（F-343 ①）。
+ */
+function storedRowOrgs({ items, hidden }: StoredRows, itemId: string): OrgIds {
+  return rowOrgs(
+    items.filter((item) => (item.id === itemId || item.cascadedFromItemId === itemId) && !hidden.has(item.id)),
+  );
 }
 
 interface ItemCommand {
   readonly button: readonly [objectCode: string, code: string, level: ButtonLevel];
   /** 行涉及的已有组织：请求里的，与（改 / 删 / 刷新时）库里现有行的。 */
-  orgIds(tx: Tx): Promise<OrgIds>;
+  orgIds(rows: StoredRows): OrgIds;
+  /** 整单刷新：有隐藏行时与申请单不存在同一 404（F-343 ①）。 */
+  readonly whole?: true;
+  /**
+   * 请求写的载荷键与行：组织对象字段编辑权按它判（F-343 ③）。新增给 `adjustType`，改行给 `rowId`（取库里行的调整类型）。
+   */
+  readonly write?: { readonly keys: readonly string[]; readonly adjustType?: 1 | 2 | 3; readonly rowId?: string };
   execute(tx: Tx, ctx: ScopeBusinessContext): Promise<ItemWrite>;
 }
 
@@ -385,12 +441,20 @@ async function itemCommand(
       before: async (tx) => {
         const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
         if (!stored) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+        const items = await loadItems(tx, ctx.tenantId, id);
+        const hidden = await hiddenAmong(tx, deps, ctx, items);
+        if (command.whole && hidden.size > 0) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
         const input: ItemAuthorization = {
           button: command.button,
           subjectOrgId: stored.approvalSubjectOrgId,
-          orgIds: await command.orgIds(tx),
+          orgIds: command.orgIds({ items, hidden }),
         };
         await authorizeItem(tx, deps, ctx, input);
+        const write = command.write;
+        const adjustType = write?.adjustType ?? items.find((item) => item.id === write?.rowId)?.adjustType;
+        if (write && adjustType && !hidden.has(write.rowId ?? '')) {
+          await authorizeOrgFields(tx, deps, ctx, adjustType === 1 ? 'create' : 'update', write.keys);
+        }
       },
       replayed: async (tx, stored) => {
         const orgIds = rowOrgs((stored.body as ItemsResult).items).filter((orgId): orgId is string => Boolean(orgId));
@@ -398,8 +462,13 @@ async function itemCommand(
       },
     },
     execute: async (tx, commandId) => {
-      const written = await command.execute(tx, { ...ctx, commandId });
-      return { status: written.status, body: written.result };
+      try {
+        const written = await command.execute(tx, { ...ctx, commandId });
+        return { status: written.status, body: written.result };
+      } catch (error) {
+        // 编码重复等错误带出的被占用编码随 orgItems.code 查看权（F-343 ②）
+        throw trimError(error, await getModuleViewableFieldsInTransaction(deps, ctx, OBJECT, tx));
+      }
     },
   });
   const written = result.body as ItemsResult;

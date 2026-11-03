@@ -169,6 +169,39 @@ export async function authorizeItem(tx: Tx, deps: Deps, ctx: TenantContext, inpu
   });
 }
 
+/** 组织明细载荷键 → 组织对象的字段编码（与 `PATCH organizations/:id` 的 `writeFields` 同一字段集，§6.3）。 */
+const ORG_WRITE_FIELD: Readonly<Record<string, string>> = {
+  name: 'name',
+  code: 'code',
+  shortName: 'shortName',
+  displayOrder: 'displayOrder',
+  personInChargeId: 'personInChargeId',
+  hrbpId: 'hrbpId',
+  parent: 'parents',
+  siblingOf: 'parents',
+};
+
+/**
+ * 组织明细写入的组织对象字段编辑权（§6.3 “组织明细”行，F-343 ③）：新增组织按 create、改组织按 update；
+ * 载荷里没有对应组织字段（如停用）不判。与行按钮、主体组织、行组织同在守卫里，首次与重放都经过。
+ */
+export async function authorizeOrgFields(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  operation: 'create' | 'update',
+  keys: readonly string[],
+): Promise<void> {
+  const fields = [...new Set(keys.flatMap((key) => ORG_WRITE_FIELD[key] ?? []))];
+  if (fields.length === 0) return;
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  await requireObjectWrite(bound.authorize, ctx, {
+    objectCode: MODULE_OBJECTS.organization.code,
+    operation,
+    payload: Object.fromEntries(fields.map((field) => [field, true])),
+  });
+}
+
 /** 停用整支展开时判连带下级（与 `authorizeItem` 的组织层同口径）。 */
 export function orgScopeAuthorizer(deps: Deps, ctx: TenantContext): CascadeAuthorizer {
   return async (tx, orgIds) => {

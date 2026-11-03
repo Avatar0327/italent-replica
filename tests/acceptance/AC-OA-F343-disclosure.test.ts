@@ -48,7 +48,7 @@ describe('F-343 ① 隐藏行与不存在的行同一错误', () => {
     expect((await w.stored(view.id))!.revision).toBe(revision);
 
     expect((await w.patchItem(view.id, visible, { name: '可见行改名' })).status).toBe(200);
-    await expectError(await w.patchItem(view.id, visible, { name: '过期' }, revision), 409, 'CONFLICT');
+    await expectError(await w.patchItem(view.id, visible, { name: '过期' }, revision), 409, 'REVISION_CONFLICT');
   });
 
   it('整单刷新基线：含隐藏行的单据与不存在的单据同一错误；重放同一命令不能绕过', async () => {
