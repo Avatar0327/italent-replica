@@ -190,7 +190,7 @@ export const DIGESTS: Digests = {
     selfAccess: 'b01b7eb6a4ad',
   },
   'apps/api/src/modules/employee-self-service/application-access.ts': {
-    applicationForm: '8bd2b35c784c',
+    applicationForm: '5224695276d8',
     requireApplicationAccess: '0be1452afd0b',
   },
   'apps/api/src/modules/employee-self-service/application-routes.ts': {
