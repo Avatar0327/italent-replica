@@ -156,3 +156,29 @@ function other(x: World) {
   })();
   return otherWorld;
 }
+
+/** P2-1：离职的中间经理只作穿越，不进结果；仍指向他的在职下属还在上级的汇报链里。 */
+describe('AC-HA-06 汇报链穿过离职的中间经理', () => {
+  it('A → B（已离职）→ C（在职）：概览三项与 6.01 明细包含 C、不包含 B', async () => {
+    const w = await structureWorld(database().db, 'ha06-chain');
+    const dept = await w.org('链路部门');
+    const hire = (name: string, date: string, fields: Record<string, unknown> = {}) =>
+      w.hire(name, { date, department: dept, fields });
+    const a = await hire('链顶', '2015-01-01');
+    const b = await hire('中间经理', '2021-01-01', { directManagerId: a.id });
+    const c = await hire('隔级下属', '2024-03-01', { directManagerId: b.id });
+    const leave = await w.session.business(
+      b.id,
+      { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-15', fields: {} },
+      (await w.session.getEmployee(b.id)).revision,
+    );
+    expect(leave.status).toBe('effective');
+    const top = boardClient(w.db, { tenant: w.tenantId, user: await userOf(w, a.id) });
+    // 链顶不负责任何部门：能看到 C 只可能是沿 B 的汇报线穿过去的
+    await top.expectCount(TEAM_BASE, '6.01', ids(a, c), AS_OF);
+    await top.expectCount(TEAM_BASE, '6.03', ids(a, c), AS_OF);
+    await top.expectCount(TEAM_BASE, '6.08', ids(a), AS_OF, '10yplus');
+    await top.expectCount(TEAM_BASE, '6.08', ids(c), AS_OF, '2to5y');
+    expect((await top.detail(TEAM_BASE, '6.01', AS_OF)).ids).not.toContain(b.id);
+  }, 300_000);
+});
