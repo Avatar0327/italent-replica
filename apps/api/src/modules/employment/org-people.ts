@@ -110,6 +110,7 @@ export async function countDepartmentStaff(
 ): Promise<Map<string, number>> {
   if (!orgIds.length) return new Map();
   businessDate(from);
+  const wanted = new Set(orgIds); // 记录数 × 部门数的 includes 扫描改 Set 查找（F-440），口径不变
   const records = rowsOf<TimelineSegment>(
     await tx.execute(sql`
       WITH candidates AS (
@@ -128,7 +129,7 @@ export async function countDepartmentStaff(
       WHERE t.valid_during && daterange(${from}::date, NULL, '[)')
         AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
     `),
-  ).filter((record) => orgIds.includes(record.departmentId));
+  ).filter((record) => wanted.has(record.departmentId));
   const exits = await loadExitStates(
     tx,
     tenantId,

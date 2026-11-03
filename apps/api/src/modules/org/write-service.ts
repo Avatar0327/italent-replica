@@ -124,6 +124,11 @@ export interface OrgUpdateOptions {
   readonly employmentScope?: ModuleScope;
   /** 导入已在组织锁之前取得全批员工锁，行内只能使用该集合。 */
   readonly employmentBatch?: OrgEmploymentBatch;
+  /**
+   * 组织调整单执行（R2-T08 §7.5）：组织版本在本事务写入，任职由执行器另起事务按页追加，
+   * 本事务不取员工锁、不追加任职（不受 1000 人上限）。直接改组织不传，仍同事务联动。
+   */
+  readonly employmentLinkage?: 'deferred';
 }
 
 /** 业务字段全部追加版本；对象头只保存稳定标识、可修改的业务编码及全局 revision。 */
@@ -143,10 +148,10 @@ export async function updateOrganization(
   }
   const effectiveDate = date(patch.effectiveDate, 'effectiveDate');
   const employmentCtx = { ...ctx, scope: options.employmentScope };
-  const lockedEmployees =
-    patch.addEmployment === true
-      ? await lockOrgEmploymentTargets(tx, employmentCtx, orgId, effectiveDate, options.employmentBatch)
-      : [];
+  const linkNow = patch.addEmployment === true && options.employmentLinkage !== 'deferred';
+  const lockedEmployees = linkNow
+    ? await lockOrgEmploymentTargets(tx, employmentCtx, orgId, effectiveDate, options.employmentBatch)
+    : [];
   await ensureOrgSetup(tx, ctx);
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
@@ -188,7 +193,8 @@ export async function updateOrganization(
   const saved = await appendVersion(tx, ctx, orgId, code, revision, normalized, path, current);
   if (from) await disableDescendants(tx, ctx, descendants, from);
   await validateFutureSnapshots(tx, ctx, effectiveDate);
-  if (addEmployment) await applyOrgEmploymentLinkage(tx, employmentCtx, orgId, effectiveDate, lockedEmployees);
+  if (addEmployment && linkNow)
+    await applyOrgEmploymentLinkage(tx, employmentCtx, orgId, effectiveDate, lockedEmployees);
   await audit(tx, ctx, 'org.update', orgId, current, saved);
   // 改名或改行政上级不给下级追加全称版本：下级全称在读取时按当天的上级名称解析（read-model 的 resolveOrgPaths）。
   return saved;

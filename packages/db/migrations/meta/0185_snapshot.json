@@ -1,5 +1,5 @@
 {
-  "id": "f844aa4c-f369-4b31-aecc-2845463eae5f",
+  "id": "f9cf0aae-3325-46a8-a0b6-d5911dafbdd1",
   "prevId": "61d14c86-d24a-4341-ab3c-7b5d195ce3b3",
   "version": "7",
   "dialect": "postgresql",
@@ -23313,10 +23313,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "(\"approval_instances\".\"status\" = 'running'\n    OR (\"approval_instances\".\"status\" = 'returned' AND \"approval_instances\".\"business_type\" <> 'exit_handover'))",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "approval_instances_initiator": {
           "name": "approval_instances_initiator",
@@ -63880,45 +63880,45 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "retire_rehire_dependencies_business_fk": {
           "name": "retire_rehire_dependencies_business_fk",
           "tableFrom": "retire_rehire_dependencies",
+          "tableTo": "employment_business_objects",
           "columnsFrom": [
             "tenant_id",
             "employee_id",
             "business_id"
           ],
-          "tableTo": "employment_business_objects",
           "columnsTo": [
             "tenant_id",
             "employee_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "retire_rehire_dependencies_retirement_fk": {
           "name": "retire_rehire_dependencies_retirement_fk",
           "tableFrom": "retire_rehire_dependencies",
+          "tableTo": "employment_business_objects",
           "columnsFrom": [
             "tenant_id",
             "employee_id",
             "retirement_id"
           ],
-          "tableTo": "employment_business_objects",
           "columnsTo": [
             "tenant_id",
             "employee_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -64006,39 +64006,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "org_adjustment_executions_tenant_id_tenants_id_fk": {
           "name": "org_adjustment_executions_tenant_id_tenants_id_fk",
           "tableFrom": "org_adjustment_executions",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "org_adjustment_executions_adjustment_fk": {
           "name": "org_adjustment_executions_adjustment_fk",
           "tableFrom": "org_adjustment_executions",
+          "tableTo": "org_adjustments",
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
           ],
-          "tableTo": "org_adjustments",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -64112,30 +64112,30 @@
         "org_adjustment_group_attempts_tenant_id_tenants_id_fk": {
           "name": "org_adjustment_group_attempts_tenant_id_tenants_id_fk",
           "tableFrom": "org_adjustment_group_attempts",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "org_adjustment_attempts_adjustment_fk": {
           "name": "org_adjustment_attempts_adjustment_fk",
           "tableFrom": "org_adjustment_group_attempts",
+          "tableTo": "org_adjustments",
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
           ],
-          "tableTo": "org_adjustments",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -64199,39 +64199,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "org_adjustment_pauses_tenant_id_tenants_id_fk": {
           "name": "org_adjustment_pauses_tenant_id_tenants_id_fk",
           "tableFrom": "org_adjustment_pauses",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "org_adjustment_pauses_adjustment_fk": {
           "name": "org_adjustment_pauses_adjustment_fk",
           "tableFrom": "org_adjustment_pauses",
+          "tableTo": "org_adjustments",
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
           ],
-          "tableTo": "org_adjustments",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -64295,39 +64295,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "org_adjustment_scope_orgs_tenant_id_tenants_id_fk": {
           "name": "org_adjustment_scope_orgs_tenant_id_tenants_id_fk",
           "tableFrom": "org_adjustment_scope_orgs",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "org_adjustment_scope_adjustment_fk": {
           "name": "org_adjustment_scope_adjustment_fk",
           "tableFrom": "org_adjustment_scope_orgs",
+          "tableTo": "org_adjustments",
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
           ],
-          "tableTo": "org_adjustments",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -64387,30 +64387,30 @@
         "org_adjustment_tenant_runners_tenant_id_tenants_id_fk": {
           "name": "org_adjustment_tenant_runners_tenant_id_tenants_id_fk",
           "tableFrom": "org_adjustment_tenant_runners",
+          "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
           ],
-          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "org_adjustment_runners_current_fk": {
           "name": "org_adjustment_runners_current_fk",
           "tableFrom": "org_adjustment_tenant_runners",
+          "tableTo": "org_adjustments",
           "columnsFrom": [
             "tenant_id",
             "current_adjustment_id"
           ],
-          "tableTo": "org_adjustments",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -65069,6 +65069,122 @@
           "value": "\"employment_types\".\"revision\" > 0 AND \"employment_types\".\"display_order\" >= 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.org_adjustment_employment_failures": {
+      "name": "org_adjustment_employment_failures",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment_id": {
+          "name": "adjustment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "org_adjustment_employment_failures_adjustment": {
+          "name": "org_adjustment_employment_failures_adjustment",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "adjustment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_adjustment_employment_failures_tenant_id_tenants_id_fk": {
+          "name": "org_adjustment_employment_failures_tenant_id_tenants_id_fk",
+          "tableFrom": "org_adjustment_employment_failures",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_employment_failures_adjustment_fk": {
+          "name": "org_adjustment_employment_failures_adjustment_fk",
+          "tableFrom": "org_adjustment_employment_failures",
+          "tableTo": "org_adjustments",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "org_adjustment_employment_failures_tenant_id_item_id_employee_id_pk": {
+          "name": "org_adjustment_employment_failures_tenant_id_item_id_employee_id_pk",
+          "columns": [
+            "tenant_id",
+            "item_id",
+            "employee_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

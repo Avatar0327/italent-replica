@@ -179,7 +179,11 @@ describe('AC-EMP-F323b 前端夹具与真实接口一致', () => {
     const list = (await (await as('GET', '/api/tenant/employment/employment-types?view=all')).json()) as {
       items: object[];
     };
-    for (const item of list.items) expect(Object.keys(item).sort()).toEqual(Object.keys(employmentTypeRow()).sort());
+    for (const item of list.items) {
+      expect(Object.keys(item).sort()).toEqual(Object.keys(employmentTypeRow()).sort());
+      expect(item).toMatchObject({ expiryDate: employmentTypeRow().expiryDate });
+    }
+    expect(employmentTypeRow().expiryDate).toBe('9999-12-31');
     // 选项接口按任职查看权开放（员工表单用），用任职会话读
     const optionResponse = await session.request('GET', '/employment-types/options');
     expect(optionResponse.status, await optionResponse.clone().text()).toBe(200);

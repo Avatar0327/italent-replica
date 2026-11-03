@@ -5,6 +5,7 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'apps/api/src/modules/org/codes.ts#allocateCode': ['#ensureOrgSetup', '#nextCode'],
   'apps/api/src/modules/org/codes.ts#consumeCode': [
     '#assertCodeAvailable',
     '#ensureOrgSetup',
@@ -19,7 +20,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org/codes.ts#nextCode': ['#available'],
   'apps/api/src/modules/org/codes.ts#releaseCode': ['#ensureOrgSetup', '#ownedReservation', '#reservationAudit'],
   'apps/api/src/modules/org/codes.ts#reservationAudit': ['apps/api/src/audit/record.ts#recordAudit'],
-  'apps/api/src/modules/org/codes.ts#reserveCode': ['#ensureOrgSetup', '#nextCode', '#reservationAudit'],
+  'apps/api/src/modules/org/codes.ts#reserveCode': ['#allocateCode', '#reservationAudit'],
   'apps/api/src/modules/org/correction.ts#assertCodeFree': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org/correction.ts#assertNotBeforeParents': [
     '#earliest',
@@ -79,6 +80,10 @@ export const GRAPH: Graph = {
     '#ORG_EMPLOYMENT_LIMIT',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/org/employment-linkage.ts#countOrgEmploymentTargets': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#targetsSql',
+  ],
   'apps/api/src/modules/org/employment-linkage.ts#hasPendingOrgEmployment': [
     'apps/api/src/modules/employment/activation-store.ts#pendingActivationState',
     'apps/api/src/modules/employment/context.ts#employmentCreator',
@@ -97,9 +102,16 @@ export const GRAPH: Graph = {
     '#orgEmploymentTargets',
   ],
   'apps/api/src/modules/org/employment-linkage.ts#orgEmploymentTargets': [
-    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#ORG_EMPLOYMENT_LIMIT',
+    '#orgEmploymentTargetsPage',
+  ],
+  'apps/api/src/modules/org/employment-linkage.ts#orgEmploymentTargetsPage': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#targetsSql',
+  ],
+  'apps/api/src/modules/org/employment-linkage.ts#orgSubtreeAt': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#subtree',
   ],
   'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql': ['#primaryAt', '#primaryDepartment'],
   'apps/api/src/modules/org/employment-linkage.ts#subtree': ['#idsSql'],

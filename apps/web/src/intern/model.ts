@@ -44,6 +44,9 @@ export interface Row {
   entryDate?: string | null;
   departmentId?: string | null;
   positionId?: string | null;
+  /** 只有实习中（F-366）。 */
+  institutionId?: string | null;
+  directManagerId?: string | null;
   employeeStatus?: number;
   revision?: number;
   state?: string;
@@ -60,11 +63,37 @@ export interface Filters {
   keyword?: string;
   departmentId?: string;
 }
+/** F-366：实习中表头只有实习机构 / 实习部门 / 直线经理可排（规格 31 末尾 F-366 补充，intern-views.ts INTERN_SORT_FIELDS）。 */
+const SORT_KEYS = ['institutionId', 'departmentId', 'directManagerId'] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+export interface Sort {
+  sortBy: SortKey;
+  direction: 'asc' | 'desc';
+}
+/** 其余三个页签的排序未取证，服务端对它们带排序参数回 400。 */
+export function sortable(view: InternView, key: string): key is SortKey {
+  return view === 'interning' && (SORT_KEYS as readonly string[]).includes(key);
+}
+/** 单列排序：同列 升 → 降 → 取消（回到服务端默认顺序）；点另一列直接替换为升序，不叠加。 */
+export function nextSort(current: Sort | undefined, key: SortKey): Sort | undefined {
+  if (current?.sortBy !== key) return { sortBy: key, direction: 'asc' };
+  return current.direction === 'asc' ? { sortBy: key, direction: 'desc' } : undefined;
+}
 
-// 原站四视图列序 / 列宽未取证（PR“未验证”）：只列后端 internViews 投影里有的字段。
+// 原站四视图列序 / 列宽未取证（PR“未验证”）：只列后端 internViews 投影里有的字段。实习中按 F-366 取证补实习机构、
+// 直线经理两列（原站这两列与实习部门可排），顺序参照原站“实习机构、实习部门、实习职位、直线经理”。
 const base = ['name', 'code', 'departmentId', 'positionId'];
 export const columns: Record<InternView, readonly string[]> = {
-  interning: [...base, 'entryDate', 'employeeStatus'],
+  interning: [
+    'name',
+    'code',
+    'institutionId',
+    'departmentId',
+    'positionId',
+    'directManagerId',
+    'entryDate',
+    'employeeStatus',
+  ],
   converting: [...base, 'effectiveDate', 'state'],
   converted: [...base, 'effectiveDate', 'employeeStatus', 'probationStartDate', 'probationMonths', 'probationEndDate'],
   left: [...base, 'entryDate', 'lastWorkDate'],
@@ -77,9 +106,13 @@ export function allowedFilters(filters: Filters, allowed: (key: keyof Filters) =
   );
 }
 
-export function listPath(view: InternView, page: number, filters: Filters = {}): string {
+export function listPath(view: InternView, page: number, filters: Filters = {}, sort?: Sort): string {
   const query = new URLSearchParams({ view, page: String(page), pageSize: String(pageSize) });
   for (const [key, value] of Object.entries(filters)) if (!isBlank(value)) query.set(key, String(value));
+  if (sort) {
+    query.set('sortBy', sort.sortBy);
+    query.set('direction', sort.direction);
+  }
   return `${interns}?${query}`;
 }
 

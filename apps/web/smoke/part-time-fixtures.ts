@@ -1,5 +1,8 @@
 import type { Page } from '@playwright/test';
 import { employee, snapshotFixture, user } from './fixtures.js';
+import { employmentTypeOption } from './employment-type-fixtures.js';
+
+export const partTimeEmploymentType = employmentTypeOption();
 
 export const recordId = '40000000-0000-4000-8000-000000000001';
 export const requestId = '50000000-0000-4000-8000-000000000001';
@@ -13,7 +16,13 @@ export const record = {
   effectiveDate: '2026-09-01',
   endDate: '2026-11-30',
   revision: 1,
-  fields: { departmentId: '60000000-0000-4000-8000-000000000001', positionId: null, levelId: null },
+  fields: {
+    departmentId: '60000000-0000-4000-8000-000000000001',
+    positionId: null,
+    levelId: null,
+    employmentType: partTimeEmploymentType.id,
+    employmentTypeName: partTimeEmploymentType.name,
+  },
   customFields: {},
   serviceStatus: 'serving',
   partTimeView: ['ongoing', 'all'],
@@ -82,9 +91,13 @@ export const fields = [
   'status',
   'serviceStatus',
   'partTimeView',
+  'employmentType',
 ];
 export async function setup(page: Page, path = '/part-time') {
   await permissions(page);
+  await page.route('**/employment/employment-types/options', (route) =>
+    route.fulfill({ json: { items: [partTimeEmploymentType] } }),
+  );
   await page.route('**/employment/part-times?*', (route) => {
     const { primary: _primary, warnings: _warnings, ...approval } = request;
     const q = new URL(route.request().url()).searchParams;

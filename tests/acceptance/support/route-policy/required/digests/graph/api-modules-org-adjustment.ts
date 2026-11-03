@@ -67,8 +67,10 @@ export const GRAPH: Graph = {
     '#lockRows',
     'apps/api/src/modules/org-adjustment/approval-edit.ts#assertApprovable',
     'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval',
+    'apps/api/src/modules/org-adjustment/schedule.ts#scheduleOrgAdjustmentExecution',
     'apps/api/src/modules/org-adjustment/snapshot.ts#orgAdjustmentSnapshot',
     'apps/api/src/modules/org-adjustment/submission.ts#resubmitFromApproval',
+    'apps/api/src/modules/org-adjustment/submission.ts#settleApproval',
     'apps/api/src/modules/org-adjustment/submission.ts#settleFromApproval',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
@@ -212,6 +214,29 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#sees', '#trimIssues', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#sees', '#without'],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#adminParentsAt': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#changedAncestorCounts': [
+    '#adminParentsAt',
+    '#resolveParent',
+  ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#groupScope': [
+    '#resolveParent',
+    'apps/api/src/modules/org/employment-linkage.ts#orgSubtreeAt',
+  ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionGroups': [
+    '#changedAncestorCounts',
+    '#loadExecutionItems',
+    '#targetDepths',
+  ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionItems': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#resolveParent': ['#resolveParent'],
+  'apps/api/src/modules/org-adjustment/execution-groups.ts#targetDepths': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+  ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#escapeXml': ['#xmlChars'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#establishmentMark': ['#NONE'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#exportCards': ['#NONE', '#TAGS', '#exportCards'],
@@ -787,6 +812,19 @@ export const GRAPH: Graph = {
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
   ],
+  'apps/api/src/modules/org-adjustment/schedule.ts#scheduleOrgAdjustmentExecution': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/org-adjustment/execution-groups.ts#groupScope',
+    'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionGroups',
+    'apps/api/src/modules/org-adjustment/execution-groups.ts#loadExecutionItems',
+    '#NEXT_DAY_HOUR',
+    '#NEXT_DAY_VOLUME',
+    'apps/api/src/modules/org/employment-linkage.ts#countOrgEmploymentTargets',
+    'apps/api/src/system-actor.ts#auditActor',
+    'packages/domain/src/contracts/rules.ts#addDays',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/org-adjustment/service.ts#assertHeadPatch': [
     'apps/api/src/modules/org-adjustment/item-tree.ts#OUT_OF_RANGE',
     'apps/api/src/modules/org-adjustment/item-tree.ts#outOfRange',
@@ -902,11 +940,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/service.ts#audit',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
   ],
-  'apps/api/src/modules/org-adjustment/submission.ts#settleFromApproval': [
+  'apps/api/src/modules/org-adjustment/submission.ts#settleApproval': [
     '#lockStored',
     '#setStatus',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
+  'apps/api/src/modules/org-adjustment/submission.ts#settleFromApproval': ['#settleApproval'],
   'apps/api/src/modules/org-adjustment/submission.ts#submitAdjustment': [
     'apps/api/src/modules/approval/engine.ts#startOrResume',
     'apps/api/src/modules/org-adjustment/service.ts#editable',

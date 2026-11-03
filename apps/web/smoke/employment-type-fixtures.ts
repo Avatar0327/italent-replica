@@ -35,7 +35,7 @@ export const employmentTypeRow = (overrides: Partial<EmploymentTypeRow> = {}): E
   name: '合成类别甲',
   displayOrder: 10,
   effectiveDate: '2018-01-01',
-  expiryDate: null,
+  expiryDate: '9999-12-31',
   enabled: true,
   revision: 1,
   ...overrides,
@@ -45,7 +45,7 @@ export interface EmploymentTypeRow {
   name: string;
   displayOrder: number;
   effectiveDate: string;
-  expiryDate: string | null;
+  expiryDate: string;
   enabled: boolean;
   revision: number;
 }
