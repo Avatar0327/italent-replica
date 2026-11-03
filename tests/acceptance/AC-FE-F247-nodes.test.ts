@@ -19,15 +19,18 @@ describe('AC-FE-F247 延长兼职预置节点顺序（PB-38）', () => {
 });
 
 describe('AC-FE-F247 四个审批节点同意前都弹缩短确认', () => {
-  it.each(nodeNames.map((name, index) => ({ name, index })))('第 $index 个节点 $name：同意带确认，驳回不带', ({ name }) => {
-    const detail = {
-      approvalType: 'part_time_extend',
-      form: { values },
-      tasks: [{ id: 'task', nodeName: name, status: 'pending' }],
-    };
-    expect(approvalNotice(detail, 'approve')).toBe(notice);
-    expect(approvalNotice(detail, 'reject')).toBeUndefined();
-  });
+  it.each(nodeNames.map((name, index) => ({ name, index })))(
+    '第 $index 个节点 $name：同意带确认，驳回不带',
+    ({ name }) => {
+      const detail = {
+        approvalType: 'part_time_extend',
+        form: { values },
+        tasks: [{ id: 'task', nodeName: name, status: 'pending' }],
+      };
+      expect(approvalNotice(detail, 'approve')).toBe(notice);
+      expect(approvalNotice(detail, 'reject')).toBeUndefined();
+    },
+  );
   it('提交入口与审批入口口径一致；审批人把日期改成不早于原日期后不再提示', () => {
     expect(shorteningNotice({ ...values, kind: 'extend' })).toBe(notice);
     const detail = { approvalType: 'part_time_extend', form: { values: { ...values, endDate: '2026-11-30' } } };
