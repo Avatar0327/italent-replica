@@ -21,7 +21,6 @@ interface BoardComponent {
 }
 interface TeamBoard {
   readonly asOf: string;
-  readonly hasDataPermission: boolean;
   readonly components: BoardComponent[];
 }
 
@@ -37,6 +36,8 @@ export function TeamDashboardPage() {
   const headcount = find('6.01');
   const tenure = find('6.03');
   const distribution = find('6.08');
+  // 服务端只在调用者绑定了人员档案时才返回看板；在职人数为 0（如本人已离职）时不显示数字
+  const hasMembers = (headcount?.value ?? 0) > 0;
   return (
     <>
       <ServiceHeading title={text.title}>
@@ -44,8 +45,8 @@ export function TeamDashboardPage() {
       </ServiceHeading>
       <p>{text.hint}</p>
       <ReadState state={board} />
-      {board.data && !board.data.hasDataPermission ? <Empty description={text.empty} /> : null}
-      {board.data?.hasDataPermission ? (
+      {board.data && !hasMembers ? <Empty description={text.empty} /> : null}
+      {board.data && hasMembers ? (
         <>
           <p>
             {text.asOf}：{board.data.asOf}

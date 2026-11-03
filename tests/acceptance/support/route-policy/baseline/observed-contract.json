@@ -3614,7 +3614,8 @@
           "status": 401
         },
         "member": {
-          "status": 200
+          "code": "NOT_FOUND",
+          "status": 404
         },
         "nonMember": {
           "code": "TENANT_NOT_MEMBER",

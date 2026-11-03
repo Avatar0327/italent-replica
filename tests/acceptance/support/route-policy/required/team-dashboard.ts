@@ -17,8 +17,9 @@ const scoped = (path: string): Obligation[] => [
       { role: 'call', unit: `${ROUTES}#route:GET ${path}`, anchor: 'await teamPeople(c, deps)' },
       { role: 'impl', unit: `${ROUTES}#teamPeople`, anchor: 'await teamVisibility(tx,' },
       { role: 'impl', unit: `${ROUTES}#teamPeople`, anchor: 'team.visible' },
-      { role: 'impl', unit: `${TEAM}#teamVisibility`, anchor: 'await managerIdentityWithOrgs(tx, viewer)' },
-      { role: 'impl', unit: `${TEAM}#teamVisibility`, anchor: 'if (!self) return { visible: sql`false`' },
+      { role: 'impl', unit: `${ROUTES}#teamPeople`, anchor: "if (!team) throw new AppError('NOT_FOUND'" },
+      { role: 'impl', unit: `${TEAM}#teamVisibility`, anchor: 'await managerIdentity(tx, viewer)' },
+      { role: 'impl', unit: `${TEAM}#teamVisibility`, anchor: 'if (!self) return null' },
     ],
   },
 ];

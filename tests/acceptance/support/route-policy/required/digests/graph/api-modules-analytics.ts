@@ -727,6 +727,7 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
       'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
       'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
+      '#NOT_FOUND_TEXT',
       '#TEAM_DASHBOARD_BASE',
       '#teamPeople',
       'apps/api/src/modules/job/context.ts#pageQuery',
@@ -739,12 +740,21 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-structure-routes.ts#departmentFilter',
     'apps/api/src/modules/analytics/hr-structure-routes.ts#lookupOf',
     'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere',
+    '#NOT_FOUND_TEXT',
     'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility',
     'apps/api/src/tenant-context.ts#tenantOf',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#chainSql': [
+    'apps/api/src/modules/permission/scope-persons.ts#currentPersons',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#ledOrgIds': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#MAX_SCOPE_IDS',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
   'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility': [
-    'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs',
-    'apps/api/src/modules/permission/scope-persons.ts#reportingPersonsSql',
+    '#chainSql',
+    '#ledOrgIds',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
   ],
 };

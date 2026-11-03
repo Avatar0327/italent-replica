@@ -2,12 +2,11 @@ import type { Page } from '@playwright/test';
 import { test, expect, tenant } from './fixtures.js';
 
 // F-467 团队人事看板（35 §2.1b）：只用合成数据；页面挂在管理者工作台 /manager/team-dashboard 下。
-const board = (hasDataPermission: boolean) => ({
+const board = (hasMembers: boolean) => ({
   asOf: '2026-10-01',
-  hasDataPermission,
   components: [
-    { code: '6.01', name: '在职人数', kind: 'value', value: hasDataPermission ? 5 : 0, groups: null },
-    { code: '6.03', name: '平均司龄', kind: 'average', value: hasDataPermission ? 4.5 : null, count: 5, groups: null },
+    { code: '6.01', name: '在职人数', kind: 'value', value: hasMembers ? 5 : 0, groups: null },
+    { code: '6.03', name: '平均司龄', kind: 'average', value: hasMembers ? 4.5 : null, count: 5, groups: null },
     {
       code: '6.08',
       name: '司龄分布',
@@ -21,13 +20,11 @@ const board = (hasDataPermission: boolean) => ({
   ],
 });
 
-async function open(page: Page, hasDataPermission: boolean) {
+async function open(page: Page, hasMembers: boolean) {
   await page.route('**/api/tenant/employment/transfers/manager', (route) =>
     route.fulfill({ json: { canApply: false, canViewReporting: true } }),
   );
-  await page.route('**/api/tenant/analytics/team-dashboard', (route) =>
-    route.fulfill({ json: board(hasDataPermission) }),
-  );
+  await page.route('**/api/tenant/analytics/team-dashboard', (route) => route.fulfill({ json: board(hasMembers) }));
 }
 
 test.beforeEach(async ({ page, baseURL }) => {
