@@ -19,6 +19,7 @@ import {
   useInternCommand,
   useInternDraft,
   useOpening,
+  useSettledRefresh,
   type ApplicationDraft,
 } from './commands.js';
 import { m } from './messages.js';
@@ -167,9 +168,8 @@ function useRegularize({ row, application, onDone, refresh, navigation, opening,
   const baseline = draft?.values ?? opening.values;
   const readCurrent = useRegularizeRead(employeeId, draft, read);
   const target = { id: employeeId, revision: draft?.revision ?? opening.revision, baseline, read: readCurrent };
-  const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', () =>
-    application ? Promise.resolve() : refresh(),
-  );
+  const settled = useSettledRefresh(!!application, !!draft, refresh);
+  const cmd = useInternCommand(interns, target, application ? 'apply' : 'regularize', settled);
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
   const { latest, readError, reading, reread } = useRejectedRead(readCurrent, refresh);
