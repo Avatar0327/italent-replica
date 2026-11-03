@@ -31,8 +31,6 @@ const previewNode = (over: Partial<PreviewNode> = {}): PreviewNode => ({
   orgId: null,
   itemId: null,
   name: null,
-  onDutyCount: 3,
-  partTimeCount: 1,
   personInChargeName: null,
   establishment: null,
   mark: null,
