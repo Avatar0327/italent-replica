@@ -194,7 +194,10 @@ export async function assertExitDictionaryEnabled(
   }
 }
 
-/** 已保存单据的显示名称：按编码取名称，停用项照常返回（§2.1）；不存在的编码不出现在结果里。 */
+/**
+ * 已保存单据的显示名称：按编码取名称，停用项照常返回（§2.1）；不存在的编码不出现在结果里。
+ * 编码不分大小写（与 findByCode / 选择校验同口径，F-174）：结果以调用方传入的写法为键，单据上存的什么写法就能按什么写法取到。
+ */
 export async function exitDictionaryNames(
   tx: Tx,
   tenantId: string,
@@ -205,10 +208,24 @@ export async function exitDictionaryNames(
   if (wanted.length === 0) return new Map();
   const t = TABLES[kind];
   const rows = await tx
-    .select({ code: t.code, name: t.name })
+    .select({ code: sql<string>`lower(${t.code})`, name: t.name })
     .from(t)
-    .where(and(eq(t.tenantId, tenantId), inArray(t.code, wanted)));
-  return new Map(rows.map((row) => [row.code, row.name]));
+    .where(
+      and(
+        eq(t.tenantId, tenantId),
+        inArray(
+          sql`lower(${t.code})`,
+          wanted.map((code) => code.toLowerCase()),
+        ),
+      ),
+    );
+  const byLower = new Map(rows.map((row) => [row.code, row.name]));
+  const names = new Map<string, string>();
+  for (const code of wanted) {
+    const name = byLower.get(code.toLowerCase());
+    if (name !== undefined) names.set(code, name);
+  }
+  return names;
 }
 
 // ---- 预置项（DEC-361 登记表：新租户开通即装，存量租户经平台回补命令补装；只补缺失编码，不覆盖租户改名 / 停用）----
