@@ -45,7 +45,7 @@ it.each(cases.flatMap((item) => item.required.map((hidden) => ({ ...item, hidden
     await openSubset(
       ui,
       kind,
-      subsetFormFields[kind].filter((field) => field !== hidden),
+      subsetFormFields[kind]!.filter((field) => field !== hidden),
       edit,
     );
     expect(labels().map((label) => label.htmlFor)).not.toContain(hidden);
