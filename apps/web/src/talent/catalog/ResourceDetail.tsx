@@ -1,4 +1,4 @@
-import { Alert, Button, Descriptions, Empty, Table, Tabs, Checkbox, Space } from 'antd';
+import { Alert, Button, Descriptions, Empty, Table, Tabs, Checkbox, Space, Input } from 'antd';
 import { DetailPage } from '../../foundation/templates.js';
 import { PageState } from '../../foundation/PageState.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
@@ -29,11 +29,25 @@ function MoreDetails({ row, resource, names }: { row: Row; resource: Resource; n
       <>
         <Alert type="info" message={m.readOnlyDetail} />
         <Tabs
+          className="catalog-standard-levels"
           tabPosition="left"
+          tabBarExtraContent={{
+            left: (
+              <div className="catalog-level-navigation">
+                <h2>{m.qualificationLevels}</h2>
+                <Input aria-label={m.levelSearch} placeholder={m.search} disabled />
+              </div>
+            ),
+          }}
           items={levels.map((id) => ({
             key: id,
             label: names?.get(id) ?? `${m.level} · ${id}`,
-            children: <StandardCells cells={array(row.details).filter((cell) => cell.levelId === id)} names={names} />,
+            children: (
+              <>
+                <h2>{names?.get(id) ?? `${m.level} · ${id}`}</h2>
+                <StandardCells cells={array(row.details).filter((cell) => cell.levelId === id)} names={names} />
+              </>
+            ),
           }))}
         />
         {!levels.length && <Empty />}
@@ -65,6 +79,7 @@ export function ResourceDetail({
   const Container = fullPageDetail(resource) ? CatalogDetail : DetailPage;
   return (
     <Container
+      backFirst={resource.key === 'standards'}
       open
       onClose={onClose}
       title={row && fieldAccess(permission, 'name').visible ? (row.name ?? resource.title) : resource.title}

@@ -191,6 +191,14 @@ function toolbar(resource: Resource) {
   if (resource.key === 'targets') return [m.import, m.industryTargets];
   return [m.import];
 }
+function toolbarButton(label: string) {
+  return (
+    <Tooltip key={label} title={m.pending}>
+      <Button disabled>{label}</Button>
+    </Tooltip>
+  );
+}
+
 function ResourceList({
   resource,
   permission,
@@ -224,16 +232,17 @@ function ResourceList({
       filters={<ResourceFilters resource={resource} permission={permission} state={state} />}
       actions={
         <>
+          {toolbar(resource)
+            .filter((label) => label === m.importJobs)
+            .map(toolbarButton)}
           {canButton(permission, 'create', 'list') && (
             <Button type="primary" onClick={() => setEditor({ original: null })}>
               {createLabel(resource)}
             </Button>
           )}
-          {toolbar(resource).map((label) => (
-            <Tooltip key={label} title={m.pending}>
-              <Button disabled>{label}</Button>
-            </Tooltip>
-          ))}
+          {toolbar(resource)
+            .filter((label) => label !== m.importJobs)
+            .map(toolbarButton)}
         </>
       }
     />

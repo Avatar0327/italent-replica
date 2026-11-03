@@ -104,6 +104,8 @@ export const m = {
   candidatesLimit: '候选数据超过本页加载上限，请缩小数据范围后重试。',
   description: '说明',
   level: '级别',
+  qualificationLevels: '任职级别',
+  levelSearch: '搜索任职级别',
   target: '指标',
   content: '能力标准',
   targetValue: '目标值',

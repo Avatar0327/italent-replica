@@ -257,3 +257,19 @@
   width: 200px;
   margin: 0;
 }
+
+.catalog-standard-levels {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fff;
+}
+.catalog-standard-levels > .ant-tabs-nav {
+  width: 190px;
+}
+.catalog-level-navigation {
+  padding: 0 12px 16px 0;
+}
+.catalog-standard-levels h2 {
+  border-left: 3px solid var(--shell-primary);
+  padding-left: 10px;
+}

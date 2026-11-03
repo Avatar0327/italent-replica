@@ -8,17 +8,22 @@ export function CatalogDetail(props: {
   onClose(): void;
   summary?: ReactNode;
   actions?: ReactNode;
+  backFirst?: boolean;
   sections: { key: string; title: string; children: ReactNode }[];
 }) {
+  const back = (
+    <Button aria-label={m.back} onClick={props.onClose}>
+      {m.back}
+    </Button>
+  );
   return (
     <section className="catalog-detail-page">
       <header>
         <h1>{props.title}</h1>
         <Space>
+          {props.backFirst && back}
           {props.actions}
-          <Button aria-label={m.back} onClick={props.onClose}>
-            {m.back}
-          </Button>
+          {!props.backFirst && back}
         </Space>
       </header>
       {props.summary && <div className="catalog-detail-summary">{props.summary}</div>}
