@@ -57,6 +57,7 @@ import {
 } from './service.js';
 import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
+import { pauseDisclosureHandler } from './pause-disclosure.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
 const OBJECT = ORG_ADJUSTMENT_OBJECT_CODE;
@@ -65,6 +66,8 @@ const ITEMS = `${BASE}/:id/org-items`;
 const ROW_EDIT = [DETAIL, 'EditOrgApprovalDetail', 'list_row'] as const;
 
 export function registerOrgAdjustmentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // F-342 / F-355：租户路由器上的任何写入口撞到执行暂停，编号都在这里按调整单可见性补上（其余错误照旧）
+  router.onError(pauseDisclosureHandler(deps));
   registerHeadRoutes(router, deps);
   registerSubmitRoutes(router, deps);
   registerItemRoutes(router, deps);
