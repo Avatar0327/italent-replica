@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { saveResource } from '../../apps/web/src/talent/catalog/api.js';
+import { commandRequestBody, saveResource } from '../../apps/web/src/talent/catalog/api.js';
 import { qualificationResources } from '../../apps/web/src/qualification/resources.js';
 
 const resource = qualificationResources.find((item) => item.key === 'levels')!;
@@ -19,4 +19,9 @@ it('AC-QL F-475 接受实际提交版本后的真实对象回执', async () => {
   const request = vi.fn().mockResolvedValue(receipt);
   await expect(saveResource({ request }, resource, command.body, original, command)).resolves.toEqual(receipt);
   expect(request.mock.calls[0]![1].command.revision).toBe(3);
+});
+
+it('AC-QL F475 P2-1 序列化不得在内核裁剪后补入等级明细', () => {
+  const scheme = qualificationResources.find((item) => item.key === 'grade-schemes')!;
+  expect(commandRequestBody(scheme, null, [], { name: '合成受限方案' })).toEqual({ name: '合成受限方案' });
 });

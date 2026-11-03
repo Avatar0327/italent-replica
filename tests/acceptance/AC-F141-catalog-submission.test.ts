@@ -344,3 +344,17 @@ it('AC-F141 层级原为空 → 选一个层级 → 清回 → 后台撤销层�
   await vi.waitFor(() => expect(document.body.querySelector('.ant-drawer-content')).toBeNull());
   expect(stored).toMatchObject({ name: 'B', layerId: null, revision: 2 });
 });
+
+it('AC-QL F475 P2-1 有创建按钮和名称权限但无等级明细编辑权时阻断创建且不发送请求', async () => {
+  collection = 'grade-schemes';
+  editableOverride = ['name'];
+  await openPage();
+  await click(buttonOf('新建'));
+  await vi.waitFor(() => expect(document.body.querySelector('[role="dialog"]')).not.toBeNull());
+  const input = document.body.querySelector<HTMLInputElement>('.ant-modal input');
+  if (input) await type(input, '合成受限方案');
+  await click(buttonOf('保存'));
+  expect.soft(buttonOf('保存')?.hasAttribute('disabled')).toBe(true);
+  expect.soft(text()).toContain('缺少创建必需字段的编辑权限');
+  expect(posts).toHaveLength(0);
+});
