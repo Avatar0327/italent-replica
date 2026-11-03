@@ -44,8 +44,8 @@ export function trimIssues<T extends object>(issues: readonly T[], viewable: Vie
 export const HIDDEN_ROW_INVALID = 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID';
 
 /**
- * 整单校验信封里隐藏行（组织范围外）的问题折叠成一条汇总：不带 itemId / orgId / 原因 / 业务文案，只给条数（F-339 ②）。
- * 汇总放在末尾；没有隐藏行问题时原样返回。
+ * 整单校验信封里隐藏行（组织范围外）的问题折叠成一条固定形状的汇总：不带 itemId / orgId / 原因 / 业务文案，
+ * 也不带条数，调用方无法由汇总反推无权明细的数量（F-339 ②）。汇总放在末尾；没有隐藏行问题时原样返回。
  */
 export function foldHiddenRowIssues<T extends object>(issues: readonly T[], hiddenItemIds: ReadonlySet<string>) {
   const isHidden = (issue: T) => hiddenItemIds.has((issue as Issue).itemId as string);
@@ -55,7 +55,6 @@ export function foldHiddenRowIssues<T extends object>(issues: readonly T[], hidd
     section: 'org',
     reason: HIDDEN_ROW_INVALID,
     message: '有无权查看的明细行未通过校验',
-    hiddenRowCount: new Set(hidden.map((issue) => (issue as Issue).itemId)).size,
   };
   return [...issues.filter((issue) => !isHidden(issue)), summary];
 }
