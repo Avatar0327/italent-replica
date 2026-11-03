@@ -1,6 +1,6 @@
 import type { Row } from '../src/part-time/model.js';
 import type { Page, Route } from '@playwright/test';
-import { setup, fields, request, record, recordId, listRecord } from './part-time-fixtures.js';
+import { setup, fields, request, record, recordId, listRecord, partTimeEmploymentType } from './part-time-fixtures.js';
 export async function requestSetup(page: Page) {
   await setup(page);
   const state = {
@@ -107,6 +107,8 @@ async function requestRoute(route: Route, state: Awaited<ReturnType<typeof reque
           path.split('/').at(-1)!
         ] ?? (req.method() === 'DELETE' ? 'deleted' : state.row.status),
     };
+  if (state.row.fields?.employmentType === partTimeEmploymentType.id)
+    state.row.fields = { ...state.row.fields, employmentTypeName: partTimeEmploymentType.name };
   state.row.revision = Number(state.row.revision) + 1;
   if (state.row.kind === 'extend' && String(state.row.endDate) < String(state.row.originalEndDate))
     state.row.warnings = [{ reason: 'PART_TIME_NOT_EXTENDED' }];

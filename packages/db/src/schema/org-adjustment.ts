@@ -372,3 +372,25 @@ export const orgAdjustmentGroupAttempts = pgTable(
     check('org_adjustment_attempts_positive', sql`${t.attempts} >= 0`),
   ],
 );
+
+/**
+ * §7.5 单据执行逐员工失败（BE-11b）：组织已调整、某员工任职追加失败（范围外、任职已变化等）记一行，
+ * 明细结果记 EMPLOYMENT_PARTIAL。主键含员工，接管重跑同页时幂等。
+ */
+export const orgAdjustmentEmploymentFailures = pgTable(
+  'org_adjustment_employment_failures',
+  {
+    tenantId: tenantId(),
+    adjustmentId: uuid('adjustment_id').notNull(),
+    itemId: uuid('item_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    reason: text('reason').notNull(),
+    message: text('message').notNull(),
+    createdAt: utc('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.itemId, t.employeeId] }),
+    adjustmentFk('org_adjustment_employment_failures_adjustment_fk', t),
+    index('org_adjustment_employment_failures_adjustment').on(t.tenantId, t.adjustmentId),
+  ],
+);

@@ -59,7 +59,12 @@ export function typeActions(permission: ObjectPermission | undefined, row?: Type
     !!loaded?.buttons.some((item) => item.buttonCode === code && item.level === level);
   const editable = (field: string) => !!loaded?.viewableFields.includes(field) && loaded.editableFields.includes(field);
   return {
-    create: op('create') && button('create', 'list') && editable('name') && editable('effectiveDate'),
+    create:
+      op('create') &&
+      button('create', 'list') &&
+      editable('name') &&
+      editable('displayOrder') &&
+      editable('effectiveDate'),
     edit: !!row && op('update') && button('update') && typeFields.some(editable),
     disable: row?.enabled === true && op('update') && button('disable'),
     enable: row?.enabled === false && op('update') && button('enable'),

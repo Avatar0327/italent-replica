@@ -1,6 +1,7 @@
 import { actionButton } from './action-button.js';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures.js';
+import { partTimeEmploymentType } from './part-time-fixtures.js';
 import { requestSetup } from './part-time-request-fixtures.js';
 const named = (name: string) => ({ name: new RegExp(`^${name.split('').join('\\s*')}$`) });
 async function dateForm(page: Page, kind = '延长') {
@@ -94,6 +95,8 @@ for (const submit of [false, true])
     await form.getByLabel('开始日期', { exact: true }).fill('2026-09-01');
     await form.getByRole('combobox', named('兼职部门')).click();
     await page.getByTitle('合成兼职部门', { exact: true }).click();
+    await form.getByRole('combobox', named('人员类别')).click();
+    await page.locator('.ant-select-dropdown:visible').getByTitle(partTimeEmploymentType.name, { exact: true }).click();
     await form.screenshot({ path: '../../.demo/fe-r2d2b-add.png' });
     await form.getByRole('button', named(submit ? '提交' : '保存草稿')).click();
     await expect(form).toHaveCount(0);
@@ -101,6 +104,7 @@ for (const submit of [false, true])
       requestType: 'add',
       partTimeType: 'part_time',
       startDate: '2026-09-01',
+      fields: { employmentType: partTimeEmploymentType.id },
       submit,
     });
     expect(state.writes[0]?.body.fields).not.toHaveProperty('isDepartmentHead');

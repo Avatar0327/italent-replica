@@ -18,8 +18,16 @@ import {
   loadExecutionItems,
   type AdjustmentHead,
   type ExecutionGroup,
+  type GroupExecutor,
   type GroupExecutors,
 } from './execution-groups.js';
+import {
+  applicantSubjectCheck,
+  orgExecutors,
+  resolveApplicantScope,
+  type ApplicantScopeOf,
+} from './executors/index.js';
+import type { ScopeAt } from './executors/applicant-scope.js';
 import {
   claimOrgAdjustmentRunner,
   fenced,
@@ -36,13 +44,20 @@ export const MAX_GROUP_ATTEMPTS = 5;
 export interface RunnerOptions {
   readonly holderToken?: string;
   readonly leaseMs?: number;
-  /** 各明细执行器（BE-11b～11f 接入）；没有执行器的组按业务失败 EXECUTOR_NOT_AVAILABLE 记结果。 */
+  /**
+   * 各明细执行器；不传时用产品的组织明细执行器（BE-11b）并做申请人主体层复核。
+   * 显式传入时只用所给的（测试替身），没有执行器的组按业务失败 EXECUTOR_NOT_AVAILABLE 记结果。
+   */
   readonly executors?: GroupExecutors;
-  /** §7.6A 申请人主体组织层复核（§6.3“执行”列）；未注入时放行，组内逐对象复核由执行器负责。 */
-  readonly subjectCheck?: (tx: Tx, adjustment: AdjustmentHead) => Promise<boolean>;
+  /** 申请人数据范围来源（§6.3“执行”列）；默认权限引擎。 */
+  readonly scopeOf?: ApplicantScopeOf;
+  /** §7.6A 申请人主体组织层复核；默认执行器下取 applicantSubjectCheck，显式执行器且未注入时放行。 */
+  readonly subjectCheck?: (tx: Tx, adjustment: AdjustmentHead, at: ScopeAt) => Promise<boolean>;
   /** 测试钩子：抛错即模拟在该点崩溃。 */
   readonly hooks?: {
     readonly afterGroup?: (group: ExecutionGroup) => Promise<void> | void;
+    /** 分页执行器每返回一次 'pending'（该步事务已提交）后调用；抛错即模拟步间崩溃（§7.5 杀点）。 */
+    readonly afterStep?: (group: ExecutionGroup) => Promise<void> | void;
     readonly beforeFinalize?: (adjustmentId: string) => Promise<void> | void;
   };
 }
@@ -56,7 +71,10 @@ export interface TenantRunResult {
 interface Run {
   readonly db: Db;
   readonly lease: RunnerLease;
+  readonly tenant: TenantRow;
   readonly options: RunnerOptions;
+  readonly executors: GroupExecutors;
+  readonly subjectCheck?: RunnerOptions['subjectCheck'];
   readonly adjustment: AdjustmentHead;
   readonly commandId: string;
 }
@@ -78,6 +96,7 @@ export async function runOrgAdjustmentTenant(
     options.leaseMs,
   );
   if (!lease) return { claimed: false, completed: [] };
+  const defaults = runnerDefaults(options);
   const completed: string[] = [];
   try {
     for (;;) {
@@ -89,7 +108,7 @@ export async function runOrgAdjustmentTenant(
       const adjustment = await withTenant(db, tenant.id, (tx) =>
         loadAdjustmentHead(tx, tenant.id, picked.adjustment_id),
       );
-      const run = { db, lease, options, adjustment, commandId: `org-adjustment:${adjustment.id}` };
+      const run = { db, lease, tenant, options, adjustment, ...defaults, commandId: `org-adjustment:${adjustment.id}` };
       await fenced(db, lease, (tx) => (picked.state === 'pending' ? start(tx, run) : audit(tx, run, 'takeover', {})));
       if (!(await runGroups(run))) return { claimed: true, completed, stopped: 'retry' };
       await options.hooks?.beforeFinalize?.(adjustment.id);
@@ -102,13 +121,21 @@ export async function runOrgAdjustmentTenant(
   }
 }
 
+/** 不传执行器 = 产品路径：组织明细执行器 + 申请人主体层复核（activation-scheduler 即如此调用）。 */
+function runnerDefaults(options: RunnerOptions) {
+  if (options.executors) return { executors: options.executors, subjectCheck: options.subjectCheck };
+  const scopeOf = options.scopeOf ?? resolveApplicantScope;
+  return { executors: orgExecutors(scopeOf), subjectCheck: options.subjectCheck ?? applicantSubjectCheck(scopeOf) };
+}
+
 /** §7.6A：锁序 ⓪ → ③ 本单行 → ④ 组织设置；按当前树重算 S′，扩大的组记 SCOPE_CHANGED，暂停行 = 其余组 S′ 之并。 */
 async function start(tx: Tx, run: Run) {
   const { tenantId } = run.lease;
   const { id, effectiveDate } = run.adjustment;
   await tx.execute(sql`SELECT id FROM org_adjustments WHERE tenant_id=${tenantId} AND id=${id}::uuid FOR UPDATE`);
   await lockOrganizationSettings(tx, tenantId);
-  const allowed = (await run.options.subjectCheck?.(tx, run.adjustment)) ?? true;
+  const at = { tenantId, timezone: run.tenant.timezone, now: run.lease.clock() };
+  const allowed = (await run.subjectCheck?.(tx, run.adjustment, at)) ?? true;
   const items = await loadExecutionItems(tx, tenantId, id);
   const scope = rowsOf<{ group_item_id: string; org_id: string }>(
     await tx.execute(sql`SELECT group_item_id, org_id FROM org_adjustment_scope_orgs
@@ -164,17 +191,35 @@ async function runGroup(run: Run, group: ExecutionGroup, results: ReadonlyMap<st
   const external = refs.filter((ref): ref is string => !!ref && !group.items.some((item) => item.id === ref));
   if (external.some((ref) => results.get(ref) !== 1))
     return recordFailure(run, group, failed('DEPENDENCY_FAILED', '所依赖的同单明细未执行成功'));
-  const executor = run.options.executors?.[group.lead.adjustType];
+  const executor = run.executors[group.lead.adjustType];
   if (!executor) return recordFailure(run, group, failed('EXECUTOR_NOT_AVAILABLE', '该类明细的执行器尚未接入'));
+  for (;;) {
+    const outcome = await attempt(run, group, executor);
+    if (outcome !== 'pending') return outcome;
+    await run.options.hooks?.afterStep?.(group);
+  }
+}
+
+/**
+ * 一步 = 一个 fenced 事务。组在本事务内重读（F-341）：上一步 'pending' 已推进 exec_phase / 游标，
+ * 不能把领组时的快照再交给执行器；重读后各行已收尾（回执丢失后重入）则直接取已落库结果，不再调用执行器。
+ */
+async function attempt(run: Run, group: ExecutionGroup, executor: GroupExecutor) {
   try {
-    for (;;) {
-      const outcome = await fenced(run.db, run.lease, async (tx) => {
-        const result = await executor(tx, { adjustment: run.adjustment, group, commandId: run.commandId });
-        if (result === 'done') await succeedGroup(tx, run, group);
-        return result;
+    return await fenced(run.db, run.lease, async (tx) => {
+      const settled = await settledResult(tx, run, group);
+      if (settled !== null) return settled === 1 ? ('done' as const) : ('failed' as const);
+      const fresh = await reloadGroup(tx, run, group);
+      const input = { tenantId: run.lease.tenantId, timezone: run.tenant.timezone, now: run.lease.clock() };
+      const result = await executor(tx, {
+        ...input,
+        adjustment: run.adjustment,
+        group: fresh,
+        commandId: run.commandId,
       });
-      if (outcome === 'done') return 'done' as const;
-    }
+      if (result === 'done') await succeedGroup(tx, run, group);
+      return result;
+    });
   } catch (error) {
     if (error instanceof FencingLost) throw error;
     if (error instanceof AppError && error.status < 500) {
@@ -218,6 +263,12 @@ async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
   });
   if ('settled' in counted) return counted.settled === 1 ? ('done' as const) : ('failed' as const);
   return counted.attempts < MAX_GROUP_ATTEMPTS ? ('retry' as const) : ('failed' as const);
+}
+
+async function reloadGroup(tx: Tx, run: Run, group: ExecutionGroup): Promise<ExecutionGroup> {
+  const byId = new Map((await loadExecutionItems(tx, run.lease.tenantId, run.adjustment.id)).map((i) => [i.id, i]));
+  const items = group.items.map((item) => byId.get(item.id) ?? item);
+  return { id: group.id, lead: byId.get(group.lead.id) ?? group.lead, items };
 }
 
 /** 组内各行都已收尾（exec_phase=2）时取组首行的执行结果；否则 null。 */

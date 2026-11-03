@@ -4016,6 +4016,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/org-adjustment.ts#appendOrgAdjustment': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/context.ts#requireLinkedEmploymentRecord',
+    '#adjustmentInput',
     '#adjustmentSnapshot',
     '#auditAdjustmentInterval',
     'apps/api/src/modules/employment/personnel-hooks.ts#personnelHooks',
