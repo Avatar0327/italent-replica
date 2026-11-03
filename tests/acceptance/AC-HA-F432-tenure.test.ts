@@ -1,5 +1,7 @@
 /** DEC-791② / DEC-793：看板、结构报表、流动报表与花名册共享累计司龄。 */
 import { useTestDb } from '@italent/testkit';
+import { MODULE_OBJECTS, PERSONNEL_OBJECTS } from '@italent/domain';
+import { revocable } from './support/revocable-rights.js';
 import { expect, it } from 'vitest';
 import { boardClient, STRUCTURE_BASE, structureWorld } from './AC-HA-13a-support.js';
 import { movementClient, movementWorld, MOVEMENT_BASE } from './AC-HA-13b-support.js';
@@ -27,7 +29,13 @@ it('AC-HA-F432-01：当前快照校正值进入结构看板平均与分段、结
   expect(((await roster.json()) as { items: object[] }).items).toContainEqual(
     expect.objectContaining({ employeeId: e.id, companyTenureYears: '3.2' }),
   );
-  const limited = tenantApi(db, { authorize: (q) => !q.fields?.includes('workYearCompanyBefore') });
+  const access = revocable();
+  access.rights.fields = new Set(
+    [...Object.values(MODULE_OBJECTS), ...PERSONNEL_OBJECTS]
+      .flatMap((o) => o.fields.map((f) => f.code))
+      .filter((f) => f !== 'workYearCompanyBefore'),
+  );
+  const limited = tenantApi(db, { authorize: access.authorize });
   const response = await limited.request('GET', '/api/tenant/hr-analysis/roster?asOf=2026-10-01', {
     user: w.who.user,
     tenant: w.who.tenant,
@@ -45,7 +53,7 @@ it('AC-HA-F432-02：离职以最后工作日冻结累计司龄，分段与流出
   const e = await w.hire('合成离职司龄员工', '2025-01-01', org, { workYearCompanyBefore: 2 });
   await w.leave(e.id, '2026-01-01');
   const c = movementClient(db, w.who);
-  const query = 'asOf=2026-10-06&year=2026';
+  const query = `asOf=2026-10-06&year=2026&departmentId=${org.id}`;
   const distribution = await c.groups('6.31', query);
   expect(distribution.find((g) => g.key === '2to5y')?.count).toBe(1);
   const report = await c.report('outflow', query);
@@ -57,8 +65,8 @@ it('AC-HA-F432-02：离职以最后工作日冻结累计司龄，分段与流出
   await w.leave(early.id, '2026-09-15');
   // F-431 原始年数 <= 0.083 的阈值保留；校正后 2 年多不再属于短期离职。
   expect((await c.detail(MOVEMENT_BASE, '6.32', query)).ids).not.toContain(early.id);
-  const revision = (await w.session.getEmployee(e.id)).revision;
-  await w.session.business(
+  const revision = (await w.x.session.getEmployee(e.id)).revision;
+  await w.x.session.business(
     e.id,
     {
       kind: 'rehire',

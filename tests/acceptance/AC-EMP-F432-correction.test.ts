@@ -6,6 +6,7 @@ import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { employmentSession, withLoginEmail } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { revocable } from './support/revocable-rights.js';
 
 const database = useTestDb();
 const FIELD = 'workYearCompanyBefore';
@@ -94,7 +95,10 @@ it('AC-EMP-F432-03：既有字段写权拒绝编辑、无查看权读口裁剪�
   const w = await world('permission');
   const created = await w.create();
   const b = (await created.json()) as { id: string; revision: number };
-  const api = tenantApi(w.db, { authorize: (q) => !q.fields?.includes(FIELD) });
+  const access = revocable();
+  access.rights.deny = (q) => q.fields?.includes(FIELD) ?? false;
+  access.rights.fields = new Set(MODULE_OBJECTS.employmentRecord.fields.map((f) => f.code).filter((f) => f !== FIELD));
+  const api = tenantApi(w.db, { authorize: access.authorize });
   const who = { user: w.s.user.id, tenant: w.s.tenant.id };
   const denied = await api.request('PATCH', `/api/tenant/employment/records/${b.id}`, {
     ...who,
