@@ -30,7 +30,7 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
     await ui.render(h(GapSectionPage, { page: 'processes' }));
     expect(ui.widths()).toEqual([30, 128, 128, 118, 128, 98, 128, 146, 128, 128, 160].map((n) => `${n}px`));
     expect(
-      [...ui.host.querySelectorAll<HTMLButtonElement>('.approval-gap-head button')].find(
+      Array.from(ui.host.querySelectorAll<HTMLButtonElement>('.approval-gap-head button')).find(
         (button) => button.textContent?.replace(/\s/g, '') === '导出',
       )?.disabled,
     ).toBe(true);
@@ -38,7 +38,7 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
   it('管理员进行中委托保留复选列，完成视图没有复选列', async () => {
     await ui.render(h(GapSectionPage, { page: 'admin-delegations' }));
     expect(ui.host.querySelector('thead input[type="checkbox"]')).not.toBeNull();
-    const buttons = [...ui.host.querySelectorAll<HTMLButtonElement>('button')];
+    const buttons = Array.from(ui.host.querySelectorAll<HTMLButtonElement>('button'));
     await act(async () => buttons.find((button) => button.textContent === '已完成的委托(管理员)')!.click());
     expect(ui.host.querySelector('thead input[type="checkbox"]')).toBeNull();
     expect(ui.widths()).toEqual([160, 118, 146, 146, 146, 128, 128, 128, 128, 118, 146, 95, 100].map((n) => `${n}px`));
@@ -53,9 +53,11 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
 it('AC-TRF F-474 调动中高级筛选的前后部门与职务按取证顺序', async () => {
   await ui.render(h(TransferList, { view: 'progress' }));
   await act(async () =>
-    [...ui.host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === '高级筛选')!.click(),
+    Array.from(ui.host.querySelectorAll<HTMLButtonElement>('button'))
+      .find((b) => b.textContent === '高级筛选')!
+      .click(),
   );
-  const fields = [...document.querySelectorAll('.transfer-advanced input[aria-label]')]
+  const fields = Array.from(document.querySelectorAll('.transfer-advanced input[aria-label]'))
     .map((node) => node.getAttribute('aria-label'))
     .filter((name) => ['人员', '调动前部门', '调动前职务', '调动后部门', '调动后职务', '审批状态'].includes(name!));
   expect(fields).toEqual(['人员', '调动前部门', '调动前职务', '调动后部门', '调动后职务', '审批状态']);
