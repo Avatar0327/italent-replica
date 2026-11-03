@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 const model = await import(resolve('apps/web/src/self-service/pages/model.ts'));
 const form = {
   employee: { id: 'self', name: '合成本人', revision: 7 },
@@ -76,3 +76,92 @@ describe('AC-FE-F020 本人申请字段与协议', () => {
     expect(model.acceptSelfRequest?.({ ...receipt, revision: 9 }, 'self', 8, 'draft')).toMatchObject({ revision: 9 });
   });
 });
+
+const { createFormStore } = await import(resolve('apps/web/src/foundation/forms/store.ts'));
+const { createApiClient } = await import(resolve('apps/web/src/foundation/client.ts'));
+afterEach(() => vi.unstubAllGlobals());
+for (const kind of ['exit', 'partTime'])
+  for (const action of ['create', 'edit', 'submit']) {
+    it(`AC-FE-F020 ${kind}/${action} 结果未知同路径同内容同版本同键重放`, async () => {
+      const path =
+        `/api/tenant/self-service/${kind === 'exit' ? 'exit' : 'part-time'}-requests` +
+        (action === 'create' ? '' : `/draft${action === 'submit' ? '/submit' : ''}`);
+      const api = createApiClient(() => ({ tenantId: 'tenant', identityKey: 'identity' }));
+      const store = createFormStore();
+      const calls: { path: string; body: string; revision: string | null; key: string | null }[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init: RequestInit) => {
+          if (init.method === 'GET') return Response.json({ id: 'draft', revision: 9 });
+          const headers = new Headers(init.headers);
+          calls.push({
+            path: url,
+            body: String(init.body),
+            revision: headers.get('if-match'),
+            key: headers.get('idempotency-key'),
+          });
+          if (calls.length === 1) throw new TypeError('合成回执丢失');
+          return Response.json({ id: 'draft', employeeId: 'self', revision: 9, status: 'draft' });
+        }),
+      );
+      const values =
+        kind === 'exit'
+          ? { lastWorkDate: '2026-12-01' }
+          : { serviceType: 'part_time', effectiveDate: '2026-12-01', departmentId: 'department' };
+      const pending = store.submit(path, {
+        values,
+        baseline: {},
+        editableFields: Object.keys(values),
+        revision: 8,
+        send: (sent: { body: object }) =>
+          model.recoverSelfRequest?.(path, () =>
+            api.request(path, {
+              method: action === 'edit' ? 'PATCH' : 'POST',
+              command: {
+                ...sent,
+                body: action === 'submit' ? {} : model.selfRequestBody?.(kind, sent.body, Object.keys(values)),
+              },
+            }),
+          ),
+      });
+      await vi.waitFor(() => expect(calls).toHaveLength(1));
+      expect(store.get(path)?.status).toBe('submitting');
+      expect(model.pendingReplay?.(path)).toBeDefined();
+      // 原命令未完成，关闭/重开使用同一槽仍不能建第二条命令。
+      store.clear(path);
+      expect(store.get(path)?.status).toBe('submitting');
+      await model.replaySelfRequest?.(path, () => api.request(path));
+      expect((await pending).status).toBe('done');
+      expect(calls).toHaveLength(2);
+      expect(calls[1]).toEqual(calls[0]);
+      expect(calls[0]?.revision).toBe('8');
+    });
+    it(`AC-FE-F020 ${kind}/${action} 409重读后改回原值使用新版本与新键`, async () => {
+      const store = createFormStore();
+      const sent: { revision: number; id: string; body: unknown }[] = [];
+      const input = (value: string) => ({
+        values: { lastWorkDate: value },
+        baseline: { lastWorkDate: '2026-12-01' },
+        editableFields: ['lastWorkDate'],
+        revision: 1,
+        businessId: 'draft',
+        patchOnly: true,
+        send: async (command: { revision: number; id: string; body: unknown }) => {
+          sent.push({ ...command, body: model.selfRequestBody?.('exit', command.body, ['lastWorkDate']) });
+          if (sent.length === 1) throw { status: 409, code: 'REVISION_CONFLICT' };
+          return { id: 'draft' };
+        },
+      });
+      expect((await store.submit(kind + action, input('2026-12-02'))).status).toBe('conflict');
+      await store.reread(kind + action, async () => ({
+        id: 'draft',
+        revision: 2,
+        values: { lastWorkDate: '2026-12-03' },
+      }));
+      store.confirm(kind + action);
+      expect((await store.submit(kind + action, input('2026-12-01'))).status).toBe('done');
+      expect(sent[1]?.body).toEqual({ lastWorkDate: '2026-12-01' });
+      expect(sent[1]?.revision).toBe(2);
+      expect(sent[1]?.id).not.toBe(sent[0]?.id);
+    });
+  }

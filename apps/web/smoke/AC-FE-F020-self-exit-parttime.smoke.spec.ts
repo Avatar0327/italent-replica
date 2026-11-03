@@ -75,27 +75,28 @@ for (const kind of kinds)
           if (recovery && !conflicts.has(action)) {
             conflicts.add(action);
             if (action === 'create') employeeRevision++;
-            else if (kind === 'exit' && !recovery && url.pathname === path && !body.pendingTransferAck)
-              return route.fulfill({
-                status: 409,
-                json: {
-                  error: {
-                    code: 'CONFLICT',
-                    message: '存在在途调动，请确认',
-                    details: { reason: 'EXIT_PENDING_TRANSFER_ACK_REQUIRED', ackToken: 'synthetic-confirmation' },
-                  },
-                },
-              });
-            row = {
-              ...row,
-              revision: Number(row.revision) + 1,
-              ...(action === 'edit' ? { [kind === 'exit' ? 'lastWorkDate' : 'endDate']: '2026-12-03' } : {}),
-            };
+            else
+              row = {
+                ...row,
+                revision: Number(row.revision) + 1,
+                ...(action === 'edit' ? { [kind === 'exit' ? 'lastWorkDate' : 'endDate']: '2026-12-03' } : {}),
+              };
             return route.fulfill({
               status: 409,
               json: { error: { code: 'REVISION_CONFLICT', message: '请核对最新版本' } },
             });
           }
+          if (kind === 'exit' && !recovery && url.pathname === path && !body.pendingTransferAck)
+            return route.fulfill({
+              status: 409,
+              json: {
+                error: {
+                  code: 'CONFLICT',
+                  message: '存在在途调动，请确认',
+                  details: { reason: 'EXIT_PENDING_TRANSFER_ACK_REQUIRED', ackToken: 'synthetic-confirmation' },
+                },
+              },
+            });
           row = {
             ...row,
             ...body,
@@ -178,7 +179,7 @@ for (const kind of kinds)
       if (kind === 'exit' && !recovery)
         await page
           .getByRole('dialog')
-          .getByRole('button', { name: /^确\s*认$/ })
+          .getByRole('button', { name: /^确\s*定$/ })
           .click();
       if (recovery) {
         await page.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
