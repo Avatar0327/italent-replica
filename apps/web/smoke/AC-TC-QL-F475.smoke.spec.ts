@@ -293,8 +293,8 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
       return route.fulfill({
         json: {
           items: [
-            { id, name: '合成一级' },
-            { id: level, name: '合成二级' },
+            { id, revision: 1, name: '合成一级' },
+            { id: level, revision: 1, name: '合成二级' },
           ],
         },
       });
@@ -308,16 +308,16 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
           {
             levelId: id,
             targetId: grade,
-            targetValue: 60,
+            targetValue: '60',
             weight: 70,
-            abilities: [{ content: '一级能力', targetValue: 80, weight: 90 }],
+            abilities: [{ content: '一级能力', targetValue: '80', weight: 90 }],
           },
           {
             levelId: level,
             targetId: grade,
-            targetValue: 61,
+            targetValue: '61',
             weight: 71,
-            abilities: [{ content: '二级能力', targetValue: 81, weight: 91 }],
+            abilities: [{ content: '二级能力', targetValue: '81', weight: 91 }],
           },
         ],
       };
@@ -338,14 +338,16 @@ test('F475 P2-3 资格详情级别导航和目录工具栏保持取证顺序及�
     await expect(panel.getByRole('columnheader')).toHaveText([
       '指标',
       '指标目标值',
-      '指标权重',
-      '内容',
+      '指标权重（%）',
+      '能力标准',
       '能力目标值',
       '目标等级',
-      '能力权重',
+      '能力权重（%）',
     ]);
-    await expect(panel.getByRole('row').last()).toContainText(
-      name === '合成一级' ? ['60', '70', '一级能力', '80', '90'] : ['61', '71', '二级能力', '81', '91'],
+    await expect(panel.getByRole('row').last().getByRole('cell')).toHaveText(
+      name === '合成一级'
+        ? [grade, '60', '70', '一级能力', '80', '—', '90']
+        : [grade, '61', '71', '二级能力', '81', '—', '91'],
     );
   }
   for (const view of ['categories', 'levels']) {
