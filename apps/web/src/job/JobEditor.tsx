@@ -116,6 +116,15 @@ function withResumed<G extends { fields: FormField[] }>([first, ...rest]: G[], d
   };
   return first ? [{ ...first, fields: [notice, ...first.fields] }, ...rest] : rest;
 }
+// R1a §3.3～3.8：只登记本批新建表单可见红星，不据此增加保存校验。
+const createRequiredMarks: Partial<Record<JobKind, string[]>> = {
+  sequences: ['name', 'startDate', 'enabled'],
+  'level-types': ['name', 'startDate'],
+  grades: ['name', 'grade', 'startDate', 'enabled'],
+  levels: ['name', 'levelTypeId', 'level', 'startDate'],
+  posts: ['code', 'name', 'establishedOn', 'sequenceId'],
+  positions: ['code', 'name', 'establishedOn', 'orgId'],
+};
 function jobFormClass(kind: JobKind, original?: JobRow) {
   // 本批只验证六类新建弹窗；编辑、职层和专业条线保持既有布局。
   if (original || kind === 'layers' || kind === 'professional-lines') return undefined;
@@ -135,6 +144,7 @@ export function JobEditor(props: EditorProps) {
         name,
         label: jobLabel(kind, name, 'form'),
         control,
+        requiredMark: original ? undefined : createRequiredMarks[kind]?.includes(name),
         // 生效日期沿用页面级恢复槽的实际时点，只展示、不另造一个提交日期。
         display: name === 'startDate' ? timing.asOf : undefined,
         access:
