@@ -165,7 +165,7 @@ export function gapColumnWidth(page: keyof typeof gapPages, view: GapView, title
     return page === 'delegations' ? 80 : 100;
   }
   if (title === d.principal) return 160;
-  if ([d.delegate, d.creator, d.revokedBy].includes(title)) return 118;
-  if ([d.startAt, d.endAt, d.createdAt, d.revokedAt].includes(title)) return 146;
+  if ([d.delegate, d.creator, d.revokedBy].some((label) => label === title)) return 118;
+  if ([d.startAt, d.endAt, d.createdAt, d.revokedAt].some((label) => label === title)) return 146;
   return title === d.existingTodos ? 95 : 128;
 }
