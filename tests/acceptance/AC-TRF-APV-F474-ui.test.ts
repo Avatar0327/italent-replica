@@ -29,7 +29,11 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
   it('流程管理各列按已确认宽度，保留无接口禁用边界', async () => {
     await ui.render(h(GapSectionPage, { page: 'processes' }));
     expect(ui.widths()).toEqual([30, 128, 128, 118, 128, 98, 128, 146, 128, 128, 160].map((n) => `${n}px`));
-    expect(ui.host.querySelector<HTMLButtonElement>('.approval-gap-head button:last-child')?.disabled).toBe(true);
+    expect(
+      [...ui.host.querySelectorAll<HTMLButtonElement>('.approval-gap-head button')].find(
+        (button) => button.textContent === '导出',
+      )?.disabled,
+    ).toBe(true);
   });
   it('管理员进行中委托保留复选列，完成视图没有复选列', async () => {
     await ui.render(h(GapSectionPage, { page: 'admin-delegations' }));

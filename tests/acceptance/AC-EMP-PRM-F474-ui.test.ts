@@ -6,6 +6,9 @@ import { act, h, permission, uiHarness } from './support/f474-ui.js';
 const { StaffPage } = await import(resolve('apps/web/src/personnel/StaffPage.tsx'));
 const { SubsetCreate } = await import(resolve('apps/web/src/personnel/EditCommands.tsx'));
 const { userColumns } = await import(resolve('apps/web/src/settings/user-columns.tsx'));
+const { subsetFields } = await import(resolve('apps/web/src/personnel/edit-model.ts'));
+const { ProfilesPage } = await import(resolve('apps/web/src/settings/ProfilesPage.tsx'));
+const { AuditPage } = await import(resolve('apps/web/src/settings/AuditPage.tsx'));
 const { teamKeys } = await import(resolve('apps/web/src/self-service/pages/model.ts'));
 let ui: ReturnType<typeof uiHarness>;
 beforeEach(() => {
@@ -51,5 +54,31 @@ describe('AC-EMP / AC-PRM F-474 员工、团队与用户列表', () => {
     await act(async () => button!.click());
     expect(document.querySelector('.ant-drawer [role="dialog"]')).not.toBeNull();
     expect(document.querySelector('.ant-modal')).toBeNull();
+  });
+});
+
+describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
+  it.each([
+    ['education', ['school', 'graduationType', 'startDate', 'endDate', 'educationLevel']],
+    ['jobhistory', ['company', 'post', 'startDate', 'endDate', 'referenceName']],
+    ['training', ['name', 'institution', 'category', 'score', 'startDate']],
+    ['family', ['name', 'birthday', 'gender', 'relationship', 'mobilePhone']],
+    ['language-ability', ['language', 'isNative', 'proficiency', 'writing', 'reading']],
+    ['skill', ['name', 'proficiency', 'category', 'months']],
+    ['professional-technical-post', ['qualificationName', 'level', 'assessmentDate', 'qualificationRoute']],
+  ])('%s 的已有字段按取证顺序排列', (kind, fields) => {
+    expect(
+      subsetFields(kind)
+        .map((field: { code: string }) => field.code)
+        .slice(0, fields.length),
+    ).toEqual(fields);
+  });
+  it('身份管理名称193、普通列128、操作168', async () => {
+    await ui.render(h(ProfilesPage, { title: '身份管理', editable: false }));
+    expect(ui.widths()).toEqual([193, 128, 128, 128, 128, 168].map((n) => `${n}px`));
+  });
+  it('变更日志已有七列采用原站宽度', async () => {
+    await ui.render(h(AuditPage));
+    expect(ui.widths()).toEqual([128, 118, 146, 128, 128, 128, 128].map((n) => `${n}px`));
   });
 });
