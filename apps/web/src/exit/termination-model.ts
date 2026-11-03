@@ -53,12 +53,16 @@ export function parseTermination(raw: unknown): TerminationSetting {
     overridable: row.overridable,
   };
 }
-export function parseTerminationReceipt(raw: unknown, revision: number) {
+export function parseTerminationReceipt(raw: unknown, revision: number, sent: Readonly<Record<string, boolean>>) {
   const setting = parseTermination(raw);
+  // PUT 必须回显实际发送的完整配置，不能用读取时的预置补齐掩盖缺键。
+  const value = (raw as Record<string, unknown>).value;
   if (
     setting.revision !== revision + 1 ||
     setting.source !== 'tenant' ||
-    !validExitTerminationSetting((raw as Record<string, unknown>).value)
+    !validExitTerminationSetting(value) ||
+    Object.keys(value).length !== EXIT_TERMINATION_FLOW_CODES.length ||
+    !EXIT_TERMINATION_FLOW_CODES.every((code) => Object.hasOwn(value, code) && value[code] === sent[code])
   )
     throw new Error(t.invalidReceipt);
   return { id: EXIT_TERMINATION_SETTING_KEY };

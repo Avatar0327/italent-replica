@@ -98,7 +98,7 @@ function TerminationForm({ setting, reload }: { setting: TerminationSetting; rel
             method: 'PUT',
             command: { ...command, body },
           });
-          return parseTerminationReceipt(receipt, command.revision!);
+          return parseTerminationReceipt(receipt, command.revision!, body.value);
         },
       });
     } catch {
