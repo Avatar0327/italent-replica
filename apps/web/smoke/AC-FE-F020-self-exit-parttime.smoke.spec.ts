@@ -168,3 +168,60 @@ async function submitDraft(page: Page, world: Awaited<ReturnType<typeof installS
     }
   }
 }
+
+for (const kind of kinds) {
+  test(`AC-FE-F020 P2-1 ${kind} 暂存未知后重放409进入差异核对再显式重提`, async ({ page, baseURL }) => {
+    await page.context().addCookies([{ name: 'italent_demo_tenant', value: tenant, url: baseURL! }]);
+    const world = await installSelfRequest(page, kind, false);
+    await createDraft(page, world);
+    const path = `${world.path}/${id}`;
+    const writes: { path: string; body: unknown; revision?: string; key?: string }[] = [];
+    let reads = 0;
+    await page.route(`**${path}`, async (route) => {
+      const req = route.request();
+      if (req.method() === 'GET') {
+        reads++;
+        return route.fallback();
+      }
+      writes.push({
+        path: new URL(req.url()).pathname,
+        body: req.postDataJSON(),
+        revision: req.headers()['if-match'],
+        key: req.headers()['idempotency-key'],
+      });
+      if (writes.length === 1) return route.abort('failed');
+      if (writes.length === 2) {
+        Object.assign(world.row, { revision: 2, [kind === 'exit' ? 'lastWorkDate' : 'endDate']: '2026-12-03' });
+        return route.fulfill({
+          status: 409,
+          json: { error: { code: 'REVISION_CONFLICT', message: '请核对最新版本' } },
+        });
+      }
+      return route.fallback();
+    });
+    const date = kind === 'exit' ? page.getByLabel('日期') : page.getByLabel('结束日期', { exact: true });
+    await date.fill('2026-12-02');
+    if (kind === 'exit') await date.press('Enter');
+    const save = page.getByRole('button', { name: /^暂\s*存$/ });
+    await save.click();
+    const replay = page.getByRole('button', { name: '回查并重放原命令', exact: true });
+    await expect(replay).toBeVisible();
+    await expect(save).toBeDisabled();
+    await replay.click();
+    const confirm = page.getByRole('button', { name: '已核对差异，继续编辑', exact: true });
+    await expect(confirm).toBeVisible();
+    await expect(replay).toHaveCount(0);
+    await expect(page.getByText('结果未知，表单已锁定。', { exact: false })).toHaveCount(0);
+    await expect(page.locator('.ant-table')).toContainText('2026-12-03');
+    expect(reads).toBe(2);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+    await expect(save).toBeDisabled();
+    await confirm.click();
+    await save.click();
+    await expect(page.getByRole('button', { name: '提交审批', exact: true })).toBeEnabled();
+    expect(writes).toHaveLength(3);
+    expect(writes[2]).toMatchObject({ path, body: writes[0]!.body, revision: '2' });
+    expect(writes[2]!.key).not.toBe(writes[0]!.key);
+  });
+}

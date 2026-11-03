@@ -168,3 +168,68 @@ for (const kind of ['exit', 'partTime'])
       expect(sent[1]?.id).not.toBe(sent[0]?.id);
     });
   }
+
+it.each([409, 503, 'network'])('AC-FE-F020 P2-1 未知后重放 %s，确定409交还内核并显式重提', async (replayResult) => {
+  const path = `/api/tenant/self-service/exit-requests/replay-${replayResult}`;
+  const api = createApiClient(() => ({ tenantId: 'tenant', identityKey: 'identity' }));
+  const store = createFormStore();
+  const writes: { path: string; body: string; revision: string | null; key: string | null }[] = [];
+  const reads: string[] = [];
+  const conflictAttempt = replayResult === 409 ? 2 : 3;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'GET') {
+        reads.push(url);
+        return Response.json({ id: 'draft', revision: 9, values: { lastWorkDate: '2026-12-03' } });
+      }
+      const headers = new Headers(init.headers);
+      writes.push({
+        path: url,
+        body: String(init.body),
+        revision: headers.get('if-match'),
+        key: headers.get('idempotency-key'),
+      });
+      if (writes.length === 1 || (writes.length === 2 && replayResult === 'network'))
+        throw new TypeError('合成网络错误');
+      if (writes.length === 2 && replayResult === 503) return new Response(null, { status: 503 });
+      if (writes.length === conflictAttempt)
+        return Response.json({ error: { code: 'REVISION_CONFLICT', message: '请核对最新版本' } }, { status: 409 });
+      return Response.json({ id: 'draft' });
+    }),
+  );
+  const input = {
+    values: { lastWorkDate: '2026-12-02' },
+    baseline: { lastWorkDate: '2026-12-01' },
+    editableFields: ['lastWorkDate'],
+    businessId: 'draft',
+    revision: 8,
+    patchOnly: true,
+    send: (sent: { body: object }) =>
+      model.recoverSelfRequest(path, () => api.request(path, { method: 'PATCH', command: sent })),
+  };
+  const submitted = store.submit(path, input);
+  await vi.waitFor(() => expect(model.pendingReplay(path)).toBeDefined());
+  await model.replaySelfRequest(path, () => api.request(path));
+  if (replayResult !== 409) {
+    expect(store.get(path)?.status).toBe('submitting');
+    expect(model.pendingReplay(path)).toBeDefined();
+    expect(writes[1]).toEqual(writes[0]);
+    await model.replaySelfRequest(path, () => api.request(path));
+  }
+  await vi.waitFor(() => expect(store.get(path)?.status).toBe('conflict'));
+  expect((await submitted).status).toBe('conflict');
+  expect(model.pendingReplay(path)).toBeUndefined();
+  expect(writes[conflictAttempt - 1]).toEqual(writes[0]);
+  await store.reread(path, () => api.request(path));
+  expect(reads).toHaveLength(conflictAttempt);
+  expect(store.get(path)?.differences).toEqual([
+    { field: 'lastWorkDate', before: '2026-12-01', latest: '2026-12-03', mine: '2026-12-02' },
+  ]);
+  expect((await store.submit(path, input)).status).toBe('conflict');
+  expect(writes).toHaveLength(conflictAttempt);
+  store.confirm(path);
+  expect((await store.submit(path, input)).status).toBe('done');
+  expect(writes.at(-1)).toMatchObject({ path, body: writes[0]!.body, revision: '9' });
+  expect(writes.at(-1)!.key).not.toBe(writes[0]!.key);
+});
