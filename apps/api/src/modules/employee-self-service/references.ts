@@ -3,6 +3,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { AppError } from '../../errors.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { employeeName, listEmployees } from '../employment/employees.js';
+import { employmentTypeName } from '../employment/employment-types.js';
 import { businessDate } from '../employment/fields.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
 import { loadJobObject, listJobObjects } from '../job/read-model.js';
@@ -34,6 +35,8 @@ export async function referenceLabels(tx: Tx, ctx: EmploymentContext, fields: Re
     else if (JOB_FIELDS[field])
       labels[field] = (await loadJobObject(tx, ctx.tenantId, JOB_FIELDS[field], value, date))?.name ?? '';
     else if (PERSON_FIELDS.has(field)) labels[field] = await employeeName(tx, ctx.tenantId, value);
+    // F-323b（DEC-706）：人员类别存字典 ID，按本租户字典取当前名称
+    else if (field === 'employmentType') labels[field] = (await employmentTypeName(tx, ctx.tenantId, value)) ?? '';
   }
   return labels;
 }

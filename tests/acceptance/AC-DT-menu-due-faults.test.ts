@@ -2,17 +2,26 @@
  * R2-T09a 职责转交菜单：到期执行的逐人兜底（第 2 轮返工 P3-1；仿任职生效 sweepTenant 的逐员工 catch）。
  * 非业务异常（瞬时 DB 错误、死锁、未映射的错误码）只记入本轮 errors 与执行次数，不记失败原因（下轮照常重试），
  * 不打断同租户后续被转交人，也不打断任职生效调度的后续租户。故障经模块替身注入，业务路径保持真实。
+ * F-448（第 2 轮交叉审 P3-4）：非业务异常累计到上限（同类定时任务的 5 次）后按既有失败口径落账、不再重试；
+ * 记次本身失败（第 2 轮 Sol 的二次兜底）只在逐人兜底一处吞掉，不打断同租户后续被转交人。
  */
 import './support/exit-gate-enforced.js';
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import type * as DutyExecution from '../../apps/api/src/modules/transfer/linkage/duty-execution.js';
 import type * as DutyScheduler from '../../apps/api/src/modules/duty-transfer/scheduler.js';
+import type * as DutyService from '../../apps/api/src/modules/duty-transfer/service.js';
 import { runEmploymentActivations } from '../../apps/api/src/modules/employment/activation-scheduler.js';
 import { cmd } from './support/tenant-api.js';
 import { menuWorld, subordinateItem } from './AC-DT-menu-support.js';
 
-const faults = vi.hoisted(() => ({ holders: new Set<string>(), tenants: new Set<string>() }));
+const faults = vi.hoisted(() => ({
+  holders: new Set<string>(),
+  tenants: new Set<string>(),
+  /** 到期执行给这些被转交人的记录落“失败”审计时抛错（模拟记次 / 落账事务自身出错）。 */
+  failedAudit: new Set<string>(),
+}));
 
 vi.mock('../../apps/api/src/modules/transfer/linkage/duty-execution.js', async (importOriginal) => {
   const original = await importOriginal<typeof DutyExecution>();
@@ -32,6 +41,18 @@ vi.mock('../../apps/api/src/modules/duty-transfer/scheduler.js', async (importOr
     runDueMenuDutyTransfers: (...args: Parameters<typeof original.runDueMenuDutyTransfers>) => {
       if (faults.tenants.has(args[1].id)) throw new Error('合成故障：租户库不可用');
       return original.runDueMenuDutyTransfers(...args);
+    },
+  };
+});
+
+vi.mock('../../apps/api/src/modules/duty-transfer/service.js', async (importOriginal) => {
+  const original = await importOriginal<typeof DutyService>();
+  return {
+    ...original,
+    auditRecord: (...args: Parameters<typeof original.auditRecord>) => {
+      if (args[2] === 'duty_transfer.menu.failed' && faults.failedAudit.has(args[4].employeeId))
+        throw new Error('合成故障：审计写入失败');
+      return original.auditRecord(...args);
     },
   };
 });
@@ -115,5 +136,73 @@ describe('F-408 到期执行逐人兜底（DEC-052，第 2 轮 P3-1）', () => {
       faults.tenants.clear();
     }
     expect(await fine.ledger(plan.recordId)).toMatchObject({ status: 1 });
+  });
+});
+
+/** 同类定时任务（组织调整执行 MAX_GROUP_ATTEMPTS、360 凭据维护 FAILING_ATTEMPTS）的出错上限。 */
+const ERROR_ATTEMPTS = 5;
+
+describe('F-448 非业务异常的重试上限（DEC-052，第 2 轮交叉审 P3-4）', () => {
+  /** 两名被转交人，排在前面的那位持续出非业务异常，执行次数预置为 attempts。 */
+  async function stuck(label: string, attempts: number) {
+    const x = await world(label);
+    const second = await x.peer('第二被转交人');
+    const plans = new Map([
+      [x.employee.id, await scheduledFor(x, x.employee.id, '甲')],
+      [second.id, await scheduledFor(x, second.id, '乙')],
+    ]);
+    const [faulty, healthy] = [...plans.keys()].sort();
+    await x.sqlRows(sql`UPDATE duty_transfer_records SET attempt_count=${attempts}
+      WHERE tenant_id=${x.session.tenant.id} AND id=${plans.get(faulty!)!.recordId}::uuid RETURNING id`);
+    return { x, faulty: faulty!, bad: plans.get(faulty!)!, good: plans.get(healthy!)! };
+  }
+
+  it('累计到上限：转为失败（带原因、仍未完成），之后不再重试；同租户另一名照常完成', async () => {
+    const { x, faulty, bad, good } = await stuck('cap', ERROR_ATTEMPTS - 2);
+    faults.holders.add(faulty);
+    try {
+      const first = await x.runScheduler(`${LATER}T02:00:00Z`);
+      expect(dutyTransferOf(first)).toMatchObject({ completed: 1, errors: [{ employeeId: faulty }] });
+      expect(await x.ledger(bad.recordId)).toEqual({ attempts: ERROR_ATTEMPTS - 1, failure: null, status: 0 });
+
+      const second = await x.runScheduler(`${LATER}T03:00:00Z`);
+      expect(dutyTransferOf(second)).toMatchObject({ errors: [{ employeeId: faulty }] });
+      expect(await x.ledger(bad.recordId)).toEqual({ attempts: ERROR_ATTEMPTS, failure: 'EXECUTION_ERROR', status: 0 });
+
+      const third = await x.runScheduler(`${LATER}T04:00:00Z`);
+      expect(dutyTransferOf(third)).toMatchObject({ completed: 0, failed: 0, errors: [] });
+      expect(await x.ledger(bad.recordId)).toMatchObject({ attempts: ERROR_ATTEMPTS, failure: 'EXECUTION_ERROR' });
+    } finally {
+      faults.holders.clear();
+    }
+    const failed = (await x.records('tab=pending')).items.find((row) => row.id === bad.recordId);
+    expect(failed).toMatchObject({ status: 0, transferTime: null, failure: { code: 'EXECUTION_ERROR', rule: null } });
+    expect(failed!.failure!.message).not.toBe('');
+    expect(await x.managerOf(bad.subordinate.id, LATER)).toBe(faulty);
+    expect(await x.ledger(good.recordId)).toMatchObject({ status: 1 });
+  });
+
+  it('记次 / 落账本身出错：只记一条 errors、执行次数不变，同租户另一名照常完成，下轮再记', async () => {
+    const { x, faulty, bad, good } = await stuck('cap-count-fault', ERROR_ATTEMPTS - 1);
+    faults.holders.add(faulty);
+    faults.failedAudit.add(faulty);
+    try {
+      const run = await x.runScheduler(`${LATER}T02:00:00Z`);
+      expect(dutyTransferOf(run)).toMatchObject({
+        completed: 1,
+        errors: [{ employeeId: faulty, code: 'INTERNAL_ERROR' }],
+      });
+    } finally {
+      faults.failedAudit.clear();
+    }
+    expect(await x.ledger(bad.recordId)).toEqual({ attempts: ERROR_ATTEMPTS - 1, failure: null, status: 0 });
+    expect(await x.ledger(good.recordId)).toMatchObject({ status: 1 });
+
+    try {
+      await x.runScheduler(`${LATER}T03:00:00Z`);
+    } finally {
+      faults.holders.clear();
+    }
+    expect(await x.ledger(bad.recordId)).toEqual({ attempts: ERROR_ATTEMPTS, failure: 'EXECUTION_ERROR', status: 0 });
   });
 });

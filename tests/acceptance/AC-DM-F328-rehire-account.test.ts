@@ -91,6 +91,8 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
   it('当天重聘：同一账号自动启用、登录名改为联系邮箱，人员绑定不变，任职三段连续，审计留痕', async () => {
     const { x, userId, contact } = await world('same-day');
     const before = (await getUser(x.db, userId))!;
+    const { code } = await x.session.getEmployee(x.employee.id);
+    expect(code).toBeTruthy();
     await leave(x);
     expect((await getUser(x.db, userId))!.status).toBe('disabled');
     const response = await rehire(x);
@@ -99,7 +101,8 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     const after = (await getUser(x.db, userId))!;
     expect(after).toMatchObject({ id: before.id, status: 'active', email: contact });
     expect(await links(x)).toEqual([{ userId }]);
-    expect((await x.session.getEmployee(x.employee.id)).code).toBeTruthy();
+    // 设计 30「F-328」账号前后对比：工号沿用原值（F-348）
+    expect((await x.session.getEmployee(x.employee.id)).code).toBe(code);
     const timeline = await x.timeline();
     expect(timeline.map((row) => row.kind)).toEqual(['hire', 'leave', 'rehire']);
     // 离职段在重聘入职日前一天封口（区间上界为开区间 10-06）
@@ -126,6 +129,40 @@ describe('F-328 / DEC-707 重聘（合并人员）沿用原账号', () => {
     const [task] = await x.sqlRows<{ status: string; restore: boolean }>(sql`
       SELECT status, restore_requested AS restore FROM exit_account_tasks WHERE tenant_id=${x.session.tenant.id}`);
     expect(task).toEqual({ status: 'restored', restore: false });
+  });
+
+  it('DEC-707 / F-348 application 模式：提交审批期间账号保持停用、登录名不变；审批通过落地后启用并改登录名', async () => {
+    const { x, userId, contact } = await world('application');
+    const before = (await getUser(x.db, userId))!;
+    const { code } = await x.session.getEmployee(x.employee.id);
+    await leave(x);
+    const disabled = (await getUser(x.db, userId))!;
+    const draft = await rehire(x, '2026-10-06', { mode: 'application' });
+    expect(draft.status, await draft.clone().text()).toBe(201);
+    const body = (await draft.json()) as { id: string; revision: number };
+    const submitted = await x.session.request('POST', `/businesses/${body.id}/submit`, {
+      ifMatch: body.revision,
+      body: {},
+    });
+    expect(submitted.status, await submitted.clone().text()).toBe(200);
+    // 审批中：重聘还没落地，账号、登录名、离职账号任务都不动
+    expect(await getUser(x.db, userId)).toEqual(disabled);
+    expect(await accountTasks(x)).toEqual([expect.objectContaining({ status: 'disabled', restore: false })]);
+
+    await x.approveInReview(body.id);
+    expect((await x.business(body.id)).status).toBe('effective');
+    const after = (await getUser(x.db, userId))!;
+    expect(after).toMatchObject({ id: before.id, status: 'active', email: contact });
+    expect(await links(x)).toEqual([{ userId }]);
+    expect((await x.session.getEmployee(x.employee.id)).code).toBe(code);
+    expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'leave', 'rehire']);
+    expect(await tenantAudit(x, 'tenant_user.login_email')).toEqual([
+      { before: expect.objectContaining({ email: before.email }), after: expect.objectContaining({ email: contact }) },
+    ]);
+    expect(await accountTasks(x)).toEqual([
+      expect.objectContaining({ status: 'restored', restore: false, auto: after.revision }),
+    ]);
+    expect(await inbox(x)).toEqual([]);
   });
 
   it('员工没有联系邮箱：登录名不变，账号照常启用，不写改名审计', async () => {

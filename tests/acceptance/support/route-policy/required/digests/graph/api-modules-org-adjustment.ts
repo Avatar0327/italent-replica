@@ -490,10 +490,6 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/preview.ts#assemble': ['#compareSort'],
   'apps/api/src/modules/org-adjustment/preview.ts#existingDraft': ['#ATTR_FIELDS', '#node'],
-  'apps/api/src/modules/org-adjustment/preview.ts#fillCounts': [
-    'apps/api/src/modules/employment/org-people.ts#countDepartmentStaff',
-    'apps/api/src/modules/employment/part-time/store.ts#countDepartmentPartTimes',
-  ],
   'apps/api/src/modules/org-adjustment/preview.ts#fillEstablishment': [
     'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums',
     'apps/api/src/modules/establishment/schemes.ts#loadSchemeBatch',
@@ -514,7 +510,6 @@ export const GRAPH: Graph = {
     '#PREVIEW_NODE_LIMIT',
     '#assemble',
     '#existingDraft',
-    '#fillCounts',
     '#fillEstablishment',
     '#fillHeads',
     '#overlay',

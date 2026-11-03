@@ -43,9 +43,6 @@ export interface PreviewNode {
   orgId: string | null;
   itemId: string | null;
   name: string | null;
-  /** 在岗 / 兼岗原值（生效日起，直属本组织）；看不到既有组织属性时为 null。 */
-  onDutyCount: number | null;
-  partTimeCount: number | null;
   /** 负责人姓名 / 编制原值（BE-10e）；没有或看不到为 null。 */
   personInChargeName: string | null;
   establishment: number | null;
