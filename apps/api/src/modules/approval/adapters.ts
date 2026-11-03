@@ -499,7 +499,8 @@ const employmentAdapter: BusinessAdapter = {
   },
   async approved(tx, ctx, id) {
     await employmentTransition(tx, ctx, id, 'approve');
-    // F-417③：退休先生效、返聘后批准时，批准链才顺延日期；复用适配器口径读取同事务最新日期。
+    // F-417③ / DEC-677：只补退休返聘批准时的派生顺延，其他任职类型保留原审批日期语义。
+    if ((await businessKind(tx, ctx.tenantId, id)) !== 'retire_rehire') return;
     const latest = await employmentAdapter.snapshot(tx, ctx, id);
     return { dashboardDate: latest.dashboardDate ?? null };
   },
