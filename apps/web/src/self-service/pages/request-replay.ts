@@ -19,7 +19,12 @@ export function recoverSelfRequest<T>(key: string, send: () => Promise<T>): Prom
         resolve(result);
       } catch (error) {
         const status = (error as { status?: number })?.status;
-        if (!replay && status && status >= 400 && status < 500) return reject(error);
+        // 确定的 409 交还 F-123 重读/核对；原重放槽不能覆盖 conflict 状态。
+        if (status === 409 || (!replay && status && status >= 400 && status < 500)) {
+          pending.delete(key);
+          notify();
+          return reject(error);
+        }
         pending.set(key, { busy: false, retry: () => attempt(true) });
         notify();
       }

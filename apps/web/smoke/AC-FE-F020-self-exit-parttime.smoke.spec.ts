@@ -174,6 +174,7 @@ for (const kind of kinds) {
     await page.context().addCookies([{ name: 'italent_demo_tenant', value: tenant, url: baseURL! }]);
     const world = await installSelfRequest(page, kind, false);
     await createDraft(page, world);
+    await expect(page.getByRole('button', { name: '提交审批', exact: true })).toBeEnabled();
     const path = `${world.path}/${id}`;
     const writes: { path: string; body: unknown; revision?: string; key?: string }[] = [];
     let reads = 0;
