@@ -190,7 +190,9 @@ test('AC-FE-B5a-09 F-393 总开关被裁剪：三项仍显示真实值且编辑�
   await dialog(page)
     .getByRole('button', { name: /^编\s*辑$/ })
     .click();
-  await expect(dialog(page).getByLabel('有效截止日期')).toHaveValue('2027-12-31');
+  await expect(dialog(page).locator('.ant-form-item').filter({ hasText: '有效截止日期' }).locator('input')).toHaveValue(
+    '2027-12-31',
+  );
   await expect(dialog(page).locator('.ant-form-item').filter({ hasText: '加黑原因' })).toContainText('诚信问题');
   await expect(dialog(page).getByLabel('加黑说明')).toHaveValue('合成加黑说明');
   await expect(dialog(page).getByRole('radiogroup', { name: '加入黑名单' })).toHaveCount(0);

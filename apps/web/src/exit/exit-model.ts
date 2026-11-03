@@ -12,7 +12,7 @@ import {
   HANDOVER_SUBMIT_BUTTON as SUBMIT,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
-import { isBlank, sameValue, type Values } from '../foundation/forms/values.js';
+import { isBlank, projectFields, sameValue, type Values } from '../foundation/forms/values.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { x } from './messages.js';
 
@@ -88,12 +88,12 @@ export function cellValue(row: Row, key: string): string {
   return text(row[key]);
 }
 
-/** 详情展示的字段：加黑三项只在加黑单里列出（F-393，值取详情真实返回，无字段权的键显示占位）。 */
+/** F-393：加黑三项逐项按响应键展示，不从可能被裁剪的 addToBlacklist 推导查看权。 */
 export const detailKeys = (row: Row): string[] => [
   ...columns.all,
   'whereaboutsCode',
   'addToBlacklist',
-  ...(row.addToBlacklist === true ? blacklistFields : []),
+  ...blacklistFields.filter((field) => Object.hasOwn(row, field)),
 ];
 
 const validObject = (id: unknown, revision: unknown) =>
@@ -241,9 +241,12 @@ export function editableFields(p: ObjectPermission | undefined, operation: 'crea
 /** 新建基线：加入黑名单默认“否”，其余为空。 */
 export const openingValues = (): Values =>
   Object.fromEntries(formFields.map((field) => [field, field === 'addToBlacklist' ? false : null]));
-/** 编辑基线取详情（trimExitDetail）：缺键（被裁剪）按空。 */
+/** 编辑基线只消费详情实际投影，缺键不补造 false / null（F-393）。 */
 export const detailValues = (detail: Values): Values =>
-  Object.fromEntries(Object.entries(openingValues()).map(([key, empty]) => [key, detail[key] ?? empty]));
+  projectFields(
+    detail,
+    formFields.filter((field) => Object.hasOwn(detail, field)),
+  );
 
 function invalid(field: string, message: string): never {
   throw new ApiError(400, 'VALIDATION_FAILED', 'fields', message, {
@@ -251,7 +254,7 @@ function invalid(field: string, message: string): never {
   });
 }
 /**
- * 已加黑且加黑组原样保留：基线取详情真实的加黑三项（F-393；无字段权的键缺席，按空），只改别的字段时
+ * 已加黑且加黑组原样保留：基线取详情真实的加黑三项（F-393；无字段权的键缺席），只改别的字段时
  * 不得要求重填加黑原因，请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
  */
 export const blackGroupKept = (values: Values, baseline: Values) =>
@@ -307,7 +310,8 @@ export function createBody(values: Values, mode: 'application' | 'direct', confi
 export function patchBody(edited: Values, confirm: Values = {}, merged: Values = edited): Values {
   return {
     ...present(edited, ['lastWorkDate']),
-    ...exitOptions(edited, merged.addToBlacklist === true, true),
+    // 总开关缺席不代表未加黑；仍提交有权编辑且实际改动的三项，由服务端复核业务条件。
+    ...exitOptions(edited, merged.addToBlacklist !== false, true),
     ...confirm,
   };
 }

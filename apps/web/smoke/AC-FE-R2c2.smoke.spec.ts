@@ -276,6 +276,18 @@ test('AC-FE-R2c2-10 已加黑单（详情无加黑三项）只改日期可保存
   await dialog(page)
     .getByRole('button', { name: /^编\s*辑$/ })
     .click();
+  await expect(dialog(page).locator('.ant-form-item').filter({ hasText: '有效截止日期' })).toHaveCount(0);
+  await expect(dialog(page).getByLabel('加黑原因')).toHaveCount(0);
+  await expect(dialog(page).getByLabel('加黑说明')).toHaveCount(0);
+  await dialog(page).getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog(page).locator('.ant-modal-title')).toHaveText('离职管理');
+  // 字段权恢复后服务端才下发三项；重开读取实际投影，再验证修改加黑组的必填校验。
+  server.blacklistDetail = {
+    [ids.inProgress]: { blacklistExpiryDate: null, blacklistReason: null, blacklistNote: null },
+  };
+  await dialog(page)
+    .getByRole('button', { name: /^编\s*辑$/ })
+    .click();
   await date(page, '有效截止日期', '2027-12-31');
   await dialog(page)
     .getByRole('button', { name: /^保\s*存$/ })

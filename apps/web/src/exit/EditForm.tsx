@@ -113,7 +113,7 @@ function EditEditor({
   return (
     <CommandModal title={x.entries.edit} cmd={cmd} error={error} onClose={onClose} onSubmit={submit}>
       <Form form={form} layout="vertical" disabled={cmd.disabled} initialValues={baseline}>
-        <ExitFields editable={editable} permission={permission} {...group} />
+        <ExitFields editable={editable} permission={permission} projected={cmd.full} {...group} />
       </Form>
     </CommandModal>
   );

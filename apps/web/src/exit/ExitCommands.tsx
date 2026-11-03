@@ -20,7 +20,7 @@ async function readObject(api: Api, path: string, id: string) {
   return latest;
 }
 
-/** 离职单的打开基线与重读（GET /exits/:id）：表单值按详情投影，缺键（被裁剪）按空。 */
+/** 离职单的打开基线与重读（GET /exits/:id）：表单值只取详情实际投影，保留被裁剪键的缺席。 */
 export function useExitRead(id: string) {
   const api = useApiClient();
   return useCallback(async (): Promise<Latest> => {
