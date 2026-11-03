@@ -1,4 +1,4 @@
-import type { ApprovalNode, ProcessDefinition } from '@italent/domain';
+import { approverSourcesOf, type ApprovalNode, type ProcessDefinition } from '@italent/domain';
 import type { ProcessView, VersionView } from '../../../../api/src/modules/approval/definitions.js';
 import { ApiError } from '../../foundation/client.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
@@ -121,9 +121,8 @@ export function assertDraftStructure(original: VersionView, latest: VersionView)
   )
     throw new Error(m.versionChanged);
 }
-const mainSources = (node: ApprovalNode) => (node.kind === 'single' ? [node.approver] : (node.approvers ?? []));
 const sameOrderedSources = (a: ApprovalNode, b: ApprovalNode) => {
-  const [left, right] = [mainSources(a), mainSources(b)];
+  const [left, right] = [approverSourcesOf(a), approverSourcesOf(b)];
   return left.length === right.length && left.every((s, i) => s.type === right[i]!.type && s.value === right[i]!.value);
 };
 export function buildDraft(version: VersionView, edited: Values, approvalType?: string): ProcessDefinition {
