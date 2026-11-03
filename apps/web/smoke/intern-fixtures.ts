@@ -94,7 +94,15 @@ export const allButtons = [
   'Employment.Withdraw',
   'Employment.Revoke',
 ];
-const viewable = ['name', 'code', 'departmentId', 'positionId', 'effectiveDate', 'directManagerId', 'dottedManagerId'];
+export const viewable = [
+  'name',
+  'code',
+  'departmentId',
+  'positionId',
+  'effectiveDate',
+  'directManagerId',
+  'dottedManagerId',
+];
 export interface Options {
   buttons?: string[];
   viewableFields?: string[];

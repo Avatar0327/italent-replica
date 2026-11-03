@@ -7,7 +7,7 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { useRead } from '../part-time/useRead.js';
-import { InternCommands } from './commands.js';
+import { InternCommands, useConfirmedRefresh } from './commands.js';
 import { CreateIntern } from './CreateIntern.js';
 import { canCreatePerson, type CreateReceipt } from './create-model.js';
 import { c } from './create-messages.js';
@@ -86,6 +86,9 @@ function useInternList() {
     locate(undefined);
   }, []);
   const refresh = () => result.reload();
+  // 列表重读不随导航票据：本会话确认代次一变就重读当前视图，HR 后退到别的视图、离开模块后在落库前回来
+  // （新挂载的页面实例）都拿到新数据（F-436）
+  useConfirmedRefresh(result.refresh);
   // 申请确认后切到目标视图并独立定位；提交开始时领票，离页或期间已导航则丢弃（F-376）
   const navigation = () =>
     guard((destination: ApplicationDestination) => {
@@ -93,7 +96,6 @@ function useInternList() {
       setPage(1);
       setFilters({});
       locate(destination);
-      result.refresh();
     });
   const changePage = (next: number) => {
     locate(undefined);

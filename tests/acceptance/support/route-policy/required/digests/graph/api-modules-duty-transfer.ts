@@ -166,7 +166,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/duty-transfer/service.ts#checkItems': ['apps/api/src/modules/duty-transfer/duties.ts#dutyKey'],
   'apps/api/src/modules/duty-transfer/service.ts#checkMenuTransfer': [
+    'apps/api/src/modules/duty-transfer/duties.ts#dutyKey',
+    'apps/api/src/modules/duty-transfer/duties.ts#pendingRecords',
     '#checkItems',
+    '#emptyTransfer',
     '#leavingPeople',
     '#personNames',
     '#transferDateOf',
@@ -198,6 +201,7 @@ export const GRAPH: Graph = {
     '#authorizeDuty',
     '#checkItems',
     '#dutyItemOf',
+    '#emptyTransfer',
     '#saveRecord',
     '#transferDateOf',
     '#voidRecord',

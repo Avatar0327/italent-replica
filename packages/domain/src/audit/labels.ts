@@ -377,6 +377,7 @@ export const AUDIT_REFERENCE_KINDS = [
   'sequence',
   'professionalLine',
   'employee',
+  'employmentType',
 ] as const;
 export type AuditReferenceKind = (typeof AUDIT_REFERENCE_KINDS)[number];
 
@@ -408,6 +409,8 @@ const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   shopOwnerId: 'employee',
   employeeId: 'employee',
   receiverId: 'employee',
+  // F-323b（DEC-706）：任职存人员类别字典 ID，日志冻结当时的类别名称
+  employmentType: 'employmentType',
 };
 
 export function auditReferenceKind(field: string): AuditReferenceKind | undefined {

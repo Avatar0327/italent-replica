@@ -1,5 +1,6 @@
 import { linkagePayload, sourceDepartment } from './linkage-api.js';
 import { jobReferences, text } from './messages.js';
+import { OPTIONS_PATH as EMPLOYMENT_TYPE_OPTIONS } from '../employment-types/model.js';
 import type { Choice, TransferAction, TransferBusiness, TransferFormModel, TransferPreview } from './types.js';
 import { ApiError, createApiClient, rejectionMessage } from '../foundation/client.js';
 
@@ -95,20 +96,41 @@ export async function loadReferences(
     }
     return [code, result.items, originals] as const;
   });
+  const types = employmentTypeChoices(tenantId, preview, model, signal);
   const results = await Promise.allSettled(requests);
-  return {
-    references: Object.fromEntries(
-      results.map((result, index) =>
-        result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
-      ),
+  const typeResult = await types;
+  const references: Record<string, Choice[]> = Object.fromEntries(
+    results.map((result, index) =>
+      result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
     ),
+  );
+  if (typeResult) references.employmentType = typeResult.items;
+  return {
+    references,
     beforeReferences: Object.fromEntries(
       results.map((result, index) =>
         result.status === 'fulfilled' ? [result.value[0], result.value[2]] : [entries[index]![0], []],
       ),
     ),
-    unavailable: results.some((result) => result.status === 'rejected'),
+    unavailable: results.some((result) => result.status === 'rejected') || typeResult?.ok === false,
   };
+}
+/**
+ * F-323b（DEC-706）：HR 入口可编辑人员类别时读字典选项（只含启用项）；读不到给空并提示参照不可用，原值仍按预览带的名称显示。
+ * 经理 / 员工入口没有字典参照接口，候选只有预览的当前值（名称取 employmentTypeName / 自助 valueLabels）。
+ */
+function employmentTypeChoices(
+  tenantId: string,
+  preview: TransferPreview,
+  model: TransferFormModel,
+  signal: AbortSignal,
+) {
+  if (model.initiator === 'manager' || model.initiator === 'employee') return undefined;
+  if (preview.form.fieldModes['preset:employmentType'] !== 'editable') return undefined;
+  return transferRequest<{ items: Choice[] }>(tenantId, EMPLOYMENT_TYPE_OPTIONS, { signal }).then(
+    (result) => ({ ok: true, items: result.items }),
+    () => ({ ok: false, items: [] as Choice[] }),
+  );
 }
 /** 保存载荷：HR 入口带联动（R1-T10），本人申请不带（`12` 附录）。 */
 export function transferBody(model: TransferFormModel, action: TransferAction) {
