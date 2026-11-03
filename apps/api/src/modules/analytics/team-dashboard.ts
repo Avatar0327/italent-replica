@@ -7,6 +7,8 @@
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import { managerIdentityWithOrgs } from '../permission/manager-identity.js';
+import { reportingPersonsSql } from '../permission/scope-persons.js';
 
 export interface TeamViewer {
   readonly tenantId: string;
@@ -20,7 +22,14 @@ export interface TeamVisibility {
   readonly hasDataPermission: boolean;
 }
 
-/** 红灯阶段的占位：先返回全租户，AC-HA-06 的范围断言应因此失败；绿灯提交换成真实范围。 */
-export async function teamVisibility(_tx: Tx, _viewer: TeamViewer): Promise<TeamVisibility> {
-  return { visible: sql`true`, hasDataPermission: true };
+export async function teamVisibility(tx: Tx, viewer: TeamViewer): Promise<TeamVisibility> {
+  const identity = await managerIdentityWithOrgs(tx, viewer);
+  const self = identity.employeeId;
+  if (!self) return { visible: sql`false`, hasDataPermission: false };
+  const led = `{${identity.orgIds.join(',')}}`;
+  return {
+    hasDataPermission: true,
+    visible: sql`(m.employee_id=${self}::uuid OR m.org_id=ANY(${led}::uuid[])
+      OR ${reportingPersonsSql(viewer.tenantId, viewer.asOf, self, 'all_direct', sql`m.employee_id`)})`,
+  };
 }

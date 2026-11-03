@@ -702,12 +702,49 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
+    '#structurePeopleWhere',
+  ],
+  'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
     'apps/api/src/modules/analytics/hr-dashboard.ts#employType',
-    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
     'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom',
     '#attribute',
     '#categoryName',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#SHOWN': [
+    'packages/domain/src/analytics/team-dashboard.ts#TEAM_DASHBOARD_COMPONENTS',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#structureComponents',
+    '#SHOWN',
+    '#TEAM_DASHBOARD_BASE',
+    '#teamPeople',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':
+    [
+      'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
+      'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
+      '#TEAM_DASHBOARD_BASE',
+      '#teamPeople',
+      'apps/api/src/modules/job/context.ts#pageQuery',
+      'packages/domain/src/analytics/team-dashboard.ts#TEAM_DASHBOARD_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#teamPeople': [
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery',
+    'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#BOARD_EMPLOY_TYPES',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#departmentFilter',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#lookupOf',
+    'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere',
+    'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility': [
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentityWithOrgs',
+    'apps/api/src/modules/permission/scope-persons.ts#reportingPersonsSql',
   ],
 };

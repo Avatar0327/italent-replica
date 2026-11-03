@@ -1,0 +1,20 @@
+{
+  "GET /api/tenant/analytics/team-dashboard": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/analytics/team-dashboard/components/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4f8e39cb5adf",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  }
+}
