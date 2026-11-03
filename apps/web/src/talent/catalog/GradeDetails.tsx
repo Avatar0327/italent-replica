@@ -77,7 +77,7 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
       ),
     },
     {
-      title: m.score,
+      title: m.gradeScore,
       width: 540,
       render: (_, row, i) => (
         <InputNumber
