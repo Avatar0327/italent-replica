@@ -2,7 +2,7 @@
  * R2-T04 §9.1 / §9.1A 预计退休日期与弹性范围规则（纯函数，禁止 IO；DEC-640、DEC-641、DEC-638 A-4）。
  * 规则类型：固定年龄（DEC-636 c4，只用于预计退休日期）与内置法定函数（5c1b，两种用途都可选用，见 retirement-statutory.ts）；
  * 条件使用固定槽位，每槽至多一条、只用 in（多选值命中其一），槽位之间 AND；雇佣关系必填。
- * F-263 / DEC-684⑤⑥：补用工形式，国籍保持；人员类别为复刻取舍，后补 F-323。
+ * F-263 / DEC-684⑤⑥：补用工形式；F-323c / DEC-706：补人员类别（按人员类别字典 ID 取值），国籍保持。
  */
 import {
   IDENTITY_TYPE_CADRE,
@@ -28,6 +28,7 @@ export const RETIREMENT_CONDITION_FIELDS = [
   'employType',
   'identityType',
   'employmentForm',
+  'employmentType',
 ] as const;
 export type RetirementConditionField = (typeof RETIREMENT_CONDITION_FIELDS)[number];
 export const RETIREMENT_CONDITION_LABELS: Readonly<Record<RetirementConditionField, string>> = {
@@ -36,6 +37,7 @@ export const RETIREMENT_CONDITION_LABELS: Readonly<Record<RetirementConditionFie
   employType: '雇佣关系',
   identityType: '个人身份',
   employmentForm: '用工形式',
+  employmentType: '人员类别',
 };
 /** 原站“雇佣关系”必填（DEC-640②）。 */
 export const RETIREMENT_REQUIRED_CONDITION: RetirementConditionField = 'employType';
@@ -101,6 +103,8 @@ export interface RetirementPerson {
   readonly identityType: string | null;
   /** 未提供时不命中该条件；无用工形式条件的既有调用保持原行为。 */
   readonly employmentForm?: string | null;
+  /** 人员类别字典 ID；未提供时不命中该条件（F-323c）。 */
+  readonly employmentType?: string | null;
 }
 
 function satisfies(condition: RetirementCondition, person: RetirementPerson): boolean {
