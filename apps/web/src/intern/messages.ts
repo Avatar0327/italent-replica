@@ -5,8 +5,10 @@ export const m = {
   fields: {
     name: '姓名',
     code: '工号',
+    institutionId: '实习机构',
     departmentId: '部门',
     positionId: '职位',
+    directManagerId: '直线经理',
     entryDate: '入职日期',
     effectiveDate: '实习转正日期',
     state: '审批状态',

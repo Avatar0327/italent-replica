@@ -5,7 +5,9 @@
  * - AC-HA-13b-08 流入按入职任职记录开始日期、流出按最后工作日归年 / 归月（DEC-729），只算内部员工 + 实习生；
  * - AC-HA-13b-09 流出合计 = BE-12b 人事看板“本年离职”；
  * - AC-HA-13b-10 组织编制是按编制对象一行的表格（本世界没有编制，空表；有编制的场景见 AC-HA-13b-r2）；
- * - 授权与数据范围：AC-HA-13b-11 / AC-HA-05。
+ * - 授权与数据范围：AC-HA-13b-11 / AC-HA-05。流动情况报表（B54）属 F-465 的 12 张报表之一，归结构类：人事管理员按管理单元取数，
+ *   范围外不出现、不计数，数字 = 明细，空范围 fail-closed（DEC-768，F-466）；人员流动分析（B50）是看板类，
+ *   只验有权看的身份“按调用者数据范围统计、空范围 fail-closed”，谁有看板由授权决定（DEC-763②）。
  */
 import { HR_MOVEMENT_OBJECT, HR_MOVEMENT_REPORT_OBJECT, presetSeeAllTargets, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -209,7 +211,48 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     expect(table(report, 'flow').summary.cells).toMatchObject({ exits: 4 });
   });
 
-  it('AC-HA-05：空范围（默认）全为 0，hasDataPermission = false，不退回“全部”', async () => {
+  it('AC-HA-05：人事管理员按管理单元看流动情况报表（B54，DEC-768）——范围外不出现、不计数，合计 = 范围内明细', async () => {
+    const scope = managementScope(w.tenantId, [w.A.id, w.A1.id, w.B.id]);
+    const limited = movementClient(w.db, w.who, restrictedAuthorizer({ scope }));
+    const sumColumns = ['yearStart', 'hires', 'transfers', 'exits', 'yearEnd', 'netGrowth', 'totalChange'];
+
+    const flow = await limited.report('flow', AS_OF);
+    expect(flow.hasDataPermission).toBe(true);
+    const rows = table(flow, 'flow').rows;
+    expect(rows.map((item) => item.key).sort()).toEqual([w.A.id, w.B.id].sort());
+    for (const column of sumColumns)
+      expect(table(flow, 'flow').summary.cells[column], `合计 ${column}`).toBe(
+        rows.reduce((total, item) => total + (item.cells[column] ?? 0), 0),
+      );
+    expect(table(flow, 'flow').summary.cells).toMatchObject({ yearStart: 5, hires: 4, transfers: 1, exits: 4 });
+
+    // 各月入离职：范围外部门 8/31 的离职不计（全范围 8 月离职 1）；流出合计 = 范围内离职 4
+    const monthly = await limited.report('monthly', AS_OF);
+    expect(row(monthly, 'monthly', '2026-08')).toMatchObject({ exits: 0 });
+    expect(row(monthly, 'monthly', '2026-01')).toMatchObject({ exits: 1 });
+    const outflow = await limited.report('outflow', AS_OF);
+    expect(table(outflow, 'reasons').summary.cells).toEqual({ count: 4 });
+    expect(table(outflow, 'sequences').summary.cells.total).toBe(4);
+
+    // 同一批数据，全范围能看到范围外的组织与离职
+    const all = await c.report('flow', AS_OF);
+    expect(table(all, 'flow').rows.map((item) => item.key)).toContain(w.H.id);
+    expect(row(await c.report('monthly', AS_OF), 'monthly', '2026-08')).toMatchObject({ exits: 1 });
+    expect(table(await c.report('outflow', AS_OF), 'reasons').summary.cells).toEqual({ count: 5 });
+  });
+
+  it('AC-HA-05：空范围（默认）流动情况报表无行、合计 0，不退回“全部”（B54，DEC-768）', async () => {
+    const limited = movementClient(w.db, w.who, restrictedAuthorizer({ scope: { ...EMPTY_SCOPE } }));
+    const flow = await limited.report('flow', AS_OF);
+    expect(flow.hasDataPermission).toBe(false);
+    expect(table(flow, 'flow').rows).toEqual([]);
+    for (const value of Object.values(table(flow, 'flow').summary.cells)) expect(value ?? 0).toBe(0);
+    const monthly = await limited.report('monthly', AS_OF);
+    for (const item of table(monthly, 'monthly').rows)
+      for (const value of Object.values(item.cells)) expect(value ?? 0).toBe(0);
+  });
+
+  it('AC-HA-05：空范围（默认）人员流动分析看板与流出报表全为 0，hasDataPermission = false，不退回“全部”', async () => {
     const limited = movementClient(w.db, w.who, restrictedAuthorizer({ scope: { ...EMPTY_SCOPE } }));
     expect((await limited.board(BASE, AS_OF)).hasDataPermission).toBe(false);
     await limited.expectCount(BASE, '6.29', [], AS_OF);

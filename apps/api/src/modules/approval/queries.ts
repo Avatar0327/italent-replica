@@ -48,7 +48,8 @@ export async function listNotifications(tx: Tx, tenantId: string, userId: string
   );
   return rows.map((row) => ({
     id: String(row.id),
-    instanceId: String(row.instance_id),
+    // 没有审批实例的业务消息（F-400）为 null；业务单引用暂不进响应，待消息中心（F-419 / F-420）定契约
+    instanceId: (row.instance_id as string | null) ?? null,
     taskId: (row.task_id as string | null) ?? null,
     kind: String(row.kind),
     channel: String(row.channel),

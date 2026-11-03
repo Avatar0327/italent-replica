@@ -104,8 +104,10 @@ describe('P2-2 离职落地的引用校验：按存在性，合法引用不被�
   });
 });
 
-describe('P2-3 删除被摘下的调动：审计 before 取最新记录快照', () => {
-  it('备注 before-edit 改为 after-edit 后被离职摘下再删除：delete.before 为新值，版本 ID 对应同一内容', async () => {
+// DEC-725③（取代 DEC-263②）：离职生效时晚于 L 的已落地调动摘下并作废（墓碑），原“摘下后删记录”的审计路径不再出现；
+// 改为验证作废后 HR 仍可删除该业务单，delete.before 取最新版本（编辑后的备注），不回退到首版
+describe('P2-3 删除被离职作废的调动：审计 before 取最新版本快照', () => {
+  it('备注 before-edit 改为 after-edit 后随离职作废再删除：delete.before 为新值，版本号对应同一内容', async () => {
     const x = await world('detach-audit');
     const transfer = await futureTransfer(x, x.employee.id, '2026-10-25', {
       departmentId: x.to.id,
@@ -120,13 +122,15 @@ describe('P2-3 删除被摘下的调动：审计 before 取最新记录快照', 
     await x.activate(leave.id, '2026-10-21');
     x.setNow('2026-10-26T01:00:00Z');
     const current = await x.business(transfer.id);
+    expect(current.status).toBe('voided');
     const deleted = await x.session.request('DELETE', `/businesses/${transfer.id}`, { ifMatch: current.revision });
     expect(deleted.status, await deleted.clone().text()).toBe(200);
-    const [audit] = await x.audits(transfer.id, 'employment.record.delete');
+    const [audit] = await x.audits(transfer.id, 'employment.business.delete');
     const before = audit!.before as Record<string, unknown>;
-    expect(before.remarks).toBe('after-edit');
+    expect(before).toMatchObject({ state: 'voided', remarks: 'after-edit' });
     const [version] = await x.sqlRows<{ remarks: string | null }>(sql`SELECT remarks FROM employment_payload_versions
-      WHERE tenant_id=${x.session.tenant.id} AND id=${String(before.payloadVersionId)}::uuid`);
+      WHERE tenant_id=${x.session.tenant.id} AND business_id=${transfer.id}::uuid
+        AND version_no=${Number(before.versionNo)}`);
     expect(version!.remarks).toBe(before.remarks);
   });
 });
