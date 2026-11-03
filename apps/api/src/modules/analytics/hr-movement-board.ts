@@ -203,14 +203,18 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
     groups: [...TENURE_SEGMENTS, { key: SEGMENT_NONE, label: NONE_LABEL }].map(({ key, label }) => ({
       key,
       label,
-      members: x.data.window.exits.filter((e) => tenureSegment(e.entryDate, e.lastWorkDate) === key),
+      members: x.data.window.exits.filter(
+        (e) => tenureSegment(e.entryDate, e.lastWorkDate, e.workYearCompanyBefore) === key,
+      ),
     })),
   }),
   // 窗口 = 近 12 个自然月（含 asOf 所在月），司龄 ≤ 0.083 年（F-431②）；
   // ratio = 该部门人数 ÷ 近 12 个月“入职一个月内离职”的总人数（不是部门在职人数）；先取每人最后一次离职，再看它是否
   // 入职一个月内离职（司龄按那次离职所在任职周期的入职日期算）
   '6.32': (x) => {
-    const early = x.data.window.exits.filter((e) => withinOneMonth(e.entryDate, e.lastWorkDate));
+    const early = x.data.window.exits.filter((e) =>
+      withinOneMonth(e.entryDate, e.lastWorkDate, e.workYearCompanyBefore),
+    );
     return { members: early, groups: grouped(early, (e) => byId(e.departmentId, (id) => x.tree.name(id))) };
   },
   // 每个编制对象一组：实有人员 = asOf 时点在职（含下级），与 6.25 当月期末同一谓词

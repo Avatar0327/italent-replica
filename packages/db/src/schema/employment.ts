@@ -14,6 +14,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   smallint,
@@ -134,6 +135,7 @@ function presetFields() {
     employmentType: uuid('employment_type'),
     employType: text('employ_type'),
     employmentSource: text('employment_source'),
+    workYearCompanyBefore: numeric('work_year_company_before', { mode: 'number' }).notNull().default(0),
     employmentForm: text('employment_form'),
     sequenceId: uuid('sequence_id'),
     professionalLineId: uuid('professional_line_id'),
@@ -152,6 +154,7 @@ function presetFields() {
 }
 
 interface PresetColumns {
+  readonly workYearCompanyBefore: AnyPgColumn;
   readonly employmentForm: AnyPgColumn;
   readonly employmentType: AnyPgColumn;
   readonly tenantId: AnyPgColumn;
@@ -185,6 +188,12 @@ function presetRules(name: string, t: PresetColumns): PgTableExtraConfigValue[] 
     reference(`${name}_dotted_manager_fk`, t.tenantId, t.dottedManagerId, employmentEmployees),
     reference(`${name}_sequence_fk`, t.tenantId, t.sequenceId, jobSequenceObjects),
     reference(`${name}_professional_line_fk`, t.tenantId, t.professionalLineId, jobProfessionalLineObjects),
+    check(
+      `${name}_seniority_correction`,
+      sql`${t.workYearCompanyBefore} >= 0
+      AND ${t.workYearCompanyBefore} <= 90071992547409.9
+      AND ${t.workYearCompanyBefore} = trunc(${t.workYearCompanyBefore}, 2)`,
+    ),
     check(`${name}_employ_type`, sql`${t.employType} IN ('internal', 'intern', 'external')`),
     check(`${name}_custom_object`, sql`jsonb_typeof(${t.customFields}) = 'object'`),
   ];

@@ -23,11 +23,11 @@
  *   （routes.ts:159）。
  * - 顺序：selfAccess（未绑定 403）先于 uuidParam / pageQuery 的 400（routes.ts:50–52、148）。
  */
-import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { sql, type Tx } from '@italent/db';
 import {
   EMPLOYEE_DEFAULT_CREATE,
   EMPLOYEE_DEFAULT_EDIT_FIELDS,
+  EMPLOYEE_DEFAULT_VIEW_FIELDS,
   EMPLOYEE_SELF_SERVICE_BUTTONS,
   EMPLOYEE_SELF_SERVICE_CODE,
 } from '@italent/domain';
@@ -72,7 +72,7 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<Emp
   );
   if (!profile) {
     return {
-      view: new Set([...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS]),
+      view: new Set(EMPLOYEE_DEFAULT_VIEW_FIELDS),
       edit: new Set(EMPLOYEE_DEFAULT_EDIT_FIELDS),
       create: EMPLOYEE_DEFAULT_CREATE,
       buttons: new Set(DEFAULT_BUTTONS),

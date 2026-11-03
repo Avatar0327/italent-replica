@@ -96,8 +96,8 @@ export function growthRate(net: number, start: number, end: number): number {
 
 /** 入职一个月内离职：累计司龄（入职日到最后工作日的天数 ÷ 365，不取整）≤ 0.083 年。 */
 export const ONE_MONTH_YEARS = 0.083;
-export function withinOneMonth(entryDate: string | null, lastWorkDate: string): boolean {
+export function withinOneMonth(entryDate: string | null, lastWorkDate: string, correction = 0): boolean {
   if (!entryDate || entryDate > lastWorkDate) return false;
   const days = (Date.parse(`${lastWorkDate}T00:00:00Z`) - Date.parse(`${entryDate}T00:00:00Z`)) / 86_400_000;
-  return days / 365 <= ONE_MONTH_YEARS;
+  return days / 365 + correction <= ONE_MONTH_YEARS;
 }

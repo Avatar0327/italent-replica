@@ -19,6 +19,13 @@ export const EMPLOYEE_DEFAULT_EDIT_FIELDS: readonly string[] = [
 /** DEC-209：员工发起业务的只读上限（可见、不可编辑），不因入口或额外身份的编辑权放开。 */
 export const EMPLOYEE_READONLY_FIELDS: readonly string[] = ['postId', 'levelId', 'sequenceId'];
 
+/** DEC-793：默认只读，租户仍可按任职字段权限配置，不加入不可放开的只读上限。 */
+export const EMPLOYEE_DEFAULT_VIEW_FIELDS: readonly string[] = [
+  ...EMPLOYEE_DEFAULT_EDIT_FIELDS,
+  ...EMPLOYEE_READONLY_FIELDS,
+  'workYearCompanyBefore',
+];
+
 /** DEC-205：员工可新建（发起）任职业务；不可修改、删除。 */
 export const EMPLOYEE_DEFAULT_CREATE = true;
 

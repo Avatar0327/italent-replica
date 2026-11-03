@@ -68,12 +68,15 @@ const withNone = (options: readonly { key: string; label: string }[]) => [...opt
 const RULES: Readonly<Record<HrStructureCode, Rule | null>> = {
   '6.01': {},
   '6.02': { sample: (p, asOf) => ageSample(p.birthday, asOf) },
-  '6.03': { sample: (p, asOf) => tenureSample(p.entryDate, asOf) },
+  '6.03': { sample: (p, asOf) => tenureSample(p.entryDate, asOf, p.workYearCompanyBefore) },
   '6.04': { key: institution, label: orgLabel, limit: HR_STRUCTURE_TOP_INSTITUTIONS },
   '6.05': { key: (p) => p.levelId ?? SEGMENT_NONE, label: dictionaryLabel((x) => x.levels) },
   '6.06': { key: (p) => p.sequenceId ?? SEGMENT_NONE, label: dictionaryLabel((x) => x.sequences) },
   '6.07': { key: (p) => (probation(p) ? 'probation' : 'regular'), fixed: STATUS },
-  '6.08': { key: (p, x) => tenureSegment(p.entryDate, x.asOf), fixed: withNone(TENURE_SEGMENTS) },
+  '6.08': {
+    key: (p, x) => tenureSegment(p.entryDate, x.asOf, p.workYearCompanyBefore),
+    fixed: withNone(TENURE_SEGMENTS),
+  },
   // 工作地点 / 籍贯：复刻任职与档案里没有可统计的字典字段（规格“未决 / 假设”），返回 null，不造数据
   '6.09': null,
   '6.10': null,
@@ -172,9 +175,9 @@ function qualityColumns(x: StructureLookup): Column[] {
       count(`education:${t.key}`, t.label, (p) => educationTier(p.educationLevel) === t.key),
     ),
     ...TENURE_SEGMENTS.map((s) =>
-      count(`tenure:${s.key}`, s.label, (p) => tenureSegment(p.entryDate, x.asOf) === s.key),
+      count(`tenure:${s.key}`, s.label, (p) => tenureSegment(p.entryDate, x.asOf, p.workYearCompanyBefore) === s.key),
     ),
-    average('avgTenure', '平均司龄', (p) => tenureSample(p.entryDate, x.asOf)),
+    average('avgTenure', '平均司龄', (p) => tenureSample(p.entryDate, x.asOf, p.workYearCompanyBefore)),
     ...AGE_SEGMENTS.map((s) => count(`age:${s.key}`, s.label, (p) => ageSegment(p.birthday, x.asOf) === s.key)),
     average('avgAge', '平均年龄', (p) => ageSample(p.birthday, x.asOf)),
   ];

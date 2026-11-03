@@ -468,6 +468,7 @@ export const MODULE_OBJECTS = {
       'dottedManagerId',
       'employmentType',
       'employmentSource',
+      'workYearCompanyBefore',
       'employmentForm',
       'sequenceId',
       'professionalLineId',

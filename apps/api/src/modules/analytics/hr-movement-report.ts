@@ -270,13 +270,21 @@ function outflow(exits: readonly MovementExit[], sequences: readonly DictionaryI
   const columns: Column<readonly MovementExit[]>[] = [
     ...profileColumns<MovementExit>(),
     ...TENURE_SEGMENTS.map((s) =>
-      count<MovementExit>(`tenure:${s.key}`, s.label, (e) => tenureSegment(e.entryDate, e.lastWorkDate) === s.key),
+      count<MovementExit>(
+        `tenure:${s.key}`,
+        s.label,
+        (e) => tenureSegment(e.entryDate, e.lastWorkDate, e.workYearCompanyBefore) === s.key,
+      ),
     ),
     {
       key: 'averageTenure',
       label: '平均司龄',
       value: (items) =>
-        segmentAverage(items.map((e) => tenureSample(e.entryDate, e.lastWorkDate)).filter((v) => v !== null)),
+        segmentAverage(
+          items
+            .map((e) => tenureSample(e.entryDate, e.lastWorkDate, e.workYearCompanyBefore))
+            .filter((v) => v !== null),
+        ),
     },
     ...types.columns.map(({ code, name }) => count<MovementExit>(`type:${code}`, name, (e) => types.keyOf(e) === code)),
     count<MovementExit>(MOVEMENT_RETIREMENT_TYPE.code, MOVEMENT_RETIREMENT_TYPE.name, (e) => e.kind === 'retirement'),

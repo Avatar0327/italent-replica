@@ -165,6 +165,7 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
     // 合并时定号（DEC-439④，取代 DEC-404 的手工重定）：开发中写占位（当时 main + 1、注释写 PR / 任务），合并前 pnpm merge:main
     // 按合并结果把这一行定为 main 最后一行 + 1 并重算指纹（本分支多次递增并成一行）。这里只放条目与 // 注释行，脚本整块改写。
     const HISTORY: Record<number, string> = {
+      44: '8addfe2d76dac4e8', // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
       7: 'de040eb38bfcd54a',
       8: '1892446da0d1f77c',
       // C1-2b（DEC-399）：新增员工身份 employee_self_service 的授权项
