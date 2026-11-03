@@ -262,18 +262,24 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     expect(table(report, 'reasons')).toMatchObject({ rows: [], summary: { cells: { count: 0 } } });
   });
 
-  it('AC-HA-13b-11：两个授权项默认给人事模块预置管理员看全部（DEC-415），人事专员只有对象查看权', () => {
+  it('AC-HA-13b-11：预置授权——人员流动分析对象给 HR 专员 / HR 经理 / 管理员并看全部；人事管理员只留流动情况报表且按管理单元取数', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    for (const object of [HR_MOVEMENT_OBJECT, HR_MOVEMENT_REPORT_OBJECT]) {
-      for (const code of ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'])
-        expect(
-          profile(code).objects.map((item) => item.objectCode),
-          `${code} ${object}`,
-        ).toContain(object);
-      expect(seeAll('standard_org_system_admin')).toContain(object);
-      expect(seeAll('standard_hr_admin')).toContain(object);
-      expect(seeAll('standard_hr_specialist')).not.toContain(object);
+    const held = (code: string) => profile(code).objects.map((item) => item.objectCode);
+    for (const code of [
+      'standard_org_system_admin',
+      'standard_hr_dashboard_specialist',
+      'standard_hr_dashboard_manager',
+    ]) {
+      expect(held(code), code).toContain(HR_MOVEMENT_OBJECT);
+      expect(seeAll(code), code).toContain(HR_MOVEMENT_OBJECT);
     }
+    expect(held('standard_hr_admin')).not.toContain(HR_MOVEMENT_OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(HR_MOVEMENT_OBJECT);
+    expect(seeAll('standard_hr_specialist')).not.toContain(HR_MOVEMENT_OBJECT);
+    for (const code of ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'])
+      expect(held(code), `${code} 报表`).toContain(HR_MOVEMENT_REPORT_OBJECT);
+    expect(seeAll('standard_org_system_admin')).toContain(HR_MOVEMENT_REPORT_OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(HR_MOVEMENT_REPORT_OBJECT);
   });
 });
