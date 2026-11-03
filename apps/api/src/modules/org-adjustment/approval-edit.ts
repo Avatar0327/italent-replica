@@ -18,7 +18,7 @@ import { authorizeHead, orgScopeAuthorizer } from './access.js';
 import { trimError } from './envelope.js';
 import { patchItemSchema, type ItemPatch } from './item-validation.js';
 import { loadWorld } from './item-tree.js';
-import { bumpRevision } from './items-store.js';
+import { bumpRevision, type OrgItem } from './items-store.js';
 import { persistRevisions, planRevisions } from './org-items.js';
 import { assertHeadPatch, loadAdjustment, persistHead, type AdjustmentView } from './service.js';
 import { rowOrgIds } from './submission.js';
@@ -109,7 +109,7 @@ async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   const before = touched.map((item) => item!);
   const after = before.map((item) => ({ ...item, ...toRefs(patches.get(item.id)!) }));
   if (head) await authorizeApprover(tx, ctx, next, fields);
-  await orgScopeAuthorizer(approverDeps(ctx), ctx)(tx, rowOrgIds([...before, ...after]));
+  await assertRowsInScope(tx, ctx, [...before, ...after]);
   const planned = patches.size ? await planRevisions(tx, ctx.now, world, patches) : { items: world.items, changes: [] };
   const candidate = { ...world, items: planned.items };
   if (head) await assertHeadPatch(tx, candidate, head);
@@ -117,6 +117,19 @@ async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   if (head) await persistHead(tx, ctx, view, head);
   else await bumpRevision(tx, ctx, id);
   await persistRevisions(tx, ctx, next, planned.changes);
+}
+
+/**
+ * 行涉及的组织出了审批人的组织范围时，与“行不存在”同一 400（ROW_MISSING）：按 itemId 探测不出哪些行存在
+ * 但越界（存在性侧信道，F-339 ③、F-443）。范围校验本身仍用 `orgScopeAuthorizer`，只改它的 404 出口。
+ */
+async function assertRowsInScope(tx: Tx, ctx: ApprovalContext, rows: readonly OrgItem[]) {
+  try {
+    await orgScopeAuthorizer(approverDeps(ctx), ctx)(tx, rowOrgIds(rows));
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw invalid('orgItems', ROW_MISSING);
+    throw error;
+  }
 }
 
 /** 改行后涉及的已有组织（只为授权取组织 ID，不落库）。 */
