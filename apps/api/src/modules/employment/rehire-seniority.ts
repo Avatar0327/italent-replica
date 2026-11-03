@@ -65,3 +65,38 @@ export async function applyRehireSeniority(
   );
   return fields;
 }
+
+/** 生效重聘按既有删除任职契约撤销；开关当前状态不影响历史快照恢复。 */
+export async function restoreRehireSeniority(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
+  if (business.payload.kind !== 'rehire') return;
+  const [snapshot] = rowsOf<{ value: string }>(
+    await tx.execute(sql`
+    SELECT p.work_year_company_before::text AS value
+    FROM employment_rehire_seniority_snapshots s
+    JOIN employment_payload_versions p ON p.tenant_id=s.tenant_id AND p.employee_id=s.employee_id
+      AND p.business_id=s.business_id AND p.id=s.snapshot_version_id
+    WHERE s.tenant_id=${ctx.tenantId} AND s.employee_id=${business.employeeId} AND s.business_id=${business.id}`),
+  );
+  if (!snapshot) return;
+  const before = business.payload.fields.workYearCompanyBefore;
+  const fields = { ...business.payload.fields, workYearCompanyBefore: Number(snapshot.value) };
+  business.payload = await appendForwardPayload(
+    tx,
+    ctx,
+    business.payload,
+    { fields, customFields: business.payload.customFields },
+    business.id,
+    true,
+    [{ field: 'workYearCompanyBefore', before, after: fields.workYearCompanyBefore }],
+  );
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.rehire.seniority.restore',
+    'employment-record',
+    business.id,
+    { workYearCompanyBefore: before },
+    { workYearCompanyBefore: fields.workYearCompanyBefore },
+    business.payload.id,
+  );
+}
