@@ -28,6 +28,22 @@ export const HEAD_BUTTONS = {
   approve: ['EditApprovalIngApply', 'detail'],
 } as const satisfies Record<string, HeadButton>;
 
+/** 申请单不存在的文案；范围外与不存在共用（读接口的 `notFound()` 同文案）。 */
+export const ADJUSTMENT_NOT_FOUND = '组织调整申请不存在';
+
+/**
+ * 由库里现值（或缓存回执）推出的组织范围判定：范围外的组织与不存在的申请单同一错误（F-339 ③），不能经文案推断存在性。
+ * 请求里新给的组织不包这一层——那是调用方自己输入的，仍报“组织不存在”。
+ */
+export async function asAdjustmentMissing<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+    throw error;
+  }
+}
+
 export interface HeadAuthorization {
   readonly actor: 'applicant' | 'current_approver';
   readonly operation: 'create' | 'update';
@@ -121,7 +137,7 @@ async function requireButtons(bound: Deps, ctx: TenantContext, input: ActionInpu
 
 async function requireScopes(tx: Tx, bound: Deps, ctx: TenantContext, input: ActionInput) {
   const main = await resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
-  if (!scopeAllows(main, { orgId: input.subjectOrgId })) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+  if (!scopeAllows(main, { orgId: input.subjectOrgId })) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
   const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
   const scoped = { ...ctx, expectedRevision: 0, commandId: '', now: bound.clock() };
   for (const orgId of input.rangeOrgIds) await authorizeOrgResult(tx, scoped, orgScope, orgId, false);

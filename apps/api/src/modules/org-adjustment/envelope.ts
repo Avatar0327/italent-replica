@@ -22,6 +22,25 @@ export function trimIssues<T extends object>(issues: readonly T[], viewable: Vie
   });
 }
 
+export const HIDDEN_ROW_INVALID = 'ORG_ADJUSTMENT_HIDDEN_ROW_INVALID';
+
+/**
+ * 整单校验信封里隐藏行（组织范围外）的问题折叠成一条汇总：不带 itemId / orgId / 原因 / 业务文案，只给条数（F-339 ②）。
+ * 汇总放在末尾；没有隐藏行问题时原样返回。
+ */
+export function foldHiddenRowIssues<T extends object>(issues: readonly T[], hiddenItemIds: ReadonlySet<string>) {
+  const isHidden = (issue: T) => hiddenItemIds.has((issue as Issue).itemId as string);
+  const hidden = issues.filter(isHidden);
+  if (hidden.length === 0) return [...issues];
+  const summary = {
+    section: 'org',
+    reason: HIDDEN_ROW_INVALID,
+    message: '有无权查看的明细行未通过校验',
+    hiddenRowCount: new Set(hidden.map((issue) => (issue as Issue).itemId)).size,
+  };
+  return [...issues.filter((issue) => !isHidden(issue)), summary];
+}
+
 /** 校验类错误的 details：`items` 逐条裁剪；顶层 `orgIds` / `orgId` 与头 / 明细问题同口径。其它错误原样返回。 */
 export function trimError(error: unknown, viewable: Viewable): unknown {
   if (!(error instanceof AppError) || !viewable || !error.details || typeof error.details !== 'object') return error;

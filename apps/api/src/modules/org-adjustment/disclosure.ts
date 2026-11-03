@@ -136,7 +136,7 @@ export function orgSectionDisclosed(disclosure: Disclosure): boolean {
  * 明细行可见性（HR 路径）：行涉及的组织逐个在组织对象范围，引用的本单明细（新上级行、转移目标行、连带发起行）
  * 也须可见——按不动点收敛，隐藏行的名称不会经下级新增行的“上级”间接露出。审批人路径全部可见。
  */
-export function visibleItems(disclosure: Disclosure, items: readonly OrgItem[]) {
+export function visibleItems(disclosure: Pick<Disclosure, 'orgScope'>, items: readonly OrgItem[]) {
   const scope = disclosure.orgScope;
   if (!scope) return { items: [...items], hiddenRowCount: 0 };
   const inScope = (orgId: string | null) => !orgId || scopeAllows(scope, { orgId });

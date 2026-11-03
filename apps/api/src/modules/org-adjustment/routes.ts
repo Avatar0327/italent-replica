@@ -27,6 +27,8 @@ import type { FieldAccess } from '../approval/context.js';
 import { objectContext, button, trimModuleResponse, writeFields } from '../permission/module-route-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import {
+  ADJUSTMENT_NOT_FOUND,
+  asAdjustmentMissing,
   authorizeHead,
   authorizeHeadAction,
   authorizeHeadScopes,
@@ -38,7 +40,8 @@ import {
   type ItemAuthorization,
 } from './access.js';
 import { rebaseAll, rebaseItem } from './baseline.js';
-import { trimIssues, trimError } from './envelope.js';
+import { foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
+import { hiddenItemIds } from './hidden-rows.js';
 import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
 import { registerReadRoutes } from './read-routes.js';
 import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
@@ -142,13 +145,14 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     await parseBody(c, z.strictObject({}));
     await button(deps, ctx, OBJECT, 'EditAdjustOrgDetailBtn', 'detail');
-    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const { result, hidden } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const stored = await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
         authorizeHeadAction(tx, deps, ctx, { actor: 'applicant', operation: 'update', subjectOrgId, rangeOrgIds }),
       );
-      return checkAdjustment(tx, ctx.tenantId, stored, deps.clock());
+      const checked = await checkAdjustment(tx, ctx.tenantId, stored, deps.clock());
+      return { result: checked, hidden: await hiddenItemIds(tx, deps, ctx, id) };
     });
-    return c.json(await trimCheck(deps, ctx, result), 200);
+    return c.json(await trimCheck(deps, ctx, result, hidden), 200);
   });
 }
 
@@ -169,7 +173,8 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
           authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
         );
-        await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, id)));
+        const rows = rowOrgIds(await loadItems(tx, ctx.tenantId, id));
+        await asAdjustmentMissing(() => orgScopeAuthorizer(deps, ctx)(tx, rows));
       },
       execute: async (tx, commandCtx) => {
         try {
@@ -296,8 +301,9 @@ async function authorizeStored(
   next?: (stored: AdjustmentView) => readonly [string, readonly string[]],
 ): Promise<AdjustmentView> {
   const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
-  if (!stored) throw new AppError('NOT_FOUND', '组织调整申请不存在');
-  await judge(stored.approvalSubjectOrgId, stored.adjustmentRange);
+  if (!stored) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+  // 现值的范围外与不存在同一错误（F-339 ③）；next 是请求里新给的值，不包
+  await asAdjustmentMissing(() => judge(stored.approvalSubjectOrgId, stored.adjustmentRange));
   if (next) await judge(...next(stored));
   return stored;
 }
@@ -329,7 +335,7 @@ async function headCommand(
       replayed: async (tx, stored) => {
         const view = stored.body as AdjustmentView;
         const head = { subjectOrgId: view.approvalSubjectOrgId, rangeOrgIds: view.adjustmentRange };
-        await authorizeHeadScopes(tx, deps, ctx, head);
+        await asAdjustmentMissing(() => authorizeHeadScopes(tx, deps, ctx, head));
       },
     },
     execute: async (tx, commandId) => ({ status, body: await command.execute(tx, { ...ctx, commandId }) }),
@@ -378,7 +384,7 @@ async function itemCommand(
     guard: {
       before: async (tx) => {
         const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
-        if (!stored) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+        if (!stored) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
         const input: ItemAuthorization = {
           button: command.button,
           subjectOrgId: stored.approvalSubjectOrgId,
@@ -418,11 +424,16 @@ async function trimItems(deps: TenantRouteDeps, ctx: ScopeBusinessContext, resul
   };
 }
 
-/** 校验信封按查看权裁剪问题里的组织 ID（envelope.ts，与提交 / 审批编辑的错误同口径，F-339 ②）。 */
+/**
+ * 校验信封先把组织范围外的隐藏行折叠成一条汇总，再按查看权裁剪剩余问题里的组织 ID
+ * （envelope.ts，与提交 / 审批编辑的错误同口径，F-339 ②）。
+ */
 async function trimCheck<T extends { readonly errors: readonly object[] }>(
   deps: TenantRouteDeps,
   ctx: ScopeBusinessContext,
   result: T,
+  hidden: ReadonlySet<string>,
 ): Promise<T> {
-  return { ...result, errors: trimIssues(result.errors, await getModuleViewableFields(deps, ctx, OBJECT)) };
+  const folded = foldHiddenRowIssues(result.errors, hidden);
+  return { ...result, errors: trimIssues(folded, await getModuleViewableFields(deps, ctx, OBJECT)) };
 }
