@@ -295,7 +295,16 @@ export async function loadEstablishment(
   }
   if (rows.length === CAPACITY_LIMIT && (await read(1, CAPACITY_LIMIT)).length)
     throw new AppError('PAYLOAD_TOO_LARGE', '编制对象超过单次统计上限');
-  const projections = await readOrganizationProjections(tx, a, day, rows, WORKING_TYPES);
+  // P1-1：复用两报表实有人员的同日可见集合；未来目标部门可见不能扩大员工候选。
+  const visible = (await snapshots(tx, { ...a, asOf: day }, [day])).get(day) ?? [];
+  const projections = await readOrganizationProjections(
+    tx,
+    a,
+    day,
+    rows,
+    WORKING_TYPES,
+    visible.map((person) => person.employeeId),
+  );
   return rows.map((capacity, index) => ({
     id: capacity.id,
     orgId: capacity.orgId,

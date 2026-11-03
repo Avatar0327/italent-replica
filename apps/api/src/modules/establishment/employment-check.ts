@@ -560,6 +560,7 @@ export async function pendingTransfers(
   start: string,
   end: string,
   futureRecords = false,
+  visibleEmployeeIds: readonly string[] = [],
 ) {
   const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
@@ -578,7 +579,7 @@ export async function pendingTransfers(
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
     WHERE b.tenant_id=${ctx.tenantId}
       AND (${target.businessId ?? null}::uuid IS NULL OR b.id<>${target.businessId ?? null}::uuid)
-      AND ${futureRecords ? projectionEmployeeScope(ctx, sql`b.employee_id`) : sql`true`}
+      AND ${futureRecords ? projectionEmployeeScope(visibleEmployeeIds, sql`b.employee_id`) : sql`true`}
       AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
         WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
       AND (p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')

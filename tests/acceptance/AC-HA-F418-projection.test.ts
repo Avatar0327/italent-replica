@@ -82,6 +82,7 @@ describe('AC-HA-F418 编制业务投影', () => {
         DAY,
         [await readCapacity(tx, w.tenantId, s.a.id, DAY)],
         ['internal', 'intern'],
+        [p.id], // 本夹具的取数日可见员工；生产入口从报表 snapshots 取得。
       ),
     );
     expect(projection!.contributions.map((source) => source.businessId).sort()).toEqual(businessIds.sort());

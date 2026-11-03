@@ -43,19 +43,20 @@ interface Source extends Omit<ProjectionContribution, 'segments'> {
   readonly until: string;
 }
 
-/** 内部读接口：调用方必须提供自身解析出的员工范围，不从编制可见性推导。 */
+/** 内部读接口：调用方必须提供取数日已授权的员工集合及范围；内部继承读取只能服务于这些员工。 */
 export async function readOrganizationProjections(
   tx: Tx,
   ctx: EmploymentContext & { readonly scope: NonNullable<EmploymentContext['scope']> },
   day: string,
   capacities: readonly CapacityRecord[],
   employmentTypes: readonly string[],
+  visibleEmployeeIds: readonly string[],
 ): Promise<OrganizationProjection[]> {
   if (!capacities.length) return [];
   const end = capacities.reduce((latest, c) => (c.periodEnd > latest ? c.periodEnd : latest), day);
   // day 已经是调用方解析好的租户业务日；继承 / 时机推演用该日，不能受服务器或浏览器时区影响。
   const at = { ...ctx, now: new Date(`${day}T12:00:00Z`), timezone: 'UTC' };
-  const sources = await visibleSources(tx, ctx, await projectionSources(tx, at, day, end));
+  const sources = await visibleSources(tx, ctx, await projectionSources(tx, at, day, end, visibleEmployeeIds));
   const schemes = new Map(
     (await loadSchemeBatch(tx, ctx.tenantId, [...new Set(capacities.map((c) => c.schemeId))], day)).map((s) => [
       s.id,
@@ -148,13 +149,19 @@ async function visibleSources(tx: Tx, ctx: EmploymentContext, sources: readonly 
   return sources.filter((_, index) => visible.has(index));
 }
 
-async function projectionSources(tx: Tx, ctx: EmploymentContext, day: string, end: string): Promise<Source[]> {
+async function projectionSources(
+  tx: Tx,
+  ctx: EmploymentContext,
+  day: string,
+  end: string,
+  visibleEmployeeIds: readonly string[],
+): Promise<Source[]> {
   const timings = await readSettings(tx, ctx.tenantId, day);
   const until = projectionUntil(end);
   const sources: Source[] = [];
   const predecessors = new Map<string, EmploymentRecord | null>();
   const adjustments = new Map<string, EmploymentRecord>();
-  for (const row of await pendingTransfers(tx, ctx, {}, day, end, true)) {
+  for (const row of await pendingTransfers(tx, ctx, {}, day, end, true, visibleEmployeeIds)) {
     const raw = camelRow(row.fields);
     const payload = { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow;
     const recorded =
@@ -226,7 +233,7 @@ async function projectionSources(tx: Tx, ctx: EmploymentContext, day: string, en
       }
     }
   }
-  return applyExitSources(tx, ctx, day, end, sources, timings);
+  return applyExitSources(tx, ctx, day, end, sources, timings, visibleEmployeeIds);
 }
 
 async function applyExitSources(
@@ -236,6 +243,7 @@ async function applyExitSources(
   end: string,
   sources: Source[],
   timings: Awaited<ReturnType<typeof readSettings>>,
+  visibleEmployeeIds: readonly string[],
 ) {
   const until = projectionUntil(end);
   const exitEmployees = rowsOf<{ id: string }>(
@@ -246,7 +254,7 @@ async function applyExitSources(
     JOIN LATERAL (SELECT s.state FROM employment_state_events s
       WHERE s.tenant_id=x.tenant_id AND s.business_id=x.business_id ORDER BY event_no DESC LIMIT 1) s ON true
     WHERE x.tenant_id=${ctx.tenantId} AND p.effective_date>${day}::date AND p.effective_date<=${end}::date
-      AND s.state IN ('approved','effective') AND ${projectionEmployeeScope(ctx, sql`x.employee_id`)} LIMIT 10001`),
+      AND s.state IN ('approved','effective') AND ${projectionEmployeeScope(visibleEmployeeIds, sql`x.employee_id`)} LIMIT 10001`),
   );
   if (exitEmployees.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制离职投影超过处理上限');
   const exits = (
