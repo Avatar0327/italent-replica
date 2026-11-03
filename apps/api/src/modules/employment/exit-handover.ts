@@ -59,6 +59,13 @@ import type { EmploymentContext } from './types.js';
 /** 引擎因节点取不到审批人而拒绝推进的两种原因（engine.ts firstNodeEmpty / noAssignee，都带 details.nodeKey）。 */
 const NO_HANDLER_REASONS: ReadonlySet<string> = new Set(['APPROVAL_FIRST_NODE_EMPTY', 'APPROVAL_NO_ASSIGNEE']);
 
+/** F-368：发起预检失败（没有匹配流程、异常管理员不可用）也落未发起记录，配置修好后由 HR 重提。 */
+const PRECHECK_REASONS: ReadonlySet<string> = new Set([
+  'APPROVAL_PROCESS_NOT_MATCHED',
+  'APPROVAL_EXCEPTION_ADMIN_SELF',
+  'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE',
+]);
+
 const REQUEST_TYPE = 'exit-handover-request';
 
 export type LaunchResult =
@@ -168,7 +175,7 @@ export function handoverNotLaunchedReason(error: unknown): HandoverNotLaunchedRe
   const details = error.details as { reason?: string; nodeKey?: string } | undefined;
   const reason = details?.reason ?? error.code;
   if (NO_HANDLER_REASONS.has(reason) && details?.nodeKey === HANDOVER_NODE_KEYS.work) return 'NO_HANDLER';
-  return reason === 'APPROVAL_PROCESS_NOT_MATCHED' ? reason : null;
+  return PRECHECK_REASONS.has(reason) ? (reason as HandoverNotLaunchedReason) : null;
 }
 
 async function recordNotLaunched(

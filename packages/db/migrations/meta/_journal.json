@@ -1317,6 +1317,13 @@
       "when": 1793609254230,
       "tag": "0187_f400_business_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1793712642585,
+      "tag": "0188_f368_handover_precheck_reasons",
+      "breakpoints": true
     }
   ]
 }
