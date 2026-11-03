@@ -13,7 +13,7 @@ import { previewPartTimesOnExit } from './part-time/exit-preview.js';
 import type { EmploymentContext } from './types.js';
 import { CONTRACT_OBJECT } from '@italent/domain';
 
-interface Shown {
+export interface Shown {
   readonly action: string;
   readonly targetType: string;
   readonly targetId: string;
