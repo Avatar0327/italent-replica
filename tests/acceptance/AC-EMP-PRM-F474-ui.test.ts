@@ -22,6 +22,7 @@ describe('AC-EMP / AC-PRM F-474 员工、团队与用户列表', () => {
     const widths = ui.widths();
     expect(widths.slice(0, 4)).toEqual(['140px', '140px', '105px', '140px']);
     expect(widths.slice(-2)).toEqual(['164px', '24px']);
+    expect(widths[4]).toBe('155px'); // 未取证的横滚列保持原宽度，不能一律设为140。
   });
   it('内部员工列表已有字段采用原站宽度，数据缺口不拼合成值', () => {
     const columns = userColumns(true, () => {});
