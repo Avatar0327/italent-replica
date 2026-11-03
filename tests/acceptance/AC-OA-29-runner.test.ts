@@ -470,6 +470,28 @@ function receiptLosingDb(db: ReturnType<typeof testDb>['db']) {
   return { db: proxy, loseNextReceipt: () => (armed = true) };
 }
 
+/**
+ * 执行审计时间线：同一执行刻内多条审计共用一个 occurred_at（运行器时钟），刻内先后无法按时间区分，
+ * 因此每刻的时钟前移 1 秒，按 occurred_at 分刻；刻内的动作按集合比较（F-409②）。
+ */
+async function auditTicks(world: Awaited<ReturnType<typeof runnerWorld>>, adjustmentId: string) {
+  const rows = await withTenant(world.db, world.tenant.id, async (tx) =>
+    resultRows<{ action: string; attempts: number | null; at: string }>(
+      await tx.execute(sql`SELECT replace(action, 'org-adjustment.execution.', '') AS action,
+          (after->>'attempts')::int AS attempts, occurred_at::text AS at
+        FROM audit_events WHERE tenant_id=${world.tenant.id} AND object_id=${adjustmentId}
+          AND action LIKE 'org-adjustment.execution.%' AND action<>'org-adjustment.execution.scheduled'
+        ORDER BY occurred_at, id`),
+    ),
+  );
+  const ticks = new Map<string, string[]>();
+  for (const row of rows) {
+    const label = row.attempts === null ? row.action : `${row.action}#${row.attempts}`;
+    ticks.set(row.at, [...(ticks.get(row.at) ?? []), label].sort());
+  }
+  return [...ticks.values()];
+}
+
 describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
   /** 每次执行都抛可恢复错误；第 loseAt 次执行后的那次提交（计次事务）回执丢失。 */
   async function countingWorld(label: string, loseAt: number) {
@@ -483,8 +505,13 @@ describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
       if (++calls === loseAt) flaky.loseNextReceipt();
       throw new Error('数据库连接中断');
     };
-    const run = () =>
-      runOrgAdjustmentTenant(flaky.db, world.tenant, world.clock, { holderToken: 'p', executors: { 2: executor } });
+    const run = () => {
+      world.advance(1000);
+      return runOrgAdjustmentTenant(flaky.db, world.tenant, world.clock, {
+        holderToken: 'p',
+        executors: { 2: executor },
+      });
+    };
     const attempts = async () =>
       (
         await tableRows<{ attempts: number }>(world.db, world.tenant.id, 'org_adjustment_group_attempts', adjustment.id)
@@ -508,6 +535,14 @@ describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
     expect(await world.state(adjustment.id)).toMatchObject({ execution_status: 2, success_count: 0, failure_count: 1 });
     expect(await attempts()).toEqual([5]);
     expect(await world.pauses(adjustment.id), '不永久暂停').toEqual([]);
+    expect(await auditTicks(world, adjustment.id), '5 次计次各一条，第 5 次与失败收尾同刻（同一事务）').toEqual([
+      ['group.retry#1', 'started'],
+      ['group.retry#2', 'takeover'],
+      ['group.retry#3', 'takeover'],
+      ['group.retry#4', 'takeover'],
+      ['group.failed', 'group.retry#5', 'takeover'],
+      ['completed', 'takeover'],
+    ]);
   });
 
   it('对照：未计满时计次回执丢失，下一刻仍重试，执行总次数仍为 5 后记 EXECUTION_ERROR', async () => {
@@ -525,5 +560,13 @@ describe('AC-OA-29 失败计次提交结果未知（F-353）', () => {
       execution_reason: 'EXECUTION_ERROR',
     });
     expect(await world.state(adjustment.id)).toMatchObject({ success_count: 0, failure_count: 1 });
+    // 3 次回执丢失只丢回执，不重复计次：共 5 条 retry（#1～#5）+ 1 条 failed，failed 与第 5 次同事务。
+    expect(await auditTicks(world, adjustment.id)).toEqual([
+      ['group.retry#1', 'started'],
+      ['group.retry#2', 'takeover'],
+      ['group.retry#3', 'takeover'],
+      ['group.retry#4', 'takeover'],
+      ['completed', 'group.failed', 'group.retry#5', 'takeover'],
+    ]);
   });
 });
