@@ -97,6 +97,13 @@ function retryAttempts(x: World, businessId: string) {
 }
 const round = (minute: number) => `2026-10-06T02:${String(minute).padStart(2, '0')}:00Z`;
 
+/** F-310：等账号期间落持久未发起记录（无事项、无审批实例），不再是“没有记录”；撤销离职后随之终止。 */
+async function expectWaiting(x: Pick<World, 'requestRows'>, exitId: string, state = 'not_launched') {
+  const rows = await x.requestRows(exitId);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ state, instanceId: null });
+}
+
 it('AC-DM-05 × DM-R14：未生效改期保留原交接，账号保持 active', async () => {
   const { x, draft, old, replace, user } = await setup('approved', '2026-10-10');
   await replace();
@@ -137,7 +144,7 @@ it('AC-DM-05 × DM-R14：提交后消费者未运行，后续调度恢复账号�
   try {
     result = await replace();
     expect((await user()).status).toBe('disabled');
-    expect(await x.requestRows(result.successor.id)).toEqual([]);
+    await expectWaiting(x, result.successor.id);
   } finally {
     pause.mockRestore();
   }
@@ -206,7 +213,7 @@ it.each(['cancelled', 'trigger-off', 'membership-revoked', 'manual-disable'] as 
     }
     await x.runScheduler('2026-10-06T02:05:00Z');
     await x.runScheduler('2026-10-06T02:10:00Z');
-    expect(await x.requestRows(result.successor.id)).toEqual([]);
+    await expectWaiting(x, result.successor.id, change === 'cancelled' ? 'terminated' : 'not_launched');
     if (change === 'manual-disable') expect((await user()).status).toBe('disabled');
   },
 );
@@ -225,7 +232,7 @@ it.each(['rollback', 'unavailable'] as const)(
     try {
       result = await replace();
       expect((await user()).status).toBe('active');
-      expect(await x.requestRows(result.successor.id)).toEqual([]);
+      await expectWaiting(x, result.successor.id);
       const attempts = await x.sqlRows<{ state: string }>(sql`SELECT a.state FROM employment_outbox_attempts a
       JOIN employment_outbox o ON o.tenant_id=a.tenant_id AND o.id=a.outbox_id
       WHERE o.tenant_id=${x.tenantId} AND o.business_id=${result.successor.id}::uuid
@@ -262,7 +269,7 @@ it.runIf(Boolean(process.env.TEST_DATABASE_URL))(
       hold.mockRestore();
     }
     expect((await user()).status).toBe('active');
-    expect(await x.requestRows(result.successor.id)).toEqual([]);
+    await expectWaiting(x, result.successor.id);
     // F-337：交错不靠 Promise.all 碰运气。持锁会话先占住员工行，两个调度依次启动，各自排到这把员工锁后面
     // （pg_stat_activity 恰有 n 个会话在等锁，且都排在持锁会话之后）才放行，补发消费确实在员工锁上相遇。
     const ctx = {
@@ -347,7 +354,7 @@ it('AC-DM-05 × DM-R14：另一租户调度不消费本租户待办', async () =
   }
   await accounts.drainExitAccounts(database().db, other.tenantId, new Date('2026-10-06T02:05:00Z'));
   expect((await user()).status).toBe('disabled');
-  expect(await x.requestRows(result.successor.id)).toEqual([]);
+  await expectWaiting(x, result.successor.id);
   await x.runScheduler('2026-10-06T02:10:00Z');
   expect((await user()).status).toBe('active');
   expect(await x.requestRows(result.successor.id)).toHaveLength(1);
@@ -381,7 +388,7 @@ it('AC-DM-05 × DM-R14：自动停用凭据归另一租户的离职单，恢复�
   expect(response.status, await response.clone().text()).toBe(200);
   const result = (await response.json()) as { successor: { id: string } };
   expect((await user()).status).toBe('disabled');
-  expect(await x.requestRows(result.successor.id)).toEqual([]);
+  await expectWaiting(x, result.successor.id);
   y.setNow('2026-10-11T02:02:00Z');
   const cancelled = await y.session.request('POST', `/exits/${other.id}/cancel`, {
     ifMatch: (await y.business(other.id)).revision,
@@ -414,7 +421,7 @@ it('AC-DM-05 × DM-R14 · F-336：人工停用后补发一直等账号，同因�
     WHERE tenant_id=${x.tenantId} AND business_id=${draft.id}::uuid`);
   expect(tasks).toEqual([{ restore_requested: false, status: 'skipped' }]);
   expect((await user()).status).toBe('disabled');
-  expect(await x.requestRows(result.successor.id)).toEqual([]);
+  await expectWaiting(x, result.successor.id);
   // 管理员恢复账号后，保留的意图在下一轮补发成功、写 sent 回执并办结
   const disabled = await user();
   await setUserStatus(
@@ -479,5 +486,5 @@ it('AC-DM-05 × DM-R14 · F-336：等账号的意图占满首页时回执不增�
   }
   expect(next![0]!.state).toBe('in_progress');
   expect((await second.user()).status).toBe('active');
-  expect(await x.requestRows(waiting.successor.id)).toEqual([]);
+  await expectWaiting(x, waiting.successor.id);
 });
