@@ -332,3 +332,59 @@ test('AC-FE-F436-07 迟到确认重读失败（已撤权 403）：不沿用旧�
   await expect.poll(() => details.length).toBeGreaterThan(opened);
   await expect(tab).toHaveCount(0);
 });
+
+// F-444：普通列表刷新也原位重读人员档案，不能只监听写成功代次。
+test('AC-FE-F444-08 手动刷新列表后重开详情，必须读到最新档案', async ({ page }) => {
+  await setup(page);
+  let name = '合成刷新前姓名';
+  let reads = 0;
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    reads += 1;
+    return route.fulfill({ json: { id: employee, name, code: rows.interning.code, revision: 1 } });
+  });
+  await page.goto('/interns');
+  await openDetail(page, 'interning');
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await page.getByRole('dialog', { name: '人员详情', exact: true }).getByRole('button', { name: 'Close' }).click();
+  const before = reads;
+  name = '合成刷新后姓名';
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await openDetail(page, 'interning');
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  expect(reads).toBeGreaterThan(before);
+});
+
+test('AC-FE-F444-09 迟到确认重读 500：任职页签和未保存输入保留，重试可恢复', async ({ page }) => {
+  const { state } = await application(page, '/staff', recordEditable);
+  const details = await reopenDetailInFlight(page, state);
+  const tab = page.getByRole('tab', { name: '任职记录', exact: true });
+  await tab.click();
+  await page.getByRole('button', { name: '编辑任职', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑任职', exact: true });
+  const remarks = editor
+    .locator('.ant-form-item')
+    .filter({
+      has: page.locator('.ant-form-item-label').getByText('备注', { exact: true }),
+    })
+    .getByRole('textbox');
+  await remarks.fill('合成临时故障中保留备注');
+  let failed = true;
+  const opened = details.length;
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    details.push('read');
+    return failed
+      ? route.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: '合成临时错误' } } })
+      : route.fulfill({ json: { id: employee, name: rows.interning.name, revision: 2 } });
+  });
+  state.release!();
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+  await expect(page.getByText('合成临时错误')).toBeVisible();
+  await expect(editor).toBeVisible();
+  await expect(remarks).toHaveValue('合成临时故障中保留备注');
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  failed = false;
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(page.getByText('合成临时错误')).toHaveCount(0);
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+});

@@ -137,6 +137,25 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it('F-444 直接转正在途离开、落库前返回：新挂载列表必须刷新', async () => {
+    let release!: () => void;
+    server.submit = () => new Promise((resolve) => (release = () => resolve(accepted())));
+    const refresh = vi.fn(async () => undefined);
+    const old = await mount(tenant, h(Writer, { application: false, draft: false, refresh }));
+    let outcome!: Promise<boolean>;
+    await act(async () => void (outcome = writer.submit!()));
+    await act(async () => old.unmount());
+    await mount(tenant, h(Watcher, { name: 'direct-remount' }));
+    await act(async () => {
+      release();
+      await outcome;
+    });
+    await flush();
+    expect(server.listReads['direct-remount']).toBe(2);
+    expect(generations['direct-remount']).toBe(1);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('两步申请第一步（建草稿）确认成功：不算最终确认，代次不变、列表不重读', async () => {
     await mount(tenant, h(Watcher, { name: 'list' }));
     await mount(tenant, h(Writer, { application: true, draft: false, refresh: async () => undefined }));
@@ -178,13 +197,14 @@ describe('AC-FE-F436 实习写确认代次（模块级、按会话）', () => {
     expect(server.listReads).toEqual({ same: 2, otherTenant: 1, otherIdentity: 1 });
   });
 
-  it('直接转正：照旧刷新当前视图，不经确认代次', async () => {
+  it('F-444 直接转正：经确认代次刷新当前挂载视图', async () => {
     await mount(tenant, h(Watcher, { name: 'list' }));
     const refresh = vi.fn(async () => undefined);
     await mount(tenant, h(Writer, { application: false, draft: false, refresh }));
     expect(await submit()).toBe(true);
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(generations.list).toBe(0);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(generations.list).toBe(1);
+    expect(server.listReads.list).toBe(2);
   });
 
   it('申请草稿与命令存储同在模块级：页面卸载重建后仍在，按租户 + 身份隔离', async () => {
