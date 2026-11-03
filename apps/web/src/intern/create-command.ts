@@ -8,10 +8,12 @@ import { acceptCreateReceipt, createBody, type CreateReceipt, type Selected } fr
 import { readCandidate } from './RehireCheck.js';
 import { retainProfileClears } from './create-profile.js';
 import { c } from './create-messages.js';
+import { useSettledRefresh } from './commands.js';
 
 /** 固定页面恢复槽：新增、选择候选、换视图均不换槽，未确认时不能另发命令。 */
 export function useCreateCommand() {
   const form = useCommandForm(`${interns}/new`);
+  const settled = useSettledRefresh(false, false);
   const api = useApiClient();
   const post = useDirectApi();
   const running = useRef(false);
@@ -63,6 +65,7 @@ export function useCreateCommand() {
                   : `${apiRoot}/pending-entries?view=all&page=1&pageSize=30`;
               const list = await api.request<{ items: unknown[] }>(path);
               if (!Array.isArray(list.items)) throw new Error(c.invalidReceipt);
+              await settled();
               return { id: receipt.employeeId };
             } catch (cause) {
               // POST 已返回成功；后续 GET 的 4xx 不能误归为写入被拒并解锁重提。
