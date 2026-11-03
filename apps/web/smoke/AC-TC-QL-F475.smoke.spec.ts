@@ -111,11 +111,19 @@ test('AC-TC 四页签整页详情，潜力/经历不带能力列，成就不制�
   await expect(detail.getByRole('columnheader')).toContainText(['指标名称', '指标定义', '指标类别', '目标', '权重']);
   await detail.getByRole('tab', { name: '潜力', exact: true }).click();
   await expect(detail.getByRole('tabpanel').filter({ visible: true }).getByRole('columnheader')).toHaveText([
+    '',
     '指标名称',
     '指标定义',
+    '操作',
   ]);
   await detail.getByRole('tab', { name: '经历', exact: true }).click();
   await expect(detail.getByText('这里什么都没有...')).toBeVisible();
+  await expect(detail.getByRole('tabpanel').filter({ visible: true }).getByRole('columnheader')).toHaveText([
+    '',
+    '指标名称',
+    '类别名称',
+    '操作',
+  ]);
   await detail.getByRole('tab', { name: '成就', exact: true }).click();
   await expect(detail.getByRole('tabpanel').filter({ visible: true }).getByRole('table')).toHaveCount(0);
   await actionButton(page, '返回').click();
@@ -124,7 +132,7 @@ test('AC-TC 四页签整页详情，潜力/经历不带能力列，成就不制�
 
 test('AC-QL 指标页使用真实字段结构，等级方案按两组字段编辑并保留明细 ID', async ({ page }) => {
   await page.goto('/qualification?view=targets');
-  await expect(page.getByRole('heading', { name: '指标', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部指标', exact: true })).toBeVisible();
   await expect(page.getByRole('columnheader')).toHaveText([
     '名称',
     '编码',
@@ -133,6 +141,7 @@ test('AC-QL 指标页使用真实字段结构，等级方案按两组字段编�
     '顺序号',
     '状态',
     '操作',
+    '',
   ]);
   await page.goto('/qualification?view=grade-schemes');
   const writes: Record<string, unknown>[] = [];

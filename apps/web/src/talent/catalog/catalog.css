@@ -85,3 +85,106 @@
 .legacy-page:has(> .catalog-layout) {
   margin-top: 0;
 }
+
+.catalog-detail-page > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.catalog-detail-page h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.catalog-detail-page h2 {
+  font-size: 16px;
+}
+.catalog-detail-summary {
+  margin-bottom: 20px;
+}
+.catalog-overview,
+.catalog-indicators {
+  padding: 16px;
+  margin-top: 20px;
+  background: white;
+  border: 1px solid #f0f0f0;
+}
+.catalog-overview article {
+  width: 280px;
+  border: 1px solid #cce6d7;
+  border-radius: 4px;
+  margin: 12px auto;
+}
+.catalog-overview article h3 {
+  background: #4ba577;
+  color: white;
+  margin: 0;
+  padding: 8px 12px;
+}
+.catalog-overview article p,
+.catalog-overview article span {
+  margin: 8px 12px;
+  display: block;
+}
+.catalog-form-criteria .ant-modal,
+.catalog-form-categories .ant-modal {
+  width: 750px !important;
+}
+.catalog-form-criteria .form-fields-modal,
+.catalog-form-grade-schemes section:last-child .form-fields-modal {
+  grid-template-columns: 1fr;
+}
+.catalog-form-grade-schemes .ant-modal {
+  width: 1000px !important;
+}
+.catalog-form-criteria .form-group-title,
+.catalog-form-categories .form-group-title {
+  display: none;
+}
+.catalog-grade-details .ant-input-number {
+  width: 100%;
+}
+.catalog-list-body {
+  display: flex;
+  min-width: 0;
+}
+.catalog-list-body > .list-page {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-tree {
+  flex: 0 0 190px;
+  width: 190px;
+  padding: 18px 12px 12px 0;
+  margin-right: 16px;
+  border-right: 1px solid var(--shell-border);
+}
+.catalog-tree h2 {
+  font-size: 14px;
+}
+.catalog-tree .ant-tree {
+  background: transparent;
+  margin: 12px 0;
+}
+.catalog-tree .ant-tree-title {
+  display: inline-block;
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.catalog-page[data-aligned='true'] .page-heading > .ant-space > .ant-space-item:last-child {
+  display: none;
+}
+.catalog-column-settings {
+  min-width: 18px;
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.catalog-column-settings::before {
+  content: '⚙';
+}

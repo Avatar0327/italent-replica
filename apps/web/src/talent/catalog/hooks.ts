@@ -1,3 +1,4 @@
+import { fieldAccess, type ObjectPermission } from '../../foundation/permission-model.js';
 import type { Resource } from './types.js';
 import { candidates } from './api.js';
 import { useEffect, useState } from 'react';
@@ -27,24 +28,45 @@ export function useRemote<T>(key: string, load: (api: ApiClient, signal: AbortSi
   const current = state?.key === requestKey ? state : undefined;
   return { data: current?.data, error: current?.error, loading: !!key && !current };
 }
-export function useReferenceNames(resource: Resource, generation = 0) {
-  return useRemote(`names:${resource.object}:${generation}`, async (api, signal) => {
-    const sources = [...new Set(resource.fields.map((field) => field.source).filter((path): path is string => !!path))];
-    const rows = await Promise.all(
-      sources.map(async (path) => {
-        try {
-          return await candidates(api, path, signal);
-        } catch (error) {
-          if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return [];
-          throw error;
-        }
-      }),
-    );
-    return new Map(
-      rows
-        .flat()
-        .filter((row) => row.name !== undefined)
-        .map((row) => [row.id, row.name!]),
-    );
-  });
+export function useReferenceNames(resource: Resource, generation = 0, permission?: ObjectPermission) {
+  return useRemote(
+    `names:${resource.object}:${generation}:${permission?.viewableFields.join(',') ?? ''}`,
+    async (api, signal) => {
+      const sources = [
+        ...new Set(
+          resource.fields
+            .filter((field) => !permission || fieldAccess(permission, field.key).visible)
+            .map((field) => field.source)
+            .filter((path): path is string => !!path),
+        ),
+      ];
+      if (
+        resource.module === 'qualification' &&
+        resource.key === 'standards' &&
+        (!permission || fieldAccess(permission, 'categoryId').visible)
+      )
+        sources.push('/api/tenant/qualification/category-classes');
+      const rows = await Promise.all(
+        sources.map(async (path) => {
+          try {
+            return await candidates(api, path, signal);
+          } catch (error) {
+            if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return [];
+            throw error;
+          }
+        }),
+      );
+      const names = new Map(
+        rows
+          .flat()
+          .filter((row) => row.name !== undefined)
+          .map((row) => [row.id, row.name!]),
+      );
+      for (const row of rows.flat()) {
+        if (typeof row.classId === 'string' && names.has(row.classId))
+          names.set(`class:${row.id}`, names.get(row.classId)!);
+      }
+      return names;
+    },
+  );
 }

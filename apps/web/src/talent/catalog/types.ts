@@ -7,7 +7,7 @@ export interface Row {
 export interface Field {
   key: string;
   label: string;
-  kind?: 'number' | 'text' | 'boolean' | 'select' | 'targets' | 'references';
+  kind?: 'number' | 'text' | 'boolean' | 'select' | 'targets' | 'references' | 'grades';
   required?: boolean;
   nullable?: boolean;
   createOnly?: boolean;
