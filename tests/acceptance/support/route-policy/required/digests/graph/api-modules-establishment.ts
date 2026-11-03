@@ -372,10 +372,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
-  'apps/api/src/modules/establishment/projection-scope.ts#projectionEmployeeScope': [
-    'apps/api/src/modules/employment/context.ts#employmentCreator',
-    'apps/api/src/modules/employment/visibility.ts#employmentVisibilitySql',
-  ],
   'apps/api/src/modules/establishment/routes.ts#OBJECT': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],

@@ -415,6 +415,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/analytics/hr-dashboard.ts#WORKING_TYPES',
     '#CAPACITY_LIMIT',
     '#CAPACITY_PAGE',
+    '#snapshots',
     'apps/api/src/modules/establishment/capacity-read.ts#listCapacities',
     'apps/api/src/modules/establishment/projection-read.ts#readOrganizationProjections',
   ],
