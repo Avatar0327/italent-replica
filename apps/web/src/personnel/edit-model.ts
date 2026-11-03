@@ -30,13 +30,14 @@ export const personJobFields = [
   'expectedRetirementConfirmed',
   'employeeStatus',
 ] as const;
-/** 任职记录可在「编辑任职」里改的字段：工号须等于员工 ID、用工形式等归 F-323，均不进表单。 */
+/** 任职记录可在「编辑任职」里改的字段：工号须等于员工 ID，不进表单；人员类别存字典 ID（F-323b，DEC-706）。 */
 export const recordFields = [
   'departmentId',
   'positionId',
   'postId',
   'directManagerId',
   'dottedManagerId',
+  'employmentType',
   'place',
   'remarks',
 ] as const;

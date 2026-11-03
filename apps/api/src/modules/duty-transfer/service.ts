@@ -58,6 +58,10 @@ function transferDateOf(ctx: EmploymentContext, input: MenuSubmitInput): string 
   return input.transferDate;
 }
 
+/** 全部为空且都没有待生效记录：没有可写的东西。预览与提交共用这一处（F-448，第 2 轮交叉审 P3-5）。 */
+const emptyTransfer = () =>
+  new AppError('VALIDATION_FAILED', '请至少为一项职责选择接收人', { reason: 'DUTY_TRANSFER_EMPTY' });
+
 function checkItems(employeeId: string, items: readonly MenuItemInput[]) {
   const keys = new Set(items.map((item) => dutyKey(item)));
   if (keys.size !== items.length) throw new AppError('VALIDATION_FAILED', '同一职责只能出现一次');
@@ -69,8 +73,12 @@ function checkItems(employeeId: string, items: readonly MenuItemInput[]) {
 export async function checkMenuTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: MenuSubmitInput) {
   checkItems(employeeId, input.items);
   const date = transferDateOf(ctx, input);
-  // 空接收人不计入（跳过或撤回）；与提交同口径（P2-2）。
+  // 空接收人不计入（跳过或撤回）；与提交同口径（P2-2）。全空且没有可撤回的待生效记录时与提交同样拒绝（P3-5）。
   const assigned = input.items.filter((item) => item.receiverId);
+  if (!assigned.length) {
+    const pending = await pendingRecords(tx, ctx.tenantId, employeeId);
+    if (!input.items.some((item) => pending.has(dutyKey(item)))) throw emptyTransfer();
+  }
   const counts = new Map<string, number>();
   assigned.forEach((item) => counts.set(item.receiverId!, (counts.get(item.receiverId!) ?? 0) + 1));
   const ids = [...counts.keys()];
@@ -200,8 +208,7 @@ export async function submitMenuTransfer(
     saved.push(await saveRecord(tx, ctx, { duty, existing, receiverId: item.receiverId, date, batchId, input }));
   }
   // 全部为空且都没有待生效记录：没有可写的东西。原站此时的提示未取证，取最保守做法拒绝（见 PR 描述“未决”）。
-  if (!saved.length)
-    throw new AppError('VALIDATION_FAILED', '请至少为一项职责选择接收人', { reason: 'DUTY_TRANSFER_EMPTY' });
+  if (!saved.length) throw emptyTransfer();
   return { batchId, count: saved.length, records: saved.map(recordView) };
 }
 

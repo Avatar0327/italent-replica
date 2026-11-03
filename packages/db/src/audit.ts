@@ -211,6 +211,7 @@ const REFERENCE_SOURCES: Readonly<Record<AuditReferenceKind, { table: string; ke
   sequence: { table: 'job_sequence_versions', key: 'object_id', dated: true },
   professionalLine: { table: 'job_professional_line_versions', key: 'object_id', dated: true },
   employee: { table: 'employment_employees', key: 'id', dated: false },
+  employmentType: { table: 'employment_types', key: 'id', dated: false },
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

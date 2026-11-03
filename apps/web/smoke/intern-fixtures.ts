@@ -95,7 +95,7 @@ export const allButtons = [
   'Employment.Withdraw',
   'Employment.Revoke',
 ];
-const viewable = [
+export const viewable = [
   'name',
   'code',
   'institutionId',

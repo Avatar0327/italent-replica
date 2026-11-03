@@ -1,5 +1,7 @@
 import { Input, Select } from 'antd';
 import { RefSelect } from '../contracts/references.js';
+import { EmploymentTypeSelect } from '../employment-types/EmploymentTypeSelect.js';
+import { EMPLOYMENT_TYPE_FIELD } from '../employment-types/labels.js';
 import type { RequestKind } from './request-model.js';
 import { refPaths } from './references.js';
 import { m } from './messages.js';
@@ -15,10 +17,13 @@ export function requestFieldLabel(field: string, kind: RequestKind) {
 export function RequestControl({
   field,
   label,
+  currentName,
   ...props
 }: {
   field: string;
   label: string;
+  /** 人员类别已保存值的名称（后端 employmentTypeName），其余字段不用。 */
+  currentName?: unknown;
   id?: string;
   value?: string | null;
   onChange?(value: string | null): void;
@@ -32,6 +37,8 @@ export function RequestControl({
         options={Object.entries(m.serviceTypes).map(([value, label]) => ({ value, label }))}
       />
     );
+  if (field === EMPLOYMENT_TYPE_FIELD)
+    return <EmploymentTypeSelect {...props} ariaLabel={label} currentName={currentName} />;
   const path = field === 'employeeId' ? '/api/tenant/personnel/employees' : refPaths[field];
   if (path)
     return (
