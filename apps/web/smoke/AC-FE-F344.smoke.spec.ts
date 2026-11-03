@@ -129,7 +129,7 @@ test('AC-FE-F344-08 暂存日期被服务端裁掉时，申请表单仍可恢复
         dataOperations: { read: true, create: true, update: true },
         viewableFields: ['name', 'code', 'departmentId', 'postId'],
         editableFields: withoutDate,
-        buttons: [{ buttonCode: 'Employment.Create', level: 'detail' }],
+        buttons: ['Employment.Create', 'Employment.Submit'].map((buttonCode) => ({ buttonCode, level: 'detail' })),
       },
     }),
   );
