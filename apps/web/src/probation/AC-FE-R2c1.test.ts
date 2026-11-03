@@ -31,6 +31,7 @@ const row: model.Row = {
   employeeStatus: 2,
   revision: 4,
   hasProbation: true,
+  canApplyRegularization: true,
   startDate: '2026-08-01',
   months: 3,
   expectedEndDate: '2026-10-31',

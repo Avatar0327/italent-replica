@@ -126,7 +126,7 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
     expect((await probationOf(w, employee.id)).regularizationBusinessId).toBeNull();
   });
 
-  it('暂存 revision 不一致 409；试用结果不在字典 400；不在职 404', async () => {
+  it('暂存 revision 不一致 409；试用结果不在字典 400；不在职 409（DEC-788）', async () => {
     const w = await pbWorld(testDb().db, 'f347-temp-guard');
     const { employee } = await hire(w, { months: 3 });
     await saveDraft(w, employee.id, { probationResult: 'normal' }, 0);
@@ -138,8 +138,8 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
     });
     expect(unknown.status).toBe(400);
     const stranger = await w.session.employee('未入职合成员工');
-    expect((await w.session.request('GET', draftPath(stranger.id))).status).toBe(404);
-    // 读写同一 404 文案（rf347_2 P3）：未入职与员工不存在都按“员工不存在”（暂存自己的口径，申请入口按生效日另判，F-445）
+    expect((await w.session.request('GET', draftPath(stranger.id))).status).toBe(409);
+    // DEC-788：范围内非在职为 409；不存在和范围外仍同样 404，不泄露存在性。
     const notFound = async (id: string) => {
       const replies = [
         await w.session.request('GET', draftPath(id)),
@@ -149,7 +149,8 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
       return Promise.all(replies.map(async (reply) => [reply.status, await message(reply)]));
     };
     const expected = [404, '员工不存在'];
-    expect(await notFound(stranger.id)).toEqual([expected, expected]);
+    const conflict = [409, '员工非在职试用状态，不能发起转正申请'];
+    expect(await notFound(stranger.id)).toEqual([conflict, conflict]);
     expect(await notFound(randomUUID())).toEqual([expected, expected]);
   });
 
@@ -199,8 +200,13 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
     expect((await noButton('GET', employee.id)).status).toBe(403);
     expect((await noButton('PUT', employee.id)).status).toBe(403);
     const scoped = call(() => true, [w.org.id]);
-    expect((await scoped('GET', outside.employee.id)).status).toBe(404);
-    expect((await scoped('PUT', outside.employee.id)).status).toBe(404);
+    for (const method of ['GET', 'PUT']) {
+      const outsideResponse = await scoped(method, outside.employee.id);
+      const missingResponse = await scoped(method, randomUUID());
+      expect(outsideResponse.status).toBe(404);
+      expect(missingResponse.status).toBe(outsideResponse.status);
+      expect(await missingResponse.json()).toEqual(await outsideResponse.json());
+    }
     const inside = await scoped('PUT', employee.id);
     expect(inside.status, await inside.clone().text()).toBe(200);
   });
@@ -224,7 +230,7 @@ describe('AC-PB-F347 c 草稿 / 撤回单改试用结果并同单重提', () => 
     const draft = await draftRegularization(w, employee.id, '2026-12-01');
     const patched = await w.session.request('PATCH', `/businesses/${draft.id}`, {
       ifMatch: await businessRevision(w, draft.id),
-      body: { probationResult: 'early' },
+      body: { probationResult: 'early', effectiveDate: '2026-11-20' },
     });
     expect(patched.status, await patched.clone().text()).toBe(200);
     expect(await businessOf(w, draft.id)).toMatchObject({ probationResult: 'early', probationResultName: '提前转正' });
@@ -355,7 +361,7 @@ describe('AC-PB-F347 第 2 轮：结果停用、并发、申请草稿、离职�
     expect(await readDraft(w, employee.id)).toMatchObject({ temporary: null, applicationId: application.id });
   });
 
-  it('离职已生效：暂存读写都 404（按今天判在职，F-445），已有暂存不变', async () => {
+  it('离职已生效：暂存读写都 409（DEC-788），已有暂存不变', async () => {
     const w = await pbWorld(testDb().db, 'f347-r2-left');
     const { employee } = await hire(w, { months: 3 });
     await saveDraft(w, employee.id, { effectiveDate: '2026-12-01' }, 0);
@@ -364,9 +370,9 @@ describe('AC-PB-F347 第 2 轮：结果停用、并发、申请草稿、离职�
       { kind: 'leave', mode: 'direct', effectiveDate: '2026-09-25', lastWorkDate: '2026-09-24' },
       await employeeRevision(w, employee.id),
     );
-    expect((await w.session.request('GET', draftPath(employee.id))).status).toBe(404);
+    expect((await w.session.request('GET', draftPath(employee.id))).status).toBe(409);
     const write = await w.session.request('PUT', draftPath(employee.id), { ifMatch: 1, body: {} });
-    expect(write.status).toBe(404);
+    expect(write.status).toBe(409);
     expect(await storedDraft(w, employee.id)).toEqual([{ revision: 1, saved: true, effective_date: '2026-12-01' }]);
   });
 

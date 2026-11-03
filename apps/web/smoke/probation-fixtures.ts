@@ -82,6 +82,7 @@ function peerRow() {
     employeeId: peer.employeeId,
     revision: 7,
     hasProbation: true,
+    canApplyRegularization: true,
     startDate: '2026-08-01',
     months: null,
     expectedEndDate: null,
@@ -105,6 +106,7 @@ function row(server: Server, assessing: boolean) {
   return {
     id: recordId,
     ...controls,
+    canApplyRegularization: true,
     departmentId: department,
     postId: null,
     employeeStatus: 2,

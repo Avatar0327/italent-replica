@@ -41,6 +41,7 @@ export interface Row extends Partial<Record<Dates | References | Codes, string |
   employeeStatus?: number;
   revision?: number;
   hasProbation?: boolean | null;
+  canApplyRegularization?: boolean;
   months?: number | null;
 }
 export type ListResult = { items: Row[]; page: number; pageSize: number; hasDataPermission?: boolean };
@@ -94,7 +95,7 @@ export type Entry = 'edit' | 'regularize' | 'apply' | 'withdraw' | 'revoke' | 'a
 /** 有转正业务（审批中 / 审批通过 / 生效）就不能再发起转正（PB-R9 互斥由服务端最终判定）。 */
 const pending = (row: Row) => !!row.regularizationState;
 /**
- * 入口：读接口没有逐行动作（同实习 / F-268），按视图、行上的转正控制项与权限快照推导；资格由服务端在提交时判定。
+ * 入口按视图、转正控制项与权限快照推导；申请资格消费服务端按今天返回的 canApplyRegularization，写入时再核验。
  * - 编辑试用期：对象编辑 + Employment.Edit（probation-routes.ts commandOnly）；考核中、转正审批中不显示（PB-R9）。
  * - 转正 / 转正申请：只在即将到期、全部试用员工两视图，有试用期且没有转正业务；申请另需编辑 + Employment.Submit。
  * - 撤回 / 撤销：转正审批中视图、审批中的转正单。考核中视图只读打开考核。
@@ -111,7 +112,7 @@ export function entriesFor(view: ProbationView, row: Row, p: ObjectPermission | 
   const entries: [Entry, boolean][] = [
     ['edit', !['assessing', 'in_review'].includes(view) && update && can('Employment.Edit')],
     ['regularize', regularize],
-    ['apply', regularize && update && can('Employment.Submit')],
+    ['apply', regularize && row.canApplyRegularization === true && update && can('Employment.Submit')],
     ['withdraw', reviewing && update && can('Employment.Withdraw')],
     ['revoke', reviewing && update && can('Employment.Revoke')],
     ['assessment', view === 'assessing' && typeof row.assessmentId === 'string'],
