@@ -126,6 +126,7 @@ export const GRAPH: Graph = {
     '#JOB_FIELDS',
     '#PERSON_FIELDS',
     'apps/api/src/modules/employment/employees.ts#employeeName',
+    'apps/api/src/modules/employment/employment-types.ts#employmentTypeName',
     'apps/api/src/modules/job/read-model.ts#loadJobObject',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
   ],

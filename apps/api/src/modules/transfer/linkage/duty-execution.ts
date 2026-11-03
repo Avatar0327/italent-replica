@@ -8,14 +8,15 @@
  * - linkage（离职 / 调动内转交）：保持现行为——原地改写下属当前任职的上级（W-013），不复核组织启用。
  */
 import { employmentEmployees, sql, type Tx } from '@italent/db';
+import type { OrgId } from '@italent/domain';
 import { and, eq } from 'drizzle-orm';
 import { AppError } from '../../../errors.js';
 import { ruleRejection } from '../../employment/activation-checks.js';
 import { ineligibleOrgPeople } from '../../employment/org-people.js';
-import { rowsOf } from '../../employment/read-model.js';
 import { editEmploymentRecord } from '../../employment/record-edit.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { createEmploymentBusiness } from '../../employment/write-service.js';
+import { createTxOrgHierarchyReader } from '../../establishment/org-reader.js';
 import { assignTransferOrganizationPeople } from '../../org/write-service.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { RELATION_FIELDS, ROLE_FIELDS, requireReportingSubordinate, requireRoleHolder } from './validation.js';
@@ -121,16 +122,15 @@ async function appendDataAdjustment(
   );
 }
 
-/** P2-3：到期前组织已停用（或已失效）则该条失败，不写组织新版本；在组织对象锁内判，防与停用并发交错。 */
+/**
+ * P2-3：到期前组织已停用（或已失效）则该条失败，不写组织新版本；在组织对象锁内判，防与停用并发交错。
+ * 当日是否启用复用组织层级读取器（F-448 / 第 2 轮交叉审 P3-3），不另写版本选法。
+ */
 async function requireEnabledOrg(tx: Tx, tenantId: string, orgId: string, days: readonly string[]) {
   await tx.execute(sql`SELECT 1 FROM org_objects WHERE tenant_id=${tenantId} AND id=${orgId}::uuid FOR NO KEY UPDATE`);
-  for (const day of days) {
-    const [version] = rowsOf<{ enabled: boolean }>(
-      await tx.execute(sql`SELECT enabled FROM org_versions
-        WHERE tenant_id=${tenantId} AND org_id=${orgId}::uuid AND start_date<=${day}::date AND stop_date>=${day}::date
-        ORDER BY version_no DESC LIMIT 1`),
-    );
-    if (!version?.enabled)
+  const reader = createTxOrgHierarchyReader(tx);
+  for (const asOf of days) {
+    if (!(await reader.isEnabled({ tenantId, orgId: orgId as OrgId, asOf })))
       throw new AppError('VALIDATION_FAILED', '组织已停用，不能转交', { reason: 'TRANSFER_ORG_DISABLED' });
   }
 }
