@@ -4,8 +4,8 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { commandContext, requireEmployeeInScope } from './context.js';
 import { isCancellableState } from './exit-cancel.js';
 import type { ExitActionCode } from './exit-queries.js';
-import { requireExitPermission } from './exit-gate.js';
-import { requireBusinessWriteScope } from './replay-guard.js';
+import { requireExitPermission, requireExitSubmitInitiator } from './exit-gate.js';
+import { requireBusinessWriteScope, requireExitEditRights } from './replay-guard.js';
 import type { EmploymentContext } from './types.js';
 
 /**
@@ -25,6 +25,7 @@ export interface ExitActionSubject {
   readonly status: string;
   readonly mode: 'application' | 'direct';
   readonly initiator: 'hr' | 'self' | 'manager';
+  readonly initiatorUserId: string;
 }
 
 const EDITABLE = ['draft', 'in_review', 'approved', 'rejected', 'effective'];
@@ -59,8 +60,18 @@ export async function exitActions(
       if (inScope) {
         const canSubmit =
           subject.mode === 'application' && subject.initiator === 'hr' && SUBMITTABLE.includes(subject.status);
-        if (canSubmit && (await allowed(() => requireExitPermission(scoped, 'submit', target)))) actions.push('submit');
-        if (EDITABLE.includes(subject.status) && (await allowed(() => requireExitPermission(scoped, 'update', target))))
+        if (
+          canSubmit &&
+          (await allowed(async () => {
+            await requireExitPermission(scoped, 'submit', target);
+            requireExitSubmitInitiator(scoped, subject.initiatorUserId);
+          }))
+        )
+          actions.push('submit');
+        if (
+          EDITABLE.includes(subject.status) &&
+          (await allowed(() => requireExitEditRights(tx, scoped, target, subject.id)))
+        )
           actions.push('edit');
         if (
           isCancellableState(subject.status) &&
