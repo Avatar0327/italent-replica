@@ -43,7 +43,7 @@ beforeAll(async () => {
   target = await w.org('合成范围外部门');
   root = w.tenant.id;
   manager = await w.person('合成直线经理', department);
-  for (const approvalType of ['leave', 'part_time_add'])
+  for (const approvalType of ['leave', 'part_time_add', 'transfer'])
     await w.publishedProcess({
       approvalType,
       isFallback: true,
@@ -230,6 +230,58 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
         ),
       );
     const employment = preset.objects.find((o) => o.objectCode === OBJECT)!;
+    // P1-1：同一员工的两类已提交单据；另一个员工的调动证明既有类型不受两按钮影响。
+    await w.json(await send(actor, `/part-time-requests/${draft.id}/submit`, 'POST', {}, draft.revision));
+    const ownExit = await create(actor, 'exit-requests', { lastWorkDate: '2026-12-01' });
+    await w.json(await send(actor, `/exit-requests/${ownExit.id}/submit`, 'POST', {}, ownExit.revision));
+    const transferActor = await fresh();
+    const transferForm = await opening(transferActor, 'exit-requests');
+    await w.json(
+      await send(
+        transferActor,
+        '/transfer',
+        'POST',
+        {
+          effectiveDate: '2026-11-01',
+          fields: { departmentId: target },
+        },
+        transferForm.employee.revision,
+      ),
+      201,
+    );
+    const list = async (person: Person, page = 1, pageSize = 100) =>
+      w.json<{ items: { businessId: string; applicationKind?: string }[]; page: number; pageSize: number }>(
+        await send(person, `/applications?page=${page}&pageSize=${pageSize}`),
+      );
+    const original = (await list(actor)).items;
+    expect(original.map((item) => item.businessId).sort()).toEqual([draft.id, ownExit.id].sort());
+    const transferItems = (await list(transferActor)).items;
+    expect(transferItems).toHaveLength(1);
+    for (const denied of [['Exit.Self'], ['PartTime.Self'], ['Exit.Self', 'PartTime.Self'], []]) {
+      await w.json(
+        await setObjectPermission(
+          admin,
+          profile,
+          {
+            dataOperations: employment.dataOperations,
+            fields: [...employment.fields],
+            buttons: employment.buttons.filter((button) => !denied.includes(button.buttonCode)),
+          },
+          OBJECT,
+        ),
+      );
+      const expected = original.filter(
+        (item) => !denied.includes(item.applicationKind === 'exit' ? 'Exit.Self' : 'PartTime.Self'),
+      );
+      // 完整条数与每页顺序都按授权后集合断言，不能先 LIMIT/OFFSET 再过滤制造空页。
+      expect((await list(actor)).items, `撤销 ${denied.join('/')} 后列表不披露相应类型元数据`).toEqual(expected);
+      for (let page = 1; page <= expected.length + 1; page++) {
+        const actual = await list(actor, page, 1);
+        expect(actual).toMatchObject({ page, pageSize: 1 });
+        expect(actual.items).toEqual(expected.slice(page - 1, page));
+      }
+      expect((await list(transferActor)).items).toEqual(transferItems);
+    }
     await w.json(
       await setObjectPermission(
         admin,
