@@ -268,6 +268,8 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
       effectiveDate: string;
       linked?: boolean;
       reminderOnly?: boolean;
+      /** 表单 ID（F-421：用表单区分普通 / 机构间 / 批量调动）；缺省沿用员工首个载荷的表单。 */
+      formId?: string;
       /** 操作序号（DEC-108）的事件序号起点；缺省 1000，小于离职的序号即排在离职之前。 */
       eventSeq?: number;
     },
@@ -282,7 +284,7 @@ export async function gateWorld(db: Db, label: string, options: { today?: string
           (id,tenant_id,employee_id,business_id,version_no,command_id,kind,mode,effective_date,form_id,employ_type,
            created_at,is_department_head)
         SELECT ${versionId}::uuid,tenant_id,employee_id,${businessId}::uuid,1,NULL,${input.kind},'application',
-          ${input.effectiveDate}::date,form_id,employ_type,'2026-10-01T01:00:00Z'::timestamptz,
+          ${input.effectiveDate}::date,COALESCE(${input.formId ?? null}::text,form_id),employ_type,'2026-10-01T01:00:00Z'::timestamptz,
           ${input.linked && !input.reminderOnly ? true : null}
         FROM employment_payload_versions WHERE tenant_id=${t} AND employee_id=${employeeId}::uuid
           AND business_id<>${businessId}::uuid ORDER BY created_at, version_no LIMIT 1`);
