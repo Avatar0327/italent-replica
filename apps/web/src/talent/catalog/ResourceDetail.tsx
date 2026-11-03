@@ -58,6 +58,38 @@ function MoreDetails({ row, resource, names }: { row: Row; resource: Resource; n
   if (resource.key === 'dimensions') return <DimensionDetails row={row} />;
   return null;
 }
+function detailSummary(
+  resource: Resource,
+  permission: ObjectPermission,
+  state: { data?: Row; error?: unknown },
+  names?: Map<string, string>,
+) {
+  if (state.error) return <PageState kind="error" error={state.error} />;
+  const row = state.data;
+  if (!row) return <PageState kind="loading" />;
+  if (resource.key === 'criteria') return null;
+  return (
+    <Descriptions
+      column={2}
+      items={resource.fields
+        .filter(
+          (field) =>
+            fieldAccess(permission, field.key).visible &&
+            Object.hasOwn(row, field.key) &&
+            !Array.isArray(row[field.key]),
+        )
+        .map((field) => ({
+          key: field.key,
+          label: field.label,
+          children: display(
+            typeof row[field.key] === 'string'
+              ? (names?.get(String(row[field.key])) ?? row[field.key])
+              : row[field.key],
+          ),
+        }))}
+    />
+  );
+}
 export function ResourceDetail({
   resource,
   id,
@@ -95,33 +127,7 @@ export function ResourceDetail({
           <Button onClick={onClose}>{m.close}</Button>
         )
       }
-      summary={
-        state.error ? (
-          <PageState kind="error" error={state.error} />
-        ) : !row ? (
-          <PageState kind="loading" />
-        ) : resource.key === 'criteria' ? null : (
-          <Descriptions
-            column={2}
-            items={resource.fields
-              .filter(
-                (field) =>
-                  fieldAccess(permission, field.key).visible &&
-                  Object.hasOwn(row, field.key) &&
-                  !Array.isArray(row[field.key]),
-              )
-              .map((field) => ({
-                key: field.key,
-                label: field.label,
-                children: display(
-                  typeof row[field.key] === 'string'
-                    ? (names.data?.get(String(row[field.key])) ?? row[field.key])
-                    : row[field.key],
-                ),
-              }))}
-          />
-        )
-      }
+      summary={detailSummary(resource, permission, state, names.data)}
       sections={
         row
           ? [
