@@ -29,7 +29,7 @@ const subordinateId = '30000000-0000-4000-8000-000000000003';
 const permission = (buttons: string[], operations = { create: true, update: true }): ObjectPermission => ({
   objectCode: 'TenantBase.EmploymentRecord',
   dataOperations: operations,
-  viewableFields: ['lastWorkDate', 'departmentId', 'intendedDate', 'reason'],
+  viewableFields: ['kind', 'mode', 'lastWorkDate', 'departmentId', 'intendedDate', 'reason'],
   editableFields: ['kind', 'mode', 'lastWorkDate', 'handoverEmployeeId', 'intendedDate', 'reason'],
   buttons: buttons.map((buttonCode) => ({ buttonCode, level: 'detail' })),
 });
@@ -183,7 +183,7 @@ describe('AC-FE-R2c3 入口只按视图归属、单据状态与权限快照里�
   });
 
   it('第 2 轮 P2-4：意向日期只读时，员工视图入口仍在，已有草稿可提交、审批中可撤回', () => {
-    const readonly = { ...all, editableFields: ['lastWorkDate'] };
+    const readonly = { ...all, editableFields: ['kind', 'mode', 'lastWorkDate'] };
     expect(entriesFor('upcoming', person, readonly)).toEqual(['retire', 'apply', 'intention']);
     expect(intentionEntries(undefined, readonly)).toEqual([]);
     expect(intentionEntries({ status: 'draft' }, readonly)).toEqual(['submit']);
