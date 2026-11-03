@@ -1,3 +1,4 @@
+import { employmentDashboardDate } from './dashboard-date.js';
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
@@ -355,10 +356,6 @@ async function completedTransferDates(
   const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
   return { ...dates, actualEffectiveDate: business.effectiveDate };
 }
-
-/** 规格 35 B51：离职（及同走最后工作日的退休）取最后工作日，其余任职业务取生效日期。 */
-const employmentDashboardDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
-  ['leave', 'retirement'].includes(kind) ? (lastWorkDate ?? effectiveDate) : effectiveDate;
 
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId, reassignFrom) {
