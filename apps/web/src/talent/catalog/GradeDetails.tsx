@@ -36,8 +36,8 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
     change(value.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   return [
     {
-      title: m.gradeNumber,
-      width: 110,
+      title: m.gradeLevel,
+      width: 40,
       render: (_, row, i) => (
         <InputNumber
           aria-label={`${m.gradeNumber} ${i + 1}`}
@@ -51,7 +51,8 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
       ),
     },
     {
-      title: m.gradeName,
+      title: <span className="catalog-required-label">{m.name}</span>,
+      width: 120,
       render: (_, row, i) => (
         <Input
           aria-label={`${m.gradeName} ${i + 1}`}
@@ -64,6 +65,7 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
     },
     {
       title: m.schemeDescription,
+      width: 120,
       render: (_, row, i) => (
         <Input.TextArea
           aria-label={`${m.schemeDescription} ${i + 1}`}
@@ -76,7 +78,7 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
     },
     {
       title: m.score,
-      width: 140,
+      width: 540,
       render: (_, row, i) => (
         <InputNumber
           aria-label={`${m.score} ${i + 1}`}
@@ -91,7 +93,7 @@ function gradeColumns(value: Grade[], disabled: boolean, change: (value: Grade[]
     },
     {
       title: m.actions,
-      width: 80,
+      width: 90,
       render: (_, _row, i) => (
         <Button type="link" disabled={disabled} onClick={() => change(value.filter((_, j) => i !== j))}>
           {m.delete}

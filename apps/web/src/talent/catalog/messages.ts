@@ -46,6 +46,7 @@ export const m = {
   schemeInfo: '等级方案信息',
   schemeDetails: '等级明细',
   gradeNumber: '等级',
+  gradeLevel: '级别',
   gradeName: '等级名称',
   score: '对应分数',
   addGrade: '添加等级',

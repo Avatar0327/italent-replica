@@ -136,7 +136,7 @@ export const qualificationResources: Resource[] = [
     columns: ['name', 'description'],
     fields: [
       { key: 'name', label: m.name, required: true },
-      { key: 'description', label: m.schemeDescription, kind: 'text', nullable: true },
+      { key: 'description', label: m.schemeDescription, max: 4000, nullable: true },
       { key: 'details', label: m.schemeDetails, kind: 'grades' },
     ],
   },

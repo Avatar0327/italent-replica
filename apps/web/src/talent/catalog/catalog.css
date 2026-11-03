@@ -188,3 +188,9 @@
 .catalog-column-settings::before {
   content: '⚙';
 }
+
+.catalog-required-label::before {
+  content: '*';
+  color: #ff4d4f;
+  margin-right: 4px;
+}

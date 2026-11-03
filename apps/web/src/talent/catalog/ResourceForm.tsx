@@ -189,6 +189,7 @@ function formFields(
           required:
             field.required ||
             (resource.key === 'categories' && !!original && field.key === 'code') ||
+            (resource.key === 'grade-schemes' && !!original && field.key === 'description') ||
             data?.contract?.requiredFields.includes(field.key),
           ...validationType(field),
           message: m.required,
