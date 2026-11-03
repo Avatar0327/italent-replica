@@ -182,3 +182,23 @@ describe('AC-HA-06 汇报链穿过离职的中间经理', () => {
     expect((await top.detail(TEAM_BASE, '6.01', AS_OF)).ids).not.toContain(b.id);
   }, 300_000);
 });
+
+/** P2-2：负责部门数不受“范围根最多 200 条”的输入限制。 */
+describe('AC-HA-06 负责 201 个部门的负责人', () => {
+  it('概览与 6.01 明细返回 200，第 201 个部门里的在职员工也在范围内，数字 = 明细', async () => {
+    const w = await structureWorld(database().db, 'ha06-many');
+    const home = await w.org('负责人所在部门');
+    const leader = await w.hire('多部门负责人', { date: '2015-01-01', department: home });
+    const departments: { id: string }[] = [];
+    for (let index = 1; index <= 201; index++) {
+      const department = await w.org(`负责部门${index}`);
+      await orgVersion({ db: w.db, tenant: { id: w.tenantId } }, department.id, { personInChargeId: leader.id });
+      departments.push(department);
+    }
+    const first = await w.hire('首个部门员工', { date: '2020-01-01', department: departments[0]! });
+    const last = await w.hire('末个部门员工', { date: '2021-01-01', department: departments[200]! });
+    const head = boardClient(w.db, { tenant: w.tenantId, user: await userOf(w, leader.id) });
+    expect((await head.get(`${TEAM_BASE}?${AS_OF}`)).status).toBe(200);
+    await head.expectCount(TEAM_BASE, '6.01', ids(leader, first, last), AS_OF);
+  }, 600_000);
+});
