@@ -71,8 +71,65 @@ export function personEditable(p: Permission): string[] {
   );
 }
 
+// 已取证字段优先；其余已有字段保留在末尾，不依据未验证的表单删除编辑能力。
+const subsetOrder: Partial<Record<SubsetKind, string[]>> = {
+  education: [
+    'school',
+    'graduationType',
+    'startDate',
+    'endDate',
+    'educationLevel',
+    'isHighestEducation',
+    'degree',
+    'isHighestDegree',
+    'trainingMode',
+    'learningForm',
+    'majorCategory',
+    'major',
+    'educationCertificate',
+    'schoolType',
+    'majorDescription',
+  ],
+  jobhistory: ['company', 'post', 'startDate', 'endDate', 'referenceName', 'isThisCompany'],
+  'project-experience': [
+    'name',
+    'post',
+    'startDate',
+    'endDate',
+    'responsibilities',
+    'headcount',
+    'results',
+    'developmentTools',
+    'description',
+  ],
+  training: ['name', 'institution', 'category', 'score', 'startDate', 'endDate', 'hours', 'passed'],
+  family: ['name', 'birthday', 'gender', 'relationship', 'mobilePhone', 'company', 'phone'],
+  certificate: ['type', 'name', 'number', 'issuer', 'obtainedDate', 'startDate', 'endDate', 'attachmentId'],
+  'language-ability': ['language', 'isNative', 'proficiency', 'writing', 'reading', 'speaking'],
+  skill: ['name', 'proficiency', 'category', 'months'],
+  awards: ['name', 'awardDate', 'description'],
+  'professional-technical-post': [
+    'qualificationName',
+    'level',
+    'assessmentDate',
+    'qualificationRoute',
+    'assessmentInstitution',
+    'appointedPost',
+    'startDate',
+    'endDate',
+    'company',
+    'appointedLevel',
+    'isHighestLevel',
+  ],
+};
 export function subsetFields(kind: SubsetKind): readonly PersonnelField[] {
-  return SUBSETS[kind].fields;
+  const order = subsetOrder[kind];
+  const fields: readonly PersonnelField[] = SUBSETS[kind].fields;
+  if (!order) return fields;
+  return [
+    ...order.flatMap((code) => fields.filter((field) => field.code === code)),
+    ...fields.filter((field) => !order.includes(field.code)),
+  ];
 }
 
 /**
@@ -86,7 +143,8 @@ const maybeSynced = (kind: SubsetKind, row: Item) =>
 export function subsetEditable(p: Permission, kind: SubsetKind, mode: 'create' | 'update', row?: Item): string[] {
   if (!granted(p, mode, mode, mode === 'create' ? 'list' : 'detail')) return [];
   const synced = row !== undefined && maybeSynced(kind, row);
-  return subsetFields(kind)
+  const fields: readonly PersonnelField[] = SUBSETS[kind].fields;
+  return fields
     .filter((field) => !field.system && field.kind !== 'uuid' && m.labels[field.code])
     .filter((field) => !(synced && syncedJobHistory.has(field.code)) && fieldAccess(p, field.code).editable)
     .map((field) => field.code);

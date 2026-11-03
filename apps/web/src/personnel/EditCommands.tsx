@@ -36,6 +36,7 @@ import { ReadPanel } from './ReadPanel.js';
 import { useRead } from './useRead.js';
 import type { ProfileSubset } from './useSubsetAccess.js';
 import { m, subsetLabels } from './messages.js';
+import './personnel.css';
 
 type Api = ReturnType<typeof useApiClient>;
 type Kind = ReturnType<typeof personFieldKind>;
@@ -141,6 +142,7 @@ function PersonForm({ row, editable, close, saved }: { row: Row; editable: strin
     <FormOverlay
       open
       mode="drawer"
+      className="personnel-edit-form"
       recordKey={path}
       submission={writer.form}
       title={m.editing.person}
@@ -309,7 +311,8 @@ function SubsetForm({
   return (
     <FormOverlay
       open
-      mode="modal"
+      mode="drawer"
+      className={`personnel-subset-form${['education', 'jobhistory'].includes(kind) ? ' personnel-subset-two' : ''}`}
       recordKey={target ?? path}
       submission={writer.form}
       title={title}

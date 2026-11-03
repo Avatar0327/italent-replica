@@ -160,6 +160,16 @@ function useTeam(initialCategory: string, initialSearch: string) {
   const columns: TableColumnsType<TeamRow> = keys.map((key) => ({
     key,
     title: teamLabels[key],
+    width:
+      key === 'email'
+        ? 200
+        : key === 'entryDate'
+          ? 105
+          : ['name', 'tenure'].includes(key)
+            ? 172
+            : key.endsWith('ManagerId')
+              ? 130
+              : 140,
     render: (_: unknown, row: TeamRow) =>
       key === 'name' && Object.hasOwn(row, key) ? (
         <Space>

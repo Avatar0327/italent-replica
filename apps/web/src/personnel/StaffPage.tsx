@@ -46,11 +46,11 @@ export function StaffPage() {
     columns.push({
       key: 'edit',
       title: m.editing.operations,
-      width: 110,
+      width: 164,
       render: (_: unknown, row: Row) => <EditPersonButton employeeId={row.id} saved={result.refresh} />,
     });
   // 原站列设置入口在表头最右侧齿轮，不占工具栏按钮位。
-  columns.push({ key: 'settings', width: 48, title: <ColumnGear onOpen={() => setOverlay('columns')} /> });
+  columns.push({ key: 'settings', width: 24, title: <ColumnGear onOpen={() => setOverlay('columns')} /> });
   return (
     <div className="staff-page">
       <DecisionNote id="personnel" />
@@ -107,7 +107,7 @@ function staffColumns(selectedColumns: string[], allowed: readonly string[], set
     key,
     title: columnLabel(key),
     dataIndex: key,
-    width: key === 'name' ? 150 : 155,
+    width: key === 'workDate' ? 105 : 140,
     ellipsis: true,
     render: (value: unknown, row: Row) =>
       key === 'name' ? (
