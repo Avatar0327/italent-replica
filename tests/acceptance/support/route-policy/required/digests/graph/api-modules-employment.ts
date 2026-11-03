@@ -2088,8 +2088,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertCapacity': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#capacityVisible',
     '#departmentVisible',
     '#segmentExcesses',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext',
   ],
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertOccupancyChange': [
     '#assertAvailable',
@@ -2229,6 +2231,16 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/employment/exit-downstream.ts#contractViewableFields': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-downstream.ts#contractsInScope': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
   'apps/api/src/modules/employment/exit-downstream.ts#discloseHandovers': [
     '#HANDOVER_TARGET',
     '#allowed',
@@ -2263,11 +2275,22 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#probes': ['#handoverProbe', '#ledgerProbe', '#notConnected'],
   'apps/api/src/modules/employment/exit-downstream.ts#registerDownstreamVisibility': ['#downstreamVisibility'],
-  'apps/api/src/modules/employment/exit-downstream.ts#trimDownstream': ['#HANDOVER_TARGET', '#visibleMap'],
+  'apps/api/src/modules/employment/exit-downstream.ts#trimContractDetail': [
+    'packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS',
+  ],
+  'apps/api/src/modules/employment/exit-downstream.ts#trimDownstream': [
+    '#CONTRACT_TARGETS',
+    '#HANDOVER_TARGET',
+    '#contractViewableFields',
+    '#trimContractDetail',
+    '#visibleMap',
+  ],
   'apps/api/src/modules/employment/exit-downstream.ts#visibleMap': [
+    '#CONTRACT_TARGETS',
     '#DEPARTMENT_SCOPED_TYPES',
     '#HANDOVER_TARGET',
     '#allowed',
+    '#contractsInScope',
     '#discloseHandovers',
     '#downstreamVisibility',
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
