@@ -232,6 +232,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#bySegment': ['#isEmpty', '#segmentKey'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#closing': ['#unique'],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#establishmentColumns': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#ratio',
+  ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitReason': ['#NONE_LABEL', '#codeOf'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitType': [
     '#NONE_LABEL',
@@ -257,6 +260,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-movement-report.ts#establishmentTable': [
     'apps/api/src/modules/analytics/hr-movement-board.ts#actualStaff',
+    'apps/api/src/modules/analytics/hr-movement-board.ts#establishmentColumns',
     '#table',
   ],
   'apps/api/src/modules/analytics/hr-movement-report.ts#flowColumns': [
@@ -408,9 +412,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#WORKING_TYPES',
     '#CAPACITY_LIMIT',
     '#CAPACITY_PAGE',
     'apps/api/src/modules/establishment/capacity-read.ts#listCapacities',
+    'apps/api/src/modules/establishment/projection-read.ts#readOrganizationProjections',
   ],
   'apps/api/src/modules/analytics/hr-movement.ts#loadExitDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary',
