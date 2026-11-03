@@ -20,7 +20,9 @@ import { AppError } from '../../errors.js';
 import { exitCandidates } from '../employment/exit-queries.js';
 import { listExitDictionary } from '../employment/exit-dictionaries.js';
 import { rowsOf } from '../employment/read-model.js';
-import { listCapacities } from '../establishment/capacity-read.js';
+import { listCapacities, type CapacityRecord } from '../establishment/capacity-read.js';
+import { readOrganizationProjections } from '../establishment/projection-read.js';
+import type { EmploymentContext } from '../employment/types.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
 import {
   current,
@@ -266,6 +268,8 @@ export interface MovementEstablishment {
   readonly orgId: string;
   readonly localCapacity: number | null;
   readonly inclusiveCapacity: number | null;
+  readonly pendingIn: number;
+  readonly pendingOut: number;
 }
 const CAPACITY_PAGE = 200;
 const CAPACITY_LIMIT = 5_000;
@@ -274,30 +278,32 @@ const CAPACITY_LIMIT = 5_000;
  * 编制模块的组织编制：取数日 day 时各编制对象的最新版本，只取期间覆盖 day（开始 ≤ day ≤ 结束）、方案在 day 有效的对象，
  * 过滤在 SQL 里做（listCapacities 的 covering），按数据范围裁剪（scopeSql / 创建人范围照旧）。已结束方案的历史对象
  * 不进候选，不会因“方案在该时点不存在”让整板报 404，也不占 5000 的上限。取满 5000 条后再探第 5001 条，确有才报 413。
- * 预增员 / 预减员按组织汇总的读接口尚未抽出（F-418），这里只取编制数。
+ * 预增 / 预减由 establishment 提供业务来源投影；沿用报表自身的员工范围，来源不向 HTTP 披露。
  */
 export async function loadEstablishment(
   tx: Tx,
-  a: Pick<DashboardAsOf, 'tenantId' | 'scope'>,
+  a: EmploymentContext & Pick<DashboardAsOf, 'scope'>,
   day: string,
 ): Promise<MovementEstablishment[]> {
   const read = (limit: number, offset: number) =>
     listCapacities(tx, a.tenantId, day, { scope: a.scope, covering: day }, { limit, offset });
-  const rows: MovementEstablishment[] = [];
+  const rows: CapacityRecord[] = [];
   for (let offset = 0; offset < CAPACITY_LIMIT; offset += CAPACITY_PAGE) {
     const page = await read(CAPACITY_PAGE, offset);
-    rows.push(
-      ...page.map((capacity) => ({
-        id: capacity.id,
-        orgId: capacity.orgId,
-        localCapacity: capacity.localCapacity,
-        inclusiveCapacity: capacity.inclusiveCapacity,
-      })),
-    );
-    if (page.length < CAPACITY_PAGE) return rows;
+    rows.push(...page);
+    if (page.length < CAPACITY_PAGE) break;
   }
-  if ((await read(1, CAPACITY_LIMIT)).length) throw new AppError('PAYLOAD_TOO_LARGE', '编制对象超过单次统计上限');
-  return rows;
+  if (rows.length === CAPACITY_LIMIT && (await read(1, CAPACITY_LIMIT)).length)
+    throw new AppError('PAYLOAD_TOO_LARGE', '编制对象超过单次统计上限');
+  const projections = await readOrganizationProjections(tx, a, day, rows, WORKING_TYPES);
+  return rows.map((capacity, index) => ({
+    id: capacity.id,
+    orgId: capacity.orgId,
+    localCapacity: capacity.localCapacity,
+    inclusiveCapacity: capacity.inclusiveCapacity,
+    pendingIn: projections[index]!.pendingIn,
+    pendingOut: projections[index]!.pendingOut,
+  }));
 }
 
 /** 离职类型 / 原因字典（启用项，按显示顺序）：流出统计按它展开列，未用到的填 0（审查 P2-8）。 */

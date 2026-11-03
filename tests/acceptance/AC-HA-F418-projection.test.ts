@@ -1,5 +1,8 @@
 /** DEC-791①：预增 / 预减计有效业务笔数；真实 HTTP 写入与 B54 / 3.1.36 读取。 */
 import './support/exit-gate-enforced.js';
+import { withTenant } from '@italent/db';
+import { readCapacity } from '../../apps/api/src/modules/establishment/capacity-read.js';
+import { readOrganizationProjections } from '../../apps/api/src/modules/establishment/projection-read.js';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { movementClient, movementWorld, type MovementWorld } from './AC-HA-13b-support.js';
@@ -63,6 +66,33 @@ describe('AC-HA-F418 编制业务投影', () => {
     await w.transfer(p.id, '2026-11-15', s.A);
     await both(s.a.id, { actual: 1, pendingIn: 1, pendingOut: 1, vacancy: 9, executionRate: 0.1 });
     await both(s.b.id, { actual: 0, pendingIn: 1, pendingOut: 1, vacancy: 10, executionRate: 0 });
+    const businessIds = (await w.x.session.records(p.id, DAY)).filter((r) => r.kind === 'transfer').map((r) => r.id);
+    const [projection] = await withTenant(w.db, w.tenantId, async (tx) =>
+      readOrganizationProjections(
+        tx,
+        {
+          tenantId: w.tenantId,
+          userId: w.who.user,
+          now: new Date(`${DAY}T01:00:00Z`),
+          timezone: 'Asia/Shanghai',
+          commandId: '',
+          expectedRevision: 0,
+          scope: managementScope(w.tenantId, [s.A.id, s.B.id]),
+        },
+        DAY,
+        [await readCapacity(tx, w.tenantId, s.a.id, DAY)],
+        ['internal', 'intern'],
+      ),
+    );
+    expect(projection!.contributions.map((source) => source.businessId).sort()).toEqual(businessIds.sort());
+    expect(projection!.contributions.map((source) => source.direction).sort()).toEqual(['in', 'out']);
+    for (const source of projection!.contributions) {
+      expect(source.employeeId).toBe(p.id);
+      expect(source.kind).toBe('transfer');
+      expect(source.segments.every((segment) => segment.departmentId === s.A.id && segment.from < segment.until)).toBe(
+        true,
+      );
+    }
   });
 
   it('AC-HA-F418-02 调入 2 人、调出 2 人，两列各 2', async () => {
@@ -141,6 +171,8 @@ describe('AC-HA-F418 编制业务投影', () => {
     await both(z.id, { actual: 0, pendingIn: 0, pendingOut: 0, vacancy: 0, executionRate: null });
     await w.hire(name('超编'), '2026-02-01', Z);
     await both(z.id, { actual: 1, pendingIn: 0, pendingOut: 0, vacancy: -1, executionRate: null });
+    const edge = await s.capacity(Z.id, '9999-01-01', 0);
+    expect(await cells(edge.id, undefined, '9999-12-01')).toMatchObject({ pendingIn: 0, pendingOut: 0 });
   });
 
   it('AC-HA-F418-09 可见上级编制不授予范围外员工可见性', async () => {
