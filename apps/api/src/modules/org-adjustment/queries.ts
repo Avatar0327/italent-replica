@@ -16,7 +16,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf, validIsoDate } from '../org/read-model.js';
-import { scopeSql, type ModuleScope } from '../permission/module-access.js';
+import { scopeAllows, scopeSql, type ModuleScope } from '../permission/module-access.js';
 import { canSee } from './disclosure.js';
 
 export interface HeadRow {
@@ -158,7 +158,7 @@ export interface RangeOrg {
 }
 
 /** 调整范围列：按选择顺序，名称按单据生效日，文案“组织名（包含下级）”（F273A §4）。 */
-async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[]) {
+async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[], orgScope: OrgScope) {
   const ranges = new Map<string, RangeOrg[]>();
   if (!ids.length) return ranges;
   const rows = rowsOf<{ adjustmentId: string; orgId: string; name: string | null }>(
@@ -170,24 +170,33 @@ async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[]) {
       ORDER BY r.adjustment_id, r.seq`),
   );
   for (const row of rows) {
-    const label = row.name === null ? null : `${row.name}（包含下级）`;
-    ranges.set(row.adjustmentId, [
-      ...(ranges.get(row.adjustmentId) ?? []),
-      { orgId: row.orgId, name: row.name, label },
-    ]);
+    // 范围外的组织不带出现名与文案（F-412，同明细 targetOrgName / 预览的口径）
+    const name = orgVisible(orgScope, row.orgId) ? row.name : null;
+    const label = name === null ? null : `${name}（包含下级）`;
+    ranges.set(row.adjustmentId, [...(ranges.get(row.adjustmentId) ?? []), { orgId: row.orgId, name, label }]);
   }
   return ranges;
 }
 
 type Fields = ReadonlySet<string> | undefined;
+/** 查看人的组织对象范围；null = 不按组织对象范围裁剪（审批人路径，沿用审批中心可打开口径）。 */
+type OrgScope = ModuleScope | null;
+const orgVisible = (scope: OrgScope, orgId: string | null) => !scope || !orgId || scopeAllows(scope, { orgId });
 
 /** 头列投影：每个源字段连同它的派生列一起出现或一起隐去。 */
-export async function projectHeads(tx: Tx, tenantId: string, rows: readonly HeadRow[], fields: Fields) {
+export async function projectHeads(
+  tx: Tx,
+  tenantId: string,
+  rows: readonly HeadRow[],
+  fields: Fields,
+  orgScope: OrgScope,
+) {
   const ranges = canSee(fields, 'adjustmentRange')
     ? await rangesOf(
         tx,
         tenantId,
         rows.map((row) => row.id),
+        orgScope,
       )
     : null;
   const names = canSee(fields, 'createdBy')
@@ -207,7 +216,7 @@ export async function projectHeads(tx: Tx, tenantId: string, rows: readonly Head
     put('content', { content: row.content });
     put('approvalSubjectOrgId', {
       approvalSubjectOrgId: row.approvalSubjectOrgId,
-      approvalSubjectOrgName: row.approvalSubjectOrgName,
+      approvalSubjectOrgName: orgVisible(orgScope, row.approvalSubjectOrgId) ? row.approvalSubjectOrgName : null,
     });
     if (ranges) out.adjustmentRange = ranges.get(row.id) ?? [];
     put('approvalStatus', {
