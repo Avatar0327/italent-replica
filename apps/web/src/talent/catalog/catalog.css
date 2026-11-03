@@ -273,3 +273,8 @@
   border-left: 3px solid var(--shell-primary);
   padding-left: 10px;
 }
+
+/* R3a 新增仅名称带红星；保留分类的接口校验，隐藏标记不代表允许空分类。 */
+.catalog-form-criteria.catalog-form-create .ant-form-item-label > label[for='categoryId']::before {
+  display: none;
+}

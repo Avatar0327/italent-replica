@@ -136,7 +136,7 @@ export function ResourceForm({
   return (
     <FormOverlay
       mode={['categories', 'criteria', 'grade-schemes'].includes(resource.key) ? 'modal' : 'drawer'}
-      className={`catalog-form catalog-form-${resource.key}`}
+      className={`catalog-form catalog-form-${resource.key}${original ? '' : ' catalog-form-create'}`}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
       submission={{ ...submission, locked: blocked || submission.locked }}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
