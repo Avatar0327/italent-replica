@@ -13,7 +13,14 @@ import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { ApprovalContext, FieldAccess } from '../approval/context.js';
-import { authorizeOwnerAction, authorizeWithdraw, HEAD_BUTTONS, orgScopeAuthorizer } from './access.js';
+import {
+  authorizeItemFieldWrites,
+  authorizeOwnerAction,
+  authorizeWithdraw,
+  HEAD_BUTTONS,
+  orgScopeAuthorizer,
+} from './access.js';
+import { storedItemFieldCodes } from './item-validation.js';
 import { loadWorld } from './item-tree.js';
 import { loadItems, type OrgItem } from './items-store.js';
 import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
@@ -125,12 +132,14 @@ interface OwnerDeps {
 
 /**
  * 提交口径的授权（路由 10、审批中心重提）：主对象 update + `EditAdjustOrgDetailBtn@detail` + 主体组织与调整范围，
- * 全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3，before = null）。
+ * 明细行实际有值的 `orgItems.*` 字段写权（F-428），全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3，before = null）。
  */
 export async function authorizeSubmission(tx: Tx, deps: OwnerDeps, ctx: TenantContext, stored: AdjustmentView) {
   const head = { subjectOrgId: stored.approvalSubjectOrgId, rangeOrgIds: stored.adjustmentRange };
   await authorizeOwnerAction(tx, deps, ctx, { ...head, button: HEAD_BUTTONS.update });
-  await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, stored.id)));
+  const items = await loadItems(tx, ctx.tenantId, stored.id);
+  await authorizeItemFieldWrites(tx, deps, ctx, storedItemFieldCodes(items));
+  await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
 }
 
 /** 撤回口径（路由 11、审批中心撤回）：没有按钮，主对象 update + 主体组织与调整范围（同路由 1）。 */

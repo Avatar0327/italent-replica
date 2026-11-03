@@ -31,7 +31,6 @@ import {
   authorizeHeadAction,
   authorizeHeadScopes,
   authorizeItem,
-  authorizeOwnerAction,
   authorizeWithdraw,
   HEAD_BUTTONS,
   orgScopeAuthorizer,
@@ -51,7 +50,7 @@ import {
   voidAdjustment,
   type AdjustmentView,
 } from './service.js';
-import { rowOrgIds, submitAdjustment, withdrawAdjustment } from './submission.js';
+import { authorizeSubmission, submitAdjustment, withdrawAdjustment } from './submission.js';
 import { createSchema, normalizeHead, patchSchema } from './validation.js';
 
 const BASE = '/api/tenant/org-adjustment/adjustments';
@@ -166,10 +165,9 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await button(deps, ctx, OBJECT, 'EditAdjustOrgDetailBtn', 'detail');
     return headCommand(c, deps, ctx, input, 200, {
       before: async (tx) => {
-        await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
-          authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
-        );
-        await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, id)));
+        const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
+        if (!stored) throw new AppError('NOT_FOUND', '组织调整申请不存在');
+        await authorizeSubmission(tx, deps, ctx, stored);
       },
       execute: async (tx, commandCtx) => {
         try {
