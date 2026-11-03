@@ -58,7 +58,7 @@ function server(options: { details: Record<string, object>; inFlight: object | n
           return Response.json({ error: { code: 'NOT_FOUND', message: '不存在' } }, { status: inFlight });
         return Response.json({ item: inFlight });
       }
-      const id = path.split('/retirements/')[1];
+      const id = path.split('/retirements/')[1] ?? '';
       const detail = options.details[id];
       return detail
         ? Response.json(detail)

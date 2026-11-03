@@ -3840,6 +3840,23 @@ export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/retirements': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
   ],
+  // F-410 按员工查在途退休单：入口只判员工对象查看权（readContext object.view + 资源 id），内容走详情同一裁剪
+  'GET /api/tenant/employment/retirements/employees/:id/in-flight': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIRE_VIEWS,
+          'GET',
+          '/retirements/employees/:id/in-flight',
+          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+        ),
+        READ,
+        RECORD_CONST,
+      ],
+    ),
+  ],
   'GET /api/tenant/employment/retirements/:id': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
   ],

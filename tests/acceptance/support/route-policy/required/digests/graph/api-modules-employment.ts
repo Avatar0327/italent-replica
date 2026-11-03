@@ -6743,6 +6743,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/employees/:id/in-flight': [
+    'apps/api/src/authorization.ts#requirePermission',
+    'apps/api/src/modules/employment/context.ts#readContext',
+    'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
+    'apps/api/src/modules/employment/exit-routes.ts#viewableIn',
+    '#IN_FLIGHT_STATES',
+    'apps/api/src/modules/employment/retirement-views.ts#loadRetirementDetail',
+    'apps/api/src/modules/employment/retirement-views.ts#trimRetirementDetail',
+    'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
   'apps/api/src/modules/employment/retirement-view-routes.ts#upcomingDaysOf': ['#FALLBACK_UPCOMING_DAYS'],
   'apps/api/src/modules/employment/retirement-view-routes.ts#viewQuery': [
     'apps/api/src/modules/employment/exit-routes.ts#day',
