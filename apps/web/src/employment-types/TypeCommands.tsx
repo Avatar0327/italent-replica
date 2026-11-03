@@ -47,7 +47,14 @@ function useRow(row?: TypeRow) {
 /** 新建不发空值（失效日期不填由后端默认 9999-12-31）；修改是补丁，只发改动字段。 */
 const compact = (body: Values) => Object.fromEntries(Object.entries(body).filter(([, value]) => value != null));
 async function sendRow(api: Api, command: Command<Values>, id?: string) {
-  const body = id ? command.body : compact(command.body);
+  const body = id ? { ...command.body } : compact(command.body);
+  // F-455：编辑清空失效日期沿用数据库的无限期值；后端日期契约不接受 null。
+  if (
+    id &&
+    Object.hasOwn(body, 'expiryDate') &&
+    (body.expiryDate === null || body.expiryDate === undefined || body.expiryDate === '')
+  )
+    body.expiryDate = '9999-12-31';
   const raw = await api.request<unknown>(id ? rowPath(id) : TYPES_PATH, {
     method: id ? 'PUT' : 'POST',
     command: { ...command, body },

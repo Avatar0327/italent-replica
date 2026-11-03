@@ -70,10 +70,24 @@ export async function orgEmploymentTargets(
   orgId: string | readonly string[],
   date: string,
 ) {
+  const ids = await orgEmploymentTargetsPage(tx, ctx.tenantId, orgId, date, null, ORG_EMPLOYMENT_LIMIT + 1);
+  if (ids.length > ORG_EMPLOYMENT_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '组织联动任职超过单次处理上限');
+  return ids;
+}
+
+/** 同一选人口径按员工 UUID 键集分页（R2-T08 §7.5 单据执行逐页追加）；`after` 为上一页最后一个员工 ID。 */
+export async function orgEmploymentTargetsPage(
+  tx: Tx,
+  tenantId: string,
+  orgId: string | readonly string[],
+  date: string,
+  after: string | null,
+  size: number,
+) {
   const rows = rowsOf<{ id: string }>(
-    await tx.execute(sql`${targetsSql(ctx.tenantId, orgId, date)} ORDER BY id LIMIT ${ORG_EMPLOYMENT_LIMIT + 1}`),
+    await tx.execute(sql`SELECT id FROM (${targetsSql(tenantId, orgId, date)}) x
+      WHERE ${after}::uuid IS NULL OR id > ${after}::uuid ORDER BY id LIMIT ${size}`),
   );
-  if (rows.length > ORG_EMPLOYMENT_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '组织联动任职超过单次处理上限');
   return rows.map((row) => row.id);
 }
 
@@ -97,6 +111,30 @@ export async function orgSubtreeAt(tx: Tx, tenantId: string, orgIds: readonly st
 /** 员工在 date 的现行主职部门（子查询片段）。 */
 export function primaryDepartmentSql(tenantId: string, employeeId: string, date: string) {
   return sql`SELECT ${primaryDepartment} FROM ${primaryAt(tenantId, date)} AND t.employee_id=${employeeId}::uuid`;
+}
+
+/**
+ * R2-T08 §7.5“主职已变化”：生效日之后另有主职段、且部门与生效日不同的员工（如审批后排在 E 之后的调动）。
+ * 组织调整执行器把这些人记逐员工失败，不在他们的版本链中段插入组织调整记录。
+ */
+export async function primaryMovedAfter(tx: Tx, tenantId: string, ids: readonly string[], date: string) {
+  if (!ids.length) return new Set<string>();
+  const rows = rowsOf<{ id: string }>(
+    await tx.execute(sql`WITH at AS (
+        SELECT t.employee_id, ${primaryDepartment} AS department_id FROM ${primaryAt(tenantId, date)}
+          AND t.employee_id=ANY(${idsSql(ids)})
+      )
+      SELECT DISTINCT t.employee_id AS id FROM employment_timeline t
+        JOIN at ON at.employee_id=t.employee_id
+        JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+        LEFT JOIN LATERAL (SELECT id,department_id FROM employment_payload_versions p
+          WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+          ORDER BY version_no DESC LIMIT 1) p ON true
+      WHERE t.tenant_id=${tenantId} AND lower(t.valid_during) > ${date}::date
+        AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
+        AND ${primaryDepartment} IS DISTINCT FROM at.department_id`),
+  );
+  return new Set(rows.map((row) => row.id));
 }
 
 /** F-008：全部员工按 UUID 在组织设置/对象和业务锁之前取锁；等待期间集合变化则整单 409，不能补锁倒序。 */
