@@ -97,6 +97,7 @@ async function consume(tx: Tx, ctx: EmploymentContext, item: Retry) {
     ctx,
     { businessId: item.businessId, employeeId: item.employeeId, kind: 'leave', mode: 'application', reEmployed: false },
     item.approvedOn,
+    true,
   );
   const retry = result.outcome === 'failed' || (result.outcome === 'skipped' && result.reason === WAITING_ACCOUNT);
   await receipt(tx, ctx, item.id, retry ? 'failed' : 'sent', 'reason' in result ? result.reason : null);

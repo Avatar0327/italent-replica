@@ -124,11 +124,12 @@ export async function launchExitHandover(
   ctx: EmploymentContext,
   event: ExitConfirmedEvent,
   approvedOn?: string,
+  resume = false,
 ): Promise<LaunchResult> {
   if (event.kind !== 'leave' || event.mode !== 'application') return { outcome: 'skipped', reason: 'NOT_APPLICABLE' };
   const { automaticHandover } = await import('./exit-handover-launch.js');
   // 补发重试传入登记时的批准日；缺省取 R（pre_release_date，确认当日写入后不再改变）
-  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed', undefined, approvedOn);
+  return automaticHandover(tx, ctx, event.businessId, 'on_approval_passed', undefined, approvedOn, resume);
 }
 
 /** F-250：各入口共用创建与审批执行；调用方持员工锁并判定触发资格。 */
@@ -143,13 +144,9 @@ export async function createExitHandover(
   if (live) return { outcome: 'exists', requestId: live.id };
   const initiatorUserId = await userOfPerson(tx, ctx.tenantId, event.employeeId);
   if (!initiatorUserId) {
-    // F-140b × F-261：替代单恢复账号的补发意图已登记时沿用跳过 + 补发（列车 A）；其余无账号仍落未发起记录（F-310 / F-305）
-    if (await queueExitHandoverRetry(tx, ctx, event)) {
-      await auditHandover(tx, auditContext, 'skipped', 'exit-request', event.businessId, null, {
-        reason: 'NO_INITIATOR_ACCOUNT',
-      });
-      return { outcome: 'skipped', reason: 'NO_INITIATOR_ACCOUNT' };
-    }
+    // F-310 / F-365：无账号一律落持久未发起记录（DEC-663）；替代单恢复账号的补发意图已登记时，意图保留，
+    // 账号恢复后由补发在原记录上续发（reviveNotLaunchedHandover），不再只跳过留一条审计
+    await queueExitHandoverRetry(tx, ctx, event);
     return recordNotLaunched(tx, auditContext, event, null, 'NO_INITIATOR_ACCOUNT');
   }
   try {
