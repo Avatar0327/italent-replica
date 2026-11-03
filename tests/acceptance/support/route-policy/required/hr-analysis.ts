@@ -17,9 +17,11 @@ const RECORD = 'TenantBase.EmploymentRecord';
 const CONTRACT = 'TenantBase.EmploymentContract';
 
 const impl = (anchor: string): Evidence => ({ role: 'impl', unit: `${ACCESS}#rosterAccess`, anchor });
+/** F-465a 报表路由（report-routes.ts）与花名册路由同形：入口直接调 rosterAccess，导出另调 requireExportButton。 */
+const REPORTS = `${M}/hr-analysis/report-routes.ts`;
 const call = (route: string, anchor: string): Evidence => ({
   role: 'call',
-  unit: `${M}/hr-analysis/roster-routes.ts#route:${route}`,
+  unit: `${route.startsWith(REPORT_PREFIX) ? REPORTS : `${M}/hr-analysis/roster-routes.ts`}#route:${route}`,
   anchor,
 });
 const ROSTER_CONST: Evidence = {
@@ -38,15 +40,23 @@ const ACCESS_IMPL: Evidence = {
   anchor: 'await authorize(deps.authorize, ctx, operation, payload, button)',
 };
 
+const REPORT_PREFIX = 'GET /api/tenant/hr-analysis/reports/';
 const GET = 'GET /api/tenant/hr-analysis/roster';
 const EXPORT = 'GET /api/tenant/hr-analysis/roster/export';
+const REPORT = `${REPORT_PREFIX}:code`;
+const REPORT_EXPORT = `${REPORT_PREFIX}:code/export`;
+
+const rosterCall = (route: string) =>
+  route.startsWith(REPORT_PREFIX)
+    ? 'const rights = await rosterAccess(c, deps, DEDICATED_COLUMNS[report.code])'
+    : 'const rights = await rosterAccess(c, deps)';
 
 /** 与 personnel.ts 的 op() 同一证据形状：入口调用 rosterAccess → access → authorize。 */
 const person = (route: string): Obligation => ({
   perm: `obj:${PERSON}:view`,
   facts: [`objectOp:${PERSON}:view`],
   at: [
-    call(route, `const rights = await rosterAccess(c, deps)`),
+    call(route, rosterCall(route)),
     impl("const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list')"),
     ACCESS_IMPL,
     {
@@ -66,7 +76,7 @@ const rosterView = (route: string): Obligation => ({
   perm: `obj:${ROSTER}:view`,
   facts: ['object:object.* 动作', `objectOp:${ROSTER}:view`],
   at: [
-    call(route, `const rights = await rosterAccess(c, deps)`),
+    call(route, rosterCall(route)),
     impl("await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: ROSTER_OBJECT })"),
     ROSTER_CONST,
   ],
@@ -97,7 +107,7 @@ const columns = (route: string, branch: keyof typeof BRANCHES): Obligation => {
     perm: `obj:${object}:view`,
     purpose: `disclosure:${branch}`,
     at: [
-      call(route, 'const rights = await rosterAccess(c, deps)'),
+      call(route, rosterCall(route)),
       impl(`${key}: await deps.authorize({ ...ctx, action: 'object.view', resource: ${constant} })`),
       { role: 'const', unit: `${ACCESS}#${constant}`, anchor: `MODULE_OBJECTS.${domain}.code` },
       SCOPE,
@@ -126,4 +136,8 @@ function entry(route: string, exporting: boolean): Obligation[] {
 export const HR_ANALYSIS: RequiredTable = {
   'GET /api/tenant/hr-analysis/roster': entry(GET, false),
   'GET /api/tenant/hr-analysis/roster/export': entry(EXPORT, true),
+  // F-465a：目录只返回元数据与按各对象查看权算出的可用性，无准入节点
+  'GET /api/tenant/hr-analysis/reports': [],
+  [REPORT]: entry(REPORT, false),
+  [REPORT_EXPORT]: entry(REPORT_EXPORT, true),
 };

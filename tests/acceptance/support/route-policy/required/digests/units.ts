@@ -673,15 +673,19 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/evaluation/store.ts': {
     requireOwnerOrg: 'e9b77971c7e3',
   },
+  'apps/api/src/modules/hr-analysis/report-routes.ts': {
+    'route:GET /api/tenant/hr-analysis/reports/:code': 'b165b4dfbd2d',
+    'route:GET /api/tenant/hr-analysis/reports/:code/export': '71dc427276d8',
+  },
   'apps/api/src/modules/hr-analysis/roster-access.ts': {
     CONTRACT_OBJECT: '76ce5952c0a8',
     RECORD_OBJECT: '681652578035',
     ROSTER_OBJECT: '8de8f6aea0b4',
     requireExportButton: 'd538719feb46',
-    rosterAccess: '1b9e1d248af1',
+    rosterAccess: '08e8fd92d1ce',
   },
   'apps/api/src/modules/hr-analysis/roster-query.ts': {
-    population: '6aab8654bd9b',
+    population: '404d96dc7d4e',
   },
   'apps/api/src/modules/hr-analysis/roster-routes.ts': {
     'route:GET /api/tenant/hr-analysis/roster': '7627ba7c5dbd',
@@ -2310,12 +2314,15 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code': '6e4a3044efb0',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code/export':
+    '49a51e6aa8bb',
   'apps/api/src/modules/hr-analysis/roster-access.ts#CONTRACT_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#RECORD_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': '30576ab5fbab',
-  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': 'b5e730b8501f',
-  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '931b893deaf9',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': '79a6993f4391',
+  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '2de0c1b69b04',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '9f87c8ad7cca',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',

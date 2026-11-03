@@ -32,13 +32,20 @@ const list = (values: readonly (string | number)[]) =>
     sql`, `,
   );
 
+/** 人员范围的基础口径：哪些人员状态、哪些雇佣关系。花名册缺省 = 在职内部员工 + 实习生；人事报表（F-465a）按报表定义传入。 */
+export interface RosterBase {
+  readonly statuses: readonly number[];
+  readonly employTypes: readonly string[];
+}
+const ROSTER_BASE: RosterBase = { statuses: ROSTER_EMPLOYEE_STATUSES, employTypes: ROSTER_EMPLOY_TYPES };
+
 /** 名册人员范围（与试用 / 离职 / 退休视图同一口径）：asOf 当天主职任职在职（试用 / 正式），雇佣关系为内部员工或实习生。 */
-function population(ctx: AccessContext, filter: RosterFilter): SQL {
+function population(ctx: AccessContext, filter: RosterFilter, base: RosterBase): SQL {
   const parts: SQL[] = [
     sql`e.tenant_id=${ctx.tenantId}`,
     personScope(ctx),
-    sql`r.current_employee_status IN (${list(ROSTER_EMPLOYEE_STATUSES)})`,
-    sql`r.current_fields->>'employ_type' IN (${list(ROSTER_EMPLOY_TYPES)})`,
+    sql`r.current_employee_status IN (${list(base.statuses)})`,
+    sql`r.current_fields->>'employ_type' IN (${list(base.employTypes)})`,
   ];
   if (filter.name) parts.push(sql`COALESCE(v.name,e.name) ILIKE ${like(filter.name)}`);
   if (filter.email) parts.push(sql`v.email ILIKE ${like(filter.email)}`);
@@ -79,10 +86,16 @@ function rosterJoins(ctx: AccessContext, asOf: string): SQL {
       ORDER BY k.effective_date DESC, k.version_no DESC LIMIT 1) ct ON true`;
 }
 
-export async function countRoster(tx: Tx, ctx: AccessContext, asOf: string, filter: RosterFilter) {
+export async function countRoster(
+  tx: Tx,
+  ctx: AccessContext,
+  asOf: string,
+  filter: RosterFilter,
+  base: RosterBase = ROSTER_BASE,
+) {
   const [row] = rows<{ total: string }>(
     await tx.execute(sql`SELECT count(*) AS total FROM employment_employees e ${rosterJoins(ctx, asOf)}
-      WHERE ${population(ctx, filter)}`),
+      WHERE ${population(ctx, filter, base)}`),
   );
   return Number(row?.total ?? 0);
 }
@@ -94,6 +107,7 @@ export async function listRoster(
   asOf: string,
   filter: RosterFilter,
   page: { readonly limit: number; readonly offset: number },
+  base: RosterBase = ROSTER_BASE,
 ): Promise<Row[]> {
   const data = rows(
     await tx.execute(sql`SELECT e.id, e.code, COALESCE(v.name,e.name) AS employee_name, to_jsonb(v) AS profile,
@@ -111,7 +125,7 @@ export async function listRoster(
         ct.effective_date::text AS contract_effective_date, ct.end_date::text AS contract_end_date,
         ct.term_months AS contract_term_months, ct.actual_termination_date::text AS contract_actual_termination_date
       FROM employment_employees e ${rosterJoins(ctx, asOf)}
-      WHERE ${population(ctx, filter)}
+      WHERE ${population(ctx, filter, base)}
       ORDER BY e.code COLLATE "C", e.id
       LIMIT ${page.limit} OFFSET ${page.offset}`),
   );

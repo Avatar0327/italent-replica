@@ -8,7 +8,17 @@
  */
 import { MODULE_OBJECTS, PERSONNEL_OBJECT } from '@italent/domain';
 import { defineTable } from '../../route-policy/index.js';
-import { all, button, listScope, noButton, noScope, object, projector } from '../../route-policy/presets.js';
+import {
+  all,
+  button,
+  listScope,
+  member,
+  noButton,
+  noFields,
+  noScope,
+  object,
+  projector,
+} from '../../route-policy/presets.js';
 import { ROSTER_OBJECT } from './roster-access.js';
 
 const BASE = '/api/tenant/hr-analysis/roster';
@@ -48,7 +58,16 @@ const rosterView = (exporting: boolean) =>
     fields: projection,
   });
 
+const REPORTS = '/api/tenant/hr-analysis/reports';
+const reportsProjection = projector('hrAnalysis.reports', 'hrAnalysis.reports');
+
 export const HR_ANALYSIS_POLICIES = defineTable('hr-analysis', {
+  // F-465a 报表目录：只返回报表元数据与按各自对象查看权算出的可用性，不含业务数据
+  [`GET ${REPORTS}`]: member('报表目录只含元数据，可用性按调用方对象查看权标注', noFields('目录元数据，不是业务字段')),
+  // 8 张报表同一条权限链：花名册同款（员工档案范围 + 人事分析对象 + 导出按钮），1.06 / 1.07 / 1.1.01 / 1.1.02 另须
+  // 合同 / 任职记录对象查看权（运行时按编码核对，缺失 403），故与花名册一样挂为披露分支
+  [`GET ${REPORTS}/:code`]: all([person, rosterView(false)], reportsProjection, { optional }),
+  [`GET ${REPORTS}/:code/export`]: all([person, rosterView(true)], reportsProjection, { optional }),
   [`GET ${BASE}`]: all([person, rosterView(false)], projection, { optional }),
   [`GET ${BASE}/export`]: all([person, rosterView(true)], projection, { optional }),
 });

@@ -88,7 +88,8 @@ describe('AC-HA-F465a 人事报表目录与名册分析报表', () => {
 
     it('无导出按钮权：列表可读，导出 403；未知报表编码 404', async () => {
       const noExport = w.restricted(
-        (request) => !(request.action === 'object.button' && request.resource === ROSTER_OBJECT),
+        (request) =>
+          !(request.action === 'object.button' && String(request.resource).startsWith(`${ROSTER_OBJECT}#export`)),
       );
       expect((await noExport(w.reportPath('1.01'))).status).toBe(200);
       expect((await w.exported('1.01', [], noExport)).status).toBe(403);
