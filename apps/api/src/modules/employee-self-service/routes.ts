@@ -162,7 +162,8 @@ function registerApplicationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
     const page = pageQuery(c);
     const rows = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
       await self.check(tx);
-      return ownApplications(tx, self.ctx, self.employee.id, page);
+      const buttons = (await grantedSelfServiceButtons(tx, self.ctx)).map((button) => button.buttonCode);
+      return ownApplications(tx, self.ctx, self.employee.id, page, undefined, buttons);
     });
     const visible = await withTenant(deps.db, self.ctx.tenantId, (tx) => transferFieldAccess(tx, deps, self.ctx));
     const items = await Promise.all(

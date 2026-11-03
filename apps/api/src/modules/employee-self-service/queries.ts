@@ -1,5 +1,5 @@
 import { sql, type Tx } from '@italent/db';
-import { applicationStateLabel, PART_TIME_KIND, tenantLocalDate } from '@italent/domain';
+import { applicationStateLabel, PART_TIME_KIND, SELF_APPLICATION_BUTTONS, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findCurrentRecord, loadEmploymentBusiness, rowsOf } from '../employment/read-model.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
@@ -85,6 +85,8 @@ export async function ownApplications(
   employeeId: string,
   page: PageQuery,
   id?: string,
+  // 列表传当前按钮集，在分页前排除撤权类型；详情不传，保持原有逐单 403 复核。
+  buttons?: readonly string[],
 ) {
   return rowsOf<OwnApplication>(
     await tx.execute(sql`
@@ -116,6 +118,12 @@ export async function ownApplications(
     WHERE i.tenant_id=${ctx.tenantId} AND i.initiator_user_id=${ctx.userId}::uuid
       AND (b.employee_id=${employeeId}::uuid OR (q.employee_id=${employeeId}::uuid
         AND q.initiator='self' AND q.request_type='add'))
+      ${
+        buttons
+          ? sql`AND (${buttons.includes(SELF_APPLICATION_BUTTONS.exit)} OR er.initiator IS DISTINCT FROM 'self')
+        AND (${buttons.includes(SELF_APPLICATION_BUTTONS.partTime)} OR q.id IS NULL)`
+          : sql``
+      }
       ${id ? sql`AND i.id=${id}::uuid` : sql``}
     ORDER BY i.created_at DESC,i.id DESC LIMIT ${page.limit} OFFSET ${page.offset}
   `),

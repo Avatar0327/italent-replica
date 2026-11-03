@@ -38,7 +38,7 @@ import { rowsOf } from '../employment/read-model.js';
 import { loadObjectPermissions } from '../permission/subject.js';
 import { SELF_APPLICATION_POLICIES } from './application-policy.js';
 import { defineTable } from '../../route-policy/index.js';
-import { BAD_REQUEST, button, fixed, none, projector, self, write } from '../../route-policy/presets.js';
+import { BAD_REQUEST, button, fixed, none, noFields, projector, self, write } from '../../route-policy/presets.js';
 
 // DEC-205：这是自动员工身份的出厂权限，不是表单白名单。租户可用现有身份配置接口覆盖，另有身份按并集合并。
 // 出厂默认值的唯一来源在 domain（platform/employee-self-service.ts，C1-2b）：开通时装的标准身份行与这里没有行时的兜底值同出一处。
@@ -156,6 +156,9 @@ const DEVELOPMENT_CHANNEL_PAGE = 'selfService.developmentChannelPage';
 /** 页面载体 Qualification.Pages 上的 app_page 按钮（C1-2b 契约 §3），由 employeePageGranted 经请求的授权器判定。 */
 const DEVELOPMENT_CHANNEL_BUTTON = button('EmployeeDevelopmentChannel', 'app_page');
 
+const applicationRows = (code: string) =>
+  self({ button: button(code, 'detail'), fields: noFields('仅决定该类申请列表行可见性') });
+
 export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   ...SELF_APPLICATION_POLICIES,
   // ---- registerProfileRoutes：本人档案与任职记录 -----------------------------------------------------------------
@@ -219,7 +222,13 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   // ownApplications：initiator_user_id = 本人用户 ∧ employee_id = 绑定本人（本人前提自带，不另登记 scope）；
   // 固定协议键 id / businessId / revision / title / currentHandlers / createdAt / status / category / initiator，
   // effectiveDate / fields.departmentId 与 reason（reasonCode 可见才查目录名）按 transferFieldAccess 可见集裁剪
-  'GET /applications': self({ fields: projector('selfService.application', 'selfService.application') }),
+  'GET /applications': self({
+    fields: projector('selfService.application', 'selfService.application'),
+    optional: {
+      exitApplications: applicationRows('Exit.Self'),
+      partTimeApplications: applicationRows('PartTime.Self'),
+    },
+  }),
   // uuidParam 非 UUID → 400；ownApplication 非本人发起 / 非绑定本人 / 不存在 → 404 NOT_FOUND「申请不存在」；
   // 响应 { status, record }，record 经 discloseOwnRecord 裁剪
   'GET /applications/:id': self({
