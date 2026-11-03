@@ -156,6 +156,18 @@ export async function persistRun(tx: Tx, run: Run, action: string, created = fal
     before: created ? null : instanceAudit(run.before),
     after: instanceAudit(saved),
   });
+  // F-417③：最终批准派生的日期变化，也须与本次实例 revision 一起留字段审计和刷新事件。
+  if (run.approvedDashboardDate !== undefined && saved.dashboardDate !== run.before.dashboardDate) {
+    const eventType = 'approval.instance.dashboard_date_refreshed';
+    await auditApproval(tx, run.ctx, {
+      action: eventType,
+      objectType: 'approval-instance',
+      objectId: saved.id,
+      before: { businessDate: run.before.dashboardDate },
+      after: { businessDate: saved.dashboardDate },
+    });
+    run.events.push(eventType);
+  }
   for (const eventType of new Set(run.events)) {
     await emitOutbox(tx, run.ctx, {
       objectType: 'approval-instance',
