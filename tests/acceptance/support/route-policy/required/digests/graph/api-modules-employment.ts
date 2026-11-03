@@ -3182,6 +3182,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#loadOccupancy',
     'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
     '#exitDateChange',
