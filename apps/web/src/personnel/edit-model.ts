@@ -122,6 +122,25 @@ const subsetOrder: Partial<Record<SubsetKind, string[]>> = {
     'isHighestLevel',
   ],
 };
+// R1bd §3.4：红星仅作为呈现元数据；未取证的编辑入口不推导新标记或保存规则。
+const subsetRequiredMarks: Partial<Record<SubsetKind, string[]>> = {
+  education: ['school', 'graduationType', 'startDate', 'endDate'],
+  jobhistory: ['company', 'referenceName'],
+  'project-experience': ['name'],
+  training: ['name'],
+  family: ['name'],
+  certificate: ['name'],
+  'language-ability': ['language'],
+  skill: ['name'],
+  awards: ['name'],
+  'professional-technical-post': ['qualificationName', 'level', 'assessmentDate', 'qualificationRoute'],
+};
+const verifiedSubsetEditMarks: SubsetKind[] = ['education', 'jobhistory', 'training', 'language-ability'];
+export function subsetRequiredMark(kind: SubsetKind, name: string, editing: boolean) {
+  if (editing && !verifiedSubsetEditMarks.includes(kind)) return undefined;
+  return subsetRequiredMarks[kind]?.includes(name);
+}
+
 export function subsetFields(kind: SubsetKind): readonly PersonnelField[] {
   const order = subsetOrder[kind];
   const fields: readonly PersonnelField[] = SUBSETS[kind].fields;

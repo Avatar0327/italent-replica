@@ -30,6 +30,7 @@ import {
   subsetEditable,
   subsetFields,
   subsetReceipt,
+  subsetRequiredMark,
 } from './edit-model.js';
 import { fieldValue, type Row } from './model.js';
 import { ReadPanel } from './ReadPanel.js';
@@ -299,14 +300,15 @@ function SubsetForm({
   const shown = subsetFields(kind).filter(
     (item) => !item.system && item.kind !== 'uuid' && m.labels[item.code] && (row || editable.includes(item.code)),
   );
-  const fields = shown.map((item) =>
-    field(
+  const fields = shown.map((item) => ({
+    ...field(
       item.code,
       item.kind,
       { visible: fieldAccess(permission, item.code).visible, editable: editable.includes(item.code) },
       writer.full,
     ),
-  );
+    requiredMark: subsetRequiredMark(kind, item.code, Boolean(row)),
+  }));
   const title = `${row ? m.editing.edit : m.editing.create}${subsetLabels[kind]}`;
   return (
     <FormOverlay
