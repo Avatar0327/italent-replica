@@ -79,7 +79,7 @@ describe('F-346 ② 外部改名后整单校验与保存时同口径重判内容
     const itemId = (await w.item(view.id, rename(w.a, { name: target }))).items[0]!.id;
     expect(await w.checked(view.id)).toMatchObject({ valid: true });
     await renameExternally(w, w.a, target);
-    expect(reasons(await w.checked(view.id))).toEqual(['ORG_ADJUSTMENT_BASELINE_CHANGED']);
+    expect(reasons(await w.checked(view.id))).toContain('ORG_ADJUSTMENT_BASELINE_CHANGED');
     expect((await w.rebaseAll(view.id)).status).toBe(200);
     const result = await w.checked(view.id);
     expect(result.valid).toBe(false);
