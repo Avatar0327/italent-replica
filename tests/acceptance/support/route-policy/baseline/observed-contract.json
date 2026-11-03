@@ -5085,6 +5085,7 @@
       "module": "employment",
       "primitives": {
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -5116,6 +5117,7 @@
       "module": "employment",
       "primitives": {
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
