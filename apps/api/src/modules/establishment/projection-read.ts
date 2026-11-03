@@ -214,11 +214,7 @@ async function projectionSources(
       for (const record of await projectOrgAdjustmentRecords(
         tx,
         ctx,
-        {
-          ...payload,
-          before: predecessor,
-          after: { fields, customFields: resolved.customFields },
-        },
+        { ...payload, before: predecessor, after: { fields, customFields: resolved.customFields } },
         adjustments,
       )) {
         const from = record.effectiveDate > day ? record.effectiveDate : day;
@@ -254,7 +250,8 @@ async function applyExitSources(
     JOIN LATERAL (SELECT s.state FROM employment_state_events s
       WHERE s.tenant_id=x.tenant_id AND s.business_id=x.business_id ORDER BY event_no DESC LIMIT 1) s ON true
     WHERE x.tenant_id=${ctx.tenantId} AND p.effective_date>${day}::date AND p.effective_date<=${end}::date
-      AND s.state IN ('approved','effective') AND ${projectionEmployeeScope(visibleEmployeeIds, sql`x.employee_id`)} LIMIT 10001`),
+      AND s.state IN ('approved','effective')
+      AND ${projectionEmployeeScope(visibleEmployeeIds, sql`x.employee_id`)} LIMIT 10001`),
   );
   if (exitEmployees.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制离职投影超过处理上限');
   const exits = (
