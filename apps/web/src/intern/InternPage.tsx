@@ -82,6 +82,23 @@ function useInternSort(view: InternView, firstPage: () => void) {
 }
 type InternSorting = ReturnType<typeof useInternSort>;
 
+/** 列表刷新与已打开档案重读走同一入口；不能只在写确认时刷新档案，也不能换 key 丢掉编辑输入。 */
+function useDetailReload<R>(list: { refresh(): void; reload(): R }) {
+  const [count, reloadDetail] = useState(0);
+  const confirmedReload = useConfirmedReload();
+  return {
+    detailReload: count + confirmedReload,
+    refreshListAndDetail: () => {
+      list.refresh();
+      reloadDetail((n) => n + 1);
+    },
+    reload: () => {
+      reloadDetail((n) => n + 1);
+      return list.reload();
+    },
+  };
+}
+
 function useInternList() {
   const [params, setParams] = useSearchParams();
   const person = usePermissions(personObject);
@@ -95,13 +112,7 @@ function useInternList() {
   const allowed = useFilterPermission();
   const sorting = useInternSort(view, () => changePage(1));
   const result = useRead<ListResult>(listPath(view, page, allowedFilters(filters, allowed), sorting.sort));
-  const [detailReload, reloadDetail] = useState(0);
-  const confirmedReload = useConfirmedReload();
-  // 列表刷新与已打开档案重读走同一入口；不能只在写确认时刷新档案，也不能换 key 丢掉编辑输入。
-  const refreshListAndDetail = () => {
-    result.refresh();
-    reloadDetail((n) => n + 1);
-  };
+  const { detailReload, refreshListAndDetail, reload: refresh } = useDetailReload(result);
   const refreshList = useRef(refreshListAndDetail);
   refreshList.current = refreshListAndDetail;
   const switchView = (next: InternView) => {
@@ -120,10 +131,6 @@ function useInternList() {
     setPage(page);
     locate(undefined);
   }, []);
-  const refresh = () => {
-    reloadDetail((n) => n + 1);
-    return result.reload();
-  };
   // 列表重读不随导航票据：本会话确认代次一变就重读当前视图，HR 后退到别的视图、离开模块后在落库前回来
   // （新挂载的页面实例）都拿到新数据（F-436）
   useConfirmedRefresh(result.refresh);
@@ -160,7 +167,7 @@ function useInternList() {
     open,
     allowed,
     result: { ...result, refresh: refreshListAndDetail },
-    detailReload: detailReload + confirmedReload,
+    detailReload,
     items,
     switchView,
     located,
