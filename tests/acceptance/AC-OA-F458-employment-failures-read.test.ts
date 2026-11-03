@@ -10,9 +10,11 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
+import { APV_TODAY } from './AC-APV-support.js';
 import { only } from './AC-OA-head-support.js';
 import { itemsWorld, rename } from './AC-OA-items-support.js';
 import { reader } from './AC-OA-read-support.js';
+import { resultRows } from './AC-ORG-people-support.js';
 
 const testDb = useTestDb();
 
@@ -43,6 +45,59 @@ async function world(label: string) {
 }
 
 describe('F-458 详情逐人列出人员联动失败（按查看人员工范围裁剪）', () => {
+  it.each([
+    { scopeOnTarget: true, scenario: '只有组织 A 范围：当前在 B 的员工在 A 明细上的失败行可见' },
+    { scopeOnTarget: false, scenario: '只有无关组织 C 范围：失败行及姓名 / 编码 / 原因 / 说明均不泄露' },
+  ])('DEC-177 $scenario（无人员维度授权）', async ({ scopeOnTarget }) => {
+    const w = await itemsWorld(testDb().db, `oaf458-department-${scopeOnTarget}`);
+    const view = await w.created();
+    const itemId = (await w.item(view.id, rename(w.a, { addEmployment: true }))).items.at(-1)!.id;
+    const employee = await w.person('ZZ_当前在乙的员工', w.b);
+    const employeeCode = await withTenant(w.db, w.tenant.id, async (tx) => {
+      const [row] = resultRows<{ code: string }>(
+        await tx.execute(sql`SELECT code FROM employment_employees WHERE id = ${employee.employeeId}`),
+      );
+      return row!.code;
+    });
+    const failure = {
+      itemId,
+      employeeId: employee.employeeId,
+      employeeCode,
+      employeeName: employee.name,
+      reason: 'EMPLOYMENT_CHANGED',
+      message: '甲部门追加任职失败的合成说明',
+    };
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO org_adjustment_employment_failures
+        (tenant_id, adjustment_id, item_id, employee_id, reason, message)
+        VALUES (${w.tenant.id}, ${view.id}, ${itemId}, ${employee.employeeId}, ${failure.reason}, ${failure.message})`),
+    );
+    const orgIds = [scopeOnTarget ? w.a : await w.org('无关组织丙')];
+    w.access.org = only(w.a);
+    w.access.employment = {
+      ...EMPTY_SCOPE,
+      orgIds,
+      hasDataPermission: true,
+      terms: [
+        {
+          dimension: 'organization',
+          orgIds,
+          personIds: [],
+          personQuery: { kind: 'organization', tenantId: w.tenant.id, asOf: APV_TODAY },
+        },
+      ],
+    };
+
+    const detail = await reader(w).detail(view.id);
+    expect(detail.employmentFailures).toEqual(scopeOnTarget ? [failure] : []);
+    if (!scopeOnTarget) {
+      const text = JSON.stringify(detail);
+      for (const secret of [failure.employeeName, employeeCode, failure.reason, failure.message]) {
+        expect(text).not.toContain(secret);
+      }
+    }
+  });
+
   it('员工范围含部分员工：只列范围内的人；范围外员工的姓名 / 编码 / 原因 / 说明都不出现', async () => {
     const { w, r, view, itemId, inScope } = await world('oaf458-scope');
     w.access.employment = people(inScope.employeeId);
