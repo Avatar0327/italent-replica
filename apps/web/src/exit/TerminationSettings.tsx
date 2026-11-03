@@ -115,23 +115,7 @@ function TerminationForm({ setting, reload }: { setting: TerminationSetting; rel
       <CommandStatus submission={submission} labels={TERMINATION_LABELS} />
       <FormLock locked={locked}>
         <Form form={form} initialValues={initial} disabled={!writable}>
-          {TERMINATION_GROUPS.map(({ group, codes }) => (
-            <section className="exit-settings-group" key={group}>
-              <h2>{t.groups[group]}</h2>
-              <p className="exit-hint">{t.hints[group]}</p>
-              <div className="exit-termination-options">
-                {codes.map((code) => (
-                  <Form.Item key={code} name={code} valuePropName="checked">
-                    <LockedField>
-                      <Checkbox disabled={EXIT_TERMINATION_FIXED.includes(code)}>
-                        {EXIT_TERMINATION_FLOWS[code].name}
-                      </Checkbox>
-                    </LockedField>
-                  </Form.Item>
-                ))}
-              </div>
-            </section>
-          ))}
+          <TerminationFields />
         </Form>
       </FormLock>
       <p className="exit-hint">{t.fixed}</p>
@@ -142,4 +126,22 @@ function TerminationForm({ setting, reload }: { setting: TerminationSetting; rel
       )}
     </section>
   );
+}
+
+function TerminationFields() {
+  return TERMINATION_GROUPS.map(({ group, codes }) => (
+    <section className="exit-settings-group" key={group}>
+      <h2>{t.groups[group]}</h2>
+      <p className="exit-hint">{t.hints[group]}</p>
+      <div className="exit-termination-options">
+        {codes.map((code) => (
+          <Form.Item key={code} name={code} valuePropName="checked">
+            <LockedField>
+              <Checkbox disabled={EXIT_TERMINATION_FIXED.includes(code)}>{EXIT_TERMINATION_FLOWS[code].name}</Checkbox>
+            </LockedField>
+          </Form.Item>
+        ))}
+      </div>
+    </section>
+  ));
 }
