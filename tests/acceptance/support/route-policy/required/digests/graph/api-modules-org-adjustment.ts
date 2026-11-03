@@ -31,6 +31,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'packages/domain/src/permission/decide.ts#buttonResource',
   ],
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeItemFieldWrites': [
+    '#OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
+  ],
   'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction': [
     '#OBJECT',
     '#requireButtons',
@@ -74,12 +79,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/submission.ts#settleFromApproval',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
-  'apps/api/src/modules/org-adjustment/approval-edit.ts#asApprover': [
-    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
-    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
-  ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#assertApprovable': [
-    '#asApprover',
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
@@ -108,7 +109,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/validation.ts#invalid',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
-  'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval': ['#asApprover', '#edit'],
+  'apps/api/src/modules/org-adjustment/approval-edit.ts#editFromApproval': [
+    '#edit',
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer',
+  ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#parseHead': [
     '#ITEM_PREFIX',
     'apps/api/src/modules/org-adjustment/validation.ts#normalizeHead',
@@ -178,17 +182,6 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
-  'apps/api/src/modules/org-adjustment/disclosure.ts#approverNode': [
-    'apps/api/src/modules/approval/definitions.ts#loadVersion',
-    'apps/api/src/modules/approval/store.ts#loadTasks',
-    'apps/api/src/modules/org/read-model.ts#rowsOf',
-  ],
-  'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen': [
-    'apps/api/src/modules/approval/access.ts#memberInstanceScope',
-    'apps/api/src/modules/approval/disclosure.ts#assertCanOpen',
-    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
-    'packages/domain/src/permission/decide.ts#buttonResource',
-  ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': [
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
@@ -197,23 +190,32 @@ export const GRAPH: Graph = {
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#notFound': ['#NOT_FOUND_MESSAGE'],
+  'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail': [
+    'apps/api/src/modules/approval/access.ts#memberInstanceScope',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'packages/domain/src/approval/catalog.ts#APPROVAL_INSTANCE_OBJECT',
+    'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': [
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
     'apps/api/src/modules/approval/store.ts#latestInstanceOf',
     '#OBJECT',
-    '#approverNode',
-    '#canOpen',
     '#hrDisclosure',
     '#notFound',
+    '#openDetail',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
-    'packages/domain/src/approval/policies.ts#disclosedFieldNames',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': [
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#sees', '#trimIssues', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#sees', '#without'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer': [
+    '#trimError',
+    'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
+  ],
   'apps/api/src/modules/org-adjustment/execution-groups.ts#adminParentsAt': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
@@ -392,6 +394,10 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/item-validation.ts#fields': ['#INT32', '#opt', '#orgRef', '#uuid'],
   'apps/api/src/modules/org-adjustment/item-validation.ts#orgRef': ['#uuid'],
   'apps/api/src/modules/org-adjustment/item-validation.ts#patchItemSchema': ['#fields'],
+  'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes': [
+    '#STORED_FIELD_NAME',
+    'apps/api/src/modules/org-adjustment/items-store.ts#CONTENT_KEYS',
+  ],
   'apps/api/src/modules/org-adjustment/items-store.ts#COLUMNS': ['#CONTENT_COLUMNS'],
   'apps/api/src/modules/org-adjustment/items-store.ts#CONTENT_KEYS': ['#CONTENT_COLUMNS'],
   'apps/api/src/modules/org-adjustment/items-store.ts#EMPTY_CONTENT': ['#CONTENT_KEYS'],
@@ -755,9 +761,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/org-adjustment/access.ts#HEAD_BUTTONS',
+    'apps/api/src/modules/org-adjustment/access.ts#authorizeItemFieldWrites',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
     'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
+    'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#BASE',
     '#OBJECT',
@@ -913,8 +921,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/submission.ts#authorizeSubmission': [
     'apps/api/src/modules/org-adjustment/access.ts#HEAD_BUTTONS',
+    'apps/api/src/modules/org-adjustment/access.ts#authorizeItemFieldWrites',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
+    'apps/api/src/modules/org-adjustment/item-validation.ts#storedItemFieldCodes',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#rowOrgIds',
   ],
@@ -930,11 +940,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     '#NOT_FOUND',
   ],
-  'apps/api/src/modules/org-adjustment/submission.ts#resubmitFromApproval': [
+  'apps/api/src/modules/org-adjustment/submission.ts#resubmit': [
     '#assertSubmittable',
     '#lockStored',
     '#setStatus',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
+  ],
+  'apps/api/src/modules/org-adjustment/submission.ts#resubmitFromApproval': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer',
+    '#resubmit',
   ],
   'apps/api/src/modules/org-adjustment/submission.ts#setStatus': [
     'apps/api/src/modules/org-adjustment/service.ts#audit',
