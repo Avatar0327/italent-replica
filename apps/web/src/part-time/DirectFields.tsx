@@ -2,6 +2,8 @@ import { Alert, Button, Descriptions, Form, Input, Select, type FormInstance } f
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { RefSelect, NameOf } from '../contracts/references.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
+import { EmploymentTypeSelect } from '../employment-types/EmploymentTypeSelect.js';
+import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { useApiClient } from '../foundation/Session.js';
 import { LockedField } from '../foundation/forms/FormLock.js';
 import type { Values } from '../foundation/forms/values.js';
@@ -32,19 +34,24 @@ export function DirectField({
   if (!field.editable)
     return (
       <Form.Item label={label}>
-        <span>
-          {name === 'serviceType' ? (m.serviceTypes[String(baseline[name])] ?? m.missing) : value(baseline[name])}
-        </span>
+        <span>{readonlyText(name, baseline)}</span>
       </Form.Item>
     );
-  const control = directControl(name, label);
+  const control = directControl(name, label, baseline);
   return (
     <Form.Item name={name} label={label} rules={required ? [{ required: true, message: d.required(label) }] : []}>
       <LockedField>{control}</LockedField>
     </Form.Item>
   );
 }
-function directControl(name: string, label: string) {
+function readonlyText(name: string, baseline: Values) {
+  if (name === 'serviceType') return m.serviceTypes[String(baseline[name])] ?? m.missing;
+  if (name === EMPLOYMENT_TYPE_FIELD) return employmentTypeLabel(baseline);
+  return value(baseline[name]);
+}
+function directControl(name: string, label: string, baseline: Values) {
+  if (name === EMPLOYMENT_TYPE_FIELD)
+    return <EmploymentTypeSelect ariaLabel={label} currentName={baseline.employmentTypeName} />;
   const path = name === 'employeeId' ? '/api/tenant/personnel/employees' : refPaths[name];
   if (path) return <RefSelect path={path} ariaLabel={label} />;
   if (name === 'serviceType')

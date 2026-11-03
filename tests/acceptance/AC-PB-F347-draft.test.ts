@@ -139,7 +139,7 @@ describe('AC-PB-F347 a 转正申请服务端暂存（DEC-709）', () => {
     expect(unknown.status).toBe(400);
     const stranger = await w.session.employee('未入职合成员工');
     expect((await w.session.request('GET', draftPath(stranger.id))).status).toBe(404);
-    // 读写同一 404 文案（rf347_2 P3）：未入职与员工不存在都按“员工不存在”，同转正申请入口
+    // 读写同一 404 文案（rf347_2 P3）：未入职与员工不存在都按“员工不存在”（暂存自己的口径，申请入口按生效日另判，F-445）
     const notFound = async (id: string) => {
       const replies = [
         await w.session.request('GET', draftPath(id)),
@@ -355,7 +355,7 @@ describe('AC-PB-F347 第 2 轮：结果停用、并发、申请草稿、离职�
     expect(await readDraft(w, employee.id)).toMatchObject({ temporary: null, applicationId: application.id });
   });
 
-  it('离职已生效：暂存读写都 404（与转正申请入口同口径），已有暂存不变', async () => {
+  it('离职已生效：暂存读写都 404（按今天判在职，F-445），已有暂存不变', async () => {
     const w = await pbWorld(testDb().db, 'f347-r2-left');
     const { employee } = await hire(w, { months: 3 });
     await saveDraft(w, employee.id, { effectiveDate: '2026-12-01' }, 0);

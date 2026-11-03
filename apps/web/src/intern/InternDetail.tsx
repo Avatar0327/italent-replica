@@ -4,7 +4,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { StaffDetail } from '../personnel/StaffDetail.js';
-import { useBusinessRead, useInternCommand } from './commands.js';
+import { useBusinessRead, useConfirmedReload, useInternCommand } from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
@@ -37,6 +37,8 @@ export function InternDetail({
   const permissions = usePermissions(object);
   const entries = entriesFor(view, row, permissions.snapshot.objects[object]);
   const [open, setOpen] = useState<Entry>();
+  // 提前重开的详情随本会话确认原位重读，不重新挂载：详情里正在编辑的抽屉、页签表单都保留（F-436 第 3 轮）
+  const reload = useConfirmedReload();
   // 写后回读已确认；申请列表定位由页面独立处理，这里只关闭表单与详情
   const done = () => {
     setOpen(undefined);
@@ -64,7 +66,7 @@ export function InternDetail({
   );
   return (
     <>
-      <StaffDetail employeeId={row.employeeId!} onClose={onClose} actions={actions} />
+      <StaffDetail employeeId={row.employeeId!} onClose={onClose} actions={actions} reload={reload} />
       {open === 'regularize' && <RegularizeForm {...form} />}
       {open === 'apply' && <RegularizeForm {...form} application />}
       {open === 'terminate' && <TerminateForm {...form} />}

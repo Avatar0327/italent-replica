@@ -5,6 +5,7 @@ import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { changedFields, refillDraft, sameValue, type Values } from '../foundation/forms/values.js';
+import { EMPLOYMENT_TYPE_FIELD, employmentTypeLabel } from '../employment-types/labels.js';
 import { requestFields } from './request-model.js';
 import { useRequestCommand, type RequestSelection } from './request-commands.js';
 import { Cell } from './references.js';
@@ -201,10 +202,12 @@ function RequestFields({ state }: { state: FormState }) {
             >
               {editable.includes(field) ? (
                 <LockedField>
-                  <RequestControl field={field} label={label(field)} />
+                  <RequestControl field={field} label={label(field)} currentName={full.employmentTypeName} />
                 </LockedField>
               ) : (
-                <span>{String(full[field] ?? m.missing)}</span>
+                <span>
+                  {field === EMPLOYMENT_TYPE_FIELD ? employmentTypeLabel(full) : String(full[field] ?? m.missing)}
+                </span>
               )}
             </Form.Item>
           ))}
