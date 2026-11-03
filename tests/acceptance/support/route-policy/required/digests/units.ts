@@ -899,7 +899,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
-    'route:GET /api/tenant/org-adjustment/adjustments': 'e0c3c10c92b7',
+    'route:GET /api/tenant/org-adjustment/adjustments': '1ffdb77dda79',
     'route:GET /api/tenant/org-adjustment/adjustments/:id': 'e605fd0db96f',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
@@ -907,17 +907,17 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
-    authorizeStored: '5184ecbbcbed',
-    itemCommand: '6064969f5d1c',
-    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '81e54260e4ea',
-    'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
-    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8a50ea532585',
+    authorizeStored: '2b7d029c4b38',
+    itemCommand: '6b96030ae491',
+    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '394212c30ef7',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id': '7b91e0bea590',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8e271fbfc0fc',
     'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '798a85ce87b9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': 'fdaad898c549',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '8f7156ce0bb3',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': 'bf637eb964a1',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '722c6990ca62',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '79d4de41814f',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '7b71d764c42a',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
@@ -2476,7 +2476,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '64fc68887303',
   'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': 'ab799c90b5dd',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': '55dfa5d7fbca',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':
     '2fb93d34b5cf',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section':
@@ -2486,25 +2486,25 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export':
     '06879342edd3',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
-  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',
+  'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': '9acd0df6d5a6',
+  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '86be8ba4ca34',
   'apps/api/src/modules/org-adjustment/routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
-    '788c2fe7f803',
+    'a7b889913ad5',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id':
-    '489c94042dde',
+    '0cfe25f96e2f',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
-    '565dd86e153d',
+    'c5ba2bd7dd56',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
-    'fd4b6e85c4cd',
+    'd75a6410c631',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase':
-    '7d7911ec96cb',
+    'c7458a67f94e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/org-items':
-    'd0c2f163388b',
+    'a5fb816e0ba7',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
-    'bff89d82db76',
+    'efd7a72dd542',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
-    '151ca7adf4ff',
+    'fb7d43078a7b',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':

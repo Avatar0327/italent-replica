@@ -137,7 +137,7 @@ async function requireButtons(bound: Deps, ctx: TenantContext, input: ActionInpu
 
 async function requireScopes(tx: Tx, bound: Deps, ctx: TenantContext, input: ActionInput) {
   const main = await resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
-  if (!scopeAllows(main, { orgId: input.subjectOrgId })) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+  if (!scopeAllows(main, { orgId: input.subjectOrgId })) throw new AppError('NOT_FOUND', '组织调整申请不存在');
   const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
   const scoped = { ...ctx, expectedRevision: 0, commandId: '', now: bound.clock() };
   for (const orgId of input.rangeOrgIds) await authorizeOrgResult(tx, scoped, orgScope, orgId, false);

@@ -152,6 +152,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
+  'apps/api/src/modules/org/import-service.ts#rowError': [
+    'apps/api/src/modules/org-adjustment/pause.ts#OrgAdjustmentPausedError',
+  ],
   'apps/api/src/modules/org/import-service.ts#saveReceipt': ['apps/api/src/audit/record.ts#recordAudit'],
   'apps/api/src/modules/org/people.ts#assertOrgPeopleEligible': [
     'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople',

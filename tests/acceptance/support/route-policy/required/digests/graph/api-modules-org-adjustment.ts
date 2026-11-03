@@ -9,6 +9,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/access.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
+  'apps/api/src/modules/org-adjustment/access.ts#asAdjustmentMissing': ['#ADJUSTMENT_NOT_FOUND'],
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': [
     '#OBJECT',
     '#requireButtons',
@@ -30,6 +31,12 @@ export const GRAPH: Graph = {
     '#requireScopes',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'packages/domain/src/permission/decide.ts#buttonResource',
+  ],
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeOrgFields': [
+    '#ORG_WRITE_FIELD',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction': [
     '#OBJECT',
@@ -96,6 +103,7 @@ export const GRAPH: Graph = {
     '#parseHead',
     '#parseItems',
     '#toRefs',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/items-store.ts#bumpRevision',
     'apps/api/src/modules/org-adjustment/org-items.ts#persistRevisions',
@@ -142,6 +150,8 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/baseline.ts#rebaseItem': [
     '#rebase',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#ROW_NOT_FOUND',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRowReachable',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org-adjustment/service.ts#editable',
   ],
@@ -212,8 +222,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': [
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
-  'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#sees', '#trimIssues', '#without'],
-  'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#sees', '#without'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenError': ['#foldHiddenRowIssues'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenRowIssues': ['#HIDDEN_ROW_INVALID'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#hideUsedCode': [
+    '#ORG_CODE_DUPLICATE',
+    '#codeUsedMessage',
+    '#sees',
+    '#without',
+  ],
+  'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#hideUsedCode', '#sees', '#trimIssues', '#without'],
+  'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#hideUsedCode', '#sees', '#without'],
   'apps/api/src/modules/org-adjustment/execution-groups.ts#adminParentsAt': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
@@ -289,6 +307,18 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/export-svg.ts#text': ['#escapeXml'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#truncate': ['#textUnits', '#xmlChars'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#xmlChars': ['#XML_INVALID'],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRefsReachable': ['#ROW_NOT_FOUND'],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRowReachable': ['#ROW_NOT_FOUND'],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds': [
+    '#hiddenAmong',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
+  ],
   'apps/api/src/modules/org-adjustment/item-check.ts#baselineIssues': ['#BASELINE_CHANGED', '#issue'],
   'apps/api/src/modules/org-adjustment/item-check.ts#checkOrgItems': [
     '#baselineIssues',
@@ -306,7 +336,10 @@ export const GRAPH: Graph = {
     '#issue',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
   ],
-  'apps/api/src/modules/org-adjustment/item-check.ts#fromError': ['#issue'],
+  'apps/api/src/modules/org-adjustment/item-check.ts#fromError': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#ORG_CODE_DUPLICATE',
+    '#issue',
+  ],
   'apps/api/src/modules/org-adjustment/item-check.ts#futureVersionIssues': [
     '#idsSql',
     '#issue',
@@ -332,6 +365,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/range.ts#ORG_INACTIVE',
   ],
   'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemCode': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#ORG_CODE_DUPLICATE',
+    'apps/api/src/modules/org-adjustment/envelope.ts#codeUsedMessage',
     'apps/api/src/modules/org-adjustment/item-tree.ts#orgContext',
     'apps/api/src/modules/org/codes.ts#assertCodeAvailable',
   ],
@@ -405,6 +440,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/items-store.ts#updateItem': ['#COLUMNS', '#CONTENT_KEYS'],
   'apps/api/src/modules/org-adjustment/org-items.ts#addOrgItem': [
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRefsReachable',
     'apps/api/src/modules/org-adjustment/item-rules.ts#activeOrg',
     'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemRules',
     'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
@@ -444,7 +480,12 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/org-items.ts#overlaidParent': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
   ],
+  'apps/api/src/modules/org-adjustment/org-items.ts#ownRow': [
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#ROW_NOT_FOUND',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRowReachable',
+  ],
   'apps/api/src/modules/org-adjustment/org-items.ts#patchOrgItem': [
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRefsReachable',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertItemFields',
     'apps/api/src/modules/org-adjustment/item-validation.ts#toContent',
@@ -483,8 +524,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
+  'apps/api/src/modules/org-adjustment/pause.ts#OrgAdjustmentPausedError': ['#OrgAdjustmentPausedError'],
   'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#OrgAdjustmentPausedError',
     'apps/api/src/modules/org/employment-linkage.ts#primaryDepartmentSql',
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
   ],
@@ -536,6 +579,9 @@ export const GRAPH: Graph = {
     '#uuidArray',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
   ],
+  'apps/api/src/modules/org-adjustment/queries.ts#orgVisible': [
+    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
+  ],
   'apps/api/src/modules/org-adjustment/queries.ts#parseListFilter': [
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'packages/domain/src/org-adjustment/status.ts#statusFilterApprovalStatus',
@@ -543,12 +589,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/queries.ts#projectHeads': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
     '#memberNames',
+    '#orgVisible',
     '#rangesOf',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS_LABELS',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_EXECUTION_STATUS_LABELS',
   ],
   'apps/api/src/modules/org-adjustment/queries.ts#rangesOf': [
     '#orgNameAt',
+    '#orgVisible',
     '#uuidArray',
     'apps/api/src/modules/org/read-model.ts#rowsOf',
   ],
@@ -569,6 +617,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id': [
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -613,9 +662,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': [
+    'apps/api/src/modules/org-adjustment/access.ts#ADJUSTMENT_NOT_FOUND',
+    'apps/api/src/modules/org-adjustment/access.ts#asAdjustmentMissing',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
   ],
   'apps/api/src/modules/org-adjustment/routes.ts#headCommand': [
+    'apps/api/src/modules/org-adjustment/access.ts#asAdjustmentMissing',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadScopes',
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#trimModuleResponse',
@@ -624,16 +676,23 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/item-validation.ts#toContent',
   ],
   'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': [
+    'apps/api/src/modules/org-adjustment/access.ts#ADJUSTMENT_NOT_FOUND',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeItem',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
+    '#OBJECT',
     '#rowOrgs',
     '#trimItems',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/org-adjustment/routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
     [
       'apps/api/src/modules/job/context.ts#revision',
       'apps/api/src/modules/job/context.ts#uuidParam',
+      'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
       'apps/api/src/modules/org-adjustment/org-items.ts#deleteOrgItem',
       '#DETAIL',
       '#ITEMS',
@@ -652,7 +711,7 @@ export const GRAPH: Graph = {
     '#OBJECT',
     '#authorizeStored',
     '#headCommand',
-    'apps/api/src/modules/org-adjustment/service.ts#updateAdjustmentHead',
+    '#updateHead',
     'apps/api/src/modules/org-adjustment/validation.ts#normalizeHead',
     'apps/api/src/modules/org-adjustment/validation.ts#patchSchema',
     'apps/api/src/modules/permission/module-route-access.ts#button',
@@ -664,6 +723,8 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/job/context.ts#parseBody',
       'apps/api/src/modules/job/context.ts#revision',
       'apps/api/src/modules/job/context.ts#uuidParam',
+      'apps/api/src/modules/org-adjustment/access.ts#authorizeOrgFields',
+      'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
       'apps/api/src/modules/org-adjustment/item-validation.ts#itemFieldCodes',
       'apps/api/src/modules/org-adjustment/item-validation.ts#patchItemSchema',
       'apps/api/src/modules/org-adjustment/org-items.ts#patchOrgItem',
@@ -696,6 +757,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
     '#BASE',
     '#OBJECT',
     '#authorizeStored',
@@ -710,6 +772,7 @@ export const GRAPH: Graph = {
       'apps/api/src/modules/job/context.ts#revision',
       'apps/api/src/modules/job/context.ts#uuidParam',
       'apps/api/src/modules/org-adjustment/baseline.ts#rebaseItem',
+      'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
       '#BASE',
       '#OBJECT',
       '#ROW_EDIT',
@@ -722,7 +785,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#parseBody',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+    'apps/api/src/modules/org-adjustment/access.ts#authorizeOrgFields',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
     'apps/api/src/modules/org-adjustment/item-validation.ts#addItemSchema',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertEntryType',
     'apps/api/src/modules/org-adjustment/item-validation.ts#itemFieldCodes',
@@ -742,7 +807,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/org-adjustment/access.ts#HEAD_BUTTONS',
     'apps/api/src/modules/org-adjustment/baseline.ts#rebaseAll',
-    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#BASE',
     '#OBJECT',
     '#itemCommand',
@@ -755,6 +819,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/org-adjustment/access.ts#HEAD_BUTTONS',
+    'apps/api/src/modules/org-adjustment/access.ts#asAdjustmentMissing',
     'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction',
     'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
     'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
@@ -797,20 +862,29 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/submission.ts#withdrawAdjustment',
     'apps/api/src/modules/permission/module-route-access.ts#objectContext',
   ],
-  'apps/api/src/modules/org-adjustment/routes.ts#storedRowOrgs': [
-    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
-    '#rowOrgs',
-  ],
+  'apps/api/src/modules/org-adjustment/routes.ts#storedRowOrgs': ['#rowOrgs'],
   'apps/api/src/modules/org-adjustment/routes.ts#trimCheck': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenRowIssues',
     'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues',
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/org-adjustment/routes.ts#trimHeadError': [
+    'apps/api/src/modules/org-adjustment/envelope.ts#foldHiddenError',
+    'apps/api/src/modules/org-adjustment/envelope.ts#trimError',
+    'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenItemIds',
+    '#OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/org-adjustment/routes.ts#trimItems': [
     '#ITEM_FOLLOWS',
     '#ITEM_IDENTITY',
     '#OBJECT',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+  ],
+  'apps/api/src/modules/org-adjustment/routes.ts#updateHead': [
+    '#trimHeadError',
+    'apps/api/src/modules/org-adjustment/service.ts#updateAdjustmentHead',
   ],
   'apps/api/src/modules/org-adjustment/schedule.ts#scheduleOrgAdjustmentExecution': [
     'apps/api/src/audit/record.ts#recordAudit',

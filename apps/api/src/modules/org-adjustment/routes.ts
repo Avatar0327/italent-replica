@@ -69,6 +69,7 @@ export function registerOrgAdjustmentRoutes(router: Hono<TenantEnv>, deps: Tenan
   // F-342 / F-355：租户路由器上的任何写入口撞到执行暂停，编号都在这里按调整单可见性补上（其余错误照旧）
   router.onError(pauseDisclosureHandler(deps));
   registerHeadRoutes(router, deps);
+  registerCheckRoute(router, deps);
   registerSubmitRoutes(router, deps);
   registerItemRoutes(router, deps);
   registerReadRoutes(router, deps);
@@ -142,13 +143,11 @@ function registerHeadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       execute: (tx, commandCtx) => voidAdjustment(tx, commandCtx, id),
     });
   });
-
-  router.post(`${BASE}/:id/check`, checkHandler(deps));
 }
 
 /** 整单只读校验：不进台账、不写数据，结果为校验信封（不是对象字段；看不到目标组织字段时隐去问题里的组织 ID）。 */
-function checkHandler(deps: TenantRouteDeps) {
-  return async (c: Context<TenantEnv>) => {
+function registerCheckRoute(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post(`${BASE}/:id/check`, async (c) => {
     const ctx = await objectContext(c, deps, OBJECT, 'update');
     const id = uuidParam(c);
     await parseBody(c, z.strictObject({}));
@@ -161,7 +160,7 @@ function checkHandler(deps: TenantRouteDeps) {
       return { result: checked, hidden: await hiddenItemIds(tx, deps, ctx, id) };
     });
     return c.json(await trimCheck(deps, ctx, result, hidden), 200);
-  };
+  });
 }
 
 /** 提交 / 撤回交审批引擎时的字段访问：按请求人当前字段权限（盲审、首节点同人跳过都据此判）。 */
@@ -181,8 +180,9 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
           authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
         );
-        const rows = rowOrgIds(await loadItems(tx, ctx.tenantId, id));
-        await asAdjustmentMissing(() => orgScopeAuthorizer(deps, ctx)(tx, rows));
+        await asAdjustmentMissing(async () => {
+          await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, id)));
+        });
       },
       execute: async (tx, commandCtx) => {
         try {
@@ -226,7 +226,8 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         input.siblingOf && 'orgId' in input.siblingOf ? input.siblingOf.orgId : undefined,
         ...inputOrgs(input),
       ],
-      write: { keys: Object.keys(input), adjustType: input.adjustType },
+      authorizeFields: (tx) =>
+        authorizeOrgFields(tx, deps, ctx, input.adjustType === 1 ? 'create' : 'update', Object.keys(input)),
       execute: async (tx, commandCtx) =>
         addOrgItem(tx, commandCtx, id, input, orgScopeAuthorizer(deps, ctx), await hiddenItemIds(tx, deps, ctx, id)),
     });
@@ -242,7 +243,13 @@ function registerItemRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return itemCommand(c, deps, ctx, id, input, {
       button: ROW_EDIT,
       orgIds: (rows) => [...storedRowOrgs(rows, itemId), ...inputOrgs(input)],
-      write: { keys: Object.keys(input), rowId: itemId },
+      authorizeFields: async (tx, { items, hidden }) => {
+        const row = items.find((item) => item.id === itemId);
+        // 隐藏行与不存在的行不在这里判，交写服务报同一 404
+        if (row && !hidden.has(itemId)) {
+          await authorizeOrgFields(tx, deps, ctx, row.adjustType === 1 ? 'create' : 'update', Object.keys(input));
+        }
+      },
       execute: async (tx, commandCtx) => ({
         status: 200,
         result: await patchOrgItem(tx, commandCtx, id, itemId, input, await hiddenItemIds(tx, deps, ctx, id)),
@@ -319,14 +326,16 @@ async function authorizeStored(
   tx: Tx,
   ctx: ScopeBusinessContext,
   id: string,
-  judge: (subjectOrgId: string, rangeOrgIds: readonly string[]) => Promise<void>,
+  check: (subjectOrgId: string, rangeOrgIds: readonly string[]) => Promise<void>,
   next?: (stored: AdjustmentView) => readonly [string, readonly string[]],
 ): Promise<AdjustmentView> {
   const stored = await loadAdjustment(tx, ctx.tenantId, id, true);
   if (!stored) throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
   // 现值的范围外与不存在同一错误（F-339 ③）；next 是请求里新给的值，不包
-  await asAdjustmentMissing(() => judge(stored.approvalSubjectOrgId, stored.adjustmentRange));
-  if (next) await judge(...next(stored));
+  const judge = (subjectOrgId: string, rangeOrgIds: readonly string[]) =>
+    asAdjustmentMissing(() => check(subjectOrgId, rangeOrgIds));
+  await judge(stored.approvalSubjectOrgId, stored.adjustmentRange);
+  if (next) await check(...next(stored));
   return stored;
 }
 
@@ -418,10 +427,8 @@ interface ItemCommand {
   orgIds(rows: StoredRows): OrgIds;
   /** 整单刷新：有隐藏行时与申请单不存在同一 404（F-343 ①）。 */
   readonly whole?: true;
-  /**
-   * 请求写的载荷键与行：组织对象字段编辑权按它判（F-343 ③）。新增给 `adjustType`，改行给 `rowId`（取库里行的调整类型）。
-   */
-  readonly write?: { readonly keys: readonly string[]; readonly adjustType?: 1 | 2 | 3; readonly rowId?: string };
+  /** 组织对象字段编辑权的复核（F-343 ③）：只有写组织字段的新增 / 改行入口给，在守卫里与行按钮、范围同处判。 */
+  readonly authorizeFields?: (tx: Tx, rows: StoredRows) => Promise<void>;
   execute(tx: Tx, ctx: ScopeBusinessContext): Promise<ItemWrite>;
 }
 
@@ -453,11 +460,7 @@ async function itemCommand(
           orgIds: command.orgIds({ items, hidden }),
         };
         await authorizeItem(tx, deps, ctx, input);
-        const write = command.write;
-        const adjustType = write?.adjustType ?? items.find((item) => item.id === write?.rowId)?.adjustType;
-        if (write && adjustType && !hidden.has(write.rowId ?? '')) {
-          await authorizeOrgFields(tx, deps, ctx, adjustType === 1 ? 'create' : 'update', write.keys);
-        }
+        await command.authorizeFields?.(tx, { items, hidden });
       },
       replayed: async (tx, stored) => {
         const orgIds = rowOrgs((stored.body as ItemsResult).items).filter((orgId): orgId is string => Boolean(orgId));
