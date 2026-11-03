@@ -71,12 +71,14 @@ describe('F-429 ② 预览列出将被处理的合同', () => {
 
     const leave = await x.directLeave(LAST_WORK_DATE);
     await x.activate(leave.id, TODAY);
+    const verbs: Record<string, string> = {
+      contract_terminated: 'terminate',
+      contract_deleted: 'delete',
+      contract_request_withdrawn: 'withdraw',
+    };
     const executed = (await x.effects(leave.id))
       .filter((row) => row.kind.startsWith('contract_'))
-      .map(
-        (row) =>
-          `${{ contract_terminated: 'terminate', contract_deleted: 'delete', contract_request_withdrawn: 'withdraw' }[row.kind]}:${row.target_id}`,
-      )
+      .map((row) => `${verbs[row.kind]}:${row.target_id}`)
       .sort();
     expect(pairs(warning)).toEqual(executed);
   });
