@@ -6,7 +6,8 @@ import { AppError } from '../../errors.js';
 import { rowsOf, type ApprovalContext } from './context.js';
 import type { Page } from './queries.js';
 import { withActorNames } from './store.js';
-import { visibleRecordSql, type DetailView } from './disclosure.js';
+import { visibleRecordSql } from './disclosure.js';
+import type { TodoForm } from './todo-summary.js';
 
 const categories = [
   { key: 'employment', label: '人事变动' },
@@ -53,8 +54,8 @@ export async function listTodoCards(
   ctx: ApprovalContext,
   query: ReturnType<typeof todoCardsQuery>,
   page: Page,
-  project: (id: string) => Promise<DetailView>,
-  summarize: (detail: DetailView) => Promise<{ key: string; label: string; value: string }[]>,
+  project: (id: string) => Promise<TodoForm>,
+  summarize: (detail: TodoForm) => Promise<{ key: string; label: string; value: string }[]>,
 ) {
   const { tenantId, userId } = ctx;
   const history = query.view !== 'pending';

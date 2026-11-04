@@ -289,6 +289,7 @@ export const APPROVAL: RequiredTable = {
   'GET /api/tenant/approval/todos': [
     {
       perm: 'own:approval.recipient',
+      or: 'todoOwner:pending',
       facts: ['own:listTodos / listNotifications / listInstances'],
       at: [
         route('GET', '/todos', 'listTodos(tx, ctx.tenantId, ctx.userId, page)'),
@@ -298,11 +299,36 @@ export const APPROVAL: RequiredTable = {
     },
     {
       perm: 'own:approval.initiatedOrParticipated',
+      or: 'todoOwner:history',
       facts: ['own:listTodos / listNotifications / listInstances'],
       at: [
         route('GET', '/todos', 'listTodoCards('),
         fn('listTodoCards', 'i.initiator_user_id=', `${DIR}/todo-cards.ts`),
         fn('listTodoCards', 'l.actor_user_id=', `${DIR}/todo-cards.ts`),
+        fn('listTodoCards', 'visibleRecordSql(userId)', `${DIR}/todo-cards.ts`),
+      ],
+    },
+    {
+      perm: 'rel:approval.canOpen',
+      purpose: 'disclosure:todoForm',
+      need: NONE,
+      facts: ['relation:assertCanOpen'],
+      note: '仅卡片模式重读本人筛选后的实例来裁剪表单；不授予管理员列表准入，不计算详情动作。',
+      at: [route('GET', '/todos', 'readDetail(tx, ctx, id, viewer, false)')],
+    },
+    {
+      perm: 'obj:TenantBase.Organization:view',
+      purpose: 'disclosure:summaryDepartment',
+      need: list('approval.todoSummaryDepartment'),
+      facts: ['object:object.* 动作'],
+      note: '组织查看权、name 字段权与组织范围只决定摘要是否附带部门名，不扩大待办行或计数。',
+      at: [
+        fn('todoSummary', "action: 'object.view', resource: object", `${DIR}/todo-summary.ts`),
+        {
+          role: 'scope',
+          unit: `${DIR}/todo-summary.ts#todoSummary`,
+          anchor: 'id: values.departmentId, scope, includeDisabled: true',
+        },
       ],
     },
   ],

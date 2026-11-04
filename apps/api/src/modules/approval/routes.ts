@@ -1,5 +1,5 @@
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
-import { todoSummary } from './todo-summary.js';
+import { todoForm, todoSummary } from './todo-summary.js';
 /**
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
@@ -472,7 +472,7 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
               await ownViewable(deps, ctx, data, tx),
               foreignVisibility(deps, ctx, tx),
             );
-            return detailView(data, ctx.userId, visible);
+            return todoForm(data, ctx.userId, visible);
           },
           (detail) => todoSummary(tx, deps, ctx, detail),
         ),

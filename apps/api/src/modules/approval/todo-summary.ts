@@ -4,7 +4,7 @@ import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { ApprovalContext } from './context.js';
 import { rowsOf } from './context.js';
-import type { DetailView } from './disclosure.js';
+import { disclosedFields, type DetailData } from './disclosure.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import {
   authorizeInTransaction,
@@ -12,7 +12,24 @@ import {
   resolveModuleScopeInTransaction,
 } from '../permission/module-access.js';
 
-export async function todoSummary(tx: Tx, deps: TenantRouteDeps, ctx: ApprovalContext, detail: DetailView) {
+export interface TodoForm {
+  approvalType: string;
+  form: { values: Record<string, unknown> };
+}
+
+/** 卡片只消费这些摘要字段，不计算详情动作、历史或编辑表单。字段裁剪仍复用详情的同一入口。 */
+export function todoForm(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined): TodoForm {
+  const disclosed = disclosedFields(data, userId, viewable);
+  const keys = ['effectiveDate', 'lastWorkDate', 'departmentId', 'typeId'];
+  const values = Object.fromEntries(
+    keys
+      .filter((key) => disclosed.has(key) && Object.hasOwn(data.snapshot.values, key))
+      .map((key) => [key, data.snapshot.values[key]]),
+  );
+  return { approvalType: data.instance.approvalType, form: { values } };
+}
+
+export async function todoSummary(tx: Tx, deps: TenantRouteDeps, ctx: ApprovalContext, detail: TodoForm) {
   const values = detail.form.values;
   const summary: { key: string; label: string; value: string }[] = [];
   const add = (key: string, label: string) => {
