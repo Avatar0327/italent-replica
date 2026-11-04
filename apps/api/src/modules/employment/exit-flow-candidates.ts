@@ -23,6 +23,8 @@ export interface OtherFlow {
   readonly businessId: string;
   readonly initiatorUserId: string;
   readonly flowType: ExitTerminationFlow;
+  /** running / returned / withdrawn；withdrawn 只会是员工子集变更申请（DEC-740，业务单已是“已撤回”）。 */
+  readonly instanceStatus: string;
 }
 
 export interface FlowRef {
@@ -30,7 +32,10 @@ export interface FlowRef {
   readonly businessId: string;
 }
 
-/** 员工名下这两类业务的活动实例（运行中 / 已退回）中按配置会被终止的，按实例 ID 升序。 */
+/**
+ * 员工名下这两类业务的活动实例（运行中 / 已退回）中按配置会被终止的，按实例 ID 升序。
+ * DEC-740：已撤回的员工子集变更申请（实例 withdrawn，仍可由原发起人重提）与已退回的一样是候选；意向退休日期申请撤回后不可重提，不在其内。
+ */
 export async function terminableOtherFlows(
   tx: Tx,
   ctx: EmploymentContext,
@@ -41,13 +46,15 @@ export async function terminableOtherFlows(
   if (!policy) return [];
   const rows = rowsOf<Omit<OtherFlow, 'flowType'> & { subset: string | null }>(
     await tx.execute(sql`SELECT i.id::text AS "instanceId", i.business_type AS "businessType",
-        i.business_id::text AS "businessId", i.initiator_user_id::text AS "initiatorUserId", c.subset
+        i.business_id::text AS "businessId", i.initiator_user_id::text AS "initiatorUserId",
+        i.status AS "instanceStatus", c.subset
       FROM approval_instances i
       LEFT JOIN personnel_change_requests c
         ON i.business_type = 'personnel_change' AND c.tenant_id = i.tenant_id AND c.id = i.business_id
       WHERE i.tenant_id=${ctx.tenantId} AND i.subject_employee_id=${employeeId}::uuid
         AND i.business_type IN ('personnel_change','retirement_intention')
-        AND i.status IN ('running','returned')
+        AND (i.status IN ('running','returned')
+          OR (i.status = 'withdrawn' AND i.business_type = 'personnel_change' AND c.status = 'withdrawn'))
       ORDER BY i.id`),
   );
   return rows

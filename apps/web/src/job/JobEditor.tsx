@@ -116,13 +116,27 @@ function withResumed<G extends { fields: FormField[] }>([first, ...rest]: G[], d
   };
   return first ? [{ ...first, fields: [notice, ...first.fields] }, ...rest] : rest;
 }
+// R1a §3.3～3.8：只登记本批新建表单可见红星，不据此增加保存校验。
+const createRequiredMarks: Partial<Record<JobKind, string[]>> = {
+  sequences: ['name', 'startDate', 'enabled'],
+  'level-types': ['name', 'startDate'],
+  grades: ['name', 'grade', 'startDate', 'enabled'],
+  levels: ['name', 'levelTypeId', 'level', 'startDate'],
+  posts: ['code', 'name', 'establishedOn', 'sequenceId'],
+  positions: ['code', 'name', 'establishedOn', 'orgId'],
+};
+function jobFormClass(kind: JobKind, original?: JobRow) {
+  // 本批只验证六类新建弹窗；编辑、职层和专业条线保持既有布局。
+  if (original || kind === 'layers' || kind === 'professional-lines') return undefined;
+  return kind === 'posts' || kind === 'positions' ? 'job-form' : 'job-form job-form-single';
+}
 export function JobEditor(props: EditorProps) {
   const { kind, original, access } = props;
   const record = useJobCommand(props);
   // 业务时点只从槽里取：提示、候选、重读与请求体都用它，换列表日期不另起命令。
   const { date } = record.context;
   const timing = jobTiming(original, date, date, access.field('startDate'));
-  const sections = jobFormGroups(kind).map((group) => ({
+  const sections = jobFormGroups(kind, Boolean(original)).map((group) => ({
     title: m[group.key as 'basic'],
     fields: group.fields.map((name): FormField => {
       const control = jobControl(name, kind, timing.asOf, original?.id);
@@ -130,7 +144,11 @@ export function JobEditor(props: EditorProps) {
         name,
         label: jobLabel(kind, name, 'form'),
         control,
-        access: access.field(jobPermissionField(name)),
+        requiredMark: original ? undefined : createRequiredMarks[kind]?.includes(name),
+        // 生效日期沿用页面级恢复槽的实际时点，只展示、不另造一个提交日期。
+        display: name === 'startDate' ? timing.asOf : undefined,
+        access:
+          name === 'startDate' ? { ...access.field(name), editable: false } : access.field(jobPermissionField(name)),
         rules:
           name === 'name' || (!original && ['orgId', 'postId'].includes(name))
             ? [{ required: true, message: m.required }]
@@ -144,6 +162,7 @@ export function JobEditor(props: EditorProps) {
   return (
     <FormOverlay
       mode="modal"
+      className={jobFormClass(kind, original)}
       recordKey={original?.id ?? 'new'}
       submission={record.command}
       open

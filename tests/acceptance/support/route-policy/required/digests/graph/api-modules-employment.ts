@@ -2368,12 +2368,17 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#exceedsVoidLimit': ['#VOID_LIMIT'],
+  'apps/api/src/modules/employment/exit-gate.ts#flowSql': [
+    'packages/domain/src/employment/exit-termination.ts#BATCH_TRANSFER_FORM_ID_PREFIX',
+    'packages/domain/src/employment/exit-termination.ts#INTER_ORG_TRANSFER_FORM_IDS',
+  ],
   'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications': [
     '#keepClause',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     'apps/api/src/modules/employment/timeline.ts#plannedEffectiveDate',
   ],
+  'apps/api/src/modules/employment/exit-gate.ts#keepClause': ['#flowSql'],
   'apps/api/src/modules/employment/exit-gate.ts#leavesInProgress': ['#inFlightApplications'],
   'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -2385,6 +2390,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-gate.ts#pendingTransferAckSet': [
     'apps/api/src/modules/employment/assessment-in-flight.ts#inFlightAssessments',
     'apps/api/src/modules/employment/exit-flow-candidates.ts#terminableOtherFlows',
+    '#TRANSFER_FLOWS',
     '#ackToken',
     '#exceedsVoidLimit',
     '#inFlightApplications',
