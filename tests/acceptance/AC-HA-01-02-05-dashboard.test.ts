@@ -5,6 +5,8 @@
  * 重点边界：未来 30 天含两端（第 30 天计入、第 31 天不计）、已撤销 / 草稿 / 驳回的离职与退休不计入“离职中”、
  * 本年入职 / 本年离职无论后来是否离职、已发起转正但未生效的仍计入“未来 30 天试用到期”。
  * 合同与 Offer 另见 AC-HA-BE12b-contract.test.ts、AC-HA-BE12b-offer.test.ts。
+ * AC-HA-05（DEC-763②，F-466 改写口径）：人事看板只给 HR 专员 / HR 经理 / 管理员，人事管理员没有；
+ * 有权看的身份按其数据范围统计，范围为空 fail-closed。
  */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
@@ -508,7 +510,8 @@ describe('BE-12b 人事看板 23 项指标', () => {
     expect((await blocked.get('/api/tenant/analytics/hr-dashboard/indicators/interns')).status).toBe(403);
   });
 
-  describe('AC-HA-05 数据范围', () => {
+  // DEC-763②：人事看板只给 HR 专员 / HR 经理 / 管理员，人事管理员没有；以下验有权看的身份按其数据范围统计（fail-closed）
+  describe('AC-HA-05 数据范围（人事看板按调用者的数据范围统计）', () => {
     const scoped = (scope: ModuleScope) => {
       const authorize: Authorizer = () => true;
       registerScopeProvider(authorize, {
@@ -532,28 +535,28 @@ describe('BE-12b 人事看板 23 项指标', () => {
       ],
     });
 
-    it('HRBP 只能看管理单元内人员：人员类指标只统计范围内人员，组织类只统计范围内组织，数字 = 明细', async () => {
-      const hrbp = scoped(management([w.x.from.id]));
+    it('受限数据范围（以管理单元为例）：人员类指标只统计范围内人员，组织类只统计范围内组织，数字 = 明细', async () => {
+      const limited = scoped(management([w.x.from.id]));
       const regular = inService(['internal'], w.x.from.id);
-      await hrbp.expectIndicator('regularEmployees', regular);
+      await limited.expectIndicator('regularEmployees', regular);
       // 范围外：早期部门的员工、已调去另一部门的员工
-      const seen = (await hrbp.detail('regularEmployees')).ids;
+      const seen = (await limited.detail('regularEmployees')).ids;
       expect(seen).not.toContain(w.f.dec.id);
       expect(seen).not.toContain(w.t.done.id);
       expect(seen).toContain(w.x.employee.id);
       // 待入职按记录所在部门：另一部门的待入职看不到
-      await hrbp.expectIndicator(
+      await limited.expectIndicator(
         'pendingEntries',
         [w.pending.a, w.pending.postponed].map((p) => p.employee.id),
       );
-      await hrbp.expectIndicator('departmentNoHead', [w.x.from.id]);
-      await hrbp.expectIndicator('departmentNoHrbp', [w.x.from.id]);
+      await limited.expectIndicator('departmentNoHead', [w.x.from.id]);
+      await limited.expectIndicator('departmentNoHrbp', [w.x.from.id]);
       // 范围外的单据不进“离职中 / 调动中 / 转正中”：这些单据的员工都在范围内部门，所以与全集一致，另一部门员工的不计
-      await hrbp.expectIndicator(
+      await limited.expectIndicator(
         'exitInProgress',
         ids([w.exits.lvReview, w.exits.lvApproved, w.exits.rtReview, w.exits.rtApproved]),
       );
-      const overview = await hrbp.overview();
+      const overview = await limited.overview();
       expect(overview.hasDataPermission).toBe(true);
       expect(overview.indicators.find((i) => i.code === 'regularEmployees')!.value).toBe(regular.length);
       // 同一批数据，全范围（管理员）看到的更多
@@ -580,13 +583,21 @@ describe('BE-12b 人事看板 23 项指标', () => {
     });
   });
 
-  it('授权项：“人事分析 - 人事看板 查看”默认给人事模块预置管理员（DEC-415），人事专员只有对象查看权', () => {
+  it('授权项：“人事分析 - 人事看板 查看”给 HR 专员 / HR 经理 / 管理员并预置看全部（DEC-767）；人事管理员没有，人事专员只有对象查看权', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
-    for (const code of ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'])
-      expect(profile(code).objects.map((object) => object.objectCode)).toContain(OBJECT);
+    const held = (code: string) => profile(code).objects.map((object) => object.objectCode);
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    expect(seeAll('standard_org_system_admin')).toContain(OBJECT);
-    expect(seeAll('standard_hr_admin')).toContain(OBJECT);
+    for (const code of [
+      'standard_org_system_admin',
+      'standard_hr_dashboard_specialist',
+      'standard_hr_dashboard_manager',
+    ]) {
+      expect(held(code), code).toContain(OBJECT);
+      expect(seeAll(code), code).toContain(OBJECT);
+    }
+    expect(held('standard_hr_specialist')).toContain(OBJECT);
+    expect(held('standard_hr_admin')).not.toContain(OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(OBJECT);
     expect(seeAll('standard_hr_specialist')).not.toContain(OBJECT);
   });
 });
