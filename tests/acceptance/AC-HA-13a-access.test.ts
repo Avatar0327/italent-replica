@@ -6,7 +6,7 @@
  *   人事管理员没有人事看板；
  *   这里只验有权看的身份“按其数据范围统计、数字 = 明细”；
  * - 空范围（默认）全为 0、hasDataPermission = false，不退回“全部”；
- * - 预置授权现状仍是 DEC-415（人事管理员看全部、含三个看板类对象），与 DEC-763② / DEC-767 的差异由 F-472 对齐，见最后一条的注释。
+ * - 预置授权（F-472 已对齐）：看板类对象给 HR 专员 / HR 经理 / 管理员并预置看全部，人事管理员没有，见最后一条。
  */
 import {
   CONTRACT_BOARD_OBJECT,
@@ -136,23 +136,29 @@ describe('AC-HA-13a 授权与数据范围', () => {
     for (const code of ['changeCreate', '3.1.17']) await c.expectCount(CONTRACT_BOARD_BASE, code, [], AS_OF);
   });
 
-  // 现状断言（DEC-415）：与 DEC-763② 的目标口径有差距——目标是人事管理员没有人事看板类对象（B49 / B55 等），
-  // 员工结构报表给人事管理员但按管理单元取数而非看全部。预置授权属产品代码（standard-presets / standard-grants），
-  // 不在 F-466（规格 + 测试）范围，由 F-472 对齐（DEC-767：新增预置 HR 专员 / HR 经理并预置看全部；人事管理员去掉
-  // 看板类对象与看全部；升授权版本，DEC-439④）。F-472 落地后这里要改成“人事管理员没有看板类对象 / 看全部”，
-  // 并补“人事管理员调看板接口 403”（该断言归 F-472，本单不加）。
-  it('AC-HA-13a-10：（现状）三个授权项给人事模块预置管理员看全部（DEC-415），人事专员只有对象查看权', () => {
+  // 预置授权（F-472，DEC-767 / DEC-768 / DEC-763②）：看板类对象（人员结构分析、合同情况）只给 HR 专员 / HR 经理 / 管理员并预置看全部；
+  // 人事管理员没有这两个对象，也没有看全部；员工结构报表（B53）人事管理员仍可查看，但按管理单元取数，不预置看全部。
+  // 人事管理员调看板接口 403 的真实授权器用例见 AC-HA-05-board-grants.test.ts。
+  it('AC-HA-13a-10：预置授权——看板类对象给 HR 专员 / HR 经理 / 管理员并看全部；人事管理员只留员工结构报表且按管理单元取数', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    for (const object of [HR_STRUCTURE_OBJECT, HR_STRUCTURE_REPORT_OBJECT, CONTRACT_BOARD_OBJECT]) {
-      for (const code of ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'])
-        expect(
-          profile(code).objects.map((item) => item.objectCode),
-          `${code} ${object}`,
-        ).toContain(object);
-      expect(seeAll('standard_org_system_admin')).toContain(object);
-      expect(seeAll('standard_hr_admin')).toContain(object);
+    const held = (code: string) => profile(code).objects.map((item) => item.objectCode);
+    for (const object of [HR_STRUCTURE_OBJECT, CONTRACT_BOARD_OBJECT]) {
+      for (const code of [
+        'standard_org_system_admin',
+        'standard_hr_dashboard_specialist',
+        'standard_hr_dashboard_manager',
+      ]) {
+        expect(held(code), `${code} ${object}`).toContain(object);
+        expect(seeAll(code), `${code} 看全部 ${object}`).toContain(object);
+      }
+      expect(held('standard_hr_admin'), `hr_admin ${object}`).not.toContain(object);
+      expect(seeAll('standard_hr_admin'), `hr_admin 看全部 ${object}`).not.toContain(object);
       expect(seeAll('standard_hr_specialist')).not.toContain(object);
     }
+    expect(held('standard_hr_admin')).toContain(HR_STRUCTURE_REPORT_OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(HR_STRUCTURE_REPORT_OBJECT);
+    expect(held('standard_hr_specialist')).toContain(HR_STRUCTURE_REPORT_OBJECT);
+    expect(seeAll('standard_org_system_admin')).toContain(HR_STRUCTURE_REPORT_OBJECT);
   });
 });

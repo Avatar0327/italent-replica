@@ -76,7 +76,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: 'd4873d3a6c0d',
+    listNotifications: '123fde47b5a9',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -891,11 +891,11 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
     canOpen: 'a54884c13823',
-    hrDisclosure: 'a6cf9fc390e1',
-    orgAdjustmentDisclosure: '9ea7662b1ad8',
+    hrDisclosure: 'e95fadfbd629',
+    orgAdjustmentDisclosure: 'b4e22cfba43f',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
-    listAdjustments: '6cfed9d36f18',
+    listAdjustments: '4d3bcb00cad6',
   },
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
@@ -1876,7 +1876,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
-  'apps/api/src/modules/approval/queries.ts#listNotifications': 'd0b6d75c28da',
+  'apps/api/src/modules/approval/queries.ts#listNotifications': '9a92904d5be3',
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
   'apps/api/src/modules/approval/routes.ts#registerInstanceRoutes': 'e9958472eb5c',
@@ -2472,9 +2472,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen': '1240eb889365',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '3cf281b573da',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '64fc68887303',
-  'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': 'ab799c90b5dd',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '54f6273797d7',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '95297b5c0bd5',
+  'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': '3a58b73d2896',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':

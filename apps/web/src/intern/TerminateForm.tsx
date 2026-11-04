@@ -9,7 +9,7 @@ import { isBlank, projectFields } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import type { Latest } from '../foundation/forms/store.js';
-import { employeePath, useEmployeeRead, useInternCommand } from './commands.js';
+import { employeePath, useEmployeeRead, useInternCommand, useSettledRefresh } from './commands.js';
 import { m } from './messages.js';
 import {
   acceptBusiness,
@@ -45,7 +45,8 @@ function useTerminate({ row, onDone, refresh, opening, read }: EditorProps) {
   const [form] = Form.useForm();
   const [baseline] = useState(() => opening.values);
   const target = { id: employeeId, revision: opening.revision, baseline, read };
-  const cmd = useInternCommand(interns, target, 'terminate', refresh);
+  const settled = useSettledRefresh(false, false, refresh);
+  const cmd = useInternCommand(interns, target, 'terminate', settled);
   useDraftRefill(cmd.form, editable, form);
   const [error, setError] = useState<unknown>();
   const locked = cmd.disabled || !permission?.dataOperations.create;
