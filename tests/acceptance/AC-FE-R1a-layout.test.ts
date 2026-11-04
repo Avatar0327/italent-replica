@@ -69,7 +69,14 @@ describe('AC-FE-R1a-21 职务体系各类列表列按原站', () => {
     ]);
     expect(jobListFields('level-types', access)).toEqual(['name', 'displayOrder', 'startDate']);
     expect(jobListFields('grades', access)).toEqual(['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate']);
-    expect(jobListFields('levels', access)).toEqual(['levelTypeId', 'name', 'level', 'minGradeId', 'maxGradeId']);
+    expect(jobListFields('levels', access)).toEqual([
+      'levelTypeId',
+      'name',
+      'level',
+      'minGradeId',
+      'maxGradeId',
+      'startDate',
+    ]);
     expect(jobListFields('posts', access)).toEqual([
       'code',
       'name',
@@ -182,7 +189,7 @@ describe('AC-FE-R1a-23 职务、职位表单按原站分组与排序', () => {
     expect(formLabels).toEqual(expect.arrayContaining(['上级职位', '虚线上级']));
     expect(formLabels).not.toContain('直线上级');
     expect(jobLabel('positions', 'adminParent')).toBe('直线上级');
-    expect(jobFormGroups('grades')).toEqual([
+    expect(jobFormGroups('grades', true)).toEqual([
       {
         key: 'basic',
         fields: [

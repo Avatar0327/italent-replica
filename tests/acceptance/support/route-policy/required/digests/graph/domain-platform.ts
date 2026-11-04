@@ -70,6 +70,13 @@ export const GRAPH: Graph = {
   'packages/domain/src/platform/standard-presets.ts#ESTABLISHMENT_SCHEME_DATASOURCE': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
   ],
+  'packages/domain/src/platform/standard-presets.ts#HR_BOARD_OBJECT_CODES': [
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#HR_BOARD_SEE_ALL': [
+    'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
+    '#HR_BOARD_OBJECT_CODES',
+  ],
   'packages/domain/src/platform/standard-presets.ts#HR_DASHBOARD_SEE_ALL': [
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
     'packages/domain/src/permission/module-actions.ts#ORG_EMPLOYEE_APP',
@@ -120,6 +127,8 @@ export const GRAPH: Graph = {
     '#CORE_HR',
     '#DUTY_TRANSFER_SEE_ALL',
     '#EMPLOYEE_PROFILE',
+    '#HR_BOARD_OBJECT_CODES',
+    '#HR_BOARD_SEE_ALL',
     '#HR_DASHBOARD_SEE_ALL',
     '#HR_PROCESS_DASHBOARD_SEE_ALL',
     '#IDP_PROFILES',

@@ -1865,6 +1865,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': [
