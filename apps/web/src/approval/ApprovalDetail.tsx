@@ -146,7 +146,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       {!state.error && !detail && <PageState kind="loading" />}
       {action.pending && <Alert type="warning" showIcon message={d.locked(m[action.pending])} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
-      {detail && <DetailColumns detail={detail} />}
+      {detail && <DetailColumns detail={detail} todo={props.todo} />}
     </div>
   );
 }
@@ -155,7 +155,21 @@ function headline(detail: Detail, timezone: string) {
   const type = typeLabels[detail.approvalType] ?? detail.approvalType;
   return [type, status, formatInstant(detail.createdAt, timezone)].filter(Boolean).join(' · ');
 }
-function DetailColumns({ detail }: { detail: Detail }) {
+function DetailColumns({ detail, todo }: { detail: Detail; todo?: boolean }) {
+  const collaboration = (
+    <Tabs
+      className={todo ? undefined : 'approval-detail-collab'}
+      type="card"
+      items={[
+        { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
+        {
+          key: 'communicate',
+          label: d.communicate,
+          children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={d.communicateGap} />,
+        },
+      ]}
+    />
+  );
   return (
     <>
       <ApprovalProgress detail={detail} />
@@ -164,18 +178,14 @@ function DetailColumns({ detail }: { detail: Detail }) {
           className="approval-detail-form"
           items={[{ key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> }]}
         />
-        <Tabs
-          className="approval-detail-collab"
-          type="card"
-          items={[
-            { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
-            {
-              key: 'communicate',
-              label: d.communicate,
-              children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={d.communicateGap} />,
-            },
-          ]}
-        />
+        {todo ? (
+          <section className="approval-detail-collab">
+            <h3 className="approval-collaboration-title">{d.collaboration}</h3>
+            {collaboration}
+          </section>
+        ) : (
+          collaboration
+        )}
       </div>
     </>
   );

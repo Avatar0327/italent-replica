@@ -276,3 +276,11 @@
   color: #146eff;
   background: #eaf3ff;
 }
+
+.approval-collaboration-title {
+  margin: 16px 0 0;
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid #146eff;
+  font-size: 14px;
+  font-weight: 500;
+}
