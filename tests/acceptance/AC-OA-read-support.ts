@@ -57,7 +57,7 @@ export interface PreviewView {
 }
 
 /** 读接口助手：`ok` 系列断言 200 并解析；裸调用返回 Response 供拒绝路径断言。 */
-export function reader(w: HeadWorld) {
+export function reader(w: Pick<HeadWorld, 'call' | 'hr'>) {
   const get = (path: string, user = w.hr.id) => w.call('GET', path, {}, user);
   const listRes = (query = '', user?: string) => get(`${BASE}${query ? `?${query}` : ''}`, user);
   const detailRes = (id: string, user?: string) => get(`${BASE}/${id}`, user);

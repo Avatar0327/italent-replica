@@ -59,6 +59,10 @@ export const GRAPH: Graph = {
     '#isRecord',
   ],
   'packages/domain/src/employment/exit-handover.ts#isDays': ['#HANDOVER_REMIND_DAYS_MAX'],
+  'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': [
+    '#FLOW_TERMINATED_BY_EXIT_TEMPLATE',
+  ],
+  'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice': ['#EXIT_NOTICE_TEMPLATES', '#fill'],
   'packages/domain/src/employment/exit-occupancy.ts#accumulate': [
     '#closed',
     '#compareApplications',

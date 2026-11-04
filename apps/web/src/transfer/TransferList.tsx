@@ -94,7 +94,11 @@ function TransferFilters(props: FilterProps) {
         <h3>{t.advancedGroup}</h3>
         <Space direction="vertical" className="transfer-advanced">
           <FilterControls
-            keys={[...keys, 'beforeDepartment', 'beforePost']}
+            keys={
+              view === 'progress'
+                ? ['person', 'date', 'beforeDepartment', 'beforePost', 'department', 'post', 'status']
+                : [...keys, 'beforeDepartment', 'beforePost']
+            }
             rows={props.rows}
             value={draft ?? {}}
             onChange={setDraft}
@@ -189,11 +193,13 @@ function FilterSelect(props: {
 }
 
 /** 列按原站各视图；审批状态与“进行中 / 已完成”交接状态在原站是蓝色链接，这里没有可打开的对象，只保留蓝色文字。 */
+const transferWidths: Partial<Record<TransferColumn, number>> = { effectiveDate: 105, approver: 110, operation: 164 };
 function columnsOf(view: TransferView, onOpen: (row: TransferListRow) => void): TableColumnsType<TransferListRow> {
   return transferColumns[view].map((column) => ({
     key: column,
     title: columnLabels[column],
     fixed: fixedOf(column),
+    width: transferWidths[column] ?? 140,
     render: (_: unknown, row: TransferListRow) => cell(column, row, onOpen),
   }));
 }
@@ -202,10 +208,10 @@ const fixedOf = (column: TransferColumn) => {
   return column === 'operation' ? ('right' as const) : undefined;
 };
 function cell(column: TransferColumn, row: TransferListRow, onOpen: (row: TransferListRow) => void) {
-  if (column === 'name')
+  if (column === 'name' || column === 'effectiveDate')
     return (
       <Button type="link" className="transfer-name-link" onClick={() => onOpen(row)}>
-        {row.name}
+        {row[column]}
       </Button>
     );
   if (column === 'status') return <span className="transfer-link-text">{statusLabels[row.status]}</span>;
