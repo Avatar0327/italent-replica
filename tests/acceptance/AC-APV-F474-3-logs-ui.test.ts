@@ -138,3 +138,13 @@ describe('AC-APV-F474-3 完整流程日志与我的申请边界', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+it('AC-APV-F474-3 §3.7 待办只读字段与协作分栏，不凭样本补不存在的业务字段', async () => {
+  await render(true);
+  expect(host.querySelector('.approval-detail-collab h3')?.textContent).toBe('协作');
+  const fields = host.querySelector('.approval-fields')!;
+  expect(fields.textContent).toContain('2026-11-01');
+  expect(fields.querySelectorAll('input,select,textarea')).toHaveLength(0);
+  expect(fields.textContent).not.toContain('电子邮件');
+  expect(host.textContent).not.toContain('调动交接');
+});
