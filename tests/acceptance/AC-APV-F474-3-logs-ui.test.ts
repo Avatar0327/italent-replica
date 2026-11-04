@@ -43,7 +43,8 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-const button = (label: string) => [...document.querySelectorAll('button')].find((el) => el.textContent === label)!;
+const button = (label: string) =>
+  Array.from(document.querySelectorAll('button')).find((el) => el.textContent === label)!;
 async function render(todo = true, history: (page: number) => object = () => ({ items: [], recordsHidden: false })) {
   const fetcher = vi.fn(async (url: string) => {
     const page = Number(new URL(url, 'http://localhost').searchParams.get('page') ?? 1);
@@ -147,4 +148,21 @@ it('AC-APV-F474-3 §3.7 待办只读字段与协作分栏，不凭样本补不�
   expect(fields.querySelectorAll('input,select,textarea')).toHaveLength(0);
   expect(fields.textContent).not.toContain('电子邮件');
   expect(host.textContent).not.toContain('调动交接');
+});
+
+it('完整日志中的未登记事件不展示机器事件码', async () => {
+  await render(true, () => ({
+    recordsHidden: false,
+    items: [
+      {
+        event: 'synthetic_internal_event',
+        actorUserId: null,
+        createdAt: '2026-11-01T00:00:00Z',
+      },
+    ],
+  }));
+  await click('查看流程日志');
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).not.toContain('synthetic_internal_event');
+  expect(dialog.textContent).toContain('流程操作');
 });

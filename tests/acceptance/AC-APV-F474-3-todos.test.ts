@@ -56,6 +56,7 @@ describe('AC-APV-F474-3 待办卡片服务端投影与计数', () => {
     );
     const task = first.tasks.find((t) => t.status === 'pending')!;
     await w.json(await w.taskAction(s.outHead.userId, task.id, 'approve', first.revision));
+    await w.json(await w.instanceAction(w.hr.id, second.id, 'withdraw', second.revision));
     const completed = await w.json<Cards>(await w.request(s.outHead.userId, 'GET', `${base}?view=completed`));
     expect(completed.total).toBe(1);
     expect(completed.items.map((i) => i.id)).toEqual([first.id]);

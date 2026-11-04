@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 async function render(view: string) {
   const fetcher = vi.fn(
-    async () =>
+    async (_url: string) =>
       new Response(
         JSON.stringify({
           items: [
