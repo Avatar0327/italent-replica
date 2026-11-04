@@ -237,7 +237,7 @@ export const exitEffects = pgTable(
       'exit_effects_kind',
       sql`${t.kind} IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',
         'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',
-        'duty_failed', 'rehire_created')`,
+        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')`,
     ),
     check('exit_effects_target_type', sql`btrim(${t.targetType}) <> ''`),
   ],

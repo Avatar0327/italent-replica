@@ -22,7 +22,7 @@ import { deleteRule, rulesPage, saveMaster, saveRule, saveSettings, settings } f
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
 import { listContracts } from './queries.js';
-import { parseListQuery } from './list-query.js';
+import { assertSortViewable, parseListQuery } from './list-query.js';
 import { contractDetail, employeeContracts } from './detail.js';
 import {
   checkImportScope,
@@ -168,6 +168,7 @@ export const registerContractRoutes: TenantRouteModule = (router, deps) => {
     const ctx = await routeContext(c, deps);
     const page = pageQuery(c);
     const query = parseListQuery(c.req.query());
+    assertSortViewable(query, await getModuleViewableFields(deps, ctx, CONTRACT_OBJECT));
     const { items, total } = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listContracts(tx, ctx, query, page.limit, page.offset),
     );
