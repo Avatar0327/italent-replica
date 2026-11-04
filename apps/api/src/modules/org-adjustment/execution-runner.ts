@@ -65,7 +65,8 @@ export interface RunnerOptions {
 export interface TenantRunResult {
   readonly claimed: boolean;
   readonly completed: readonly string[];
-  readonly stopped?: 'fencing' | 'retry';
+  /** unconfirmed：分页中间页提交回执丢失且无法判定是否落库（F-409），本刻停在该页，下一刻按已落库的进度续跑。 */
+  readonly stopped?: 'fencing' | 'retry' | 'unconfirmed';
 }
 
 interface Run {
@@ -110,7 +111,8 @@ export async function runOrgAdjustmentTenant(
       );
       const run = { db, lease, tenant, options, adjustment, ...defaults, commandId: `org-adjustment:${adjustment.id}` };
       await fenced(db, lease, (tx) => (picked.state === 'pending' ? start(tx, run) : audit(tx, run, 'takeover', {})));
-      if (!(await runGroups(run))) return { claimed: true, completed, stopped: 'retry' };
+      const progress = await runGroups(run);
+      if (progress !== 'complete') return { claimed: true, completed, stopped: progress };
       await options.hooks?.beforeFinalize?.(adjustment.id);
       await fenced(db, lease, (tx) => finalize(tx, run));
       completed.push(adjustment.id);
@@ -166,8 +168,8 @@ async function start(tx: Tx, run: Run) {
   await audit(tx, run, 'started', { pausedOrgIds: [...paused].sort() });
 }
 
-/** 串行推进各组；返回 false 表示本刻停止（可恢复失败未满次数），下一刻重试同一组。 */
-async function runGroups(run: Run): Promise<boolean> {
+/** 串行推进各组；'retry' = 可恢复失败未满次数、'unconfirmed' = 步间回执待确认，本刻停止，下一刻续同一组。 */
+async function runGroups(run: Run): Promise<'complete' | 'retry' | 'unconfirmed'> {
   const { db, lease, adjustment } = run;
   const groups = await withTenant(db, lease.tenantId, (tx) =>
     loadExecutionGroups(tx, lease.tenantId, adjustment.id, adjustment.effectiveDate),
@@ -179,11 +181,11 @@ async function runGroups(run: Run): Promise<boolean> {
       continue;
     }
     const outcome = await runGroup(run, group, results);
-    if (outcome === 'retry') return false;
+    if (outcome === 'retry' || outcome === 'unconfirmed') return outcome;
     group.items.forEach((item) => results.set(item.id, outcome === 'done' ? 1 : 2));
     await run.options.hooks?.afterGroup?.(group);
   }
-  return true;
+  return 'complete';
 }
 
 async function runGroup(run: Run, group: ExecutionGroup, results: ReadonlyMap<string, number | null>) {
@@ -205,11 +207,14 @@ async function runGroup(run: Run, group: ExecutionGroup, results: ReadonlyMap<st
  * 不能把领组时的快照再交给执行器；重读后各行已收尾（回执丢失后重入）则直接取已落库结果，不再调用执行器。
  */
 async function attempt(run: Run, group: ExecutionGroup, executor: GroupExecutor) {
+  // 本步事务回调跑完（执行器已返回）即记下 step.before：此后再抛错只可能来自提交，结果未知（F-409）。
+  const step: { before?: string } = {};
   try {
     return await fenced(run.db, run.lease, async (tx) => {
       const settled = await settledResult(tx, run, group);
       if (settled !== null) return settled === 1 ? ('done' as const) : ('failed' as const);
       const fresh = await reloadGroup(tx, run, group);
+      const before = await progressMark(tx, run, group);
       const input = { tenantId: run.lease.tenantId, timezone: run.tenant.timezone, now: run.lease.clock() };
       const result = await executor(tx, {
         ...input,
@@ -218,16 +223,49 @@ async function attempt(run: Run, group: ExecutionGroup, executor: GroupExecutor)
         commandId: run.commandId,
       });
       if (result === 'done') await succeedGroup(tx, run, group);
+      step.before = before;
       return result;
     });
   } catch (error) {
     if (error instanceof FencingLost) throw error;
+    if (step.before !== undefined) return confirmStep(run, group, step.before, error);
     if (error instanceof AppError && error.status < 500) {
       const details = (error.details ?? {}) as { reason?: string };
       return recordFailure(run, group, failed(details.reason ?? error.code, error.message));
     }
     return recordRetry(run, group, error);
   }
+}
+
+/**
+ * 本步事务回调已跑完但提交抛错（回执丢失 / 提交失败，F-409）：按进度复读该步是否真的落库，不当作失败。
+ * 页进度（游标、计数、exec_phase）与本页写入同一事务提交，所以进度指纹变了 = 该页已落库，按成功续跑；
+ * 组已收尾则取已落库结果；指纹没变 = 提交已回滚，走既有计次重试；复读本身失败 = 无法判定，
+ * 停在该页（'unconfirmed'），不计次、不记失败，下一刻重入时执行器按已落库的游标续跑，不会重复写页。
+ */
+async function confirmStep(run: Run, group: ExecutionGroup, before: string, error: unknown) {
+  let verdict: 'done' | 'failed' | 'pending' | 'rolled-back';
+  try {
+    verdict = await fenced(run.db, run.lease, async (tx) => {
+      const settled = await settledResult(tx, run, group);
+      if (settled !== null) return settled === 1 ? 'done' : 'failed';
+      return (await progressMark(tx, run, group)) === before ? 'rolled-back' : 'pending';
+    });
+  } catch (recheckError) {
+    if (recheckError instanceof FencingLost) throw recheckError;
+    return 'unconfirmed' as const;
+  }
+  return verdict === 'rolled-back' ? recordRetry(run, group, error) : verdict;
+}
+
+/** 本组各行当前内容的指纹（执行列整行摘要）：一步提交前后不同 = 这一步已落库。 */
+async function progressMark(tx: Tx, run: Run, group: ExecutionGroup) {
+  const [row] = rowsOf<{ mark: string }>(
+    await tx.execute(sql`SELECT coalesce(md5(string_agg(i::text, '|' ORDER BY i.id)), '') AS mark
+      FROM org_adjustment_org_items i
+      WHERE i.tenant_id=${run.lease.tenantId} AND i.id=ANY(${idsOf(group)}::uuid[])`),
+  );
+  return row!.mark;
 }
 
 async function recordFailure(run: Run, group: ExecutionGroup, failure: Failure) {
@@ -237,7 +275,8 @@ async function recordFailure(run: Run, group: ExecutionGroup, failure: Failure) 
 
 /**
  * §7.7 可恢复失败：独立短事务累计次数；满 5 次记 EXECUTION_ERROR 并继续后续组，保证暂停能解除。
- * 提交回执丢失时事务可能已落库：计次、写失败之前先在持有 fencing 的同一事务内复读组终态，已完成的结果保留。
+ * 计次回执丢失时事务可能已落库：计次、写失败之前先在持有 fencing 的同一事务内复读组终态，已完成的结果保留。
+ * 执行步自身的提交回执丢失不走这里（先经 confirmStep 判定，只有确认回滚才计次）。
  * 计满与失败收尾同一事务（F-353）：计次回执丢失时组要么未计、要么已终态，下一刻不会再执行第 6 次。
  */
 async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
