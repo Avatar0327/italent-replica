@@ -8,7 +8,7 @@ export function userColumns(internal: boolean, detail: (id: string) => void): Ta
     {
       title: m.displayName,
       dataIndex: 'displayName',
-      width: 130,
+      width: 128,
       fixed: 'left',
       render: (name: string, row: User) => (
         <Button type="link" onClick={() => detail(row.userId)}>
@@ -17,11 +17,11 @@ export function userColumns(internal: boolean, detail: (id: string) => void): Ta
       ),
     },
   ];
-  const email = { title: m.email, dataIndex: 'email', width: 200 };
+  const email = { title: m.email, dataIndex: 'email', width: 188 };
   const status = {
     title: m.status,
     dataIndex: 'membershipStatus',
-    width: 100,
+    width: 128,
     render: (value: string) => <Status value={value} />,
   };
   const gaps = internalUserGaps.map((column) => ({
@@ -41,11 +41,11 @@ export function userColumns(internal: boolean, detail: (id: string) => void): Ta
       {
         title: m.userType,
         dataIndex: 'userType',
-        width: 110,
+        width: 128,
         render: (value: string | null) =>
           (({ internal: m.users, external: m.external }) as Record<string, string>)[value ?? ''] ?? value ?? m.empty,
       },
-      { title: m.businessIdentity, dataIndex: 'businessIdentity', width: 130 },
+      { title: m.businessIdentity, dataIndex: 'businessIdentity', width: 128 },
       ...allUserGaps.map((column) => ({
         ...column,
         render: () => (

@@ -4,7 +4,10 @@
  * - 头问题（`ORG_INACTIVE`）的 `orgIds` 随 `approvalSubjectOrgId` 与 `adjustmentRange` 查看权（两者都可见才给）。
  * 整单校验（路由 7）、提交 / 重提（路由 10）的 400 / 409、审批人编辑的错误共用；`viewable` 为 undefined 表示不受限。
  */
+import type { Tx } from '@italent/db';
+import { ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import type { ApprovalContext } from '../approval/context.js';
 
 type Viewable = ReadonlySet<string> | undefined;
 type Issue = Readonly<Record<string, unknown>>;
@@ -30,4 +33,19 @@ export function trimError(error: unknown, viewable: Viewable): unknown {
   if (!sees(viewable, 'orgItems.targetOrgId')) details = without(details, 'orgId');
   if (!sees(viewable, 'approvalSubjectOrgId', 'adjustmentRange')) details = without(details, 'orgIds');
   return new AppError(error.code, error.message, details);
+}
+
+/**
+ * 审批引擎回调（审批人编辑 / 同意兜底、发起人重提）里的错误信封按当前操作人的字段查看权裁剪（F-339 ②、F-427）；
+ * 未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。
+ */
+export async function trimmedForViewer(tx: Tx, ctx: ApprovalContext, work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    const viewable = ctx.fields
+      ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
+      : new Set<string>();
+    throw trimError(error, viewable);
+  }
 }

@@ -18,6 +18,7 @@ export {
 } from './contracts/org-hierarchy.js';
 export * from './permission/index.js';
 export * from './personnel/index.js';
+export * from './hr-analysis/reports.js';
 export * from './hr-analysis/roster.js';
 export * from './hr-analysis/segments.js';
 export * from './approval/index.js';
@@ -31,6 +32,7 @@ export * from './employment/planned-date.js';
 export * from './employment/duty-transfer-menu.js';
 export * from './employment/intern.js';
 export * from './employment/exit.js';
+export * from './employment/exit-notice-templates.js';
 export * from './employment/exit-termination.js';
 export * from './employment/retirement.js';
 export * from './employment/retirement-intention.js';

@@ -584,13 +584,20 @@ describe('AC-HA-13c 范围与授权', () => {
     expect((await board.get(`${PROCESS_BASE}/components/nope`)).status).toBe(404);
   });
 
-  it('授权项“人事分析 - 人事流程看板 查看”默认给人事模块预置管理员（DEC-415）', () => {
+  it('授权项“人事分析 - 人事流程看板 查看”给 HR 专员 / HR 经理 / 管理员并预置看全部（DEC-767）；人事管理员没有', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
-    for (const code of ['standard_org_system_admin', 'standard_hr_admin'])
-      expect(profile(code).objects.map((object) => object.objectCode)).toContain(OBJECT);
+    const held = (code: string) => profile(code).objects.map((object) => object.objectCode);
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    expect(seeAll('standard_org_system_admin')).toContain(OBJECT);
-    expect(seeAll('standard_hr_admin')).toContain(OBJECT);
+    for (const code of [
+      'standard_org_system_admin',
+      'standard_hr_dashboard_specialist',
+      'standard_hr_dashboard_manager',
+    ]) {
+      expect(held(code), code).toContain(OBJECT);
+      expect(seeAll(code), code).toContain(OBJECT);
+    }
+    expect(held('standard_hr_admin')).not.toContain(OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(OBJECT);
     expect(seeAll('standard_hr_specialist')).not.toContain(OBJECT);
   });
 });

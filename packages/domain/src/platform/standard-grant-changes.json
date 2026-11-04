@@ -1,5 +1,18 @@
 {
-  "reason": "F-323（DEC-706）：两预置管理员新增人员类别字典对象字段、数据操作与新建/编辑/停用/启用/删除按钮；租户字典无范围，其他身份不扩权",
-  "add": ["standard_org_system_admin/TenantBase.EmploymentType/*", "standard_hr_admin/TenantBase.EmploymentType/*"],
-  "remove": []
+  "reason": "F-472（DEC-767 / DEC-768）：新增预置身份 HR 专员 / HR 经理（五个看板类对象只读并预置看全部）；人事管理员去掉看板类对象及看板、报表类看全部，两个报表对象的查看权保留",
+  "add": ["standard_hr_dashboard_specialist/*", "standard_hr_dashboard_manager/*"],
+  "remove": [
+    "standard_hr_admin/TenantBase.HrDashboard/*",
+    "standard_hr_admin/TenantBase.HrProcessDashboard/*",
+    "standard_hr_admin/TenantBase.HrStructure/*",
+    "standard_hr_admin/TenantBase.ContractBoard/*",
+    "standard_hr_admin/TenantBase.HrMovement/*",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrDashboard",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrProcessDashboard",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovement",
+    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovementReport"
+  ]
 }
