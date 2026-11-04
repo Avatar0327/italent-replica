@@ -98,7 +98,7 @@ for (const [path, title] of [
   ['/qualification?view=levels', '任职级别'],
   ['/qualification?view=standards', '任职资格标准'],
 ]) {
-  test(`AC-FE-R3a ${title} 身份切换、列表、详情、表单抽屉`, async ({ page }) => {
+  test(`AC-FE-R3a ${title} 身份切换、列表、详情、表单`, async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
@@ -115,13 +115,20 @@ for (const [path, title] of [
     await expect(cell).toHaveCSS('font-size', '12px');
     await expect(cell).toHaveCSS('height', '40px');
     await page.getByRole('button', { name: '合成配置', exact: true }).first().click();
-    await expect(page.getByRole('dialog')).toHaveCount(1);
-    await expect(page.getByRole('dialog')).toContainText('合成配置');
-    await expect(page.locator('.detail-drawer')).toBeVisible();
-    await page.getByRole('button', { name: '关闭详情' }).click();
-    await page.getByRole('button', { name: /^新\s*建$/ }).click();
+    if (title === '人才标准' || title === '任职资格标准') {
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('.catalog-detail-page')).toContainText('合成配置');
+      await actionButton(page, '返回').click();
+    } else {
+      await expect(page.getByRole('dialog')).toHaveCount(1);
+      await expect(page.getByRole('dialog')).toContainText('合成配置');
+      await expect(page.locator('.detail-drawer')).toBeVisible();
+      await page.getByRole('button', { name: '关闭详情' }).click();
+    }
+    const createName = title === '人才标准' || title === '指标库' ? '新增' : '新建';
+    await actionButton(page, createName).click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByLabel('名称', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog').getByLabel('名称', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: /^取\s*消$/ }).click();
     await page.getByRole('switch', { name: '注释' }).click();
     await expect(page.locator('.catalog-page .decision-note')).toBeVisible();
@@ -156,7 +163,7 @@ test('AC-FE-R3a 编辑按当前详情 revision 提交，仅发送改动字段', 
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.goto('/qualification?view=categories');
   await actionButton(page, '编辑').click();
-  await page.getByLabel('名称', { exact: true }).fill('更新后的合成类别');
+  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('更新后的合成类别');
   await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(writes).toEqual([{ body: { name: '更新后的合成类别' }, revision: '1', key: expect.any(String) }]);
@@ -232,13 +239,13 @@ test('AC-FE-R3a 新建标准提交选定级别与指标网格，不发送空白�
   await page.getByLabel('切换演示身份').selectOption(user);
   await page.goto('/qualification?view=standards');
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
-  await page.getByLabel('名称', { exact: true }).fill('合成任职标准');
+  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('合成任职标准');
   for (const label of ['任职类别', '级别范围', '指标范围']) {
-    const choice = page.getByLabel(label, { exact: true });
+    const choice = page.getByRole('dialog').getByLabel(label, { exact: true });
     await choice.click();
     await choice.press('ArrowDown');
     await choice.press('Enter');
-    await page.getByLabel('名称', { exact: true }).click();
+    await page.getByRole('dialog').getByLabel('名称', { exact: true }).click();
   }
   await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -274,20 +281,17 @@ test('AC-FE-R3a 人才标准引用潜力指标时不提供权重与目标输入'
   });
   await page.goto('/staff');
   await page.getByLabel('切换演示身份').selectOption(user);
-  await page.goto('/talent?view=criteria');
+  await page.goto('/talent?view=maintenance');
+  await page.getByRole('tab', { name: '人才标准', exact: true }).click();
   await page.getByRole('button', { name: /^新\s*建$/ }).click();
   await page.getByLabel('名称', { exact: true }).fill('合成人才标准');
-  for (const label of ['分类', '引用指标']) {
-    const choice = page.getByLabel(label, { exact: true });
-    await choice.click();
-    await choice.press('ArrowDown');
-    await choice.press('Enter');
-    await page.getByLabel('名称', { exact: true }).click();
-  }
-  await expect(page.getByRole('dialog').getByRole('spinbutton')).toHaveCount(0);
+  await page.getByRole('combobox', { name: '人才标准分类', exact: true }).last().selectOption(rows[0]!.id);
+  await page.getByRole('combobox', { name: '添加指标', exact: true }).selectOption(rows[0]!.id);
+  await expect(page.getByRole('spinbutton')).toHaveCount(2);
+  for (const input of await page.getByRole('spinbutton').all()) await expect(input).toBeDisabled();
   await actionButton(page, '保存').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(body?.dimensions).toEqual([{ dimensionId: rows[0]!.id }]);
+  await expect.poll(() => body?.dimensions).toEqual([{ dimensionId: rows[0]!.id, displayOrder: 1 }]);
 });
 
 test('AC-FE-R3a 已选员工无当前资格时显示真实空态', async ({ page }) => {
@@ -306,11 +310,11 @@ test('AC-FE-R3a 已选员工无当前资格时显示真实空态', async ({ page
 for (const changeName of [false, true]) {
   test(`AC-FE-R3a P2-1 清空层级${changeName ? '并改名' : '单独保存'}`, async ({ page }) => {
     const body: unknown[] = [];
-    let saved = { ...rows[0], layerId: rows[0]!.id as string | null };
+    let saved = { ...rows[0]!, layerId: rows[0]!.id as string | null };
     await page.route('**/api/tenant/qualification/levels/*', (route) => {
       if (route.request().method() === 'PATCH') {
         body.push(route.request().postDataJSON());
-        saved = { ...saved, ...route.request().postDataJSON() };
+        saved = { ...saved, ...route.request().postDataJSON(), revision: saved.revision + 1 };
       }
       return route.fulfill({ json: saved });
     });
@@ -321,7 +325,7 @@ for (const changeName of [false, true]) {
     const layer = page.getByLabel('层级', { exact: true });
     await expect(page.locator('.ant-form-item').filter({ has: layer })).toContainText('合成配置');
     await page.locator('.ant-form-item').filter({ has: layer }).locator('.ant-select-clear').click();
-    if (changeName) await page.getByLabel('名称', { exact: true }).fill('改名后的级别');
+    if (changeName) await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('改名后的级别');
     await actionButton(page, '保存').click();
     await expect.poll(() => body).toEqual([changeName ? { name: '改名后的级别', layerId: null } : { layerId: null }]);
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -375,7 +379,7 @@ for (const channel of [false, true]) {
       await page.getByText('合成员工', { exact: true }).click();
       await page.getByRole('button', { name: '查看级别标准' }).click();
     } else await page.getByRole('button', { name: '合成配置', exact: true }).first().click();
-    const dialog = page.getByRole('dialog');
+    const dialog = channel ? page.getByRole('dialog') : page.locator('.catalog-detail-page');
     for (const title of ['指标目标值', '指标权重（%）', '能力目标值', '能力权重（%）', '目标等级'])
       await expect(dialog.getByRole('columnheader', { name: title, exact: true })).toBeVisible();
     const empty = dialog.getByRole('row').filter({ hasText: '空值能力标准' });

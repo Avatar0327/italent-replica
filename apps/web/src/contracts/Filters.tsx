@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { FilterDrawer } from '../foundation/FilterDrawer.js';
 import { PersonSelect, TenantDatePicker, type Choice } from '../foundation/selectors.js';
 import { m } from './messages.js';
-import { rangeErrors, sortFields, value as displayValue, type ListQuery, type View } from './model.js';
+import { rangeErrors, sortKeys, value as displayValue, type ListQuery, type View } from './model.js';
 import { RefSelect, refPaths, usePeople } from './references.js';
 
 /** 快速筛选：姓名 / 工号关键字，回车或失焦后应用。 */
@@ -42,18 +42,23 @@ function Item({ label, children }: { label: string; children: ReactNode }) {
 type Draft = { draft: ListQuery; set(patch: ListQuery): void };
 export function ListFilterDrawer({
   view,
+  allowed,
   days,
   initial,
   onClose,
   onApply,
 }: {
   view: View;
+  allowed: readonly string[];
   days: number;
   initial: ListQuery;
   onClose(): void;
   onApply(filters: ListQuery, days: number): void;
 }) {
-  const [draft, setDraft] = useState(initial);
+  // 已选的排序键在权限收回后不再可选：打开抽屉时不带入，避免下拉框显示原始键名
+  const [draft, setDraft] = useState<ListQuery>(() =>
+    !initial.sort || sortKeys(view, allowed).includes(initial.sort) ? initial : { ...initial, sort: undefined },
+  );
   const [draftDays, setDraftDays] = useState(days);
   const [invalid, setInvalid] = useState(false);
   const set = (patch: ListQuery) => {
@@ -87,7 +92,7 @@ export function ListFilterDrawer({
         )}
         <PersonItems draft={draft} set={set} />
         {!missing && <ContractItems draft={draft} set={set} />}
-        <SortItems missing={missing} draft={draft} set={set} />
+        <SortItems view={view} allowed={allowed} draft={draft} set={set} />
       </div>
     </FilterDrawer>
   );
@@ -181,8 +186,8 @@ function ContractItems(state: Draft) {
     </>
   );
 }
-function SortItems({ missing, ...state }: Draft & { missing: boolean }) {
-  const fields = (missing ? ['name'] : sortFields).map((key) => ({ value: key, label: m.sortFields[key]! }));
+function SortItems({ view, allowed, ...state }: Draft & { view: View; allowed: readonly string[] }) {
+  const fields = sortKeys(view, allowed).map((key) => ({ value: key, label: m.sortFields[key]! }));
   return (
     <>
       <Item label={m.sort}>{select(state, 'sort', m.sort, fields)}</Item>

@@ -275,11 +275,12 @@ async function bumpRequestRevision(tx: Tx, ctx: Pick<EmploymentContext, 'tenantI
  * 员工名下未办结（草稿 / 审批中 / 驳回）的申请，申请头按 ID 升序 FOR UPDATE（离职钩子 §4.6、调动 §4.7）。
  * 给出 recordId 时只取以该兼职记录为目标的延长 / 结束申请（调动只结束一条兼职，不波及别的申请）。
  */
-export async function lockOpenRequests(
+async function openRequests(
   tx: Tx,
   ctx: Pick<EmploymentContext, 'tenantId'>,
   employeeId: string,
-  recordId?: string,
+  recordId: string | undefined,
+  lock: boolean,
 ): Promise<PartTimeRequestRow[]> {
   const states = sql.join(
     PART_TIME_REQUEST_OPEN_STATES.map((state) => sql`${state}`),
@@ -292,13 +293,24 @@ export async function lockOpenRequests(
         WHERE tenant_id=q.tenant_id AND request_id=q.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE q.tenant_id=${ctx.tenantId} AND q.employee_id=${employeeId}::uuid AND s.state IN (${states})
         ${recordId === undefined ? sql`` : sql`AND q.record_id=${recordId}::uuid`}
-      ORDER BY q.id FOR UPDATE OF q
+      ORDER BY q.id ${lock ? sql`FOR UPDATE OF q` : sql``}
     `),
   );
   const requests: PartTimeRequestRow[] = [];
   for (const { id } of ids) requests.push((await loadPartTimeRequest(tx, ctx.tenantId, id))!);
   return requests;
 }
+
+export const lockOpenRequests = (
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  employeeId: string,
+  recordId?: string,
+) => openRequests(tx, ctx, employeeId, recordId, true);
+
+/** 不加锁地读未办结申请（离职预览，F-429 ②：只读，不能给预览加行锁）。 */
+export const readOpenRequests = (tx: Tx, ctx: Pick<EmploymentContext, 'tenantId'>, employeeId: string) =>
+  openRequests(tx, ctx, employeeId, undefined, false);
 
 /** 这些申请仍在运行 / 退回中的审批实例，按 ID 升序 FOR UPDATE（锁序：申请头之后；作废时 cancel 它们）。 */
 export async function lockOpenInstances(

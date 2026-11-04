@@ -17,6 +17,7 @@ import { findPredecessor, loadEmploymentBusiness, loadEmploymentRecord } from '.
 import { loadScheme, type OccupancyRange } from './schemes.js';
 import { membershipWindows, clipMembership, type MembershipWindow } from './membership-windows.js';
 import { lockEstablishment, rowsOf } from './store.js';
+import { projectionEmployeeScope } from './projection-scope.js';
 import { targetCapacities } from './transfer-service.js';
 
 /** 编辑与向后更新共用：只有部门、职位、人员类型或实际配置的控编条件变化才触发容量检查。 */
@@ -333,7 +334,7 @@ async function projectedMembers(
       (await cycleOn(tx, ctx.tenantId, row.employeeId, String(raw.declaredEffectiveDate ?? payload.effectiveDate)));
     const from = [payload.effectiveDate, target.effectiveDate].sort().at(-1)!;
     const until = window?.to && window.to < windowEnd ? window.to : windowEnd;
-    if (predecessor && (timings.transferIn === 'submitted' || row.state !== 'in_review'))
+    if (predecessor && countsTransfer(row.state, timings.transferIn))
       await projectAdjustments(
         tx,
         ctx,
@@ -346,16 +347,15 @@ async function projectedMembers(
         members,
         target.effectiveDate,
         windowEnd,
-        timings.transferOut === 'submitted' || row.state !== 'in_review',
+        countsTransfer(row.state, timings.transferOut),
         applicationStaff,
       );
     if (!window || from >= until) continue;
     const previous = members.get(row.employeeId) ?? [];
-    const intervals =
-      timings.transferOut === 'submitted' || row.state !== 'in_review'
-        ? previous.flatMap((interval) => cutInterval(interval, from, until))
-        : previous;
-    if (timings.transferIn === 'submitted' || row.state !== 'in_review')
+    const intervals = countsTransfer(row.state, timings.transferOut)
+      ? previous.flatMap((interval) => cutInterval(interval, from, until))
+      : previous;
+    if (countsTransfer(row.state, timings.transferIn))
       intervals.push({ employeeId: row.employeeId, fields, from, until, ...staffOf(applicationStaff) });
     members.set(row.employeeId, intervals);
   }
@@ -427,13 +427,14 @@ async function adjustmentProjection(tx: Tx, ctx: EmploymentContext, target: Acti
   return projectedAdjustments;
 }
 
-async function resolveProjectedTransfer(
+export async function resolveProjectedTransfer(
   tx: Tx,
   ctx: EmploymentContext,
   payload: EmploymentPayloadRow,
   state: string,
   projectedPredecessors: Map<string, EmploymentRecord | null>,
   projectedAdjustments: Map<string, EmploymentRecord>,
+  recorded?: EmploymentRecord | null,
 ) {
   const { previous: point } = await employmentTimelineNeighbors(
     tx,
@@ -442,16 +443,20 @@ async function resolveProjectedTransfer(
     payload.effectiveDate,
     payload.businessId,
   );
-  const original = point
-    ? (projectedAdjustments.get(point.recordId) ??
-      (await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, payload.effectiveDate)))
+  // 报表也读取已物化的未来记录；其前驱取版本链，不能把自身当成插入点的前驱。
+  const predecessorId = recorded ? recorded.previousRecordId : point?.recordId;
+  const original = predecessorId
+    ? (projectedAdjustments.get(predecessorId) ??
+      (await loadEmploymentRecord(tx, ctx.tenantId, predecessorId, payload.effectiveDate)))
     : null;
   const projected = projectedPredecessors.get(payload.employeeId);
   const predecessor =
     projected && (!original || projected.effectiveDate >= original.effectiveDate) ? projected : original;
   const materialized =
     state === 'effective'
-      ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
+      ? (projectedAdjustments.get(payload.businessId) ??
+        recorded ??
+        (await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)))
       : null;
   const resolved =
     materialized ??
@@ -543,8 +548,20 @@ async function occupancyRows(
   return rows;
 }
 
+/** 控编与报表共享各方向的占用时机。 */
+export const countsTransfer = (state: string, timing: 'submitted' | 'approved') =>
+  timing === 'submitted' || state !== 'in_review';
+
 /** 删除恢复校验先于 deleted 状态事件，已写墓碑的业务不能再占编或截断恢复区间（P2-M1）。 */
-async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, start: string, end: string) {
+export async function pendingTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: { readonly businessId?: string },
+  start: string,
+  end: string,
+  futureRecords = false,
+  visibleEmployeeIds: readonly string[] = [],
+) {
   const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
     await tx.execute(sql`
@@ -560,12 +577,21 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
+    WHERE b.tenant_id=${ctx.tenantId}
+      AND (${target.businessId ?? null}::uuid IS NULL OR b.id<>${target.businessId ?? null}::uuid)
+      AND ${futureRecords ? projectionEmployeeScope(visibleEmployeeIds, sql`b.employee_id`) : sql`true`}
       AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
         WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
-      AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
-        OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+      AND (p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
+        OR NOT ${futureRecords} AND s.state='effective'
+          AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
           AND ${pendingActivationState(ctx.timezone)})
+        OR ${futureRecords} AND s.state='effective'
+          AND p.effective_date>${tenantLocalDate(ctx.now, ctx.timezone)}::date
+          AND EXISTS (SELECT 1 FROM employment_timeline ft JOIN employment_records fr
+            ON fr.tenant_id=ft.tenant_id AND fr.id=ft.record_id
+            WHERE ft.tenant_id=b.tenant_id AND ft.record_id=b.id AND fr.service_type='primary'
+              AND fr.kind NOT IN ('leave','retirement') AND NOT isempty(ft.valid_during)))
       AND ${date} BETWEEN ${start}::date AND ${end}::date
     ORDER BY ${date},${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
       ${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001

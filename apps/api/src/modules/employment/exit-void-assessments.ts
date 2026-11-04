@@ -7,10 +7,11 @@
  * 审批通过与离职生效并发时只有先拿到员工锁的一方成功。
  * 终态对齐原站（F-248，DEC-633）：考核状态值仍是 cancelled（不迁移、不回写存量），是否“已终止”由 voided_by_exit 审计派生
  * （assessment-store.ts terminatedByExit）；审批实例走系统撤销：日志操作人“系统”、动作“撤销”、理由见 EXIT_VOID_REASON。
- * 生效后撤销离职不恢复考核（DEC-617“终止作废”）。
+ * 生效后撤销离职不恢复考核（DEC-617“终止作废”）。每条被作废的考核同事务写一行 exit_effects（kind = assessment_voided，F-429），
+ * 与任职 / 合同台账同结构；该类不列入撤销清单的固定四类（撤销不恢复考核，没有可展示的撤销动作）。
  * DEC-725：离职只作废“离职生效时终止在途流程”里勾选的考核类型（试用中考核 / 转正考核），未勾选的保留；退休暂不接配置（F-351）。
  */
-import type { Tx } from '@italent/db';
+import { exitEffects, type Tx } from '@italent/db';
 import { assessmentTypeFlow } from '@italent/domain';
 import { revokeBySystem } from '../approval/actions.js';
 import { schedulerAwareContext } from '../approval/context.js';
@@ -28,6 +29,7 @@ export interface VoidedAssessment {
   readonly id: string;
   readonly stateBefore: string;
   readonly instanceId: string | null;
+  readonly assessmentType: string;
 }
 
 /** 作废该员工全部在途考核；返回被作废的清单（供调用方 / 测试核对）。 */
@@ -50,8 +52,33 @@ export async function voidInFlightAssessments(
       instanceId: active?.id ?? null,
     });
     if (active) await revokeBySystem(tx, approvalCtx, active.id, EXIT_VOID_REASON);
-    voided.push({ id: row.id, stateBefore: row.status, instanceId: active?.id ?? null });
+    voided.push({
+      id: row.id,
+      stateBefore: row.status,
+      instanceId: active?.id ?? null,
+      assessmentType: candidate.assessmentType,
+    });
   }
+  if (voided.length)
+    await tx.insert(exitEffects).values(
+      voided.map((item) => ({
+        tenantId: ctx.tenantId,
+        businessId: event.businessId,
+        employeeId: event.employeeId,
+        phase: 'effective',
+        kind: 'assessment_voided',
+        targetType: 'assessment',
+        targetId: item.id,
+        detail: {
+          assessmentType: item.assessmentType,
+          stateBefore: item.stateBefore,
+          instanceId: item.instanceId,
+          lastWorkDate: event.lastWorkDate,
+        },
+        commandId: ctx.commandId,
+        createdAt: ctx.now,
+      })),
+    );
   return voided;
 }
 

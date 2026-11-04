@@ -5,6 +5,13 @@
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
+  'packages/domain/src/hr-analysis/reports.ts#CONTRACT_LEDGER_COLUMNS': ['#FIXED', '#col'],
+  'packages/domain/src/hr-analysis/reports.ts#EMPLOYMENT_HISTORY_COLUMNS': ['#FIXED', '#col'],
+  'packages/domain/src/hr-analysis/reports.ts#FIXED': ['#col'],
+  'packages/domain/src/hr-analysis/reports.ts#MOVEMENT_DETAIL_COLUMNS': ['#FIXED', '#col'],
+  'packages/domain/src/hr-analysis/reports.ts#PERSONNEL_REPORTS': ['#analysis'],
+  'packages/domain/src/hr-analysis/reports.ts#analysis': ['#BASE'],
+  'packages/domain/src/hr-analysis/reports.ts#reportCellLabel': ['#CELL_LABELS'],
   'packages/domain/src/hr-analysis/roster.ts#ROSTER_COLUMNS': ['#contract', '#person', '#record'],
   'packages/domain/src/hr-analysis/roster.ts#ROSTER_FIXED_COLUMNS': ['#person'],
   'packages/domain/src/hr-analysis/roster.ts#rosterCellText': [
