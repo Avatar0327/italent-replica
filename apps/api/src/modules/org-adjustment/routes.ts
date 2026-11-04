@@ -188,13 +188,14 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
           authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
         );
-        // 明细行用户写过的 orgItems.* 字段写权，含写过又清空的（F-428，与审批中心重提的 authorizeSubmission 同口径）
+        // 先判全部明细的组织范围（隐藏行 → 与不存在的申请单同一 404），再判写过的字段，免得 403 / 404 带出隐藏行填过哪些字段
         const items = await loadItems(tx, ctx.tenantId, id);
-        const trail = await loadItemTrail(tx, ctx.tenantId, items);
-        await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
         await asAdjustmentMissing(async () => {
           await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
         });
+        // 明细行用户写过的 orgItems.* 字段写权，含写过又清空的（F-428，与审批中心重提的 authorizeSubmission 同口径）
+        const trail = await loadItemTrail(tx, ctx.tenantId, items);
+        await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
       },
       execute: async (tx, commandCtx) => {
         try {

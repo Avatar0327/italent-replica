@@ -12,7 +12,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { flowWorld } from './AC-OA-approval-support.js';
-import { BASE, bodyOf, expectError, only } from './AC-OA-head-support.js';
+import { ALL, BASE, bodyOf, expectError, only } from './AC-OA-head-support.js';
 import { itemsWorld, newOrg, reasons, rename } from './AC-OA-items-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 
@@ -67,6 +67,28 @@ describe('F-343 ① 隐藏行与不存在的行同一错误', () => {
     await expectError(missing, 404, 'NOT_FOUND');
     await expectError(outside, 404, 'NOT_FOUND');
     expect((await bodyOf(outside)).error).toEqual((await bodyOf(missing)).error);
+  });
+
+  it('提交：隐藏行写过的字段被撤写权与未撤时同为不存在的 404，不按 403 带出隐藏行填过哪些字段；范围放开后撤权才 403', async () => {
+    const w = await itemsWorld(testDb().db, 'f343-hidden-submit');
+    const child = await w.org(`下级${randomUUID()}`, w.a);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    await w.item(view.id, rename(w.a));
+    await w.item(view.id, rename(child, { shortName: `简称${randomUUID()}` }));
+    const revision = (await w.stored(view.id))!.revision;
+    const submit = (id: string) => w.call('POST', `${BASE}/${id}/submit`, { ifMatch: revision, body: {} });
+    w.access.org = only(w.a);
+    const missing = await submit(randomUUID());
+    const unwritten = await submit(view.id);
+    w.access.deniedFields.add('orgItems.shortName');
+    const written = await submit(view.id);
+    for (const out of [missing, unwritten, written]) await expectError(out, 404, 'NOT_FOUND');
+    expect((await bodyOf(written)).error).toEqual((await bodyOf(missing)).error);
+    expect((await bodyOf(unwritten)).error).toEqual((await bodyOf(missing)).error);
+    expect((await w.stored(view.id))!.revision).toBe(revision);
+
+    w.access.org = ALL;
+    await expectError(await submit(view.id), 403, 'FORBIDDEN');
   });
 });
 

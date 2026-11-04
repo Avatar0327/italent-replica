@@ -925,7 +925,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '722c6990ca62',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '79d4de41814f',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': 'a59c0acfd1d2',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '5bd31851d51e',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
@@ -2519,7 +2519,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
     'efd7a72dd542',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
-    '7aedee42d55a',
+    '18b159f7b5a6',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':
