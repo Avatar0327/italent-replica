@@ -107,6 +107,7 @@ export const centerText = {
   searchContent: '搜索内容/发起人',
   searchPending: '搜索接口待补齐',
   submittedBy: '提交的',
+  exceptionAdmin: '异常管理员',
   otherType: '其他申请',
   batchApprove: '批量同意',
   batchDisagree: '批量不同意',

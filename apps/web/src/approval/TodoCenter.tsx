@@ -178,6 +178,7 @@ function TodoCard(props: { row: TodoRow; view: ApprovalView; timezone: string; o
             {row.title}
           </Button>
           {status && <Tag className={`approval-tone approval-tone-${status.tone}`}>{status.label}</Tag>}
+          {row.isExceptionAdmin && <Tag color="orange">{c.exceptionAdmin}</Tag>}
         </div>
         <div className="approval-record-meta">
           {row.summary?.length

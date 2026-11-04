@@ -85,4 +85,23 @@ describe('AC-APV-F474-3 待办卡片不使用当前页推算计数', () => {
     expect(host.textContent).not.toContain('演示数据');
     expect(host.textContent).toContain('合成发起人甲');
   });
+  it('离开视图后迟到的响应不覆盖新视图，切回仍重新读取', async () => {
+    const fetcher = await render('pending');
+    let finish!: (response: Response) => void;
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const click = async (label: string) => {
+      const button = Array.from(host.querySelectorAll('button')).find(
+        (item) => item.getAttribute('aria-label') === label || item.textContent?.replace(/\s/g, '') === label,
+      )!;
+      await act(() => button.click());
+    };
+    await click('重新读取');
+    await click('已处理');
+    await act(() => finish(new Response(JSON.stringify({ items: [], total: 999, categories: [] }))));
+    expect(host.textContent).not.toContain('999');
+    expect(host.textContent).toContain('合成发起人甲');
+    await click('待处理');
+    expect(String(fetcher.mock.calls.at(-1)![0])).toContain('view=pending');
+    expect(host.textContent).toContain('合成发起人甲');
+  });
 });

@@ -3,6 +3,7 @@ import { useApiClient, useSession, type PageRequest } from '../foundation/index.
 import type { ApprovalRow, ApprovalView, ApprovalList } from './types.js';
 
 export interface TodoRow extends ApprovalRow {
+  isExceptionAdmin?: boolean;
   initiatorName?: string | null;
   summary?: { key: string; label: string; value: string }[];
 }

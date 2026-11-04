@@ -44,6 +44,7 @@ interface CardRow {
   task_id: string | null;
   node_key: string | null;
   node_name: string | null;
+  is_exception_admin: boolean;
   created_at: string;
 }
 
@@ -77,6 +78,7 @@ export async function listTodoCards(
     await tx.execute(sql`WITH candidates AS MATERIALIZED (
       SELECT i.id,i.title,i.status,i.approval_type,i.initiator_user_id,
         t.id AS task_id,t.node_key,n.name AS node_name,${category} AS category,
+        ${query.view === 'pending' ? sql`t.is_exception_admin` : sql`false`} AS is_exception_admin,
         ${time} AS created_at
       FROM approval_instances i
       LEFT JOIN LATERAL (${taskSource}) t ON true
@@ -104,7 +106,8 @@ export async function listTodoCards(
       approvalType: row.approval_type,
       ...(query.view === 'pending' && row.task_id ? { taskId: row.task_id } : {}),
       nodeKey: row.node_key,
-      ...(row.node_name ? { nodeName: row.node_name } : {}),
+      ...(row.node_name ? { nodeName: row.is_exception_admin ? `${row.node_name}（异常管理员）` : row.node_name } : {}),
+      isExceptionAdmin: row.is_exception_admin,
       createdAt: new Date(row.created_at).toISOString(),
       initiatorName: names[index]!.actorName,
       summary: await summarize(detail),
