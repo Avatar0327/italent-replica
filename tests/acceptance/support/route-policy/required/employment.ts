@@ -1107,8 +1107,11 @@ const accountRead = (call: Evidence): Obligation =>
     ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
     [call, READ, RECORD_CONST],
   );
-const DRAFT_BUTTON =
-  "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })";
+/** 转正申请暂存的按钮判定：读不带字段；写带转正日期控制字段（F-344）。 */
+const DRAFT_BUTTON = {
+  GET: "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })",
+  PUT: "await requireEmploymentWrite(ctx, 'create', controls, 'Employment.Create', undefined, { commandOnly: true })",
+} as const;
 
 export const EMPLOYMENT: RequiredTable = {
   'GET /api/tenant/employment/exit-account/settings': [
@@ -3116,7 +3119,7 @@ export const EMPLOYMENT: RequiredTable = {
           ob(
             `btn:${RECORD}#Employment.Create@detail`,
             ['button:requireEmploymentWrite(按钮)'],
-            [at(PROBATION, method, path, DRAFT_BUTTON), WRITE_BUTTON],
+            [at(PROBATION, method, path, DRAFT_BUTTON[method]), WRITE_BUTTON],
           ),
           ob(
             'guard:employment.scope',
