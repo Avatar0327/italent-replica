@@ -1996,6 +1996,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
         fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
       }),
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
     },
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.exitViews'),
@@ -2008,6 +2017,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: projector('employment.response', 'employment.exitDetail'),
+    optional: {
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
+    },
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
