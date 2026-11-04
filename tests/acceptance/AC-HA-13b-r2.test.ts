@@ -4,7 +4,7 @@
  * - P2-1（DEC-729）：B54 流出按最后工作日归年、归月，流出合计 = BE-12b 人事看板“本年离职”（年界 12-31、最后工作日 = asOf）；
  *   B50 是否在职仍按离职生效日（最后工作日 + 1）；
  * - P2-2：3.1.36 与“组织编制统计”取编制模块的组织编制（本级 / 含下级）与同一时点的实有人员（含下级），
- *   预增员 / 预减员 / 缺编数 / 执行率整列为 null（按组织汇总的读接口尚未抽出，F-418）；
+ *   F-418 补齐预增员 / 预减员 / 缺编数 / 执行率；
  * - P2-3：B54 调动只计内部员工 + 实习生；P2-4：清空的职务序列不回落到任职底表旧值；
  * - P2-5：月表页尾 = 各月行之和；P2-6：asOf 合法边界不 500；P2-7：全表组织行 = 单筛该组织；
  * - P2-8：离职类型 / 原因列由租户字典展开，未使用的启用项为 0；
@@ -98,7 +98,7 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
     expect(row(months, 'monthly', '2026-01')).toMatchObject({ exits: 1 });
   });
 
-  it('P2-2：有组织编制时 3.1.36 与组织编制统计取本级 / 含下级编制与实有人员（含下级），其余列 null', async () => {
+  it('P2-2：有组织编制时 3.1.36 与组织编制统计取本级 / 含下级编制与实有人员（含下级），F-418 补齐其余列', async () => {
     const G = await w.org(named('编制部'));
     const G1 = await w.org(named('编制组'), G);
     const inG = await w.hire('编制部员工', '2026-02-01', G);
@@ -134,7 +134,7 @@ describe('AC-HA-13b 第 2 轮返工回归', () => {
     const scoped = `${AS_OF}&departmentId=${G.id}`;
     const actual = (await c.group('6.25', scoped, '2026-10'))!.count;
     expect(actual).toBe(2);
-    const empty = { pendingIn: null, pendingOut: null, vacancy: null, executionRate: null };
+    const empty = { pendingIn: 0, pendingOut: 0, vacancy: 11, executionRate: 0.1538 };
     const component = await c.component(BASE, '3.1.36', scoped);
     expect(component.kind).toBe('table');
     const groups = (component.groups ?? []) as unknown as EstablishmentGroup[];

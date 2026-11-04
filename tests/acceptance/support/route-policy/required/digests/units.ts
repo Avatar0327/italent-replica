@@ -31,7 +31,7 @@ export const DIGESTS: Digests = {
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': 'f2c77b11f9a1',
     'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
-    'route:GET /api/tenant/analytics/hr-movement/reports/:report': '6ae255ae73f3',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'd850ade2116c',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
     approvalVisible: '2e0c654e1a67',
