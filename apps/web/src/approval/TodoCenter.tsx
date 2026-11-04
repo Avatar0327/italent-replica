@@ -31,6 +31,7 @@ export function TodoCenter({ visible }: { visible: readonly ApprovalSection[] })
       <ApprovalDetail
         key={state.selected.id}
         layout="page"
+        todo
         row={state.selected}
         demo={state.data.demo}
         onClose={() => state.setSelected(undefined)}
