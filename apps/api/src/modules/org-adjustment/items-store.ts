@@ -160,6 +160,29 @@ export function auditItem(
   });
 }
 
+/** 明细审计的前后快照（`auditItem` 写入；新增行 before 为 null）。 */
+export interface ItemTrail {
+  readonly before: Readonly<Record<string, unknown>> | null;
+  readonly after: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * 本单现存的用户明细行的写入轨迹（F-428）：同事务写入的审计 before / after。基线重算（rebase）是系统改基线，不是用户写入，
+ * 不计；连带行由停用整支展开生成，同样不计；已删除的行不在提交范围，不查。
+ */
+export async function loadItemTrail(tx: Tx, tenantId: string, items: readonly OrgItem[]): Promise<ItemTrail[]> {
+  const ids = items.filter((item) => !item.cascadedFromItemId).map((item) => item.id);
+  if (ids.length === 0) return [];
+  return rowsOf<ItemTrail>(
+    await tx.execute(sql`SELECT "before", "after" FROM audit_events
+      WHERE tenant_id = ${tenantId}::uuid AND object_type = 'org-adjustment-item'
+        AND action <> 'org-adjustment.rebase' AND object_id IN (${sql.join(
+          ids.map((id) => sql`${id}`),
+          sql`, `,
+        )})`),
+  );
+}
+
 export interface ItemsResult {
   readonly adjustmentId: string;
   readonly revision: number;

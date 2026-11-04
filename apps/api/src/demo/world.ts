@@ -373,6 +373,8 @@ export class DemoWorld {
   private async setupHr(): Promise<void> {
     const hr = this.accounts.get('hr')!;
     await this.grant(hr, 'standard_hr_admin');
+    // DEC-767：看板类对象已不在人事管理员里；演示 HR 账号另授 HR 专员，保持人事看板可看
+    await this.grant(hr, 'standard_hr_dashboard_specialist');
     await this.scopeAll(hr);
   }
 

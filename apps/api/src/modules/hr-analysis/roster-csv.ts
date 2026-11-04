@@ -14,10 +14,14 @@ function cell(text: string): string {
 }
 
 /** 表头 + 数据行（列与列表一致：由调用方传入同一份可见列）。 */
-export function rosterCsv(columns: readonly RosterColumn[], items: readonly Row[]): string {
+export function rosterCsv(
+  columns: readonly RosterColumn[],
+  items: readonly Row[],
+  text: (key: string, value: unknown) => string = rosterCellText,
+): string {
   const lines = [
     columns.map((column) => cell(column.label)).join(','),
-    ...items.map((item) => columns.map((column) => cell(rosterCellText(column.key, item[column.key]))).join(',')),
+    ...items.map((item) => columns.map((column) => cell(text(column.key, item[column.key]))).join(',')),
   ];
   return BOM + lines.join('\r\n') + '\r\n';
 }
