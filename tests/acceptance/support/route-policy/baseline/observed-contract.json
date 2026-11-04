@@ -23116,6 +23116,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "fieldsIn": [
+          "requireObjectWrite"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],

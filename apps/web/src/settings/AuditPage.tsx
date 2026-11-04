@@ -182,17 +182,18 @@ function auditColumns(instant: (value: string) => string, setDetail: (id: string
     {
       title: m.objectId,
       dataIndex: 'objectId',
+      width: 128,
       render: (value: string, row: Audit) => (
         <Button type="link" onClick={() => setDetail(row.id)}>
           {value ?? m.detail}
         </Button>
       ),
     },
-    { title: m.operator, render: (_: unknown, row: Audit) => row.operator.name },
-    { title: m.occurredAt, dataIndex: 'occurredAt', render: instant },
-    { title: m.operation, dataIndex: 'operationLabel' },
-    { title: m.object, dataIndex: 'objectLabel' },
-    { title: m.content, dataIndex: 'content', width: 320 },
-    { title: m.sourceAction, dataIndex: 'sourceAction' },
+    { title: m.operator, width: 118, render: (_: unknown, row: Audit) => row.operator.name },
+    { title: m.occurredAt, dataIndex: 'occurredAt', width: 146, render: instant },
+    { title: m.operation, dataIndex: 'operationLabel', width: 128 },
+    { title: m.object, dataIndex: 'objectLabel', width: 128 },
+    { title: m.content, dataIndex: 'content', width: 128 },
+    { title: m.sourceAction, dataIndex: 'sourceAction', width: 128 },
   ];
 }
