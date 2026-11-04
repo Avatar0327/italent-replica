@@ -42,7 +42,7 @@ function useListState() {
   const [generation, setGeneration] = useState(0);
   const permission = usePermissions(object);
   const allowed = permission.snapshot.objects[object]?.viewableFields ?? [];
-  const result = useRead<PageResult<Row>>(listPath(view, page, days, listQuery(view, filters), pageSize));
+  const result = useRead<PageResult<Row>>(listPath(view, page, days, listQuery(view, filters, allowed), pageSize));
   const apply = (next: ListQuery, nextDays = days) => {
     setFilters(next);
     setDays(nextDays);
@@ -97,6 +97,7 @@ export function ContractList() {
       {state.drawer && (
         <ListFilterDrawer
           view={state.view}
+          allowed={state.allowed}
           days={state.days}
           initial={state.filters}
           onClose={() => state.setDrawer(false)}

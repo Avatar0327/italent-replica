@@ -1,6 +1,6 @@
 // FE-R2c2b 离职设置页的纯规则：交接事项（B64，employment/exit-handover-items.ts）、交接发起规则（B65，租户设置
 // exit.handover_trigger）、黑名单（B68，employment/blacklist.ts）与自动加黑规则（blacklist-rules.ts）。
-// 本文件被页面与 vitest 引用，不依赖 React 或浏览器 API；权威校验仍在服务端。B63 终止在途设置没有接口，不做。
+// 本文件被页面与 vitest 引用，不依赖 React 或浏览器 API；权威校验仍在服务端。B63 终止在途设置见 termination-model.ts（F-419）。
 import {
   AUTO_BLACKLIST_SETTING_KEY,
   BLACKLIST_NOTE_MAX,
