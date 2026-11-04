@@ -1,6 +1,6 @@
 {
-  "id": "6076da03-d8d7-4d7a-bd8f-361d922a3853",
-  "prevId": "a0f32b4a-a526-41a0-9064-fbc9ba417e1c",
+  "id": "4a479336-32e3-4533-bb6e-3b5e83cd8b06",
+  "prevId": "6076da03-d8d7-4d7a-bd8f-361d922a3853",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -54806,7 +54806,7 @@
           "name": "reason",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "revision": {
           "name": "revision",
