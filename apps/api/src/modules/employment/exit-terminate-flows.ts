@@ -3,12 +3,17 @@
  * 员工子集变更（个人信息变更与各子集变更）与意向退休日期申请。勾选才终止，不勾一律保留；退休暂不接配置（F-351），不处理。
  * 订阅 exitPostEffectHooks.onEffective，与离职生效同一事务、同一保存点：失败即整单回滚。
  * 候选集合取自 exit-flow-candidates.ts（预览、§8 确认令牌、生效执行三处共用）。
+ * 候选含已撤回的员工子集变更申请（DEC-740）：只把实例置已终止（重提即被拒），业务单已是“已撤回”。
  * 每条在途实例：按业务侧锁序锁业务单（员工已由离职持有 → 业务单）→ 系统撤销实例（日志操作人“系统”、理由 EXIT_VOID_REASON，
  * 与在途考核同一做法）→ 业务单置“已撤回” → 台账 application_voided → 审计 → 给发起人与申请人发站内消息（沿用离职作废通道）。
  * 撤销离职不恢复被终止的流程（与在途考核、任职申请一致）。
  */
 import { exitEffects, sql, type Tx } from '@italent/db';
-import { PERSONNEL_REQUEST_OBJECT } from '@italent/domain';
+import {
+  FLOW_TERMINATED_BY_EXIT_TEMPLATE,
+  PERSONNEL_REQUEST_OBJECT,
+  type FlowTerminatedPayload,
+} from '@italent/domain';
 import { revokeBySystem } from '../approval/actions.js';
 import { ADAPTERS } from '../approval/adapters.js';
 import { schedulerAwareContext } from '../approval/context.js';
@@ -23,7 +28,7 @@ import { rowsOf } from './record-store.js';
 import { INTENTION_AUDIT_TYPE } from './retirement-intention-store.js';
 import type { EmploymentContext } from './types.js';
 
-export const FLOW_TERMINATED_TEMPLATE = 'flow_terminated_by_exit';
+export const FLOW_TERMINATED_TEMPLATE = FLOW_TERMINATED_BY_EXIT_TEMPLATE;
 
 /** 意向申请的部门快照（审计 scope.orgId，与意向申请自身审计同一归属，审计查询按它判 DEC-177）。 */
 async function intentionDepartment(tx: Tx, tenantId: string, id: string) {
@@ -60,10 +65,27 @@ async function auditTerminated(
   );
 }
 
+/** 消息模板变量（F-420）：员工取任职员工名，流程名称取审批实例标题（终止不改标题）。 */
+async function employeeNameOf(tx: Tx, tenantId: string, employeeId: string) {
+  const [row] = rowsOf<{ name: string }>(
+    await tx.execute(sql`SELECT name FROM employment_employees
+      WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid`),
+  );
+  return row?.name ?? '';
+}
+
+async function flowNameOf(tx: Tx, tenantId: string, instanceId: string) {
+  const [row] = rowsOf<{ title: string }>(
+    await tx.execute(sql`SELECT title FROM approval_instances
+      WHERE tenant_id=${tenantId} AND id=${instanceId}::uuid`),
+  );
+  return row?.title ?? '';
+}
+
 export async function terminateOtherFlows(
   tx: Tx,
   ctx: EmploymentContext,
-  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'kind'>,
+  event: Pick<ExitEffectiveEvent, 'businessId' | 'employeeId' | 'lastWorkDate' | 'effectiveDate' | 'kind'>,
 ) {
   const approvalCtx = schedulerAwareContext(ctx);
   const terminated: OtherFlow[] = [];
@@ -72,8 +94,10 @@ export async function terminateOtherFlows(
     const { flowType } = row;
     const adapter = ADAPTERS[row.businessType];
     await adapter.lock(tx, approvalCtx, row.businessId);
-    await revokeBySystem(tx, approvalCtx, row.instanceId, EXIT_VOID_REASON);
-    await adapter.withdrawn(tx, approvalCtx, row.businessId);
+    const alreadyWithdrawn = row.instanceStatus === 'withdrawn';
+    await revokeBySystem(tx, approvalCtx, row.instanceId, EXIT_VOID_REASON, { includeWithdrawn: alreadyWithdrawn });
+    // 已撤回的申请业务单本就是“已撤回”（DEC-740）：只终止实例，使其不能再重提，不重复回调业务侧
+    if (!alreadyWithdrawn) await adapter.withdrawn(tx, approvalCtx, row.businessId);
     const detail = { approvalType: row.businessType, flowType, instanceId: row.instanceId };
     await tx.insert(exitEffects).values({
       tenantId: ctx.tenantId,
@@ -89,12 +113,17 @@ export async function terminateOtherFlows(
     });
     await auditTerminated(tx, ctx, row, event, detail);
     const applicant = await userOfPerson(tx, ctx.tenantId, event.employeeId);
+    const payload: FlowTerminatedPayload = {
+      flowName: await flowNameOf(tx, ctx.tenantId, row.instanceId),
+      employeeName: await employeeNameOf(tx, ctx.tenantId, event.employeeId),
+      effectiveDate: event.effectiveDate,
+    };
     for (const recipientUserId of new Set([row.initiatorUserId, applicant].filter((id): id is string => !!id)))
       await notifyMessage(
         tx,
         approvalCtx,
         { id: row.instanceId },
-        { recipientUserId, templateCode: FLOW_TERMINATED_TEMPLATE },
+        { recipientUserId, templateCode: FLOW_TERMINATED_TEMPLATE, payload },
       );
     terminated.push(row);
   }

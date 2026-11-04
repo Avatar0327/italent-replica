@@ -15,6 +15,8 @@ interface Notice {
   readonly channel: 'inbox' | 'email' | 'sms';
   readonly templateCode: string | null;
   readonly taskId: string | null;
+  /** 模板变量快照（F-420）：渲染标题 / 正文用，登记后不随源数据变化。 */
+  readonly payload?: object;
 }
 
 /**
@@ -37,10 +39,16 @@ async function insertNotice(tx: Tx, ctx: ApprovalContext, target: NoticeTarget, 
     'id' in target
       ? [sql`instance_id`, sql`${target.id}::uuid`]
       : [sql`business_type,business_id`, sql`${target.businessType},${target.businessId}::uuid`];
+  // 同理 payload（0188）只在带模板变量时才写
+  const [payloadColumn, payloadValue] = notice.payload
+    ? [sql`,payload`, sql`,${JSON.stringify(notice.payload)}::jsonb`]
+    : [sql``, sql``];
   await tx.execute(sql`INSERT INTO approval_notifications
-    (id,tenant_id,${columns},task_id,recipient_user_id,kind,channel,template_code,command_id,created_at)
+    (id,tenant_id,${columns},task_id,recipient_user_id,kind,channel,template_code${payloadColumn},
+      command_id,created_at)
     VALUES (${randomUUID()},${ctx.tenantId},${owner},${notice.taskId},${notice.recipientUserId}::uuid,
-      ${notice.kind},${notice.channel},${notice.templateCode},${ctx.commandId},${ctx.now.toISOString()})`);
+      ${notice.kind},${notice.channel},${notice.templateCode}${payloadValue},
+      ${ctx.commandId},${ctx.now.toISOString()})`);
 }
 
 export async function notifyTodo(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, taskId: string, userId: string) {
@@ -61,7 +69,7 @@ export async function notifyMessage(
   tx: Tx,
   ctx: ApprovalContext,
   target: NoticeTarget,
-  message: { readonly recipientUserId: string; readonly templateCode: string },
+  message: { readonly recipientUserId: string; readonly templateCode: string; readonly payload?: object },
 ) {
   await insertNotice(tx, ctx, target, {
     recipientUserId: message.recipientUserId,
@@ -69,6 +77,7 @@ export async function notifyMessage(
     channel: 'inbox',
     templateCode: message.templateCode,
     taskId: null,
+    ...(message.payload ? { payload: message.payload } : {}),
   });
 }
 

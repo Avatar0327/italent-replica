@@ -1,5 +1,6 @@
 import type { Page, Request } from '@playwright/test';
 import { test, expect, employee } from './fixtures.js';
+import { ui } from '../src/foundation/messages.js';
 import {
   allButtons,
   applicationId,
@@ -331,4 +332,67 @@ test('AC-FE-F436-07 迟到确认重读失败（已撤权 403）：不沿用旧�
   await expect(page.getByText('实习转正申请提交成功')).toBeVisible();
   await expect.poll(() => details.length).toBeGreaterThan(opened);
   await expect(tab).toHaveCount(0);
+});
+
+// F-444：普通 409 的列表重读也更新正在打开的档案，不能只监听写成功代次。
+test('AC-FE-F444-08 普通 409 重读列表时原位重读档案，申请输入仍保留', async ({ page }) => {
+  let name = String(rows.interning.name);
+  let reads = 0;
+  await application(page, '/staff', async () => {
+    await page.route(`**/personnel/employees/${employee}`, (route) => {
+      reads += 1;
+      return route.fulfill({ json: { id: employee, name, code: rows.interning.code, revision: 1 } });
+    });
+  });
+  await expect(page.locator('.staff-profile-heading h2')).toHaveText(name);
+  const before = reads;
+  name = '合成刷新后姓名';
+  await page.route(`**/employment/employees/${employee}/businesses`, (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: { code: 'BUSINESS_CONFLICT', message: '合成确定性拒绝', details: {} } },
+    }),
+  );
+  await dialog(page)
+    .getByRole('button', { name: /提\s*交$/ })
+    .click();
+  await expect(dialog(page)).toContainText('合成确定性拒绝');
+  await expect(page.locator('.staff-profile-heading h2')).toHaveText(name);
+  expect(reads).toBeGreaterThan(before);
+  await expect(dialog(page).getByRole('radio', { name: '否', exact: true })).toBeChecked();
+});
+
+test('AC-FE-F444-09 迟到确认重读 500：任职页签和未保存输入保留，重试可恢复', async ({ page }) => {
+  const { state } = await application(page, '/staff', recordEditable);
+  const details = await reopenDetailInFlight(page, state);
+  const tab = page.getByRole('tab', { name: '任职记录', exact: true });
+  await tab.click();
+  await page.getByRole('button', { name: '编辑任职', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑任职', exact: true });
+  const remarks = editor
+    .locator('.ant-form-item')
+    .filter({
+      has: page.locator('.ant-form-item-label').getByText('备注', { exact: true }),
+    })
+    .getByRole('textbox');
+  await remarks.fill('合成临时故障中保留备注');
+  let failed = true;
+  const opened = details.length;
+  await page.route(`**/personnel/employees/${employee}`, (route) => {
+    details.push('read');
+    return failed
+      ? route.fulfill({ status: 500, json: { error: { code: 'INTERNAL', message: '合成临时错误' } } })
+      : route.fulfill({ json: { id: employee, name: rows.interning.name, revision: 2 } });
+  });
+  state.release!();
+  await expect.poll(() => details.length).toBeGreaterThan(opened);
+  await expect(page.getByText(ui.uncertain, { exact: true })).toBeVisible();
+  await expect(editor).toBeVisible();
+  await expect(remarks).toHaveValue('合成临时故障中保留备注');
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  failed = false;
+  await editor.getByRole('button', { name: /取\s*消/ }).click();
+  await page.getByRole('button', { name: ui.retry, exact: true }).click();
+  await expect(page.getByText(ui.uncertain, { exact: true })).toHaveCount(0);
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
 });
