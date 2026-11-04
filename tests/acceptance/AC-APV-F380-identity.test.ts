@@ -8,6 +8,7 @@ import { relationWorld, source, resolved, save, type RelationWorld } from './AC-
 import { permissionAdmin } from './AC-APV-support.js';
 import { BASE, createProfile, grant, makeGrantable } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { uniqueSuffix } from './support/unique.js';
 import { eligibleDesignerPeople } from '../../apps/api/src/modules/approval/designer-people.js';
 import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { limitApprovers, resolveSource } from '../../apps/api/src/modules/approval/source-resolver.js';
@@ -22,7 +23,7 @@ const adminOf = (w: RelationWorld) => admins.get(w) ?? admins.set(w, permissionA
 /** 建自定义身份并（可选）手工授予若干账号，返回身份与各授权行。 */
 async function profileWith(w: RelationWorld, code: string, users: string[]) {
   const admin = await adminOf(w);
-  const profile = await createProfile(admin, `${code}${randomUUID().slice(0, 8)}`);
+  const profile = await createProfile(admin, `${code}${uniqueSuffix()}`);
   await makeGrantable(admin, [profile.id]);
   const grants: { id: string; revision: number }[] = [];
   for (const userId of users) {
