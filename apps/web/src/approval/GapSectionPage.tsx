@@ -2,7 +2,7 @@ import { Alert, Button, Empty, Input, Space, Table, Tooltip } from 'antd';
 import { useState } from 'react';
 import { DecisionNote } from '../foundation/index.js';
 import { centerText as c } from './messages.js';
-import { gapPages, type GapPage, type GapView } from './page-model.js';
+import { gapPages, gapColumnWidth, type GapPage, type GapView } from './page-model.js';
 
 /**
  * 我的委托、流程管理、管理员委托：原站页面结构（视图、工具栏、提示、筛选、列序）照搬，
@@ -35,9 +35,15 @@ export function GapSectionPage({ page }: { page: keyof typeof gapPages }) {
           rowKey="key"
           dataSource={[]}
           rowSelection={
-            view.selectable ? { selectedRowKeys: [], getCheckboxProps: () => ({ disabled: true }) } : undefined
+            view.selectable
+              ? { columnWidth: 30, selectedRowKeys: [], getCheckboxProps: () => ({ disabled: true }) }
+              : undefined
           }
-          columns={view.columns.map((title, index) => ({ key: `${index}`, title }))}
+          columns={view.columns.map((title, index) => ({
+            key: `${index}`,
+            title,
+            width: gapColumnWidth(page, view, title),
+          }))}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={c.empty} /> }}
           pagination={false}
           scroll={{ x: 'max-content' }}

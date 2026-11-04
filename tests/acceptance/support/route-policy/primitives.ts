@@ -313,6 +313,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['transfer.source', calls('requireTransferSource', 'requireManagerBusinessSource'), NEAR],
     ['transfer.managerIdentity', call('managerContext')],
+    // F-465a 第 2 轮 P2-2：报表按编码强制的合同 / 任职对象准入（缺失 403），入口直接调用
+    ['hrAnalysis.reportObjects', call('requireReportObjects'), { modules: ['hr-analysis'] }],
     ['linkage.source', call('requireLinkageSource'), NEAR],
     ['linkage.retry', call('authorizeRetry'), NEAR],
     ['approval.withdrawRight', call('requireWithdrawRight'), NEAR],

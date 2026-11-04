@@ -11,7 +11,13 @@
 import { createHmac } from 'node:crypto';
 import { and, eq, exitRequests, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { assessmentTypeFlow, buttonsOf, PROBATION_ASSESSMENT_OBJECT } from '@italent/domain';
+import {
+  assessmentTypeFlow,
+  BATCH_TRANSFER_FORM_ID_PREFIX,
+  buttonsOf,
+  INTER_ORG_TRANSFER_FORM_IDS,
+  PROBATION_ASSESSMENT_OBJECT,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { findOverdueTransfers } from './activation-store.js';
@@ -249,29 +255,42 @@ export interface InFlightFilter {
   readonly approvedAfter?: string;
   /** 只要已落地且最新载荷生效日晚于该日的（已落地的未来生效调动）。 */
   readonly landedEffectiveAfter?: string;
-  /** DEC-725 未勾选的任职流程：这些 kind 中计划生效日 ≤ date 的保留（不终止），晚于的照旧终止。 */
-  readonly keepOnOrBefore?: { readonly kinds: readonly string[]; readonly date: string };
+  /** DEC-725 未勾选的任职流程：这些流程码（kind + 表单，见 flowSql）中计划生效日 ≤ date 的保留（不终止），晚于的照旧终止。 */
+  readonly keepOnOrBefore?: { readonly flows: readonly string[]; readonly date: string };
+}
+
+/** 任职 kind=transfer 对应的三个独立开关（F-421）。 */
+const TRANSFER_FLOWS = ['transfer', 'inter_org_transfer', 'batch_transfer'] as const;
+
+// 与 domain employmentKindFlow 同口径：kind=transfer 再按表单分机构间 / 批量 / 普通调动（F-421），其余 kind 即流程码
+function flowSql() {
+  const interOrg = `{${INTER_ORG_TRANSFER_FORM_IDS.join(',')}}`;
+  return sql`CASE WHEN p.kind='transfer' AND p.form_id = ANY(${interOrg}::text[]) THEN 'inter_org_transfer'
+    WHEN p.kind='transfer'
+      AND left(p.form_id, ${BATCH_TRANSFER_FORM_ID_PREFIX.length}) = ${BATCH_TRANSFER_FORM_ID_PREFIX}
+      THEN 'batch_transfer'
+    ELSE p.kind END`;
 }
 
 // 计划日为空（理论上不会）时 COALESCE 为 false：不保留、照旧终止，不因空值漏掉候选
 function keepClause(keep: InFlightFilter['keepOnOrBefore'], planned: SQL) {
-  if (!keep?.kinds.length) return sql``;
-  const kinds = `{${keep.kinds.join(',')}}`;
-  return sql`AND NOT (p.kind = ANY(${kinds}::text[]) AND COALESCE(${planned} <= ${keep.date}::date, false))`;
+  if (!keep?.flows.length) return sql``;
+  const flows = `{${keep.flows.join(',')}}`;
+  return sql`AND NOT (${flowSql()} = ANY(${flows}::text[]) AND COALESCE(${planned} <= ${keep.date}::date, false))`;
 }
 
-/** DEC-725：离职适用勾选下，未勾选的任职 kind 计划日 ≤ L 的保留；退休（policy = null）不保留。 */
+/** DEC-725：离职适用勾选下，未勾选的任职流程计划日 ≤ L 的保留；退休（policy = null）不保留。flows 限定只看其中这些流程码。 */
 export async function untickedEmploymentKeep(
   tx: Tx,
   ctx: EmploymentContext,
   lastWorkDate: string,
   exitKind: string,
-  kinds?: readonly string[],
+  flows?: readonly string[],
 ): Promise<InFlightFilter['keepOnOrBefore']> {
   const policy = await exitTerminationOf(tx, ctx.tenantId, exitKind);
   if (!policy) return undefined;
   const unticked: readonly string[] = untickedFlows(policy, 'employment');
-  return { kinds: unticked.filter((kind) => !kinds || kinds.includes(kind)), date: lastWorkDate };
+  return { flows: unticked.filter((flow) => !flows || flows.includes(flow)), date: lastWorkDate };
 }
 
 /** 员工名下指定类型的未办结申请（最新载荷 + 最新状态；计划生效日只取 §5.0A）。 */
@@ -508,7 +527,7 @@ export async function pendingTransferAckSet(
 ) {
   // DEC-725：确认集合只列生效时真会终止的——未勾选调动时计划日 ≤ L 的保留，未勾选的考核类型保留
   const policy = await exitTerminationOf(tx, ctx.tenantId, exitKind);
-  const keepOnOrBefore = await untickedEmploymentKeep(tx, ctx, lastWorkDate, exitKind, ['transfer']);
+  const keepOnOrBefore = await untickedEmploymentKeep(tx, ctx, lastWorkDate, exitKind, TRANSFER_FLOWS);
   const rows = await inFlightApplications(tx, ctx, employeeId, ['transfer'], ['in_review', 'approved'], 'application', {
     unlanded: true,
     approvedAfter: lastWorkDate,

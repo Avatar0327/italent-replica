@@ -6,7 +6,7 @@ import { ORG_ITEM_ENTRY_BUTTONS, type OrgItemEntry } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { invalid } from '../org/validation.js';
-import type { OrgItemContent } from './items-store.js';
+import { CONTENT_KEYS, type ItemTrail, type OrgItem, type OrgItemContent } from './items-store.js';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const opt = <T extends z.ZodType>(type: T) => type.nullable().optional();
@@ -106,6 +106,32 @@ export function itemFieldCodes(keys: readonly string[]): Record<string, true> {
   const name = (key: string) =>
     key === 'parent' || key === 'siblingOf' ? 'parentOrgId' : key === 'transferTo' ? 'transferToOrgId' : key;
   return Object.fromEntries(keys.filter((key) => key !== 'entry').map((key) => [`orgItems.${name(key)}`, true]));
+}
+
+/** 库里引用型列对应的字段编码：上级 / 转移组织按字段名判，不分引用已有组织还是本单新增行。 */
+const STORED_FIELD_NAME: Partial<Record<keyof OrgItemContent, string>> = {
+  parentItemId: 'parentOrgId',
+  transferToItemId: 'transferToOrgId',
+};
+
+/**
+ * 提交 / 重提复核写权（F-428）：本单用户明细行实际写过的 `orgItems.*`。库里只存终态，分不清“从未填写”和“写过又清为
+ * null”，所以字段集 = 终态非空的字段 ∪ 审计 before / after 里值有变的字段（含 after 为 null；新增行 before 视为全空，
+ * 新增时本就为空的字段不计）。连带行由停用整支展开生成，不是用户写的，不计。
+ * 与保存时 `itemFieldCodes` 同一份字段编码，保存后被收回的写权在提交时同样拒绝。
+ */
+export function writtenItemFieldCodes(items: readonly OrgItem[], trail: readonly ItemTrail[]): Record<string, true> {
+  const names = new Set<string>(items.length > 0 ? ['adjustType'] : []);
+  const name = (key: keyof OrgItemContent) => names.add(STORED_FIELD_NAME[key] ?? key);
+  for (const item of items.filter((row) => !row.cascadedFromItemId)) {
+    if (item.targetOrgId) names.add('targetOrgId');
+    for (const key of CONTENT_KEYS) if (item[key] !== null) name(key);
+  }
+  for (const { before, after } of trail) {
+    if (!after) continue;
+    for (const key of CONTENT_KEYS) if ((before?.[key] ?? null) !== (after[key] ?? null)) name(key);
+  }
+  return Object.fromEntries([...names].map((field) => [`orgItems.${field}`, true]));
 }
 
 /** 入口与调整类型一致；入口按钮表见 `ORG_ITEM_ENTRY_BUTTONS`。 */

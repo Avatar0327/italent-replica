@@ -547,6 +547,8 @@ export const approvalNotifications = pgTable(
     kind: text('kind').notNull(),
     channel: text('channel').notNull(),
     templateCode: text('template_code'),
+    // 模板变量快照（F-420）：登记时的流程名称、员工、日期等，读取时与 template_code 一起渲染标题 / 正文
+    payload: jsonb('payload'),
     status: text('status').notNull().default('pending'),
     commandId: text('command_id').notNull(),
     createdAt: utc('created_at').notNull().defaultNow(),

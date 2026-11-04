@@ -13,9 +13,17 @@ import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { ApprovalContext, FieldAccess } from '../approval/context.js';
-import { authorizeOwnerAction, authorizeWithdraw, HEAD_BUTTONS, orgScopeAuthorizer } from './access.js';
+import {
+  authorizeItemFieldWrites,
+  authorizeOwnerAction,
+  authorizeWithdraw,
+  HEAD_BUTTONS,
+  orgScopeAuthorizer,
+} from './access.js';
+import { writtenItemFieldCodes } from './item-validation.js';
+import { trimmedForViewer } from './envelope.js';
 import { loadWorld } from './item-tree.js';
-import { loadItems, type OrgItem } from './items-store.js';
+import { loadItems, loadItemTrail, type OrgItem } from './items-store.js';
 import { audit, editable, loadAdjustment, type AdjustmentView, type WriteContext } from './service.js';
 import { assertWhole } from './whole-check.js';
 
@@ -85,6 +93,11 @@ async function lockStored(tx: Tx, ctx: WriteContext, id: string) {
 
 /** 审批侧重提（openOwn 已判发起人与实例 revision）：只接受已驳回单，按提交口径重判后 → 1；不带修正。 */
 export async function resubmitFromApproval(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
+  // 校验类错误按重提人的字段查看权裁剪（与路由 10 同口径，F-427）
+  await trimmedForViewer(tx, ctx, () => resubmit(tx, ctx, id, corrections));
+}
+
+async function resubmit(tx: Tx, ctx: ApprovalContext, id: string, corrections: object) {
   if (Object.keys(corrections).length > 0) {
     throw new AppError('VALIDATION_FAILED', '组织调整重提不带修正，请在申请单上修改后提交', {
       reason: 'ORG_ADJUSTMENT_CORRECTIONS_UNSUPPORTED',
@@ -125,12 +138,15 @@ interface OwnerDeps {
 
 /**
  * 提交口径的授权（路由 10、审批中心重提）：主对象 update + `EditAdjustOrgDetailBtn@detail` + 主体组织与调整范围，
- * 全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3，before = null）。
+ * 明细行用户写过的 `orgItems.*` 字段写权，含写过又清空的（F-428），全部明细（含暂存行）涉及的组织按新建口径逐个在组织对象范围（§6.3，before = null）。
  */
 export async function authorizeSubmission(tx: Tx, deps: OwnerDeps, ctx: TenantContext, stored: AdjustmentView) {
   const head = { subjectOrgId: stored.approvalSubjectOrgId, rangeOrgIds: stored.adjustmentRange };
   await authorizeOwnerAction(tx, deps, ctx, { ...head, button: HEAD_BUTTONS.update });
-  await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, stored.id)));
+  const items = await loadItems(tx, ctx.tenantId, stored.id);
+  const trail = await loadItemTrail(tx, ctx.tenantId, items);
+  await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
+  await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
 }
 
 /** 撤回口径（路由 11、审批中心撤回）：没有按钮，主对象 update + 主体组织与调整范围（同路由 1）。 */

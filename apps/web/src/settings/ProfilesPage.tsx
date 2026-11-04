@@ -58,17 +58,22 @@ export function ProfilesPage({ title, editable }: SettingsProps) {
           {
             title: m.name,
             dataIndex: 'name',
+            width: 193,
             render: (name: string, row: Profile) => (
               <Button type="link" onClick={() => setDetail(row.id)}>
                 {name}
               </Button>
             ),
           },
-          { title: m.code, dataIndex: 'code' },
-          { title: m.apps, dataIndex: 'apps', render: (apps: string[]) => apps.join('、') },
-          { title: m.source, dataIndex: 'source', render: (value: string) => <Status value={value} /> },
-          { title: m.description, dataIndex: 'description' },
-          { title: m.operation, render: (_: unknown, row: Profile) => (row.autoHeld ? m.autoHeld : m.empty) },
+          { title: m.code, dataIndex: 'code', width: 128 },
+          { title: m.apps, dataIndex: 'apps', width: 128, render: (apps: string[]) => apps.join('、') },
+          { title: m.source, dataIndex: 'source', width: 128, render: (value: string) => <Status value={value} /> },
+          { title: m.description, dataIndex: 'description', width: 128 },
+          {
+            title: m.operation,
+            width: 168,
+            render: (_: unknown, row: Profile) => (row.autoHeld ? m.autoHeld : m.empty),
+          },
         ]}
       />
       {detail && <ProfileDetails detail={detail} close={() => setDetail(undefined)} />}
