@@ -3869,8 +3869,7 @@
           "listTodos / listNotifications / listInstances"
         ],
         "relation": [
-          "assertCanOpen",
-          "retrievable（retrievableTask）"
+          "assertCanOpen"
         ],
         "scope": [
           "checkScope",

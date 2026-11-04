@@ -1694,7 +1694,6 @@ export const GRAPH: Graph = {
     '#uuidParam',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /todos': [
-    'apps/api/src/modules/approval/disclosure.ts#detailView',
     'apps/api/src/modules/approval/disclosure.ts#readDetail',
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
@@ -1704,6 +1703,7 @@ export const GRAPH: Graph = {
     '#viewerOf',
     'apps/api/src/modules/approval/todo-cards.ts#listTodoCards',
     'apps/api/src/modules/approval/todo-cards.ts#todoCardsQuery',
+    'apps/api/src/modules/approval/todo-summary.ts#todoForm',
     'apps/api/src/modules/approval/todo-summary.ts#todoSummary',
     'apps/api/src/modules/job/context.ts#pageQuery',
   ],
@@ -2168,6 +2168,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/todo-cards.ts#todoCardsQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/todo-summary.ts#todoForm': [
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+  ],
   'apps/api/src/modules/approval/todo-summary.ts#todoSummary': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
