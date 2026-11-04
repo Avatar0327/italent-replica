@@ -82,13 +82,29 @@ export function exitTerminationPolicy(value: unknown): ExitTerminationSetting {
   return { ...EXIT_TERMINATION_PRESET, ...stored, ...fixed };
 }
 
+/** 机构间调入表单（含门店首页）：任职侧据此把 kind=transfer 的申请归到“机构间调动”（transfer/catalog.ts 的 InterOrg 两张）。 */
+export const INTER_ORG_TRANSFER_FORM_IDS: readonly string[] = [
+  'TenantBase.InterOrgTransferMultiFormView',
+  'TenantBase.IndustryOrgApplyForTransferFormView',
+];
+/** 批量调动表单 ID 前缀（原站批量调动，首版暂缓、尚无入口；入口落地后沿用此前缀即自带“批量调动”开关）。 */
+export const BATCH_TRANSFER_FORM_ID_PREFIX = 'TenantBase.BatchTransfer';
+
+/** 调动类申请（任职 kind=transfer）按表单归到三个独立开关之一。 */
+export function transferFlow(formId: string | null | undefined): ExitTerminationFlow {
+  if (formId && INTER_ORG_TRANSFER_FORM_IDS.includes(formId)) return 'inter_org_transfer';
+  if (formId?.startsWith(BATCH_TRANSFER_FORM_ID_PREFIX)) return 'batch_transfer';
+  return 'transfer';
+}
+
 /**
- * 任职业务 kind → 流程码；不在 28 类里的（入职、重聘、返聘、组织调整、退休）返回 null，照旧全部作废。
- * 机构间调动（inter_org_transfer）、批量调动（batch_transfer）目前没有单独入口；将来新增入口时须带自己的流程码，
- * 不得复用 transfer——三个开关各自独立，复用会让“调动”的勾选误管另外两类。
+ * 任职业务 kind（+ 表单）→ 流程码；不在 28 类里的（入职、重聘、返聘、组织调整、退休）返回 null，照旧全部作废。
+ * 调动 / 机构间调动 / 批量调动是三个独立开关（F-430①，F-421），任职侧都是 kind=transfer，靠表单区分（transferFlow），
+ * 不得都归到 transfer——否则“调动”的勾选会误管另外两类。
  */
-export function employmentKindFlow(kind: string): ExitTerminationFlow | null {
-  return ['regularization', 'transfer', 'labor_regularization', 'intern_regularization'].includes(kind)
+export function employmentKindFlow(kind: string, formId?: string | null): ExitTerminationFlow | null {
+  if (kind === 'transfer') return transferFlow(formId);
+  return ['regularization', 'labor_regularization', 'intern_regularization'].includes(kind)
     ? (kind as ExitTerminationFlow)
     : null;
 }

@@ -24,6 +24,7 @@ import {
   jobKinds,
   jobLabel,
   jobListFields,
+  jobColumnWidth,
   jobObjects,
   referenceKind,
   type JobKind,
@@ -309,6 +310,7 @@ function listColumn(kind: JobKind, select: (id: string) => void) {
     key: field,
     title: jobLabel(kind, field),
     dataIndex: field,
+    width: jobColumnWidth(kind, field),
     render: (value: unknown, row: JobRow) =>
       field === 'name' ? (
         <Button type="link" onClick={() => select(row.id)}>
