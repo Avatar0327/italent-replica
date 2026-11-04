@@ -4,8 +4,10 @@
 import type { Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { registerReportRoutes } from './report-routes.js';
 import { registerRosterRoutes } from './roster-routes.js';
 
 export function registerHrAnalysisRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerRosterRoutes(router, deps);
+  registerReportRoutes(router, deps);
 }

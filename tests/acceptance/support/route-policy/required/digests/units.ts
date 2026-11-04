@@ -76,7 +76,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: 'd4873d3a6c0d',
+    listNotifications: '123fde47b5a9',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -150,7 +150,7 @@ export const DIGESTS: Digests = {
     registerImports: 'f04714347a41',
     registerMasters: '05c59a708fbe',
     'route:DELETE /rules/:id': 'db45c62d4e19',
-    'route:GET /': '3a03974d02e3',
+    'route:GET /': 'e5616f867989',
     'route:GET /employees/:id/contracts': '00a3733cc2e6',
     'route:GET /employees/:id/revision': '9a1ba0e862a9',
     'route:GET /failures': '03931955cf2b',
@@ -673,15 +673,22 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/evaluation/store.ts': {
     requireOwnerOrg: 'e9b77971c7e3',
   },
+  'apps/api/src/modules/hr-analysis/report-routes.ts': {
+    availability: '2938f47d9001',
+    requireReportObjects: '8546092ff1f1',
+    'route:GET /api/tenant/hr-analysis/reports': 'fd52c67d130b',
+    'route:GET /api/tenant/hr-analysis/reports/:code': '21ab2ea237d9',
+    'route:GET /api/tenant/hr-analysis/reports/:code/export': '59d5a0a2a304',
+  },
   'apps/api/src/modules/hr-analysis/roster-access.ts': {
     CONTRACT_OBJECT: '76ce5952c0a8',
     RECORD_OBJECT: '681652578035',
     ROSTER_OBJECT: '8de8f6aea0b4',
     requireExportButton: 'd538719feb46',
-    rosterAccess: '1b9e1d248af1',
+    rosterAccess: '08e8fd92d1ce',
   },
   'apps/api/src/modules/hr-analysis/roster-query.ts': {
-    population: '6aab8654bd9b',
+    population: '404d96dc7d4e',
   },
   'apps/api/src/modules/hr-analysis/roster-routes.ts': {
     'route:GET /api/tenant/hr-analysis/roster': '7627ba7c5dbd',
@@ -890,9 +897,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
-    canOpen: 'a54884c13823',
     hrDisclosure: 'a6cf9fc390e1',
-    orgAdjustmentDisclosure: '9ea7662b1ad8',
+    openDetail: '5abf9d780173',
+    orgAdjustmentDisclosure: '4215349b843a',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
     listAdjustments: '6cfed9d36f18',
@@ -917,7 +924,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '722c6990ca62',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '79d4de41814f',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '7b71d764c42a',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': 'a59c0acfd1d2',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
@@ -1876,7 +1883,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
-  'apps/api/src/modules/approval/queries.ts#listNotifications': 'd0b6d75c28da',
+  'apps/api/src/modules/approval/queries.ts#listNotifications': '9a92904d5be3',
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
   'apps/api/src/modules/approval/routes.ts#registerInstanceRoutes': 'e9958472eb5c',
@@ -1933,7 +1940,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/contracts/routes.ts#registerImports': 'f41b8ed5a608',
   'apps/api/src/modules/contracts/routes.ts#registerMasters': 'a75b12772acc',
   'apps/api/src/modules/contracts/routes.ts#route:DELETE /rules/:id': 'effff458ef6f',
-  'apps/api/src/modules/contracts/routes.ts#route:GET /': 'b0fc75a760ef',
+  'apps/api/src/modules/contracts/routes.ts#route:GET /': '8633a671e817',
   'apps/api/src/modules/contracts/routes.ts#route:GET /employees/:id/contracts': 'c30b0b9899a1',
   'apps/api/src/modules/contracts/routes.ts#route:GET /employees/:id/revision': '6f1e1527e1ed',
   'apps/api/src/modules/contracts/routes.ts#route:GET /failures': 'c5422f075229',
@@ -2310,12 +2317,18 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/evaluation/routes.ts#registerObject': 'a3bbb6a37375',
   'apps/api/src/modules/evaluation/routes.ts#registerWrites': '89281f061f66',
   'apps/api/src/modules/evaluation/store.ts#requireOwnerOrg': '45aed9d26b12',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#availability': '084687eb2a6d',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#requireReportObjects': '5fb30443d332',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports': '66f34bc05808',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code': '6e4a3044efb0',
+  'apps/api/src/modules/hr-analysis/report-routes.ts#route:GET /api/tenant/hr-analysis/reports/:code/export':
+    '49a51e6aa8bb',
   'apps/api/src/modules/hr-analysis/roster-access.ts#CONTRACT_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#RECORD_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#ROSTER_OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': '30576ab5fbab',
-  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': 'b5e730b8501f',
-  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '931b893deaf9',
+  'apps/api/src/modules/hr-analysis/roster-access.ts#rosterAccess': '79a6993f4391',
+  'apps/api/src/modules/hr-analysis/roster-query.ts#population': '2de0c1b69b04',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster': 'ffc50c07facf',
   'apps/api/src/modules/hr-analysis/roster-routes.ts#route:GET /api/tenant/hr-analysis/roster/export': '9f87c8ad7cca',
   'apps/api/src/modules/idp/access.ts#idpContext': '6f9ce2c87c01',
@@ -2471,9 +2484,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#requireButtons': 'f3f82540978f',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen': '1240eb889365',
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '3cf281b573da',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '64fc68887303',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail': 'a2caf257c67c',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '6157b857992f',
   'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': 'ab799c90b5dd',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': '55dfa5d7fbca',
@@ -2504,7 +2517,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
     'efd7a72dd542',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
-    'fb7d43078a7b',
+    '7aedee42d55a',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':

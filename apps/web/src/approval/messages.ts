@@ -63,7 +63,7 @@ export const statusLabels: Record<string, string> = {
   approved: '审批通过',
   returned: '已驳回',
   withdrawn: '已撤销',
-  cancelled: '已作废',
+  cancelled: '已终止',
   disapproved: '未通过',
   rejected: '已驳回',
   transferred: '已转交',

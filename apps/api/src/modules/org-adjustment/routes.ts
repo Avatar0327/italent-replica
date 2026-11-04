@@ -33,6 +33,7 @@ import {
   authorizeHeadAction,
   authorizeHeadScopes,
   authorizeItem,
+  authorizeItemFieldWrites,
   authorizeOrgFields,
   authorizeOwnerAction,
   authorizeWithdraw,
@@ -43,9 +44,16 @@ import {
 import { rebaseAll, rebaseItem } from './baseline.js';
 import { foldHiddenError, foldHiddenRowIssues, trimIssues, trimError } from './envelope.js';
 import { hiddenAmong, hiddenItemIds } from './hidden-rows.js';
-import { addItemSchema, assertEntryType, itemFieldCodes, patchItemSchema, toContent } from './item-validation.js';
+import {
+  addItemSchema,
+  assertEntryType,
+  itemFieldCodes,
+  patchItemSchema,
+  writtenItemFieldCodes,
+  toContent,
+} from './item-validation.js';
 import { registerReadRoutes } from './read-routes.js';
-import { loadItems, type ItemsResult, type OrgItem } from './items-store.js';
+import { loadItems, loadItemTrail, type ItemsResult, type OrgItem } from './items-store.js';
 import { addOrgItem, deleteOrgItem, patchOrgItem, type ItemWrite } from './org-items.js';
 import {
   checkAdjustment,
@@ -180,8 +188,12 @@ function registerSubmitRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await authorizeStored(tx, ctx, id, (subjectOrgId, rangeOrgIds) =>
           authorizeOwnerAction(tx, deps, ctx, { subjectOrgId, rangeOrgIds, button: HEAD_BUTTONS.update }),
         );
+        // 明细行用户写过的 orgItems.* 字段写权，含写过又清空的（F-428，与审批中心重提的 authorizeSubmission 同口径）
+        const items = await loadItems(tx, ctx.tenantId, id);
+        const trail = await loadItemTrail(tx, ctx.tenantId, items);
+        await authorizeItemFieldWrites(tx, deps, ctx, writtenItemFieldCodes(items, trail));
         await asAdjustmentMissing(async () => {
-          await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(await loadItems(tx, ctx.tenantId, id)));
+          await orgScopeAuthorizer(deps, ctx)(tx, rowOrgIds(items));
         });
       },
       execute: async (tx, commandCtx) => {

@@ -6834,6 +6834,89 @@
         ]
       }
     },
+    "GET /api/tenant/hr-analysis/reports": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ]
+      }
+    },
+    "GET /api/tenant/hr-analysis/reports/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "guard": [
+          "hrAnalysis.reportObjects"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
+    "GET /api/tenant/hr-analysis/reports/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "hrAnalysis.reportObjects"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
     "GET /api/tenant/hr-analysis/roster": {
       "edge": {
         "anonymous": {
@@ -7797,6 +7880,7 @@
           "TenantBase.OrganizationApproval:view"
         ],
         "scope": [
+          "creator scope",
           "scopeSql"
         ]
       }
@@ -14130,13 +14214,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"
@@ -23028,13 +23114,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"
@@ -23115,6 +23203,9 @@
         "command": [
           "revision(c)",
           "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "trimModuleResponse"

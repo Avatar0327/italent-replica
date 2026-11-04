@@ -63,9 +63,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org/deactivation.ts#planDeactivationSubtree': [
     '#CASCADE_LIMIT',
-    '#subtree',
     'apps/api/src/modules/org/read-model.ts#futureBoundaries',
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'apps/api/src/modules/org/subtree.ts#adminSubtree',
   ],
   'apps/api/src/modules/org/deactivation.ts#unavailableFrom': ['#dayAfter'],
   'apps/api/src/modules/org/employment-linkage.ts#applyOrgEmploymentLinkage': [
