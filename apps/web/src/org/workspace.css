@@ -155,3 +155,13 @@
   color: #868b8f;
   font-size: 12px;
 }
+
+.job-form .ant-modal {
+  width: min(750px, calc(100vw - 32px)) !important;
+}
+.job-form-single .form-fields-modal {
+  grid-template-columns: 1fr;
+}
+.job-form-single .form-group-title {
+  display: none;
+}

@@ -185,13 +185,26 @@ function ApplicationsPage({ profile, requests }: { profile: Profile; requests: b
     </>
   );
 }
+const ownRecordWidths: Record<string, number> = {
+  departmentId: 140,
+  positionId: 140,
+  effectiveDate: 105,
+  stopDate: 105,
+  approvalStatus: 140,
+};
 function recordColumns(records: OwnRecord[], name: string): TableColumnsType<OwnRecord> {
   const keys = new Map(records.flatMap((record) => recordItems(record).map((item) => [item.key, item.label] as const)));
+  const first = ['departmentId', 'positionId', 'effectiveDate', 'stopDate', 'approvalStatus'];
+  const ordered = [
+    ...first.filter((key) => keys.has(key)),
+    ...Array.from(keys.keys()).filter((key) => !first.includes(key)),
+  ];
   return [
-    { key: 'name', title: m.name, render: () => name },
-    ...Array.from(keys, ([key, title]) => ({
+    { key: 'name', title: m.name, width: 140, render: () => name },
+    ...ordered.map((key) => ({
       key,
-      title,
+      title: keys.get(key),
+      width: ownRecordWidths[key],
       render: (_: unknown, row: OwnRecord) => recordItems(row).find((item) => item.key === key)?.children ?? m.none,
     })),
   ];

@@ -76,7 +76,7 @@ export const DIGESTS: Digests = {
     retrieveTask: '649138642c42',
   },
   'apps/api/src/modules/approval/queries.ts': {
-    listNotifications: 'd4873d3a6c0d',
+    listNotifications: '123fde47b5a9',
     listTodos: '6b64f79dcefe',
   },
   'apps/api/src/modules/approval/routes.ts': {
@@ -900,7 +900,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
     'route:GET /api/tenant/org-adjustment/adjustments': 'e0c3c10c92b7',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id': 'e605fd0db96f',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id': '2c2e854986da',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': 'd217289095cb',
@@ -1876,7 +1876,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/disclosure.ts#assertCanOpen': '457412422a98',
   'apps/api/src/modules/approval/disclosure.ts#readDetail': '6a229d2d587a',
   'apps/api/src/modules/approval/node-actions.ts#retrieveTask': '0e8b7aab9710',
-  'apps/api/src/modules/approval/queries.ts#listNotifications': 'd0b6d75c28da',
+  'apps/api/src/modules/approval/queries.ts#listNotifications': '9a92904d5be3',
   'apps/api/src/modules/approval/queries.ts#listTodos': '80471183b41a',
   'apps/api/src/modules/approval/routes.ts#fieldRights': 'cd83039b7197',
   'apps/api/src/modules/approval/routes.ts#registerInstanceRoutes': 'e9958472eb5c',
@@ -2478,7 +2478,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':
-    '2fb93d34b5cf',
+    '1a8fd749db73',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section':
     '440a7f65fb5d',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview':
