@@ -1,4 +1,45 @@
 {
+  "GET /api/tenant/hr-analysis/reports": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view",
+      "obj:TenantBase.EmploymentContract:view",
+      "obj:TenantBase.EmploymentRecord:view",
+      "obj:TenantBase.HrMovementReport:view",
+      "obj:TenantBase.HrRoster:view",
+      "obj:TenantBase.HrStructureReport:view"
+    ]
+  },
+  "GET /api/tenant/hr-analysis/reports/:code": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "409ae0b268e4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/hr-analysis/reports/:code/export": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "409ae0b268e4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/hr-analysis/roster": {
     "all": {
       "status": 200

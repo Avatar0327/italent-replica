@@ -33,9 +33,18 @@ export interface RosterAccess {
   /** 可见列（固定列在前），列表与导出的列由它唯一决定。 */
   readonly columns: readonly RosterColumn[];
   readonly canSee: (source: RosterSource, field: string) => boolean;
+  /** 任职记录 / 合同对象的查看权（花名册只据此决定列是否出现；人事报表缺必需对象时拒绝，F-465a）。 */
+  readonly viewable: Readonly<Record<RosterSource, boolean>>;
 }
 
-export async function rosterAccess(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<RosterAccess> {
+const ROSTER_ALL_COLUMNS = [...ROSTER_FIXED_COLUMNS, ...ROSTER_COLUMNS];
+
+/** columns 缺省为花名册全部列；人事报表（F-465a）传入各自的列定义，其余权限链完全相同。 */
+export async function rosterAccess(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  definitions: readonly RosterColumn[] = ROSTER_ALL_COLUMNS,
+): Promise<RosterAccess> {
   const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list');
   await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: ROSTER_OBJECT });
   // 任职 / 合同对象无查看权不拒绝请求，只让对应的列整类缺席（披露，不是准入）
@@ -51,10 +60,8 @@ export async function rosterAccess(c: Context<TenantEnv>, deps: TenantRouteDeps)
     const fields = sets.get(source);
     return fields === undefined || (fields !== false && fields.has(field));
   };
-  const columns = [...ROSTER_FIXED_COLUMNS, ...ROSTER_COLUMNS].filter((column) =>
-    column.gate.every(([source, field]) => canSee(source, field)),
-  );
-  return { ctx, columns, canSee };
+  const columns = definitions.filter((column) => column.gate.every(([source, field]) => canSee(source, field)));
+  return { ctx, columns, canSee, viewable };
 }
 
 /** 筛选条件涉及的字段无查看权 → 403（同 personnel 列表：不能用看不到的字段探测值）。 */
