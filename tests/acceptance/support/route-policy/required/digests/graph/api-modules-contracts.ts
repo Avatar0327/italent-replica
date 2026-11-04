@@ -150,6 +150,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/contracts/input.ts#fieldsSchema': ['#day', '#money', '#uuid'],
   'apps/api/src/modules/contracts/input.ts#ruleSchema': ['#uuid'],
   'apps/api/src/modules/contracts/input.ts#settingsSchema': ['#uuid'],
+  'apps/api/src/modules/contracts/list-query.ts#assertSortViewable': ['#applicableQuery'],
   'apps/api/src/modules/contracts/list-query.ts#filterPredicate': [
     '#RECORD_STATUSES',
     '#REQUEST_STATUSES',
@@ -328,12 +329,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/object-write.ts#requireObjectWrite',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /': [
+    'apps/api/src/modules/contracts/list-query.ts#assertSortViewable',
     'apps/api/src/modules/contracts/list-query.ts#parseListQuery',
     'apps/api/src/modules/contracts/queries.ts#listContracts',
     '#routeContext',
     '#trim',
     '#trimEmployment',
     'apps/api/src/modules/job/context.ts#pageQuery',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
   ],
   'apps/api/src/modules/contracts/routes.ts#route:GET /employees/:id/contracts': [
