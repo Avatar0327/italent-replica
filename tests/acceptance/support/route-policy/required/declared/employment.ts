@@ -41,7 +41,6 @@ export const EMPLOYMENT_DECLARED: ModuleDeclared = {
     'PUT /api/tenant/employment/retirement-rules/:id/enabled',
     'POST /api/tenant/employment/retirement-rules/run',
     'POST /api/tenant/employment/interns',
-    // F-358 / DEC-780：离职设置页三个配置读取 = 任职设置对象查看权 + 任职记录查看权
     'GET /api/tenant/employment/exit-account/settings',
     'GET /api/tenant/employment/blacklist-rules',
     'GET /api/tenant/employment/exit-handover-items',
