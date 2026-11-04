@@ -2,6 +2,7 @@
 import { addSignerVotes, isCountersign, urgeAllowed, type AddSignType, type ApprovalNode } from '@italent/domain';
 import type { VersionView } from './definitions.js';
 import type { InstanceRow, TaskRow } from './store.js';
+import { withoutRetrieved } from './task-history.js';
 import { OPEN_STATUSES } from './task-state.js';
 
 // 撤回资格需要独立加载此纯函数，避免引入本文件经 store 建立的运行时依赖环。
@@ -76,12 +77,13 @@ function countersignRetrievable(instance: InstanceRow, tasks: readonly TaskRow[]
 /**
  * F-003：会签节点本次激活中已有任务的人（在办或已同意 / 不同意，含加签人）。转交、加签、管理员转交 / 改派不能再派给
  * 他们——会签一人一票（P2-1）；系统接管让同一人承接多席时另行合并（countersign.mergeSeat），保证不停顿。
+ * 已被本人撤回的同意不再占席（F-401，DEC-097）：旧票已失效、由撤回后的新待办接续，与计票口径同源（task-history）。
  */
 export function nodeParticipantsOf(tasks: readonly TaskRow[], task: TaskRow): Set<string> {
   const held = (candidate: TaskRow) =>
     OPEN_STATUSES.has(candidate.status) || candidate.status === 'approved' || candidate.status === 'disagreed';
   return new Set(
-    tasks
+    withoutRetrieved(tasks)
       .filter((candidate) => candidate.activationId === task.activationId && held(candidate))
       .flatMap((candidate) => (candidate.assigneeUserId ? [candidate.assigneeUserId] : [])),
   );
