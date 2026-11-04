@@ -45,6 +45,12 @@ describe('F-400 离职生效终止在途流程配置（DEC-725）', () => {
   it('业务类型映射到流程码', () => {
     expect(employmentKindFlow('intern_regularization')).toBe('intern_regularization');
     expect(employmentKindFlow('onboarding')).toBeNull();
+    // F-421：同为 kind=transfer，按表单归到三个独立开关
+    expect(employmentKindFlow('transfer')).toBe('transfer');
+    expect(employmentKindFlow('transfer', 'TenantBase.CrossDepartmentTransferMultiFormView')).toBe('transfer');
+    expect(employmentKindFlow('transfer', 'TenantBase.InterOrgTransferMultiFormView')).toBe('inter_org_transfer');
+    expect(employmentKindFlow('transfer', 'TenantBase.IndustryOrgApplyForTransferFormView')).toBe('inter_org_transfer');
+    expect(employmentKindFlow('transfer', 'TenantBase.BatchTransferMultiFormView')).toBe('batch_transfer');
     expect(contractOperationFlow('renew')).toBe('contract_renew');
     expect(contractOperationFlow('other')).toBeNull();
     expect(partTimeRequestFlow('extend')).toBe('part_time_extend');

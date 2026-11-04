@@ -138,6 +138,20 @@ function Dashboard() {
     </>
   );
 }
+const teamWidths: Record<string, number> = {
+  name: 172,
+  employType: 140,
+  postId: 140,
+  departmentId: 140,
+  mobilePhone: 140,
+  levelId: 140,
+  employeeStatus: 140,
+  email: 200,
+  entryDate: 105,
+  tenure: 172,
+  directManagerId: 130,
+  dottedManagerId: 130,
+};
 function useTeam(initialCategory: string, initialSearch: string) {
   const { tenantId } = useSession();
   const [page, setPage] = useState({ page: 1, pageSize: 15 });
@@ -160,6 +174,7 @@ function useTeam(initialCategory: string, initialSearch: string) {
   const columns: TableColumnsType<TeamRow> = keys.map((key) => ({
     key,
     title: teamLabels[key],
+    width: teamWidths[key],
     render: (_: unknown, row: TeamRow) =>
       key === 'name' && Object.hasOwn(row, key) ? (
         <Space>

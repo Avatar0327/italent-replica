@@ -55,6 +55,7 @@ function applicationColumns(onOpen: (row: ApprovalRow) => void, timezone: string
     {
       title: c.titleColumn,
       key: 'title',
+      width: 174,
       ellipsis: true,
       render: (_: unknown, row: ApprovalRow) => (
         <Button type="link" className="approval-table-link" onClick={() => onOpen(row)}>
@@ -62,12 +63,13 @@ function applicationColumns(onOpen: (row: ApprovalRow) => void, timezone: string
         </Button>
       ),
     },
-    { title: c.category, dataIndex: 'approvalType', render: (type: string) => typeLabels[type] ?? type },
+    { title: c.category, dataIndex: 'approvalType', width: 174, render: (type: string) => typeLabels[type] ?? type },
     {
       title: m.status,
       dataIndex: 'status',
+      width: 174,
       render: (status: string) => instanceStatus[status]?.label ?? statusLabels[status] ?? status,
     },
-    { title: c.applyTime, dataIndex: 'createdAt', render: (time: string) => formatInstant(time, timezone) },
+    { title: c.applyTime, dataIndex: 'createdAt', width: 192, render: (time: string) => formatInstant(time, timezone) },
   ];
 }
