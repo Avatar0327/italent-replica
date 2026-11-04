@@ -1,6 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, grantFieldAccess, permissionAdmin, transferScene } from './AC-APV-support.js';
+import { approvalWorld, grantFieldAccess, permissionAdmin, transferScene, TRANSFER_NODES } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -12,6 +12,19 @@ interface Cards {
 }
 
 describe('AC-APV-F474-3 待办卡片服务端投影与计数', () => {
+  it('新的待办卡片保留异常管理员标志及节点提示', async () => {
+    const w = await approvalWorld(database().db, 'f474-exception');
+    const s = await transferScene(w);
+    await w.setOrgRoles(s.to, { hrbp: null });
+    const admin = await w.member('合成异常管理员');
+    await w.publishedProcess({ nodes: TRANSFER_NODES, exceptionAdminUserId: admin });
+    const instance = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const task = instance.tasks.find((t) => t.status === 'pending')!;
+    await w.json(await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision));
+    const legacy = (await w.todos(admin)).items[0]!;
+    const cards = await w.json<Cards>(await w.request(admin, 'GET', `${base}?view=pending`));
+    expect(cards.items[0]).toMatchObject({ isExceptionAdmin: true, nodeName: legacy.nodeName });
+  });
   it('待处理、已处理、已申请分别按本人关系查询；总数不取当前页，原实例查询保持不变', async () => {
     const w = await approvalWorld(database().db, 'f474-cards');
     const s = await transferScene(w);

@@ -30,7 +30,7 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function render(view: string) {
+async function render(view: string, extra: Record<string, unknown> = {}) {
   const fetcher = vi.fn(
     async (_url: string) =>
       new Response(
@@ -45,6 +45,7 @@ async function render(view: string) {
               initiatorName: '合成发起人甲',
               summary: [{ key: 'effectiveDate', label: '调动日期', value: '2026-11-02' }],
               createdAt: '2026-11-01T00:00:00Z',
+              ...extra,
             },
           ],
           total: 27,
@@ -65,6 +66,11 @@ async function render(view: string) {
   return fetcher;
 }
 describe('AC-APV-F474-3 待办卡片不使用当前页推算计数', () => {
+  it('业务摘要不覆盖异常管理员标注', async () => {
+    await render('pending', { isExceptionAdmin: true, nodeName: '合成节点（异常管理员）' });
+    expect(host.querySelector('.approval-card')?.textContent).toContain('异常管理员');
+    expect(host.querySelector('.approval-record-meta')?.textContent).toContain('调动日期：2026-11-02');
+  });
   it('发起人、业务摘要与服务端分类总数一起呈现', async () => {
     await render('pending');
     expect(host.querySelector('.approval-card-title')?.textContent).toContain('合成发起人甲');
