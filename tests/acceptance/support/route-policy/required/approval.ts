@@ -293,6 +293,16 @@ export const APPROVAL: RequiredTable = {
       at: [
         route('GET', '/todos', 'listTodos(tx, ctx.tenantId, ctx.userId, page)'),
         fn('listTodos', 't.assignee_user_id=', `${DIR}/queries.ts`),
+        fn('listTodoCards', 't.assignee_user_id=', `${DIR}/todo-cards.ts`),
+      ],
+    },
+    {
+      perm: 'own:approval.initiatedOrParticipated',
+      facts: ['own:listTodos / listNotifications / listInstances'],
+      at: [
+        route('GET', '/todos', 'listTodoCards('),
+        fn('listTodoCards', 'i.initiator_user_id=', `${DIR}/todo-cards.ts`),
+        fn('listTodoCards', 'l.actor_user_id=', `${DIR}/todo-cards.ts`),
       ],
     },
   ],

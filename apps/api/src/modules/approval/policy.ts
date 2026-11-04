@@ -438,7 +438,13 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   // approvalType 未知 → 400 VALIDATION_FAILED / APPROVAL_TYPE_UNKNOWN（approvalTypeOf），不是路径标识
   'POST /simulate': processView(SIMULATION, SIMULATION, { write: simulationWrite }),
   // ---- registerReadRoutes：本人数据与详情 -------------------------------------------------------------------------
-  'GET /todos': own({ predicate: 'approval.recipient', fields: fixed(TODO_KEYS, 'F-039 §3.5 固定键 listTodos') }),
+  'GET /todos': any([
+    own({ predicate: 'approval.recipient', fields: fixed(TODO_KEYS, 'listTodos / 本人当前任务卡片') }),
+    own({
+      predicate: 'approval.initiatedOrParticipated',
+      fields: fixed(TODO_KEYS, '本人发起 / 办理卡片，摘要复用详情裁剪'),
+    }),
+  ]),
   'GET /notifications': own({
     predicate: 'approval.recipient',
     fields: fixed(NOTIFICATION_KEYS, 'F-039 §3.5 固定键 listNotifications'),

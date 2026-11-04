@@ -57,27 +57,29 @@ export async function listTodoCards(
 ) {
   const { tenantId, userId } = ctx;
   const history = query.view !== 'pending';
-  const taskWhere =
-    query.view === 'pending'
-      ? sql`t.status='pending'`
-      : query.view === 'completed'
-        ? sql`t.acted_at IS NOT NULL AND t.origin NOT IN
-        ('self_skip','subject_skip','same_skip','history_skip','no_assignee_approve')`
-        : sql`false`;
+  const taskSource =
+    query.view === 'completed'
+      ? sql`SELECT l.id,l.node_key,l.created_at,l.created_at AS acted_at
+        FROM approval_instance_logs l WHERE l.tenant_id=i.tenant_id AND l.instance_id=i.id
+        AND l.actor_user_id=${userId}::uuid
+        AND l.event IN ('approve','disagree','reject','reject_previous','jump','transfer','add_sign_before','add_sign_after')
+        ORDER BY l.created_at DESC,l.id DESC LIMIT 1`
+      : sql`SELECT t.* FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
+        AND t.assignee_user_id=${userId}::uuid AND t.status='pending'
+        AND ${query.view === 'pending'}`;
+  const time = { pending: sql`t.created_at`, completed: sql`t.acted_at`, initiated: sql`i.created_at` }[query.view];
   const category = sql`CASE i.approval_type ${sql.join(
     Object.keys(APPROVAL_TYPES).map((code) => sql`WHEN ${code} THEN ${categoryOf(code)}`),
     sql` `,
   )} ELSE 'other' END`;
-  // 已处理按实例取本人最近一次实际办理；被抄送/自动跳过不冒充已处理。当前待办不因历史隐藏而消失。
+  // 已处理取本人办理日志，不能以 acted_at 判定（系统撤销/会签结束也会写此时间）；当前待办保留。
   const [result] = rowsOf<{ items: CardRow[]; total: number; counts: { key: Category; count: number }[] }>(
     await tx.execute(sql`WITH candidates AS MATERIALIZED (
       SELECT i.id,i.title,i.status,i.approval_type,i.initiator_user_id,
         t.id AS task_id,t.node_key,n.name AS node_name,${category} AS category,
-        ${query.view === 'initiated' ? sql`i.created_at` : query.view === 'completed' ? sql`t.acted_at` : sql`t.created_at`} AS created_at
+        ${time} AS created_at
       FROM approval_instances i
-      LEFT JOIN LATERAL (SELECT t.* FROM approval_tasks t
-        WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id AND t.assignee_user_id=${userId}::uuid AND ${taskWhere}
-        ORDER BY t.acted_at DESC NULLS LAST,t.id ${query.view === 'completed' ? sql`LIMIT 1` : sql``}) t ON true
+      LEFT JOIN LATERAL (${taskSource}) t ON true
       LEFT JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id AND n.version_id=i.version_id AND n.node_key=t.node_key
       WHERE i.tenant_id=${tenantId} AND ${query.view === 'initiated' ? sql`i.initiator_user_id=${userId}::uuid` : sql`t.id IS NOT NULL`}
         ${history ? sql`AND ${visibleRecordSql(userId)}` : sql``}
@@ -100,9 +102,9 @@ export async function listTodoCards(
       title: row.title,
       status: row.status,
       approvalType: row.approval_type,
-      taskId: row.task_id,
+      ...(query.view === 'pending' && row.task_id ? { taskId: row.task_id } : {}),
       nodeKey: row.node_key,
-      nodeName: row.node_name,
+      ...(row.node_name ? { nodeName: row.node_name } : {}),
       createdAt: new Date(row.created_at).toISOString(),
       initiatorName: names[index]!.actorName,
       summary: await summarize(detail),

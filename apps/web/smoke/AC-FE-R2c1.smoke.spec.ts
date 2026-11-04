@@ -384,6 +384,7 @@ test('AC-FE-R2c1-06 F-297 考核审批编辑：提前转正时转正日期必填
           items: [
             {
               taskId: task,
+              id: instance,
               instanceId: instance,
               title: current.title,
               nodeName: '经理评价',

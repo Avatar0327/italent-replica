@@ -230,7 +230,7 @@ function ApprovalHistory({ detail, full = false }: { detail: Detail; full?: bool
             children: (
               <div className="approval-log">
                 {log.actorUserId !== null && actor && <span className="approval-log-actor">{actor}</span>}
-                <strong>{logEvents[log.event] ?? log.event}</strong>
+                <strong>{logEvents[log.event] ?? (full ? d.unknownLog : log.event)}</strong>
                 {log.actorUserId === null && <Tag>{actor}</Tag>}
                 {task && <Tag>{task.nodeName}</Tag>}
                 {comment && <p>{comment}</p>}
