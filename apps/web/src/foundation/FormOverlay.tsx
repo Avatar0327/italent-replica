@@ -15,6 +15,8 @@ export interface FormField {
   control: ReactNode;
   access: FieldAccess;
   rules?: FormItemProps['rules'];
+  /** 取证的呈现标记，与保存校验独立；未指定时沿用 rules 推导。 */
+  requiredMark?: boolean;
   display?: ReactNode;
 }
 export interface FormGroup {
@@ -184,11 +186,17 @@ function FormGroups(props: Pick<FormOverlayProps, 'groups' | 'mode'> & { values?
               .filter((field) => field.access.visible)
               .map((field) =>
                 field.access.editable ? (
-                  <Form.Item key={field.name} name={field.name} label={field.label} rules={field.rules}>
+                  <Form.Item
+                    key={field.name}
+                    name={field.name}
+                    label={field.label}
+                    rules={field.rules}
+                    required={field.requiredMark}
+                  >
                     <LockedField>{field.control}</LockedField>
                   </Form.Item>
                 ) : (
-                  <Form.Item key={field.name} label={field.label}>
+                  <Form.Item key={field.name} label={field.label} required={field.requiredMark}>
                     <PermissionField
                       access={field.access}
                       value={field.display ?? String(props.values?.[field.name] ?? '—')}

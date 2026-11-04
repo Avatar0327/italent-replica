@@ -1,0 +1,1 @@
+ALTER TABLE "approval_notifications" ADD COLUMN "payload" jsonb;
