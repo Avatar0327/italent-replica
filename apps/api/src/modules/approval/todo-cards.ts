@@ -63,7 +63,8 @@ export async function listTodoCards(
       ? sql`SELECT l.id,l.node_key,l.created_at,l.created_at AS acted_at
         FROM approval_instance_logs l WHERE l.tenant_id=i.tenant_id AND l.instance_id=i.id
         AND l.actor_user_id=${userId}::uuid
-        AND l.event IN ('approve','disagree','reject','reject_previous','jump','transfer','add_sign_before','add_sign_after')
+        AND l.event IN ('approve','disagree','reject','reject_previous','jump',
+          'transfer','add_sign_before','add_sign_after')
         ORDER BY l.created_at DESC,l.id DESC LIMIT 1`
       : sql`SELECT t.* FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
         AND t.assignee_user_id=${userId}::uuid AND t.status='pending'
@@ -82,14 +83,19 @@ export async function listTodoCards(
         ${time} AS created_at
       FROM approval_instances i
       LEFT JOIN LATERAL (${taskSource}) t ON true
-      LEFT JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id AND n.version_id=i.version_id AND n.node_key=t.node_key
-      WHERE i.tenant_id=${tenantId} AND ${query.view === 'initiated' ? sql`i.initiator_user_id=${userId}::uuid` : sql`t.id IS NOT NULL`}
+      LEFT JOIN approval_process_nodes n ON n.tenant_id=i.tenant_id
+        AND n.version_id=i.version_id AND n.node_key=t.node_key
+      WHERE i.tenant_id=${tenantId} AND
+        ${query.view === 'initiated' ? sql`i.initiator_user_id=${userId}::uuid` : sql`t.id IS NOT NULL`}
         ${history ? sql`AND ${visibleRecordSql(userId)}` : sql``}
-    ), filtered AS MATERIALIZED (SELECT * FROM candidates ${query.category ? sql`WHERE category=${query.category}` : sql``}),
+    ), filtered AS MATERIALIZED (SELECT * FROM candidates
+      ${query.category ? sql`WHERE category=${query.category}` : sql``}),
     paged AS (SELECT * FROM filtered ORDER BY created_at DESC,id,task_id LIMIT ${page.limit} OFFSET ${page.offset})
     SELECT COALESCE((SELECT jsonb_agg(p ORDER BY p.created_at DESC,p.id,p.task_id) FROM paged p),'[]'::jsonb) AS items,
       (SELECT count(*) FROM filtered) AS total,
-      COALESCE((SELECT jsonb_agg(c) FROM (SELECT category AS key,count(*) AS count FROM filtered GROUP BY category) c),'[]'::jsonb) AS counts`),
+      COALESCE((SELECT jsonb_agg(c) FROM (
+        SELECT category AS key,count(*) AS count FROM filtered GROUP BY category
+      ) c),'[]'::jsonb) AS counts`),
   );
   const names = await withActorNames(
     tx,

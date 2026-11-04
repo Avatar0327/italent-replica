@@ -345,26 +345,8 @@ const canOpen = relation({
   fields: DETAIL,
   ...byId,
 });
-const TODO_KEYS = [
-  'taskId',
-  'instanceId',
-  'title',
-  'approvalType',
-  'nodeKey',
-  'nodeName',
-  'isExceptionAdmin',
-  'origin',
-  // R2-T03 §9 合并待办：批量离职申请的批次号（其他待办为空）
-  'batchId',
-  'createdAt',
-  // DEC-799：view 参数启用卡片投影，摘要复用详情字段裁剪；统计在可见性过滤后计算。
-  'id',
-  'status',
-  'initiatorName',
-  'summary',
-  'total',
-  'categories',
-];
+// 无 view 时仍是 listTodos 原固定键；卡片摘要取 detailView 裁剪后字段，不能登记为未裁剪 fixed。
+const TODO_FIELDS = projector('approval.todoCards', 'approval.todoCards');
 const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
 const INSTANCE_KEYS = [
   'id',
@@ -439,10 +421,10 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /simulate': processView(SIMULATION, SIMULATION, { write: simulationWrite }),
   // ---- registerReadRoutes：本人数据与详情 -------------------------------------------------------------------------
   'GET /todos': any([
-    own({ predicate: 'approval.recipient', fields: fixed(TODO_KEYS, 'listTodos / 本人当前任务卡片') }),
+    own({ predicate: 'approval.recipient', fields: TODO_FIELDS }),
     own({
       predicate: 'approval.initiatedOrParticipated',
-      fields: fixed(TODO_KEYS, '本人发起 / 办理卡片，摘要复用详情裁剪'),
+      fields: TODO_FIELDS,
     }),
   ]),
   'GET /notifications': own({

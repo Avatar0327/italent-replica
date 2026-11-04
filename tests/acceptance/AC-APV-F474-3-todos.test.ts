@@ -21,9 +21,9 @@ describe('AC-APV-F474-3 待办卡片服务端投影与计数', () => {
     const instance = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     const task = instance.tasks.find((t) => t.status === 'pending')!;
     await w.json(await w.taskAction(s.outHead.userId, task.id, 'approve', instance.revision));
-    const legacy = (await w.todos(admin)).items[0]!;
+    const legacy = await w.json<{ items: { nodeName: string }[] }>(await w.request(admin, 'GET', base));
     const cards = await w.json<Cards>(await w.request(admin, 'GET', `${base}?view=pending`));
-    expect(cards.items[0]).toMatchObject({ isExceptionAdmin: true, nodeName: legacy.nodeName });
+    expect(cards.items[0]).toMatchObject({ isExceptionAdmin: true, nodeName: legacy.items[0]!.nodeName });
   });
   it('待处理、已处理、已申请分别按本人关系查询；总数不取当前页，原实例查询保持不变', async () => {
     const w = await approvalWorld(database().db, 'f474-cards');

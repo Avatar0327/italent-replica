@@ -3859,8 +3859,24 @@
       },
       "module": "approval",
       "primitives": {
+        "fieldsOut": [
+          "approval views"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
         "own": [
           "listTodos / listNotifications / listInstances"
+        ],
+        "relation": [
+          "assertCanOpen",
+          "retrievable（retrievableTask）"
+        ],
+        "scope": [
+          "checkScope",
+          "creator scope",
+          "scopeSql",
+          "visible()"
         ]
       }
     },
