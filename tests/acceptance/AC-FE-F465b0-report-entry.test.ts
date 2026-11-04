@@ -13,7 +13,7 @@ const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h, act } = requireWeb('react');
 const { createRoot } = requireWeb('react-dom/client');
 const { MemoryRouter } = requireWeb('react-router');
-const { AppPages } = await import('../../apps/web/src/foundation/AppPages.js');
+const { AppPages } = await import(resolve('apps/web/src/foundation/AppPages.tsx'));
 const reports = [MODULE_OBJECTS.hrRoster, MODULE_OBJECTS.hrMovementReport, MODULE_OBJECTS.hrStructureReport];
 // F-465b 的登记样例仅存在于测试，不新增运行时菜单；页面内部各报表仍由接口鉴权。
 const registry = collectPages(
@@ -119,7 +119,7 @@ describe('AC-FE-F465b0 / DEC-803① 报表入口契约', () => {
         { key: entry.id, label: entry.label, path: entry.path, group: entry.group },
       ]);
       expect(
-        menuNodes([entry], { apps: [{ app: entry.app, visible: true, entryObjects: [] }] } as ServerSnapshot),
+        menuNodes([entry], { ...snapshot([]), apps: [{ app: entry.app, visible: true, entryObjects: [] }] }),
       ).toEqual([]);
     }
   });

@@ -60,6 +60,10 @@ export const APP_OBJECT_DIRECTORY: Readonly<Record<AppId, readonly string[]>> = 
     MODULE_OBJECTS.contractCompany,
     MODULE_OBJECTS.offer,
     MODULE_OBJECTS.offerBatchApproval,
+    // DEC-803①：报表入口归 staff；仅登记归属，不增加任何授权。
+    MODULE_OBJECTS.hrRoster,
+    MODULE_OBJECTS.hrMovementReport,
+    MODULE_OBJECTS.hrStructureReport,
   ]),
   transfer: withPrimary('TenantBase.EmploymentRecord', [
     MODULE_OBJECTS.employmentRecord,
