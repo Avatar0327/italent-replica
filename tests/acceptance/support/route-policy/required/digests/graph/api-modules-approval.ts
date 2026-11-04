@@ -1434,6 +1434,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/queries.ts#listNotifications': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#iso',
+    'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice',
   ],
   'apps/api/src/modules/approval/queries.ts#listTodos': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
   'apps/api/src/modules/approval/recusal.ts#assertNotRecused': [
@@ -1864,6 +1865,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': [
