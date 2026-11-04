@@ -357,6 +357,13 @@ const TODO_KEYS = [
   // R2-T03 §9 合并待办：批量离职申请的批次号（其他待办为空）
   'batchId',
   'createdAt',
+  // DEC-799：view 参数启用卡片投影，摘要复用详情字段裁剪；统计在可见性过滤后计算。
+  'id',
+  'status',
+  'initiatorName',
+  'summary',
+  'total',
+  'categories',
 ];
 const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
 const INSTANCE_KEYS = [

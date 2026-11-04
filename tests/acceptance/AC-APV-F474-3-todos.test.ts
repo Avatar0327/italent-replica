@@ -66,7 +66,7 @@ describe('AC-APV-F474-3 待办卡片服务端投影与计数', () => {
     expect(foreignCards).toMatchObject({ items: [], total: 0 });
   });
 
-  it('任一参与节点隐藏则历史分页与分类总数均过滤；当前待办保留，摘要按真实字段权裁剪', async () => {
+  it('任一参与节点隐藏则历史分页与分类总数均过滤；当前待办保留，摘要遵守真实权限与节点表单交集', async () => {
     const w = await approvalWorld(database().db, 'f474-hidden');
     const s = await transferScene(w);
     await w.publishedProcess({
@@ -76,7 +76,7 @@ describe('AC-APV-F474-3 待办卡片服务端投影与计数', () => {
           key: 'first',
           approver: { type: 'department', value: 'latest_record_department_head' },
           hideRecords: true,
-          formFields: ['effectiveDate', 'departmentId'],
+          formFields: ['departmentId'],
         },
         { key: 'next', approver: { type: 'department', value: 'record_department_head' } },
       ],

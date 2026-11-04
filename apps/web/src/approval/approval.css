@@ -260,3 +260,19 @@
   display: block;
   color: #b3b6ba;
 }
+
+.approval-category-group {
+  display: flex;
+  flex-direction: column;
+}
+.approval-category-count {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+.approval-subcategory.ant-btn {
+  padding-inline-start: 28px;
+}
+.approval-subcategory[aria-pressed='true'] {
+  color: #146eff;
+  background: #eaf3ff;
+}

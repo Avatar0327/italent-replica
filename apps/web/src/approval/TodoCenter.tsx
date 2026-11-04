@@ -11,8 +11,8 @@ import {
   type ApprovalSection,
   type TodoTool,
 } from './page-model.js';
-import type { ApprovalRow, ApprovalView } from './types.js';
-import { useApprovalList, type ApprovalListState } from './useApprovalList.js';
+import type { ApprovalView } from './types.js';
+import { useTodoCards, type TodoRow, type TodoState } from './useTodoCards.js';
 
 const views: readonly ApprovalView[] = ['pending', 'completed', 'initiated'];
 const isView = (value: string | null): value is ApprovalView => views.some((view) => view === value);
@@ -25,7 +25,7 @@ export function TodoCenter({ visible }: { visible: readonly ApprovalSection[] })
   const [params, setParams] = useSearchParams();
   const value = params.get('view');
   const view: ApprovalView = isView(value) ? value : 'pending';
-  const state = useApprovalList(view);
+  const state = useTodoCards(view);
   if (state.selected)
     return (
       <ApprovalDetail
@@ -40,7 +40,7 @@ export function TodoCenter({ visible }: { visible: readonly ApprovalSection[] })
     );
   return (
     <div className="approval-todo">
-      <TodoCategories view={view} onChange={(next) => setParams({ view: next })} />
+      <TodoCategories state={state} view={view} onChange={(next) => setParams({ view: next })} />
       <div className="approval-todo-main">
         <TodoToolbar view={view} visible={visible} state={state} />
         <DecisionNote id="approval" />
@@ -51,22 +51,53 @@ export function TodoCenter({ visible }: { visible: readonly ApprovalSection[] })
     </div>
   );
 }
-function TodoCategories({ view, onChange }: { view: ApprovalView; onChange(view: ApprovalView): void }) {
+function TodoCategories({
+  view,
+  onChange,
+  state,
+}: {
+  view: ApprovalView;
+  state: TodoState;
+  onChange(view: ApprovalView): void;
+}) {
   return (
     <nav className="approval-categories" aria-label={c.categories}>
       <Tooltip title={c.searchPending}>
         <Input disabled aria-label={c.searchContent} placeholder={c.searchContent} />
       </Tooltip>
       {views.map((key) => (
-        <Button
-          key={key}
-          type="text"
-          aria-pressed={key === view}
-          className={key === view ? 'approval-category approval-category-active' : 'approval-category'}
-          onClick={() => onChange(key)}
-        >
-          {m[key]}
-        </Button>
+        <div key={key} className="approval-category-group">
+          <Button
+            type="text"
+            aria-label={m[key]}
+            aria-pressed={key === view}
+            className={key === view ? 'approval-category approval-category-active' : 'approval-category'}
+            onClick={() => {
+              state.setCategory('');
+              onChange(key);
+            }}
+          >
+            {m[key]}
+            <span className="approval-category-count">
+              {key === view && state.data.total !== undefined ? state.data.total : ''}
+            </span>
+          </Button>
+          {key === view &&
+            !state.loading &&
+            !state.error &&
+            state.data.categories?.map((category) => (
+              <Button
+                key={category.key}
+                type="text"
+                aria-pressed={state.category === category.key}
+                className="approval-category approval-subcategory"
+                onClick={() => state.setCategory(category.key)}
+              >
+                {category.label}
+                <span className="approval-category-count">{category.count}</span>
+              </Button>
+            ))}
+        </div>
       ))}
     </nav>
   );
@@ -78,7 +109,7 @@ const toolLabels: Record<TodoTool, string> = {
   manage: c.manage,
 };
 /** 批量审批没有接口，禁用；流程委托 / 流程管理跳到对应子页，无权限的子页不显示入口。 */
-function TodoToolbar(props: { view: ApprovalView; visible: readonly ApprovalSection[]; state: ApprovalListState }) {
+function TodoToolbar(props: { view: ApprovalView; visible: readonly ApprovalSection[]; state: TodoState }) {
   const navigate = useNavigate();
   const { view, visible, state } = props;
   const pathOf = (target?: ApprovalSection) => approvalSections.find((section) => section.key === target)?.path;
@@ -108,7 +139,7 @@ function TodoToolbar(props: { view: ApprovalView; visible: readonly ApprovalSect
     </header>
   );
 }
-function TodoCards({ view, state }: { view: ApprovalView; state: ApprovalListState }) {
+function TodoCards({ view, state }: { view: ApprovalView; state: TodoState }) {
   if (state.error) return <PageState kind="error" error={state.error} retry={state.refresh} />;
   if (state.loading) return <Spin className="approval-cards-loading" />;
   if (!state.data.items.length) return <Empty description={c.empty} />;
@@ -127,24 +158,31 @@ function TodoCards({ view, state }: { view: ApprovalView; state: ApprovalListSta
   );
 }
 /** 卡片：复选（仅待处理，批量接口待补齐故禁用）、头像位、标题、摘要、时间、右侧按钮；已申请卡片标题旁有状态标签。 */
-function TodoCard(props: { row: ApprovalRow; view: ApprovalView; timezone: string; onOpen(): void }) {
+function TodoCard(props: { row: TodoRow; view: ApprovalView; timezone: string; onOpen(): void }) {
   const { row, view } = props;
   const status = view === 'initiated' ? instanceStatus[row.status ?? ''] : undefined;
   return (
     <li className="approval-card">
       {view === 'pending' && <Checkbox disabled aria-label={row.title} />}
       <span className="approval-record-mark" aria-hidden>
-        {m.mark}
+        {row.initiatorName ? [...row.initiatorName].slice(-2).join('') : m.mark}
       </span>
       <div className="approval-card-body">
         <div className="approval-card-title">
+          {row.initiatorName && (
+            <span>
+              {row.initiatorName} {c.submittedBy}
+            </span>
+          )}
           <Button type="link" className="approval-title-link" onClick={props.onOpen}>
             {row.title}
           </Button>
           {status && <Tag className={`approval-tone approval-tone-${status.tone}`}>{status.label}</Tag>}
         </div>
         <div className="approval-record-meta">
-          {c.summary(typeLabels[row.approvalType] ?? row.approvalType, row.nodeName)}
+          {row.summary?.length
+            ? row.summary.map((field) => `${field.label}：${field.value}`).join('　')
+            : c.summary(typeLabels[row.approvalType] ?? c.otherType, row.nodeName)}
         </div>
         <small className="approval-muted">{formatInstant(row.createdAt, props.timezone)}</small>
       </div>
@@ -155,7 +193,7 @@ function TodoCard(props: { row: ApprovalRow; view: ApprovalView; timezone: strin
   );
 }
 /** 原站卡片页无页码、纵向滚动；接口按页返回，这里保留上一页 / 下一页，不伪造总数。 */
-function TodoPager({ state }: { state: ApprovalListState }) {
+function TodoPager({ state }: { state: TodoState }) {
   const { page, data } = state;
   const more = data.hasMore ?? (data.total ?? 0) > page.page * page.pageSize;
   if (page.page === 1 && !more) return null;

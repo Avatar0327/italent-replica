@@ -332,6 +332,19 @@ export function recordsHidden(data: RecordScope, userId: string): boolean {
   });
 }
 
+/** DEC-115 的分页前可见性谓词；调用方实例别名为 i，任一历史参与节点隐藏即拒绝。 */
+export function visibleRecordSql(userId: string): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM approval_process_versions v
+    WHERE v.tenant_id=i.tenant_id AND v.id=i.version_id
+      AND i.initiator_user_id=${userId}::uuid AND v.hide_records_from_initiator)
+    AND NOT EXISTS (SELECT 1 FROM approval_tasks hidden_task
+      JOIN approval_process_nodes hidden_node ON hidden_node.tenant_id=i.tenant_id
+        AND hidden_node.version_id=i.version_id AND hidden_node.node_key=hidden_task.node_key
+      WHERE hidden_task.tenant_id=i.tenant_id AND hidden_task.instance_id=i.id
+        AND hidden_task.assignee_user_id=${userId}::uuid
+        AND hidden_task.origin NOT IN ('self_skip','subject_skip') AND hidden_node.hide_records)`;
+}
+
 /** 管理员日志只读本页实例的隐藏判定事实；按冻结版本及全部历史参与节点判断，不加载业务表单或操作人姓名。 */
 export async function visibleRecordInstances(tx: Tx, tenantId: string, userId: string, instanceIds: string[]) {
   if (!instanceIds.length) return new Set<string>();
