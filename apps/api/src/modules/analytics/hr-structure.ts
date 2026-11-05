@@ -37,10 +37,23 @@ const categoryName = (tenantId: string) => sql`(SELECT et.name FROM employment_t
   WHERE et.tenant_id=${tenantId} AND et.id=${current('employment_type')}) AS "employmentType"`;
 
 /** 范围内、asOf 当天在职且雇佣关系属于 employTypes 的人员（每人取当天最新一段主职任职），按员工 ID 排序。 */
-export async function structurePeople(
+export function structurePeople(
   tx: Tx,
   a: StructureContext,
   employTypes: readonly string[],
+): Promise<StructurePerson[]> {
+  return structurePeopleWhere(tx, a, employTypes, employmentVisible(a, sql`m`));
+}
+
+/**
+ * 同一份在职人员行集，可见谓词由调用方给（alias 为 m，带 employee_id / org_id / creator_id）。
+ * 团队人事看板（35 §2.1b）用它按“本人 + 负责部门 + 汇报链”裁剪，而不是按角色数据范围。
+ */
+export async function structurePeopleWhere(
+  tx: Tx,
+  a: Pick<StructureContext, 'tenantId' | 'asOf'>,
+  employTypes: readonly string[],
+  visible: SQL,
 ): Promise<StructurePerson[]> {
   const columns: SQL[] = [
     attribute('department_id', 'departmentId'),
@@ -62,7 +75,7 @@ export async function structurePeople(
         ORDER BY r.employee_id, t.start_date DESC, t.sort_order DESC) m
       LEFT JOIN LATERAL (SELECT v.gender, v.birthday, v.education_level FROM personnel_employee_versions v
         WHERE v.tenant_id=${a.tenantId} AND v.employee_id=m.employee_id ORDER BY v.revision DESC LIMIT 1) pv ON true
-      WHERE ${employmentVisible(a, sql`m`)}
+      WHERE ${visible}
       ORDER BY m.id`),
   );
 }

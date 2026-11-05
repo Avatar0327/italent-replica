@@ -125,7 +125,7 @@ test('AC-FE-R3b-05 360 活动与评价关系的详情与表单均可渲染', asy
   });
   await setupR3b(page, '/survey360');
   await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-  const detail = page.getByRole('dialog', { name: '合成领导力评估', exact: true });
+  const detail = page.locator('.survey-detail-page');
   await detail.getByRole('tab', { name: '评价关系', exact: true }).click();
   await expect(detail.getByText('合成参评人', { exact: true })).toBeVisible();
   await detail.getByRole('button', { name: '添加评价对象', exact: true }).click();
@@ -134,7 +134,7 @@ test('AC-FE-R3b-05 360 活动与评价关系的详情与表单均可渲染', asy
     .getByRole('dialog', { name: '添加评价对象' })
     .getByRole('button', { name: /取\s*消/, exact: true })
     .click();
-  await detail.getByRole('button', { name: '设置评价者', exact: true }).click();
+  await detail.locator('tbody').getByRole('button', { name: '设置评价者', exact: true }).click();
   await expect(page.getByText('合成评价者', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '添加评价者', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '添加评价者' })).toBeVisible();

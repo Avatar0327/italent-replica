@@ -32,6 +32,9 @@ const expected = {
     M.contractCompany,
     M.offer,
     M.offerBatchApproval,
+    M.hrRoster,
+    M.hrMovementReport,
+    M.hrStructureReport,
     ...PERSONNEL_OBJECTS,
   ]
     .map((object) => object.code)

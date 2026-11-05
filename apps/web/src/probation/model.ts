@@ -123,6 +123,9 @@ export function entriesFor(view: ProbationView, row: Row, p: ObjectPermission | 
 export const probationPath = (employeeId: string) => `${employees}/${encodeURIComponent(employeeId)}/probation`;
 export const adjustFields = ['hasProbation', 'startDate', 'months', 'expectedEndDate', 'regularizationDate'];
 export const regularizeFields = ['effectiveDate', 'probationResult'];
+/** 转正日期受任职对象字段编辑权管（F-344）：没有编辑权的人只提交试用结果，日期走服务端默认。 */
+export const regularizeFieldsFor = (dateEditable: boolean): readonly string[] =>
+  dateEditable ? regularizeFields : regularizeFields.filter((field) => field !== 'effectiveDate');
 export const monthOptions = Array.from(
   { length: PROBATION_MONTHS_MAX - PROBATION_MONTHS_MIN + 1 },
   (_, index) => PROBATION_MONTHS_MIN + index,
@@ -211,7 +214,7 @@ export function applicationBody(values: Values): Values {
   return {
     kind: 'regularization',
     mode: 'application',
-    effectiveDate: values.effectiveDate,
+    ...(isBlank(values.effectiveDate) ? {} : { effectiveDate: values.effectiveDate }),
     probationResult: values.probationResult,
   };
 }
@@ -306,9 +309,11 @@ export function temporaryOf(raw: unknown): Temporary | undefined {
     names: result && name ? { [result]: name } : {},
   };
 }
-/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，没填的项写 null。 */
+/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，可编辑但没填的项写 null；无编辑权的日期保持省略。 */
 export const temporaryBody = (values: Values): Values => ({
-  effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null,
+  ...(Object.hasOwn(values, 'effectiveDate')
+    ? { effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null }
+    : {}),
   probationResult: typeof values.probationResult === 'string' && values.probationResult ? values.probationResult : null,
 });
 /** 暂存回执：员工一致、revision 比提交时大，返回新的暂存 revision。 */
@@ -323,9 +328,9 @@ export function acceptTemporary(raw: unknown, employeeId: string, sent: number):
  * 不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。base 是 If-Match 那个 revision 的服务端值
  * （commands.tsx confirmedValues，rf347_2 P2-1）：409 核对后改回打开时的值也算差异，照样送达。
  */
-export const draftPatchBody = (values: Values, base: Values): Values =>
+export const draftPatchBody = (values: Values, base: Values, fields: readonly string[] = regularizeFields): Values =>
   Object.fromEntries(
-    regularizeFields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
+    fields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
   );
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */

@@ -1,6 +1,6 @@
 /**
  * R2-T08 BE-10a：组织调整的审批契约（设计 §4.1 / §4.2 / §14.1 第 10a 行；DEC-526②、DEC-644 A-2 / A-14）。
- * - AC-OA-13（定义 / 解析）：流程编码 OrganizationProcess、预置两节点；审批人按审批主体组织取 HRBP / 负责人；
+ * - AC-OA-13（定义 / 解析）：流程编码 OrganizationProcess、预置两节点；审批人按审批主体组织取负责人 / HRBP（F-135，DEC-789）；
  * - 审批类型 / 适配器种类：objectCode 只在一个常量里定义；`approvalTypeOfBusiness('org_adjustment')` 返回 null；
  * - 适配器：BE-10a 占位（任何钩子 409 ORG_ADJUSTMENT_NOT_AVAILABLE）已由 BE-10c 换成真适配器，这里只核对钩子齐全（含 lockMany、
  *   beforeApprove），行为见 AC-OA-12～15 / 26 / 27 / 38 / 39 / 43；通用任职入口对 application 方式 400 KIND_RESERVED。
@@ -75,8 +75,8 @@ describe('预置流程（§4.2，DEC-644 A-2：取人口径是推断，可改草
     ]);
     expect(definition.isFallback).toBe(false);
     expect(definition.nodes.map((n) => [n.key, n.name, 'approver' in n && n.approver])).toEqual([
-      ['hrbp_leader', 'HRBPLeader审批', { type: 'object_field', value: 'approval_subject_org_hrbp' }],
-      ['hr_head', 'HR负责人审批', { type: 'object_field', value: 'approval_subject_org_head' }],
+      ['department_head', '部门负责人审批', { type: 'object_field', value: 'approval_subject_org_head' }],
+      ['hr_review', 'HR审核生效', { type: 'object_field', value: 'approval_subject_org_hrbp' }],
     ]);
     for (const node of definition.nodes) {
       expect(node.formFields).toEqual(ORG_ADJUSTMENT_FORM_FIELDS);

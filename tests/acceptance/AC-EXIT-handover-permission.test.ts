@@ -8,6 +8,7 @@ import { createUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
+import { grantAdminRecordView } from './AC-EXIT-support.js';
 import { rowsOf } from './AC-DM-R2-blacklist-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -26,8 +27,20 @@ describe('AC-EXIT-handover-permission 离职交接事项（任职设置配置对
     const { db } = testDb();
     const session = await employmentSession(db, `handover-perm-${randomUUID()}`);
     const tenant = session.tenant.id;
-    await bootstrapTenantAdmin(db, { tenantId: tenant, userId: session.user.id }, cmd());
+    const adminRecord = await bootstrapTenantAdmin(db, { tenantId: tenant, userId: session.user.id }, cmd());
     const real = tenantApi(db, { authorize: undefined, clock: () => new Date('2026-10-01T04:00:00Z') });
+    // F-358 / DEC-780：配置读取另要任职记录查看权（与入口同口径），管理员先补一个只读任职记录的身份
+    await grantAdminRecordView(
+      {
+        db,
+        tenant: session.tenant,
+        admin: session.user,
+        adminRecord,
+        api: real,
+        asAdmin: { tenant, user: session.user.id },
+      },
+      'handover-perm',
+    );
     const as =
       (user: string) =>
       (method: string, path: string, options: { ifMatch?: number; body?: unknown } = {}) =>

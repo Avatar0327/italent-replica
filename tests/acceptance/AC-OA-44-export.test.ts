@@ -328,4 +328,30 @@ describe('AC-OA-44 第 2 轮返工：姓名口径、XML 字符、编制汇总范
     const list = nodes((await exported(w, view.id, false)).svg);
     expect(list.map((texts) => texts.at(-1))).toEqual(['22', '44', '66']);
   });
+
+  it('F-446 多方案取值与录入顺序无关：正序 / 倒序各一个组织；编码按码元比较（大写先于小写）；DEFAULT 先录入也优先', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    const [c1, c2, c3, c4] = [
+      await w.org(`ZZ_丙${s}`),
+      await w.org(`ZZ_丁${s}`),
+      await w.org(`ZZ_戊${s}`),
+      await w.org(`ZZ_己${s}`),
+    ];
+    const add = (orgId: string, inclusive: number, code: string) =>
+      capacityOf(w, orgId, { inclusive }, 'inclusive', undefined, { code });
+    await add(c1, 1, `ZZ_C1${s}`); // 编码小的先录入
+    await add(c1, 2, `ZZ_D1${s}`);
+    await add(c2, 3, `ZZ_D2${s}`); // 编码小的后录入
+    await add(c2, 4, `ZZ_C2${s}`);
+    await add(c3, 5, `ZZ_a3${s}`); // 小写后于大写：不按区域排序
+    await add(c3, 6, `ZZ_B3${s}`);
+    await add(c4, 7, 'DEFAULT'); // 默认方案先录入
+    await add(c4, 8, `ZZ_A4${s}`);
+    const view = await w.created(w.head({ adjustmentRange: [c1, c2, c3, c4] }));
+
+    const preview = await reader(w).preview(view.id);
+    const byOrg = Object.fromEntries(preview.roots.map((root) => [root.orgId, root.establishment]));
+    expect(byOrg).toEqual({ [c1]: 1, [c2]: 4, [c3]: 6, [c4]: 7 });
+  });
 });

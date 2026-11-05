@@ -1,4 +1,4 @@
-/** DEC-691：流程编辑者的引用候选，只返回 ID / 名称 / 状态 / 父级；不暴露人员与授权成员。 */
+/** DEC-691：流程编辑者的引用候选（含 D6 身份），只返回 ID / 名称 / 状态 / 父级；不暴露人员与授权成员。 */
 import { sql, type Tx } from '@italent/db';
 import { RELATION_SOURCE_TYPES } from '@italent/domain';
 import { z } from 'zod';
@@ -8,7 +8,7 @@ import { approvalError, canonicalId, rowsOf } from './context.js';
 import { dimensionEnabled, sourceDimension, orgReferenceRows, jobReferenceRows } from './source-reference.js';
 
 const querySchema = z.object({
-  type: z.enum(RELATION_SOURCE_TYPES),
+  type: z.enum([...RELATION_SOURCE_TYPES, 'identity']),
   asOf: z.string().refine(validIsoDate),
   keyword: z.string().trim().max(100).optional(),
   includeInactive: z
@@ -28,13 +28,20 @@ export function designerSourcesQuery(query: Record<string, string>) {
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '审批来源候选查询参数不合法');
   return parsed.data;
 }
-export async function listDesignerSources(tx: Tx, tenantId: string, query: ReturnType<typeof designerSourcesQuery>) {
+async function candidateRows(tx: Tx, tenantId: string, query: ReturnType<typeof designerSourcesQuery>) {
+  // 身份没有组织维度与停用状态；登记的身份均可选，成员是否有效在运行时按实时授权判断。
+  if (query.type === 'identity')
+    return sql`SELECT id,name,true AS enabled,NULL::uuid AS parent_id FROM permission_profiles
+      WHERE tenant_id=${tenantId}`;
   const dimension = sourceDimension(query.type);
   if (!(await dimensionEnabled(tx, tenantId, dimension)))
     throw approvalError('APPROVAL_SOURCE_INVALID', 'APPROVAL_SOURCE_DIMENSION_DISABLED', '审批来源的组织维度未启用');
-  const rows = dimension
+  return dimension
     ? orgReferenceRows(tenantId, query.asOf, dimension)
     : jobReferenceRows(tenantId, query.asOf, query.type === 'position' ? 'position' : 'job');
+}
+export async function listDesignerSources(tx: Tx, tenantId: string, query: ReturnType<typeof designerSourcesQuery>) {
+  const rows = await candidateRows(tx, tenantId, query);
   const filter = query.ids ? sql`AND c.id=ANY(${`{${query.ids.join(',')}}`}::uuid[])` : sql``;
   const pattern = `%${(query.keyword ?? '').replace(/[\\%_]/g, (v) => `\\${v}`)}%`;
   const size = query.ids ? query.ids.length : query.pageSize;

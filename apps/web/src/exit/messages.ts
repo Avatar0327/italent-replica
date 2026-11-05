@@ -62,6 +62,7 @@ export const x = {
     cancelled: '已撤销',
     withdrawn: '已撤回',
     voided: '已作废',
+    deleted: '已删除',
   } as Record<string, string>,
   modes: { direct: '直接离职', application: '离职申请' } as Record<string, string>,
   entries: {
@@ -74,6 +75,7 @@ export const x = {
     handover: '发起离职交接',
     resubmit: '重新提交交接',
     batchHandover: '批量发起离职交接',
+    handleMenu: '离职处理',
   },
   missing: '—',
   refresh: '刷新',
@@ -87,6 +89,7 @@ export const x = {
   yes: '是',
   no: '否',
   permanent: '空表示永久',
+  permanentValue: '永久',
   pick: '下一步',
   submit: '提交',
   confirmSubmit: '确认并提交',
@@ -109,6 +112,8 @@ export const x = {
   toVoid: (count: number) => `离职生效时将作废 ${count} 条在途任职申请`,
   landed: (count: number) => `有 ${count} 条已生效在后的调动将先于离职落地`,
   assessment: (count: number) => `离职生效时将终止 ${count} 条在途考核流程`,
+  contracts: (count: number) => `离职生效时将终止、删除 ${count} 份合同，或撤回在途合同申请`,
+  partTimes: (count: number) => `离职生效时将结束 ${count} 条兼职，或作废在途兼职申请`,
   ackHint: '确认后将以本次检查结果提交',
   blockers: {
     EXIT_IN_PROGRESS: '该员工已有在途的离职单',
