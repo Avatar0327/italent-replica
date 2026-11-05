@@ -1,3 +1,4 @@
+import { actionButton } from './action-button.js';
 import { test, expect, tenant, user, snapshotFixture } from './fixtures.js';
 import { reportCatalog, reportPage, reportPermission, movementPage, qualityPage } from './hr-reports-fixtures.js';
 
@@ -28,6 +29,11 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 
 test('AC-FE-F465b 目录 → 名册 → 筛选空结果 → 有权导出；表头只显示返回列', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('pageerror', (error) => errors.push(error.message));
   const queries: string[] = [];
   await page.route('**/hr-analysis/reports/1.01?*', (route) => {
     const url = new URL(route.request().url());
@@ -50,12 +56,13 @@ test('AC-FE-F465b 目录 → 名册 → 筛选空结果 → 有权导出；表�
   await expect(main.locator('thead th')).toHaveText(['姓名', '工号']);
   await page.screenshot({ path: test.info().outputPath('hr-report.png'), fullPage: true });
   await main.getByLabel('姓名', { exact: true }).fill('无匹配合成姓名');
-  await main.getByRole('button', { name: '查询', exact: true }).click();
+  await actionButton(main, '查询').click();
   await expect(main.getByText('该报表暂无数据', { exact: true })).toBeVisible();
   const download = page.waitForEvent('download');
-  await main.getByRole('button', { name: '导出', exact: true }).click();
+  await actionButton(main, '导出').click();
   expect((await download).suggestedFilename()).toContain('1.01');
   expect(queries.some((q) => q.includes('name='))).toBe(true);
+  expect(errors).toEqual([]);
 });
 
 test('AC-FE-F465b 三张统计报表隐藏导出，直链 403 明示无权', async ({ page }) => {
@@ -68,7 +75,7 @@ test('AC-FE-F465b 三张统计报表隐藏导出，直链 403 明示无权', asy
   for (const code of ['monthly', 'institution', 'quality']) {
     await page.goto(`/hr-reports/${code}`);
     await expect(page.locator('.shell-workspace table')).toBeVisible();
-    await expect(page.locator('.shell-workspace').getByRole('button', { name: '导出', exact: true })).toHaveCount(0);
+    await expect(actionButton(page.locator('.shell-workspace'), '导出')).toHaveCount(0);
   }
   await page.route('**/hr-analysis/reports/1.06?*', (route) =>
     route.fulfill({

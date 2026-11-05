@@ -53,7 +53,7 @@ function Catalog() {
       <header className="page-heading">
         <h1>{m.title}</h1>
       </header>
-      <ReadState {...read} retry={() => refresh((n) => n + 1)} />
+      <ReadState loading={read.loading} error={read.error} retry={() => refresh((n) => n + 1)} />
       {read.data && (
         <div className="list-card hr-report-catalog">
           {(['员工名册分析', '人事报表', '员工花名册'] as const).map((group) => (
@@ -111,7 +111,11 @@ function ReportView({ report }: { report: PersonnelReport }) {
         <p>{descriptions[report.code]}</p>
         {movement(report.code) && <p>{m.movementHint}</p>}
         <ReportFilters code={report.code} initial={initial} columns={columns} busy={read.loading} apply={apply} />
-        <ReadState {...read} retry={() => setQuery({ ...query, generation: query.generation + 1 })} />
+        <ReadState
+          loading={read.loading}
+          error={read.error}
+          retry={() => setQuery({ ...query, generation: query.generation + 1 })}
+        />
         {read.data && (
           <>
             {read.data.hasDataPermission === false && <Alert type="info" message={m.noScope} />}
