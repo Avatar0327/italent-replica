@@ -49,6 +49,15 @@ export async function linkEmploymentPage(
   const ctx = await employmentContext(tx, scopeOf, input);
   if (!ids.length) return finish(tx, ctx, input, item);
   await lockOrgEmploymentEmployees(tx, ctx, ids);
+  // 取页在取锁之前：取锁期间可能有人新入职（ID 在游标与页尾之间）或离开。加锁后按选人同一口径复查本页，
+  // 不一致就不推进游标、整步提交（锁随之释放），下一步重新取页，避免游标越过后漏选（F-461）。
+  if (
+    !sameIds(
+      ids,
+      await orgEmploymentTargetsPage(tx, input.tenantId, orgId, date, item.employmentCursor, EMPLOYMENT_PAGE_SIZE),
+    )
+  )
+    return 'pending';
   const moved = await primaryMovedAfter(tx, input.tenantId, ids, date);
   const failures: EmployeeFailure[] = [];
   for (const employeeId of ids) {
@@ -64,6 +73,9 @@ export async function linkEmploymentPage(
     WHERE tenant_id=${input.tenantId} AND id=${item.id}::uuid`);
   return 'pending';
 }
+
+const sameIds = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
 
 async function employmentContext(tx: Tx, scopeOf: ApplicantScopeOf, input: GroupInput): Promise<EmploymentContext> {
   const scope = await applicantScopes(tx, scopeOf, input, input.adjustment).employment();

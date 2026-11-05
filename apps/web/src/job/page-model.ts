@@ -93,7 +93,7 @@ const listFields: Partial<Record<JobKind, string[]>> = {
   sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate'],
   'level-types': ['name', 'displayOrder', 'startDate'],
   grades: ['grade', 'name', 'layerId', 'scoreHigh', 'scoreLow', 'startDate'],
-  levels: ['levelTypeId', 'name', 'level', 'minGradeId', 'maxGradeId'],
+  levels: ['levelTypeId', 'name', 'level', 'minGradeId', 'maxGradeId', 'startDate'],
   posts: ['code', 'name', 'sequenceId', 'levelTypeId', 'minLevelId', 'maxLevelId'],
   positions: [
     'code',
@@ -106,6 +106,24 @@ const listFields: Partial<Record<JobKind, string[]>> = {
     'maxLevelId',
     'displayOrder',
   ],
+};
+// 宽度按已取证的列键匹配；权限裁剪后不能按剩余列下标分配宽度。
+const listWidths: Partial<Record<JobKind, number[]>> = {
+  sequences: [202, 202, 202, 182, 167],
+  'level-types': [404, 384, 369],
+  grades: [171, 191, 191, 223, 223, 156],
+  levels: [140, 140, 172, 140, 140, 105],
+  posts: [153, 153, 153, 153, 101, 101],
+  positions: [128, 128, 128, 128, 128, 128, 76, 76, 76],
+};
+export function jobColumnWidth(kind: JobKind, field: string) {
+  return listWidths[kind]?.[listFields[kind]?.indexOf(field) ?? -1];
+}
+const baseForms: Partial<Record<JobKind, string[]>> = {
+  sequences: ['name', 'parentId', 'levelTypeId', 'displayOrder', 'startDate', 'enabled'],
+  'level-types': ['name', 'displayOrder', 'startDate', 'enabled'],
+  grades: ['name', 'grade', 'layerId', 'scoreHigh', 'scoreLow', 'startDate', 'enabled'],
+  levels: ['name', 'levelTypeId', 'level', 'minGradeId', 'maxGradeId', 'startDate', 'enabled'],
 };
 // 原站职务新建弹窗与职位详情的字段顺序：head、traits 为原站所见顺序；others 是原站未出现的已有字段，排在后面不删。
 interface JobLayout {
@@ -156,10 +174,18 @@ export function jobListFields(kind: JobKind, access: FieldGate) {
   ];
   return fields.filter((field) => access.field(field).visible);
 }
-export function jobFormGroups(kind: JobKind) {
+export function jobFormGroups(kind: JobKind, editing = false) {
   const layout = layouts[kind];
   if (!layout) {
-    const fields = ['name', 'code', ...jobFields[kind], 'displayOrder', 'establishedOn', 'stopDate', 'enabled'];
+    const fields = (editing ? undefined : baseForms[kind]) ?? [
+      'name',
+      'code',
+      ...jobFields[kind],
+      'displayOrder',
+      'establishedOn',
+      'stopDate',
+      'enabled',
+    ];
     return [{ key: 'basic', fields }];
   }
   const { head, traits, others, extra } = layout;

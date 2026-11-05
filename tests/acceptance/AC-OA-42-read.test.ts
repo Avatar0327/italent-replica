@@ -98,6 +98,24 @@ describe('AC-OA-42 暂存行不执行：不进预览，但计入明细与分区�
   });
 });
 
+describe('AC-OA-42 F-414① 上级为暂存行：按暂存行挂接', () => {
+  it('非暂存行把暂存行当上级 → 节点沿暂存行自身的上级挂接（不落根层），暂存行本身与名称不出现', async () => {
+    const w = await itemsWorld(testDb().db, 'oa42r');
+    const r = reader(w);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    const staged = (await w.item(view.id, newOrg(w.a, { isStaged: true }))).items.at(-1)!;
+    const child = (await w.item(view.id, newOrg(w.a, { parent: { itemId: staged.id } }))).items.at(-1)!;
+
+    const preview = await r.preview(view.id);
+    // 暂存行的上级是调整范围里的 w.a，子节点随之挂在 w.a 下，而不是被甩到根层
+    expect(preview.roots.map(shape)).toEqual([
+      { id: w.a, mark: null, children: [{ id: child.id, mark: 'added', children: [] }] },
+    ]);
+    expect(JSON.stringify(preview)).not.toContain(staged.name!);
+    expect(flatten(preview.roots).map((node) => node.itemId)).not.toContain(staged.id);
+  });
+});
+
 /** 在 parent 下建一个带行政顺序号的组织（组织模块写入口，与界面同路径）。 */
 async function orgWithSequence(w: ItemsWorld, name: string, parentId: string, sequence: number) {
   const created = await w.json<{ id: string }>(

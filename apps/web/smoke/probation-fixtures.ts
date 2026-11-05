@@ -82,6 +82,7 @@ function peerRow() {
     employeeId: peer.employeeId,
     revision: 7,
     hasProbation: true,
+    canApplyRegularization: true,
     startDate: '2026-08-01',
     months: null,
     expectedEndDate: null,
@@ -105,6 +106,7 @@ function row(server: Server, assessing: boolean) {
   return {
     id: recordId,
     ...controls,
+    canApplyRegularization: true,
     departmentId: department,
     postId: null,
     employeeStatus: 2,
@@ -182,7 +184,7 @@ export const allButtons = [
   'Employment.Withdraw',
   'Employment.Revoke',
 ];
-async function routePermissions(page: Page, buttons: string[]) {
+async function routePermissions(page: Page, buttons: string[], editableFields: string[]) {
   await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
@@ -199,14 +201,19 @@ async function routePermissions(page: Page, buttons: string[]) {
         objectCode: decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
         dataOperations: { read: true, create: true, update: true },
         viewableFields: ['name', 'code', 'departmentId', 'postId', 'effectiveDate'],
-        editableFields: ['departmentId', 'effectiveDate'],
+        editableFields,
         buttons: buttons.map((buttonCode) => ({ buttonCode, level: 'detail' })),
       },
     }),
   );
 }
 
-export async function setup(page: Page, options: { buttons?: string[]; peer?: boolean } = {}) {
+/** 默认权限快照里任职对象可编辑的字段（F-344 起各场景可收窄，转正日期 effectiveDate 须在其中才可改）。 */
+export const defaultEditable = ['departmentId', 'effectiveDate'];
+export async function setup(
+  page: Page,
+  options: { buttons?: string[]; peer?: boolean; editableFields?: string[] } = {},
+) {
   const queries: URLSearchParams[] = [];
   const server: Server = {
     employeeRevision: 4,
@@ -217,7 +224,7 @@ export async function setup(page: Page, options: { buttons?: string[]; peer?: bo
     results: [{ code: 'pass', name: '合成通过', enabled: true }],
     writes: [],
   };
-  await routePermissions(page, options.buttons ?? allButtons);
+  await routePermissions(page, options.buttons ?? allButtons, options.editableFields ?? defaultEditable);
   await page.route('**/employment/probation-views?*', (route) => {
     const query = new URL(route.request().url()).searchParams;
     queries.push(query);

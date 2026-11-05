@@ -53,7 +53,8 @@ function MonthSelect({
       options={[{ value: 1, label: '1' }]}
       onChange={lock.guard((months: number) => {
         onChange?.(months);
-        if (replace || isBlank(form.getFieldValue(target))) form.setFieldValue(target, endOfTerm(date, months));
+        if (date && (replace || isBlank(form.getFieldValue(target))))
+          form.setFieldValue(target, endOfTerm(date, months));
       })}
     />
   );
@@ -77,7 +78,7 @@ function TermMonths({
       disabled={lock.disabled}
       onChange={lock.guard((months: number | null) => {
         onChange?.(months);
-        if (months && form.getFieldValue('termType') === 'fixed' && isBlank(form.getFieldValue('endDate')))
+        if (date && months && form.getFieldValue('termType') === 'fixed' && isBlank(form.getFieldValue('endDate')))
           form.setFieldValue('endDate', endOfTerm(date, months));
       })}
     />

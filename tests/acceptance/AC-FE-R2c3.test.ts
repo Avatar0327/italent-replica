@@ -28,8 +28,8 @@ const subordinateId = '30000000-0000-4000-8000-000000000003';
 const permission = (buttons: string[], operations = { create: true, update: true }): ObjectPermission => ({
   objectCode: 'TenantBase.EmploymentRecord',
   dataOperations: operations,
-  viewableFields: ['lastWorkDate', 'departmentId', 'intendedDate', 'reason'],
-  editableFields: ['lastWorkDate', 'handoverEmployeeId', 'intendedDate', 'reason'],
+  viewableFields: ['kind', 'mode', 'lastWorkDate', 'departmentId', 'intendedDate', 'reason'],
+  editableFields: ['kind', 'mode', 'lastWorkDate', 'handoverEmployeeId', 'intendedDate', 'reason'],
   buttons: buttons.map((buttonCode) => ({ buttonCode, level: 'detail' })),
 });
 const all = permission([
@@ -139,6 +139,14 @@ describe('AC-FE-R2c3 入口只按视图归属、单据状态与权限快照里�
     expect(entriesFor('upcoming', person, undefined)).toEqual([]);
   });
 
+  it('F-356 退休办理 / 申请的载荷带 kind 与 mode，两项都要有编辑权；缺任一项这两个入口都不出，意向不受影响', () => {
+    const without = (field: string) => ({ ...all, editableFields: all.editableFields.filter((f) => f !== field) });
+    expect(entriesFor('upcoming', person, without('kind'))).toEqual(['intention']);
+    expect(entriesFor('upcoming', person, without('mode'))).toEqual(['intention']);
+    expect(entriesFor('overdue', person, without('mode'))).toEqual(['intention']);
+    expect(entriesFor('upcoming', person, all)).toEqual(['retire', 'apply', 'intention']);
+  });
+
   it('单据：草稿 / 驳回可提交，审批中可撤回，审批通过 / 已生效可撤销；已撤销的不再出撤销', () => {
     expect(entriesFor('all', bill('draft'), all)).toEqual(['submit']);
     expect(entriesFor('all', bill('rejected'), all)).toEqual(['submit']);
@@ -174,7 +182,7 @@ describe('AC-FE-R2c3 入口只按视图归属、单据状态与权限快照里�
   });
 
   it('第 2 轮 P2-4：意向日期只读时，员工视图入口仍在，已有草稿可提交、审批中可撤回', () => {
-    const readonly = { ...all, editableFields: ['lastWorkDate'] };
+    const readonly = { ...all, editableFields: ['kind', 'mode', 'lastWorkDate'] };
     expect(entriesFor('upcoming', person, readonly)).toEqual(['retire', 'apply', 'intention']);
     expect(intentionEntries(undefined, readonly)).toEqual([]);
     expect(intentionEntries({ status: 'draft' }, readonly)).toEqual(['submit']);

@@ -86,11 +86,19 @@ export async function seedLegacyOrgDeactivation(
 }
 
 function helpers(db: Db, session: EmploymentSession, hireDate: string, departmentId: string) {
-  async function hired(name = '定时生效员工') {
+  /** probation：入职为内部试用，供转正申请用（DEC-788 只许在职试用主职发起）。 */
+  async function hired(name = '定时生效员工', options: { probation?: boolean } = {}) {
     const employee = await session.employee(name);
+    const fields = { departmentId, place: '原地点', ...(options.probation ? { employType: 'internal' } : {}) };
     const hire = await session.business(
       employee.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: hireDate, fields: { departmentId, place: '原地点' } },
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: hireDate,
+        fields,
+        ...(options.probation ? { probation: true } : {}),
+      },
       employee.revision,
     );
     expect(hire.status).toBe('effective');

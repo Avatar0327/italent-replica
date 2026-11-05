@@ -6,24 +6,18 @@
  * - 可打开最新审批实例的人（审批人、发起人、抄送人、范围内的流程管理员）：字段 = 节点 formFields ∩ 字段查看权
  *   （`disclosedFieldNames`），不要求对象权限与组织范围，明细行全部可见。
  * - 两条都不通过：404，文案与不存在相同（F-339 同类：范围外与不存在不可区分）。
- * 本文件也是 10c 起审批中心共用的披露裁剪入口；10c 快照落地前，审批人节点按实例现值判定（见 approverNode）。
+ * 审批人路径读审批中心同一份业务快照（BE-10c `readDetail`）并复用 `viewerNode` / `disclosedFields` 选节点（F-413），
+ * 不在这里再拼一遍；快照随单据现值计算（审批中心同口径），披露集按查看人所在节点，不随之后的修改改变。
  */
-import { sql, type Tx } from '@italent/db';
-import {
-  APPROVAL_INSTANCE_OBJECT,
-  buttonResource,
-  disclosedFieldNames,
-  MODULE_OBJECTS,
-  ORG_ADJUSTMENT_OBJECT_CODE,
-} from '@italent/domain';
+import { and, auditObjectCreators, asc, eq, inArray, type Tx } from '@italent/db';
+import { APPROVAL_INSTANCE_OBJECT, buttonResource, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { memberInstanceScope } from '../approval/access.js';
-import { loadVersion } from '../approval/definitions.js';
-import { assertCanOpen } from '../approval/disclosure.js';
-import { latestInstanceOf, loadTasks, type InstanceRow } from '../approval/store.js';
-import { rowsOf } from '../org/read-model.js';
+import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
+import { latestInstanceOf, type InstanceRow } from '../approval/store.js';
+import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
@@ -31,6 +25,7 @@ import {
   scopeAllows,
   type ModuleScope,
 } from '../permission/module-access.js';
+import { hasCreatorScope } from '../permission/module-route-access.js';
 import type { OrgItem } from './items-store.js';
 import { loadAdjustment, type AdjustmentView } from './service.js';
 
@@ -44,6 +39,13 @@ export interface Disclosure {
   readonly fields: ReadonlySet<string> | undefined;
   /** HR 路径的组织对象范围；审批人路径为 null（不要求组织范围）。 */
   readonly orgScope: ModuleScope | null;
+  /**
+   * 组织范围含“本人创建”（using_user）时，范围创建人名下组织 → 创建人；组织的创建人取组织新增审计的元数据，
+   * 与写路径 `authorizeOrgResult` 同口径（F-414②）。其余范围为空表。
+   */
+  readonly orgCreators: ReadonlyMap<string, string>;
+  /** HR 路径的任职对象（人员）范围，逐员工失败按它裁剪（F-414③）；审批人路径为 null（不展示逐员工行）。 */
+  readonly employmentScope: ModuleScope | null;
   readonly instanceId: string | null;
 }
 
@@ -61,11 +63,12 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
   const hr = await hrDisclosure(tx, bound, ctx, view);
   if (hr) return { ...hr, instanceId: instance?.id ?? null } satisfies Disclosure;
-  if (instance && (await canOpen(tx, bound, ctx, instance))) {
+  const data = instance ? await openDetail(tx, bound, ctx, instance) : null;
+  if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
-    const formFields = (await approverNode(tx, ctx, instance))?.formFields ?? [];
-    const fields = disclosedFieldNames(formFields, viewable);
-    return { view, via: 'approver', fields, orgScope: null, instanceId: instance.id } satisfies Disclosure;
+    const fields = disclosedFields(data, ctx.userId, viewable);
+    const none = { orgScope: null, orgCreators: new Map<string, string>(), employmentScope: null };
+    return { view, via: 'approver', fields, ...none, instanceId: instance.id } satisfies Disclosure;
   }
   throw notFound();
 }
@@ -78,14 +81,50 @@ async function hrDisclosure(tx: Tx, bound: Deps, ctx: TenantContext, view: Adjus
   const request = { ...ctx, action: 'object.view', resource: OBJECT, fields: [] };
   if (!(await bound.authorize(request))) return null;
   const main = await resolveModuleScopeInTransaction(bound, ctx, tx, OBJECT);
-  if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId })) return null;
+  // 申请单对象范围含“本人创建”时，申请单的创建人 = created_by（F-414②）。
+  if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId, creatorId: view.createdBy })) return null;
   const fields = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
   const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
-  return { view, via: 'hr' as const, fields, orgScope };
+  const orgCreators = await loadOrgCreators(tx, ctx.tenantId, orgScope);
+  const employmentScope = await resolveModuleScopeInTransaction(bound, ctx, tx, EMPLOYMENT_OBJECT);
+  return { view, via: 'hr' as const, fields, orgScope, orgCreators, employmentScope };
 }
 
-/** 审批中心同一判定（参与人或范围内的流程管理员），管理员范围在本事务内解析（PGlite 单连接）。 */
-async function canOpen(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow) {
+/** 只查范围里“本人创建”创建人名下的组织，不拉全租户创建人；没有 using_user 项时不查询。 */
+async function loadOrgCreators(tx: Tx, tenantId: string, scope: ModuleScope) {
+  const creators = new Map<string, string>();
+  if (!hasCreatorScope(scope)) return creators;
+  const creatorIds = (scope.terms ?? []).flatMap((term) =>
+    term.dimension === 'using_user' && term.creatorId ? [term.creatorId] : [],
+  );
+  if (!creatorIds.length) return creators;
+  const rows = await tx
+    .select({ orgId: auditObjectCreators.objectId, creatorId: auditObjectCreators.creatorUserId })
+    .from(auditObjectCreators)
+    .where(
+      and(
+        eq(auditObjectCreators.tenantId, tenantId),
+        eq(auditObjectCreators.action, 'org.create'),
+        eq(auditObjectCreators.objectType, 'organization'),
+        inArray(auditObjectCreators.creatorUserId, creatorIds),
+      ),
+    )
+    .orderBy(asc(auditObjectCreators.createdAt));
+  for (const row of rows) if (row.creatorId && !creators.has(row.orgId)) creators.set(row.orgId, row.creatorId);
+  return creators;
+}
+
+/** 组织在查看人组织对象范围内（审批人路径不要求范围，恒为真）；范围含创建人项时带上组织的创建人。 */
+export function orgInScope(disclosure: Disclosure, orgId: string): boolean {
+  const scope = disclosure.orgScope;
+  return !scope || scopeAllows(scope, { orgId, creatorId: disclosure.orgCreators.get(orgId) });
+}
+
+/**
+ * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
+ * 管理员范围在本事务内解析（PGlite 单连接）。
+ */
+async function openDetail(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow): Promise<DetailData | null> {
   const adminScope = async (button: 'adminTransfer' | 'adminIntervene') => {
     const resource = buttonResource(APPROVAL_INSTANCE_OBJECT, button, 'detail');
     if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;
@@ -98,32 +137,11 @@ async function canOpen(tx: Tx, bound: Deps, ctx: TenantContext, instance: Instan
   };
   const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
   try {
-    await assertCanOpen(tx, command, instance, viewer);
-    return true;
+    return await readDetail(tx, command, instance.id, viewer, false);
   } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;
   }
-}
-
-/**
- * 查看人所在节点：与审批中心 `viewerNode` 同序（自己参与的最后一个节点 → 被抄送节点 → 当前节点 → 最后一个任务 →
- * 首节点）。`viewerNode` 只接受完整详情数据（含业务快照，10c 才有），这里按实例现值取同样的键。
- */
-async function approverNode(tx: Tx, ctx: TenantContext, instance: InstanceRow) {
-  const tasks = await loadTasks(tx, ctx.tenantId, instance.id);
-  const own = tasks.filter(
-    (task) => task.assigneeUserId === ctx.userId && !['self_skip', 'subject_skip'].includes(task.origin),
-  );
-  const [cc] = rowsOf<{ node_key: string }>(
-    await tx.execute(sql`SELECT node_key FROM approval_instance_ccs
-      WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid AND user_id=${ctx.userId}::uuid
-      ORDER BY created_at DESC LIMIT 1`),
-  );
-  const version = await loadVersion(tx, ctx.tenantId, instance.versionId);
-  const key =
-    own.at(-1)?.nodeKey ?? cc?.node_key ?? instance.currentNodeKey ?? tasks.at(-1)?.nodeKey ?? version.nodes[0]?.key;
-  return version.nodes.find((node) => node.key === key) ?? null;
 }
 
 /** 组织明细分区是否对查看人披露：至少一个 `orgItems.*` 字段可见。 */
@@ -139,7 +157,7 @@ export function orgSectionDisclosed(disclosure: Disclosure): boolean {
 export function visibleItems(disclosure: Disclosure, items: readonly OrgItem[]) {
   const scope = disclosure.orgScope;
   if (!scope) return { items: [...items], hiddenRowCount: 0 };
-  const inScope = (orgId: string | null) => !orgId || scopeAllows(scope, { orgId });
+  const inScope = (orgId: string | null) => !orgId || orgInScope(disclosure, orgId);
   let visible = items.filter((item) => [item.targetOrgId, item.parentOrgId, item.transferToOrgId].every(inScope));
   for (;;) {
     const ids = new Set(visible.map((item) => item.id));

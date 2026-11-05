@@ -1,3 +1,4 @@
+import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
@@ -353,6 +354,7 @@ export async function updateEmploymentBusiness(
   }
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);
+  await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
   assertEmployTypeUsage(normalized);

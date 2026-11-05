@@ -12,7 +12,7 @@ import {
   HANDOVER_SUBMIT_BUTTON as SUBMIT,
 } from '@italent/domain';
 import { ApiError } from '../foundation/client.js';
-import { isBlank, sameValue, type Values } from '../foundation/forms/values.js';
+import { isBlank, projectFields, sameValue, type Values } from '../foundation/forms/values.js';
 import { canButton, fieldAccess, type ObjectPermission } from '../foundation/permission-model.js';
 import { x } from './messages.js';
 
@@ -38,6 +38,8 @@ export interface Row {
   name?: string;
   status?: string;
   revision?: number;
+  /** F-352①：服务端逐单动作（状态 × 按钮权 × 写范围）；状态字段被裁剪时整体缺席。 */
+  actions?: string[];
   rowActions?: string[];
   [key: string]: unknown;
 }
@@ -76,16 +78,27 @@ export function cellValue(row: Row, key: string): string {
   if (!(key in row)) return x.missing;
   if (key === 'status') return x.statuses[String(row.status)] ?? text(row.status);
   if (key === 'mode') return x.modes[String(row.mode)] ?? text(row.mode);
+  if (key === 'addToBlacklist')
+    return typeof row.addToBlacklist === 'boolean' ? x[row.addToBlacklist ? 'yes' : 'no'] : x.missing;
+  if (key === 'blacklistReason')
+    return (BLACKLIST_REASONS as Record<string, string>)[String(row.blacklistReason)] ?? text(row.blacklistReason);
+  // 有效截止日期为空 = 永久（仅加黑单；被裁剪的键走上面的占位）
+  if (key === 'blacklistExpiryDate' && row.blacklistExpiryDate === null) return x.permanentValue;
   if (named[key]) return text(row[named[key]] ?? row[key]);
   return text(row[key]);
 }
 
+/** F-393：加黑三项逐项按响应键展示，不从可能被裁剪的 addToBlacklist 推导查看权。 */
+export const detailKeys = (row: Row): string[] => [
+  ...columns.all,
+  'whereaboutsCode',
+  'addToBlacklist',
+  ...blacklistFields.filter((field) => Object.hasOwn(row, field)),
+];
+
 const validObject = (id: unknown, revision: unknown) =>
   typeof id === 'string' && id !== '' && Number.isSafeInteger(revision) && Number(revision) >= 0;
-/** 编辑 / 撤销的状态口径（exit-gate.ts 撤销可用状态；编辑同此，资格由服务端判）。 */
-const OPEN_STATUSES = ['draft', 'in_review', 'approved', 'rejected', 'effective'];
 const HANDOVER_STATUSES = ['in_review', 'approved', 'effective'];
-const IN_PROGRESS_STATUSES = ['draft', 'in_review', 'approved', 'rejected'];
 
 const pick = <T extends keyof typeof EXIT_BUTTONS>(p: ObjectPermission, entries: readonly T[]) =>
   entries.filter((entry) => canButton(p, EXIT_BUTTONS[entry], 'detail'));
@@ -93,37 +106,31 @@ const pick = <T extends keyof typeof EXIT_BUTTONS>(p: ObjectPermission, entries:
 export const createEntries = (p: ObjectPermission | undefined) =>
   p?.dataOperations.create ? pick(p, ['application', 'direct'] as const) : [];
 
-/** 提交审批（transitions.ts submit）：只有离职申请的草稿 / 已驳回单，按钮同新建申请（policy.ts exitTransition）。 */
-const SUBMIT_STATUSES = ['draft', 'rejected'];
-
+const DETAIL_ACTIONS = ['submit', 'edit', 'cancel'] as const;
 /**
- * 详情动作：读接口没有逐单动作（同 F-268），按单据状态与权限快照推导；restore 后端一律拒绝，不提供。
- * 状态被裁剪或单据标识无效时不给任何写入口。
+ * 详情动作（F-352①）：只认服务端 actions，前端不再按状态与权限快照推导；restore 后端一律拒绝，不提供。
+ * actions 是披露而非准入，写入口仍由服务端逐次复核；单据标识无效时不给写入口。
  */
-export function detailEntries(row: Row, p: ObjectPermission | undefined): ('submit' | 'edit' | 'cancel')[] {
-  if (!p?.dataOperations.update || !validObject(row.id, row.revision)) return [];
-  if (!OPEN_STATUSES.includes(String(row.status))) return [];
-  const submit = row.mode === 'application' && SUBMIT_STATUSES.includes(String(row.status));
-  return [
-    ...(submit ? pick(p, ['application'] as const).map(() => 'submit' as const) : []),
-    ...pick(p, ['edit', 'cancel'] as const),
-  ];
+export function detailEntries(row: Row): (typeof DETAIL_ACTIONS)[number][] {
+  if (!validObject(row.id, row.revision)) return [];
+  return DETAIL_ACTIONS.filter((code) => row.actions?.includes(code));
 }
 
 /**
- * 行内动作：发起交接只认服务端 rowActions；“离职处理”（B15，办理结果未验证）按直接离职权限，
- * 只给当前没有在途 / 已生效离职单的行（在途的人服务端会以 EXIT_IN_PROGRESS 拦下）。
+ * 行内动作：发起交接认服务端 rowActions，“离职处理”（B15，办理结果未验证）认服务端 actions 的 handle
+ * （已办结且员工在写范围内、有直接离职按钮，由 exit-actions.ts 判定）。
  */
-export function rowEntries(row: Row, p: ObjectPermission | undefined): ('handover' | 'handle')[] {
+export function rowEntries(row: Row): ('handover' | 'handle')[] {
   const entries: ('handover' | 'handle')[] = [];
   if (validObject(row.id, row.revision) && row.rowActions?.includes(ROW_SUBMIT.code)) entries.push('handover');
-  const settled = typeof row.status === 'string' && ![...IN_PROGRESS_STATUSES, 'effective'].includes(row.status);
-  if (settled && typeof row.employeeId === 'string' && createEntries(p).includes('direct')) entries.push('handle');
+  if (typeof row.employeeId === 'string' && row.actions?.includes('handle')) entries.push('handle');
   return entries;
 }
-/** 批量发起交接：列表级按钮有权，且只对带行动作的行（服务端逐条复核）。 */
+/** 批量入口（“离职处理▾”）：列表级按钮有权才显示。 */
+export const batchEntryVisible = (p: ObjectPermission | undefined) => canButton(p, BATCH.code, BATCH.level);
+/** 批量发起交接：列表级按钮有权，且只对已勾选里带行动作的行（服务端逐条复核）。 */
 export const batchHandoverRows = (rows: readonly Row[], p: ObjectPermission | undefined) =>
-  canButton(p, BATCH.code, BATCH.level) ? rows.filter((row) => rowEntries(row, p).includes('handover')) : [];
+  batchEntryVisible(p) ? rows.filter((row) => rowEntries(row).includes('handover')) : [];
 
 /** GET /exits/:id/handover（exit-handover-routes）。 */
 export type HandoverItem = { id: string; category?: string; sequenceNo?: number; title?: string; done?: boolean };
@@ -215,6 +222,8 @@ export function previewNotice(preview: Preview) {
     else if (warning.reason === 'EXIT_APPLICATIONS_TO_VOID' && count) messages.push(x.toVoid(count));
     else if (warning.reason === 'EXIT_FUTURE_TRANSFER_LANDED' && count) messages.push(x.landed(count));
     else if (warning.reason === 'IN_FLIGHT_ASSESSMENT' && count) messages.push(x.assessment(count));
+    else if (warning.reason === 'EXIT_CONTRACTS_TO_HANDLE' && count) messages.push(x.contracts(count));
+    else if (warning.reason === 'EXIT_PART_TIMES_TO_END' && count) messages.push(x.partTimes(count));
   }
   const ackToken = tooMany ? undefined : preview.ack?.ackToken;
   // 超上限时没有令牌，“确认并提交”只在有令牌时出现
@@ -234,9 +243,12 @@ export function editableFields(p: ObjectPermission | undefined, operation: 'crea
 /** 新建基线：加入黑名单默认“否”，其余为空。 */
 export const openingValues = (): Values =>
   Object.fromEntries(formFields.map((field) => [field, field === 'addToBlacklist' ? false : null]));
-/** 编辑基线取详情（trimExitDetail）：缺键（被裁剪）按空。 */
+/** 编辑基线只消费详情实际投影，缺键不补造 false / null（F-393）。 */
 export const detailValues = (detail: Values): Values =>
-  Object.fromEntries(Object.entries(openingValues()).map(([key, empty]) => [key, detail[key] ?? empty]));
+  projectFields(
+    detail,
+    formFields.filter((field) => Object.hasOwn(detail, field)),
+  );
 
 function invalid(field: string, message: string): never {
   throw new ApiError(400, 'VALIDATION_FAILED', 'fields', message, {
@@ -244,8 +256,8 @@ function invalid(field: string, message: string): never {
   });
 }
 /**
- * 已加黑且加黑组原样保留：详情投影不回加黑三项（缺席 = 未知），只改别的字段时不得要求重填加黑原因，
- * 请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
+ * 已加黑且加黑组原样保留：基线取详情真实的加黑三项（F-393；无字段权的键缺席），只改别的字段时
+ * 不得要求重填加黑原因，请求体也不带加黑字段（patchBody 只发人工修改的字段）。新增加黑或改动三项任一项时仍按新建口径校验。
  */
 export const blackGroupKept = (values: Values, baseline: Values) =>
   baseline.addToBlacklist === true &&
@@ -300,7 +312,8 @@ export function createBody(values: Values, mode: 'application' | 'direct', confi
 export function patchBody(edited: Values, confirm: Values = {}, merged: Values = edited): Values {
   return {
     ...present(edited, ['lastWorkDate']),
-    ...exitOptions(edited, merged.addToBlacklist === true, true),
+    // 总开关缺席不代表未加黑；仍提交有权编辑且实际改动的三项，由服务端复核业务条件。
+    ...exitOptions(edited, merged.addToBlacklist !== false, true),
     ...confirm,
   };
 }

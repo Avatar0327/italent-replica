@@ -85,17 +85,21 @@ const validObject = (id: unknown, revision: unknown) =>
   typeof id === 'string' && id !== '' && Number.isSafeInteger(revision) && Number(revision) >= 0;
 const editable = (p: ObjectPermission, field: string) => !!p.dataOperations.create && fieldAccess(p, field).editable;
 
+/** 办理 / 申请的载荷必带的字段：服务端按字段编辑权整单复核（exit-gate.ts createPayload），缺任一项都是 403（F-356）。 */
+export const CREATE_FIELDS = ['lastWorkDate', 'kind', 'mode'] as const;
+const creatable = (p: ObjectPermission) => CREATE_FIELDS.every((field) => editable(p, field));
+
 export type Entry = 'retire' | 'apply' | 'intention' | 'submit' | 'withdraw' | 'cancel';
 /**
  * 入口按视图归属、单据状态与权限快照里的对象操作和按钮显示（读接口没有逐行动作，同 F-268）；资格（在职、无在途离职、
- * 原发起人）由服务端在提交时判定。创建要写最后工作日（exit-gate.ts createPayload 按字段权复核）。
+ * 原发起人）由服务端在提交时判定。创建要写最后工作日、kind、mode（exit-gate.ts createPayload 按字段权复核）。
  */
 export function entriesFor(view: RetirementView, row: Row, p: ObjectPermission | undefined): Entry[] {
   if (!p || !validObject(row.employeeId, 0)) return [];
   const can = (code: string) => canButton(p, code, 'detail');
   const update = !!p.dataOperations.update;
   if (isPersonView(view)) {
-    const create = editable(p, 'lastWorkDate');
+    const create = creatable(p);
     const entries: [Entry, boolean][] = [
       ['retire', create && can(RETIREMENT_BUTTONS.direct)],
       ['apply', create && can(RETIREMENT_BUTTONS.application)],

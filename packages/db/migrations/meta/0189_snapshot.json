@@ -1,6 +1,6 @@
 {
-  "id": "4a479336-32e3-4533-bb6e-3b5e83cd8b06",
-  "prevId": "6076da03-d8d7-4d7a-bd8f-361d922a3853",
+  "id": "49c3f8c6-45fd-447e-8fdf-38e36844361d",
+  "prevId": "da790c80-c6a9-432d-9260-92ccefd0c6d7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -23664,6 +23664,12 @@
         "template_code": {
           "name": "template_code",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -54806,7 +54812,7 @@
           "name": "reason",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "revision": {
           "name": "revision",
@@ -55094,7 +55100,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
@@ -62418,11 +62424,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 6"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm', 'employmentType')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",

@@ -123,6 +123,29 @@ test('AC-FE-R2c3-02 预计退休日期不可见时不出天数控件；字段被
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
 });
 
+test('AC-FE-R2c3-F356 没有 kind 或 mode 编辑权：退休办理 / 退休申请入口都不出，意向退休日期申请照常', async ({
+  page,
+}) => {
+  for (const missing of ['kind', 'mode']) {
+    const rest = [
+      'name',
+      'code',
+      'departmentId',
+      'positionId',
+      'lastWorkDate',
+      'handoverEmployeeId',
+      'intendedDate',
+      'reason',
+    ];
+    await setup(page, { viewableFields: [...rest, ...['kind', 'mode'].filter((field) => field !== missing)] });
+    await openRow(page, 'upcoming');
+    await expect(page.getByRole('button', { name: '意向退休日期申请', exact: true })).toBeVisible();
+    for (const name of ['退休办理', '退休申请'])
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    await page.reload();
+  }
+});
+
 test('AC-FE-R2c3-03 意向退休日期申请：新建草稿按员工 revision，再按申请 revision 提交审批', async ({ page }) => {
   const { server } = await setup(page);
   const sent: (ReturnType<typeof posted> & { url: string })[] = [];

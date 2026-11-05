@@ -95,6 +95,14 @@ export function lockPartTimeRecords(
   return partTimeRows(tx, ctx, { ...filter, employeeId }, true);
 }
 
+/** 不加锁地读员工某任职周期的兼职记录（离职预览，F-429 ②）。 */
+export const readEmployeePartTimeRecords = (
+  tx: Tx,
+  ctx: Pick<EmploymentContext, 'tenantId'>,
+  employeeId: string,
+  staffId: string,
+) => partTimeRows(tx, ctx, { employeeId, staffId }, false);
+
 /** 跨员工按 ID 加锁（批量结束，调用方已按员工 UUID 升序取过员工行锁，§7.1）。 */
 export const lockPartTimeRecordsById = (tx: Tx, ctx: Pick<EmploymentContext, 'tenantId'>, ids: readonly string[]) =>
   partTimeRows(tx, ctx, { ids }, true);

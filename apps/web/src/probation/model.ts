@@ -41,6 +41,7 @@ export interface Row extends Partial<Record<Dates | References | Codes, string |
   employeeStatus?: number;
   revision?: number;
   hasProbation?: boolean | null;
+  canApplyRegularization?: boolean;
   months?: number | null;
 }
 export type ListResult = { items: Row[]; page: number; pageSize: number; hasDataPermission?: boolean };
@@ -94,7 +95,7 @@ export type Entry = 'edit' | 'regularize' | 'apply' | 'withdraw' | 'revoke' | 'a
 /** 有转正业务（审批中 / 审批通过 / 生效）就不能再发起转正（PB-R9 互斥由服务端最终判定）。 */
 const pending = (row: Row) => !!row.regularizationState;
 /**
- * 入口：读接口没有逐行动作（同实习 / F-268），按视图、行上的转正控制项与权限快照推导；资格由服务端在提交时判定。
+ * 入口按视图、转正控制项与权限快照推导；申请资格消费服务端按今天返回的 canApplyRegularization，写入时再核验。
  * - 编辑试用期：对象编辑 + Employment.Edit（probation-routes.ts commandOnly）；考核中、转正审批中不显示（PB-R9）。
  * - 转正 / 转正申请：只在即将到期、全部试用员工两视图，有试用期且没有转正业务；申请另需编辑 + Employment.Submit。
  * - 撤回 / 撤销：转正审批中视图、审批中的转正单。考核中视图只读打开考核。
@@ -111,7 +112,7 @@ export function entriesFor(view: ProbationView, row: Row, p: ObjectPermission | 
   const entries: [Entry, boolean][] = [
     ['edit', !['assessing', 'in_review'].includes(view) && update && can('Employment.Edit')],
     ['regularize', regularize],
-    ['apply', regularize && update && can('Employment.Submit')],
+    ['apply', regularize && row.canApplyRegularization === true && update && can('Employment.Submit')],
     ['withdraw', reviewing && update && can('Employment.Withdraw')],
     ['revoke', reviewing && update && can('Employment.Revoke')],
     ['assessment', view === 'assessing' && typeof row.assessmentId === 'string'],
@@ -122,6 +123,9 @@ export function entriesFor(view: ProbationView, row: Row, p: ObjectPermission | 
 export const probationPath = (employeeId: string) => `${employees}/${encodeURIComponent(employeeId)}/probation`;
 export const adjustFields = ['hasProbation', 'startDate', 'months', 'expectedEndDate', 'regularizationDate'];
 export const regularizeFields = ['effectiveDate', 'probationResult'];
+/** 转正日期受任职对象字段编辑权管（F-344）：没有编辑权的人只提交试用结果，日期走服务端默认。 */
+export const regularizeFieldsFor = (dateEditable: boolean): readonly string[] =>
+  dateEditable ? regularizeFields : regularizeFields.filter((field) => field !== 'effectiveDate');
 export const monthOptions = Array.from(
   { length: PROBATION_MONTHS_MAX - PROBATION_MONTHS_MIN + 1 },
   (_, index) => PROBATION_MONTHS_MIN + index,
@@ -210,7 +214,7 @@ export function applicationBody(values: Values): Values {
   return {
     kind: 'regularization',
     mode: 'application',
-    effectiveDate: values.effectiveDate,
+    ...(isBlank(values.effectiveDate) ? {} : { effectiveDate: values.effectiveDate }),
     probationResult: values.probationResult,
   };
 }
@@ -305,9 +309,11 @@ export function temporaryOf(raw: unknown): Temporary | undefined {
     names: result && name ? { [result]: name } : {},
   };
 }
-/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，没填的项写 null。 */
+/** 暂存请求体（PUT /employees/:id/regularization-draft）：不校验必填，可编辑但没填的项写 null；无编辑权的日期保持省略。 */
 export const temporaryBody = (values: Values): Values => ({
-  effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null,
+  ...(Object.hasOwn(values, 'effectiveDate')
+    ? { effectiveDate: typeof values.effectiveDate === 'string' && values.effectiveDate ? values.effectiveDate : null }
+    : {}),
   probationResult: typeof values.probationResult === 'string' && values.probationResult ? values.probationResult : null,
 });
 /** 暂存回执：员工一致、revision 比提交时大，返回新的暂存 revision。 */
@@ -322,9 +328,9 @@ export function acceptTemporary(raw: unknown, employeeId: string, sent: number):
  * 不再把停用结果发回去；新选的结果照常带上，停用项仍由服务端拒绝。base 是 If-Match 那个 revision 的服务端值
  * （commands.tsx confirmedValues，rf347_2 P2-1）：409 核对后改回打开时的值也算差异，照样送达。
  */
-export const draftPatchBody = (values: Values, base: Values): Values =>
+export const draftPatchBody = (values: Values, base: Values, fields: readonly string[] = regularizeFields): Values =>
   Object.fromEntries(
-    regularizeFields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
+    fields.filter((field) => !sameValue(values[field], base[field])).map((field) => [field, values[field]]),
   );
 
 /** 写后的目的视图：直接转正（含审批通过未到期）进“已转正”，申请提交后进“转正审批中”（PB-R1）。 */

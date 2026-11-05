@@ -95,6 +95,8 @@ export const m = {
     EXIT_APPLICATIONS_TOO_MANY: '在途任职申请超过上限，生效时将整单拒绝',
     EXIT_FUTURE_TRANSFER_LANDED: '已落地的未来调动',
     IN_FLIGHT_ASSESSMENT: '将终止的在途考核',
+    EXIT_CONTRACTS_TO_HANDLE: '将终止、删除的合同或将撤回的在途合同申请',
+    EXIT_PART_TIMES_TO_END: '将结束的兼职或将作废的在途兼职申请',
   } as Record<string, string>,
   count: (n: number) => `${n} 件`,
   // DEC-714：退休撤销不收原因，确认框只提示不可恢复

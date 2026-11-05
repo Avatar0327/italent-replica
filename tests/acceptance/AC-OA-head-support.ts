@@ -3,6 +3,7 @@ import { type Db, eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@i
 import { MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { expect } from 'vitest';
 import type { AuthorizationRequest, Authorizer } from '../../apps/api/src/authorization.js';
+import { EMPLOYMENT_OBJECT } from '../../apps/api/src/modules/employment/context.js';
 import { registerScopeProvider, type ModuleScope } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { approvalWorld } from './AC-APV-support.js';
@@ -49,6 +50,8 @@ interface StoredAdjustment {
 export interface HeadAccess {
   main: ModuleScope;
   org: ModuleScope;
+  /** 任职记录对象的员工范围：读路径逐员工失败（F-414③）与 F-458 人员联动失败都按它逐人裁剪；缺省看全部。 */
+  employment: ModuleScope;
   deniedButtons: Set<string>;
   deniedFields: Set<string>;
   /** 看不到的字段编码（查看权）。 */
@@ -75,6 +78,7 @@ export async function headWorld(db: Db, label: string) {
   const access: HeadAccess = {
     main: ALL,
     org: ALL,
+    employment: ALL,
     deniedButtons: new Set(),
     deniedFields: new Set(),
     hiddenFields: new Set(),
@@ -89,7 +93,11 @@ export async function headWorld(db: Db, label: string) {
   };
   const authorize: Authorizer = decide;
   registerScopeProvider(authorize, {
-    scope: async (q) => (q.objectCode === MAIN ? access.main : q.objectCode === ORG ? access.org : ALL),
+    scope: async (q) => {
+      if (q.objectCode === MAIN) return access.main;
+      if (q.objectCode === ORG) return access.org;
+      return q.objectCode === EMPLOYMENT_OBJECT ? access.employment : ALL;
+    },
     authorize: async (req) => decide(req),
     fields: async (_tenantId, userId, objectCode) =>
       new Set(

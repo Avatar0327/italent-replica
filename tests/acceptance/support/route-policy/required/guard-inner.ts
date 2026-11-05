@@ -57,8 +57,8 @@ const CORE_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
     at: [
       {
         role: 'call',
-        unit: 'apps/api/src/modules/org-adjustment/disclosure.ts#canOpen',
-        anchor: 'await assertCanOpen(tx, command, instance, viewer)',
+        unit: 'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail',
+        anchor: 'return await readDetail(tx, command, instance.id, viewer, false)',
       },
       {
         role: 'impl',
@@ -222,6 +222,8 @@ const jobLinkType = (type: string, label: string) =>
  * （GUARD_INNER_CONDITION_UNREGISTERED）。
  */
 export const INNER_CONDITIONS: Readonly<Record<string, string>> = {
+  'applicationKind=exit': '读取已有本人离职申请详情时复核 Exit.Self；其他类型不使用该按钮',
+  'applicationKind=partTime': '读取已有本人新增兼职申请详情时复核 PartTime.Self；其他类型不使用该按钮',
   'body.processId': '请求体带 processId 才解析流程范围（PATCH 模板：`body.processId ? processScopeFor : undefined`）',
   'import.notSync': '导入评价者且未选择“同步”（`sync` 不为 true）才另判 360 人员更新权；同步只判新建',
   'payload.person': '请求录入 person（隐式新建 360 人员）才判人员新建权；只选 personId 不判',

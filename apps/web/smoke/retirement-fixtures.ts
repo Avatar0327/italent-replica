@@ -155,6 +155,7 @@ const fields = [
   'lastWorkDate',
   'effectiveDate',
   'status',
+  'kind',
   'mode',
   'retireType',
   'reEmployed',

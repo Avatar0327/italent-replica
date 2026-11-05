@@ -21,6 +21,7 @@ import {
   acceptRetirement,
   apiRoot,
   cellValue,
+  CREATE_FIELDS,
   differs,
   object,
   previewNotices,
@@ -122,7 +123,7 @@ function retireSend(row: Row, mode: FormProps['mode'], draft: Draft | undefined,
   };
 }
 
-/** 可提交字段：最后工作日 / 交接人按字段权；职责转交区是控制项（exit-gate.ts EXIT_CONTROL_KEYS），随“新增”可写。 */
+/** 可提交字段：最后工作日 / 交接人按字段权；办理 / 申请还要 kind、mode 有编辑权（F-356）；职责转交区是控制项（exit-gate.ts EXIT_CONTROL_KEYS），随“新增”可写。 */
 function useEditable(mode: FormProps['mode']) {
   const permission = usePermissions(object).snapshot.objects[object];
   const create = !!permission?.dataOperations.create;
@@ -131,7 +132,7 @@ function useEditable(mode: FormProps['mode']) {
     ...['lastWorkDate', 'handoverEmployeeId'].filter(may),
     ...(mode === 'direct' && create ? dutyFields : []),
   ];
-  return { permission, editable, writable: may('lastWorkDate') };
+  return { permission, editable, writable: CREATE_FIELDS.every(may) };
 }
 
 function useRetire(props: EditorProps, editable: string[], writable: boolean) {
