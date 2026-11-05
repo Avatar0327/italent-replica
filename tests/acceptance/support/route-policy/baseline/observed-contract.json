@@ -8018,7 +8018,8 @@
         "scope": [
           "adminScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "scopeSql"
         ]
       }
     },

@@ -85,14 +85,20 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
   ],
+  'apps/api/src/modules/org-adjustment/approval-edit.ts#assertRowsInScope': [
+    'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
+    '#ROW_MISSING',
+    '#approverDeps',
+    'apps/api/src/modules/org-adjustment/submission.ts#rowOrgIds',
+    'apps/api/src/modules/org/validation.ts#invalid',
+  ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#authorizeApprover': [
     'apps/api/src/modules/org-adjustment/access.ts#authorizeHead',
     '#approverDeps',
   ],
   'apps/api/src/modules/org-adjustment/approval-edit.ts#edit': [
-    'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer',
     '#ROW_MISSING',
-    '#approverDeps',
+    '#assertRowsInScope',
     '#authorizeApprover',
     '#parseHead',
     '#parseItems',
@@ -104,7 +110,6 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/service.ts#assertHeadPatch',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
     'apps/api/src/modules/org-adjustment/service.ts#persistHead',
-    'apps/api/src/modules/org-adjustment/submission.ts#rowOrgIds',
     'apps/api/src/modules/org-adjustment/whole-check.ts#assertWhole',
     'apps/api/src/modules/org/validation.ts#invalid',
     'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
@@ -150,6 +155,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/service.ts#editable',
   ],
   'apps/api/src/modules/org-adjustment/detail.ts#baselineParents': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
+  'apps/api/src/modules/org-adjustment/detail.ts#employmentFailures': [
+    'apps/api/src/modules/org/read-model.ts#rowsOf',
+    'apps/api/src/modules/permission/module-access.ts#scopeSql',
+    'apps/api/src/modules/personnel/employee-projection.ts#currentPersonName',
+  ],
   'apps/api/src/modules/org-adjustment/detail.ts#executionResults': ['apps/api/src/modules/org/read-model.ts#rowsOf'],
   'apps/api/src/modules/org-adjustment/detail.ts#projectItem': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
@@ -170,24 +180,30 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/detail.ts#readItems': [
     '#ORG_SECTION',
     '#baselineParents',
+    '#employmentFailures',
     '#executionResults',
     '#projectItem',
     'apps/api/src/modules/org-adjustment/disclosure.ts#notFound',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgInScope',
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
     'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     'apps/api/src/modules/org-adjustment/queries.ts#orgNamesAt',
-    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': [
     'packages/domain/src/org-adjustment/fields.ts#ORG_ADJUSTMENT_OBJECT_CODE',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     '#OBJECT',
+    '#loadOrgCreators',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
     'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+  ],
+  'apps/api/src/modules/org-adjustment/disclosure.ts#loadOrgCreators': [
+    'apps/api/src/modules/permission/scope-audit.ts#hasCreatorScope',
   ],
   'apps/api/src/modules/org-adjustment/disclosure.ts#notFound': ['#NOT_FOUND_MESSAGE'],
   'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail': [
@@ -207,9 +223,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
   ],
-  'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': [
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgInScope': [
     'apps/api/src/modules/permission/module-access.ts#scopeAllows',
   ],
+  'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems': ['#orgInScope'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimError': ['#sees', '#trimIssues', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimIssues': ['#sees', '#without'],
   'apps/api/src/modules/org-adjustment/envelope.ts#trimmedForViewer': [
@@ -239,6 +256,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/execution-groups.ts#targetDepths': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
   ],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#clustersOf': ['#GRAPHEMES'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#escapeXml': ['#xmlChars'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#establishmentMark': ['#NONE'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#exportCards': ['#NONE', '#TAGS', '#exportCards'],
@@ -289,7 +307,13 @@ export const GRAPH: Graph = {
     '#renderCard',
   ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#text': ['#escapeXml'],
-  'apps/api/src/modules/org-adjustment/export-svg.ts#truncate': ['#textUnits', '#xmlChars'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#textUnits': ['#clusterUnits', '#clustersOf'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#truncate': [
+    '#clusterUnits',
+    '#clustersOf',
+    '#textUnits',
+    '#xmlChars',
+  ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#xmlChars': ['#XML_INVALID'],
   'apps/api/src/modules/org-adjustment/failures.ts#readEmploymentFailures': [
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
@@ -528,6 +552,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/org-adjustment/preview.ts#readPreview': [
     'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgInScope',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     '#PREVIEW_NODE_LIMIT',
@@ -537,7 +562,8 @@ export const GRAPH: Graph = {
     '#fillHeads',
     '#overlay',
     '#rangeSubtree',
-    'apps/api/src/modules/permission/module-access.ts#scopeAllows',
+    '#stagedParents',
+    '#throughStaged',
   ],
   'apps/api/src/modules/org-adjustment/queries.ts#HEAD_SELECT': ['#orgNameAt', '#utcText'],
   'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': [
