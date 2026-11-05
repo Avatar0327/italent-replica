@@ -4590,6 +4590,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -4863,6 +4864,9 @@
         "button": [
           "requireEmploymentWrite(按钮)"
         ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -5005,6 +5009,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5092,6 +5097,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5135,7 +5141,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -5166,7 +5177,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -7965,7 +7981,10 @@
         "scope": [
           "adminScope",
           "creator scope",
-          "instanceScopeSql"
+          "employment visibility",
+          "instanceScopeSql",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },
@@ -27872,7 +27891,8 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "object": [
           "object.* 动作",

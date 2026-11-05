@@ -59,6 +59,8 @@ async function readScopedAccountTask(tx: Tx, ctx: EmploymentContext, id: string)
 }
 export function registerExitAccountRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/exit-account/settings', async (c) => {
+    // F-358 / DEC-780：与入口（任职记录对象）同口径，先要任职记录查看权，再要任职设置对象查看权
+    await readContext(c, deps, 'object.view');
     const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => readAccountSettings(tx, ctx.tenantId)));
   });

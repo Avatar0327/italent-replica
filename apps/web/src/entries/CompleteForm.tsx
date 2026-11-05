@@ -54,7 +54,10 @@ function CompleteForm({
   const mail = useEntryCommand(row, 'email', data);
   const [trial, setTrial] = useState(cmd.form.state?.values.probation === true || data.probation === true);
   const email = <EmailField row={row} data={data} />;
-  const { groups, fields, create } = useCompleteGroups(cmd.full, permission.edit, trial, setTrial, email);
+  // 没有入职日期查看权：弹窗里不显示、也不拿它推导 / 提交别的日期，不依赖服务端是否已裁剪（F-424）
+  const date = permission.field('effectiveDate').visible ? String(cmd.full.effectiveDate ?? '') : '';
+  const shown = date ? cmd.full : { ...cmd.full, effectiveDate: undefined };
+  const { groups, fields, create } = useCompleteGroups(shown, permission.edit, trial, setTrial, email);
   return (
     <FormOverlay
       open
@@ -71,7 +74,7 @@ function CompleteForm({
       onSubmit={async (values) => {
         requireWrite(permission.edit);
         await cmd.run(values, fields, async (command) => {
-          const body = completeBody(command.body, String(cmd.full.effectiveDate), create ? fields : []);
+          const body = completeBody(command.body, date || undefined, create ? fields : []);
           receipt(
             await request(api, `${collection}/${row.id}/complete`, { method: 'POST', command: { ...command, body } }),
             row,

@@ -338,6 +338,26 @@ function configurationView(objectCode: string, fields: FieldsPolicy): RoutePolic
 }
 
 /**
+ * 离职设置页的配置读取（F-358 / DEC-780）：入口留在人事异动应用、对象是任职记录，所以读取接口向入口看齐——
+ * 任职记录查看权（object.view，无按钮、无范围过滤）+ 任职设置对象查看权（admin.other_settings），两者缺一 403。写接口不动。
+ */
+function exitSettingsView(fields: FieldsPolicy): RoutePolicy {
+  return all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('设置页入口同口径的准入检查，无按钮'),
+        scope: noScope('只是入口准入：不据此返回任职人员，配置对象无数据范围'),
+        fields,
+      }),
+      configurationView(SETTINGS, fields),
+    ],
+    fields,
+  );
+}
+
+/**
  * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支，只决定回执列出哪些员工、不参与准入、不拒绝请求——
  * visibleEmployees 先判任职记录查看权（object.view），没有时 launched / failed 两列为空；有时再按数据范围逐人过滤
  * （employment.runReceipt，与准入节点上的范围同一裁剪）。逐人条目是固定键，不含任职字段值。
@@ -490,7 +510,7 @@ const accountTaskView = object({
 });
 
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
-  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'GET /exit-account/settings': exitSettingsView(ACCOUNT_SETTINGS_FIELDS),
   'PUT /exit-account/settings': admin('other_settings', {
     alias: 'tenant.employment.configuration.write',
     fields: ACCOUNT_SETTINGS_FIELDS,
@@ -1996,6 +2016,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
         fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
       }),
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
     },
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.exitViews'),
@@ -2008,6 +2037,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: projector('employment.response', 'employment.exitDetail'),
+    optional: {
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
+    },
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
@@ -2114,17 +2154,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 转正申请暂存（F-347，DEC-709）：读写同一口径：readContext('object.create', resource=id) 写入口径人员范围 404
-  // 「任职数据不存在」+ requireEmploymentWrite('create', {}, Employment.Create, 命令式：暂存内容是转正控制项不进字段协议）；
-  // 不在职 404；回执固定形状 { id, employeeId, revision, temporary, applicationId }
+  // 「任职数据不存在」+ requireEmploymentWrite 的按钮与携带日期字段权校验；不在职 404。
+  // F-344：暂存协议键保留，temporary.effectiveDate 经任职字段查看权投影；GET / PUT / 重放同一出口。
   'GET /employees/:id/regularization-draft': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    fields: fixed(
-      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
-      'F-347 暂存投影固定键（regularization-drafts.ts）',
-    ),
+    fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     ...byId,
   }),
   // 暂存写入：If-Match = 暂存 revision（没有时 0，409 REVISION_CONFLICT）；body 严格 { effectiveDate?, probationResult? }
@@ -2135,7 +2172,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    // 回执是暂存读投影（与 GET 同形状）：runWrite 的 project 原样返回，首次与重放同一出口
+    // 回执与 GET 同一暂存读投影，首次与重放均按当前任职字段查看权裁剪日期
     fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     write: employmentWrite('body.fields+customFields', ['assertRevision'], {
       commandOnly: true,
@@ -2299,7 +2336,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: blacklistWrite('body', ['assertRevision'], true),
   }),
   // 离职自动加黑规则：任职设置配置对象（审计 blacklist_rule.*）；条件只认“离职次数 ≥ N”，期限只认永久 / 离职当月
-  'GET /blacklist-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'GET /blacklist-rules': exitSettingsView(SETTINGS_FIELDS),
   'POST /blacklist-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('blacklist_rule')),
   'PUT /blacklist-rules/:id': configuration(
     SETTINGS,
@@ -2321,7 +2358,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，DEC-266③）----------------------------------
   // 同自动加黑规则：任职设置配置对象（审计 exit_handover_item.*）；字段只有类别 / 序号 / 待办类别 / 待办事项 / 办理表单 / 备注
-  'GET /exit-handover-items': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'GET /exit-handover-items': exitSettingsView(SETTINGS_FIELDS),
   'POST /exit-handover-items': configuration(
     SETTINGS,
     'create',

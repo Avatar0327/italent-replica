@@ -88,6 +88,9 @@ export interface ExitRow {
   total?: unknown;
 }
 
+/** F-352①：逐单动作编码（exit-actions.ts 判定；路由并入后随状态字段权一起裁剪）。 */
+export type ExitActionCode = 'submit' | 'edit' | 'cancel' | 'handle';
+
 export interface ExitItem {
   readonly id: string;
   readonly employeeId: string;
@@ -106,6 +109,8 @@ export interface ExitItem {
   readonly whereaboutsCode: string | null;
   readonly whereaboutsName: string | null;
   readonly status: EmploymentState;
+  /** 路由层并入；读模型本身不产生。 */
+  readonly actions?: readonly ExitActionCode[];
   readonly mode: 'application' | 'direct';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
@@ -362,6 +367,10 @@ export interface ExitExtension {
   readonly attachmentRefs: readonly string[] | null;
   readonly handoverEmployeeId: string | null;
   readonly addToBlacklist: boolean;
+  /** F-393：加黑三项（有效截止日期空 = 永久）；只在详情披露，按任职记录同名字段的查看权裁剪。 */
+  readonly blacklistExpiryDate: string | null;
+  readonly blacklistReason: string | null;
+  readonly blacklistNote: string | null;
   readonly compensationAmount: number | null;
   readonly nonCompeteAmount: number | null;
   readonly lastPayDate: string | null;
@@ -398,7 +407,9 @@ async function loadDetailParts(tx: Tx, tenantId: string, id: string) {
   const [extension] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     SELECT attachment_refs AS "attachmentRefs", handover_employee_id AS "handoverEmployeeId",
-      add_to_blacklist AS "addToBlacklist", compensation_amount AS "compensationAmount",
+      add_to_blacklist AS "addToBlacklist", blacklist_expiry_date::text AS "blacklistExpiryDate",
+      blacklist_reason AS "blacklistReason", blacklist_note AS "blacklistNote",
+      compensation_amount AS "compensationAmount",
       non_compete_amount AS "nonCompeteAmount", last_pay_date::text AS "lastPayDate",
       social_insurance_end_month AS "socialInsuranceEndMonth", annual_leave_settled AS "annualLeaveSettled",
       tax_period AS "taxPeriod", tax_year AS "taxYear", employer_name AS "employerName",
@@ -463,6 +474,9 @@ export async function loadExitDetail(
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
+    blacklistExpiryDate: (ext.blacklistExpiryDate as string | null) ?? null,
+    blacklistReason: (ext.blacklistReason as string | null) ?? null,
+    blacklistNote: (ext.blacklistNote as string | null) ?? null,
     compensationAmount: amount(ext.compensationAmount),
     nonCompeteAmount: amount(ext.nonCompeteAmount),
     lastPayDate: (ext.lastPayDate as string | null) ?? null,
@@ -525,6 +539,9 @@ const OWN_FIELDS = [
   'createdAt',
   'handoverEmployeeId',
   'addToBlacklist',
+  'blacklistExpiryDate',
+  'blacklistReason',
+  'blacklistNote',
   'compensationAmount',
   'nonCompeteAmount',
   'lastPayDate',
@@ -543,6 +560,9 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   ...Object.fromEntries(OWN_FIELDS.map((field) => [field, on(field)])),
   name: { field: 'name', object: 'employee' },
   code: { field: 'code', object: 'employee' },
+  // F-352①：逐单动作由单据状态派生，无状态查看权的人不下发（路由层按此判定，不让动作反推隐藏的状态）
+  actions: on('status'),
+  'actions[]': on('status'),
   // 派生显示名 / 原定日期：跟随所属字段
   plannedLastWorkDate: on('lastWorkDate'),
   exitTypeName: on('exitTypeCode'),
