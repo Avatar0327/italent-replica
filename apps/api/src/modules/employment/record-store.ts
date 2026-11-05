@@ -1,3 +1,4 @@
+import { employmentDashboardDate, refreshApprovedDashboardDate } from '../approval/dashboard-date.js';
 import { validateEmploymentForm } from './employment-forms.js';
 import { validateEmploymentType } from './employment-types.js';
 import { isUuid, sql, type Tx } from '@italent/db';
@@ -185,6 +186,22 @@ export async function bumpEmploymentBusiness(tx: Tx, ctx: EmploymentContext, bus
     WHERE tenant_id = ${ctx.tenantId} AND id = ${business.id}::uuid
   `);
   business.revision += 1;
+  // F-417③：离职内部生效会另持业务对象，外层快照可能过期；投影必须取同事务最新载荷。
+  if (business.payload.mode === 'application') {
+    const [date] = rowsOf<{ kind: string; effective: string; last: string | null }>(
+      await tx.execute(sql`SELECT kind, effective_date::text AS effective, last_work_date::text AS last
+        FROM employment_payload_versions WHERE tenant_id=${ctx.tenantId} AND business_id=${business.id}::uuid
+        ORDER BY version_no DESC LIMIT 1`),
+    );
+    if (!date) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
+    await refreshApprovedDashboardDate(
+      tx,
+      ctx,
+      'employment',
+      business.id,
+      employmentDashboardDate(date.kind, date.last, date.effective),
+    );
+  }
   await bumpEmploymentEmployee(tx, ctx, business.employee);
 }
 

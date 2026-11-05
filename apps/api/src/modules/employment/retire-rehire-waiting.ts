@@ -1,6 +1,7 @@
 /** DEC-677：退休依赖与顺延均在原任职命令事务内维护，不新增调度器。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { refreshApprovedDashboardDate } from '../approval/dashboard-date.js';
 import { pendingActivations, recordActivationAttempt } from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { dayAfter } from './fields.js';
@@ -65,6 +66,7 @@ async function shiftRehireDate(
     createdAt: ctx.now.toISOString(),
   });
   business.payload = next;
+  await refreshApprovedDashboardDate(tx, ctx, 'employment', business.id, date);
   if (bumpRevision)
     await tx.execute(sql`UPDATE employment_business_objects SET revision=revision+1
     WHERE tenant_id=${ctx.tenantId} AND id=${business.id}::uuid`);

@@ -1,5 +1,5 @@
 {
-  "id": "374a6099-1d40-4bc5-b207-82c5e082da30",
+  "id": "2e174450-66a8-4e19-bc4e-d9100f2a6928",
   "prevId": "9014a1ad-ce84-4fd3-90bd-8e695bce29ff",
   "version": "7",
   "dialect": "postgresql",
@@ -11249,13 +11249,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "employment_form": {
           "name": "employment_form",
           "type": "text",
@@ -11822,10 +11815,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_payload_versions_seniority_correction": {
-          "name": "employment_payload_versions_seniority_correction",
-          "value": "\"employment_payload_versions\".\"work_year_company_before\" >= 0\n      AND \"employment_payload_versions\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_payload_versions\".\"work_year_company_before\" = trunc(\"employment_payload_versions\".\"work_year_company_before\", 2)"
-        },
         "employment_payload_versions_employ_type": {
           "name": "employment_payload_versions_employ_type",
           "value": "\"employment_payload_versions\".\"employ_type\" IN ('internal', 'intern', 'external')"
@@ -12148,13 +12137,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "employment_form": {
           "name": "employment_form",
@@ -12594,10 +12576,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_records_seniority_correction": {
-          "name": "employment_records_seniority_correction",
-          "value": "\"employment_records\".\"work_year_company_before\" >= 0\n      AND \"employment_records\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_records\".\"work_year_company_before\" = trunc(\"employment_records\".\"work_year_company_before\", 2)"
-        },
         "employment_records_employ_type": {
           "name": "employment_records_employ_type",
           "value": "\"employment_records\".\"employ_type\" IN ('internal', 'intern', 'external')"

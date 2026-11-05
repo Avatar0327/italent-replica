@@ -91,7 +91,9 @@ export async function setupR3b(page: Page, path: string, readonly = false) {
     return route.fulfill({
       json: {
         objectCode: object?.code,
-        dataOperations: { read: true },
+        dataOperations: object?.code.startsWith('Survey360.')
+          ? { read: true, create: !readonly, update: !readonly, delete: !readonly }
+          : { read: true },
         viewableFields: object?.fields.filter((f) => !readonly || f.code !== 'year').map((f) => f.code) ?? ['name'],
         editableFields: readonly ? [] : (object?.fields.filter((f) => !f.system).map((f) => f.code) ?? []),
         buttons: readonly ? [] : (object?.buttons.map((b) => ({ buttonCode: b.code, level: b.level })) ?? []),

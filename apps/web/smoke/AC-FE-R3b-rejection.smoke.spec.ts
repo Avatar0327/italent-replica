@@ -51,7 +51,7 @@ for (const status of [409, 422]) {
         : route.fulfill({ json: { id: nextPerson, revision: 1 } });
     });
     await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-    await page.getByRole('dialog').getByRole('tab', { name: '评价关系', exact: true }).click();
+    await page.locator('.survey-detail-page').getByRole('tab', { name: '评价关系', exact: true }).click();
     await page.getByRole('button', { name: '添加评价对象', exact: true }).click();
     const form = page.getByRole('dialog', { name: '添加评价对象', exact: true });
     await choose(page, form, '选择人员', '合成已添加人员');
