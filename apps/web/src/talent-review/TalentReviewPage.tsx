@@ -58,22 +58,24 @@ function CollectionPage({ collection }: { collection: Collection }) {
           action={<Button onClick={refresh}>{tr.refresh}</Button>}
         />
       )}
-      <ReviewList
-        collection={collection}
-        {...result}
-        retry={refresh}
-        open={(row) => select({ id: row.id })}
-        rowActions={(row) => actions(row)}
-        actions={
-          collection !== 'matrices' && permission.can('create', 'list') ? (
-            <Button type="primary" onClick={() => setEditing('new')}>
-              {tr.create}
-            </Button>
-          ) : null
-        }
-      />
+      <div hidden={collection === 'projects' && !!selected}>
+        <ReviewList
+          collection={collection}
+          {...result}
+          retry={refresh}
+          open={(row) => select({ id: row.id })}
+          rowActions={(row) => actions(row)}
+          actions={
+            collection !== 'matrices' && permission.can('create', 'list') ? (
+              <Button type="primary" onClick={() => setEditing('new')}>
+                {tr.create}
+              </Button>
+            ) : null
+          }
+        />
+      </div>
       {selected && !detail && !error && <PageState kind="loading" />}
-      {detail && (
+      {detail && (collection !== 'projects' || selected?.id === detail.id) && (
         <RecordDetail
           collection={collection}
           record={detail}
@@ -109,28 +111,31 @@ function RowActions({
   const editLabel = collection === 'projects' ? tr.editProject : tr.editTemplate;
   return (
     <Space size={8}>
-      {state.actionsFor(row).map((action) =>
-        action === 'update' ? (
-          <Button
-            key={action}
-            type="link"
-            disabled={state.busy}
-            onClick={() => state.select({ id: row.id, editing: true })}
-          >
-            {inDetail ? editLabel : tr.update}
-          </Button>
-        ) : (
-          <Popconfirm
-            key={action}
-            title={action === 'end' ? tr.confirmEnd : tr.confirmAction}
-            onConfirm={() => state.transition(row, action)}
-          >
-            <Button type="link" disabled={state.busy}>
-              {tr[action]}
+      {state
+        .actionsFor(row)
+        .sort((a, b) => (inDetail && collection === 'projects' ? Number(a === 'update') - Number(b === 'update') : 0))
+        .map((action) =>
+          action === 'update' ? (
+            <Button
+              key={action}
+              type="link"
+              disabled={state.busy}
+              onClick={() => state.select({ id: row.id, editing: true })}
+            >
+              {inDetail ? editLabel : tr.update}
             </Button>
-          </Popconfirm>
-        ),
-      )}
+          ) : (
+            <Popconfirm
+              key={action}
+              title={action === 'end' ? tr.confirmEnd : tr.confirmAction}
+              onConfirm={() => state.transition(row, action)}
+            >
+              <Button type="link" disabled={state.busy}>
+                {tr[action]}
+              </Button>
+            </Popconfirm>
+          ),
+        )}
     </Space>
   );
 }

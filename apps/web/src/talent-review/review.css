@@ -166,3 +166,37 @@
   max-height: 420px;
   overflow: auto;
 }
+
+.review-project-detail > .page-heading h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.review-board-heading {
+  display: flex;
+  justify-content: flex-end;
+}
+.review-project-detail .review-summary {
+  margin-top: 0;
+}
+.review-project-detail .review-summary > div {
+  background: white;
+}
+.review-project-detail .review-summary > div > .ant-btn {
+  margin-left: auto;
+}
+.review-panel-toolbar {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.review-project-panel > .ant-alert {
+  margin-bottom: 16px;
+}
+.review-dashboard-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { DetailPage } from '../foundation/templates.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
-import { DemoPanel } from './DemoPanels.js';
+import { ProjectDetail } from './ProjectDetail.js';
 import { display } from './model.js';
 import { tr } from './messages.js';
 import { objects, type Collection, type ReviewRecord } from './types.js';
@@ -20,6 +20,7 @@ export function RecordDetail({
   onClose(): void;
 }) {
   const permission = usePermissions(objects[collection]);
+  if (collection === 'projects') return <ProjectDetail record={record} actions={actions} onClose={onClose} />;
   const summary = <RecordSummary collection={collection} record={record} />;
   const tabs = detailTabs(collection, record);
   return (
@@ -99,23 +100,7 @@ function MatrixPreview({ record }: { record: ReviewRecord }) {
 
 function RecordSummary({ collection, record }: { collection: Collection; record: ReviewRecord }) {
   const permission = usePermissions(objects[collection]);
-  const fields = (
-    collection === 'projects'
-      ? [
-          'code',
-          'ownerOrgId',
-          'year',
-          'period',
-          'periodStartDate',
-          'periodEndDate',
-          'categoryId',
-          'calcRuleId',
-          'criterionId',
-          'downwardPublic',
-          'sharedOrgIds',
-        ]
-      : ['ownerOrgId', 'flowId', 'enabled', 'currentVersionNo']
-  ).filter((key) => permission.field(key).visible);
+  const fields = ['ownerOrgId', 'flowId', 'enabled', 'currentVersionNo'].filter((key) => permission.field(key).visible);
   const summary = (
     <>
       <DecisionNote id={`talent-review-${collection}`} />
@@ -143,27 +128,12 @@ function RecordSummary({ collection, record }: { collection: Collection; record:
           },
         ]}
       />
-      {collection === 'projects' && (
-        <div className="review-summary">
-          {[tr.progress, tr.fields.scene, tr.fields.criterionId, tr.dimension].map((label, i) => (
-            <div key={label}>
-              <span className={`review-summary-icon tone-${i}`}>{['▤', '◇', '♧', '⌘'][i]}</span>
-              <div>
-                <strong>{i === 0 ? tr.progress : tr.missing}</strong>
-                <p>{i === 0 ? tr.progressHint : label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </>
   );
   return summary;
 }
 function detailTabs(collection: Collection, record: ReviewRecord) {
   let tabs;
-  if (collection === 'projects')
-    tabs = tr.tabs.map((label, index) => ({ key: String(index), label, children: <DemoPanel tab={index} /> }));
   if (collection === 'templates')
     tabs = [
       {
