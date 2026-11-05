@@ -2,7 +2,12 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ query: '', hidden: [] as string[], rows: [] as Record<string, unknown>[] }));
+const state = vi.hoisted(() => ({
+  query: '',
+  hidden: [] as string[],
+  readonly: [] as string[],
+  rows: [] as Record<string, unknown>[],
+}));
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h } = requireWeb('react');
 const { renderToStaticMarkup: render } = requireWeb('react-dom/server');
@@ -24,7 +29,10 @@ vi.mock('../../apps/web/src/foundation/Permissions.js', () => ({
       ),
     },
     can: () => true,
-    field: (key: string) => ({ visible: !state.hidden.includes(key), editable: !state.hidden.includes(key) }),
+    field: (key: string) => ({
+      visible: !state.hidden.includes(key),
+      editable: !state.hidden.includes(key) && !state.readonly.includes(key),
+    }),
   }),
 }));
 vi.mock('../../apps/web/src/evaluation/runtime.js', () => ({
@@ -61,6 +69,7 @@ const page = (query: string) => {
 beforeEach(() => {
   state.query = '';
   state.hidden = [];
+  state.readonly = [];
   state.rows = [{ id: 'synthetic', revision: 1, name: '合成评定', status: 'draft', enabled: true, members: [] }];
 });
 
@@ -109,6 +118,13 @@ describe('AC-EV F-475 独立页面及列表结构', () => {
 });
 
 describe('AC-EV F-475 整页表单容器', () => {
+  it('只读名称与规则枚举同名时仍显示原名，只有规则字段翻译', () => {
+    state.readonly = ['name'];
+    state.rows = [{ id: 'synthetic', revision: 1, name: 'by_indicator', scoreMode: 'by_indicator', items: [] }];
+    const html = page('view=forms&edit=synthetic');
+    expect(html).toContain('>by_indicator</span>');
+    expect(html).toContain('按指标评分');
+  });
   it('活动向导为整页，第一步有三组和固定底栏', () => {
     const html = render(h(ActivityWizard, { row: state.rows[0], close() {}, saved() {} }));
     expect(html).toContain('evaluation-full-page');
