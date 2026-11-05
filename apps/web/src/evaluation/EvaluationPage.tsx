@@ -141,7 +141,7 @@ function ActivityDetail({
     <DetailPage
       open
       onClose={close}
-      title={row?.name ?? m.title}
+      title={permission.field('name').visible ? textValue(row?.name) : m.noValue}
       actions={<DetailActions {...{ row, permission, writer, edit, actions, perform }} reload={detail.reload} />}
       summary={
         <>
@@ -429,6 +429,11 @@ function activityRowActions(
     width: 164,
     render: (_: unknown, row: Row) => (
       <Space>
+        {!permission.field('name').visible && (
+          <Button type="link" onClick={() => open(row.id, false)}>
+            {m.view}
+          </Button>
+        )}
         {permission.can('update') && (
           <Button
             type="link"

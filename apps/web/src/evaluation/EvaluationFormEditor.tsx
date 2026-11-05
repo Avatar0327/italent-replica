@@ -40,14 +40,7 @@ function useFormEditor({ row, close, saved }: EditorProps) {
     permission.can('update') && !!permission.snapshot.objects['TEvaluation.EvaluationForm']?.dataOperations.update;
   const editable = ['name', 'ownerOrgId'].filter((field) => allowed && permission.field(field).editable);
   useDraftRefill(writer, editable, form);
-  const scoreMode = Form.useWatch('scoreMode', form) ?? current.scoreMode;
-  const visible = fields.filter(
-    (key) =>
-      permission.field(key).visible &&
-      (!['fullScore', 'passScore', 'totalRule'].includes(key) || scoreMode !== 'by_vote') &&
-      (key !== 'totalRule' || scoreMode === 'by_indicator') &&
-      (!['votePassRatio', 'indicatorReference'].includes(key) || scoreMode === 'by_vote'),
-  );
+  const visible = fields.filter((key) => permission.field(key).visible);
   const save = async () => {
     if (writer.locked || !allowed) return;
     setError(undefined);

@@ -117,7 +117,7 @@ function ProcessStages({
           path={`${EV}/activities`}
           label={m.title}
           value={activity}
-          onChange={(id) => choose('activity', String(id))}
+          onChange={(id) => choose('activity', typeof id === 'string' ? id : '')}
         />
       )}
       <div className="r3b-flow">

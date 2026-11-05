@@ -54,6 +54,11 @@ export function SettingsPage({ kind }: { kind: 'forms' | 'groups' }) {
             width: 164,
             render: (_: unknown, row: Row) => (
               <Space>
+                {kind === 'groups' && !permission.field('name').visible && (
+                  <Button type="link" onClick={() => open('detail', row.id)}>
+                    {m.view}
+                  </Button>
+                )}
                 {kind === 'forms' && permission.can('update') ? (
                   <Button type="link" onClick={() => open('edit', row.id)}>
                     {m.edit}
@@ -103,7 +108,7 @@ function GroupDetail({
     <Drawer
       open
       width={1000}
-      title={detail.data?.name ?? evUi.groups}
+      title={permission.field('name').visible ? textValue(detail.data?.name) : m.noValue}
       extra={<Unavailable label={m.edit} />}
       onClose={close}
     >
