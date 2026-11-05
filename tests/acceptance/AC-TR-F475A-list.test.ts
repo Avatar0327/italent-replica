@@ -71,3 +71,13 @@ describe('AC-TR F-475A 项目列表结构', () => {
     expect(html).toContain('共0条');
   });
 });
+
+it('AC-TR F-475A 多选组织和分类只使用可见字段，空选择不筛掉记录', async () => {
+  const { matchesFilters } = await import('../../apps/web/src/talent-review/model.js');
+  const row = { id: 'p', ownerOrgId: 'org-a', categoryId: 'category-a' };
+  const filters = { ownerOrgIds: ['org-b'], categoryId: 'category-b' };
+  expect(matchesFilters(row, filters, () => true)).toBe(false);
+  expect(matchesFilters(row, { ...filters, ownerOrgIds: ['org-a'], categoryId: 'category-a' }, () => true)).toBe(true);
+  expect(matchesFilters(row, filters, () => false)).toBe(true);
+  expect(matchesFilters(row, { ownerOrgIds: [] }, () => true)).toBe(true);
+});
