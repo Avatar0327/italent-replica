@@ -30,6 +30,9 @@ import {
 import type { EmploymentContext } from './types.js';
 
 const settingsObject = 'TenantBase.EmploymentSettings';
+const TASK_STATUSES = ['pending', 'disabled', 'blocked', 'restored', 'skipped', 'failed'] as const;
+/** 只有失败 / 受阻的任务才需要人工重试；排队中（pending）已有消费者在处理，重复重试是空操作（F-359）。 */
+const RETRYABLE = new Set<string>(['blocked', 'failed']);
 const receipt = (t: AccountTask) => ({
   businessId: t.businessId,
   employeeId: t.employeeId,
@@ -92,6 +95,9 @@ export function registerExitAccountRoutes(router: Hono<TenantEnv>, deps: TenantR
     const ctx = await readContext(c, deps, 'object.view');
     const cursor = z.uuid().optional().safeParse(c.req.query('cursor'));
     if (!cursor.success) throw new AppError('VALIDATION_FAILED', '游标不合法');
+    // F-359：按状态筛选（失败 / 受阻项一眼可见）；未知状态 400，不静默忽略
+    const status = z.enum(TASK_STATUSES).optional().safeParse(c.req.query('status'));
+    if (!status.success) throw new AppError('VALIDATION_FAILED', '任务状态不合法');
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const tasks = await tx
         .select()
@@ -107,6 +113,7 @@ export function registerExitAccountRoutes(router: Hono<TenantEnv>, deps: TenantR
             ),
             sql`${ctx.userId}::uuid=ANY(${exitAccountTasks.recipientUserIds})`,
             cursor.data ? sql`${exitAccountTasks.businessId}>${cursor.data}::uuid` : sql`true`,
+            status.data ? eq(exitAccountTasks.status, status.data) : sql`true`,
           ),
         )
         .orderBy(exitAccountTasks.businessId)
@@ -147,7 +154,7 @@ async function retry(c: Context<TenantEnv>, deps: TenantRouteDeps) {
     execute: async (tx, commandId) => {
       const before = await accountTaskInTenant(tx, ctx.tenantId, id);
       assertRevision(ctx.expectedRevision, before.revision);
-      if (!['blocked', 'failed', 'pending'].includes(before.status)) return { status: 200, body: retryReceipt(before) };
+      if (!RETRYABLE.has(before.status)) return { status: 200, body: retryReceipt(before) };
       const after = await saveTask(tx, { ...ctx, commandId }, before, {
         status: 'pending',
         reason: null,

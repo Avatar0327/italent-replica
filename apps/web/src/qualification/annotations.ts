@@ -1,5 +1,17 @@
 import type { DecisionAnnotation } from '../annotations/index.js';
 export const notes: Record<string, DecisionAnnotation> = {
+  'qualification-target': {
+    original: '指标列表按类型组织，包含名称、编码、类型、说明、顺序和状态。',
+    decision: '读取现有指标契约；筛选内部未验证，保留禁用呈现，不推断交互。',
+    decisions: ['DEC-774', 'DEC-456'],
+    level: 'L3',
+  },
+  'qualification-grade-scheme': {
+    original: '等级方案列表显示名称和描述，编辑分为方案信息与等级明细。',
+    decision: '表单复用 F-123 内核，保留明细 ID，以真实接口保存；不推断新增等级默认值。',
+    decisions: ['DEC-774', 'DEC-456'],
+    level: 'L3',
+  },
   'qualification-category-class': {
     original: 'UI/R3_任职资格/01：类别按分类组织；分类维护页的列与操作原站证据不足（未验证）。',
     decision:
@@ -20,9 +32,8 @@ export const notes: Record<string, DecisionAnnotation> = {
     level: 'L3',
   },
   'qualification-standard': {
-    original: 'UI/R3_任职资格/04、07：标准按分类组织，详情按级别查看能力标准。独立指标页原站截图缺失。',
-    decision:
-      '按 DEC-456 修订将级别页签和能力表放入统一右侧抽屉；指标选择按规格与相邻版式实现。图谱、课程和完整明细编辑后续接入。',
+    original: 'UI/R3_任职资格/04、07：标准按分类组织，详情按级别查看能力标准；指标列表按类型组织。',
+    decision: '按 DEC-774 将级别导航和能力表放入模块内整页，保留两层目标与权重；缺契约的生效日期留空。',
     decisions: ['DEC-456', 'DEC-055', 'DEC-026'],
     level: 'L3',
   },

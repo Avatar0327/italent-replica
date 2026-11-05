@@ -124,10 +124,13 @@ function regularizationProbation(offer: OfferRow) {
   return probation ? { probation, probationMonths: months! } : { probation };
 }
 
-/** 合同终止日不得早于计划入职日（同步待入职与编辑并同步共用的业务校验；待入职合同表另有同口径的 CHECK 作兜底）。 */
+/**
+ * 合同终止日必须晚于计划入职日（= 合同起始日；同步待入职与编辑并同步共用的业务校验）。
+ * 与正式合同服务及其库约束同口径（DEC-667）：同日终止会在办理入职时被合同服务拒绝，故在同步入口提前拒绝。
+ */
 export function assertContractDates(offer: Pick<OfferRow, 'contractEndDate' | 'plannedEntryDate'>) {
-  if (offer.contractEndDate && offer.plannedEntryDate && offer.contractEndDate < offer.plannedEntryDate)
-    throw new AppError('VALIDATION_FAILED', '合同终止日期不能早于计划入职日期', {
+  if (offer.contractEndDate && offer.plannedEntryDate && offer.contractEndDate <= offer.plannedEntryDate)
+    throw new AppError('VALIDATION_FAILED', '合同终止日期必须晚于计划入职日期', {
       reason: 'OFFER_CONTRACT_DATE_INVALID',
     });
 }
