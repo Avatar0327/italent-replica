@@ -126,7 +126,7 @@ test('AC-EV-F475 活动冲突后改回原值仍用重读版本，成功后返回
   await form.getByLabel('名称', { exact: true }).fill('合成草稿');
   await form.getByRole('button', { name: '下一步' }).click();
   await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
   await expect(form).toContainText('版本冲突');
   await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
   await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
@@ -135,7 +135,46 @@ test('AC-EV-F475 活动冲突后改回原值仍用重读版本，成功后返回
   await form.getByLabel('名称', { exact: true }).fill(ev.name);
   await form.getByRole('button', { name: '下一步' }).click();
   await form.getByRole('button', { name: '下一步' }).click();
-  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
   await expect(form).toHaveCount(0);
   expect(attempts).toBe(2);
+});
+
+test('AC-EV-F475 评价表保存期间离开后迟到回执不改变当前页面，返回读取最新列表', async ({ page }) => {
+  const form = await forms(page);
+  let complete!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  const latest = { ...formRow, name: '合成延迟更新', revision: 2 };
+  await page.route(`**/evaluation/evaluation-forms/${id}`, async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: latest });
+    await delayed;
+    return route.fulfill({ json: latest });
+  });
+  await form.getByLabel('评价表名称', { exact: true }).fill(latest.name);
+  const request = page.waitForRequest((request) => request.method() === 'PATCH');
+  await form.getByRole('button', confirm).click();
+  await request;
+  await menu(page, '评定记录').click();
+  const response = page.waitForResponse((response) => response.request().method() === 'PATCH');
+  complete();
+  await response;
+  await expect(page).toHaveURL(/view=records/);
+  await page.route('**/evaluation/evaluation-forms?*', (route) =>
+    route.fulfill({ json: { items: [latest], total: 1 } }),
+  );
+  await menu(page, '评价表').click();
+  await expect(page.getByRole('cell', { name: latest.name, exact: true })).toBeVisible();
+});
+
+test('AC-EV-F475 名称入口在编辑关闭后仍进入详情，不继承编辑状态', async ({ page }) => {
+  await setupR3b(page, '/evaluation');
+  await page.getByRole('button', edit).click();
+  const editor = page.locator('.evaluation-full-page');
+  await editor.getByRole('button', cancel).click();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: ev.name, exact: true }).click();
+  await expect(page.getByRole('dialog', { name: ev.name, exact: true })).toBeVisible();
+  await expect(editor).toHaveCount(0);
 });
