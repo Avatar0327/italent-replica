@@ -921,7 +921,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
     'route:GET /api/tenant/org-adjustment/adjustments': 'e0c3c10c92b7',
-    'route:GET /api/tenant/org-adjustment/adjustments/:id': 'e605fd0db96f',
+    'route:GET /api/tenant/org-adjustment/adjustments/:id': '2c2e854986da',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export': 'd217289095cb',
@@ -2513,7 +2513,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':
-    '2fb93d34b5cf',
+    '1a8fd749db73',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section':
     '440a7f65fb5d',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview':
