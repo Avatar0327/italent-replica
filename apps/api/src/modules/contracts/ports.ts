@@ -36,31 +36,22 @@ export async function handleContractsOnExit(
   await checkScope(tx, ctx, input.employeeId);
   const config = await settings(tx, ctx.tenantId);
   const withdrawnRequests = await cancelExitRequests(tx, ctx, input, config.postExitTypeIds);
-  const records = await tx
-    .select()
-    .from(contractRecords)
-    .where(
-      and(
-        eq(contractRecords.tenantId, ctx.tenantId),
-        eq(contractRecords.employeeId, input.employeeId),
-        eq(contractRecords.deleted, false),
-      ),
-    )
-    .orderBy(contractRecords.id);
+  const records = await recordsOf(tx, ctx.tenantId, input.employeeId);
   const terminated: ExitContractOutcome['terminated'][number][] = [];
   const deleted: ExitContractOutcome['deleted'][number][] = [];
   for (const record of records) {
-    if (config.postExitTypeIds.includes(record.typeId) || record.status === 'void') continue;
+    const action = exitRecordAction(record, input, config.postExitTypeIds);
+    if (!action) continue;
     const summary = {
       id: record.id,
       typeId: record.typeId,
       effectiveDate: record.effectiveDate,
       endDate: record.endDate,
     };
-    if (record.effectiveDate > input.lastWorkDate) {
+    if (action === 'delete') {
       await deleteContract(tx, ctx, record);
       deleted.push(summary);
-    } else if ((!record.endDate || record.endDate > input.lastWorkDate) && record.status === 'valid') {
+    } else {
       await setContractState(tx, ctx, record, 'terminated', input.lastWorkDate, 'exit');
       terminated.push(summary);
     }
@@ -103,25 +94,79 @@ function withdrawnByExit(
   return terminatedByExit(input.termination, flow, date, input.lastWorkDate);
 }
 
+type ExitInput = { employeeId: string; lastWorkDate: string; termination?: ExitTerminationSetting | null };
+
+/** 离职生效会撤回的在途合同申请：执行（cancelExitRequests）与离职预览（previewContractsOnExit）共用这一个判定。 */
+function exitWithdrawsRequest(request: ContractRequestRow, input: ExitInput, postExitTypeIds: readonly string[]) {
+  return (
+    !postExitTypeIds.includes(request.typeId) &&
+    ['approved', 'in_review', 'returned'].includes(request.status) &&
+    withdrawnByExit(request, input)
+  );
+}
+
+type ContractRecordRow = typeof contractRecords.$inferSelect;
+
+/** 离职生效对一份合同的处置：起始日晚于 L′ 软删除，有效且终止日为空或晚于 L′ 的终止；离职后可签类型与已作废的合同不动。 */
+function exitRecordAction(record: ContractRecordRow, input: ExitInput, postExitTypeIds: readonly string[]) {
+  if (postExitTypeIds.includes(record.typeId) || record.status === 'void') return null;
+  if (record.effectiveDate > input.lastWorkDate) return 'delete';
+  if ((!record.endDate || record.endDate > input.lastWorkDate) && record.status === 'valid') return 'terminate';
+  return null;
+}
+
+const requestsOf = (tx: Tx, tenantId: string, employeeId: string) =>
+  tx
+    .select()
+    .from(contractRequests)
+    .where(and(eq(contractRequests.tenantId, tenantId), eq(contractRequests.employeeId, employeeId)))
+    .orderBy(contractRequests.id);
+
+const recordsOf = (tx: Tx, tenantId: string, employeeId: string) =>
+  tx
+    .select()
+    .from(contractRecords)
+    .where(
+      and(
+        eq(contractRecords.tenantId, tenantId),
+        eq(contractRecords.employeeId, employeeId),
+        eq(contractRecords.deleted, false),
+      ),
+    )
+    .orderBy(contractRecords.id);
+
+/**
+ * 离职预览（F-429 ②）：只读给出生效时将终止 / 删除的合同与将撤回的在途申请，选择与 handleContractsOnExit 逐项相同
+ * （exitRecordAction / exitWithdrawsRequest）。不加锁、不查合同范围——查看人的合同对象查看权由离职预览按 §9.1 裁剪。
+ */
+export async function previewContractsOnExit(tx: Tx, tenantId: string, input: ExitInput) {
+  const { postExitTypeIds } = await settings(tx, tenantId);
+  const requests = (await requestsOf(tx, tenantId, input.employeeId)).filter((request) =>
+    exitWithdrawsRequest(request, input, postExitTypeIds),
+  );
+  const records = await recordsOf(tx, tenantId, input.employeeId);
+  const by = (action: 'delete' | 'terminate') =>
+    records.filter((record) => exitRecordAction(record, input, postExitTypeIds) === action).map((record) => record.id);
+  return {
+    terminated: by('terminate'),
+    deleted: by('delete'),
+    withdrawnRequests: requests.map((request) => request.id),
+  };
+}
+
 async function cancelExitRequests(
   tx: Tx,
   ctx: ContractContext,
-  input: { employeeId: string; lastWorkDate: string; termination?: ExitTerminationSetting | null },
+  input: ExitInput,
   allowedTypes: string[],
 ): Promise<ExitContractOutcome['withdrawnRequests'][number][]> {
-  const requests = await tx
-    .select()
-    .from(contractRequests)
-    .where(and(eq(contractRequests.tenantId, ctx.tenantId), eq(contractRequests.employeeId, input.employeeId)))
-    .orderBy(contractRequests.id);
+  const requests = await requestsOf(tx, ctx.tenantId, input.employeeId);
   const { activeInstanceOf, latestInstanceOf } = await import('../approval/store.js');
   const { cancel } = await import('../approval/actions.js');
   const approvalCtx = schedulerAwareContext(ctx);
   const withdrawn: ExitContractOutcome['withdrawnRequests'][number][] = [];
   for (const request of requests) {
-    if (allowedTypes.includes(request.typeId) || !['approved', 'in_review', 'returned'].includes(request.status))
-      continue;
-    if (!withdrawnByExit(request, input)) continue;
+    if (!exitWithdrawsRequest(request, input, allowedTypes)) continue;
     // 只取消活动实例；通知挂在最近相关的实例上（审批已通过的申请没有活动实例，发起人仍应收到消息）
     const active = await activeInstanceOf(tx, ctx.tenantId, 'contract', request.id);
     if (active) await cancel(tx, approvalCtx, active.id);
@@ -138,7 +183,7 @@ async function cancelExitRequests(
       effectiveDate: request.effectiveDate,
       stateBefore: request.status,
       instanceId: related?.id ?? null,
-      initiatorUserId: related?.initiatorUserId ?? null,
+      initiatorUserId: related?.initiatorUserId ?? request.createdBy,
     });
   }
   return withdrawn;

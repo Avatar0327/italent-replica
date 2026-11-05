@@ -237,7 +237,7 @@ export const exitEffects = pgTable(
       'exit_effects_kind',
       sql`${t.kind} IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',
         'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',
-        'duty_failed', 'rehire_created')`,
+        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')`,
     ),
     check('exit_effects_target_type', sql`btrim(${t.targetType}) <> ''`),
   ],
@@ -361,7 +361,8 @@ export const exitHandoverRequests = pgTable(
       'exit_handover_requests_not_launched',
       sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
         AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER')
-          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')`,
+          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT',
+            'APPROVAL_EXCEPTION_ADMIN_SELF', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE')`,
     ),
     check(
       'exit_handover_requests_initiator',

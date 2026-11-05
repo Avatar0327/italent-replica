@@ -1,5 +1,5 @@
 {
-  "id": "374a6099-1d40-4bc5-b207-82c5e082da30",
+  "id": "49c3f8c6-45fd-447e-8fdf-38e36844361d",
   "prevId": "da790c80-c6a9-432d-9260-92ccefd0c6d7",
   "version": "7",
   "dialect": "postgresql",
@@ -11249,13 +11249,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "employment_form": {
           "name": "employment_form",
           "type": "text",
@@ -11822,10 +11815,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_payload_versions_seniority_correction": {
-          "name": "employment_payload_versions_seniority_correction",
-          "value": "\"employment_payload_versions\".\"work_year_company_before\" >= 0\n      AND \"employment_payload_versions\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_payload_versions\".\"work_year_company_before\" = trunc(\"employment_payload_versions\".\"work_year_company_before\", 2)"
-        },
         "employment_payload_versions_employ_type": {
           "name": "employment_payload_versions_employ_type",
           "value": "\"employment_payload_versions\".\"employ_type\" IN ('internal', 'intern', 'external')"
@@ -12148,13 +12137,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "employment_form": {
           "name": "employment_form",
@@ -12594,10 +12576,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_records_seniority_correction": {
-          "name": "employment_records_seniority_correction",
-          "value": "\"employment_records\".\"work_year_company_before\" >= 0\n      AND \"employment_records\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_records\".\"work_year_company_before\" = trunc(\"employment_records\".\"work_year_company_before\", 2)"
-        },
         "employment_records_employ_type": {
           "name": "employment_records_employ_type",
           "value": "\"employment_records\".\"employ_type\" IN ('internal', 'intern', 'external')"
@@ -55122,7 +55100,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",

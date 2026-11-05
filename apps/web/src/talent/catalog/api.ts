@@ -43,6 +43,24 @@ export function validateValues(resource: Resource, values: Record<string, unknow
       values.name.trim().length > (resource.module === 'talent' ? 200 : 100))
   )
     throw new Error(m.invalidName);
+  if (resource.key === 'grade-schemes' && values.details !== undefined) {
+    if (
+      !Array.isArray(values.details) ||
+      values.details.length > 50 ||
+      values.details.some(
+        (row) =>
+          !row ||
+          typeof row.name !== 'string' ||
+          !row.name.trim() ||
+          row.name.trim().length > 100 ||
+          !Number.isInteger(row.grade) ||
+          row.grade < 0 ||
+          row.grade > 1000 ||
+          (row.description != null && (typeof row.description !== 'string' || row.description.length > 4000)),
+      )
+    )
+      throw new Error(m.gradeInvalid);
+  }
   if (typeof values.code === 'string' && values.code !== '') {
     const pattern = resource.module === 'talent' ? /^[A-Za-z][A-Za-z0-9_]{0,49}$/ : /^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$/;
     if (!pattern.test(values.code)) throw new Error(m.invalidCode);
@@ -81,11 +99,21 @@ export async function saveResource(
   /** 表单提交内核（F-123）固定的命令：幂等键不变；没传时才新建（目录页以外的调用方）。 */
   command?: Command,
 ) {
-  return api.request<Row>(`${resourcePath(resource)}${original ? `/${original.id.toLowerCase()}` : ''}`, {
+  const sent = command ?? newCommand(body, original?.revision ?? 0);
+  const result = await api.request<Row>(`${resourcePath(resource)}${original ? `/${original.id.toLowerCase()}` : ''}`, {
     method: original ? 'PATCH' : 'POST',
     // 内核固定命令 ID 与版本；请求体用这里转换后的（清空发显式 null）
-    command: command ? { ...command, body } : newCommand(body, original?.revision ?? 0),
+    command: { ...sent, body },
   });
+  if (
+    typeof result?.id !== 'string' ||
+    !result.id ||
+    (original && result.id !== original.id) ||
+    !Number.isSafeInteger(result.revision) ||
+    result.revision <= (sent.revision ?? 0)
+  )
+    throw new Error(m.uncertain);
+  return result;
 }
 /** 候选逐页读取，不把未加载的尾页伪装成完整集合。 */
 export async function candidates(api: ApiClient, path: string, signal: AbortSignal): Promise<Row[]> {

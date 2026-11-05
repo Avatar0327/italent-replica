@@ -244,8 +244,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       43: '10be3d89590b6cf1',
       // F-472（DEC-767）：新增 HR 专员 / HR 经理预置身份；人事管理员去掉看板类授权项（合并时统一定号，DEC-439④）
       44: '04a3bdabbd936e11',
+      // F-020 / DEC-790：本人离职、兼职专属授权（占位 44，合并时按 main + 1 定号）。
+      45: '79acc91437c2ab79',
       // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
-      45: '12c0fa1d61f9fdea',
+      46: '2836fdc4e1b54269',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

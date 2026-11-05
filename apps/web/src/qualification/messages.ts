@@ -1,5 +1,8 @@
 export const q = {
   title: '任职资格',
+  displaySettings: '发展通道显示设置',
+  displayUnavailable: '显示设置暂未接入，当前无法查看或保存配置。',
+  displayFields: ['发展通道显示布局', '简卡显示信息', '显示学习地图'],
   categoryClasses: '任职分类',
   categories: '任职类别',
   levels: '任职级别',

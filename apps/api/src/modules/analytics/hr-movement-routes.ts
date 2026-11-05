@@ -70,9 +70,7 @@ function loadBoard(
   return withTenant(deps.db, base.tenantId, async (tx) => {
     const tree = await orgTree(tx, base.tenantId, asOf);
     const data = await loadMovement(tx, { tenantId: base.tenantId, asOf, scope }, window);
-    const establishment = withEstablishment
-      ? await loadEstablishment(tx, { tenantId: base.tenantId, scope }, asOf)
-      : [];
+    const establishment = withEstablishment ? await loadEstablishment(tx, { ...base, scope }, asOf) : [];
     return {
       months,
       tree,
@@ -157,7 +155,7 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
       // 组织编制页签只要年度取数日（年底与 asOf 较早者）的编制与实有人员，不加载整年流动数据
       const onEstablishment = report.code === 'establishment';
       const data = onEstablishment ? await loadSnapshots(tx, a, window.days) : await loadMovement(tx, a, window);
-      const establishment = onEstablishment ? await loadEstablishment(tx, a, window.to) : [];
+      const establishment = onEstablishment ? await loadEstablishment(tx, { ...base, scope }, window.to) : [];
       return movementReport(report.code, period, {
         tree,
         sequences,

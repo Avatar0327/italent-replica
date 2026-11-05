@@ -7,8 +7,8 @@
  * 目标按查看人裁剪（trimDownstream）：合同按合同对象查看权，任职业务 / 职责转交下属按 DEC-177 可见范围，不可见的只计 hiddenCount。
  */
 import { sql, type Tx } from '@italent/db';
-import { CONTRACT_OBJECT, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
-import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
+import { CONTRACT_FIELDS, CONTRACT_OBJECT, MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
+import { getModuleViewableFieldsInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { exitListOrder } from './exit-list-order.js';
 import { batchDisclose } from './exit-gate.js';
 import { loadEmploymentBusiness } from './read-model.js';
@@ -189,7 +189,7 @@ export async function probeDownstream(tx: Tx, ctx: EmploymentContext, input: Dow
 
 // ---- 按查看人裁剪 ----------------------------------------------------------------------------------------------
 
-async function allowed(ctx: EmploymentContext, resource: string) {
+export async function allowed(ctx: EmploymentContext, resource: string) {
   return ctx.authorize ? Boolean(await ctx.authorize({ ...ctx, action: 'object.view', resource })) : true;
 }
 
@@ -250,12 +250,61 @@ async function discloseHandovers(
   return result;
 }
 
-/** 每个目标是否对查看人可见：合同类按合同对象查看权，任职业务按 DEC-177，职责转交按下属可见，编制按编制对象查看权。 */
+const CONTRACT_TARGETS = ['contract', 'contract-request'];
+
+/**
+ * 合同类目标在合同对象查看权之外还要过合同的数据范围（F-246）：合同对象自己的范围（不是任职范围），
+ * 按所属员工与合同 / 申请的真实创建人判定，同合同模块的 checkScope 用同一个判定函数。无授权器的内部调用不裁剪。
+ */
+async function contractsInScope(
+  tx: Tx,
+  ctx: EmploymentContext,
+  targets: readonly DownstreamTarget[],
+  employeeId: string,
+): Promise<Map<string, boolean>> {
+  const result = new Map<string, boolean>();
+  if (!targets.length) return result;
+  if (!ctx.authorize) return new Map(targets.map((target) => [target.id, true]));
+  const scope = await resolveModuleScopeInTransaction(
+    { authorize: ctx.authorize, clock: () => ctx.now },
+    ctx,
+    tx,
+    CONTRACT_OBJECT,
+    `${CONTRACT_OBJECT}.list`,
+  );
+  const ids = `{${targets.map((target) => target.id).join(',')}}`;
+  const creators = new Map(
+    rowsOf<{ id: string; createdBy: string }>(
+      await tx.execute(sql`SELECT id::text AS id, created_by::text AS "createdBy" FROM contract_records
+        WHERE tenant_id=${ctx.tenantId} AND id=ANY(${ids}::uuid[])
+        UNION ALL SELECT id::text, created_by::text FROM contract_requests
+        WHERE tenant_id=${ctx.tenantId} AND id=ANY(${ids}::uuid[])`),
+    ).map((row) => [row.id, row.createdBy]),
+  );
+  const shown = await visibleEmploymentRecords(
+    tx,
+    ctx.tenantId,
+    scope,
+    targets.map((target) => ({ employeeId, departmentId: null, creatorId: creators.get(target.id) ?? null })),
+  );
+  targets.forEach((target, index) => result.set(target.id, shown[index] === true));
+  return result;
+}
+
+/** 每个目标是否对查看人可见：合同类按合同对象查看权 + 合同数据范围，任职业务按 DEC-177，职责转交按下属可见，编制按编制对象查看权。 */
 async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly DownstreamTarget[], employeeId: string) {
   const visible = new Map<string, boolean>();
   const key = (target: DownstreamTarget) => `${target.type}:${target.id}`;
   const contract = await allowed(ctx, CONTRACT_OBJECT);
   const capacity = await allowed(ctx, MODULE_OBJECTS.establishment.code);
+  const contractScope = contract
+    ? await contractsInScope(
+        tx,
+        ctx,
+        targets.filter((target) => CONTRACT_TARGETS.includes(target.type)),
+        employeeId,
+      )
+    : new Map<string, boolean>();
   const handovers = await discloseHandovers(tx, ctx, targets, employeeId);
   // 兼职申请（PT-6b，kind = 'part-time'）与任职业务同按 DEC-177 以所属部门判定；其余未知类型仍走失败即关
   const businesses = targets.filter((target) => DEPARTMENT_SCOPED_TYPES.includes(target.type));
@@ -280,7 +329,7 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
   for (const target of targets) {
     const subscriber = downstreamVisibility.get(target.type);
     if (subscriber) visible.set(key(target), await subscriber(tx, ctx, target));
-    else if (target.type === 'contract' || target.type === 'contract-request') visible.set(key(target), contract);
+    else if (CONTRACT_TARGETS.includes(target.type)) visible.set(key(target), contractScope.get(target.id) === true);
     else if (target.type === 'establishment-capacity') visible.set(key(target), capacity);
     else if (target.type === 'transfer-linkage-item')
       visible.set(key(target), linkedVisible[linked.indexOf(target)] ?? false);
@@ -288,6 +337,27 @@ async function visibleMap(tx: Tx, ctx: EmploymentContext, targets: readonly Down
     else visible.set(key(target), shownBusiness.has(target.id));
   }
   return { visible, key, handovers };
+}
+
+/** 合同对象的可见字段；undefined = 无字段限制（含无授权器的内部调用）。 */
+async function contractViewableFields(tx: Tx, ctx: EmploymentContext): Promise<ReadonlySet<string> | undefined> {
+  if (!ctx.authorize) return undefined;
+  return getModuleViewableFieldsInTransaction(
+    { authorize: ctx.authorize, clock: () => ctx.now },
+    ctx,
+    CONTRACT_OBJECT,
+    tx,
+  );
+}
+
+/** detail 里属于合同字段的键（类型、生效日、终止日等）按合同字段查看权裁剪，无权缺席；离职侧的键（effect 等）照常（F-246）。 */
+function trimContractDetail(
+  detail: Readonly<Record<string, unknown>>,
+  fields: ReadonlySet<string> | undefined,
+): Readonly<Record<string, unknown>> {
+  if (!fields) return detail;
+  const contractKeys = new Set<string>(CONTRACT_FIELDS);
+  return Object.fromEntries(Object.entries(detail).filter(([name]) => !contractKeys.has(name) || fields.has(name)));
 }
 
 /** 响应前按查看人裁剪：不可见的目标移除并计入 hiddenCount；可见目标不回传 employeeId / departmentId 等判定用字段。 */
@@ -299,12 +369,23 @@ export async function trimDownstream(
 ): Promise<Downstream> {
   const all = [...downstream.items, ...downstream.additional].flatMap((entry) => entry.targets);
   const { visible, key, handovers } = await visibleMap(tx, ctx, all, employeeId);
+  const contractFields = all.some((target) => CONTRACT_TARGETS.includes(target.type))
+    ? await contractViewableFields(tx, ctx)
+    : undefined;
   const trim = <T extends { targets: readonly DownstreamTarget[] }>(entry: T) => {
     const shown = entry.targets.filter((target) => visible.get(key(target)));
     return {
       ...entry,
       targets: shown.map(({ type, id, detail }) =>
-        type === HANDOVER_TARGET ? handovers.get(id)! : { type, id, ...(detail ? { detail } : {}) },
+        type === HANDOVER_TARGET
+          ? handovers.get(id)!
+          : {
+              type,
+              id,
+              ...(detail
+                ? { detail: CONTRACT_TARGETS.includes(type) ? trimContractDetail(detail, contractFields) : detail }
+                : {}),
+            },
       ),
       hiddenCount: entry.targets.length - shown.length,
     };

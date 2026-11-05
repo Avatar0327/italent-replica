@@ -260,3 +260,27 @@
   display: block;
   color: #b3b6ba;
 }
+
+.approval-category-group {
+  display: flex;
+  flex-direction: column;
+}
+.approval-category-count {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+.approval-subcategory.ant-btn {
+  padding-inline-start: 28px;
+}
+.approval-subcategory[aria-pressed='true'] {
+  color: #146eff;
+  background: #eaf3ff;
+}
+
+.approval-collaboration-title {
+  margin: 16px 0 0;
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid #146eff;
+  font-size: 14px;
+  font-weight: 500;
+}

@@ -23,6 +23,8 @@ import {
   type CapacityExcess,
 } from '../establishment/employment-check.js';
 import { readSettings } from '../establishment/settings.js';
+import type { EstablishmentContext } from '../establishment/store.js';
+import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
 import { auditEmployment } from './context.js';
 import { disclose } from './exit-gate.js';
 import { loadTimelineSegments } from './exit-projection.js';
@@ -179,6 +181,21 @@ async function segmentExcesses(tx: Tx, ctx: EmploymentContext, employeeId: strin
   return [...worst.values()];
 }
 
+/**
+ * 超编的编制对象是否在操作人的“编制”数据范围内（F-251）：部门可见只说明看得到这个人的任职部门，
+ * 编制 ID / 峰值 / 上限另受编制对象自己的范围约束；用任职写入口同一个编制范围判定，不另写一份。
+ * 不可见（NOT_FOUND）只计数，其余错误照常抛出。
+ */
+async function capacityVisible(tx: Tx, context: EstablishmentContext, item: CapacityExcess): Promise<boolean> {
+  try {
+    await context.authorizeCapacityScope?.(tx, { operation: 'update', id: item.capacityId, orgId: item.orgId });
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+    throw error;
+  }
+}
+
 async function assertCapacity(
   tx: Tx,
   ctx: EmploymentContext,
@@ -189,6 +206,7 @@ async function assertCapacity(
 ) {
   const warnings: Warning[] = [];
   let hidden = 0;
+  const capacityContext = await employmentCapacityContext(tx, ctx);
   for (const segment of segments) {
     const excesses = await segmentExcesses(tx, ctx, employeeId, segment);
     if (!excesses.length) continue;
@@ -197,7 +215,12 @@ async function assertCapacity(
       hidden += excesses.length;
       continue;
     }
-    for (const item of excesses)
+    for (const item of excesses) {
+      // 编制对象自己的数据范围（F-251）：不可见的编制不返回 ID / 峰值 / 上限，只计入通用提示的件数
+      if (!(await capacityVisible(tx, capacityContext, item))) {
+        hidden += 1;
+        continue;
+      }
       warnings.push({
         reason: 'ESTABLISHMENT_EXCEEDED',
         capacityId: item.capacityId,
@@ -208,6 +231,7 @@ async function assertCapacity(
         peak: item.peak,
         limit: item.limit,
       });
+    }
   }
   if (!warnings.length && !hidden) return;
   if (!confirmed)

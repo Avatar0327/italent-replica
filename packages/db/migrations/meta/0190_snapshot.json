@@ -1,6 +1,6 @@
 {
-  "id": "a697099e-d9fc-4c81-b1e2-ec6d20411bfb",
-  "prevId": "374a6099-1d40-4bc5-b207-82c5e082da30",
+  "id": "6b558d74-f141-420c-be5a-cc85621525fc",
+  "prevId": "49c3f8c6-45fd-447e-8fdf-38e36844361d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11249,13 +11249,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "employment_form": {
           "name": "employment_form",
           "type": "text",
@@ -11822,10 +11815,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_payload_versions_seniority_correction": {
-          "name": "employment_payload_versions_seniority_correction",
-          "value": "\"employment_payload_versions\".\"work_year_company_before\" >= 0\n      AND \"employment_payload_versions\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_payload_versions\".\"work_year_company_before\" = trunc(\"employment_payload_versions\".\"work_year_company_before\", 2)"
-        },
         "employment_payload_versions_employ_type": {
           "name": "employment_payload_versions_employ_type",
           "value": "\"employment_payload_versions\".\"employ_type\" IN ('internal', 'intern', 'external')"
@@ -12148,13 +12137,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "work_year_company_before": {
-          "name": "work_year_company_before",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "employment_form": {
           "name": "employment_form",
@@ -12594,10 +12576,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "employment_records_seniority_correction": {
-          "name": "employment_records_seniority_correction",
-          "value": "\"employment_records\".\"work_year_company_before\" >= 0\n      AND \"employment_records\".\"work_year_company_before\" <= 90071992547409.9\n      AND \"employment_records\".\"work_year_company_before\" = trunc(\"employment_records\".\"work_year_company_before\", 2)"
-        },
         "employment_records_employ_type": {
           "name": "employment_records_employ_type",
           "value": "\"employment_records\".\"employ_type\" IN ('internal', 'intern', 'external')"
@@ -12639,91 +12617,6 @@
           "value": "\"employment_records\".\"inheritance_source_id\" <> \"employment_records\".\"id\""
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.employment_rehire_seniority_snapshots": {
-      "name": "employment_rehire_seniority_snapshots",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_version_id": {
-          "name": "snapshot_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_rehire_seniority_snapshot_fk": {
-          "name": "employment_rehire_seniority_snapshot_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "employment_payload_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "snapshot_version_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_business_id_pk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.employment_setting_versions": {
@@ -55207,7 +55100,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
@@ -55763,7 +55656,7 @@
         },
         "exit_handover_requests_not_launched": {
           "name": "exit_handover_requests_not_launched",
-          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')"
+          "value": "(\"exit_handover_requests\".\"state\" = 'not_launched') = (\"exit_handover_requests\".\"not_launched_reason\" IS NOT NULL)\n        AND coalesce(\"exit_handover_requests\".\"not_launched_reason\", 'NO_HANDLER')\n          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT',\n            'APPROVAL_EXCEPTION_ADMIN_SELF', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE')"
         },
         "exit_handover_requests_initiator": {
           "name": "exit_handover_requests_initiator",

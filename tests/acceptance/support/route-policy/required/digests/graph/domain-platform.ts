@@ -9,6 +9,15 @@ export const GRAPH: Graph = {
     '#EMPLOYEE_DEFAULT_EDIT_FIELDS',
     '#EMPLOYEE_READONLY_FIELDS',
   ],
+  'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS': [
+    '#EMPLOYEE_TRANSFER_BUTTONS',
+    '#SELF_APPLICATION_BUTTONS',
+  ],
+  'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS': ['#applicationObject'],
+  'packages/domain/src/platform/employee-self-service.ts#applicationObject': [
+    '#EMPLOYEE_READONLY_FIELDS',
+    '#SELF_APPLICATION_FIELDS',
+  ],
   'packages/domain/src/platform/sha256.ts#sha256Hex': ['#K', '#rotr', '#utf8'],
   'packages/domain/src/platform/standard-grants.ts#objectCatalogDigest': [
     'packages/domain/src/platform/sha256.ts#sha256Hex',
@@ -63,6 +72,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_PAGES',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_BUTTONS',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_SELF_SERVICE_CODE',
+    'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
     '#fieldSubset',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_APP',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_PAGES',
@@ -156,6 +166,9 @@ export const GRAPH: Graph = {
     'packages/domain/src/succession/catalog.ts#SUCCESSION_APP',
     'packages/domain/src/succession/catalog.ts#SUCCESSION_CONFIG_OBJECTS',
     'packages/domain/src/succession/catalog.ts#SUCCESSION_OBJECTS',
+  ],
+  'packages/domain/src/platform/standard-presets.ts#full': [
+    'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_BUTTONS',
   ],
   'packages/domain/src/platform/standard-presets.ts#grant': ['#READ_ONLY_OBJECTS', '#full', '#readOnly'],
   'packages/domain/src/platform/standard-presets.ts#partial': ['#full'],

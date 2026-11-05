@@ -9,7 +9,7 @@ export interface ScopeRoot {
 export function scopeRows<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
-const MAX_SCOPE_IDS = 20_000;
+export const MAX_SCOPE_IDS = 20_000;
 
 interface ScopeTreeRow {
   root_id: string;

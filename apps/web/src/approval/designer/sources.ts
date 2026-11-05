@@ -4,6 +4,9 @@ import {
   APPROVER_SOURCE_TYPES,
   approverSource,
   approverSourceViolations,
+  identityProfileId,
+  relationSource,
+  RELATION_SOURCE_TYPES,
   sourceKey,
   type ApprovalNode,
   type ApproverSource,
@@ -12,20 +15,12 @@ import {
 import { m } from './messages.js';
 import { s } from './source-messages.js';
 
-type Status = 'enabled' | 'unsupported' | 'pending' | 'restricted';
+type Status = 'enabled' | 'unsupported' | 'restricted';
 export type SourceOption = { value: string; label: string; disabled: boolean; status: Status };
 const unsupported = new Set<ApproverSourceType>(['public_variable', 'application_variable', 'matrix']);
-// DEC-686：F-318c 合入后从此入口扩展新值与候选适配；现有固定表达式仍走领域校验。
-const pending = new Set<ApproverSourceType>([
-  'department',
-  'business_org',
-  'profit_center',
-  'reserve4',
-  'reserve5',
-  'position',
-  'job',
-  'identity',
-]);
+/** DEC-691：组织 / 职位 / 职务与身份的取值是候选接口里的对象 ID（可带后缀），类型与值都交领域校验判断。 */
+export const REFERENCE_SOURCE_TYPES: readonly ApproverSourceType[] = [...RELATION_SOURCE_TYPES, 'identity'];
+const PROBE = '00000000-0000-0000-0000-000000000000';
 const fixed: ApproverSource[] = [
   ...APPROVER_EXPRESSIONS.map(approverSource),
   { type: 'object_field', value: 'business_record_direct_manager' },
@@ -77,16 +72,14 @@ export function sourceOptions(node: ApprovalNode, approvalType?: string) {
           status: allowed ? 'enabled' : 'restricted',
         };
       });
-    if (pending.has(type)) children.push({ value: '$pending', label: s.newValue, disabled: true, status: 'pending' });
     const enabled =
-      type === 'specified'
+      type === 'specified' || REFERENCE_SOURCE_TYPES.includes(type)
         ? // 只探测来源类型能力，不查询或提交此占位 ID；与实际选择后的领域校验同源（DEC-697）。
-          sourceAllowed({ type: 'specified', value: '00000000-0000-0000-0000-000000000000' }, node, approvalType)
+          sourceAllowed({ type, value: PROBE }, node, approvalType) || children.some((option) => !option.disabled)
         : children.some((option) => !option.disabled);
     let status: Status = 'restricted';
     if (unsupported.has(type)) status = 'unsupported';
     else if (enabled) status = 'enabled';
-    else if (pending.has(type)) status = 'pending';
     const suffix = status === 'enabled' ? '' : ` · ${s[status]}`;
     return { value: type, label: s.types[type] + suffix, disabled: status !== 'enabled', status, children };
   });
@@ -102,12 +95,20 @@ export function sourceInputError(value: unknown, node: ApprovalNode, approvalTyp
   for (const source of sources) {
     const option = options.find((item) => item.value === source.type);
     if (!option || option.disabled) return option ? option.label : s.invalid;
-    if (source.type === 'specified') {
-      if (!sourceAllowed(source, node, approvalType)) return s.invalid;
-    } else if (!option.children.some((item) => item.value === source.value && !item.disabled)) return s.invalid;
+    const fixedValue = option.children.some((item) => item.value === source.value && !item.disabled);
+    const dynamic = source.type === 'specified' || REFERENCE_SOURCE_TYPES.includes(source.type);
+    if (!fixedValue && !(dynamic && sourceAllowed(source, node, approvalType))) return s.invalid;
   }
   return undefined;
 }
+/** 引用值拆成对象 ID 与取值方式；身份只有对象 ID。固定表达式（如部门负责人）不是引用，返回 null。 */
+export function referenceOf(source: ApproverSource) {
+  const relation = relationSource(source);
+  if (relation) return { id: relation.id, mode: relation.mode };
+  const id = identityProfileId(source);
+  return id ? { id, mode: 'self' } : null;
+}
+export const referenceValue = (id: string, mode: string) => (mode === 'self' ? id : `${id}:${mode}`);
 export const sourceFields = (node: ApprovalNode) => [
   node.kind === 'countersign' ? 'approvers' : 'approver',
   ...(node.emptyApproverPolicy === 'specified' ? ['emptyApproverSources'] : []),

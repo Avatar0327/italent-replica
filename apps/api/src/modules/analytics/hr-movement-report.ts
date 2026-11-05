@@ -7,7 +7,7 @@
  * 离职只计一次，归入最后一次（单一入口 attributeWindow，hr-movement.ts），与人事看板“本年离职”同为人数；
  * 各月入离职表读原始行、每月内按员工去重，页尾 = 已到月份行之和。月表合计按月累加；年度各表按人数，重聘同年多次离职时
  * 二者可不等。
- * 组织编制取所选年度取数日（年底与 asOf 较早者）的组织编制与同日实有人员（含下级），预增员 / 预减员等四列整列 null（F-418）。
+ * 组织编制取所选年度取数日（年底与 asOf 较早者）的组织编制与同日实有人员（含下级），预增 / 预减按当前有效业务笔数投影（DEC-791①）。
  */
 import {
   AGE_SEGMENTS,
@@ -29,7 +29,15 @@ import {
   type HrMovementReportCode,
   type MovementMonth,
 } from '@italent/domain';
-import { actualStaff, exitReason, exitType, NONE_LABEL, unique, type Member } from './hr-movement-board.js';
+import {
+  actualStaff,
+  establishmentColumns,
+  exitReason,
+  exitType,
+  NONE_LABEL,
+  unique,
+  type Member,
+} from './hr-movement-board.js';
 import type {
   ExitDictionaries,
   MovementData,
@@ -314,23 +322,26 @@ function establishmentTable(x: ReportLookup, day: string) {
     readonly local: number | null;
     readonly inclusive: number | null;
     readonly actual: number | null;
+    readonly pendingIn: number | null;
+    readonly pendingOut: number | null;
+    readonly vacancy: number | null;
+    readonly executionRate: number | null;
   }
-  const missing = (key: string, label: string): Column<Cell> => ({ key, label, value: () => null });
   const columns: Column<Cell>[] = [
     { key: 'localCapacity', label: '本级编制', value: (c) => c.local },
     { key: 'inclusiveCapacity', label: '含下级编制', value: (c) => c.inclusive },
     { key: 'actual', label: '实有人员（含下级）', value: (c) => c.actual },
-    // 预增员 / 预减员按组织汇总的读接口尚未抽出（F-418），缺编数与执行率依赖它们，整列 null
-    missing('pendingIn', '预增员'),
-    missing('pendingOut', '预减员'),
-    missing('vacancy', '缺编数'),
-    missing('executionRate', '执行率'),
+    { key: 'pendingIn', label: '预增员', value: (c) => c.pendingIn },
+    { key: 'pendingOut', label: '预减员', value: (c) => c.pendingOut },
+    { key: 'vacancy', label: '缺编数', value: (c) => c.vacancy },
+    { key: 'executionRate', label: '执行率', value: (c) => c.executionRate },
   ];
   const rows = x.establishment
     .map((e) => ({
       key: e.id,
       label: x.tree.name(e.orgId),
       group: {
+        ...establishmentColumns(e, actualStaff(x.data, day, x.tree, e.orgId).length),
         local: e.localCapacity,
         inclusive: e.inclusiveCapacity,
         actual: actualStaff(x.data, day, x.tree, e.orgId).length,
@@ -338,7 +349,17 @@ function establishmentTable(x: ReportLookup, day: string) {
     }))
     .sort((a, b) => a.label.localeCompare(b.label, 'zh') || a.key.localeCompare(b.key));
   const local = x.establishment.reduce((sum, e) => sum + (e.localCapacity ?? 0), 0);
-  return [table('establishment', '组织编制统计', columns, rows, { local, inclusive: null, actual: null })];
+  return [
+    table('establishment', '组织编制统计', columns, rows, {
+      local,
+      inclusive: null,
+      actual: null,
+      pendingIn: null,
+      pendingOut: null,
+      vacancy: null,
+      executionRate: null,
+    }),
+  ];
 }
 
 /** 各月页签的合计：计数列 = 各已到月份行之和（asOf 之后的月份为 null，不计），离职率按合计重算（审查 P2-5）。 */

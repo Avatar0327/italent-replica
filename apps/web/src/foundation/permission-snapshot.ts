@@ -33,12 +33,15 @@ export const emptyPermissions: PermissionSnapshot = {
 };
 export const menuObjects = (route: AppRoute) => APP_OBJECT_DIRECTORY[route.id];
 
-/** 应用按服务端可见性显示；应用内入口还要求所属应用的入口对象含其对象。下一层结构由模块登记的 children 适配。 */
+/** 应用按服务端可见性显示；应用内入口还要求所属应用的入口对象含其单对象或 objectCodes 中任一对象。下一层结构由模块登记的 children 适配。 */
 export function menuNodes(routes: readonly MenuRoute[], response: ServerSnapshot): MenuNode[] {
   const visible = (route: MenuRoute) =>
     response.apps.some(
       (app) =>
-        app.app === route.app && app.visible && (!isEntry(route) || app.entryObjects.includes(route.objectCode ?? '')),
+        app.app === route.app &&
+        app.visible &&
+        (!isEntry(route) ||
+          (route.objectCodes ?? [route.objectCode ?? '']).some((code) => app.entryObjects.includes(code))),
     );
   return routes.flatMap((route): MenuNode[] => {
     if (isEntry(route) && route.children) {

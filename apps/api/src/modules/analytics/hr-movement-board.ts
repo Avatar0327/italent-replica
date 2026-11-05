@@ -102,15 +102,15 @@ export interface MovementLookup {
   /** asOf 时点的组织编制（已按部门筛选裁到所选组织及下级）；只有看板与 3.1.36 明细加载，其余明细为空。 */
   readonly establishment: readonly MovementEstablishment[];
 }
-/** 编制表一行除人数以外的列；预增员 / 预减员 / 缺编数 / 执行率的取数接口尚未抽出（F-418），整列 null。 */
+/** 编制表一行除人数以外的列；两个报表共用业务笔数与公式（DEC-791①）。 */
 export interface EstablishmentColumns {
   readonly orgId: string;
   readonly localCapacity: number | null;
   readonly inclusiveCapacity: number | null;
-  readonly pendingIn: null;
-  readonly pendingOut: null;
-  readonly vacancy: null;
-  readonly executionRate: null;
+  readonly pendingIn: number;
+  readonly pendingOut: number;
+  readonly vacancy: number | null;
+  readonly executionRate: number | null;
 }
 interface Group {
   readonly key: string;
@@ -224,7 +224,7 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
       key: e.id,
       label: x.tree.name(e.orgId),
       members: actualStaff(x.data, x.months.at(-1)!.end, x.tree, e.orgId),
-      columns: establishmentColumns(e),
+      columns: establishmentColumns(e, actualStaff(x.data, x.months.at(-1)!.end, x.tree, e.orgId).length),
     })),
   }),
 };
@@ -232,14 +232,14 @@ const RULES: Readonly<Record<HrMovementCode, (x: MovementLookup) => Computed>> =
 /** 某组织（含下级）在 day 的时点在职人员。 */
 export const actualStaff = (data: MovementData, day: string, tree: OrgTree, orgId: string) =>
   unique((data.snapshots.get(day) ?? []).filter((m) => tree.chain(m.departmentId).includes(orgId)));
-export const establishmentColumns = (e: MovementEstablishment): EstablishmentColumns => ({
+export const establishmentColumns = (e: MovementEstablishment, actual: number): EstablishmentColumns => ({
   orgId: e.orgId,
   localCapacity: e.localCapacity,
   inclusiveCapacity: e.inclusiveCapacity,
-  pendingIn: null,
-  pendingOut: null,
-  vacancy: null,
-  executionRate: null,
+  pendingIn: e.pendingIn,
+  pendingOut: e.pendingOut,
+  vacancy: e.inclusiveCapacity === null ? null : e.inclusiveCapacity - actual - e.pendingIn + e.pendingOut,
+  executionRate: e.inclusiveCapacity === null ? null : ratio(actual + e.pendingIn - e.pendingOut, e.inclusiveCapacity),
 });
 
 /** 部门筛选（含下级）下只列所选组织及其下级的编制对象。 */

@@ -500,6 +500,8 @@ export const MODULE_OBJECTS = {
       button('Transfer.Hr', 'detail', 'create'),
       button('Transfer.Manager', 'detail', 'create'),
       button('Transfer.Self', 'detail', 'create'),
+      button('Exit.Self', 'detail', 'create'),
+      button('PartTime.Self', 'detail', 'create'),
       button('EmploymentRecord.LineOp.Transfer', 'list_row', 'create'),
       button('Employment.Tranfer', 'list', 'create'),
       button('Employment.Edit', 'detail', 'update'),
