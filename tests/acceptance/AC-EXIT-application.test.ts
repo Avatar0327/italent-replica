@@ -105,7 +105,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
     expect(audit?.after).toMatchObject({ initiation: 'self', initiatorUserId: user, employeeId: staff.id });
   });
 
-  it('self 子集之外 400 且无写入：HR 字段、直接离职、去向缺失 / 非三选一、原因不在 personal / family', async () => {
+  it('self 子集之外 400 且无写入：HR 字段、直接离职、经理去向缺失 / 非三选一、原因不在 personal / family', async () => {
     const { w, staff, userOf, create } = await world('app-self-reject');
     const user = await userOf(staff.id);
     const before = await w.stateOf(staff.id);
@@ -116,7 +116,7 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
       ],
       [self(staff.id, { whereaboutsCode: 'startup', addToBlacklist: true }), 'EXIT_FIELD_NOT_ALLOWED_FOR_INITIATION'],
       [{ ...self(staff.id), mode: 'direct' as const }, 'EXIT_DIRECT_ONLY_HR'],
-      [self(staff.id, {}), 'EXIT_WHEREABOUTS_REQUIRED'],
+      [{ ...self(staff.id, {}), initiation: 'manager' as const }, 'EXIT_WHEREABOUTS_REQUIRED'],
       [self(staff.id, { whereaboutsCode: 'family' }), 'EXIT_WHEREABOUTS_NOT_ALLOWED'],
       [self(staff.id, { whereaboutsCode: 'startup', reasonCode: 'nope' }), 'EXIT_REASON_NOT_ALLOWED'],
     ] as const;

@@ -1,4 +1,4 @@
-import { EMPLOYEE_SELF_SERVICE_BUTTONS } from '@italent/domain';
+import { EMPLOYEE_TRANSFER_BUTTONS } from '@italent/domain';
 import { pageQuery, type PageRequest } from '../../foundation/client.js';
 import type { OwnRecord } from '../../employee-self-service/types.js';
 import { presetLabels } from '../../transfer/messages.js';
@@ -18,7 +18,7 @@ export interface TodoRow {
 }
 export const teamLabels: Record<string, string> = { ...m.manager.columns, email: m.email };
 export function canApplySelf(can: (button: string, level: string) => boolean) {
-  return EMPLOYEE_SELF_SERVICE_BUTTONS.every(({ buttonCode, level }) => can(buttonCode, level));
+  return EMPLOYEE_TRANSFER_BUTTONS.every(({ buttonCode, level }) => can(buttonCode, level));
 }
 export function statusText(value?: string) {
   return m.manager.statuses[value as keyof typeof m.manager.statuses] ?? value ?? m.none;
@@ -51,7 +51,22 @@ export function recordItems(record: OwnRecord) {
   ];
 }
 export function teamKeys(rows: TeamRow[]) {
-  return Object.keys(teamLabels).filter((key) => rows.some((row) => Object.hasOwn(row, key)));
+  const primary = [
+    'name',
+    'employType',
+    'postId',
+    'departmentId',
+    'mobilePhone',
+    'email',
+    'levelId',
+    'entryDate',
+    'directManagerId',
+    'dottedManagerId',
+    'tenure',
+    'employeeStatus',
+  ];
+  const keys = [...primary, ...Object.keys(teamLabels).filter((key) => !primary.includes(key))];
+  return keys.filter((key) => rows.some((row) => Object.hasOwn(row, key)));
 }
 export function teamValue(row: TeamRow, key: string) {
   if (!Object.hasOwn(row, key)) return m.none;

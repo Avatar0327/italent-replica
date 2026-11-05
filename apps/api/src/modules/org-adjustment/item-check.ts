@@ -10,7 +10,7 @@ import { AppError } from '../../errors.js';
 import { employeesInOrgs } from '../employment/org-people.js';
 import { assertDeactivationVacant } from '../org/deactivation.js';
 import { rowsOf } from '../org/read-model.js';
-import { assertItemRules, planStop } from './item-rules.js';
+import { assertItemRules, planStop, validateContent } from './item-rules.js';
 import { orgContext, PLAN_MESSAGES, planIssues, type ItemWorld } from './item-tree.js';
 import type { OrgItem } from './items-store.js';
 
@@ -43,12 +43,32 @@ export async function checkOrgItems(tx: Tx, world: ItemWorld, now: Date): Promis
       issues.push(issue(item, 'ORG_ADJUSTMENT_STAGED_REFERENCE', '引用了暂存的明细，请先完成该明细或改为引用其它组织'));
     }
   }
+  issues.push(...contentIssues(world, live));
   issues.push(...(await ruleIssues(tx, world, live, now)));
   issues.push(...(await headIssues(tx, world, live)));
   issues.push(...(await stopIssues(tx, world, live)));
   issues.push(...(await establishmentIssues(tx, world, live)));
   issues.push(...(await futureVersionIssues(tx, world, live)));
   issues.push(...baselineIssues(world, live));
+  return issues;
+}
+
+/**
+ * 内容完整性按生效日现值重判（与保存 / 审批中编辑同一个 validateContent）：保存时的“是否改名 / 改上级、负责人是否变化”
+ * 是相对当时的组织现值，外部改名 / 改负责人并刷新基线后现值变了，行内容的完整性结论随之变化。目标不存在的行交给
+ * 规则校验报 NOT_FOUND，这里跳过。
+ */
+function contentIssues(world: ItemWorld, live: readonly OrgItem[]) {
+  const issues: ItemIssue[] = [];
+  for (const item of live) {
+    const current = item.targetOrgId ? world.orgs.get(item.targetOrgId) : undefined;
+    if (item.targetOrgId && !current) continue;
+    try {
+      validateContent(item, current);
+    } catch (error) {
+      issues.push(fromError(item, error));
+    }
+  }
   return issues;
 }
 

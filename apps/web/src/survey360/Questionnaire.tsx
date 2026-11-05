@@ -4,7 +4,7 @@ import { useFormLock } from '../foundation/forms/FormLock.js';
 import { Alert, Checkbox, Input, InputNumber, Select, Table } from 'antd';
 import { usePermissions } from '../foundation/Permissions.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
-import { useRecordForm } from '../evaluation/useRecordForm.js';
+import { useSurveyForm } from './useSurveyForm.js';
 import { RemoteSelect } from '../evaluation/runtime.js';
 import { Repeated } from '../evaluation/ActivityFields.js';
 import { records, type Row } from '../evaluation/model.js';
@@ -26,7 +26,7 @@ export function QuestionnaireEditor({
   saved(): void;
 }) {
   const permission = usePermissions(OBJECT);
-  const writer = useRecordForm(path, row, questionnaireValues);
+  const writer = useSurveyForm(path, row, questionnaireValues);
   const current = writer.current;
   const contentFields = ['roles', 'scales', 'dimensions', 'questions'];
   let content: ReturnType<typeof questionnaireContent> | undefined;

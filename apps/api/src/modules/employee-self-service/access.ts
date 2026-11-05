@@ -1,10 +1,16 @@
 import { sql, withTenant, type Tx } from '@italent/db';
-import { buttonResource, EMPLOYEE_SELF_SERVICE_BUTTONS } from '@italent/domain';
+import {
+  buttonResource,
+  EMPLOYEE_SELF_SERVICE_BUTTONS,
+  EMPLOYEE_TRANSFER_BUTTONS,
+  SELF_APPLICATION_OBJECTS,
+  type SelfApplicationKind,
+} from '@italent/domain';
 import type { Context } from 'hono';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
@@ -19,7 +25,7 @@ import { employeeFieldPolicy, EMPLOYEE_READONLY_FIELDS, PROTOCOL_FIELDS } from '
 import { employeeAvatars } from '../avatar/references.js';
 
 const COMMAND_FIELDS = new Set(['initiator', 'transferTypeCode', 'formId', 'mode', 'kind', 'submit']);
-/** 叠加授权器只认本人调动的三个按钮，是否放行由员工身份里是否勾选决定（DEC-402②）；其他任职按钮一律走用户自己的身份。 */
+/** 叠加授权器只认登记的本人按钮，是否放行由员工身份里是否勾选决定（DEC-402②）；其他任职按钮一律走用户自己的身份。 */
 const SELF_BUTTONS = new Set(EMPLOYEE_SELF_SERVICE_BUTTONS.map((b) => b.buttonCode));
 
 export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenantId' | 'userId'>) {
@@ -35,39 +41,77 @@ export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenant
   return { ...employee, avatar: avatars.get(employee.id) ?? null };
 }
 
-/** 员工身份是否授予本人调动按钮（只认三个本人调动按钮；其他任职按钮一律走用户自己的身份）。 */
+/** 员工身份是否授予已登记的本人按钮（其他任职按钮一律走用户自己的身份）。 */
 async function selfButtonGranted(tx: Tx, tenantId: string, request: Parameters<Authorizer>[0]): Promise<boolean> {
   const button = request.resource?.split('#')[1]?.split('@')[0] ?? '';
   return SELF_BUTTONS.has(button) && (await employeeFieldPolicy(tx, tenantId)).buttons.has(button);
 }
 
-/** 只供本人路由使用，不给 HR / 审批接口增加任何隐式授权或租户范围。 */
-export async function selfAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, expectedRevision = 0) {
-  const tenant = tenantOf(c);
-  const employee = await withTenant(deps.db, tenant.tenantId, (tx) => boundEmployee(tx, tenant));
-  const scope = {
+function selfFieldReader(
+  deps: TenantRouteDeps,
+  tenant: TenantContext,
+  kind: SelfApplicationKind | undefined,
+  check: (tx: Tx) => Promise<void>,
+) {
+  return async (tenantId: string, userId: string, objectCode: string, tx: Tx) => {
+    const existing = await getModuleViewableFieldsInTransaction(
+      deps,
+      { ...tenant, tenantId, userId },
+      kind && tenantId === tenant.tenantId && userId === tenant.userId && objectCode === EMPLOYMENT_OBJECT
+        ? SELF_APPLICATION_OBJECTS[kind].code
+        : objectCode,
+      tx,
+    );
+    if (tenantId !== tenant.tenantId || userId !== tenant.userId || objectCode !== EMPLOYMENT_OBJECT)
+      return existing ?? new Set<string>();
+    await check(tx);
+    return new Set([...PROTOCOL_FIELDS, ...(await employeeFieldPolicy(tx, tenantId, kind)).view, ...(existing ?? [])]);
+  };
+}
+
+function selfScope(employeeId: string) {
+  return {
     ...EMPTY_SCOPE,
     hasDataPermission: true,
-    personIds: [employee.id],
-    terms: [{ dimension: 'reporting' as const, orgIds: [], personIds: [employee.id] }],
+    personIds: [employeeId],
+    terms: [{ dimension: 'reporting' as const, orgIds: [], personIds: [employeeId] }],
   };
+}
+
+/** 只供本人路由使用，不给 HR / 审批接口增加任何隐式授权或租户范围。 */
+export async function selfAccess(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  expectedRevision = 0,
+  kind?: SelfApplicationKind,
+) {
+  const tenant = tenantOf(c);
+  const employee = await withTenant(deps.db, tenant.tenantId, (tx) => boundEmployee(tx, tenant));
+  const scope = selfScope(employee.id);
   const check = async (tx: Tx) => {
     if ((await boundEmployee(tx, tenant)).id !== employee.id) throw new AppError('FORBIDDEN', '员工绑定已变化，请刷新');
   };
   const evaluate = async (request: Parameters<Authorizer>[0], tx: Tx) => {
-    const base = authorizeInTransaction(deps.authorize, tx);
-    if (request.tenantId !== tenant.tenantId || request.userId !== tenant.userId) return base(request);
+    const original = authorizeInTransaction(deps.authorize, tx);
+    const base: Authorizer = (query) =>
+      original(
+        kind && query.resource === EMPLOYMENT_OBJECT
+          ? { ...query, resource: SELF_APPLICATION_OBJECTS[kind].code }
+          : query,
+      );
+    if (request.tenantId !== tenant.tenantId || request.userId !== tenant.userId) return original(request);
     await check(tx);
     if (request.resource?.split('#')[0] !== EMPLOYMENT_OBJECT) return base(request);
     if (request.action === 'object.view') return true;
     if (request.action === 'object.button')
       return (await selfButtonGranted(tx, tenant.tenantId, request)) || base(request);
     if (['object.create', 'object.update'].includes(request.action) && request.fields) {
-      const policy = await employeeFieldPolicy(tx, tenant.tenantId);
-      if (!policy.create && !(await base({ ...request, fields: [] }))) return false;
+      const policy = await employeeFieldPolicy(tx, tenant.tenantId, kind);
+      const canWrite = kind && request.action === 'object.update' ? policy.update : policy.create;
+      if (!canWrite && !(await base({ ...request, fields: [] }))) return false;
       for (const field of request.fields) {
         if (EMPLOYEE_READONLY_FIELDS.has(field)) return false;
-        if ((policy.create && policy.edit.has(field)) || COMMAND_FIELDS.has(field)) continue;
+        if ((canWrite && policy.edit.has(field)) || COMMAND_FIELDS.has(field)) continue;
         if (!(await base({ ...request, fields: [field] }))) return false;
       }
       return true;
@@ -75,13 +119,7 @@ export async function selfAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, e
     return base(request);
   };
   const authorize: Authorizer = (request) => withTenant(deps.db, tenant.tenantId, (tx) => evaluate(request, tx));
-  const fields = async (tenantId: string, userId: string, objectCode: string, tx: Tx) => {
-    const existing = await getModuleViewableFieldsInTransaction(deps, { ...tenant, tenantId, userId }, objectCode, tx);
-    if (tenantId !== tenant.tenantId || userId !== tenant.userId || objectCode !== EMPLOYMENT_OBJECT)
-      return existing ?? new Set<string>();
-    await check(tx);
-    return new Set([...PROTOCOL_FIELDS, ...(await employeeFieldPolicy(tx, tenantId)).view, ...(existing ?? [])]);
-  };
+  const fields = selfFieldReader(deps, tenant, kind, check);
   registerScopeProvider(authorize, {
     authorize: evaluate,
     fields: (tenantId, userId, objectCode, tx) =>
@@ -110,6 +148,7 @@ export async function selfAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, e
   });
   const ctx: EmploymentContext = {
     selfServiceEmployeeId: employee.id,
+    ...(kind ? { selfApplicationKind: kind } : {}),
     ...tenant,
     now: deps.clock(),
     expectedRevision,
@@ -156,7 +195,7 @@ export async function grantedSelfServiceButtons(tx: Tx, ctx: EmploymentContext) 
 export async function requireSelfServiceButtons(tx: Tx, ctx: EmploymentContext): Promise<void> {
   if (!ctx.authorize) throw new AppError('FORBIDDEN', '无权发起本人调动');
   const authorize = authorizeInTransaction(ctx.authorize, tx);
-  for (const { buttonCode, level } of EMPLOYEE_SELF_SERVICE_BUTTONS) {
+  for (const { buttonCode, level } of EMPLOYEE_TRANSFER_BUTTONS) {
     const allowed = await authorize({
       ...ctx,
       action: 'object.button',

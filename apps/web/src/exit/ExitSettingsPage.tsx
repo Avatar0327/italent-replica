@@ -21,6 +21,9 @@ import { EXIT_SETTINGS_OBJECT, KINDS, dictionaryPath, isKind, parseEntries, writ
 import type { Entry, Kind } from './model.js';
 import { s } from './settings-messages.js';
 import { SETTINGS_TABS, isSettingsTab, type SettingsTab } from './settings-model.js';
+import { TerminationSettings } from './TerminationSettings.js';
+import { TERMINATION_TAB } from './termination-model.js';
+import { terminationMessages as t } from './termination-messages.js';
 import './exit.css';
 
 export function ExitSettingsPage() {
@@ -42,7 +45,8 @@ export function ExitSettingsPage() {
 function DictionaryTabs() {
   const { kind } = useParams();
   const navigate = useNavigate();
-  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB && !isSettingsTab(kind)) return <PageState kind="not-found" />;
+  if (!isKind(kind) && kind !== ACCOUNT_STOP_TAB && kind !== TERMINATION_TAB && !isSettingsTab(kind))
+    return <PageState kind="not-found" />;
   return (
     <section className="exit-card">
       <Tabs
@@ -53,17 +57,19 @@ function DictionaryTabs() {
         items={[
           ...KINDS.map((key) => ({ key, label: m.dictionaries[key] })),
           { key: ACCOUNT_STOP_TAB, label: a.tab },
+          { key: TERMINATION_TAB, label: t.title },
           ...SETTINGS_TABS.map((key) => ({ key, label: s.tabs[key] })),
         ]}
       />
       {isKind(kind) && <Dictionary key={kind} kind={kind} />}
       {isSettingsTab(kind) && <SettingsTabPage tab={kind} />}
       {kind === ACCOUNT_STOP_TAB && <AccountStopSettings />}
+      {kind === TERMINATION_TAB && <TerminationSettings />}
     </section>
   );
 }
 
-// B63 终止在途设置没有读写接口（DEC-578 归入离职生效作废在途），不出页签。
+// F-419：终止在途设置独立复用两层配置接口；其余设置页保持既有映射。
 const SETTINGS_PAGES: Record<SettingsTab, ComponentType> = {
   'handover-items': HandoverItems,
   'handover-trigger': HandoverTrigger,

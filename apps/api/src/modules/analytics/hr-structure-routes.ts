@@ -43,7 +43,7 @@ registerPersonScopedObject(HR_STRUCTURE_OBJECT);
 registerPersonScopedObject(HR_STRUCTURE_REPORT_OBJECT);
 
 /** “正式员工”= 雇佣关系内部员工（含试用，不含实习生），与人事看板第 1 项同一口径。 */
-const BOARD_EMPLOY_TYPES = ['internal'];
+export const BOARD_EMPLOY_TYPES = ['internal'];
 
 /**
  * UUID 参数的单一入口（BE-13a 两个看板、明细与报表同用）：校验接受大小写，下游按小写比较（TS 内的相等 / 链查找、
@@ -70,7 +70,7 @@ function includeChildrenQuery(c: Context, name: string): boolean {
   return raw !== 'false';
 }
 /** 任职部门筛选（看板与报表同一写法）。 */
-const departmentFilter = (c: Context) => ({
+export const departmentFilter = (c: Context) => ({
   departmentId: uuidQuery(c, 'departmentId'),
   departmentIncludeChildren: includeChildrenQuery(c, 'departmentIncludeChildren'),
 });
@@ -97,7 +97,7 @@ async function reportContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   return analyticsScope(c, deps, base, HR_STRUCTURE_REPORT_OBJECT);
 }
 
-async function lookupOf(tx: Tx, tenantId: string, asOf: string): Promise<StructureLookup> {
+export async function lookupOf(tx: Tx, tenantId: string, asOf: string): Promise<StructureLookup> {
   return {
     asOf,
     tree: await orgTree(tx, tenantId, asOf),

@@ -17,7 +17,10 @@ function rowsOf<T>(value: unknown): T[] {
   return (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 }
 
-/** 规则现算：行政维度路径（顺序号 + 编码）排序后的全租户名次（DEC-037 / G-036）。 */
+/**
+ * 规则现算：行政维度路径（顺序号 + 编码）排序后的全租户名次（DEC-037 / G-036）。
+ * 顺序号按数值升序、空值排最后（F-441）；这里用“空值标志位 + 偏移定宽”独立表达，不与迁移的哨兵写法共用同一份编码。
+ */
 async function expectedOrgRanks(tx: Tx, tenantId: string, date: string) {
   const rows = rowsOf<{ org_id: string; n: number }>(
     await tx.execute(sql`WITH RECURSIVE cur AS (
@@ -27,7 +30,9 @@ async function expectedOrgRanks(tx: Tx, tenantId: string, date: string) {
         SELECT org_id,ARRAY[code]::text[],ARRAY[org_id] FROM cur
         WHERE org_id=${tenantId}::uuid AND enabled AND stop_date>=${date}::date
         UNION ALL
-        SELECT c.org_id,p.sort_path || (lpad(COALESCE(h.sequence,2147483647)::text,10,'0') || ':' || c.code),
+        SELECT c.org_id,
+          p.sort_path || ((CASE WHEN h.sequence IS NULL THEN '1' ELSE '0' END)
+            || lpad((COALESCE(h.sequence,0)::bigint + 2147483648)::text,10,'0') || ':' || c.code),
           p.visited || c.org_id
         FROM cur c JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.version_id=c.id AND h.dimension='admin'
         JOIN paths p ON p.org_id=h.parent_org_id
@@ -74,13 +79,14 @@ async function world(db: Db, label: string) {
     return (await response.json()) as T;
   };
   type Ref = { id: string; revision: number };
-  const org = async (name: string, parentId: string = tenant.id, sequence?: number) =>
+  const org = async (name: string, parentId: string = tenant.id, sequence?: number, code?: string) =>
     ok<Ref>(
       await call(
         'POST',
         'org/organizations',
         {
           name,
+          ...(code === undefined ? {} : { code }),
           establishedOn: '2020-01-01',
           parents: { admin: { parentId, ...(sequence === undefined ? {} : { sequence }) } },
         },
@@ -188,6 +194,41 @@ describe('DEC-089 组织排序号预计算', () => {
     await w.assertRanks();
     expect(await w.orgRank(late.id)).toBe(2);
     expect((await w.list()).find((item) => item.id === eb)?.organizationSortNumber).toBe(3);
+  });
+
+  it('F-441 负数顺序号按数值排序：员工名次与顺序号大小一致，NULL 排最后', async () => {
+    const w = await world(database().db, 'rank-negative');
+    // 字符串比较会把 -1 排在 -5 前面；预览与组织列表按数值比较，名次必须同口径
+    const sequences = [3, -1, 0, -5, null] as const;
+    const orgs = [];
+    for (const sequence of sequences) orgs.push(await w.org(`序${sequence}`, undefined, sequence ?? undefined));
+    const ids: string[] = [];
+    for (const org of orgs) ids.push(await w.employee(`员${org.id.slice(0, 4)}`, { departmentId: org.id }));
+    const expected = [3, 1, 2, 0, 4].map((index) => ids[index]!); // -5, -1, 0, 3, null
+    expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual(expected);
+    const shown = await w.list();
+    const rank = (index: number) => shown.find((item) => item.id === ids[index])!.organizationSortNumber!;
+    expect([3, 1, 2, 0, 4].map(rank)).toEqual([...[3, 1, 2, 0, 4].map(rank)].sort((a, b) => a - b));
+  });
+
+  it('F-441 int32 全范围：INT32_MIN / -1 / 0 / INT32_MAX 按数值，NULL 严格排在 INT32_MAX 之后（编码刻意反向）', async () => {
+    const w = await world(database().db, 'rank-int32');
+    // 编码与期望名次相反：若 NULL 与 INT32_MAX 排序值相同，就会按编码把 NULL（ZA）排到 INT32_MAX（ZB）前面
+    const cases = [
+      { name: '序NULL', sequence: undefined, code: `ZA${uniqueSuffix()}` },
+      { name: '序MAX', sequence: 2147483647, code: `ZB${uniqueSuffix()}` },
+      { name: '序0', sequence: 0, code: `ZC${uniqueSuffix()}` },
+      { name: '序-1', sequence: -1, code: `ZD${uniqueSuffix()}` },
+      { name: '序MIN', sequence: -2147483648, code: `ZE${uniqueSuffix()}` },
+    ];
+    const ids: string[] = [];
+    for (const item of cases) {
+      const org = await w.org(item.name, undefined, item.sequence, item.code);
+      ids.push(await w.employee(`员${item.name}`, { departmentId: org.id }));
+    }
+    const expected = [4, 3, 2, 1, 0].map((index) => ids[index]!); // MIN, -1, 0, MAX, NULL
+    expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual(expected);
+    await w.assertRanks();
   });
 
   it('调整组织顺序号与上级：名次随之刷新，列表取值与排序一致', async () => {

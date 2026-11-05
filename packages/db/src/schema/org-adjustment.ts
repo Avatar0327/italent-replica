@@ -391,6 +391,18 @@ export const orgAdjustmentEmploymentFailures = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.itemId, t.employeeId] }),
     adjustmentFk('org_adjustment_employment_failures_adjustment_fk', t),
-    index('org_adjustment_employment_failures_adjustment').on(t.tenantId, t.adjustmentId),
+    // 失败行只能挂在同单明细上（复合键含 adjustment_id，别的单的明细会被拒）；员工必须是本租户员工（F-458）。
+    foreignKey({
+      name: 'org_adjustment_employment_failures_item_fk',
+      columns: [t.tenantId, t.adjustmentId, t.itemId],
+      foreignColumns: [orgAdjustmentOrgItems.tenantId, orgAdjustmentOrgItems.adjustmentId, orgAdjustmentOrgItems.id],
+    }),
+    foreignKey({
+      name: 'org_adjustment_employment_failures_employee_fk',
+      columns: [t.tenantId, t.employeeId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    // 详情读取：按单取、按明细顺序列出；(tenant, adjustment) 原索引被它覆盖，一并替换。
+    index('org_adjustment_employment_failures_detail').on(t.tenantId, t.adjustmentId, t.itemId, t.employeeId),
   ],
 );
