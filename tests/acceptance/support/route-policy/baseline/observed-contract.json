@@ -4590,6 +4590,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5005,6 +5006,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5092,6 +5094,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }

@@ -80,6 +80,8 @@ export function registerExitHandoverRoutes(router: Hono<TenantEnv>, deps: Tenant
       'TenantBase.EmploymentSettings',
     );
   router.get('/exit-handover-items', async (c) => {
+    // F-358 / DEC-780：与入口（任职记录对象）同口径，先要任职记录查看权，再要任职设置对象查看权
+    await readContext(c, deps, 'object.view');
     const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings');
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listHandoverItems(tx, ctx.tenantId));
     return c.json({ items: await trimModuleResponse(deps, ctx, SETTINGS, items) });
