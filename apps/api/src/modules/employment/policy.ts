@@ -338,6 +338,26 @@ function configurationView(objectCode: string, fields: FieldsPolicy): RoutePolic
 }
 
 /**
+ * 离职设置页的配置读取（F-358 / DEC-780）：入口留在人事异动应用、对象是任职记录，所以读取接口向入口看齐——
+ * 任职记录查看权（object.view，无按钮、无范围过滤）+ 任职设置对象查看权（admin.other_settings），两者缺一 403。写接口不动。
+ */
+function exitSettingsView(fields: FieldsPolicy): RoutePolicy {
+  return all(
+    [
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('设置页入口同口径的准入检查，无按钮'),
+        scope: noScope('只是入口准入：不据此返回任职人员，配置对象无数据范围'),
+        fields,
+      }),
+      configurationView(SETTINGS, fields),
+    ],
+    fields,
+  );
+}
+
+/**
  * 立即执行回执的人员披露（BE-15a 第 4 轮审查 P2）：可选分支，只决定回执列出哪些员工、不参与准入、不拒绝请求——
  * visibleEmployees 先判任职记录查看权（object.view），没有时 launched / failed 两列为空；有时再按数据范围逐人过滤
  * （employment.runReceipt，与准入节点上的范围同一裁剪）。逐人条目是固定键，不含任职字段值。
@@ -490,7 +510,7 @@ const accountTaskView = object({
 });
 
 export const EMPLOYMENT_POLICIES = defineTable('employment', {
-  'GET /exit-account/settings': configurationView(SETTINGS, ACCOUNT_SETTINGS_FIELDS),
+  'GET /exit-account/settings': exitSettingsView(ACCOUNT_SETTINGS_FIELDS),
   'PUT /exit-account/settings': admin('other_settings', {
     alias: 'tenant.employment.configuration.write',
     fields: ACCOUNT_SETTINGS_FIELDS,
@@ -2296,7 +2316,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: blacklistWrite('body', ['assertRevision'], true),
   }),
   // 离职自动加黑规则：任职设置配置对象（审计 blacklist_rule.*）；条件只认“离职次数 ≥ N”，期限只认永久 / 离职当月
-  'GET /blacklist-rules': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'GET /blacklist-rules': exitSettingsView(SETTINGS_FIELDS),
   'POST /blacklist-rules': configuration(SETTINGS, 'create', SETTINGS_FIELDS, auditedConfigWrite('blacklist_rule')),
   'PUT /blacklist-rules/:id': configuration(
     SETTINGS,
@@ -2318,7 +2338,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   ),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，DEC-266③）----------------------------------
   // 同自动加黑规则：任职设置配置对象（审计 exit_handover_item.*）；字段只有类别 / 序号 / 待办类别 / 待办事项 / 办理表单 / 备注
-  'GET /exit-handover-items': configurationView(SETTINGS, SETTINGS_FIELDS),
+  'GET /exit-handover-items': exitSettingsView(SETTINGS_FIELDS),
   'POST /exit-handover-items': configuration(
     SETTINGS,
     'create',

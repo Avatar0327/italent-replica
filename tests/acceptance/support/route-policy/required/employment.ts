@@ -1113,23 +1113,43 @@ const DRAFT_BUTTON = {
   PUT: "await requireEmploymentWrite(ctx, 'create', controls, 'Employment.Create', undefined, { commandOnly: true })",
 } as const;
 
-export const EMPLOYMENT: RequiredTable = {
-  'GET /api/tenant/employment/exit-account/settings': [
-    ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
-      [
-        at(
-          ACCOUNT,
-          'GET',
-          '/exit-account/settings',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
-        READ,
-        { role: 'const', unit: `${ACCOUNT}#settingsObject`, anchor: "'TenantBase.EmploymentSettings'" },
-      ],
+/**
+ * F-358 / DEC-780：离职设置页的三个配置读取除了任职设置对象查看权（原义务），还要求任职记录查看权（入口同口径）。
+ * 两个准入承载节点各自登记 need：配置对象无范围，记录查看权只是准入检查（不据此过滤返回），所以都是 none。
+ */
+const exitSettingsRead = (settingsView: readonly Obligation[], file: string, path: string): Obligation[] => [
+  ...settingsView.map((obligation) => ({ ...obligation, need: NONE })),
+  {
+    ...ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
+      [at(file, 'GET', path, "await readContext(c, deps, 'object.view')"), READ, RECORD_CONST],
     ),
-  ],
+    need: NONE,
+  },
+];
+
+export const EMPLOYMENT: RequiredTable = {
+  'GET /api/tenant/employment/exit-account/settings': exitSettingsRead(
+    [
+      ob(
+        'obj:TenantBase.EmploymentSettings:view',
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+        [
+          at(
+            ACCOUNT,
+            'GET',
+            '/exit-account/settings',
+            "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+          ),
+          READ,
+          { role: 'const', unit: `${ACCOUNT}#settingsObject`, anchor: "'TenantBase.EmploymentSettings'" },
+        ],
+      ),
+    ],
+    ACCOUNT,
+    '/exit-account/settings',
+  ),
   'PUT /api/tenant/employment/exit-account/settings': [accountSettings('PUT')],
   'GET /api/tenant/employment/exit-account/tasks': [
     accountRead(at(ACCOUNT, 'GET', '/exit-account/tasks', "const ctx = await readContext(c, deps, 'object.view')")),
@@ -3960,21 +3980,25 @@ export const EMPLOYMENT: RequiredTable = {
     "const ctx = await readContext(c, deps, 'object.delete', 0, undefined, BLACKLIST_OBJECT)",
     ['delete', 'list'],
   ),
-  'GET /api/tenant/employment/blacklist-rules': [
-    ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
-      [
-        at(
-          BL,
-          'GET',
-          '/blacklist-rules',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
-        READ,
-      ],
-    ),
-  ],
+  'GET /api/tenant/employment/blacklist-rules': exitSettingsRead(
+    [
+      ob(
+        'obj:TenantBase.EmploymentSettings:view',
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+        [
+          at(
+            BL,
+            'GET',
+            '/blacklist-rules',
+            "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+          ),
+          READ,
+        ],
+      ),
+    ],
+    BL,
+    '/blacklist-rules',
+  ),
   ...Object.fromEntries(
     (
       [
@@ -4005,21 +4029,25 @@ export const EMPLOYMENT: RequiredTable = {
     ]),
   ),
   // ---- employment/exit-handover-routes.ts：R2 BE-8b1 离职交接事项设置（B64，任职设置配置对象）-----------------------------
-  'GET /api/tenant/employment/exit-handover-items': [
-    ob(
-      'obj:TenantBase.EmploymentSettings:view',
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
-      [
-        at(
-          HANDOVER,
-          'GET',
-          '/exit-handover-items',
-          "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
-        ),
-        READ,
-      ],
-    ),
-  ],
+  'GET /api/tenant/employment/exit-handover-items': exitSettingsRead(
+    [
+      ob(
+        'obj:TenantBase.EmploymentSettings:view',
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentSettings:view', 'object:object.* 动作'],
+        [
+          at(
+            HANDOVER,
+            'GET',
+            '/exit-handover-items',
+            "const ctx = await readContext(c, deps, 'object.view', 0, undefined, 'TenantBase.EmploymentSettings')",
+          ),
+          READ,
+        ],
+      ),
+    ],
+    HANDOVER,
+    '/exit-handover-items',
+  ),
   ...Object.fromEntries(
     (
       [

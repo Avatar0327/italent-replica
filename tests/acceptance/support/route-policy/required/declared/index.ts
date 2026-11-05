@@ -10,6 +10,7 @@ import { EVALUATION_DECLARED } from './evaluation.js';
 import { HR_DASHBOARD_DECLARED } from './hr-dashboard.js';
 import { HR_PROCESS_DASHBOARD_DECLARED } from './hr-process-dashboard.js';
 import { HR_STRUCTURE_DECLARED } from './hr-structure.js';
+import { TEAM_DASHBOARD_DECLARED } from './team-dashboard.js';
 import { HR_MOVEMENT_DECLARED } from './hr-movement.js';
 import { CONTRACT_BOARD_DECLARED } from './contract-board.js';
 import { DUTY_TRANSFER_DECLARED } from './duty-transfer.js';
@@ -43,6 +44,7 @@ export const DECLARED: Readonly<Record<string, ModuleDeclared>> = {
   'hr-dashboard': HR_DASHBOARD_DECLARED,
   'hr-process-dashboard': HR_PROCESS_DASHBOARD_DECLARED,
   'hr-structure': HR_STRUCTURE_DECLARED,
+  'team-dashboard': TEAM_DASHBOARD_DECLARED,
   'hr-movement': HR_MOVEMENT_DECLARED,
   'contract-board': CONTRACT_BOARD_DECLARED,
   'duty-transfer': DUTY_TRANSFER_DECLARED,

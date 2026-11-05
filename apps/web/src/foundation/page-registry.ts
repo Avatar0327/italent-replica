@@ -32,25 +32,29 @@ export interface AppPageDeclaration {
   /** 菜单下一层的 L2 结构适配；可见性仍来自服务端快照，这里不授予权限 */
   readonly children?: (snapshot: ServerSnapshot, route: AppRoute) => MenuNode[];
 }
-/** 应用内单独的菜单入口（不新增后端应用）：所属应用的入口对象含 objectCode 时才显示；路由挂在 /<id>/*，子路径由入口页自管 */
-interface EntryPageLeaf {
+/** DEC-803①：单对象或任一对象匹配；这里只消费服务端快照，不授予对象权限。 */
+type EntryObjects =
+  | { readonly objectCode: string; readonly objectCodes?: never }
+  | { readonly objectCode?: never; readonly objectCodes: readonly string[] };
+/** 应用内入口路由挂在 /<id>/*；全部子路径沿用入口可见性，页面再按接口结果鉴权。 */
+type EntryPageLeaf = EntryObjects & {
   readonly id: string;
   readonly app: AppId;
   readonly label: string;
   readonly group: AppGroup;
-  readonly objectCode: string;
   readonly page?: ModulePage;
   readonly legacy?: boolean;
   readonly children?: never;
-}
+};
 /** F-190a：子项继承 app / group，独立声明 objectCode、id（/<id>/*）、page 和 legacy，保持声明顺序。 */
-export type EntryPageChild = Omit<EntryPageLeaf, 'app' | 'group'>;
+export type EntryPageChild = Omit<EntryPageLeaf, 'app' | 'group' | 'objectCode' | 'objectCodes'> & EntryObjects;
 /** 分组无页面或额外权限，只容纳一层叶子；所有子项不可见时隐藏分组。 */
 export type EntryPageDeclaration =
   | EntryPageLeaf
   | (Pick<EntryPageLeaf, 'id' | 'app' | 'label' | 'group'> & {
       readonly children: readonly EntryPageChild[];
       readonly objectCode?: never;
+      readonly objectCodes?: never;
       readonly page?: never;
       readonly legacy?: never;
     });

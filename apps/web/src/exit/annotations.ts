@@ -19,6 +19,12 @@ export const notes: Record<string, DecisionAnnotation> = {
     decisions: ['DEC-577', 'DEC-045', 'DEC-464', 'DEC-502'],
     level: 'L2',
   },
+  'exit-termination': {
+    original: '规格 30：28 类流程按任职、合同、考核、个人信息分组；三类调动独立勾选，新增兼职已勾选且禁用。',
+    decision: '复用离职退休设置页签，缺键按预置回显，经两层配置保存。配置页版式、页签位置未验证。',
+    decisions: ['DEC-725', 'DEC-045', 'DEC-502'],
+    level: 'L2',
+  },
   'exit-account-stop': {
     original:
       '帮助中心目录里“账号停用时间”与“延迟离职生效时间”同属离职退休设置；本租户没有该入口，版式无截图（DM-R9）。',
