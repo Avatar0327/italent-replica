@@ -217,3 +217,34 @@ for (const kind of ['activities', 'groups'] as const) {
     await expect(page.locator('body')).not.toContainText(name);
   });
 }
+
+test('AC-EV-F475 P2-3 过程活动选择清空后停止读取，重新选择恢复读取', async ({ page }) => {
+  await setupR3b(page, '/evaluation');
+  const reads: (string | null)[] = [];
+  await page.route('**/evaluation/staff-evaluations?*', (route) => {
+    const activity = new URL(route.request().url()).searchParams.get('activityId');
+    reads.push(activity);
+    return activity === id
+      ? route.fulfill({ json: { items: [{ id, revision: 1, employeeId: id, activityId: id }], total: 1 } })
+      : route.fulfill({ status: 400, json: { error: { code: 'INVALID_INPUT' } } });
+  });
+  await menu(page, '评定过程').click();
+  const selector = page.getByRole('combobox', { name: '活动设置', exact: true });
+  const row = page.locator(`tr[data-row-key="${id}"]`);
+  const control = page.locator('.ant-select').filter({ has: selector });
+  const selectActivity = async () => {
+    await control.locator('.ant-select-selector').click();
+    await page.getByTitle(ev.name, { exact: true }).click();
+    await expect(row).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`activity=${id}`));
+  };
+  await selectActivity();
+  expect(reads).toEqual([id]);
+  await control.hover();
+  await control.locator('.ant-select-clear').click();
+  await expect(page).not.toHaveURL(/[?&]activity=/);
+  await expect(row).toHaveCount(0);
+  expect(reads).toEqual([id]);
+  await selectActivity();
+  expect(reads).toEqual([id, id]);
+});
