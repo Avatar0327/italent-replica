@@ -397,6 +397,11 @@ function listColumns(
       width: kind === 'questionnaires' ? 116 : 122,
       render: (row) => (
         <Space size="small">
+          {kind === 'activities' && !visible('name') && (
+            <Button type="link" onClick={() => select(row.id)}>
+              {common.view}
+            </Button>
+          )}
           {kind === 'activities' ? (
             <StateAction row={row} kind={kind} saved={reload} />
           ) : (
