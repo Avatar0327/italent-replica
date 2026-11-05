@@ -520,12 +520,82 @@ export const approvalInstanceLogs = pgTable(
   },
   (t) => [
     unique('approval_logs_seq').on(t.tenantId, t.instanceId, t.seq),
+    // F-476：办理份用复合外键把自己锚在唯一一条办理日志上
+    unique('approval_logs_tenant_id').on(t.tenantId, t.id),
     index('approval_logs_admin_self').on(t.tenantId, t.adminSelfTransfer, t.createdAt),
     foreignKey({
       name: 'approval_logs_instance_fk',
       columns: [t.tenantId, t.instanceId],
       foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
     }),
+  ],
+);
+
+/**
+ * F-476（DEC-781）：审批人成功办理那一刻看到的业务内容（“办理份”），已办读取它而不是业务现值。
+ * 只追加（触发器禁止 UPDATE / DELETE / TRUNCATE）；每个办理任务、每条办理日志至多一份。content 是按 business_type 区分的
+ * 类型化展示内容，不含状态机 / 授权 / 原始命令；disclosure_ceiling 是办理时的披露上限，只在服务端使用；
+ * payload_bytes / content_digest 只用于大小上限与完整性，永不出现在响应里。设计 docs/08_设计/F-476 §3.2。
+ */
+export const approvalHandlingContents = pgTable(
+  'approval_handling_contents',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    instanceId: uuid('instance_id').notNull(),
+    taskId: uuid('task_id').notNull(),
+    handlingLogId: uuid('handling_log_id').notNull(),
+    round: integer('round').notNull(),
+    nodeKey: text('node_key').notNull(),
+    activationId: uuid('activation_id'),
+    processVersionId: uuid('process_version_id').notNull(),
+    /** 办理人；不加成员外键，账号离开租户后办理份仍要保留。 */
+    actorUserId: uuid('actor_user_id'),
+    handlingKind: text('handling_kind').notNull(),
+    action: text('action').notNull(),
+    businessType: text('business_type').notNull(),
+    businessId: uuid('business_id').notNull(),
+    businessVersion: text('business_version').notNull(),
+    /** 展示内容的形状版本；读取时遇到不认识的版本直接拒绝，不回退现值。 */
+    contentSchemaVersion: integer('content_schema_version').notNull(),
+    content: jsonb('content').$type<Record<string, unknown>>().notNull(),
+    disclosureCeiling: jsonb('disclosure_ceiling').$type<Record<string, unknown>>().notNull(),
+    payloadBytes: integer('payload_bytes').notNull(),
+    contentDigest: text('content_digest').notNull(),
+    actedAt: utc('acted_at').notNull(),
+    createdAt: utc('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('approval_handling_contents_tenant_id').on(t.tenantId, t.id),
+    unique('approval_handling_contents_log').on(t.tenantId, t.handlingLogId),
+    // 不设 (tenant_id, task_id) 唯一：前加签的座位在加签人同意后复活为同一个任务，再被原人办理（设计 §4 假设“恢复使用新 task”与引擎不符）
+    index('approval_handling_contents_task').on(t.tenantId, t.taskId),
+    index('approval_handling_contents_actor').on(t.tenantId, t.instanceId, t.actorUserId, t.handlingLogId),
+    foreignKey({
+      name: 'approval_handling_contents_instance_fk',
+      columns: [t.tenantId, t.instanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    foreignKey({
+      name: 'approval_handling_contents_task_fk',
+      columns: [t.tenantId, t.taskId],
+      foreignColumns: [approvalTasks.tenantId, approvalTasks.id],
+    }),
+    foreignKey({
+      name: 'approval_handling_contents_log_fk',
+      columns: [t.tenantId, t.handlingLogId],
+      foreignColumns: [approvalInstanceLogs.tenantId, approvalInstanceLogs.id],
+    }),
+    foreignKey({
+      name: 'approval_handling_contents_version_fk',
+      columns: [t.tenantId, t.processVersionId],
+      foreignColumns: [approvalProcessVersions.tenantId, approvalProcessVersions.id],
+    }),
+    check('approval_handling_contents_kind', sql`${t.handlingKind} IN ('human','system')`),
+    check('approval_handling_contents_round', sql`${t.round} > 0 AND ${t.contentSchemaVersion} > 0`),
+    // 16 MiB 上限在服务端按 413 拒绝；库里再兜一层，防止绕过服务端写入超大内容
+    check('approval_handling_contents_size', sql`${t.payloadBytes} > 0 AND ${t.payloadBytes} <= 16777216`),
+    check('approval_handling_contents_human', sql`${t.handlingKind} <> 'human' OR ${t.actorUserId} IS NOT NULL`),
   ],
 );
 

@@ -475,9 +475,10 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /tasks/:id/disagree': decision(DISAGREE),
   'POST /tasks/:id/reject': decision(REJECT),
   'POST /tasks/:id/reject-previous': decision(REJECT_PREVIOUS),
-  // toNodeKey / comment 是动作参数，不提取字段
-  'POST /tasks/:id/jump': taskAction(none('toNodeKey / comment 是动作参数'), JUMP),
-  'POST /tasks/:id/transfer': taskAction(none('toUserId / comment 是动作参数'), TRANSFER),
+  // 跳转 / 转交：toNodeKey / toUserId / comment 是动作参数，不提取编辑字段；fieldRights(taskId, undefined) 只算查看人的
+  // 字段查看权，作为办理份的披露上限（F-476，DEC-807），不构成准入
+  'POST /tasks/:id/jump': taskAction({ guard: 'approval.fieldRights' }, JUMP, taskObject),
+  'POST /tasks/:id/transfer': taskAction({ guard: 'approval.fieldRights' }, TRANSFER, taskObject),
   // fieldRights(taskId, undefined)：不提取编辑字段，只算盲审可见集（后加签含本人同意，DEC-095）
   'POST /tasks/:id/add-sign': taskAction({ guard: 'approval.fieldRights' }, ADD_SIGN, taskObject),
   'POST /tasks/:id/cc': taskAction(none('userIds / comment 是动作参数'), CC),

@@ -70,7 +70,7 @@ export function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     const ctx = tenantOf(c);
     const id = uuidParam(c);
     const body = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      readPreview(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id)),
+      readPreview(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id, true)),
     );
     return c.json(body, 200);
   });
@@ -82,7 +82,7 @@ export function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     if (after !== 'true' && after !== 'false') throw new AppError('VALIDATION_FAILED', 'after 只能为 true 或 false');
     const today = tenantLocalDate(deps.clock(), ctx.timezone);
     const body = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      readExport(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id), after === 'true', today),
+      readExport(tx, ctx.tenantId, await orgAdjustmentDisclosure(tx, deps, ctx, id, true), after === 'true', today),
     );
     return c.json(body, 200);
   });

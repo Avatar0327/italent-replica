@@ -1,6 +1,6 @@
 /**
  * AC-F476-11（P1 部分）：办理份表的约束与失败闭合。租户隔离（FORCE RLS）、只追加（UPDATE / DELETE / TRUNCATE 被拒）、
- * 同一任务 / 同一办理日志只能一份、插入守卫（轮次 / 节点与任务不一致被拒）；缺份时已办读取 503，不退回现值（DEC-807）。
+ * 同一办理日志只能一份、插入守卫（轮次 / 节点与任务不一致被拒）；缺份时已办读取 503，不退回现值（DEC-807）。
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -58,7 +58,7 @@ describe('AC-F476-11 表约束', () => {
     expect(await copiesOf(w, instanceId)).toEqual([copy]);
   });
 
-  it('同一任务 / 同一办理日志只能一份；轮次或节点与任务不一致的插入被拒', async () => {
+  it('同一办理日志只能一份（任务可有多份：前加签座位复活后再办理）；轮次或节点与任务不一致的插入被拒', async () => {
     const { w, instanceId, copy } = await oneCopy();
     const clone = (change: string) =>
       attempt(w, async (tx) => {
@@ -68,7 +68,7 @@ describe('AC-F476-11 表约束', () => {
         await tx.execute(sql.raw(`UPDATE f476_clone SET ${change}`));
         await tx.execute(sql`INSERT INTO approval_handling_contents SELECT * FROM f476_clone`);
       });
-    expect(await clone('created_at = created_at')).not.toBe('ok'); // 同任务 / 同日志重复
+    expect(await clone('created_at = created_at')).not.toBe('ok'); // 同日志重复
     expect(await clone(`round = round + 1`)).not.toBe('ok');
     expect(await clone(`node_key = 'zzz'`)).not.toBe('ok');
     expect(await copiesOf(w, instanceId)).toHaveLength(1);

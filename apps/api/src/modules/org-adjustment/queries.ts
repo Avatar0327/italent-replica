@@ -70,7 +70,7 @@ export async function orgNamesAt(tx: Tx, tenantId: string, orgIds: readonly stri
 }
 
 /** 成员显示名（申请人列）。 */
-async function memberNames(tx: Tx, userIds: readonly string[]) {
+export async function memberNames(tx: Tx, userIds: readonly string[]) {
   const ids = [...new Set(userIds)];
   if (!ids.length) return new Map<string, string>();
   const rows = rowsOf<{ id: string; name: string | null }>(
@@ -158,7 +158,7 @@ export interface RangeOrg {
 }
 
 /** 调整范围列：按选择顺序，名称按单据生效日，文案“组织名（包含下级）”（F273A §4）。 */
-async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[]) {
+export async function rangesOf(tx: Tx, tenantId: string, ids: readonly string[]) {
   const ranges = new Map<string, RangeOrg[]>();
   if (!ids.length) return ranges;
   const rows = rowsOf<{ adjustmentId: string; orgId: string; name: string | null }>(
@@ -196,6 +196,18 @@ export async function projectHeads(tx: Tx, tenantId: string, rows: readonly Head
         rows.map((row) => row.createdBy),
       )
     : null;
+  return projectHeadRows(rows, fields, ranges, names);
+}
+
+/**
+ * 头列投影的纯函数部分（F-476：现值与办理时冻结份共用同一套裁剪）；ranges / names 为 null 表示该派生列不披露。
+ */
+export function projectHeadRows(
+  rows: readonly HeadRow[],
+  fields: Fields,
+  ranges: ReadonlyMap<string, readonly RangeOrg[]> | null,
+  names: ReadonlyMap<string, string> | null,
+) {
   return rows.map((row) => {
     const out: Record<string, unknown> = { id: row.id };
     const put = (code: string, values: Record<string, unknown>) => {

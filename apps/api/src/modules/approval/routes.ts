@@ -578,20 +578,6 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return respondOutcome(c, deps, result);
     });
   }
-  router.post('/tasks/:id/jump', async (c) => {
-    const ctx = writeCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ toNodeKey: z.string().min(1).max(40), comment }));
-    const request = { taskId: uuidParam(c), toNodeKey: input.toNodeKey, comment: input.comment ?? null };
-    const result = await command(c, deps, ctx, request, (tx, context) => jumpTask(tx, context, request));
-    return respondOutcome(c, deps, result);
-  });
-  router.post('/tasks/:id/transfer', async (c) => {
-    const ctx = writeCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ toUserId: userIdInput, comment }));
-    const request = { taskId: uuidParam(c), userId: input.toUserId, comment: input.comment ?? null };
-    const result = await command(c, deps, ctx, request, (tx, context) => transferTask(tx, context, request));
-    return respondOutcome(c, deps, result);
-  });
   router.post('/tasks/:id/add-sign', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
@@ -627,6 +613,29 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ...(input.exitReschedule ? { exitReschedule: input.exitReschedule } : {}),
     };
     const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
+    return respondOutcome(c, deps, result);
+  });
+  registerRelayRoutes(router, deps);
+}
+
+/** 跳转 / 转交：只改办理去向，不提取编辑字段；办理份的披露上限取办理人当前字段权限（F-476）。 */
+function registerRelayRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/tasks/:id/jump', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ toNodeKey: z.string().min(1).max(40), comment }));
+    const taskId = uuidParam(c);
+    const viewable = await fieldRights(c, deps, taskId, undefined);
+    const request = { taskId, toNodeKey: input.toNodeKey, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => jumpTask(tx, context, request, viewable));
+    return respondOutcome(c, deps, result);
+  });
+  router.post('/tasks/:id/transfer', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ toUserId: userIdInput, comment }));
+    const taskId = uuidParam(c);
+    const viewable = await fieldRights(c, deps, taskId, undefined);
+    const request = { taskId, userId: input.toUserId, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => transferTask(tx, context, request, viewable));
     return respondOutcome(c, deps, result);
   });
 }

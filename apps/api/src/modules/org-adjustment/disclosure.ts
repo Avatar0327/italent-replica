@@ -24,6 +24,7 @@ import {
   scopeAllows,
   type ModuleScope,
 } from '../permission/module-access.js';
+import type { OrgContent } from './content.js';
 import type { OrgItem } from './items-store.js';
 import { loadAdjustment, type AdjustmentView } from './service.js';
 
@@ -38,6 +39,8 @@ export interface Disclosure {
   /** HR 路径的组织对象范围；审批人路径为 null（不要求组织范围）。 */
   readonly orgScope: ModuleScope | null;
   readonly instanceId: string | null;
+  /** 内容源：已办读办理时冻结份；null = 读现值（F-476 §5.4）。预览 / 导出本片仍只读现值。 */
+  readonly source: OrgContent | null;
 }
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
@@ -46,19 +49,32 @@ export function canSee(fields: ReadonlySet<string> | undefined, code: string): b
   return fields === undefined || fields.has(code);
 }
 
-/** 读接口共用的披露判定；不存在、范围外、不可打开实例都抛同一 404。 */
-export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string) {
+/**
+ * 读接口共用的披露判定；不存在、范围外、不可打开实例都抛同一 404。
+ * 先取审批参与上下文再按所选内容来源授权（F-476 §5.4）：本人已办且有办理份 → 读冻结份，走审批人路径（办理时的披露上限 ∩
+ * 办理节点表单 ∩ 当前权限）；否则保持原顺序（HR → 审批人）读现值。缺份 503，不退回现值。
+ * `live`：预览 / 导出（P2 才改）不做内容选择，行为与改动前一致。
+ */
+export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantContext, id: string, live = false) {
   const view = await loadAdjustment(tx, ctx.tenantId, id);
   if (!view) throw notFound();
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
+  const data = instance ? await openDetail(tx, bound, ctx, instance, live) : null;
+  if (instance && data?.content.mode === 'frozen') {
+    const source = data.content.frozen.content.ext as OrgContent | null;
+    if (!source) throw new AppError('SERVICE_UNAVAILABLE', '办理记录暂不可读取，请稍后重试');
+    const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
+    const fields = disclosedFields(data, ctx.userId, viewable);
+    return { view, via: 'approver', fields, orgScope: null, instanceId: instance.id, source } satisfies Disclosure;
+  }
   const hr = await hrDisclosure(tx, bound, ctx, view);
-  if (hr) return { ...hr, instanceId: instance?.id ?? null } satisfies Disclosure;
-  const data = instance ? await openDetail(tx, bound, ctx, instance) : null;
+  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null } satisfies Disclosure;
   if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
     const fields = disclosedFields(data, ctx.userId, viewable);
-    return { view, via: 'approver', fields, orgScope: null, instanceId: instance.id } satisfies Disclosure;
+    const opened: Disclosure = { view, via: 'approver', fields, orgScope: null, instanceId: instance.id, source: null };
+    return opened;
   }
   throw notFound();
 }
@@ -81,7 +97,13 @@ async function hrDisclosure(tx: Tx, bound: Deps, ctx: TenantContext, view: Adjus
  * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
  * 管理员范围在本事务内解析（PGlite 单连接）。
  */
-async function openDetail(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow): Promise<DetailData | null> {
+async function openDetail(
+  tx: Tx,
+  bound: Deps,
+  ctx: TenantContext,
+  instance: InstanceRow,
+  live: boolean,
+): Promise<DetailData | null> {
   const adminScope = async (button: 'adminTransfer' | 'adminIntervene') => {
     const resource = buttonResource(APPROVAL_INSTANCE_OBJECT, button, 'detail');
     if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;
@@ -94,7 +116,7 @@ async function openDetail(tx: Tx, bound: Deps, ctx: TenantContext, instance: Ins
   };
   const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
   try {
-    return await readDetail(tx, command, instance.id, viewer, false);
+    return await readDetail(tx, command, instance.id, viewer, false, live);
   } catch (error) {
     if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;

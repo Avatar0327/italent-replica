@@ -415,6 +415,8 @@ export async function cancelPending(tx: Tx, ctx: ApprovalContext, instanceId: st
 }
 
 export interface LogEntry {
+  /** F-476：需要先知道日志 ID 的调用方（办理份锚定办理日志）可预生成；不传则自动生成。 */
+  readonly id?: string;
   readonly event: string;
   readonly nodeKey?: string | null;
   readonly taskId?: string | null;
@@ -423,14 +425,16 @@ export interface LogEntry {
   readonly detail?: Row;
 }
 
-export async function appendLog(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, entry: LogEntry): Promise<void> {
+export async function appendLog(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, entry: LogEntry): Promise<string> {
+  const id = entry.id ?? randomUUID();
   await tx.execute(sql`INSERT INTO approval_instance_logs
     (id,tenant_id,instance_id,seq,round,node_key,task_id,event,actor_user_id,admin_self_transfer,detail,created_at)
-    SELECT ${randomUUID()},${ctx.tenantId},${instance.id}::uuid,COALESCE(max(seq),0)+1,${instance.round},
+    SELECT ${id},${ctx.tenantId},${instance.id}::uuid,COALESCE(max(seq),0)+1,${instance.round},
       ${entry.nodeKey ?? null},${entry.taskId ?? null},${entry.event},
       ${entry.actorUserId === undefined ? actorOf(ctx) : entry.actorUserId},${entry.adminSelfTransfer ?? false},
       ${JSON.stringify(entry.detail ?? {})}::jsonb,${ctx.now.toISOString()}
     FROM approval_instance_logs WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid`);
+  return id;
 }
 
 /**

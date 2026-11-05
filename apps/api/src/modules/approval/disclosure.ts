@@ -29,6 +29,7 @@ import { editSurface, type EditSurface } from './edit-surface.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
+import { capViewable, contentViewOf, selectContent, type ContentSelection } from './handling-content.js';
 import { addSignAllowed, addSignLink, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
 import { approvalWithdrawalFailure } from './withdraw-eligibility.js';
 import { loadRecusalFacts } from './subjects.js';
@@ -62,6 +63,8 @@ export interface DetailData {
   readonly recusal: RecusalFacts;
   /** 查看人被抄送的节点（DEC-097）：被抄送人只看该节点的表单。 */
   readonly ccNodeKey: string | null;
+  /** 内容来源（F-476）：在办 / 发起人读现值；已办读办理时冻结份，snapshot 即为冻结份里的快照。 */
+  readonly content: ContentSelection;
 }
 
 async function adminCovers(tx: Tx, tenantId: string, instanceId: string, scope: SQL | null): Promise<boolean> {
@@ -83,6 +86,8 @@ export async function readDetail(
   instanceId: string,
   viewer: Viewer,
   withLogs = true,
+  /** true：不做内容选择，读现值（组织调整预览 / 导出本片保持原行为，P2 再改，F-476 §8）。 */
+  forceLive = false,
 ): Promise<DetailData> {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
   await assertCanOpen(tx, ctx, instance, viewer);
@@ -93,10 +98,18 @@ export async function readDetail(
     intervene: await adminCovers(tx, ctx.tenantId, instanceId, viewer.interveneScope),
   };
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
+  // F-476：先选内容来源（缺份 503，DEC-807），已办读冻结份里的快照，其余读现值
+  const content: ContentSelection = forceLive
+    ? { mode: 'live' }
+    : await selectContent(tx, ctx, instance, allTasks, viewer.userId);
   return {
     instance,
     version: await loadVersion(tx, ctx.tenantId, instance.versionId),
-    snapshot: await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId),
+    snapshot:
+      content.mode === 'frozen'
+        ? content.frozen.content.snapshot
+        : await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId),
+    content,
     tasks: displayWindow(allTasks),
     allTasks,
     logs: withLogs ? await loadLogs(tx, ctx.tenantId, instanceId) : [],
@@ -146,6 +159,11 @@ function ownTasks<T extends RecordTask>(data: { readonly allTasks: readonly T[] 
 
 /** 查看人所在节点：最近一次参与的节点 → 被抄送的节点 → 当前节点。 */
 export function viewerNode(data: DetailData, userId: string): ApprovalNode | null {
+  // 已办读办理份：节点与表单按办理时的流程版本、办理的那个节点，不随之后的任务 / 版本变化（F-476 §5.3）
+  if (data.content.mode === 'frozen') {
+    const { frozen } = data.content;
+    return frozen.version.nodes.find((node) => node.key === frozen.nodeKey) ?? null;
+  }
   const key =
     ownTasks(data, userId).at(-1)?.nodeKey ??
     data.ccNodeKey ??
@@ -157,9 +175,11 @@ export function viewerNode(data: DetailData, userId: string): ApprovalNode | nul
 
 /** DEC-119：本查看人可见的字段名（节点表单 ∩ 字段查看权），表单值、原值与日志字段名共用。 */
 export function disclosedFields(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
+  // 三者取交：办理时的披露上限 ∩ 办理节点表单 ∩ 当前字段权限（F-476 §5.3，DEC-807）
+  const ceiling = data.content.mode === 'frozen' ? data.content.frozen.ceiling : null;
   return disclosedFieldNames(
     formFieldsWithForeign(viewerNode(data, userId)?.formFields ?? [], data.snapshot),
-    viewable,
+    capViewable(viewable, ceiling),
   );
 }
 
@@ -286,6 +306,7 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     logs: hidden ? [] : data.logs.map((log) => projectLog(log, disclosed)),
     recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
+    contentView: contentViewOf(instance.id, data.content),
     form: {
       nodeKey: node?.key ?? null,
       values: pick(snapshot.values, fields),
