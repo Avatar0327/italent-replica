@@ -51,7 +51,11 @@ test('AC-360 F475 活动套卷仅显示关联集合，关联读取失败不得�
       json: { error: { code: 'UNAVAILABLE', message: '合成关联不可读' } },
     }),
   );
-  await page.locator(detail).getByRole('button', { name: '刷新', exact: true }).last().click();
+  await page
+    .locator(detail)
+    .getByRole('button', { name: /刷\s*新/, exact: true })
+    .last()
+    .click();
   await expect(page.locator(detail)).toContainText('合成关联不可读');
   await expect(page.getByText('合成其他活动套卷', { exact: true })).toHaveCount(0);
 });
@@ -127,4 +131,95 @@ test('AC-360 F475 内置题库与角色默认显示不混用自定义数据或�
   await expect(modal.getByRole('button', { name: /确\s*定/, exact: true })).toBeDisabled();
   await modal.getByRole('button', { name: /取\s*消/, exact: true }).click();
   await expect(modal).toHaveCount(0);
+});
+
+for (const response of ['conflict', 'unknown', 'stale-receipt']) {
+  test(`AC-360 F475 启停 ${response} 按原单恢复且使用实际提交版本`, async ({ page }) => {
+    await setupR3b(page, '/survey360');
+    const requests: { revision?: string; command?: string }[] = [];
+    await page.route(`**/survey360/activities/${id}/enable`, (route) => {
+      requests.push({
+        revision: route.request().headers()['if-match'],
+        command: route.request().headers()['idempotency-key'],
+      });
+      if (requests.length === 1 && response !== 'stale-receipt')
+        return route.fulfill({
+          status: response === 'conflict' ? 409 : 503,
+          json: { error: { code: response === 'conflict' ? 'REVISION_CONFLICT' : 'RESULT_UNKNOWN' } },
+        });
+      return route.fulfill({ json: { id, revision: response === 'stale-receipt' ? 3 : 6 } });
+    });
+    await page.getByRole('button', { name: /启\s*用/, exact: true }).click();
+    const form = page.getByRole('dialog', { name: /启\s*用/, exact: true });
+    await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+    expect(requests[0]?.revision).toBe('3');
+    if (response === 'conflict') {
+      await page.route(`**/survey360/activities/${id}`, (route) =>
+        route.fulfill({
+          json: {
+            id,
+            revision: 5,
+            name: '合成领导力评估',
+            status: 'draft',
+            form: 'multiple',
+          },
+        }),
+      );
+      await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+      await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+      await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+      await expect(form).toHaveCount(0);
+      expect(requests.map((r) => r.revision)).toEqual(['3', '5']);
+      expect(requests[1]?.command).not.toBe(requests[0]?.command);
+    } else {
+      await expect(form).toContainText('结果待确认');
+      await form.getByRole('button', { name: /取\s*消/, exact: true }).click();
+      await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
+      await page
+        .locator(detail)
+        .getByRole('button', { name: /启\s*用/, exact: true })
+        .click();
+      await expect(form).toContainText('结果待确认');
+      await expect(form.getByRole('button', { name: /保\s*存/, exact: true })).toBeDisabled();
+      expect(requests).toHaveLength(1);
+    }
+  });
+}
+
+test('AC-360 F475 活动编辑冲突重读后改回打开时的原值仍提交，未改字段取新值', async ({ page }) => {
+  await openActivity(page);
+  const requests: { revision?: string; body: unknown }[] = [];
+  await page.route(`**/survey360/activities/${id}`, (route) => {
+    if (route.request().method() === 'GET')
+      return route.fulfill({
+        json: {
+          id,
+          revision: 5,
+          name: '合成远端名称',
+          welcome: '合成远端欢迎语',
+          status: 'draft',
+          form: 'multiple',
+          showAppraiserName: true,
+          roleDisplay: 'name',
+        },
+      });
+    requests.push({ revision: route.request().headers()['if-match'], body: route.request().postDataJSON() });
+    return requests.length === 1
+      ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } })
+      : route.fulfill({ json: { id, revision: 6 } });
+  });
+  await page
+    .locator(detail)
+    .getByRole('button', { name: /编\s*辑/, exact: true })
+    .click();
+  const form = page.getByRole('dialog', { name: /编\s*辑/, exact: true });
+  await form.getByLabel('名称', { exact: true }).fill('合成草稿名称');
+  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await form.getByRole('button', { name: '重读最新版本', exact: true }).click();
+  await form.getByRole('button', { name: '已核对差异，继续编辑', exact: true }).click();
+  await expect(form.getByLabel('欢迎语', { exact: true })).toHaveValue('合成远端欢迎语');
+  await form.getByLabel('名称', { exact: true }).fill('合成领导力评估');
+  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await expect(form).toHaveCount(0);
+  expect(requests[1]).toEqual({ revision: '5', body: { name: '合成领导力评估' } });
 });
