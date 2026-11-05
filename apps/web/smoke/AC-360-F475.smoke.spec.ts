@@ -56,7 +56,8 @@ test('AC-360 F475 活动套卷仅显示关联集合，关联读取失败不得�
     .getByRole('button', { name: /刷\s*新/, exact: true })
     .last()
     .click();
-  await expect(page.locator(detail)).toContainText('合成关联不可读');
+  await expect(page.locator(detail)).toContainText('加载失败，请稍后重试');
+  await expect(page.locator(detail).locator('tr[data-row-key]')).toHaveCount(0);
   await expect(page.getByText('合成其他活动套卷', { exact: true })).toHaveCount(0);
 });
 
