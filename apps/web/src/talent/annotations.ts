@@ -20,7 +20,7 @@ export const notes: Record<string, DecisionAnnotation> = {
   },
   'talent-criterion': {
     original: 'UI/R3_人才标准/01、04：标准列表为图标加视图名；详情按能力、潜力、经历、成就分栏。',
-    decision: '按 DEC-456 修订将分栏与分区放入 FE-0 右侧详情抽屉；保留实时引用和更多配置入口，课程后续接入。',
+    decision: '按 DEC-774 将四页签放入模块内整页详情；保留实时引用和更多配置入口，缺契约字段不伪造。',
     decisions: ['DEC-456', 'DEC-055', 'DEC-281'],
     level: 'L3',
   },
