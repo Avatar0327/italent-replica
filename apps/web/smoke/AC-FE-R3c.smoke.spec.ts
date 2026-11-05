@@ -76,6 +76,9 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
   await expect(page.getByRole('button', { name: '合成年度盘点', exact: true })).toBeVisible();
   await expect(page.locator('.page-total')).toBeInViewport();
+  await expect
+    .soft(page.locator('.review-project-list tbody .ant-table-row').first().getByRole('button'))
+    .toHaveText(['合成年度盘点', /编\s*辑/, /结\s*束/, /启\s*动/]);
   await page.getByRole('switch', { name: '注释' }).click();
   await expect(page.locator('.talent-review-page .decision-note')).toContainText('DEC-456');
   await page.getByRole('switch', { name: '注释' }).click();
@@ -99,6 +102,7 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
     if (tab === '九宫格')
       await page.screenshot({ path: testInfo.outputPath('grid.png'), fullPage: true, animations: 'disabled' });
   }
+  await expect.soft(page.getByRole('button', { name: '编辑项目', exact: true })).toHaveClass(/ant-btn-primary/);
   await page.getByRole('button', { name: '编辑项目', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '编辑项目', exact: true })).toBeVisible();
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue('合成年度盘点');
