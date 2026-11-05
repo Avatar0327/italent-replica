@@ -1,4 +1,4 @@
-import { Button, Modal, Space, Table, Tag } from 'antd';
+import { Button, Dropdown, Modal, Space, Table, Tag } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { KeywordFilter } from '../contracts/Filters.js';
@@ -8,6 +8,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import { PageState } from '../foundation/PageState.js';
+import type { ObjectPermission } from '../foundation/permission-model.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { refPaths } from '../part-time/references.js';
 import { exitStore } from './commands.js';
@@ -20,6 +21,7 @@ import {
   VIEWS,
   activationBadge,
   allowedFilters,
+  batchEntryVisible,
   batchHandoverRows,
   columns,
   createEntries,
@@ -67,6 +69,36 @@ const handle = (row: Row): Opened => ({
   props: { mode: 'direct', employee: { value: row.employeeId!, label: row.name ?? x.missing } },
 });
 
+function Heading(props: { permission: ObjectPermission | undefined; open(o: Opened): void }) {
+  return (
+    <div className="exit-heading">
+      <h1>{x.title}</h1>
+      <Space>
+        {createEntries(props.permission).map((mode) => (
+          <Button key={mode} type="primary" onClick={() => props.open({ kind: 'form', props: { mode } })}>
+            {x.entries[mode]}
+          </Button>
+        ))}
+      </Space>
+    </div>
+  );
+}
+
+function Pager(props: { page: number; total: number; loading: boolean; hasNext: boolean; go(page: number): void }) {
+  const { page, loading } = props;
+  return (
+    <Space className="exit-pagination">
+      <Button disabled={page === 1 || loading} onClick={() => props.go(page - 1)}>
+        {x.previous}
+      </Button>
+      <span>{x.page(page, props.total)}</span>
+      <Button disabled={!props.hasNext || loading} onClick={() => props.go(page + 1)}>
+        {x.next}
+      </Button>
+    </Space>
+  );
+}
+
 function ExitList() {
   const [params, setParams] = useSearchParams();
   const requested = params.get('view');
@@ -89,18 +121,13 @@ function ExitList() {
   };
   const permission = usePermissions(object).snapshot.objects[object];
   const items = result.data?.items ?? [];
+  // 勾选只在当前视图 / 页内有效（切视图、翻页即清空）；刷新后不在本页的行自然落选
+  const scope = `${view}/${page}`;
+  const [picked, pick] = useState<{ scope: string; ids: string[] }>({ scope, ids: [] });
+  const selected = items.filter((row) => picked.scope === scope && picked.ids.includes(row.id));
   return (
     <>
-      <div className="exit-heading">
-        <h1>{x.title}</h1>
-        <Space>
-          {createEntries(permission).map((mode) => (
-            <Button key={mode} type="primary" onClick={() => open({ kind: 'form', props: { mode } })}>
-              {x.entries[mode]}
-            </Button>
-          ))}
-        </Space>
-      </div>
+      <Heading permission={permission} open={open} />
       <nav className="exit-views" aria-label={x.title}>
         {VIEWS.map((key) => (
           <Button
@@ -116,7 +143,9 @@ function ExitList() {
       <section className="exit-card">
         <Space wrap>
           <FilterBar key={view} filters={filters} allowed={allowed} apply={applyFilters} onRefresh={result.refresh} />
-          <BatchHandover key={`${view}/${page}`} rows={batchHandoverRows(items, permission)} refresh={result.reload} />
+          {batchEntryVisible(permission) && (
+            <BatchHandover key={scope} rows={batchHandoverRows(selected, permission)} refresh={result.reload} />
+          )}
         </Space>
         {result.error ? (
           <PageState kind="error" error={result.error} retry={result.refresh} />
@@ -124,21 +153,21 @@ function ExitList() {
           <ExitTable
             view={view}
             rows={items}
+            selected={selected.map((row) => row.id)}
+            select={(ids) => pick({ scope, ids })}
             loading={result.loading}
             noScope={result.data?.hasDataPermission === false}
             open={open}
             refresh={result.reload}
           />
         )}
-        <Space className="exit-pagination">
-          <Button disabled={page === 1 || result.loading} onClick={() => setPage(page - 1)}>
-            {x.previous}
-          </Button>
-          <span>{x.page(page, result.data?.total ?? 0)}</span>
-          <Button disabled={items.length < pageSize || result.loading} onClick={() => setPage(page + 1)}>
-            {x.next}
-          </Button>
-        </Space>
+        <Pager
+          page={page}
+          total={result.data?.total ?? 0}
+          loading={result.loading}
+          hasNext={items.length >= pageSize}
+          go={setPage}
+        />
       </section>
       {opened?.kind === 'detail' && (
         <ExitDetail key={opened.id} id={opened.id} onClose={() => open(undefined)} refresh={result.reload} />
@@ -177,18 +206,19 @@ function FilterBar(props: {
 function ExitTable(props: {
   view: ExitView;
   rows: Row[];
+  selected: string[];
+  select(ids: string[]): void;
   loading: boolean;
   noScope: boolean;
   open(opened: Opened): void;
   refresh(): Promise<unknown>;
 }) {
-  const permission = usePermissions(object).snapshot.objects[object];
   const operation = (row: Row) => (
     <Space wrap>
       <Button type="link" onClick={() => props.open({ kind: 'detail', id: row.id })}>
         {x.open}
       </Button>
-      {rowEntries(row, permission).map((entry) =>
+      {rowEntries(row).map((entry) =>
         entry === 'handle' ? (
           <Button key={entry} type="link" onClick={() => props.open(handle(row))}>
             {x.entries.handle}
@@ -212,6 +242,10 @@ function ExitTable(props: {
       pagination={false}
       loading={props.loading}
       dataSource={props.rows}
+      rowSelection={{
+        selectedRowKeys: props.selected,
+        onChange: (keys) => props.select(keys.map(String)),
+      }}
       scroll={{ x: 'max-content' }}
       locale={{ emptyText: props.noScope ? x.noScope : x.empty }}
       columns={[
@@ -244,8 +278,9 @@ function NameCell({ row }: { row: Row }) {
 
 type BatchResult = { receipts: BatchReceipt[]; names: Map<string, string> };
 /**
- * 批量发起交接（F-317）：只对本页带行动作的单，逐人回执列出失败原因；版本逐条在请求体里，不带 If-Match。
- * 写后刷新可能让本页不再有可发起的行（整批未发起成功也会被服务端摘掉行动作）：按钮随之消失，回执与状态条保留。
+ * 批量发起交接（F-317 / F-386）：收在“离职处理▾”菜单里，只对已勾选且带行动作的单，逐人回执列出失败原因；
+ * 版本逐条在请求体里，不带 If-Match。写后刷新可能让已勾选的行不再有可发起的行（整批未发起成功也会被服务端
+ * 摘掉行动作）：菜单项随之不可点，回执与状态条保留。
  */
 function BatchHandover({ rows, refresh }: { rows: Row[]; refresh(): Promise<unknown> }) {
   const pinned = rows.slice(0, BATCH_LIMIT).map((row) => ({ id: row.id, revision: Number(row.revision) }));
@@ -272,12 +307,22 @@ function BatchHandover({ rows, refresh }: { rows: Row[]; refresh(): Promise<unkn
   };
   return (
     <Space direction="vertical">
-      {rows.length > 0 && (
-        <Button loading={cmd.form.busy} disabled={cmd.disabled} onClick={() => void run()}>
-          {x.entries.batchHandover}
-          {rows.length > BATCH_LIMIT && ` ${x.batchLimit(BATCH_LIMIT)}`}
-        </Button>
-      )}
+      <Dropdown
+        trigger={['click']}
+        menu={{
+          items: [
+            {
+              key: 'batch-handover',
+              // 没有勾选带行动作的行时不可点（服务端逐条复核，这里只是不发空批）
+              disabled: rows.length === 0 || cmd.disabled,
+              label: x.entries.batchHandover + (rows.length > BATCH_LIMIT ? ` ${x.batchLimit(BATCH_LIMIT)}` : ''),
+            },
+          ],
+          onClick: () => void run(),
+        }}
+      >
+        <Button loading={cmd.form.busy}>{x.entries.handleMenu} ▾</Button>
+      </Dropdown>
       <CommandStatus submission={cmd.form} />
       {result && (
         <Modal open title={x.batchResult} footer={null} onCancel={() => setResult(undefined)}>

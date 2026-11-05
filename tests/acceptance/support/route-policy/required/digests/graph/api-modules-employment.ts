@@ -1903,6 +1903,19 @@ export const GRAPH: Graph = {
     '#context',
     '#settledStatus',
   ],
+  'apps/api/src/modules/employment/exit-actions.ts#exitActions': [
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    '#EDITABLE',
+    '#NOT_SETTLED',
+    '#SUBMITTABLE',
+    '#allowed',
+    'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitSubmitInitiator',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights',
+  ],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
     'apps/api/src/modules/employment/activation-checks.ts#activationFailureOf',
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
@@ -2452,6 +2465,7 @@ export const GRAPH: Graph = {
     '#assertNoRegularizationInFlight',
     '#checkPendingTransferAck',
     '#loadExitRequest',
+    '#requireExitSubmitInitiator',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep': [
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
@@ -3317,6 +3331,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions',
     'apps/api/src/modules/employment/exit-queries.ts#listExitView',
     'apps/api/src/modules/employment/exit-queries.ts#resolveDepartmentIds',
@@ -3330,6 +3345,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails',
     'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail',
     'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail',

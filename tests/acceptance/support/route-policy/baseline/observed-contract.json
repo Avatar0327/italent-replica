@@ -5141,7 +5141,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -5172,7 +5177,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
