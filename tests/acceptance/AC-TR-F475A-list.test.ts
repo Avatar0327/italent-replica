@@ -12,7 +12,9 @@ vi.mock('../../apps/web/src/foundation/Permissions.js', () => ({
 vi.mock('../../apps/web/src/foundation/Session.js', () => ({ useApiClient: () => ({}) }));
 const { ReviewList } = await import(resolve('apps/web/src/talent-review/ReviewList.tsx'));
 const headers = (html: string) =>
-  [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((match) => match[1]!.replace(/<[^>]*>/g, ''));
+  [...(html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/)?.[1] ?? '').matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map(
+    (match) => match[1]!.replace(/<[^>]*>/g, ''),
+  );
 const props = {
   collection: 'projects',
   data: { items: [{ id: 'synthetic-project', name: '合成项目', status: 'new', revision: 1 }], total: 1 },
@@ -44,7 +46,7 @@ describe('AC-TR F-475A 项目列表结构', () => {
       '状态',
       '结果审批流程',
       '操作',
-      '列设置',
+      '⚙',
     ]);
     expect(html).toContain('width:128px');
     expect(html).toContain('width:93px');

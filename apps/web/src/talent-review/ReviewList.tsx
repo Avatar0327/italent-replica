@@ -5,6 +5,7 @@ import { usePermissions } from '../foundation/Permissions.js';
 import type { PageResult } from '../foundation/client.js';
 import { display, filterProjects, matchesFilters, type ReviewFilters } from './model.js';
 import { tr } from './messages.js';
+import { ProjectListLayout } from './ProjectListLayout.js';
 import { ProjectFilters } from './ProjectFilters.js';
 import { objects, type Collection, type ReviewRecord } from './types.js';
 
@@ -30,6 +31,7 @@ export function ReviewList(props: ReviewListProps) {
     setPage({ ...page, page: 1 });
   };
   const project = collection === 'projects';
+  const Layout = project ? ProjectListLayout : ListPage;
   const actualView = permission.field('status').visible ? view : 'all';
   const rows = filterProjects(data.items, project ? actualView : 'all', '').filter((row) =>
     matchesFilters(row, filters, visible),
@@ -43,7 +45,7 @@ export function ReviewList(props: ReviewListProps) {
   }, [pageNumber, loading, error]);
   return (
     <>
-      <ListPage
+      <Layout
         title={tr[collection]}
         data={{
           ...data,
@@ -68,7 +70,9 @@ export function ReviewList(props: ReviewListProps) {
                   { key: 'active', label: tr.active },
                   { key: 'ended', label: tr.ended },
                   { key: 'all', label: tr.all },
-                ].filter((option) => permission.field('status').visible || option.key === 'all'),
+                ].filter((option) =>
+                  permission.field('status').visible ? option.key !== 'all' : option.key === 'all',
+                ),
                 onChange: (value) => {
                   setView(value);
                   setPage({ ...page, page: 1 });
@@ -79,7 +83,7 @@ export function ReviewList(props: ReviewListProps) {
         actions={
           <>
             {actions}
-            <Button onClick={retry}>{tr.refresh}</Button>
+            {!project && <Button onClick={retry}>{tr.refresh}</Button>}
           </>
         }
         filters={
@@ -130,9 +134,10 @@ function listColumns(
   const columns: TableColumnsType<ReviewRecord> = keys
     .filter((key) => presentationOnly.includes(key) || permission.field(key).visible)
     .map((key) => ({
-      title: tr.fields[key as keyof typeof tr.fields],
+      title:
+        project && key === 'name' && actualView === 'ended' ? tr.projectName : tr.fields[key as keyof typeof tr.fields],
       dataIndex: key,
-      width: key === 'name' ? 190 : 130,
+      width: project ? (key.endsWith('Date') ? 93 : 128) : key === 'name' ? 190 : 130,
       ellipsis: true,
       render: (value: unknown, record: ReviewRecord) => {
         if (key === 'name')
@@ -146,6 +151,23 @@ function listColumns(
         return presentationOnly.includes(key) ? tr.missing : display(value);
       },
     }));
-  columns.push({ title: tr.actions, key: 'actions', fixed: 'right', width: 150, render: (_, row) => rowActions(row) });
+  columns.push({
+    title: tr.actions,
+    key: 'actions',
+    fixed: project ? undefined : 'right',
+    width: project ? 160 : 150,
+    render: (_, row) => rowActions(row),
+  });
+  if (project)
+    columns.push({
+      title: (
+        <Button type="text" disabled aria-label={tr.columnSettings}>
+          ⚙
+        </Button>
+      ),
+      key: 'settings',
+      width: 24,
+      render: () => null,
+    });
   return columns;
 }

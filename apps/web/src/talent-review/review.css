@@ -137,3 +137,32 @@
 .talent-review-page .ant-table-cell {
   max-width: 190px;
 }
+
+.review-project-views {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.review-project-views .ant-tabs-nav {
+  margin: 0;
+}
+.review-project-views .ant-tabs-tab {
+  font-size: 18px;
+  font-weight: 600;
+}
+.review-project-list .ant-table-cell .ant-btn-link {
+  padding: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-org-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.review-org-picker > section {
+  min-width: 0;
+  max-height: 420px;
+  overflow: auto;
+}
