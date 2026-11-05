@@ -24,15 +24,16 @@ export const hasContract = (values: Values) => contractFields.some((field) => !i
 export const contractRequired = (name: string, values: Values) =>
   hasContract(values) &&
   (['companyId', 'typeId', 'termType'].includes(name) || (name === 'endDate' && values.termType === 'fixed'));
-export function completeBody(values: Values, date: string, fields: readonly string[]) {
+/** date 为空 = 没有入职日期查看权（F-424）：不推导、不提交由它得来的试用开始日。 */
+export function completeBody(values: Values, date: string | undefined, fields: readonly string[]) {
   const selected = projectFields(
     values,
     fields.filter((field) => contractFields.includes(field)),
   );
   const contract = Object.fromEntries(Object.entries(selected).filter(([, value]) => !isBlank(value)));
   if (values.probation === true && fields.includes('probationEndDate') && fields.includes('probationStartDate')) {
-    contract.probationStartDate = date;
-    contract.probationEndDate = values.probationEndDate;
+    if (date) contract.probationStartDate = date;
+    if (date || !isBlank(values.probationEndDate)) contract.probationEndDate = values.probationEndDate;
   }
   return { probation: values.probation, ...(hasContract(selected) ? { contract } : {}) };
 }

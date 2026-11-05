@@ -244,7 +244,7 @@ const LIST: Obligation[] = [
       {
         role: 'scope',
         unit: `${QUERIES}#listAdjustments`,
-        anchor: 'scopeSql(scope, { org: sql`a.approval_subject_org_id` })',
+        anchor: 'scopeSql(scope, { org: sql`a.approval_subject_org_id`, creator: sql`a.created_by` })',
       },
     ],
   },
@@ -294,7 +294,8 @@ function reader(path: string, anchor: string): Obligation[] {
         {
           role: 'impl',
           unit: `${DISC}#hrDisclosure`,
-          anchor: 'if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId })) return null',
+          anchor:
+            'if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId, creatorId: view.createdBy })) return null',
         },
       ],
     },

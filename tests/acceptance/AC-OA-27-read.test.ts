@@ -45,9 +45,9 @@ describe('AC-OA-27 HR 读接口按字段查看权裁剪（§4.5 第一行）', (
     const addedNode = nodes.find((node) => node.itemId === addedId);
     expect(addedNode).toMatchObject({ mark: 'added', name: null });
     expect(addedNode!.masked).toEqual(expect.arrayContaining(['name', 'parentOrgId']));
-    // 看不到新名称时保留可见的现名（调整范围可见），masked 记 name 表示调整后名称未披露
+    // 看不到新名称时保留可见的现名（调整范围可见），masked 记 newName 表示调整后名称未披露（F-442）
     expect(nodes.find((node) => node.orgId === w.a)).toMatchObject({ mark: 'changed', name: await orgName(w, w.a) });
-    expect(nodes.find((node) => node.orgId === w.a)!.masked).toContain('name');
+    expect(nodes.find((node) => node.orgId === w.a)!.masked).toContain('newName');
 
     const text = JSON.stringify([row, detail, items, nodes]);
     for (const secret of secrets) expect(text).not.toContain(secret);

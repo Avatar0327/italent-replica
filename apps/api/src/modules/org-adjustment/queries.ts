@@ -130,7 +130,12 @@ export async function listAdjustments(
   page: { readonly limit: number; readonly offset: number },
 ) {
   const where = sql.join(
-    [sql`a.tenant_id = ${tenantId}`, scopeSql(scope, { org: sql`a.approval_subject_org_id` }), ...filterSql(filter)],
+    [
+      sql`a.tenant_id = ${tenantId}`,
+      // 与详情 / 预览同一口径：“本人创建”范围项比对 created_by（F-414②）。
+      scopeSql(scope, { org: sql`a.approval_subject_org_id`, creator: sql`a.created_by` }),
+      ...filterSql(filter),
+    ],
     sql` AND `,
   );
   const [count] = rowsOf<{ n: number }>(

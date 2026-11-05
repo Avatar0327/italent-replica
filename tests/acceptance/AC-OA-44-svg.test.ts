@@ -91,6 +91,69 @@ describe('AC-OA-44 名称截断与转义', () => {
   });
 });
 
+describe('AC-OA-44 F-446 截断按字形簇；文字不越出节点边界', () => {
+  const clusters = (text: string) =>
+    [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(text)].map((part) => part.segment);
+
+  it('ZWJ 组合表情整体保留或整体截掉，不在簇中间截断', () => {
+    const family = '👨\u200D👩\u200D👧\u200D👦';
+    const out = truncate(family.repeat(8), 5);
+    const body = out.slice(0, -1);
+    expect(out.endsWith('…')).toBe(true);
+    expect(body).not.toBe('');
+    expect(clusters(body).every((part) => part === family)).toBe(true);
+  });
+
+  it('基字与组合记号不被拆开（簇宽按基字计，不累加记号）', () => {
+    const accented = 'e\u0301';
+    const out = truncate(accented.repeat(30), 4.5);
+    const body = out.slice(0, -1);
+    expect(out.endsWith('…')).toBe(true);
+    expect(body).not.toBe('');
+    expect(clusters(body).every((part) => part === accented)).toBe(true);
+    expect(textUnits(accented.repeat(5))).toBeCloseTo(3);
+  });
+
+  /** 节点内每个 <text> 的估算右边界（起点 + 估算宽度 × 字号）；居中的状态标签按两侧各半宽。 */
+  function extents(svg: string): { text: string; right: number; left: number; anchor: boolean }[] {
+    const unescape = (value: string) =>
+      value
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;', '&');
+    return [...svg.matchAll(/<text x="([\d.]+)" y="[\d.]+"([^>]*)>([^<]*)<\/text>/g)].map((m) => {
+      const size = Number(/font-size="(\d+)"/.exec(m[2]!)?.[1] ?? 12);
+      const text = unescape(m[3]!);
+      const width = textUnits(text) * size;
+      const middle = m[2]!.includes('text-anchor="middle"');
+      const x = Number(m[1]);
+      return { text, left: middle ? x - width / 2 : x, right: middle ? x + width / 2 : x + width, anchor: middle };
+    });
+  }
+
+  it('满宽名称 / 负责人 / 大编制数：每段文字的估算右边界不超过节点宽度，带标签时名称不压住标签', () => {
+    const wide = '宽'.repeat(40);
+    const svg = renderSvg([
+      card({ name: wide, tag: '变更', head: wide, establishment: 2147483648, delta: 2147483647 }),
+      card({ name: wide, head: wide, establishment: 2147483648, delta: -2147483647 }),
+    ]);
+    const nodes = svg.split('<g class="org-node"').slice(1);
+    expect(nodes).toHaveLength(2);
+    for (const node of nodes) {
+      for (const item of extents(node)) {
+        expect(item.right, item.text).toBeLessThanOrEqual(260 - 8);
+        expect(item.left, item.text).toBeGreaterThanOrEqual(8);
+      }
+    }
+    const tagged = extents(nodes[0]!);
+    const name = tagged.find((item) => item.text.startsWith('宽') && item.left === 36)!;
+    const tag = tagged.find((item) => item.anchor)!;
+    expect(name.right).toBeLessThanOrEqual(tag.left);
+  });
+});
+
 describe('AC-OA-44 两态与版式', () => {
   const tree = [
     previewNode({

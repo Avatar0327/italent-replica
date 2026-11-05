@@ -6,8 +6,8 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
  * §8.3，开关按 §11.10 更正）与 TransferDetailView 已交付字段（§11.2，DEC-118）预置；离职按 §8.5 取证的
  * “直接上级 → HR 访谈”结构，直接上级取最新生效主职任职的直线经理（DEC-230）；
- * 其余类型的节点结构尚未取证（TODO(需取证 #38)），预置为
- * “部门负责人审批 → HRBP 审核”，由租户调整后发布。
+ * F-135 / DEC-789 按 `14` §13 对齐线性节点；退休返聘分支、转正员工自评与实习转正系统管理员移入 F-478。
+ * 未对齐的类型继续沿用现有草稿，节点字段矩阵未验证的部分保留现有默认，由租户调整后发布。
  */
 import { ASSESSMENT_FORM_FIELDS } from '../employment/assessment.js';
 import { EXIT_FORM_FIELDS } from '../employment/exit.js';
@@ -119,7 +119,7 @@ function standardCondition(type: ApprovalTypeCode): Pick<ProcessDefinition, 'con
   };
 }
 
-/** 未取证节点结构的任职类审批：部门负责人审批 → HRBP 审核（TODO(需取证 #38)）。 */
+/** 未单列的任职类审批沿用两节点；入职名称按 `14` §13 对齐，转正 / 实习转正保持基线（DEC-789）。 */
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
 type GenericType = Exclude<
   ApprovalTypeCode,
@@ -145,12 +145,16 @@ function genericPreset(type: GenericType): PresetProcess {
     approvalType: type,
     definition: draft({
       name: `标准${name}流程`,
-      description: '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
+      description:
+        type === 'hire'
+          ? '出厂预置：部门负责人审批 → 单人审批（复刻选部门HRBP），发布前须配置异常管理员'
+          : '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
       priority: 0,
       ...standardCondition(type),
       nodes: [
         node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: form }),
-        node('hrbp', 'HRBP审核', 'record_department_hrbp', { formFields: form }),
+        // 入职第二节点沿用 HRBP 是复刻角色选择，非取证事实（DEC-789）。
+        node('hrbp', type === 'hire' ? '单人审批' : 'HRBP审核', 'record_department_hrbp', { formFields: form }),
       ],
     }),
   };
@@ -296,8 +300,8 @@ const OFFER_PRESETS: readonly PresetProcess[] = [
 ];
 
 /**
- * 组织调整审批（R2-T08 §4.2，DEC-526②）：HRBPLeader 审批 → HR 负责人审批两个节点，表单即类型 formFields 全部编码。
- * 两节点取人“审批主体组织的 HRBP / 负责人”是推断，非原站事实（DEC-644 A-2）：复刻组织只有负责人、HRBP 两个角色字段，
+ * 组织调整审批（F-135 / DEC-789，`14` §13）：部门负责人审批 → HR审核生效，表单仍为类型 formFields 全部编码。
+ * 两节点取人“审批主体组织的负责人 / HRBP”是复刻角色选择，非原站事实（DEC-644 A-2）：组织只有负责人、HRBP 两个角色字段，
  * 不把它们自动等同原站的两个审批角色。因此预置只是可改草稿，不随租户开通发布（publishOnProvision: false），
  * 租户自行确认节点审批人后再发布。审批人为空按 DEC-054 / 098 既有口径（节点无人转异常管理员）。
  */
@@ -308,14 +312,14 @@ const ORG_ADJUSTMENT_PRESET: PresetProcess = {
   publishOnProvision: false,
   definition: draft({
     name: '标准组织调整流程',
-    description: '出厂预置草稿：审批主体组织的 HRBP → 负责人（取人口径为推断，非原站事实），租户确认后发布',
+    description: '出厂预置草稿：部门负责人审批 → HR审核生效（取审批主体组织负责人 / HRBP），租户确认后发布',
     priority: 0,
     ...standardCondition('org_adjustment'),
     nodes: [
-      node('hrbp_leader', 'HRBPLeader审批', 'approval_subject_org_hrbp', {
+      node('department_head', '部门负责人审批', 'approval_subject_org_head', {
         formFields: APPROVAL_TYPES.org_adjustment.formFields,
       }),
-      node('hr_head', 'HR负责人审批', 'approval_subject_org_head', {
+      node('hr_review', 'HR审核生效', 'approval_subject_org_hrbp', {
         formFields: APPROVAL_TYPES.org_adjustment.formFields,
       }),
     ],
@@ -444,7 +448,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
     approvalType: 'retirement',
     definition: draft({
       name: '标准退休流程',
-      description: '出厂预置：直接上级（最新生效主职任职的直线经理） → HR访谈，发布前须配置异常管理员',
+      description: '出厂预置：直线经理 → HRBP，发布前须配置异常管理员',
       priority: 0,
       isFallback: false,
       conditions: {
@@ -452,8 +456,9 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
         expression: '1',
       },
       nodes: [
-        node('direct_head', '直接上级', 'direct_manager', { formFields: RETIRE_FORM }),
-        node('hr_interview', 'HR访谈', 'record_department_hrbp', { formFields: RETIRE_FORM }),
+        // DEC-789：本批仅两节点；同时返聘的条件分支由 F-478 补齐。
+        node('direct_head', '直线经理', 'direct_manager', { formFields: RETIRE_FORM }),
+        node('hr_interview', 'HRBP', 'record_department_hrbp', { formFields: RETIRE_FORM }),
       ],
     }),
   },
@@ -518,16 +523,16 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
   partTimePreset('part_time_extend', 'StandardExtendParttimeJob', HRBP_FIRST),
   partTimePreset('part_time_end', 'StandardEndParttimeJob', HEAD_FIRST),
   {
-    // DEC-116：个人信息变更的发起入口未接入；节点结构未取证（TODO(需取证 #38)），表单待租户按需勾选员工信息字段。
+    // F-135 / DEC-789：`14` §13 的 HRBP审核单节点，取当前任职部门；未验证的字段矩阵仍由租户按需勾选。
     presetKey: 'standard_emp_info_change',
     code: 'StandardEmpInfoChange',
     approvalType: 'emp_info_change',
     definition: draft({
       name: '标准个人信息变更流程',
-      description: '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
+      description: '出厂预置：HRBP审核，发布前须配置异常管理员并按需勾选员工信息字段',
       priority: 0,
       ...standardCondition('emp_info_change'),
-      nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
+      nodes: [node('hrbp', 'HRBP审核', 'latest_record_department_hrbp', { formFields: [] })],
     }),
   },
   // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链：
