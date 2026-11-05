@@ -44,63 +44,59 @@ export function ReviewList(props: ReviewListProps) {
       setPage((current) => (current.page === pageNumber ? current : { ...current, page: pageNumber }));
   }, [pageNumber, loading, error]);
   return (
-    <>
-      <Layout
-        title={tr[collection]}
-        data={{
-          ...data,
-          items: rows.slice(
-            (effectivePage.page - 1) * effectivePage.pageSize,
-            effectivePage.page * effectivePage.pageSize,
-          ),
-          total: rows.length,
-        }}
-        page={effectivePage}
-        onPageChange={setPage}
-        rowKey="id"
-        columns={listColumns(collection, actualView, permission, open, rowActions)}
-        loading={loading}
-        error={error}
-        retry={retry}
-        view={
-          project
-            ? {
-                value: actualView,
-                options: [
-                  { key: 'active', label: tr.active },
-                  { key: 'ended', label: tr.ended },
-                  { key: 'all', label: tr.all },
-                ].filter((option) =>
-                  permission.field('status').visible ? option.key !== 'all' : option.key === 'all',
-                ),
-                onChange: (value) => {
-                  setView(value);
-                  setPage({ ...page, page: 1 });
-                },
-              }
-            : undefined
-        }
-        actions={
-          <>
-            {actions}
-            {!project && <Button onClick={retry}>{tr.refresh}</Button>}
-          </>
-        }
-        filters={
-          project ? (
-            <ProjectFilters value={filters} change={changeFilters} visible={visible} />
-          ) : visible('name') ? (
-            <Input.Search
-              value={filters.name}
-              allowClear
-              placeholder={tr.search}
-              aria-label={tr.search}
-              onChange={(event) => changeFilters({ name: event.target.value })}
-            />
-          ) : undefined
-        }
-      />
-    </>
+    <Layout
+      title={tr[collection]}
+      data={{
+        ...data,
+        items: rows.slice(
+          (effectivePage.page - 1) * effectivePage.pageSize,
+          effectivePage.page * effectivePage.pageSize,
+        ),
+        total: rows.length,
+      }}
+      page={effectivePage}
+      onPageChange={setPage}
+      rowKey="id"
+      columns={listColumns(collection, actualView, permission, open, rowActions)}
+      loading={loading}
+      error={error}
+      retry={retry}
+      view={
+        project
+          ? {
+              value: actualView,
+              options: [
+                { key: 'active', label: tr.active },
+                { key: 'ended', label: tr.ended },
+                { key: 'all', label: tr.all },
+              ].filter((option) => (permission.field('status').visible ? option.key !== 'all' : option.key === 'all')),
+              onChange: (value) => {
+                setView(value);
+                setPage({ ...page, page: 1 });
+              },
+            }
+          : undefined
+      }
+      actions={
+        <>
+          {actions}
+          {!project && <Button onClick={retry}>{tr.refresh}</Button>}
+        </>
+      }
+      filters={
+        project ? (
+          <ProjectFilters value={filters} change={changeFilters} visible={visible} />
+        ) : visible('name') ? (
+          <Input.Search
+            value={filters.name}
+            allowClear
+            placeholder={tr.search}
+            aria-label={tr.search}
+            onChange={(event) => changeFilters({ name: event.target.value })}
+          />
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -137,7 +133,7 @@ function listColumns(
       title:
         project && key === 'name' && actualView === 'ended' ? tr.projectName : tr.fields[key as keyof typeof tr.fields],
       dataIndex: key,
-      width: project ? (key.endsWith('Date') ? 93 : 128) : key === 'name' ? 190 : 130,
+      width: columnWidth(project, key),
       ellipsis: true,
       render: (value: unknown, record: ReviewRecord) => {
         if (key === 'name')
@@ -170,4 +166,9 @@ function listColumns(
       render: () => null,
     });
   return columns;
+}
+
+function columnWidth(project: boolean, key: string) {
+  if (project) return key.endsWith('Date') ? 93 : 128;
+  return key === 'name' ? 190 : 130;
 }

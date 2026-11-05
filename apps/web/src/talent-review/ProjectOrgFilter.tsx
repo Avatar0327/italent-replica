@@ -6,12 +6,9 @@ import { display } from './model.js';
 import { tr } from './messages.js';
 import type { ReviewRecord } from './types.js';
 
-export function ProjectOrgFilter({ value, onChange }: { value: string[]; onChange(value: string[]): void }) {
+function useOrganizations(open: boolean) {
   const api = useApiClient();
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
   const [items, setItems] = useState<ReviewRecord[]>([]);
-  const [query, setQuery] = useState('');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -43,6 +40,14 @@ export function ProjectOrgFilter({ value, onChange }: { value: string[]; onChang
       });
     return () => controller.abort();
   }, [api, open]);
+  return { items, loading, error };
+}
+
+export function ProjectOrgFilter({ value, onChange }: { value: string[]; onChange(value: string[]): void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [query, setQuery] = useState('');
+  const { items, loading, error } = useOrganizations(open);
   return (
     <>
       <Button
@@ -84,8 +89,8 @@ export function ProjectOrgFilter({ value, onChange }: { value: string[]; onChang
               size="small"
               loading={loading}
               pagination={false}
-              dataSource={items.filter((item) => !query || item.name?.includes(query))}
-              columns={[{ title: tr.orgName, dataIndex: 'name', render: display }]}
+              dataSource={items.filter((item) => !query || typeof item.name !== 'string' || item.name.includes(query))}
+              columns={[{ title: tr.orgColumnName, dataIndex: 'name', render: display }]}
               rowSelection={{
                 selectedRowKeys: draft,
                 preserveSelectedRowKeys: true,
@@ -106,7 +111,7 @@ export function ProjectOrgFilter({ value, onChange }: { value: string[]; onChang
               pagination={false}
               dataSource={draft.map((id) => items.find((row) => row.id === id) ?? { id })}
               columns={[
-                { title: tr.orgName, dataIndex: 'name', render: display },
+                { title: tr.orgColumnName, dataIndex: 'name', render: display },
                 { title: tr.parentOrg, render: () => tr.missing },
                 { title: tr.includeChildren, render: () => <Checkbox disabled title={tr.unverified} /> },
               ]}

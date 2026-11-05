@@ -36,7 +36,7 @@ export function ProjectDetail({
           <div key={label}>
             <span className={`review-summary-icon tone-${index}`}>{['▤', '◇', '♧', '⌘'][index]}</span>
             <div>
-              <strong>{index === 0 ? tr.progress : index === 2 ? standard : tr.missing}</strong>
+              <strong>{[tr.progress, tr.missing, standard, tr.missing][index]}</strong>
               <p>{index === 0 ? tr.progressHint : label}</p>
             </div>
             {index !== 1 && (

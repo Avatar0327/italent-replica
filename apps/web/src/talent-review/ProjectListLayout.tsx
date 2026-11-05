@@ -1,6 +1,6 @@
 import { Button, Empty, Pagination, Space, Table, Tabs } from 'antd';
 import { useState, type ComponentProps, type Key } from 'react';
-import { ListPage } from '../foundation/templates.js';
+import type { ListPage } from '../foundation/templates.js';
 import { PageState } from '../foundation/PageState.js';
 import { MenuIcon } from '../foundation/ViewHeading.js';
 import { ui } from '../foundation/messages.js';

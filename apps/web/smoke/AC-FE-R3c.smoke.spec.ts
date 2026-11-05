@@ -439,6 +439,7 @@ test('AC-TR F-475A 自检：详情读取失败可返回并再次进入', async (
   const list = page.locator('.review-project-list');
   await list.getByRole('button', { name: '合成年度盘点', exact: true }).click();
   await expect(list).toBeHidden();
+  await expect(page.locator('.talent-review-page > .ant-alert')).toBeVisible();
   await page.getByRole('button', { name: /^返\s*回$/ }).click();
   await expect(list).toBeVisible();
   await page.unroute(`**/talent-review/projects/${id}`);

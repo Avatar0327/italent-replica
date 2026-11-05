@@ -75,6 +75,9 @@ function CollectionPage({ collection }: { collection: Collection }) {
           }
         />
       </div>
+      {collection === 'projects' && selected && selected.id !== detail?.id && (
+        <Button onClick={() => select(undefined)}>{tr.back}</Button>
+      )}
       {selected && !detail && !error && <PageState kind="loading" />}
       {detail && (collection !== 'projects' || selected?.id === detail.id) && (
         <RecordDetail
