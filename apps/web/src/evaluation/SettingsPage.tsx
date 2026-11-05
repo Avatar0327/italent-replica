@@ -46,32 +46,7 @@ export function SettingsPage({ kind }: { kind: 'forms' | 'groups' }) {
         loading={list.loading}
         error={list.error}
         retry={list.reload}
-        columns={[
-          ...columns,
-          {
-            key: 'actions',
-            title: m.actions,
-            width: 164,
-            render: (_: unknown, row: Row) => (
-              <Space>
-                {kind === 'groups' && !permission.field('name').visible && (
-                  <Button type="link" onClick={() => open('detail', row.id)}>
-                    {m.view}
-                  </Button>
-                )}
-                {kind === 'forms' && permission.can('update') ? (
-                  <Button type="link" onClick={() => open('edit', row.id)}>
-                    {m.edit}
-                  </Button>
-                ) : (
-                  <Unavailable label={m.edit} reason={evUi.unverified} />
-                )}
-                <Unavailable label={evUi.disabled} />
-              </Space>
-            ),
-          },
-          settingsColumn,
-        ]}
+        columns={[...columns, settingRowActions(kind, permission, open), settingsColumn]}
         filters={
           <SettingsFilters
             permission={permission}
@@ -93,6 +68,35 @@ export function SettingsPage({ kind }: { kind: 'forms' | 'groups' }) {
       {kind === 'groups' && id && <GroupDetail detail={detail} permission={permission} close={() => open()} />}
     </>
   );
+}
+
+function settingRowActions(
+  kind: 'forms' | 'groups',
+  permission: ReturnType<typeof usePermissions>,
+  open: (key: string, id: string) => void,
+) {
+  return {
+    key: 'actions',
+    title: m.actions,
+    width: 164,
+    render: (_: unknown, row: Row) => (
+      <Space>
+        {kind === 'groups' && !permission.field('name').visible && (
+          <Button type="link" onClick={() => open('detail', row.id)}>
+            {m.view}
+          </Button>
+        )}
+        {kind === 'forms' && permission.can('update') ? (
+          <Button type="link" onClick={() => open('edit', row.id)}>
+            {m.edit}
+          </Button>
+        ) : (
+          <Unavailable label={m.edit} reason={evUi.unverified} />
+        )}
+        <Unavailable label={evUi.disabled} />
+      </Space>
+    ),
+  };
 }
 
 function GroupDetail({
