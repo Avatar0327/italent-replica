@@ -5536,6 +5536,7 @@
           "readPageContext"
         ],
         "scope": [
+          "employment visibility",
           "readPageContext"
         ]
       }
@@ -8018,7 +8019,8 @@
         "scope": [
           "adminScope",
           "creator scope",
-          "instanceScopeSql"
+          "instanceScopeSql",
+          "scopeSql"
         ]
       }
     },

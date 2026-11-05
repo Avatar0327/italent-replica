@@ -7,23 +7,19 @@
  * - 跨操作人共享：有该员工的转正申请权限且在其数据范围内即可读写同一份（北森未测，复刻口径，写进未决）。
  * 同一份读投影还带 applicationId：本周期最近一张停在草稿的转正申请（含撤回回草稿的），前端据此同单重提（DEC-103），
  * 取代原先记在本机存储里的草稿指针。
- * 第 2 轮（rf347_1 P2-2 / P2-3 / P2-8）：暂存先锁员工行串行化同员工的写（首次暂存没有行可锁）；读写都要求今天在职
- * （与转正申请入口共用顺序规则 sequenceViolation，但按今天判，见 currentAnchor）；已有申请草稿单时暂存按版本冲突
- * 拒绝，前端重读后进入那张单。
+ * DEC-788：读写按租户今天的在职试用主职判资格，与申请建单 / 提交及列表共用。
+ * 暂存先锁员工行；已有申请草稿单时仍按版本冲突拒绝，重读后进入那张单。
  */
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { assertRevision, auditEmployment } from './context.js';
 import { parse } from './entry-routes.js';
-import { loadProbationCycle } from './probation.js';
+import { assertRegularizationDates, requireRegularizationApplicant } from './regularization-eligibility.js';
 import { requireEnabledProbationEntry } from './probation-results.js';
-import { lockEmploymentEmployee, rowsOf } from './record-store.js';
-import { sequencePredecessorKind } from './retire-rehire-eligibility.js';
+import { lockEmploymentEmployee, readEmploymentEmployee, rowsOf } from './record-store.js';
 import type { EmploymentContext } from './types.js';
-import { sequenceViolation } from './write-service.js';
 
 const FORM = 'standard';
 const draftInput = z.strictObject({
@@ -53,26 +49,6 @@ interface DraftRow {
   readonly probation_result: string | null;
   readonly result_name: string | null;
   readonly updated_at: string;
-}
-
-/**
- * 在职才有暂存：按租户今天判，今天及以前最后一条任职记录须过 sequenceViolation（不能没有、不能是离职 / 退休），
- * 本周期开启记录也须取得到。不在职（未入职、离职 / 退休已生效）与员工不存在同样 404“员工不存在”
- * （rf347_2 P3：GET / PUT 一致，PUT 先锁员工行时报的就是它）。
- * 与转正申请入口（regularization.ts createRegularizationBusiness → write-service.ts assertBusinessSequence）
- * 只共用 sequenceViolation 这一顺序规则，口径不同（F-445 实测）：申请入口按转正生效日判、不按今天；
- * 不在职时不带生效日 400 PROBATION_END_DATE_MISSING（今天取不到周期，如未入职），否则 409“任职业务前后顺序
- * 不合法”（ACTIVE_EMPLOYMENT_REQUIRED）；生效日落在在职区间时照常建单（如待入职员工填入职日之后、离职员工填
- * 离职日之前）。暂存没有必填的生效日，只能按今天判，所以不照搬申请入口的状态码与文案。
- */
-async function currentAnchor(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const previous = await sequencePredecessorKind(tx, ctx.tenantId, employeeId, today);
-  const cycle = sequenceViolation(previous, 'regularization')
-    ? undefined
-    : await loadProbationCycle(tx, ctx.tenantId, employeeId, today);
-  if (!cycle) throw new AppError('NOT_FOUND', '员工不存在');
-  return cycle.anchor;
 }
 
 async function draftRow(tx: Tx, tenantId: string, employeeId: string, lock: boolean) {
@@ -133,7 +109,8 @@ export async function loadRegularizationDraft(
   ctx: EmploymentContext,
   employeeId: string,
 ): Promise<RegularizationDraftView> {
-  const anchor = await currentAnchor(tx, ctx, employeeId);
+  await readEmploymentEmployee(tx, ctx, employeeId);
+  const { anchor } = await requireRegularizationApplicant(tx, ctx, employeeId);
   const row = await draftRow(tx, ctx.tenantId, employeeId, false);
   return view(employeeId, row, anchor.id, await pendingApplication(tx, ctx.tenantId, employeeId, anchor.staffId));
 }
@@ -151,7 +128,8 @@ export async function saveRegularizationDraft(
 ): Promise<RegularizationDraftView> {
   const input = parse(draftInput, raw);
   await lockEmploymentEmployee(tx, ctx, employeeId);
-  const anchor = await currentAnchor(tx, ctx, employeeId);
+  const cycle = await requireRegularizationApplicant(tx, ctx, employeeId);
+  const { anchor } = cycle;
   const before = await draftRow(tx, ctx.tenantId, employeeId, true);
   const revision = before ? Number(before.revision) : 0;
   assertRevision(ctx.expectedRevision, revision);
@@ -165,6 +143,7 @@ export async function saveRegularizationDraft(
     ? (await requireEnabledProbationEntry(tx, ctx.tenantId, input.probationResult)).code
     : null;
   const effectiveDate = input.effectiveDate ?? null;
+  assertRegularizationDates(cycle, effectiveDate, result);
   const at = ctx.now.toISOString();
   await tx.execute(sql`
     INSERT INTO employment_regularization_drafts(tenant_id, employee_id, form_id, anchor_id, saved, effective_date,
