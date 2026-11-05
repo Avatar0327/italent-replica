@@ -45,12 +45,17 @@ export async function readExport(
 ): Promise<ExportFile> {
   const preview = await readPreview(tx, tenantId, disclosure);
   const range = canSee(disclosure.fields, 'adjustmentRange') ? disclosure.view.adjustmentRange : [];
-  const names = await orgNamesAt(tx, tenantId, range, preview.effectiveDate);
+  // 文件名用组织当前名（北森主体组织显示当前名，F-447 / DEC-783）：按下载当天（与文件名日期同一 today）取名；
+  // 卡片内的组织名仍是预览口径（生效日），调整明细（detail.ts）同样按生效日。
+  const names = await orgNamesAt(tx, tenantId, range, today);
   const label = range.flatMap((id) => (names.has(id) ? [names.get(id)!] : []));
   return { fileName: exportFileName(label, today), svg: renderSvg(exportCards(preview.roots, after)) };
 }
 
-/** `架构图（{调整范围组织名}）_{yyyyMMdd}`：日期是下载当天（租户时区），多个组织按选择顺序以“、”连接。 */
+/**
+ * `架构图（{调整范围组织名}）_{yyyyMMdd}`：日期是下载当天（租户时区），组织名取下载当天的当前名（DEC-783），
+ * 多个组织按选择顺序以“、”连接。
+ */
 export function exportFileName(rangeNames: readonly string[], today: string): string {
   return xmlChars(`架构图（${rangeNames.length ? rangeNames.join('、') : NONE}）_${today.replaceAll('-', '')}`);
 }
