@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({ query: '', hidden: [] as string[], rows: [] as
 const requireWeb = createRequire(resolve('apps/web/package.json'));
 const { createElement: h } = requireWeb('react');
 const { renderToStaticMarkup: render } = requireWeb('react-dom/server');
-vi.mock('react-router', () => ({ useSearchParams: () => [new URLSearchParams(state.query), vi.fn()] }));
+const { MemoryRouter } = requireWeb('react-router');
 vi.mock('../../apps/web/src/foundation/DecisionNote.js', () => ({ DecisionNote: () => null }));
 vi.mock('../../apps/web/src/evaluation/CreateEntry.js', () => ({
   CreateCommands: ({ children }: { children: unknown }) => children,
@@ -40,8 +40,8 @@ vi.mock('../../apps/web/src/evaluation/runtime.js', () => ({
   Failure: () => null,
   RemoteSelect: ({ label }: { label: string }) => h('span', null, label),
 }));
-vi.mock('../../apps/web/src/evaluation/useRecordForm.js', () => ({
-  useRecordForm: (_path: string, row: unknown) => ({ current: row, locked: false, busy: false }),
+vi.mock('../../apps/web/src/evaluation/useEvaluationForm.js', () => ({
+  useEvaluationForm: (_path: string, row: unknown) => ({ current: row, locked: false, busy: false }),
 }));
 const { EvaluationPage } = await import(resolve('apps/web/src/evaluation/EvaluationPage.tsx'));
 const { ActivityWizard } = await import(resolve('apps/web/src/evaluation/ActivityWizard.tsx'));
@@ -53,10 +53,10 @@ const headers = (html: string) =>
         .replace(/&[^;]+;/g, '')
         .trim(),
     )
-    .filter(Boolean);
+    .filter((text) => text && text !== '⚙');
 const page = (query: string) => {
   state.query = query;
-  return render(h(EvaluationPage));
+  return render(h(MemoryRouter, { initialEntries: [`/evaluation?${query}`] }, h(EvaluationPage)));
 };
 beforeEach(() => {
   state.query = '';

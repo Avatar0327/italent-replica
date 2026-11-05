@@ -1,4 +1,4 @@
-import { App, Button, Descriptions, Select, Space, Table, Tag } from 'antd';
+import { App, Button, Descriptions, Select, Space, Table, Badge, Tag } from 'antd';
 import { useState } from 'react';
 import { ListPage, DetailPage } from '../foundation/templates.js';
 import { usePermissions } from '../foundation/Permissions.js';
@@ -13,11 +13,14 @@ import { m, statusText, textValue } from './messages.js';
 import { evaluationDemoStages } from '../demo-stubs/evaluation.js';
 import { CreateCommands, CreateEntry } from './CreateEntry.js';
 import './pages.css';
+import './alignment.css';
+import { EvaluationNavigation } from './EvaluationNavigation.js';
+import { evUi, FilterLabels, selectionColumn, settingsColumn, Unavailable } from './alignment.js';
 
 export function EvaluationPage() {
   return (
     <CreateCommands>
-      <EvaluationContent />
+      <EvaluationNavigation activities={<EvaluationContent />} />
     </CreateCommands>
   );
 }
@@ -27,6 +30,7 @@ function EvaluationContent() {
   const [status, setStatus] = useState('');
   const [selected, select] = useState<string>();
   const [create, setCreate] = useState(false);
+  const [selectedEditing, editSelected] = useState(false);
   const query = pageQuery(page);
   if (status && permission.field('status').visible) query.set('status', status);
   const list = useRead<PageResult<Row>>(`${EV}/activities?${query}`);
@@ -38,16 +42,13 @@ function EvaluationContent() {
         title={m.title}
         data={list.data ?? { items: [] }}
         columns={[
+          selectionColumn,
           ...columns,
-          {
-            title: m.actions,
-            key: 'actions',
-            render: (_: unknown, row: Row) => (
-              <Button type="link" onClick={() => select(row.id)}>
-                {m.view}
-              </Button>
-            ),
-          },
+          activityRowActions(permission, (id, editing) => {
+            editSelected(editing);
+            select(id);
+          }),
+          settingsColumn,
         ]}
         rowKey="id"
         page={page}
@@ -58,6 +59,7 @@ function EvaluationContent() {
         actions={
           <Space>
             <Button onClick={list.reload}>{m.refresh}</Button>
+            {permission.can('publish', 'list_row') && <Unavailable label={m.publish} reason={evUi.unverified} />}
             {permission.can('create', 'list') && (
               <Button type="primary" onClick={() => setCreate(true)}>
                 {m.create}
@@ -66,21 +68,14 @@ function EvaluationContent() {
           </Space>
         }
         filters={
-          permission.field('status').visible && (
-            <Select
-              aria-label={m.status}
-              style={{ width: 140 }}
-              value={status}
-              options={['', 'draft', 'published', 'completed'].map((value) => ({
-                value,
-                label: value ? statusText(value) : m.all,
-              }))}
-              onChange={(value) => {
-                setStatus(value);
-                setPage({ ...page, page: 1 });
-              }}
-            />
-          )
+          <ActivityFilters
+            permission={permission}
+            status={status}
+            change={(value) => {
+              setStatus(value);
+              setPage({ ...page, page: 1 });
+            }}
+          />
         }
       />
       {create && (
@@ -88,14 +83,32 @@ function EvaluationContent() {
           <ActivityWizard close={() => setCreate(false)} saved={list.reload} />
         </CreateEntry>
       )}
-      {selected && <ActivityDetail key={selected} id={selected} close={() => select(undefined)} saved={list.reload} />}
+      {selected && (
+        <ActivityDetail
+          key={selected}
+          id={selected}
+          initialEditing={selectedEditing}
+          close={() => select(undefined)}
+          saved={list.reload}
+        />
+      )}
     </>
   );
 }
-function ActivityDetail({ id, close, saved }: { id: string; close(): void; saved(): void }) {
+function ActivityDetail({
+  id,
+  close,
+  saved,
+  initialEditing,
+}: {
+  id: string;
+  close(): void;
+  saved(): void;
+  initialEditing?: boolean;
+}) {
   const permission = usePermissions(EVALUATION);
   const detail = useRead<Row>(`${EV}/activities/${id}`);
-  const [editing, edit] = useState(false);
+  const [editing, edit] = useState(!!initialEditing);
   const { modal } = App.useApp();
   const writer = useWriter(() => {
     detail.reload();
@@ -110,57 +123,29 @@ function ActivityDetail({ id, close, saved }: { id: string; close(): void; saved
       onOk: () => writer.write(`${EV}/activities/${id}/${action}`, 'POST', {}, row!.revision).catch(() => undefined),
     });
 
+  if (editing && row)
+    return (
+      <ActivityWizard
+        row={row}
+        close={() => edit(false)}
+        saved={() => {
+          detail.reload();
+          saved();
+        }}
+      />
+    );
   return (
     <DetailPage
       open
       onClose={close}
       title={row?.name ?? m.title}
-      actions={
-        <Space>
-          <Button
-            onClick={() => {
-              detail.reload();
-              writer.reset();
-            }}
-          >
-            {m.refresh}
-          </Button>
-          {row && permission.can('update') && row.status !== 'completed' && (
-            <Button onClick={() => edit(true)}>{m.edit}</Button>
-          )}
-          {row &&
-            actions
-              .filter((action) => permission.can(action, 'list_row'))
-              .map((action) => (
-                <Button
-                  key={action}
-                  type="primary"
-                  loading={writer.busy}
-                  disabled={writer.blocked}
-                  onClick={() => perform(action)}
-                >
-                  {m[action]}
-                </Button>
-              ))}
-        </Space>
-      }
+      actions={<DetailActions {...{ row, permission, writer, edit, actions, perform }} reload={detail.reload} />}
       summary={
         <>
           <DecisionNote id="evaluation" />
           <Failure error={writer.error} retry={writer.reset} />
           <Failure error={detail.error} retry={detail.reload} />
           {detail.loading && <PageState kind="loading" />}
-          {editing && row && (
-            <ActivityWizard
-              key={row.id}
-              row={row}
-              close={() => edit(false)}
-              saved={() => {
-                detail.reload();
-                saved();
-              }}
-            />
-          )}
         </>
       }
       tabs={evaluationTabs({ row, fields, permission, id, modal })}
@@ -207,6 +192,12 @@ function evaluationColumns(permission: ReturnType<typeof usePermissions>, select
     .map((key) => ({
       title: m[key as 'name'],
       dataIndex: key,
+      width: (
+        { name: 173, year: 113, cycleId: 173, status: 113, ownerOrgId: 174, applyCount: 114, manager: 132 } as Record<
+          string,
+          number
+        >
+      )[key],
       render: (value: unknown, row: Row) => {
         if (key === 'name')
           return (
@@ -214,7 +205,13 @@ function evaluationColumns(permission: ReturnType<typeof usePermissions>, select
               {textValue(value)}
             </Button>
           );
-        if (key === 'status') return <Tag color={value === 'published' ? 'blue' : 'default'}>{statusText(value)}</Tag>;
+        if (key === 'status')
+          return (
+            <Badge
+              color={value === 'draft' ? '#faad14' : value === 'published' ? '#1677ff' : '#52c41a'}
+              text={statusText(value)}
+            />
+          );
         return textValue(key === 'manager' ? (value as { name?: string })?.name : value);
       },
     }));
@@ -335,3 +332,119 @@ const fields = [
   'effectiveDate',
   'applyCount',
 ];
+
+function ActivityFilters({
+  permission,
+  status,
+  change,
+}: {
+  permission: ReturnType<typeof usePermissions>;
+  status: string;
+  change(value: string): void;
+}) {
+  return (
+    <FilterLabels permission={permission} fields={[['name', m.name]]}>
+      {permission.field('status').visible && (
+        <Select
+          aria-label={m.status}
+          style={{ width: 140 }}
+          value={status}
+          options={['', 'draft', 'published', 'completed'].map((value) => ({
+            value,
+            label: value ? statusText(value) : m.all,
+          }))}
+          onChange={change}
+        />
+      )}
+      <FilterLabels
+        permission={permission}
+        fields={[
+          ['cycleId', m.cycleId],
+          ['year', m.year],
+        ]}
+      />
+    </FilterLabels>
+  );
+}
+
+function DetailActions({
+  row,
+  permission,
+  writer,
+  edit,
+  actions,
+  perform,
+  reload,
+}: {
+  row?: Row;
+  permission: ReturnType<typeof usePermissions>;
+  writer: ReturnType<typeof useWriter>;
+  edit(value: boolean): void;
+  actions: ('publish' | 'unpublish')[];
+  perform(action: 'publish' | 'unpublish'): void;
+  reload(): void;
+}) {
+  return (
+    <Space>
+      <Button
+        onClick={() => {
+          reload();
+          writer.reset();
+        }}
+      >
+        {m.refresh}
+      </Button>
+      {row && permission.can('update') && row.status !== 'completed' && (
+        <Button onClick={() => edit(true)}>{m.edit}</Button>
+      )}
+      {row &&
+        actions
+          .filter((action) => permission.can(action, 'list_row'))
+          .map((action) => (
+            <Button
+              key={action}
+              type="primary"
+              loading={writer.busy}
+              disabled={writer.blocked}
+              onClick={() => perform(action)}
+            >
+              {m[action]}
+            </Button>
+          ))}
+    </Space>
+  );
+}
+
+function activityRowActions(
+  permission: ReturnType<typeof usePermissions>,
+  open: (id: string, editing: boolean) => void,
+) {
+  return {
+    title: m.actions,
+    key: 'actions',
+    width: 164,
+    render: (_: unknown, row: Row) => (
+      <Space>
+        <Button
+          type="link"
+          onClick={() => {
+            open(row.id, false);
+          }}
+        >
+          {m.view}
+        </Button>
+        {permission.can('update') && (
+          <Button
+            type="link"
+            disabled={row.status === 'completed'}
+            onClick={() => {
+              open(row.id, true);
+            }}
+          >
+            {m.edit}
+          </Button>
+        )}
+      </Space>
+    ),
+  };
+}
