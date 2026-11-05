@@ -41,3 +41,15 @@
   gap: 8px;
   align-items: center;
 }
+
+.exit-termination-form {
+  max-width: 960px;
+}
+.exit-termination-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.exit-termination-options .ant-form-item {
+  margin-bottom: 8px;
+}

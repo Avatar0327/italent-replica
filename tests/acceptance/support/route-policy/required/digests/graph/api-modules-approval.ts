@@ -1434,6 +1434,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/queries.ts#listNotifications': [
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#iso',
+    'packages/domain/src/employment/exit-notice-templates.ts#renderExitNotice',
   ],
   'apps/api/src/modules/approval/queries.ts#listTodos': ['apps/api/src/modules/approval/context.ts#rowsOf', '#iso'],
   'apps/api/src/modules/approval/recusal.ts#assertNotRecused': [
@@ -1549,6 +1550,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/routes.ts#ownViewable': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
   'apps/api/src/modules/approval/routes.ts#processResponse': ['#tenantCtx', '#trimProcess'],
@@ -1692,8 +1694,17 @@ export const GRAPH: Graph = {
     '#uuidParam',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /todos': [
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
+    'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
     'apps/api/src/modules/approval/queries.ts#listTodos',
+    '#ownViewable',
     '#readCtx',
+    '#viewerOf',
+    'apps/api/src/modules/approval/todo-cards.ts#listTodoCards',
+    'apps/api/src/modules/approval/todo-cards.ts#todoCardsQuery',
+    'apps/api/src/modules/approval/todo-summary.ts#todoForm',
+    'apps/api/src/modules/approval/todo-summary.ts#todoSummary',
     'apps/api/src/modules/job/context.ts#pageQuery',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /types': [
@@ -1864,6 +1875,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#nodeParticipantsOf': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
     'apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES',
   ],
   'apps/api/src/modules/approval/rules.ts#retrievableTask': [
@@ -2143,6 +2155,31 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/task-history.ts#actualApprovals': ['#AUTOMATIC', '#withoutRetrieved'],
   'apps/api/src/modules/approval/task-history.ts#withoutRetrieved': ['#invalidatedByRetrieve'],
   'apps/api/src/modules/approval/task-history.ts#withoutRewoundDownstream': ['#invalidatedByRetrieve'],
+  'apps/api/src/modules/approval/todo-cards.ts#categoryOf': [
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+    'packages/domain/src/approval/types.ts#isApprovalType',
+  ],
+  'apps/api/src/modules/approval/todo-cards.ts#listTodoCards': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/disclosure.ts#visibleRecordSql',
+    'apps/api/src/modules/approval/store.ts#withActorNames',
+    '#categories',
+    '#categoryOf',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
+  'apps/api/src/modules/approval/todo-cards.ts#todoCardsQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/todo-summary.ts#todoForm': [
+    'apps/api/src/modules/approval/disclosure.ts#disclosedFields',
+  ],
+  'apps/api/src/modules/approval/todo-summary.ts#todoSummary': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/permission/module-actions.ts#MODULE_OBJECTS',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure': [
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/instance-state.ts#isActiveInstance',

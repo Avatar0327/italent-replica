@@ -10,6 +10,7 @@ import { useApiClient } from '../../foundation/Session.js';
 import { candidates, commandRequestBody, resourcePath, saveResource, validateValues } from './api.js';
 import { useRemote } from './hooks.js';
 import { ReferencedDimensions } from './ReferencedDimensions.js';
+import { GradeDetails } from './GradeDetails.js';
 import { StandardTargets } from './StandardTargets.js';
 import { m } from './messages.js';
 import type { Field, Resource, Row } from './types.js';
@@ -19,6 +20,19 @@ interface Contract {
   requiredFields: string[];
   blockedReason?: string;
 }
+function visibleFormFields(resource: Resource, original: Row | null) {
+  return resource.fields
+    .filter(
+      (field) => resource.key !== 'criteria' || ['name', ...(!original ? ['categoryId'] : [])].includes(field.key),
+    )
+    .filter((field) => resource.key !== 'categories' || ['name', 'code', 'classId'].includes(field.key))
+    .filter(
+      (field) =>
+        !original ||
+        (resource.key === 'categories' && field.key === 'classId') ||
+        (!field.createOnly && !['targets', 'references'].includes(field.kind ?? '')),
+    );
+}
 async function loadForm(
   api: ApiClient,
   resource: Resource,
@@ -26,9 +40,7 @@ async function loadForm(
   permission: ObjectPermission,
   signal: AbortSignal,
 ) {
-  const fields = resource.fields.filter(
-    (field) => !original || (!field.createOnly && !['targets', 'references'].includes(field.kind ?? '')),
-  );
+  const fields = visibleFormFields(resource, original);
   const contract = resource.form
     ? await api.request<Contract>(
         `/api/tenant/talent/forms/${resource.form}?operation=${original ? `update&id=${original.id}` : 'create'}`,
@@ -50,6 +62,7 @@ async function loadForm(
   return { contract, options, owners };
 }
 function control(field: Field, rows: Row[] = []) {
+  if (field.kind === 'grades') return <GradeDetails />;
   if (field.kind === 'references') return <ReferencedDimensions rows={rows} />;
   if (field.kind === 'targets') return <StandardTargets rows={rows} />;
   if (field.kind === 'number') return <InputNumber min={0} max={1_000_000} precision={0} style={{ width: '100%' }} />;
@@ -91,7 +104,7 @@ export function ResourceForm({
     !original &&
     resource.fields.some(
       (field) =>
-        (field.required || field.kind === 'targets') &&
+        (field.required || field.createRequiresEdit || field.kind === 'targets') &&
         !fields.find((item) => item.name === field.key)?.access.editable,
     );
   const blocked =
@@ -101,34 +114,36 @@ export function ResourceForm({
     !!data.data?.contract?.blockedReason ||
     (!original && !!resource.owner && !owners.length) ||
     !fields.some((field) => field.access.editable);
-  const initialValues = original ? { ...original } : {};
+  const emptyValues = resource.key === 'grade-schemes' ? { details: [] } : {};
+  const initialValues = original ? { ...original } : emptyValues;
   const { submit, submission } = useSaveResource(resource, original, fields, blocked, onSaved);
+  const details = fields.find((field) => field.name === 'details');
+  const latestDetails = (submission.state?.latest?.values ?? original)?.details;
+  if (resource.key === 'grade-schemes' && details && !details.access.editable && Array.isArray(latestDetails))
+    details.display = <GradeDetails value={latestDetails} disabled />;
+  let noticeText = data.data?.contract?.blockedReason ?? m.unavailable;
+  if (!original && resource.owner && !owners.length) noticeText = m.ownerMissing;
+  if (missingRequired) noticeText = m.createFieldPermissionMissing;
+  if (data.loading) noticeText = m.choose;
   const notice = data.error ? (
     <PageState kind="error" error={data.error} />
   ) : (
-    <Alert
-      type="info"
-      message={
-        data.loading
-          ? m.choose
-          : (data.data?.contract?.blockedReason ??
-            (!original && resource.owner && !owners.length ? m.ownerMissing : m.unavailable))
-      }
-    />
+    <Alert type="info" message={noticeText} />
   );
   const shown = blocked
     ? [{ name: '_notice', label: '', control: null, display: notice, access: { visible: true, editable: false } }]
     : fields;
   return (
     <FormOverlay
-      mode={resource.module === 'qualification' && resource.key === 'categories' ? 'modal' : 'drawer'}
+      mode={['categories', 'criteria', 'grade-schemes'].includes(resource.key) ? 'modal' : 'drawer'}
+      className={`catalog-form catalog-form-${resource.key}${original ? '' : ' catalog-form-create'}`}
       recordKey={original ? `${original.id}:${original.revision}` : `new:${resource.key}`}
-      submission={submission}
+      submission={{ ...submission, locked: blocked || submission.locked }}
       title={`${original ? m.edit : m.create} · ${resource.title}`}
       open
       onClose={onClose}
       initialValues={initialValues}
-      groups={[{ title: m.basic, fields: shown }]}
+      groups={formGroups(resource, shown, blocked)}
       onSubmit={submit}
       onRefresh={() => {
         onSaved();
@@ -138,35 +153,66 @@ export function ResourceForm({
   );
 }
 
+function formGroups(resource: Resource, fields: FormField[], blocked: boolean) {
+  if (resource.key === 'grade-schemes' && !blocked)
+    return [
+      { title: m.schemeInfo, fields: fields.filter((field) => field.name !== 'details') },
+      { title: m.schemeDetails, fields: fields.filter((field) => field.name === 'details') },
+    ];
+  return [{ title: m.basic, fields }];
+}
+
 function formFields(
   resource: Resource,
   original: Row | null,
   permission: ObjectPermission,
   data?: Awaited<ReturnType<typeof loadForm>>,
 ) {
-  const fields: FormField[] = resource.fields
-    .filter((field) => !original || (!field.createOnly && !['targets', 'references'].includes(field.kind ?? '')))
-    .map((field) => {
-      const access = fieldAccess(permission, field.key);
-      return {
-        name: field.key,
-        label: field.label,
-        control: control(field, data?.options[field.key]),
-        access: {
-          visible: access.visible,
-          editable:
-            access.editable &&
-            (!data?.contract || data.contract.editableFields.includes(field.key)) &&
-            (!original || Object.hasOwn(original, field.key)),
+  const fields: FormField[] = visibleFormFields(resource, original).map((field) => {
+    const access = fieldAccess(permission, field.key);
+    return {
+      name: field.key,
+      label: field.label,
+      control: control(
+        { ...field, max: field.max ?? (resource.module === 'talent' ? 200 : 100) },
+        data?.options[field.key],
+      ),
+      access: {
+        visible: access.visible,
+        editable:
+          access.editable &&
+          !(original && field.createOnly) &&
+          (!data?.contract || data.contract.editableFields.includes(field.key)) &&
+          (!original || Object.hasOwn(original, field.key)),
+      },
+      rules: [
+        {
+          required:
+            field.required ||
+            (resource.key === 'categories' && !!original && field.key === 'code') ||
+            (resource.key === 'grade-schemes' && !!original && field.key === 'description') ||
+            data?.contract?.requiredFields.includes(field.key),
+          ...validationType(field),
+          message: m.required,
         },
-        rules: [
-          {
-            required: field.required || data?.contract?.requiredFields.includes(field.key),
-            ...validationType(field),
-            message: m.required,
-          },
-        ],
-      };
+      ],
+    };
+  });
+  if (resource.key === 'criteria')
+    fields.push({
+      name: '_unavailable',
+      label: original ? m.assessment : m.modelName,
+      control: null,
+      display: m.unknown,
+      access: { visible: true, editable: false },
+    });
+  if (resource.key === 'categories' && fieldAccess(permission, 'jobLinkType').visible)
+    fields.splice(2, 0, {
+      name: 'jobLinkType',
+      label: m.jobLinkType,
+      control: null,
+      display: m.jobTypes[original?.jobLinkType as keyof typeof m.jobTypes] ?? m.unknown,
+      access: { visible: true, editable: false },
     });
   const owners = data?.owners ?? [];
   if (!original && owners.length > 1)
@@ -183,7 +229,8 @@ function formFields(
 function validationType(field: Field) {
   if (field.kind === 'boolean') return { type: 'boolean' as const };
   if (field.kind === 'number') return { type: 'number' as const };
-  if (field.multiple || field.kind === 'targets' || field.kind === 'references') return { type: 'array' as const };
+  if (field.multiple || field.kind === 'targets' || field.kind === 'references' || field.kind === 'grades')
+    return { type: 'array' as const };
   return { type: 'string' as const, whitespace: true };
 }
 

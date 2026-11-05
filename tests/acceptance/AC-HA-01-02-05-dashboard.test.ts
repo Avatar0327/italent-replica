@@ -583,13 +583,21 @@ describe('BE-12b 人事看板 23 项指标', () => {
     });
   });
 
-  it('授权项：“人事分析 - 人事看板 查看”默认给人事模块预置管理员（DEC-415），人事专员只有对象查看权', () => {
+  it('授权项：“人事分析 - 人事看板 查看”给 HR 专员 / HR 经理 / 管理员并预置看全部（DEC-767）；人事管理员没有，人事专员只有对象查看权', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
-    for (const code of ['standard_org_system_admin', 'standard_hr_admin', 'standard_hr_specialist'])
-      expect(profile(code).objects.map((object) => object.objectCode)).toContain(OBJECT);
+    const held = (code: string) => profile(code).objects.map((object) => object.objectCode);
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    expect(seeAll('standard_org_system_admin')).toContain(OBJECT);
-    expect(seeAll('standard_hr_admin')).toContain(OBJECT);
+    for (const code of [
+      'standard_org_system_admin',
+      'standard_hr_dashboard_specialist',
+      'standard_hr_dashboard_manager',
+    ]) {
+      expect(held(code), code).toContain(OBJECT);
+      expect(seeAll(code), code).toContain(OBJECT);
+    }
+    expect(held('standard_hr_specialist')).toContain(OBJECT);
+    expect(held('standard_hr_admin')).not.toContain(OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(OBJECT);
     expect(seeAll('standard_hr_specialist')).not.toContain(OBJECT);
   });
 });

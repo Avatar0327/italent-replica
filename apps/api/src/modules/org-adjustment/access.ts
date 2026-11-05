@@ -88,6 +88,18 @@ export async function authorizeOwnerAction(
   await requireScopes(tx, bound, ctx, input);
 }
 
+/** 提交 / 重提复核组织明细字段写权（F-428）：字段编码交 `requireObjectWrite`，任一不可写 → 403（既有字段写权错误码）。 */
+export async function authorizeItemFieldWrites(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  fieldCodes: Readonly<Record<string, true>>,
+): Promise<void> {
+  if (Object.keys(fieldCodes).length === 0) return;
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  await requireObjectWrite(authorize, ctx, { objectCode: OBJECT, operation: 'update', payload: fieldCodes });
+}
+
 /** 申请人撤回（路由 11 / 审批中心撤回）：没有按钮（§6.3），只判主对象 update 数据操作 + 主体组织与调整范围。 */
 export async function authorizeWithdraw(tx: Tx, deps: Deps, ctx: TenantContext, owner: OwnerScope): Promise<void> {
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };

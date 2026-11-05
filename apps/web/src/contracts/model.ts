@@ -44,10 +44,20 @@ export const filterKeys = [
 ];
 const missingKeys = ['employeeId', 'keyword', 'orgId', 'includeChildren', 'typeId', 'sort', 'order'];
 export const sortFields = ['endDate', 'effectiveDate', 'signingDate', 'name', 'number'];
-export function listQuery(view: View, filters: ListQuery): ListQuery {
+/**
+ * 当前视图可选的排序键（唯一判定，筛选抽屉与请求参数共用）：入职缺失只认姓名；
+ * 编号不可查看时不提供“编号”排序（字段被裁剪后不参与排序，后端同口径拒绝 sort=number）。
+ */
+export function sortKeys(view: View, allowed: readonly string[]) {
+  if (view === 'missing') return ['name'];
+  return sortFields.filter((key) => key !== 'number' || allowed.includes('number'));
+}
+/** allowed = 合同对象的可见字段；不传时只按视图收窄（用于与权限无关的调用方）。 */
+export function listQuery(view: View, filters: ListQuery, allowed?: readonly string[]): ListQuery {
   const keys = view === 'missing' ? missingKeys : filterKeys;
   const query: ListQuery = Object.fromEntries(keys.filter((key) => filters[key]).map((key) => [key, filters[key]]));
   if (view === 'missing' && query.sort !== 'name') delete query.sort;
+  if (allowed && query.sort && !sortKeys(view, allowed).includes(query.sort)) delete query.sort;
   if (!query.orgId) delete query.includeChildren;
   if (!query.sort) delete query.order;
   return query;

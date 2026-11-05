@@ -10,7 +10,7 @@
     "employment": 177,
     "establishment": 16,
     "evaluation": 34,
-    "hr-analysis": 2,
+    "hr-analysis": 5,
     "hr-dashboard": 2,
     "hr-movement": 3,
     "hr-process-dashboard": 2,
@@ -35,7 +35,8 @@
     "talent": 40,
     "talent-review": 74,
     "talent-review-platform": 1,
+    "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 844
+  "total": 849
 }

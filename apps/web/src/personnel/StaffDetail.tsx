@@ -1,5 +1,6 @@
 import { Avatar, Space } from 'antd';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ApiError } from '../foundation/client.js';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { PERSONNEL_OBJECT } from '@italent/domain';
 import { DetailPage } from '../foundation/templates.js';
 import { ReadPanel } from './ReadPanel.js';
@@ -96,11 +97,11 @@ export function StaffDetail({
 /**
  * 来源页要求重读时（reload 变化，F-436 第 3 轮）原位重读档案，不换 key 重新挂载：抬头照旧由 ReadPanel 显示读取中 / 错误，
  * 重读进行中页签沿用同一会话、同一员工上一份已读到的档案，页签不卸载——「编辑人员」抽屉、页签内的子集 / 编辑任职 /
- * 兼岗表单及所在页签都保留，未提交输入不丢。重读失败（如已撤权 403）不再沿用旧档案，按当前权限收起页签。
+ * 兼岗表单及所在页签都保留，未提交输入不丢。401 / 403 清掉旧档案并收起页签；临时失败保留输入，由抬头报错重试。
  * 不传 reload 时与原来一样：没读到就不渲染页签。
  */
 function useReloadedRow(
-  result: { data?: Row; loading: boolean; refresh(): void },
+  result: { data?: Row; loading: boolean; error?: unknown; refresh(): void },
   employeeId: string,
   reload?: number,
 ) {
@@ -117,8 +118,14 @@ function useReloadedRow(
     seen.current = reload;
     refresh.current();
   }, [reload]);
-  const [kept, keep] = useState<{ scope: string; row: Row }>();
-  if (result.data && (kept?.row !== result.data || kept.scope !== scope)) keep({ scope, row: result.data });
-  if (result.data || reload === undefined || !result.loading) return result.data;
-  return kept?.scope === scope ? kept.row : undefined;
+  const kept = useRef<{ scope: string; row: Row } | undefined>(undefined);
+  const denied = result.error instanceof ApiError && [401, 403].includes(result.error.status);
+  // 只缓存已提交渲染的档案，不在渲染期写 state；未传 reload 不持缓存，也不多一次渲染。
+  // 撤权或切会话立即丢弃缓存，避免点重试后 loading 分支再次显示撤权前档案。
+  useLayoutEffect(() => {
+    if (reload === undefined || denied || kept.current?.scope !== scope) kept.current = undefined;
+    if (reload !== undefined && result.data && !denied) kept.current = { scope, row: result.data };
+  }, [reload, denied, scope, result.data]);
+  if (result.data || reload === undefined || denied) return result.data;
+  return kept.current?.scope === scope ? kept.current.row : undefined;
 }

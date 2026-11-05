@@ -10,12 +10,12 @@
  * 错误信封按审批人字段查看权裁剪（F-339 ②）。
  */
 import type { Tx } from '@italent/db';
-import { ORG_ADJUSTMENT_APPROVAL_STATUS as STATUS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
+import { ORG_ADJUSTMENT_APPROVAL_STATUS as STATUS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { invalid } from '../org/validation.js';
 import { authorizeHead, orgScopeAuthorizer } from './access.js';
-import { trimError } from './envelope.js';
+import { trimmedForViewer } from './envelope.js';
 import { patchItemSchema, type ItemPatch } from './item-validation.js';
 import { loadWorld } from './item-tree.js';
 import { bumpRevision } from './items-store.js';
@@ -130,7 +130,7 @@ function toRefs(patch: ItemPatch) {
 }
 
 export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string, fields: Row): Promise<void> {
-  await asApprover(tx, ctx, () => edit(tx, ctx, id, fields));
+  await trimmedForViewer(tx, ctx, () => edit(tx, ctx, id, fields));
 }
 
 /**
@@ -138,21 +138,9 @@ export async function editFromApproval(tx: Tx, ctx: ApprovalContext, id: string,
  * 再调本函数（approval/actions.ts approveTask），库里即编辑后的最终候选态。
  */
 export async function assertApprovable(tx: Tx, ctx: ApprovalContext, id: string): Promise<void> {
-  await asApprover(tx, ctx, async () => {
+  await trimmedForViewer(tx, ctx, async () => {
     const view = await loadAdjustment(tx, ctx.tenantId, id);
     if (!view) throw new AppError('NOT_FOUND', '组织调整申请不存在');
     await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
   });
-}
-
-/** 审批人侧的错误信封按其字段查看权裁剪（F-339 ②）；未注入字段访问按看不到处理（context.ts 同口径，fail-closed）。 */
-async function asApprover(tx: Tx, ctx: ApprovalContext, work: () => Promise<void>): Promise<void> {
-  try {
-    await work();
-  } catch (error) {
-    const viewable = ctx.fields
-      ? await ctx.fields.viewable(tx, ctx.userId, ORG_ADJUSTMENT_OBJECT_CODE)
-      : new Set<string>();
-    throw trimError(error, viewable);
-  }
 }

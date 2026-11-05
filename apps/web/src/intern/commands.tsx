@@ -11,9 +11,12 @@ import { useDirectApi } from '../part-time/direct-api.js';
 import { m } from './messages.js';
 import { apiRoot, businesses, confirmationOf, type Confirmation } from './model.js';
 
-// F-436 R1 P2-1：命令存储挂在 intern 模块级（同 idp/commands.tsx，F-164）。实习生页随路由卸载重建，
-// 提交在途时离开模块、落库前回来，迟到的确认只能作用在旧页面实例上；存储与确认代次留在模块里，
-// 新挂载的列表 / 详情经同一份存储的 subscribe 看到代次变化。键仍按会话（租户 + 身份）隔离。
+/**
+ * F-444 生命周期：本 JS 文档加载时建立一次；试用期、退休、实习三个模块共用 F-123 命令存储。
+ * 命令按租户 + 身份 + 稳定资源路径隔离，页面 / 弹窗卸载和身份切换不清存储，同身份回来继续原命令。
+ * 成功由内核解钉并 clear；明确拒绝可改正重提，revision 冲突重读核对；处理中 / 未知不得因离页或存储不可写清锁。
+ * 全文档刷新时内存结束，不写浏览器存储。试用期草稿已由 F-347 改从服务端恢复，退休 / 实习指针与此存储同生命周期。
+ */
 const store = createFormStore();
 const confirmations = new Map<string, number>();
 const sessionKey = (session: ReturnType<typeof useSession>) => JSON.stringify([session.tenantId, session.identityKey]);
@@ -23,7 +26,7 @@ export function InternCommands({ children }: { children: ReactNode }) {
   return <FormCommands store={store}>{children}</FormCommands>;
 }
 
-/** 本会话的实习写确认代次：只增不减；不同租户、身份各自计数。 */
+/** 本会话的实习写确认代次：本 JS 文档内只增不减；不同租户、身份各自计数，退休 / 试用期不发布此信号。 */
 export function useConfirmedGeneration() {
   const key = sessionKey(useSession());
   return useSyncExternalStore(store.subscribe, () => confirmations.get(key) ?? 0);
@@ -60,14 +63,15 @@ export function useConfirmedReload() {
 
 /**
  * 写确认后的刷新回调（交 useInternCommand，内核在写入与本单回读核验都成功后、完成通知前调用）：
- * 直接转正照旧刷新当前视图；两步申请只有第二步（提交草稿）递增本会话确认代次，建草稿不算最终确认。
+ * 直接转正、新建、结束、撤回 / 撤销共用代次；两步申请只有第二步递增，建草稿不算最终确认。
  * 递增本身不通知：紧接着内核写入完成状态时 store 通知订阅者（失败、409、取消、结果未知都走不到这里）。
  */
-export function useSettledRefresh(application: boolean, draft: boolean, refresh: () => Promise<unknown>) {
+export function useSettledRefresh(application: boolean, draft: boolean, refresh?: () => Promise<unknown>) {
   const key = sessionKey(useSession());
   return async () => {
-    if (!application) return refresh();
-    if (draft) confirmations.set(key, (confirmations.get(key) ?? 0) + 1);
+    // 保留直接办理已有的写后列表核验：失败仍由内核锁定；确认代次负责通知当前挂载的读取方。
+    if (!application) await refresh?.();
+    if (!application || draft) confirmations.set(key, (confirmations.get(key) ?? 0) + 1);
   };
 }
 
@@ -84,10 +88,14 @@ const subscribeDrafts = (listener: () => void) => {
   draftListeners.add(listener);
   return () => void draftListeners.delete(listener);
 };
-/** 两步申请已确认创建的草稿按会话、员工保留；第二步失败不得重新创建。 */
+/** 实习指针独立于退休；试用期使用服务端 regularization-draft 专用资源，无本机指针（F-347）。 */
 export function useInternDraft(employeeId: string) {
+  return useApplicationDraft('intern', employeeId);
+}
+/** 两步申请按模块 + 会话 + 员工保留；第二步失败不得另建。确认完成或已不可接续时由调用方 put() 清理。 */
+export function useApplicationDraft(module: 'intern' | 'retirement', employeeId: string) {
   const session = useSession();
-  const key = JSON.stringify([session.tenantId, session.identityKey, employeeId]);
+  const key = JSON.stringify([module, session.tenantId, session.identityKey, employeeId]);
   const draft = useSyncExternalStore(subscribeDrafts, () => drafts.get(key));
   const put = (next?: ApplicationDraft) => {
     if (next) drafts.set(key, next);

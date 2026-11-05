@@ -189,7 +189,7 @@ export async function probeDownstream(tx: Tx, ctx: EmploymentContext, input: Dow
 
 // ---- 按查看人裁剪 ----------------------------------------------------------------------------------------------
 
-async function allowed(ctx: EmploymentContext, resource: string) {
+export async function allowed(ctx: EmploymentContext, resource: string) {
   return ctx.authorize ? Boolean(await ctx.authorize({ ...ctx, action: 'object.view', resource })) : true;
 }
 
