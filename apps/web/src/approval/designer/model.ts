@@ -1,4 +1,4 @@
-import type { ApprovalNode, ProcessDefinition } from '@italent/domain';
+import { approverSourcesOf, type ApprovalNode, type ProcessDefinition } from '@italent/domain';
 import type { ProcessView, VersionView } from '../../../../api/src/modules/approval/definitions.js';
 import { ApiError } from '../../foundation/client.js';
 import type { ObjectPermission } from '../../foundation/permission-model.js';
@@ -114,11 +114,17 @@ export function assertDraftStructure(original: VersionView, latest: VersionView)
         node.key !== original.nodes[index]?.key ||
         node.kind !== original.nodes[index]?.kind ||
         (node.emptyApproverPolicy === 'specified') !== (original.nodes[index]?.emptyApproverPolicy === 'specified') ||
-        supportsFallback(node, 'exit_handover') !== supportsFallback(original.nodes[index]!, 'exit_handover'),
+        supportsFallback(node, 'exit_handover') !== supportsFallback(original.nodes[index]!, 'exit_handover') ||
+        // F-378：能兜底的节点，兜底人员绑定在“哪些来源、什么顺序”上，来源类型 + 值必须逐条一致。
+        (supportsFallback(node, 'exit_handover') && !sameOrderedSources(node, original.nodes[index]!)),
     )
   )
     throw new Error(m.versionChanged);
 }
+const sameOrderedSources = (a: ApprovalNode, b: ApprovalNode) => {
+  const [left, right] = [approverSourcesOf(a), approverSourcesOf(b)];
+  return left.length === right.length && left.every((s, i) => s.type === right[i]!.type && s.value === right[i]!.value);
+};
 export function buildDraft(version: VersionView, edited: Values, approvalType?: string): ProcessDefinition {
   if (!completeDefinition(version)) throw new ApiError(422, 'INCOMPLETE_DEFINITION', 'fields', m.invalid);
   const allowed = new Set(Object.keys(editableValues(version, approvalType)));

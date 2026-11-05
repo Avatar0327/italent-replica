@@ -1903,6 +1903,19 @@ export const GRAPH: Graph = {
     '#context',
     '#settledStatus',
   ],
+  'apps/api/src/modules/employment/exit-actions.ts#exitActions': [
+    'apps/api/src/modules/employment/context.ts#commandContext',
+    'apps/api/src/modules/employment/context.ts#requireEmployeeInScope',
+    '#EDITABLE',
+    '#NOT_SETTLED',
+    '#SUBMITTABLE',
+    '#allowed',
+    'apps/api/src/modules/employment/exit-cancel.ts#isCancellableState',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
+    'apps/api/src/modules/employment/exit-gate.ts#requireExitSubmitInitiator',
+    'apps/api/src/modules/employment/replay-guard.ts#requireBusinessWriteScope',
+    'apps/api/src/modules/employment/replay-guard.ts#requireExitEditRights',
+  ],
   'apps/api/src/modules/employment/exit-activation.ts#activateExit': [
     'apps/api/src/modules/employment/activation-checks.ts#activationFailureOf',
     'apps/api/src/modules/employment/activation-checks.ts#ruleRejection',
@@ -2090,8 +2103,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertCapacity': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    '#capacityVisible',
     '#departmentVisible',
     '#segmentExcesses',
+    'apps/api/src/modules/permission/module-capacity-authorization.ts#employmentCapacityContext',
   ],
   'apps/api/src/modules/employment/exit-cancel-intervals.ts#assertOccupancyChange': [
     '#assertAvailable',
@@ -2233,6 +2248,16 @@ export const GRAPH: Graph = {
     '#writerOf',
   ],
   'apps/api/src/modules/employment/exit-dictionaries.ts#writerOf': ['apps/api/src/system-actor.ts#auditActor'],
+  'apps/api/src/modules/employment/exit-downstream.ts#contractViewableFields': [
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
+  'apps/api/src/modules/employment/exit-downstream.ts#contractsInScope': [
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+    'packages/domain/src/contracts/rules.ts#CONTRACT_OBJECT',
+  ],
   'apps/api/src/modules/employment/exit-downstream.ts#discloseHandovers': [
     '#HANDOVER_TARGET',
     '#allowed',
@@ -2267,11 +2292,22 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-downstream.ts#probes': ['#handoverProbe', '#ledgerProbe', '#notConnected'],
   'apps/api/src/modules/employment/exit-downstream.ts#registerDownstreamVisibility': ['#downstreamVisibility'],
-  'apps/api/src/modules/employment/exit-downstream.ts#trimDownstream': ['#HANDOVER_TARGET', '#visibleMap'],
+  'apps/api/src/modules/employment/exit-downstream.ts#trimContractDetail': [
+    'packages/domain/src/contracts/rules.ts#CONTRACT_FIELDS',
+  ],
+  'apps/api/src/modules/employment/exit-downstream.ts#trimDownstream': [
+    '#CONTRACT_TARGETS',
+    '#HANDOVER_TARGET',
+    '#contractViewableFields',
+    '#trimContractDetail',
+    '#visibleMap',
+  ],
   'apps/api/src/modules/employment/exit-downstream.ts#visibleMap': [
+    '#CONTRACT_TARGETS',
     '#DEPARTMENT_SCOPED_TYPES',
     '#HANDOVER_TARGET',
     '#allowed',
+    '#contractsInScope',
     '#discloseHandovers',
     '#downstreamVisibility',
     'apps/api/src/modules/employment/exit-gate.ts#batchDisclose',
@@ -2429,6 +2465,7 @@ export const GRAPH: Graph = {
     '#assertNoRegularizationInFlight',
     '#checkPendingTransferAck',
     '#loadExitRequest',
+    '#requireExitSubmitInitiator',
   ],
   'apps/api/src/modules/employment/exit-gate.ts#untickedEmploymentKeep': [
     'apps/api/src/modules/employment/exit-termination-policy.ts#exitTerminationOf',
@@ -3220,6 +3257,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#loadOccupancy',
     'apps/api/src/modules/employment/exit-confirmation.ts#runExitReplannedHooks',
     'apps/api/src/modules/employment/exit-downstream.ts#probeRescheduleDownstream',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitPermission',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
     '#exitDateChange',
@@ -3294,6 +3332,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits': [
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-handover-batch.ts#handoverRowActions',
     'apps/api/src/modules/employment/exit-queries.ts#listExitView',
     'apps/api/src/modules/employment/exit-queries.ts#resolveDepartmentIds',
@@ -3307,6 +3346,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': [
     'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#readPageContext',
+    'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails',
     'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail',
     'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail',
@@ -5485,6 +5525,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/regularization-draft': [
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    '#trimRegularizationDraft',
     'apps/api/src/modules/employment/regularization-drafts.ts#loadRegularizationDraft',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
@@ -5555,7 +5596,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    '#draftDateControl',
     '#probationWriteGuard',
+    '#trimRegularizationDraft',
     'apps/api/src/modules/employment/regularization-drafts.ts#saveRegularizationDraft',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -5569,6 +5612,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#saveProbationResult',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/probation-routes.ts#trimRegularizationDraft': [
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/probation-routes.ts#viewQuery': [
     '#date',

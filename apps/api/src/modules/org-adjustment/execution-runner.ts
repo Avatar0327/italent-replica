@@ -182,7 +182,8 @@ async function runGroups(run: Run): Promise<'complete' | 'retry' | 'unconfirmed'
     }
     const outcome = await runGroup(run, group, results);
     if (outcome === 'retry' || outcome === 'unconfirmed') return outcome;
-    group.items.forEach((item) => results.set(item.id, outcome === 'done' ? 1 : 2));
+    // 执行器可先写逐行结果（EMPLOYMENT_PARTIAL = 2，§7.5），后续组的依赖判断以库内值为准，不能按 outcome 推成 1。
+    for (const [id, result] of await storedResults(run, group)) results.set(id, result);
     await run.options.hooks?.afterGroup?.(group);
   }
   return 'complete';
@@ -223,6 +224,8 @@ async function attempt(run: Run, group: ExecutionGroup, executor: GroupExecutor)
         commandId: run.commandId,
       });
       if (result === 'done') await succeedGroup(tx, run, group);
+      // §7.7“连续 5 次”：页提交成功就清零，与分页进度同一事务落库；否则分散在各页的瞬时错误会累计成 EXECUTION_ERROR。
+      else if (result === 'pending') await resetAttempts(tx, run, group);
       step.before = before;
       return result;
     });
@@ -235,6 +238,13 @@ async function attempt(run: Run, group: ExecutionGroup, executor: GroupExecutor)
     }
     return recordRetry(run, group, error);
   }
+}
+
+async function resetAttempts(tx: Tx, run: Run, group: ExecutionGroup) {
+  const now = run.lease.clock().toISOString();
+  await tx.execute(sql`UPDATE org_adjustment_group_attempts SET attempts=0, updated_at=${now}
+    WHERE tenant_id=${run.lease.tenantId} AND adjustment_id=${run.adjustment.id}::uuid
+      AND group_item_id=${group.id}::uuid AND attempts>0`);
 }
 
 /**
@@ -302,6 +312,17 @@ async function recordRetry(run: Run, group: ExecutionGroup, error: unknown) {
   });
   if ('settled' in counted) return counted.settled === 1 ? ('done' as const) : ('failed' as const);
   return counted.attempts < MAX_GROUP_ATTEMPTS ? ('retry' as const) : ('failed' as const);
+}
+
+async function storedResults(run: Run, group: ExecutionGroup) {
+  const { tenantId } = run.lease;
+  const rows = await withTenant(run.db, tenantId, async (tx) =>
+    rowsOf<{ id: string; execution_result: number | null }>(
+      await tx.execute(sql`SELECT id, execution_result FROM org_adjustment_org_items
+        WHERE tenant_id=${tenantId} AND id=ANY(${idsOf(group)}::uuid[])`),
+    ),
+  );
+  return rows.map((row) => [row.id, row.execution_result] as const);
 }
 
 async function reloadGroup(tx: Tx, run: Run, group: ExecutionGroup): Promise<ExecutionGroup> {

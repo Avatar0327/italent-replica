@@ -683,7 +683,7 @@ describe('AC-OA-29 分页中间页提交回执丢失（F-409）', () => {
     expect(await run()).toEqual({ claimed: true, completed: [adjustment.id] });
     expect(seen, '第 2 页重做一次').toEqual([0, 1, 1, 2, 3]);
     expect(await progress()).toBe('3');
-    expect(await attempts()).toEqual([1]);
+    expect(await attempts(), '§7.7“连续 5 次”：重做的页提交成功即清零').toEqual([0]);
     expect((await actions()).filter((action) => action === 'group.retry')).toHaveLength(1);
     expect(await world.state(adjustment.id)).toMatchObject({ success_count: 1, failure_count: 0 });
   });

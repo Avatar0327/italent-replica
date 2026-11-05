@@ -62,6 +62,7 @@ export const x = {
     cancelled: '已撤销',
     withdrawn: '已撤回',
     voided: '已作废',
+    deleted: '已删除',
   } as Record<string, string>,
   modes: { direct: '直接离职', application: '离职申请' } as Record<string, string>,
   entries: {
@@ -74,6 +75,7 @@ export const x = {
     handover: '发起离职交接',
     resubmit: '重新提交交接',
     batchHandover: '批量发起离职交接',
+    handleMenu: '离职处理',
   },
   missing: '—',
   refresh: '刷新',
@@ -87,6 +89,7 @@ export const x = {
   yes: '是',
   no: '否',
   permanent: '空表示永久',
+  permanentValue: '永久',
   pick: '下一步',
   submit: '提交',
   confirmSubmit: '确认并提交',
