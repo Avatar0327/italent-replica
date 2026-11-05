@@ -93,6 +93,7 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
     );
     const stays = await request(x, kept, {});
     const leave = await x.directLeave('2026-10-05');
+    const applicant = await x.applicantAccount(x.employee.id);
     const instances = await Promise.all([later, earlier, approved, stays].map((id) => x.instanceOf(id)));
 
     await x.activate(leave.id, TODAY);
@@ -114,10 +115,12 @@ describe('AC-DM-15 步骤 4：合同端口', () => {
         .map((row) => row.target_id)
         .sort(),
     ).toEqual([later, earlier, approved].sort());
+    // 收件人 = 发起人 + 申请人（F-400 任职类终止口径，F-429），去重
+    const recipients = [...new Set([x.session.user.id, applicant])].sort();
     for (const instance of instances.slice(0, 3))
-      expect(await x.notices(instance!.id)).toEqual([
-        { recipient: x.session.user.id, template: 'contract_request_voided_by_exit', kind: 'message' },
-      ]);
+      expect(await x.notices(instance!.id)).toEqual(
+        recipients.map((recipient) => ({ recipient, template: 'contract_request_voided_by_exit', kind: 'message' })),
+      );
   });
 
   it('B-02a 合同端口之后的步骤失败时整单回滚：合同终止 / 删除、申请撤回、任职申请作废都保持原状，修正后重试成功', async () => {

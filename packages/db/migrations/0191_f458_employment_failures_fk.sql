@@ -1,0 +1,4 @@
+DROP INDEX "org_adjustment_employment_failures_adjustment";--> statement-breakpoint
+ALTER TABLE "org_adjustment_employment_failures" ADD CONSTRAINT "org_adjustment_employment_failures_item_fk" FOREIGN KEY ("tenant_id","adjustment_id","item_id") REFERENCES "public"."org_adjustment_org_items"("tenant_id","adjustment_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "org_adjustment_employment_failures" ADD CONSTRAINT "org_adjustment_employment_failures_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "org_adjustment_employment_failures_detail" ON "org_adjustment_employment_failures" USING btree ("tenant_id","adjustment_id","item_id","employee_id");

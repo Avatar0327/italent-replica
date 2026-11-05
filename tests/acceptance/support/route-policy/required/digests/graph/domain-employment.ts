@@ -113,6 +113,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/employment/exit-termination.ts#isBooleanMap': ['#isFlow'],
   'packages/domain/src/employment/exit-termination.ts#isFlow': ['#EXIT_TERMINATION_FLOWS'],
+  'packages/domain/src/employment/exit-termination.ts#partTimeRequestFlow': ['#isFlow'],
   'packages/domain/src/employment/exit-termination.ts#personnelSubsetFlow': ['#EXIT_TERMINATION_FLOWS', '#isFlow'],
   'packages/domain/src/employment/exit-termination.ts#terminatedByExit': ['#terminatedWhenUnticked'],
   'packages/domain/src/employment/exit-termination.ts#terminatedWhenUnticked': ['#EXIT_TERMINATION_FLOWS'],
@@ -145,6 +146,8 @@ export const GRAPH: Graph = {
     '#ACTIVE_STATUSES',
     '#PART_TIME_TERMINATION_KINDS',
   ],
+  'packages/domain/src/employment/part-time.ts#partTimeCutoffEnd': ['packages/domain/src/contracts/rules.ts#addDays'],
+  'packages/domain/src/employment/part-time.ts#partTimeExitEndDate': ['packages/domain/src/contracts/rules.ts#addDays'],
   'packages/domain/src/employment/part-time.ts#partTimeServiceStatus': ['#isEmptyPartTimeSpan'],
   'packages/domain/src/employment/part-time.ts#partTimeViews': [
     '#PART_TIME_EXPIRING_DAYS',

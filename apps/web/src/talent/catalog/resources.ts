@@ -10,7 +10,7 @@ export const talentResources: Resource[] = [
     owner: 'library',
     form: 'library',
     note: 'talent-library',
-    columns: ['name', 'type', 'enabled', 'displayOrder'],
+    columns: ['name', 'description', 'enabled', 'type', 'createdBy', 'createdAt'],
     fields: [
       { key: 'name', label: m.name, required: true },
       { key: 'type', label: m.type, kind: 'select', required: true, createOnly: true, options: m.typeOptions },
@@ -51,7 +51,7 @@ export const talentResources: Resource[] = [
     owner: 'criterion',
     form: 'criterion',
     note: 'talent-criterion',
-    columns: ['name', 'categoryId', 'enabled'],
+    columns: ['name', 'categoryId', 'enabled', 'createdBy', 'createdAt'],
     fields: [
       { key: 'name', label: m.name, required: true },
       { key: 'categoryId', label: m.category, kind: 'select', required: true, source: `${base}criterion-categories` },
@@ -62,6 +62,19 @@ export const talentResources: Resource[] = [
         label: m[type],
         kind: 'text' as const,
       })),
+    ],
+  },
+  {
+    key: 'criterion-categories',
+    title: m.criterionCategories,
+    module: 'talent',
+    object: 'TalentCenter.TalentCriterionCategory',
+    owner: 'criterionCategory',
+    note: 'talent-criterion',
+    columns: ['name', 'description', 'enabled', 'createdBy', 'createdAt'],
+    fields: [
+      { key: 'name', label: m.categoryName, required: true, max: 200 },
+      { key: 'displayOrder', label: m.order, kind: 'number' },
     ],
   },
 ];

@@ -489,11 +489,15 @@ async function trimViewItems(
   });
 }
 
-/** 期限链记录结束日期的变更历史，跟随结束日期字段权（无权整个键缺席）；申请历史逐条经 trimEmploymentResponse。 */
+/**
+ * 期限链记录结束日期的变更历史，跟随结束日期字段权（无权整个键缺席）；申请历史逐条经 trimEmploymentResponse。
+ * terms[].requestId 与 requests[].id 是同一个申请 ID，跟随 id 字段权（F-254，docs/08_设计/R2-T05_兼职设计.md §6.3）。
+ */
 async function trimHistory(deps: TenantRouteDeps, ctx: EmploymentContext, history: PartTimeHistory) {
   const show = await viewableIn(deps, ctx);
+  const terms = show.employment('id') ? history.terms : history.terms.map(({ requestId: _requestId, ...term }) => term);
   return {
-    ...(show.employment('endDate') ? { terms: history.terms } : {}),
+    ...(show.employment('endDate') ? { terms } : {}),
     requests: await trimEmploymentResponse(deps, ctx, history.requests),
   };
 }

@@ -268,9 +268,11 @@
       "fields:TenantBase.EmploymentSettings"
     ],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
       "scope:data.scope.all:"
     ],
     "trace": [
+      "obj:TenantBase.EmploymentRecord:view",
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
@@ -494,9 +496,11 @@
     },
     "fieldQueries": [],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
       "scope:data.scope.all:"
     ],
     "trace": [
+      "obj:TenantBase.EmploymentRecord:view",
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },
@@ -541,9 +545,11 @@
       "fields:TenantBase.EmploymentSettings"
     ],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
       "scope:data.scope.all:"
     ],
     "trace": [
+      "obj:TenantBase.EmploymentRecord:view",
       "obj:TenantBase.EmploymentSettings:view"
     ]
   },

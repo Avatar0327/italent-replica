@@ -13,6 +13,7 @@ import {
 import { loadExitRequest } from './exit-gate.js';
 import { createExitHandover, lastWorkDateOf, readTrigger } from './exit-handover.js';
 import { latestHandoverOfExit } from './exit-handover-store.js';
+import { reviveNotLaunchedHandover } from './exit-handover-resubmit.js';
 import { findCurrentRecord, loadEmploymentBusiness } from './read-model.js';
 import { lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
 import { requireBusinessWriteScope } from './replay-guard.js';
@@ -29,6 +30,7 @@ export async function automaticHandover(
   moment: Moment,
   nodeKey?: string,
   approvedOnOverride?: string,
+  resume = false,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const business = await loadEmploymentBusiness(tx, ctx.tenantId, id, today);
@@ -63,7 +65,9 @@ export async function automaticHandover(
     if (dated && approvedOn < lastWorkDate && today < addDays(lastWorkDate, 1)) return skip('NOT_DUE');
   }
   // 自动事件不重开旧单：失败交给 F-305，终止交给显式重提，调度补跑不会复活旧流程。
+  // 例外：补发意图（resume）在原未发起记录上续发（F-310 / F-365）。
   const existing = await latestHandoverOfExit(tx, ctx.tenantId, id);
+  if (existing?.state === 'not_launched' && resume) return reviveNotLaunchedHandover(tx, ctx, existing.id);
   if (existing) return { outcome: 'exists' as const, requestId: existing.id };
   return createExitHandover(tx, ctx, {
     businessId: id,
