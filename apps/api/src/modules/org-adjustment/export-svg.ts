@@ -157,6 +157,15 @@ const TAGGED_NAME_UNITS = 11;
 const VALUE_X = 84;
 const VALUE_UNITS = 13;
 const FONT = 12;
+/** 版式常量（供“文字不越出卡片”的边界测试按同一口径估算，F-446）。 */
+export const CARD_LAYOUT = {
+  width: W,
+  nameUnits: NAME_UNITS,
+  taggedNameUnits: TAGGED_NAME_UNITS,
+  valueX: VALUE_X,
+  valueUnits: VALUE_UNITS,
+  font: FONT,
+} as const;
 const COLORS = { border: '#D9DEE8', text: '#1F2A3D', label: '#8A93A6', line: '#B5BCC8', icon: '#5B8FF9' };
 const TAG_COLORS: Readonly<Record<Tag, { edge: string; fill: string; text: string }>> = {
   新增: { edge: '#00AD0E', fill: '#E6F7E8', text: '#00AD0E' },

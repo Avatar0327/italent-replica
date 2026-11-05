@@ -54,7 +54,7 @@ async function capacityOf(
   values: { inclusive?: number; local?: number },
   mode: 'local' | 'inclusive' | 'both' = 'inclusive',
   sharedScheme?: string,
-  scheme: { code?: string; enabled?: boolean } = {},
+  scheme: { code?: string; enabled?: boolean; cycle?: 'annual' | 'monthly'; period?: readonly [string, string] } = {},
 ) {
   const schemeId = sharedScheme ?? randomUUID();
   const objectId = randomUUID();
@@ -65,11 +65,13 @@ async function capacityOf(
       );
       await tx.execute(sql`INSERT INTO establishment_scheme_versions
         (tenant_id, scheme_id, version_no, code, name, cycle, maintenance_mode, enabled, start_date)
-        VALUES (${w.tenant.id}, ${schemeId}, 1, ${scheme.code ?? `ZZ_S${uniqueSuffix()}`}, 'ZZ_合成方案', 'annual',
+        VALUES (${w.tenant.id}, ${schemeId}, 1, ${scheme.code ?? `ZZ_S${uniqueSuffix()}`}, 'ZZ_合成方案',
+          ${scheme.cycle ?? 'annual'},
           ${mode}, ${scheme.enabled ?? true}, '2020-01-01')`);
     }
     await tx.execute(sql`INSERT INTO establishment_objects (id, tenant_id, org_id, scheme_id, period_start, period_end)
-      VALUES (${objectId}, ${w.tenant.id}, ${orgId}, ${schemeId}, '2026-01-01', '2026-12-31')`);
+      VALUES (${objectId}, ${w.tenant.id}, ${orgId}, ${schemeId}, ${scheme.period?.[0] ?? '2026-01-01'},
+        ${scheme.period?.[1] ?? '2026-12-31'})`);
     await tx.execute(sql`INSERT INTO establishment_versions
       (tenant_id, object_id, version_no, start_date, local_capacity, inclusive_capacity)
       VALUES (${w.tenant.id}, ${objectId}, 1, '2026-01-01', ${values.local ?? null}, ${values.inclusive ?? null})`);
@@ -311,22 +313,54 @@ describe('AC-OA-44 第 2 轮返工：姓名口径、XML 字符、编制汇总范
     expect(list.map((texts) => texts.at(-1))).toEqual(['2147483648', '1']);
   });
 
-  it('同一组织多个方案的编制：排除已停用方案；启用方案里 DEFAULT 优先，其余按编码升序取第一个', async () => {
+  it('同一组织多个方案的编制：排除已停用方案；启用方案里 DEFAULT 优先，其余按编码升序取第一个（每个组织各自区分旧实现）', async () => {
     const w = await itemsWorld(testDb().db, 'oa44');
     const suffix = uniqueSuffix();
     const c = await w.org(`ZZ_丙${suffix}`);
-    await capacityOf(w, w.a, { inclusive: 11 }, 'inclusive', undefined, { code: `ZZ_A${suffix}`, enabled: false });
-    await capacityOf(w, w.a, { inclusive: 22 }, 'inclusive', undefined, { code: `ZZ_B${suffix}` });
-    await capacityOf(w, w.b, { inclusive: 33 }, 'inclusive', undefined, { code: 'A01' });
-    await capacityOf(w, w.b, { inclusive: 44 }, 'inclusive', undefined, { code: 'DEFAULT' });
-    await capacityOf(w, c, { inclusive: 55 }, 'inclusive', undefined, { code: `ZZ_D${suffix}` });
-    await capacityOf(w, c, { inclusive: 66 }, 'inclusive', undefined, { code: `ZZ_C${suffix}` });
+    const add = (orgId: string, inclusive: number, code: string, enabled = true) =>
+      capacityOf(w, orgId, { inclusive }, 'inclusive', undefined, { code, enabled });
+    // 组织甲：已停用方案编码最小（不排除停用就取到 11）；启用的两个方案按编码取小者（取大者得 23）
+    await add(w.a, 11, `ZZ_A${suffix}`, false);
+    await add(w.a, 23, `ZZ_C${suffix}`);
+    await add(w.a, 22, `ZZ_B${suffix}`);
+    // 组织乙：编码小的 A01 先录入，DEFAULT 后录入且编码更大（不优先默认方案就取到 33）
+    await add(w.b, 33, 'A01');
+    await add(w.b, 44, 'DEFAULT');
+    // 组织丙：已停用的 DEFAULT 不能靠“默认优先”胜出（77）；启用的两个方案里编码小的后录入（按录入顺序或取大者都得 55）
+    await add(c, 77, 'DEFAULT', false);
+    await add(c, 55, `ZZ_D${suffix}`);
+    await add(c, 66, `ZZ_C${suffix}`);
     const view = await w.created(w.head({ adjustmentRange: [w.a, w.b, c] }));
 
     const preview = await reader(w).preview(view.id);
-    expect(preview.roots.map((root) => root.establishment)).toEqual([22, 44, 66]);
+    expect(preview.roots.map((root) => [root.orgId, root.establishment])).toEqual([
+      [w.a, 22],
+      [w.b, 44],
+      [c, 66],
+    ]);
     const list = nodes((await exported(w, view.id, false)).svg);
     expect(list.map((texts) => texts.at(-1))).toEqual(['22', '44', '66']);
+  });
+
+  it('F-446 同一组织跨年并存的方案：按生效日所在周期取那一条，不因“另一年的方案编码更优先”取错', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    // 2026 年度方案（编码大）与 2027 年的月度方案（DEFAULT 编码，若不按期间过滤就会胜出）
+    await capacityOf(w, w.a, { inclusive: 10 }, 'inclusive', undefined, { code: `ZZ_Y${s}` });
+    await capacityOf(w, w.a, { inclusive: 20 }, 'inclusive', undefined, {
+      code: 'DEFAULT',
+      cycle: 'monthly',
+      period: ['2027-02-01', '2027-02-28'],
+    });
+    const in2026 = await w.created(w.head({ adjustmentRange: [w.a], effectiveDate: '2026-11-01' }));
+    const in2027 = await w.created(w.head({ adjustmentRange: [w.a], effectiveDate: '2027-02-10' }));
+    const beyond = await w.created(w.head({ adjustmentRange: [w.a], effectiveDate: '2028-01-01' }));
+
+    expect((await reader(w).preview(in2026.id)).roots[0]!.establishment).toBe(10);
+    expect((await reader(w).preview(in2027.id)).roots[0]!.establishment).toBe(20);
+    // 生效日不在任何周期内：没有编制，显示“--”（北森：未设编制的组织显示“--”）
+    expect((await reader(w).preview(beyond.id)).roots[0]!.establishment).toBeNull();
+    expect(nodes((await exported(w, beyond.id, false)).svg)[0]!.at(-1)).toBe('--');
   });
 
   it('F-446 多方案取值与录入顺序无关：正序 / 倒序各一个组织；编码按码元比较（大写先于小写）；DEFAULT 先录入也优先', async () => {
