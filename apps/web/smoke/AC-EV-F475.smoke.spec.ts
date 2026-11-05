@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { EVALUATION_OBJECTS } from '../../../packages/domain/src/evaluation/catalog.js';
 import { test, expect } from './fixtures.js';
 import { ev, id, setupR3b } from './r3b-fixtures.js';
 
@@ -178,3 +179,41 @@ test('AC-EV-F475 名称入口在编辑关闭后仍进入详情，不继承编辑
   await expect(page.getByRole('dialog', { name: ev.name, exact: true })).toBeVisible();
   await expect(editor).toHaveCount(0);
 });
+
+for (const kind of ['activities', 'groups'] as const) {
+  test(`AC-EV-F475 P2-1 ${kind} 名称裁剪且只读仍可打开安全详情`, async ({ page }) => {
+    await setupR3b(page, '/evaluation', true);
+    await expect(page.getByRole('button', { name: ev.name, exact: true })).toBeVisible();
+    await page.route('**/permission/me/objects/TEvaluation.*', (route) => {
+      const object = Object.values(EVALUATION_OBJECTS).find((item) => route.request().url().endsWith(item.code));
+      if (!object) return route.fallback();
+      return route.fulfill({
+        json: {
+          objectCode: object.code,
+          dataOperations: { read: true },
+          viewableFields: object.fields.filter((field) => field.code !== 'name').map((field) => field.code),
+          editableFields: [],
+          buttons: [],
+        },
+      });
+    });
+    const resource = kind === 'activities' ? 'activities' : 'review-groups';
+    const source = kind === 'activities' ? ev : { id, revision: 1, name: '合成受限评审组', enabled: true, members: [] };
+    const { name, ...cropped } = source;
+    await page.route(`**/evaluation/${resource}?*`, (route) => route.fulfill({ json: { items: [cropped], total: 1 } }));
+    await page.route(`**/evaluation/${resource}/${id}`, (route) => route.fulfill({ json: cropped }));
+    await page.goto(`/evaluation?view=${kind}`);
+    const row = page.locator(`tr[data-row-key="${id}"]`);
+    await expect(row).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: '名称', exact: true })).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(name);
+    const view = row.getByRole('button', { name: /^查\s*看$/, exact: true });
+    await expect(view).toBeVisible();
+    await view.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.ant-drawer-title')).toHaveText('—');
+    await expect(dialog.getByRole('button', edit).and(dialog.locator('button:enabled'))).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(name);
+  });
+}
