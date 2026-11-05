@@ -140,3 +140,35 @@ describe('AC-EV F-475 整页表单容器', () => {
     expect(html).not.toContain('role="dialog"');
   });
 });
+
+describe('AC-EV F-475 P2-2 投票参考评分规则', () => {
+  beforeEach(() => {
+    state.rows = [
+      {
+        id: 'synthetic',
+        revision: 1,
+        name: '合成投票参考表',
+        scoreMode: 'by_vote',
+        indicatorReference: true,
+        fullScore: 120,
+        passScore: 72,
+        totalRule: 'average',
+        votePassRatio: 60,
+        items: [],
+      },
+    ];
+  });
+  it('实际存在的满分、通过分数及总分计算方式只读显示，不按投票模式隐藏', () => {
+    const html = page('view=forms&edit=synthetic');
+    for (const label of ['满分', '通过分数', '评委总分计算方式']) expect(html).toContain(label);
+    for (const value of ['120', '72', '平均分']) expect(html).toContain(`>${value}</span>`);
+    for (const key of ['fullScore', 'passScore', 'totalRule']) expect(html).not.toContain(`id="${key}"`);
+  });
+  it('规则字段被裁剪时不显示标签或值，仍保留允许读取的投票规则', () => {
+    state.hidden = ['fullScore', 'passScore', 'totalRule'];
+    const html = page('view=forms&edit=synthetic');
+    for (const label of ['满分', '通过分数', '评委总分计算方式']) expect(html).not.toContain(label);
+    for (const value of ['120', '72', '平均分']) expect(html).not.toContain(`>${value}</span>`);
+    expect(html).toContain('>60</span>');
+  });
+});
