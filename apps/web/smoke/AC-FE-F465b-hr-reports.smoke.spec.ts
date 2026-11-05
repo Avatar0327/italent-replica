@@ -48,6 +48,7 @@ test('AC-FE-F465b 目录 → 名册 → 筛选空结果 → 有权导出；表�
   await main.getByRole('button', { name: '在职员工花名册', exact: true }).click();
   await expect(main.getByText('合成甲', { exact: true })).toBeVisible();
   await expect(main.locator('thead th')).toHaveText(['姓名', '工号']);
+  await page.screenshot({ path: test.info().outputPath('hr-report.png'), fullPage: true });
   await main.getByLabel('姓名', { exact: true }).fill('无匹配合成姓名');
   await main.getByRole('button', { name: '查询', exact: true }).click();
   await expect(main.getByText('该报表暂无数据', { exact: true })).toBeVisible();

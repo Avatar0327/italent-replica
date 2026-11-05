@@ -1,0 +1,26 @@
+.hr-report-catalog,
+.hr-report-content {
+  padding: 20px;
+}
+.hr-report-catalog ul {
+  padding: 0;
+  list-style: none;
+}
+.hr-report-catalog li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 6px 0;
+}
+.hr-report-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+.hr-report-filter .ant-select {
+  min-width: 160px;
+}
+.hr-report-content .page-filters {
+  padding: 12px 0;
+}

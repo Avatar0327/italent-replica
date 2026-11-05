@@ -40,7 +40,7 @@ let pending: (() => Promise<Response>) | undefined;
 const entry = () => PAGES.entries.find((r) => r.id === 'hr-reports');
 const text = () => host.textContent ?? '';
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent?.replace(/\s/g, '') === label);
+  Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.replace(/\s/g, '') === label);
 async function settle() {
   for (let i = 0; i < 8; i++)
     await act(async () => {
@@ -138,7 +138,7 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
   it('名册按后端列序显示，裁剪列不出现；原文说明不改字，导出权来自接口', async () => {
     await render('1.01');
     expect(text()).toContain('正式在职员工（不含实习生、外部人员）。');
-    expect([...host.querySelectorAll('thead th')].map((n) => n.textContent)).toEqual(['姓名', '工号']);
+    expect(Array.from(host.querySelectorAll('thead th')).map((n) => n.textContent)).toEqual(['姓名', '工号']);
     expect(text()).toContain('合成甲');
     expect(text()).not.toContain('手机');
     expect(button('导出')).toBeDefined();
@@ -263,5 +263,96 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     await act(async () => navigate(1));
     await settle();
     expect(text()).toContain('在职实习生。');
+  });
+  it('空范围的月度表即便含 12 个零值月份，也显示原文空态', async () => {
+    data = { ...movementPage(), hasDataPermission: false };
+    await render('monthly');
+    expect(text()).toContain('无数据权限');
+    expect(text()).toContain('该报表暂无数据');
+  });
+  it('有 category 列才提供异动类别，筛选值使用后端枚举', async () => {
+    data = {
+      ...reportPage('1.07'),
+      columns: [{ key: 'category', label: '异动类别' }],
+      items: [{ category: 'transfer' }],
+    };
+    await render('1.07');
+    expect(host.querySelector('[aria-label="异动类别"]')).not.toBeNull();
+    expect(text()).toContain('调动');
+    expect(host.querySelector('[aria-label="姓名"]')).toBeNull();
+  });
+  it('拒绝倒置日期范围，保留输入且不发请求', async () => {
+    await render('1.07');
+    const count = urls.length;
+    await fill('开始日期', '2026-10-07');
+    await click('查询');
+    expect(text()).toContain('请检查筛选条件和日期范围');
+    expect(urls.length).toBe(count);
+  });
+  it('导出超限 422 使用真实原因码显示短句，不生成文件', async () => {
+    await render('1.01');
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).includes('/export')
+        ? Promise.resolve(
+            Response.json(
+              { error: { code: 'VALIDATION_FAILED', details: { reason: 'EXPORT_ROW_LIMIT' } } },
+              { status: 422 },
+            ),
+          )
+        : original(input, init),
+    );
+    await click('导出');
+    expect(text()).toContain('导出最多 10000 行，请缩小筛选范围');
+    expect(text()).not.toContain('EXPORT_ROW_LIMIT');
+  });
+  it('离开后返回的下载回调不得创建文件', async () => {
+    const create = vi.fn(() => 'blob:synthetic');
+    URL.createObjectURL = create;
+    await render('1.01');
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let finish: ((response: Response) => void) | undefined;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).includes('/export')
+        ? new Promise((r) => {
+            finish = r;
+          })
+        : original(input, init),
+    );
+    await click('导出');
+    await act(async () => navigate('/hr-reports'));
+    await settle();
+    await act(async () => finish!(new Response('合成内容', { headers: { 'content-type': 'text/csv' } })));
+    await settle();
+    expect(create).not.toHaveBeenCalled();
+  });
+  it('离职率只格式化服务端比例为百分比，不从行数重算', async () => {
+    const body = movementPage();
+    body.tables[0]!.columns = [{ key: 'rate', label: '离职率' }];
+    data = {
+      ...body,
+      tables: [
+        {
+          ...body.tables[0],
+          rows: [{ key: 'm', label: '2026-01', cells: { rate: 0.125 } }],
+          summary: { cells: { rate: 0.0875 } },
+        },
+      ],
+    };
+    await render('monthly');
+    expect(text()).toContain('12.5%');
+    expect(text()).toContain('8.75%');
+  });
+  it('导出网络错误显示中文短句，不泄露浏览器异常文字', async () => {
+    await render('1.01');
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      String(input).includes('/export')
+        ? Promise.reject(new Error('Failed to fetch synthetic private detail'))
+        : original(input, init),
+    );
+    await click('导出');
+    expect(text()).toContain('导出失败，请重试');
+    expect(text()).not.toContain('private detail');
   });
 });
