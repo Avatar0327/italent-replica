@@ -23,15 +23,16 @@ export function TalentReviewPage() {
   const items = (['projects', 'templates', 'matrices'] as const)
     .filter((key) => !!{ projects: project, templates: template, matrices: matrix }[key].snapshot.objects[objects[key]])
     .map((key) => ({ key: key as string, label: tr[key] }));
-  if (project.snapshot.objects[objects.projects]) items.push({ key: 'meetings', label: tr.meetings });
+  if (project.snapshot.objects[objects.projects])
+    items.push({ key: 'meetings', label: tr.meetings }, { key: 'pools', label: tr.pools });
   const active = items.some((item) => item.key === selected) ? selected : items[0]?.key;
   return (
     <div className="talent-review-page">
       <Tabs activeKey={active} onChange={setSelected} items={items} />
       {!active ? (
         <PageState kind={project.loading ? 'loading' : 'forbidden'} />
-      ) : active === 'meetings' ? (
-        <Meetings />
+      ) : active === 'meetings' || active === 'pools' ? (
+        <Meetings pool={active === 'pools'} />
       ) : (
         <CollectionPage
           key={`${session.tenantId}/${session.identityKey}/${active}`}
