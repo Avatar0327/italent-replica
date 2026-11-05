@@ -4864,6 +4864,9 @@
         "button": [
           "requireEmploymentWrite(按钮)"
         ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -27878,7 +27881,8 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "object": [
           "object.* 动作",

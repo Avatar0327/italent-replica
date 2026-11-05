@@ -2134,17 +2134,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 转正申请暂存（F-347，DEC-709）：读写同一口径：readContext('object.create', resource=id) 写入口径人员范围 404
-  // 「任职数据不存在」+ requireEmploymentWrite('create', {}, Employment.Create, 命令式：暂存内容是转正控制项不进字段协议）；
-  // 不在职 404；回执固定形状 { id, employeeId, revision, temporary, applicationId }
+  // 「任职数据不存在」+ requireEmploymentWrite 的按钮与携带日期字段权校验；不在职 404。
+  // F-344：暂存协议键保留，temporary.effectiveDate 经任职字段查看权投影；GET / PUT / 重放同一出口。
   'GET /employees/:id/regularization-draft': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    fields: fixed(
-      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
-      'F-347 暂存投影固定键（regularization-drafts.ts）',
-    ),
+    fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     ...byId,
   }),
   // 暂存写入：If-Match = 暂存 revision（没有时 0，409 REVISION_CONFLICT）；body 严格 { effectiveDate?, probationResult? }
@@ -2155,7 +2152,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    // 回执是暂存读投影（与 GET 同形状）：runWrite 的 project 原样返回，首次与重放同一出口
+    // 回执与 GET 同一暂存读投影，首次与重放均按当前任职字段查看权裁剪日期
     fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     write: employmentWrite('body.fields+customFields', ['assertRevision'], {
       commandOnly: true,

@@ -5508,6 +5508,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/probation-routes.ts#route:GET /employees/:id/regularization-draft': [
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
+    '#trimRegularizationDraft',
     'apps/api/src/modules/employment/regularization-drafts.ts#loadRegularizationDraft',
     'apps/api/src/modules/job/context.ts#uuidParam',
   ],
@@ -5578,7 +5579,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#readContext',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     'apps/api/src/modules/employment/context.ts#runWrite',
+    '#draftDateControl',
     '#probationWriteGuard',
+    '#trimRegularizationDraft',
     'apps/api/src/modules/employment/regularization-drafts.ts#saveRegularizationDraft',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
@@ -5592,6 +5595,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#saveProbationResult',
     'apps/api/src/modules/job/context.ts#revision',
     'apps/api/src/modules/job/context.ts#uuidParam',
+  ],
+  'apps/api/src/modules/employment/probation-routes.ts#trimRegularizationDraft': [
+    'apps/api/src/modules/employment/context.ts#trimEmploymentResponse',
   ],
   'apps/api/src/modules/employment/probation-routes.ts#viewQuery': [
     '#date',
