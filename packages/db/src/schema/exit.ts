@@ -361,7 +361,8 @@ export const exitHandoverRequests = pgTable(
       'exit_handover_requests_not_launched',
       sql`(${t.state} = 'not_launched') = (${t.notLaunchedReason} IS NOT NULL)
         AND coalesce(${t.notLaunchedReason}, 'NO_HANDLER')
-          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT')`,
+          IN ('NO_HANDLER', 'APPROVAL_PROCESS_NOT_MATCHED', 'NO_INITIATOR_ACCOUNT',
+            'APPROVAL_EXCEPTION_ADMIN_SELF', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE')`,
     ),
     check(
       'exit_handover_requests_initiator',

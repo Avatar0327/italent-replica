@@ -136,6 +136,19 @@ export async function insertNotLaunchedRequest(
     ${input.commandId}, ${now}::timestamptz, ${now}::timestamptz)`);
 }
 
+/** 补发续发时重新取人仍失败：原因变了才刷新（revision + 1），HR 在读模型看到最新原因与提示。 */
+export async function refreshNotLaunchedReason(
+  tx: Tx,
+  ctx: { readonly tenantId: string; readonly commandId: string; readonly now: Date },
+  id: string,
+  reason: HandoverNotLaunchedReason,
+) {
+  await tx.execute(sql`UPDATE exit_handover_requests SET not_launched_reason = ${reason}, revision = revision + 1,
+    command_id = ${ctx.commandId}, updated_at = ${ctx.now.toISOString()}::timestamptz
+    WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid AND state = 'not_launched'
+      AND not_launched_reason IS DISTINCT FROM ${reason}`);
+}
+
 /** 状态迁移（revision + 1）；终止同时写原因，离开 not_launched 时清掉未发起原因。 */
 export async function moveHandoverRequest(
   tx: Tx,
