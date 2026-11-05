@@ -94,7 +94,7 @@ export function EvaluationFormEditor(props: EditorProps) {
             <>
               <h3>{evUi.items}</h3>
               <Table
-                rowKey={(_, index) => String(index)}
+                rowKey={(item) => (item.kind === 'general' ? String(item.generalItemId) : 'standard')}
                 pagination={false}
                 dataSource={records(current.items)}
                 columns={[
@@ -161,10 +161,17 @@ function EditorFields({ state, keys }: { state: ReturnType<typeof useFormEditor>
                 {key === 'name' ? <Input maxLength={100} /> : <RemoteSelect path="/api/tenant/org/organizations" />}
               </LockedField>
             ) : (
-              <span>{String(evUi[current[key] as 'by_indicator'] ?? textValue(current[key]))}</span>
+              <span>{fieldText(key, current)}</span>
             )}
           </Form.Item>
         ))}
     </div>
   );
+}
+
+function fieldText(key: string, row: Row) {
+  const value = row[key];
+  if (['scoreMode', 'totalRule'].includes(key)) return evUi[value as 'by_indicator'] ?? m.noValue;
+  if (typeof value === 'boolean') return value ? evUi.yes : evUi.no;
+  return textValue(value);
 }

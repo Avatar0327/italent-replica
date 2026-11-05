@@ -34,7 +34,10 @@ function EvaluationContent() {
   const query = pageQuery(page);
   if (status && permission.field('status').visible) query.set('status', status);
   const list = useRead<PageResult<Row>>(`${EV}/activities?${query}`);
-  const columns = evaluationColumns(permission, select);
+  const columns = evaluationColumns(permission, (id) => {
+    editSelected(false);
+    select(id);
+  });
   return (
     <>
       <DecisionNote id="evaluation" />
@@ -212,6 +215,7 @@ function evaluationColumns(permission: ReturnType<typeof usePermissions>, select
               text={statusText(value)}
             />
           );
+        if (key === 'applyCount' && row.status === 'draft') return m.noValue;
         return textValue(key === 'manager' ? (value as { name?: string })?.name : value);
       },
     }));
@@ -425,14 +429,6 @@ function activityRowActions(
     width: 164,
     render: (_: unknown, row: Row) => (
       <Space>
-        <Button
-          type="link"
-          onClick={() => {
-            open(row.id, false);
-          }}
-        >
-          {m.view}
-        </Button>
         {permission.can('update') && (
           <Button
             type="link"
@@ -443,6 +439,11 @@ function activityRowActions(
           >
             {m.edit}
           </Button>
+        )}
+        <Unavailable label={evUi.copy} link />
+        {permission.can('delete') && <Unavailable label={evUi.delete} link />}
+        {permission.can('complete', 'list_row') && row.status === 'published' && (
+          <Unavailable label={evUi.complete} link />
         )}
       </Space>
     ),

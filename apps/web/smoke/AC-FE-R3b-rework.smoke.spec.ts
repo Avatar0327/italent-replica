@@ -25,7 +25,7 @@ async function editEvaluation(page: Page, overrides: Record<string, unknown>) {
   return page.locator('.evaluation-full-page[aria-label="编辑活动"]');
 }
 
-const saveButton = { name: /保\s*存/, exact: true };
+const saveButton = { name: /^保\s*存$/, exact: true };
 const cancelButton = { name: /取\s*消/, exact: true };
 
 test('AC-FE-R3b-R2-01 360 结果未知关闭重开及切换页签不能生成第二个创建命令', async ({ page }) => {
@@ -131,13 +131,13 @@ test('AC-FE-R3b-F134 申请人类型勾选在点击事件内同步生效，同�
   expect((await request).postDataJSON()).toEqual({ applicants: ['others'] });
 });
 
-test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨级数仍允许修改', async ({ page }) => {
+test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，员工可申报大于当前职级仍允许修改', async ({ page }) => {
   const form = await editEvaluation(page, { applyCount: 1 });
   for (const label of ['活动类型', '组织范围', '申请类别', '申请级别', '评定生效日期', '活动通知范围']) {
     const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
     await expect(item.locator('input:not([disabled])')).toHaveCount(0);
   }
-  const jump = form.locator('.ant-form-item').filter({ has: page.locator('label[title="可跨级数"]') });
+  const jump = form.locator('.ant-form-item').filter({ has: page.locator('label[title="员工可申报大于当前职级"]') });
   await expect(jump.getByRole('spinbutton')).toBeEnabled();
   await jump.getByRole('spinbutton').fill('2');
   await form.getByLabel('名称', { exact: true }).fill('合成报名后改名');
@@ -145,7 +145,13 @@ test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨�
   await form.getByRole('button', { name: '下一步' }).click();
   await expect(form.getByRole('button', { name: '添加', exact: true })).toHaveCount(0);
   await expect(form.getByRole('button', { name: '移除', exact: true })).toHaveCount(0);
-  await expect(form.getByText('强控报名截止', { exact: true }).getByRole('radio').first()).toBeDisabled();
+  await expect(
+    form
+      .locator('label')
+      .filter({ hasText: /^强控报名截止/ })
+      .getByRole('radio')
+      .first(),
+  ).toBeDisabled();
   const request = page.waitForRequest((r) => r.method() === 'PATCH');
   await form.getByRole('button', saveButton).click();
   expect((await request).postDataJSON()).toEqual({ name: '合成报名后改名', maxLevelJump: 2 });

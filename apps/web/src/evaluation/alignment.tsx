@@ -11,6 +11,10 @@ export const evUi = {
   groups: '评审组',
   back: '返回',
   new: '新建',
+  copy: '复制',
+  delete: '删除',
+  complete: '完成',
+  maxLevelJump: '员工可申报大于当前职级',
   unavailable: '未完成（缺后端契约）',
   unverified: '未验证，暂不提供此操作',
   clear: '清空已选',
@@ -115,10 +119,18 @@ export const settingColumns: Record<string, ColumnSpec[]> = {
     ['enabled', '状态', 179],
   ],
 };
-export function Unavailable({ label, reason = evUi.unverified }: { label: string; reason?: string }) {
+export function Unavailable({
+  label,
+  reason = evUi.unverified,
+  link,
+}: {
+  label: string;
+  reason?: string;
+  link?: boolean;
+}) {
   return (
     <Tooltip title={reason}>
-      <Button disabled aria-label={label}>
+      <Button type={link ? 'link' : 'default'} disabled aria-label={label}>
         {label}
       </Button>
     </Tooltip>

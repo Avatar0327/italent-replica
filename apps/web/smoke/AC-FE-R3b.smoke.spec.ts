@@ -77,10 +77,9 @@ for (const entry of [
     await expect(page.getByRole('heading', { name: entry.title, exact: true })).toBeVisible();
     await page.screenshot({ path: `../../.demo/fe-r3b-${entry.path.slice(1)}.png` });
     await page.getByRole('button', { name: entry.create, exact: true }).click();
-    await expect(
-      entry.path === '/evaluation' ? page.locator('.evaluation-full-page') : page.getByRole('dialog'),
-    ).toBeVisible();
-    await expect(page.getByLabel('名称', { exact: true })).toBeVisible();
+    const editor = entry.path === '/evaluation' ? page.locator('.evaluation-full-page') : page.getByRole('dialog');
+    await expect(editor).toBeVisible();
+    await expect(editor.getByLabel('名称', { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
 }
@@ -110,7 +109,7 @@ test('AC-FE-R3b-04 评定详情、名单、演示注释与三步编辑，保存�
   await form.getByRole('button', { name: '下一步', exact: true }).click();
   await form.getByRole('button', { name: '下一步', exact: true }).click();
   const request = page.waitForRequest((r) => r.method() === 'PATCH' && r.url().endsWith(`/activities/${id}`));
-  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
   const sent = await request;
   expect(sent.headers()['if-match']).toBe('2');
   expect(sent.headers()['idempotency-key']).toBeTruthy();
@@ -161,7 +160,7 @@ test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重
   const form = page.getByRole('dialog', { name: '新增活动' });
   await form.getByLabel('名称', { exact: true }).fill('合成新活动');
   const pending = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/survey360/activities'));
-  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await form.getByRole('button', { name: /^保\s*存$/ }).click();
   const sent = await pending;
   expect(sent.postDataJSON()).toEqual({
     name: '合成新活动',

@@ -203,7 +203,7 @@ function WizardFields({ state }: { state: ReturnType<typeof useWizard> }) {
                   )}
                   <Form.Item
                     name={field(key).editable ? key : undefined}
-                    label={m[key as 'name']}
+                    label={key === 'maxLevelJump' ? evUi.maxLevelJump : m[key as 'name']}
                     required={required.includes(key) || key === 'maxLevelJump'}
                     rules={
                       field(key).editable && required.includes(key)
