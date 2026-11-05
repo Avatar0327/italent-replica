@@ -222,6 +222,8 @@ export function previewNotice(preview: Preview) {
     else if (warning.reason === 'EXIT_APPLICATIONS_TO_VOID' && count) messages.push(x.toVoid(count));
     else if (warning.reason === 'EXIT_FUTURE_TRANSFER_LANDED' && count) messages.push(x.landed(count));
     else if (warning.reason === 'IN_FLIGHT_ASSESSMENT' && count) messages.push(x.assessment(count));
+    else if (warning.reason === 'EXIT_CONTRACTS_TO_HANDLE' && count) messages.push(x.contracts(count));
+    else if (warning.reason === 'EXIT_PART_TIMES_TO_END' && count) messages.push(x.partTimes(count));
   }
   const ackToken = tooMany ? undefined : preview.ack?.ackToken;
   // 超上限时没有令牌，“确认并提交”只在有令牌时出现

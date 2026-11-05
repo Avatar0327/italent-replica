@@ -112,6 +112,8 @@ export const x = {
   toVoid: (count: number) => `离职生效时将作废 ${count} 条在途任职申请`,
   landed: (count: number) => `有 ${count} 条已生效在后的调动将先于离职落地`,
   assessment: (count: number) => `离职生效时将终止 ${count} 条在途考核流程`,
+  contracts: (count: number) => `离职生效时将终止、删除 ${count} 份合同，或撤回在途合同申请`,
+  partTimes: (count: number) => `离职生效时将结束 ${count} 条兼职，或作废在途兼职申请`,
   ackHint: '确认后将以本次检查结果提交',
   blockers: {
     EXIT_IN_PROGRESS: '该员工已有在途的离职单',

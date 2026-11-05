@@ -99,6 +99,22 @@ describe('AC-FE-R2c2 入口只按服务端动作 / 权限快照显示', () => {
   });
 });
 
+describe('AC-FE-R2c2-F429 预览的合同与兼职提示', () => {
+  it('件数 = 可见 + 隐藏；没有件数不提示；不出现机器原因码', () => {
+    const notice = model.previewNotice(
+      preview([
+        { reason: 'EXIT_CONTRACTS_TO_HANDLE', items: [{}, {}], hiddenCount: 1 },
+        { reason: 'EXIT_PART_TIMES_TO_END', items: [], hiddenCount: 2 },
+      ]),
+    );
+    expect(notice.messages).toEqual([expect.stringContaining('3 份合同'), expect.stringContaining('2 条兼职')]);
+    expect(notice.messages.join()).not.toMatch(/EXIT_/);
+    expect(
+      model.previewNotice(preview([{ reason: 'EXIT_CONTRACTS_TO_HANDLE', items: [], hiddenCount: 0 }])).messages,
+    ).toEqual([]);
+  });
+});
+
 describe('AC-FE-R2c2-F240 在途申请超上限', () => {
   it('提示含上限数；后端不给令牌，没有“确认并提交”，也不带令牌', () => {
     const notice = model.previewNotice(preview([{ reason: 'EXIT_APPLICATIONS_TOO_MANY', limit: 1000 }]));
