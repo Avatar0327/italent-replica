@@ -157,6 +157,9 @@
       "status": 200
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
     "scopeQueries": [],
     "trace": []
   },
