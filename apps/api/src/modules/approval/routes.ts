@@ -1,3 +1,5 @@
+import { listTodoCards, todoCardsQuery } from './todo-cards.js';
+import { todoForm, todoSummary } from './todo-summary.js';
 /**
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
@@ -190,11 +192,13 @@ async function detailViewable(deps: TenantRouteDeps, ctx: TenantContext, data: D
   );
 }
 
-async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: DetailData) {
-  const base = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
+async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: DetailData, tx?: Tx) {
+  const fields = (object: string) =>
+    tx ? getModuleViewableFieldsInTransaction(deps, ctx, object, tx) : getModuleViewableFields(deps, ctx, object);
+  const base = await fields(data.snapshot.fieldObjectCode);
   const profileFields = data.snapshot.profileFields;
   if (!profileFields.length) return base;
-  const profile = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
+  const profile = await fields(PERSONNEL_OBJECT);
   if (base === undefined && profile === undefined) return undefined;
   const own = base ?? new Set(Object.keys(data.snapshot.values).filter((field) => !profileFields.includes(field)));
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
@@ -453,6 +457,29 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/todos', async (c) => {
     const ctx = readCtx(c, deps);
     const page = pageQuery(c);
+    if (c.req.query('view') !== undefined) {
+      const query = todoCardsQuery(c.req.query());
+      const viewer = await viewerOf(deps, ctx);
+      const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
+        listTodoCards(
+          tx,
+          ctx,
+          query,
+          page,
+          async (id) => {
+            const data = await readDetail(tx, ctx, id, viewer, false);
+            const visible = await viewableWithForeign(
+              data.snapshot,
+              await ownViewable(deps, ctx, data, tx),
+              foreignVisibility(deps, ctx, tx),
+            );
+            return todoForm(data, ctx.userId, visible);
+          },
+          (detail) => todoSummary(tx, deps, ctx, detail),
+        ),
+      );
+      return c.json({ ...result, page: page.page, pageSize: page.pageSize });
+    }
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listTodos(tx, ctx.tenantId, ctx.userId, page));
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });

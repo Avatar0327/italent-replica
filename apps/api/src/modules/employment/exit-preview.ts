@@ -6,8 +6,9 @@
  *   已落地且晚于最后工作日的直接调动（DEC-263②）、
  *   在途考核（F-229，DEC-617，只在有在途考核时追加在末尾；确认令牌覆盖它，见 exit-gate.ts）、
  *   将终止的个人信息类流程（F-400 EXIT_FLOWS_TO_TERMINATE，只在有时追加；候选取自 exit-flow-candidates.ts，令牌覆盖它）。
- * 清单逐项按 DEC-177 可见性与字段查看权裁剪（disclose），不可见的只计件数。合同影响（将终止 / 删除的合同、将撤回的
- * 在途合同申请）随 B3-2 合同端口改造（设计 §5.4 返回清单）接入，届时按合同对象查看权与合同范围裁剪（§9.1）。
+ *   将终止 / 删除的合同与将撤回的在途合同申请（EXIT_CONTRACTS_TO_HANDLE）、将结束的兼职与将作废的兼职申请
+ *   （EXIT_PART_TIMES_TO_END，F-429），选择与生效时同函数（exit-preview-effects.ts），只提示、不进确认令牌。
+ * 清单逐项按 DEC-177 可见性与字段查看权裁剪（disclose），不可见的只计件数；合同类另按合同对象查看权裁剪（§9.1）。
  */
 import type { Tx } from '@italent/db';
 import { dayAfter } from './fields.js';
@@ -23,6 +24,7 @@ import {
   untickedEmploymentKeep,
   type InFlight,
 } from './exit-gate.js';
+import { contractExitWarning, partTimeExitWarning } from './exit-preview-effects.js';
 import { discloseFlows } from './exit-flow-candidates.js';
 import { trimWith, type ExitViewable } from './exit-queries.js';
 import { previewRetirement as retirementPreview } from './retirement-application.js';
@@ -134,6 +136,8 @@ export async function previewExit(
         ? [{ reason: 'IN_FLIGHT_ASSESSMENT', ...(await assessmentNoticeItems(tx, ctx, employeeId, assessments)) }]
         : []),
       ...(flows ? [{ reason: 'EXIT_FLOWS_TO_TERMINATE', ...flows }] : []),
+      ...(await contractExitWarning(tx, ctx, employeeId, lastWorkDate, kind)),
+      ...(await partTimeExitWarning(tx, ctx, employeeId, lastWorkDate, kind)),
     ],
   };
 }

@@ -8,13 +8,20 @@ import { randomUUID } from 'node:crypto';
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { CascadeAuthorizer } from '../org/deactivation.js';
-import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import type { OrgRecord } from '../org/read-model.js';
-import { invalid, type OrganizationPatch } from '../org/validation.js';
+import { invalid } from '../org/validation.js';
 import { assertRefsReachable, assertRowReachable, ROW_NOT_FOUND } from './hidden-rows.js';
-import { activeOrg, assertItemRules, createdRow, existingOrg, planStop, type Submitted } from './item-rules.js';
+import {
+  activeOrg,
+  assertItemRules,
+  createdRow,
+  existingOrg,
+  planStop,
+  type Submitted,
+  validateContent,
+} from './item-rules.js';
 import { assertPlan, loadWorld, type ItemWorld } from './item-tree.js';
-import { type AddItemInput, assertItemFields, CHANGE_FIELDS, type ItemPatch, toContent } from './item-validation.js';
+import { type AddItemInput, assertItemFields, type ItemPatch, toContent } from './item-validation.js';
 import {
   auditItem,
   bumpRevision,
@@ -22,7 +29,6 @@ import {
   EMPTY_CONTENT,
   insertItem,
   type ItemsResult,
-  loadItems,
   type OrgItem,
   type OrgItemContent,
   updateItem,
@@ -123,7 +129,8 @@ export async function deleteOrgItem(
   hidden: ReadonlySet<string>,
 ): Promise<ItemsResult> {
   const view = await editable(tx, ctx, id);
-  const items = await loadItems(tx, ctx.tenantId, id);
+  const world = await loadWorld(tx, ctx.tenantId, view);
+  const items = world.items;
   ownRow(items, itemId, hidden);
   const removed = items.filter((item) => item.id === itemId || item.cascadedFromItemId === itemId);
   const ids = new Set(removed.map((item) => item.id));
@@ -137,6 +144,12 @@ export async function deleteOrgItem(
       itemId: referencing.id,
     });
   }
+  // 删行会让别的行回到原树位置（如改上级行被删后，本单新增行随子树回到更深处），与增改行同样只拦本次新造成的问题。
+  assertPlan(
+    world,
+    items,
+    items.filter((item) => !ids.has(item.id)),
+  );
   await deleteItems(tx, ctx.tenantId, id, removed);
   const revision = await finish(
     tx,
@@ -286,36 +299,6 @@ async function cascade(
   const taken = rows.find((row) => world.items.some((item) => item.targetOrgId === row.targetOrgId));
   if (taken) throw duplicate(taken.targetOrgId!);
   return rows;
-}
-
-/**
- * 内容完整：新增须有名称与上级；改组织至少改一项、改名 / 改上级须选是否新增任职（OA-R3，与组织直改同一判断）；
- * 负责人变化时两项联动必填（11e 前只能选“否”），未变化不许填。
- */
-function validateContent(item: OrgItem, current: OrgRecord | undefined) {
-  if (item.adjustType === 1) {
-    if (!item.name) throw invalid('name', '新增组织必须填写名称');
-    if (!item.parentOrgId && !item.parentItemId) throw invalid('parent', '新增组织必须选择上级组织');
-  }
-  if (item.adjustType === 2) {
-    if (!CHANGE_FIELDS.some((key) => item[key] !== null)) throw invalid('name', '改组织明细至少修改一项');
-    const parentId = item.parentOrgId ?? item.parentItemId;
-    validateEmploymentChoice(current!, {
-      effectiveDate: '',
-      ...(item.name !== null && { name: item.name }),
-      ...(parentId !== null && { parents: { admin: { parentId } } }),
-      ...(item.addEmployment !== null && { addEmployment: item.addEmployment }),
-    } as OrganizationPatch);
-  }
-  if (item.adjustType === 3) return;
-  const changed = item.personInChargeId !== null && item.personInChargeId !== (current?.personInChargeId ?? null);
-  const flags = [item.transferOldHeadSubordinates, item.adjustNewHeadManager];
-  if (changed && flags.some((flag) => flag === null)) {
-    throw invalid('transferOldHeadSubordinates', '负责人变化时必须选择是否转移原负责人下属及是否调整新负责人上级');
-  }
-  if (!changed && flags.some((flag) => flag !== null)) {
-    throw invalid('transferOldHeadSubordinates', '负责人未变化时不能选择负责人联动');
-  }
 }
 
 /** 本单的行；隐藏行与不存在的行同一 404（F-343 ①）；连带行不能单独改删。 */

@@ -17,6 +17,7 @@ import {
   handoverLaunchContext,
   handoverNotLaunchedReason,
   lockHandoverRequest,
+  type LaunchResult,
 } from './exit-handover.js';
 import { listHandoverItems } from './exit-handover-items.js';
 import {
@@ -24,6 +25,8 @@ import {
   linkHandoverInstance,
   loadHandoverRequest,
   moveHandoverRequest,
+  refreshNotLaunchedReason,
+  type HandoverRequestRow,
 } from './exit-handover-store.js';
 import { findCurrentRecord } from './read-model.js';
 import { requireBusinessWriteScope } from './replay-guard.js';
@@ -53,6 +56,68 @@ export function handoverResubmitGuard(deps: TenantRouteDeps, ctx: EmploymentCont
   });
 }
 
+/** 未发起 / 已终止转进行中：未发起记录此时才落事项并刷新所属部门；重提与补发续发共用。 */
+async function moveToInProgress(tx: Tx, ctx: EmploymentContext, row: HandoverRequestRow, initiatorUserId: string) {
+  if (row.state === 'not_launched') {
+    const current = await findCurrentRecord(tx, ctx.tenantId, row.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+    await tx.execute(sql`UPDATE exit_handover_requests SET department_id=${current?.fields.departmentId ?? null}::uuid
+      WHERE tenant_id=${ctx.tenantId} AND id=${row.id}::uuid`);
+    await insertRequestItems(tx, { ...ctx, id: row.id, items: await listHandoverItems(tx, ctx.tenantId) });
+  }
+  await tx.execute(sql`UPDATE exit_handover_requests SET initiator_user_id=${initiatorUserId}::uuid
+    WHERE tenant_id=${ctx.tenantId} AND id=${row.id}::uuid`);
+  await moveHandoverRequest(tx, ctx, row, { state: 'in_progress' });
+}
+async function startInstance(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  initiatorUserId: string,
+  actorUserId: string | null,
+) {
+  // 引擎反向加载业务适配器，动态加载避免环
+  const { startNewHandover } = await import('../approval/engine.js');
+  const instance = await startNewHandover(tx, handoverLaunchContext(ctx, initiatorUserId, actorUserId), id);
+  await linkHandoverInstance(tx, ctx.tenantId, id, instance.id);
+  return instance;
+}
+
+/**
+ * F-310 / F-365：补发在原未发起记录上续发（不新建第二张单）。账号仍缺则继续等；取人仍失败则刷新原因并结束补发，
+ * 交给 HR 在 F-305 入口重提；其它业务拒绝记 launch_failed，补发继续重试。调用方已持员工锁与离职业务头锁。
+ */
+export async function reviveNotLaunchedHandover(tx: Tx, ctx: EmploymentContext, id: string): Promise<LaunchResult> {
+  const row = await loadHandoverRequest(tx, ctx.tenantId, id, true);
+  if (row.state !== 'not_launched') return { outcome: 'exists', requestId: id };
+  const initiatorUserId = await userOfPerson(tx, ctx.tenantId, row.employeeId);
+  if (!initiatorUserId) return { outcome: 'skipped', reason: 'NO_INITIATOR_ACCOUNT' };
+  try {
+    // 保存点：业务拒绝整体回退，记录仍是未发起
+    await tx.transaction(async (savepoint) => {
+      await moveToInProgress(savepoint, ctx, row, initiatorUserId);
+      await startInstance(savepoint, ctx, id, initiatorUserId, null);
+    });
+  } catch (error) {
+    if (!(error instanceof AppError)) throw error;
+    const reason = handoverNotLaunchedReason(error);
+    if (reason) {
+      await refreshNotLaunchedReason(tx, ctx, id, reason);
+      return { outcome: 'not_launched', requestId: id, reason };
+    }
+    const failed = (error.details as { reason?: string } | undefined)?.reason ?? error.code;
+    await auditHandover(tx, ctx, 'launch_failed', 'exit-request', row.exitRequestId, null, { reason: failed });
+    return { outcome: 'failed', reason: failed };
+  }
+  await auditHandover(tx, ctx, 'launch', 'exit-handover-request', id, null, {
+    exitRequestId: row.exitRequestId,
+    employeeId: row.employeeId,
+    initiatorUserId,
+    resumed: true,
+    systemProxy: true,
+  });
+  return { outcome: 'launched', requestId: id };
+}
+
 export async function resubmitExitHandover(tx: Tx, ctx: EmploymentContext, id: string) {
   const row = await lockHandoverRequest(tx, ctx, id);
   // 状态校验在 execute 内：同键重放仍可取回首次成功回执，新命令则明确拒绝。
@@ -70,20 +135,10 @@ export async function resubmitExitHandover(tx: Tx, ctx: EmploymentContext, id: s
     throw new AppError('CONFLICT', HANDOVER_NOT_LAUNCHED_HINTS.NO_INITIATOR_ACCOUNT, {
       reason: 'NO_INITIATOR_ACCOUNT',
     });
-  if (row.state === 'not_launched') {
-    const current = await findCurrentRecord(tx, ctx.tenantId, row.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
-    await tx.execute(sql`UPDATE exit_handover_requests SET department_id=${current?.fields.departmentId ?? null}::uuid
-      WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`);
-    await insertRequestItems(tx, { ...ctx, id, items: await listHandoverItems(tx, ctx.tenantId) });
-  }
-  await tx.execute(sql`UPDATE exit_handover_requests SET initiator_user_id=${initiatorUserId}::uuid
-    WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`);
-  await moveHandoverRequest(tx, ctx, row, { state: 'in_progress' });
+  await moveToInProgress(tx, ctx, row, initiatorUserId);
   try {
     // 引擎反向加载业务适配器，动态加载避免环；全部写入属于同一命令事务，拒绝时整体回滚。
-    const { startNewHandover } = await import('../approval/engine.js');
-    const instance = await startNewHandover(tx, handoverLaunchContext(ctx, initiatorUserId, ctx.userId), id);
-    await linkHandoverInstance(tx, ctx.tenantId, id, instance.id);
+    const instance = await startInstance(tx, ctx, id, initiatorUserId, ctx.userId);
     const current = await loadHandoverRequest(tx, ctx.tenantId, id);
     const receipt = {
       requestId: id,

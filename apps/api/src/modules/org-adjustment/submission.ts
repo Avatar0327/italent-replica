@@ -35,10 +35,14 @@ async function assertSubmittable(tx: Tx, ctx: WriteContext, view: AdjustmentView
   await assertWhole(tx, await loadWorld(tx, ctx.tenantId, view), ctx.now);
 }
 
-/** 锁住的申请单置新审批状态：revision + 1、同事务审计（系统身份的回调操作人记空）。 */
+/**
+ * 锁住的申请单置新审批状态：revision + 1、同事务审计（系统身份的回调操作人记空）。
+ * 审批通过同时写 approved_at：执行队列按 (approved_at, id) 排序，相交单的先后守卫靠它（§7.3，F-463）。
+ */
 async function setStatus(tx: Tx, ctx: WriteContext, before: AdjustmentView, status: number, action: string) {
+  const approvedAt = status === STATUS.approved ? ctx.now.toISOString() : null;
   await tx.execute(sql`UPDATE org_adjustments SET approval_status = ${status}, revision = revision + 1,
-      updated_at = ${ctx.now.toISOString()}
+      updated_at = ${ctx.now.toISOString()}, approved_at = COALESCE(${approvedAt}::timestamptz, approved_at)
     WHERE tenant_id = ${ctx.tenantId} AND id = ${before.id}`);
   const view = (await loadAdjustment(tx, ctx.tenantId, before.id))!;
   await audit(tx, ctx, `org-adjustment.${action}`, before, view);
