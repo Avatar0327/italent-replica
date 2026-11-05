@@ -25,7 +25,7 @@ import {
 import { EXIT_SETTINGS_OBJECT } from '../../apps/web/src/exit/model.js';
 import type { MenuNode } from '../../apps/web/src/foundation/permission-snapshot.js';
 import { MENU_ROUTES } from '../../apps/web/src/foundation/routes.js';
-import { exitWorld } from './AC-EXIT-support.js';
+import { exitWorld, grantAdminRecordView } from './AC-EXIT-support.js';
 import { addMember } from './AC-PRM-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
@@ -41,7 +41,10 @@ async function permissionWorld() {
   const api = tenantApi(w.db, { authorize: undefined, clock: () => new Date('2026-10-30T01:00:00Z') });
   const adminRecord = await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.user.id }, cmd());
   const asAdmin = { tenant: w.tenant.id, user: w.user.id };
-  const member = await addMember({ db: w.db, tenant: w.tenant, admin: w.user, adminRecord, api, asAdmin }, '合成成员');
+  const seed = { db: w.db, tenant: w.tenant, admin: w.user, adminRecord, api, asAdmin };
+  // F-358 / DEC-780：配置读取另要任职记录查看权（与入口同口径），管理员补一个只读任职记录的身份
+  await grantAdminRecordView(seed, 'f327');
+  const member = await addMember(seed, '合成成员');
   const as = (user: string, method: string, path: string, body?: unknown, ifMatch?: number) =>
     api.request(method, path, { tenant: w.tenant.id, user, body, ifMatch });
   return { as, admin: w.user.id, member: member.id };

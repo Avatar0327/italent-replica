@@ -6,25 +6,18 @@
  * - 可打开最新审批实例的人（审批人、发起人、抄送人、范围内的流程管理员）：字段 = 节点 formFields ∩ 字段查看权
  *   （`disclosedFieldNames`），不要求对象权限与组织范围，明细行全部可见。
  * - 两条都不通过：404，文案与不存在相同（F-339 同类：范围外与不存在不可区分）。
- * 本文件也是 10c 起审批中心共用的披露裁剪入口；10c 快照落地前，审批人节点按实例现值判定（见 approverNode）。
+ * 审批人路径读审批中心同一份业务快照（BE-10c `readDetail`）并复用 `viewerNode` / `disclosedFields` 选节点（F-413），
+ * 不在这里再拼一遍；快照随单据现值计算（审批中心同口径），披露集按查看人所在节点，不随之后的修改改变。
  */
-import { and, auditObjectCreators, asc, eq, inArray, sql, type Tx } from '@italent/db';
-import {
-  APPROVAL_INSTANCE_OBJECT,
-  buttonResource,
-  disclosedFieldNames,
-  MODULE_OBJECTS,
-  ORG_ADJUSTMENT_OBJECT_CODE,
-} from '@italent/domain';
+import { and, auditObjectCreators, asc, eq, inArray, type Tx } from '@italent/db';
+import { APPROVAL_INSTANCE_OBJECT, buttonResource, MODULE_OBJECTS, ORG_ADJUSTMENT_OBJECT_CODE } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { memberInstanceScope } from '../approval/access.js';
-import { loadVersion } from '../approval/definitions.js';
-import { assertCanOpen } from '../approval/disclosure.js';
-import { latestInstanceOf, loadTasks, type InstanceRow } from '../approval/store.js';
+import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
+import { latestInstanceOf, type InstanceRow } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
-import { rowsOf } from '../org/read-model.js';
 import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
@@ -70,10 +63,10 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
   const instance = await latestInstanceOf(tx, ctx.tenantId, 'org_adjustment', id);
   const hr = await hrDisclosure(tx, bound, ctx, view);
   if (hr) return { ...hr, instanceId: instance?.id ?? null } satisfies Disclosure;
-  if (instance && (await canOpen(tx, bound, ctx, instance))) {
+  const data = instance ? await openDetail(tx, bound, ctx, instance) : null;
+  if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
-    const formFields = (await approverNode(tx, ctx, instance))?.formFields ?? [];
-    const fields = disclosedFieldNames(formFields, viewable);
+    const fields = disclosedFields(data, ctx.userId, viewable);
     const none = { orgScope: null, orgCreators: new Map<string, string>(), employmentScope: null };
     return { view, via: 'approver', fields, ...none, instanceId: instance.id } satisfies Disclosure;
   }
@@ -127,8 +120,11 @@ export function orgInScope(disclosure: Disclosure, orgId: string): boolean {
   return !scope || scopeAllows(scope, { orgId, creatorId: disclosure.orgCreators.get(orgId) });
 }
 
-/** 审批中心同一判定（参与人或范围内的流程管理员），管理员范围在本事务内解析（PGlite 单连接）。 */
-async function canOpen(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow) {
+/**
+ * 审批中心同一判定（参与人或范围内的流程管理员）与同一份详情数据（含业务快照、查看人任务与抄送）；打不开返回 null。
+ * 管理员范围在本事务内解析（PGlite 单连接）。
+ */
+async function openDetail(tx: Tx, bound: Deps, ctx: TenantContext, instance: InstanceRow): Promise<DetailData | null> {
   const adminScope = async (button: 'adminTransfer' | 'adminIntervene') => {
     const resource = buttonResource(APPROVAL_INSTANCE_OBJECT, button, 'detail');
     if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;
@@ -141,32 +137,11 @@ async function canOpen(tx: Tx, bound: Deps, ctx: TenantContext, instance: Instan
   };
   const command = { ...ctx, now: bound.clock(), commandId: '', expectedRevision: 0 };
   try {
-    await assertCanOpen(tx, command, instance, viewer);
-    return true;
+    return await readDetail(tx, command, instance.id, viewer, false);
   } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
     throw error;
   }
-}
-
-/**
- * 查看人所在节点：与审批中心 `viewerNode` 同序（自己参与的最后一个节点 → 被抄送节点 → 当前节点 → 最后一个任务 →
- * 首节点）。`viewerNode` 只接受完整详情数据（含业务快照，10c 才有），这里按实例现值取同样的键。
- */
-async function approverNode(tx: Tx, ctx: TenantContext, instance: InstanceRow) {
-  const tasks = await loadTasks(tx, ctx.tenantId, instance.id);
-  const own = tasks.filter(
-    (task) => task.assigneeUserId === ctx.userId && !['self_skip', 'subject_skip'].includes(task.origin),
-  );
-  const [cc] = rowsOf<{ node_key: string }>(
-    await tx.execute(sql`SELECT node_key FROM approval_instance_ccs
-      WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid AND user_id=${ctx.userId}::uuid
-      ORDER BY created_at DESC LIMIT 1`),
-  );
-  const version = await loadVersion(tx, ctx.tenantId, instance.versionId);
-  const key =
-    own.at(-1)?.nodeKey ?? cc?.node_key ?? instance.currentNodeKey ?? tasks.at(-1)?.nodeKey ?? version.nodes[0]?.key;
-  return version.nodes.find((node) => node.key === key) ?? null;
 }
 
 /** 组织明细分区是否对查看人披露：至少一个 `orgItems.*` 字段可见。 */

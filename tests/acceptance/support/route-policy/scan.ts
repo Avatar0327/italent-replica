@@ -570,6 +570,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['hr-dashboard', '/api/tenant/analytics/hr-dashboard', [path.join(modules, 'analytics')]],
     ['hr-process-dashboard', '/api/tenant/analytics/hr-process-dashboard', [path.join(modules, 'analytics')]],
     ['hr-structure', '/api/tenant/analytics/hr-structure', [path.join(modules, 'analytics')]],
+    ['team-dashboard', '/api/tenant/analytics/team-dashboard', [path.join(modules, 'analytics')]],
     ['hr-movement', '/api/tenant/analytics/hr-movement', [path.join(modules, 'analytics')]],
     ['contract-board', '/api/tenant/analytics/contract-board', [path.join(modules, 'analytics')]],
     ['org-adjustment', '/api/tenant/org-adjustment', [path.join(modules, 'org-adjustment')]],
