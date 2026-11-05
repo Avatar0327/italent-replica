@@ -135,6 +135,9 @@ export const HANDOVER_NOT_LAUNCHED_HINTS = {
   NO_HANDLER: '工作交接未发起：交接人、直线经理与兜底处理人均为空，请补充后处理',
   APPROVAL_PROCESS_NOT_MATCHED: '离职交接未发起：没有可用的离职交接流程，请配置后重新提交',
   NO_INITIATOR_ACCOUNT: '离职交接未发起：员工没有可用发起账号，请补充后重新提交',
+  // F-368：发起预检（异常管理员）失败与 NO_HANDLER 同口径落记录，配置修好后从 F-305 入口重提
+  APPROVAL_EXCEPTION_ADMIN_SELF: '离职交接未发起：流程的异常管理员就是离职员工本人，请更换异常管理员后重新提交',
+  APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE: '离职交接未发起：流程的异常管理员不可用，请更换异常管理员后重新提交',
 } as const;
 export type HandoverNotLaunchedReason = keyof typeof HANDOVER_NOT_LAUNCHED_HINTS;
 /** DEC-674 / F305A：复用任职对象的独立详情按钮，对应原站 HandoverReSubmit。 */

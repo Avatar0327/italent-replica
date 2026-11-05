@@ -47,7 +47,7 @@ import {
   regularizationsBody,
   regularizations,
   regularizationDraftPath,
-  regularizeFields,
+  regularizeFieldsFor,
   temporaryBody,
   temporaryOf,
   validateAdjust,
@@ -85,7 +85,7 @@ function Field({ name, label, required, children }: FieldProps) {
     </Form.Item>
   );
 }
-const date = (label: string) => <Input type="date" aria-label={label} />;
+const date = (label: string, disabled = false) => <Input type="date" aria-label={label} disabled={disabled} />;
 
 type ShellProps = Pick<FormProps, 'onClose'> & {
   title: string;
@@ -278,7 +278,11 @@ export function RegularizeForm(props: FormProps & { application?: boolean }) {
  * 草稿单（撤回单 / 第二步失败的单）改了内容先 PATCH 同一张单（F-347 c），确认后再提交；PATCH 只带与内核给的
  * base（If-Match 那个 revision 的服务端值）不同的项，不另持打开时的值（rf347_2 P2-1）。
  */
-function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Values) => void) {
+function useSends(
+  employeeId: string,
+  fields: readonly string[],
+  saved: (draft: ApplicationDraft, sent: Values) => void,
+) {
   const destination = useRef<ProbationView>(undefined);
   const verify = (latest: Values) => {
     destination.current = destinationOf(latest.status);
@@ -315,7 +319,7 @@ function useSends(employeeId: string, saved: (draft: ApplicationDraft, sent: Val
   const patch = (id: string, values: Values): Send => ({
     method: 'PATCH',
     path: slotKey(businesses, id),
-    body: (sent, _revision, base) => draftPatchBody(sent, base),
+    body: (sent, _revision, base) => draftPatchBody(sent, base, fields),
     accept: (raw, sent) => {
       const made = kept(raw, sent, id);
       saved({ ...made, values: {} }, values);
@@ -359,7 +363,13 @@ function useDraftRead(employeeId: string) {
  * 冲突基线（rf347_2 P2-2）：打开时是恢复的暂存（没有暂存则员工默认值），每次暂存成功换成回执里的暂存，与 revision
  * 同步更新；服务端没有暂存时最新值即 defaults。
  */
-function useStage(employeeId: string, opened: Confirmed, defaults: Values, found: (draft: FoundDraft) => void) {
+function useStage(
+  employeeId: string,
+  opened: Confirmed,
+  defaults: Values,
+  fields: readonly string[],
+  found: (draft: FoundDraft) => void,
+) {
   const api = useApiClient();
   const readDraft = useDraftRead(employeeId);
   const [confirmed, setConfirmed] = useState(opened);
@@ -383,7 +393,7 @@ function useStage(employeeId: string, opened: Confirmed, defaults: Values, found
         return { path: regularizationDraftPath(employeeId), id: employeeId, revision: next };
       },
     };
-    if (await cmd.submit(values, regularizeFields, send)) void message.success(m.staged);
+    if (await cmd.submit(values, fields, send)) void message.success(m.staged);
   };
   const button = (form: FormInstance, locked: boolean) => (
     <Button disabled={locked} loading={cmd.form.busy} onClick={() => void stage(form.getFieldsValue(true) as Values)}>
@@ -457,11 +467,18 @@ function useRegularizeAllowed(application?: boolean) {
   return create && (!application || (!!permission?.dataOperations.update && permissions.can('Employment.Submit')));
 }
 
+/** 转正日期的字段权：可见才显示，可编辑才可改、才随请求发送（F-344）。 */
+function useDateAccess() {
+  const access = usePermissions(object).field('effectiveDate');
+  return { ...access, fields: regularizeFieldsFor(access.editable) };
+}
+
 type RegularizeProps = EditorProps & { recovery?: Recovery };
 function RegularizeEditor(props: RegularizeProps) {
   const { row, application, onClose, onDone, refresh, opening, read, recovery } = props;
   const employeeId = row.employeeId!;
   const allowed = useRegularizeAllowed(application);
+  const { fields, ...dateAccess } = useDateAccess();
   // 本次弹窗建 / 改过的草稿、暂存冲突重读到的申请单优先，否则沿用打开时找回的原申请单（服务端仍是草稿）：
   // 都只提交同一张单（DEC-103）
   const [own, setOwn] = useState<{ draft: ApplicationDraft; created: boolean }>();
@@ -488,10 +505,10 @@ function RegularizeEditor(props: RegularizeProps) {
   const target = targetOf(employeeId, draft ?? opening, reread);
   const cmd = useProbationCommand(employees, target, application ? 'apply' : 'regularize', () => refresh());
   const stagedAt = { revision: recovery?.revision ?? 0, values: temporary?.values ?? opening.values };
-  const staging = useStage(employeeId, stagedAt, opening.values, setFound);
+  const staging = useStage(employeeId, stagedAt, opening.values, fields, setFound);
   const staged = application && !draft;
-  useDraftRefill(cmd.form, regularizeFields, form);
-  useDraftRefill(staged ? staging.cmd.form : undefined, regularizeFields, form);
+  useDraftRefill(cmd.form, fields, form);
+  useDraftRefill(staged ? staging.cmd.form : undefined, fields, form);
   useFoundDraft(found, staging.cmd, form, (next) => {
     setOwn({ draft: next, created: false });
     setNames(next.names);
@@ -501,16 +518,16 @@ function RegularizeEditor(props: RegularizeProps) {
   const locked = cmd.disabled || (staged && staging.cmd.disabled) || !allowed;
   // 新建提交要有启用的试用结果；已存草稿带着已存结果提交，不受启用字典为空限制（F-347 e）
   const submitLocked = !draft && !results.options.length;
-  const { destination, ...sends } = useSends(employeeId, (made, values) =>
-    setOwn({ draft: { ...made, values: projectFields(values, regularizeFields) }, created: true }),
+  const { destination, ...sends } = useSends(employeeId, fields, (made, values) =>
+    setOwn({ draft: { ...made, values: projectFields(values, fields) }, created: true }),
   );
   const { error, submit } = useSubmit(form, async (values) => {
-    validateRegularize(values);
+    validateRegularize(values, dateAccess.editable);
     // 与当前已确认 revision 的服务端值比（rf347_2 P2-1）：409 核对后改回打开时的值也要先 PATCH，不能跳过直接提交
-    const confirmed = cmd.confirmedValues(regularizeFields);
-    const changed = !!draft && regularizeFields.some((field) => !sameValue(values[field], confirmed[field]));
+    const confirmed = cmd.confirmedValues(fields);
+    const changed = !!draft && fields.some((field) => !sameValue(values[field], confirmed[field]));
     const send = regularizeSend(sends, { application, draft, changed }, values);
-    if (!(await cmd.submit(values, regularizeFields, send))) return;
+    if (!(await cmd.submit(values, fields, send))) return;
     // 建草稿 / 改草稿已确认才自动进入提交（同实习）；提交失败时草稿保留，由用户显式重提同一张单
     if (application && (!draft || changed)) return void (autoSubmit.current = true);
     void message.success(application ? m.success.apply : m.success.regularize);
@@ -542,20 +559,33 @@ function RegularizeEditor(props: RegularizeProps) {
         form={form}
         initial={draft?.values ?? temporary?.values ?? opening.values}
         results={options}
-        dateRequired
+        date={dateAccess}
       />
     </Shell>
   );
 }
 
 type ResultOption = { value: string; label: string };
-type FieldsProps = { form: FormInstance; initial: Values; results: ResultOption[]; dateRequired: boolean };
+type DateAccess = { visible: boolean; editable: boolean };
+type FieldsProps = {
+  form: FormInstance;
+  initial: Values;
+  results: ResultOption[];
+  date: DateAccess;
+  dateRequired?: boolean;
+};
 function RegularizeFields(props: FieldsProps) {
   return (
     <Form form={props.form} layout="vertical" initialValues={props.initial}>
-      <Field name="effectiveDate" label={m.fields.regularizationDate!} required={props.dateRequired}>
-        {date(m.fields.regularizationDate!)}
-      </Field>
+      {props.date.visible && (
+        <Field
+          name="effectiveDate"
+          label={m.fields.regularizationDate!}
+          required={props.date.editable && props.dateRequired !== false}
+        >
+          {date(m.fields.regularizationDate!, !props.date.editable)}
+        </Field>
+      )}
       <Field name="probationResult" label={m.fields.probationResult!} required>
         <Select aria-label={m.fields.probationResult} options={props.results} />
       </Field>
@@ -566,6 +596,7 @@ function RegularizeFields(props: FieldsProps) {
 /** 批量转正（PB-R8，≤100 人）：统一转正日期可不填（各按预计结束日次日）；逐人回执，失败的人列出原因。 */
 export function BatchForm({ rows, onClose, onDone, refresh }: Omit<FormProps, 'row'> & { rows: Row[] }) {
   const permissions = usePermissions(object);
+  const dateAccess = useDateAccess();
   const [form] = Form.useForm();
   const results = useResults();
   const items: Pinned[] = rows.map((row) => ({ employeeId: row.employeeId!, revision: row.revision! }));
@@ -587,7 +618,7 @@ export function BatchForm({ rows, onClose, onDone, refresh }: Omit<FormProps, 'r
       body: (values) => regularizationsBody(values, items),
       accept: (raw) => void (outcome = regularizationReceipt(raw, items)),
     };
-    if (!(await cmd.submit(values, regularizeFields, send)) || !outcome) return;
+    if (!(await cmd.submit(values, dateAccess.fields, send)) || !outcome) return;
     if (outcome.succeeded.length) void message.success(m.success.batch(outcome.succeeded.length));
     if (!outcome.failed.length) return onDone();
     setFailed(outcome.failed);
@@ -603,7 +634,7 @@ export function BatchForm({ rows, onClose, onDone, refresh }: Omit<FormProps, 'r
       onSubmit={() => void submit()}
     >
       <Alert type="info" message={m.batchDateNote} />
-      <RegularizeFields form={form} initial={{}} results={results.options} dateRequired={false} />
+      <RegularizeFields form={form} initial={{}} results={results.options} date={dateAccess} dateRequired={false} />
       {failed && (
         <Alert
           type="error"

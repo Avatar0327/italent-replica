@@ -3607,6 +3607,42 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/team-dashboard": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "team-dashboard",
+      "primitives": {}
+    },
+    "GET /api/tenant/analytics/team-dashboard/components/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "team-dashboard",
+      "primitives": {}
+    },
     "GET /api/tenant/approval/admin-logs": {
       "edge": {
         "anonymous": {
@@ -3859,8 +3895,23 @@
       },
       "module": "approval",
       "primitives": {
+        "fieldsOut": [
+          "approval views"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
         "own": [
           "listTodos / listNotifications / listInstances"
+        ],
+        "relation": [
+          "assertCanOpen"
+        ],
+        "scope": [
+          "checkScope",
+          "creator scope",
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -4539,6 +4590,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -4812,6 +4864,9 @@
         "button": [
           "requireEmploymentWrite(按钮)"
         ],
+        "fieldsOut": [
+          "trimEmploymentResponse"
+        ],
         "object": [
           "object.* 动作",
           "readContext(object.*)"
@@ -4954,6 +5009,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5041,6 +5097,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5084,7 +5141,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -5115,7 +5177,12 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "domain": [
+          "employment.exitMode",
           "transfer.initiator"
         ],
         "object": [
@@ -6834,6 +6901,89 @@
         ]
       }
     },
+    "GET /api/tenant/hr-analysis/reports": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ]
+      }
+    },
+    "GET /api/tenant/hr-analysis/reports/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "guard": [
+          "hrAnalysis.reportObjects"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
+    "GET /api/tenant/hr-analysis/reports/:code/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-analysis",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "hrAnalysis.reportObjects"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view",
+          "TenantBase.HrRoster:view"
+        ]
+      }
+    },
     "GET /api/tenant/hr-analysis/roster": {
       "edge": {
         "anonymous": {
@@ -7831,7 +7981,10 @@
         "scope": [
           "adminScope",
           "creator scope",
-          "instanceScopeSql"
+          "employment visibility",
+          "instanceScopeSql",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },
@@ -19277,6 +19430,9 @@
           "buttonResource",
           "object.button"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "disclose*"
         ],
@@ -20785,6 +20941,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsOut": [
           "disclose*"
@@ -23115,6 +23274,9 @@
         "command": [
           "revision(c)",
           "runCommand / runWrite"
+        ],
+        "fieldsIn": [
+          "requireObjectWrite"
         ],
         "fieldsOut": [
           "trimModuleResponse"
@@ -27729,7 +27891,8 @@
           "requireEmploymentWrite"
         ],
         "fieldsOut": [
-          "employment runWrite()"
+          "employment runWrite()",
+          "trimEmploymentResponse"
         ],
         "object": [
           "object.* 动作",

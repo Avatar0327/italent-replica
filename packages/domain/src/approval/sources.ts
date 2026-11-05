@@ -86,16 +86,16 @@ export function relationSource(source: ApproverSource) {
   if ((mode === 'descendants' && !dimension) || (mode === 'relative' && type !== 'job')) return null;
   return { type, id: match[1]!, mode, dimension };
 }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** DEC-691 D5/D6：身份来源的值是本租户身份 ID；存在性在保存时另校（需读库），命名值 handover_hr_admin 另走表达式。 */
+export const identityProfileId = (source: ApproverSource): string | null =>
+  source.type === 'identity' && UUID.test(source.value) ? source.value : null;
 export function sourceViolation(source: ApproverSource): string | null {
   if (['public_variable', 'application_variable', 'matrix'].includes(source.type)) return '暂不支持，后补 F-326';
   if (expressionValue(source)) return null;
   if (relationSource(source)) return null;
-  if (source.type === 'identity') return '该来源待 F-318c 开放（身份 c2）';
-  if (
-    source.type === 'specified' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(source.value)
-  )
-    return null;
+  if (identityProfileId(source)) return null;
+  if (source.type === 'specified' && UUID.test(source.value)) return null;
   if (source.type === 'object_field' && source.value === 'business_record_direct_manager') return null;
   if (source.type === 'context_variable' && source.value === 'previous_approved') return null;
   return '审批人来源的值不合法';

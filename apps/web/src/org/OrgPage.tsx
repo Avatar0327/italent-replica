@@ -287,6 +287,18 @@ function OrgFilters({ s, access }: { s: Catalog; access: PageAccess }) {
 }
 // 原站「启用的组织」顶部提示（01）；架构图与变更页签保留各自的操作提示。
 const hints = { list: m.listHint, tree: m.treeHint, changes: m.changeHint };
+const orgListWidths: Record<string, number> = {
+  code: 128,
+  name: 240,
+  fullName: 128,
+  location: 128,
+  broadType: 128,
+  establishedOn: 93,
+  startDate: 93,
+  stopDate: 93,
+  displayOrder: 128,
+  remarks: 128,
+};
 function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: PageAccess; view: ListView }) {
   return (
     <ListPage
@@ -313,6 +325,7 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
           key: field,
           title: orgLabel(field, 'list'),
           dataIndex: field,
+          width: orgListWidths[field],
           render: (value: unknown, row: OrgRow) =>
             field === 'name' ? (
               <Button type="link" onClick={() => s.setSelected(row.id)}>
@@ -324,6 +337,7 @@ function OrgList({ s, tab, access, view }: { s: Catalog; tab: string; access: Pa
         })),
         {
           key: 'actions',
+          width: 204,
           // 原站操作列表头带齿轮，打开「设置显示字段」（01、B2_03）。
           title: (
             <Space size={4}>

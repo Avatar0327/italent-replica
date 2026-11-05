@@ -547,6 +547,25 @@ describe('AC-HA-13c 范围与授权', () => {
     expect((await initiator.detail('inFlightCount')).map((i) => i.id)).not.toContain(f.offers.o1Instance);
   });
 
+  it('F-415 业务类明细的审批实例 ID 按调用者的审批可见面裁剪：看得到业务单据、看不到不相干的实例 ID', async () => {
+    const stranger = await w.member('旁人F415');
+    const denyAdmin: Authorizer = (request) =>
+      !(request.action === 'object.button' && /#admin(Transfer|Intervene)@/.test(String(request.resource)));
+    const as = (user: string) =>
+      processClient(w.db, { tenant: w.tenant.id, user }, { now: () => new Date(at(AS_OF)), authorize: denyAdmin });
+    const approvedFlows = (['a', 'b', 'c', 'd', 'e'] as const).map((key) => f.flows[key]);
+    // 参与人（发起人 HR）：业务单据与审批实例 ID 都在，一一对应
+    const own = await as(w.hr.id).detail('transferApprovalRate', TRANSFER);
+    for (const flow of approvedFlows)
+      expect(own.find((item) => item.id === flow.business)?.instanceId, `发起人 ${flow.business}`).toBe(flow.instance);
+    // 旁人：数据范围内的业务单据照常列出（数字 = 明细不变），但不是参与人也没有管理员按钮，实例 ID 一律为空
+    const other = await as(stranger).detail('transferApprovalRate', TRANSFER);
+    expect(sorted(other.map((item) => item.id))).toEqual(sorted(own.map((item) => item.id)));
+    expect(other.map((item) => item.instanceId)).toEqual(other.map(() => null));
+    const approved = await as(stranger).detail('transferApprovalRate', TRANSFER, { hit: true });
+    expect(approved.map((item) => item.instanceId)).toEqual(approved.map(() => null));
+  });
+
   it('403 / 400 / 404', async () => {
     const denied: Authorizer = (request) => !(request.action === 'object.view' && request.resource === OBJECT);
     const blocked = processClient(
@@ -565,13 +584,20 @@ describe('AC-HA-13c 范围与授权', () => {
     expect((await board.get(`${PROCESS_BASE}/components/nope`)).status).toBe(404);
   });
 
-  it('授权项“人事分析 - 人事流程看板 查看”默认给人事模块预置管理员（DEC-415）', () => {
+  it('授权项“人事分析 - 人事流程看板 查看”给 HR 专员 / HR 经理 / 管理员并预置看全部（DEC-767）；人事管理员没有', () => {
     const profile = (code: string) => STANDARD_PROFILES.find((item) => item.code === code)!;
-    for (const code of ['standard_org_system_admin', 'standard_hr_admin'])
-      expect(profile(code).objects.map((object) => object.objectCode)).toContain(OBJECT);
+    const held = (code: string) => profile(code).objects.map((object) => object.objectCode);
     const seeAll = (code: string) => presetSeeAllTargets(profile(code)).map((target) => target.targetCode);
-    expect(seeAll('standard_org_system_admin')).toContain(OBJECT);
-    expect(seeAll('standard_hr_admin')).toContain(OBJECT);
+    for (const code of [
+      'standard_org_system_admin',
+      'standard_hr_dashboard_specialist',
+      'standard_hr_dashboard_manager',
+    ]) {
+      expect(held(code), code).toContain(OBJECT);
+      expect(seeAll(code), code).toContain(OBJECT);
+    }
+    expect(held('standard_hr_admin')).not.toContain(OBJECT);
+    expect(seeAll('standard_hr_admin')).not.toContain(OBJECT);
     expect(seeAll('standard_hr_specialist')).not.toContain(OBJECT);
   });
 });

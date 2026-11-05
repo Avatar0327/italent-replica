@@ -232,6 +232,9 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#bySegment': ['#isEmpty', '#segmentKey'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#closing': ['#unique'],
+  'apps/api/src/modules/analytics/hr-movement-board.ts#establishmentColumns': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#ratio',
+  ],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitReason': ['#NONE_LABEL', '#codeOf'],
   'apps/api/src/modules/analytics/hr-movement-board.ts#exitType': [
     '#NONE_LABEL',
@@ -257,6 +260,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/analytics/hr-movement-report.ts#establishmentTable': [
     'apps/api/src/modules/analytics/hr-movement-board.ts#actualStaff',
+    'apps/api/src/modules/analytics/hr-movement-board.ts#establishmentColumns',
     '#table',
   ],
   'apps/api/src/modules/analytics/hr-movement-report.ts#flowColumns': [
@@ -408,9 +412,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/analytics/hr-movement.ts#loadEstablishment': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#WORKING_TYPES',
     '#CAPACITY_LIMIT',
     '#CAPACITY_PAGE',
+    '#snapshots',
     'apps/api/src/modules/establishment/capacity-read.ts#listCapacities',
+    'apps/api/src/modules/establishment/projection-read.ts#readOrganizationProjections',
   ],
   'apps/api/src/modules/analytics/hr-movement.ts#loadExitDictionaries': [
     'apps/api/src/modules/employment/exit-dictionaries.ts#listExitDictionary',
@@ -702,12 +709,59 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/analytics/hr-structure.ts#structurePeople': [
+    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
+    '#structurePeopleWhere',
+  ],
+  'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere': [
     'apps/api/src/modules/analytics/hr-dashboard.ts#current',
     'apps/api/src/modules/analytics/hr-dashboard.ts#employType',
-    'apps/api/src/modules/analytics/hr-dashboard.ts#employmentVisible',
     'apps/api/src/modules/analytics/hr-dashboard.ts#inServiceFrom',
     '#attribute',
     '#categoryName',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#SHOWN': [
+    'packages/domain/src/analytics/team-dashboard.ts#TEAM_DASHBOARD_COMPONENTS',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard': [
+    'apps/api/src/modules/analytics/hr-structure-board.ts#structureComponents',
+    '#SHOWN',
+    '#TEAM_DASHBOARD_BASE',
+    '#teamPeople',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':
+    [
+      'apps/api/src/modules/analytics/hr-structure-board.ts#componentMembers',
+      'apps/api/src/modules/analytics/hr-structure-board.ts#isGrouped',
+      'apps/api/src/modules/analytics/hr-structure-routes.ts#groupQuery',
+      '#NOT_FOUND_TEXT',
+      '#TEAM_DASHBOARD_BASE',
+      '#teamPeople',
+      'apps/api/src/modules/job/context.ts#pageQuery',
+      'packages/domain/src/analytics/team-dashboard.ts#TEAM_DASHBOARD_COMPONENTS',
+    ],
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#teamPeople': [
+    'apps/api/src/modules/analytics/hr-dashboard-routes.ts#dateQuery',
+    'apps/api/src/modules/analytics/hr-structure-board.ts#filterPeople',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#BOARD_EMPLOY_TYPES',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#departmentFilter',
+    'apps/api/src/modules/analytics/hr-structure-routes.ts#lookupOf',
+    'apps/api/src/modules/analytics/hr-structure.ts#structurePeopleWhere',
+    '#NOT_FOUND_TEXT',
+    'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility',
+    'apps/api/src/tenant-context.ts#tenantOf',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#chainSql': [
+    'apps/api/src/modules/permission/scope-persons.ts#currentPersons',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#ledOrgIds': [
+    'apps/api/src/modules/permission/scope-hierarchy.ts#MAX_SCOPE_IDS',
+    'apps/api/src/modules/permission/scope-hierarchy.ts#scopeRows',
+  ],
+  'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility': [
+    '#chainSql',
+    '#ledOrgIds',
+    'apps/api/src/modules/permission/manager-identity.ts#managerIdentity',
   ],
 };
