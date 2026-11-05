@@ -1,6 +1,12 @@
 /** DEC-691：保存、候选与解析共用来源引用和维度判断；不把当前状态当作历史业务日。 */
 import { sql, type Tx } from '@italent/db';
-import { relationSource, SOURCE_DIMENSIONS, type ApproverSource, type RelationSourceType } from '@italent/domain';
+import {
+  identityProfileId,
+  relationSource,
+  SOURCE_DIMENSIONS,
+  type ApproverSource,
+  type RelationSourceType,
+} from '@italent/domain';
 import { readOrgSettings } from '../org/settings.js';
 import { approvalError, rowsOf } from './context.js';
 
@@ -24,6 +30,20 @@ function orgDimensionMember(tenantId: string, dimension: Dimension) {
 }
 export async function assertSourceReferences(tx: Tx, tenantId: string, sources: readonly ApproverSource[]) {
   for (const source of sources) {
+    const profileId = identityProfileId(source);
+    if (profileId) {
+      // D6：身份须是本租户已登记的身份；跨租户 / 不存在的 ID 与无法映射者一律拒存，不当作空人。
+      const [row] = rowsOf(
+        await tx.execute(sql`SELECT id FROM permission_profiles WHERE tenant_id=${tenantId} AND id=${profileId}::uuid`),
+      );
+      if (!row)
+        throw approvalError(
+          'APPROVAL_SOURCE_INVALID',
+          'APPROVAL_SOURCE_REFERENCE_INVALID',
+          '审批来源引用不存在或不可用',
+        );
+      continue;
+    }
     const ref = relationSource(source);
     if (!ref) continue;
     if (!(await dimensionEnabled(tx, tenantId, ref.dimension)))

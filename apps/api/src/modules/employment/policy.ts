@@ -2016,6 +2016,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
         scope: guardScope('employment.handoverSubmit', NF_BUSINESS),
         fields: noFields('只决定 rowActions 中首次发起交接是否出现'),
       }),
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
     },
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.exitViews'),
@@ -2028,6 +2037,17 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('详情无按钮'),
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: projector('employment.response', 'employment.exitDetail'),
+    optional: {
+      // F-352 逐单 availableActions（exit-actions.ts）：edit 复用编辑入口 requireExitEditRights，审批中的单另判 adminIntervene，
+      // 只决定响应里的动作码，不参与准入
+      exitActions: object({
+        object: APPROVAL_INSTANCE_OBJECT,
+        operation: 'button',
+        button: button('adminIntervene', 'detail'),
+        scope: noScope('只判按钮：单据处于 in_review 时才要求（与 PATCH /exits/:id 同约束）'),
+        fields: noFields('只决定 availableActions 的 edit'),
+      }),
+    },
     ...byId,
   }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
@@ -2134,17 +2154,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     ...byId,
   }),
   // 转正申请暂存（F-347，DEC-709）：读写同一口径：readContext('object.create', resource=id) 写入口径人员范围 404
-  // 「任职数据不存在」+ requireEmploymentWrite('create', {}, Employment.Create, 命令式：暂存内容是转正控制项不进字段协议）；
-  // 不在职 404；回执固定形状 { id, employeeId, revision, temporary, applicationId }
+  // 「任职数据不存在」+ requireEmploymentWrite 的按钮与携带日期字段权校验；不在职 404。
+  // F-344：暂存协议键保留，temporary.effectiveDate 经任职字段查看权投影；GET / PUT / 重放同一出口。
   'GET /employees/:id/regularization-draft': object({
     object: EMPLOYMENT,
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    fields: fixed(
-      ['id', 'employeeId', 'revision', 'temporary', 'applicationId'],
-      'F-347 暂存投影固定键（regularization-drafts.ts）',
-    ),
+    fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     ...byId,
   }),
   // 暂存写入：If-Match = 暂存 revision（没有时 0，409 REVISION_CONFLICT）；body 严格 { effectiveDate?, probationResult? }
@@ -2155,7 +2172,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     operation: 'create',
     button: button('Employment.Create', 'detail'),
     scope: guardScope('employment.scope', NF_DATA),
-    // 回执是暂存读投影（与 GET 同形状）：runWrite 的 project 原样返回，首次与重放同一出口
+    // 回执与 GET 同一暂存读投影，首次与重放均按当前任职字段查看权裁剪日期
     fields: projector('employment.regularizationDraft', 'employment.regularizationDraft'),
     write: employmentWrite('body.fields+customFields', ['assertRevision'], {
       commandOnly: true,

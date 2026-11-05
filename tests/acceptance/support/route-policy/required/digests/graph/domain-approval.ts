@@ -227,8 +227,14 @@ export const GRAPH: Graph = {
     '#EXPRESSION_SOURCE_TYPES',
     'packages/domain/src/approval/types.ts#APPROVER_EXPRESSIONS',
   ],
+  'packages/domain/src/approval/sources.ts#identityProfileId': ['#UUID'],
   'packages/domain/src/approval/sources.ts#relationSource': ['#RELATION_SOURCE_TYPES', '#SOURCE_DIMENSIONS'],
-  'packages/domain/src/approval/sources.ts#sourceViolation': ['#expressionValue', '#relationSource'],
+  'packages/domain/src/approval/sources.ts#sourceViolation': [
+    '#UUID',
+    '#expressionValue',
+    '#identityProfileId',
+    '#relationSource',
+  ],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_DETAIL_VIEW': ['#NO_MODEL', '#form', '#later'],
   'packages/domain/src/approval/transfer-view.ts#TRANSFER_FORM_FIELDS': ['#TRANSFER_DETAIL_VIEW'],
   'packages/domain/src/approval/types.ts#APPROVAL_TYPES': [

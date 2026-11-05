@@ -1,18 +1,10 @@
 {
-  "reason": "F-472（DEC-767 / DEC-768）：新增预置身份 HR 专员 / HR 经理（五个看板类对象只读并预置看全部）；人事管理员去掉看板类对象及看板、报表类看全部，两个报表对象的查看权保留",
-  "add": ["standard_hr_dashboard_specialist/*", "standard_hr_dashboard_manager/*"],
-  "remove": [
-    "standard_hr_admin/TenantBase.HrDashboard/*",
-    "standard_hr_admin/TenantBase.HrProcessDashboard/*",
-    "standard_hr_admin/TenantBase.HrStructure/*",
-    "standard_hr_admin/TenantBase.ContractBoard/*",
-    "standard_hr_admin/TenantBase.HrMovement/*",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrDashboard",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrProcessDashboard",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructure",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrStructureReport",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.ContractBoard",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovement",
-    "standard_hr_admin/seeAll:TenantBase:entity:TenantBase.HrMovementReport"
-  ]
+  "reason": "F-020 / DEC-790：仅员工身份新增本人离职、兼职按钮和专属字段授权；HR 默认授权及共享员工字段不变",
+  "add": [
+    "employee_self_service/TenantBase.EmploymentRecord/button:Exit.Self@detail",
+    "employee_self_service/TenantBase.EmploymentRecord/button:PartTime.Self@detail",
+    "employee_self_service/TenantBase.SelfExit/*",
+    "employee_self_service/TenantBase.SelfPartTime/*"
+  ],
+  "remove": []
 }

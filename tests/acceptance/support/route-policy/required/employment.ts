@@ -707,6 +707,28 @@ const rowActionObligations = (): Obligation[] => [
   rowAction(`btn:${RECORD}#Employment.Revoke@detail`, [], [...ROW_REVOKE, WRITE_BUTTON, RECORD_CONST]),
 ];
 
+// ---- F-352 离职列表 / 详情逐单 availableActions（exit-actions.ts exitActions）：只决定响应里的动作码，不参与准入 ----
+// edit 动作复用编辑入口的 requireExitEditRights，单据审批中时另判审批实例 adminIntervene 按钮（与 PATCH /exits/:id 同口径）
+const exitActionsIntervene = (call: Evidence): Obligation => ({
+  perm: 'btn:TenantBase.ApprovalInstance#adminIntervene@detail',
+  purpose: 'disclosure:exitActions',
+  need: NONE,
+  facts: ['button:object.button', 'button:buttonResource'],
+  note: '只决定响应动作码 edit（单据 in_review 时才判），不拒绝请求',
+  at: [
+    call,
+    fn(
+      `${SRC}/employment/exit-actions.ts`,
+      'exitActions',
+      'await allowed(() => requireExitEditRights(tx, scoped, target, subject.id))',
+    ),
+    fn(
+      REPLAY,
+      'requireExitEditRights',
+      "resource: buttonResource(APPROVAL_INSTANCE_OBJECT, 'adminIntervene', 'detail')",
+    ),
+  ],
+});
 // ---- F-268 兼职申请详情逐单 availableActions（part-time/request-actions.ts）：可选分支 requestActions ----
 const REQUEST_ACTIONS_CALL = at(
   PART_TIME_REQUEST,
@@ -1107,8 +1129,11 @@ const accountRead = (call: Evidence): Obligation =>
     ['object:readContext(object.*)', `objectOp:${RECORD}:view`, 'object:object.* 动作'],
     [call, READ, RECORD_CONST],
   );
-const DRAFT_BUTTON =
-  "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })";
+/** 转正申请暂存的按钮判定：读不带字段；写带转正日期控制字段（F-344）。 */
+const DRAFT_BUTTON = {
+  GET: "await requireEmploymentWrite(ctx, 'create', {}, 'Employment.Create', undefined, { commandOnly: true })",
+  PUT: "await requireEmploymentWrite(ctx, 'create', controls, 'Employment.Create', undefined, { commandOnly: true })",
+} as const;
 
 /**
  * F-358 / DEC-780：离职设置页的三个配置读取除了任职设置对象查看权（原义务），还要求任职记录查看权（入口同口径）。
@@ -3136,7 +3161,7 @@ export const EMPLOYMENT: RequiredTable = {
           ob(
             `btn:${RECORD}#Employment.Create@detail`,
             ['button:requireEmploymentWrite(按钮)'],
-            [at(PROBATION, method, path, DRAFT_BUTTON), WRITE_BUTTON],
+            [at(PROBATION, method, path, DRAFT_BUTTON[method]), WRITE_BUTTON],
           ),
           ob(
             'guard:employment.scope',
@@ -3703,6 +3728,7 @@ export const EMPLOYMENT: RequiredTable = {
     })),
 
     recordView(at(EXIT, 'GET', '/exits', "const ctx = await readPageContext(c, deps, 'list')")),
+    exitActionsIntervene(at(EXIT, 'GET', '/exits', 'await exitActions(deps, ctx, items, { withHandle: true })')),
     ob(
       'guard:employment.viewableFilters',
       [],
@@ -3714,6 +3740,9 @@ export const EMPLOYMENT: RequiredTable = {
   ],
   'GET /api/tenant/employment/exits/:id': [
     recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    exitActionsIntervene(
+      at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
+    ),
   ],
   // ---- employment/exit-handover-routes.ts：R2 BE-8b2 离职交接执行（B64，DEC-632）-----------------------------------------
   'POST /api/tenant/employment/exits/:id/handover/submit': [
