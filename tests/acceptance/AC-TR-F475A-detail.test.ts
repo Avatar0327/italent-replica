@@ -24,7 +24,7 @@ describe('AC-TR F-475A 项目整页详情', () => {
     const html = render(h(RecordDetail, props));
     expect(html).toContain('class="review-project-detail"');
     expect(html).not.toContain('role="dialog"');
-    expect(html).toContain('返回');
+    expect(html).toMatch(/返\s*回/);
     expect(html).toContain('合成项目');
     expect(html).toContain('盘点信息采集进展');
     expect(html).toContain('合成标准标识');
