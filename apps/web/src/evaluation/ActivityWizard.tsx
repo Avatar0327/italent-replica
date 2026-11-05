@@ -1,10 +1,11 @@
-import { Alert, Button, Drawer, Form, Space, Steps } from 'antd';
-import { useState } from 'react';
+import { Alert, Button, Form, Space, Steps } from 'antd';
+import { useEffect, useRef, useState } from 'react';
 import { checkActivityChains, type ChainDraft } from '@italent/domain';
 import { usePermissions } from '../foundation/Permissions.js';
 import { ApiError } from '../foundation/client.js';
 import { ActivityControl, Chains, Conditions, editableChains, EV } from './ActivityFields.js';
-import { useRecordForm } from './useRecordForm.js';
+import { useEvaluationForm } from './useEvaluationForm.js';
+import { evUi, MissingFields, Unavailable } from './alignment.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
@@ -53,9 +54,16 @@ interface WizardProps {
 }
 function useWizard({ row, close, saved }: WizardProps) {
   const permission = usePermissions(EVALUATION);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const [step, setStep] = useState(0);
   const [form] = Form.useForm();
-  const writer = useRecordForm(`${EV}/activities`, row);
+  const writer = useEvaluationForm(`${EV}/activities`, row);
   const current = writer.current;
   const locked = !!current && current.applyCount !== 0;
   const field = (key: string) => {
@@ -84,10 +92,14 @@ function useWizard({ row, close, saved }: WizardProps) {
       { type: 'result', name: m.result, transferMode: 'manual' },
     ],
   };
-  const canCreate = !!row || required.every((key) => field(key).editable);
+  const operation = row ? 'update' : 'create';
+  const canCreate =
+    permission.can(operation, row ? 'detail' : 'list') &&
+    !!permission.snapshot.objects[EVALUATION]?.dataOperations[operation] &&
+    (!!row || required.every((key) => field(key).editable));
   const save = async () => {
     try {
-      if (writer.locked) return;
+      if (writer.locked || !canCreate) return;
       setLocalError('');
       await form.validateFields();
       const values = { ...form.getFieldsValue(true) } as Record<string, unknown>;
@@ -99,9 +111,12 @@ function useWizard({ row, close, saved }: WizardProps) {
       if ('conditions' in body) validateConditions(body.conditions);
       await writer.save(values, editable, row ? 'PATCH' : 'POST');
       writer.clear();
-      saved();
-      close();
+      if (alive.current) {
+        saved();
+        close();
+      }
     } catch (error) {
+      if (!alive.current) return;
       if (error instanceof ApiError) form.setFields(error.fieldErrors);
       if (error instanceof Error) setLocalError(error.message);
     }
@@ -114,16 +129,10 @@ export function ActivityWizard(props: WizardProps) {
   const state = useWizard(props);
   const { writer, step, form, initial, canCreate, localError } = state;
   return (
-    <Drawer
-      open
-      width={960}
-      title={row ? m.edit : m.create}
-      onClose={close}
-      closable={!writer.busy}
-      maskClosable={!writer.busy}
-      keyboard={!writer.busy}
-      footer={<WizardFooter state={state} close={close} />}
-    >
+    <section className="evaluation-full-page" aria-label={row ? evUi.editActivity : m.create}>
+      <header>
+        <h1>{row ? evUi.editActivity : m.create}</h1>
+      </header>
       <Steps
         className="r3b-steps"
         current={step}
@@ -137,7 +146,10 @@ export function ActivityWizard(props: WizardProps) {
           <WizardFields state={state} />
         </Form>
       </FormLock>
-    </Drawer>
+      <footer className="evaluation-footer">
+        <WizardFooter state={state} close={close} />
+      </footer>
+    </section>
   );
 }
 
@@ -168,6 +180,7 @@ function WizardFooter({ state, close }: { state: ReturnType<typeof useWizard>; c
           {m.save}
         </Button>
       )}
+      {step === 2 && <Unavailable label={evUi.savePublish} />}
     </Space>
   );
 }
@@ -179,30 +192,37 @@ function WizardFields({ state }: { state: ReturnType<typeof useWizard> }) {
       {' '}
       {groups.map((keys, index) => (
         <div key={index} style={{ display: index === step ? 'block' : 'none' }}>
+          {index === 0 && <h2 className="r3b-section">{evUi.basic}</h2>}
           <div className={index === 0 ? 'r3b-form-grid' : undefined}>
             {keys
               .filter((key) => field(key).visible)
               .map((key) => (
-                <Form.Item
-                  key={key}
-                  name={field(key).editable ? key : undefined}
-                  label={m[key as 'name']}
-                  rules={
-                    field(key).editable && required.includes(key)
-                      ? [
-                          { required: true, message: m.required },
-                          ...(['name'].includes(key) ? [{ whitespace: true, message: m.required }] : []),
-                        ]
-                      : []
-                  }
-                >
-                  {field(key).editable ? (
-                    <LockedField>{wizardControl(key, state)}</LockedField>
-                  ) : (
-                    wizardControl(key, state)
+                <div key={key} className={['orgRange', 'maxLevelJump'].includes(key) ? 'evaluation-span' : undefined}>
+                  {['orgRange', 'maxLevelJump'].includes(key) && (
+                    <h2 className="r3b-section">{key === 'orgRange' ? m.scope : m.other}</h2>
                   )}
-                </Form.Item>
+                  <Form.Item
+                    name={field(key).editable ? key : undefined}
+                    label={key === 'maxLevelJump' ? evUi.maxLevelJump : m[key as 'name']}
+                    required={required.includes(key) || key === 'maxLevelJump'}
+                    rules={
+                      field(key).editable && required.includes(key)
+                        ? [
+                            { required: true, message: m.required },
+                            ...(['name'].includes(key) ? [{ whitespace: true, message: m.required }] : []),
+                          ]
+                        : []
+                    }
+                  >
+                    {field(key).editable ? (
+                      <LockedField>{wizardControl(key, state)}</LockedField>
+                    ) : (
+                      wizardControl(key, state)
+                    )}
+                  </Form.Item>
+                </div>
               ))}
+            {index === 0 && <MissingFields labels={[evUi.notification]} />}
           </div>
         </div>
       ))}

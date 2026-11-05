@@ -8,13 +8,21 @@ import { resultRows } from './AC-ORG-support.js';
 
 const testDb = useTestDb();
 
-async function fixture(db: Db, label: string) {
+/** probation：入职为内部试用，供转正申请用（DEC-788 只许在职试用主职发起）。 */
+async function fixture(db: Db, label: string, options: { probation?: boolean } = {}) {
   const session = await employmentSession(db, label);
   const employee = await session.employee();
   const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
+  const fields = { departmentId: org.id, place: '原地点', ...(options.probation ? { employType: 'internal' } : {}) };
   const hire = await session.business(
     employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: org.id, place: '原地点' } },
+    {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-09-01',
+      fields,
+      ...(options.probation ? { probation: true } : {}),
+    },
     employee.revision,
   );
   return { session, employee, hire, org };
@@ -235,7 +243,7 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
 
   it('两笔不同业务并发批准，传播与另一业务生效串行一致；过期目标显式刷新重提不丢更新', async () => {
     const { db } = testDb();
-    const { session, employee, hire } = await fixture(db, 'fwd-concurrent-approval');
+    const { session, employee, hire } = await fixture(db, 'fwd-concurrent-approval', { probation: true });
     // DEC-195：本例只测并发传播，使用批准当天；迟到改期另由 F-017 专项覆盖。
     const sourceDraft = await session.business(
       employee.id,
