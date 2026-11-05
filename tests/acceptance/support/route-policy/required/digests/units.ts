@@ -933,12 +933,12 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/disclosure.ts': {
     OBJECT: 'b007f3f6067a',
-    hrDisclosure: 'a6cf9fc390e1',
+    hrDisclosure: 'e95fadfbd629',
     openDetail: '5abf9d780173',
-    orgAdjustmentDisclosure: '4215349b843a',
+    orgAdjustmentDisclosure: 'd1d8828e842b',
   },
   'apps/api/src/modules/org-adjustment/queries.ts': {
-    listAdjustments: '6cfed9d36f18',
+    listAdjustments: '4d3bcb00cad6',
   },
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
@@ -2548,10 +2548,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#requireButtons': 'f3f82540978f',
   'apps/api/src/modules/org-adjustment/access.ts#requireScopes': 'b32893294b0a',
   'apps/api/src/modules/org-adjustment/disclosure.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '3cf281b573da',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#hrDisclosure': '54f6273797d7',
   'apps/api/src/modules/org-adjustment/disclosure.ts#openDetail': 'a2caf257c67c',
-  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': '6157b857992f',
-  'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': 'ab799c90b5dd',
+  'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': 'f95ae276844d',
+  'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': '3a58b73d2896',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':

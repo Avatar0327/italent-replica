@@ -1,3 +1,4 @@
+import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
 import { activationFailureOf, assertEstablishmentCapacity } from './activation-checks.js';
@@ -132,6 +133,7 @@ async function approveBusiness(
 /** 29 PB-R9 / AC-PB-03：转正申请在提交时判互斥（草稿照常保存），自己不拦自己。 */
 async function assertRegularizationSubmittable(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (business.payload.kind !== 'regularization') return;
+  await assertRegularizationApplication(tx, ctx, business, business.payload);
   await assertProbationProcessesIdle(tx, ctx, {
     employeeId: business.employeeId,
     action: 'apply',

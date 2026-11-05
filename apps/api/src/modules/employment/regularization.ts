@@ -17,6 +17,11 @@ import { employmentApprovalHooks } from './approval-hooks.js';
 import { auditEmployment, requireEmployeeInScope } from './context.js';
 import { loadProbationCycle } from './probation.js';
 import { requireEnabledProbationEntry } from './probation-results.js';
+import {
+  assertRegularizationApplication,
+  assertRegularizationDates,
+  requireRegularizationApplicant,
+} from './regularization-eligibility.js';
 import { clearSubmittedRegularizationDraft } from './regularization-drafts.js';
 import { transitionEmployment } from './transitions.js';
 import type {
@@ -27,7 +32,7 @@ import type {
   PresetFields,
 } from './types.js';
 import { loadRegularizationResult } from './read-model.js';
-import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
+import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee } from './record-store.js';
 import { createEmploymentBusiness, requireSavedBusiness, updateEmploymentBusiness } from './write-service.js';
 
 /** 经本入口办理的业务类型；BE-6a 加入 intern_regularization。 */
@@ -108,8 +113,12 @@ export async function createRegularizationBusiness(
   employeeId: string,
   request: RegularizationRequest,
 ): Promise<EmploymentBusiness> {
+  // DEC-788：先锁员工、按今天判申请资格，再取默认日期；不能用未来 / 回溯日期绕过。
+  if (request.mode === 'application') await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
+  const cycle = request.mode === 'application' ? await requireRegularizationApplicant(tx, ctx, employeeId) : null;
   const result = await requireRegularizationResult(tx, ctx.tenantId, request.probationResult);
   const effectiveDate = await regularizationDate(tx, ctx, employeeId, request.effectiveDate);
+  if (cycle) assertRegularizationDates(cycle, effectiveDate, result.code);
   const created = await createEmploymentBusiness(
     tx,
     ctx,
@@ -157,6 +166,7 @@ export async function updateRegularizationApplication(
     throw new AppError('CONFLICT', '只有草稿或被驳回的转正申请可以修改试用结果', { reason: 'PAYLOAD_IMMUTABLE' });
   await changeRegularizationResult(tx, ctx, business, code);
   if (patch) return updateEmploymentBusiness(tx, ctx, id, patch);
+  await assertRegularizationApplication(tx, ctx, business, business.payload);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);
 }

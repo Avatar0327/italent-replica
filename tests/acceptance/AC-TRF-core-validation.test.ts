@@ -242,7 +242,7 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
 describe('AC-TRF-34 复用 DEC-108 同日业务顺序', () => {
   it.each(['direct', 'application'] as const)('同日转正为 %s 时可提交调动，生效后排在转正后', async (mode) => {
     const w = await activationWorld(testDb().db, `trf34-${mode}`);
-    const { employee, hire } = await w.hired();
+    const { employee, hire } = await w.hired(undefined, { probation: mode === 'application' });
     const regularization = await w.session.business(
       employee.id,
       { kind: 'regularization', mode, effectiveDate: '2026-10-05', fields: { place: '转正地点' } },
