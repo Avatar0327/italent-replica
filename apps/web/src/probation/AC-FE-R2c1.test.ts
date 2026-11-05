@@ -250,3 +250,19 @@ describe('AC-FE-R2c1 ④ 写后去向', () => {
     expect(model.destinationOf('draft')).toBeUndefined();
   });
 });
+
+describe('AC-FE-F344 暂存日期字段裁剪', () => {
+  it('未获准提交的日期保持省略，可编辑但清空的日期仍发送 null', () => {
+    expect(model.temporaryBody({ probationResult: 'pass' })).toEqual({ probationResult: 'pass' });
+    expect(model.temporaryBody({ effectiveDate: '', probationResult: 'pass' })).toEqual({
+      effectiveDate: null,
+      probationResult: 'pass',
+    });
+  });
+  it('服务端省略不可见日期时仍能恢复试用结果', () => {
+    expect(model.temporaryOf({ probationResult: 'pass', probationResultName: '合成通过' })).toEqual({
+      values: { effectiveDate: null, probationResult: 'pass' },
+      names: { pass: '合成通过' },
+    });
+  });
+});

@@ -17,6 +17,7 @@ import {
   statusLabels,
   typeLabels,
 } from './messages.js';
+import { ProcessLog } from './ProcessLog.js';
 import { actionOrder } from './page-model.js';
 import type { ApprovalAction, ApprovalDetail as Detail, ApprovalRow } from './types.js';
 
@@ -49,6 +50,8 @@ export function ApprovalFields({ detail }: { detail: Detail }) {
 interface DetailProps {
   row: ApprovalRow;
   demo?: boolean;
+  /** DEC-799：仅待办入口启用，保留我的申请详情呈现。 */
+  todo?: boolean;
   /** 审批中心内在当前页打开（带返回）；合同等页面行内打开时用右侧抽屉。 */
   layout?: 'drawer' | 'page';
   onClose(): void;
@@ -126,7 +129,16 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
           <h2 title={detail?.title}>{detail?.title ?? m.detail}</h2>
           {detail && <small>{headline(detail, timezone)}</small>}
         </div>
-        {detail && <ActionBar row={props.row} demo={demo} detail={detail} action={action} refresh={state.refresh} />}
+        {detail && (
+          <ActionBar
+            row={props.row}
+            demo={demo}
+            todo={props.todo}
+            detail={detail}
+            action={action}
+            refresh={state.refresh}
+          />
+        )}
       </header>
       <DecisionNote id="approval-detail" />
       {demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
@@ -134,7 +146,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       {!state.error && !detail && <PageState kind="loading" />}
       {action.pending && <Alert type="warning" showIcon message={d.locked(m[action.pending])} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
-      {detail && <DetailColumns detail={detail} />}
+      {detail && <DetailColumns detail={detail} todo={props.todo} />}
     </div>
   );
 }
@@ -143,7 +155,21 @@ function headline(detail: Detail, timezone: string) {
   const type = typeLabels[detail.approvalType] ?? detail.approvalType;
   return [type, status, formatInstant(detail.createdAt, timezone)].filter(Boolean).join(' · ');
 }
-function DetailColumns({ detail }: { detail: Detail }) {
+function DetailColumns({ detail, todo }: { detail: Detail; todo?: boolean }) {
+  const collaboration = (
+    <Tabs
+      className={todo ? undefined : 'approval-detail-collab'}
+      type="card"
+      items={[
+        { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
+        {
+          key: 'communicate',
+          label: d.communicate,
+          children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={d.communicateGap} />,
+        },
+      ]}
+    />
+  );
   return (
     <>
       <ApprovalProgress detail={detail} />
@@ -152,18 +178,14 @@ function DetailColumns({ detail }: { detail: Detail }) {
           className="approval-detail-form"
           items={[{ key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> }]}
         />
-        <Tabs
-          className="approval-detail-collab"
-          type="card"
-          items={[
-            { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
-            {
-              key: 'communicate',
-              label: d.communicate,
-              children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={d.communicateGap} />,
-            },
-          ]}
-        />
+        {todo ? (
+          <section className="approval-detail-collab">
+            <h3 className="approval-collaboration-title">{d.collaboration}</h3>
+            {collaboration}
+          </section>
+        ) : (
+          collaboration
+        )}
       </div>
     </>
   );
@@ -190,13 +212,13 @@ export function ApprovalProgress({ detail }: { detail: Detail }) {
   );
 }
 /** 操作记录取流程日志（详情 logs，最近 200 条升序）；节点名按关联任务补，意见只取日志自身（logComment）。 */
-function ApprovalHistory({ detail }: { detail: Detail }) {
+function ApprovalHistory({ detail, full = false }: { detail: Detail; full?: boolean }) {
   const { timezone } = useSession();
   if (detail.recordsHidden) return <Alert type="info" message={m.historyHidden} />;
   const tasks = new Map(detail.tasks.map((task) => [task.id, task]));
   return (
     <>
-      <p className="approval-muted">{m.historyLimit}</p>
+      {!full && <p className="approval-muted">{m.historyLimit}</p>}
       <Timeline
         items={detail.logs.map((log, index) => {
           const task = log.taskId ? tasks.get(log.taskId) : undefined;
@@ -208,7 +230,7 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
             children: (
               <div className="approval-log">
                 {log.actorUserId !== null && actor && <span className="approval-log-actor">{actor}</span>}
-                <strong>{logEvents[log.event] ?? log.event}</strong>
+                <strong>{logEvents[log.event] ?? (full ? d.unknownLog : log.event)}</strong>
                 {log.actorUserId === null && <Tag>{actor}</Tag>}
                 {task && <Tag>{task.nodeName}</Tag>}
                 {comment && <p>{comment}</p>}
@@ -223,9 +245,16 @@ function ApprovalHistory({ detail }: { detail: Detail }) {
 }
 /**
  * 顶部按钮只取详情 actions（服务端下发），按原站顺序；有未确认命令时只允许打开那一个动作核对。
- * 流程管理没有接口；完整日志接口已有（GET /instances/:id/logs），但日志弹窗本段未实现。两者保留位置但禁用。
+ * 完整日志仅待办入口接分页弹窗（DEC-799）；我的申请与演示入口保留原有呈现。
  */
-function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; action: ActionState; refresh(): void }) {
+function ActionBar(props: {
+  row: ApprovalRow;
+  demo?: boolean;
+  todo?: boolean;
+  detail: Detail;
+  action: ActionState;
+  refresh(): void;
+}) {
   const { row, demo, detail, action } = props;
   const available = visibleActions(detail);
   const actions = [...actionOrder, 'edit' as const].filter((item) => available.includes(item));
@@ -247,9 +276,16 @@ function ActionBar(props: { row: ApprovalRow; demo?: boolean; detail: Detail; ac
       <Tooltip title={d.gapTool}>
         <Button disabled>{d.processManage}</Button>
       </Tooltip>
-      <Tooltip title={d.logDialogGap}>
-        <Button disabled>{d.processLog}</Button>
-      </Tooltip>
+      {props.todo && !demo ? (
+        <ProcessLog
+          id={detail.id}
+          render={(logs) => <ApprovalHistory full detail={{ ...detail, logs, recordsHidden: false }} />}
+        />
+      ) : (
+        <Tooltip title={d.logDialogGap}>
+          <Button disabled>{d.processLog}</Button>
+        </Tooltip>
+      )}
       <Button onClick={props.refresh}>{m.refresh}</Button>
       {!demo && !actions.length && <span className="approval-muted">{m.noAction}</span>}
       {!taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}

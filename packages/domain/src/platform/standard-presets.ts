@@ -123,6 +123,24 @@ const DUTY_TRANSFER_SEE_ALL: PresetSeeAllTarget = {
   targetCode: MODULE_OBJECTS.dutyTransfer.code,
 };
 
+/**
+ * DEC-767 / DEC-768：看板类对象——人事看板、人事流程看板、员工结构分析、合同情况、人员流动分析。它们统计全租户口径，
+ * 只给 HR 专员 / HR 经理 / 标准版系统管理员并预置看全部；人事管理员不含（按管理单元办事，不看全局看板）。
+ * 员工结构报表、流动情况报表（明细表）不属看板类，人事管理员仍可查看并按管理单元取数（F-466）。
+ */
+export const HR_BOARD_OBJECT_CODES: readonly string[] = [
+  MODULE_OBJECTS.hrDashboard.code,
+  MODULE_OBJECTS.hrProcessDashboard.code,
+  MODULE_OBJECTS.hrStructure.code,
+  MODULE_OBJECTS.contractBoard.code,
+  MODULE_OBJECTS.hrMovement.code,
+];
+const HR_BOARD_SEE_ALL: readonly PresetSeeAllTarget[] = HR_BOARD_OBJECT_CODES.map((targetCode) => ({
+  appCode: ORG_EMPLOYEE_APP,
+  targetKind: 'entity',
+  targetCode,
+}));
+
 /** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
 export interface PresetSeeAllTarget {
   readonly appCode: string;
@@ -459,18 +477,11 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     description: '人事管理员',
     licenseType: CORE_HR,
     apps: [ORG_EMPLOYEE_APP],
-    objects: BUSINESS_OBJECTS.map(grant),
+    // DEC-767：看板类对象与看板类看全部归 HR 专员 / HR 经理；员工结构报表、流动情况报表保留查看，不预置看全部，
+    // 取数按管理单元（F-466）。
+    objects: BUSINESS_OBJECTS.filter((o) => !HR_BOARD_OBJECT_CODES.includes(o.code)).map(grant),
     hr: true,
-    seeAll: [
-      BLACKLIST_SEE_ALL,
-      ASSESSMENT_SEE_ALL,
-      HR_DASHBOARD_SEE_ALL,
-      HR_PROCESS_DASHBOARD_SEE_ALL,
-      ...ANALYTICS_BE13A_SEE_ALL,
-      ...ANALYTICS_BE13B_SEE_ALL,
-      ORG_ADJUSTMENT_SEE_ALL,
-      DUTY_TRANSFER_SEE_ALL,
-    ],
+    seeAll: [BLACKLIST_SEE_ALL, ASSESSMENT_SEE_ALL, ORG_ADJUSTMENT_SEE_ALL, DUTY_TRANSFER_SEE_ALL],
   },
   {
     // 原站描述“相比人事管理员……除去了设置菜单”：不含流程配置对象
@@ -492,6 +503,27 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
         ].includes(o.code),
     ).map((o) => withoutDailyWage(grant(o))),
     hr: true,
+  },
+  // DEC-767：看板专用身份，只带五个看板类对象（只读）并预置看全部，不含名册、任职等其它能力；数据范围仍不预置其它对象。
+  {
+    code: 'standard_hr_dashboard_specialist',
+    name: 'HR专员（人事看板）',
+    description: '查看人事看板、人事流程看板、员工结构分析、合同情况、人员流动分析（全租户口径）',
+    licenseType: CORE_HR,
+    apps: [ORG_EMPLOYEE_APP],
+    objects: BUSINESS_OBJECTS.filter((o) => HR_BOARD_OBJECT_CODES.includes(o.code)).map(grant),
+    hr: false,
+    seeAll: HR_BOARD_SEE_ALL,
+  },
+  {
+    code: 'standard_hr_dashboard_manager',
+    name: 'HR经理（人事看板）',
+    description: '查看人事看板、人事流程看板、员工结构分析、合同情况、人员流动分析（全租户口径）',
+    licenseType: CORE_HR,
+    apps: [ORG_EMPLOYEE_APP],
+    objects: BUSINESS_OBJECTS.filter((o) => HR_BOARD_OBJECT_CODES.includes(o.code)).map(grant),
+    hr: false,
+    seeAll: HR_BOARD_SEE_ALL,
   },
   {
     // DEC-281⑨⑩（`23` §7 ③）：原站预置身份，拥有人才标准全部功能，可见数据按管理单元控制——不预置看全部，

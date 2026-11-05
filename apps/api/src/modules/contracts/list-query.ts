@@ -74,6 +74,17 @@ export function applicableQuery(query: ListQuery): ListQuery {
   };
 }
 
+/**
+ * 排序键必须是调用方可查看的字段（F-144）：编号不可查看时按编号排序会泄露不可见编号的相对大小，
+ * 与参数不合法同口径返回 400。viewable 为 undefined 表示不受字段权限限制；入职缺失视图本就忽略 sort=number，不因此拒绝。
+ */
+export function assertSortViewable(query: ListQuery, viewable: ReadonlySet<string> | undefined) {
+  if (viewable && applicableQuery(query).sort === 'number' && !viewable.has('number'))
+    throw new AppError('VALIDATION_FAILED', '合同编号不可查看，不能按编号排序', {
+      reason: 'CONTRACT_SORT_FIELD_HIDDEN',
+    });
+}
+
 /** 部门筛选的最终部门集合；includeChildren 时并入行政维度的全部下级（含停用）。 */
 export async function resolveOrgIds(tx: Tx, ctx: ContractContext, query: ListQuery, today: string) {
   if (!query.orgId) return null;

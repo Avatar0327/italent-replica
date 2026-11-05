@@ -228,3 +228,20 @@
   background: #e8f8f2;
   border-color: #a6e3c8;
 }
+
+.personnel-edit-form .ant-drawer-content-wrapper,
+.personnel-subset-form .ant-drawer-content-wrapper {
+  width: min(750px, 100vw) !important;
+}
+.personnel-edit-form .form-group-title + div,
+.personnel-subset-two .form-group-title + div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+@media (max-width: 600px) {
+  .personnel-edit-form .form-group-title + div,
+  .personnel-subset-two .form-group-title + div {
+    grid-template-columns: 1fr;
+  }
+}

@@ -53,8 +53,9 @@ beforeAll(async () => {
 });
 
 describe('AC-ESS-F020 / DEC-790 本人申请', () => {
-  it('专属默认字段、两按钮与授权 44；共享调动字段集合不变', () => {
-    expect(STANDARD_GRANT_VERSION).toBe(44);
+  // 授权版本合并时按 main + 1 定号（F-472 先占 44，本单定为 45），后续改授权的 PR 还会继续升，只核下限
+  it('专属默认字段、两按钮与授权 45 起；共享调动字段集合不变', () => {
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(45);
     expect(EMPLOYEE_DEFAULT_EDIT_FIELDS).toEqual(['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId']);
     const employee = STANDARD_PROFILES.find((p) => p.code === 'employee_self_service')!;
     expect(employee.objects.find((o) => o.objectCode === OBJECT)?.buttons).toEqual(
@@ -362,8 +363,8 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
     expect((await send(actor, '/part-time-requests', 'POST', pt(), form.employee.revision, key)).status).toBe(403);
   });
 
-  it('授权 44 为已有标准员工身份补入专属字段和两个按钮', async () => {
-    expect(STANDARD_GRANT_VERSION).toBe(44);
+  it('授权 45 为已有标准员工身份补入专属字段和两个按钮', async () => {
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(45);
     const old = (p: (typeof STANDARD_PROFILES)[number]) =>
       p.code !== 'employee_self_service'
         ? p

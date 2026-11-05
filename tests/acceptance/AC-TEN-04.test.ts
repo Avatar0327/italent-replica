@@ -155,6 +155,9 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
       [
         'standard_hr_admin',
         'standard_hr_specialist',
+        // F-472（DEC-767）：HR 专员 / HR 经理（人事看板专用身份）
+        'standard_hr_dashboard_specialist',
+        'standard_hr_dashboard_manager',
         'standard_manager',
         'standard_org_system_admin',
         // DEC-280：三类内置 360 身份（应用 Survey360）

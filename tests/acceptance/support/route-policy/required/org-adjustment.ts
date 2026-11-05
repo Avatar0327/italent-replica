@@ -238,7 +238,7 @@ const LIST: Obligation[] = [
       {
         role: 'scope',
         unit: `${QUERIES}#listAdjustments`,
-        anchor: 'scopeSql(scope, { org: sql`a.approval_subject_org_id` })',
+        anchor: 'scopeSql(scope, { org: sql`a.approval_subject_org_id`, creator: sql`a.created_by` })',
       },
     ],
   },
@@ -252,7 +252,7 @@ const DISC_OBJECT: Evidence = { role: 'const', unit: `${DISC}#OBJECT`, anchor: '
 const CAN_OPEN_CALL: Evidence = {
   role: 'impl',
   unit: `${DISC}#orgAdjustmentDisclosure`,
-  anchor: 'if (instance && (await canOpen(tx, bound, ctx, instance))) {',
+  anchor: 'const data = instance ? await openDetail(tx, bound, ctx, instance) : null;',
 };
 /**
  * 路由 13～15 共用 orgAdjustmentDisclosure：HR（对象查看权 + 主体组织在 OrganizationApproval 范围），或可打开最新审批实例
@@ -288,7 +288,8 @@ function reader(path: string, anchor: string): Obligation[] {
         {
           role: 'impl',
           unit: `${DISC}#hrDisclosure`,
-          anchor: 'if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId })) return null',
+          anchor:
+            'if (!scopeAllows(main, { orgId: view.approvalSubjectOrgId, creatorId: view.createdBy })) return null',
         },
       ],
     },
@@ -301,8 +302,8 @@ function reader(path: string, anchor: string): Obligation[] {
         CAN_OPEN_CALL,
         {
           role: 'impl',
-          unit: `${DISC}#canOpen`,
-          anchor: 'await assertCanOpen(tx, command, instance, viewer)',
+          unit: `${DISC}#openDetail`,
+          anchor: 'return await readDetail(tx, command, instance.id, viewer, false)',
         },
         {
           role: 'impl',
@@ -322,8 +323,8 @@ function reader(path: string, anchor: string): Obligation[] {
         CAN_OPEN_CALL,
         {
           role: 'impl',
-          unit: `${DISC}#canOpen`,
-          anchor: "if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null",
+          unit: `${DISC}#openDetail`,
+          anchor: "if (!(await bound.authorize({ ...ctx, action: 'object.button', resource }))) return null;",
         },
       ],
     })),

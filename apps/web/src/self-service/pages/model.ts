@@ -51,7 +51,22 @@ export function recordItems(record: OwnRecord) {
   ];
 }
 export function teamKeys(rows: TeamRow[]) {
-  return Object.keys(teamLabels).filter((key) => rows.some((row) => Object.hasOwn(row, key)));
+  const primary = [
+    'name',
+    'employType',
+    'postId',
+    'departmentId',
+    'mobilePhone',
+    'email',
+    'levelId',
+    'entryDate',
+    'directManagerId',
+    'dottedManagerId',
+    'tenure',
+    'employeeStatus',
+  ];
+  const keys = [...primary, ...Object.keys(teamLabels).filter((key) => !primary.includes(key))];
+  return keys.filter((key) => rows.some((row) => Object.hasOwn(row, key)));
 }
 export function teamValue(row: TeamRow, key: string) {
   if (!Object.hasOwn(row, key)) return m.none;

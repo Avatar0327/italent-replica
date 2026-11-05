@@ -11,4 +11,8 @@ export const GRAPH: Graph = {
   'packages/domain/src/analytics/hr-movement.ts#movementMonths': ['#monthIndex', '#monthOf'],
   'packages/domain/src/analytics/hr-movement.ts#withinOneMonth': ['#ONE_MONTH_YEARS'],
   'packages/domain/src/analytics/hr-movement.ts#yearMonths': ['#monthOf'],
+  'packages/domain/src/analytics/team-dashboard.ts#TEAM_DASHBOARD_COMPONENTS': [
+    'packages/domain/src/analytics/hr-structure.ts#HR_STRUCTURE_COMPONENTS',
+    '#TEAM_DASHBOARD_CODES',
+  ],
 };

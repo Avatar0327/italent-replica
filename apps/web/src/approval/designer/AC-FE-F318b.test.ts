@@ -57,7 +57,7 @@ describe('AC-FE-F318b 来源级联', () => {
     Object.assign(flow.latestVersion.nodes[0]!, { emptyApproverPolicy: 'stop' });
     expect(() => buildDraft(flow.latestVersion, { [empty]: [person] }, flow.approvalType)).toThrow();
   });
-  it('03 15 类按契约顺序，F-326 灰显，F-318c 新值待开放，切类型清空旧值', async () => {
+  it('03 15 类按契约顺序，F-326 灰显，F-318c / F-380 新来源已开放，切类型清空旧值', async () => {
     const { sourceOptions, changeSourceType } = await import('./sources.js');
     const node = flowFixture().latestVersion.nodes[0]!;
     const options = sourceOptions(node, 'transfer');
@@ -65,10 +65,8 @@ describe('AC-FE-F318b 来源级联', () => {
     for (const type of ['public_variable', 'application_variable', 'matrix'])
       expect(options.find((o) => o.value === type)).toMatchObject({ disabled: true, status: 'unsupported' });
     for (const type of ['business_org', 'profit_center', 'reserve4', 'reserve5', 'position', 'job', 'identity'])
-      expect(options.find((o) => o.value === type)).toMatchObject({ disabled: true, status: 'pending' });
-    expect(
-      options.find((o) => o.value === 'department')?.children.some((o) => o.disabled && o.status === 'pending'),
-    ).toBe(true);
+      expect(options.find((o) => o.value === type)).toMatchObject({ disabled: false, status: 'enabled' });
+    expect(options.find((o) => o.value === 'department')?.children.some((o) => o.value === '$pending')).toBe(false);
     expect(changeSourceType(person, 'department')).toEqual({ type: 'department', value: '' });
   });
   it('04 每种审批类型的值与服务端同一校验，交接 / IDP / Offer / lookup 不放宽', async () => {

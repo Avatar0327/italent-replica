@@ -180,7 +180,8 @@ export const ORG_ADJUSTMENT_POLICIES = defineTable('org-adjustment', {
     // 全部明细涉及的组织按新建口径逐个在组织范围（orgScopeAuthorizer，§6.3）
     guards: ['orgAdjustment.item'],
     fields: adjustmentShape,
-    write: headWrite(none('提交无请求体，不提取字段'), [...EDIT, 'orgAdjustment.submitGate']),
+    // 提交无请求体；字段取库里明细行实际有值的 orgItems.*，经 authorizeItemFieldWrites 复核写权（F-428）
+    write: headWrite({ guard: 'orgAdjustment.item' }, [...EDIT, 'orgAdjustment.submitGate']),
     ...byId,
   }),
   // 路由 11：撤回；没有按钮，只限申请人本人
