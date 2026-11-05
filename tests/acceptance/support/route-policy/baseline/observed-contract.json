@@ -7968,7 +7968,10 @@
         "scope": [
           "adminScope",
           "creator scope",
-          "instanceScopeSql"
+          "employment visibility",
+          "instanceScopeSql",
+          "scope.all",
+          "scopeSql"
         ]
       }
     },

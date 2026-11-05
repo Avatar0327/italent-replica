@@ -315,9 +315,20 @@ export const GRAPH: Graph = {
     '#xmlChars',
   ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#xmlChars': ['#XML_INVALID'],
+  'apps/api/src/modules/org-adjustment/failures.ts#readEmploymentFailures': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
+    'apps/api/src/modules/employment/visibility.ts#visibleEmploymentRecords',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgSectionDisclosed',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
+    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
+    'apps/api/src/modules/org/read-model.ts#rowsOf',
+    'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
+  ],
   'apps/api/src/modules/org-adjustment/item-check.ts#baselineIssues': ['#BASELINE_CHANGED', '#issue'],
   'apps/api/src/modules/org-adjustment/item-check.ts#checkOrgItems': [
     '#baselineIssues',
+    '#contentIssues',
     '#establishmentIssues',
     '#futureVersionIssues',
     '#headIssues',
@@ -326,6 +337,10 @@ export const GRAPH: Graph = {
     '#stopIssues',
     'apps/api/src/modules/org-adjustment/item-tree.ts#PLAN_MESSAGES',
     'apps/api/src/modules/org-adjustment/item-tree.ts#planIssues',
+  ],
+  'apps/api/src/modules/org-adjustment/item-check.ts#contentIssues': [
+    '#fromError',
+    'apps/api/src/modules/org-adjustment/item-rules.ts#validateContent',
   ],
   'apps/api/src/modules/org-adjustment/item-check.ts#establishmentIssues': [
     '#idsSql',
@@ -375,6 +390,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/item-tree.ts#orgContext',
     'apps/api/src/modules/org/deactivation.ts#assertDeactivationAfterEstablished',
     'apps/api/src/modules/org/deactivation.ts#planDeactivationSubtree',
+  ],
+  'apps/api/src/modules/org-adjustment/item-rules.ts#validateContent': [
+    'apps/api/src/modules/org-adjustment/item-validation.ts#CHANGE_FIELDS',
+    'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
+    'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/item-tree.ts#assertInRange': ['#OUT_OF_RANGE', '#outOfRange'],
   'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan': ['#PLAN_MESSAGES', '#planIssues'],
@@ -438,6 +458,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/org-items.ts#addOrgItem': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#activeOrg',
     'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemRules',
+    'apps/api/src/modules/org-adjustment/item-rules.ts#validateContent',
     'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
     'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertItemFields',
@@ -451,7 +472,6 @@ export const GRAPH: Graph = {
     '#finish',
     '#numbered',
     '#siblingParent',
-    '#validateContent',
     'apps/api/src/modules/org-adjustment/service.ts#editable',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
@@ -461,8 +481,9 @@ export const GRAPH: Graph = {
     '#duplicate',
   ],
   'apps/api/src/modules/org-adjustment/org-items.ts#deleteOrgItem': [
+    'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
+    'apps/api/src/modules/org-adjustment/item-tree.ts#loadWorld',
     'apps/api/src/modules/org-adjustment/items-store.ts#deleteItems',
-    'apps/api/src/modules/org-adjustment/items-store.ts#loadItems',
     '#finish',
     '#ownRow',
     'apps/api/src/modules/org-adjustment/service.ts#editable',
@@ -490,28 +511,23 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/org-items.ts#planRevisions': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemRules',
     'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
+    'apps/api/src/modules/org-adjustment/item-rules.ts#validateContent',
     'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
     'apps/api/src/modules/org-adjustment/item-validation.ts#assertItemFields',
     'apps/api/src/modules/org-adjustment/item-validation.ts#toContent',
-    '#validateContent',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/org-items.ts#rewrite': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#assertItemRules',
     'apps/api/src/modules/org-adjustment/item-rules.ts#existingOrg',
+    'apps/api/src/modules/org-adjustment/item-rules.ts#validateContent',
     'apps/api/src/modules/org-adjustment/item-tree.ts#assertPlan',
     'apps/api/src/modules/org-adjustment/items-store.ts#updateItem',
     '#finish',
-    '#validateContent',
   ],
   'apps/api/src/modules/org-adjustment/org-items.ts#siblingParent': [
     'apps/api/src/modules/org-adjustment/item-rules.ts#createdRow',
     '#overlaidParent',
-    'apps/api/src/modules/org/validation.ts#invalid',
-  ],
-  'apps/api/src/modules/org-adjustment/org-items.ts#validateContent': [
-    'apps/api/src/modules/org-adjustment/item-validation.ts#CHANGE_FIELDS',
-    'apps/api/src/modules/org/employment-linkage.ts#validateEmploymentChoice',
     'apps/api/src/modules/org/validation.ts#invalid',
   ],
   'apps/api/src/modules/org-adjustment/pause.ts#assertNotPausedByOrgAdjustment': [
@@ -607,6 +623,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/job/context.ts#uuidParam',
     'apps/api/src/modules/org-adjustment/detail.ts#readDetail',
     'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure',
+    'apps/api/src/modules/org-adjustment/failures.ts#readEmploymentFailures',
     '#BASE',
     'apps/api/src/tenant-context.ts#tenantOf',
   ],
@@ -982,6 +999,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/submission.ts#setStatus': [
     'apps/api/src/modules/org-adjustment/service.ts#audit',
     'apps/api/src/modules/org-adjustment/service.ts#loadAdjustment',
+    'packages/domain/src/org-adjustment/status.ts#ORG_ADJUSTMENT_APPROVAL_STATUS',
   ],
   'apps/api/src/modules/org-adjustment/submission.ts#settleApproval': [
     '#lockStored',

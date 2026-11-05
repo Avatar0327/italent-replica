@@ -1,5 +1,5 @@
 {
-  "id": "2e174450-66a8-4e19-bc4e-d9100f2a6928",
+  "id": "9014a1ad-ce84-4fd3-90bd-8e695bce29ff",
   "prevId": "6b558d74-f141-420c-be5a-cc85621525fc",
   "version": "7",
   "dialect": "postgresql",
@@ -63318,8 +63318,8 @@
         }
       },
       "indexes": {
-        "org_adjustment_employment_failures_adjustment": {
-          "name": "org_adjustment_employment_failures_adjustment",
+        "org_adjustment_employment_failures_detail": {
+          "name": "org_adjustment_employment_failures_detail",
           "columns": [
             {
               "expression": "tenant_id",
@@ -63329,6 +63329,18 @@
             },
             {
               "expression": "adjustment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -63361,6 +63373,38 @@
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_employment_failures_item_fk": {
+          "name": "org_adjustment_employment_failures_item_fk",
+          "tableFrom": "org_adjustment_employment_failures",
+          "tableTo": "org_adjustment_org_items",
+          "columnsFrom": [
+            "tenant_id",
+            "adjustment_id",
+            "item_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "adjustment_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "org_adjustment_employment_failures_employee_fk": {
+          "name": "org_adjustment_employment_failures_employee_fk",
+          "tableFrom": "org_adjustment_employment_failures",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
           ],
           "columnsTo": [
             "tenant_id",
