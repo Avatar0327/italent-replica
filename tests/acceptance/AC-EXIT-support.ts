@@ -6,9 +6,11 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import { installMissingSeeds } from '../../apps/api/src/seeds/index.js';
 import { employmentSession } from './AC-EMP-support.js';
+import { createProfile, grant, makeGrantable, setObjectPermission, type PermissionWorld } from './AC-PRM-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -86,3 +88,23 @@ export async function exitWorld(db: Db, label: string) {
 }
 
 export type ExitWorld = Awaited<ReturnType<typeof exitWorld>>;
+
+/**
+ * F-358 / DEC-780：离职设置页的三个配置读取在配置权之外还要任职记录查看权（与入口同口径）。
+ * 建一个只含任职记录查看权的业务身份（不含任职设置对象，也不是企业管理员），返回身份 ID，由调用方授予谁都行。
+ */
+export async function createRecordViewProfile(seed: PermissionWorld, label: string): Promise<string> {
+  const profile = await createProfile(seed, `f358-${label}`);
+  const record = MODULE_OBJECTS.employmentRecord;
+  const fields = record.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false }));
+  const permission = { dataOperations: { create: false, update: false, delete: false }, fields, buttons: [] };
+  expect((await setObjectPermission(seed, profile, permission, record.code)).status).toBe(200);
+  await makeGrantable(seed, [profile.id]);
+  return profile.id;
+}
+
+/** 给租户管理员本人授予任职记录查看权，使其能读离职设置页的配置接口。 */
+export async function grantAdminRecordView(seed: PermissionWorld, label: string): Promise<void> {
+  const profileId = await createRecordViewProfile(seed, label);
+  expect((await grant(seed, seed.admin.id, profileId)).status).toBe(201);
+}
