@@ -12,6 +12,7 @@ import './catalog.css';
 interface CatalogProps {
   resources: Resource[];
   extra?: { key: string; title: string; objects: readonly string[]; content: ReactNode };
+  extras?: CatalogProps['extra'][];
 }
 /** 页面级提交状态放在最外层：高于页签、权限加载态与表单，关闭重开、切换页签都不会丢掉未确认的命令（F-123）。 */
 export function CatalogModule(props: CatalogProps) {
@@ -22,9 +23,10 @@ export function CatalogModule(props: CatalogProps) {
   );
 }
 
-function CatalogContent({ resources, extra }: CatalogProps) {
+function CatalogContent({ resources, extra, extras = [] }: CatalogProps) {
   const [query, setQuery] = useSearchParams();
-  const entries = [...resources.map((item) => ({ ...item, objects: [item.object] })), ...(extra ? [extra] : [])];
+  const additions = [extra, ...extras].filter((entry): entry is NonNullable<typeof entry> => !!entry);
+  const entries = [...resources.map((item) => ({ ...item, objects: [item.object] })), ...additions];
   const permissions = usePermissions();
   const [ready, setReady] = useState(false);
   const objectKey = [...new Set(entries.flatMap((item) => item.objects))].join(',');
@@ -42,6 +44,7 @@ function CatalogContent({ resources, extra }: CatalogProps) {
   const allowed = entries.filter((item) => item.objects.some((object) => permissions.snapshot.objects[object]));
   const key = query.get('view') ?? allowed[0]?.key;
   const active = resources.find((item) => item.key === key);
+  const addition = additions.find((item) => item.key === key);
   const access = active ? permissions.snapshot.objects[active.object] : undefined;
   return (
     <div className="catalog-layout">
@@ -58,8 +61,8 @@ function CatalogContent({ resources, extra }: CatalogProps) {
           <PageState kind="forbidden" />
         ) : active && access ? (
           <ResourcePage resource={active} permission={access} />
-        ) : extra && extra.key === key ? (
-          extra.content
+        ) : addition ? (
+          addition.content
         ) : (
           <PageState kind="not-found" />
         )}

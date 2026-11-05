@@ -1,5 +1,5 @@
 {
-  "id": "9014a1ad-ce84-4fd3-90bd-8e695bce29ff",
+  "id": "49c3f8c6-45fd-447e-8fdf-38e36844361d",
   "prevId": "da790c80-c6a9-432d-9260-92ccefd0c6d7",
   "version": "7",
   "dialect": "postgresql",
@@ -55100,7 +55100,7 @@
         },
         "exit_effects_kind": {
           "name": "exit_effects_kind",
-          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created')"
+          "value": "\"exit_effects\".\"kind\" IN ('establishment_pre_released', 'contract_terminated', 'contract_deleted',\n        'contract_request_withdrawn', 'application_voided', 'future_transfer_detached', 'duty_transferred',\n        'duty_failed', 'rehire_created', 'assessment_voided', 'part_time_ended', 'part_time_request_voided')"
         },
         "exit_effects_target_type": {
           "name": "exit_effects_target_type",
@@ -63318,8 +63318,8 @@
         }
       },
       "indexes": {
-        "org_adjustment_employment_failures_detail": {
-          "name": "org_adjustment_employment_failures_detail",
+        "org_adjustment_employment_failures_adjustment": {
+          "name": "org_adjustment_employment_failures_adjustment",
           "columns": [
             {
               "expression": "tenant_id",
@@ -63329,18 +63329,6 @@
             },
             {
               "expression": "adjustment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -63373,38 +63361,6 @@
           "columnsFrom": [
             "tenant_id",
             "adjustment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_employment_failures_item_fk": {
-          "name": "org_adjustment_employment_failures_item_fk",
-          "tableFrom": "org_adjustment_employment_failures",
-          "tableTo": "org_adjustment_org_items",
-          "columnsFrom": [
-            "tenant_id",
-            "adjustment_id",
-            "item_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "adjustment_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_adjustment_employment_failures_employee_fk": {
-          "name": "org_adjustment_employment_failures_employee_fk",
-          "tableFrom": "org_adjustment_employment_failures",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id"
           ],
           "columnsTo": [
             "tenant_id",

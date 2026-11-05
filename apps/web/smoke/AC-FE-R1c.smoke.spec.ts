@@ -19,13 +19,21 @@ test.beforeEach(async ({ page }) => {
       },
     }),
   );
+  let currentView = 'pending';
   await page.route('**/api/tenant/approval/**', (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/todos'))
+    if (path.endsWith('/todos')) {
+      currentView = new URL(route.request().url()).searchParams.get('view') ?? 'pending';
       return route.fulfill({
         json: {
+          total: 1,
+          categories: [{ key: 'employment', label: '人事变动', count: 1 }],
           items: [
             {
+              id: instance,
+              status: currentView === 'completed' ? 'approved' : 'running',
+              initiatorName: '合成发起人',
+              summary: [{ key: 'effectiveDate', label: '调动日期', value: '2026-11-01' }],
               taskId: task,
               instanceId: instance,
               title: '合成员工的调动申请',
@@ -36,6 +44,7 @@ test.beforeEach(async ({ page }) => {
           ],
         },
       });
+    }
     if (path.endsWith('/instances'))
       return route.fulfill({
         json: {
@@ -50,7 +59,7 @@ test.beforeEach(async ({ page }) => {
           ],
         },
       });
-    return route.fulfill({ json: detail() });
+    return route.fulfill({ json: currentView === 'completed' ? detail(5, 'approved') : detail() });
   });
   await transferFixtures(page);
 });
@@ -317,8 +326,8 @@ test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作�
   await page.getByRole('button', { name: button('返回') }).click();
   await page.getByRole('button', { name: '已处理', exact: true }).click();
   await expect(page.getByRole('heading', { name: '已处理', exact: true })).toBeVisible();
-  await expect(page.locator('.r1c-reference').getByText('演示数据', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: '合成员工林晓的调动申请', exact: true }).click();
+  await expect(page.locator('.approval-todo-main')).not.toContainText('演示数据');
+  await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('审批已通过，业务是否生效以业务申请单为准。')).toBeVisible();
   await expect(page.getByRole('button', { name: button('同意') })).toHaveCount(0);
   await page.getByRole('button', { name: button('返回') }).click();
@@ -333,22 +342,27 @@ test('AC-FE-R1c-04 我的待办三个分类、卡片、当前页详情与操作�
 test('AC-FE-R1c-04b 切换审批分类回到第 1 页，不带上一分类的页码', async ({ page }) => {
   // #333 第 1 轮 P2-3：待处理 16 条翻到第 2 页后切到已申请，应请求第 1 页并显示卡片。
   await page.route('**/api/tenant/approval/todos?**', (route) => {
+    if (new URL(route.request().url()).searchParams.get('view') === 'initiated') return route.fallback();
     const current = Number(new URL(route.request().url()).searchParams.get('page'));
     const count = current === 1 ? 15 : 1;
     const items = Array.from({ length: count }, (_, index) => ({
       taskId: `50000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
+      id: instance,
       instanceId: instance,
       title: `合成待办 ${current}-${index + 1}`,
       nodeName: '部门负责人审批',
       approvalType: 'transfer',
       createdAt: '2026-10-12T01:00:00Z',
     }));
-    return route.fulfill({ json: { items } });
+    return route.fulfill({
+      json: { items, total: 16, categories: [{ key: 'employment', label: '人事变动', count: 16 }] },
+    });
   });
   const pages: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname.endsWith('/approval/instances')) pages.push(url.searchParams.get('page') ?? '');
+    if (url.pathname.endsWith('/approval/todos') && url.searchParams.get('view') === 'initiated')
+      pages.push(url.searchParams.get('page') ?? '');
   });
   await switchIdentity(page, '/approval');
   await expect(page.locator('.approval-card')).toHaveCount(15);
@@ -987,4 +1001,35 @@ test('AC-FE-F267 延长兼职待办同意编辑新结束日期和备注，提交
     fields: { endDate: '2026-12-31', requestRemark: '合成延长备注' },
     comment: '合成审批意见',
   });
+});
+
+test('AC-APV-F474-3 待办完整日志分页弹窗', async ({ page }) => {
+  await page.route(`**/api/tenant/approval/instances/${instance}/logs?**`, (route) => {
+    const current = Number(new URL(route.request().url()).searchParams.get('page'));
+    return route.fulfill({
+      json: {
+        page: current,
+        pageSize: 20,
+        recordsHidden: false,
+        items: Array.from({ length: current === 1 ? 20 : 1 }, (_, i) => ({
+          event: 'approve',
+          actorUserId: user,
+          actorName: '合成操作人',
+          detail: { comment: `日志分页 ${current}-${i}` },
+          createdAt: '2026-11-01T01:00:00Z',
+        })),
+      },
+    });
+  });
+  await switchIdentity(page, '/approval');
+  await expect(page.locator('.approval-card-title')).toContainText('合成发起人');
+  await expect(page.locator('.approval-record-meta')).toContainText('调动日期：2026-11-01');
+  await openTodo(page);
+  await page.getByRole('button', { name: '查看流程日志', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('日志分页 1-19');
+  await expect(dialog).not.toContainText('最近 200');
+  await dialog.getByRole('button', { name: '下一页', exact: true }).click();
+  await expect(dialog).toContainText('日志分页 2-0');
+  await expect(dialog.getByRole('button', { name: '下一页', exact: true })).toBeDisabled();
 });

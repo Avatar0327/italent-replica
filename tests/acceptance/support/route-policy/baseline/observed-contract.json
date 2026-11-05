@@ -3607,6 +3607,42 @@
         ]
       }
     },
+    "GET /api/tenant/analytics/team-dashboard": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "team-dashboard",
+      "primitives": {}
+    },
+    "GET /api/tenant/analytics/team-dashboard/components/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "team-dashboard",
+      "primitives": {}
+    },
     "GET /api/tenant/approval/admin-logs": {
       "edge": {
         "anonymous": {
@@ -3859,8 +3895,23 @@
       },
       "module": "approval",
       "primitives": {
+        "fieldsOut": [
+          "approval views"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
         "own": [
           "listTodos / listNotifications / listInstances"
+        ],
+        "relation": [
+          "assertCanOpen"
+        ],
+        "scope": [
+          "checkScope",
+          "creator scope",
+          "scopeSql",
+          "visible()"
         ]
       }
     },
@@ -4539,6 +4590,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -4954,6 +5006,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -5041,6 +5094,7 @@
           "readContext(object.*)"
         ],
         "objectOp": [
+          "TenantBase.EmploymentRecord:view",
           "TenantBase.EmploymentSettings:view"
         ]
       }
@@ -19363,6 +19417,9 @@
           "buttonResource",
           "object.button"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "disclose*"
         ],
@@ -20871,6 +20928,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsOut": [
           "disclose*"

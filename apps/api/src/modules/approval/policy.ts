@@ -345,19 +345,8 @@ const canOpen = relation({
   fields: DETAIL,
   ...byId,
 });
-const TODO_KEYS = [
-  'taskId',
-  'instanceId',
-  'title',
-  'approvalType',
-  'nodeKey',
-  'nodeName',
-  'isExceptionAdmin',
-  'origin',
-  // R2-T03 §9 合并待办：批量离职申请的批次号（其他待办为空）
-  'batchId',
-  'createdAt',
-];
+// 无 view 时仍是 listTodos 原固定键；卡片摘要取 todoForm 裁剪后字段，不能登记为未裁剪 fixed。
+const TODO_FIELDS = projector('approval.todoCards', 'approval.todoCards');
 const NOTIFICATION_KEYS = ['id', 'instanceId', 'taskId', 'kind', 'channel', 'template', 'status', 'createdAt'];
 const INSTANCE_KEYS = [
   'id',
@@ -431,7 +420,30 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   // approvalType 未知 → 400 VALIDATION_FAILED / APPROVAL_TYPE_UNKNOWN（approvalTypeOf），不是路径标识
   'POST /simulate': processView(SIMULATION, SIMULATION, { write: simulationWrite }),
   // ---- registerReadRoutes：本人数据与详情 -------------------------------------------------------------------------
-  'GET /todos': own({ predicate: 'approval.recipient', fields: fixed(TODO_KEYS, 'F-039 §3.5 固定键 listTodos') }),
+  'GET /todos': any(
+    [
+      own({ predicate: 'approval.recipient', fields: TODO_FIELDS }),
+      own({ predicate: 'approval.initiatedOrParticipated', fields: TODO_FIELDS }),
+    ],
+    {
+      optional: {
+        // 仅 view 卡片读取已按本人关系筛过的实例；不向列表增加管理员准入备选。
+        todoForm: relation({
+          relation: 'approval.canOpen',
+          target: { record: 'approval.todoCards', attribute: 'id' },
+          denied: CANNOT_OPEN,
+          fields: TODO_FIELDS,
+        }),
+        summaryDepartment: object({
+          object: MODULE_OBJECTS.organization.code,
+          operation: 'view',
+          button: noButton('只决定摘要部门名的披露'),
+          scope: listScope('approval.todoSummaryDepartment'),
+          fields: projector('approval.todoSummaryDepartment', 'approval.todoSummaryDepartment'),
+        }),
+      },
+    },
+  ),
   'GET /notifications': own({
     predicate: 'approval.recipient',
     fields: fixed(NOTIFICATION_KEYS, 'F-039 §3.5 固定键 listNotifications'),
