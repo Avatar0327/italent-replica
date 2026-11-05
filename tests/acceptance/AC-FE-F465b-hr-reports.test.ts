@@ -264,11 +264,32 @@ describe('AC-FE-F465b / DEC-763/802/803 组织员工报表', () => {
     await settle();
     expect(text()).toContain('在职实习生。');
   });
-  it('空范围的月度表即便含 12 个零值月份，也显示原文空态', async () => {
-    data = { ...movementPage(), hasDataPermission: false };
+  it.each([false, true])('12 个零值月份按数据范围决定空态（hasDataPermission=%s）', async (hasDataPermission) => {
+    const months = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`);
+    const report = movementPage();
+    data = {
+      ...report,
+      hasDataPermission,
+      tables: report.tables.map((table) => ({
+        ...table,
+        rows: months.map((month) => ({ key: month, label: month, cells: { opening: 0, exits: 0 } })),
+        summary: { cells: { opening: 0, exits: 0 } },
+      })),
+    };
     await render('monthly');
-    expect(text()).toContain('无数据权限');
-    expect(text()).toContain('该报表暂无数据');
+    const rows = Array.from(host.querySelectorAll('.ant-table-tbody tr.ant-table-row'));
+    if (hasDataPermission) {
+      expect(text()).not.toContain('该报表暂无数据');
+      expect(text()).not.toContain('无数据权限');
+      expect(rows).toHaveLength(12);
+      expect(rows.map((row) => Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent))).toEqual(
+        months.map((month) => [month, '0', '0']),
+      );
+    } else {
+      expect(text()).toContain('无数据权限');
+      expect(text()).toContain('该报表暂无数据');
+      expect(rows).toHaveLength(0);
+    }
   });
   it('有 category 列才提供异动类别，筛选值使用后端枚举', async () => {
     data = {
