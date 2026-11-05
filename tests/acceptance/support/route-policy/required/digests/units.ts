@@ -46,6 +46,14 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
   },
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts': {
+    'route:GET /api/tenant/analytics/team-dashboard': 'c4225d98f12e',
+    'route:GET /api/tenant/analytics/team-dashboard/components/:code': '71af01c1b393',
+    teamPeople: '94f02948c3bc',
+  },
+  'apps/api/src/modules/analytics/team-dashboard.ts': {
+    teamVisibility: 'f7220f6eee49',
+  },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
     adminScope: '175ed4b1418f',
@@ -1864,6 +1872,12 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
     '4f9a6b459de0',
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard':
+    '7326924f2124',
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':
+    '82b0799ab039',
+  'apps/api/src/modules/analytics/team-dashboard-routes.ts#teamPeople': '9ac2892710df',
+  'apps/api/src/modules/analytics/team-dashboard.ts#teamVisibility': '62032d24a750',
   'apps/api/src/modules/approval/access.ts#PROCESS_ADMIN': 'e3b0c44298fc',
   'apps/api/src/modules/approval/access.ts#adminScope': '51483aa71395',
   'apps/api/src/modules/approval/access.ts#adminTargetScope': '0c54c7073e80',
