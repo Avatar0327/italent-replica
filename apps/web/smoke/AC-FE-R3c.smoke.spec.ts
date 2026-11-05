@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { test, expect, user } from './fixtures.js';
 test.use({ viewport: { width: 1440, height: 1000 } });
 const id = 'a0000000-0000-4000-8000-000000000001';
@@ -11,6 +12,7 @@ const fields = [
   'periodStartDate',
   'periodEndDate',
   'categoryId',
+  'sharedOrgIds',
   'calcRuleId',
   'criterionId',
   'downwardPublic',
@@ -79,7 +81,9 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   await page.getByRole('switch', { name: '注释' }).click();
   await page.screenshot({ path: testInfo.outputPath('list.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '合成年度盘点', exact: true })).toBeVisible();
+  await expect(page.locator('.review-project-detail')).toBeVisible();
+  await expect(page.locator('.review-project-detail h1')).toHaveText('合成年度盘点');
+  await expect(page.locator('.review-project-list')).toBeHidden();
   for (const tab of [
     '盘点对象',
     '多人评价关系',
@@ -91,7 +95,7 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
     '结果审批流程',
   ]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
-    await expect(page.getByRole('tabpanel', { name: tab, exact: true })).toContainText('演示数据');
+    await expect(page.getByRole('tabpanel', { name: tab, exact: true })).toContainText('未完成（缺后端契约）');
     if (tab === '九宫格')
       await page.screenshot({ path: testInfo.outputPath('grid.png'), fullPage: true, animations: 'disabled' });
   }
@@ -119,6 +123,12 @@ for (const section of ['盘点模板', '九宫格设置', '盘点校准会']) {
     await page.getByRole('button', { name: '应用导航' }).click();
     await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: section, exact: true }).click();
+    if (section === '盘点校准会') {
+      await expect(page.locator('.review-unavailable')).toContainText('未完成（缺后端契约）');
+      await expect(page.locator('.review-unavailable tbody')).toHaveCount(0);
+      expect(errors).toEqual([]);
+      return;
+    }
     await page.locator('.list-card tbody button').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
     if (section === '盘点模板') {
@@ -163,7 +173,7 @@ for (const state of [
     await page.getByRole('button', { name: '应用导航' }).click();
     await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
-    const detail = page.getByRole('dialog', { name: '合成年度盘点' });
+    const detail = page.locator('.review-project-detail');
     await expect(detail).toBeVisible();
     await expect(detail.getByRole('button', { name: '编辑项目' })).toHaveCount(0);
     if (state.status === 'ended') await expect(detail.getByRole('button', { name: /重\s*启/ })).toBeVisible();
@@ -297,3 +307,141 @@ for (const [xCount, yCount] of [
     }
   });
 }
+
+const activeHeaders = [
+  '',
+  '名称',
+  '所属分类',
+  '盘点场景',
+  '所属组织',
+  '盘点报告模板',
+  '开始时间',
+  '结束时间',
+  '盘点年度',
+  '盘点计算规则',
+  '状态',
+  '结果审批流程',
+  '操作',
+  '⚙',
+];
+
+const endedHeaders = [
+  '',
+  '项目名称',
+  '所属分类',
+  '盘点场景',
+  '所属组织',
+  '共享组织',
+  '参与人数',
+  '盘点报告模板',
+  '开始时间',
+  '结束时间',
+  '盘点年度',
+  '盘点计算规则',
+  '状态',
+  '应用场景',
+  '操作',
+  '⚙',
+];
+
+test('AC-TR F-475A 两种项目视图、筛选和选择状态按页面保留，人才池无假数据', async ({ page }) => {
+  const ended = {
+    id: 'a0000000-0000-4000-8000-000000000002',
+    name: '合成已结束项目',
+    status: 'ended',
+    revision: 1,
+    accessLevel: 'manage',
+    ownerOrgId: id,
+    categoryId: id,
+  };
+  await page.route('**/talent-review/projects?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [{ ...ended, id, name: '合成进行中项目', status: 'in_progress' }, ended],
+        hasDataPermission: true,
+      },
+    }),
+  );
+  await page.route('**/org/organizations?*', (route) => route.fulfill({ json: { items: [{ id, name: '合成组织' }] } }));
+  await page.goto('/talent-review');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
+  const list = page.locator('.review-project-list');
+  const headers = list.locator('thead').first().getByRole('columnheader');
+  await expect(headers).toHaveText(activeHeaders);
+  await list.locator('tbody .ant-table-row').getByRole('checkbox').check();
+  await expect(list.locator('.page-total')).toHaveText('已选中1条，共1条');
+  await page.getByRole('tab', { name: '已结束的盘点项目', exact: true }).click();
+  await expect(headers).toHaveText(endedHeaders);
+  await expect(list.locator('.page-total')).toHaveText('共1条');
+  await page.getByRole('tab', { name: '进行中的盘点项目', exact: true }).click();
+  await list.getByRole('button', { name: '所属组织 ▾', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: '所属组织', exact: true });
+  await expect(picker.getByRole('heading', { name: '可选组织' })).toBeVisible();
+  await picker.locator('section').first().getByRole('checkbox').check();
+  await expect(picker.getByRole('heading', { name: '已选组织 1 / 100' })).toBeVisible();
+  await picker.getByRole('button', { name: /^确\s*定$/ }).click();
+  await expect(list.locator('.page-total')).toHaveText('共1条');
+  await list.getByRole('button', { name: '高级筛选', exact: true }).click();
+  const advanced = page.getByRole('dialog', { name: '高级筛选', exact: true });
+  await expect(advanced.locator('.ant-form-item-label')).toHaveText([
+    '名称',
+    '所属组织',
+    '开始时间',
+    '结束时间',
+    '盘点场景',
+    '盘点年度',
+    '所属分类',
+  ]);
+  await advanced.getByRole('button', { name: /^取\s*消$/ }).click();
+  await list.getByRole('button', { name: '合成进行中项目', exact: true }).click();
+  const detail = page.locator('.review-project-detail');
+  await expect(detail).toBeVisible();
+  await detail.getByRole('button', { name: /^返\s*回$/ }).click();
+  await expect(list).toBeVisible();
+  await expect(list.locator('.page-total')).toHaveText('共1条');
+  await page.getByRole('tab', { name: '人才池', exact: true }).click();
+  await expect(page.locator('.review-unavailable')).toContainText('人才池卡片、列表及成员管理尚未开放');
+  await expect(page.locator('.review-unavailable tbody')).toHaveCount(0);
+});
+
+async function openReview(page: Page) {
+  await page.goto('/talent-review');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
+}
+
+test('AC-TR F-475A 自检：组织名称裁剪后搜索仍保留记录', async ({ page }) => {
+  await page.route('**/org/organizations?*', (route) =>
+    route.fulfill({ json: { items: [{ id }, { id: 'synthetic-visible-org', name: '合成组织' }] } }),
+  );
+  await openReview(page);
+  await page.locator('.review-project-list').getByRole('button', { name: '所属组织 ▾', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: '所属组织', exact: true });
+  const rows = picker.locator('section').first().locator('tbody .ant-table-row');
+  await expect(rows).toHaveCount(2);
+  await picker.getByRole('textbox', { name: '搜索名称', exact: true }).fill('不匹配任何可见名称');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('--');
+  await picker.getByRole('button', { name: /^取\s*消$/ }).click();
+  await expect(page.locator('.review-project-list .page-total')).toHaveText('共1条');
+});
+
+test('AC-TR F-475A 自检：详情读取失败可返回并再次进入', async ({ page }) => {
+  await page.route(`**/talent-review/projects/${id}`, (route) =>
+    route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: '读取暂不可用' } } }),
+  );
+  await openReview(page);
+  const list = page.locator('.review-project-list');
+  await list.getByRole('button', { name: '合成年度盘点', exact: true }).click();
+  await expect(list).toBeHidden();
+  await page.getByRole('button', { name: /^返\s*回$/ }).click();
+  await expect(list).toBeVisible();
+  await page.unroute(`**/talent-review/projects/${id}`);
+  await list.getByRole('button', { name: '合成年度盘点', exact: true }).click();
+  await expect(page.locator('.review-project-detail h1')).toHaveText('合成年度盘点');
+});
