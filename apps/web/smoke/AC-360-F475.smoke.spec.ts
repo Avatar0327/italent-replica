@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures.js';
-import { id, setupR3b } from './r3b-fixtures.js';
+import { activity, id, setupR3b } from './r3b-fixtures.js';
 
 const detail = '.survey-detail-page';
 async function openActivity(page: Parameters<typeof setupR3b>[0]) {
@@ -224,3 +224,56 @@ test('AC-360 F475 活动编辑冲突重读后改回打开时的原值仍提交�
   await expect(form).toHaveCount(0);
   expect(requests[1]).toEqual({ revision: '5', body: { name: '合成领导力评估' } });
 });
+
+for (const hiddenName of [true, false]) {
+  test(`AC-360 F475 P2-1 只读用户名称${hiddenName ? '被裁剪' : '可见'}时仍可进入获授权详情`, async ({ page }) => {
+    await setupR3b(page, '/survey360', true);
+    await expect(page.getByRole('button', { name: activity.name, exact: true })).toBeVisible();
+    await page.route('**/permission/me/objects/Survey360.Activity', (route) =>
+      route.fulfill({
+        json: {
+          objectCode: 'Survey360.Activity',
+          dataOperations: { read: true, create: false, update: false, delete: false },
+          viewableFields: ['status', 'scene', 'form', 'welcome', ...(hiddenName ? [] : ['name'])],
+          editableFields: [],
+          buttons: [],
+        },
+      }),
+    );
+    const record = { ...activity, ...(hiddenName ? { name: undefined } : {}) };
+    await page.route('**/survey360/activities', (route) => route.fulfill({ json: { items: [record] } }));
+    await page.route(`**/survey360/activities/${id}`, (route) => route.fulfill({ json: record }));
+    await page.route(`**/survey360/activities/${id}/progress`, (route) =>
+      route.fulfill({
+        json: {
+          total: { completed: 1, all: 1 },
+          items: [{ personId: id, name: '合成只读评价者', status: 'completed', progress: { done: 1, total: 1 } }],
+        },
+      }),
+    );
+    await page.reload();
+    const row = page.locator(`tr[data-row-key="${id}"]`);
+    await expect(row).toBeVisible();
+    await expect(row.getByRole('button', { name: /启\s*用/, exact: true })).toHaveCount(0);
+    if (hiddenName) {
+      await expect(page.getByRole('columnheader', { name: '活动名称', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('main')).not.toContainText(activity.name);
+      await expect(row.getByRole('button', { name: /查\s*看/, exact: true })).toBeVisible();
+      await row.getByRole('button', { name: /查\s*看/, exact: true }).click();
+    } else {
+      await expect(row.getByRole('button', { name: /查\s*看/, exact: true })).toHaveCount(0);
+      await row.getByRole('button', { name: activity.name, exact: true }).click();
+    }
+    const content = page.locator(detail);
+    await expect(content).toBeVisible();
+    await expect(
+      content.getByRole('heading', { name: hiddenName ? '评估活动' : activity.name, exact: true }),
+    ).toBeVisible();
+    await expect(content.getByRole('button', { name: /编\s*辑/, exact: true })).toHaveCount(0);
+    await content.getByRole('tab', { name: '评价关系', exact: true }).click();
+    await expect(content).toContainText('合成参评人');
+    await content.getByRole('tab', { name: '进程控制', exact: true }).click();
+    await expect(content).toContainText('合成只读评价者');
+    if (hiddenName) await expect(page.getByRole('main')).not.toContainText(activity.name);
+  });
+}
