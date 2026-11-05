@@ -180,7 +180,7 @@ for (const entry of [
     if (entry.path === 'questionnaires') {
       await page.getByRole('tab', { name: '评估活动', exact: true }).click();
       await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-      await page.getByRole('dialog').getByRole('tab', { name: '套卷', exact: true }).click();
+      await page.locator('.survey-detail-page').getByRole('tab', { name: '套卷', exact: true }).click();
     }
     await page.getByRole('button', { name: entry.title, exact: true }).click();
     await expect(form).toContainText('结果待确认');
@@ -202,8 +202,12 @@ for (const appraiser of [false, true]) {
     const title = appraiser ? '添加评价者' : '添加评价对象';
     const open = async () => {
       await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-      await page.getByRole('dialog').getByRole('tab', { name: '评价关系', exact: true }).click();
-      if (appraiser) await page.getByRole('button', { name: '设置评价者', exact: true }).click();
+      await page.locator('.survey-detail-page').getByRole('tab', { name: '评价关系', exact: true }).click();
+      if (appraiser)
+        await page
+          .locator('.survey-detail-page tbody')
+          .getByRole('button', { name: '设置评价者', exact: true })
+          .click();
       await page.getByRole('button', { name: title, exact: true }).click();
     };
     await open();
@@ -231,10 +235,7 @@ for (const appraiser of [false, true]) {
         .getByRole('dialog', { name: '设置评价者', exact: true })
         .getByRole('button', { name: '关闭', exact: true })
         .click();
-    await page
-      .getByRole('dialog', { name: '合成领导力评估', exact: true })
-      .getByRole('button', { name: '关闭', exact: true })
-      .click();
+    await page.locator('.survey-detail-page').getByRole('button', { name: '返回活动列表', exact: true }).click();
     await open();
     await expect(form).toContainText('结果待确认');
     await expect(form.getByRole('button', saveButton)).toHaveCount(0);

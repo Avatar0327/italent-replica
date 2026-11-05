@@ -86,12 +86,17 @@ const reasonOf = async (res: Response) =>
   ((await res.json()) as { error: { code: string; details?: { reason?: string } } }).error.details?.reason;
 
 describe('AC-QL-employee-profile 必测 1：开通后员工身份存在且内容等于 DEC-205 默认值', () => {
-  it('标准身份、应用、任职对象字段 / 数据操作 / 三个按钮、页面载体按钮；无身份范围行；无任职资格业务对象（AC-QL-employee-profile）', async () => {
+  it('标准身份、应用、任职对象字段 / 数据操作 / 五个按钮、本人申请专属载体、页面载体按钮；无身份范围行；无任职资格业务对象（AC-QL-employee-profile）', async () => {
     const w = await provisionWorld(testDb().db, 'emp-open');
     const detail = await detailOf(w, EMP);
     expect(detail).toMatchObject({ name: '员工', source: 'standard', autoHeld: true });
     expect([...detail.apps].sort()).toEqual(['Qualification', 'TenantBase']);
-    expect(detail.objects.map((o) => o.objectCode).sort()).toEqual([PAGES, RECORD]);
+    expect(detail.objects.map((o) => o.objectCode).sort()).toEqual([
+      PAGES,
+      RECORD,
+      'TenantBase.SelfExit',
+      'TenantBase.SelfPartTime',
+    ]);
 
     const record = detail.objects.find((o) => o.objectCode === RECORD)!;
     const readable = [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS];
@@ -224,7 +229,8 @@ describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的
   // 改动前 employee-self-service/policy.ts 与 access.ts 的字面量
   const OLD_EDIT = ['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId'];
   const OLD_READ = [...OLD_EDIT, 'postId', 'levelId', 'sequenceId'];
-  const OLD_BUTTONS = ['Transfer.Self', 'Employment.Create', 'Employment.Submit'];
+  // DEC-790：新增两个按钮，共享字段旧值仍逐项不变。
+  const DEFAULT_BUTTONS = ['Transfer.Self', 'Employment.Create', 'Employment.Submit', 'Exit.Self', 'PartTime.Self'];
 
   it('身份定义算出的 { view, edit, create, buttons } 等于旧字面量（AC-QL-employee-profile）', () => {
     const record = EMP_DEF.objects.find((o) => o.objectCode === RECORD)!;
@@ -241,18 +247,18 @@ describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的
         .sort(),
     ).toEqual([...OLD_EDIT].sort());
     expect(record.dataOperations).toEqual({ create: true, update: false, delete: false });
-    expect(record.buttons.map((b) => b.buttonCode).sort()).toEqual([...OLD_BUTTONS].sort());
+    expect(record.buttons.map((b) => b.buttonCode).sort()).toEqual([...DEFAULT_BUTTONS].sort());
     expect([...EMPLOYEE_READONLY_FIELDS].sort()).toEqual(['levelId', 'postId', 'sequenceId']);
     expect(EMP_DEF).toMatchObject({ autoHeld: true, licenseType: null, name: '员工', hr: false });
   });
 
-  it('没有身份行的租户：employeeFieldPolicy 兜底值等于旧字面量，并带三个按钮（AC-QL-employee-profile）', async () => {
+  it('没有身份行的租户：employeeFieldPolicy 兜底值等于旧字面量，并带五个按钮（AC-QL-employee-profile）', async () => {
     const w = await legacyWorld(testDb().db, 'emp-fallback', [], [EMP]);
     const policy = await withTenant(w.db, w.tenantId, (tx) => employeeFieldPolicy(tx, w.tenantId));
     expect([...policy.view].sort()).toEqual([...OLD_READ].sort());
     expect([...policy.edit].sort()).toEqual([...OLD_EDIT].sort());
     expect(policy.create).toBe(true);
-    expect([...policy.buttons].sort()).toEqual([...OLD_BUTTONS].sort());
+    expect([...policy.buttons].sort()).toEqual([...DEFAULT_BUTTONS].sort());
   });
 
   it('装有标准身份的租户：读标准行得到同一结果（AC-QL-employee-profile）', async () => {
@@ -261,7 +267,7 @@ describe('AC-QL-employee-profile 必测 3：E1 单一来源守卫（改动前的
     expect([...policy.view].sort()).toEqual([...OLD_READ].sort());
     expect([...policy.edit].sort()).toEqual([...OLD_EDIT].sort());
     expect(policy.create).toBe(true);
-    expect([...policy.buttons].sort()).toEqual([...OLD_BUTTONS].sort());
+    expect([...policy.buttons].sort()).toEqual([...DEFAULT_BUTTONS].sort());
   });
 });
 

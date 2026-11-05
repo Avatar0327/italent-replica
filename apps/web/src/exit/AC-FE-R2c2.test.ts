@@ -71,19 +71,21 @@ describe('AC-FE-R2c2 入口只按服务端动作 / 权限快照显示', () => {
     expect(model.createEntries(without('Employment.Dimission'))).toEqual(['application']);
     expect(model.createEntries({ ...permission, dataOperations: { create: false, update: true } })).toEqual([]);
   });
-  it('详情编辑 / 撤销：按状态、按钮与修改操作；状态被裁剪时不给', () => {
-    expect(model.detailEntries(row, permission)).toEqual(['edit', 'cancel']);
-    expect(model.detailEntries({ ...row, status: 'cancelled' }, permission)).toEqual([]);
-    expect(model.detailEntries({ ...row, status: undefined }, permission)).toEqual([]);
-    expect(model.detailEntries(row, without('Employment.DimissionCancel'))).toEqual(['edit']);
-    expect(model.detailEntries({ ...row, revision: undefined }, permission)).toEqual([]);
+  it('详情编辑 / 撤销只认服务端 actions（F-352①）；没有 actions 或单据标识无效时不给', () => {
+    expect(model.detailEntries({ ...row, actions: ['edit', 'cancel'] })).toEqual(['edit', 'cancel']);
+    expect(model.detailEntries({ ...row, actions: ['edit'] })).toEqual(['edit']);
+    expect(model.detailEntries(row)).toEqual([]);
+    expect(model.detailEntries({ ...row, status: undefined, actions: ['edit'] })).toEqual(['edit']);
+    expect(model.detailEntries({ ...row, revision: undefined, actions: ['edit', 'cancel'] })).toEqual([]);
   });
   it('行内发起交接只认 rowActions；批量按列表级按钮且只取带行动作的行', () => {
     const actionable = { ...row, rowActions: ['EmploymentRecrdLineOpDimissionHandoverApproval'] };
-    expect(model.rowEntries(row, permission)).toEqual([]);
-    expect(model.rowEntries(actionable, permission)).toEqual(['handover']);
+    expect(model.rowEntries(row)).toEqual([]);
+    expect(model.rowEntries(actionable)).toEqual(['handover']);
     expect(model.batchHandoverRows([row, actionable], permission)).toEqual([actionable]);
     expect(model.batchHandoverRows([actionable], without('BatchDimissionHandoverApproval'))).toEqual([]);
+    expect(model.batchEntryVisible(permission)).toBe(true);
+    expect(model.batchEntryVisible(without('BatchDimissionHandoverApproval'))).toBe(false);
   });
   it('交接：未发起且单据在审时首次发起；未发起成功 / 已终止时重新提交', () => {
     const none = { status: 'not_started', request: null };
@@ -254,14 +256,14 @@ describe('AC-FE-R2c2 第 2 轮：申请两步提交', () => {
     expect(model.submitBody({})).toEqual({});
     expect(model.submitBody({ pendingTransferAck: 'token', confirmed: true })).toEqual({ pendingTransferAck: 'token' });
   });
-  it('详情“提交审批”只给离职申请的草稿 / 已驳回单', () => {
-    expect(model.detailEntries({ ...row, status: 'draft' }, permission)).toEqual(['submit', 'edit', 'cancel']);
-    expect(model.detailEntries({ ...row, status: 'rejected' }, permission)).toEqual(['submit', 'edit', 'cancel']);
-    expect(model.detailEntries({ ...row, status: 'draft', mode: 'direct' }, permission)).toEqual(['edit', 'cancel']);
-    expect(model.detailEntries({ ...row, status: 'draft' }, without('Employment.DimissionApproval'))).toEqual([
+  it('详情“提交审批”由服务端 actions 决定（离职申请的草稿 / 已驳回单，需申请按钮权）', () => {
+    const all = ['submit', 'edit', 'cancel'];
+    expect(model.detailEntries({ ...row, status: 'draft', actions: all })).toEqual(all);
+    expect(model.detailEntries({ ...row, status: 'draft', mode: 'direct', actions: ['edit', 'cancel'] })).toEqual([
       'edit',
       'cancel',
     ]);
+    expect(model.detailEntries({ ...row, status: 'draft', actions: ['edit', 'cancel'] })).toEqual(['edit', 'cancel']);
   });
 });
 

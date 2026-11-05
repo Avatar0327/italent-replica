@@ -43,7 +43,7 @@ describe('AC-APV-F318a 来源统一模型', () => {
     expect(draft.latestVersion.nodes).toMatchObject([expected]);
   });
 
-  it('F-326 与身份 c2 仍拒存；F-318c 引用须存在且维度开启', async () => {
+  it('F-326 仍拒存；F-318c / F-380 引用（含身份）须存在且维度开启', async () => {
     const x = await world(database().db, 'unsupported-sources');
     const input = definition(x);
     for (const type of [
@@ -70,11 +70,9 @@ describe('AC-APV-F318a 来源统一模型', () => {
       expect(body.error.message).toContain(
         ['public_variable', 'application_variable', 'matrix'].includes(type)
           ? '暂不支持，后补'
-          : type === 'identity'
-            ? '待 F-318c 开放'
-            : ['business_org', 'profit_center', 'reserve4', 'reserve5'].includes(type)
-              ? '维度未启用'
-              : '引用不存在',
+          : ['business_org', 'profit_center', 'reserve4', 'reserve5'].includes(type)
+            ? '维度未启用'
+            : '引用不存在',
       );
     }
   });

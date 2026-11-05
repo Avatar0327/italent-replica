@@ -26,6 +26,8 @@
 import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { sql, type Tx } from '@italent/db';
 import {
+  SELF_APPLICATION_OBJECTS,
+  type SelfApplicationKind,
   EMPLOYEE_DEFAULT_CREATE,
   EMPLOYEE_DEFAULT_EDIT_FIELDS,
   EMPLOYEE_SELF_SERVICE_BUTTONS,
@@ -34,8 +36,9 @@ import {
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
 import { loadObjectPermissions } from '../permission/subject.js';
+import { SELF_APPLICATION_POLICIES } from './application-policy.js';
 import { defineTable } from '../../route-policy/index.js';
-import { BAD_REQUEST, button, fixed, none, projector, self, write } from '../../route-policy/presets.js';
+import { BAD_REQUEST, button, fixed, none, noFields, projector, self, write } from '../../route-policy/presets.js';
 
 // DEC-205：这是自动员工身份的出厂权限，不是表单白名单。租户可用现有身份配置接口覆盖，另有身份按并集合并。
 // 出厂默认值的唯一来源在 domain（platform/employee-self-service.ts，C1-2b）：开通时装的标准身份行与这里没有行时的兜底值同出一处。
@@ -58,11 +61,16 @@ export interface EmployeeFieldPolicy {
   readonly view: Set<string>;
   readonly edit: Set<string>;
   readonly create: boolean;
+  readonly update: boolean;
   /** 员工身份在任职对象上授予的 detail 级按钮编码（本人调动三个按钮的实际开关，DEC-402②）。 */
   readonly buttons: Set<string>;
 }
 
-export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<EmployeeFieldPolicy> {
+export async function employeeFieldPolicy(
+  tx: Tx,
+  tenantId: string,
+  kind?: SelfApplicationKind,
+): Promise<EmployeeFieldPolicy> {
   const [profile] = rowsOf<{ id: string }>(
     await tx.execute(sql`
     SELECT p.id FROM permission_profiles p
@@ -70,20 +78,25 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string): Promise<Emp
     WHERE p.tenant_id=${tenantId} AND p.code=${EMPLOYEE_PROFILE_CODE}
   `),
   );
+  const definition = kind ? SELF_APPLICATION_OBJECTS[kind] : undefined;
   if (!profile) {
     return {
-      view: new Set([...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS]),
-      edit: new Set(EMPLOYEE_DEFAULT_EDIT_FIELDS),
+      view: new Set(
+        definition?.fields.map((f) => f.code) ?? [...EMPLOYEE_DEFAULT_EDIT_FIELDS, ...EMPLOYEE_READONLY_FIELDS],
+      ),
+      edit: new Set(definition?.fields.filter((f) => !f.system).map((f) => f.code) ?? EMPLOYEE_DEFAULT_EDIT_FIELDS),
       create: EMPLOYEE_DEFAULT_CREATE,
+      update: !!kind,
       buttons: new Set(DEFAULT_BUTTONS),
     };
   }
-  const [permission] = await loadObjectPermissions(tx, [profile.id], EMPLOYMENT_OBJECT);
+  const [permission] = await loadObjectPermissions(tx, [profile.id], definition?.code ?? EMPLOYMENT_OBJECT);
   return {
     buttons: new Set(permission?.buttons.filter((b) => b.level === 'detail').map((b) => b.buttonCode) ?? []),
     view: new Set(permission?.fields.filter((field) => field.view).map((field) => field.fieldCode) ?? []),
     edit: new Set(permission?.fields.filter((field) => field.view && field.edit).map((field) => field.fieldCode) ?? []),
     create: permission?.dataOperations.create ?? false,
+    update: permission?.dataOperations.update ?? false,
   };
 }
 
@@ -143,7 +156,11 @@ const DEVELOPMENT_CHANNEL_PAGE = 'selfService.developmentChannelPage';
 /** 页面载体 Qualification.Pages 上的 app_page 按钮（C1-2b 契约 §3），由 employeePageGranted 经请求的授权器判定。 */
 const DEVELOPMENT_CHANNEL_BUTTON = button('EmployeeDevelopmentChannel', 'app_page');
 
+const applicationRows = (code: string) =>
+  self({ button: button(code, 'detail'), fields: noFields('仅决定该类申请列表行可见性') });
+
 export const SELF_SERVICE_POLICIES = defineTable('self-service', {
+  ...SELF_APPLICATION_POLICIES,
   // ---- registerProfileRoutes：本人档案与任职记录 -----------------------------------------------------------------
   // 响应 { employee, timezone, today, record }：record 为当前任职（无则 null），经 discloseOwnRecord 裁剪
   'GET /profile': self({ fields: ownRecord }),
@@ -205,8 +222,18 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   // ownApplications：initiator_user_id = 本人用户 ∧ employee_id = 绑定本人（本人前提自带，不另登记 scope）；
   // 固定协议键 id / businessId / revision / title / currentHandlers / createdAt / status / category / initiator，
   // effectiveDate / fields.departmentId 与 reason（reasonCode 可见才查目录名）按 transferFieldAccess 可见集裁剪
-  'GET /applications': self({ fields: projector('selfService.application', 'selfService.application') }),
+  'GET /applications': self({
+    fields: projector('selfService.application', 'selfService.application'),
+    optional: {
+      exitApplications: applicationRows('Exit.Self'),
+      partTimeApplications: applicationRows('PartTime.Self'),
+    },
+  }),
   // uuidParam 非 UUID → 400；ownApplication 非本人发起 / 非绑定本人 / 不存在 → 404 NOT_FOUND「申请不存在」；
   // 响应 { status, record }，record 经 discloseOwnRecord 裁剪
-  'GET /applications/:id': self({ invalidId: BAD_REQUEST, guards: ['selfService.ownApplication'], fields: ownRecord }),
+  'GET /applications/:id': self({
+    invalidId: BAD_REQUEST,
+    guards: ['selfService.ownApplication', 'selfService.application'],
+    fields: ownRecord,
+  }),
 });
