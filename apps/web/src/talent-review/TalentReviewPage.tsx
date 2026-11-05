@@ -113,16 +113,18 @@ function RowActions({
   state: ReturnType<typeof useReviewController>;
 }) {
   const editLabel = collection === 'projects' ? tr.editProject : tr.editTemplate;
+  const buttonType = inDetail && collection === 'projects' ? 'primary' : 'link';
+  const order = inDetail ? ['start', 'end', 'restart', 'update'] : ['update', 'end', 'start', 'restart'];
   return (
     <Space size={8}>
       {state
         .actionsFor(row)
-        .sort((a, b) => (inDetail && collection === 'projects' ? Number(a === 'update') - Number(b === 'update') : 0))
+        .sort((a, b) => (collection === 'projects' ? order.indexOf(a) - order.indexOf(b) : 0))
         .map((action) =>
           action === 'update' ? (
             <Button
               key={action}
-              type="link"
+              type={buttonType}
               disabled={state.busy}
               onClick={() => state.select({ id: row.id, editing: true })}
             >
@@ -134,7 +136,7 @@ function RowActions({
               title={action === 'end' ? tr.confirmEnd : tr.confirmAction}
               onConfirm={() => state.transition(row, action)}
             >
-              <Button type="link" disabled={state.busy}>
+              <Button type={buttonType} disabled={state.busy}>
                 {tr[action]}
               </Button>
             </Popconfirm>
