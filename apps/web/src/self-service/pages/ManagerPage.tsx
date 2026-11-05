@@ -28,6 +28,8 @@ import {
 import { Notes, ReadState, Refresh, ServiceHeading, ServiceNav } from './parts.js';
 import { useRead } from './useRead.js';
 import { messages as m } from './messages.js';
+import { TeamDashboardPage } from './TeamDashboardPage.js';
+import { teamDashboardText } from './team-dashboard-messages.js';
 
 interface TeamResult extends PageResult<TeamRow> {
   counts?: Record<string, number | null>;
@@ -52,6 +54,8 @@ function ManagerWorkspace({ path, entry }: { path: string; entry: Entry }) {
       return <Dashboard />;
     case '/manager/team':
       return <TeamPage />;
+    case '/manager/team-dashboard':
+      return <TeamDashboardPage />;
     case '/manager/todos':
       return <TodosPage />;
     case '/manager/applications':
@@ -59,6 +63,13 @@ function ManagerWorkspace({ path, entry }: { path: string; entry: Entry }) {
     default:
       return <PageState kind="not-found" />;
   }
+}
+function TeamLinks() {
+  return (
+    <>
+      <Link to="/manager/team-dashboard">{teamDashboardText.link}</Link> <Link to="/manager/team">{m.all}</Link>
+    </>
+  );
 }
 function Dashboard() {
   const session = useSession();
@@ -76,7 +87,7 @@ function Dashboard() {
       </div>
       <div className="service-dashboard">
         <div>
-          <Card title={m.manager.team} extra={<Link to="/manager/team">{m.all}</Link>}>
+          <Card title={m.manager.team} extra={<TeamLinks />}>
             <ReadState state={team} />
             <div className="service-counts">
               {categories.map((item) => (

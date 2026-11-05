@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { exitPostEffectHooks } from '../../apps/api/src/modules/employment/exit-confirmation.js';
 import { downstreamWorld } from './AC-EXIT-downstream-support.js';
 import { leaveBody } from './AC-EXIT-gate-support.js';
-import { waitForBlocked } from './support/pg-interleave.js';
+import { settledOrBlocked, waitForBlocked, withHeldLock } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const signal = () => {
@@ -28,34 +28,49 @@ async function scene(label: string) {
   return { x, userId, leave };
 }
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-261 PG 锁交错', () => {
-  it('人工重试与调度写回交错：账号停用凭据不可丢，随后撤销仍能恢复', async () => {
+  it('AC-DM-20 / F-359 人工重试与调度写回交错：账号停用凭据不可丢，随后撤销仍能恢复', async () => {
     const { x, userId, leave } = await scene('retry-race');
     x.setNow('2026-10-06T11:00:00Z');
-    const task = await (await x.session.request('GET', `/exit-account/tasks/${leave.id}`)).json();
-    const held = signal(),
-      release = signal();
-    const holder = withTenant(x.db, x.session.tenant.id, async (tx) => {
-      await tx.execute(sql`SELECT 1 FROM exit_account_tasks
-        WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid FOR UPDATE`);
-      held.resolve();
-      await release.promise;
-    });
-    await held.promise;
-    const retrying = x.session.request('POST', `/exit-account/tasks/${leave.id}/retry`, {
-      ifMatch: task.revision,
-      body: {},
-    });
-    let scheduling: ReturnType<typeof x.runScheduler> | undefined;
+    const before = (await getUser(x.db, userId))!;
+    // 沿用 F-328 的存储故障注入：由真实调度记录 failed，不直接改任务状态；交错前卸载故障。
+    await x.db.execute(sql`CREATE FUNCTION f261_fail_disable() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.status = 'disabled' AND OLD.status = 'active' THEN
+        RAISE EXCEPTION 'synthetic disable storage failure' USING ERRCODE = '53100';
+      END IF; RETURN NEW; END $$`);
     try {
-      await waitForBlocked(x.db, 1);
-      scheduling = x.runScheduler('2026-10-06T11:00:00Z');
-      await waitForBlocked(x.db, 2);
+      await x.db.execute(sql`CREATE TRIGGER f261_fail_disable BEFORE UPDATE OF status ON users
+        FOR EACH ROW EXECUTE FUNCTION f261_fail_disable()`);
+      await x.runScheduler('2026-10-06T11:00:00Z');
     } finally {
-      release.resolve();
+      await x.db.execute(sql`DROP TRIGGER IF EXISTS f261_fail_disable ON users`);
+      await x.db.execute(sql`DROP FUNCTION f261_fail_disable()`);
     }
-    await holder;
-    expect((await retrying).status).toBe(200);
-    await scheduling;
+    const task = await (await x.session.request('GET', `/exit-account/tasks/${leave.id}`)).json();
+    expect(task).toMatchObject({ status: 'failed', attempts: 1 });
+    expect(task.reason).toEqual(expect.any(String));
+    expect(await getUser(x.db, userId)).toEqual(before);
+    await withHeldLock(
+      {
+        run: (fn) => withTenant(x.db, x.session.tenant.id, fn),
+        take: (tx) =>
+          tx.execute(sql`SELECT 1 FROM exit_account_tasks
+          WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid FOR UPDATE`),
+      },
+      async (lock) => {
+        const retrying = lock.track(
+          x.session.request('POST', `/exit-account/tasks/${leave.id}/retry`, {
+            ifMatch: task.revision,
+            body: {},
+          }),
+        );
+        await waitForBlocked(x.db, 1);
+        const scheduling = lock.track(x.runScheduler('2026-10-06T11:00:00Z'));
+        await waitForBlocked(x.db, 2);
+        await lock.release();
+        expect((await retrying).status).toBe(200);
+        await scheduling;
+      },
+    );
     const disabled = (await getUser(x.db, userId))!;
     expect(disabled.status).toBe('disabled');
     const [saved] = await x.sqlRows<{ auto: number | null }>(sql`SELECT auto_revision AS auto FROM exit_account_tasks
@@ -67,6 +82,41 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-261 PG 锁交错', () 
     });
     expect(cancelled.status, await cancelled.clone().text()).toBe(200);
     expect((await getUser(x.db, userId))!.status).toBe('active');
+  });
+
+  it('AC-DM-20 / F-359 pending 人工重试不等任务行锁，回 200 且 revision 不变', async () => {
+    const { x, userId, leave } = await scene('pending-noop');
+    // 已到停用时间：若空操作错误地触发消费，会等待行锁或停用账号。
+    x.setNow('2026-10-06T11:00:00Z');
+    const task = await (await x.session.request('GET', `/exit-account/tasks/${leave.id}`)).json();
+    expect(task.status).toBe('pending');
+    const before = await getUser(x.db, userId);
+    const storedTask = () =>
+      x.sqlRows(sql`SELECT * FROM exit_account_tasks
+      WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid`);
+    const stored = await storedTask();
+    await withHeldLock(
+      {
+        run: (fn) => withTenant(x.db, x.session.tenant.id, fn),
+        take: (tx) =>
+          tx.execute(sql`SELECT 1 FROM exit_account_tasks
+          WHERE tenant_id=${x.session.tenant.id} AND business_id=${leave.id}::uuid FOR UPDATE`),
+      },
+      async (lock) => {
+        const retrying = lock.track(
+          x.session.request('POST', `/exit-account/tasks/${leave.id}/retry`, {
+            ifMatch: task.revision,
+            body: {},
+          }),
+        );
+        expect(await settledOrBlocked(x.db, retrying, 1)).toBe('settled');
+        const response = await retrying;
+        expect(response.status, await response.clone().text()).toBe(200);
+        expect(await response.json()).toEqual({ businessId: leave.id, status: 'pending', revision: task.revision });
+        expect(await storedTask()).toEqual(stored);
+        expect(await getUser(x.db, userId)).toEqual(before);
+      },
+    );
   });
 
   it('改期事务持员工锁时启动到点调度：等待结束重读未来日期，不能按旧计划停用', async () => {

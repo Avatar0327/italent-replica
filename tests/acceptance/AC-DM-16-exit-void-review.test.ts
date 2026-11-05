@@ -163,10 +163,11 @@ describe('P2-4 审批已完成的申请被作废 / 撤回后仍发消息', () =>
     });
   });
 
-  it('合同：经审批中心同意（实例 approved）的未来合同申请，撤回后仍给发起人发消息', async () => {
+  it('合同：经审批中心同意（实例 approved）的未来合同申请，撤回后仍给发起人与申请人发消息', async () => {
     const x = await world('p24-contract');
     const type = await x.contractType('合同乙');
     const leave = await x.directLeave('2026-10-05');
+    const applicant = await x.applicantAccount(x.employee.id);
     const request = (await x.createContract(type, { effectiveDate: '2026-10-20' }, 'application')).id;
     await x.approveInReview(request);
     const instance = (await x.instanceOf(request))!;
@@ -174,8 +175,9 @@ describe('P2-4 审批已完成的申请被作废 / 撤回后仍发消息', () =>
     expect((await x.requestRows()).find((row) => row.id === request)!.status).toBe('approved');
     await x.activate(leave.id, TODAY);
     expect((await x.requestRows()).find((row) => row.id === request)!.status).toBe('withdrawn');
-    expect(await x.notices(instance.id)).toEqual([
-      { recipient: x.session.user.id, template: 'contract_request_voided_by_exit', kind: 'message' },
-    ]);
+    const recipients = [...new Set([x.session.user.id, applicant])].sort();
+    expect(await x.notices(instance.id)).toEqual(
+      recipients.map((recipient) => ({ recipient, template: 'contract_request_voided_by_exit', kind: 'message' })),
+    );
   });
 });

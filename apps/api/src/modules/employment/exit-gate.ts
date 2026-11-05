@@ -687,6 +687,12 @@ async function createConditions(tx: Tx, ctx: EmploymentContext, target: ExitGate
   return checkPendingTransferAck(tx, ctx, target.employeeId, lastWorkDate, exit.pendingTransferAck, null, kind);
 }
 
+/** DEC-113：动作披露与提交写守卫共用原发起人判定，不涉及提交载荷或业务副作用。 */
+export function requireExitSubmitInitiator(ctx: EmploymentContext, initiatorUserId: string): void {
+  if (initiatorUserId !== ctx.userId)
+    throw new AppError('FORBIDDEN', '只有原发起人可以提交该离职申请', { reason: 'EXIT_SUBMIT_INITIATOR_ONLY' });
+}
+
 async function submitConditions(
   tx: Tx,
   ctx: EmploymentContext,
@@ -697,8 +703,7 @@ async function submitConditions(
   const row = await loadExitRequest(tx, ctx.tenantId, business.id);
   if (!row) return null;
   // DEC-113：撤回 / 驳回后重提只允许原发起人，且重提时重新复核当前权限与关系（入口层先验，这里验发起人）
-  if (row.initiatorUserId !== ctx.userId)
-    throw new AppError('FORBIDDEN', '只有原发起人可以提交该离职申请', { reason: 'EXIT_SUBMIT_INITIATOR_ONLY' });
+  requireExitSubmitInitiator(ctx, row.initiatorUserId);
   const lastWorkDate = business.payload.lastWorkDate!;
   await assertNoOverdueTransfer(tx, ctx, business.employeeId);
   const kind = business.payload.kind;

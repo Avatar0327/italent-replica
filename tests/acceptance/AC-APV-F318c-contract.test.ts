@@ -33,7 +33,7 @@ describe('AC-APV-F318c 保存及候选契约', () => {
       expect(await resolved(w, value)).toEqual([]);
     }
   });
-  it('D7 无业务日的类型拒存新值；D8 关闭维度拒存，已有来源运行为空；身份 c2 / F326 不开放', async () => {
+  it('D7 无业务日的类型拒存新值；D8 关闭维度拒存，已有来源运行为空；F326 不开放，随机身份 ID 不存在即 422', async () => {
     const w = await relationWorld(database().db, 'c-rejections');
     const unsupported = await save(w, [source('department', w.root)], 'idp_plan');
     expect(unsupported.status).toBe(422);
