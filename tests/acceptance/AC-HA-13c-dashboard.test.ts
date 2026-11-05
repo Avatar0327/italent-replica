@@ -371,12 +371,12 @@ describe('AC-HA-13c ② 流程时效（只统计已通过）', () => {
 
   it('7.2.08 / 09 任务平均耗时 = AVG(任务完成 − 任务到达)：按节点、按审批人（附审批计数）', async () => {
     const tasks = (['a', 'b', 'c', 'd', 'e'] as const).map((key) => f.flows[key].task);
-    // 节点组键 = 流程版本 + 节点键（第 2 轮），取概览给出的组键钻取
+    // 节点组键 = 节点名称（F-416 / F-417⑤），取概览给出的组键钻取
     const { groups } = await board.component('taskDurationByNode', TRANSFER);
     expect(groups).toHaveLength(1);
     const [group] = groups;
     const node = await board.expectGroup('taskDurationByNode', { group: group!.key }, tasks, TRANSFER);
-    expect([node?.label, node?.average, group!.key.endsWith(':mgr')]).toEqual(['直线经理审批', 2.03, true]);
+    expect([node?.label, node?.average, group!.key]).toEqual(['直线经理审批', 2.03, '直线经理审批']);
     const approver = await board.expectGroup('taskDurationByApprover', { group: f.boss.userId }, tasks, TRANSFER);
     expect([approver?.count, approver?.average]).toEqual([5, 2.03]);
   });
@@ -545,6 +545,25 @@ describe('AC-HA-13c 范围与授权', () => {
     );
     // Offer 由申请人发起，HR 不是参与人：管理员按钮被拒后看不到
     expect((await initiator.detail('inFlightCount')).map((i) => i.id)).not.toContain(f.offers.o1Instance);
+  });
+
+  it('F-415 业务类明细的审批实例 ID 按调用者的审批可见面裁剪：看得到业务单据、看不到不相干的实例 ID', async () => {
+    const stranger = await w.member('旁人F415');
+    const denyAdmin: Authorizer = (request) =>
+      !(request.action === 'object.button' && /#admin(Transfer|Intervene)@/.test(String(request.resource)));
+    const as = (user: string) =>
+      processClient(w.db, { tenant: w.tenant.id, user }, { now: () => new Date(at(AS_OF)), authorize: denyAdmin });
+    const approvedFlows = (['a', 'b', 'c', 'd', 'e'] as const).map((key) => f.flows[key]);
+    // 参与人（发起人 HR）：业务单据与审批实例 ID 都在，一一对应
+    const own = await as(w.hr.id).detail('transferApprovalRate', TRANSFER);
+    for (const flow of approvedFlows)
+      expect(own.find((item) => item.id === flow.business)?.instanceId, `发起人 ${flow.business}`).toBe(flow.instance);
+    // 旁人：数据范围内的业务单据照常列出（数字 = 明细不变），但不是参与人也没有管理员按钮，实例 ID 一律为空
+    const other = await as(stranger).detail('transferApprovalRate', TRANSFER);
+    expect(sorted(other.map((item) => item.id))).toEqual(sorted(own.map((item) => item.id)));
+    expect(other.map((item) => item.instanceId)).toEqual(other.map(() => null));
+    const approved = await as(stranger).detail('transferApprovalRate', TRANSFER, { hit: true });
+    expect(approved.map((item) => item.instanceId)).toEqual(approved.map(() => null));
   });
 
   it('403 / 400 / 404', async () => {

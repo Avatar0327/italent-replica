@@ -1,4 +1,4 @@
-import { Alert, Button, Form, Input, Modal, Space } from 'antd';
+import { Alert, App, Button, Form, Input, Modal, Space } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { rejectionMessage } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -9,7 +9,7 @@ import { useDraftRefill } from '../foundation/forms/useCommandForm.js';
 import { isBlank, projectFields, sameValue, type Values } from '../foundation/forms/values.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { WithOpening } from '../intern/RegularizeForm.js';
-import { ask, useExitCommand, useExitRead, useFormSubmit, type ExitCommand } from './ExitCommands.js';
+import { useAsk, useExitCommand, useExitRead, useFormSubmit, type ExitCommand } from './ExitCommands.js';
 import { ExitFields } from './ExitFields.js';
 import { x } from './messages.js';
 import {
@@ -33,20 +33,23 @@ export interface DocumentProps {
 }
 
 /** 撤销 / 改期回执里的下游清单（按查看人裁剪）：有内容才提示，字段缺席时不推算。 */
-function showDownstream(raw: unknown) {
-  const lines = downstreamLines(raw);
-  if (!lines.length) return;
-  Modal.info({
-    title: x.downstreamTitle,
-    okText: x.confirm,
-    content: (
-      <ul>
-        {lines.map((line) => (
-          <li key={line}>{line}</li>
-        ))}
-      </ul>
-    ),
-  });
+function useShowDownstream() {
+  const { modal } = App.useApp();
+  return (raw: unknown) => {
+    const lines = downstreamLines(raw);
+    if (!lines.length) return;
+    modal.info({
+      title: x.downstreamTitle,
+      okText: x.confirm,
+      content: (
+        <ul>
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ),
+    });
+  };
 }
 
 /** 加黑组（是否加黑 + 三项）：编辑时原样保留则不要求重填加黑原因。 */
@@ -79,6 +82,8 @@ function EditEditor({
   const [form] = Form.useForm();
   const [baseline] = useState(() => opening.values);
   const cmd = useExitCommand(exits, { id, revision: opening.revision, baseline, read }, 'edit', refresh);
+  const ask = useAsk();
+  const showDownstream = useShowDownstream();
   const group = useBlackGroup(form, cmd.full);
   useDraftRefill(cmd.form, editable, form);
   const { error, submit } = useFormSubmit(
@@ -108,7 +113,7 @@ function EditEditor({
   return (
     <CommandModal title={x.entries.edit} cmd={cmd} error={error} onClose={onClose} onSubmit={submit}>
       <Form form={form} layout="vertical" disabled={cmd.disabled} initialValues={baseline}>
-        <ExitFields editable={editable} permission={permission} {...group} />
+        <ExitFields editable={editable} permission={permission} projected={cmd.full} {...group} />
       </Form>
     </CommandModal>
   );
@@ -162,6 +167,7 @@ export function CancelForm(props: DocumentProps & { revision: number }) {
   const read = useExitRead(id);
   const [baseline] = useState<Values>({ reason: null });
   const cmd = useExitCommand(exits, { id, revision, baseline, read }, 'cancel', refresh);
+  const showDownstream = useShowDownstream();
   const [form] = Form.useForm();
   useDraftRefill(cmd.form, ['reason'], form);
   const { error, submit } = useFormSubmit(

@@ -3,7 +3,15 @@ import type { ApprovalNode, ApproverSource } from '@italent/domain';
 import { useFormLock } from '../../foundation/forms/FormLock.js';
 import { nodeField } from './model.js';
 import { DesignerPeople } from './FallbackHandlers.js';
-import { changeSourceType, sourceInputError, sourceList, sourceOptions, sourceValueLabel } from './sources.js';
+import { ReferenceValue } from './ReferenceValue.js';
+import {
+  changeSourceType,
+  REFERENCE_SOURCE_TYPES,
+  sourceInputError,
+  sourceList,
+  sourceOptions,
+  sourceValueLabel,
+} from './sources.js';
 import { s } from './source-messages.js';
 
 export function ApproverSources({
@@ -131,6 +139,8 @@ function SourceRow({
             value={source.value ? [source.value] : []}
             onChange={(ids) => onChange({ type: 'specified', value: ids[0] ?? '' })}
           />
+        ) : REFERENCE_SOURCE_TYPES.includes(source.type) ? (
+          <ReferenceValue source={source} fixed={values} disabled={!option || option.disabled} onChange={onChange} />
         ) : (
           <Select
             aria-label={s.value}

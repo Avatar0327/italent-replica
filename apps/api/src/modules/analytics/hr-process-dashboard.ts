@@ -126,7 +126,8 @@ function facts(c: ProcessContext): SQL {
       creator: sql`x.creator_id`,
     })} END`;
   return sql`SELECT x.*, s.second_id,
-      x.category<>'other' AS core, x.status IN ('running','returned') AS in_flight,
+      x.category<>'other' AS core, (x.status='running'
+        OR (x.status='returned' AND x.business_type NOT IN ('offer','offer_batch'))) AS in_flight,
       x.business_date IS NOT NULL AND x.started_on > x.business_date AS late_submit,
       x.business_date IS NOT NULL AND x.completed_on > x.business_date AND x.started_on < x.business_date
         AS late_approval,
@@ -137,11 +138,11 @@ function facts(c: ProcessContext): SQL {
 }
 
 /**
- * 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。节点身份 = 流程版本 + 节点键（approval_process_nodes 主键），
- * node_id 是概览分组与钻取共用的节点键：不同流程里同名的节点键不合并。
+ * 已通过实例的已同意任务（时效 08 / 09、晚审批 15 的主体）。
+ * F-416 / 规格 35 B51：节点按名称跨流程、版本归并；概览与钻取共用原始名称，不截断或规范化。
  */
 const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id,
-    f.version_id::text || ':' || t.node_key AS node_id, t.assignee_user_id AS approver,
+    t.assignee_user_id AS approver,
     n.name AS node_name, ${days(sql`t.created_at`, sql`t.acted_at`)} AS duration, f.core, f.late_approval
   FROM facts f JOIN approval_tasks t ON t.tenant_id=${c.tenantId} AND t.instance_id=f.id AND t.status='approved'
     AND t.acted_at IS NOT NULL AND t.assignee_user_id IS NOT NULL
@@ -150,8 +151,12 @@ const doneTasks = (c: ProcessContext) => sql`SELECT t.id, t.instance_id,
 
 /** 已通过实例 ID（业务单据的“审批总量”：走了流程且审批通过）。 */
 const approvedInstance = (c: ProcessContext, type: string, id: SQL) => sql`(SELECT ai.id FROM approval_instances ai
-  WHERE ai.tenant_id=${c.tenantId} AND ai.business_type=${type}
-    AND ai.business_id=${id} AND ai.status='approved' ORDER BY ai.completed_at DESC LIMIT 1)`;
+  WHERE ai.tenant_id=${c.tenantId} AND ai.status='approved'
+    AND ((ai.business_type=${type} AND ai.business_id=${id})
+      OR (${type}='offer' AND ai.business_type='offer_batch' AND EXISTS (
+        SELECT 1 FROM offer_batch_approval_items bi WHERE bi.tenant_id=ai.tenant_id
+          AND bi.batch_id=ai.business_id AND bi.offer_id=${id})))
+    ORDER BY ai.completed_at DESC, ai.id LIMIT 1)`;
 
 /**
  * Offer 是否计入 ④ 业务总量（单一入口，明细与总量只经此处）。规格 35 ④：业务总量 = 近 30 天实际发生量（不论是否走流程）。
@@ -299,7 +304,7 @@ function specs(c: ProcessContext): Readonly<Record<HrProcessComponentCode, Spec>
     inFlightList: { cols: listColumns(c), from: IN_FLIGHT },
     durationByWeek: { grp: week(sql`f.started_on`), value: DURATION, from: APPROVED },
     durationByCategory: { grp: sql`f.category`, value: DURATION, from: APPROVED },
-    taskDurationByNode: task({ grp: sql`t.node_id`, label: sql`t.node_name` }, sql`true`),
+    taskDurationByNode: task({ grp: sql`t.node_name`, label: sql`t.node_name` }, sql`true`),
     taskDurationByApprover: task({ grp: sql`t.approver` }, sql`true`),
     durationByOrg: { grp: sql`f.second_id`, value: DURATION, from: APPROVED },
     nonCompliantByWeek: { grp: week(sql`f.started_on`), hit: sql`f.late_submit OR f.late_approval`, from: QUALITY },
@@ -399,6 +404,7 @@ interface DetailRow {
   total: number;
   id: string | null;
   instance_id: string | null;
+  visible_instance: string | null;
   grp: string | null;
   series: string | null;
   value: string | null;
@@ -427,7 +433,10 @@ export async function hrProcessPage(
         sql`, picked AS MATERIALIZED (SELECT DISTINCT ON (id) * FROM candidates WHERE ${sql.join(where, sql` AND `)}
             ORDER BY id, grp, series),
           counted AS (SELECT count(*)::int AS total FROM picked)
-        SELECT counted.total, page.* FROM counted
+        SELECT counted.total, page.*,
+          (SELECT i.id FROM approval_instances i WHERE i.tenant_id=${c.tenantId} AND i.id=page.instance_id::uuid
+            AND ${c.approval}) AS visible_instance
+        FROM counted
         LEFT JOIN LATERAL (SELECT * FROM picked ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}) page ON true
         ORDER BY page.id`,
       ),
@@ -439,7 +448,8 @@ export async function hrProcessPage(
       .filter((row) => row.id)
       .map((row) => ({
         id: row.id!,
-        instanceId: row.instance_id,
+        // 业务类组件的实例 ID 取自业务单自己的关联，没过 facts 的审批披露谓词：这里按调用者的审批可见面再裁一次（F-415）
+        instanceId: row.visible_instance,
         group: row.grp,
         series: row.series,
         value: round(row.value),

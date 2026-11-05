@@ -11,10 +11,13 @@ import {
   planDeactivationSubtree,
   type CascadeAuthorizer,
 } from '../org/deactivation.js';
+import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import { assertOrgPeopleEligible } from '../org/people.js';
 import type { OrgRecord } from '../org/read-model.js';
+import { invalid, type OrganizationPatch } from '../org/validation.js';
 import { assertInRange, orgContext, type ItemWorld } from './item-tree.js';
 import type { OrgItem, OrgItemContent } from './items-store.js';
+import { CHANGE_FIELDS } from './item-validation.js';
 import { ORG_INACTIVE } from './range.js';
 
 /** 本次提交的内容字段：新增与整单校验为全部，修改为 PATCH 的键，拖拽只改上级（引用照判）。 */
@@ -114,4 +117,34 @@ export function activeOrg(world: ItemWorld, orgId: string): OrgRecord {
     throw new AppError('VALIDATION_FAILED', '组织在生效日已停用', { reason: ORG_INACTIVE, orgIds: [orgId] });
   }
   return org;
+}
+
+/**
+ * 内容完整：新增须有名称与上级；改组织至少改一项、改名 / 改上级须选是否新增任职（OA-R3，与组织直改同一判断）；
+ * 负责人变化时两项联动必填（11e 前只能选“否”），未变化不许填。
+ */
+export function validateContent(item: OrgItem, current: OrgRecord | undefined) {
+  if (item.adjustType === 1) {
+    if (!item.name) throw invalid('name', '新增组织必须填写名称');
+    if (!item.parentOrgId && !item.parentItemId) throw invalid('parent', '新增组织必须选择上级组织');
+  }
+  if (item.adjustType === 2) {
+    if (!CHANGE_FIELDS.some((key) => item[key] !== null)) throw invalid('name', '改组织明细至少修改一项');
+    const parentId = item.parentOrgId ?? item.parentItemId;
+    validateEmploymentChoice(current!, {
+      effectiveDate: '',
+      ...(item.name !== null && { name: item.name }),
+      ...(parentId !== null && { parents: { admin: { parentId } } }),
+      ...(item.addEmployment !== null && { addEmployment: item.addEmployment }),
+    } as OrganizationPatch);
+  }
+  if (item.adjustType === 3) return;
+  const changed = item.personInChargeId !== null && item.personInChargeId !== (current?.personInChargeId ?? null);
+  const flags = [item.transferOldHeadSubordinates, item.adjustNewHeadManager];
+  if (changed && flags.some((flag) => flag === null)) {
+    throw invalid('transferOldHeadSubordinates', '负责人变化时必须选择是否转移原负责人下属及是否调整新负责人上级');
+  }
+  if (!changed && flags.some((flag) => flag !== null)) {
+    throw invalid('transferOldHeadSubordinates', '负责人未变化时不能选择负责人联动');
+  }
 }

@@ -1,4 +1,5 @@
 /** DEC-686：类型登记负责取人，回避/空人/会签仍由既有路由负责。 */
+import { resolveIdentity } from './source-identity.js';
 import { resolveRelation } from './source-relations.js';
 import { createHash } from 'node:crypto';
 import type { Tx } from '@italent/db';
@@ -54,7 +55,8 @@ const resolvers: Partial<Record<ApproverSourceType, Resolver>> = {
   reserve5: resolveRelation,
   position: resolveRelation,
   job: resolveRelation,
-  identity: fixed,
+  identity: (tx, subject, source) =>
+    expressionValue(source) ? fixed(tx, subject, source) : resolveIdentity(tx, subject, source),
   specified: (tx, subject, source) => resolveFallbackCandidates(tx, subject, [source.value]),
   context_variable: (tx, subject) => resolveFallbackCandidates(tx, subject, subject.previousApprovedUserIds ?? []),
 };

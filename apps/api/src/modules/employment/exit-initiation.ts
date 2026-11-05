@@ -155,9 +155,9 @@ export function applyInitiationSubset(
   const reasonCode = exit.reasonCode ?? 'personal';
   if (!(EXIT_SELF_REASON_CODES as readonly string[]).includes(reasonCode))
     throw reject('EXIT_REASON_NOT_ALLOWED', '离职原因只能选个人原因或家庭原因');
-  // TODO(需取证 Q-M0-91)：去向是否必填原站截图未标注，暂按必填实现（设计 §4B）
-  if (!exit.whereaboutsCode) throw reject('EXIT_WHEREABOUTS_REQUIRED', '请选择离职后去向');
-  if (!(EXIT_SELF_WHEREABOUTS_CODES as readonly string[]).includes(exit.whereaboutsCode))
+  // DEC-790：本人去向选填；经理代发保持既有必填规则。
+  if (initiation === 'manager' && !exit.whereaboutsCode) throw reject('EXIT_WHEREABOUTS_REQUIRED', '请选择离职后去向');
+  if (exit.whereaboutsCode && !(EXIT_SELF_WHEREABOUTS_CODES as readonly string[]).includes(exit.whereaboutsCode))
     throw reject('EXIT_WHEREABOUTS_NOT_ALLOWED', '离职后去向不在可选范围');
   return { ...exit, reasonCode };
 }
