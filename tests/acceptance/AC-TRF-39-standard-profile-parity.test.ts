@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { auditEvents, commandLedger, type Db, eq, sql, transferRequests, type Tx, withTenant } from '@italent/db';
-import { EMPLOYEE_SELF_SERVICE_BUTTONS, EMPLOYEE_SELF_SERVICE_CODE, STANDARD_PROFILES } from '@italent/domain';
+import { EMPLOYEE_TRANSFER_BUTTONS, EMPLOYEE_SELF_SERVICE_CODE, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { installProfile } from '../../apps/api/src/modules/permission/standard-profiles.js';
@@ -76,7 +76,7 @@ const BASE = '/api/tenant/self-service';
 const RECORD = 'TenantBase.EmploymentRecord';
 const EMP = EMPLOYEE_SELF_SERVICE_CODE;
 const EMP_DEF = STANDARD_PROFILES.find((p) => p.code === EMP)!;
-const BUTTONS = EMPLOYEE_SELF_SERVICE_BUTTONS.map((b) => b.buttonCode);
+const BUTTONS = EMPLOYEE_TRANSFER_BUTTONS.map((b) => b.buttonCode);
 
 type World = Awaited<ReturnType<typeof approvalWorld>>;
 type Admin = Awaited<ReturnType<typeof permissionAdmin>>;

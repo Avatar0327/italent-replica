@@ -99,6 +99,9 @@ export async function rescheduleExit(
   options: RescheduleOptions = {},
 ): Promise<(Downstream & { successor?: EmploymentBusiness }) | null> {
   await requireExitPermission(ctx, 'update', {
+    ...(ctx.selfApplicationKind === 'exit'
+      ? { row: (await loadExitRequest(tx, ctx.tenantId, business.id)) ?? undefined }
+      : {}),
     employeeId: business.employeeId,
     business,
     patch,

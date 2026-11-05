@@ -9811,11 +9811,16 @@
       },
       "module": "self-service",
       "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
         "fieldsOut": [
           "disclose*",
           "visibleFields"
         ],
         "guard": [
+          "selfService.application",
           "selfService.ownApplication"
         ],
         "own": [
@@ -9917,6 +9922,173 @@
           "employment visibility",
           "scope.all",
           "scopeSql"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/exit-requests/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "fieldsOut": [
+          "visibleFields"
+        ],
+        "guard": [
+          "selfService.application"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/exit-requests/form": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/part-time-requests/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "fieldsOut": [
+          "visibleFields"
+        ],
+        "guard": [
+          "selfService.application"
+        ],
+        "scope": [
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/part-time-requests/form": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/self-service/part-time-requests/references/:code": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "guard": [
+          "selfService.application"
         ],
         "self": [
           "selfAccess"
@@ -14848,6 +15020,122 @@
         ]
       }
     },
+    "PATCH /api/tenant/self-service/exit-requests/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "PATCH /api/tenant/self-service/part-time-requests/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
     "PATCH /api/tenant/talent-review/calc-rules/:id": {
       "edge": {
         "anonymous": {
@@ -18576,6 +18864,9 @@
         "command": [
           "assertRevision",
           "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "fieldsIn": [
           "requireEmploymentWrite"
@@ -24461,6 +24752,238 @@
         "scope": [
           "creator scope",
           "requestScope"
+        ]
+      }
+    },
+    "POST /api/tenant/self-service/exit-requests": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "POST /api/tenant/self-service/exit-requests/:id/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "POST /api/tenant/self-service/part-time-requests": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "POST /api/tenant/self-service/part-time-requests/:id/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "self-service",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "linkage write",
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "disclose*",
+          "employment runWrite()",
+          "visibleFields"
+        ],
+        "guard": [
+          "employment.linkage",
+          "selfService.application"
+        ],
+        "object": [
+          "object.* 动作"
+        ],
+        "scope": [
+          "checkScope",
+          "employment scope",
+          "employment visibility",
+          "scope.all",
+          "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
+        ],
+        "self": [
+          "selfAccess"
         ]
       }
     },
