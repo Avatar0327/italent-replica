@@ -5,7 +5,7 @@
  * 编制变化箭头随 11f 生成行，接口级只断言“无编制调整时只显示 编制 {值} 或 --”；箭头渲染见 AC-OA-44-svg。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { eq, orgHierarchyLinks, orgVersions, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { Window } from 'happy-dom';
 import { describe, expect, it } from 'vitest';
@@ -353,5 +353,83 @@ describe('AC-OA-44 第 2 轮返工：姓名口径、XML 字符、编制汇总范
     const preview = await reader(w).preview(view.id);
     const byOrg = Object.fromEntries(preview.roots.map((root) => [root.orgId, root.establishment]));
     expect(byOrg).toEqual({ [c1]: 1, [c2]: 4, [c3]: 6, [c4]: 7 });
+  });
+});
+
+/** 可信夹具：给组织追加一条自 `startDate` 起生效的改名版本（版本链只追加，行政上下级沿用）。 */
+async function renameFrom(w: ItemsWorld, orgId: string, name: string, startDate: string) {
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    const [old] = await tx
+      .select()
+      .from(orgVersions)
+      .where(eq(orgVersions.orgId, orgId))
+      .orderBy(sql`version_no DESC`)
+      .limit(1);
+    const versionId = randomUUID();
+    await tx.insert(orgVersions).values({
+      ...old!,
+      id: versionId,
+      versionNo: old!.versionNo + 1,
+      previousVersionId: old!.id,
+      startDate,
+      name,
+      fullName: name,
+    });
+    const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
+    if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
+  });
+}
+
+describe('AC-OA-44 F-447 导出文件名取组织当前名（DEC-783）；卡片与调整明细仍按生效日', () => {
+  /** 生效日 2026-11-01；下载当天（租户时区）2026-12-05，改名自 2026-12-01 起生效。 */
+  const LATER = '2026-12-05T02:00:00.000Z';
+  const RENAMED_ON = '2026-12-01';
+
+  it('生效日之后改名：文件名用当前名（多个组织按选择顺序以“、”连接，日期是下载当天）；卡片内仍是生效日旧名；两态同名', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    const [oldA, oldB] = [await orgName(w, w.a), await orgName(w, w.b)];
+    await renameFrom(w, w.a, `ZZ_甲现名${s}`, RENAMED_ON);
+    await renameFrom(w, w.b, `ZZ_乙现名${s}`, RENAMED_ON);
+    const view = await w.created(w.head({ adjustmentRange: [w.b, w.a] }));
+    w.setNow(LATER);
+
+    const before = await exported(w, view.id, false);
+    const after = await exported(w, view.id, true);
+    expect(before.fileName).toBe(`架构图（ZZ_乙现名${s}、ZZ_甲现名${s}）_20261205`);
+    expect(after.fileName).toBe(before.fileName);
+    for (const result of [before, after]) {
+      expect(nodes(result.svg).map((texts) => texts[0])).toEqual([oldB, oldA]);
+      expect(result.svg).not.toContain(`ZZ_甲现名${s}`);
+      expect(result.fileName).not.toContain(oldA);
+    }
+  });
+
+  it('尚未到改名生效日时文件名仍是改名前的名称；没有可见调整范围时为“--”', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    const oldA = await orgName(w, w.a);
+    await renameFrom(w, w.a, `ZZ_甲现名${s}`, '2027-03-01');
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    w.setNow(LATER);
+    expect((await exported(w, view.id, false)).fileName).toBe(`架构图（${oldA}）_20261205`);
+
+    w.access.hiddenFields = new Set(['adjustmentRange']);
+    expect((await exported(w, view.id, false)).fileName).toBe('架构图（--）_20261205');
+  });
+
+  it('调整明细 / 详情头部的审批主体组织名仍按生效日取名（北森明细文字保留旧名）；“调整前”导出仍可用', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const oldSubject = await orgName(w, w.subject);
+    await renameFrom(w, w.subject, `ZZ_主体现名${uniqueSuffix()}`, RENAMED_ON);
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    await w.item(view.id, newOrg(w.a, { name: `ZZ_新${uniqueSuffix()}` }));
+    w.setNow(LATER);
+
+    const detail = await w.call('GET', `${BASE}/${view.id}`);
+    expect(detail.status, await detail.clone().text()).toBe(200);
+    expect(((await detail.json()) as { approvalSubjectOrgName: string }).approvalSubjectOrgName).toBe(oldSubject);
+    const before = await exported(w, view.id, false);
+    expect(nodes(before.svg).map((texts) => texts[1])).toEqual(expect.arrayContaining(['新增']));
   });
 });
