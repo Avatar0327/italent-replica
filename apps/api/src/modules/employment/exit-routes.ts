@@ -19,6 +19,7 @@ import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
+import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
@@ -534,8 +535,12 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return listExitView(tx, ctx.tenantId, { view, page, filter: { ...filter, departmentIds }, show }, ctx.scope);
     });
     const rowActions = await handoverRowActions(deps, ctx, items);
+    const actions = await exitActions(deps, ctx, items, { withHandle: true });
     return c.json({
-      items: items.map((item) => ({ ...trimExit(item, show), rowActions: rowActions.get(item.id) ?? [] })),
+      items: items.map((item) => ({
+        ...trimExit({ ...item, actions: actions.get(item.id) ?? [] }, show),
+        rowActions: rowActions.get(item.id) ?? [],
+      })),
       total,
       page: page.page,
       pageSize: page.pageSize,
@@ -555,12 +560,14 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
     const show = await viewableIn(deps, ctx);
+    // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
+    const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
     if (detail.activation?.details) {
       const details = await withTenant(deps.db, ctx.tenantId, (tx) =>
         projectExitFailureDetails(tx, ctx, detail.activation!.details!, { has: show.employment }),
       );
-      return c.json(trimExitDetail({ ...detail, activation: { ...detail.activation, details } }, show));
+      return c.json(trimExitDetail({ ...detail, actions, activation: { ...detail.activation, details } }, show));
     }
-    return c.json(trimExitDetail(detail, show));
+    return c.json(trimExitDetail({ ...detail, actions }, show));
   });
 }
