@@ -9,7 +9,7 @@ import { useCommandForm, useDraftRefill } from '../../foundation/forms/useComman
 import { useDirectApi } from '../../part-time/direct-api.js';
 import { requestError } from '../../part-time/request-model.js';
 import { confirmationOf } from '../../intern/model.js';
-import { ask } from '../../exit/ExitCommands.js';
+import { useAsk } from '../../exit/ExitCommands.js';
 import { x } from '../../exit/messages.js';
 import { pendingReplay, recoverSelfRequest, replayChanges, replaySelfRequest } from './request-replay.js';
 import {
@@ -87,6 +87,7 @@ function useRequestState(kind: RequestKind, initial: RequestFormData, row: Value
     setError,
     command: { ...command, reload },
     pending,
+    ask: useAsk(),
     replay: () => replaySelfRequest(scope, read).catch(() => setError(new Error(q.failed))),
   };
 }
@@ -147,7 +148,7 @@ async function run(state: ReturnType<typeof useRequestState>, action: 'save' | '
     });
     if (outcome.status === 'conflict') await command.reload();
     const confirmation = confirmationOf(outcome.error);
-    if (confirmation && !ack && (await ask(x.confirmTitle, confirmation.message)))
+    if (confirmation && !ack && (await state.ask(x.confirmTitle, confirmation.message)))
       await run(state, action, confirmation.extra);
   } catch (cause) {
     setError(cause);
