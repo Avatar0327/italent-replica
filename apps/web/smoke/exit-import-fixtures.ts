@@ -150,7 +150,8 @@ export const styledBlankRowsXml = (from: number, count: number, columns = import
 export const xfdRowsXml = (from: number, count: number, value?: number) =>
   Array.from({ length: count }, (_, i) => {
     const ref = `XFD${from + i}`;
-    return `<row r="${from + i}">${value === undefined ? `<c r="${ref}" s="1"/>` : `<c r="${ref}"><v>${value}</v></c>`}</row>`;
+    const cell = value === undefined ? `<c r="${ref}" s="1"/>` : `<c r="${ref}"><v>${value}</v></c>`;
+    return `<row r="${from + i}">${cell}</row>`;
   }).join('');
 function sheetFiles(sheet: Cell[][], date1904: boolean, rowsXml = '') {
   const strings: string[] = [];

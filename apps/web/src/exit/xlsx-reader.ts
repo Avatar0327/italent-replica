@@ -29,7 +29,7 @@ export class XlsxError extends Error {
 }
 /** 单个部件（工作表、共享字符串等）解压后的字节上限。 */
 export const XLSX_PART_LIMIT = 16 * 1024 * 1024;
-/** 工作表里 <c> 单元格的总数上限。 */
+/** 工作表里 <c> 单元格的总数上限；每行展开成稠密数组后的累计格数也以它为上限。 */
 export const XLSX_CELL_LIMIT = 100_000;
 /** Excel 最大列 XFD = 16384：列坐标超出即判文件非法，不按下标造超长稀疏数组。 */
 const COLUMN_LIMIT = 16384;
@@ -117,17 +117,34 @@ function cellValue(tag: string, inner: string, shared: string[]): Cell {
   return Number(raw);
 }
 
+/**
+ * 每行只按列号稀疏记下有值的格；空白、仅有样式的格不占位（否则一个 XFD 空白格就让一行展开成 16,384 个元素）。
+ * 有值的行展开成到最右有值列为止的稠密数组，展开前核对累计格数，超过 XLSX_CELL_LIMIT 即中止。
+ */
 function sheetRows(xml: string, shared: string[]): SheetRow[] {
   const rows: SheetRow[] = [];
   let count = 0;
+  let expanded = 0;
+  let physical = 0;
   for (const row of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
-    const cells: Cell[] = [];
+    physical++;
+    const values = new Map<number, Cell>();
+    let next = 0;
+    let width = 0;
     for (const cell of (row[2] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       if (++count > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
       const column = columnOf(attr(cell[1]!, 'r'));
-      cells[column < 0 ? cells.length : column] = cellValue(cell[1]!, cell[2] ?? '', shared);
+      const at = column < 0 ? next : column;
+      next = at + 1;
+      const value = cellValue(cell[1]!, cell[2] ?? '', shared);
+      if (value === null) continue;
+      values.set(at, value);
+      width = Math.max(width, next);
     }
-    rows.push({ rowNo: Number(attr(row[1]!, 'r') ?? rows.length + 1), cells: Array.from(cells, (c) => c ?? null) });
+    if (!width) continue;
+    if ((expanded += width) > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
+    const cells = Array.from({ length: width }, (_, i) => values.get(i) ?? null);
+    rows.push({ rowNo: Number(attr(row[1]!, 'r') ?? physical), cells });
   }
   return rows;
 }
