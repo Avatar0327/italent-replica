@@ -45,12 +45,13 @@ function textOf(field: string, cell: Cell): Text {
   if (typeof cell === 'number') return DATES.has(field) ? dateOf(cell) : String(cell);
   return cell.trim() || null;
 }
-const blacklistOf = (value: Text) =>
-  value === null || value === '否' || value.toUpperCase() === 'FALSE'
-    ? false
-    : value === '是' || value.toUpperCase() === 'TRUE'
-      ? true
-      : undefined;
+/** 加入黑名单：是 / TRUE → true，否 / FALSE / 空 → false，其他值 undefined（整份拒绝，不猜）。 */
+function blacklistOf(value: Text) {
+  const upper = value?.toUpperCase();
+  if (value === null || value === '否' || upper === 'FALSE') return false;
+  if (value === '是' || upper === 'TRUE') return true;
+  return undefined;
+}
 
 /** 首行列名按 xi.columns 映射（也认 §2.2 的字段名）；未知列、重复列、缺必填列都整份拒绝，不静默丢列。 */
 function headerOf(cells: Cell[]): Field[] | string {

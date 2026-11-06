@@ -117,7 +117,7 @@ function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) 
   );
   return (
     <Modal open title={xi.entry} width={760} maskClosable={false} onCancel={props.onClose} footer={footer}>
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space direction="vertical" className="exit-import">
         <span>{xi.hint}</span>
         <input
           type="file"
@@ -135,12 +135,11 @@ function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) 
   );
 }
 
-const resultOf = (row: PreviewRow) =>
-  !row.ok
-    ? (['error', xi.results.failed] as const)
-    : row.warnings.length
-      ? (['warning', xi.results.warned] as const)
-      : (['success', xi.results.ok] as const);
+function resultOf(row: PreviewRow) {
+  if (!row.ok) return ['error', xi.results.failed] as const;
+  if (row.warnings.length) return ['warning', xi.results.warned] as const;
+  return ['success', xi.results.ok] as const;
+}
 
 function PreviewTable({ preview, rows }: { preview: ImportPreview; rows: ImportRow[] }) {
   const sent = new Map(rows.map((row) => [row.rowNo, row]));
