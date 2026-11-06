@@ -18,8 +18,12 @@ export function taskIds(text) {
 }
 
 // 状态判定的单一入口（DEC-431①）：取证行与差异行都只在这里决定“还拦不拦”。
-// 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理
-const level = (text) => (/后续|落地后|恢复时|可后补/.test(text) ? '可后补' : '开工前');
+// 门禁级别：写了“后续 / 落地后 / 恢复时”的可后补，其余（含“开工前 / 完成前 / 实现前”和未注明）按开工前处理。
+// F-407：写了“开工前”的片段（含括号内“开工前：…”子项）不再被同一阻塞列里别处的可后补字样放行；
+// 逐任务的定级见下面的 taskLevels。“开工前置已满足”是前置条件的说明，不算开工前子项。
+const DEFER_WORDS = /后续|落地后|恢复时|可后补/;
+const BEFORE_START = /开工前(?!置)/;
+const level = (text) => (!BEFORE_START.test(text) && DEFER_WORDS.test(text) ? '可后补' : '开工前');
 
 // 非 ✅ 状态放行只认“整条状态列规范化后逐字等于放行表里的一条”（F-290 第 5 轮，DEC-431①），
 // 放行表之外的任何写法（含改了一个字、追加说明、新写法）一律阻塞。放行表 = 真实清单 / 登记册里当前由 DEC 已定或
@@ -124,7 +128,7 @@ export function evidenceState(blocks, statusCell) {
   const deferred = st === '🟡 部分' && RELEASED_EVIDENCE_STATUS.has(norm(statusCell));
   // ✅ 中明确待决的子项须阻塞；其余状态保留 F-290 / F-271 的后补口径。
   if (pendingItems.length) return { st, level: '开工前', pendingItems };
-  return { st, level: deferred ? '可后补' : level(blocks), pendingItems };
+  return { st, level: deferred ? '可后补' : rowLevel(blocks), pendingItems };
 }
 
 // 差异行：✅ 须在开头且每个子项都无待决才算已结；其余继续整列精确匹配。
@@ -133,8 +137,11 @@ export const decisionSettled = (statusCell) =>
   RELEASED_DECISION_STATUS.has(norm(statusCell));
 
 // F-367 第 2 轮：阻塞列按任务写级别。顶层分段（括号外按、；，分隔）形如“R3-T03（不挡本任务：…）”时，
-// 该段任务对这一行只列为可后补；同一任务在别的分段也出现、或该段另写“开工前”，仍按整行级别（保守）。
-// 标记不含“后续 / 可后补”等字样，不会触发整行放行（整行放行的缺陷另见 F-407）。
+// 该段任务对这一行只列为可后补；同一任务在别的分段也出现、或该段另写“开工前”，仍按开工前（保守）。
+// F-407：分段的级别逐段判定，不再让整行任何位置的“后续 / 可后补”放行所有任务：
+//   · 段内写了“开工前”（含括号内“开工前：…”）→ 开工前，段内的“可后补”只描述残项，不放行本段任务；
+//   · 段内不含“开工前”且写了“不挡本任务”或“后续 / 落地后 / 恢复时 / 可后补” → 可后补；
+//   · 其余（未注明）→ 开工前。
 const DEFERRED_SEGMENT = /^(?:R\d-T\d{2}|F-\d{3})(?:\s*\/\s*(?:R\d-)?T\d{2})*\s*[（(]不挡本任务/;
 function topLevelSegments(text) {
   const segments = [];
@@ -153,14 +160,41 @@ function topLevelSegments(text) {
   return segments.map((segment) => segment.trim()).filter(Boolean);
 }
 
-export function deferredTasks(blocks) {
-  const deferred = new Set();
-  const others = new Set();
+function segmentLevel(segment) {
+  if (BEFORE_START.test(segment)) return '开工前';
+  // “不挡本任务”沿用 F-367 的保守口径：段内出现“开工前”任何写法（含“开工前置”）都不放行
+  if (DEFERRED_SEGMENT.test(segment)) return /开工前/.test(segment) ? '开工前' : '可后补';
+  return DEFER_WORDS.test(segment) ? '可后补' : '开工前';
+}
+
+// 任务 → 级别：同一任务出现在多个分段时，任何一段不是可后补就按开工前。
+export function taskLevels(blocks) {
+  const levels = new Map();
   for (const segment of topLevelSegments(blocks)) {
-    const into = DEFERRED_SEGMENT.test(segment) && !/开工前/.test(segment) ? deferred : others;
-    for (const id of taskIds(segment)) into.add(id);
+    const segLevel = segmentLevel(segment);
+    for (const id of taskIds(segment)) {
+      levels.set(id, levels.get(id) === '开工前' || segLevel === '开工前' ? '开工前' : '可后补');
+    }
   }
-  return new Set([...deferred].filter((id) => !others.has(id)));
+  return levels;
+}
+
+// 行级别：所有任务都可后补才算可后补；阻塞列没有任务号时退回整列判断。
+function rowLevel(blocks) {
+  const levels = taskLevels(blocks);
+  if (!levels.size) return level(blocks);
+  return [...levels.values()].every((l) => l === '可后补') ? '可后补' : '开工前';
+}
+
+export function deferredTasks(blocks) {
+  return new Set([...taskLevels(blocks)].filter(([, l]) => l === '可后补').map(([id]) => id));
+}
+
+function taskLevelsOf(blocks, statusCell, state) {
+  const levels = taskLevels(blocks);
+  const all = (l) => new Map([...levels.keys()].map((id) => [id, l]));
+  if (state.pendingItems.length) return all('开工前');
+  return state.st === '🟡 部分' && RELEASED_EVIDENCE_STATUS.has(norm(statusCell)) ? all('可后补') : levels;
 }
 
 export function parseEvidence(markdown, file = 'docs/07_M0/03_需取证清单.md') {
@@ -177,8 +211,8 @@ export function parseEvidence(markdown, file = 'docs/07_M0/03_需取证清单.md
         file,
         line: index + 1,
         ...state,
-        // ✅ 中有待决子项时一律开工前阻塞，不按任务放宽。
-        deferredTasks: state.pendingItems.length ? new Set() : deferredTasks(c[4]),
+        // ✅ 中有待决子项时一律开工前阻塞，不按任务放宽；放行表里的状态整行可后补（RELEASED_EVIDENCE_STATUS）。
+        taskLevels: taskLevelsOf(c[4], c[5], state),
       },
     ];
   });
@@ -224,7 +258,7 @@ export function gateReport(evidence, decisions, targets) {
   } else {
     for (const t of targets) {
       const hits = evidence.filter((e) => e.tasks.has(t) && e.st !== '✅');
-      const levelFor = (e) => (e.deferredTasks?.has(t) ? '可后补' : e.level);
+      const levelFor = (e) => e.taskLevels?.get(t) ?? e.level;
       const must = hits.filter((e) => levelFor(e) === '开工前');
       const later = hits.filter((e) => levelFor(e) === '可后补');
       out.push(`\n== ${t} ==`);
