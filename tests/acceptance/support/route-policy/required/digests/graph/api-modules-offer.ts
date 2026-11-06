@@ -592,6 +592,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/offer/service.ts#save': [
+    'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate',
     'apps/api/src/modules/offer/entry-link.ts#currentEntryIds',
     '#audit',
     '#guarded',

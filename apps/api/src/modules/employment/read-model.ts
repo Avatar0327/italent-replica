@@ -29,7 +29,10 @@ export function columnName(field: string): string {
 
 export function snapshotFields(row: Record<string, unknown>): PresetFields {
   return Object.fromEntries(
-    PRESET_FIELD_NAMES.map((field) => [field, row[columnName(field)] ?? null]),
+    PRESET_FIELD_NAMES.map((field) => [
+      field,
+      field === 'workYearCompanyBefore' ? Number(row[columnName(field)] ?? 0) : (row[columnName(field)] ?? null),
+    ]),
   ) as unknown as PresetFields;
 }
 

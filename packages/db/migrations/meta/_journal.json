@@ -1356,15 +1356,29 @@
     {
       "idx": 193,
       "version": "7",
-      "when": 1793716030043,
-      "tag": "0193_f323c_retirement_employment_type",
+      "when": 1793724962168,
+      "tag": "0193_f432_seniority_correction",
       "breakpoints": true
     },
     {
       "idx": 194,
       "version": "7",
-      "when": 1793717014268,
-      "tag": "0194_f351_cancel_reason_nullable",
+      "when": 1793728829035,
+      "tag": "0194_f432_rehire_seniority",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1793728829036,
+      "tag": "0195_f323c_retirement_employment_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1793728829037,
+      "tag": "0196_f351_cancel_reason_nullable",
       "breakpoints": true
     }
   ]

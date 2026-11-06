@@ -246,6 +246,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       44: '04a3bdabbd936e11',
       // F-020 / DEC-790：本人离职、兼职专属授权（占位 44，合并时按 main + 1 定号）。
       45: '79acc91437c2ab79',
+      // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
+      46: '2836fdc4e1b54269',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

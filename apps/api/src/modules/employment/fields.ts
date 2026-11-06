@@ -33,6 +33,12 @@ export const presetFieldsSchema = z.strictObject({
   place: text,
   employmentType: uuid,
   employmentSource: text,
+  workYearCompanyBefore: z
+    .number()
+    .nonnegative()
+    .max(Number.MAX_SAFE_INTEGER / 100)
+    .multipleOf(0.01)
+    .optional(),
   employmentForm: text,
   dimension1: text,
   dimension2: text,

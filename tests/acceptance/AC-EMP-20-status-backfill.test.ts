@@ -60,11 +60,14 @@ async function legacyChain(tx: Tx, tenantId: string, employeeId: string, steps: 
 async function snapshot(tx: Tx, tenantId: string) {
   return rows<{ t: string; body: Record<string, unknown> }>(
     await tx.execute(sql`
-      SELECT 'record' AS t, to_jsonb(r) - 'employee_status' - 'entry_status' AS body FROM employment_records r
+      -- work_year_company_before 为 F-432 垫片列（迁移按缺省 0 加回），不属于旧结构原有列。
+      SELECT 'record' AS t, to_jsonb(r) - 'employee_status' - 'entry_status' - 'work_year_company_before' AS body
+      FROM employment_records r
       WHERE r.tenant_id=${tenantId}
       UNION ALL
-      -- planned_effective_date / manual_plan 为后续迁移回填的垫片列，不属于旧结构原有列。
+      -- planned_effective_date / manual_plan / work_year_company_before 为后续迁移回填的垫片列，不属于旧结构原有列。
       SELECT 'payload', to_jsonb(p) - 'employee_status' - 'entry_status' - 'planned_effective_date' - 'manual_plan'
+        - 'work_year_company_before'
       FROM employment_payload_versions p
       WHERE p.tenant_id=${tenantId}
       ORDER BY 1, 2`),

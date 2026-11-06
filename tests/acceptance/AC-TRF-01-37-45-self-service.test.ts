@@ -83,7 +83,9 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
       'preset:levelId',
       'preset:postId',
       'preset:sequenceId',
+      'preset:workYearCompanyBefore',
     ]);
+    expect(preview.form.fieldModes['preset:workYearCompanyBefore']).toBe('readonly');
     expect(preview.fields).toHaveProperty('departmentId', department);
     for (const body of [
       { ...input(), fields: {} },
