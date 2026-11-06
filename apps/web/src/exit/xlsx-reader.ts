@@ -31,7 +31,7 @@ export class XlsxError extends Error {
 export const XLSX_PART_LIMIT = 16 * 1024 * 1024;
 /**
  * 有值单元格的总数上限；每行展开成稠密数组后的累计格数也以它为上限。
- * 只有样式的空白格不计（铺好格式的模板尾部常有上万个），它们的扫描量由 XLSX_PART_LIMIT 兜住。
+ * 只有样式或文本为空的空白格不计（铺好格式的模板尾部常有上万个），它们的扫描量由 XLSX_PART_LIMIT 兜住。
  */
 export const XLSX_CELL_LIMIT = 100_000;
 /** Excel 最大列 XFD = 16384：列坐标超出即判文件非法，不按下标造超长稀疏数组。 */
@@ -121,7 +121,7 @@ function cellValue(tag: string, inner: string, shared: string[]): Cell {
 }
 
 /**
- * 每行只按列号稀疏记下有值的格；空白、仅有样式的格不占位（否则一个 XFD 空白格就让一行展开成 16,384 个元素）。
+ * 每行只按列号稀疏记下有值的格；空白、仅有样式或文本为空的格不占位（否则一个 XFD 空白格就让一行展开成 16,384 个元素）。
  * 有值的行展开成到最右有值列为止的稠密数组，展开前核对累计格数，超过 XLSX_CELL_LIMIT 即中止。
  */
 function sheetRows(xml: string, shared: string[]): SheetRow[] {
@@ -139,7 +139,8 @@ function sheetRows(xml: string, shared: string[]): SheetRow[] {
       const at = column < 0 ? next : column;
       next = at + 1;
       const value = cellValue(cell[1]!, cell[2] ?? '', shared);
-      if (value === null) continue;
+      // 空字符串（无文本的 inlineStr、空 <v> 等）回读为空白，与 null 同样不计数、不占位；坐标已在上面推进
+      if (value === null || value === '') continue;
       if (++count > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
       values.set(at, value);
       width = Math.max(width, next);
