@@ -42,7 +42,8 @@ async function world(label: string) {
   const historyId = async (recordId: string): Promise<string> =>
     withTenant(db().db, tenant.id, async (tx) => {
       const result = await tx.execute(
-        sql`SELECT id FROM personnel_job_history WHERE tenant_id=${tenant.id} AND employment_record_id=${recordId}::uuid`,
+        sql`SELECT id FROM personnel_job_history
+          WHERE tenant_id=${tenant.id} AND employment_record_id=${recordId}::uuid`,
       );
       return ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[])[0]!.id;
     });
