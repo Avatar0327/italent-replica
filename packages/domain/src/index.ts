@@ -81,3 +81,5 @@ export * from './org-adjustment/index.js';
 export * from './employment/exit-handover.js';
 export * from './employment/employment-forms.js';
 export * from './employment/employment-types.js';
+export * from './attachments/purposes.js';
+export * from './attachments/filename.js';
