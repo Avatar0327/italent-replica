@@ -9,6 +9,7 @@ import {
   importSheet,
   requiredRows,
   styledBlankRowsXml,
+  emptyTextRowsXml,
   warning,
   xfdRowsXml,
   type Cell,
@@ -139,6 +140,18 @@ describe('AC-DM-30-19 导入文件解析', () => {
     const parsed = importRowsOf(await readXlsx(bytes));
     expect('rows' in parsed ? parsed.rows.length : parsed.error).toBe(100);
     expect('rows' in parsed && parsed.rows[99]).toMatchObject({ rowNo: 101, employeeNo: 'H0100' });
+  });
+
+  it('预先铺好格式的模板：尾部 7,200 行 × 14 列设为空字符串的格式格（空 inlineStr 等）同样按空白格，解析后恰好 100 行', async () => {
+    // openpyxl 把空字符串写成 <c r="A102" s="1" t="inlineStr"></c>：回读为空白，不占有值格与展开预算
+    for (const mixed of [false, true]) {
+      const head = [importHeader, ...requiredRows(100)];
+      const sheet = await readXlsx(await buildXlsx(head, { rowsXml: emptyTextRowsXml(102, 7_200, mixed) }));
+      expect(sheet.rows).toHaveLength(101);
+      const parsed = importRowsOf(sheet);
+      expect('rows' in parsed ? parsed.rows.length : parsed.error).toBe(100);
+      expect('rows' in parsed && parsed.rows[99]).toMatchObject({ rowNo: 101, employeeNo: 'H0100' });
+    }
   });
 
   it('尾部 10,000 行各一个 XFD 单元格：空白格式格不展开成稠密数组；有值时累计展开超预算受控拒绝', async () => {
