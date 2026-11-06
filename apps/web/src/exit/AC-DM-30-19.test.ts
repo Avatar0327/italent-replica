@@ -13,6 +13,7 @@ import { uniqueSuffix } from '../../../../tests/acceptance/support/unique.js';
 import {
   buildXlsx,
   confirmationRequired,
+  importHeader,
   importReceipt,
   importRows,
   importSheet,
@@ -79,10 +80,10 @@ async function click(text: string) {
   await act(async () => target!.click());
   await settle();
 }
-async function upload() {
+async function upload(sheet = importSheet) {
   const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
   expect(input, '应有文件选择框').not.toBeNull();
-  const file = new File([await buildXlsx(importSheet)], '历史离职.xlsx', {
+  const file = new File([await buildXlsx(sheet)], '历史离职.xlsx', {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -170,6 +171,24 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
         .filter((call) => call.method === 'GET')
         .map((call) => call.path),
     ).toContain(`${EXITS}?view=completed&page=1&pageSize=30`);
+  });
+
+  it('报文超过后端 32KB 请求体上限：就地给出中文提示，不发 preview 也不能导入', async () => {
+    // 100 行、每行加黑说明 120 个汉字（360 字节）：UTF-8 报文必然超过 32 * 1024 字节
+    const rows = Array.from({ length: 100 }, (_, i) => [
+      `H${String(i + 1).padStart(4, '0')}`,
+      `合成${i + 1}`,
+      '2023-03-15',
+      'D-SYN-01',
+      '2025-06-30',
+      '合'.repeat(120),
+    ]);
+    await render();
+    await click(ENTRY);
+    await upload([[...importHeader.slice(0, 5), '加黑说明'], ...rows]);
+    expect(document.body.textContent).toContain('文件内容超过单次导入上限（32 KB），请减少行数或缩短内容后分批导入');
+    expect(writes()).toEqual([]);
+    expect(button('导入')?.disabled).toBe(true);
   });
 
   it('结果未知（响应丢失）→ 关闭重开仍锁定 → 按原命令重新提交：原键、原报文，完成后解锁', async () => {

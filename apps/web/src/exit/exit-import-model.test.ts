@@ -72,6 +72,43 @@ describe('AC-DM-30-19 导入文件解析', () => {
     expect(await entryOf(45000)).toBe('2023-03-15');
   });
 
+  it('请求体按 UTF-8 字节计：100 行仅填必填列不超 32KB；恰到上限可发，超 1 字节整份拒绝', async () => {
+    // 后端 apps/api/src/middleware.ts DEFAULT_BODY_LIMIT = 32 * 1024；带 confirmed 的导入报文是两次请求里较大的一份
+    const LIMIT = 32 * 1024;
+    const bytes = (rows: unknown) => new TextEncoder().encode(JSON.stringify({ rows, confirmed: true })).length;
+    const required = (i: number) => [
+      `H${String(i).padStart(4, '0')}`,
+      `合成${i}`,
+      '2023-03-15',
+      'D-SYN-01',
+      '2025-06-30',
+    ];
+    const template = (note = '') =>
+      Array.from({ length: 100 }, (_, i) => [...required(i + 1), ...Array<Cell>(8).fill(null), i === 99 ? note : null]);
+    const parsed = await rowsOf([importHeader, ...template()]);
+    if (!('rows' in parsed)) throw new Error(parsed.error);
+    expect(parsed.rows).toHaveLength(100);
+    expect(parsed.rows[0]).toEqual({
+      rowNo: 2,
+      employeeNo: 'H0001',
+      name: '合成1',
+      entryDate: '2023-03-15',
+      departmentCode: 'D-SYN-01',
+      lastWorkDate: '2025-06-30',
+      addToBlacklist: false,
+    });
+    expect(bytes(parsed.rows)).toBeLessThanOrEqual(LIMIT);
+    // 末行加黑说明补到恰好上限：键 ,"blacklistNote":"" 占 19 字节，正文中文按 3 字节计（字符数远小于上限）
+    const room = LIMIT - bytes(parsed.rows) - 19;
+    const note = '合'.repeat(Math.floor(room / 3)) + 'x'.repeat(room % 3);
+    const edge = await rowsOf([importHeader, ...template(note)]);
+    if (!('rows' in edge)) throw new Error(edge.error);
+    expect(bytes(edge.rows)).toBe(LIMIT);
+    const tooLarge = '文件内容超过单次导入上限（32 KB），请减少行数或缩短内容后分批导入';
+    expect(await rowsOf([importHeader, ...template(`${note}x`)])).toEqual({ error: tooLarge });
+    expect(await rowsOf([importHeader, ...template(`${note}合`)])).toEqual({ error: tooLarge });
+  });
+
   it('超编区间的 to 是开区间（离职生效日），显示为最后一个在职日', () => {
     expect(warningText(warning)).toBe('2023-04-01 至 2025-07-31 超出编制（峰值 6，编制 5）');
   });

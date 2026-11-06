@@ -42,18 +42,9 @@ export const importSheet: Cell[][] = [
     '合成说明',
   ],
 ];
-const blank = {
-  positionCode: null,
-  postCode: null,
-  exitTypeCode: null,
-  exitReasonCode: null,
-  exitDestinationCode: null,
-  addToBlacklist: false,
-  blacklistReason: null,
-  blacklistExpiryDate: null,
-  blacklistNote: null,
-};
-/** 上表解析后应发出的行：rowNo = Excel 行号，空单元格为 null。 */
+/** 未填的可选列不发送（后端 normalizeRow 把缺省与 null 同样视为未填），加入黑名单总是发布尔值。 */
+const blank = { addToBlacklist: false };
+/** 上表解析后应发出的行：rowNo = Excel 行号，空单元格的可选字段不出现。 */
 export const importRows = [
   {
     rowNo: 2,
