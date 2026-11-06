@@ -390,8 +390,13 @@ describe('AC-OA-44 第 2 轮返工：姓名口径、XML 字符、编制汇总范
   });
 });
 
-/** 可信夹具：给组织追加一条自 `startDate` 起生效的改名版本（版本链只追加，行政上下级沿用）。 */
-async function renameFrom(w: ItemsWorld, orgId: string, name: string, startDate: string) {
+/** 可信夹具：给组织追加一条自 `startDate` 起生效的版本（版本链只追加，行政上下级沿用），`patch` 覆盖其中的列。 */
+async function appendVersion(
+  w: ItemsWorld,
+  orgId: string,
+  startDate: string,
+  patch: Partial<typeof orgVersions.$inferInsert>,
+) {
   await withTenant(w.db, w.tenant.id, async (tx) => {
     const [old] = await tx
       .select()
@@ -406,13 +411,15 @@ async function renameFrom(w: ItemsWorld, orgId: string, name: string, startDate:
       versionNo: old!.versionNo + 1,
       previousVersionId: old!.id,
       startDate,
-      name,
-      fullName: name,
+      ...patch,
     });
     const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, old!.id));
     if (links.length) await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
   });
 }
+
+const renameFrom = (w: ItemsWorld, orgId: string, name: string, startDate: string) =>
+  appendVersion(w, orgId, startDate, { name, fullName: name });
 
 describe('AC-OA-44 F-447 导出文件名取组织当前名（DEC-783）；卡片与调整明细仍按生效日', () => {
   /** 生效日 2026-11-01；下载当天（租户时区）2026-12-05，改名自 2026-12-01 起生效。 */
@@ -465,5 +472,69 @@ describe('AC-OA-44 F-447 导出文件名取组织当前名（DEC-783）；卡片
     expect(((await detail.json()) as { approvalSubjectOrgName: string }).approvalSubjectOrgName).toBe(oldSubject);
     const before = await exported(w, view.id, false);
     expect(nodes(before.svg).map((texts) => texts[1])).toEqual(expect.arrayContaining(['新增']));
+  });
+});
+
+describe('AC-OA-44 F-446 返工：文件名只含查看人范围内、下载当天仍启用的组织', () => {
+  const LATER = '2026-12-05T02:00:00.000Z';
+  const FROM = '2026-12-01';
+
+  it('建单后收窄组织范围：文件名只含范围内组织，全部不可见为“--”；调整前 / 调整后同名且不泄露范围外当前名', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    await renameFrom(w, w.a, `ZZ_甲现名${s}`, FROM);
+    await renameFrom(w, w.b, `ZZ_乙现名${s}`, FROM);
+    const view = await w.created(w.head({ adjustmentRange: [w.a, w.b] }));
+    w.setNow(LATER);
+
+    w.access.org = only(w.b);
+    for (const after of [false, true]) {
+      const part = await exported(w, view.id, after);
+      expect(part.fileName, `after=${after}`).toBe('架构图（ZZ_乙现名' + `${s}）_20261205`);
+      expect(part.fileName).not.toContain(`ZZ_甲现名${s}`);
+      expect(nodes(part.svg)).toHaveLength(1);
+    }
+
+    w.access.org = only(randomUUID());
+    for (const after of [false, true]) {
+      const none = await exported(w, view.id, after);
+      expect(none.fileName, `after=${after}`).toBe('架构图（--）_20261205');
+      expect(none.svg).not.toContain('现名');
+    }
+  });
+
+  it('下载当天已停用（停用版本已生效或有效期已过）的组织跳过；部分停用只剩启用的，全部停用为“--”', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    await renameFrom(w, w.a, `ZZ_甲现名${s}`, '2026-11-20');
+    await renameFrom(w, w.b, `ZZ_乙现名${s}`, '2026-11-20');
+    const view = await w.created(w.head({ adjustmentRange: [w.a, w.b] }));
+    w.setNow(LATER);
+    expect((await exported(w, view.id, false)).fileName).toBe(`架构图（ZZ_甲现名${s}、ZZ_乙现名${s}）_20261205`);
+
+    await appendVersion(w, w.a, FROM, { enabled: false });
+    for (const after of [false, true]) {
+      const part = await exported(w, view.id, after);
+      expect(part.fileName, `after=${after}`).toBe(`架构图（ZZ_乙现名${s}）_20261205`);
+      expect(part.fileName).not.toContain(`ZZ_甲现名${s}`);
+    }
+    // 乙的有效期在下载前一天结束（停用日已过）
+    await appendVersion(w, w.b, '2026-11-25', { stopDate: '2026-12-04' });
+    for (const after of [false, true]) {
+      expect((await exported(w, view.id, after)).fileName, `after=${after}`).toBe('架构图（--）_20261205');
+    }
+  });
+
+  it('停用 / 收窄只影响文件名：卡片仍按预览口径（生效日）取名，且未到停用生效日时文件名仍含该组织', async () => {
+    const w = await itemsWorld(testDb().db, 'oa44');
+    const s = uniqueSuffix();
+    const oldA = await orgName(w, w.a);
+    await renameFrom(w, w.a, `ZZ_甲现名${s}`, '2026-11-20');
+    const view = await w.created(w.head({ adjustmentRange: [w.a] }));
+    await appendVersion(w, w.a, '2027-01-01', { enabled: false });
+    w.setNow(LATER);
+    const result = await exported(w, view.id, false);
+    expect(result.fileName).toBe(`架构图（ZZ_甲现名${s}）_20261205`);
+    expect(nodes(result.svg).map((texts) => texts[0])).toEqual([oldA]);
   });
 });
