@@ -172,6 +172,58 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
     ).toContain(`${EXITS}?view=completed&page=1&pageSize=30`);
   });
 
+  it('结果未知（响应丢失）→ 关闭重开仍锁定 → 按原命令重新提交：原键、原报文，完成后解锁', async () => {
+    // 服务端已处理带确认的导入，但响应在网络上丢失：客户端只看到网络错误（设计 §9.3 结果未知）
+    const serve = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    let lose = true;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const response = await serve(input, init);
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
+      if (lose && String(input) === `${EXITS}/import` && body?.confirmed === true) {
+        lose = false;
+        throw new TypeError('Failed to fetch');
+      }
+      return response;
+    });
+    await render();
+    await click(ENTRY);
+    await upload();
+    await click('导入');
+    await click('确定');
+    const lost = writes().at(-1)!;
+    expect(lost.body).toEqual({ rows: importRows, confirmed: true });
+    expect(document.body.textContent).toContain('结果待确认');
+
+    await click('关闭');
+    await click(ENTRY);
+    // 关闭重开仍是那条未确认的命令：入口锁定，不能另起命令
+    expect(document.body.textContent).toContain('结果待确认');
+    expect(document.body.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
+    expect(button('导入')?.disabled).toBe(true);
+    const sent = writes().length;
+    const before = calls.length;
+    await click('按原命令重新提交');
+
+    // 原键重放：Idempotency-Key 与报文都与丢失的那次完全一致，台账回放第一次的结果
+    expect(writes()).toHaveLength(sent + 1);
+    const replayed = writes().at(-1)!;
+    expect(replayed.path).toBe(`${EXITS}/import`);
+    expect(replayed.key).toBe(lost.key);
+    expect(replayed.body).toEqual(lost.body);
+    expect(document.body.textContent).toContain('已导入 2 人');
+    expect(
+      calls
+        .slice(before)
+        .filter((call) => call.method === 'GET')
+        .map((call) => call.path),
+    ).toContain(`${EXITS}?view=completed&page=1&pageSize=30`);
+
+    // 确认完成后解锁：再打开是空白的新导入
+    await click(ENTRY);
+    expect(document.body.textContent).not.toContain('结果待确认');
+    expect(document.body.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(false);
+  });
+
   it('预览有错误行：逐行显示原因，不能导入，也不发导入请求', async () => {
     preview = previewFailed;
     await render();
