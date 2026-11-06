@@ -6,7 +6,7 @@ import { completedDetail } from '../demo-stubs/approval.js';
 import { applicationGroups } from './application-groups.js';
 import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
-import { NAME_KEYS, namedValue } from './named-fields.js';
+import { NAME_KEYS, namedValue, sameValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
 import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
@@ -50,15 +50,19 @@ function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; 
   const originals = detail.form.originals ?? {};
   return (
     <dl className="approval-fields">
-      {fields.map(({ key, label }) => (
-        <div key={key} className="approval-field">
-          <dt>{label}</dt>
-          <dd className={key in originals ? 'approval-changed' : undefined}>
-            <span>{displayValue(namedValue(detail.form.values, key))}</span>
-            {key in originals && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
-          </dd>
-        </div>
-      ))}
+      {fields.map(({ key, label }) => {
+        // 后端 originals 带着前一条记录的全部字段，没变的也在里面：只有值真的不同才算“改变”
+        const changed = key in originals && !sameValue(detail.form.values[key], originals[key]);
+        return (
+          <div key={key} className="approval-field">
+            <dt>{label}</dt>
+            <dd className={changed ? 'approval-changed' : undefined}>
+              <span>{displayValue(namedValue(detail.form.values, key))}</span>
+              {changed && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }
