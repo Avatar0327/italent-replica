@@ -7,9 +7,10 @@
  * 无值或看不到都显示“--”。没有页眉、图例；文字都是 `<text>`，SVG 尺寸包住整张图。
  */
 import type { Tx } from '@italent/db';
-import { canSee, type Disclosure } from './disclosure.js';
+import { canSee, type Disclosure, orgInScope } from './disclosure.js';
 import { type PreviewNode, readPreview } from './preview.js';
 import { orgNamesAt } from './queries.js';
+import { inactiveOrgs } from './range.js';
 
 export interface ExportFile {
   /** 不含扩展名：前端按所选格式追加 `.svg` / `.png`，两态同名。 */
@@ -44,12 +45,22 @@ export async function readExport(
   today: string,
 ): Promise<ExportFile> {
   const preview = await readPreview(tx, tenantId, disclosure);
-  const range = canSee(disclosure.fields, 'adjustmentRange') ? disclosure.view.adjustmentRange : [];
-  // 文件名用组织当前名（北森主体组织显示当前名，F-447 / DEC-783）：按下载当天（与文件名日期同一 today）取名；
-  // 卡片内的组织名仍是预览口径（生效日），调整明细（detail.ts）同样按生效日。
-  const names = await orgNamesAt(tx, tenantId, range, today);
-  const label = range.flatMap((id) => (names.has(id) ? [names.get(id)!] : []));
+  const label = await fileNameOrgs(tx, tenantId, disclosure, today);
   return { fileName: exportFileName(label, today), svg: renderSvg(exportCards(preview.roots, after)) };
+}
+
+/**
+ * 文件名里的组织名（F-447 / DEC-783；F-446 返工）：只取查看人能看到的调整范围组织，且在下载当天（与文件名日期同一
+ * today）有效并启用的组织，名称取当天的当前名。范围外组织（与预览同一 `orgInScope`）不得出现在文件名里；
+ * 当天已停用或有效期已过的组织跳过。卡片内的组织名仍是预览口径（生效日），调整明细（detail.ts）同样按生效日。
+ */
+async function fileNameOrgs(tx: Tx, tenantId: string, disclosure: Disclosure, today: string): Promise<string[]> {
+  if (!canSee(disclosure.fields, 'adjustmentRange')) return [];
+  const visible = disclosure.view.adjustmentRange.filter((id) => orgInScope(disclosure, id));
+  const inactive = new Set(await inactiveOrgs(tx, tenantId, visible, today));
+  const active = visible.filter((id) => !inactive.has(id));
+  const names = await orgNamesAt(tx, tenantId, active, today);
+  return active.flatMap((id) => (names.has(id) ? [names.get(id)!] : []));
 }
 
 /**
