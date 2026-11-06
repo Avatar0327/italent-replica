@@ -126,12 +126,17 @@ export async function applicationForm(tx: Tx, self: SelfAccess, kind: SelfApplic
   const allowed = (action: 'object.create' | 'object.update', fields: string[]) =>
     authorize({ ...self.ctx, action, resource: EMPLOYMENT_OBJECT, fields });
   const fieldModes: Record<string, string> = {};
-  for (const { code } of SELF_APPLICATION_OBJECTS[kind].fields)
-    if (visible?.has(code)) fieldModes[code] = (await allowed('object.create', [code])) ? 'editable' : 'readonly';
+  const updateFieldModes: Record<string, string> = {};
+  for (const { code } of SELF_APPLICATION_OBJECTS[kind].fields) {
+    if (!visible?.has(code)) continue;
+    fieldModes[code] = (await allowed('object.create', [code])) ? 'editable' : 'readonly';
+    updateFieldModes[code] = (await allowed('object.update', [code])) ? 'editable' : 'readonly';
+  }
   return {
     employee: self.employee,
     dataOperations: { create: await allowed('object.create', []), update: await allowed('object.update', []) },
     fieldModes,
+    updateFieldModes,
     values: kind === 'exit' && visible?.has('reasonCode') ? { reasonCode: 'personal' } : {},
   };
 }

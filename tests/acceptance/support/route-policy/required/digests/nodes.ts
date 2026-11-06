@@ -1096,7 +1096,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/employee-self-service/access.ts#selfFieldReader': ['005082efd62a', 'c9d00f134044'],
   'apps/api/src/modules/employee-self-service/access.ts#selfScope': ['d4d7ceb871c7', '8fbdf53b6f7c'],
   'apps/api/src/modules/employee-self-service/access.ts#transferFieldAccess': ['981a41881c67', '44fe0bae1086'],
-  'apps/api/src/modules/employee-self-service/application-access.ts#applicationForm': ['8bd2b35c784c', 'ea116acde9ec'],
+  'apps/api/src/modules/employee-self-service/application-access.ts#applicationForm': ['5224695276d8', 'ea116acde9ec'],
   'apps/api/src/modules/employee-self-service/application-access.ts#ownRequest': ['f53287401695', 'b527cbbc132e'],
   'apps/api/src/modules/employee-self-service/application-access.ts#ownRequestMissing': [
     '0b85bcb10949',

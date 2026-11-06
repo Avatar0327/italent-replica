@@ -1,0 +1,55 @@
+.evaluation-layout {
+  display: flex;
+  gap: 16px;
+}
+.evaluation-layout > .ant-menu {
+  width: 180px;
+  flex: none;
+}
+.evaluation-content {
+  flex: 1;
+  min-width: 0;
+}
+.evaluation-content .ant-table-tbody > tr > td {
+  height: 60px;
+}
+.evaluation-full-page {
+  background: white;
+  padding: 24px 48px 0;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  min-height: 70vh;
+  position: relative;
+}
+.evaluation-full-page h1 {
+  font-size: 18px;
+}
+.evaluation-footer {
+  position: sticky;
+  bottom: 0;
+  background: white;
+  border-top: 1px solid #e6e8eb;
+  text-align: center;
+  padding: 16px;
+  margin-top: 24px;
+  z-index: 2;
+}
+.evaluation-span {
+  grid-column: 1 / -1;
+}
+.evaluation-chain-heading {
+  display: flex;
+  justify-content: space-between;
+  background: #f7f9fa;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.evaluation-content:has(.evaluation-full-page) > .list-page {
+  display: none;
+}
+
+.evaluation-required::before {
+  content: '*';
+  color: #ff4d4f;
+  margin-right: 4px;
+}

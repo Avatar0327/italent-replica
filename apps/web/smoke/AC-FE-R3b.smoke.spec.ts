@@ -75,10 +75,11 @@ for (const entry of [
     await page.waitForURL('**/staff');
     await page.goto(entry.path);
     await expect(page.getByRole('heading', { name: entry.title, exact: true })).toBeVisible();
-    await page.screenshot({ path: `/tmp/fe-r3b-${entry.path.slice(1)}.png` });
+    await page.screenshot({ path: `../../.demo/fe-r3b-${entry.path.slice(1)}.png` });
     await page.getByRole('button', { name: entry.create, exact: true }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByLabel('名称', { exact: true })).toBeVisible();
+    const editor = entry.path === '/evaluation' ? page.locator('.evaluation-full-page') : page.getByRole('dialog');
+    await expect(editor).toBeVisible();
+    await expect(editor.getByLabel('名称', { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
 }
@@ -102,13 +103,13 @@ test('AC-FE-R3b-04 评定详情、名单、演示注释与三步编辑，保存�
   await detail.getByRole('tab', { name: '评定过程' }).click();
   await expect(detail.getByText('以下为独立合成流程示意，不代表本活动人员或实际进度。')).toBeVisible();
   await detail.getByRole('button', { name: /编\s*辑/, exact: true }).click();
-  const form = page.getByRole('dialog', { name: '编辑', exact: true });
-  await form.screenshot({ path: '/tmp/fe-r3b-wizard.png' });
+  const form = page.locator('.evaluation-full-page[aria-label="编辑活动"]');
+  await form.screenshot({ path: '../../.demo/fe-r3b-wizard.png' });
   await form.getByRole('textbox', { name: '名称', exact: true }).fill('合成改名');
   await form.getByRole('button', { name: '下一步', exact: true }).click();
   await form.getByRole('button', { name: '下一步', exact: true }).click();
   const request = page.waitForRequest((r) => r.method() === 'PATCH' && r.url().endsWith(`/activities/${id}`));
-  await form.getByRole('button', { name: /保\s*存/, exact: true }).click();
+  await form.getByRole('button', { name: /^保\s*存$/, exact: true }).click();
   const sent = await request;
   expect(sent.headers()['if-match']).toBe('2');
   expect(sent.headers()['idempotency-key']).toBeTruthy();
@@ -159,7 +160,7 @@ test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重
   const form = page.getByRole('dialog', { name: '新增活动' });
   await form.getByLabel('名称', { exact: true }).fill('合成新活动');
   const pending = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/survey360/activities'));
-  await form.getByRole('button', { name: /保\s*存/ }).click();
+  await form.getByRole('button', { name: /^保\s*存$/ }).click();
   const sent = await pending;
   expect(sent.postDataJSON()).toEqual({
     name: '合成新活动',
@@ -175,10 +176,10 @@ test('AC-FE-R3b-08 360 新建发送真实契约；评定版本冲突不自动重
     return route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT' } } });
   });
   await page.getByRole('button', { name: ev.name, exact: true }).click();
-  await actionButton(page, '发布活动').click();
+  await actionButton(page.getByRole('dialog'), '发布活动').click();
   await page.getByRole('button', { name: /确\s*定/, exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('刷新');
-  const publish = page.getByRole('button', { name: /发布活动$/ });
+  const publish = page.getByRole('dialog').getByRole('button', { name: /发布活动$/ });
   await expect(publish).toBeDisabled();
   await expect(publish).not.toHaveClass(/ant-btn-loading/);
   expect(writes).toBe(1);

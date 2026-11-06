@@ -24,7 +24,7 @@ function requestPolicy(code: string, writing = false, identified = false, form =
   return self({
     button: button(code, 'detail'),
     guards: writing ? ['selfService.application', 'employment.linkage'] : ['selfService.application'],
-    ...(form ? { optional: { fieldModes: capability('create'), updateCapability: capability('update') } } : {}),
+    ...(form ? { optional: { fieldModes: capability('create'), updateFieldModes: capability('update') } } : {}),
     fields: projector('selfService.request', 'selfService.request'),
     ...(identified ? { invalidId: BAD_REQUEST } : {}),
     ...(writing
