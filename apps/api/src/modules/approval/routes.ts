@@ -210,7 +210,7 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
   const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data));
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx.tenantId, view)));
+  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */

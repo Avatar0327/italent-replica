@@ -1,8 +1,7 @@
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, grantFieldAccess, permissionAdmin, transferScene } from './AC-APV-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { approvalWorld, transferScene } from './AC-APV-support.js';
 
 const database = useTestDb();
 const url = '/api/tenant/approval/instances';
@@ -10,7 +9,9 @@ interface Detail {
   form: { values: Record<string, unknown>; originals?: Record<string, unknown> };
 }
 
-async function transferWithReason(label: string) {
+const ALL_FIELDS = ['effectiveDate', 'transferTypeCode', 'reasonCode', 'departmentId', 'directManagerId'];
+
+async function transferWithReason(label: string, formFields: string[] = ALL_FIELDS) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
   await w.publishedProcess({
@@ -18,7 +19,7 @@ async function transferWithReason(label: string) {
       {
         key: 'review',
         approver: { type: 'department', value: 'latest_record_department_head' },
-        formFields: ['effectiveDate', 'transferTypeCode', 'reasonCode', 'departmentId', 'directManagerId'],
+        formFields,
       },
     ],
   });
@@ -60,16 +61,16 @@ describe('AC-APV-F474-3b 详情引用字段名称（P2-2）', () => {
     });
   });
 
-  it('只给已下发（字段可见）的引用字段附名称；看不到的字段既没有值也没有名称', async () => {
-    const { w, s, instance } = await transferWithReason('f474b-names-hidden');
-    const world = await permissionAdmin(w);
-    await grantFieldAccess(world, s.outHead.userId, { view: ['departmentId'] });
-    const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
-    const detail = await w.json<Detail>(await api.request('GET', `${url}/${instance.id}`, w.as(s.outHead.userId)));
+  it('只给节点表单已下发的引用字段附名称；未下发的字段既没有值也没有名称', async () => {
+    const { w, s, instance } = await transferWithReason('f474b-names-hidden', ['effectiveDate', 'departmentId']);
+    const detail = await w.json<Detail>(await w.request(s.outHead.userId, 'GET', `${url}/${instance.id}`));
     expect(detail.form.values).toMatchObject({ departmentId: s.to, departmentIdName: '调入部门' });
-    for (const key of ['directManagerId', 'directManagerIdName', 'reasonCode', 'reasonCodeName']) {
+    expect(detail.form.originals).toMatchObject({ departmentId: s.from, departmentIdName: '调出部门' });
+    const keys = ['directManagerId', 'directManagerIdName', 'reasonCode', 'reasonCodeName', 'transferTypeCodeName'];
+    for (const key of keys) {
       expect(detail.form.values, key).not.toHaveProperty(key);
       expect(detail.form.originals ?? {}, key).not.toHaveProperty(key);
     }
+    expect(JSON.stringify(detail)).not.toContain('合成新经理');
   });
 });
