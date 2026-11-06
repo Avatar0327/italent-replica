@@ -72,14 +72,15 @@ async function currentHandlers(tx: Tx, tenantId: string, rows: readonly Row[]) {
         )})
       ORDER BY t.created_at,t.id`),
   );
+  // 按“实例 + 办理人 ID”去重（同一人会签多节点只算一次）；不能按姓名去重，否则同名的不同人会被吞掉。
+  const unique = new Map(tasks.map((task) => [`${task.instance_id}:${task.assignee_user_id}`, task]));
   const named = await withActorNames(
     tx,
-    tasks.map((task) => ({ instanceId: task.instance_id, actorUserId: task.assignee_user_id })),
+    [...unique.values()].map((task) => ({ instanceId: task.instance_id, actorUserId: task.assignee_user_id })),
   );
   for (const task of named) {
-    const names = byInstance.get(task.instanceId) ?? [];
-    if (task.actorName && !names.includes(task.actorName)) names.push(task.actorName);
-    byInstance.set(task.instanceId, names);
+    if (!task.actorName) continue;
+    byInstance.set(task.instanceId, [...(byInstance.get(task.instanceId) ?? []), task.actorName]);
   }
   return byInstance;
 }
