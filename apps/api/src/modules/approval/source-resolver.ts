@@ -17,10 +17,17 @@ import { candidateOf, resolveCandidate, resolveFallbackCandidates, type RoutingS
 import type { TaskRow } from './store.js';
 import { actualApprovals } from './task-history.js';
 
-/** 调用方先按有效轮次裁剪；只认上一节点最后一次激活的人工同意，转交旧任务/跳过不算。 */
-export function previousApproved(tasks: readonly TaskRow[], nodeKey: string | null): string[] {
+/**
+ * 调用方先按有效轮次裁剪；只认上一节点那一次激活的人工同意，转交旧任务/跳过不算。
+ * F-478：路径前驱带着激活编号时按该次激活取（分支后上一节点可能被多次激活）；没有则取最后一次激活（现状口径）。
+ */
+export function previousApproved(
+  tasks: readonly TaskRow[],
+  nodeKey: string | null,
+  activationId: string | null = null,
+): string[] {
   const previous = tasks.filter((task) => task.nodeKey === nodeKey);
-  const activation = previous.at(-1)?.activationId;
+  const activation = activationId ?? previous.at(-1)?.activationId;
   return [
     ...new Set(
       actualApprovals(previous.filter((task) => task.activationId === activation)).flatMap(

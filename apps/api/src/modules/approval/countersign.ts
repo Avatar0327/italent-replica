@@ -104,7 +104,7 @@ export async function settleCountersign(tx: Tx, run: Run, node: CountersignAppro
   for (const task of await endOpenTasks(tx, run.ctx, activation)) {
     await logEnded(tx, run, node.key, task.id, task.assigneeUserId, reason);
   }
-  await followExit(tx, run, node.key, exit);
+  await followExit(tx, run, node.key, exit, acted.activationId);
 }
 
 /** 会签节点上撤回同意时，节点是否已沿出口动作流转（已流转要先取消其后的待办，再恢复本节点结束的任务）。 */

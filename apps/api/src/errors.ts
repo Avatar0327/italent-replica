@@ -10,6 +10,8 @@ export const ERROR_STATUS = {
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
   VALIDATION_FAILED: 400,
+  // F-139a：历史离职导入整批校验不过（逐行原因在 details.rows），零写入。
+  IMPORT_ROWS_INVALID: 400,
   // F-325 / DEC-685①：日工资标准的金额校验按派发契约返回 422。
   DAILY_WAGE_STANDARD_INVALID: 422,
   EMPLOYMENT_FORM_INVALID: 422,

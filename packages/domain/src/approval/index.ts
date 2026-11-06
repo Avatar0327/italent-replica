@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './conditions.js';
+export * from './routes.js';
 export * from './routing.js';
 export * from './definition.js';
 export * from './catalog.js';

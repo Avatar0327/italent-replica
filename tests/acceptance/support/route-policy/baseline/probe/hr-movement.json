@@ -38,5 +38,19 @@
     "trace": [
       "obj:TenantBase.HrMovementReport:view"
     ]
+  },
+  "GET /api/tenant/analytics/hr-movement/reports/:report/export": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1a5ca8bc172e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrMovementReport/TenantBase.HrMovementReport.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrMovementReport:view"
+    ]
   }
 }

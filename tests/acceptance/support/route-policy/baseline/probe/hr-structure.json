@@ -38,5 +38,19 @@
     "trace": [
       "obj:TenantBase.HrStructureReport:view"
     ]
+  },
+  "GET /api/tenant/analytics/hr-structure/reports/:report/export": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "409ae0b268e4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.HrStructureReport/TenantBase.HrStructureReport.list"
+    ],
+    "trace": [
+      "obj:TenantBase.HrStructureReport:view"
+    ]
   }
 }

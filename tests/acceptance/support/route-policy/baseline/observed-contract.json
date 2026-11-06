@@ -3473,7 +3473,37 @@
           "creator scope",
           "employment visibility",
           "requestScope",
-          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-movement/reports/:report/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-movement",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrMovementReport:view"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
           "scopeSql"
         ]
       }
@@ -3611,6 +3641,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-structure/reports/:report": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-structure",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrStructureReport:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-structure/reports/:report/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
@@ -19923,6 +19984,95 @@
         ],
         "scope": [
           "readContext（非配置对象）"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/import": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "command": [
+          "assertRevision",
+          "runCommand / runWrite"
+        ],
+        "domain": [
+          "transfer.initiator"
+        ],
+        "failureAudit": [
+          "withFailedImportLog"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "fieldsOut": [
+          "employment runWrite()"
+        ],
+        "guard": [
+          "employment.linkage"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:create",
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "employment scope",
+          "resolveModuleScope",
+          "scope.all"
+        ],
+        "scopePoint": [
+          "employment point"
+        ]
+      }
+    },
+    "POST /api/tenant/employment/exits/import/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.Employee:create",
+          "TenantBase.EmploymentRecord:create"
+        ],
+        "scope": [
+          "readContext（非配置对象）",
+          "resolveModuleScope",
+          "scope.all"
         ]
       }
     },
