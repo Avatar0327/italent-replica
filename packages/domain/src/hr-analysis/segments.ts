@@ -19,8 +19,7 @@ export const AGE_SEGMENTS = [
 ] as const;
 
 /**
- * 司龄段（按入职日到 asOf 的整日历月，段名下限闭区间）：恰满 6 个月归入“6 月~1 年”，差一天归入“6 月以下”；
- * 恰满 12 个月归入“1~2 年”，差一天归入“6 月~1 年”。
+ * DEC-793：按含校正值、1 位向下舍位的累计司龄分段，下限闭区间；0.5 年对应 6 个月。
  */
 export const TENURE_SEGMENTS = [
   { key: 'under6m', label: '6月以下', max: 5 },
@@ -63,9 +62,10 @@ export function ageSegment(birthday: string | null, asOf: string): string {
   return age === null ? SEGMENT_NONE : AGE_SEGMENTS.find((segment) => age <= segment.max)!.key;
 }
 
-export function tenureSegment(entryDate: string | null, asOf: string): string {
-  if (!entryDate || entryDate > asOf) return SEGMENT_NONE;
-  const months = wholeMonths(entryDate, asOf);
+export function tenureSegment(entryDate: string | null, asOf: string, correction = 0): string {
+  const years = tenureSample(entryDate, asOf, correction);
+  if (years === null) return SEGMENT_NONE;
+  const months = Math.floor(years * 12);
   return TENURE_SEGMENTS.find((segment) => months <= segment.max)!.key;
 }
 
@@ -89,7 +89,7 @@ export function segmentAverage(values: readonly number[]): number | null {
 
 /** 平均年龄 / 平均司龄的样本：年龄取整岁，司龄取 tenureYears（365 天一年）；空值不进样本。 */
 export const ageSample = (birthday: string | null, asOf: string) => ageOn(birthday, asOf);
-export function tenureSample(entryDate: string | null, asOf: string): number | null {
-  const years = tenureYears(entryDate, asOf);
+export function tenureSample(entryDate: string | null, asOf: string, correction = 0): number | null {
+  const years = tenureYears(entryDate, asOf, correction);
   return years === null ? null : Number(years);
 }

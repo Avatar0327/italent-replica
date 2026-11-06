@@ -7,6 +7,7 @@ import {
   EVALUATION_FLOW_OBJECTS,
   EVALUATION_OBJECTS,
   MODULE_OBJECTS,
+  SELF_APPLICATION_OBJECTS,
   ObjectCatalog,
   type ObjectDefinition,
   QUALIFICATION_OBJECTS,
@@ -24,6 +25,7 @@ import {
  */
 export const objectCatalog = new ObjectCatalog([
   ...Object.values(MODULE_OBJECTS),
+  ...Object.values(SELF_APPLICATION_OBJECTS),
   ...Object.values(survey360.SURVEY360_OBJECTS),
   ...Object.values(QUALIFICATION_OBJECTS),
   QUALIFICATION_PAGES,

@@ -50,6 +50,7 @@ export const PRESET_FIELD_NAMES = [
   'dottedManagerId',
   'employmentType',
   'employmentSource',
+  'workYearCompanyBefore',
   'employmentForm',
   'sequenceId',
   'professionalLineId',
@@ -79,6 +80,8 @@ export interface PresetFields {
   readonly dottedManagerId: string | null;
   readonly employmentType: string | null;
   readonly employmentSource: string | null;
+  /** 原站 WorkYearCompanyBefore（DEC-793）：年，2 位小数，非负，默认 0。 */
+  readonly workYearCompanyBefore: number;
   readonly employmentForm: string | null;
   readonly sequenceId: string | null;
   readonly professionalLineId: string | null;
@@ -97,7 +100,9 @@ export interface PresetFields {
 }
 
 export function emptyPresetFields(): PresetFields {
-  return Object.fromEntries(PRESET_FIELD_NAMES.map((field) => [field, null])) as unknown as PresetFields;
+  return Object.fromEntries(
+    PRESET_FIELD_NAMES.map((field) => [field, field === 'workYearCompanyBefore' ? 0 : null]),
+  ) as unknown as PresetFields;
 }
 
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
@@ -105,6 +110,8 @@ export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 export interface EmploymentContext {
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
+  /** DEC-790：只由本人申请入口设置，用专属字段载体授权。 */
+  readonly selfApplicationKind?: 'exit' | 'partTime';
   readonly managerTransfer?: boolean;
   readonly scope?: EmploymentScope;
   readonly scopeEmployeeId?: string;

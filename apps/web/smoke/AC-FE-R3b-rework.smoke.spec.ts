@@ -6,13 +6,26 @@ test.setTimeout(90_000);
 
 async function editEvaluation(page: Page, overrides: Record<string, unknown>) {
   await setupR3b(page, '/evaluation');
-  await page.route(`**/evaluation/activities/${id}`, (route) => route.fulfill({ json: { ...ev, ...overrides } }));
+  await page.route(`**/evaluation/activities/${id}`, (route) =>
+    route.fulfill({
+      json: {
+        ...ev,
+        ...overrides,
+        ...(route.request().method() === 'PATCH'
+          ? { ...route.request().postDataJSON(), revision: Number(route.request().headers()['if-match']) + 1 }
+          : {}),
+      },
+    }),
+  );
   await page.getByRole('button', { name: ev.name, exact: true }).click();
-  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
-  return page.getByRole('dialog', { name: '编辑', exact: true });
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /编\s*辑/, exact: true })
+    .click();
+  return page.locator('.evaluation-full-page[aria-label="编辑活动"]');
 }
 
-const saveButton = { name: /保\s*存/, exact: true };
+const saveButton = { name: /^保\s*存$/, exact: true };
 const cancelButton = { name: /取\s*消/, exact: true };
 
 test('AC-FE-R3b-R2-01 360 结果未知关闭重开及切换页签不能生成第二个创建命令', async ({ page }) => {
@@ -75,7 +88,10 @@ test('AC-FE-R3b-R2-03 新选组织默认包含下级并提交，允许取消', a
   await page.route('**/org/organizations?*', (route) => route.fulfill({ json: { items: [{ id, name: '合成集团' }] } }));
   // 候选请求已在表单打开时发出，重新打开以读取合成组织。
   await form.getByRole('button', cancelButton).click();
-  await page.getByRole('button', { name: /编\s*辑/, exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /编\s*辑/, exact: true })
+    .click();
   const range = form.locator('.ant-form-item').filter({ has: page.locator('label[title="组织范围"]') });
   await range.getByRole('combobox').click();
   await page.locator('.ant-select-item-option[title="合成集团"]').click();
@@ -115,13 +131,13 @@ test('AC-FE-R3b-F134 申请人类型勾选在点击事件内同步生效，同�
   expect((await request).postDataJSON()).toEqual({ applicants: ['others'] });
 });
 
-test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨级数仍允许修改', async ({ page }) => {
+test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，员工可申报大于当前职级仍允许修改', async ({ page }) => {
   const form = await editEvaluation(page, { applyCount: 1 });
   for (const label of ['活动类型', '组织范围', '申请类别', '申请级别', '评定生效日期', '活动通知范围']) {
     const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
     await expect(item.locator('input:not([disabled])')).toHaveCount(0);
   }
-  const jump = form.locator('.ant-form-item').filter({ has: page.locator('label[title="可跨级数"]') });
+  const jump = form.locator('.ant-form-item').filter({ has: page.locator('label[title="员工可申报大于当前职级"]') });
   await expect(jump.getByRole('spinbutton')).toBeEnabled();
   await jump.getByRole('spinbutton').fill('2');
   await form.getByLabel('名称', { exact: true }).fill('合成报名后改名');
@@ -129,7 +145,13 @@ test('AC-FE-R3b-R2-04 已有报名锁申请级别等后端锁定字段，可跨�
   await form.getByRole('button', { name: '下一步' }).click();
   await expect(form.getByRole('button', { name: '添加', exact: true })).toHaveCount(0);
   await expect(form.getByRole('button', { name: '移除', exact: true })).toHaveCount(0);
-  await expect(form.getByRole('checkbox', { name: '强控报名截止' })).toBeDisabled();
+  await expect(
+    form
+      .locator('label')
+      .filter({ hasText: /^强控报名截止/ })
+      .getByRole('radio')
+      .first(),
+  ).toBeDisabled();
   const request = page.waitForRequest((r) => r.method() === 'PATCH');
   await form.getByRole('button', saveButton).click();
   expect((await request).postDataJSON()).toEqual({ name: '合成报名后改名', maxLevelJump: 2 });
@@ -158,7 +180,7 @@ for (const entry of [
     if (entry.path === 'questionnaires') {
       await page.getByRole('tab', { name: '评估活动', exact: true }).click();
       await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-      await page.getByRole('dialog').getByRole('tab', { name: '套卷', exact: true }).click();
+      await page.locator('.survey-detail-page').getByRole('tab', { name: '套卷', exact: true }).click();
     }
     await page.getByRole('button', { name: entry.title, exact: true }).click();
     await expect(form).toContainText('结果待确认');
@@ -180,8 +202,12 @@ for (const appraiser of [false, true]) {
     const title = appraiser ? '添加评价者' : '添加评价对象';
     const open = async () => {
       await page.getByRole('button', { name: '合成领导力评估', exact: true }).click();
-      await page.getByRole('dialog').getByRole('tab', { name: '评价关系', exact: true }).click();
-      if (appraiser) await page.getByRole('button', { name: '设置评价者', exact: true }).click();
+      await page.locator('.survey-detail-page').getByRole('tab', { name: '评价关系', exact: true }).click();
+      if (appraiser)
+        await page
+          .locator('.survey-detail-page tbody')
+          .getByRole('button', { name: '设置评价者', exact: true })
+          .click();
       await page.getByRole('button', { name: title, exact: true }).click();
     };
     await open();
@@ -209,10 +235,7 @@ for (const appraiser of [false, true]) {
         .getByRole('dialog', { name: '设置评价者', exact: true })
         .getByRole('button', { name: '关闭', exact: true })
         .click();
-    await page
-      .getByRole('dialog', { name: '合成领导力评估', exact: true })
-      .getByRole('button', { name: '关闭', exact: true })
-      .click();
+    await page.locator('.survey-detail-page').getByRole('button', { name: '返回活动列表', exact: true }).click();
     await open();
     await expect(form).toContainText('结果待确认');
     await expect(form.getByRole('button', saveButton)).toHaveCount(0);
@@ -231,7 +254,7 @@ test('AC-FE-R3b-R2-01 评定新建共用结果未知保护', async ({ page }) =>
     return route.fulfill({ status: 503, json: { error: { code: 'RESULT_UNKNOWN' } } });
   });
   await page.getByRole('button', { name: '新建评定活动', exact: true }).click();
-  const form = page.getByRole('dialog', { name: '新建评定活动', exact: true });
+  const form = page.locator('.evaluation-full-page[aria-label="新建评定活动"]');
   await form.getByLabel('名称', { exact: true }).fill('合成未确认评定');
   for (const label of ['活动类型', '所属组织', '周期', '负责人', '组织范围', '申请类别', '申请级别']) {
     const item = form.locator('.ant-form-item').filter({ has: page.locator(`label[title="${label}"]`) });
@@ -268,10 +291,11 @@ test('AC-FE-R3b-R2-01 评定新建共用结果未知保护', async ({ page }) =>
   }
   await form.getByLabel('审批流程编码', { exact: true }).fill('DEMO-APPLY');
   await form.getByRole('button', saveButton).click();
-  await expect(form).toContainText('结果待确认');
-  await form.getByRole('button', cancelButton).click();
+  const pending = page.getByRole('dialog');
+  await expect(pending).toContainText('结果待确认');
+  await pending.getByRole('button', cancelButton).click();
   await page.getByRole('button', { name: '新建评定活动', exact: true }).click();
-  await expect(form).toContainText('合成未确认评定');
-  await expect(form.getByRole('button', saveButton)).toHaveCount(0);
+  await expect(pending).toContainText('合成未确认评定');
+  await expect(pending.getByRole('button', saveButton)).toHaveCount(0);
   expect(writes).toBe(1);
 });

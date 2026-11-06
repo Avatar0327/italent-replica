@@ -6,6 +6,9 @@
       "status": 403
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
     "scopeQueries": [],
     "trace": []
   },
@@ -16,6 +19,9 @@
       "status": 403
     },
     "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
     "invalidId": {
       "code": "FORBIDDEN",
       "error": "be409e90433c",
@@ -70,6 +76,81 @@
     "scopeQueries": [],
     "trace": []
   },
+  "GET /api/tenant/self-service/exit-requests/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/exit-requests/form": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/part-time-requests/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/part-time-requests/form": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/part-time-requests/references/:code": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
   "GET /api/tenant/self-service/profile": {
     "all": {
       "code": "FORBIDDEN",
@@ -87,6 +168,104 @@
       "status": 403
     },
     "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PATCH /api/tenant/self-service/exit-requests/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PATCH /api/tenant/self-service/part-time-requests/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/exit-requests": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/exit-requests/:id/submit": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/part-time-requests": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/part-time-requests/:id/submit": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
     "scopeQueries": [],
     "trace": []
   },

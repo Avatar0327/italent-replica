@@ -170,7 +170,15 @@ function permissionSpec(operation: ExitOperation, target: ExitGateTarget): Permi
 /** 功能权 + 按钮权 + 字段权；可信上下文（无授权器）直接放行。范围由入口层先验。 */
 export async function requireExitPermission(ctx: EmploymentContext, operation: ExitOperation, target: ExitGateTarget) {
   if (!ctx.authorize || target.approvalEdit) return;
-  const spec = permissionSpec(operation, target);
+  const own =
+    ctx.selfApplicationKind === 'exit' &&
+    target.row?.initiator === 'self' &&
+    target.row.employeeId === ctx.selfServiceEmployeeId &&
+    target.row.initiatorUserId === ctx.userId;
+  const spec =
+    own && operation === 'update'
+      ? { op: 'update' as const, payload: { ...target.patch, ...target.payload }, buttons: ['Exit.Self'] }
+      : permissionSpec(operation, target);
   if (!spec) return;
   // 空载荷的命令类按钮（提交 / 撤回 / 撤销 / 重试）只校验按钮
   const options = Object.keys(spec.payload).length ? {} : { commandOnly: true };
