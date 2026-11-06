@@ -165,7 +165,7 @@ describe('AC-ATT-05 上传内容与登记不一致', () => {
   it('同长度不同内容（sha256 不符）→ 400，仍为 registered，不写 blob；之后用正确内容仍可上传', async () => {
     const good = png();
     const tampered = Buffer.from(good);
-    tampered[tampered.length - 5] ^= 0x01;
+    tampered[tampered.length - 5] = (tampered[tampered.length - 5] ?? 0) ^ 0x01;
     const before = await a.blobCount();
     const registered = await a.w.json<Receipt>(await a.register(actor, registration(good, 'sum.png')), 201);
     expect((await a.upload(actor, registered.id, tampered, registered.revision)).status).toBe(400);
@@ -199,13 +199,16 @@ describe('AC-ATT-05 上传内容与登记不一致', () => {
 });
 
 describe('AC-ATT-06 文件名清洗', () => {
-  const stored = async (filename: string) => {
+  // 每个用例用新员工：登记不上传的临时文件占用名额（上限 20），不能与别的用例共用一人
+  const storedBy = async (filename: string, who: Person) => {
     const bytes = png();
-    const registered = await a.w.json<Receipt>(await a.register(actor, registration(bytes, filename)), 201);
+    const registered = await a.w.json<Receipt>(await a.register(who, registration(bytes, filename, 'image/png')), 201);
     return registered.filename;
   };
 
   it('路径、控制字符、双向控制符、首尾空白按规则清洗后存储', async () => {
+    const who = await a.person('测试员工清洗甲');
+    const stored = (filename: string) => storedBy(filename, who);
     expect(await stored('../../etc/passwd.png')).toBe('passwd.png');
     expect(await stored('C:\\Users\\x\\b.png')).toBe('b.png');
     expect(await stored('a\u0000b\u0007c.png')).toBe('abc.png');
@@ -216,13 +219,15 @@ describe('AC-ATT-06 文件名清洗', () => {
   });
 
   it('清洗后为空 → 400；超过 255 字符 → 400；恰好 255 通过', async () => {
+    const actor = await a.person('测试员工清洗乙');
     for (const filename of ['/', 'dir/', '\u0000\u0001', '   ', ''])
       expect((await a.register(actor, registration(png(), filename, 'image/png'))).status).toBe(400);
-    expect((await a.register(actor, registration(png(), `${'a'.repeat(252)}.png`))).status).toBe(201);
-    expect((await a.register(actor, registration(png(), `${'a'.repeat(253)}.png`))).status).toBe(400);
+    expect((await a.register(actor, registration(png(), `${'a'.repeat(251)}.png`))).status).toBe(201);
+    expect((await a.register(actor, registration(png(), `${'a'.repeat(252)}.png`))).status).toBe(400);
   });
 
   it('清洗后的名字用于扩展名判定：路径里的 .svg 目录名不影响，最终 .exe 被拒', async () => {
+    const actor = await a.person('测试员工清洗丙');
     expect((await a.register(actor, registration(png(), 'x.svg/ok.png'))).status).toBe(201);
     expect((await a.register(actor, registration(png(), 'ok.png/evil.exe', 'image/png'))).status).toBe(415);
   });

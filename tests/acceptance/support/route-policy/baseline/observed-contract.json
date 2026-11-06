@@ -197,6 +197,40 @@
         ]
       }
     },
+    "DELETE /api/tenant/attachments/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "attachments",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
     "DELETE /api/tenant/contracts/rules/:id": {
       "edge": {
         "anonymous": {
@@ -3934,6 +3968,58 @@
       "primitives": {
         "or": [
           "approval.requireProcessView"
+        ]
+      }
+    },
+    "GET /api/tenant/attachments/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "attachments",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "GET /api/tenant/attachments/:id/content": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "attachments",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "self": [
+          "selfAccess"
         ]
       }
     },
@@ -17290,6 +17376,73 @@
         "relation": [
           "currentAssignee（assertOpen / openTask）",
           "instanceOfTask"
+        ]
+      }
+    },
+    "POST /api/tenant/attachments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "attachments",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "self": [
+          "selfAccess"
+        ]
+      }
+    },
+    "POST /api/tenant/attachments/:id/upload": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "attachments",
+      "primitives": {
+        "button": [
+          "buttonResource",
+          "object.button"
+        ],
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "requireEmploymentWrite"
+        ],
+        "self": [
+          "selfAccess"
         ]
       }
     },

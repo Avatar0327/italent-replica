@@ -6,6 +6,7 @@ import type { Graph } from '../../../evidence-graph.js';
 import { GRAPH as api_audit } from './api-audit.js';
 import { GRAPH as api_modules_analytics } from './api-modules-analytics.js';
 import { GRAPH as api_modules_approval } from './api-modules-approval.js';
+import { GRAPH as api_modules_attachments } from './api-modules-attachments.js';
 import { GRAPH as api_modules_avatar } from './api-modules-avatar.js';
 import { GRAPH as api_modules_command_result } from './api-modules-command-result.js';
 import { GRAPH as api_modules_contracts } from './api-modules-contracts.js';
@@ -34,6 +35,7 @@ import { GRAPH as api_route_policy } from './api-route-policy.js';
 import { GRAPH as api_seeds } from './api-seeds.js';
 import { GRAPH as domain_analytics } from './domain-analytics.js';
 import { GRAPH as domain_approval } from './domain-approval.js';
+import { GRAPH as domain_attachments } from './domain-attachments.js';
 import { GRAPH as domain_audit } from './domain-audit.js';
 import { GRAPH as domain_contracts } from './domain-contracts.js';
 import { GRAPH as domain_employment } from './domain-employment.js';
@@ -58,6 +60,7 @@ export const GRAPH: Graph = {
   ...api_audit,
   ...api_modules_analytics,
   ...api_modules_approval,
+  ...api_modules_attachments,
   ...api_modules_avatar,
   ...api_modules_command_result,
   ...api_modules_contracts,
@@ -86,6 +89,7 @@ export const GRAPH: Graph = {
   ...api_seeds,
   ...domain_analytics,
   ...domain_approval,
+  ...domain_attachments,
   ...domain_audit,
   ...domain_contracts,
   ...domain_employment,

@@ -164,6 +164,7 @@ describe('AC-ATT-25 登记事务提交前失败（结果未知）后同键重发
     const db = database().db;
     // 放行表为空时，该文件名的插入失败（登记事务在提交前失败）；放行后正常。表不存在时跳过装配（红灯阶段走 404 断言）。
     await db.execute(sql`CREATE TABLE IF NOT EXISTS att_inject_allow (ok boolean)`);
+    await db.execute(sql`GRANT SELECT ON att_inject_allow TO PUBLIC`); // 触发器在应用角色下运行
     await db.execute(sql`DELETE FROM att_inject_allow`);
     await db.execute(sql`
       DO $$ BEGIN
