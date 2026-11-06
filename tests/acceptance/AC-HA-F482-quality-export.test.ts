@@ -300,6 +300,42 @@ describe('AC-HA-F482 员工素质结构报表导出', () => {
     expect((await logs()).length).toBe(settled);
   });
 
+  it('AC-HA-F482-14：“包含下级”开关（true / false / 缺省）取数范围不同，文件人数与审计筛选摘要都要区分（审查 P2-1）', async () => {
+    const logs = () => exportLogs(x.w.db, x.w.tenantId, HR_STRUCTURE_REPORT_OBJECT);
+    // 机构A 本级 1 人（导出乙）、下级部门A1 内部员工 1 人（导出甲）；实习生默认不计
+    const cases: [string, number, boolean][] = [
+      ['departmentIncludeChildren=true', 2, true],
+      ['departmentIncludeChildren=false', 1, false],
+      ['', 2, true], // 缺省 = 勾选
+    ];
+    for (const [flag, people, effective] of cases) {
+      const query = [AS_OF, `departmentId=${x.a.id}`, flag].filter(Boolean).join('&');
+      const before = await logs();
+      const { book } = await download(query, 'data');
+      const page = await c.report('quality', query);
+      expect(page.summary.cells.total, `${query} 页面人数`).toBe(people);
+      expect(valueAt(book, `D${4 + page.rows.length}`), `${query} 文件合计人数`).toBe(people);
+      const written = newRows(before, await logs());
+      expect(written, query).toHaveLength(1);
+      expect((written[0]!.attachment as { filter: unknown }).filter, `${query} 审计筛选摘要`).toEqual({
+        asOf: '2026-10-01',
+        employType: 'internal',
+        departmentId: x.a.id,
+        departmentIncludeChildren: effective,
+      });
+    }
+    // 没选部门时开关不起作用，但摘要仍写出实际生效值，口径固定
+    const before = await logs();
+    await download(AS_OF, 'data');
+    const [written] = newRows(before, await logs());
+    expect((written!.attachment as { filter: unknown }).filter).toEqual({
+      asOf: '2026-10-01',
+      employType: 'internal',
+      departmentId: null,
+      departmentIncludeChildren: true,
+    });
+  });
+
   it('AC-HA-F482-13：缺租户头 / 跨租户 / 无身份一律拒绝，与页面接口同状态', async () => {
     const path = exportPath(BASE, 'quality', AS_OF, 'data');
     const page = `${BASE}/reports/quality?${AS_OF}`;

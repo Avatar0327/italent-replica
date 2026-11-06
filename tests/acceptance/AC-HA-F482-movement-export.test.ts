@@ -316,6 +316,18 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
     expect(institution.occurred_at).toBeTruthy();
     expect(monthly).toMatchObject({ object_id: 'monthly', behavior: 'export' });
     expect(monthly.attachment).toMatchObject({ fileName: '各月入离职统计.xlsx', mode: 'formula' });
+    // 审计筛选摘要 = 实际生效的筛选项，不多不少（审查 P2-1 顺带核对：两张入离职统计没有漏项）
+    expect((institution.attachment as { filter: unknown }).filter).toEqual({
+      asOf: '2026-10-06',
+      year: 2026,
+      month: 4,
+      departmentId: w.A.id,
+    });
+    expect((monthly.attachment as { filter: unknown }).filter).toEqual({
+      asOf: '2026-10-06',
+      year: 2025,
+      departmentId: null,
+    });
 
     // 失败的导出（下载方式缺失 / 非法、报表没有导出、参数非法、没有查看权）一条都不记
     const count = async () => (await logs()).length;
