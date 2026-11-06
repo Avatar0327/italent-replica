@@ -156,4 +156,16 @@ describe('AC-APV-F474-3b 我的申请列表服务端投影', () => {
     expect(pending.length).toBeGreaterThan(1);
     expect(single.rows.items[0]!.currentHandlers).toEqual(['合成同名审批人']);
   });
+
+  it('P2-4 view=applications 严格校验查询键：未知键 400，page / pageSize 与全部合法键照常通过', async () => {
+    const { w, query } = await scene('f474b-strict');
+    for (const extra of ['&foo=1', '&role=initiated', '&businessId=x', '&Status=running', '&pagesize=1']) {
+      const bad = await w.request(w.hr.id, 'GET', `${url}?view=applications${extra}`);
+      expect(bad.status, extra).toBe(400);
+    }
+    const paged = await query(w.hr.id, '&page=1&pageSize=1&category=transfer&status=running&sort=createdAt&order=asc');
+    expect(paged).toMatchObject({ total: 2, page: 1, pageSize: 1 });
+    expect(paged.items).toHaveLength(1);
+    expect(await query(w.hr.id, '&page=2&pageSize=1')).toMatchObject({ total: 2, page: 2 });
+  });
 });
