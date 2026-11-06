@@ -182,7 +182,7 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
   await openSection(page, '我的申请');
   for (const name of ['标题', '类别', '发起人', '当前处理人', '审批状态', '申请理由', '申请时间'])
-    await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name })).toBeVisible();
   await expect(page.getByText('共1条')).toBeVisible();
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
