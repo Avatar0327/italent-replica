@@ -7948,6 +7948,7 @@
           "TenantBase.OrganizationApproval:view"
         ],
         "scope": [
+          "creator scope",
           "scopeSql"
         ]
       }
@@ -14457,13 +14458,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"
@@ -23480,13 +23483,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"
