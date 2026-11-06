@@ -91,6 +91,12 @@ async function upload(sheet = importSheet, options?: Parameters<typeof buildXlsx
   await act(async () => input!.dispatchEvent(new Event('change', { bubbles: true })));
   await settle();
 }
+/** 读大文件（解压到上限才中止）比 settle 的固定等待慢，按条件轮询，最多 3 秒。 */
+async function shown(text: string) {
+  for (let i = 0; i < 60 && !document.body.textContent?.includes(text); i++)
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.body.textContent).toContain(text);
+}
 const writes = () => calls.filter((call) => call.method === 'POST');
 const headerTexts = () =>
   [...document.body.querySelectorAll('.ant-modal th')].map((node) => node.textContent ?? '').filter(Boolean);
@@ -196,9 +202,9 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
     await render();
     await click(ENTRY);
     await upload(importSheet, { rowsXml: '<row r="4"><c r="ZZZZZZ4"><v>1</v></c></row>' });
-    expect(document.body.textContent).toContain('文件无法读取，请选择 .xlsx 格式的 Excel 文件');
+    await shown('文件无法读取，请选择 .xlsx 格式的 Excel 文件');
     await upload(importSheet, { rowsXml: bombRowsXml() });
-    expect(document.body.textContent).toContain('文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试');
+    await shown('文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试');
     expect(writes()).toEqual([]);
     expect(button('导入')?.disabled).toBe(true);
   });
