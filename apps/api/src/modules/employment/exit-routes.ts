@@ -42,6 +42,8 @@ import {
   uuidParam,
   type EmploymentContext,
 } from './context.js';
+import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
+import { importExits, parseExitImportBody, previewExitImport, requireExitImportAccess } from './exit-import.js';
 import { createExitApplication, parseExitPatch, updateExitFields } from './exit-application.js';
 import {
   cancelExit,
@@ -72,7 +74,7 @@ import { previewExit } from './exit-preview.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import { businessDate, normalizeEmploymentInput, normalizedUuid } from './fields.js';
 import type { BusinessWriteGuard } from './entry-routes.js';
-import { exitBatchGuard, exitCommandGuard, exitEditGuard } from './replay-guard.js';
+import { exitBatchGuard, exitCommandGuard, exitEditGuard, exitImportGuard } from './replay-guard.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import { transitionEmployment } from './transitions.js';
 import {
@@ -232,6 +234,7 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       { guard: exitCommandGuard(deps, ctx, 'create', gate, { departmentId }) },
     );
   });
+  registerExitImportRoutes(router, deps);
   router.post('/exits/batch', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const { items } = parse(batchSchema, await jsonBody(c));
@@ -246,6 +249,42 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       async (tx, context) => ({ status: 201, body: await createExitBatch(tx, context, items, guard.failures()) }),
       { guard },
     );
+  });
+}
+
+/**
+ * F-139a 历史离职人员导入（设计 §3 / §7）：preview 不写数据、不进命令台账；import 整批一个事务，必须带 Idempotency-Key。
+ * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）。
+ */
+function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/exits/import/preview', async (c) => {
+    const ctx = await readContext(c, deps, 'object.create');
+    const body = parseExitImportBody(await jsonBody(c));
+    await requireExitImportAccess(ctx, body.rows);
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewExitImport(tx, ctx, body));
+    return c.json(result, 200);
+  });
+  router.post('/exits/import', async (c) => {
+    const ctx = await readContext(c, deps, 'object.create');
+    const raw = await jsonBody(c);
+    const task = {
+      ...ctx,
+      commandId: c.req.header('idempotency-key'),
+      objectType: 'exit-import',
+      total: rawImportRows(raw, 'rows').length,
+    };
+    return withFailedImportLog(deps.db, task, async () => {
+      const body = parseExitImportBody(raw);
+      await requireExitImportAccess(ctx, body.rows);
+      return runWrite(
+        c,
+        deps,
+        ctx,
+        body,
+        async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) }),
+        { guard: exitImportGuard(deps, ctx, body.rows), project: (receipt) => receipt },
+      );
+    });
   });
 }
 

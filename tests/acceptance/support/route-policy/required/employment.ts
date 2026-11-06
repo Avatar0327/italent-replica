@@ -183,6 +183,49 @@ const ob = (perm: string, facts: readonly string[], evidence: readonly Evidence[
   ...(note ? { note } : {}),
 });
 
+const EXIT_IMPORT = `${SRC}/employment/exit-import.ts`;
+/** F-139a：历史离职导入的入口权限链（预览与导入共用 requireExitImportAccess，设计 §7）。 */
+function exitImportObligations(path: '/exits/import' | '/exits/import/preview'): Obligation[] {
+  const entry = at(EXIT, 'POST', path, "const ctx = await readContext(c, deps, 'object.create')");
+  const access = (anchor: string) => fn(EXIT_IMPORT, 'requireExitImportAccess', anchor);
+  const seeAll = bound({ scope: 'see-all' }, [
+    {
+      role: 'scope',
+      unit: `${EXIT_IMPORT}#requireExitImportAccess`,
+      anchor:
+        "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要“全部数据”范围')",
+    },
+  ]);
+  return withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:create`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:create', 'object:object.* 动作'],
+        [entry, READ],
+      ),
+      ob(
+        `obj:${EMPLOYEE}:create`,
+        ['objectOp:TenantBase.Employee:create'],
+        [
+          access(
+            'await requirePermission(ctx.authorize as Authorizer, ' +
+              "{ ...ctx, action: 'object.create', resource: EMPLOYEE_OBJECT })",
+          ),
+          access("await requireEmploymentWrite(ctx, 'create', { code: 'x', name: 'x' }, undefined, EMPLOYEE_OBJECT)"),
+          WRITE_OBJECT,
+        ],
+      ),
+      ob(
+        `btn:${RECORD}#Employment.DimissionImport@list`,
+        [],
+        [access("await requireEmploymentWrite(ctx, 'create', writtenFields(rows), EXIT_IMPORT_BUTTON)"), WRITE_BUTTON],
+        '独立于五个离职按钮的批量入口按钮（DEC-814）；范围必须是显式“看全部”，不足 403',
+      ),
+    ],
+    { [`obj:${EMPLOYEE}:create`]: seeAll, [`obj:${RECORD}:create`]: seeAll },
+  );
+}
+
 /** F-317 固定路由决定按钮；批量每个子命令仍复用首次发起的权限和锁。 */
 function handoverListSubmit(path: string, batch: boolean): Obligation[] {
   const code = batch ? 'BatchDimissionHandoverApproval' : 'EmploymentRecrdLineOpDimissionHandoverApproval';
@@ -3434,6 +3477,19 @@ export const EMPLOYMENT: RequiredTable = {
       [fn(REPLAY, 'exitBatchGuard', 'await requireExitScope(tx, scoped, target, {})'), EMPLOYMENT_SCOPE],
     ),
     linkage(at(EXIT, 'POST', '/exits/batch', 'body: await createExitBatch(tx, context, items, guard.failures())')),
+  ],
+  // F-139a 历史离职人员导入（设计 §7）：预览与导入共用入口权限链 requireExitImportAccess；导入命令内另由 exitImportGuard 复核
+  'POST /api/tenant/employment/exits/import/preview': exitImportObligations('/exits/import/preview'),
+  'POST /api/tenant/employment/exits/import': [
+    ...exitImportObligations('/exits/import'),
+    linkage(
+      at(
+        EXIT,
+        'POST',
+        '/exits/import',
+        'async (tx, context) => ({ status: 201, body: await importExits(tx, context, body) })',
+      ),
+    ),
   ],
   'PATCH /api/tenant/employment/exits/:id': [
     ...exitBusinessCommand('/exits/:id', 'Employment.DimissionEdit', 'route'),

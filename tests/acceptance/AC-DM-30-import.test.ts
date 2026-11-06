@@ -112,7 +112,7 @@ describe('AC-DM-30-04 R1～R3：段内停用 / 短暂停用 / H 落在停用期�
     const response = await x.importRows([x.row(1, d.code)]);
     expect(response.status).toBe(400);
     const [row] = (await x.errorOf(response)).details!.rows as ErrorRow[];
-    expect(row!.errors![0]!.message).toContain('入职日期时为停用状态');
+    expect(row!.errors![0]!.message).toMatch(/在入职日期（.+）时为停用状态/);
   });
 });
 

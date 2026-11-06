@@ -248,6 +248,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/establishment/employment-check.ts#groupOccupancy': ['#camelFields'],
+  'apps/api/src/modules/establishment/employment-check.ts#importedTenureExcesses': [
+    '#NIL_UUID',
+    '#establishmentPeriodStartsWithin',
+    '#evaluateEstablishment',
+  ],
   'apps/api/src/modules/establishment/employment-check.ts#nextReservedTransfer': [
     'apps/api/src/modules/employment/activation-store.ts#pendingActivationState',
     'apps/api/src/modules/employment/timeline.ts#operationKey',
@@ -286,6 +291,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#camelRow',
     'apps/api/src/modules/employment/record-store.ts#snapshotFields',
     'apps/api/src/modules/employment/reporting-cycle.ts#insertedWindow',
+    '#addImportedMembers',
     '#adjustmentProjection',
     '#countsTransfer',
     '#cutInterval',

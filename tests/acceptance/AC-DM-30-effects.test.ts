@@ -38,7 +38,7 @@ describe('AC-DM-30-07 不触发生效副作用', () => {
     for (const item of body.rows) {
       const counts = await x.q<{ n: string }>(x.sql`SELECT
         (SELECT count(*) FROM exit_effects WHERE tenant_id=${x.tenantId} AND business_id=${item.exitBusinessId}::uuid)
-        + (SELECT count(*) FROM employment_activations WHERE tenant_id=${x.tenantId}
+        + (SELECT count(*) FROM employment_activation_attempts WHERE tenant_id=${x.tenantId}
             AND business_id=${item.exitBusinessId}::uuid) AS n`);
       expect(Number(counts[0]!.n)).toBe(0);
     }
@@ -124,12 +124,14 @@ describe('AC-DM-30-09 权限链', () => {
     const x = await importWorld(database().db, '09-2');
     const d = await x.dept('范围部门');
     const authorize = () => true;
+    // restricted() 会按同一 authorize 注册“全部数据”提供者，部门范围必须在它之后注册才生效
+    const request = x.restricted(authorize, undefined, FIELDS);
     registerScopeProvider(authorize, {
       scope: async () => orgScope(x.tenantId, d.id),
       authorize: async () => true,
       fields: async () => new Set(FIELDS),
     });
-    await denied(x, x.restricted(authorize, undefined, FIELDS), [x.row(1, d.code)]);
+    await denied(x, request, [x.row(1, d.code)]);
   });
 
   it('③ 缺 EMPLOYEE 的 object.create：403', async () => {

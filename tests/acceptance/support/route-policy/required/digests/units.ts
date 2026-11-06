@@ -400,6 +400,9 @@ export const DIGESTS: Digests = {
     isHandoverParticipant: 'fceea1bde6da',
     tickHandoverItem: '4e308a4a5be9',
   },
+  'apps/api/src/modules/employment/exit-import.ts': {
+    requireExitImportAccess: '39eae7650398',
+  },
   'apps/api/src/modules/employment/exit-routes.ts': {
     registerExitChanges: '1a90931dcb8a',
     requireCancellationOwner: '0e97dc3e0849',
@@ -416,6 +419,8 @@ export const DIGESTS: Digests = {
     'route:POST /exits/dictionaries/:dict': '9690d9b65058',
     'route:POST /exits/employees/:id': '332886384156',
     'route:POST /exits/employees/:id/preview': '6210e64db158',
+    'route:POST /exits/import': '763d7b94b77f',
+    'route:POST /exits/import/preview': '71b784839e87',
     'route:PUT /exits/dictionaries/:dict/:id': '8b409a1cdfdf',
     runExitCancel: 'e361205053dc',
   },
@@ -606,7 +611,7 @@ export const DIGESTS: Digests = {
     employmentWithdrawalFailure: '148a6020239b',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '5cb9e5d60115',
+    materializeEmploymentRecord: '81d24df87fd8',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -2161,6 +2166,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'e6b97d5ea60d',
   'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': '9b0335d7116c',
   'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem': '37afb6be75dd',
+  'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess': 'ba75c60ddebc',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '52c341c94843',
   'apps/api/src/modules/employment/exit-routes.ts#requireCancellationOwner': '44be2bbd2835',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd02e97716898',
@@ -2176,6 +2182,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/dictionaries/:dict': 'ae551b97839d',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id': 'e862bedecb16',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id/preview': 'eb1eeca4bf86',
+  'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/import': '6e16e523e0b0',
+  'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/import/preview': '1cc9252452ef',
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': '72c5c332f80e',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',

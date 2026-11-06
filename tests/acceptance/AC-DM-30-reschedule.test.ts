@@ -132,14 +132,13 @@ describe('AC-DM-30-12 改期', () => {
     const { x, exitBusinessId, employeeId } = await oneImported('re5');
     const response = await patch(x, exitBusinessId, '2026-11-30');
     expect(response.status, await response.clone().text()).toBe(200);
-    const successor = (await response.json()) as { id: string; status: string };
+    const { successor } = (await response.json()) as { successor: { id: string; status: string } };
     expect(successor.id).not.toBe(exitBusinessId);
     expect(successor.status).toBe('approved');
     expect(await x.exitRowOf(successor.id)).toMatchObject({ mode: 'import', supersedes: exitBusinessId });
     expect((await x.statesOf(exitBusinessId)).at(-1)).not.toBe('effective');
-    const [status] = await x.q<{ status: number }>(x.sql`SELECT employee_status AS status FROM employment_records
-      WHERE tenant_id=${x.tenantId} AND employee_id=${employeeId}::uuid ORDER BY start_date DESC LIMIT 1`);
-    expect(status?.status).not.toBe(8);
+    // 离职记录留墓碑不删行，“恢复在职”看时间轴：只剩入职段
+    expect((await x.timelineOf(employeeId)).map((t) => t.startDate)).toEqual([H]);
     expect((await listed(x, 'view=in_progress')).map((item) => item.id)).toContain(successor.id);
   });
 
@@ -172,9 +171,7 @@ describe('AC-DM-30-12 撤销', () => {
     });
     expect(response.status, await response.clone().text()).toBe(200);
     expect(cancelled).toEqual([item.exitBusinessId]);
-    const [status] = await x.q<{ status: number }>(x.sql`SELECT employee_status AS status FROM employment_records
-      WHERE tenant_id=${x.tenantId} AND employee_id=${item.employeeId}::uuid ORDER BY start_date DESC LIMIT 1`);
-    expect(status?.status).not.toBe(8);
+    expect((await x.timelineOf(item.employeeId)).map((t) => t.startDate)).toEqual([H]);
     const active = await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}
       AND employee_id=${item.employeeId}::uuid AND status='active'`);
     expect(active).toHaveLength(0);
