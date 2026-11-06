@@ -1055,6 +1055,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    'apps/api/src/modules/approval/reference-names.ts#referenceNames',
     'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
@@ -1574,6 +1575,29 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     'packages/domain/src/approval/recusal.ts#nodeRecusal',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#departmentNames': [
+    '#UUID',
+    'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#dictionaryNames': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/transfer/catalog.ts#TRANSFER_REASONS',
+    'packages/domain/src/transfer/catalog.ts#TRANSFER_TYPES',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#personNames': [
+    '#UUID',
+    'apps/api/src/modules/employment/employees.ts#employeeName',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#referenceNames': [
+    '#CODE_KEYS',
+    '#DEPARTMENT_KEYS',
+    '#PERSON_KEYS',
+    '#departmentNames',
+    '#dictionaryNames',
+    '#personNames',
+    '#stringsOf',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
