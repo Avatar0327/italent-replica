@@ -62,7 +62,7 @@ describe.runIf(live)('AC-RT-11-cancel-pg ③ 组织停用 vs 撤销 approved 退
     const x = await retirementCancelWorld(database().db, label, TODAY, { capacity: false });
     const retire = await x.directRetire('2026-10-20');
     const revision = (await x.business(retire.id)).revision;
-    const cancel = () => x.cancelRetire(retire.id, { reason: '撤销' }, { ifMatch: revision });
+    const cancel = () => x.cancelRetire(retire.id, {}, { ifMatch: revision });
     const disable = () => x.disable(x.from, '2026-10-22');
     return { x, retire, cancel, disable };
   }

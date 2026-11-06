@@ -16,6 +16,7 @@ import type { ApprovalContext } from '../approval/context.js';
 import { invalid } from '../org/validation.js';
 import { authorizeHead, orgScopeAuthorizer } from './access.js';
 import { trimmedForViewer } from './envelope.js';
+import { hiddenAmong } from './hidden-rows.js';
 import { patchItemSchema, type ItemPatch } from './item-validation.js';
 import { loadWorld } from './item-tree.js';
 import { bumpRevision, type OrgItem } from './items-store.js';
@@ -105,7 +106,9 @@ async function edit(tx: Tx, ctx: ApprovalContext, id: string, fields: Row) {
   const touched = [...patches.keys()].map((itemId) =>
     world.items.find((item) => item.id === itemId && !item.cascadedFromItemId),
   );
-  if (touched.some((item) => !item)) throw invalid('orgItems', ROW_MISSING);
+  // 审批人组织范围外的隐藏行与不存在的行同一 400，不经“组织不存在”暴露行存在（F-343 BE-10c 补充）
+  const hidden = patches.size ? await hiddenAmong(tx, approverDeps(ctx), ctx, world.items) : new Set<string>();
+  if (touched.some((item) => !item || hidden.has(item.id))) throw invalid('orgItems', ROW_MISSING);
   const before = touched.map((item) => item!);
   const after = before.map((item) => ({ ...item, ...toRefs(patches.get(item.id)!) }));
   if (head) await authorizeApprover(tx, ctx, next, fields);

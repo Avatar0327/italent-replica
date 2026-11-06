@@ -10,6 +10,7 @@ import { AppError } from '../../errors.js';
 import { employeesInOrgs } from '../employment/org-people.js';
 import { assertDeactivationVacant } from '../org/deactivation.js';
 import { rowsOf } from '../org/read-model.js';
+import { ORG_CODE_DUPLICATE } from './envelope.js';
 import { assertItemRules, planStop, validateContent } from './item-rules.js';
 import { orgContext, PLAN_MESSAGES, planIssues, type ItemWorld } from './item-tree.js';
 import type { OrgItem } from './items-store.js';
@@ -20,6 +21,8 @@ export interface ItemIssue {
   readonly reason: string;
   readonly message: string;
   readonly orgId?: string;
+  /** 编码重复时被占用的编码；随 `orgItems.code` 查看权（envelope.ts）。 */
+  readonly code?: string;
 }
 
 export const BASELINE_CHANGED = 'ORG_ADJUSTMENT_BASELINE_CHANGED';
@@ -123,13 +126,14 @@ async function stopIssues(tx: Tx, world: ItemWorld, live: readonly OrgItem[]) {
 function fromError(item: OrgItem, error: unknown): ItemIssue {
   const codes = ['VALIDATION_FAILED', 'CONFLICT', 'NOT_FOUND'];
   if (!(error instanceof AppError) || !codes.includes(error.code)) throw error;
-  const details = (error.details ?? {}) as { reason?: string; orgId?: string; orgIds?: string[] };
-  return issue(
+  const details = (error.details ?? {}) as { reason?: string; orgId?: string; orgIds?: string[]; code?: string };
+  const found = issue(
     item,
     details.reason ?? 'ORG_ADJUSTMENT_ITEM_INVALID',
     error.message,
     details.orgId ?? details.orgIds?.[0],
   );
+  return details.reason === ORG_CODE_DUPLICATE && details.code ? { ...found, code: details.code } : found;
 }
 
 /** 11e 前不能结束编制：停用整支（含连带行）在生效日有编制对象 → 每个组织报一次。 */

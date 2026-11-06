@@ -391,7 +391,7 @@ export const DIGESTS: Digests = {
     'route:DELETE /exit-handover-items/:id': '5ebc08a496e4',
     'route:GET /exit-handover-items': '2bd7b750e4e2',
     'route:GET /exit-handover-requests/:id': '78d7833112ad',
-    'route:GET /exits/:id/handover': '97f05b204c39',
+    'route:GET /exits/:id/handover': '289666bccbbb',
     'route:POST /exit-handover-items': 'a6dc7f6af758',
     'route:POST /exit-handover-requests/:id/resubmit': '892cb3bd934b',
     'route:POST /exits/:id/handover/submit': '95e47055721f',
@@ -406,7 +406,7 @@ export const DIGESTS: Digests = {
     registerExitChanges: '1a90931dcb8a',
     requireCancellationOwner: '0e97dc3e0849',
     requirePreviewButton: '2e3cd7610bb0',
-    requireViewableExitFilters: 'd9eaf946ef06',
+    requireViewableExitFilters: '7f5780b0aeb9',
     'route:GET /exits': 'f2b2c5c183d7',
     'route:GET /exits/:id': '26a0c8c1fea4',
     'route:GET /exits/dictionaries/:dict': '3433254b32bc',
@@ -419,7 +419,7 @@ export const DIGESTS: Digests = {
     'route:POST /exits/employees/:id': '332886384156',
     'route:POST /exits/employees/:id/preview': '6210e64db158',
     'route:PUT /exits/dictionaries/:dict/:id': '8b409a1cdfdf',
-    runExitCancel: 'e361205053dc',
+    runExitCancel: '1164eda417b4',
   },
   'apps/api/src/modules/employment/forward-import.ts': {
     schema: 'c7b8883502d5',
@@ -549,10 +549,9 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/employment/retirement-routes.ts': {
     registerRetirementChanges: '317f44fc42df',
     'route:PATCH /retirements/:id': '9f9608cf2822',
-    'route:PATCH /retirements/cancellations/:id': 'ecd5cec6a2bd',
     'route:POST /retirements/:id/cancel': 'c98a4f57dd10',
     'route:POST /retirements/:id/restore': 'f6e8af58d15c',
-    'route:POST /retirements/employees/:id': '4c8d0ae53028',
+    'route:POST /retirements/employees/:id': '1581749bcfc2',
     'route:POST /retirements/employees/:id/preview': '899701576358',
   },
   'apps/api/src/modules/employment/retirement-rule-routes.ts': {
@@ -566,8 +565,9 @@ export const DIGESTS: Digests = {
     'route:PUT /retirement-rules/:id/enabled': '81bf2633b316',
   },
   'apps/api/src/modules/employment/retirement-view-routes.ts': {
-    'route:GET /retirements': '2cf12c7bcd9a',
+    'route:GET /retirements': 'af0efd5a1cd2',
     'route:GET /retirements/:id': '224782a4b1fb',
+    'route:GET /retirements/employees/:id/in-flight': 'fc1195005b9f',
   },
   'apps/api/src/modules/employment/routes.ts': {
     authorizeBusinessWrite: '9cd4b1d55a33',
@@ -927,6 +927,7 @@ export const DIGESTS: Digests = {
     authorizeHead: '9c1815c29cd6',
     authorizeHeadAction: '45a4e2cfc6e7',
     authorizeItem: 'a9765a0f5029',
+    authorizeOrgFields: 'ce1b6ee3f9bf',
     authorizeOwnerAction: 'aa1fa6e34d54',
     authorizeWithdraw: '700023580fd9',
     orgScopeAuthorizer: 'd76693380788',
@@ -944,7 +945,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/read-routes.ts': {
     OBJECT: 'b007f3f6067a',
-    'route:GET /api/tenant/org-adjustment/adjustments': 'e0c3c10c92b7',
+    'route:GET /api/tenant/org-adjustment/adjustments': '1ffdb77dda79',
     'route:GET /api/tenant/org-adjustment/adjustments/:id': '2c2e854986da',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section': 'b4c22d15149d',
     'route:GET /api/tenant/org-adjustment/adjustments/:id/preview': '75a523e0af2c',
@@ -952,17 +953,17 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/org-adjustment/routes.ts': {
     OBJECT: 'b007f3f6067a',
-    authorizeStored: '5184ecbbcbed',
-    itemCommand: '6064969f5d1c',
-    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '81e54260e4ea',
-    'route:PATCH /api/tenant/org-adjustment/adjustments/:id': 'dacd31a6adf2',
-    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8a50ea532585',
+    authorizeStored: '2b7d029c4b38',
+    itemCommand: '6b96030ae491',
+    'route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '394212c30ef7',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id': '7b91e0bea590',
+    'route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId': '8e271fbfc0fc',
     'route:POST /api/tenant/org-adjustment/adjustments': '234982b51da9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': '798a85ce87b9',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': 'a10d71e31058',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': 'fdaad898c549',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '14f524c0836b',
-    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '199e9d8ddbc8',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/check': 'bf637eb964a1',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase': '722c6990ca62',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/org-items': '97e258ae13f1',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/rebase': '79d4de41814f',
+    'route:POST /api/tenant/org-adjustment/adjustments/:id/submit': '5bd31851d51e',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/void': 'cdd608c01542',
     'route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw': '02aa646a57ac',
   },
@@ -2183,7 +2184,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id': 'e862bedecb16',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id/preview': 'eb1eeca4bf86',
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
-  'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': '72c5c332f80e',
+  'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',
   'apps/api/src/modules/employment/forward-preview.ts#previewEmploymentForwardUpdate': '3bddf9cc4a51',
   'apps/api/src/modules/employment/intern-actions.ts#requireRevokeAccess': '28203aac1ec9',
@@ -2274,7 +2275,6 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rehire.ts#requireRehireWrite': '02a534555a2e',
   'apps/api/src/modules/employment/retirement-routes.ts#registerRetirementChanges': '96a780a2c07b',
   'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/:id': '31f38226c245',
-  'apps/api/src/modules/employment/retirement-routes.ts#route:PATCH /retirements/cancellations/:id': '44c8bd549f2a',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/cancel': '036e2608dd5f',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/:id/restore': 'b30c105cf038',
   'apps/api/src/modules/employment/retirement-routes.ts#route:POST /retirements/employees/:id': '1933ba3a50a6',
@@ -2287,8 +2287,10 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:POST /retirement-rules/run': '83a9d7934f65',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id': '1ca4601c97f1',
   'apps/api/src/modules/employment/retirement-rule-routes.ts#route:PUT /retirement-rules/:id/enabled': 'e1ea577758dc',
-  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': '2897902efe9c',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements': 'c94c33d160d8',
   'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/:id': 'f5a8b6b3c5f6',
+  'apps/api/src/modules/employment/retirement-view-routes.ts#route:GET /retirements/employees/:id/in-flight':
+    '07491a2d8bf4',
   'apps/api/src/modules/employment/routes.ts#authorizeBusinessWrite': 'fd6829e031d2',
   'apps/api/src/modules/employment/routes.ts#authorizeImport': 'ef294a22f161',
   'apps/api/src/modules/employment/routes.ts#importEmployment': '70bca03f3fb8',
@@ -2548,6 +2550,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHead': '838eace8ec6b',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeHeadAction': '803a4a5374ea',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeItem': '3771393c935a',
+  'apps/api/src/modules/org-adjustment/access.ts#authorizeOrgFields': '49e7ea77628c',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeOwnerAction': 'e715b5a1fc8c',
   'apps/api/src/modules/org-adjustment/access.ts#authorizeWithdraw': '7c693d2c2b2a',
   'apps/api/src/modules/org-adjustment/access.ts#orgScopeAuthorizer': '52d75b1182d5',
@@ -2559,7 +2562,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/disclosure.ts#orgAdjustmentDisclosure': 'f95ae276844d',
   'apps/api/src/modules/org-adjustment/queries.ts#listAdjustments': '3a58b73d2896',
   'apps/api/src/modules/org-adjustment/read-routes.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': 'cc2dd39db766',
+  'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments': '55dfa5d7fbca',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id':
     '1a8fd749db73',
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/items/:section':
@@ -2569,25 +2572,25 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/org-adjustment/read-routes.ts#route:GET /api/tenant/org-adjustment/adjustments/:id/preview/export':
     '06879342edd3',
   'apps/api/src/modules/org-adjustment/routes.ts#OBJECT': 'cf8fc6ec6494',
-  'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': 'ab5ce81c1aa9',
-  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '7a91dcd5ded8',
+  'apps/api/src/modules/org-adjustment/routes.ts#authorizeStored': '9acd0df6d5a6',
+  'apps/api/src/modules/org-adjustment/routes.ts#itemCommand': '86be8ba4ca34',
   'apps/api/src/modules/org-adjustment/routes.ts#route:DELETE /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
-    '788c2fe7f803',
+    'a7b889913ad5',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id':
-    '489c94042dde',
+    '0cfe25f96e2f',
   'apps/api/src/modules/org-adjustment/routes.ts#route:PATCH /api/tenant/org-adjustment/adjustments/:id/org-items/:itemId':
-    '565dd86e153d',
+    'c5ba2bd7dd56',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments': 'b6b59890dbf8',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/check':
-    'fd4b6e85c4cd',
+    'd75a6410c631',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/items/:section/:itemId/rebase':
-    '7d7911ec96cb',
+    'c7458a67f94e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/org-items':
-    'd0c2f163388b',
+    'a5fb816e0ba7',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/rebase':
-    'bff89d82db76',
+    'efd7a72dd542',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/submit':
-    '728d56a17f2d',
+    '18b159f7b5a6',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/void':
     'b17c3833a45e',
   'apps/api/src/modules/org-adjustment/routes.ts#route:POST /api/tenant/org-adjustment/adjustments/:id/withdraw':

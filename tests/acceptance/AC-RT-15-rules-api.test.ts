@@ -255,13 +255,6 @@ describe('AC-RT-15 预计退休日期规则：保存与校验（DEC-640①②）
       ['not_in 不开放', [{ fieldCode: 'employType', operator: 'not_in', values: ['internal'] }]],
       ['is_empty 不开放', [{ fieldCode: 'employType', operator: 'is_empty', values: [] }]],
       [
-        '人员类别后补 F-323',
-        [
-          { fieldCode: 'employType', operator: 'in', values: ['internal'] },
-          { fieldCode: 'employmentType', operator: 'in', values: ['a'] },
-        ],
-      ],
-      [
         '同槽位两条',
         [
           { fieldCode: 'employType', operator: 'in', values: ['internal'] },

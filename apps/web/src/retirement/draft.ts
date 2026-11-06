@@ -3,6 +3,7 @@ import { slotKey } from '../foundation/forms/slot.js';
 import { isLocked, type Latest } from '../foundation/forms/store.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import { projectFields, type Values } from '../foundation/forms/values.js';
+import { ApiError } from '../foundation/client.js';
 import { useApiClient } from '../foundation/Session.js';
 import { type ApplicationDraft, useApplicationDraft } from '../intern/commands.js';
 import { m } from './messages.js';
@@ -60,6 +61,30 @@ export function useRetireDraft(employeeId: string) {
     return snapshot(await detail(draft.id));
   }, [detail, snapshot]);
   /**
+   * 服务端当前在途的退休单（F-410，GET retirements/employees/:id/in-flight）：多会话下页面缓存可能指向已作废的单，
+   * 或根本没有缓存，入口以此为准接续草稿。无权 / 范围外（403 / 404）按没有处理；其它失败不猜，交打开读报错重试。
+   */
+  const inFlight = useCallback(async (): Promise<Values | undefined> => {
+    try {
+      const { item } = await api.request<{ item: Values | null }>(`${slotKey(retireSlot, employeeId)}/in-flight`);
+      if (!item) return undefined;
+      if (typeof item.id !== 'string' || item.employeeId !== employeeId || !Number.isSafeInteger(item.revision))
+        throw new Error(m.invalidReceipt);
+      return item;
+    } catch (cause) {
+      if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) return undefined;
+      throw cause;
+    }
+  }, [api, employeeId]);
+  /** 在途单是草稿 / 驳回就接续并记下引用；已在审批中等不可接续的状态，仍走新建由服务端门禁拦截。 */
+  const adopt = useCallback(async (): Promise<Latest | undefined> => {
+    const item = await inFlight();
+    if (!item || !resumable(item.status)) return undefined;
+    const opening = snapshot(item);
+    live.current.cache.put({ id: String(item.id), revision: opening.revision, values: opening.values });
+    return opening;
+  }, [inFlight, snapshot]);
+  /**
    * 打开申请：缓存里有草稿时先读它当前的状态。仍是草稿 / 驳回才按真实 revision 与字段接续；已提交、审批中、已办结、
    * 已撤销的清掉缓存，走新建（fallback 读员工）。员工恢复槽只拦处理中 / 结果未知（不读不清，保持原锁）；
    * 冲突不钉槽，重开即按新 revision 重读（Claude 交叉审 P3-1）。
@@ -68,20 +93,21 @@ export function useRetireDraft(employeeId: string) {
     async (fallback: () => Promise<Latest>): Promise<Latest> => {
       const { cache, slot } = live.current;
       const draft = cache.draft;
-      if (!draft) return fallback();
+      // 没有缓存：先问服务端有没有在途草稿；槽处理中 / 结果未知时不碰（由内核回查原单）
+      if (!draft) return (isLocked(slot.peek()) ? undefined : await adopt()) ?? (await fallback());
       // 处理中 / 结果未知：原命令仍钉在槽上，沿用缓存的 revision 与字段，由内核回查原单
       if (isLocked(slot.peek())) return { id: employeeId, revision: draft.revision, values: draft.values };
       // 读不到（含 404 / 无权）不猜草稿去向：打开读报错并可重试，不清缓存、不新建
       const latest = await detail(draft.id);
       if (!resumable(latest.status)) {
         live.current.cache.put();
-        return fallback();
+        return (await adopt()) ?? fallback();
       }
       const opening = snapshot(latest);
       live.current.cache.put({ id: draft.id, revision: opening.revision, values: opening.values });
       return opening;
     },
-    [detail, employeeId, snapshot],
+    [adopt, detail, employeeId, snapshot],
   );
   return {
     /** 已确认创建、尚未确认提交的草稿。 */
