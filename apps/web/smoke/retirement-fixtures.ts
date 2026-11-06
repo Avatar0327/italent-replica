@@ -57,7 +57,6 @@ export function detail(row: ReturnType<typeof bill>) {
   return {
     ...row,
     handoverEmployeeId: receiver,
-    addToBlacklist: false,
     dutyTransferTiming: 'on_effective',
     preReleaseDate: null,
     versions: [

@@ -254,7 +254,8 @@ export const exitCancellations = pgTable(
     stateBefore: text('state_before').notNull(),
     /** 设计 §2.1 的 case（SQL 保留字，列名加前缀）。 */
     cancelCase: text('cancel_case').notNull(),
-    reason: text('reason').notNull(),
+    /** 撤销离职必填；撤销退休不收原因（DEC-714），为 NULL。CHECK 对 NULL 放行。 */
+    reason: text('reason'),
     revision: integer('revision').notNull().default(1),
     downstream: jsonb('downstream')
       .notNull()

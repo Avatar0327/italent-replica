@@ -186,7 +186,8 @@ function registerHandoverExecutionRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const found = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const business = await loadEmploymentBusiness(tx, ctx.tenantId, id, today, ctx.scope);
-      if (!business || (await businessKind(tx, ctx.tenantId, id)) !== 'leave') return null;
+      // 退休单也可读：退休不发起交接（DEC-714 同源），读到“未发起”（exitHandoverStatus 无交接行时的口径）
+      if (!business || !['leave', 'retirement'].includes((await businessKind(tx, ctx.tenantId, id)) ?? '')) return null;
       return { employeeId: business.employeeId, view: await exitHandoverStatus(tx, ctx.tenantId, id) };
     });
     if (!found) throw new AppError('NOT_FOUND', '任职业务不存在');

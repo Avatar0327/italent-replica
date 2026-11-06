@@ -129,7 +129,7 @@ async function buildWorld() {
   const cancelExit = async (path: 'exits' | 'retirements', id: string) => {
     const response = await x.session.request('POST', `/${path}/${id}/cancel`, {
       ifMatch: (await x.business(id)).revision,
-      body: { reason: '录入有误' },
+      body: path === 'exits' ? { reason: '录入有误' } : {}, // 撤销退休不收原因（DEC-714）
     });
     expect(response.status, await response.clone().text()).toBe(200);
   };
