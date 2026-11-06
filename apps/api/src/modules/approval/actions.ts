@@ -612,7 +612,8 @@ export async function addSign(
     if (blocked) return blocked;
   }
   const status = input.type === 'after' ? 'approved' : 'add_signed';
-  await closeTask(tx, ctx, task.id, status, input.comment);
+  // 后加签 = 本人同意（设计 §3.2）：任务完成要记同意出口；前加签只是挂起，不算办理，出口留空。
+  await closeTask(tx, ctx, task.id, status, input.comment, input.type === 'after' ? 'approve' : null);
   if (input.type === 'after') {
     await appendLog(tx, ctx, run.instance, {
       event: 'approve',

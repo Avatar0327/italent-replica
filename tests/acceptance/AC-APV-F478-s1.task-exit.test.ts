@@ -34,7 +34,7 @@ async function exitOf(s: RouteScene, taskId: string): Promise<TaskExit> {
 
 const addSignable = { actions: { addSign: true, reject: true, rejectToPrevious: true, transfer: true } };
 
-async function startSingle(s: RouteScene, nodeExits: readonly string[] = ['approve']) {
+async function startSingle(s: RouteScene, nodeExits: readonly ('approve' | 'disagree')[] = ['approve']) {
   await s.w.publishedProcess({
     nodes: s.nodes({ n1: { ...addSignable, exits: nodeExits }, n2: { exits: ['approve'] } }).slice(0, 2),
   });
