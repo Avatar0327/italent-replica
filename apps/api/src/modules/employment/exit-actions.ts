@@ -23,7 +23,7 @@ export interface ExitActionSubject {
   readonly id: string;
   readonly employeeId: string;
   readonly status: string;
-  readonly mode: 'application' | 'direct';
+  readonly mode: 'application' | 'direct' | 'import';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
 }

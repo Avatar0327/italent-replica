@@ -14,6 +14,7 @@ import {
   EXIT_REQUEST_SYSTEM_FIELDS,
   RETIREMENT_BUTTONS,
 } from '../employment/exit.js';
+import { EXIT_IMPORT_BUTTON } from '../employment/exit-import.js';
 import { RETIREMENT_REQUEST_FIELDS } from '../employment/retirement.js';
 import { DUTY_TRANSFER_FIELDS, DUTY_TRANSFER_SET_RECEIVER_BUTTON } from '../employment/duty-transfer-menu.js';
 import {
@@ -519,6 +520,8 @@ export const MODULE_OBJECTS = {
       button(EXIT_BUTTONS.application, 'detail', 'create'),
       button(EXIT_BUTTONS.edit, 'detail', 'update'),
       button(EXIT_BUTTONS.cancel, 'detail', 'update'),
+      // F-139a：历史离职人员批量导入入口（list 级、不在 EXIT_BUTTONS，DEC-814）
+      button(EXIT_IMPORT_BUTTON, 'list', 'create'),
       HANDOVER_RESUBMIT_BUTTON,
       HANDOVER_SUBMIT_BUTTON,
       HANDOVER_ROW_SUBMIT_BUTTON,

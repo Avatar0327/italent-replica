@@ -156,7 +156,8 @@ export const exitRequests = pgTable(
     index('exit_requests_batch')
       .on(t.tenantId, t.batchId)
       .where(sql`${t.batchId} IS NOT NULL`),
-    check('exit_requests_mode', sql`${t.mode} IN ('application', 'direct')`),
+    // F-139a：import = 历史离职导入（发起人恒为 hr，设计 §5），审批通过即已生效
+    check('exit_requests_mode', sql`${t.mode} IN ('application', 'direct', 'import')`),
     check('exit_requests_initiator', sql`${t.initiator} IN ('hr', 'self', 'manager')`),
     // 本人申请与经理代发只能走申请（§4B）
     check('exit_requests_direct_by_hr', sql`${t.mode} <> 'direct' OR ${t.initiator} = 'hr'`),
