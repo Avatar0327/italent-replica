@@ -8,7 +8,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
-import { visibleItems } from './disclosure.js';
+import { loadOrgCreators, visibleItems } from './disclosure.js';
 import { loadItems, type OrgItem } from './items-store.js';
 
 export const ROW_NOT_FOUND = '组织调整明细不存在';
@@ -57,6 +57,7 @@ export async function hiddenAmong(
 ): Promise<ReadonlySet<string>> {
   const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
   const orgScope = await resolveModuleScopeInTransaction(bound, ctx, tx, MODULE_OBJECTS.organization.code);
-  const shown = new Set(visibleItems({ orgScope }, items).items.map((item) => item.id));
+  const orgCreators = await loadOrgCreators(tx, ctx.tenantId, orgScope);
+  const shown = new Set(visibleItems({ orgScope, orgCreators }, items).items.map((item) => item.id));
   return new Set(items.filter((item) => !shown.has(item.id)).map((item) => item.id));
 }

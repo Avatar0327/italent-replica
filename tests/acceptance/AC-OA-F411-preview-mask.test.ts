@@ -6,19 +6,19 @@
  * ③ 组织对象范围外的节点不出，名称不在响应里。
  * 基线（411be0fb0）已满足以上口径，本文件是回归，不改产品代码。
  */
-import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { only } from './AC-OA-head-support.js';
 import { itemsWorld, rename } from './AC-OA-items-support.js';
 import { flatten, orgName, reader } from './AC-OA-read-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
 /** 调整范围甲，甲下有未变更的下级；本单只改甲的名称。 */
 async function previewWorld(label: string) {
   const w = await itemsWorld(testDb().db, label);
-  const child = await w.org(`未变更下级${randomUUID().slice(0, 8)}`, w.a);
+  const child = await w.org(`未变更下级${uniqueSuffix()}`, w.a);
   const view = await w.created(w.head({ adjustmentRange: [w.a] }));
   const written = await w.item(view.id, rename(w.a));
   return { w, r: reader(w), view, child, targetItemId: written.items.at(-1)!.id };
@@ -52,7 +52,9 @@ describe('F-411 未变更节点名称的遮罩口径', () => {
     const target = nodes.find((n) => n.orgId === w.a)!;
     const [item] = (await r.items(view.id)).items;
     expect(target.name).toBe(item!.targetOrgName);
-    expect(target.masked).toContain('name');
+    // F-442：现名可见时 masked 记 newName（调整后名称未披露），name 只留给名称为 null 的节点
+    expect(target.masked).toContain('newName');
+    expect(target.masked).not.toContain('name');
   });
 
   it('③ 组织对象范围外的下级不出节点，名称不进响应', async () => {
