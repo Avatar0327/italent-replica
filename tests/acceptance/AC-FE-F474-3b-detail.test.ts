@@ -17,6 +17,11 @@ const session = {
   displayName: '合成用户',
   source: 'server',
 };
+const NEW_DEPARTMENT = '5d8f3a52-1c0e-4b7a-9f4e-0a1b2c3d4e51';
+const OLD_DEPARTMENT = '5d8f3a52-1c0e-4b7a-9f4e-0a1b2c3d4e52';
+const NEW_MANAGER = '5d8f3a52-1c0e-4b7a-9f4e-0a1b2c3d4e53';
+const OLD_MANAGER = '5d8f3a52-1c0e-4b7a-9f4e-0a1b2c3d4e54';
+const UUID_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
 // 与 GET /api/tenant/approval/instances/:id 同形（disclosure.detailView）：终止的调动申请，没有可办理动作。
 const transfer = {
   id: 'instance-1',
@@ -31,14 +36,25 @@ const transfer = {
   form: {
     values: {
       effectiveDate: '2026-11-10',
-      reasonCode: 'work',
+      reasonCode: 'promotion',
+      reasonCodeName: '升职',
       gender: '男',
       age: 30,
-      departmentId: '合成新部门',
-      directManagerId: '合成新经理',
+      departmentId: NEW_DEPARTMENT,
+      departmentIdName: '合成新部门',
+      directManagerId: NEW_MANAGER,
+      directManagerIdName: '合成新经理',
       place: '合成工作地',
     },
-    originals: { departmentId: '合成原部门', directManagerId: '合成原经理' },
+    // 后端 originalsOf 会下发前一条记录的全部同名字段（含没变的 gender / place），名称同样并列下发
+    originals: {
+      gender: '男',
+      departmentId: OLD_DEPARTMENT,
+      departmentIdName: '合成原部门',
+      directManagerId: OLD_MANAGER,
+      directManagerIdName: '合成原经理',
+      place: '合成工作地',
+    },
   },
   tasks: [
     { id: 'task-1', nodeName: '会签审批', status: 'approved' },
@@ -147,6 +163,53 @@ describe('AC-FE-F474-3b 我的申请审批详情（§3.8 终止的调动申请�
     expect(adjust.textContent).toContain('合成工作地');
     expect(host.querySelector('.approval-collaboration-title')?.textContent).toBe('协作');
     expect(host.textContent).toContain('操作记录(2)');
+  });
+
+  it('P2-2 引用字段显示名称：原因 / 部门 / 经理（含“原：”值）都不出现英文编码或裸 ID', async () => {
+    await render(transfer, { applications: true });
+    const text = host.textContent ?? '';
+    expect(text).toContain('升职');
+    expect(text).not.toContain('promotion');
+    expect(text).toContain('合成新部门');
+    expect(text).toContain('原：合成原部门');
+    expect(text).toContain('合成新经理');
+    expect(text).toContain('原：合成原经理');
+    expect(text).not.toMatch(UUID_TEXT);
+    // 名称键本身不单独成行
+    expect(Array.from(host.querySelectorAll('dt')).map((dt) => dt.textContent)).not.toContain('departmentIdName');
+  });
+
+  it('P2-2 名称缺失（停用 / 查不到）时显示占位而不回落成 ID；不带名称键的离职原因编码照常显示', async () => {
+    const missing = {
+      ...transfer,
+      form: {
+        values: { departmentId: NEW_DEPARTMENT, departmentIdName: null, reasonCode: 'promotion', reasonCodeName: null },
+        originals: {},
+      },
+    };
+    await render(missing, { applications: true });
+    expect(host.textContent).not.toMatch(UUID_TEXT);
+    expect(host.textContent).not.toContain('promotion');
+    expect(host.textContent).toContain('已保存的值');
+    await act(() => root.unmount());
+    root = createRoot(host);
+    const exit = { ...leave, form: { values: { reasonCode: 'resign_personal', kind: 'leave' }, originals: {} } };
+    await render(exit, { applications: true });
+    expect(host.textContent).toContain('resign_personal');
+  });
+
+  it('P2-3 只有真正改变的字段标橙色并写“原：”；originals 里没变的字段保持普通样式', async () => {
+    await render(transfer, { applications: true });
+    const fields = Array.from(host.querySelectorAll('.approval-field'));
+    const field = (text: string) => fields.find((f) => f.querySelector('dt')?.textContent === text)!;
+    const changed = (text: string) => field(text).querySelector('dd')!.classList.contains('approval-changed');
+    expect(changed('新部门')).toBe(true);
+    expect(changed('新直线经理')).toBe(true);
+    for (const unchanged of ['性别', '工作地']) {
+      expect(changed(unchanged), unchanged).toBe(false);
+      expect(field(unchanged).querySelector('small'), unchanged).toBeNull();
+    }
+    expect(host.querySelectorAll('.approval-changed')).toHaveLength(2);
   });
 
   it('按实例自己的业务类型呈现：离职实例不套用调动分组与调动字段', async () => {
