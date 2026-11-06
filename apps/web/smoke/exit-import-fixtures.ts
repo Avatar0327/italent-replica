@@ -146,7 +146,6 @@ export const styledBlankRowsXml = (from: number, count: number, columns = import
     const cells = Array.from({ length: columns }, (_, c) => `<c r="${column(c)}${from + i}" s="1"/>`);
     return `<row r="${from + i}">${cells.join('')}</row>`;
   }).join('');
-/** 每行只在最右列 XFD 放一个单元格：不给 value 是只有样式的空白格，给了是有值的格。 */
 /** 设为空字符串的格式格：openpyxl 写成无文本的 inlineStr；mixed 时按列轮换其他同样回读为空的写法。 */
 const emptyTextCells = [
   (ref: string) => `<c r="${ref}" s="1" t="inlineStr"></c>`,
@@ -160,6 +159,7 @@ export const emptyTextRowsXml = (from: number, count: number, mixed = false) =>
     );
     return `<row r="${from + i}">${cells.join('')}</row>`;
   }).join('');
+/** 每行只在最右列 XFD 放一个单元格：不给 value 是只有样式的空白格，给了是有值的格。 */
 export const xfdRowsXml = (from: number, count: number, value?: number) =>
   Array.from({ length: count }, (_, i) => {
     const ref = `XFD${from + i}`;
