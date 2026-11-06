@@ -248,6 +248,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       45: '79acc91437c2ab79',
       // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
       46: '2836fdc4e1b54269',
+      // F-480（DEC-797，占位同号）：任职记录新增只读系统字段 traineeStartDate（实习开始日）的查看授权
+      47: '467bdbc7d25f7684',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,

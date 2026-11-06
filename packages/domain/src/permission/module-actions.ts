@@ -543,6 +543,8 @@ export const MODULE_OBJECTS = {
       'employeeRevision',
       'status',
       'entryDate',
+      // DEC-797：实习转正新周期保存的原实习开始日，只读，随记录视图返回
+      'traineeStartDate',
       'serviceType',
       'stopDate',
       'previousRecordId',

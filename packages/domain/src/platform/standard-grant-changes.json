@@ -1,14 +1,10 @@
 {
-  "reason": "F-432（DEC-793）：沿用任职记录字段编辑权限，新增司龄校正值；员工默认只读，不新增按钮或数据范围",
+  "reason": "F-480（DEC-797）：任职记录新增只读系统字段 traineeStartDate（实习转正前的实习开始日），随司龄校正值的查看口径授给同样能看入职日的身份；不新增编辑、按钮或数据范围",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
-    "standard_org_system_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
-    "standard_hr_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
-    "standard_manager/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
-    "employee_self_service/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:traineeStartDate:view"
   ],
   "remove": []
 }
