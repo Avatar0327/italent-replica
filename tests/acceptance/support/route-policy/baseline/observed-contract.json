@@ -5536,6 +5536,7 @@
           "readPageContext"
         ],
         "scope": [
+          "employment visibility",
           "readPageContext"
         ]
       }

@@ -77,9 +77,14 @@ describe('升级前兼容垫片（migrateBefore 夹具）', () => {
         expect(sqlText).not.toMatch(/IF NOT EXISTS/i);
         const dataType = types.get(`${shim.table}.${shim.column}`);
         expect(dataType, `${shim.table}.${shim.column}`).toBeDefined();
-        const expected = { uuid: 'uuid', text: 'text', integer: 'integer', date: 'date', boolean: 'boolean' }[
-          shim.type
-        ];
+        const expected = {
+          uuid: 'uuid',
+          text: 'text',
+          integer: 'integer',
+          date: 'date',
+          boolean: 'boolean',
+          numeric: 'numeric',
+        }[shim.type];
         expect(dataType).toBe(expected);
       }
     } finally {

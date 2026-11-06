@@ -221,9 +221,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
     'apps/api/src/modules/permission/subject.ts#loadObjectPermissions',
-    'apps/api/src/modules/transfer/employee-policy.ts#EMPLOYEE_READONLY_FIELDS',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_CREATE',
     'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_EDIT_FIELDS',
+    'packages/domain/src/platform/employee-self-service.ts#EMPLOYEE_DEFAULT_VIEW_FIELDS',
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
   ],
   'apps/api/src/modules/employee-self-service/queries.ts#applicationStatus': [

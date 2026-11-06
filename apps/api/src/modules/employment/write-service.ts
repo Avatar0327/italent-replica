@@ -1,3 +1,5 @@
+import { applyRehireSeniority } from './rehire-seniority.js';
+import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
 import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
@@ -353,6 +355,7 @@ export async function updateEmploymentBusiness(
   }
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);
+  await assertRegularizationApplication(tx, ctx, business, normalized);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
   assertEmployTypeUsage(normalized);
@@ -763,6 +766,26 @@ function validateMaterializedReferences(
   return validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting, newCycle, terminating);
 }
 
+async function materializedFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  inherited: Pick<PreparedInheritance, 'fields' | 'customFields'>,
+  employType: EmployType,
+  order: number,
+) {
+  return applyRehireSeniority(
+    tx,
+    ctx,
+    business,
+    {
+      fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
+      customFields: inherited.customFields,
+    },
+    order,
+  );
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
@@ -784,7 +807,7 @@ export async function materializeEmploymentRecord(
     predecessor: selected?.predecessor ?? null,
   });
   const employType = effectiveEmployType(payload, selected);
-  const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
+  const fields = await materializedFields(tx, ctx, business, inherited, employType, position.order);
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
@@ -794,7 +817,7 @@ export async function materializeEmploymentRecord(
       ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
       : undefined;
   await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle);
-  assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
+  assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
@@ -802,7 +825,7 @@ export async function materializeEmploymentRecord(
     id: business.id,
     tenantId: ctx.tenantId,
     employeeId: business.employeeId,
-    payloadVersionId: payload.id,
+    payloadVersionId: business.payload.id,
     staffId,
     entryDate,
     kind: payload.kind,

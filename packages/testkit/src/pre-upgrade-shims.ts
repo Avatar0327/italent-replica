@@ -48,6 +48,19 @@ export const PRE_UPGRADE_SHIMS: readonly PreUpgradeShim[] = [
   // BE-13c：当前审批发起代码会写审批类别与业务日期（规格 35 B51）。
   { table: 'approval_instances', column: 'approval_category', type: 'text', migration: 'be13c_approval_category' },
   { table: 'approval_instances', column: 'business_date', type: 'date', migration: 'be13c_approval_category' },
+  // F-432（DEC-793）：当前任职写入会写司龄校正值（载荷版本与任职记录两处）。
+  {
+    table: 'employment_payload_versions',
+    column: 'work_year_company_before',
+    type: 'numeric',
+    migration: 'f432_seniority_correction',
+  },
+  {
+    table: 'employment_records',
+    column: 'work_year_company_before',
+    type: 'numeric',
+    migration: 'f432_seniority_correction',
+  },
 ];
 
 export interface PreUpgradeTableShim {

@@ -280,15 +280,20 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/export-svg.ts#establishmentMark': ['#NONE'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#exportCards': ['#NONE', '#TAGS', '#exportCards'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#exportFileName': ['#NONE', '#xmlChars'],
+  'apps/api/src/modules/org-adjustment/export-svg.ts#fileNameOrgs': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
+    'apps/api/src/modules/org-adjustment/disclosure.ts#orgInScope',
+    'apps/api/src/modules/org-adjustment/queries.ts#orgNamesAt',
+    'apps/api/src/modules/org-adjustment/range.ts#inactiveOrgs',
+  ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#flatten': ['#flatten'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#links': ['#COLORS', '#GAP_Y', '#H', '#W'],
   'apps/api/src/modules/org-adjustment/export-svg.ts#readExport': [
-    'apps/api/src/modules/org-adjustment/disclosure.ts#canSee',
     '#exportCards',
     '#exportFileName',
+    '#fileNameOrgs',
     '#renderSvg',
     'apps/api/src/modules/org-adjustment/preview.ts#readPreview',
-    'apps/api/src/modules/org-adjustment/queries.ts#orgNamesAt',
   ],
   'apps/api/src/modules/org-adjustment/export-svg.ts#renderCard': [
     '#COLORS',
@@ -347,6 +352,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRefsReachable': ['#ROW_NOT_FOUND'],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#assertRowReachable': ['#ROW_NOT_FOUND'],
   'apps/api/src/modules/org-adjustment/hidden-rows.ts#hiddenAmong': [
+    'apps/api/src/modules/org-adjustment/disclosure.ts#loadOrgCreators',
     'apps/api/src/modules/org-adjustment/disclosure.ts#visibleItems',
     'apps/api/src/modules/permission/module-access.ts#authorizeInTransaction',
     'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',

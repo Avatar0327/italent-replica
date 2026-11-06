@@ -10,7 +10,7 @@ const permission: Evidence = {
 function capabilities(at: Evidence[]): Obligation[] {
   return (['create', 'update'] as const).map((operation) => ({
     perm: `obj:TenantBase.EmploymentRecord:${operation}`,
-    purpose: `disclosure:${operation === 'create' ? 'fieldModes' : 'updateCapability'}`,
+    purpose: `disclosure:${operation === 'create' ? 'fieldModes' : 'updateFieldModes'}`,
     need: { scope: 'none' },
     facts: ['object:object.* 动作'],
     at: [
@@ -18,7 +18,7 @@ function capabilities(at: Evidence[]): Obligation[] {
       {
         role: 'impl',
         unit: `${ACCESS}#applicationForm`,
-        anchor: operation === 'create' ? "allowed('object.create', [code])" : "allowed('object.update', [])",
+        anchor: operation === 'create' ? "allowed('object.create', [code])" : "allowed('object.update', [code])",
       },
     ],
   }));

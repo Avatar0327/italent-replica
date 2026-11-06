@@ -52,6 +52,7 @@ export interface MovementExit extends MovementPerson {
   /** 离职生效日 = 最后工作日 + 1（最后工作日当天仍在职）。 */
   readonly effectiveDate: string;
   readonly entryDate: string | null;
+  readonly workYearCompanyBefore: number;
   readonly keyPerson: boolean;
   readonly typeCode: string | null;
   readonly typeName: string | null;
@@ -160,13 +161,18 @@ function exitRows(a: MovementContext, kind: 'leave' | 'retirement', window: Exit
   const extended = {
     ...source,
     columns: sql`${source.columns} dc.entry_date::text AS "entryDate", prev.sequence_id AS "sequenceId",
+      (SELECT COALESCE((SELECT v.work_year_company_before FROM employment_payload_versions v
+          WHERE v.tenant_id=er.tenant_id AND v.business_id=er.id AND v.is_record_snapshot
+          ORDER BY v.version_no DESC LIMIT 1), er.work_year_company_before)::double precision
+        FROM employment_records er WHERE er.tenant_id=b.tenant_id AND er.id=b.id) AS "workYearCompanyBefore",
       prev.is_key_person AS "keyPerson",`,
   };
   const where = sql`s.state='effective' AND ${EXIT_DATED[window.dating](window.from, window.to)}
     AND dc.employ_type IN (${WORKING})`;
   return sql`SELECT ${kind}::text AS kind, x.id AS "billId", x."employeeId" AS employee_id, x."departmentId" AS org_id,
       NULL::uuid AS creator_id, ${a.tenantId}::uuid AS tenant_id, x."employeeId", x."departmentId", x."sequenceId",
-      x."lastWorkDate", x."entryDate", x."keyPerson", x."exitTypeCode", x."exitTypeName", x."reasonCode",
+      x."lastWorkDate", x."entryDate", x."workYearCompanyBefore", x."keyPerson",
+      x."exitTypeCode", x."exitTypeName", x."reasonCode",
       x."reasonName", x."whereaboutsCode", x."whereaboutsName"
     FROM (${exitCandidates(a.tenantId, undefined, [where], sql`b.id`, extended)}) x`;
 }
@@ -179,7 +185,7 @@ interface ExitWindow {
 async function exits(tx: Tx, a: MovementContext, window: ExitWindow) {
   return rowsOf<MovementExit>(
     await tx.execute(sql`SELECT m.kind, m."billId", m."employeeId", m."departmentId", m."sequenceId", m."lastWorkDate",
-        (m."lastWorkDate"::date + 1)::text AS "effectiveDate", m."entryDate", m."keyPerson",
+        (m."lastWorkDate"::date + 1)::text AS "effectiveDate", m."entryDate", m."workYearCompanyBefore", m."keyPerson",
         m."exitTypeCode" AS "typeCode", m."exitTypeName" AS "typeName", m."reasonCode", m."reasonName",
         m."whereaboutsCode", m."whereaboutsName", pv.*
       FROM (${exitRows(a, 'leave', window)} UNION ALL ${exitRows(a, 'retirement', window)}) m

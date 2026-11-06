@@ -27,6 +27,9 @@ import {
   type EstablishmentContext,
 } from './store.js';
 
+/** 停用（或缩短失效日）被当前 / 未来周期编制引用的方案时的提示，北森原文（F-446，DEC-784 取证）。 */
+const SCHEME_IN_USE_MESSAGE = '该方案已被当前周期编制或未来周期编制引用，不允许停用';
+
 export interface OccupancyRange {
   readonly employmentType: string;
   readonly conditions?: Readonly<Record<string, readonly string[]>>;
@@ -303,7 +306,7 @@ async function checkSchemeLifecycle(
       ),
     )
     .limit(1);
-  if (active) throw new AppError('CONFLICT', '当前或未来编制仍引用该方案', { reason: 'SCHEME_IN_USE' });
+  if (active) throw new AppError('CONFLICT', SCHEME_IN_USE_MESSAGE, { reason: 'SCHEME_IN_USE' });
 }
 
 export async function deleteScheme(tx: Tx, ctx: EstablishmentContext, id: string) {
