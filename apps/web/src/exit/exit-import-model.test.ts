@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { importRowsOf, warningText } from './exit-import-model.js';
 import {
+  bombRowsXml,
   buildXlsx,
   importHeader,
   importRows,
@@ -107,6 +108,25 @@ describe('AC-DM-30-19 导入文件解析', () => {
     const tooLarge = '文件内容超过单次导入上限（32 KB），请减少行数或缩短内容后分批导入';
     expect(await rowsOf([importHeader, ...template(`${note}x`)])).toEqual({ error: tooLarge });
     expect(await rowsOf([importHeader, ...template(`${note}合`)])).toEqual({ error: tooLarge });
+  });
+
+  it('异常列坐标、压缩炸弹、单元格过多：及时以 XlsxError 中止，不把超长数组或超大文本交给后续解析', async () => {
+    const head = importHeader.slice(0, 5);
+    const rejected = async (rowsXml: string, reason: string) => {
+      const bytes = await buildXlsx([head, H0003], { rowsXml });
+      const started = performance.now();
+      await expect(readXlsx(bytes)).rejects.toMatchObject({ name: 'XlsxError', reason });
+      expect(performance.now() - started).toBeLessThan(2000);
+    };
+    // Excel 最大列 XFD（16384）；ZZZZZZ 约 3.2 亿列，直接按下标赋值会造出超长稀疏数组
+    await rejected('<row r="3"><c r="ZZZZZZ3"><v>1</v></c></row>', 'format');
+    await rejected('<row r="3"><c r="XFE3"><v>1</v></c></row>', 'format');
+    expect(
+      (await readXlsx(await buildXlsx([head], { rowsXml: '<row r="2"><c r="XFD2"><v>1</v></c></row>' }))).rows[1],
+    ).toMatchObject({ rowNo: 2 });
+    await rejected(bombRowsXml(), 'limit');
+    const many = Array.from({ length: 100_001 }, (_, i) => `<c r="A${i + 3}"/>`).join('');
+    await rejected(`<row r="3">${many}</row>`, 'limit');
   });
 
   it('超编区间的 to 是开区间（离职生效日），显示为最后一个在职日', () => {

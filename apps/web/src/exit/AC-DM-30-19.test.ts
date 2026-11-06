@@ -11,6 +11,7 @@ import { ExitPage } from './ExitPage.js';
 import { SessionProvider } from '../foundation/Session.js';
 import { uniqueSuffix } from '../../../../tests/acceptance/support/unique.js';
 import {
+  bombRowsXml,
   buildXlsx,
   confirmationRequired,
   importHeader,
@@ -80,10 +81,10 @@ async function click(text: string) {
   await act(async () => target!.click());
   await settle();
 }
-async function upload(sheet = importSheet) {
+async function upload(sheet = importSheet, options?: Parameters<typeof buildXlsx>[1]) {
   const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
   expect(input, '应有文件选择框').not.toBeNull();
-  const file = new File([await buildXlsx(sheet)], '历史离职.xlsx', {
+  const file = new File([await buildXlsx(sheet, options)], '历史离职.xlsx', {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -187,6 +188,17 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
     await click(ENTRY);
     await upload([[...importHeader.slice(0, 5), '加黑说明'], ...rows]);
     expect(document.body.textContent).toContain('文件内容超过单次导入上限（32 KB），请减少行数或缩短内容后分批导入');
+    expect(writes()).toEqual([]);
+    expect(button('导入')?.disabled).toBe(true);
+  });
+
+  it('异常列坐标与压缩炸弹：就地给出中文提示，不发 preview 也不能导入', async () => {
+    await render();
+    await click(ENTRY);
+    await upload(importSheet, { rowsXml: '<row r="4"><c r="ZZZZZZ4"><v>1</v></c></row>' });
+    expect(document.body.textContent).toContain('文件无法读取，请选择 .xlsx 格式的 Excel 文件');
+    await upload(importSheet, { rowsXml: bombRowsXml() });
+    expect(document.body.textContent).toContain('文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试');
     expect(writes()).toEqual([]);
     expect(button('导入')?.disabled).toBe(true);
   });

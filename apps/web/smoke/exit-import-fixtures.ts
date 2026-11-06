@@ -115,6 +115,9 @@ export const confirmationRequired = (rows: Row[]) => ({
   },
 });
 const pad = (n: number) => String(n).padStart(12, '0');
+/** 压缩炸弹：一个内联字符串单元格解压后 64 MiB，压缩后只有几十 KB。 */
+export const bombRowsXml = () =>
+  `<row r="9"><c r="A9" t="inlineStr"><is><t>${'A'.repeat(64 * 1024 * 1024)}</t></is></c></row>`;
 export const importReceipt = (rows: Row[]) => ({
   batchId: '65000000-0000-4000-8000-000000000001',
   rows: rows.map((row, i) => ({
@@ -128,7 +131,7 @@ export const importReceipt = (rows: Row[]) => ({
 // ---- 最小 xlsx 生成（只供测试造文件：共享字符串 + 数字单元格，deflate 压缩，与 Excel 产物同构） ----
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const column = (index: number) => String.fromCharCode(65 + index);
-function sheetFiles(sheet: Cell[][], date1904: boolean) {
+function sheetFiles(sheet: Cell[][], date1904: boolean, rowsXml = '') {
   const strings: string[] = [];
   const rows = sheet.map((cells, r) => {
     const xml = cells.map((cell, c) => {
@@ -155,7 +158,8 @@ function sheetFiles(sheet: Cell[][], date1904: boolean) {
       strings.map((s) => `<si><t>${escape(s)}</t></si>`).join('') +
       '</sst>',
     'xl/worksheets/sheet1.xml':
-      `<?xml version="1.0" encoding="UTF-8"?><worksheet ${ns}>` + `<sheetData>${rows.join('')}</sheetData></worksheet>`,
+      `<?xml version="1.0" encoding="UTF-8"?><worksheet ${ns}>` +
+      `<sheetData>${rows.join('')}${rowsXml}</sheetData></worksheet>`,
   };
 }
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -195,15 +199,18 @@ function header(size: number, fields: [number, number][]) {
   }
   return bytes;
 }
-/** 生成 .xlsx 字节（ZIP：本地头 + 中央目录 + 目录尾）；date1904 = 工作簿用 1904 日期系统（Mac 版 Excel 可选）。 */
+/**
+ * 生成 .xlsx 字节（ZIP：本地头 + 中央目录 + 目录尾）；date1904 = 工作簿用 1904 日期系统（Mac 版 Excel 可选）。
+ * rowsXml 原样追加到 sheetData 末尾，用来造异常坐标、超大或超多单元格的文件。
+ */
 export async function buildXlsx(
   sheet: Cell[][],
-  options: { date1904?: boolean } = {},
+  options: { date1904?: boolean; rowsXml?: string } = {},
 ): Promise<Uint8Array<ArrayBuffer>> {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
-  for (const [name, text] of Object.entries(sheetFiles(sheet, options.date1904 === true))) {
+  for (const [name, text] of Object.entries(sheetFiles(sheet, options.date1904 === true, options.rowsXml))) {
     const raw = new TextEncoder().encode(text);
     const data = await deflate(raw);
     const path = new TextEncoder().encode(name);
