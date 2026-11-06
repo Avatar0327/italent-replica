@@ -43,10 +43,10 @@ describe('AC-TRF / AC-APV F-474 列宽与详情入口', () => {
     expect(ui.host.querySelector('thead input[type="checkbox"]')).toBeNull();
     expect(ui.widths()).toEqual([160, 118, 146, 146, 146, 128, 128, 128, 128, 118, 146, 95, 100].map((n) => `${n}px`));
   });
-  it('我的申请仅已有四列，时间列宽192，其余174', async () => {
+  it('我的申请按原站 §2.10 七列，列宽 174/174/164/144/174/174/192', async () => {
     await ui.render(h(Applications));
-    expect(ui.headers()).toEqual(['标题', '类别', '审批状态', '申请时间']);
-    expect(ui.widths()).toEqual(['174px', '174px', '174px', '192px']);
+    expect(ui.headers()).toEqual(['标题', '类别', '发起人', '当前处理人', '审批状态', '申请理由', '申请时间']);
+    expect(ui.widths()).toEqual(['174px', '174px', '164px', '144px', '174px', '174px', '192px']);
   });
 });
 

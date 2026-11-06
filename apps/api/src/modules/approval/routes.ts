@@ -1,3 +1,4 @@
+import { listMyApplications, myApplicationsQuery } from './my-applications.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
 import { todoForm, todoSummary } from './todo-summary.js';
 /**
@@ -209,7 +210,7 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
   const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data));
-  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx.tenantId, view)));
+  return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -494,6 +495,13 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/instances', async (c) => {
     const ctx = readCtx(c, deps);
     const page = pageQuery(c);
+    if (c.req.query('view') !== undefined) {
+      const query = myApplicationsQuery(c.req.query());
+      const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
+        listMyApplications(tx, ctx.tenantId, ctx.userId, query, page),
+      );
+      return c.json({ ...result, page: page.page, pageSize: page.pageSize });
+    }
     const role = z.enum(['initiated', 'participated']).parse(c.req.query('role') ?? 'initiated');
     const businessId = c.req.query('businessId');
     if (businessId !== undefined) z.uuid().parse(businessId);

@@ -23,6 +23,8 @@ import {
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { employmentTypeNames } from '../employment/employment-types.js';
+import type { TenantContext } from '../../tenant-context.js';
+import { referenceNames } from './reference-names.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { editSurface, type EditSurface } from './edit-surface.js';
@@ -303,8 +305,14 @@ export type DetailView = ReturnType<typeof detailView>;
  * employmentTypeName（复用任职接口的 employmentTypeNames：带租户条件、取当前名称、停用 / 软删照常取名、查不到为 null）。
  * 只加名称、不改 ID，审批中编辑与提交仍用 ID；未下发的字段没有 ID，也就不会附名称。
  */
-export async function namedForm(tx: Tx, tenantId: string, view: DetailView): Promise<DetailView> {
-  return { ...view, form: (await employmentTypeNames(tx, tenantId, view.form)) as DetailView['form'] };
+export async function namedForm(
+  tx: Tx,
+  ctx: TenantContext & { readonly now: Date },
+  view: DetailView,
+): Promise<DetailView> {
+  const typed = { ...view, form: (await employmentTypeNames(tx, ctx.tenantId, view.form)) as DetailView['form'] };
+  // F-474-3b P2-2：调动原因 / 类型、部门、经理同样按已下发的值取名（见 reference-names.ts）
+  return referenceNames(tx, ctx, view.approvalType, typed);
 }
 
 /** DEC-100：意见框旁的提示（意见默认对所有能打开详情页的人公开）。 */
