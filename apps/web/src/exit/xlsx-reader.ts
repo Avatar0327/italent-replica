@@ -1,13 +1,18 @@
 /**
  * 最小 .xlsx 读取（F-139b，历史离职导入）：只取第一个工作表各单元格的值。
  * 不新增依赖：ZIP 中央目录自己读，deflate 用浏览器自带的 DecompressionStream；
- * 不读样式、批注、合并单元格，公式取缓存值；日期单元格是序列号，由调用方按列换算。
+ * 不读样式、批注、合并单元格，公式取缓存值；日期单元格是序列号，由调用方按列和工作簿日期系统换算。
  */
 export type Cell = string | number | null;
 export interface SheetRow {
   /** Excel 实际行号（1 起），空行不出现。 */
   rowNo: number;
   cells: Cell[];
+}
+export interface Sheet {
+  rows: SheetRow[];
+  /** 工作簿用 1904 日期系统（workbookPr date1904）：序列号 0 = 1904-01-01，否则 1900 系统。 */
+  date1904: boolean;
 }
 export class XlsxError extends Error {}
 
@@ -87,8 +92,8 @@ function sheetRows(xml: string, shared: string[]): SheetRow[] {
   return rows;
 }
 
-/** 读第一个工作表（workbook.xml 中排第一的 sheet），按行返回单元格值。 */
-export async function readXlsx(bytes: Bytes): Promise<SheetRow[]> {
+/** 读第一个工作表（workbook.xml 中排第一的 sheet），按行返回单元格值与工作簿的日期系统。 */
+export async function readXlsx(bytes: Bytes): Promise<Sheet> {
   const { view, entries } = directory(bytes);
   const read = async (name: string) => {
     const entry = entries.get(name);
@@ -99,7 +104,9 @@ export async function readXlsx(bytes: Bytes): Promise<SheetRow[]> {
     if (entry.method === 8) return decoder.decode(await inflate(data));
     throw new XlsxError('unsupported compression');
   };
-  const id = attr(/<sheet\b[^>]*>/.exec((await read('xl/workbook.xml')) ?? '')?.[0] ?? '', 'r:id');
+  const workbook = (await read('xl/workbook.xml')) ?? '';
+  const id = attr(/<sheet\b[^>]*>/.exec(workbook)?.[0] ?? '', 'r:id');
+  const date1904 = ['1', 'true'].includes(attr(/<workbookPr\b[^>]*>/.exec(workbook)?.[0] ?? '', 'date1904') ?? '');
   const rels = (await read('xl/_rels/workbook.xml.rels')) ?? '';
   const relation = [...rels.matchAll(/<Relationship\b[^>]*>/g)].find((tag) => attr(tag[0], 'Id') === id)?.[0];
   const target = relation && attr(relation, 'Target');
@@ -107,8 +114,11 @@ export async function readXlsx(bytes: Bytes): Promise<SheetRow[]> {
   const sheet = await read(target.startsWith('/') ? target.slice(1) : `xl/${target}`);
   if (sheet === undefined) throw new XlsxError('no sheet');
   const shared = [...((await read('xl/sharedStrings.xml')) ?? '').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)];
-  return sheetRows(
-    sheet,
-    shared.map((match) => textOf(match[1]!)),
-  );
+  return {
+    rows: sheetRows(
+      sheet,
+      shared.map((match) => textOf(match[1]!)),
+    ),
+    date1904,
+  };
 }

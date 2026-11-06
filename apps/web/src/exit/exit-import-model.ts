@@ -7,7 +7,7 @@ import { BLACKLIST_REASONS, EXIT_IMPORT_ROW_LIMIT, addDays } from '@italent/doma
 import type { Values } from '../foundation/forms/values.js';
 import { x, xi } from './messages.js';
 import { exits } from './exit-model.js';
-import type { Cell, SheetRow } from './xlsx-reader.js';
+import type { Cell, Sheet } from './xlsx-reader.js';
 
 export const importPath = `${exits}/import`;
 export const previewPath = `${importPath}/preview`;
@@ -35,14 +35,19 @@ const REQUIRED: Field[] = ['employeeNo', 'name', 'entryDate', 'departmentCode', 
 const DATES = new Set<string>(['entryDate', 'lastWorkDate', 'blacklistExpiryDate']);
 const reasonCodes = new Map<string, string>(Object.entries(BLACKLIST_REASONS).map(([code, name]) => [name, code]));
 
-/** Excel 日期序列号（1900 日期系统，0 = 1899-12-30）按 UTC 换算，不经浏览器时区。 */
-function dateOf(serial: number) {
-  if (!Number.isInteger(serial) || serial < 61 || serial > 2958465) return String(serial);
-  return addDays('1899-12-30', serial);
+/**
+ * Excel 日期序列号按工作簿日期系统、按 UTC 字符串换算，不经浏览器时区：
+ * 1900 系统 0 = 1899-12-30（60 是虚构的 1900-02-29，61 起才是真实日期）；1904 系统 0 = 1904-01-01。
+ * 范围外的值原样交服务端按日期格式拒绝。
+ */
+function dateOf(serial: number, date1904: boolean) {
+  const [epoch, first, last] = date1904 ? ['1904-01-01', 0, 2957003] : ['1899-12-30', 61, 2958465];
+  if (!Number.isInteger(serial) || serial < first || serial > last) return String(serial);
+  return addDays(epoch, serial);
 }
-function textOf(field: string, cell: Cell): Text {
+function textOf(field: string, cell: Cell, date1904 = false): Text {
   if (cell === null) return null;
-  if (typeof cell === 'number') return DATES.has(field) ? dateOf(cell) : String(cell);
+  if (typeof cell === 'number') return DATES.has(field) ? dateOf(cell, date1904) : String(cell);
   return cell.trim() || null;
 }
 /** 加入黑名单：是 / TRUE → true，否 / FALSE / 空 → false，其他值 undefined（整份拒绝，不猜）。 */
@@ -71,8 +76,8 @@ function headerOf(cells: Cell[]): Field[] | string {
 }
 
 /** 工作表 → 请求行：rowNo = Excel 行号，空行跳过，空单元格为 null；加黑原因认中文名或编码。 */
-export function importRowsOf(sheet: SheetRow[]): { rows: ImportRow[] } | { error: string } {
-  const [head, ...body] = sheet.filter((row) => row.cells.some((cell) => textOf('', cell) !== null));
+export function importRowsOf(sheet: Sheet): { rows: ImportRow[] } | { error: string } {
+  const [head, ...body] = sheet.rows.filter((row) => row.cells.some((cell) => textOf('', cell) !== null));
   const fields = head ? headerOf(head.cells) : xi.errors.empty;
   if (typeof fields === 'string') return { error: fields };
   if (!body.length) return { error: xi.errors.empty };
@@ -81,7 +86,7 @@ export function importRowsOf(sheet: SheetRow[]): { rows: ImportRow[] } | { error
   for (const { rowNo, cells } of body) {
     const value = (field: Field) => {
       const index = fields.indexOf(field);
-      return index < 0 ? null : textOf(field, cells[index] ?? null);
+      return index < 0 ? null : textOf(field, cells[index] ?? null, sheet.date1904);
     };
     const addToBlacklist = blacklistOf(value('addToBlacklist'));
     if (addToBlacklist === undefined) return { error: xi.errors.blacklist(rowNo) };
