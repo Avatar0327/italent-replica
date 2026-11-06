@@ -1,13 +1,15 @@
 /**
- * 人员结构分析看板（B49）与员工结构两张报表（B53）的只读路由（R2 BE-13a，规格 35“补充：BE-13…”）：
+ * 人员结构分析看板（B49）与员工结构两张报表（B53）的路由（R2 BE-13a，规格 35“补充：BE-13…”）：
  * - GET /api/tenant/analytics/hr-structure?asOf=&<看板筛选>：6.01～6.14 的数据（编码、名称、形态、数值 / 分组）；
  *   看板筛选 = institutionId / institutionIncludeChildren、departmentId / departmentIncludeChildren、sequenceId、
  *   employmentForm、employmentType（两个“包含下级”缺省 true）；
  * - GET …/hr-structure/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的人员明细，分页；
  * - GET …/hr-structure/reports/:report?asOf=&employType=&departmentId=&departmentIncludeChildren=：
  *   一级组织 × 列的报表（字典维度按字典展开）。
- * 看板对象 TenantBase.HrStructure、报表对象 TenantBase.HrStructureReport，各自的查看权与数据范围；只读，不写台账 / 审计。
- * 下载归前端（DEC-708），这里没有导出接口。
+ * - GET …/hr-structure/reports/quality/export?<页面当前筛选>&mode=data|formula：员工素质结构的 xlsx 下载
+ *   （F-482，DEC-803②、DEC-809；岗位结构页签不导出）。
+ * 看板对象 TenantBase.HrStructure、报表对象 TenantBase.HrStructureReport，各自的查看权与数据范围。看板、明细和报表查询只读，
+ * 不写台账 / 审计；导出沿用报表对象的查看权与数据范围（能看就能导出），每次成功导出写一条对象操作日志（原站未测，复刻口径）。
  */
 import { isUuid, withTenant, type Tx } from '@italent/db';
 import {
@@ -26,6 +28,8 @@ import { objectContext } from '../permission/module-route-access.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { analyticsScope } from './hr-dashboard-routes.js';
 import { jobDictionary, orgTree, structurePeople } from './hr-structure.js';
+import { exportMode, exportStatReport } from './stat-report-export.js';
+import { qualitySheet } from './stat-report-layout.js';
 import {
   componentMembers,
   filterPeople,
@@ -153,14 +157,9 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
 
   router.get(`${HR_STRUCTURE_BASE}/reports/:report`, async (c) => {
     const ctx = await reportContext(c, deps);
-    const report = HR_STRUCTURE_REPORTS.find((item) => item.code === c.req.param('report'));
-    if (!report) throw new AppError('NOT_FOUND', '报表不存在');
-    const employType = c.req.query('employType') ?? 'internal';
-    if (!(HR_STRUCTURE_REPORT_EMPLOY_TYPES as readonly string[]).includes(employType))
-      throw new AppError('VALIDATION_FAILED', `employType 只能是 ${HR_STRUCTURE_REPORT_EMPLOY_TYPES.join(' / ')}`);
-    const types = employType === 'all' ? ['internal', 'intern'] : [employType];
-    const filter = departmentFilter(c);
-    const { lookup, people } = await loadPeople(deps, ctx, types, filter);
+    const report = reportOf(c);
+    const employType = employTypeQuery(c);
+    const { lookup, people } = await loadPeople(deps, ctx, employTypes(employType), departmentFilter(c));
     return c.json({
       asOf: ctx.asOf,
       report: report.code,
@@ -170,4 +169,43 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
       ...structureReport(report.code, people, lookup),
     });
   });
+
+  // 导出：只有「员工素质结构」；与页面报表接口同一份数据与裁剪，平均值不取整（F-482）
+  router.get(`${HR_STRUCTURE_BASE}/reports/:report/export`, async (c) => {
+    const ctx = await reportContext(c, deps);
+    const report = reportOf(c);
+    if (report.code !== 'quality') throw new AppError('NOT_FOUND', '该报表没有导出');
+    const mode = exportMode(c);
+    const employType = employTypeQuery(c);
+    const filter = departmentFilter(c);
+    const { lookup, people } = await loadPeople(deps, ctx, employTypes(employType), filter);
+    const page = structureReport(report.code, people, lookup, { exact: true });
+    return exportStatReport(c, deps, ctx.base, {
+      object: HR_STRUCTURE_REPORT_OBJECT,
+      reportCode: report.code,
+      fileName: '员工素质结构.xlsx', // 原站文件名 = 报表名.xlsx（evidence §4），与页签名「员工素质结构统计」不同
+      mode,
+      // 审计摘要要能区分取数范围：“包含下级”的实际生效值（缺省 = 勾选）一并记（审查 P2-1，DEC-809④）
+      filter: {
+        asOf: ctx.asOf,
+        employType,
+        departmentId: filter.departmentId ?? null,
+        departmentIncludeChildren: filter.departmentIncludeChildren,
+      },
+      layout: (stamp) => qualitySheet(page, stamp),
+    });
+  });
 }
+
+function reportOf(c: Context) {
+  const report = HR_STRUCTURE_REPORTS.find((item) => item.code === c.req.param('report'));
+  if (!report) throw new AppError('NOT_FOUND', '报表不存在');
+  return report;
+}
+function employTypeQuery(c: Context): string {
+  const employType = c.req.query('employType') ?? 'internal';
+  if (!(HR_STRUCTURE_REPORT_EMPLOY_TYPES as readonly string[]).includes(employType))
+    throw new AppError('VALIDATION_FAILED', `employType 只能是 ${HR_STRUCTURE_REPORT_EMPLOY_TYPES.join(' / ')}`);
+  return employType;
+}
+const employTypes = (employType: string) => (employType === 'all' ? ['internal', 'intern'] : [employType]);

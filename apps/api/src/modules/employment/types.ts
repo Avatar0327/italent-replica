@@ -134,8 +134,9 @@ export interface EmploymentContext {
   /**
    * 离职门禁的可信端口（R2-T03 §4A）：只能由服务端内部构造（测试造数 / R2-T04 退休），HTTP 与审批路径不可达；
    * 带它的离职创建不经门禁，保持 main 的创建与落地行为，且不写离职扩展行。
+   * 'import'（F-139a，设计 §4.3）：历史离职导入服务专用——入职与离职两条业务都带它；离职先存 approved，由导入服务落地。
    */
-  readonly trustedExit?: 'seed' | 'retirement';
+  readonly trustedExit?: 'seed' | 'retirement' | 'import';
   /** 非保存当时落地（定时生效、HR 重试、审批通过）：迟到执行按实际执行日对齐联动（DEC-186 / DEC-195②）。 */
   readonly deferredExecution?: boolean;
   /** 系统代发（BE-15a 自动转正，R2e7）：userId 是规则配置的发起人，审批发起日志标“系统代发”。 */

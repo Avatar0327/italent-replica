@@ -157,17 +157,22 @@ const count = (key: string, label: string, test: (p: Person) => boolean): Column
   label,
   value: (people) => people.filter(test).length,
 });
-const average = (key: string, label: string, sample: (p: Person) => number | null): Column => ({
+/** 页面平均值保留 1 位（segmentAverage）；导出文件要不取整的值（F-482，原站文件数值不取整），exact = true。 */
+const average = (key: string, label: string, sample: (p: Person) => number | null, exact = false): Column => ({
   key,
   label,
-  value: (people) => segmentAverage(people.map(sample).filter((v): v is number => v !== null)),
+  value: (people) => {
+    const samples = people.map(sample).filter((v): v is number => v !== null);
+    if (!exact) return segmentAverage(samples);
+    return samples.length ? samples.reduce((sum, v) => sum + v, 0) / samples.length : null;
+  },
 });
 const total: Column = { key: 'total', label: '合计', value: (people) => people.length };
 const genders = GENDER_SEGMENTS.slice(0, 2).map(({ key, label }) =>
   count(`gender:${key}`, label, (p) => genderSegment(p.gender) === key),
 );
 
-function qualityColumns(x: StructureLookup): Column[] {
+function qualityColumns(x: StructureLookup, exact: boolean): Column[] {
   return [
     total,
     ...genders,
@@ -177,9 +182,9 @@ function qualityColumns(x: StructureLookup): Column[] {
     ...TENURE_SEGMENTS.map((s) =>
       count(`tenure:${s.key}`, s.label, (p) => tenureSegment(p.entryDate, x.asOf, p.workYearCompanyBefore) === s.key),
     ),
-    average('avgTenure', '平均司龄', (p) => tenureSample(p.entryDate, x.asOf, p.workYearCompanyBefore)),
+    average('avgTenure', '平均司龄', (p) => tenureSample(p.entryDate, x.asOf, p.workYearCompanyBefore), exact),
     ...AGE_SEGMENTS.map((s) => count(`age:${s.key}`, s.label, (p) => ageSegment(p.birthday, x.asOf) === s.key)),
-    average('avgAge', '平均年龄', (p) => ageSample(p.birthday, x.asOf)),
+    average('avgAge', '平均年龄', (p) => ageSample(p.birthday, x.asOf), exact),
   ];
 }
 
@@ -218,8 +223,13 @@ function positionColumns(people: readonly Person[], x: StructureLookup): Column[
 }
 
 /** 一张报表：行 = 有人的一级组织（按名称），summary = 全部人员；单元格与列同一函数。 */
-export function structureReport(code: HrStructureReportCode, people: readonly Person[], x: StructureLookup) {
-  const columns = code === 'quality' ? qualityColumns(x) : positionColumns(people, x);
+export function structureReport(
+  code: HrStructureReportCode,
+  people: readonly Person[],
+  x: StructureLookup,
+  options: { readonly exact?: boolean } = {},
+) {
+  const columns = code === 'quality' ? qualityColumns(x, options.exact ?? false) : positionColumns(people, x);
   const cells = (group: readonly Person[]) =>
     Object.fromEntries(columns.map((column) => [column.key, column.value(group)]));
   const byOrg = new Map<string, Person[]>();

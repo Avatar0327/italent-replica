@@ -59,6 +59,17 @@ export const GRAPH: Graph = {
     '#isRecord',
   ],
   'packages/domain/src/employment/exit-handover.ts#isDays': ['#HANDOVER_REMIND_DAYS_MAX'],
+  'packages/domain/src/employment/exit-import.ts#duplicateEmployeeNoRows': ['#normalizedNo'],
+  'packages/domain/src/employment/exit-import.ts#exitImportEffectiveDate': [
+    'packages/domain/src/contracts/rules.ts#addDays',
+  ],
+  'packages/domain/src/employment/exit-import.ts#validateExitImportBlacklist': [
+    'packages/domain/src/audit/retention.ts#isIsoDate',
+  ],
+  'packages/domain/src/employment/exit-import.ts#validateExitImportDates': [
+    'packages/domain/src/audit/retention.ts#isIsoDate',
+    '#invalidDate',
+  ],
   'packages/domain/src/employment/exit-notice-templates.ts#EXIT_NOTICE_TEMPLATES': [
     '#FLOW_TERMINATED_BY_EXIT_TEMPLATE',
   ],
