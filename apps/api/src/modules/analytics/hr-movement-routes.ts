@@ -1,10 +1,12 @@
 /**
- * 人员流动分析看板（B50）与流动情况报表（B54）的只读路由（R2 BE-13b，规格 35“补充：BE-13…”、“流动情况各报表的算法”）：
+ * 人员流动分析看板（B50）与流动情况报表（B54）的路由（R2 BE-13b，规格 35“补充：BE-13…”、“流动情况各报表的算法”）：
  * - GET /api/tenant/analytics/hr-movement?asOf=&departmentId=：6.25～6.32、3.1.36（近 12 个月相对 asOf）；
  * - GET …/hr-movement/components/:code?group=&page=&pageSize=：构成数字（或某个分组）的人员明细，分页；
  * - GET …/hr-movement/reports/:report?asOf=&year=&month=&departmentId=&parentId=：六个页签的行 × 列。
- * 看板对象 TenantBase.HrMovement、报表对象 TenantBase.HrMovementReport，各自的查看权与数据范围；只读，不写台账 / 审计。
- * 下载归前端（DEC-708），这里没有导出接口。
+ * - GET …/hr-movement/reports/:report/export?<页面当前筛选>&mode=data|formula：各月 / 各机构两个页签的 xlsx 下载
+ *   （F-482，DEC-803②、DEC-809；其余页签不导出）。
+ * 看板对象 TenantBase.HrMovement、报表对象 TenantBase.HrMovementReport，各自的查看权与数据范围。看板、明细和报表查询只读，
+ * 不写台账 / 审计；导出沿用报表对象的查看权与数据范围（能看就能导出），每次成功导出写一条对象操作日志（原站未测，复刻口径）。
  */
 import { withTenant } from '@italent/db';
 import {
@@ -13,9 +15,11 @@ import {
   HR_MOVEMENT_REPORT_OBJECT,
   HR_MOVEMENT_REPORTS,
   movementMonths,
+  type HrMovementReportCode,
 } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { AppError } from '../../errors.js';
+import { exportStatReport, exportMode } from './stat-report-export.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery } from '../job/context.js';
@@ -31,6 +35,7 @@ import {
   type MovementLookup,
 } from './hr-movement-board.js';
 import { movementReport, reportWindow, type ReportPeriod } from './hr-movement-report.js';
+import { institutionSheet, monthlySheet } from './stat-report-layout.js';
 import { jobDictionary, orgTree } from './hr-structure.js';
 import { groupQuery, uuidQuery } from './hr-structure-routes.js';
 
@@ -95,6 +100,38 @@ function periodOf(c: Context, asOf: string): ReportPeriod {
   return { year, month: integer(c.req.query('month'), 'month', 1, last) ?? last, asOf };
 }
 
+const EXPORTABLE = HR_MOVEMENT_REPORTS.filter((item) => item.code === 'monthly' || item.code === 'institution');
+
+/** 一个页签的表格（页面接口与导出共用，数据范围、部门筛选、组织树都在这里一次裁好）。 */
+function reportTables(
+  deps: TenantRouteDeps,
+  ctx: Analytics,
+  code: HrMovementReportCode,
+  period: ReportPeriod,
+  departmentId: string | undefined,
+  parentId: string | undefined,
+) {
+  const { base, scope, asOf } = ctx;
+  return withTenant(deps.db, base.tenantId, async (tx) => {
+    const a = { tenantId: base.tenantId, asOf, scope };
+    const tree = await orgTree(tx, base.tenantId, asOf);
+    const sequences = await jobDictionary(tx, base.tenantId, asOf, 'sequence');
+    const window = reportWindow(code, period);
+    // 组织编制页签只要年度取数日（年底与 asOf 较早者）的编制与实有人员，不加载整年流动数据
+    const onEstablishment = code === 'establishment';
+    const data = onEstablishment ? await loadSnapshots(tx, a, window.days) : await loadMovement(tx, a, window);
+    const establishment = onEstablishment ? await loadEstablishment(tx, { ...base, scope }, window.to) : [];
+    return movementReport(code, period, {
+      tree,
+      sequences,
+      exitDictionaries: code === 'outflow' ? await loadExitDictionaries(tx, base.tenantId) : { types: [], reasons: [] },
+      data: filterMovement(data, tree, departmentId),
+      establishment: filterEstablishment(establishment, tree, departmentId),
+      parentId,
+    });
+  });
+}
+
 export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(HR_MOVEMENT_BASE, async (c) => {
     const ctx = await boardContext(c, deps);
@@ -146,26 +183,33 @@ export function registerHrMovementRoutes(router: Hono<TenantEnv>, deps: TenantRo
       month: report.code === 'institution' ? period.month : null,
       hasDataPermission: ctx.scope.hasDataPermission,
     };
-    const { base, scope, asOf } = ctx;
-    const tables = await withTenant(deps.db, base.tenantId, async (tx) => {
-      const a = { tenantId: base.tenantId, asOf, scope };
-      const tree = await orgTree(tx, base.tenantId, asOf);
-      const sequences = await jobDictionary(tx, base.tenantId, asOf, 'sequence');
-      const window = reportWindow(report.code, period);
-      // 组织编制页签只要年度取数日（年底与 asOf 较早者）的编制与实有人员，不加载整年流动数据
-      const onEstablishment = report.code === 'establishment';
-      const data = onEstablishment ? await loadSnapshots(tx, a, window.days) : await loadMovement(tx, a, window);
-      const establishment = onEstablishment ? await loadEstablishment(tx, { ...base, scope }, window.to) : [];
-      return movementReport(report.code, period, {
-        tree,
-        sequences,
-        exitDictionaries:
-          report.code === 'outflow' ? await loadExitDictionaries(tx, base.tenantId) : { types: [], reasons: [] },
-        data: filterMovement(data, tree, departmentId),
-        establishment: filterEstablishment(establishment, tree, departmentId),
-        parentId,
-      });
-    });
+    const tables = await reportTables(deps, ctx, report.code, period, departmentId, parentId);
     return c.json({ ...head, tables });
+  });
+
+  // 导出：与页面报表接口同一份数据与裁剪，只多一层 xlsx 排版（F-482）
+  router.get(`${HR_MOVEMENT_BASE}/reports/:report/export`, async (c) => {
+    const ctx = await reportContext(c, deps);
+    const report = EXPORTABLE.find((item) => item.code === c.req.param('report'));
+    if (!report) throw new AppError('NOT_FOUND', '该报表没有导出');
+    const mode = exportMode(c);
+    const period = periodOf(c, ctx.asOf);
+    const departmentId = uuidQuery(c, 'departmentId');
+    const [table] = await reportTables(deps, ctx, report.code, period, departmentId, undefined);
+    const rows = table!.rows.map((row) => ({ label: row.label, cells: row.cells }));
+    return exportStatReport(c, deps, ctx.base, {
+      object: HR_MOVEMENT_REPORT_OBJECT,
+      reportCode: report.code,
+      fileName: `${report.name}.xlsx`,
+      mode,
+      filter:
+        report.code === 'institution'
+          ? { asOf: ctx.asOf, year: period.year, month: period.month, departmentId: departmentId ?? null }
+          : { asOf: ctx.asOf, year: period.year, departmentId: departmentId ?? null },
+      layout: (stamp) =>
+        report.code === 'monthly'
+          ? monthlySheet(period.year, rows, stamp)
+          : institutionSheet({ year: period.year, month: period.month! }, rows, stamp),
+    });
   });
 }

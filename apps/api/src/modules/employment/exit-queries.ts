@@ -33,8 +33,8 @@ export const EXIT_STATES = [
   'deleted',
 ] as const satisfies readonly EmploymentState[];
 
-/** 发起方式筛选：direct = 直接离职（mode=direct），其余按申请的发起人身份（§3.2）。 */
-export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct'] as const;
+/** 发起方式筛选：direct = 直接离职（mode=direct），import = 历史导入（mode=import，F-139a），其余按申请的发起人身份（§3.2）。 */
+export const EXIT_INITIATIONS = ['hr', 'self', 'manager', 'direct', 'import'] as const;
 export type ExitInitiationFilter = (typeof EXIT_INITIATIONS)[number];
 
 export interface ExitViewFilter {
@@ -68,7 +68,7 @@ export interface ExitRow {
   whereaboutsCode: string | null;
   whereaboutsName: string | null;
   status: EmploymentState;
-  mode: 'application' | 'direct';
+  mode: 'application' | 'direct' | 'import';
   initiator: 'hr' | 'self' | 'manager';
   initiatorUserId: string;
   batchId: string | null;
@@ -111,7 +111,7 @@ export interface ExitItem {
   readonly status: EmploymentState;
   /** 路由层并入；读模型本身不产生。 */
   readonly actions?: readonly ExitActionCode[];
-  readonly mode: 'application' | 'direct';
+  readonly mode: 'application' | 'direct' | 'import';
   readonly initiator: 'hr' | 'self' | 'manager';
   readonly initiatorUserId: string;
   readonly batchId: string | null;
@@ -231,7 +231,7 @@ export function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[
   if (filter.reasonCode) parts.push(sql`lower(x.reason_code)=lower(${filter.reasonCode})`);
   if (filter.whereaboutsCode) parts.push(sql`lower(x.whereabouts_code)=lower(${filter.whereaboutsCode})`);
   if (filter.status) parts.push(sql`s.state=${filter.status}`);
-  if (filter.initiation === 'direct') parts.push(sql`x.mode='direct'`);
+  if (filter.initiation === 'direct' || filter.initiation === 'import') parts.push(sql`x.mode=${filter.initiation}`);
   else if (filter.initiation) parts.push(sql`(x.mode='application' AND x.initiator=${filter.initiation})`);
   return parts;
 }
