@@ -49,6 +49,29 @@ describe('AC-DM-30-19 导入文件解析', () => {
     });
   });
 
+  it('日期序列号按工作簿日期系统换算：同一日期在 1900 / 1904 系统下得到相同请求报文', async () => {
+    // 1904 系统（workbookPr date1904）的序列号比 1900 系统小 1462 天；文本日期不受影响
+    const in1904 = importSheet.map((cells, r) =>
+      r ? cells.map((c) => (typeof c === 'number' ? c - 1462 : c)) : cells,
+    );
+    const read1904 = importRowsOf(await readXlsx(await buildXlsx(in1904, { date1904: true })));
+    expect(read1904).toEqual(await rowsOf(importSheet));
+    expect(read1904).toEqual({ rows: importRows });
+    // 1904 系统 0 = 1904-01-01；按 UTC 字符串换算，不经浏览器时区
+    const one = (serial: number, date1904?: boolean) =>
+      buildXlsx([importHeader.slice(0, 5), ['H0003', '合成丙', serial, 'D-SYN-01', '2025-01-31']], { date1904 });
+    const entryOf = async (serial: number, date1904?: boolean) => {
+      const parsed = importRowsOf(await readXlsx(await one(serial, date1904)));
+      return 'rows' in parsed ? parsed.rows[0]!.entryDate : parsed.error;
+    };
+    expect(await entryOf(0, true)).toBe('1904-01-01');
+    expect(await entryOf(43538, true)).toBe('2023-03-15');
+    // 1900 系统闰年边界：60 是 Excel 虚构的 1900-02-29，原样交服务端拒绝；61 = 1900-03-01
+    expect(await entryOf(61)).toBe('1900-03-01');
+    expect(await entryOf(60)).toBe('60');
+    expect(await entryOf(45000)).toBe('2023-03-15');
+  });
+
   it('超编区间的 to 是开区间（离职生效日），显示为最后一个在职日', () => {
     expect(warningText(warning)).toBe('2023-04-01 至 2025-07-31 超出编制（峰值 6，编制 5）');
   });

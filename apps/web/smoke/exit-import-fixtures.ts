@@ -137,7 +137,7 @@ export const importReceipt = (rows: Row[]) => ({
 // ---- 最小 xlsx 生成（只供测试造文件：共享字符串 + 数字单元格，deflate 压缩，与 Excel 产物同构） ----
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const column = (index: number) => String.fromCharCode(65 + index);
-function sheetFiles(sheet: Cell[][]) {
+function sheetFiles(sheet: Cell[][], date1904: boolean) {
   const strings: string[] = [];
   const rows = sheet.map((cells, r) => {
     const xml = cells.map((cell, c) => {
@@ -154,6 +154,7 @@ function sheetFiles(sheet: Cell[][]) {
   return {
     'xl/workbook.xml':
       `<?xml version="1.0" encoding="UTF-8"?><workbook ${ns} xmlns:r="${rel}">` +
+      (date1904 ? '<workbookPr date1904="1"/>' : '') +
       '<sheets><sheet name="离职人员" sheetId="1" r:id="rId1"/></sheets></workbook>',
     'xl/_rels/workbook.xml.rels':
       '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -203,12 +204,15 @@ function header(size: number, fields: [number, number][]) {
   }
   return bytes;
 }
-/** 生成 .xlsx 字节（ZIP：本地头 + 中央目录 + 目录尾）。 */
-export async function buildXlsx(sheet: Cell[][]): Promise<Uint8Array<ArrayBuffer>> {
+/** 生成 .xlsx 字节（ZIP：本地头 + 中央目录 + 目录尾）；date1904 = 工作簿用 1904 日期系统（Mac 版 Excel 可选）。 */
+export async function buildXlsx(
+  sheet: Cell[][],
+  options: { date1904?: boolean } = {},
+): Promise<Uint8Array<ArrayBuffer>> {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
-  for (const [name, text] of Object.entries(sheetFiles(sheet))) {
+  for (const [name, text] of Object.entries(sheetFiles(sheet, options.date1904 === true))) {
     const raw = new TextEncoder().encode(text);
     const data = await deflate(raw);
     const path = new TextEncoder().encode(name);
