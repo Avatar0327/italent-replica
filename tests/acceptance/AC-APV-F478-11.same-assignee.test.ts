@@ -8,11 +8,12 @@ import {
   activationsOf,
   approveCurrent,
   approveTo,
-  direct,
+  otherwise,
   pendingKey,
   pendingOf,
   publishRouted,
   routeScene,
+  when,
 } from './AC-APV-F478-support.js';
 
 const testDb = useTestDb();
@@ -22,7 +23,7 @@ describe('AC-APV-F478-11 路径前驱参与自动处理', () => {
     const s = await routeScene(testDb().db, 'f478-11-skip');
     const same = { type: 'specified' as const, value: s.people.n1.userId };
     await publishRouted(s.w, s.nodes({ n3: { approver: same, sameAssigneeSkip: true } }).slice(0, 3), {
-      n1: [approveTo(direct('n3'))],
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), otherwise('n2'))],
     });
     const view = await approveCurrent(s, await s.start(s.depts.d1));
     expect(view.status).toBe('approved');
@@ -36,7 +37,7 @@ describe('AC-APV-F478-11 路径前驱参与自动处理', () => {
     const s = await routeScene(testDb().db, 'f478-11-previous');
     const previous = { type: 'context_variable' as const, value: 'previous_approved' };
     await publishRouted(s.w, s.nodes({ n3: { approver: previous } }).slice(0, 3), {
-      n1: [approveTo(direct('n3'))],
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), otherwise('n2'))],
     });
     const view = await approveCurrent(s, await s.start(s.depts.d1));
     expect(pendingKey(view)).toBe('n3');

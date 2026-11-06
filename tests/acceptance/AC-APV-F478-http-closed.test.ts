@@ -5,7 +5,16 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { uniqueSuffix } from './support/unique.js';
-import { APV, activationsOf, approveTo, direct, pendingOf, publishRouted, routeScene } from './AC-APV-F478-support.js';
+import {
+  APV,
+  activationsOf,
+  approveTo,
+  otherwise,
+  pendingOf,
+  publishRouted,
+  routeScene,
+  when,
+} from './AC-APV-F478-support.js';
 
 const testDb = useTestDb();
 
@@ -37,7 +46,9 @@ describe('F-478 S1 routes 不对 HTTP 开放', () => {
 describe('F-478 S1 命令台账重放', () => {
   it('同一命令 ID 重放同意：返回首次结果，不重复写激活行', async () => {
     const s = await routeScene(testDb().db, 'f478-replay');
-    await publishRouted(s.w, s.nodes().slice(0, 3), { n1: [approveTo(direct('n3'))] });
+    await publishRouted(s.w, s.nodes().slice(0, 3), {
+      n1: [approveTo(when(1, 'eq', s.depts.d2, 'n2'), otherwise('n3'))],
+    });
     const view = await s.start(s.depts.d1);
     const task = pendingOf(view)[0]!;
     const call = () =>

@@ -77,6 +77,8 @@ export interface RouteScene {
   nodes(overrides?: Partial<Record<'n1' | 'n2' | 'n3' | 'n4', Partial<NodeInput>>>): NodeInput[];
   /** 新建一名在原部门任职的员工并发起转入 dept 的调动申请。 */
   start(dept: string | null): Promise<InstanceView>;
+  /** 以已有的人为被调动对象发起（该人是本单涵盖主体，开启多主体回避的节点会自动跳过他）。 */
+  startAbout(person: Person, dept: string | null): Promise<InstanceView>;
 }
 
 const KEYS = ['n1', 'n2', 'n3', 'n4'] as const;
@@ -104,8 +106,10 @@ export async function routeScene(db: Db, label: string): Promise<RouteScene> {
     },
     async start(dept) {
       counter += 1;
-      const subject = await w.person(`调动员工${counter}`, home);
-      const application = await w.application(subject.employeeId, dept === null ? {} : { departmentId: dept });
+      return this.startAbout(await w.person(`调动员工${counter}`, home), dept);
+    },
+    async startAbout(person, dept) {
+      const application = await w.application(person.employeeId, dept === null ? {} : { departmentId: dept });
       return w.submit(application);
     },
   };

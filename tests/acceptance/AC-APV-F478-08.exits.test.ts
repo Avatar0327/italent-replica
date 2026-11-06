@@ -10,9 +10,11 @@ import {
   direct,
   disagreeCurrent,
   disagreeTo,
+  otherwise,
   pendingKey,
   publishRouted,
   routeScene,
+  when,
 } from './AC-APV-F478-support.js';
 
 const testDb = useTestDb();
@@ -20,7 +22,9 @@ const testDb = useTestDb();
 describe('AC-APV-F478-08 出口去向', () => {
   it('同意出口直指 END → 实例通过，终局只发生一次', async () => {
     const s = await routeScene(testDb().db, 'f478-08-end');
-    await publishRouted(s.w, s.nodes().slice(0, 3), { n1: [approveTo(direct('END'))] });
+    await publishRouted(s.w, s.nodes().slice(0, 3), {
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'END'), otherwise('n2'))],
+    });
     const done = await approveCurrent(s, await s.start(s.depts.d1));
     expect(done.status).toBe('approved');
     expect(done.logs.filter((l) => l.event === 'complete')).toHaveLength(1);

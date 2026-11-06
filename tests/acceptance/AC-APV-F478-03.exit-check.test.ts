@@ -135,7 +135,7 @@ describe('AC-APV-F478-03 路由条件载体互斥', () => {
   it('发布的路由流程仍保留互斥约束：已发布版本的路由行不可再删（沿用草稿保护）', async () => {
     const s = await scene('f478-03-published');
     const published = await publishRouted(s.w, s.nodes, {
-      solo: [{ exit: 'approve', branches: [{ kind: 'direct', target: 'END' }] }],
+      solo: [{ exit: 'approve', branches: [{ kind: 'direct', target: 'joint' }] }],
     });
     const versionId = await seedRoute(s.w, published.id);
     const state = await sqlState(s.w, (tx) =>

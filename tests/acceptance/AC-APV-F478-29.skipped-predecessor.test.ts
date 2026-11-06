@@ -18,9 +18,13 @@ const testDb = useTestDb();
 describe('AC-APV-F478-29 被跳过节点作前驱', () => {
   it('N2 无人可审被跳过，N3 的前驱是 N2；驳回到上一步重新进入 N2，仍满足条件再次跳过并新开 N3 激活', async () => {
     const s = await routeScene(testDb().db, 'f478-29-skip-again');
-    const headless = { type: 'department' as const, value: 'record_department_head' };
-    await publishRouted(s.w, s.nodes({ n2: { approver: headless, noAssignee: 'skip' } }).slice(0, 3), {});
-    let view = await approveCurrent(s, await s.start(s.depts.d1));
+    // N2 的审批人就是本单被调动的人：多主体回避命中，自动跳过，且每次进入都满足（不依赖审批历史）
+    await publishRouted(
+      s.w,
+      s.nodes({ n2: { actions: { avoidSelf: false, avoidSubjects: true, rejectToPrevious: true } } }).slice(0, 3),
+      {},
+    );
+    let view = await approveCurrent(s, await s.startAbout(s.people.n2, s.depts.d1));
     expect(view.tasks.find((t) => t.nodeKey === 'n2')).toMatchObject({ status: 'skipped' });
     expect(pendingKey(view)).toBe('n3');
     const before = await activationsOf(s.w, view.id);

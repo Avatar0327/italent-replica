@@ -36,10 +36,19 @@ describe('AC-APV-F478-13 撤回 / 重提 / 跳转', () => {
     expect(retrieved.status, await retrieved.clone().text()).toBe(200);
     expect(pendingKey(await s.w.detail(open.id))).toBe('n1');
 
-    const processed = await approveCurrent(s, await s.start(s.depts.d1));
-    expect(pendingKey(processed)).toBe('n4');
-    const first = processed.tasks.find((t) => t.nodeKey === 'n1')!;
-    const denied = await taskPost(s, processed, 'retrieve', {}, first.id, s.people.n1.userId);
+    // 下游 N3 被系统自动处理（相同审批人）不算人工处理，与 main 一致仍可撤回
+    const auto = await approveCurrent(s, await s.start(s.depts.d1));
+    expect(pendingKey(auto)).toBe('n4');
+    const autoFirst = auto.tasks.find((t) => t.nodeKey === 'n1')!;
+    const again = await taskPost(s, auto, 'retrieve', {}, autoFirst.id, s.people.n1.userId);
+    expect(again.status, await again.clone().text()).toBe(200);
+
+    // 下游 N2 已被人工同意 → 不可撤回
+    const second = await approveCurrent(s, await s.start(s.depts.d2));
+    const moved = await approveCurrent(s, second);
+    expect(pendingKey(moved)).toBe('n3');
+    const first = moved.tasks.find((t) => t.nodeKey === 'n1')!;
+    const denied = await taskPost(s, moved, 'retrieve', {}, first.id, s.people.n1.userId);
     expect(denied.status).toBe(409);
   });
 
@@ -66,7 +75,7 @@ describe('AC-APV-F478-13 撤回 / 重提 / 跳转', () => {
   it('rejecting_node 重提：回到被驳回的节点，其前驱保持不变', async () => {
     const s = await routeScene(testDb().db, 'f478-13-rejecting');
     await publishRouted(s.w, s.nodes({ n3: { rejectResubmit: 'rejecting_node' } }).slice(0, 3), {
-      n1: [approveTo(direct('n3'))],
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), otherwise('n2'))],
     });
     let view = await approveCurrent(s, await s.start(s.depts.d1));
     const before = (await activationsOf(s.w, view.id)).at(-1)!;
@@ -88,7 +97,7 @@ describe('AC-APV-F478-13 撤回 / 重提 / 跳转', () => {
   it('跳转到路径外节点后，按该节点自己的出口继续', async () => {
     const s = await routeScene(testDb().db, 'f478-13-jump');
     await publishRouted(s.w, s.nodes(), {
-      n1: [approveTo(direct('n3'))],
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), otherwise('n2'))],
       n2: [approveTo(direct('n4'))],
     });
     let view = await s.start(s.depts.d1);
