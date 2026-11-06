@@ -55,7 +55,7 @@ const leave = {
   title: '合成员工的离职申请',
   status: 'approved',
   approvalType: 'leave',
-  form: { values: { effectiveDate: '2026-11-30', lastWorkDate: '2026-11-29', kind: 'leave' } },
+  form: { values: { effectiveDate: '2026-11-30', lastWorkDate: '2026-11-29', kind: 'leave' }, originals: {} },
 };
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -71,7 +71,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
 });
-async function render(detail: typeof transfer, flags: Record<string, boolean> = {}) {
+async function render(detail: Omit<typeof transfer, 'form'> & { form: unknown }, flags: Record<string, boolean> = {}) {
   const fetcher = vi.fn(async (url: string) =>
     String(url).includes('/logs?')
       ? new Response(JSON.stringify({ items: detail.logs, recordsHidden: false, page: 1, pageSize: 20 }))
