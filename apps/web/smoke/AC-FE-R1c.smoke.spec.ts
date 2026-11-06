@@ -46,19 +46,7 @@ test.beforeEach(async ({ page }) => {
       });
     }
     if (path.endsWith('/instances'))
-      return route.fulfill({
-        json: {
-          items: [
-            {
-              id: instance,
-              title: '合成员工的调动申请',
-              status: 'running',
-              approvalType: 'transfer',
-              revision: 4,
-            },
-          ],
-        },
-      });
+      return route.fulfill({ json: { items: [applicationRow('running')], total: 1, page: 1, pageSize: 15 } });
     return route.fulfill({ json: currentView === 'completed' ? detail(5, 'approved') : detail() });
   });
   await transferFixtures(page);
@@ -83,6 +71,18 @@ function detail(revision = 4, status = 'running') {
     ],
   };
 }
+// 与 GET /approval/instances?view=applications 同形（AC-APV-F474-3b-applications 固定的键）
+const applicationRow = (status: string) => ({
+  id: instance,
+  title: '合成员工的调动申请',
+  status,
+  approvalType: 'transfer',
+  approvalTypeName: '调动',
+  initiatorName: '合成发起人',
+  currentHandlers: status === 'running' ? ['合成审批人'] : [],
+  createdAt: '2026-10-12T01:00:00Z',
+});
+const applications = (status: string) => ({ items: [applicationRow(status)], total: 1, page: 1, pageSize: 15 });
 const button = (label: string) => new RegExp(`^${label.split('').join('\\s*')}$`);
 test('AC-FE-F248 系统撤销详情显示操作人和理由，空 actions 仅可查看', async ({ page }) => {
   const cancelled = {
@@ -98,7 +98,9 @@ test('AC-FE-F248 系统撤销详情显示操作人和理由，空 actions 仅可
     ],
   };
   await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: cancelled }));
-  await page.route('**/api/tenant/approval/instances?**', (route) => route.fulfill({ json: { items: [cancelled] } }));
+  await page.route('**/api/tenant/approval/instances?**', (route) =>
+    route.fulfill({ json: applications('cancelled') }),
+  );
   await switchIdentity(page, '/approval/applications');
   await openTodo(page);
   const entry = page.locator('.approval-log');
@@ -135,7 +137,9 @@ test('AC-FE-F264FE 已处理审批详情显示审批人姓名和系统，旧日�
     ],
   };
   await page.route(`**/api/tenant/approval/instances/${instance}`, (route) => route.fulfill({ json: processed }));
-  await page.route('**/api/tenant/approval/instances?**', (route) => route.fulfill({ json: { items: [processed] } }));
+  await page.route('**/api/tenant/approval/instances?**', (route) =>
+    route.fulfill({ json: applications('cancelled') }),
+  );
   await switchIdentity(page, '/approval/applications');
   await openTodo(page);
   const entries = page.locator('.approval-log');
@@ -177,6 +181,9 @@ test('AC-FE-R1c-03 调动列表、表单、我的申请与注释', async ({ page
   await page.getByRole('button', { name: '返回调动管理', exact: true }).click();
   await expect(page.getByRole('button', { name: '调动中员工', exact: true, pressed: true })).toBeVisible();
   await openSection(page, '我的申请');
+  for (const name of ['标题', '类别', '发起人', '当前处理人', '审批状态', '申请理由', '申请时间'])
+    await expect(page.getByRole('columnheader', { name })).toBeVisible();
+  await expect(page.getByText('共1条')).toBeVisible();
   await page.getByRole('button', { name: '合成员工的调动申请', exact: true }).click();
   await expect(page.getByText('合成工作地', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: button('返回') }).click();

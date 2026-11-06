@@ -51,3 +51,10 @@ export interface ApprovalLog {
 export interface ApprovalList extends PageResult<ApprovalRow> {
   demo?: boolean;
 }
+/** GET /instances?view=applications 的一行（apps/api my-applications.ts）。 */
+export interface ApplicationRow extends ApprovalRow {
+  approvalTypeName: string;
+  initiatorName: string | null;
+  currentHandlers: string[];
+}
+export type ApplicationSort = { field: 'createdAt' | 'status'; order: 'asc' | 'desc' };
