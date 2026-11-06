@@ -7,6 +7,7 @@
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
+import { assertRowReachable, ROW_NOT_FOUND } from './hidden-rows.js';
 import { BASELINE_CHANGED, baselineIssues } from './item-check.js';
 import type { ItemWorld } from './item-tree.js';
 import { auditItem, bumpRevision, loadItems, updateItem, type ItemsResult, type OrgItem } from './items-store.js';
@@ -28,10 +29,18 @@ export function assertWorldBaselines(world: ItemWorld) {
   }
 }
 
-export async function rebaseItem(tx: Tx, ctx: WriteContext, id: string, itemId: string): Promise<ItemsResult> {
+export async function rebaseItem(
+  tx: Tx,
+  ctx: WriteContext,
+  id: string,
+  itemId: string,
+  hidden: ReadonlySet<string>,
+): Promise<ItemsResult> {
   const view = await editable(tx, ctx, id);
-  const item = (await loadItems(tx, ctx.tenantId, id)).find((row) => row.id === itemId);
-  if (!item) throw new AppError('NOT_FOUND', '组织调整明细不存在');
+  const items = await loadItems(tx, ctx.tenantId, id);
+  const item = items.find((row) => row.id === itemId);
+  if (!item) throw new AppError('NOT_FOUND', ROW_NOT_FOUND);
+  assertRowReachable(items, itemId, hidden);
   return rebase(tx, ctx, view.approvalSubjectOrgId, id, view.effectiveDate, [item]);
 }
 

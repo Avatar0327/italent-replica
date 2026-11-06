@@ -16,6 +16,7 @@ import {
 } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { OrgAdjustmentPausedError } from '../org-adjustment/pause.js';
 import { ensureOrgSetup } from './codes.js';
 import { loadOrgSnapshot } from './read-model.js';
 import { createOrganization, type OrgWriteContext, updateOrganization } from './write-service.js';
@@ -220,13 +221,17 @@ async function importRow(
 /** 不吞掉行内错误：命令事务撤销整批写入，行号从 0 起，保留原业务码与字段错误。 */
 function rowError(error: unknown, row: OrgImportRow, rowIndex: number): unknown {
   const details = { rowIndex, sourceCode: row.sourceCode };
-  if (error instanceof AppError)
-    return new AppError(error.code, error.message, {
-      ...(typeof error.details === 'object' && error.details !== null ? error.details : {}),
+  if (error instanceof AppError) {
+    const extra = {
       ...details,
       // 审计任务沿用统一导入错误契约（row 从 1 起）；API 同时保留原来的 0 起 rowIndex。
       errors: [{ row: rowIndex + 1, code: error.code, details: error.details }],
-    });
+    };
+    // 执行暂停错误保持原类型：编号披露按查看人可见性在路由层补（F-342 / F-355）
+    if (error instanceof OrgAdjustmentPausedError) return error.withDetails(extra);
+    const original = typeof error.details === 'object' && error.details !== null ? error.details : {};
+    return new AppError(error.code, error.message, { ...original, ...extra });
+  }
   const code = pgErrorCode(error);
   if (code === '23505') return new AppError('CONFLICT', '导入编码或映射冲突', details);
   if (code === '23503' || code === '23514') return new AppError('VALIDATION_FAILED', '导入行数据不合法', details);

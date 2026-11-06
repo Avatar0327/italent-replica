@@ -1,5 +1,5 @@
 {
-  "id": "f0783f28-a201-4403-9ff0-d979f389854a",
+  "id": "6076da03-d8d7-4d7a-bd8f-361d922a3853",
   "prevId": "a697099e-d9fc-4c81-b1e2-ec6d20411bfb",
   "version": "7",
   "dialect": "postgresql",
@@ -12639,91 +12639,6 @@
           "value": "\"employment_records\".\"inheritance_source_id\" <> \"employment_records\".\"id\""
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.employment_rehire_seniority_snapshots": {
-      "name": "employment_rehire_seniority_snapshots",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_version_id": {
-          "name": "snapshot_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_rehire_seniority_snapshot_fk": {
-          "name": "employment_rehire_seniority_snapshot_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "employment_payload_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "snapshot_version_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_business_id_pk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.employment_setting_versions": {
@@ -44704,700 +44619,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.attachment_blobs": {
-      "name": "attachment_blobs",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bytes": {
-          "name": "bytes",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "attachment_blobs_tenant_id_tenants_id_fk": {
-          "name": "attachment_blobs_tenant_id_tenants_id_fk",
-          "tableFrom": "attachment_blobs",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "attachment_blobs_file_fk": {
-          "name": "attachment_blobs_file_fk",
-          "tableFrom": "attachment_blobs",
-          "tableTo": "attachment_files",
-          "columnsFrom": [
-            "tenant_id",
-            "file_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "attachment_blobs_tenant_id_file_id_pk": {
-          "name": "attachment_blobs_tenant_id_file_id_pk",
-          "columns": [
-            "tenant_id",
-            "file_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "attachment_blobs_size": {
-          "name": "attachment_blobs_size",
-          "value": "octet_length(\"attachment_blobs\".\"bytes\") <= 10485760"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.attachment_cleanup_attempts": {
-      "name": "attachment_cleanup_attempts",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period": {
-          "name": "period",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "attachment_cleanup_attempts_tenant_id_tenants_id_fk": {
-          "name": "attachment_cleanup_attempts_tenant_id_tenants_id_fk",
-          "tableFrom": "attachment_cleanup_attempts",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "attachment_cleanup_file_fk": {
-          "name": "attachment_cleanup_file_fk",
-          "tableFrom": "attachment_cleanup_attempts",
-          "tableTo": "attachment_files",
-          "columnsFrom": [
-            "tenant_id",
-            "file_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "attachment_cleanup_attempts_tenant_id_file_id_kind_pk": {
-          "name": "attachment_cleanup_attempts_tenant_id_file_id_kind_pk",
-          "columns": [
-            "tenant_id",
-            "file_id",
-            "kind"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "attachment_cleanup_kind": {
-          "name": "attachment_cleanup_kind",
-          "value": "\"attachment_cleanup_attempts\".\"kind\" IN ('expire','purge')"
-        },
-        "attachment_cleanup_status": {
-          "name": "attachment_cleanup_status",
-          "value": "\"attachment_cleanup_attempts\".\"status\" IN ('succeeded','failed')"
-        },
-        "attachment_cleanup_attempts_nonneg": {
-          "name": "attachment_cleanup_attempts_nonneg",
-          "value": "\"attachment_cleanup_attempts\".\"attempts\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.attachment_files": {
-      "name": "attachment_files",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_employee_id": {
-          "name": "owner_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'registered'"
-        },
-        "business_type": {
-          "name": "business_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sealed_at": {
-          "name": "sealed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "filename": {
-          "name": "filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "declared_type": {
-          "name": "declared_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "byte_size": {
-          "name": "byte_size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sha256": {
-          "name": "sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "uploaded_at": {
-          "name": "uploaded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cleanup_at": {
-          "name": "cleanup_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "purged_at": {
-          "name": "purged_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "attachment_files_owner": {
-          "name": "attachment_files_owner",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "attachment_files_business": {
-          "name": "attachment_files_business",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "attachment_files_expiry": {
-          "name": "attachment_files_expiry",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "attachment_files_cleanup": {
-          "name": "attachment_files_cleanup",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "cleanup_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "attachment_files_tenant_id_tenants_id_fk": {
-          "name": "attachment_files_tenant_id_tenants_id_fk",
-          "tableFrom": "attachment_files",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "attachment_files_owner_member_fk": {
-          "name": "attachment_files_owner_member_fk",
-          "tableFrom": "attachment_files",
-          "tableTo": "tenant_memberships",
-          "columnsFrom": [
-            "tenant_id",
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "user_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "attachment_files_owner_employee_fk": {
-          "name": "attachment_files_owner_employee_fk",
-          "tableFrom": "attachment_files",
-          "tableTo": "employment_employees",
-          "columnsFrom": [
-            "tenant_id",
-            "owner_employee_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "attachment_files_tenant_id": {
-          "name": "attachment_files_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "attachment_files_status": {
-          "name": "attachment_files_status",
-          "value": "\"attachment_files\".\"status\" IN ('registered','uploaded','bound','detached','pending_cleanup','purged')"
-        },
-        "attachment_files_purpose": {
-          "name": "attachment_files_purpose",
-          "value": "\"attachment_files\".\"purpose\" IN ('exit.handwritten_application')"
-        },
-        "attachment_files_size": {
-          "name": "attachment_files_size",
-          "value": "\"attachment_files\".\"byte_size\" BETWEEN 1 AND 10485760"
-        },
-        "attachment_files_hash": {
-          "name": "attachment_files_hash",
-          "value": "\"attachment_files\".\"sha256\" ~ '^[a-f0-9]{64}$'"
-        },
-        "attachment_files_mime": {
-          "name": "attachment_files_mime",
-          "value": "\"attachment_files\".\"content_type\" IS NULL OR \"attachment_files\".\"content_type\" IN ('image/jpeg','image/png','image/gif','image/bmp')"
-        },
-        "attachment_files_bound_business": {
-          "name": "attachment_files_bound_business",
-          "value": "\"attachment_files\".\"status\" NOT IN ('bound','detached') OR (\"attachment_files\".\"business_type\" IS NOT NULL AND \"attachment_files\".\"business_id\" IS NOT NULL)"
-        },
-        "attachment_files_revision": {
-          "name": "attachment_files_revision",
-          "value": "\"attachment_files\".\"revision\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.attachment_outbox": {
-      "name": "attachment_outbox",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_type": {
-          "name": "event_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "attachment_outbox_command": {
-          "name": "attachment_outbox_command",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "command_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "file_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "attachment_outbox_cursor": {
-          "name": "attachment_outbox_cursor",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "attachment_outbox_tenant_id_tenants_id_fk": {
-          "name": "attachment_outbox_tenant_id_tenants_id_fk",
-          "tableFrom": "attachment_outbox",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "attachment_outbox_file_fk": {
-          "name": "attachment_outbox_file_fk",
-          "tableFrom": "attachment_outbox",
-          "tableTo": "attachment_files",
-          "columnsFrom": [
-            "tenant_id",
-            "file_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "attachment_outbox_state": {
-          "name": "attachment_outbox_state",
-          "value": "\"attachment_outbox\".\"state\" IN ('pending','sent','failed','unknown')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.account_avatar_attachments": {
       "name": "account_avatar_attachments",
       "schema": "",
@@ -63225,11 +62446,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 6"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm', 'employmentType')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -66052,6 +65273,91 @@
           "value": "\"duty_transfer_records\".\"attempt_count\" >= 0 AND \"duty_transfer_records\".\"revision\" > 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.employment_rehire_seniority_snapshots": {
+      "name": "employment_rehire_seniority_snapshots",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot_version_id": {
+          "name": "snapshot_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk": {
+          "name": "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_rehire_seniority_snapshots",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_rehire_seniority_snapshot_fk": {
+          "name": "employment_rehire_seniority_snapshot_fk",
+          "tableFrom": "employment_rehire_seniority_snapshots",
+          "tableTo": "employment_payload_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id",
+            "snapshot_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "business_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "employment_rehire_seniority_snapshots_tenant_id_business_id_pk": {
+          "name": "employment_rehire_seniority_snapshots_tenant_id_business_id_pk",
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

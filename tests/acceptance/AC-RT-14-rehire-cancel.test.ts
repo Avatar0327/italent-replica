@@ -1,6 +1,6 @@
 /**
  * R2-T04 BE-5b / AC-RT-14：同时返聘的互斥与撤销（设计 §4.4、§6 #6，DEC-638 A-11）。
- * ① 同时返聘 + 加黑 → 400 RETIREMENT_REHIRE_BLACKLIST_CONFLICT；
+ * ① 同时返聘 + 加黑 → 400 RETIREMENT_FIELD_NOT_ALLOWED（F-351：退休不收加黑字段，DEC-716；原互斥码随之下线）；
  *    通用入口不接受 reEmployed / rehire（400 RETIREMENT_REHIRE_USE_ENDPOINT）。
  * ② 已生成返聘的退休撤销 → 409 RETIREMENT_HAS_REHIRE（专用撤销入口与通用 DELETE 同一判定，在任何写之前）；
  *    先经通用 DELETE 删除返聘业务（真实路径可达）后可撤销，不级联。
@@ -19,7 +19,7 @@ async function world(label: string) {
 }
 
 describe('AC-RT-14 互斥', () => {
-  it('同时返聘 + 加黑 → 400 RETIREMENT_REHIRE_BLACKLIST_CONFLICT，无任何写入', async () => {
+  it('同时返聘 + 加黑 → 400 RETIREMENT_FIELD_NOT_ALLOWED，无任何写入；不返聘的加黑退休同样 400', async () => {
     const x = await world('rt14-blacklist');
     const before = await x.stateOf(x.employee.id);
     const response = await x.postRehire(
@@ -27,15 +27,15 @@ describe('AC-RT-14 互斥', () => {
         exit: { addToBlacklist: true, blacklistReason: 'instability' },
       }),
     );
-    expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'RETIREMENT_REHIRE_BLACKLIST_CONFLICT' });
+    expect(await x.reason(response)).toMatchObject({ status: 400, reason: 'RETIREMENT_FIELD_NOT_ALLOWED' });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
-    // 对照：不返聘的加黑退休照常创建
     const plain = await x.postRehire({
       mode: 'application',
       lastWorkDate: '2026-10-20',
       exit: { addToBlacklist: true, blacklistReason: 'instability' },
     });
-    expect(plain.status, await plain.clone().text()).toBe(201);
+    expect(await x.reason(plain)).toMatchObject({ status: 400, reason: 'RETIREMENT_FIELD_NOT_ALLOWED' });
+    expect(await x.stateOf(x.employee.id)).toEqual(before);
   });
 
   it('通用入口 POST employees/:id/businesses 带 reEmployed / rehire → 400 RETIREMENT_REHIRE_USE_ENDPOINT', async () => {
@@ -78,7 +78,6 @@ describe('AC-RT-14 撤销已生成返聘的退休（A-11）', () => {
     });
     const removed = await x.session.request('DELETE', `/businesses/${retire.id}`, {
       ifMatch: (await x.business(retire.id)).revision,
-      body: { reason: '录入有误' },
     });
     expect(await x.reason(removed)).toMatchObject({ status: 409, reason: 'RETIREMENT_HAS_REHIRE' });
     expect(await x.stateOf(x.employee.id)).toEqual(before);

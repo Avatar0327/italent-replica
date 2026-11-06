@@ -50,10 +50,10 @@ describe('AC-RT-18c view=cancelled 固定夹具', () => {
     expect((await view()).items).toEqual([]);
 
     // 夹具时钟固定时两次撤销的 created_at 相同，排序退化为随机 UUID；第二次显式推后一天，顺序才是确定的
-    await x.retireCancelled(approved.id, { reason: '录入有误' });
-    await x.atDay('2026-10-07', () => x.retireCancelled(process.id, { reason: '不办了' }));
-    await x.atDay('2026-10-08', () => x.retireCancelled(later.id, { reason: '第三条' }));
-    await x.atDay('2026-10-09', () => x.retireCancelled(latest.id, { reason: '第四条' }));
+    await x.retireCancelled(approved.id);
+    await x.atDay('2026-10-07', () => x.retireCancelled(process.id));
+    await x.atDay('2026-10-08', () => x.retireCancelled(later.id));
+    await x.atDay('2026-10-09', () => x.retireCancelled(latest.id));
     await x.cancelled(leave.id, { reason: '离职撤销' });
 
     const page = await view();
@@ -65,24 +65,18 @@ describe('AC-RT-18c view=cancelled 固定夹具', () => {
       id: process.id,
       employeeId: second.id,
       status: 'deleted',
-      cancellation: { reason: '不办了', case: 'process_voided', stateBefore: 'draft', revision: 1 },
+      cancellation: { reason: null, case: 'process_voided', stateBefore: 'draft', revision: 1 },
     });
     expect(page.items[3]).toMatchObject({
       id: approved.id,
       employeeId: x.employee.id,
       status: 'voided',
-      cancellation: { reason: '录入有误', case: 'approved_voided', stateBefore: 'approved', revision: 1 },
+      cancellation: { reason: null, case: 'approved_voided', stateBefore: 'approved', revision: 1 },
     });
     expect(page.items[0]!.cancellation).toHaveProperty('id');
     expect(page.items[0]!.cancellation).toHaveProperty('createdAt');
     expect(page.items[0]).not.toHaveProperty('exitTypeCode');
-    // 改撤销原因后视图读到新值
-    const patched = await x.session.request('PATCH', `/retirements/cancellations/${page.items[3]!.cancellation.id}`, {
-      ifMatch: 1,
-      body: { reason: '更正' },
-    });
-    expect(patched.status, await patched.clone().text()).toBe(200);
-    expect((await view()).items[3]!.cancellation).toMatchObject({ reason: '更正', revision: 2 });
+    // F-351：退休不收撤销原因，也没有改原因的入口（PATCH retirements/cancellations/:id → 404，见 AC-RT-F351）
     // 离职撤销视图仍只有离职的那一条
     const exits = await x.session.request('GET', '/exits?view=cancellations');
     expect(((await exits.json()) as { items: { id: string }[] }).items.map((item) => item.id)).toEqual([leave.id]);
@@ -147,7 +141,7 @@ describe('AC-RT-18c 范围与字段', () => {
   it('字段权裁剪：无状态 / 创建时间字段权 → cancellation.stateBefore / case / createdAt 缺席；无退休专有字段权 → 缺席', async () => {
     const { x, view } = await world('rt18c-fields');
     const retire = await x.directRetire('2026-10-25');
-    await x.retireCancelled(retire.id, { reason: '裁剪' });
+    await x.retireCancelled(retire.id);
     const base = ['id', 'employeeId', 'revision', 'name', 'code'];
     const sighted = x.restricted(denyButtons(), undefined, [
       ...base,
@@ -163,11 +157,11 @@ describe('AC-RT-18c 范围与字段', () => {
       id: retire.id,
       status: 'voided',
       reEmployed: false,
-      cancellation: { reason: '裁剪', case: 'approved_voided', stateBefore: 'approved' },
+      cancellation: { reason: null, case: 'approved_voided', stateBefore: 'approved' },
     });
     expect(full.cancellation).toHaveProperty('createdAt');
     const trimmed = (await view(blind)).items[0]!;
-    expect(trimmed).toMatchObject({ id: retire.id, cancellation: { reason: '裁剪', revision: 1 } });
+    expect(trimmed).toMatchObject({ id: retire.id, cancellation: { reason: null, revision: 1 } });
     for (const key of ['status', 'reEmployed', 'retireType']) expect(trimmed).not.toHaveProperty(key);
     for (const key of ['stateBefore', 'case', 'createdAt']) expect(trimmed.cancellation).not.toHaveProperty(key);
   });

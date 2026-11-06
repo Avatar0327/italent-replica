@@ -24,7 +24,7 @@ export const ORG_SECTION = 'org';
 export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosure) {
   const head = await loadHead(tx, tenantId, disclosure.view.id);
   if (!head) throw notFound();
-  const [projected] = await projectHeads(tx, tenantId, [head], disclosure.fields);
+  const [projected] = await projectHeads(tx, tenantId, [head], disclosure.fields, disclosure.orgScope);
   const sections: Record<string, { count: number; hiddenRowCount: number }> = {};
   if (orgSectionDisclosed(disclosure)) {
     const { items, hiddenRowCount } = visibleItems(disclosure, await loadItems(tx, tenantId, head.id));

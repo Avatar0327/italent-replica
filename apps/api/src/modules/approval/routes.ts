@@ -24,7 +24,7 @@ import {
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { runCommand, type CommandGuard, type CommandResult } from '../../commands.js';
-import { handleError } from '../../errors.js';
+import { pauseDisclosureHandler } from '../org-adjustment/pause-disclosure.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
@@ -258,7 +258,8 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   registerHooks(deps);
   // F-039：子应用套本模块登记表（APPROVAL_POLICIES），注册行不变、处理函数不变
   const module = policedSub(router, APPROVAL_POLICIES, () => new Hono<TenantEnv>());
-  module.onError(handleError);
+  // 审批通过后的任职联动可能撞到组织调整的执行暂停：编号按查看人的调整单可见性披露（F-342 / F-355）
+  module.onError(pauseDisclosureHandler(deps));
   registerProcessRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
   registerSimulationRoutes(module, deps);

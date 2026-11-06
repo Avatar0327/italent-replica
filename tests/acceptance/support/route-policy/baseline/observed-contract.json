@@ -5795,6 +5795,9 @@
       },
       "module": "employment",
       "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
         "object": [
           "readPageContext"
         ],
@@ -5832,6 +5835,41 @@
         "scope": [
           "employment visibility",
           "readPageContext",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/employment/retirements/employees/:id/in-flight": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "domain": [
+          "transfer.initiator"
+        ],
+        "object": [
+          "object.* 动作",
+          "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
         ]
@@ -8034,6 +8072,7 @@
           "TenantBase.OrganizationApproval:view"
         ],
         "scope": [
+          "creator scope",
           "scopeSql"
         ]
       }
@@ -13665,54 +13704,6 @@
         ]
       }
     },
-    "PATCH /api/tenant/employment/retirements/cancellations/:id": {
-      "edge": {
-        "anonymous": {
-          "code": "UNAUTHENTICATED",
-          "status": 401
-        },
-        "member": {
-          "code": "REVISION_REQUIRED",
-          "status": 400
-        },
-        "nonMember": {
-          "code": "TENANT_NOT_MEMBER",
-          "status": 403
-        }
-      },
-      "module": "employment",
-      "primitives": {
-        "command": [
-          "revision(c)",
-          "runCommand / runWrite"
-        ],
-        "domain": [
-          "employment.exitMode",
-          "transfer.initiator"
-        ],
-        "fieldsIn": [
-          "requireEmploymentWrite"
-        ],
-        "fieldsOut": [
-          "employment runWrite()"
-        ],
-        "object": [
-          "object.* 动作",
-          "readContext(object.*)"
-        ],
-        "objectOp": [
-          "TenantBase.EmploymentRecord:update"
-        ],
-        "scope": [
-          "employment scope",
-          "employment visibility",
-          "readContext（非配置对象）"
-        ],
-        "scopePoint": [
-          "employment point"
-        ]
-      }
-    },
     "PATCH /api/tenant/establishment/capacities/:id": {
       "edge": {
         "anonymous": {
@@ -14543,13 +14534,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"
@@ -23633,13 +23626,15 @@
           "runCommand / runWrite"
         ],
         "fieldsIn": [
+          "requireObjectWrite",
           "writeFields"
         ],
         "guard": [
           "orgAdjustment.item"
         ],
         "object": [
-          "objectContext"
+          "objectContext",
+          "requireObjectWrite（对象写操作权）"
         ],
         "objectOp": [
           "TenantBase.OrganizationApproval:update"

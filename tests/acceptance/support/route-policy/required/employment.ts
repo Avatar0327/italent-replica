@@ -3683,7 +3683,6 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5a′ 撤销退休（同一套，按钮 RetireCancel）----
   'POST /api/tenant/employment/retirements/:id/cancel': exitCancelCommand(RETIRE_CANCEL),
   'POST /api/tenant/employment/retirements/:id/restore': exitCancelRestore(RETIRE_CANCEL),
-  'PATCH /api/tenant/employment/retirements/cancellations/:id': exitCancellationPatch(RETIRE_CANCEL),
   // ---- R2-T03 B5 离职视图与详情（exit-routes.ts registerExitViews）--------------------------------------------------
   'GET /api/tenant/employment/exits': [
     ...[
@@ -3889,6 +3888,23 @@ export const EMPLOYMENT: RequiredTable = {
   // ---- R2-T04 BE-5d1 退休五视图与详情（retirement-view-routes.ts registerRetirementViews）-------------------------------
   'GET /api/tenant/employment/retirements': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements', "const ctx = await readPageContext(c, deps, 'list')")),
+  ],
+  // F-410 按员工查在途退休单：入口只判员工对象查看权（readContext object.view + 资源 id），内容走详情同一裁剪
+  'GET /api/tenant/employment/retirements/employees/:id/in-flight': [
+    ob(
+      `obj:${RECORD}:view`,
+      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view', 'object:object.* 动作'],
+      [
+        at(
+          RETIRE_VIEWS,
+          'GET',
+          '/retirements/employees/:id/in-flight',
+          "const ctx = await readContext(c, deps, 'object.view', 0, id)",
+        ),
+        READ,
+        RECORD_CONST,
+      ],
+    ),
   ],
   'GET /api/tenant/employment/retirements/:id': [
     recordView(at(RETIRE_VIEWS, 'GET', '/retirements/:id', "const ctx = await readPageContext(c, deps, 'detail')")),

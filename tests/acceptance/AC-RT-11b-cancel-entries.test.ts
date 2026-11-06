@@ -1,6 +1,6 @@
 /**
  * R2-T04 BE-5a′ / AC-RT-11b：撤销入口与重放（设计 §6 接线点 1～4、7，§12.1）。
- * 专用入口 POST retirements/:id/cancel、restore、PATCH retirements/cancellations/:id 与离职同一实现；通用 DELETE businesses/:id
+ * 专用入口 POST retirements/:id/cancel、restore 与离职同一实现（F-351：退休撤销不收原因，PATCH 修改原因入口已下线）；通用 DELETE businesses/:id
  * 对退休单走撤销；同幂等键对专用入口与通用 DELETE 重放都得首次回执；业务类型与路径不一致一律 404；通用 revoke 409 USE_EXIT_CANCEL。
  */
 import './support/exit-gate-enforced.js';
@@ -39,7 +39,7 @@ describe('AC-RT-11b 通用入口映射：退休单不留绕过 §6B 的删除路
     },
   );
 
-  it('通用 DELETE 对退休单与专用撤销同一实现：带原因成功（已批准 / 已生效），缺原因 400', async () => {
+  it('通用 DELETE 对退休单与专用撤销同一实现：不带原因成功（已批准 / 已生效），带原因 400（F-351）', async () => {
     const x = await world('rt11b-delete');
     const approved = await x.directRetire('2026-10-25');
     const remove = async (id: string, body?: object) =>
@@ -47,14 +47,17 @@ describe('AC-RT-11b 通用入口映射：退休单不留绕过 §6B 的删除路
         ifMatch: (await x.business(id)).revision,
         ...(body ? { body } : {}),
       });
-    expect(await x.reason(await remove(approved.id))).toMatchObject({ status: 400, code: 'VALIDATION_FAILED' });
-    const removed = await remove(approved.id, { reason: '误录入' });
+    expect(await x.reason(await remove(approved.id, { reason: '误录入' }))).toMatchObject({
+      status: 400,
+      code: 'VALIDATION_FAILED',
+    });
+    const removed = await remove(approved.id);
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect(await x.stateOfBusiness(approved.id)).toBe('voided');
-    expect(await x.cancellationOf(approved.id)).toMatchObject({ case: 'approved_voided', reason: '误录入' });
+    expect(await x.cancellationOf(approved.id)).toMatchObject({ case: 'approved_voided', reason: null });
 
     const effective = await x.createdRetire(x.employee.id, retireBody('2026-10-05', 'direct'));
-    const reinstated = await remove(effective.id, { reason: '误办理' });
+    const reinstated = await remove(effective.id);
     expect(reinstated.status, await reinstated.clone().text()).toBe(200);
     expect(await x.cancellationOf(effective.id)).toMatchObject({ case: 'record_deleted_reinstated' });
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire']);
@@ -66,7 +69,6 @@ describe('AC-RT-11b 通用入口映射：退休单不留绕过 §6B 的删除路
     const draft = await x.createdRetire(x.employee.id, retireBody('2026-10-20', 'application'));
     const removed = await x.session.request('DELETE', `/businesses/${draft.id}`, {
       ifMatch: (await x.business(draft.id)).revision,
-      body: { reason: '不办了' },
     });
     expect(removed.status, await removed.clone().text()).toBe(200);
     expect(await x.cancellationOf(draft.id)).toMatchObject({ case: 'process_voided', stateBefore: 'draft' });
@@ -90,8 +92,7 @@ describe('AC-RT-11b 幂等重放：专用入口与通用 DELETE 各自同键重�
     const x = await world('rt11b-replay');
     const retire = await x.directRetire('2026-10-25');
     const revision = (await x.business(retire.id)).revision;
-    const send = () =>
-      x.cancelRetire(retire.id, { reason: '原因' }, { ifMatch: revision, idempotencyKey: 'rt-replay-1' });
+    const send = () => x.cancelRetire(retire.id, {}, { ifMatch: revision, idempotencyKey: 'rt-replay-1' });
     const first = await send();
     expect(first.status, await first.clone().text()).toBe(200);
     const firstBody = await first.json();
@@ -111,7 +112,6 @@ describe('AC-RT-11b 幂等重放：专用入口与通用 DELETE 各自同键重�
     const send = () =>
       x.session.request('DELETE', `/businesses/${retire.id}`, {
         ifMatch: revision,
-        body: { reason: '原因' },
         idempotencyKey: 'rt-replay-2',
       });
     const first = await send();
@@ -167,42 +167,6 @@ describe('AC-RT-11b restore：授权先于不支持', () => {
       reason: 'EXIT_RESTORE_NOT_SUPPORTED',
     });
     expect(await x.stateOf(x.employee.id)).toEqual(before);
-  });
-});
-
-describe('AC-RT-11b PATCH retirements/cancellations/:id 修改撤销原因', () => {
-  it('revision 乐观锁；只有 reason 可改；退休与离职的撤销记录各走各的路径（互相 404）', async () => {
-    const x = await world('rt11b-patch');
-    const retire = await x.directRetire('2026-10-25');
-    const result = await x.retireCancelled(retire.id, { reason: '原原因' });
-    const patch = (path: string, body: object, ifMatch = result.cancellation.revision) =>
-      x.session.request('PATCH', `${path}/${result.cancellation.id}`, { ifMatch, body });
-
-    const updated = await patch('/retirements/cancellations', { reason: '  新原因  ' });
-    expect(updated.status, await updated.clone().text()).toBe(200);
-    expect(await updated.json()).toMatchObject({ id: result.cancellation.id, reason: '新原因', revision: 2 });
-    expect(await x.auditActions(result.cancellation.id)).toContain('exit.cancellation.update');
-    expect(await x.reason(await patch('/retirements/cancellations', { reason: '再改' }, 1))).toMatchObject({
-      status: 409,
-      code: 'REVISION_CONFLICT',
-    });
-    for (const body of [{}, { reason: '' }, { reason: 'x', case: 'approved_voided' }])
-      expect(await x.reason(await patch('/retirements/cancellations', body, 2))).toMatchObject({
-        status: 400,
-        code: 'VALIDATION_FAILED',
-      });
-    // 退休的撤销记录不能经离职路径改，反之亦然
-    expect((await patch('/exits/cancellations', { reason: '串号' }, 2)).status).toBe(404);
-    const colleague = await x.newcomer('另一人');
-    const leave = await x.directLeave('2026-10-28', undefined, colleague.id);
-    const leaveResult = await x.cancelled(leave.id, { reason: '离职原因' });
-    const crossed = await x.session.request('PATCH', `/retirements/cancellations/${leaveResult.cancellation.id}`, {
-      ifMatch: 1,
-      body: { reason: '串号' },
-    });
-    expect(crossed.status).toBe(404);
-    expect((await x.cancellationOf(leave.id))!.reason).toBe('离职原因');
-    expect((await x.cancellationOf(retire.id))!.reason).toBe('新原因');
   });
 });
 
