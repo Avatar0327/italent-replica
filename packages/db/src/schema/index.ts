@@ -16,6 +16,7 @@ export * from './talent.js';
 export * from './qualification.js';
 export * from './evaluation.js';
 export * from './idp.js';
+export * from './attachments.js';
 export * from './avatar.js';
 export * from './talent-review.js';
 export * from './talent-review-template-results.js';
