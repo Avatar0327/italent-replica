@@ -131,6 +131,27 @@ export const importReceipt = (rows: Row[]) => ({
 // ---- 最小 xlsx 生成（只供测试造文件：共享字符串 + 数字单元格，deflate 压缩，与 Excel 产物同构） ----
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const column = (index: number) => String.fromCharCode(65 + index);
+/** count 行只填必填列的合成数据（工号 H0001 起）。 */
+export const requiredRows = (count: number): Cell[][] =>
+  Array.from({ length: count }, (_, i) => [
+    `H${String(i + 1).padStart(4, '0')}`,
+    `合成${i + 1}`,
+    '2023-03-15',
+    'D-SYN-01',
+    '2025-06-30',
+  ]);
+/** 预先铺好格式的空白行：每格只有样式 s="1"（styles.xml 里的填充色），没有值，与 Excel 刷过格式的模板同构。 */
+export const styledBlankRowsXml = (from: number, count: number, columns = importHeader.length) =>
+  Array.from({ length: count }, (_, i) => {
+    const cells = Array.from({ length: columns }, (_, c) => `<c r="${column(c)}${from + i}" s="1"/>`);
+    return `<row r="${from + i}">${cells.join('')}</row>`;
+  }).join('');
+/** 每行只在最右列 XFD 放一个单元格：不给 value 是只有样式的空白格，给了是有值的格。 */
+export const xfdRowsXml = (from: number, count: number, value?: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const ref = `XFD${from + i}`;
+    return `<row r="${from + i}">${value === undefined ? `<c r="${ref}" s="1"/>` : `<c r="${ref}"><v>${value}</v></c>`}</row>`;
+  }).join('');
 function sheetFiles(sheet: Cell[][], date1904: boolean, rowsXml = '') {
   const strings: string[] = [];
   const rows = sheet.map((cells, r) => {
@@ -153,6 +174,13 @@ function sheetFiles(sheet: Cell[][], date1904: boolean, rowsXml = '') {
     'xl/_rels/workbook.xml.rels':
       '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       `<Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+    // 第 2 号 xf 带实心填充：空白格靠 s="1" 引用它（读取器不读样式，只为与 Excel 产物同构）
+    'xl/styles.xml':
+      `<?xml version="1.0" encoding="UTF-8"?><styleSheet ${ns}><fills count="3">` +
+      '<fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/></patternFill></fill></fills>' +
+      '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
+      '<xf numFmtId="0" fontId="0" fillId="2" borderId="0" applyFill="1"/></cellXfs></styleSheet>',
     'xl/sharedStrings.xml':
       `<?xml version="1.0" encoding="UTF-8"?><sst ${ns}>` +
       strings.map((s) => `<si><t>${escape(s)}</t></si>`).join('') +

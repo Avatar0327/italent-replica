@@ -7,7 +7,9 @@ import {
   importHeader,
   importRows,
   importSheet,
+  requiredRows,
   warning,
+  xfdRowsXml,
   type Cell,
 } from '../../smoke/exit-import-fixtures.js';
 import { readXlsx } from './xlsx-reader.js';
@@ -127,6 +129,26 @@ describe('AC-DM-30-19 导入文件解析', () => {
     await rejected(bombRowsXml(), 'limit');
     const many = Array.from({ length: 100_001 }, (_, i) => `<c r="A${i + 3}"/>`).join('');
     await rejected(`<row r="3">${many}</row>`, 'limit');
+  });
+
+  it('尾部 10,000 行各一个 XFD 单元格：空白格式格不展开成稠密数组；有值时累计展开超预算受控拒绝', async () => {
+    // 100 行有效数据 + 尾部 10,000 行、每行只在 XFD 放一个仅有样式的空白格：文件只有几十 KB
+    const started = performance.now();
+    const sheet = await readXlsx(
+      await buildXlsx([importHeader, ...requiredRows(100)], { rowsXml: xfdRowsXml(102, 10_000) }),
+    );
+    expect(performance.now() - started).toBeLessThan(2000);
+    // 不按最右列坐标逐行展开（否则 10,000 × 16,384 ≈ 1.6 亿个元素）：保留的格数不超过数据本身的格数
+    expect(sheet.rows.reduce((n, row) => n + row.cells.length, 0)).toBeLessThanOrEqual(101 * importHeader.length);
+    const parsed = importRowsOf(sheet);
+    expect('rows' in parsed ? parsed.rows.length : parsed.error).toBe(100);
+    // 同样的位置放有值的格：每行确要展开到 XFD，累计超过预算即以 XlsxError 中止，不等全部展开
+    const valued = await buildXlsx([importHeader.slice(0, 5), requiredRows(1)[0]!], {
+      rowsXml: xfdRowsXml(3, 10_000, 1),
+    });
+    const again = performance.now();
+    await expect(readXlsx(valued)).rejects.toMatchObject({ name: 'XlsxError', reason: 'limit' });
+    expect(performance.now() - again).toBeLessThan(2000);
   });
 
   it('超编区间的 to 是开区间（离职生效日），显示为最后一个在职日', () => {
