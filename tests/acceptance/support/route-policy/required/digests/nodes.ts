@@ -454,7 +454,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/actions.ts#DELEGATION_EVENTS': ['4ceff694ba8f', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/actions.ts#OUTCOME_ACTIONS': ['6c737a88f7d2', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/actions.ts#URGE_INTERVAL_MS': ['c47cd2256981', 'e3b0c44298fc'],
-  'apps/api/src/modules/approval/actions.ts#addSign': ['56338ea8dbef', 'cef6b6ae5215'],
+  'apps/api/src/modules/approval/actions.ts#addSign': ['2cb4484368ff', 'cef6b6ae5215'],
   'apps/api/src/modules/approval/actions.ts#adminAct': ['d76e0f4e36c7', 'ceaaad3064d4'],
   'apps/api/src/modules/approval/actions.ts#adminJump': ['564d50d1d17a', 'f8470db4432c'],
   'apps/api/src/modules/approval/actions.ts#applyEdit': ['f04d01af93c5', '9a5747b6f559'],
