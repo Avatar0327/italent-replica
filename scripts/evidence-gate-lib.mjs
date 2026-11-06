@@ -162,7 +162,9 @@ function topLevelSegments(text) {
 
 function segmentLevel(segment) {
   if (BEFORE_START.test(segment)) return '开工前';
-  return DEFERRED_SEGMENT.test(segment) || DEFER_WORDS.test(segment) ? '可后补' : '开工前';
+  // “不挡本任务”沿用 F-367 的保守口径：段内出现“开工前”任何写法（含“开工前置”）都不放行
+  if (DEFERRED_SEGMENT.test(segment)) return /开工前/.test(segment) ? '开工前' : '可后补';
+  return DEFER_WORDS.test(segment) ? '可后补' : '开工前';
 }
 
 // 任务 → 级别：同一任务出现在多个分段时，任何一段不是可后补就按开工前。
