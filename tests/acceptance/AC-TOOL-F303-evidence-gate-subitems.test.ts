@@ -335,10 +335,12 @@ describe('AC-TOOL-F313 DEC-684⑦ 真实文档对账', () => {
     });
   });
 
-  it('AC-TOOL-F313 / F367：仅解除对账记录，其他开工前阻塞集合保持不变', () => {
+  // F-407：Q-M0-111 的“开工前：AC-PB-03、04、08”不再被“其余后续”放行（AC-PB-08 仍待用户决定），列入开工前阻塞。
+  it('AC-TOOL-F313 / F367 / F407：仅解除对账记录，其他开工前阻塞集合保持不变', () => {
     expect(evidence.filter((row) => row.st !== '✅' && row.level === '开工前').map((row) => row.id)).toEqual([
       'Q-M0-31',
       'Q-M0-107',
+      'Q-M0-111',
       'Q-M0-112',
       'Q-M0-114',
       'Q-M0-117',
@@ -421,9 +423,10 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
   });
 
   // F-459：③ 指定日期挂起已由 F-408 / W-1011 写入实测并复查到期执行，开工前 ①②③ 满足，残项 ⑤ 可后补。
+  // F-407：已满足的开工前子项改写成“不挡本任务”分段，避免“开工前”字样让收窄后的门禁拦住 R2-T09。
   it('AC-TOOL-F459：Q-M0-120 开工前 ①②③ 已满足，状态列与末尾 F-408 实测原文一致', () => {
     const row = realRow('Q-M0-120');
-    expect(row.blocks).toBe('R2-T09（开工前：①②③ 已满足；⑤ 残项可后补，依据 DEC-726 前序指定日期写入实测已完成）');
+    expect(row.blocks).toBe('R2-T09（不挡本任务：①②③ 已满足；⑤ 残项可后补，依据 DEC-726 前序指定日期写入实测已完成）');
     expect(row.status).not.toContain('仍待实测');
     expect(row.status).toContain('F-408 / W-1011');
     expect(row.status).toMatch(/残项 = ⑤ /);
@@ -458,7 +461,7 @@ describe('AC-TOOL-F367 已定口径与开工前已满足的整行拆分', () => 
 
   // 第 2 轮 P3-3～P3-5：依据与残项说明。
   it('AC-TOOL-F367：Q-M0-122 / 123 / 118 依据与残项写法（123 按 DEC-763 闭合）', () => {
-    expect(realRow('Q-M0-122').blocks).toContain('基线开工前仅 ①②');
+    expect(realRow('Q-M0-122').blocks).toContain('基线只要求 ①②');
     expect(realRow('Q-M0-122').status).toContain('⑤ 已读到表单，在途记录形态无样本');
     expect(realRow('Q-M0-123').blocks).toBe('R2-T10');
     expect(realRow('Q-M0-123').status).toMatch(/^✅ .*F-464.*DEC-763/);
