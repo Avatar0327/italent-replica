@@ -1,3 +1,4 @@
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, TRANSFER_NODES, type NodeInput } from './AC-APV-support.js';
@@ -134,27 +135,28 @@ describe('AC-APV-F474-3b 我的申请列表服务端投影', () => {
         { type: 'department', value: 'record_department_hrbp' },
       ],
     };
-    const submitJoint = async (label: string, same: boolean) => {
-      const w = await approvalWorld(database().db, label);
-      const s = await transferScene(w);
-      const first = await w.person('合成同名审批人', s.to);
-      const second = same ? first : await w.person('合成同名审批人', s.to);
-      await w.setOrgRoles(s.to, { head: first.employeeId, hrbp: second.employeeId });
-      await w.publishedProcess({ nodes: [joint] });
-      const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
-      const rows = await w.json<Applications>(await w.request(w.hr.id, 'GET', `${url}?view=applications`));
-      return { view, rows, first, second };
-    };
+    const w = await approvalWorld(database().db, 'f474b-handlers');
+    const s = await transferScene(w);
+    const first = await w.person('合成同名审批人', s.to);
+    const second = await w.person('合成同名审批人', s.to);
+    await w.setOrgRoles(s.to, { head: first.employeeId, hrbp: second.employeeId });
+    await w.publishedProcess({ nodes: [joint] });
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const handlers = async () =>
+      (await w.json<Applications>(await w.request(w.hr.id, 'GET', `${url}?view=applications`))).items[0]!
+        .currentHandlers;
     // 两个不同用户同名：两条待办都要体现，不能被姓名去重吞掉
-    const different = await submitJoint('f474b-same-name', false);
-    expect(different.view.tasks.filter((task) => task.status === 'pending')).toHaveLength(2);
-    expect(different.rows.items[0]!.currentHandlers).toEqual(['合成同名审批人', '合成同名审批人']);
-    // 同一用户在同一实例有多个待办：只保留一个
-    const single = await submitJoint('f474b-multi-task', true);
-    const pending = single.view.tasks.filter((task) => task.status === 'pending');
-    expect(new Set(pending.map((task) => task.assigneeUserId)).size).toBe(1);
-    expect(pending.length).toBeGreaterThan(1);
-    expect(single.rows.items[0]!.currentHandlers).toEqual(['合成同名审批人']);
+    expect(view.tasks.filter((task) => task.status === 'pending')).toHaveLength(2);
+    expect(await handlers()).toEqual(['合成同名审批人', '合成同名审批人']);
+    // 引擎保证一人一票，所以同一用户的多条待办只能由异常数据造出（同 AC-APV-capacity-config 的直接写入做法）：
+    // 给第一位再补两条待办，仍只算一个人
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      await tx.execute(sql`INSERT INTO approval_tasks
+        (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,origin,status,created_at)
+        SELECT gen_random_uuid(),${w.tenant.id},${view.id}::uuid,100000+g,1,'joint',${first.userId}::uuid,
+          'transfer','pending',now() FROM generate_series(1,2) g`);
+    });
+    expect(await handlers()).toEqual(['合成同名审批人', '合成同名审批人']);
   });
 
   it('P2-4 view=applications 严格校验查询键：未知键 400，page / pageSize 与全部合法键照常通过', async () => {
