@@ -45,7 +45,8 @@ export type EmployeePage = (typeof EMPLOYEE_PAGES)[number];
 
 /** DEC-790：专属字段载体不并入任职默认字段，管理员仍通过身份对象权限配置。 */
 export const SELF_APPLICATION_FIELDS = {
-  exit: ['lastWorkDate', 'reasonCode', 'whereaboutsCode'],
+  // attachmentRefs（F-479 S1，DEC-819）：本人手写申请图片引用；S1 只用于附件上传入口的权限判定
+  exit: ['lastWorkDate', 'reasonCode', 'whereaboutsCode', 'attachmentRefs'],
   partTime: ['partTimeType', 'effectiveDate', 'endDate', 'departmentId', 'directManagerId', 'requestRemark'],
 } as const;
 export type SelfApplicationKind = keyof typeof SELF_APPLICATION_FIELDS;

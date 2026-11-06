@@ -126,6 +126,17 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/approval/todo-summary.ts': {
     todoSummary: '99f11bec6323',
   },
+  'apps/api/src/modules/attachments/access.ts': {
+    requireAttachmentWrite: 'd37b3c674a8d',
+  },
+  'apps/api/src/modules/attachments/routes.ts': {
+    'route:DELETE /api/tenant/attachments/:id': '69ed03462117',
+    'route:GET /api/tenant/attachments/:id': 'a12feb7d0880',
+    'route:GET /api/tenant/attachments/:id/content': '18cd41fd81fd',
+    'route:POST /api/tenant/attachments': 'cf53ac217c2a',
+    'route:POST /api/tenant/attachments/:id/upload': '9e661271d23a',
+    write: '21eaa866d01d',
+  },
   'apps/api/src/modules/avatar/routes.ts': {
     present: '614229153b55',
     'route:DELETE /api/tenant/account/avatar': 'c3ef1ed5490a',
@@ -1970,6 +1981,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/routes.ts#viewerOf': 'c95e45b058e3',
   'apps/api/src/modules/approval/todo-cards.ts#listTodoCards': '4dfa75a3c285',
   'apps/api/src/modules/approval/todo-summary.ts#todoSummary': '5271396b5a1a',
+  'apps/api/src/modules/attachments/access.ts#requireAttachmentWrite': '2caf4216be75',
+  'apps/api/src/modules/attachments/routes.ts#route:DELETE /api/tenant/attachments/:id': 'b56eb342a68f',
+  'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id': '770500656b4f',
+  'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id/content': 'baafd535930f',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments': '40a73a98efac',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments/:id/upload': '291c1a95c942',
+  'apps/api/src/modules/attachments/routes.ts#write': 'a2d494eb0825',
   'apps/api/src/modules/avatar/routes.ts#present': '2253c4be6de7',
   'apps/api/src/modules/avatar/routes.ts#route:DELETE /api/tenant/account/avatar': '27ba4d2c7ef8',
   'apps/api/src/modules/avatar/routes.ts#route:GET /api/tenant/account/avatar': 'f8413d5a7ce0',

@@ -4,6 +4,7 @@
  * 或改授权辅助函数时，开发同步复核受影响的表项（证据摘要不一致会报 EVIDENCE_STALE），审查核对表的 diff。
  */
 import { APPROVAL } from './approval.js';
+import { ATTACHMENTS } from './attachments.js';
 import { AUDIT } from './audit.js';
 import { AVATAR } from './avatar.js';
 import { COMMAND_RESULT } from './command-result.js';
@@ -42,6 +43,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   'tenant-settings': TENANT_SETTINGS,
   audit: AUDIT,
   avatar: AVATAR,
+  attachments: ATTACHMENTS,
   'command-result': COMMAND_RESULT,
   'self-service': SELF_SERVICE,
   org: ORG,

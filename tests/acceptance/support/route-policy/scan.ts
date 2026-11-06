@@ -566,6 +566,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['succession', '/api/tenant/succession', [path.join(modules, 'succession')]],
     ['avatar', '/api/tenant/account', [path.join(modules, 'avatar')]],
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
+    ['attachments', '/api/tenant/attachments', [path.join(modules, 'attachments')]],
     ['command-result', '/api/tenant/commands', [path.join(modules, 'command-result')]],
     ['hr-dashboard', '/api/tenant/analytics/hr-dashboard', [path.join(modules, 'analytics')]],
     ['hr-process-dashboard', '/api/tenant/analytics/hr-process-dashboard', [path.join(modules, 'analytics')]],
