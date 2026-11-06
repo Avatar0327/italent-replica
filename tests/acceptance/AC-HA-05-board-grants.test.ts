@@ -8,7 +8,6 @@
  * - 授权版本已升，回补报告（F-061）能列出新增 / 去掉的授权项。
  * 夹具：造数用放行授权器，被测请求一律走真实授权器（authorize: undefined）。
  */
-import { readFileSync } from 'node:fs';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { permissionAdminGrantableProfiles, permissionAdmins, withTenant } from '@italent/db';
 import {
@@ -238,26 +237,10 @@ describe('F-472 预置身份与人事看板授权', () => {
 });
 
 describe('F-472 授权版本与回补报告（DEC-439④）', () => {
-  const declared = JSON.parse(
-    readFileSync(new URL('../../packages/domain/src/platform/standard-grant-changes.json', import.meta.url), 'utf8'),
-  ) as { reason: string; add: string[]; remove: string[] };
-
-  it('授权版本已升（F-323 为 43），变更声明写明新增：两个新身份整体；去掉：人事管理员的看板类对象与看全部', () => {
-    expect(STANDARD_GRANT_VERSION).toBeGreaterThan(43);
-    expect(declared.reason).toContain('F-472');
-    for (const code of DASHBOARD_PROFILES)
-      expect(
-        declared.add.some((entry) => entry.startsWith(`${code}/`)),
-        `新增 ${code}`,
-      ).toBe(true);
-    for (const object of BOARD_OBJECTS)
-      expect(
-        declared.remove.some((entry) => entry.startsWith(`${HR_ADMIN}/${object}`)),
-        `去掉 ${HR_ADMIN}/${object}`,
-      ).toBe(true);
-    // 人事管理员的名册 / 结构类报表对象不在去掉之列（按管理单元继续可看）
-    for (const object of REPORT_OBJECTS)
-      expect(declared.remove.some((entry) => entry.includes(`/${object}/op:view`))).toBe(false);
+  // standard-grant-changes.json 只记“当前 PR”的增删（F-097），后续改授权的 PR 会整体改写，不能拿来断言 F-472；
+  // F-472 的增删由下一条按 STANDARD_GRANT_CODES 直接核对。
+  it('授权版本已升（F-323 为 43，F-472 定号 44）', () => {
+    expect(STANDARD_GRANT_VERSION).toBeGreaterThanOrEqual(44);
   });
 
   it('授权项编码：新身份的对象查看与看全部都有编码；人事管理员的看板类对象 / 看全部编码已不在', () => {

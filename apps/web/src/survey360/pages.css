@@ -1,0 +1,58 @@
+.survey-page,
+.survey-panel,
+.survey-detail-page {
+  min-width: 0;
+}
+.survey-detail-page > header,
+.survey-panel > header,
+.survey-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.survey-detail-page h1,
+.survey-panel h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.survey-card,
+.survey-panel {
+  background: white;
+  padding: 16px 24px;
+  border-radius: 8px;
+}
+.survey-basic {
+  padding: 16px 24px;
+}
+.survey-basic h2 {
+  font-size: 14px;
+  margin: 24px 0;
+}
+.survey-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.survey-filters .ant-btn:disabled {
+  color: #595959;
+}
+.survey-page .ant-table-tbody > tr > td,
+.survey-panel .ant-table-tbody > tr > td {
+  height: 40px;
+  padding: 4px 10px;
+}
+.survey-total {
+  color: #8c8c8c;
+}
+.survey-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 260px;
+  color: #1677ff;
+  margin-bottom: 12px;
+}

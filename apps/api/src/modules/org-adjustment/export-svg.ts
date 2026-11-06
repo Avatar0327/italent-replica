@@ -90,24 +90,32 @@ export function establishmentMark(value: number | null, delta: number | null): E
   return { value: String(value), arrow, amount, label: `编制 ${value}${symbol}${amount ?? ''}` };
 }
 
-/** 估算显示宽度（单位 = 一个汉字宽）：全角 / CJK 记 1，其余记 0.6。 */
+/** 字形簇切分：组合记号、ZWJ 序列、变体选择符、国旗等整体算一个字，不在簇中间截断（F-446）。 */
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' });
+const clustersOf = (text: string) => Array.from(GRAPHEMES.segment(text), (part) => part.segment);
+
+/** 一个字形簇的宽度：按基字（首码点）计，后续组合记号 / ZWJ 成员不再累加。 */
+const clusterUnits = (cluster: string) => (cluster.codePointAt(0)! >= 0x2e80 ? 1 : 0.6);
+
+/** 估算显示宽度（单位 = 一个汉字宽）：以字形簇为单位，基字全角 / CJK 记 1，其余记 0.6。 */
 export function textUnits(text: string): number {
-  let units = 0;
-  for (const ch of text) units += ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.6;
-  return units;
+  return clustersOf(text).reduce((units, cluster) => units + clusterUnits(cluster), 0);
 }
 
-/** 超过 max 个单位时截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。先去掉非法码点再量宽度。 */
+/**
+ * 超过 max 个单位时按字形簇截断并以“…”结尾（“…”记 1）；SVG 里就是截断后的文字。先去掉非法码点再量宽度。
+ * 簇宽按基字估算，不同字体对 emoji 序列的实际宽度可能偏大，该偏差随字体渲染，口径待取证（见 PR“未决 / 假设”）。
+ */
 export function truncate(raw: string, max: number): string {
   const text = xmlChars(raw);
   if (textUnits(text) <= max) return text;
   let units = 0;
   let kept = '';
-  for (const ch of text) {
-    const next = units + textUnits(ch);
+  for (const cluster of clustersOf(text)) {
+    const next = units + clusterUnits(cluster);
     if (next > max - 1) break;
     units = next;
-    kept += ch;
+    kept += cluster;
   }
   return `${kept}…`;
 }

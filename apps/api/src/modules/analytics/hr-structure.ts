@@ -22,6 +22,7 @@ export interface StructurePerson {
   readonly employType: string;
   readonly employeeStatus: number;
   readonly entryDate: string | null;
+  readonly workYearCompanyBefore: number;
   readonly gender: string | null;
   readonly birthday: string | null;
   readonly educationLevel: string | null;
@@ -63,10 +64,12 @@ export async function structurePeopleWhere(
     categoryName(a.tenantId),
     attribute('employment_source', 'employmentSource'),
     attribute('employ_type', 'employType'),
+    sql`${current('work_year_company_before')}::double precision AS "workYearCompanyBefore"`,
   ];
   return rowsOf<StructurePerson>(
     await tx.execute(sql`SELECT m.id, m."departmentId", m."sequenceId", m."levelId", m."employmentForm",
-        m."employmentType", m."employmentSource", m."employType", m."employeeStatus", m."entryDate",
+        m."employmentType", m."employmentSource", m."employType", m."employeeStatus",
+        m."entryDate", m."workYearCompanyBefore",
         pv.gender, pv.birthday::text AS birthday, pv.education_level AS "educationLevel"
       FROM (SELECT DISTINCT ON (r.employee_id) r.employee_id AS id, r.employee_id,
           ${current('department_id')} AS org_id, NULL::uuid AS creator_id, ${sql.join(columns, sql`, `)},

@@ -91,7 +91,12 @@ export async function setupR3b(page: Page, path: string, readonly = false) {
     return route.fulfill({
       json: {
         objectCode: object?.code,
-        dataOperations: { read: true },
+        dataOperations: object?.code.startsWith('Survey360.')
+          ? { read: true, create: !readonly, update: !readonly, delete: !readonly }
+          : {
+              read: true,
+              ...(object?.code.startsWith('TEvaluation.') && !readonly ? { create: true, update: true } : {}),
+            },
         viewableFields: object?.fields.filter((f) => !readonly || f.code !== 'year').map((f) => f.code) ?? ['name'],
         editableFields: readonly ? [] : (object?.fields.filter((f) => !f.system).map((f) => f.code) ?? []),
         buttons: readonly ? [] : (object?.buttons.map((b) => ({ buttonCode: b.code, level: b.level })) ?? []),
@@ -100,7 +105,10 @@ export async function setupR3b(page: Page, path: string, readonly = false) {
   });
   await page.route('**/api/tenant/evaluation/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
-    const body = evaluationFixture(pathname);
+    const body =
+      route.request().method() === 'PATCH' && pathname.endsWith(`/activities/${id}`)
+        ? { ...ev, ...route.request().postDataJSON(), revision: Number(route.request().headers()['if-match']) + 1 }
+        : evaluationFixture(pathname);
     return route.fulfill({ json: body });
   });
   await page.route('**/api/tenant/survey360/**', (route) => {

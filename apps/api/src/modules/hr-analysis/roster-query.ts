@@ -118,6 +118,7 @@ export async function listRoster(
         (SELECT et.name FROM employment_types et WHERE et.tenant_id=${ctx.tenantId}
           AND et.id::text=r.current_fields->>'employment_type') AS employment_type,
         r.current_fields->>'employment_form' AS employment_form,
+        r.current_fields->>'work_year_company_before' AS work_year_company_before,
         COALESCE(dmv.name, dm.name) AS direct_manager_name, dmv.work_email AS direct_manager_email,
         pi.has_probation, pi.start_date::text AS probation_start_date, pi.end_date::text AS probation_end_date,
         pv.months::integer AS probation_months, reg.effective_date AS regularization_date,
@@ -178,7 +179,7 @@ function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typ
     directManagerName: row.direct_manager_name ?? null,
     directManagerEmail: row.direct_manager_email ?? null,
     employmentType: row.employment_type ?? null,
-    companyTenureYears: tenureYears(row.entry_date as string, asOf),
+    companyTenureYears: tenureYears(row.entry_date as string, asOf, Number(row.work_year_company_before ?? 0)),
     workTenureYears: tenureYears((profile.workDate as string | null) ?? null, asOf),
     place: row.place ?? null,
     employmentForm: row.employment_form ?? null,

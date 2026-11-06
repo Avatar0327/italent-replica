@@ -47,3 +47,17 @@ export function validateConditions(value: unknown): void {
       );
   }
 }
+
+export function requireEvaluationReceipt(value: unknown, revision: number, id?: string): Row {
+  const row = value as Row | null;
+  if (
+    !row ||
+    typeof row.id !== 'string' ||
+    !row.id ||
+    (id && row.id !== id) ||
+    !Number.isSafeInteger(row.revision) ||
+    row.revision !== revision + 1
+  )
+    throw new Error(m.uncertain);
+  return row;
+}

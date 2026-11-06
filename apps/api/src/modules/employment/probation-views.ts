@@ -18,6 +18,7 @@ import {
 import { employmentCreator, employmentScopePredicate } from './context.js';
 import { ENTRY_LIKE_KINDS } from './employee-status.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { canApplyRegularization } from './regularization-eligibility.js';
 import { cycleRegularization } from './probation.js';
 import { checkPage, rowsOf } from './read-model.js';
 import type { EmploymentScope, PageQuery } from './types.js';
@@ -32,6 +33,8 @@ export interface ProbationViewFilter {
 }
 
 export interface ProbationViewItem {
+  /** DEC-788：服务端按今天判申请资格；不依赖前端可见的员工状态字段。 */
+  readonly canApplyRegularization: boolean;
   /** 当前主职任职记录。 */
   readonly id: string;
   readonly employeeId: string;
@@ -60,6 +63,7 @@ export interface ProbationViewItem {
 
 /** 视图里不属于任职字段目录的控制键：裁剪前摘下、裁剪后放回（同入职视图的做法）。 */
 export const PROBATION_VIEW_CONTROLS = [
+  'canApplyRegularization',
   'hasProbation',
   'startDate',
   'months',
@@ -186,7 +190,7 @@ export async function listProbationView(
 ): Promise<ProbationViewItem[]> {
   checkPage(input.page);
   const department = sql`COALESCE(snap.department_id, cr.department_id)`;
-  const items = rowsOf<Omit<ProbationViewItem, 'organizationId'>>(
+  const items = rowsOf<Omit<ProbationViewItem, 'organizationId' | 'canApplyRegularization'>>(
     await tx.execute(sql`
     SELECT cr.id, cr.employee_id AS "employeeId", e.code,
       ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,
@@ -203,10 +207,13 @@ export async function listProbationView(
   `),
   );
   const organizations = await organizationsOf(tx, tenantId, items, input.today);
-  return items.map((item) => ({
-    ...item,
-    organizationId: item.departmentId ? (organizations.get(item.departmentId) ?? null) : null,
-  }));
+  return Promise.all(
+    items.map(async (item) => ({
+      ...item,
+      canApplyRegularization: await canApplyRegularization(tx, tenantId, item.employeeId, input.today),
+      organizationId: item.departmentId ? (organizations.get(item.departmentId) ?? null) : null,
+    })),
+  );
 }
 
 /**

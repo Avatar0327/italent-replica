@@ -1,10 +1,11 @@
-import { Button, Checkbox, Input, InputNumber, Select, Space } from 'antd';
+import { Alert, Button, Checkbox, Input, InputNumber, Radio, Select, Space } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { TenantDatePicker } from '../foundation/selectors.js';
 import { editableRows } from '../foundation/forms/values.js';
 import { useFormLock } from '../foundation/forms/FormLock.js';
 import { RemoteSelect } from './runtime.js';
 import { m, textValue } from './messages.js';
+import { evUi, MissingFields, Unavailable } from './alignment.js';
 import { records, insertActivityChain } from './model.js';
 
 export const EV = '/api/tenant/evaluation';
@@ -211,6 +212,12 @@ export function Chains({
     >
       {(row, set, index) => (
         <>
+          <header className="evaluation-chain-heading">
+            <strong>
+              {String(index + 1).padStart(2, '0')} {textValue(row.name)}
+            </strong>
+            <Unavailable label={evUi.configure} reason={evUi.unverified} />
+          </header>
           <ChainFields
             row={row}
             set={set}
@@ -246,14 +253,23 @@ export function Conditions({
   disabled = lock.disabled;
   onChange = lock.guard(onChange);
   return (
-    <Repeated
-      value={value}
-      onChange={(v) => onChange?.(v)}
-      disabled={disabled}
-      create={() => ({ kind: 'common', applicantKind: 'self', details: [], expression: null })}
-    >
-      {(row, set) => <ConditionFields row={row} set={set} disabled={disabled} />}
-    </Repeated>
+    <>
+      <Alert type="info" message={evUi.conditionHint} />
+      {(['common', 'extra'] as const).map((kind) => (
+        <section key={kind}>
+          <h2 className="r3b-section">{m[kind]}</h2>
+          <p>{kind === 'common' ? evUi.commonHint : evUi.extraHint}</p>
+          <Repeated
+            value={value.filter((row) => row.kind === kind)}
+            onChange={(next) => onChange?.([...value.filter((row) => row.kind !== kind), ...next])}
+            disabled={disabled}
+            create={() => ({ kind, applicantKind: 'self', details: [], expression: null })}
+          >
+            {(row, set) => <ConditionFields row={row} set={set} disabled={disabled} />}
+          </Repeated>
+        </section>
+      ))}
+    </>
   );
 }
 
@@ -302,13 +318,13 @@ function ChainFields({
         <Input value={String(row.name ?? '')} onChange={(e) => set('name', e.target.value)} disabled={disabled} />
       </label>
       {(['startDate', 'endDate'] as const).map((key) => (
-        <label key={key}>
+        <label key={key} className="evaluation-required">
           {m[key]}
           <TenantDatePicker value={row[key] as string} onChange={(v) => set(key, v)} disabled={disabled} />
         </label>
       ))}
       {['apply', 'material'].includes(String(row.type)) && (
-        <label>
+        <label className="evaluation-required">
           {m.approvalProcessCode}
           <Input
             value={String(row.approvalProcessCode ?? '')}
@@ -318,7 +334,7 @@ function ChainFields({
         </label>
       )}
       {row.type === 'defense' && (
-        <label>
+        <label className="evaluation-required">
           {m.formId}
           <RemoteSelect
             path={`${EV}/evaluation-forms`}
@@ -400,28 +416,59 @@ function ChainOptions({ row, set, disabled, locked }: RowEditorProps & { locked?
     <>
       {' '}
       {row.type !== 'result' && (
-        <label>
+        <label className="evaluation-required">
           {m.transferMode}
-          <Select
+          <Radio.Group
             value={row.transferMode as string}
             disabled={disabled}
             options={(row.type === 'defense' ? ['manual'] : ['auto', 'manual']).map((v) => ({
               value: v,
               label: m[v as 'auto'],
             }))}
-            onChange={(v) => set('transferMode', v)}
+            onChange={(event) => set('transferMode', event.target.value)}
           />
         </label>
       )}
       {row.type === 'apply' && (
-        <Checkbox
-          checked={row.hardDeadline === true}
-          disabled={disabled || locked}
-          onChange={fixed.guard((e) => set('hardDeadline', e.target.checked))}
-        >
-          {m.hardDeadline}
-        </Checkbox>
+        <>
+          <label className="evaluation-required">
+            {m.hardDeadline}
+            <Radio.Group
+              value={row.hardDeadline ?? false}
+              disabled={disabled || locked}
+              options={[
+                { value: true, label: evUi.yes },
+                { value: false, label: evUi.no },
+              ]}
+              onChange={fixed.guard((event) => set('hardDeadline', event.target.value))}
+            />
+          </label>
+          <label>
+            {evUi.allowException}
+            <Radio.Group
+              value={row.allowException ?? false}
+              disabled={disabled || locked}
+              options={[
+                { value: true, label: evUi.yes },
+                { value: false, label: evUi.no },
+              ]}
+              onChange={fixed.guard((event) => set('allowException', event.target.value))}
+            />
+          </label>
+          {row.allowException === true && (
+            <label>
+              {evUi.exceptionRoles}
+              <ApplicantTypes
+                value={row.exceptionRoles}
+                disabled={disabled || locked}
+                onChange={fixed.guard((value) => set('exceptionRoles', value))}
+              />
+            </label>
+          )}
+        </>
       )}
+      {row.type === 'result' && <p className="r3b-note">{evUi.resultHint}</p>}
+      {['defense', 'result'].includes(String(row.type)) && <MissingFields labels={[evUi.noticeRoles]} />}
     </>
   );
 }
