@@ -1,3 +1,4 @@
+import type { ExitRoute } from './routes.js';
 import type { ApproverSource } from './sources.js';
 import { approverSourcesOf, expressionValue } from './sources.js';
 import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
@@ -301,6 +302,8 @@ interface ApprovalNodeBase {
   readonly avoidSubjectsResult?: AvoidSubjectsResult;
   /** 出口动作（DEC-144）；缺省只有「同意」（DEFAULT_EXITS）。 */
   readonly exits?: readonly NodeExit[];
+  /** F-478：各出口的后继分支；缺省 / 空 = 线性流转（同意 → 下一节点，不同意 → 结束）。 */
+  readonly routes?: readonly ExitRoute[];
   /**
    * 兜底处理人（R2 BE-8b2，DEC-663，对应原站公共变量“离职交接流程-工作交接 / -其他事项交接”）：用户 ID 列表，可多人、可为空（缺省空）。
    * 只用于离职交接申请的会签交接节点：主取法（交接人 → 直线经理 / 人事管理员）取不到人时，改派其中具备审批资格的人。

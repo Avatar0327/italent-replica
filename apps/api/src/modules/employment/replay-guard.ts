@@ -11,7 +11,9 @@ import { APPROVAL_INSTANCE_OBJECT, buttonResource, tenantLocalDate } from '@ital
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import { resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import {
+  EMPLOYEE_OBJECT,
   EMPLOYMENT_OBJECT,
   commandContext,
   requireEmployeeInScope,
@@ -32,6 +34,7 @@ import {
 import type { ExitOptions } from './exit-initiation.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import type { BusinessKind, EmploymentBusinessPatch, EmploymentContext } from './types.js';
+import { requireExitImportAccess, type ImportRowInput } from './exit-import.js';
 
 /**
  * 写入口径范围：业务在操作人当前数据范围内（范围外与不存在同一个 404），看全部别名另要任职写权。
@@ -401,5 +404,20 @@ export function internRegularizationGuard(
   return scopedGuard({
     before: async (tx) =>
       requireInternRegularizationAccess(tx, await commandContext(tx, deps, ctx), employeeId, business, departmentId),
+  });
+}
+
+/**
+ * F-139a 历史离职导入的命令内复核（设计 §7）：导入按钮、人员新增权、字段写权与“看全部”范围在命令事务内按当前授权重过，
+ * 首次、同键重放、失败回查都经过，撤权后同键重放得 403 而不是回放 201。
+ */
+export function exitImportGuard(deps: TenantRouteDeps, ctx: EmploymentContext, rows: readonly ImportRowInput[]) {
+  return scopedGuard({
+    before: async (tx) => {
+      const scoped = await commandContext(tx, deps, ctx);
+      // 人员对象的范围也在本事务内重新解析：入口之后被撤“看全部”，同键重放同样 403
+      const employeeScope = await resolveModuleScopeInTransaction(deps, ctx, tx, EMPLOYEE_OBJECT);
+      await requireExitImportAccess(scoped, rows, employeeScope);
+    },
   });
 }

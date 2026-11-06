@@ -47,6 +47,13 @@ export const HR_STRUCTURE_POLICIES = defineTable('hr-structure', {
       'hr-structure-routes.ts 报表：固定键，单元格是范围内的计数 / 平均值',
     ),
   ),
+  // F-482 导出（员工素质结构）：响应是 xlsx 文件，内容 = 同一份报表（同一对象查看权与数据范围裁剪），不新增授权项
+  [`GET ${HR_STRUCTURE_BASE}/reports/:report/export`]: report(
+    fixed(
+      ['file'],
+      'hr-structure-routes.ts 报表导出：xlsx 文件，行列与页面报表同一份范围内的计数 / 平均值；每次成功导出写一条对象操作日志',
+    ),
+  ),
 });
 
 export const CONTRACT_BOARD_POLICIES = defineTable('contract-board', {

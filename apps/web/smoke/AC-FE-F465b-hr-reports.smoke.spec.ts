@@ -65,7 +65,7 @@ test('AC-FE-F465b 目录 → 名册 → 筛选空结果 → 有权导出；表�
   expect(errors).toEqual([]);
 });
 
-test('AC-FE-F465b 三张统计报表隐藏导出，直链 403 明示无权', async ({ page }) => {
+test('AC-FE-F465b 三张统计报表没有名册 CSV 导出（改为 F-482 的「下载▾」），直链 403 明示无权', async ({ page }) => {
   await page.route('**/analytics/hr-movement/reports/*', (route) =>
     route.fulfill({
       json: movementPage(new URL(route.request().url()).pathname.split('/').at(-1)),
@@ -76,6 +76,8 @@ test('AC-FE-F465b 三张统计报表隐藏导出，直链 403 明示无权', asy
     await page.goto(`/hr-reports/${code}`);
     await expect(page.locator('.shell-workspace table')).toBeVisible();
     await expect(actionButton(page.locator('.shell-workspace'), '导出')).toHaveCount(0);
+    // F-482 起统计报表由「下载▾」导出（见 AC-FE-F482-stat-export）
+    await expect(actionButton(page.locator('.shell-workspace'), '下载 ▾')).toBeVisible();
   }
   await page.route('**/hr-analysis/reports/1.06?*', (route) =>
     route.fulfill({

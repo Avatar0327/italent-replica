@@ -55,6 +55,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_RESUBMIT_BUTTON',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_ROW_SUBMIT_BUTTON',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_SUBMIT_BUTTON',
+    'packages/domain/src/employment/exit-import.ts#EXIT_IMPORT_BUTTON',
     'packages/domain/src/employment/exit.ts#EXIT_BUTTONS',
     'packages/domain/src/employment/exit.ts#EXIT_REQUEST_FIELDS',
     'packages/domain/src/employment/exit.ts#EXIT_REQUEST_SYSTEM_FIELDS',

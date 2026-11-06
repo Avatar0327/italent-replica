@@ -22,28 +22,53 @@ export interface ImageMetadata {
   readonly sha256: string;
 }
 
-export function validateImageMetadata(input: ImageMetadata): void {
-  if (input.byteSize > MODEL_IMAGE_MAX_BYTES) {
-    throw new AppError('PAYLOAD_TOO_LARGE', '模型图不能超过 5M');
+/** 大小上限与措辞参数：默认保持模型图 / 头像的 5MiB 与“模型图”（F-479 S1 参数化，附件用途传 10MiB 与中性措辞）。 */
+export interface ImageLimits {
+  readonly maxBytes?: number;
+  /** 超限与空文件提示里的对象名，默认“模型图”。 */
+  readonly label?: string;
+  /** 超限提示里的上限文案，默认“5M”。 */
+  readonly limitText?: string;
+}
+
+const sizeText = (limits: ImageLimits) => limits.limitText ?? '5M';
+
+export function validateImageMetadata(input: ImageMetadata, limits: ImageLimits = {}): void {
+  const label = limits.label ?? '模型图';
+  if (input.byteSize > (limits.maxBytes ?? MODEL_IMAGE_MAX_BYTES)) {
+    throw new AppError('PAYLOAD_TOO_LARGE', `${label}不能超过 ${sizeText(limits)}`);
   }
-  if (input.byteSize <= 0) throw new AppError('VALIDATION_FAILED', '模型图不能为空');
+  if (input.byteSize <= 0) throw new AppError('VALIDATION_FAILED', `${label}不能为空`);
   const extension = input.filename.split('.').at(-1)?.toLowerCase() ?? '';
   if (!MIME[extension] || MIME[extension] !== input.contentType) unsupported();
 }
 
-export function decodeImage(base64: string): Buffer {
+export function decodeImage(base64: string, limits: ImageLimits = {}): Buffer {
+  const maxBytes = limits.maxBytes ?? MODEL_IMAGE_MAX_BYTES;
+  const tooLarge = () => new AppError('PAYLOAD_TOO_LARGE', `${limits.label ?? '模型图'}不能超过 ${sizeText(limits)}`);
   if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
     throw new AppError('VALIDATION_FAILED', '图片内容必须为有效 base64');
   }
-  if (base64.length > 4 * Math.ceil(MODEL_IMAGE_MAX_BYTES / 3)) {
-    throw new AppError('PAYLOAD_TOO_LARGE', '模型图不能超过 5M');
-  }
+  if (base64.length > 4 * Math.ceil(maxBytes / 3)) throw tooLarge();
   const bytes = Buffer.from(base64, 'base64');
   if (!bytes.length || bytes.toString('base64') !== base64) {
     throw new AppError('VALIDATION_FAILED', '图片内容必须为有效 base64');
   }
-  if (bytes.length > MODEL_IMAGE_MAX_BYTES) throw new AppError('PAYLOAD_TOO_LARGE', '模型图不能超过 5M');
+  if (bytes.length > maxBytes) throw tooLarge();
   return bytes;
+}
+
+/** 文件头嗅探（F-479）：只认 JPEG / PNG / GIF / BMP 四种位图，不解码像素；长度不足最小文件头或不认识返回 null。 */
+export function sniffImageType(bytes: Uint8Array): string | null {
+  const head = Buffer.from(bytes.subarray(0, 8));
+  if (bytes.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 8 && head.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return 'image/png';
+  }
+  const gif = head.toString('latin1', 0, 6);
+  if (bytes.length >= 6 && (gif === 'GIF87a' || gif === 'GIF89a')) return 'image/gif';
+  if (bytes.length >= 14 && head[0] === 0x42 && head[1] === 0x4d) return 'image/bmp';
+  return null;
 }
 
 export async function validateImageContent(bytes: Buffer, contentType: string): Promise<void> {

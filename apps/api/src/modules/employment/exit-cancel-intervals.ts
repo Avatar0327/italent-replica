@@ -186,7 +186,7 @@ async function segmentExcesses(tx: Tx, ctx: EmploymentContext, employeeId: strin
  * 编制 ID / 峰值 / 上限另受编制对象自己的范围约束；用任职写入口同一个编制范围判定，不另写一份。
  * 不可见（NOT_FOUND）只计数，其余错误照常抛出。
  */
-async function capacityVisible(tx: Tx, context: EstablishmentContext, item: CapacityExcess): Promise<boolean> {
+export async function capacityVisible(tx: Tx, context: EstablishmentContext, item: CapacityExcess): Promise<boolean> {
   try {
     await context.authorizeCapacityScope?.(tx, { operation: 'update', id: item.capacityId, orgId: item.orgId });
     return true;

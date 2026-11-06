@@ -5,6 +5,7 @@ import { expect, it } from 'vitest';
 import { legacyContractWorld } from './AC-CT-upgrade-support.js';
 import { withPreHandoverSchema } from './support/pre-handover-schema.js';
 import { withPreAuditSchema } from './support/pre-audit-schema.js';
+import { withPreExitRoutesSchema } from './support/pre-exit-routes-schema.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { allowAll, tenantApi } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
@@ -20,9 +21,11 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
   const tenantId = w.session.tenant.id;
   const ids = [randomUUID(), randomUUID()];
   const effectiveId = randomUUID();
-  // 当前审批 / 平台接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，断言不变）
-  await withPreHandoverSchema(handle.db, () =>
-    withPreAuditSchema(handle.db, () => installApprovalFallbacks(handle.db, tenantId, w.session.user.id)),
+  // 当前审批 / 平台接口会写 R1-T16 新增的审计列、读 F-478 出口路由表，旧结构上临时补出（只影响夹具，断言不变）
+  await withPreExitRoutesSchema(handle.db, () =>
+    withPreHandoverSchema(handle.db, () =>
+      withPreAuditSchema(handle.db, () => installApprovalFallbacks(handle.db, tenantId, w.session.user.id)),
+    ),
   );
   await withTenant(handle.db, tenantId, async (tx) => {
     await tx.execute(sql`INSERT INTO contract_records

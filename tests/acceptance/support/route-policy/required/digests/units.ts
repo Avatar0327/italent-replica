@@ -31,7 +31,8 @@ export const DIGESTS: Digests = {
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': 'f2c77b11f9a1',
     'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
-    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'd850ade2116c',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'ff3b4defe5f6',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report/export': '3a3476699cff',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
     approvalVisible: '2e0c654e1a67',
@@ -44,7 +45,8 @@ export const DIGESTS: Digests = {
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '3fc022206c15',
   },
   'apps/api/src/modules/analytics/team-dashboard-routes.ts': {
     'route:GET /api/tenant/analytics/team-dashboard': 'c4225d98f12e',
@@ -126,6 +128,17 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/todo-summary.ts': {
     todoSummary: '99f11bec6323',
+  },
+  'apps/api/src/modules/attachments/access.ts': {
+    requireAttachmentWrite: 'd37b3c674a8d',
+  },
+  'apps/api/src/modules/attachments/routes.ts': {
+    'route:DELETE /api/tenant/attachments/:id': '69ed03462117',
+    'route:GET /api/tenant/attachments/:id': 'a12feb7d0880',
+    'route:GET /api/tenant/attachments/:id/content': '18cd41fd81fd',
+    'route:POST /api/tenant/attachments': 'cf53ac217c2a',
+    'route:POST /api/tenant/attachments/:id/upload': '9e661271d23a',
+    write: '21eaa866d01d',
   },
   'apps/api/src/modules/avatar/routes.ts': {
     present: '614229153b55',
@@ -403,6 +416,9 @@ export const DIGESTS: Digests = {
     isHandoverParticipant: 'fceea1bde6da',
     tickHandoverItem: '4e308a4a5be9',
   },
+  'apps/api/src/modules/employment/exit-import.ts': {
+    requireExitImportAccess: '0616befec7c1',
+  },
   'apps/api/src/modules/employment/exit-routes.ts': {
     registerExitChanges: '1a90931dcb8a',
     requireCancellationOwner: '0e97dc3e0849',
@@ -419,6 +435,8 @@ export const DIGESTS: Digests = {
     'route:POST /exits/dictionaries/:dict': '9690d9b65058',
     'route:POST /exits/employees/:id': '332886384156',
     'route:POST /exits/employees/:id/preview': '6210e64db158',
+    'route:POST /exits/import': '2794770bd938',
+    'route:POST /exits/import/preview': '9f4ac0ee9959',
     'route:PUT /exits/dictionaries/:dict/:id': '8b409a1cdfdf',
     runExitCancel: '1164eda417b4',
   },
@@ -609,7 +627,7 @@ export const DIGESTS: Digests = {
     employmentWithdrawalFailure: '148a6020239b',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '5cb9e5d60115',
+    materializeEmploymentRecord: '81d24df87fd8',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -1890,7 +1908,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
     '6aa0671e386b',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
-    'bcf263b693ad',
+    'b1ba560dc863',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report/export':
+    'baf43a98850f',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
@@ -1903,7 +1923,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
-    '4f9a6b459de0',
+    '0268098fd8cb',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report/export':
+    '90caf0136978',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard':
     '7326924f2124',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':
@@ -1963,6 +1985,13 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/approval/routes.ts#viewerOf': 'c95e45b058e3',
   'apps/api/src/modules/approval/todo-cards.ts#listTodoCards': '4dfa75a3c285',
   'apps/api/src/modules/approval/todo-summary.ts#todoSummary': '5271396b5a1a',
+  'apps/api/src/modules/attachments/access.ts#requireAttachmentWrite': '2caf4216be75',
+  'apps/api/src/modules/attachments/routes.ts#route:DELETE /api/tenant/attachments/:id': 'b56eb342a68f',
+  'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id': '770500656b4f',
+  'apps/api/src/modules/attachments/routes.ts#route:GET /api/tenant/attachments/:id/content': 'baafd535930f',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments': '40a73a98efac',
+  'apps/api/src/modules/attachments/routes.ts#route:POST /api/tenant/attachments/:id/upload': '291c1a95c942',
+  'apps/api/src/modules/attachments/routes.ts#write': 'a2d494eb0825',
   'apps/api/src/modules/avatar/routes.ts#present': '2253c4be6de7',
   'apps/api/src/modules/avatar/routes.ts#route:DELETE /api/tenant/account/avatar': '27ba4d2c7ef8',
   'apps/api/src/modules/avatar/routes.ts#route:GET /api/tenant/account/avatar': 'f8413d5a7ce0',
@@ -2166,6 +2195,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
     'e6b97d5ea60d',
   'apps/api/src/modules/employment/exit-handover.ts#isHandoverParticipant': '9b0335d7116c',
   'apps/api/src/modules/employment/exit-handover.ts#tickHandoverItem': '37afb6be75dd',
+  'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess': 'a5a74c1714f0',
   'apps/api/src/modules/employment/exit-routes.ts#registerExitChanges': '52c341c94843',
   'apps/api/src/modules/employment/exit-routes.ts#requireCancellationOwner': '44be2bbd2835',
   'apps/api/src/modules/employment/exit-routes.ts#requirePreviewButton': 'd02e97716898',
@@ -2181,6 +2211,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/dictionaries/:dict': 'ae551b97839d',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id': 'e862bedecb16',
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/employees/:id/preview': 'eb1eeca4bf86',
+  'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/import': 'ed4f5f271680',
+  'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/import/preview': 'dab9f667f824',
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': 'b2603d8f2177',
   'apps/api/src/modules/employment/exit-routes.ts#runExitCancel': 'ba269b777c05',
   'apps/api/src/modules/employment/forward-import.ts#schema': '12907b33413c',

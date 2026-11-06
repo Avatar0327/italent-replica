@@ -27,7 +27,6 @@ import {
   type ApproverSource,
   approverSourcesOf,
   approverSourceViolations,
-  type ConditionItem,
   type ExitRule,
   type ExitRules,
   type NodeExit,
@@ -48,6 +47,10 @@ import {
 import { eligibleDesignerPeople } from './designer-people.js';
 import { isAssignable } from './resolver.js';
 import { assertEmptyApproverPolicies } from './definition-input.js';
+import { conditionItem, insertConditionItem, textArray } from './condition-rows.js';
+import { assertRoutesValid, inheritRoutes, loadRoutes, withLoadedRoutes, writeRoutes } from './definition-routes.js';
+
+export { conditionItem, textArray };
 
 export interface VersionView extends ProcessDefinition {
   readonly id: string;
@@ -80,13 +83,6 @@ interface ProcessRow {
   latest_version_no: number;
 }
 
-export function textArray(values: readonly string[]): SQL {
-  return sql`ARRAY[${sql.join(
-    values.map((value) => sql`${value}`),
-    sql`, `,
-  )}]::text[]`;
-}
-
 export async function loadVersion(tx: Tx, tenantId: string, versionId: string): Promise<VersionView> {
   const [version] = rowsOf(
     await tx.execute(
@@ -106,6 +102,7 @@ export async function loadVersion(tx: Tx, tenantId: string, versionId: string): 
     await tx.execute(sql`SELECT * FROM approval_node_message_rules
       WHERE tenant_id=${tenantId} AND version_id=${versionId}::uuid ORDER BY node_key,rule_no LIMIT 1000`),
   );
+  const routes = await loadRoutes(tx, tenantId, versionId);
   return {
     id: String(version.id),
     versionNo: Number(version.version_no),
@@ -120,17 +117,10 @@ export async function loadVersion(tx: Tx, tenantId: string, versionId: string): 
     urgeEnabled: Boolean(version.urge_enabled),
     hideRecordsFromInitiator: Boolean(version.hide_records_from_initiator),
     conditions: { expression: String(version.condition_expression), items: conditions.map(conditionItem) },
-    nodes: nodes.map((row) => nodeOf(row, rules)),
-  };
-}
-
-export function conditionItem(row: Row): ConditionItem {
-  const value = (row.value_list as string[] | null) ?? (row.value_text as string | null);
-  return {
-    no: Number(row.item_no),
-    field: String(row.field_path),
-    operator: row.operator as ConditionItem['operator'],
-    value,
+    nodes: withLoadedRoutes(
+      nodes.map((row) => nodeOf(row, rules)),
+      routes,
+    ),
   };
 }
 
@@ -358,15 +348,12 @@ async function writeVersionContent(
   type: ApprovalTypeCode,
 ) {
   assertEmptyApproverPolicies(definition, type);
+  assertRoutesValid(definition.nodes, type);
   // F-048 R3-01：节点落库前统一复核，新建、草稿替换（含继承）、新版本复制、交接重发、预置各自独立拒绝开启（设计 §14）
   const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
   if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);
   for (const item of definition.conditions.items) {
-    const list = Array.isArray(item.value) ? textArray(item.value as string[]) : sql`NULL`;
-    const single = typeof item.value === 'string' ? item.value : null;
-    await tx.execute(sql`INSERT INTO approval_process_conditions
-      (tenant_id,version_id,item_no,field_path,operator,value_text,value_list)
-      VALUES (${tenantId},${id}::uuid,${item.no},${item.field},${item.operator},${single},${list})`);
+    await insertConditionItem(tx, tenantId, id, { kind: 'initiation' }, item);
   }
   for (const [index, node] of definition.nodes.entries()) {
     await assertFallbackUsers(tx, tenantId, node);
@@ -413,6 +400,7 @@ async function writeVersionContent(
           ${rule.template},${rule.recipient})`);
     }
   }
+  await writeRoutes(tx, tenantId, id, definition.nodes);
 }
 
 async function insertVersion(
@@ -504,8 +492,15 @@ export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, inp
   if (draft.status !== 'draft') {
     throw approvalError('CONFLICT', 'APPROVAL_VERSION_PUBLISHED', '已发布的流程不能直接修改，请先编辑最新版本');
   }
-  const definition = inheritRecusalSwitches(input, draft.nodes);
-  for (const table of ['approval_node_message_rules', 'approval_process_nodes', 'approval_process_conditions']) {
+  const definition = inheritRoutes(inheritRecusalSwitches(input, draft.nodes), draft.nodes);
+  const tables = [
+    'approval_node_exit_route_conditions',
+    'approval_node_exit_routes',
+    'approval_node_message_rules',
+    'approval_process_nodes',
+    'approval_process_conditions',
+  ];
+  for (const table of tables) {
     await tx.execute(sql`DELETE FROM ${sql.identifier(table)}
       WHERE tenant_id=${ctx.tenantId} AND version_id=${draft.id}::uuid`);
   }
@@ -560,6 +555,7 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   }
   const [violation] = publishViolations(draft);
   if (violation) throw approvalError('VALIDATION_FAILED', violation.reason, violation.message);
+  assertRoutesValid(draft.nodes, before.approvalType, true);
   await assertExceptionAdminMember(tx, ctx.tenantId, draft.exceptionAdminUserId!);
   if (!draft.isFallback) await assertUniquePriority(tx, ctx.tenantId, before, draft.priority);
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},

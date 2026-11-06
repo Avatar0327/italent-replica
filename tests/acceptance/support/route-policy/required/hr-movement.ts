@@ -38,4 +38,7 @@ export const HR_MOVEMENT: RequiredTable = {
   [`GET ${BASE}/reports/:report`]: [
     view(`${BASE}/reports/:report`, 'TenantBase.HrMovementReport', 'HR_MOVEMENT_REPORT_OBJECT', 'reportContext'),
   ],
+  [`GET ${BASE}/reports/:report/export`]: [
+    view(`${BASE}/reports/:report/export`, 'TenantBase.HrMovementReport', 'HR_MOVEMENT_REPORT_OBJECT', 'reportContext'),
+  ],
 };
