@@ -50,7 +50,7 @@ export async function continueAfterApproval(tx: Tx, run: Run, approved: TaskRow)
     if (next) return activateNext(tx, run, next);
     if (link.origin === 'add_sign_before') return returnToSigner(tx, run, tasks, link.signerTaskId, approved);
   }
-  await afterNodeApproved(tx, run, approved.nodeKey, tasks);
+  await afterNodeApproved(tx, run, approved, tasks);
 }
 
 /**

@@ -39,8 +39,9 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
+import { jumpFrom, pathPredecessor, rejectPreviousFrom } from './activations.js';
 import {
-  advanceFrom,
+  advanceTo,
   assertBusinessUnchanged,
   currentRouting,
   exceptionAdminFor,
@@ -300,7 +301,7 @@ export async function approveTask(
   // 【编辑并同意】＝先编辑、再按编辑后的单据同意：同意前提放在编辑之后，校验对象是最终候选态而非编辑前的库内状态
   // （BE-10c 第 3 轮）；同一事务内任一步失败整体回滚。
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'approve');
-  await closeTask(tx, ctx, task.id, 'approved', input.comment);
+  await closeTask(tx, ctx, task.id, 'approved', input.comment, 'approve');
   await appendLog(tx, ctx, run.instance, {
     event: 'approve',
     nodeKey: task.nodeKey,
@@ -360,7 +361,7 @@ export async function disagreeTask(
   if (blocked) return blocked;
   const { run, task, node } = scene;
   await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey, 'disagree');
-  await closeTask(tx, ctx, task.id, 'disagreed', input.comment);
+  await closeTask(tx, ctx, task.id, 'disagreed', input.comment, 'disagree');
   await appendLog(tx, ctx, run.instance, {
     event: 'disagree',
     nodeKey: task.nodeKey,
@@ -377,7 +378,7 @@ export async function disagreeTask(
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'disagree', task);
   if (isCountersign(node)) await settleCountersign(tx, run, node, task);
-  else await followExit(tx, run, node.key, 'disagree');
+  else await followExit(tx, run, node.key, 'disagree', task.activationId);
   run.events.push('approval.task.disagreed');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -438,8 +439,9 @@ export async function rejectToPreviousTask(
   if (!rejectToPreviousAllowed(node) || isCountersign(node)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启驳回到上一步');
   }
-  const index = nodeIndex(run, node.key);
-  if (index === 0) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
+  // F-478：上一步 = 本次激活的路径前驱（激活台账），不再是 seq 前一节点；没有前驱即没有上一步
+  const previousKey = (await pathPredecessor(tx, run, task)).nodeKey;
+  if (previousKey === null) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
@@ -447,7 +449,6 @@ export async function rejectToPreviousTask(
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
   }
-  const previous = run.version.nodes[index - 1]!;
   await closeTask(tx, ctx, task.id, 'rejected', input.comment);
   await cancelPending(tx, ctx, run.instance.id);
   // DEC-124：与跳转一样重置有效历史边界，上一步的办理人重新办理，不沿用驳回前的同意（第 3 轮 R2-6）
@@ -456,17 +457,17 @@ export async function rejectToPreviousTask(
     event: 'reject_previous',
     nodeKey: node.key,
     taskId: task.id,
-    detail: { comment: input.comment, toNodeKey: previous.key },
+    detail: { comment: input.comment, toNodeKey: previousKey },
   });
   await auditTask(
     tx,
     run,
     'approval.task.reject_previous',
     { status: 'pending', comment: null },
-    { status: 'rejected', comment: input.comment, toNodeKey: previous.key },
+    { status: 'rejected', comment: input.comment, toNodeKey: previousKey },
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'reject', task);
-  await advanceFrom(tx, run, index - 1);
+  await advanceTo(tx, run, previousKey, await rejectPreviousFrom(tx, run, previousKey));
   run.events.push('approval.task.rejected_previous');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -491,7 +492,7 @@ export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): 
   if (input.toNodeKey === node.key) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_JUMP_SAME_NODE', '只能跳到其他节点');
   }
-  const target = nodeIndex(run, input.toNodeKey);
+  nodeIndex(run, input.toNodeKey); // 目标不在本版本里时报 APPROVAL_NODE_UNKNOWN
   const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
   assertNotAddSigner(tasks, task);
   await closeTask(tx, ctx, task.id, 'cancelled', input.comment);
@@ -510,7 +511,7 @@ export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): 
     { currentNodeKey: node.key },
     { currentNodeKey: input.toNodeKey, comment: input.comment },
   );
-  await advanceFrom(tx, run, target);
+  await advanceTo(tx, run, input.toNodeKey, jumpFrom(run, input.toNodeKey));
   run.events.push('approval.instance.jumped');
   await persistRun(tx, run, outcomeAction(run));
   return ok(run);
@@ -611,7 +612,8 @@ export async function addSign(
     if (blocked) return blocked;
   }
   const status = input.type === 'after' ? 'approved' : 'add_signed';
-  await closeTask(tx, ctx, task.id, status, input.comment);
+  // 后加签 = 本人同意（设计 §3.2）：任务完成要记同意出口；前加签只是挂起，不算办理，出口留空。
+  await closeTask(tx, ctx, task.id, status, input.comment, input.type === 'after' ? 'approve' : null);
   if (input.type === 'after') {
     await appendLog(tx, ctx, run.instance, {
       event: 'approve',
@@ -1040,7 +1042,7 @@ function startHistoryAfter(run: Run, tasks: readonly TaskRow[]): void {
 }
 
 async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> {
-  const index = nodeIndex(run, input.toNodeKey ?? '');
+  const target = run.version.nodes[nodeIndex(run, input.toNodeKey ?? '')]!.key;
   await cancelPending(tx, run.ctx, run.instance.id);
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   startHistoryAfter(run, tasks);
@@ -1055,7 +1057,7 @@ async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> 
     before: { currentNodeKey: run.instance.currentNodeKey, reason: null },
     after: { currentNodeKey: input.toNodeKey, reason: input.reason },
   });
-  await advanceFrom(tx, run, index, tasks);
+  await advanceTo(tx, run, target, jumpFrom(run, target), tasks);
   run.events.push('approval.instance.jumped');
   await persistRun(tx, run, 'approval.instance.admin');
   return ok(run);
