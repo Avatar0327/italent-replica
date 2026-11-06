@@ -21,7 +21,7 @@ import {
 const testDb = useTestDb();
 
 describe('AC-APV-F478-13 撤回 / 重提 / 跳转', () => {
-  it('撤回：下游未处理时可撤回；下游已被自动处理后不可撤回', async () => {
+  it('撤回：下游未处理或仅被系统自动处理时可撤回（与 main 一致）；下游被人工同意后不可撤回', async () => {
     const s = await routeScene(testDb().db, 'f478-13-retrieve');
     const same = { type: 'specified' as const, value: s.people.n1.userId };
     await publishRouted(s.w, s.nodes({ n3: { approver: same, sameAssigneeSkip: true } }), {
