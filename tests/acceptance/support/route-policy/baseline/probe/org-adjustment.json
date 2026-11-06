@@ -25,6 +25,7 @@
       "fields:TenantBase.OrganizationApproval"
     ],
     "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/-",
       "scope:TenantBase/TenantBase.OrganizationApproval/-"
     ],
     "trace": [
