@@ -3439,7 +3439,37 @@
           "creator scope",
           "employment visibility",
           "requestScope",
-          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-movement/reports/:report/export": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-movement",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrMovementReport:view"
+        ],
+        "scope": [
+          "creator scope",
+          "employment visibility",
+          "requestScope",
           "scopeSql"
         ]
       }
@@ -3577,6 +3607,37 @@
       }
     },
     "GET /api/tenant/analytics/hr-structure/reports/:report": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "hr-structure",
+      "primitives": {
+        "object": [
+          "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.HrStructureReport:view"
+        ],
+        "scope": [
+          "employment visibility",
+          "requestScope",
+          "scope.all",
+          "scopeSql"
+        ]
+      }
+    },
+    "GET /api/tenant/analytics/hr-structure/reports/:report/export": {
       "edge": {
         "anonymous": {
           "code": "UNAUTHENTICATED",
