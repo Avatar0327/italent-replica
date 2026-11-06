@@ -59,7 +59,7 @@ describe('AC-PRM-29 审批人最小披露', () => {
       return (await response.json()) as InstanceView;
     };
     const view = await read();
-    expect(Object.keys(view.form.values).sort()).toEqual(['departmentId', 'place']);
+    expect(Object.keys(view.form.values).sort()).toEqual(['departmentId', 'departmentIdName', 'place']);
     expect(view.form.values).toMatchObject({ departmentId: s.to, place: '新地点' });
     expect(JSON.stringify(view.form)).not.toContain('不在表单');
 
@@ -90,7 +90,7 @@ describe('AC-PRM-29 审批人最小披露', () => {
     expect(approved.status, await approved.clone().text()).toBe(200);
     const after = await read();
     expect(after.actions).toEqual([]);
-    expect(Object.keys(after.form.values).sort()).toEqual(['departmentId', 'place']);
+    expect(Object.keys(after.form.values).sort()).toEqual(['departmentId', 'departmentIdName', 'place']);
     const stranger = await w.member('无关用户');
     expect((await real.request('GET', `/api/tenant/approval/instances/${submitted.id}`, w.as(stranger))).status).toBe(
       404,
