@@ -19,7 +19,15 @@ import {
   type BoardClient,
   type Report,
 } from './AC-HA-13a-support.js';
-import { downloadXlsx, exportLogs, exportPath, expectModesEqual, refOf, stringsOf } from './AC-HA-F482-support.js';
+import {
+  downloadXlsx,
+  exportLogs,
+  exportPath,
+  expectModesEqual,
+  newRows,
+  refOf,
+  stringsOf,
+} from './AC-HA-F482-support.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { formulaCells, valueAt, type Xlsx } from './support/xlsx-read.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -67,7 +75,9 @@ function expectRow(book: Xlsx, row: number, page: Report, cells: Record<string, 
     if (column.key === 'avgTenure' || column.key === 'avgAge') {
       if (cells[column.key] === null) expect(actual, `${label} ${column.key}`).toBeUndefined();
       else
-        expect(Math.abs((actual as number) - cells[column.key]!), `${label} ${column.key}`).toBeLessThanOrEqual(0.05);
+        expect(Math.abs((actual as number) - cells[column.key]!), `${label} ${column.key}`).toBeLessThanOrEqual(
+          0.05 + 1e-9,
+        );
     } else expect(actual, `${label} ${column.key}`).toBe(cells[column.key] ?? undefined);
   });
 }
@@ -147,17 +157,19 @@ describe('AC-HA-F482 员工素质结构报表导出', () => {
     ]);
 
     // 一级组织行逐行等于页面；序号从 1 起；手写：机构A 合计 2（男 1 女 1，硕士 1 本科 1）
-    expect(page.rows.map((row) => row.organizationName)).toEqual(['机构A', '部门B']);
+    // 行序以页面为准（页面按组织顺序号排，不是名称顺序）；手写断言按名称找到机构A所在行
+    expect(page.rows.map((row) => row.organizationName).sort()).toEqual(['机构A', '部门B']);
+    const a = 4 + page.rows.findIndex((row) => row.organizationName === '机构A');
     page.rows.forEach((row, index) => {
       expect(valueAt(book, `B${4 + index}`)).toBe(row.organizationName);
       expect(valueAt(book, `C${4 + index}`)).toBe(index + 1);
       expectRow(book, 4 + index, page, row.cells, row.organizationName);
     });
-    expect(rowOf(book, 4).slice(0, 7)).toEqual([2, 1, 1, 0, 1, 1, 0]);
+    expect(rowOf(book, a).slice(0, 7)).toEqual([2, 1, 1, 0, 1, 1, 0]);
     // 平均司龄 / 平均年龄不取整：机构A 平均司龄 (0.5 + 1.0) / 2 = 0.75（页面显示 0.8）；合计平均年龄 106 / 3（页面显示 35.3）
-    expect(valueAt(book, 'Q4') as number).toBeCloseTo(0.75, 10);
-    expect(Math.abs((valueAt(book, 'Q4') as number) - 0.8)).toBeGreaterThan(0.02);
-    expect(valueAt(book, 'X4')).toBe(27.5);
+    expect(valueAt(book, `Q${a}`) as number).toBeCloseTo(0.75, 10);
+    expect(Math.abs((valueAt(book, `Q${a}`) as number) - 0.8)).toBeGreaterThan(0.02);
+    expect(valueAt(book, `X${a}`)).toBe(27.5);
 
     const total = 4 + page.rows.length;
     expect(valueAt(book, `B${total}`)).toBe('合计');
@@ -251,11 +263,11 @@ describe('AC-HA-F482 员工素质结构报表导出', () => {
 
   it('AC-HA-F482-12：成功导出记一条对象操作日志（谁、何时、哪张报表、下载方式、筛选摘要）；失败的导出不记成功；不是报表的页签 404', async () => {
     const logs = () => exportLogs(x.w.db, x.w.tenantId, HR_STRUCTURE_REPORT_OBJECT);
-    const before = (await logs()).length;
+    const before = await logs();
     const query = `${AS_OF}&employType=all&departmentId=${x.a.id}`;
     await download(query, 'formula');
     await c.report('quality', query);
-    const written = (await logs()).slice(before);
+    const written = newRows(before, await logs());
     expect(written).toHaveLength(1);
     expect(written[0]).toMatchObject({
       actor_user_id: x.w.who.user,

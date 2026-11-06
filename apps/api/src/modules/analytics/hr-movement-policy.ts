@@ -1,5 +1,5 @@
 /**
- * BE-13b 人员流动分析看板 / 流动情况报表三个只读路由的 F-039 声明：权限是各自对象的查看权（入口以对象常量调
+ * BE-13b 人员流动分析看板 / 流动情况报表三个只读路由与 F-482 报表导出路由的 F-039 声明：权限是各自对象的查看权（入口以对象常量调
  * objectContext，再经 analyticsScope 解析同对象范围），范围按同一对象的数据范围解析（页面编码 <对象>.list）。
  * 取数 SQL 在时点 / 离职 / 入职 / 调动四类行集上先叠加可见谓词再计算（hr-movement.ts）。
  * 响应只含固定键的计数、分组与 ID；报表的列由离职类型 / 原因字典（零计数填 0）与职务序列字典展开，单元格是范围内的计数 / 比率。
@@ -34,6 +34,13 @@ export const HR_MOVEMENT_POLICIES = defineTable('hr-movement', {
     fixed(
       ['asOf', 'report', 'name', 'kind', 'year', 'month', 'hasDataPermission', 'tables'],
       'hr-movement-routes.ts 报表：固定键，单元格是范围内的计数 / 比率',
+    ),
+  ),
+  // F-482 导出（各月 / 各机构两个页签）：响应是 xlsx 文件，内容 = 同一份报表（同一对象查看权与数据范围裁剪），不新增授权项
+  [`GET ${HR_MOVEMENT_BASE}/reports/:report/export`]: report(
+    fixed(
+      ['file'],
+      'hr-movement-routes.ts 报表导出：xlsx 文件，行列与页面报表同一份范围内的计数 / 比率；每次成功导出写一条对象操作日志',
     ),
   ),
 });

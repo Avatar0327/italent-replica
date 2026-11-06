@@ -21,7 +21,15 @@ import {
   type MovementReport,
   type MovementWorld,
 } from './AC-HA-13b-support.js';
-import { downloadXlsx, exportLogs, exportPath, expectModesEqual, refOf, stringsOf } from './AC-HA-F482-support.js';
+import {
+  downloadXlsx,
+  exportLogs,
+  exportPath,
+  expectModesEqual,
+  newRows,
+  refOf,
+  stringsOf,
+} from './AC-HA-F482-support.js';
 import { formulaCells, valueAt, type Xlsx } from './support/xlsx-read.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -33,6 +41,17 @@ const VALUE_COLUMNS = ['C', 'D', 'E', 'F', 'G'];
 const KEYS = ['opening', 'hires', 'exits', 'closing', 'rate'] as const;
 
 const table = (report: MovementReport, key: string) => report.tables!.find((item) => item.key === key)!;
+/** 文件与页面逐格相等；只有离职率允许差页面的 4 位取整（文件不取整，页面取整到 4 位）。 */
+function expectLikePage(
+  actual: readonly (number | string | undefined)[],
+  page: Readonly<Record<string, number | null | undefined>>,
+  label: string,
+) {
+  expect(actual.slice(0, 4), label).toEqual(KEYS.slice(0, 4).map((key) => page[key] ?? undefined));
+  const shown = page.rate;
+  if (shown === null || shown === undefined) expect(actual[4], label).toBeUndefined();
+  else expect(Math.abs((actual[4] as number) - shown), `${label} 离职率`).toBeLessThanOrEqual(5e-5 + 1e-12);
+}
 const cellsAt = (book: Xlsx, row: number) => VALUE_COLUMNS.map((column) => valueAt(book, `${column}${row}`));
 
 describe('AC-HA-F482 流动情况两张统计报表导出', () => {
@@ -81,7 +100,7 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
     expect(page.rows).toHaveLength(12);
     page.rows.forEach((row, index) => {
       expect(valueAt(book, `B${3 + index}`), row.key).toBe(row.label);
-      expect(cellsAt(book, 3 + index), row.key).toEqual(KEYS.map((key) => row.cells[key] ?? undefined));
+      expectLikePage(cellsAt(book, 3 + index), row.cells, row.key);
     });
     expect(cellsAt(book, 3)).toEqual([5, 0, 1, 5, 0.2]); // 手写：1 月 期初 5、入职 0、离职 1、期末 5
     expect(cellsAt(book, 4)).toEqual([5, 2, 0, 6, 0]); // 2 月
@@ -186,9 +205,7 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
     expect(valueAt(book, 'B3')).toBe('2025-01');
     expect(stringsOf(book).filter((text) => text.includes(w.A.id))).toEqual([]);
     const filtered = table(await c.report('monthly', `${AS_OF}&year=2025&departmentId=${w.A.id}`), 'monthly');
-    filtered.rows.forEach((row, index) =>
-      expect(cellsAt(book, 3 + index), row.key).toEqual(KEYS.map((key) => row.cells[key] ?? undefined)),
-    );
+    filtered.rows.forEach((row, index) => expectLikePage(cellsAt(book, 3 + index), row.cells, row.key));
     expect(monthly.rows).toHaveLength(12);
   });
 
@@ -237,9 +254,7 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
     const monthlyQuery = `${AS_OF}&year=2026`;
     const monthly = table(await limited.report('monthly', monthlyQuery), 'monthly');
     const { book } = await download('monthly', monthlyQuery, 'data', limited);
-    monthly.rows.forEach((row, index) =>
-      expect(cellsAt(book, 3 + index), row.key).toEqual(KEYS.map((key) => row.cells[key] ?? undefined)),
-    );
+    monthly.rows.forEach((row, index) => expectLikePage(cellsAt(book, 3 + index), row.cells, row.key));
     expect(valueAt(book, 'E10')).toBe(0); // 8 月：范围外部门 8/31 的离职不计（全范围这一格是 1）
     expect(valueAt(book, 'E3')).toBe(1);
     const all = (await download('monthly', monthlyQuery, 'data')).book;
@@ -271,16 +286,18 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
 
   it('AC-HA-F482-06：每次成功导出记一条对象操作日志（谁、何时、哪张报表、哪种下载方式、筛选摘要）；失败的导出不记成功', async () => {
     const logs = () => exportLogs(w.db, w.tenantId, HR_MOVEMENT_REPORT_OBJECT);
-    const before = (await logs()).length;
+    const before = await logs();
     const query = `${AS_OF}&year=2026&month=4&departmentId=${w.A.id}`;
     await download('institution', query, 'data');
     await download('monthly', `${AS_OF}&year=2025`, 'formula');
     // 读页面不记导出日志
     await c.report('institution', query);
-    const written = (await logs()).slice(before);
+    // 测试时钟固定，日志没有稳定的先后；按内容做多重集差，取本用例新增的两条
+    const written = newRows(before, await logs());
     expect(written).toHaveLength(2);
-
-    const [institution, monthly] = written as [(typeof written)[number], (typeof written)[number]];
+    const logOf = (code: string) => written.find((row) => row.object_id === code)!;
+    const institution = logOf('institution');
+    const monthly = logOf('monthly');
     expect(institution).toMatchObject({
       actor_user_id: w.who.user,
       behavior: 'export',

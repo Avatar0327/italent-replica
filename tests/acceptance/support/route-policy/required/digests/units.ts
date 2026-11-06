@@ -31,7 +31,8 @@ export const DIGESTS: Digests = {
     reportContext: '8ca27169ea99',
     'route:GET /api/tenant/analytics/hr-movement': 'f2c77b11f9a1',
     'route:GET /api/tenant/analytics/hr-movement/components/:code': '53aa0476716b',
-    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'd850ade2116c',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report': 'ff3b4defe5f6',
+    'route:GET /api/tenant/analytics/hr-movement/reports/:report/export': '3a3476699cff',
   },
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts': {
     approvalVisible: '2e0c654e1a67',
@@ -44,7 +45,8 @@ export const DIGESTS: Digests = {
     reportContext: '33293fcda1ae',
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'e7232dcf88aa',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '95870ab94067',
   },
   'apps/api/src/modules/analytics/team-dashboard-routes.ts': {
     'route:GET /api/tenant/analytics/team-dashboard': 'c4225d98f12e',
@@ -1886,7 +1888,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/components/:code':
     '6aa0671e386b',
   'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report':
-    'bcf263b693ad',
+    'b1ba560dc863',
+  'apps/api/src/modules/analytics/hr-movement-routes.ts#route:GET /api/tenant/analytics/hr-movement/reports/:report/export':
+    'baf43a98850f',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#approvalVisible': '55c173015a83',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#processContext': '8371d99ccf32',
   'apps/api/src/modules/analytics/hr-process-dashboard-routes.ts#route:GET /api/tenant/analytics/hr-process-dashboard':
@@ -1899,7 +1903,9 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/components/:code':
     '441eb6918e7f',
   'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report':
-    '4f9a6b459de0',
+    '0268098fd8cb',
+  'apps/api/src/modules/analytics/hr-structure-routes.ts#route:GET /api/tenant/analytics/hr-structure/reports/:report/export':
+    '90caf0136978',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard':
     '7326924f2124',
   'apps/api/src/modules/analytics/team-dashboard-routes.ts#route:GET /api/tenant/analytics/team-dashboard/components/:code':

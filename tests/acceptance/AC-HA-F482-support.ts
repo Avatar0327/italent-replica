@@ -82,3 +82,15 @@ export function exportLogs(db: Db, tenantId: string, objectType: string) {
     return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as OperationLogRow[];
   });
 }
+
+/** 测试时钟固定，日志没有稳定的先后：按内容做多重集差，取本用例新增的行。 */
+export function newRows<T extends object>(before: readonly T[], after: readonly T[]): T[] {
+  const seen = new Map<string, number>();
+  for (const row of before) seen.set(JSON.stringify(row), (seen.get(JSON.stringify(row)) ?? 0) + 1);
+  return after.filter((row) => {
+    const key = JSON.stringify(row);
+    const left = seen.get(key) ?? 0;
+    seen.set(key, left - 1);
+    return left <= 0;
+  });
+}
