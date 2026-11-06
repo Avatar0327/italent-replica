@@ -11,7 +11,7 @@
  * 负责人与“编制原值”（DEC-653，BE-10e 导出用）：
  * 负责人取生效日组织版本，可见的变更行给了新负责人时以明细为准，新增节点取明细值，姓名取人员版本链的最新姓名；
  * 编制原值口径同编制详情（readCapacity：覆盖生效日的期间、生效日版本的含下级编制，“仅本级”方案按启用子树汇总，
- * 复用 batchLocalSums），新增节点无编制；多方案时按 pickScheme 取一个。
+ * 复用 batchLocalSums），新增节点无编制；同期多方案属防御兜底，按 pickScheme 取一个。
  * 编制增减数随 11e / 11f 的编制生成行。
  * 同级顺序同组织模块（DEC-089）：行政顺序号（明细指定值优先，其次组织现值；空排最后）→ 编码 → 既有在前 → 录入顺序。
  * 改上级不填顺序号即沿用组织原顺序号（DEC-745，F273A §8.2）。
@@ -164,7 +164,7 @@ interface CapacityRow {
 }
 
 /**
- * 编制原值：组织在生效日有多个方案的编制时按 `pickScheme` 取一个。
+ * 编制原值：生效日所在周期的编制；兜底场景下同一组织有多个方案时按 `pickScheme` 取一个。
  * “仅本级”方案的含下级直接用编制详情的 `batchLocalSums`（同一汇总类型与子树预算）。
  */
 async function fillEstablishment(tx: Tx, tenantId: string, date: string, nodes: readonly PreviewNode[]) {
@@ -215,10 +215,16 @@ interface SchemeKey {
 }
 
 /**
- * 同一组织在生效日有多个方案的编制时选哪一个（复刻系统的临时口径，BE-10e 第 2 轮总编排补充）：
- * 先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；其余按方案编码升序取第一个。
- * 多方案并存属上游既有问题（DEC-279 / DEC-295 要求重叠周期唯一编制），本函数只做确定性兜底，待取证。
- * TODO(需取证)：原站同一组织多方案时编制原值取哪个方案。
+ * 同一组织在生效日有多个方案的编制时选哪一个（F-446，北森实测，DEC-784）：
+ * - 北森同一组织在重叠周期内只能有一个方案的编制（新建时前端即拦），不同年份 / 不重叠周期的方案可并存（如某年度方案
+ *   与另一年的月度方案）；预览取生效日所在周期的那一条（上面查询的 period_start / period_end 条件已做到），
+ *   不存在“同期多方案取哪个”的业务情形。
+ * - 北森停用被当前 / 未来周期编制引用的方案会被直接拒绝；复刻同口径（schemes.ts 的 SCHEME_IN_USE，提示照北森原文），
+ *   所以生效日所在周期的编制不会指向已停用方案；组织没有编制时显示“--”，与北森一致。
+ * 复刻写入侧目前只有 unique(组织, 方案, 周期起始)（capacity-service.ts 的 CAPACITY_EXISTS），
+ * 跨方案重叠周期的拦截（DEC-279① / DEC-295①，F-037）尚未落地，所以同期多方案在复刻里理论上仍可能出现，
+ * 这里保留确定性兜底（防御用）：先排除已停用方案；启用方案里预置默认方案（DEFAULT_SCHEME_CODE）优先；
+ * 其余按方案编码升序取第一个。结果与录入顺序无关。
  */
 export function pickScheme<T extends SchemeKey>(candidates: readonly T[]): T | null {
   const rank = (row: T) => (row.code === DEFAULT_SCHEME_CODE ? 0 : 1);

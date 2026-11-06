@@ -169,6 +169,12 @@ const ITEM_BUTTON: Evidence = {
   anchor: "action: 'object.button',",
 };
 const ITEM_OP = (method: string, path: string) => op(method, path, 'update');
+/** 新增 / 编辑明细在命令事务内经 authorizeFields → authorizeOrgFields 判组织对象写操作权（B1b，首次与重放都经过）。 */
+const ITEM_ORG_WRITE = (method: string, path: string, anchor: string): Evidence[] => [
+  call(method, path, anchor),
+  { role: 'impl', unit: `${AUTH}#authorizeOrgFields`, anchor: 'await requireObjectWrite(bound.authorize, ctx, {' },
+  HEAD_WRITE[1]!,
+];
 function itemBtn(
   method: string,
   path: string,
@@ -382,7 +388,17 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     },
   ],
   [`POST ${ITEMS}`]: [
-    ITEM_OP('POST', ITEMS),
+    op(
+      'POST',
+      ITEMS,
+      'update',
+      undefined,
+      ITEM_ORG_WRITE(
+        'POST',
+        ITEMS,
+        "authorizeOrgFields(tx, deps, ctx, input.adjustType === 1 ? 'create' : 'update', Object.keys(input)),",
+      ),
+    ),
     ...ENTRIES.map(([entry, object, code, level]) =>
       itemBtn(
         'POST',
@@ -406,7 +422,17 @@ export const ORG_ADJUSTMENT: RequiredTable = {
     itemScope('POST', ITEMS),
   ],
   [`PATCH ${ITEMS}/:itemId`]: [
-    ITEM_OP('PATCH', `${ITEMS}/:itemId`),
+    op(
+      'PATCH',
+      `${ITEMS}/:itemId`,
+      'update',
+      undefined,
+      ITEM_ORG_WRITE(
+        'PATCH',
+        `${ITEMS}/:itemId`,
+        "await authorizeOrgFields(tx, deps, ctx, row.adjustType === 1 ? 'create' : 'update', Object.keys(input));",
+      ),
+    ),
     ROW('EditOrgApprovalDetail')('PATCH', `${ITEMS}/:itemId`, 'await button(deps, ctx, ...ROW_EDIT)'),
     itemScope('PATCH', `${ITEMS}/:itemId`),
   ],

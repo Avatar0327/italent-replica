@@ -91,7 +91,7 @@ async function hrDisclosure(tx: Tx, bound: Deps, ctx: TenantContext, view: Adjus
 }
 
 /** 只查范围里“本人创建”创建人名下的组织，不拉全租户创建人；没有 using_user 项时不查询。 */
-async function loadOrgCreators(tx: Tx, tenantId: string, scope: ModuleScope) {
+export async function loadOrgCreators(tx: Tx, tenantId: string, scope: ModuleScope) {
   const creators = new Map<string, string>();
   if (!hasCreatorScope(scope)) return creators;
   const creatorIds = (scope.terms ?? []).flatMap((term) =>
@@ -115,7 +115,7 @@ async function loadOrgCreators(tx: Tx, tenantId: string, scope: ModuleScope) {
 }
 
 /** 组织在查看人组织对象范围内（审批人路径不要求范围，恒为真）；范围含创建人项时带上组织的创建人。 */
-export function orgInScope(disclosure: Disclosure, orgId: string): boolean {
+export function orgInScope(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreators'>, orgId: string): boolean {
   const scope = disclosure.orgScope;
   return !scope || scopeAllows(scope, { orgId, creatorId: disclosure.orgCreators.get(orgId) });
 }
@@ -154,7 +154,7 @@ export function orgSectionDisclosed(disclosure: Disclosure): boolean {
  * 明细行可见性（HR 路径）：行涉及的组织逐个在组织对象范围，引用的本单明细（新上级行、转移目标行、连带发起行）
  * 也须可见——按不动点收敛，隐藏行的名称不会经下级新增行的“上级”间接露出。审批人路径全部可见。
  */
-export function visibleItems(disclosure: Disclosure, items: readonly OrgItem[]) {
+export function visibleItems(disclosure: Pick<Disclosure, 'orgScope' | 'orgCreators'>, items: readonly OrgItem[]) {
   const scope = disclosure.orgScope;
   if (!scope) return { items: [...items], hiddenRowCount: 0 };
   const inScope = (orgId: string | null) => !orgId || orgInScope(disclosure, orgId);

@@ -28,6 +28,22 @@ export const HEAD_BUTTONS = {
   approve: ['EditApprovalIngApply', 'detail'],
 } as const satisfies Record<string, HeadButton>;
 
+/** 申请单不存在的文案；范围外与不存在共用（读接口的 `notFound()` 同文案）。 */
+export const ADJUSTMENT_NOT_FOUND = '组织调整申请不存在';
+
+/**
+ * 由库里现值（或缓存回执）推出的组织范围判定：范围外的组织与不存在的申请单同一错误（F-339 ③），不能经文案推断存在性。
+ * 请求里新给的组织不包这一层——那是调用方自己输入的，仍报“组织不存在”。
+ */
+export async function asAdjustmentMissing<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('NOT_FOUND', ADJUSTMENT_NOT_FOUND);
+    throw error;
+  }
+}
+
 export interface HeadAuthorization {
   readonly actor: 'applicant' | 'current_approver';
   readonly operation: 'create' | 'update';
@@ -162,6 +178,39 @@ export async function authorizeItem(tx: Tx, deps: Deps, ctx: TenantContext, inpu
     operation: 'update',
     subjectOrgId: input.subjectOrgId,
     rangeOrgIds: orgIds,
+  });
+}
+
+/** 组织明细载荷键 → 组织对象的字段编码（与 `PATCH organizations/:id` 的 `writeFields` 同一字段集，§6.3）。 */
+const ORG_WRITE_FIELD: Readonly<Record<string, string>> = {
+  name: 'name',
+  code: 'code',
+  shortName: 'shortName',
+  displayOrder: 'displayOrder',
+  personInChargeId: 'personInChargeId',
+  hrbpId: 'hrbpId',
+  parent: 'parents',
+  siblingOf: 'parents',
+};
+
+/**
+ * 组织明细写入的组织对象字段编辑权（§6.3 “组织明细”行，F-343 ③）：新增组织按 create、改组织按 update；
+ * 载荷里没有对应组织字段（如停用）不判。与行按钮、主体组织、行组织同在守卫里，首次与重放都经过。
+ */
+export async function authorizeOrgFields(
+  tx: Tx,
+  deps: Deps,
+  ctx: TenantContext,
+  operation: 'create' | 'update',
+  keys: readonly string[],
+): Promise<void> {
+  const fields = [...new Set(keys.flatMap((key) => ORG_WRITE_FIELD[key] ?? []))];
+  if (fields.length === 0) return;
+  const bound = { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) };
+  await requireObjectWrite(bound.authorize, ctx, {
+    objectCode: MODULE_OBJECTS.organization.code,
+    operation,
+    payload: Object.fromEntries(fields.map((field) => [field, true])),
   });
 }
 
