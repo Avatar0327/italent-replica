@@ -13,6 +13,7 @@ export const importPath = `${exits}/import`;
 export const previewPath = `${importPath}/preview`;
 
 type Text = string | null;
+/** 必填列缺值发 null，由服务端逐行报错；可选列未填就不出现（后端 normalizeRow 对缺省与 null 同样处理）。 */
 export interface ImportRow {
   rowNo: number;
   employeeNo: Text;
@@ -20,17 +21,25 @@ export interface ImportRow {
   entryDate: Text;
   departmentCode: Text;
   lastWorkDate: Text;
-  positionCode: Text;
-  postCode: Text;
-  exitTypeCode: Text;
-  exitReasonCode: Text;
-  exitDestinationCode: Text;
+  positionCode?: string;
+  postCode?: string;
+  exitTypeCode?: string;
+  exitReasonCode?: string;
+  exitDestinationCode?: string;
   addToBlacklist: boolean;
-  blacklistReason: Text;
-  blacklistExpiryDate: Text;
-  blacklistNote: Text;
+  blacklistReason?: string;
+  blacklistExpiryDate?: string;
+  blacklistNote?: string;
 }
 type Field = Exclude<keyof ImportRow, 'rowNo'>;
+/**
+ * 后端全局请求体上限（apps/api/src/middleware.ts DEFAULT_BODY_LIMIT），按 UTF-8 字节计。
+ * 前端先按带 confirmed 的导入报文（两次请求里较大的一份）核对，超限整份拒绝、不发请求，免得 preview / 导入 413。
+ */
+export const EXIT_IMPORT_BODY_LIMIT = 32 * 1024;
+const encoder = new TextEncoder();
+const oversized = (rows: ImportRow[]) =>
+  encoder.encode(JSON.stringify({ rows, confirmed: true })).length > EXIT_IMPORT_BODY_LIMIT;
 const REQUIRED: Field[] = ['employeeNo', 'name', 'entryDate', 'departmentCode', 'lastWorkDate'];
 const DATES = new Set<string>(['entryDate', 'lastWorkDate', 'blacklistExpiryDate']);
 const reasonCodes = new Map<string, string>(Object.entries(BLACKLIST_REASONS).map(([code, name]) => [name, code]));
@@ -92,10 +101,13 @@ export function importRowsOf(sheet: Sheet): { rows: ImportRow[] } | { error: str
     if (addToBlacklist === undefined) return { error: xi.errors.blacklist(rowNo) };
     const reason = value('blacklistReason');
     const row = { rowNo } as ImportRow;
-    for (const field of Object.keys(xi.columns) as Field[]) Object.assign(row, { [field]: value(field) });
-    rows.push({ ...row, addToBlacklist, blacklistReason: (reason && reasonCodes.get(reason)) ?? reason });
+    for (const field of Object.keys(xi.columns) as Field[]) {
+      const text = value(field);
+      if (text !== null || REQUIRED.includes(field)) Object.assign(row, { [field]: text });
+    }
+    rows.push({ ...row, addToBlacklist, ...(reason && { blacklistReason: reasonCodes.get(reason) ?? reason }) });
   }
-  return { rows };
+  return oversized(rows) ? { error: xi.errors.tooLarge(EXIT_IMPORT_BODY_LIMIT / 1024) } : { rows };
 }
 
 export interface ImportIssue {

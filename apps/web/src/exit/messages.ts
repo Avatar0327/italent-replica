@@ -229,5 +229,6 @@ export const xi = {
     unknown: (labels: string) => `无法识别的列：${labels}`,
     duplicate: (label: string) => `列名重复：${label}`,
     blacklist: (rowNo: number) => `第 ${rowNo} 行“加入黑名单”只能填写“是”或“否”`,
+    tooLarge: (kb: number) => `文件内容超过单次导入上限（${kb} KB），请减少行数或缩短内容后分批导入`,
   },
 };

@@ -41,7 +41,7 @@ type Loaded = { rows: ImportRow[]; preview: ImportPreview };
 type Picked = { reading?: boolean; error?: string; loaded?: Loaded };
 /**
  * 选文件即解析并调 preview（只读，不进命令内核，同 ExitForm 的提交前检查）。
- * 读取期间又换了文件，较早的结果作废；读不出、列名不对、超过 100 行都就地提示，不发请求。
+ * 读取期间又换了文件，较早的结果作废；读不出、列名不对、超过 100 行或报文超过请求体上限都就地提示，不发请求。
  */
 function usePreview() {
   const api = useApiClient();
