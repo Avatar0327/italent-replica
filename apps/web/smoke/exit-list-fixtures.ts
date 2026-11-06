@@ -181,7 +181,8 @@ const record = (request: Request, path: string): Sent => ({
   key: request.headers()['idempotency-key'],
 });
 
-export async function setupExits(page: Page) {
+/** extraButtons：在全授权按钮之外再给的按钮（如 F-139b 的 list 级 Employment.DimissionImport），缺省不加。 */
+export async function setupExits(page: Page, extraButtons: { buttonCode: string; level: string }[] = []) {
   const server: ExitServer = {
     rows: [
       exitItem(ids.inProgress, people.inProgress, '合成离职中员工'),
@@ -206,7 +207,7 @@ export async function setupExits(page: Page) {
     actions: {},
     blacklistDetail: {},
   };
-  await routePermissions(page);
+  await routePermissions(page, extraButtons);
   await routeReferences(page);
   const own = /\/api\/tenant\/employment\/(exits|employees|exit-handover-requests)(\/|\?|$)/;
   await page.route(own, (route) => serve(route, server));
@@ -217,7 +218,7 @@ export async function setupExits(page: Page) {
   return server;
 }
 
-async function routePermissions(page: Page) {
+async function routePermissions(page: Page, extraButtons: { buttonCode: string; level: string }[]) {
   await page.route('**/permission/me/snapshot', (route) =>
     route.fulfill({
       json: {
@@ -235,7 +236,7 @@ async function routePermissions(page: Page) {
         dataOperations: { read: true, create: true, update: true },
         viewableFields: viewable,
         editableFields: viewable,
-        buttons,
+        buttons: [...buttons, ...extraButtons],
       },
     }),
   );
