@@ -2138,6 +2138,36 @@
       "obj:TenantBase.EmploymentRecord:update"
     ]
   },
+  "POST /api/tenant/employment/exits/import": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "158e9446b5c6",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
+  "POST /api/tenant/employment/exits/import/preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "158e9446b5c6",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/-",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:create"
+    ]
+  },
   "POST /api/tenant/employment/interns": {
     "all": {
       "code": "VALIDATION_FAILED",

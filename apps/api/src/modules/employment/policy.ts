@@ -56,6 +56,7 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   CONTRACT_OBJECT,
   EXIT_BUTTONS,
+  EXIT_IMPORT_BUTTON,
   HANDOVER_RESUBMIT_BUTTON,
   HANDOVER_ROW_SUBMIT_BUTTON,
   HANDOVER_BATCH_SUBMIT_BUTTON,
@@ -67,6 +68,7 @@ import {
 import {
   type ButtonPolicy,
   defineTable,
+  type FailureAuditPolicy,
   type FieldsFrom,
   type FieldsPolicy,
   type PolicyBase,
@@ -128,7 +130,27 @@ const NF_ASSESSMENT = denied(404, 'NOT_FOUND', '考核记录不存在');
 const NF_INTENTION = denied(404, 'NOT_FOUND', '意向退休申请不存在');
 const NF_HANDOVER = denied(404, 'NOT_FOUND', '离职交接申请不存在');
 const F_HANDOVER_NOT_ASSIGNEE = denied(403, 'FORBIDDEN', 'EXIT_HANDOVER_NOT_ASSIGNEE');
+const F_IMPORT_SCOPE = denied(403, 'FORBIDDEN', '批量导入历史离职人员需要“全部数据”范围');
 const F_BLACKLIST = denied(403, 'FORBIDDEN', '黑名单只对有“看全部”数据权限的人员开放');
+/** F-139a 历史离职导入：人员新增权（与 POST /employees 同一对象与“看全部”口径，但范围不足是 403，见 F_IMPORT_SCOPE）。 */
+const IMPORT_EMPLOYEE_CREATE = object({
+  object: EMPLOYEE,
+  operation: 'create',
+  button: noButton('人员新增权只判对象；导入入口按钮在任职对象上'),
+  scope: seeAll(F_IMPORT_SCOPE),
+  fields: noFields('人员新增权只判对象与字段写权；回执不含人员字段'),
+});
+/** 任职对象新增权 + 独立的批量导入按钮；rows 逐行校验、整批原子。 */
+const importRecordCreate = (failureAudit?: FailureAuditPolicy) =>
+  object({
+    object: EMPLOYMENT,
+    operation: 'create',
+    button: button(EXIT_IMPORT_BUTTON, 'list'),
+    scope: seeAll(F_IMPORT_SCOPE),
+    fields: noFields('回执是固定形状，不含任职字段目录内的字段'),
+    rows: { path: 'rows[*]', fields: 'body', batch: 'atomic' },
+    ...(failureAudit ? { failureAudit } : {}),
+  });
 /** `job/context.uuidParam`：路径标识非 UUID → 400 VALIDATION_FAILED「对象标识必须为 UUID」。 */
 const byId = { invalidId: BAD_REQUEST };
 
@@ -1855,6 +1877,42 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     write: employmentWrite('body', [...EXIT_CREATE_PRECONDITIONS, 'assertTransition'], { controls: ['exit'] }),
   }),
+  // F-139a 历史离职人员导入（设计 §7）：权限链 = readContext(object.create) → EMPLOYEE 的 object.create
+  // → Employment.DimissionImport@list
+  // → 字段写权 → 显式“看全部”范围（DEC-121，范围不足 403，与 POST /employees 的 404 不同：入口是批量按钮，不隐藏存在性）。
+  // preview 不开命令事务、不进台账，403 不带逐行结果；import 必带 Idempotency-Key，命令内由 exitImportGuard 复核，
+  // 整批一个事务（任一行有错 400 IMPORT_ROWS_INVALID 零写入；有编制提示未确认 409 CONFIRMATION_REQUIRED）
+  'POST /exits/import/preview': all(
+    [IMPORT_EMPLOYEE_CREATE, importRecordCreate()],
+    noFields('预览回执是固定形状的逐行结果，不含任职字段目录内的字段'),
+    {
+      write: write(
+        'body',
+        none('只读预览：没有命令事务，没有提交前足迹'),
+        none('只读预览：回执是逐行诊断，不是任职对象'),
+      ),
+    },
+  ),
+  'POST /exits/import': all(
+    [
+      IMPORT_EMPLOYEE_CREATE,
+      importRecordCreate({
+        kind: 'import',
+        rows: 'rows',
+        objectType: 'exit-import',
+        anchors: 'audit.rawImportRows',
+      }),
+    ],
+    projector('employment.exitImport', 'employment.exitImport'),
+    {
+      guards: [LINKAGE],
+      write: write(
+        'body',
+        none('命令内由 exitImportGuard 按当前授权复核按钮 / 人员新增权 / 字段 / 看全部范围，业务写入全部在同一事务'),
+        none('回执是批次号与对象标识，不是任职对象，不经 authorizeEmploymentResult 裁剪'),
+      ),
+    },
+  ),
   // F-140b1：If-Match 必填；body = 离职扩展字段 + 计划日期 + 确认控制项；范围外与不存在均 404。
   // DimissionEdit，审批中的单另需 adminIntervene（B-65a）；已生效日期仍拒绝。
   'PATCH /exits/:id': all(

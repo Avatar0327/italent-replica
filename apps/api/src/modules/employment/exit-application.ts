@@ -89,12 +89,12 @@ function columnValues(exit: ExitOptions) {
   };
 }
 
-async function dutyTransferTiming(tx: Tx, tenantId: string) {
+export async function dutyTransferTiming(tx: Tx, tenantId: string) {
   return (await readEffectiveSetting(tx, tenantId, 'exit.duty_transfer_timing')).value as string;
 }
 
 /** 离职单所在任职周期（最新载荷版本的 selected_staff_id）。 */
-async function selectedStaffOf(tx: Tx, ctx: EmploymentContext, businessId: string) {
+export async function selectedStaffOf(tx: Tx, ctx: EmploymentContext, businessId: string) {
   const [version] = rowsOf<{ staffId: string }>(
     await tx.execute(sql`SELECT selected_staff_id AS "staffId" FROM employment_payload_versions
       WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),

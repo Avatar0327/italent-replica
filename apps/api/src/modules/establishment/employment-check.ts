@@ -109,21 +109,87 @@ export async function employmentEstablishmentExcesses(
   return evaluateEstablishment(tx, ctx, target, true);
 }
 
+/** 导入的一行（还没有员工 ID 与业务 ID）：部门 / 职位 / 字段与它自己的在职段 [from, until)，key 在同批内唯一。 */
+export interface ImportedTenureSegment {
+  readonly key: string;
+  readonly departmentId: string;
+  readonly positionId: string | null;
+  readonly fields: Partial<PresetFields>;
+  readonly from: string;
+  readonly until: string;
+}
+
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * 历史离职导入的编制评估入口（设计 §4.4）：与撤销离职 ΔP 同口径——在段起点与段内每个编制周期起点各判一次，
+ * 同一编制对象取最大峰值。严格 / 非严格控编这里都只返回明细，由调用方做“提示并确认”（DEC-258）。
+ * 外部人员（employType = external）不占编，返回空。
+ */
+export async function importedTenureExcesses(
+  tx: Tx,
+  ctx: EmploymentContext,
+  segment: ImportedTenureSegment,
+  peers: readonly ImportedTenureSegment[],
+): Promise<CapacityExcess[]> {
+  if (segment.fields.employType === 'external') return [];
+  const worst = new Map<string, CapacityExcess>();
+  const starts = await establishmentPeriodStartsWithin(tx, ctx.tenantId, segment.from, segment.until);
+  for (const effectiveDate of [segment.from, ...starts]) {
+    const { excesses } = await evaluateEstablishment(
+      tx,
+      ctx,
+      {
+        businessId: NIL_UUID,
+        employeeId: NIL_UUID,
+        kind: 'hire',
+        departmentId: segment.departmentId,
+        positionId: segment.positionId,
+        effectiveDate,
+        until: segment.until,
+        reconcileCarried: false,
+        propagates: false,
+        fields: segment.fields,
+      },
+      true,
+      { segment, peers },
+    );
+    for (const item of excesses) {
+      const key = `${item.capacityId}:${item.positionId ?? ''}`;
+      if (!worst.has(key) || (worst.get(key)!.peak ?? -1) < (item.peak ?? 0)) worst.set(key, item);
+    }
+  }
+  return [...worst.values()];
+}
+
+/**
+ * 历史离职导入的评估范围（F-139a 设计 §4.4）：只在本文件内部流转，不挂在 ActivationTarget 上，其他入口看不到也传不进。
+ * segment 是被评估的这一行，peers 是同批其他行；它们都还没落库，作为独立成员按 key 计数。
+ */
+interface ImportedScope {
+  readonly segment: ImportedTenureSegment;
+  readonly peers: readonly ImportedTenureSegment[];
+}
+
 async function evaluateEstablishment(
   tx: Tx,
   ctx: EmploymentContext,
   target: ActivationTarget,
   collect: boolean,
+  imported?: ImportedScope,
 ): Promise<{ assessment: EstablishmentAssessment; excesses: CapacityExcess[] }> {
   const excesses: CapacityExcess[] = [];
   const none = { assessment: 'none' as const, excesses };
-  if (!CAPACITY_KINDS.includes(target.kind) || !target.departmentId) return none;
+  // 普通入口按 kind 过滤；导入范围绕开这个过滤，普通 hire 照旧不判（设计 §4.3）
+  if ((!imported && !CAPACITY_KINDS.includes(target.kind)) || !target.departmentId) return none;
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
-  const previous = await findPredecessor(tx, ctx.tenantId, target.employeeId, target.effectiveDate);
-  const business = target.fields
-    ? null
-    : await loadEmploymentBusiness(tx, ctx.tenantId, target.businessId, target.effectiveDate);
+  // 导入的人员还不存在：没有前驱、没有业务载荷、没有携带编制，字段全部来自行本身
+  const previous = imported ? null : await findPredecessor(tx, ctx.tenantId, target.employeeId, target.effectiveDate);
+  const business =
+    imported || target.fields
+      ? null
+      : await loadEmploymentBusiness(tx, ctx.tenantId, target.businessId, target.effectiveDate);
   const fields = {
     ...previous?.fields,
     ...(target.fields ?? business?.fields),
@@ -135,7 +201,7 @@ async function evaluateEstablishment(
         ? ('internal' as const)
         : (target.fields?.employType ?? previous?.fields.employType ?? 'internal'),
   };
-  await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
+  if (!imported) await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
   if (!target.occupancyOnly && fields.employType === 'external') return none;
   const transfer = {
     ...target,
@@ -143,9 +209,12 @@ async function evaluateEstablishment(
     sourceOrgId: previous?.fields.departmentId ?? target.departmentId,
   };
   // 周期取业务生效日（迟到执行已按 DEC-186 调整）；容量读取允许采用 HR 当天已生效的调整。
-  const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
+  // 导入的是历史段：编制与方案按评估日当时的状态读，不取“今天”（部门之后停用不应让历史评估读空）
+  const capacityAsOf = imported
+    ? target.effectiveDate
+    : [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
   for (const capacity of await targetCapacities(tx, ctx, transfer, capacityAsOf)) {
-    const found = await capacityExcesses(tx, ctx, { ...target, fields }, capacity, capacityAsOf);
+    const found = await capacityExcesses(tx, ctx, { ...target, fields }, capacity, capacityAsOf, imported);
     excesses.push(...found);
     // 单项版：第一处严格超编就返回（与引入明细版之前一致）；明细版继续收集
     if (!collect && found.some((item) => item.strict)) return { assessment: 'strict', excesses };
@@ -161,6 +230,7 @@ async function capacityExcesses(
   target: ActivationTarget & { readonly fields: Partial<PresetFields> },
   capacity: Awaited<ReturnType<typeof targetCapacities>>[number],
   capacityAsOf: string,
+  imported?: ImportedScope,
 ): Promise<CapacityExcess[]> {
   const { fields } = target;
   const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
@@ -174,7 +244,16 @@ async function capacityExcesses(
     scheme.excludedOrgIds,
   );
   const ids = [...new Set(windows.flatMap((window) => window.orgIds))];
-  const members = await projectedMembers(tx, ctx, target, capacity.periodStart, capacity.periodEnd, ids, windows);
+  const members = await projectedMembers(
+    tx,
+    ctx,
+    target,
+    capacity.periodStart,
+    capacity.periodEnd,
+    ids,
+    windows,
+    imported,
+  );
   const count = (inclusive: boolean, positionId?: string) =>
     members(
       (person) =>
@@ -295,6 +374,7 @@ async function projectedMembers(
   end: string,
   orgIds: readonly string[],
   windows: readonly MembershipWindow[],
+  imported?: ImportedScope,
 ) {
   // P2-1：读取目标日到周期末（给了 target.until 则到它为止，R1-T11 恢复区间）的真实主职区间，在变化点取人数峰值。
   const periodEnd = new Date(Date.parse(end) + 86400000).toISOString().slice(0, 10);
@@ -359,11 +439,32 @@ async function projectedMembers(
       intervals.push({ employeeId: row.employeeId, fields, from, until, ...staffOf(applicationStaff) });
     members.set(row.employeeId, intervals);
   }
-  if (!target.occupancyOnly)
+  if (!target.occupancyOnly && !imported)
     await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut, projectedAdjustments);
   await subtractPendingExits(tx, ctx, members, timings);
+  // 导入的各行都没有落库，也没有待生效的离职预减（离职生效日就是它们占编的终点）：在预减之后作为独立成员并入
+  if (imported) addImportedMembers(members, imported, target.effectiveDate, windowEnd);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
+}
+
+/**
+ * 导入范围的成员：被评估的行与同批其他行都先与本次评估窗口 W = [评估日, 窗口末) 求交，再各自作为独立成员（key 作员工键）并入，
+ * 之后统一走 clipMembership 与峰值扫描；与 W 不相交的行不占编（设计 §4.4 场景 ⑥）。
+ */
+function addImportedMembers(
+  members: Map<string, MemberInterval[]>,
+  imported: ImportedScope,
+  windowStart: string,
+  windowEnd: string,
+) {
+  for (const row of [imported.segment, ...imported.peers.filter((peer) => peer.key !== imported.segment.key)]) {
+    const from = row.from > windowStart ? row.from : windowStart;
+    const until = row.until < windowEnd ? row.until : windowEnd;
+    if (from >= until) continue;
+    const fields = { ...row.fields, departmentId: row.departmentId, positionId: row.positionId };
+    members.set(row.key, [{ employeeId: row.key, fields, from, until }]);
+  }
 }
 
 /**

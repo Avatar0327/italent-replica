@@ -248,6 +248,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       45: '79acc91437c2ab79',
       // F-432：司龄校正标准字段；版本为 main + 1 占位，合并时重算。
       46: '2836fdc4e1b54269',
+      // F-139a / DEC-814：新增历史离职导入按钮 Employment.DimissionImport@list（三个预置管理员）；版本为 main + 1 占位，合并时重算。
+      47: '852cc4f73fe34ee8',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
