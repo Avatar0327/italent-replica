@@ -804,6 +804,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/analytics/stat-report-layout.ts#rateCell': ['#rateOf'],
   'apps/api/src/modules/analytics/stat-report-layout.ts#writeCounts': ['#COUNT_KEYS', '#VALUE_COLUMNS'],
   'apps/api/src/modules/analytics/stat-xlsx.ts#StatSheet': ['#NS', '#clean', '#columnIndex', '#escape'],
+  'apps/api/src/modules/analytics/stat-xlsx.ts#clean': ['#allowed'],
   'apps/api/src/modules/analytics/stat-xlsx.ts#statWorkbook': [
     '#NS',
     '#PKG',
