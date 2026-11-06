@@ -1,0 +1,87 @@
+{
+  "DELETE /api/tenant/attachments/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/attachments/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/attachments/:id/content": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "be409e90433c",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/attachments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "38d882682f96",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/attachments/:id/upload": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "505add1ab501",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

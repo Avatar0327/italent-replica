@@ -1,9 +1,8 @@
 {
-  "reason": "F-139a（DEC-814）：新增历史离职人员导入按钮 Employment.DimissionImport，仅人事管理员 / HR 专员 / 组织系统管理员默认授予；不新增数据范围",
+  "reason": "F-479 S1（DEC-819）：本人离职申请专属字段 attachmentRefs（手写申请图片引用），仅员工身份默认可查看、可编辑；不新增按钮或数据范围",
   "add": [
-    "standard_org_system_admin/TenantBase.EmploymentRecord/button:Employment.DimissionImport@list",
-    "standard_hr_admin/TenantBase.EmploymentRecord/button:Employment.DimissionImport@list",
-    "standard_hr_specialist/TenantBase.EmploymentRecord/button:Employment.DimissionImport@list"
+    "employee_self_service/TenantBase.SelfExit/field:attachmentRefs:view",
+    "employee_self_service/TenantBase.SelfExit/field:attachmentRefs:edit"
   ],
   "remove": []
 }

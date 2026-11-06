@@ -9,3 +9,13 @@ export const daterange = customType<{ data: string; driverData: string }>({
     return 'daterange';
   },
 });
+
+/** PostgreSQL bytea，读写 Buffer（PGlite 返回 Uint8Array 时在读取处归一）。附件字节表专用（F-479 S1）。 */
+export const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array }>({
+  dataType() {
+    return 'bytea';
+  },
+  fromDriver(value) {
+    return Buffer.isBuffer(value) ? value : Buffer.from(value);
+  },
+});
