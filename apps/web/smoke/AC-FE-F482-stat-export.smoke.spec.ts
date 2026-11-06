@@ -72,7 +72,7 @@ for (const report of REPORTS) {
 
     const trigger = actionButton(main, '下载 ▾');
     await trigger.click();
-    await expect(page.getByRole('menuitem')).toHaveText([FORMULA, DATA]);
+    await expect(page.locator('.ant-dropdown').getByRole('menuitem')).toHaveText([FORMULA, DATA]);
 
     const first = page.waitForEvent('download');
     await page.getByRole('menuitem', { name: FORMULA }).click();

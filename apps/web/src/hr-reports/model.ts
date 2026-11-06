@@ -39,6 +39,8 @@ export interface CatalogItem extends Pick<PersonnelReport, 'code' | 'name' | 'gr
   reason?: string;
 }
 export type Filters = Record<string, string>;
+/** 统计报表下载方式：formula = 含公式、隐藏行 / 列，data = 仅数据。 */
+export type ExportMode = 'data' | 'formula';
 export const pageSize = 20;
 export function initialFilters(code: string, today: string): Filters {
   if (code === '1.07') return { from: `${today.slice(0, 4)}-01-01`, to: today };
@@ -50,12 +52,19 @@ export function initialFilters(code: string, today: string): Filters {
   return filters;
 }
 /** 查询/导出共用已执行的筛选；不向统计接口发并不存在的分页参数。 */
-export function reportUrl(report: PersonnelReport, filters: Filters, page?: number, exporting = false) {
+export function reportUrl(
+  report: PersonnelReport,
+  filters: Filters,
+  page?: number,
+  exporting = false,
+  mode?: ExportMode,
+) {
   const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== ''));
   if (page !== undefined && !statistical(report.code)) {
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
   }
+  if (exporting && mode) params.set('mode', mode);
   return `${report.endpoint}${exporting ? '/export' : ''}?${params}`;
 }
 export function errorText(error: unknown, exporting = false): string {

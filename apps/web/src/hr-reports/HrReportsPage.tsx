@@ -23,6 +23,7 @@ import { useReportRead } from './useReportRead.js';
 import { ReportFilters } from './ReportFilters.js';
 import { ReportTable } from './ReportTable.js';
 import { ReportExport } from './ReportExport.js';
+import { StatExport } from './StatExport.js';
 import './hr-reports.css';
 
 function ReadState({ loading, error, retry }: { loading: boolean; error?: unknown; retry(): void }) {
@@ -98,6 +99,10 @@ function ReportView({ report }: { report: PersonnelReport }) {
         <h1>{report.name}</h1>
         <Space>
           <Button onClick={() => navigate('/hr-reports')}>{m.back}</Button>
+          {/* 统计报表：能看就能导出（DEC-809①），不看名册导出按钮权限；名册类报表仍按导出按钮权限出 CSV 导出 */}
+          {statistical(report.code) && read.data && (
+            <StatExport key={JSON.stringify(query)} report={report} filters={query.filters} />
+          )}
           {!statistical(report.code) &&
             read.data &&
             !permission.loading &&
