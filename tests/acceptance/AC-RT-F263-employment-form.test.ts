@@ -1,4 +1,4 @@
-/** F-263 / DEC-684⑤⑥：退休固定年龄条件复用租户用工形式字典，国籍保持，人员类别后补 F-323。 */
+/** F-263 / DEC-684⑤⑥：退休固定年龄条件复用租户用工形式字典，国籍保持；人员类别条件见 AC-RT-F323c。 */
 import { randomUUID } from 'node:crypto';
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -180,14 +180,9 @@ describe('AC-RT-F263 固定年龄用工形式条件', () => {
     },
   );
 
-  it('AC-RT-F263-03：人员类别明确暂不支持，国籍及无用工形式旧规则行为不变', async () => {
+  it('AC-RT-F263-03：国籍及无用工形式旧规则行为不变', async () => {
     const w = await world('compat');
     const old = await w.saved([condition('nationality', ['CN'])]);
-    const before = await w.list();
-    const rejected = await w.create([condition('employmentType', ['synthetic-category'])]);
-    expect(rejected.status).toBe(400);
-    expect(await rejected.text()).toContain('人员类别条件暂不支持，后补 F-323');
-    expect(await w.list()).toEqual(before);
     const cn = await w.member(null);
     const other = await w.member('regular', 'ZZ');
     await w.setSwitch('expected_date', true);

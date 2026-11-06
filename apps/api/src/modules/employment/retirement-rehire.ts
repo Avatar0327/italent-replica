@@ -25,7 +25,6 @@ import {
 import { assertProbationTerms, probationTerms } from './entry-options.js';
 import { entryContractSchema, requireContractCreateAccess, type EntryContract } from './entry-contract.js';
 import { parseEmploymentInput } from './fields.js';
-import type { ExitOptions } from './exit-initiation.js';
 import { rowsOf, type LockedEmploymentBusiness } from './record-store.js';
 import type { CustomFields, EmploymentContext, PresetFields } from './types.js';
 import { createEmploymentBusiness, validateNewCycleEmployment } from './write-service.js';
@@ -102,22 +101,19 @@ export function parseRehirePlan(raw: unknown, startDate: string): RehirePlan {
 }
 
 /**
- * 专用入口的 reEmployed + rehire 一致性与结构校验（§3.2 第 1 步，锁前）：两者同有同无；同时返聘与加黑互斥（§4.4）。
+ * 专用入口的 reEmployed + rehire 一致性与结构校验（§3.2 第 1 步，锁前）：两者同有同无；退休不收加黑字段（DEC-716），原“同时返聘与加黑互斥”随之无需判断。
  * 返回 undefined 表示普通退休。
  */
 export function resolveRehirePlan(
   ctx: EmploymentContext,
   input: { reEmployed?: unknown; rehire?: unknown },
   lastWorkDate: string,
-  exit: ExitOptions,
 ): RehirePlan | undefined {
   const flag = z.boolean().safeParse(input.reEmployed ?? false);
   if (!flag.success) throw invalid('是否同时返聘必须是布尔值', 'RETIREMENT_REHIRE_PLAN_INVALID');
   if (flag.data !== (input.rehire !== undefined))
     throw invalid('是否同时返聘与返聘计划必须同时提供', 'RETIREMENT_REHIRE_PLAN_INCONSISTENT');
   if (!flag.data) return undefined;
-  if (exit.addToBlacklist === true)
-    throw invalid('同时返聘的退休不能同时加入黑名单', 'RETIREMENT_REHIRE_BLACKLIST_CONFLICT');
   return parseRehirePlan(input.rehire, plannedRehireStartDate(ctx, lastWorkDate));
 }
 
@@ -198,7 +194,7 @@ export async function previewRehire(
   lastWorkDate: string,
   input: { reEmployed?: unknown; rehire?: unknown },
 ) {
-  const plan = resolveRehirePlan(ctx, input, lastWorkDate, {});
+  const plan = resolveRehirePlan(ctx, input, lastWorkDate);
   if (!plan) return undefined;
   const startDate = plannedRehireStartDate(ctx, lastWorkDate);
   try {

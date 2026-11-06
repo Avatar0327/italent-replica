@@ -33,7 +33,7 @@ export interface Row {
   status?: string;
   mode?: string;
   revision?: number;
-  cancellation?: { id: string; reason?: string } | null;
+  cancellation?: { id: string } | null;
   [key: string]: unknown;
 }
 export interface ListResult {
@@ -252,32 +252,4 @@ export function intentionBody(values: Values, writable: readonly string[]): Valu
       .filter((key) => writable.includes(key))
       .map((key) => [key, isBlank(values[key]) ? null : values[key]]),
   );
-}
-
-type Disclosed = { kind?: unknown; status?: unknown; action?: unknown; targets?: unknown; hiddenCount?: unknown };
-/** 未知取值原样显示，缺键不显示。 */
-const labelOf = (labels: Record<string, string>, value: unknown) =>
-  typeof value === 'string' && value ? (labels[value] ?? value) : undefined;
-function countText(total: number, hidden: number) {
-  if (!total) return '';
-  return `${m.downstream.count(total)}${hidden ? m.downstream.hidden(hidden) : ''}）`;
-}
-
-/**
- * 撤销回执的下游清单（exit-downstream.ts trimDownstream，已按查看人裁剪）：只照服务端返回逐条列出类目、状态 / 动作与件数；
- * 状态、件数缺键就不显示，不补合同 / 账号等推断文案（DEC-714）。
- */
-export function downstreamLines(downstream: unknown): string[] {
-  const value = (downstream ?? {}) as { items?: unknown; additional?: unknown };
-  const list = (entries: unknown) => (Array.isArray(entries) ? (entries as Disclosed[]) : []);
-  const line = (entry: Disclosed, label: string | undefined) => {
-    const kind = m.downstream.kinds[String(entry.kind)] ?? String(entry.kind);
-    const visible = Array.isArray(entry.targets) ? entry.targets.length : undefined;
-    const hidden = Number.isSafeInteger(entry.hiddenCount) ? Number(entry.hiddenCount) : 0;
-    return `${kind}${label ? `：${label}` : ''}${visible === undefined ? '' : countText(visible + hidden, hidden)}`;
-  };
-  return [
-    ...list(value.items).map((entry) => line(entry, labelOf(m.downstream.states, entry.status))),
-    ...list(value.additional).map((entry) => line(entry, labelOf(m.downstream.actions, entry.action))),
-  ];
 }

@@ -619,6 +619,7 @@ export const GRAPH: Graph = {
     '#normalize',
   ],
   'apps/api/src/modules/establishment/schemes.ts#checkSchemeLifecycle': [
+    '#SCHEME_IN_USE_MESSAGE',
     'apps/api/src/modules/establishment/store.ts#today',
   ],
   'apps/api/src/modules/establishment/schemes.ts#createScheme': [

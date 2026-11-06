@@ -4,6 +4,9 @@ import { establishmentSession } from './AC-EST-support.js';
 
 const testDb = useTestDb();
 
+/** 北森停用被当前 / 未来周期编制引用的方案时的提示原文（F-446，DEC-784 取证）。 */
+const IN_USE_MESSAGE = '该方案已被当前周期编制或未来周期编制引用，不允许停用';
+
 describe('AC-EST 被引用编制方案的生命周期', () => {
   it('已引用方案不可改周期/起始月/细分维度或删除，当前和未来引用均阻止停用', async () => {
     const session = await establishmentSession(testDb().db, 'est-scheme-locked');
@@ -29,7 +32,9 @@ describe('AC-EST 被引用编制方案的生命周期', () => {
       body: { effectiveDate: '2026-10-01', enabled: false },
     });
     expect(disabled.status).toBe(409);
-    expect(await disabled.json()).toMatchObject({ error: { details: { reason: 'SCHEME_IN_USE' } } });
+    expect(await disabled.json()).toMatchObject({
+      error: { code: 'CONFLICT', message: IN_USE_MESSAGE, details: { reason: 'SCHEME_IN_USE' } },
+    });
   });
 
   it('仅被历史周期引用的方案可停用，历史编制仍能读取', async () => {
@@ -59,7 +64,31 @@ describe('AC-EST 被引用编制方案的生命周期', () => {
       body: { effectiveDate: '2026-10-01', stopDate: '2026-10-01' },
     });
     expect(stopped.status).toBe(409);
-    expect(await stopped.json()).toMatchObject({ error: { details: { reason: 'SCHEME_IN_USE' } } });
+    expect(await stopped.json()).toMatchObject({
+      error: { code: 'CONFLICT', message: IN_USE_MESSAGE, details: { reason: 'SCHEME_IN_USE' } },
+    });
+  });
+
+  it('F-446 只被未来周期引用的方案同样拒绝停用并给北森原文；没有任何编制引用的方案可正常停用', async () => {
+    const session = await establishmentSession(testDb().db, 'est-scheme-future-only');
+    const org = await session.create('仅未来引用部门');
+    const referenced = await session.scheme();
+    await session.capacity(org.id, referenced.id, { periodStart: '2027-01-01' });
+    const denied = await session.request('PATCH', `/schemes/${referenced.id}`, {
+      ifMatch: referenced.revision,
+      body: { effectiveDate: '2026-10-01', enabled: false },
+    });
+    expect(denied.status).toBe(409);
+    expect(await denied.json()).toMatchObject({
+      error: { code: 'CONFLICT', message: IN_USE_MESSAGE, details: { reason: 'SCHEME_IN_USE' } },
+    });
+    const free = await session.scheme({ name: '未被引用方案' });
+    const allowed = await session.request('PATCH', `/schemes/${free.id}`, {
+      ifMatch: free.revision,
+      body: { effectiveDate: '2026-10-01', enabled: false },
+    });
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toMatchObject({ enabled: false });
   });
 
   it('方案已排定在下一年停用，新建下期编制不能借当前仍启用的版本放行', async () => {

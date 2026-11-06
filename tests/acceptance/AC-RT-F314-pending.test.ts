@@ -46,7 +46,6 @@ async function approved(x: RetirementWorld, date?: string) {
 async function cancel(x: RetirementWorld, id: string) {
   const response = await x.session.request('POST', `/retirements/${id}/cancel`, {
     ifMatch: (await x.business(id)).revision,
-    body: { reason: '合成测试撤销退休' },
   });
   expect(response.status, await response.clone().text()).toBe(200);
 }

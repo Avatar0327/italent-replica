@@ -2010,15 +2010,6 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: write('body', none('只读拒绝：没有命令事务，没有提交前足迹'), none('只读拒绝：没有业务响应')),
     ...byId,
   }),
-  'PATCH /retirements/cancellations/:id': object({
-    object: EMPLOYMENT,
-    operation: 'update',
-    button: button(RETIREMENT_BUTTONS.cancel, 'detail'),
-    scope: guardScope('employment.exitCancellation', NF_BUSINESS),
-    fields: projector('employment.response', 'employment.exitCancellation'),
-    write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
-    ...byId,
-  }),
   // ---- employment/exit-routes.ts：R2-T03 B4 撤销离职（设计 §7.1 / §7.3 / §9.1；命令内复核 exitCommandGuard）-------------------
   // 撤销：If-Match 必填；readContext(object.update) → DimissionCancel（命令式）→ authorizeBusinessWrite（范围外 404）→ 非离职单 404；
   // body 严格 { reason, confirmed? }，reason 缺失 / 空白 400；命令内员工闭包 → 业务头 → 组织 → 编制 → 审批实例，approved / effective
@@ -2120,6 +2111,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     button: noButton('列表无按钮'),
     scope: listScope('employment.visibility'),
     fields: projector('employment.response', 'employment.retirementViews'),
+  }),
+  // F-410：员工在途退休单（草稿 / 审批中 / 已批准 / 已驳回）；readContext(object.view) 按员工范围先行，范围外 / 不存在同一个 404，
+  // 没有在途退休单 → { item: null }；有则走详情同一字段裁剪
+  'GET /retirements/employees/:id/in-flight': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('在途查询无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.employee', NF_DATA),
+    fields: projector('employment.response', 'employment.retirementDetail'),
+    ...byId,
   }),
   // 详情：readPageContext(detail)；loadEmploymentBusiness（DEC-177）看不见 / 不存在 / 非退休单同一个 404「任职业务不存在」
   'GET /retirements/:id': object({

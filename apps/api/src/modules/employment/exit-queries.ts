@@ -215,7 +215,8 @@ function viewOrder(view: ExitView, show: ExitViewable): SQL {
 
 const SHOWN_DEPARTMENT = sql`COALESCE(prev.department_id, p.department_id)`;
 
-function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
+/** 退休单据视图（retirement-views.ts）复用同一组筛选谓词。 */
+export function filterPredicates(tenantId: string, filter: ExitViewFilter): SQL[] {
   const parts: SQL[] = [];
   if (filter.departmentIds) parts.push(sql`${SHOWN_DEPARTMENT}=ANY(${`{${filter.departmentIds.join(',')}}`}::uuid[])`);
   if (filter.keyword) {

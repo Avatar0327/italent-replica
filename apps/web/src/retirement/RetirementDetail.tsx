@@ -1,6 +1,7 @@
-import { Alert, Button, Descriptions, Drawer, Input, Modal, Space, Table, Tabs, message } from 'antd';
+import { Button, Descriptions, Drawer, Modal, Space, Table, Tabs, Tag, message } from 'antd';
 import { useState } from 'react';
 import { NameOf } from '../contracts/references.js';
+import { exits } from '../exit/exit-model.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import type { Values } from '../foundation/forms/values.js';
 import { slotKey } from '../foundation/forms/slot.js';
@@ -18,7 +19,6 @@ import {
   acceptRetirement,
   apiRoot,
   cellValue,
-  downstreamLines,
   entriesFor,
   object,
   retirements,
@@ -71,11 +71,9 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
     await refresh();
     await result.reload();
   };
-  // 撤销回执的下游清单存在详情层：撤销按钮随刷新卸载后仍可见（第 2 轮 P2-5）
-  const [downstream, setDownstream] = useState<string[]>([]);
   const actions = entries
     .filter((entry): entry is BillEntry => entry === 'submit' || entry === 'withdraw' || entry === 'cancel')
-    .map((entry) => <BillAction key={entry} row={detail!} action={entry} refresh={reload} onReceipt={setDownstream} />);
+    .map((entry) => <BillAction key={entry} row={detail!} action={entry} refresh={reload} />);
   return (
     <Drawer open width={760} title={detail?.name ? String(detail.name) : m.title} onClose={onClose}>
       {result.error ? (
@@ -87,12 +85,11 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
               {actions}
             </Space>
           )}
-          {downstream.length > 0 && <DownstreamList lines={downstream} />}
           {detail && (
             <Tabs
               items={[
                 { key: 'record', label: m.tabs.record, children: <RecordTab detail={detail} /> },
-                { key: 'handover', label: m.tabs.handover, children: handover },
+                { key: 'handover', label: m.tabs.handover, children: <HandoverTab id={row.id!} /> },
                 { key: 'versions', label: m.tabs.versions, children: <VersionsTab detail={detail} /> },
               ]}
             />
@@ -103,8 +100,20 @@ export function RetirementDetail({ view, row, onClose, refresh }: DetailProps) {
   );
 }
 
-// 后端未开放退休交接子流程（GET /exits/:id/handover 只受理离职单）：页签按 R2f B24 只读口径，只显示缺口
-const handover = <Alert type="info" showIcon message={m.handoverGap} />;
+/**
+ * 交接页签（F-351）：读 GET /exits/:id/handover（后端已受理退休单），只显示交接状态；
+ * 退休不在本页发起交接（发起入口仍在离职交接，B4 另做），所以不画提交 / 重提按钮。
+ */
+function HandoverTab({ id }: { id: string }) {
+  const read = useRead<{ status?: unknown }>(`${slotKey(exits, id)}/handover`);
+  const status = typeof read.data?.status === 'string' ? read.data.status : undefined;
+  return (
+    <section aria-label={m.tabs.handover}>
+      {read.error ? <PageState kind="error" error={read.error} retry={read.refresh} /> : null}
+      {status && <Tag>{m.handoverStatus[status] ?? status}</Tag>}
+    </section>
+  );
+}
 const references: Record<string, string> = {
   departmentId: refPaths.departmentId!,
   positionId: refPaths.positionId!,
@@ -116,7 +125,6 @@ const recordFields = (
 ).split(' ');
 /** 被裁剪的字段缺键，照常显示占位（claude_fe_rules d）。 */
 function RecordTab({ detail }: { detail: Row }) {
-  const cancellation = detail.cancellation;
   return (
     <>
       <Descriptions
@@ -128,7 +136,6 @@ function RecordTab({ detail }: { detail: Row }) {
           children: references[key] ? <NameOf path={references[key]} id={detail[key]} /> : cellValue(detail, key),
         }))}
       />
-      {cancellation && <Alert type="warning" message={`${m.cancelReason}：${cancellation.reason ?? m.missing}`} />}
     </>
   );
 }
@@ -151,40 +158,21 @@ function VersionsTab({ detail }: { detail: Row }) {
 }
 
 /**
- * 撤销带撤销原因与确认项（confirmed）；提交被要求确认在途调动时，令牌放 pendingTransferAck（EmploymentBusinessPatch，
+ * 撤销不收原因（DEC-714），只带确认项（confirmed）；提交被要求确认在途调动时，令牌放 pendingTransferAck（EmploymentBusinessPatch，
  * 第 2 轮 P2-2）；撤回只发空体。
  */
-function billBody(action: BillEntry, input: Values, extra: Extra): Values {
-  if (action === 'cancel') return { reason: input.reason, ...extra };
+function billBody(action: BillEntry, extra: Extra): Values {
+  if (action === 'cancel') return { ...extra };
   return action === 'submit' && extra.ack ? { pendingTransferAck: extra.ack } : {};
 }
 
-/** 只列服务端返回的项，不补合同 / 账号 / 交接 / 加黑提示（DEC-714；交接与加黑是否自动发起仍待取证）。 */
-function DownstreamList({ lines }: { lines: string[] }) {
-  return (
-    <section aria-label={m.downstream.title} className="retirement-downstream">
-      <Alert
-        type="info"
-        message={m.downstream.title}
-        description={
-          <ul>
-            {lines.map((line, index) => (
-              <li key={`${index}:${line}`}>{line}</li>
-            ))}
-          </ul>
-        }
-      />
-    </section>
-  );
-}
-
 type BillEntry = 'submit' | 'withdraw' | 'cancel';
-type BillProps = { row: Row; action: BillEntry; refresh(): Promise<unknown>; onReceipt(downstream: string[]): void };
+type BillProps = { row: Row; action: BillEntry; refresh(): Promise<unknown> };
 /**
  * 单据动作（提交 / 撤回 / 撤销）：按单据 revision 提交，与办理 / 申请共用员工恢复槽，任一入口结果未知都锁住同一员工；
  * 撤销超编由服务端 409 CONFIRMATION_REQUIRED 要求确认，确认后同一命令上下文带 confirmed 重提。
  */
-function BillAction({ row, action, refresh, onReceipt }: BillProps) {
+function BillAction({ row, action, refresh }: BillProps) {
   const id = row.id!;
   const read = useBusinessRead(id);
   const target = {
@@ -195,19 +183,16 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
   };
   const cmd = useRetireCommand(retireSlot, target, `${action}/${id}`, refresh);
   const drafts = useRetireDraft(row.employeeId!);
-  const [reason, setReason] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
   const run = async () => {
     try {
-      const values = action === 'cancel' ? { reason: reason?.trim() ?? '' } : {};
-      // 写后回读确认后才交出下游清单；结果未知时不展示。回读的单据状态交草稿入口决定本单引用的去留
-      let downstream: string[] = [];
+      // 回读的单据状态交草稿入口决定本单引用的去留
       let readback: Values = {};
-      const done = await cmd.submit(values, action === 'cancel' ? ['reason'] : [], {
+      const done = await cmd.submit({}, [], {
         path: `${slotKey(retirements, id)}/${action}`,
-        body: (input, extra) => billBody(action, input, extra),
+        body: (_input, extra) => billBody(action, extra),
         accept: (raw, sent) => {
           const receipt = acceptRetirement(raw, { employeeId: row.employeeId!, sent, id });
-          if (action === 'cancel') downstream = downstreamLines(receipt.downstream);
           const verify = (latest: Values) => {
             readback = latest;
           };
@@ -217,8 +202,7 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
       if (!done) return;
       // 同一单据已在详情处理并确认：提交 / 撤销后员工入口不再接续，撤回回到草稿则继续原单（第 4 轮 P2-R3-1）
       drafts.settled(id, action, readback);
-      setReason(undefined);
-      if (action === 'cancel') onReceipt(downstream);
+      setConfirming(false);
       void message.success(m.success[action]);
     } catch {
       // 拒绝 / 冲突 / 结果未知由内核状态条显示
@@ -228,26 +212,20 @@ function BillAction({ row, action, refresh, onReceipt }: BillProps) {
   if (action === 'cancel')
     return (
       <Space direction="vertical">
-        <Button danger disabled={cmd.disabled} onClick={() => setReason('')}>
+        <Button danger disabled={cmd.disabled} onClick={() => setConfirming(true)}>
           {m.entries.cancel}
         </Button>
         {status}
         <Modal
-          open={reason !== undefined}
+          open={confirming}
           title={m.entries.cancel}
           okText={m.confirm}
           cancelText={m.cancel}
-          okButtonProps={{ disabled: cmd.disabled || !reason?.trim(), loading: cmd.form.busy }}
+          okButtonProps={{ disabled: cmd.disabled, loading: cmd.form.busy }}
           onOk={() => void run()}
-          onCancel={() => setReason(undefined)}
+          onCancel={() => setConfirming(false)}
         >
-          <Input.TextArea
-            aria-label={m.cancelReason}
-            placeholder={m.cancelReason}
-            maxLength={500}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
+          {m.cancelWarning}
           {status}
         </Modal>
       </Space>
