@@ -14,17 +14,22 @@ const list = <T extends string>(allowed: readonly [T, ...T[]]) =>
     .transform((value) => value.split(',').filter(Boolean))
     .pipe(z.array(z.enum(allowed)).max(allowed.length))
     .optional();
-const querySchema = z.object({
-  view: z.literal('applications'),
-  category: z
-    .string()
-    .transform((value) => value.split(',').filter(Boolean))
-    .pipe(z.array(z.string().refine(isApprovalType)).max(Object.keys(APPROVAL_TYPES).length))
-    .optional(),
-  status: list(STATUSES),
-  sort: z.enum(['createdAt', 'status']).default('createdAt'),
-  order: z.enum(['asc', 'desc']).optional(),
-});
+const querySchema = z
+  .object({
+    view: z.literal('applications'),
+    category: z
+      .string()
+      .transform((value) => value.split(',').filter(Boolean))
+      .pipe(z.array(z.string().refine(isApprovalType)).max(Object.keys(APPROVAL_TYPES).length))
+      .optional(),
+    status: list(STATUSES),
+    sort: z.enum(['createdAt', 'status']).default('createdAt'),
+    order: z.enum(['asc', 'desc']).optional(),
+    // 分页由路由的 pageQuery 单独解析与校验，这里只放行键名，其余未知键一律 400，不静默忽略
+    page: z.string().optional(),
+    pageSize: z.string().optional(),
+  })
+  .strict();
 export type MyApplicationsQuery = z.infer<typeof querySchema>;
 
 export function myApplicationsQuery(value: Record<string, string>): MyApplicationsQuery {
