@@ -15,7 +15,7 @@ export interface Sheet {
   date1904: boolean;
 }
 /**
- * reason：format = 不是合法的 xlsx（坐标越界等）；limit = 解压后过大或单元格过多。
+ * reason：format = 不是合法的 xlsx（坐标越界等）；limit = 解压后过大或有值单元格过多。
  * 100 行导入远用不到下面两个上限，超过即中止，防压缩炸弹与异常文件卡死页面。
  */
 export class XlsxError extends Error {
@@ -29,7 +29,10 @@ export class XlsxError extends Error {
 }
 /** 单个部件（工作表、共享字符串等）解压后的字节上限。 */
 export const XLSX_PART_LIMIT = 16 * 1024 * 1024;
-/** 工作表里 <c> 单元格的总数上限；每行展开成稠密数组后的累计格数也以它为上限。 */
+/**
+ * 有值单元格的总数上限；每行展开成稠密数组后的累计格数也以它为上限。
+ * 只有样式的空白格不计（铺好格式的模板尾部常有上万个），它们的扫描量由 XLSX_PART_LIMIT 兜住。
+ */
 export const XLSX_CELL_LIMIT = 100_000;
 /** Excel 最大列 XFD = 16384：列坐标超出即判文件非法，不按下标造超长稀疏数组。 */
 const COLUMN_LIMIT = 16384;
@@ -132,12 +135,12 @@ function sheetRows(xml: string, shared: string[]): SheetRow[] {
     let next = 0;
     let width = 0;
     for (const cell of (row[2] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      if (++count > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
       const column = columnOf(attr(cell[1]!, 'r'));
       const at = column < 0 ? next : column;
       next = at + 1;
       const value = cellValue(cell[1]!, cell[2] ?? '', shared);
       if (value === null) continue;
+      if (++count > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
       values.set(at, value);
       width = Math.max(width, next);
     }
