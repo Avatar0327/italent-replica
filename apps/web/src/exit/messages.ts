@@ -223,6 +223,7 @@ export const xi = {
   success: (count: number) => `已导入 ${count} 人`,
   errors: {
     unreadable: '文件无法读取，请选择 .xlsx 格式的 Excel 文件',
+    tooBig: '文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试',
     empty: '文件中没有数据行',
     tooMany: (limit: number) => `一次最多导入 ${limit} 行`,
     missing: (labels: string) => `缺少必填列：${labels}`,

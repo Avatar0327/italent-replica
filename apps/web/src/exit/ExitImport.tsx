@@ -20,7 +20,7 @@ import {
   type ImportRow,
   type PreviewRow,
 } from './exit-import-model.js';
-import { readXlsx } from './xlsx-reader.js';
+import { XlsxError, readXlsx } from './xlsx-reader.js';
 
 /** 工具栏入口：新增权 + list 级按钮 Employment.DimissionImport（与 employment/policy.ts 两条导入路由同口径）。 */
 export const importEntryVisible = (p: ObjectPermission | undefined) =>
@@ -41,7 +41,7 @@ type Loaded = { rows: ImportRow[]; preview: ImportPreview };
 type Picked = { reading?: boolean; error?: string; loaded?: Loaded };
 /**
  * 选文件即解析并调 preview（只读，不进命令内核，同 ExitForm 的提交前检查）。
- * 读取期间又换了文件，较早的结果作废；读不出、列名不对、超过 100 行或报文超过请求体上限都就地提示，不发请求。
+ * 读取期间又换了文件，较早的结果作废；读不出（含解压过大、单元格过多）、列名不对、超过 100 行或报文超过请求体上限都就地提示，不发请求。
  */
 function usePreview() {
   const api = useApiClient();
@@ -51,7 +51,10 @@ function usePreview() {
     const sheet = await file
       .arrayBuffer()
       .then((buffer) => readXlsx(new Uint8Array(buffer)))
-      .catch(() => undefined);
+      .catch((error: unknown) =>
+        error instanceof XlsxError && error.reason === 'limit' ? xi.errors.tooBig : undefined,
+      );
+    if (typeof sheet === 'string') return { error: sheet };
     if (!sheet) return { error: xi.errors.unreadable };
     const parsed = importRowsOf(sheet);
     if ('error' in parsed) return parsed;

@@ -14,7 +14,27 @@ export interface Sheet {
   /** 工作簿用 1904 日期系统（workbookPr date1904）：序列号 0 = 1904-01-01，否则 1900 系统。 */
   date1904: boolean;
 }
-export class XlsxError extends Error {}
+/**
+ * reason：format = 不是合法的 xlsx（坐标越界等）；limit = 解压后过大或单元格过多。
+ * 100 行导入远用不到下面两个上限，超过即中止，防压缩炸弹与异常文件卡死页面。
+ */
+export class XlsxError extends Error {
+  override name = 'XlsxError';
+  constructor(
+    message: string,
+    readonly reason: 'format' | 'limit' = 'format',
+  ) {
+    super(message);
+  }
+}
+/** 单个部件（工作表、共享字符串等）解压后的字节上限。 */
+export const XLSX_PART_LIMIT = 16 * 1024 * 1024;
+/** 工作表里 <c> 单元格的总数上限。 */
+export const XLSX_CELL_LIMIT = 100_000;
+/** Excel 最大列 XFD = 16384：列坐标超出即判文件非法，不按下标造超长稀疏数组。 */
+const COLUMN_LIMIT = 16384;
+/** 每次喂给解压流的压缩字节：deflate 最大约 1032 倍，超限时最多多解开一片。 */
+const FEED = 16 * 1024;
 
 type Entry = { method: number; size: number; local: number };
 const decoder = new TextDecoder();
@@ -41,14 +61,26 @@ function directory(bytes: Bytes) {
   return { view, entries };
 }
 
+/** 分片喂入、边读边计数：解压输出超过 XLSX_PART_LIMIT 立即取消，不等整份解开（压缩炸弹）。 */
 async function inflate(data: Bytes) {
   const stream = new DecompressionStream('deflate-raw');
   const writer = stream.writable.getWriter();
-  void writer.write(data).catch(() => undefined);
-  void writer.close().catch(() => undefined);
-  const parts: Uint8Array[] = [];
   const reader = stream.readable.getReader();
-  for (let next = await reader.read(); !next.done; next = await reader.read()) parts.push(next.value);
+  // 写入受读端背压节流；读端取消后写入被拒，喂入随之停止。
+  void (async () => {
+    for (let at = 0; at < data.length; at += FEED) await writer.write(data.subarray(at, at + FEED));
+    await writer.close();
+  })().catch(() => undefined);
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    total += next.value.length;
+    if (total > XLSX_PART_LIMIT) {
+      await reader.cancel().catch(() => undefined);
+      throw new XlsxError('part too large', 'limit');
+    }
+    parts.push(next.value);
+  }
   const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
   parts.reduce((offset, part) => (out.set(part, offset), offset + part.length), 0);
   return out;
@@ -65,8 +97,14 @@ const textOf = (xml: string) =>
   [...xml.replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
     .map((match) => unescape(match[1]!))
     .join('');
-const columnOf = (ref: string) =>
-  [...(/^[A-Z]+/.exec(ref)?.[0] ?? '')].reduce((n, letter) => n * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+/** 没有 r 的单元格接在上一格后面（-1）；有 r 就必须是 A1 形式且列不超过 XFD，否则整份拒绝。 */
+const columnOf = (ref: string | undefined) => {
+  if (ref === undefined) return -1;
+  const letters = /^([A-Z]{1,3})\d+$/.exec(ref)?.[1];
+  const column = letters ? [...letters].reduce((n, letter) => n * 26 + letter.charCodeAt(0) - 64, 0) - 1 : -1;
+  if (column < 0 || column >= COLUMN_LIMIT) throw new XlsxError('bad cell reference');
+  return column;
+};
 
 function cellValue(tag: string, inner: string, shared: string[]): Cell {
   const type = attr(tag, 't');
@@ -81,10 +119,12 @@ function cellValue(tag: string, inner: string, shared: string[]): Cell {
 
 function sheetRows(xml: string, shared: string[]): SheetRow[] {
   const rows: SheetRow[] = [];
+  let count = 0;
   for (const row of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
     const cells: Cell[] = [];
     for (const cell of (row[2] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const column = columnOf(attr(cell[1]!, 'r') ?? '');
+      if (++count > XLSX_CELL_LIMIT) throw new XlsxError('too many cells', 'limit');
+      const column = columnOf(attr(cell[1]!, 'r'));
       cells[column < 0 ? cells.length : column] = cellValue(cell[1]!, cell[2] ?? '', shared);
     }
     rows.push({ rowNo: Number(attr(row[1]!, 'r') ?? rows.length + 1), cells: Array.from(cells, (c) => c ?? null) });
@@ -100,6 +140,7 @@ export async function readXlsx(bytes: Bytes): Promise<Sheet> {
     if (!entry) return undefined;
     const start = entry.local + 30 + view.getUint16(entry.local + 26, true) + view.getUint16(entry.local + 28, true);
     const data = bytes.subarray(start, start + entry.size);
+    if (entry.method === 0 && data.length > XLSX_PART_LIMIT) throw new XlsxError('part too large', 'limit');
     if (entry.method === 0) return decoder.decode(data);
     if (entry.method === 8) return decoder.decode(await inflate(data));
     throw new XlsxError('unsupported compression');
