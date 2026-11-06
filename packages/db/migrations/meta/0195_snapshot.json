@@ -1,5 +1,5 @@
 {
-  "id": "c8bade2e-8da6-4869-a0c2-cf8a7362ff16",
+  "id": "6076da03-d8d7-4d7a-bd8f-361d922a3853",
   "prevId": "a697099e-d9fc-4c81-b1e2-ec6d20411bfb",
   "version": "7",
   "dialect": "postgresql",
@@ -12641,91 +12641,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.employment_rehire_seniority_snapshots": {
-      "name": "employment_rehire_seniority_snapshots",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot_version_id": {
-          "name": "snapshot_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_rehire_seniority_snapshot_fk": {
-          "name": "employment_rehire_seniority_snapshot_fk",
-          "tableFrom": "employment_rehire_seniority_snapshots",
-          "tableTo": "employment_payload_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "snapshot_version_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "business_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "employment_rehire_seniority_snapshots_tenant_id_business_id_pk": {
-          "name": "employment_rehire_seniority_snapshots_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.employment_setting_versions": {
       "name": "employment_setting_versions",
       "schema": "",
@@ -23593,521 +23508,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.approval_node_activations": {
-      "name": "approval_node_activations",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "activation_id": {
-          "name": "activation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "instance_id": {
-          "name": "instance_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "round": {
-          "name": "round",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_key": {
-          "name": "node_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entry_kind": {
-          "name": "entry_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_activation_id": {
-          "name": "from_activation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "from_node_key": {
-          "name": "from_node_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "from_exit": {
-          "name": "from_exit",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "from_branch_no": {
-          "name": "from_branch_no",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_seq": {
-          "name": "created_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "approval_node_activations_instance": {
-          "name": "approval_node_activations_instance",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "instance_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_seq",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "approval_node_activations_tenant_id_tenants_id_fk": {
-          "name": "approval_node_activations_tenant_id_tenants_id_fk",
-          "tableFrom": "approval_node_activations",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "approval_node_activations_instance_fk": {
-          "name": "approval_node_activations_instance_fk",
-          "tableFrom": "approval_node_activations",
-          "tableTo": "approval_instances",
-          "columnsFrom": [
-            "tenant_id",
-            "instance_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "approval_node_activations_tenant_id_activation_id_pk": {
-          "name": "approval_node_activations_tenant_id_activation_id_pk",
-          "columns": [
-            "tenant_id",
-            "activation_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "approval_node_activations_kind": {
-          "name": "approval_node_activations_kind",
-          "value": "\"approval_node_activations\".\"entry_kind\" IN ('start','flow','jump','reject_previous','resubmit')"
-        },
-        "approval_node_activations_flow_exit": {
-          "name": "approval_node_activations_flow_exit",
-          "value": "(\"approval_node_activations\".\"entry_kind\" = 'flow') = (\"approval_node_activations\".\"from_exit\" IS NOT NULL)"
-        },
-        "approval_node_activations_start": {
-          "name": "approval_node_activations_start",
-          "value": "\"approval_node_activations\".\"entry_kind\" <> 'start' OR \"approval_node_activations\".\"from_node_key\" IS NULL"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.approval_node_exit_route_conditions": {
-      "name": "approval_node_exit_route_conditions",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_key": {
-          "name": "node_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exit": {
-          "name": "exit",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "branch_no": {
-          "name": "branch_no",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_no": {
-          "name": "item_no",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "field_path": {
-          "name": "field_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "operator": {
-          "name": "operator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value_text": {
-          "name": "value_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "value_list": {
-          "name": "value_list",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "approval_node_exit_route_conditions_tenant_id_tenants_id_fk": {
-          "name": "approval_node_exit_route_conditions_tenant_id_tenants_id_fk",
-          "tableFrom": "approval_node_exit_route_conditions",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "approval_exit_route_conditions_route_fk": {
-          "name": "approval_exit_route_conditions_route_fk",
-          "tableFrom": "approval_node_exit_route_conditions",
-          "tableTo": "approval_node_exit_routes",
-          "columnsFrom": [
-            "tenant_id",
-            "version_id",
-            "node_key",
-            "exit",
-            "branch_no"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "version_id",
-            "node_key",
-            "exit",
-            "branch_no"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "approval_node_exit_route_conditions_tenant_id_version_id_node_key_exit_branch_no_item_no_pk": {
-          "name": "approval_node_exit_route_conditions_tenant_id_version_id_node_key_exit_branch_no_item_no_pk",
-          "columns": [
-            "tenant_id",
-            "version_id",
-            "node_key",
-            "exit",
-            "branch_no",
-            "item_no"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "approval_exit_route_conditions_item_no": {
-          "name": "approval_exit_route_conditions_item_no",
-          "value": "\"approval_node_exit_route_conditions\".\"item_no\" BETWEEN 1 AND 20"
-        },
-        "approval_exit_route_conditions_operator": {
-          "name": "approval_exit_route_conditions_operator",
-          "value": "\"approval_node_exit_route_conditions\".\"operator\" IN ('eq','ne','in','not_in','is_empty','not_empty','in_org_tree')"
-        },
-        "approval_exit_route_conditions_carrier": {
-          "name": "approval_exit_route_conditions_carrier",
-          "value": "\"approval_node_exit_route_conditions\".\"value_text\" IS NULL OR \"approval_node_exit_route_conditions\".\"value_list\" IS NULL"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.approval_node_exit_routes": {
-      "name": "approval_node_exit_routes",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_key": {
-          "name": "node_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exit": {
-          "name": "exit",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "branch_no": {
-          "name": "branch_no",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "priority": {
-          "name": "priority",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expression": {
-          "name": "expression",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_node_key": {
-          "name": "target_node_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "approval_exit_routes_priority": {
-          "name": "approval_exit_routes_priority",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "node_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exit",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "priority",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"approval_node_exit_routes\".\"kind\" = 'condition'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "approval_exit_routes_else": {
-          "name": "approval_exit_routes_else",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "node_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "exit",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"approval_node_exit_routes\".\"kind\" IN ('else','direct')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "approval_node_exit_routes_tenant_id_tenants_id_fk": {
-          "name": "approval_node_exit_routes_tenant_id_tenants_id_fk",
-          "tableFrom": "approval_node_exit_routes",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "approval_exit_routes_node_fk": {
-          "name": "approval_exit_routes_node_fk",
-          "tableFrom": "approval_node_exit_routes",
-          "tableTo": "approval_process_nodes",
-          "columnsFrom": [
-            "tenant_id",
-            "version_id",
-            "node_key"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "version_id",
-            "node_key"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "approval_exit_routes_target_fk": {
-          "name": "approval_exit_routes_target_fk",
-          "tableFrom": "approval_node_exit_routes",
-          "tableTo": "approval_process_nodes",
-          "columnsFrom": [
-            "tenant_id",
-            "version_id",
-            "target_node_key"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "version_id",
-            "node_key"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "approval_node_exit_routes_tenant_id_version_id_node_key_exit_branch_no_pk": {
-          "name": "approval_node_exit_routes_tenant_id_version_id_node_key_exit_branch_no_pk",
-          "columns": [
-            "tenant_id",
-            "version_id",
-            "node_key",
-            "exit",
-            "branch_no"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "approval_exit_routes_kind": {
-          "name": "approval_exit_routes_kind",
-          "value": "\"approval_node_exit_routes\".\"kind\" IN ('condition','else','direct')"
-        },
-        "approval_exit_routes_branch_no": {
-          "name": "approval_exit_routes_branch_no",
-          "value": "\"approval_node_exit_routes\".\"branch_no\" BETWEEN 1 AND 10"
-        },
-        "approval_exit_routes_condition": {
-          "name": "approval_exit_routes_condition",
-          "value": "(\"approval_node_exit_routes\".\"kind\" = 'condition') = (\"approval_node_exit_routes\".\"priority\" IS NOT NULL AND \"approval_node_exit_routes\".\"expression\" IS NOT NULL)"
-        },
-        "approval_exit_routes_not_self": {
-          "name": "approval_exit_routes_not_self",
-          "value": "\"approval_node_exit_routes\".\"target_node_key\" IS DISTINCT FROM \"approval_node_exit_routes\".\"node_key\""
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.approval_node_message_rules": {
       "name": "approval_node_message_rules",
       "schema": "",
@@ -25032,11 +24432,7 @@
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
-          "value": "cardinality(\"approval_process_nodes\".\"exits\") BETWEEN 1 AND 3\n        AND \"approval_process_nodes\".\"exits\" <@ ARRAY['approve','disagree','approve_no_rehire','approve_rehire']::text[]\n        AND ('approve_no_rehire' = ANY(\"approval_process_nodes\".\"exits\")) = ('approve_rehire' = ANY(\"approval_process_nodes\".\"exits\"))\n        AND NOT ('approve' = ANY(\"approval_process_nodes\".\"exits\") AND 'approve_rehire' = ANY(\"approval_process_nodes\".\"exits\"))"
-        },
-        "approval_nodes_countersign_exits": {
-          "name": "approval_nodes_countersign_exits",
-          "value": "\"approval_process_nodes\".\"node_type\" = 'single' OR \"approval_process_nodes\".\"exits\" <@ ARRAY['approve','disagree']::text[]"
+          "value": "cardinality(\"approval_process_nodes\".\"exits\") BETWEEN 1 AND 2 AND \"approval_process_nodes\".\"exits\" <@ ARRAY['approve','disagree']::text[]"
         },
         "approval_nodes_countersign_auto": {
           "name": "approval_nodes_countersign_auto",
@@ -25580,12 +24976,6 @@
         "activation_id": {
           "name": "activation_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decision_exit": {
-          "name": "decision_exit",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -63056,11 +62446,11 @@
       "checkConstraints": {
         "retirement_rule_conditions_seq": {
           "name": "retirement_rule_conditions_seq",
-          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 5"
+          "value": "\"retirement_rule_conditions\".\"seq\" BETWEEN 1 AND 6"
         },
         "retirement_rule_conditions_field": {
           "name": "retirement_rule_conditions_field",
-          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm')"
+          "value": "\"retirement_rule_conditions\".\"field_code\" IN ('gender', 'nationality', 'employType', 'identityType', 'employmentForm', 'employmentType')"
         },
         "retirement_rule_conditions_operator": {
           "name": "retirement_rule_conditions_operator",
@@ -65883,6 +65273,91 @@
           "value": "\"duty_transfer_records\".\"attempt_count\" >= 0 AND \"duty_transfer_records\".\"revision\" > 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.employment_rehire_seniority_snapshots": {
+      "name": "employment_rehire_seniority_snapshots",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot_version_id": {
+          "name": "snapshot_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk": {
+          "name": "employment_rehire_seniority_snapshots_tenant_id_tenants_id_fk",
+          "tableFrom": "employment_rehire_seniority_snapshots",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "employment_rehire_seniority_snapshot_fk": {
+          "name": "employment_rehire_seniority_snapshot_fk",
+          "tableFrom": "employment_rehire_seniority_snapshots",
+          "tableTo": "employment_payload_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id",
+            "snapshot_version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "business_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "employment_rehire_seniority_snapshots_tenant_id_business_id_pk": {
+          "name": "employment_rehire_seniority_snapshots_tenant_id_business_id_pk",
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
