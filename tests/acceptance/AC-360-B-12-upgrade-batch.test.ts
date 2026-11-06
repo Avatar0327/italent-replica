@@ -17,6 +17,7 @@ import type { QuestionnaireView } from './AC-360-support.js';
 import { DATA_CHANGED, errorOf, key, outbox, reportLink, sceneB, type SceneB } from './AC-360-B-support.js';
 import { withPreAssessmentSchema } from './support/pre-assessment-schema.js';
 import { withPreBlacklistSchema } from './support/pre-blacklist-schema.js';
+import { withPreInternCycleSchema } from './support/pre-intern-cycle-schema.js';
 import { withPrePartTimeSchema } from './support/pre-part-time-schema.js';
 
 const database = useTestDb({ migrateBefore: '_survey360_b' });
@@ -198,11 +199,13 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
   const scenes = await withPrBSchema(handle.db, () =>
     withPreBlacklistSchema(handle.db, () =>
       withPrePartTimeSchema(handle.db, () =>
-        withPreAssessmentSchema(handle.db, async () => {
-          const list: Legacy[] = [];
-          for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
-          return list;
-        }),
+        withPreInternCycleSchema(handle.db, () =>
+          withPreAssessmentSchema(handle.db, async () => {
+            const list: Legacy[] = [];
+            for (const kind of ['content', 'weights', 'scoreMethod'] as const) list.push(await legacy(handle.db, kind));
+            return list;
+          }),
+        ),
       ),
     ),
   );
