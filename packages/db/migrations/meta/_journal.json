@@ -1345,6 +1345,27 @@
       "when": 1793712642586,
       "tag": "0191_f458_employment_failures_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1793712642587,
+      "tag": "0192_f441_org_sort_rank_numeric",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1793724962168,
+      "tag": "0193_f432_seniority_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1793728829035,
+      "tag": "0194_f432_rehire_seniority",
+      "breakpoints": true
     }
   ]
 }

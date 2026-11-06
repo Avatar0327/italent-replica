@@ -45,6 +45,7 @@ import type { AnyColumn, SQL } from 'drizzle-orm';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import type { FieldAccess } from '../approval/context.js';
+import { refreshApprovedDashboardDate } from '../approval/dashboard-date.js';
 import { auditActor } from '../../system-actor.js';
 import { visibleEmploymentRecords } from '../employment/visibility.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -352,6 +353,8 @@ export async function save(tx: Tx, ctx: OfferContext, before: OfferRow, action: 
       .where(and(eq(offers.tenantId, ctx.tenantId), eq(offers.id, before.id)))
       .returning(),
   );
+  if (after!.approvalStatus === 'approved' && after!.plannedEntryDate !== before.plannedEntryDate)
+    await refreshApprovedDashboardDate(tx, ctx, 'offer', before.id, after!.plannedEntryDate);
   await audit(tx, ctx, action, before.id, before, after!);
   // 写响应同样给沿记录链解析后的最新待入职 ID（编辑并同步会替换记录换 ID）
   return offerDto(after!, (await currentEntryIds(tx, ctx.tenantId, [after!])).get(after!.id));

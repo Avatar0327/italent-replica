@@ -1,3 +1,4 @@
+import { employmentDashboardDate } from './dashboard-date.js';
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
@@ -127,7 +128,8 @@ export interface BusinessAdapter {
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   /** 实例推进的同事务出口；包括只改任务/实例、尚未改变业务状态的办理。不得在这里更新全局账号。 */
   persisted?(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot): Promise<void>;
-  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  /** 批准可能自动顺延业务日期；只回传看板投影，不替换审批人所读的业务版本。 */
+  approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void | { readonly dashboardDate: string | null }>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
   disapproved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
@@ -356,10 +358,6 @@ async function completedTransferDates(
   return { ...dates, actualEffectiveDate: business.effectiveDate };
 }
 
-/** 规格 35 B51：离职（及同走最后工作日的退休）取最后工作日，其余任职业务取生效日期。 */
-const employmentDashboardDate = (kind: string, lastWorkDate: string | null | undefined, effectiveDate: string) =>
-  ['leave', 'retirement'].includes(kind) ? (lastWorkDate ?? effectiveDate) : effectiveDate;
-
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId, reassignFrom) {
     const [owner] = rowsOf<{ employee_id: string; kind: string }>(
@@ -499,7 +497,13 @@ const employmentAdapter: BusinessAdapter = {
     if (!['leave', 'retirement'].includes(snapshot.approvalType)) return;
     await queueExitAccount(tx, ctx, snapshot.businessId);
   },
-  approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
+  async approved(tx, ctx, id) {
+    await employmentTransition(tx, ctx, id, 'approve');
+    // F-417③ / DEC-677：只补退休返聘批准时的派生顺延，其他任职类型保留原审批日期语义。
+    if ((await businessKind(tx, ctx.tenantId, id)) !== 'retire_rehire') return;
+    const latest = await employmentAdapter.snapshot(tx, ctx, id);
+    return { dashboardDate: latest.dashboardDate ?? null };
+  },
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
   disapproved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'disapprove'),
   withdrawn: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'withdraw'),

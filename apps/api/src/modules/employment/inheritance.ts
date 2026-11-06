@@ -75,7 +75,7 @@ const NEW_CYCLES: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 
 const owns = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 function setField(target: PresetFields, key: PresetField, value: PresetFields[PresetField]): void {
-  Object.assign(target, { [key]: value });
+  Object.assign(target, { [key]: key === 'workYearCompanyBefore' ? (value ?? 0) : value });
 }
 
 function snapshotForm(
