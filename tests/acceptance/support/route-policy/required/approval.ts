@@ -348,6 +348,16 @@ export const APPROVAL: RequiredTable = {
       facts: ['own:listTodos / listNotifications / listInstances'],
       at: [route('GET', '/instances', 'listInstances(tx, ctx.tenantId, ctx.userId, { role,')],
     },
+    {
+      perm: 'own:approval.initiatedOrParticipated',
+      or: 'instances:applications',
+      facts: ['own:listTodos / listNotifications / listInstances'],
+      note: 'view=applications 只读本人发起的实例（i.initiator_user_id）；筛选、排序、总数共用同一条件。',
+      at: [
+        route('GET', '/instances', 'listMyApplications('),
+        fn('listMyApplications', 'i.initiator_user_id=', `${DIR}/my-applications.ts`),
+      ],
+    },
   ],
   'GET /api/tenant/approval/instances/:id': canOpen(fn('respondDetail', 'const viewer = await viewerOf(deps, ctx)')),
   'GET /api/tenant/approval/instances/:id/tasks': canOpen(

@@ -50,9 +50,10 @@ export const todoSort: Record<ApprovalView, string> = {
   initiated: c.appliedDesc,
 };
 
-export const applicationColumns = ['title', 'category', 'status', 'createdAt'] as const;
-/** 原站有、接口没有的列：不伪造，等后端补齐（后端缺口清单）。 */
-export const applicationGapColumns = ['initiator', 'handler', 'reason'] as const;
+/** 我的申请列序（原站 §2.10）；申请理由暂无数据来源，列保留、内容占位。 */
+export const applicationColumns = [
+  ...['title', 'category', 'initiator', 'handler', 'status', 'reason', 'createdAt'],
+] as const;
 
 export interface GapView {
   key: string;

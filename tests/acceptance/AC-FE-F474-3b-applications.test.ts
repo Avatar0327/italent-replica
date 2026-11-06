@@ -68,11 +68,12 @@ describe('AC-FE-F474-3b 我的申请列表呈现', () => {
 
   it('发起人带头像与姓名，当前处理人可多人、结束后为空；审批状态是深色普通文字', async () => {
     await render();
-    const [first, second] = Array.from(host.querySelectorAll('tbody tr')) as HTMLElement[];
+    const [first, second] = Array.from(host.querySelectorAll('tbody tr.ant-table-row')) as HTMLElement[];
+    expect(first!.querySelectorAll('td')).toHaveLength(7);
     const cell = (row: HTMLElement, index: number) => row.querySelectorAll('td')[index]!;
     expect(cell(first!, 0).querySelector('button.approval-table-link')?.textContent).toBe('合成员工的调动申请');
     expect(cell(first!, 1).textContent).toBe('调动');
-    expect(cell(first!, 2).querySelector('.approval-record-mark')?.textContent).toBe('发起人甲');
+    expect(cell(first!, 2).querySelector('.approval-record-mark')?.textContent).toBe('人甲');
     expect(cell(first!, 2).textContent).toContain('合成发起人甲');
     expect(cell(first!, 3).textContent).toBe('合成审批人乙、合成审批人丙');
     expect(cell(second!, 3).textContent).toBe('--');
