@@ -90,6 +90,10 @@ export async function routeScene(db: Db, label: string): Promise<RouteScene> {
   const people = {} as Record<(typeof KEYS)[number], Person>;
   for (const key of KEYS) people[key] = await w.person(`审批人${key}`, home);
   let counter = 0;
+  const startAbout = async (person: Person, dept: string | null) => {
+    const application = await w.application(person.employeeId, dept === null ? {} : { departmentId: dept });
+    return w.submit(application);
+  };
   return {
     w,
     home,
@@ -106,12 +110,9 @@ export async function routeScene(db: Db, label: string): Promise<RouteScene> {
     },
     async start(dept) {
       counter += 1;
-      return this.startAbout(await w.person(`调动员工${counter}`, home), dept);
+      return startAbout(await w.person(`调动员工${counter}`, home), dept);
     },
-    async startAbout(person, dept) {
-      const application = await w.application(person.employeeId, dept === null ? {} : { departmentId: dept });
-      return w.submit(application);
-    },
+    startAbout,
   };
 }
 

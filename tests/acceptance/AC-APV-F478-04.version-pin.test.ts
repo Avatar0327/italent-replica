@@ -28,7 +28,10 @@ describe('AC-APV-F478-04 路由版本固化', () => {
     const early = await s.start(s.depts.d2);
     expect(pendingKey(early)).toBe('n1');
 
-    await republishRouted(s.w, process, { n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), otherwise('END'))] });
+    // v2 把 Else 改到 END；N2 仍须可达（发布校验），保留一条部门三 → N2 的条件
+    await republishRouted(s.w, process, {
+      n1: [approveTo(when(1, 'eq', s.depts.d1, 'n3'), when(2, 'eq', s.depts.d3, 'n2'), otherwise('END'))],
+    });
 
     const afterEarly = await approveCurrent(s, early);
     expect(pendingKey(afterEarly)).toBe('n2');
