@@ -114,9 +114,9 @@ describe('AC-TOOL-F407 ⑤ 真实清单：判定变化的行 × 任务与结果�
   const evidence = parseEvidence(readFileSync(new URL(`../../${EVIDENCE_MD}`, import.meta.url), 'utf8'));
   const levelOf = (id: string, task: string) => evidence.find((e) => e.id === id)?.taskLevels.get(task);
 
-  // 对照表见 .cloud_result/F-407.md：改前 → 改后。
-  it('Q-M0-111 × R2-T02：写了“开工前：AC-PB-03、04、08”且 AC-PB-08 未取证，改前被“其余后续”放行，改后开工前', () => {
-    expect(levelOf('Q-M0-111', 'R2-T02')).toBe('开工前');
+  // 对照表见 PR #603 正文：改前 → 改后（Q-M0-111 按 DEC-828 改写后回到可后补）。
+  it('Q-M0-111 × R2-T02：DEC-828 改写为“不挡本任务”（AC-PB-08 暂取、原站补测 F-485 可后补）后可后补', () => {
+    expect(levelOf('Q-M0-111', 'R2-T02')).toBe('可后补');
   });
 
   it.each([
