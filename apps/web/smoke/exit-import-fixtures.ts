@@ -176,7 +176,7 @@ const crc32 = (bytes: Uint8Array) => {
   for (const byte of bytes) c = crcTable[(c ^ byte) & 0xff]! ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 };
-async function deflate(bytes: Uint8Array) {
+async function deflate(bytes: Uint8Array<ArrayBuffer>) {
   const stream = new CompressionStream('deflate-raw');
   const writer = stream.writable.getWriter();
   void writer.write(bytes);
@@ -186,7 +186,7 @@ async function deflate(bytes: Uint8Array) {
   for (let next = await reader.read(); !next.done; next = await reader.read()) parts.push(next.value);
   return concat(parts);
 }
-function concat(parts: Uint8Array[]) {
+function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
   let offset = 0;
   for (const part of parts) out.set(part, (offset += part.length) - part.length);
@@ -204,7 +204,7 @@ function header(size: number, fields: [number, number][]) {
   return bytes;
 }
 /** 生成 .xlsx 字节（ZIP：本地头 + 中央目录 + 目录尾）。 */
-export async function buildXlsx(sheet: Cell[][]): Promise<Uint8Array> {
+export async function buildXlsx(sheet: Cell[][]): Promise<Uint8Array<ArrayBuffer>> {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;

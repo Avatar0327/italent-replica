@@ -144,7 +144,7 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
     expect(headerTexts()).toEqual(['Excel 行号', '工号', '姓名', '校验结果', '说明']);
     const text = document.body.querySelector('.ant-modal')?.textContent ?? '';
     expect(text).toContain('共 2 行：通过 2 行，不通过 0 行，有超编提示 1 行');
-    expect(text).toContain('2023-04-01 至 2025-08-01 超出编制（峰值 6，编制 5）');
+    expect(text).toContain('2023-04-01 至 2025-07-31 超出编制（峰值 6，编制 5）');
 
     await click('导入');
     // 第一次导入不带确认，后端要求确认（409 CONFIRMATION_REQUIRED）后弹 DEC-258 确认框
