@@ -3,7 +3,6 @@
  * 列顺序照原站（总编排补充 4）；每列声明它受哪个对象的哪个字段权约束，列表与导出共用这一份，保证“不导出比列表更多的列”。
  */
 import { EMPLOYEE_STATUS_LABELS, type EmployeeStatusCode } from '../employment/employee-status.js';
-import { decimalYears } from '../personnel/tenure.js';
 
 /** 字段权来源：人员对象（员工档案）/ 任职记录对象 / 合同对象。后两者另须对象查看权。 */
 export type RosterSource = 'person' | 'record' | 'contract';
@@ -66,7 +65,14 @@ export const ROSTER_COLUMNS: readonly RosterColumn[] = [
     ],
   },
   record('employmentType', '人员类别'),
-  person('companyTenureYears', '累计司龄（年）', 'entryDate'),
+  {
+    key: 'companyTenureYears',
+    label: '累计司龄（年）',
+    gate: [
+      ['person', 'entryDate'],
+      ['record', 'workYearCompanyBefore'],
+    ],
+  },
   person('workTenureYears', '累计工龄（年）', 'workDate'),
   record('place', '工作地点'),
   record('employmentForm', '用工形式'),
@@ -105,10 +111,14 @@ const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
 
 /**
  * 累计司龄 / 工龄（15 §字段规格 WorkYearCompanyTotal / WorkYearTotal）：(asOf − 起算日) / 365，按 1 位小数向下舍位；
- * 起算日为空或晚于 asOf 为空。校正值字段仓库里没有，按 0。
+ * DEC-793：先加任职记录校正值，再按 1 位小数向下舍位；起算日为空或晚于 asOf 为空。
  */
-export function tenureYears(from: string | null, asOf: string): string | null {
-  return from && from <= asOf ? decimalYears(day(asOf) - day(from), 1) : null;
+export function tenureYears(from: string | null, asOf: string, correction = 0): string | null {
+  if (!from || from > asOf) return null;
+  // 百分之一年转换为整数后统一除，避免 0.29 * 100 等浮点尾差跨越舍位边界。
+  const hundredths = Math.round(correction * 100);
+  const tenths = (BigInt(day(asOf) - day(from)) * 100n + BigInt(hundredths) * 365n) / 3650n;
+  return `${tenths / 10n}.${tenths % 10n}`;
 }
 
 /** 导出单元格文本：状态 / 期限类型 / 布尔转中文，空为空串；其余按原值。 */

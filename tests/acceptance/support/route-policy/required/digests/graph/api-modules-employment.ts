@@ -1282,6 +1282,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/entry-probation.ts#clearPendingProbation',
     'apps/api/src/modules/employment/entry-probation.ts#saveEntryProbation',
     'apps/api/src/modules/employment/references.ts#assertEmploymentDepartmentAvailable',
+    'apps/api/src/modules/employment/rehire-seniority.ts#completeRehireSeniority',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/employment/employee-status.ts#ENTRY_STATUS',
   ],
@@ -5629,6 +5630,7 @@ export const GRAPH: Graph = {
     '#probationViewRows',
     'apps/api/src/modules/employment/read-model.ts#checkPage',
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#canApplyRegularization',
   ],
   'apps/api/src/modules/employment/probation-views.ts#organizationsOf': [
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
@@ -5762,7 +5764,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/record-events.ts#eventColumns': ['#TIMELINE_ALIAS'],
   'apps/api/src/modules/employment/record-events.ts#recordEventDueSql': ['#RECORD_CREATE_EVENT', '#eventColumns'],
-  'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness': ['#bumpEmploymentEmployee'],
+  'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness': [
+    'apps/api/src/modules/approval/dashboard-date.ts#employmentDashboardDate',
+    'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate',
+    '#bumpEmploymentEmployee',
+    '#rowsOf',
+  ],
   'apps/api/src/modules/employment/record-store.ts#camelRow': ['#camelCase'],
   'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow': [
     'apps/api/src/modules/employment/employment-forms.ts#validateEmploymentForm',
@@ -5850,21 +5857,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/regularization-drafts.ts#clearSubmittedRegularizationDraft': [
     '#clearRegularizationDraft',
   ],
-  'apps/api/src/modules/employment/regularization-drafts.ts#currentAnchor': [
-    'apps/api/src/modules/employment/probation.ts#loadProbationCycle',
-    'apps/api/src/modules/employment/retire-rehire-eligibility.ts#sequencePredecessorKind',
-    'apps/api/src/modules/employment/write-service.ts#sequenceViolation',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
-  ],
   'apps/api/src/modules/employment/regularization-drafts.ts#draftRow': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
     '#FORM',
   ],
   'apps/api/src/modules/employment/regularization-drafts.ts#loadRegularizationDraft': [
-    '#currentAnchor',
+    'apps/api/src/modules/employment/record-store.ts#readEmploymentEmployee',
     '#draftRow',
     '#pendingApplication',
     '#view',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#requireRegularizationApplicant',
   ],
   'apps/api/src/modules/employment/regularization-drafts.ts#pendingApplication': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -5876,12 +5878,28 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-results.ts#requireEnabledProbationEntry',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     '#FORM',
-    '#currentAnchor',
     '#draftInput',
     '#draftRow',
     '#loadRegularizationDraft',
     '#pendingApplication',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationDates',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#requireRegularizationApplicant',
     'apps/api/src/system-actor.ts#auditActor',
+  ],
+  'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication': [
+    'apps/api/src/modules/employment/read-model.ts#loadRegularizationResult',
+    '#assertRegularizationDates',
+    '#requireRegularizationApplicant',
+  ],
+  'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationDates': ['#invalidDate'],
+  'apps/api/src/modules/employment/regularization-eligibility.ts#canApplyRegularization': [
+    'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+  ],
+  'apps/api/src/modules/employment/regularization-eligibility.ts#requireRegularizationApplicant': [
+    'apps/api/src/modules/employment/probation.ts#loadProbationCycle',
+    '#canApplyRegularization',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/regularization-reschedule.ts#BLOCKING_KINDS': [
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
@@ -5942,7 +5960,10 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/regularization.ts#createRegularizationBusiness': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/record-store.ts#lockEmploymentEmployee',
     'apps/api/src/modules/employment/regularization-drafts.ts#clearSubmittedRegularizationDraft',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationDates',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#requireRegularizationApplicant',
     '#appendRegularizationResult',
     '#regularizationDate',
     '#requireRegularizationResult',
@@ -5978,6 +5999,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/regularization.ts#updateRegularizationApplication': [
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
     'apps/api/src/modules/employment/record-store.ts#lockEmploymentBusiness',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
     '#changeRegularizationResult',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/employment/write-service.ts#updateEmploymentBusiness',
@@ -5999,6 +6021,26 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates': ['#endedPeople'],
   'apps/api/src/modules/employment/rehire-match.ts#matchRehire': ['#endedPeople'],
+  'apps/api/src/modules/employment/rehire-seniority.ts#applyRehireSeniority': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/read-model.ts#findPredecessor',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#SETTING',
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
+    'packages/domain/src/hr-analysis/roster.ts#tenureYears',
+  ],
+  'apps/api/src/modules/employment/rehire-seniority.ts#completeRehireSeniority': [
+    'apps/api/src/modules/employment/forward-update.ts#forwardUpdateEmployment',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#applyRehireSeniority',
+  ],
+  'apps/api/src/modules/employment/rehire-seniority.ts#restoreRehireSeniority': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+    'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
+    'apps/api/src/modules/employment/record-store.ts#rowsOf',
+  ],
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure': [
     'apps/api/src/modules/employment/errors.ts#EmploymentError',
   ],
@@ -6163,6 +6205,7 @@ export const GRAPH: Graph = {
     '#shiftRehireDate',
   ],
   'apps/api/src/modules/employment/retire-rehire-waiting.ts#shiftRehireDate': [
+    'apps/api/src/modules/approval/dashboard-date.ts#refreshApprovedDashboardDate',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/fields.ts#dayAfter',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
@@ -7405,6 +7448,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/transitions.ts#assertRegularizationSubmittable': [
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
   ],
   'apps/api/src/modules/employment/transitions.ts#assertTransition': ['#transitionPermitted'],
   'apps/api/src/modules/employment/transitions.ts#auditDeletedRecord': [
@@ -7426,6 +7470,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#loadEmploymentRecord',
     'apps/api/src/modules/employment/record-store.ts#insertEmploymentRow',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    'apps/api/src/modules/employment/rehire-seniority.ts#restoreRehireSeniority',
     'apps/api/src/modules/employment/status-hooks.ts#employeeStatusHooks',
     'apps/api/src/modules/employment/timeline.ts#isDetachedRecord',
     'apps/api/src/modules/employment/timeline.ts#removeEmploymentTimeline',
@@ -7609,11 +7654,15 @@ export const GRAPH: Graph = {
     '#effectiveEmployType',
     '#forwardMaterializedRecord',
     '#insertNewEmploymentCycle',
+    '#materializedFields',
     '#notifyMaterialized',
     '#propagateMaterializedStatus',
     '#registerCompletion',
     '#validateMaterializedReferences',
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
+  ],
+  'apps/api/src/modules/employment/write-service.ts#materializedFields': [
+    'apps/api/src/modules/employment/rehire-seniority.ts#applyRehireSeniority',
   ],
   'apps/api/src/modules/employment/write-service.ts#normalizePatchedInput': [
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -7665,6 +7714,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/inheritance.ts#prepareEmploymentPatch',
     'apps/api/src/modules/employment/inheritance.ts#resolveEffectiveInheritance',
     'apps/api/src/modules/employment/record-store.ts#bumpEmploymentBusiness',
+    'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
     'apps/api/src/modules/employment/retire-rehire-waiting.ts#bindRehireRetirement',
     '#NEW_CYCLE_KINDS',
     '#appendEmploymentPayload',

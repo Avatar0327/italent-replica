@@ -1,45 +1,21 @@
-import { Button } from 'antd';
-import { useState } from 'react';
-import { reviewDemo } from '../demo-stubs/talent-review.js';
-import { DetailPage, ListPage } from '../foundation/templates.js';
-import { DemoGrid, DemoNotice } from './DemoPanels.js';
+import { Alert } from 'antd';
 import { tr } from './messages.js';
-export function Meetings() {
-  const [open, setOpen] = useState(false);
-  const [page, setPage] = useState({ page: 1, pageSize: 15 });
+
+/** DEC-774 / DEC-812：缺契约仅展示未完成说明，不以演示会议或成员代替服务端结果。 */
+export function Meetings({ pool = false }: { pool?: boolean }) {
   return (
-    <>
-      <DemoNotice />
-      <ListPage
-        title={tr.meetings}
-        rowKey="id"
-        page={page}
-        onPageChange={setPage}
-        data={{ items: reviewDemo.meetings, total: 1 }}
-        columns={['name', 'ownerOrgId', 'project', 'owner', 'date', 'committee', 'status'].map((key) => ({
-          dataIndex: key,
-          title:
-            key === 'name'
-              ? tr.column.meetingName
-              : (tr.fields[key as keyof typeof tr.fields] ?? tr.column[key as keyof typeof tr.column]),
-          width: 140,
-          render: (value: string) =>
-            key === 'name' ? (
-              <Button type="link" onClick={() => setOpen(true)}>
-                {value}
-              </Button>
-            ) : (
-              value
-            ),
-        }))}
-      />
-      <DetailPage
-        open={open}
-        onClose={() => setOpen(false)}
-        title={tr.demoMeeting}
-        summary={<DemoNotice />}
-        tabs={[{ key: 'grid', label: tr.tabs[3], children: <DemoGrid /> }]}
-      />
-    </>
+    <section className="list-page review-unavailable">
+      <header className="page-heading">
+        <h1>{pool ? tr.pools : tr.meetings}</h1>
+      </header>
+      <div className="list-card">
+        <Alert
+          type="info"
+          showIcon
+          message={tr.unavailable}
+          description={pool ? tr.poolUnavailable : tr.meetingUnavailable}
+        />
+      </div>
+    </section>
   );
 }
