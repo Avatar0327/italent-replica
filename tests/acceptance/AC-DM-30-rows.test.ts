@@ -59,7 +59,7 @@ describe('AC-DM-30-16 行内容错误收齐（P2-1）', () => {
       x.row(3, ok.code, { employeeNo: 'H0003' }),
     ]);
     expect(response.status, await response.clone().text()).toBe(200);
-    const body = (await response.json()) as { rows: ErrorRow[]; summary: { failed: number } };
+    const body = (await response.json()) as { rows: (ErrorRow & { ok: boolean })[]; summary: { failed: number } };
     expect(body.rows.map((r) => [r.rowNo, r.ok])).toEqual([
       [1, false],
       [2, false],
@@ -90,7 +90,7 @@ describe('AC-DM-30-17 设计 §2.2 的 null 请求形状（P2-2）', () => {
     const rows = [x.row(1, d.code, nulls)];
     const preview = await x.preview(rows);
     expect(preview.status, await preview.clone().text()).toBe(200);
-    expect(((await preview.json()) as { rows: ErrorRow[] }).rows[0]!.ok).toBe(true);
+    expect(((await preview.json()) as { rows: (ErrorRow & { ok: boolean })[] }).rows[0]!.ok).toBe(true);
     const body = await x.created(rows);
     expect(await x.exitRowOf(body.rows[0]!.exitBusinessId)).toMatchObject({ exitTypeCode: null });
     expect(await x.q(x.sql`SELECT 1 FROM employment_blacklist WHERE tenant_id=${x.tenantId}`)).toHaveLength(0);

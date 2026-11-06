@@ -22,11 +22,11 @@ import {
 import { z } from 'zod';
 import { advisoryLock, asUuid } from '../../advisory-lock.js';
 import { rawImportRows, recordOperationLog } from '../../audit/record.js';
-import { requirePermission, type Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import { importedTenureExcesses, type ImportedTenureSegment } from '../establishment/employment-check.js';
 import { lockOrganizationSettings } from '../org/locks.js';
 import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
+import type { ModuleScope } from '../permission/scope-types.js';
 import { addBlacklistEntry } from './blacklist.js';
 import { auditEmployment, EMPLOYEE_OBJECT, requireEmploymentWrite } from './context.js';
 import { createEmployee } from './employees.js';
@@ -39,32 +39,49 @@ import { appendEmploymentState, createEmploymentBusiness, materializeEmploymentR
 import { emptyPresetFields, type EmploymentContext } from './types.js';
 import { auditActor } from '../../system-actor.js';
 
-const text = (max: number) => z.string().trim().min(1).max(max);
-
-/** 行字段（设计 §3）。系统字段（employeeId / kind / mode / effectiveDate / initiator）不在其中，strict 会拒绝。 */
+/**
+ * 请求行的结构层只管类型与未知字段（z.strictObject，未知字段仍整体 400）；空白、超长这类行内容问题不在这里挡，
+ * 否则一个空姓名会让整批只报英文 zod 文案、后面的行也没机会预校验（F-139a 第 2 轮 P2-1），交给 shapeIssues 逐行汇报。
+ * 可选字段允许 null（设计 §2.2 的请求形状），解析时统一当作未填（P2-2）。
+ */
+const loose = z.string().nullish();
 const rowSchema = z.strictObject({
-  rowNo: z.int().min(1).max(1_000_000).optional(),
-  employeeNo: text(100),
-  name: text(200),
-  entryDate: z.string().max(32),
-  departmentCode: text(100),
-  positionCode: text(100).optional(),
-  postCode: text(100).optional(),
-  lastWorkDate: z.string().max(32),
-  exitTypeCode: text(100).optional(),
-  exitReasonCode: text(100).optional(),
-  exitDestinationCode: text(100).optional(),
-  addToBlacklist: z.boolean().optional(),
-  blacklistReason: z.string().trim().max(100).optional(),
-  blacklistExpiryDate: z.string().max(32).optional(),
-  blacklistNote: z.string().trim().max(BLACKLIST_NOTE_MAX).nullable().optional(),
+  rowNo: z.int().min(1).max(1_000_000).nullish(),
+  employeeNo: loose,
+  name: loose,
+  entryDate: loose,
+  departmentCode: loose,
+  lastWorkDate: loose,
+  positionCode: loose,
+  postCode: loose,
+  exitTypeCode: loose,
+  exitReasonCode: loose,
+  exitDestinationCode: loose,
+  addToBlacklist: z.boolean().nullish(),
+  blacklistReason: loose,
+  blacklistExpiryDate: loose,
+  blacklistNote: loose,
 });
-const bodySchema = z.strictObject({
-  rows: z.array(rowSchema).min(1),
-  confirmed: z.boolean().optional(),
-});
+const bodySchema = z.strictObject({ rows: z.array(rowSchema).min(1), confirmed: z.boolean().nullish() });
 
-export type ImportRowInput = z.infer<typeof rowSchema> & { rowNo: number };
+/** 规范化后的行：字符串已 trim，null 与缺省一律为 undefined；必填字段缺失时为空串，由 shapeIssues 逐行汇报。 */
+export interface ImportRowInput {
+  readonly rowNo: number;
+  readonly employeeNo: string;
+  readonly name: string;
+  readonly entryDate: string;
+  readonly departmentCode: string;
+  readonly lastWorkDate: string;
+  readonly positionCode?: string;
+  readonly postCode?: string;
+  readonly exitTypeCode?: string;
+  readonly exitReasonCode?: string;
+  readonly exitDestinationCode?: string;
+  readonly addToBlacklist?: boolean;
+  readonly blacklistReason?: string;
+  readonly blacklistExpiryDate?: string;
+  readonly blacklistNote?: string;
+}
 export interface ExitImportBody {
   readonly rows: readonly ImportRowInput[];
   readonly confirmed: boolean;
@@ -79,29 +96,111 @@ export function parseExitImportBody(raw: unknown): ExitImportBody {
     });
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '请求字段不合法', parsed.error.issues);
-  const rows = parsed.data.rows.map((row, index) => ({ ...row, rowNo: row.rowNo ?? index + 1 }));
+  const rows = parsed.data.rows.map((row, index) => normalizeRow(row, index));
   if (new Set(rows.map((row) => row.rowNo)).size !== rows.length)
     throw new AppError('VALIDATION_FAILED', '行号不能重复', { reason: 'DUPLICATE_ROW_NO' });
   return { rows: rows.sort((a, b) => a.rowNo - b.rowNo), confirmed: parsed.data.confirmed === true };
+}
+
+type RawRow = z.infer<typeof rowSchema>;
+const trimmed = (value: string | null | undefined) => (typeof value === 'string' ? value.trim() : undefined);
+const optionalText = (key: string, value: string | null | undefined) =>
+  trimmed(value) === undefined ? {} : { [key]: trimmed(value) };
+
+function normalizeRow(row: RawRow, index: number): ImportRowInput {
+  return {
+    rowNo: row.rowNo ?? index + 1,
+    employeeNo: trimmed(row.employeeNo) ?? '',
+    name: trimmed(row.name) ?? '',
+    entryDate: trimmed(row.entryDate) ?? '',
+    departmentCode: trimmed(row.departmentCode) ?? '',
+    lastWorkDate: trimmed(row.lastWorkDate) ?? '',
+    ...optionalText('positionCode', row.positionCode),
+    ...optionalText('postCode', row.postCode),
+    ...optionalText('exitTypeCode', row.exitTypeCode),
+    ...optionalText('exitReasonCode', row.exitReasonCode),
+    ...optionalText('exitDestinationCode', row.exitDestinationCode),
+    ...(row.addToBlacklist === null || row.addToBlacklist === undefined ? {} : { addToBlacklist: row.addToBlacklist }),
+    ...optionalText('blacklistReason', row.blacklistReason),
+    ...optionalText('blacklistExpiryDate', row.blacklistExpiryDate),
+    ...optionalText('blacklistNote', row.blacklistNote),
+  };
+}
+
+/** [字段, 中文名, 最大长度, 是否必填]：必填缺失、可选填了空白、超长，都按行汇报（P2-1）。 */
+const SHAPE_RULES: readonly [keyof ImportRowInput, string, number, boolean][] = [
+  ['employeeNo', '工号', 100, true],
+  ['name', '姓名', 200, true],
+  ['entryDate', '入职日期', 32, true],
+  ['departmentCode', '部门编码', 100, true],
+  ['lastWorkDate', '最后工作日', 32, true],
+  ['positionCode', '职位编码', 100, false],
+  ['postCode', '岗位编码', 100, false],
+  ['exitTypeCode', '离职类型', 100, false],
+  ['exitReasonCode', '离职原因', 100, false],
+  ['exitDestinationCode', '离职去向', 100, false],
+];
+const NOTE_RULES: readonly [keyof ImportRowInput, string, number][] = [
+  ['blacklistReason', '加黑原因', 100],
+  ['blacklistExpiryDate', '加黑到期日', 32],
+  ['blacklistNote', '加黑说明', BLACKLIST_NOTE_MAX],
+];
+
+function shapeIssues(row: ImportRowInput): RowIssue[] {
+  const issue = (field: string, message: string): RowIssue => ({ field, reason: 'VALIDATION_FAILED', message });
+  const issues: RowIssue[] = [];
+  for (const [field, label, max, required] of SHAPE_RULES) {
+    const value = row[field] as string | undefined;
+    if (value === undefined) {
+      if (required) issues.push(issue(field, `${label}不能为空`));
+    } else if (value === '') {
+      issues.push(issue(field, required ? `${label}不能为空` : `${label}不能是空白（不填请留空或传 null）`));
+    } else if (value.length > max) issues.push(issue(field, `${label}不能超过 ${max} 个字符`));
+  }
+  for (const [field, label, max] of NOTE_RULES) {
+    const value = row[field] as string | undefined;
+    if (value !== undefined && value.length > max) issues.push(issue(field, `${label}不能超过 ${max} 个字符`));
+  }
+  return issues;
 }
 
 /**
  * 入口权限链（设计 §7，预览与导入同一份）：任职功能权由 readContext 判过，这里补人员新增权、导入按钮、字段写权，
  * 并要求显式“看全部”范围（DEC-121：新员工尚无任职鉴权字段）。命令内由 exitImportGuard 用事务内授权器再过一遍。
  */
-export async function requireExitImportAccess(ctx: EmploymentContext, rows: readonly ImportRowInput[]): Promise<void> {
+export async function requireExitImportAccess(
+  ctx: EmploymentContext,
+  rows: readonly ImportRowInput[],
+  employeeScope: ModuleScope | undefined,
+): Promise<void> {
   if (!ctx.authorize) return;
-  await requirePermission(ctx.authorize as Authorizer, { ...ctx, action: 'object.create', resource: EMPLOYEE_OBJECT });
   await requireEmploymentWrite(ctx, 'create', { code: 'x', name: 'x' }, undefined, EMPLOYEE_OBJECT);
   await requireEmploymentWrite(ctx, 'create', writtenFields(rows), EXIT_IMPORT_BUTTON);
   if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要“全部数据”范围');
+  // 人员对象的范围与任职记录分开配置（scope-resolver 按对象编码匹配“看全部”），POST /employees 看的是人员对象的范围；
+  // 缺失按未配置处理（fail-closed，硬规则 1）。
+  if (!employeeScope?.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要人员对象的“全部数据”范围');
 }
 
-/** 字段写权按本批实际写入的字段判（只写出现过的可选字段）。 */
+/**
+ * 字段写权按本批实际写入的字段判（设计 §5.1 第 3 条）：部门、入职日期、最后工作日必有；可选字段只要有一行填了就要有写权。
+ * 导入字段与权限字段编码不同的做了映射：离职原因 → reasonCode，离职去向 → whereaboutsCode，职位 / 岗位 → positionId / postId。
+ */
 function writtenFields(rows: readonly ImportRowInput[]) {
-  const fields: Record<string, string> = { departmentId: 'x' };
-  if (rows.some((row) => row.positionCode)) fields.positionId = 'x';
-  if (rows.some((row) => row.postCode)) fields.postId = 'x';
+  const given = (pick: (row: ImportRowInput) => unknown) =>
+    rows.some((row) => pick(row) !== undefined && pick(row) !== '');
+  const fields: Record<string, string> = { departmentId: 'x', lastWorkDate: 'x' };
+  const optional: [string, (row: ImportRowInput) => unknown][] = [
+    ['positionId', (row) => row.positionCode],
+    ['postId', (row) => row.postCode],
+    ['exitTypeCode', (row) => row.exitTypeCode],
+    ['reasonCode', (row) => row.exitReasonCode],
+    ['whereaboutsCode', (row) => row.exitDestinationCode],
+    ['blacklistNote', (row) => row.blacklistNote],
+  ];
+  for (const [code, pick] of optional) if (given(pick)) fields[code] = 'x';
+  if (rows.some((row) => row.addToBlacklist === true))
+    for (const code of ['addToBlacklist', 'blacklistReason', 'blacklistExpiryDate']) fields[code] = 'x';
   return { kind: 'hire', mode: 'direct', effectiveDate: '2000-01-01', fields };
 }
 
@@ -129,6 +228,8 @@ export interface RowAssessment {
   readonly row: ImportRowInput;
   readonly errors: RowIssue[];
   readonly warnings: ImportWarning[];
+  /** 本行在编制对象范围外不可见的超编数：只用于本行的确认审计，批级总数在 ImportAssessment.hiddenCount。 */
+  readonly hidden: number;
   readonly resolved?: ResolvedRow;
 }
 export interface ImportAssessment {
@@ -163,32 +264,45 @@ async function assessRow(
   today: string,
   duplicate: boolean,
 ): Promise<RowAssessment> {
-  const errors: RowIssue[] = [...validateExitImportDates(row, today)];
-  const datesOk = errors.length === 0;
-  if (await employeeNoExists(tx, ctx.tenantId, row.employeeNo))
-    errors.push({ field: 'employeeNo', reason: 'EMPLOYEE_NO_EXISTS', message: '工号已存在' });
-  if (duplicate) errors.push({ field: 'employeeNo', reason: 'DUPLICATE_IN_BATCH', message: '同一批里工号重复' });
-  const resolved = await resolveCodes(tx, ctx.tenantId, row, datesOk ? row.entryDate : undefined, errors);
+  const errors: RowIssue[] = shapeIssues(row);
+  const bad = new Set(errors.map((issue) => issue.field));
+  // 每个校验只在它依赖的字段合法时跑；其余照常往下走，让整批一次收齐（P2-1）
+  const dateIssues = bad.has('entryDate') || bad.has('lastWorkDate') ? [] : validateExitImportDates(row, today);
+  errors.push(...dateIssues);
+  const datesOk = !bad.has('entryDate') && !bad.has('lastWorkDate') && dateIssues.length === 0;
+  if (!bad.has('employeeNo')) {
+    if (await employeeNoExists(tx, ctx.tenantId, row.employeeNo))
+      errors.push({ field: 'employeeNo', reason: 'EMPLOYEE_NO_EXISTS', message: '工号已存在' });
+    if (duplicate) errors.push({ field: 'employeeNo', reason: 'DUPLICATE_IN_BATCH', message: '同一批里工号重复' });
+  }
+  const resolved = bad.has('departmentCode')
+    ? undefined
+    : await resolveCodes(tx, ctx.tenantId, row, datesOk ? row.entryDate : undefined, errors);
   // 日期本身不合法时，依赖日期的部门区间 / 设立日校验没有意义，跳过（每行只报最前面的问题）
   if (datesOk && resolved)
-    await collect(errors, () =>
-      validateNewEmploymentReferences(
-        tx,
-        ctx,
-        { ...emptyPresetFields(), ...fieldsOf(resolved) },
-        row.entryDate,
-        undefined,
-        false,
-        false,
-        exitImportEffectiveDate(row.lastWorkDate),
-      ),
+    await collect(
+      errors,
+      () =>
+        validateNewEmploymentReferences(
+          tx,
+          ctx,
+          { ...emptyPresetFields(), ...fieldsOf(resolved) },
+          row.entryDate,
+          undefined,
+          false,
+          false,
+          exitImportEffectiveDate(row.lastWorkDate),
+        ),
+      undefined,
+      undefined,
+      'departmentCode',
     );
   for (const [field, kind, label] of DICTIONARIES) {
     const value = row[field] as string | undefined;
     if (value) await collect(errors, () => assertExitDictionaryEnabled(tx, ctx.tenantId, kind, value), field, label);
   }
   errors.push(...blacklistIssues(row, datesOk));
-  return { row, errors, warnings: [], ...(resolved ? { resolved } : {}) };
+  return { row, errors, warnings: [], hidden: 0, ...(resolved ? { resolved } : {}) };
 }
 
 function blacklistIssues(row: ImportRowInput, datesOk: boolean): ExitImportIssue[] {
@@ -199,15 +313,40 @@ function blacklistIssues(row: ImportRowInput, datesOk: boolean): ExitImportIssue
   return issues;
 }
 
-/** 把引用 / 字典校验抛出的业务错误转成行错误；组织调整暂停是整租户状态，不属于某一行，原样抛出。 */
-async function collect(errors: RowIssue[], run: () => Promise<unknown>, field?: string, label?: string) {
+/** 校验函数用内部字段名（departmentId 等）或只给原因码；导入请求里对应的是下面这些字段。 */
+const REASON_FIELD: Readonly<Record<string, string>> = {
+  EMPLOYMENT_DEPARTMENT_DISABLED: 'departmentCode',
+  ENTRY_BEFORE_DEPARTMENT_FOUNDED: 'entryDate',
+};
+const INTERNAL_FIELD: Readonly<Record<string, string>> = {
+  departmentId: 'departmentCode',
+  positionId: 'positionCode',
+  postId: 'postCode',
+  effectiveDate: 'entryDate',
+};
+
+/**
+ * 把引用 / 字典校验抛出的业务错误转成行错误；组织调整暂停是整租户状态，不属于某一行，原样抛出。
+ * 每条行错误都带导入请求里的字段名：显式 field > 原因码映射 > 内部字段名映射 > fallback。
+ */
+async function collect(
+  errors: RowIssue[],
+  run: () => Promise<unknown>,
+  field?: string,
+  label?: string,
+  fallback?: string,
+) {
   try {
     await run();
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
     const details = (error.details ?? {}) as { reason?: string; disabledOn?: string; field?: string };
     if (details.reason === 'ORG_ADJUSTMENT_EXECUTING') throw error;
-    const where = field ?? details.field;
+    const where =
+      field ??
+      (details.reason ? REASON_FIELD[details.reason] : undefined) ??
+      (details.field ? (INTERNAL_FIELD[details.field] ?? details.field) : undefined) ??
+      fallback;
     errors.push({
       ...(where ? { field: where } : {}),
       reason: details.reason ?? error.code,
@@ -293,9 +432,10 @@ async function withEstablishment(tx: Tx, ctx: EmploymentContext, assessed: RowAs
       segments.filter((_, other) => other !== index),
     );
     const warnings: ImportWarning[] = [];
+    let hidden = 0;
     for (const excess of excesses) {
       if (!(await capacityVisible(tx, capacityContext, excess))) {
-        hiddenCount += 1;
+        hidden += 1;
         continue;
       }
       warnings.push({
@@ -309,7 +449,8 @@ async function withEstablishment(tx: Tx, ctx: EmploymentContext, assessed: RowAs
         limit: excess.limit ?? null,
       });
     }
-    rows.push({ ...item, warnings });
+    hiddenCount += hidden;
+    rows.push({ ...item, warnings, hidden });
   }
   return { rows, hiddenCount };
 }
@@ -376,7 +517,7 @@ export async function importExits(tx: Tx, ctx: EmploymentContext, body: ExitImpo
     });
   const batchId = randomUUID();
   const receipts: ImportedRowReceipt[] = [];
-  for (const item of rows) receipts.push(await writeRow(tx, ctx, batchId, item, hiddenCount));
+  for (const item of rows) receipts.push(await writeRow(tx, ctx, batchId, item));
   await recordOperationLog(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
@@ -403,7 +544,6 @@ async function writeRow(
   ctx: EmploymentContext,
   batchId: string,
   item: RowAssessment,
-  hiddenCount: number,
 ): Promise<ImportedRowReceipt> {
   const { row } = item;
   const resolved = item.resolved!;
@@ -465,7 +605,7 @@ async function writeRow(
   if (row.addToBlacklist) await blacklistRow(tx, ctx, row, employee.id, leave.id, effectiveDate);
   await assertOnlyImportedBusinesses(tx, ctx, employee.id);
   await auditImported(tx, ctx, batchId, row, employee.id, leave.id, effectiveDate);
-  if (item.warnings.length > 0 || hiddenCount > 0)
+  if (item.warnings.length > 0 || item.hidden > 0)
     await auditEmployment(
       tx,
       ctx,
@@ -473,7 +613,7 @@ async function writeRow(
       'exit-request',
       leave.id,
       null,
-      { source: 'import', batchId, rowNo: row.rowNo, warnings: item.warnings, hiddenCount },
+      { source: 'import', batchId, rowNo: row.rowNo, warnings: item.warnings, hiddenCount: item.hidden },
       undefined,
       undefined,
       { employeeId: employee.id },

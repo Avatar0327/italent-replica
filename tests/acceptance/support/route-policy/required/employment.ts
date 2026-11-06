@@ -196,6 +196,15 @@ function exitImportObligations(path: '/exits/import' | '/exits/import/preview'):
         "if (ctx.scope && !ctx.scope.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要“全部数据”范围')",
     },
   ]);
+  // 人员对象的范围与任职记录分开解析（P1-2）：POST /employees 看的是人员对象的“看全部”
+  const employeeSeeAll = bound({ scope: 'see-all' }, [
+    {
+      role: 'scope',
+      unit: `${EXIT_IMPORT}#requireExitImportAccess`,
+      anchor:
+        "if (!employeeScope?.all) throw new AppError('FORBIDDEN', '批量导入历史离职人员需要人员对象的“全部数据”范围')",
+    },
+  ]);
   return withNeeds(
     [
       ob(
@@ -207,10 +216,6 @@ function exitImportObligations(path: '/exits/import' | '/exits/import/preview'):
         `obj:${EMPLOYEE}:create`,
         ['objectOp:TenantBase.Employee:create'],
         [
-          access(
-            'await requirePermission(ctx.authorize as Authorizer, ' +
-              "{ ...ctx, action: 'object.create', resource: EMPLOYEE_OBJECT })",
-          ),
           access("await requireEmploymentWrite(ctx, 'create', { code: 'x', name: 'x' }, undefined, EMPLOYEE_OBJECT)"),
           WRITE_OBJECT,
         ],
@@ -222,7 +227,7 @@ function exitImportObligations(path: '/exits/import' | '/exits/import/preview'):
         '独立于五个离职按钮的批量入口按钮（DEC-814）；范围必须是显式“看全部”，不足 403',
       ),
     ],
-    { [`obj:${EMPLOYEE}:create`]: seeAll, [`obj:${RECORD}:create`]: seeAll },
+    { [`obj:${EMPLOYEE}:create`]: employeeSeeAll, [`obj:${RECORD}:create`]: seeAll },
   );
 }
 

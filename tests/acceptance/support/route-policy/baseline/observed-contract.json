@@ -19826,6 +19826,7 @@
         ],
         "scope": [
           "employment scope",
+          "resolveModuleScope",
           "scope.all"
         ],
         "scopePoint": [
@@ -19863,6 +19864,7 @@
         ],
         "scope": [
           "readContext（非配置对象）",
+          "resolveModuleScope",
           "scope.all"
         ]
       }

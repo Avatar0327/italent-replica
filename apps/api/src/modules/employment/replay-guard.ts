@@ -11,7 +11,9 @@ import { APPROVAL_INSTANCE_OBJECT, buttonResource, tenantLocalDate } from '@ital
 import { requirePermission, type Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import { resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import {
+  EMPLOYEE_OBJECT,
   EMPLOYMENT_OBJECT,
   commandContext,
   requireEmployeeInScope,
@@ -412,7 +414,10 @@ export function internRegularizationGuard(
 export function exitImportGuard(deps: TenantRouteDeps, ctx: EmploymentContext, rows: readonly ImportRowInput[]) {
   return scopedGuard({
     before: async (tx) => {
-      await requireExitImportAccess(await commandContext(tx, deps, ctx), rows);
+      const scoped = await commandContext(tx, deps, ctx);
+      // 人员对象的范围也在本事务内重新解析：入口之后被撤“看全部”，同键重放同样 403
+      const employeeScope = await resolveModuleScopeInTransaction(deps, ctx, tx, EMPLOYEE_OBJECT);
+      await requireExitImportAccess(scoped, rows, employeeScope);
     },
   });
 }

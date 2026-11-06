@@ -24,7 +24,7 @@ import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import { registerSettingValidator } from '../tenant-settings/service.js';
 import {
   EMPLOYEE_OBJECT,
@@ -256,11 +256,15 @@ function registerExitCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
  * F-139a 历史离职人员导入（设计 §3 / §7）：preview 不写数据、不进命令台账；import 整批一个事务，必须带 Idempotency-Key。
  * 权限先于请求体与幂等键校验（无权者不应得到任何逐行结果）。
  */
+/** 人员对象的数据范围（与任职记录分开解析，同 POST /employees 的口径）。 */
+const employeeScopeOf = (deps: TenantRouteDeps, ctx: EmploymentContext) =>
+  resolveModuleScope(deps, ctx, tenantLocalDate(ctx.now, ctx.timezone), EMPLOYEE_OBJECT);
+
 function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exits/import/preview', async (c) => {
     const ctx = await readContext(c, deps, 'object.create');
     const body = parseExitImportBody(await jsonBody(c));
-    await requireExitImportAccess(ctx, body.rows);
+    await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewExitImport(tx, ctx, body));
     return c.json(result, 200);
   });
@@ -275,7 +279,7 @@ function registerExitImportRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
     };
     return withFailedImportLog(deps.db, task, async () => {
       const body = parseExitImportBody(raw);
-      await requireExitImportAccess(ctx, body.rows);
+      await requireExitImportAccess(ctx, body.rows, await employeeScopeOf(deps, ctx));
       return runWrite(
         c,
         deps,

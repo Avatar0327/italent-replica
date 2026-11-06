@@ -2967,6 +2967,9 @@ export const GRAPH: Graph = {
     '#refuse',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_OF_TODO',
   ],
+  'apps/api/src/modules/employment/exit-import.ts#NOTE_RULES': [
+    'packages/domain/src/employment/blacklist.ts#BLACKLIST_NOTE_MAX',
+  ],
   'apps/api/src/modules/employment/exit-import.ts#assertOnlyImportedBusinesses': [
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
@@ -2984,6 +2987,7 @@ export const GRAPH: Graph = {
     '#employeeNoExists',
     '#fieldsOf',
     '#resolveCodes',
+    '#shapeIssues',
     'apps/api/src/modules/employment/references.ts#validateNewEmploymentReferences',
     'apps/api/src/modules/employment/types.ts#emptyPresetFields',
     'packages/domain/src/employment/exit-import.ts#exitImportEffectiveDate',
@@ -3001,6 +3005,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/blacklist.ts#addBlacklistEntry',
   ],
   'apps/api/src/modules/employment/exit-import.ts#bodySchema': ['#rowSchema'],
+  'apps/api/src/modules/employment/exit-import.ts#collect': ['#INTERNAL_FIELD', '#REASON_FIELD'],
   'apps/api/src/modules/employment/exit-import.ts#createImportedEmployee': [
     'apps/api/src/modules/employment/employees.ts#createEmployee',
   ],
@@ -3016,14 +3021,16 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/locks.ts#lockOrganizationSettings',
     'apps/api/src/system-actor.ts#auditActor',
   ],
+  'apps/api/src/modules/employment/exit-import.ts#normalizeRow': ['#optionalText', '#trimmed'],
+  'apps/api/src/modules/employment/exit-import.ts#optionalText': ['#trimmed'],
   'apps/api/src/modules/employment/exit-import.ts#parseExitImportBody': [
     'apps/api/src/audit/record.ts#rawImportRows',
     '#bodySchema',
+    '#normalizeRow',
     'packages/domain/src/employment/exit-import.ts#EXIT_IMPORT_ROW_LIMIT',
   ],
   'apps/api/src/modules/employment/exit-import.ts#previewExitImport': ['#assessImportRows'],
   'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess': [
-    'apps/api/src/authorization.ts#requirePermission',
     'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#requireEmploymentWrite',
     '#writtenFields',
@@ -3033,13 +3040,11 @@ export const GRAPH: Graph = {
     '#notFound',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
-  'apps/api/src/modules/employment/exit-import.ts#rowSchema': [
-    '#text',
-    'packages/domain/src/employment/blacklist.ts#BLACKLIST_NOTE_MAX',
-  ],
+  'apps/api/src/modules/employment/exit-import.ts#rowSchema': ['#loose'],
   'apps/api/src/modules/employment/exit-import.ts#segmentOf': [
     'packages/domain/src/employment/exit-import.ts#exitImportEffectiveDate',
   ],
+  'apps/api/src/modules/employment/exit-import.ts#shapeIssues': ['#NOTE_RULES', '#SHAPE_RULES'],
   'apps/api/src/modules/employment/exit-import.ts#withEstablishment': [
     'apps/api/src/modules/employment/exit-cancel-intervals.ts#capacityVisible',
     '#segmentOf',
@@ -3383,6 +3388,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/fields.ts#normalizedUuid',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#day': ['apps/api/src/modules/employment/fields.ts#businessDate'],
+  'apps/api/src/modules/employment/exit-routes.ts#employeeScopeOf': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScope',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
   'apps/api/src/modules/employment/exit-routes.ts#parseExitCreate': [
     'apps/api/src/modules/employment/exit-initiation.ts#splitExitOptions',
     'apps/api/src/modules/employment/fields.ts#normalizeEmploymentInput',
@@ -3552,6 +3562,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-import.ts#importExits',
     'apps/api/src/modules/employment/exit-import.ts#parseExitImportBody',
     'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess',
+    '#employeeScopeOf',
     'apps/api/src/modules/employment/replay-guard.ts#exitImportGuard',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:POST /exits/import/preview': [
@@ -3560,6 +3571,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-import.ts#parseExitImportBody',
     'apps/api/src/modules/employment/exit-import.ts#previewExitImport',
     'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess',
+    '#employeeScopeOf',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:PUT /exits/dictionaries/:dict/:id': [
     'apps/api/src/modules/employment/context.ts#jsonBody',
@@ -6186,9 +6198,11 @@ export const GRAPH: Graph = {
     '#requireExitScope',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#exitImportGuard': [
+    'apps/api/src/modules/employment/context.ts#EMPLOYEE_OBJECT',
     'apps/api/src/modules/employment/context.ts#commandContext',
     'apps/api/src/modules/employment/context.ts#scopedGuard',
     'apps/api/src/modules/employment/exit-import.ts#requireExitImportAccess',
+    'apps/api/src/modules/permission/module-access.ts#resolveModuleScopeInTransaction',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#importWriteGuard': [
     'apps/api/src/authorization.ts#requirePermission',
