@@ -22,10 +22,10 @@ describe('AC-RT-11 未办结的退休（process_voided）', () => {
   it('草稿：删除；审批中 / 已驳回：作废并取消审批实例；审计 kind = retirement', async () => {
     const x = await world('rt11-process');
     const draft = await x.createdRetire(x.employee.id, retireBody('2026-10-20', 'application'));
-    const deleted = await x.retireCancelled(draft.id, { reason: '  录入有误  ' });
+    const deleted = await x.retireCancelled(draft.id);
     expect(deleted).toMatchObject({
       status: 'deleted',
-      cancellation: { case: 'process_voided', stateBefore: 'draft', reason: '录入有误', revision: 1 },
+      cancellation: { case: 'process_voided', stateBefore: 'draft', reason: null, revision: 1 },
     });
     const [audit] = await x.audits(draft.id, 'exit.request.cancel');
     expect(audit!.after).toMatchObject({ case: 'process_voided', kind: 'retirement' });
@@ -94,11 +94,11 @@ describe('AC-RT-11 撤销已生效的退休（record_deleted_reinstated）：人
     const statusBefore = await x.employeeStatusOf(hire!.record_id);
     expect((await x.timeline()).map((row) => row.kind)).toEqual(['hire', 'retirement']);
 
-    const result = await x.retireCancelled(retire.id, { reason: '误办理' });
+    const result = await x.retireCancelled(retire.id);
 
     expect(result).toMatchObject({
       status: 'deleted',
-      cancellation: { case: 'record_deleted_reinstated', stateBefore: 'effective', reason: '误办理' },
+      cancellation: { case: 'record_deleted_reinstated', stateBefore: 'effective', reason: null },
     });
     expect((await x.timeline()).map((row) => [row.kind, row.valid])).toEqual([['hire', '[2026-09-01,)']]);
     expect(await x.tombstoned(retire.id)).toBe(true);
@@ -165,7 +165,7 @@ describe('AC-RT-11 §6B 区间变化统一校验（与离职同一函数）', ()
     });
     expect(await x.stateOfBusiness(retire.id)).toBe('approved');
 
-    const confirmed = await x.cancelRetire(retire.id, { reason: '撤销', confirmed: true });
+    const confirmed = await x.cancelRetire(retire.id, { confirmed: true });
     expect(confirmed.status, await confirmed.clone().text()).toBe(200);
     expect(await x.stateOfBusiness(retire.id)).toBe('voided');
   });

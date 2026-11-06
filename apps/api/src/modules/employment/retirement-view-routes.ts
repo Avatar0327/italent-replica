@@ -17,8 +17,11 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
-import { pageQuery, readPageContext, uuidParam } from './context.js';
-import { day, parse, viewableIn } from './exit-routes.js';
+import { pageQuery, readContext, readPageContext, uuidParam } from './context.js';
+import { resolveDepartmentIds, type ExitViewFilter } from './exit-queries.js';
+import { day, parse, requireViewableExitFilters, viewableIn } from './exit-routes.js';
+import { inFlightApplications } from './exit-gate.js';
+import { normalizedUuid } from './fields.js';
 import { loadEmploymentBusiness } from './read-model.js';
 import {
   listRetirementBills,
@@ -29,6 +32,7 @@ import {
 } from './retirement-views.js';
 
 const FALLBACK_UPCOMING_DAYS = 30;
+const IN_FLIGHT_STATES = ['draft', 'in_review', 'approved', 'rejected'] as const;
 
 const viewQuery = z.object({
   view: z.enum([...RETIREMENT_VIEWS, RETIREMENT_CANCELLED_VIEW]),
@@ -39,6 +43,10 @@ const viewQuery = z.object({
     .transform(Number)
     .refine((days) => days >= RETIREMENT_UPCOMING_DAYS.min && days <= RETIREMENT_UPCOMING_DAYS.max)
     .optional(),
+  // F-351：同离职视图的 departmentId / includeChildren / keyword（参数校验同 exit-routes viewQuery）
+  departmentId: normalizedUuid.optional(),
+  includeChildren: z.enum(['true', 'false']).optional(),
+  keyword: z.string().trim().min(1).max(100).optional(),
 });
 
 async function upcomingDaysOf(requested: number | undefined, read: () => Promise<unknown>) {
@@ -47,19 +55,59 @@ async function upcomingDaysOf(requested: number | undefined, read: () => Promise
   return typeof configured === 'number' ? configured : FALLBACK_UPCOMING_DAYS;
 }
 
+function registerRetirementInFlight(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // F-410：员工当前在途的退休单（草稿 / 审批中 / 已批准 / 已驳回，与互斥门禁同一集合）；没有则 item 为 null。
+  // 入口以此接续草稿，不再只信页面缓存（DEC-727）。员工范围外与不存在同一个 404；单据内容走详情同一裁剪。
+  router.get('/retirements/employees/:id/in-flight', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.view', 0, id);
+    const detail = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const [flight] = await inFlightApplications(tx, ctx, id, ['retirement'], IN_FLIGHT_STATES, null);
+      return flight ? loadRetirementDetail(tx, ctx.tenantId, flight.id, ctx.scope) : null;
+    });
+    if (!detail) return c.json({ item: null });
+    await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
+    return c.json({ item: trimRetirementDetail(detail, await viewableIn(deps, ctx)) });
+  });
+}
+
 export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerRetirementInFlight(router, deps);
   router.get('/retirements', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
     const query = parse(viewQuery, {
       view: c.req.query('view'),
       asOf: c.req.query('asOf'),
       upcomingDays: c.req.query('upcomingDays'),
+      departmentId: c.req.query('departmentId'),
+      includeChildren: c.req.query('includeChildren'),
+      keyword: c.req.query('keyword'),
     });
     const page = pageQuery(c);
     const show = await viewableIn(deps, ctx);
+    const requested: ExitViewFilter = {
+      ...(query.keyword ? { keyword: query.keyword } : {}),
+      ...(query.departmentId ? { departmentIds: [query.departmentId] } : {}),
+    };
+    requireViewableExitFilters(requested, show);
     const asOf = query.asOf ?? tenantLocalDate(ctx.now, ctx.timezone);
     const at = { asOf, timezone: ctx.timezone };
     const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      // 部门不存在 / 在范围外都只是空结果（范围谓词先行），不单独报错，避免成为部门存在性的探针
+      const filter = {
+        ...(query.keyword ? { keyword: query.keyword } : {}),
+        ...(query.departmentId
+          ? {
+              departmentIds: await resolveDepartmentIds(
+                tx,
+                ctx.tenantId,
+                query.departmentId,
+                query.includeChildren !== 'false',
+                asOf,
+              ),
+            }
+          : {}),
+      };
       if (query.view === 'upcoming' || query.view === 'overdue') {
         const upcomingDays = await upcomingDaysOf(
           query.upcomingDays,
@@ -68,12 +116,12 @@ export function registerRetirementViews(router: Hono<TenantEnv>, deps: TenantRou
         const persons = await listRetirementPersons(
           tx,
           ctx.tenantId,
-          { view: query.view, at, upcomingDays, page, show },
+          { view: query.view, at, upcomingDays, page, show, filter },
           ctx.scope,
         );
         return { ...persons, ...(query.view === 'upcoming' ? { upcomingDays } : {}) };
       }
-      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show }, ctx.scope);
+      return listRetirementBills(tx, ctx.tenantId, { view: query.view, at, page, show, filter }, ctx.scope);
     });
     return c.json({
       ...result,

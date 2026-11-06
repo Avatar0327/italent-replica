@@ -14,6 +14,7 @@ import {
 import { validateEmploymentChoice } from '../org/employment-linkage.js';
 import { assertOrgPeopleEligible } from '../org/people.js';
 import type { OrgRecord } from '../org/read-model.js';
+import { codeUsedMessage, ORG_CODE_DUPLICATE } from './envelope.js';
 import { invalid, type OrganizationPatch } from '../org/validation.js';
 import { assertInRange, orgContext, type ItemWorld } from './item-tree.js';
 import type { OrgItem, OrgItemContent } from './items-store.js';
@@ -71,7 +72,8 @@ async function assertItemCode(
   item: OrgItem,
   code: string,
 ) {
-  const used = () => new AppError('CONFLICT', `组织编码【${code}】在生效日已被使用`, { reason: 'ORG_CODE_DUPLICATE' });
+  // 被占用的编码放进 details.code，看不到 orgItems.code 的人由 envelope 去掉（F-343 ②）
+  const used = () => new AppError('CONFLICT', codeUsedMessage(code), { reason: ORG_CODE_DUPLICATE, code });
   try {
     await assertCodeAvailable(
       tx,

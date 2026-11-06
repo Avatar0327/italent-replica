@@ -30,8 +30,8 @@ import { lockTransferParticipants } from './transfer-locks.js';
 import type { BusinessKind, EmploymentBusiness, EmploymentContext } from './types.js';
 
 export interface CancelInput {
-  /** 撤销离职原因（必填，原站弹窗唯一必填项，T-402e / W-108）。 */
-  readonly reason: string;
+  /** 撤销离职原因（必填，原站弹窗唯一必填项，T-402e / W-108）；撤销退休不收原因（DEC-714），传了即 400。 */
+  readonly reason?: string;
   /** DEC-258：超编确认。 */
   readonly confirmed?: boolean;
 }
@@ -40,7 +40,8 @@ export interface CancellationRecord {
   readonly id: string;
   readonly case: ExitCancelCase;
   readonly stateBefore: string;
-  readonly reason: string;
+  /** 撤销退休不收原因，恒为 null（DEC-714）。 */
+  readonly reason: string | null;
   readonly revision: number;
   readonly createdAt: string;
 }
@@ -69,8 +70,8 @@ export function exitCancelCase(state: string, today: string, lastWorkDate: strin
 /** 文案按业务类型取名（退休 R2-T04 §6）；原因码、状态码两种业务共用。 */
 export const exitKindLabel = (kind: string) => (kind === 'retirement' ? '退休' : '离职');
 
-const textReason = (value: string, kind: string) => {
-  const reason = value.trim();
+const textReason = (value: string | undefined, kind: string) => {
+  const reason = (value ?? '').trim();
   if (!reason)
     throw new AppError('VALIDATION_FAILED', `请填写撤销${exitKindLabel(kind)}原因`, {
       reason: 'EXIT_CANCEL_REASON_REQUIRED',
@@ -111,6 +112,16 @@ async function loadCancelHead(tx: Tx, ctx: EmploymentContext, businessId: string
   return head;
 }
 
+/** 撤销原因：离职必填；退休不收原因（DEC-714，入口「删除任职」无原因框），路由层已拒绝，这里兜底防旁路调用。 */
+function cancelReasonOf(input: CancelInput, kind: string): string | null {
+  if (kind !== 'retirement') return textReason(input.reason, kind);
+  if (input.reason !== undefined)
+    throw new AppError('VALIDATION_FAILED', '撤销退休不收撤销原因', {
+      reason: 'RETIREMENT_CANCEL_REASON_NOT_ACCEPTED',
+    });
+  return null;
+}
+
 export async function cancelExit(
   tx: Tx,
   ctx: EmploymentContext,
@@ -119,7 +130,7 @@ export async function cancelExit(
   options: { readonly replacementUntil?: string } = {},
 ): Promise<CancelReceipt> {
   const head = await loadCancelHead(tx, ctx, businessId);
-  const reason = textReason(input.reason, head.kind);
+  const reason = cancelReasonOf(input, head.kind);
   const occupying = head.state === 'approved' || head.state === 'effective';
   const business = await lockForCancel(tx, ctx, businessId, occupying);
   const exit = await loadExitRequest(tx, ctx.tenantId, businessId);
@@ -197,7 +208,7 @@ export async function cancelExit(
   };
 }
 
-/** 撤销记录里可事后修改的只有撤销原因（DM-R5，revision 乐观锁，审计 exit.cancellation.update）。 */
+/** 撤销记录里可事后修改的只有撤销原因（DM-R5，revision 乐观锁，审计 exit.cancellation.update）；仅离职（DEC-714）。 */
 export async function updateCancellationReason(
   tx: Tx,
   ctx: EmploymentContext,
@@ -211,6 +222,7 @@ export async function updateCancellationReason(
     .for('update');
   if (!current) throw new AppError('NOT_FOUND', '撤销的离职记录不存在');
   const kind = (await businessKind(tx, ctx.tenantId, current.businessId)) ?? 'leave';
+  if (kind === 'retirement') throw new AppError('NOT_FOUND', '撤销的离职记录不存在');
   const reason = textReason(reasonInput, kind);
   if (current.revision !== ctx.expectedRevision)
     throw new AppError('REVISION_CONFLICT', '撤销记录已被修改，请刷新后显式重提', {
