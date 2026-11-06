@@ -8,6 +8,7 @@ import {
   importRows,
   importSheet,
   requiredRows,
+  styledBlankRowsXml,
   warning,
   xfdRowsXml,
   type Cell,
@@ -127,8 +128,17 @@ describe('AC-DM-30-19 导入文件解析', () => {
       (await readXlsx(await buildXlsx([head], { rowsXml: '<row r="2"><c r="XFD2"><v>1</v></c></row>' }))).rows[1],
     ).toMatchObject({ rowNo: 2 });
     await rejected(bombRowsXml(), 'limit');
-    const many = Array.from({ length: 100_001 }, (_, i) => `<c r="A${i + 3}"/>`).join('');
+    // 有值的格才计数（只有样式的空白格见下一用例）
+    const many = Array.from({ length: 100_001 }, (_, i) => `<c r="A${i + 3}"><v>1</v></c>`).join('');
     await rejected(`<row r="3">${many}</row>`, 'limit');
+  });
+
+  it('预先铺好格式的模板：100 行数据 + 尾部 7,200 行 × 14 列带填充样式的空白格，解析后恰好 100 行', async () => {
+    // 空白格 7,200 × 14 = 100,800 个：只有样式、没有值，不算有效数据，不能据此整份拒绝
+    const bytes = await buildXlsx([importHeader, ...requiredRows(100)], { rowsXml: styledBlankRowsXml(102, 7_200) });
+    const parsed = importRowsOf(await readXlsx(bytes));
+    expect('rows' in parsed ? parsed.rows.length : parsed.error).toBe(100);
+    expect('rows' in parsed && parsed.rows[99]).toMatchObject({ rowNo: 101, employeeNo: 'H0100' });
   });
 
   it('尾部 10,000 行各一个 XFD 单元格：空白格式格不展开成稠密数组；有值时累计展开超预算受控拒绝', async () => {

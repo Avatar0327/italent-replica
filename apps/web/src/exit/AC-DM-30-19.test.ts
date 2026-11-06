@@ -20,6 +20,8 @@ import {
   importSheet,
   previewFailed,
   previewWarned,
+  requiredRows,
+  styledBlankRowsXml,
 } from '../../smoke/exit-import-fixtures.js';
 
 const EXITS = '/api/tenant/employment/exits';
@@ -207,6 +209,16 @@ describe('AC-DM-30-19 历史离职人员导入（对应设计 AC-DM-30-13）', (
     await shown('文件内容过大或单元格过多，无法读取；请只保留需要导入的行后重试');
     expect(writes()).toEqual([]);
     expect(button('导入')?.disabled).toBe(true);
+  });
+
+  it('预先铺好格式的模板（尾部 7,200 行 × 14 列带填充样式的空白格）：100 行数据照常进入预览', async () => {
+    await render();
+    await click(ENTRY);
+    await upload([importHeader, ...requiredRows(100)], { rowsXml: styledBlankRowsXml(102, 7_200) });
+    await shown('共 100 行：通过 100 行');
+    expect(document.body.textContent).not.toContain('文件内容过大或单元格过多');
+    expect(writes().map((call) => call.path)).toEqual([`${EXITS}/import/preview`]);
+    expect(writes()[0]!.body!.rows).toHaveLength(100);
   });
 
   it('结果未知（响应丢失）→ 关闭重开仍锁定 → 按原命令重新提交：原键、原报文，完成后解锁', async () => {
