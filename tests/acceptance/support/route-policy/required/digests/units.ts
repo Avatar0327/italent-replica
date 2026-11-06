@@ -46,7 +46,7 @@ export const DIGESTS: Digests = {
     'route:GET /api/tenant/analytics/hr-structure': '92a1e37b8f44',
     'route:GET /api/tenant/analytics/hr-structure/components/:code': '321c55c85fb7',
     'route:GET /api/tenant/analytics/hr-structure/reports/:report': 'b7d824e8d5d8',
-    'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '95870ab94067',
+    'route:GET /api/tenant/analytics/hr-structure/reports/:report/export': '3fc022206c15',
   },
   'apps/api/src/modules/analytics/team-dashboard-routes.ts': {
     'route:GET /api/tenant/analytics/team-dashboard': 'c4225d98f12e',

@@ -185,7 +185,13 @@ export function registerHrStructureRoutes(router: Hono<TenantEnv>, deps: TenantR
       reportCode: report.code,
       fileName: '员工素质结构.xlsx', // 原站文件名 = 报表名.xlsx（evidence §4），与页签名「员工素质结构统计」不同
       mode,
-      filter: { asOf: ctx.asOf, employType, departmentId: filter.departmentId ?? null },
+      // 审计摘要要能区分取数范围：“包含下级”的实际生效值（缺省 = 勾选）一并记（审查 P2-1，DEC-809④）
+      filter: {
+        asOf: ctx.asOf,
+        employType,
+        departmentId: filter.departmentId ?? null,
+        departmentIncludeChildren: filter.departmentIncludeChildren,
+      },
       layout: (stamp) => qualitySheet(page, stamp),
     });
   });
