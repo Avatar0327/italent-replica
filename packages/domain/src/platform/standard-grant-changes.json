@@ -1,10 +1,14 @@
 {
-  "reason": "F-020 / DEC-790：仅员工身份新增本人离职、兼职按钮和专属字段授权；HR 默认授权及共享员工字段不变",
+  "reason": "F-432（DEC-793）：沿用任职记录字段编辑权限，新增司龄校正值；员工默认只读，不新增按钮或数据范围",
   "add": [
-    "employee_self_service/TenantBase.EmploymentRecord/button:Exit.Self@detail",
-    "employee_self_service/TenantBase.EmploymentRecord/button:PartTime.Self@detail",
-    "employee_self_service/TenantBase.SelfExit/*",
-    "employee_self_service/TenantBase.SelfPartTime/*"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:workYearCompanyBefore:edit",
+    "standard_manager/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view",
+    "employee_self_service/TenantBase.EmploymentRecord/field:workYearCompanyBefore:view"
   ],
   "remove": []
 }

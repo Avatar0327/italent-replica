@@ -1,3 +1,4 @@
+import { restoreRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
@@ -438,6 +439,7 @@ async function deleteEmploymentBusiness(
         employeeStatus: record.employeeStatus,
       });
   }
+  await restoreRehireSeniority(tx, ctx, business);
   await appendEmploymentState(tx, ctx, business, 'deleted');
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);
   // F-199：通用删除与专用 DELETE /pending-entries 共用此内核；待入职合同随业务一并清理并留审计（没有合同的不留）

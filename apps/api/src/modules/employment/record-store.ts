@@ -72,7 +72,12 @@ export function camelRow(row: Record<string, unknown>): Record<string, unknown> 
 }
 
 export function snapshotFields(row: Record<string, unknown>): PresetFields {
-  return Object.fromEntries(PRESET_FIELD_NAMES.map((key) => [key, row[key] ?? null])) as unknown as PresetFields;
+  return Object.fromEntries(
+    PRESET_FIELD_NAMES.map((key) => [
+      key,
+      key === 'workYearCompanyBefore' ? Number(row[key] ?? 0) : (row[key] ?? null),
+    ]),
+  ) as unknown as PresetFields;
 }
 
 export async function lockEmploymentEmployee(

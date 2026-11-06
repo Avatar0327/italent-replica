@@ -211,6 +211,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   dottedManagerId: '虚线经理',
   employmentType: '人员类别',
   employmentSource: '人员来源',
+  workYearCompanyBefore: '司龄校正值（年）',
   employmentForm: '用工形式',
   identityLabel: '身份类型',
   sequenceId: '职务序列',
