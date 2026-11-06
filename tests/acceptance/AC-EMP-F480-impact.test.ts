@@ -69,16 +69,16 @@ it('AC-EMP-F480-12：人员档案读取——入职日期 = 转正日（当前�
   });
 });
 
-it('AC-EMP-F480-13：看板入职指标——转正记录不是入职类（ENTRY_KINDS），不重复计入；转正改入职日不改变口径（实习段按在岗类型过滤，另列等决定）', async () => {
+it('AC-EMP-F480-13：看板入职指标——转正记录不是入职类（ENTRY_KINDS），不重复计入；转正改入职日不改变口径（实习入职仍按实习开始日计入，转正日不计第二次）', async () => {
   const { w, hire, reg } = await regularizedWorld('entries');
   const ids = (since?: string) =>
     w
       .sqlRows<{ id: string }>(
-        sql`SELECT r.id ${entriesFrom({ tenantId: w.tenantId, asOf: '2026-12-31' }, 'all', since)}`,
+        sql`SELECT r.id ${entriesFrom({ tenantId: w.tenantId, asOf: '2026-12-31' }, 'hired', since)}`,
       )
       .then((rows) => rows.map((r) => r.id));
   expect(await ids()).toEqual([hire.id]);
-  expect(await ids('2025-01-01')).toEqual([]);
+  expect(await ids('2025-01-01')).toEqual([hire.id]);
   expect(await ids('2026-10-01')).toEqual([]);
   expect([...(await ids()), ...(await ids('2025-01-01'))]).not.toContain(reg.id);
 });

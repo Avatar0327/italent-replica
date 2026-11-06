@@ -1,3 +1,4 @@
+import { applyInternSeniority } from './intern-seniority.js';
 import { applyRehireSeniority } from './rehire-seniority.js';
 import { assertRegularizationApplication } from './regularization-eligibility.js';
 import { exitDateChange, lockExitForEdit, rescheduleExit, type RescheduleOptions } from './exit-reschedule.js';
@@ -704,11 +705,15 @@ async function cycleForMaterialization(
   position: TimelinePosition,
 ): Promise<SelectedEmploymentCycle | undefined> {
   if (newCycle) return undefined;
-  return selectEmploymentCycle(tx, ctx, business.employeeId, {
+  const selected = await selectEmploymentCycle(tx, ctx, business.employeeId, {
     effectiveDate: business.payload.effectiveDate,
     expectedStaffId: business.payload.selectedStaffId,
     beforeOrder: position.order,
   });
+  if (selected && business.payload.kind === 'intern_regularization') {
+    await assertNoInternCycleSuccessor(tx, ctx, business, selected.cycle.id);
+  }
+  return selected;
 }
 
 /** DEC-186：已物化的未来调动改期也必须重新验证实际插入点，禁止越过离职或跨任职周期。 */
@@ -773,17 +778,30 @@ async function materializedFields(
   inherited: Pick<PreparedInheritance, 'fields' | 'customFields'>,
   employType: EmployType,
   order: number,
+  traineeStartDate?: string,
 ) {
-  return applyRehireSeniority(
-    tx,
-    ctx,
-    business,
-    {
-      fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
-      customFields: inherited.customFields,
-    },
-    order,
-  );
+  const values = {
+    fields: { ...inherited.fields, employType, jobNumber: business.employee.code },
+    customFields: inherited.customFields,
+  };
+  // 两个开关各管各的业务类型（DEC-796 重聘 / DEC-797 实习转正），同一次落地只会命中其一。
+  const rehired = await applyRehireSeniority(tx, ctx, business, values, order);
+  return applyInternSeniority(tx, ctx, business, { ...values, fields: rehired }, traineeStartDate);
+}
+
+/**
+ * 落地记录所属的任职周期标识。DEC-797：实习转正也开新任职周期（入职日期 = 转正日、新 staffId），
+ * 原实习开始日存到新周期上；继承仍取实习周期（sourceStaffId）的前一条。
+ */
+function cycleIdentity(payload: LockedEmploymentBusiness['payload'], selected: SelectedEmploymentCycle | undefined) {
+  const regularizes = payload.kind === 'intern_regularization';
+  const staffId = regularizes ? randomUUID() : (selected?.cycle.id ?? randomUUID());
+  return {
+    staffId,
+    entryDate: regularizes ? payload.effectiveDate : (selected?.cycle.entryDate ?? payload.effectiveDate),
+    traineeStartDate: regularizes ? selected?.cycle.entryDate : undefined,
+    sourceStaffId: selected?.cycle.id ?? staffId,
+  };
 }
 
 export async function materializeEmploymentRecord(
@@ -800,14 +818,13 @@ export async function materializeEmploymentRecord(
   await assertSuccessorSequence(tx, ctx, business.employeeId, payload.kind, position);
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
   const selected = await cycleForMaterialization(tx, ctx, business, newCycle, position);
-  const staffId = selected?.cycle.id ?? randomUUID();
-  const entryDate = selected?.cycle.entryDate ?? payload.effectiveDate;
+  const { staffId, entryDate, traineeStartDate, sourceStaffId } = cycleIdentity(payload, selected);
   const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
-    staffId,
+    staffId: sourceStaffId,
     predecessor: selected?.predecessor ?? null,
   });
   const employType = effectiveEmployType(payload, selected);
-  const fields = await materializedFields(tx, ctx, business, inherited, employType, position.order);
+  const fields = await materializedFields(tx, ctx, business, inherited, employType, position.order, traineeStartDate);
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
@@ -819,7 +836,8 @@ export async function materializeEmploymentRecord(
   await validateMaterializedReferences(tx, ctx, payload, fields, reporting, newCycle);
   assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
   await checkMaterializedCapacity(tx, ctx, business, fields, options);
-  if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
+  if (newCycle || payload.kind === 'intern_regularization')
+    await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType, traineeStartDate });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
     id: business.id,
@@ -834,7 +852,7 @@ export async function materializeEmploymentRecord(
     lastWorkDate: payload.lastWorkDate,
     serviceType: 'primary',
     isInserted: !!next,
-    inheritanceSourceId: selected?.predecessor?.staffId === staffId ? selected.predecessor.id : null,
+    inheritanceSourceId: selected?.predecessor?.staffId === sourceStaffId ? selected.predecessor.id : null,
     customFields: inherited.customFields,
     createdAt: ctx.now.toISOString(),
   });
@@ -969,11 +987,29 @@ async function forwardMaterializedRecord(
   });
 }
 
+/** 转正日之后不能还有实习周期的记录：它们会悬在新周期之外（与删除转正的既有限制同一原因）。 */
+async function assertNoInternCycleSuccessor(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  internStaffId: string,
+) {
+  const { next } = await employmentTimelineNeighbors(
+    tx,
+    ctx,
+    business.employeeId,
+    business.payload.effectiveDate,
+    business.id,
+  );
+  if (next && next.staffId === internStaffId)
+    throw new AppError('CONFLICT', '转正日之后还有实习期内的任职记录', { reason: 'INTERN_CYCLE_SUCCESSOR_EXISTS' });
+}
+
 async function insertNewEmploymentCycle(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  cycle: { staffId: string; entryDate: string; employType: EmployType },
+  cycle: { staffId: string; entryDate: string; employType: EmployType; traineeStartDate?: string },
 ) {
   await insertEmploymentRow(tx, 'employment_cycles', {
     id: cycle.staffId,
@@ -982,6 +1018,7 @@ async function insertNewEmploymentCycle(
     entryDate: cycle.entryDate,
     entryType: business.payload.kind,
     employType: cycle.employType,
+    traineeStartDate: cycle.traineeStartDate ?? null,
     createdAt: ctx.now.toISOString(),
   });
 }

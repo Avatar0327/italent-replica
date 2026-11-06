@@ -24,7 +24,9 @@ export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.
     LEFT JOIN LATERAL (SELECT min(entry_date) AS first_entry_date, max(entry_date) AS latest_entry_date
       FROM employment_records c JOIN employment_timeline ct ON ct.tenant_id=c.tenant_id AND ct.record_id=c.id
       WHERE c.tenant_id=e.tenant_id AND c.employee_id=e.id
-      AND c.kind IN ('hire','rehire','retire_rehire') AND c.entry_date<=${asOf}::date) cycles ON true
+      -- DEC-797：实习转正重置入职日（开新周期）；最近入职日期随之，首次入职日期仍是实习开始日
+      AND c.kind IN ('hire','rehire','retire_rehire','intern_regularization')
+      AND c.entry_date<=${asOf}::date) cycles ON true
     ${jobJoin('job_level_versions', 'jl', 'level_id', asOf)}
     ${jobJoin('job_grade_versions', 'jg', 'grade_id', asOf)}
     ${jobJoin('job_position_versions', 'jp', 'position_id', asOf)}

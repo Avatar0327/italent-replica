@@ -2,7 +2,6 @@
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { withLoginEmail } from './AC-EMP-support.js';
 import { internWorld } from './AC-EMP-F480-support.js';
 
 const db = useTestDb();
@@ -68,15 +67,10 @@ it('AC-EMP-F480-05：同一命令 ID 重放不重复累计，返回同一业务'
   const commandId = randomUUID();
   const revision = (await w.s.getEmployee(e.id)).revision;
   const send = () =>
-    w.s.request('POST', `/employees/${e.id}/businesses`, {
+    w.s.request('POST', `/interns/${e.id}/regularize`, {
       ifMatch: revision,
       idempotencyKey: commandId,
-      body: withLoginEmail(e.id, {
-        kind: 'intern_regularization',
-        mode: 'direct',
-        effectiveDate: '2026-10-01',
-        fields: {},
-      }),
+      body: { effectiveDate: '2026-10-01', departmentId: w.dept.id, probation: false },
     });
   const first = await send();
   expect(first.status, await first.clone().text()).toBe(201);

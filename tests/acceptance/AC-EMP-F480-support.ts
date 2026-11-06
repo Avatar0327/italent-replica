@@ -28,7 +28,8 @@ export async function internWorld(db: Db, label: string) {
     });
     expect(r.status, await r.clone().text()).toBe(200);
   };
-  /** 实习生：直接入职（雇佣关系 = 实习生），可带手工司龄校正值。 */
+  const dept = await s.org('合成转正部门', { establishedOn: '2000-01-01' });
+  /** 实习生：直接入职（雇佣关系 = 实习生，在合成部门），可带手工司龄校正值。 */
   const intern = async (date = '2025-01-01', correction?: number) => {
     const e = await s.employee();
     const hire = await s.business(
@@ -37,28 +38,41 @@ export async function internWorld(db: Db, label: string) {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: date,
-        fields: { employType: 'intern', ...(correction === undefined ? {} : { workYearCompanyBefore: correction }) },
+        fields: {
+          employType: 'intern',
+          departmentId: dept.id,
+          ...(correction === undefined ? {} : { workYearCompanyBefore: correction }),
+        },
       },
       e.revision,
     );
     return { e, hire };
   };
+  /** 直接转正走 /interns/:id/regularize（保存即生效）；申请走通用业务入口，到期落地。 */
   const regularize = async (
     employeeId: string,
     options: { date?: string; mode?: 'direct' | 'application'; commandId?: string } = {},
   ) => {
     const employee = await s.getEmployee(employeeId);
-    const r = await s.request('POST', `/employees/${employeeId}/businesses`, {
-      ifMatch: employee.revision,
-      idempotencyKey: options.commandId ?? randomUUID(),
-      body: withLoginEmail(employeeId, {
-        kind: 'intern_regularization',
-        mode: options.mode ?? 'direct',
-        effectiveDate: options.date ?? '2026-10-01',
-        fields: {},
-        probation: false,
-      }),
-    });
+    const date = options.date ?? '2026-10-01';
+    const direct = (options.mode ?? 'direct') === 'direct';
+    const r = direct
+      ? await s.request('POST', `/interns/${employeeId}/regularize`, {
+          ifMatch: employee.revision,
+          idempotencyKey: options.commandId ?? randomUUID(),
+          body: { effectiveDate: date, departmentId: dept.id, probation: false },
+        })
+      : await s.request('POST', `/employees/${employeeId}/businesses`, {
+          ifMatch: employee.revision,
+          idempotencyKey: options.commandId ?? randomUUID(),
+          body: withLoginEmail(employeeId, {
+            kind: 'intern_regularization',
+            mode: 'application',
+            effectiveDate: date,
+            fields: { departmentId: dept.id },
+            probation: false,
+          }),
+        });
     expect(r.status, await r.clone().text()).toBe(201);
     return (await r.json()) as RegularizedBusiness;
   };
@@ -94,5 +108,5 @@ export async function internWorld(db: Db, label: string) {
   };
   const remove = (b: { id: string; revision: number }, commandId = randomUUID()) =>
     s.request('DELETE', `/businesses/${b.id}`, { ifMatch: b.revision, idempotencyKey: commandId, body: {} });
-  return { s, api, who, setting, intern, regularize, saved, record, approve, transition, remove };
+  return { s, api, who, dept, setting, intern, regularize, saved, record, approve, transition, remove };
 }
