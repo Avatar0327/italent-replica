@@ -81,7 +81,12 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/attachments/service.ts#readTemporaryMeta': ['#ownFile', '#receipt'],
   'apps/api/src/modules/attachments/service.ts#record': ['apps/api/src/audit/record.ts#recordAudit', '#snapshot'],
-  'apps/api/src/modules/attachments/service.ts#registerFile': ['#checkRegistration', '#receipt', '#record'],
+  'apps/api/src/modules/attachments/service.ts#registerFile': [
+    '#checkRegistration',
+    '#ownerLockKey',
+    '#receipt',
+    '#record',
+  ],
   'apps/api/src/modules/attachments/service.ts#snapshot': ['#receipt'],
   'apps/api/src/modules/attachments/service.ts#uploadFile': [
     'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',

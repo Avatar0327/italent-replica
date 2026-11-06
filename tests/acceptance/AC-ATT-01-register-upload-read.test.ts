@@ -208,5 +208,16 @@ describe('AC-ATT-01 审计与 outbox 与业务写同一事务，不含字节', (
       expect(row.object_type).toBe('attachment_file');
       expect(JSON.stringify(row.after)).not.toMatch(/base64|iVBOR/);
     }
+    // outbox 与业务写同事务：三个事件各一条，指向同一文件，payload 不含字节 / base64
+    const events = (await a.outboxEvents()).filter((row) => row.file_id === receipt.id);
+    expect(events.map((row) => row.event_type).sort()).toEqual([
+      'attachment.file.delete',
+      'attachment.file.register',
+      'attachment.file.upload',
+    ]);
+    for (const row of events) {
+      expect(row.state).toBe('pending');
+      expect(JSON.stringify(row.payload)).not.toMatch(/base64|iVBOR/);
+    }
   });
 });

@@ -262,9 +262,18 @@ export async function attachmentWorld(db: Db, label: string) {
     return rowsOf<{ action: string; object_type: string; after: unknown }>(result);
   };
 
+  const outboxEvents = async () => {
+    const result = await withTenant(db, w.tenant.id, (tx) =>
+      tx.execute(sql`SELECT event_type,file_id,state,payload FROM attachment_outbox WHERE tenant_id=${w.tenant.id}
+        ORDER BY created_at,id`),
+    );
+    return rowsOf<{ event_type: string; file_id: string; state: string; payload: unknown }>(result);
+  };
+
   return {
     w,
     api,
+    outboxEvents,
     person,
     register,
     upload,

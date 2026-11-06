@@ -1,3 +1,4 @@
+import { sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Person } from './AC-APV-support.js';
@@ -244,5 +245,38 @@ describe('AC-ATT-01 临时文件上限', () => {
     expect(((await over.json()) as { error: { code: string } }).error.code).toBe('ATTACHMENT_TEMP_LIMIT');
     expect((await a.remove(mine, ids[0]!.id, ids[0]!.revision)).status).toBe(200);
     expect((await a.register(mine, registration(png(), 'again.png'))).status).toBe(201);
+  });
+});
+
+describe('AC-ATT-01 临时文件上限：并发登记与租户 / 用户 UUID 大小写', () => {
+  it('已有 19 个，租户与用户 UUID 一份小写、一份大写并发各登记 1 个 → 恰好一个 201、一个 409，最终 20 行', async () => {
+    const mine = await a.person('测试员工并发');
+    for (let i = 0; i < 19; i += 1) await a.w.json(await a.register(mine, registration(png(), `seed${i}.png`)), 201);
+    const db = database().db;
+    // 登记行插入时睡眠：若两个事务没被同一把锁串行化，则都会在对方提交前数到 19，强制交错
+    await db.execute(sql`
+      CREATE OR REPLACE FUNCTION att_race_sleep() RETURNS trigger LANGUAGE plpgsql AS $f$
+      BEGIN
+        IF NEW.filename LIKE 'race-%' THEN PERFORM pg_sleep(0.8); END IF;
+        RETURN NEW;
+      END $f$`);
+    await db.execute(sql`DROP TRIGGER IF EXISTS att_race_sleep ON attachment_files`);
+    await db.execute(sql`
+      CREATE TRIGGER att_race_sleep BEFORE INSERT ON attachment_files
+        FOR EACH ROW EXECUTE FUNCTION att_race_sleep()`);
+    try {
+      const lower = { user: mine.userId.toLowerCase(), tenant: a.w.tenant.id.toLowerCase() };
+      const upper = { user: mine.userId.toUpperCase(), tenant: a.w.tenant.id.toUpperCase() };
+      const send = (who: { user: string; tenant: string }, name: string) =>
+        a.api.request('POST', ATTACHMENTS, { ...who, body: registration(png(), name) });
+      const [first, second] = await Promise.all([send(lower, 'race-a.png'), send(upper, 'race-b.png')]);
+      expect([first.status, second.status].sort()).toEqual([201, 409]);
+      const loser = first.status === 409 ? first : second;
+      expect(((await loser.json()) as { error: { code: string } }).error.code).toBe('ATTACHMENT_TEMP_LIMIT');
+      expect(await a.fileRows(mine.userId)).toHaveLength(20);
+    } finally {
+      await db.execute(sql`DROP TRIGGER IF EXISTS att_race_sleep ON attachment_files`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS att_race_sleep()`);
+    }
   });
 });
