@@ -218,6 +218,7 @@ export const xi = {
   hidden: (count: number) => `另有 ${count} 条超编提示无权查看`,
   fixFirst: '有不通过的行，整批不能导入；请修改文件后重新选择',
   submit: '导入',
+  replay: '按原命令重新提交',
   close: '关闭',
   success: (count: number) => `已导入 ${count} 人`,
   errors: {

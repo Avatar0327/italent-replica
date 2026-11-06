@@ -30,6 +30,8 @@ export function forAction<T extends CommandForm>(command: T, action: Values): T 
       return submit(input);
     },
     reread: async () => {},
+    // 那条未确认的命令属于别的动作，不能由本入口按原命令重发。
+    replay: async () => undefined,
     settle: () => undefined,
     confirm: () => {},
     clear: () => {},

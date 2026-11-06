@@ -6,7 +6,7 @@ import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { ui } from '../foundation/messages.js';
 import { canButton, type ObjectPermission } from '../foundation/permission-model.js';
 import { useApiClient } from '../foundation/Session.js';
-import { useExitCommand } from './ExitCommands.js';
+import { useExitCommand, type ExitSend } from './ExitCommands.js';
 import { x, xi } from './messages.js';
 import {
   importPath,
@@ -71,6 +71,7 @@ function usePreview() {
 
 /**
  * 导入走 F-123 内核（useExitCommand，恢复槽 = 导入集合路径）：命令 ID、锁定、拒绝与结果未知都由内核负责。
+ * 结果未知时关闭重开仍锁定，只能“按原命令重新提交”：同一 Idempotency-Key、同一报文，台账回放第一次的结果。
  * 有超编警告或不可见的超编时后端 409 CONFIRMATION_REQUIRED，确认框（DEC-258）确认后带 confirmed: true 重提；
  * 重提是内核里的一次新提交，命令 ID（Idempotency-Key）随之换新（设计 §9.3），不沿用被拒那次的键。
  */
@@ -80,26 +81,30 @@ function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) 
   // 新建无对象：objects 传空列表，恢复槽为导入集合路径本身（不传则 id 缺失被内核判为无效对象）
   const cmd = useExitCommand(importPath, { revision: undefined, baseline: {} }, 'import', props.onImported, []);
   const loaded = file.loaded;
-  const run = async () => {
-    if (!loaded) return;
+  /** 一次导入（新提交或原命令重发）：回执按命令里的行核对；整批 400 时把逐行原因合进当前预览表。 */
+  const commit = async (rows: ImportRow[], work: (send: ExitSend) => Promise<boolean>) => {
     let imported = 0;
+    const send: ExitSend = {
+      path: importPath,
+      method: 'POST',
+      noRevision: true,
+      accept: (raw) => void (imported = parseImportReceipt(raw, rows)),
+    };
     try {
-      const done = await cmd.submit({}, [], {
-        path: importPath,
-        method: 'POST',
-        noRevision: true,
-        body: (_values, confirm) => ({ rows: loaded.rows, ...confirm }),
-        accept: (raw) => void (imported = parseImportReceipt(raw, loaded.rows)),
-      });
-      if (!done) return;
+      if (!(await work(send))) return;
       void message.success(xi.success(imported));
       props.onClose();
     } catch (error) {
       // 拒绝 / 结果未知由内核状态条显示；预览后数据变了（整批 400）再把逐行原因合进预览表
-      const merged = withRejectedRows(loaded.preview, error);
+      const merged = loaded && withRejectedRows(loaded.preview, error);
       if (merged) file.update({ ...loaded, preview: merged });
     }
   };
+  // 不给 body：rows 与确认项都进内核命令体，内核保存的就是实际报文（设计 §9.3 结果未知按原键重放）
+  const run = () => loaded && commit(loaded.rows, (send) => cmd.submit({ rows: loaded.rows }, ['rows'], send));
+  const state = cmd.form.state;
+  const original = state?.status === 'unknown' ? (state.command?.body.rows as ImportRow[] | undefined) : undefined;
+  const replay = () => original && commit(original, cmd.replay);
   const preview = loaded?.preview;
   const busy = cmd.form.busy || cmd.disabled;
   const footer = (
@@ -130,6 +135,7 @@ function ExitImport(props: { onClose(): void; onImported(): Promise<unknown> }) 
         {file.error && <Alert type="error" showIcon message={file.error} />}
         {loaded && <PreviewTable preview={loaded.preview} rows={loaded.rows} />}
         <CommandStatus submission={cmd.form} />
+        {original && <Button onClick={() => void replay()}>{xi.replay}</Button>}
       </Space>
     </Modal>
   );
