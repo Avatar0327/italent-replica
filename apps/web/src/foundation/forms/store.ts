@@ -78,7 +78,10 @@ function createPins(notify: () => void) {
     },
   };
 }
-/** DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。 */
+/**
+ * DEC-464/473/475：状态由页面持有；没有解锁未知命令或自动重放的接口。
+ * 结果未知只能由用户显式按原命令重发（replay：同一命令 ID、请求体、版本；台账同键同内容回放第一次的结果，AGENTS §10）。
+ */
 export function createFormStore() {
   const entries = new Map<string, Submission>();
   const listeners = new Set<() => void>();
@@ -125,15 +128,16 @@ export function createFormStore() {
         latest: prior?.latest,
       };
       put(key, state);
-      try {
-        const result = await input.send(command);
-        if (typeof result?.id !== 'string' || !result.id || (input.businessId && result.id !== input.businessId))
-          throw new Error(messages.unknown);
-        put(key, { ...state, status: 'done', businessId: result.id });
-      } catch (error) {
-        const status = failureStatus(error);
-        put(key, { ...state, error, status, ...(status === 'conflict' ? { latest: undefined } : {}) });
-      }
+      put(key, await delivered(state, input.send));
+      return entries.get(key)!;
+    },
+    /** 只对结果未知的命令：原样重发保存的命令，不重算请求体、不换 ID；其余状态原样返回。 */
+    async replay(key: string, send: SubmitInput['send']) {
+      const state = entries.get(key);
+      if (state?.status !== 'unknown' || !state.command || state.reading) return state;
+      const running: Submission = { ...state, status: 'submitting', error: undefined };
+      put(key, running);
+      put(key, await delivered(running, send));
       return entries.get(key)!;
     },
     async reread(key: string, read: (id?: string) => Promise<Latest>) {
@@ -163,6 +167,19 @@ export function createFormStore() {
   };
 }
 export type FormStore = ReturnType<typeof createFormStore>;
+
+/** 发出 state 里的命令，返回按回执落定的状态：首次提交与原命令重放共用同一判定。 */
+async function delivered(state: Submission, send: SubmitInput['send']): Promise<Submission> {
+  try {
+    const result = await send(state.command!);
+    if (typeof result?.id !== 'string' || !result.id || (state.businessId && result.id !== state.businessId))
+      throw new Error(messages.unknown);
+    return { ...state, status: 'done', businessId: result.id };
+  } catch (error) {
+    const status = failureStatus(error);
+    return { ...state, error, status, ...(status === 'conflict' ? { latest: undefined } : {}) };
+  }
+}
 
 /** 请求体只带可编辑字段；patchOnly 时再去掉与基线相同的字段（空值统一口径）。 */
 function commandBody(input: SubmitInput, baseline: Values) {

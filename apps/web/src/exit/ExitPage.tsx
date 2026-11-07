@@ -15,6 +15,7 @@ import { exitStore } from './commands.js';
 import { useExitCommand } from './ExitCommands.js';
 import { ExitDetail, HandoverButton, fieldValue } from './ExitDetail.js';
 import { ExitForm, type ExitFormProps } from './ExitForm.js';
+import { ExitImportEntry } from './ExitImport.js';
 import { x } from './messages.js';
 import {
   BATCH_LIMIT,
@@ -115,6 +116,8 @@ function ExitList() {
   };
   // 新建成功后员工进入“离职中”：切过去并重读，视图未变时直接重读
   const created = async () => (view === 'in_progress' && page === 1 ? result.reload() : switchView('in_progress'));
+  // 导入的单据直接生效（设计 §10）：切到“已完成的离职”第 1 页
+  const imported = async () => (view === 'completed' && page === 1 ? result.reload() : switchView('completed'));
   const applyFilters = (next: Filters) => {
     setPage(1);
     setFilters(next);
@@ -143,6 +146,7 @@ function ExitList() {
       <section className="exit-card">
         <Space wrap>
           <FilterBar key={view} filters={filters} allowed={allowed} apply={applyFilters} onRefresh={result.refresh} />
+          <ExitImportEntry permission={permission} onImported={imported} />
           {batchEntryVisible(permission) && (
             <BatchHandover key={scope} rows={batchHandoverRows(selected, permission)} refresh={result.reload} />
           )}
