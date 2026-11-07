@@ -9,7 +9,7 @@ import { useCommandForm, useDraftRefill } from '../foundation/forms/useCommandFo
 import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
-import { base } from './api.js';
+import { base, readLatest } from './api.js';
 import { checkReceipt, display, templateWritable } from './model.js';
 import { tp, tr } from './messages.js';
 import { ReferenceSelect } from './ReferenceSelect.js';
@@ -57,13 +57,7 @@ function TemplateForm({ record, saved }: { record?: ReviewRecord; saved(): void 
   const command = useCommandForm(slotKey(COLLECTION, record?.id));
   const submission = {
     ...command,
-    reload: record
-      ? () =>
-          command.reread(async (id) => {
-            const latest = await api.request<ReviewRecord>(`${COLLECTION}/${id ?? record.id}`);
-            return { id: latest.id, revision: Number(latest.revision), values: latest };
-          })
-      : undefined,
+    reload: record ? () => command.reread(readLatest(api, COLLECTION, record.id)) : undefined,
   };
   useDraftRefill(submission, editable, form);
   const locked = command.locked || !writable;

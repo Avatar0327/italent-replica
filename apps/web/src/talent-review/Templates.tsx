@@ -4,7 +4,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
 import { ConfigList, dateTime, settingsColumn } from './ConfigList.js';
-import { display, matchesFilters, templateWritable, type ReviewFilters } from './model.js';
+import { display, enabledText, matchesFilters, templateWritable, type ReviewFilters } from './model.js';
 import { tp, tr } from './messages.js';
 import { ProjectOrgFilter } from './ProjectOrgFilter.js';
 import { TemplatePage } from './TemplatePage.js';
@@ -104,7 +104,7 @@ function templateColumns(props: {
       </Button>
     ),
     flowId: flowName,
-    enabled: (value) => (typeof value === 'boolean' ? (value ? tr.enabled : tr.disabled) : tr.missing),
+    enabled: enabledText,
     createdAt: (value) => dateTime(value, timezone),
   };
   const keys = [...Object.keys(widths), 'createdAt'] as (keyof typeof tp.columns)[];

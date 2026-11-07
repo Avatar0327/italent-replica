@@ -7,9 +7,9 @@ import { useCommandForm } from '../foundation/forms/useCommandForm.js';
 import type { Values } from '../foundation/forms/store.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
-import { base } from './api.js';
+import { base, readLatest } from './api.js';
 import { ConfigList, dateTime, settingsColumn } from './ConfigList.js';
-import { checkReceipt, configWritable, display } from './model.js';
+import { checkReceipt, configWritable, display, enabledText } from './model.js';
 import { cr, tr } from './messages.js';
 import { objects, type ReviewRecord } from './types.js';
 import { useCollection } from './useCollection.js';
@@ -75,7 +75,7 @@ function calcRuleColumns(props: {
   const render: Record<string, (value: unknown) => ReactNode> = {
     // 规则名原站蓝色；点规则名的行为未取证，不做成入口（编辑走操作列）。
     name: (value) => <span className="review-name-text">{display(value)}</span>,
-    enabled: (value) => (typeof value === 'boolean' ? (value ? tr.enabled : tr.disabled) : tr.missing),
+    enabled: enabledText,
     updatedAt: (value) => dateTime(value, timezone),
   };
   const keys = Object.keys(widths) as (keyof typeof widths)[];
@@ -123,11 +123,7 @@ function CalcRuleForm(props: { record: ReviewRecord; permission: Permission; clo
   const command = useCommandForm(slotKey(COLLECTION, record.id));
   const submission = {
     ...command,
-    reload: () =>
-      command.reread(async (id) => {
-        const latest = await api.request<ReviewRecord>(`${COLLECTION}/${id ?? record.id}`);
-        return { id: latest.id, revision: Number(latest.revision), values: latest };
-      }),
+    reload: () => command.reread(readLatest(api, COLLECTION, record.id)),
   };
   const fields = calcRuleFields(permission, record);
   return (

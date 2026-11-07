@@ -57,6 +57,11 @@ export function filterProjects(rows: ReviewRecord[], view: string, name: string)
       (!name || row.name?.includes(name.trim())),
   );
 }
+/** 启用字段的状态文字：只有启用 / 停用两态，读不到时显示 --（不伪造草稿）。 */
+export function enabledText(value: unknown) {
+  if (typeof value !== 'boolean') return tr.missing;
+  return value ? tr.enabled : tr.disabled;
+}
 export function display(value: unknown): string {
   if (value === undefined || value === null || value === '') return tr.missing;
   if (typeof value === 'boolean') return value ? tr.yes : tr.no;

@@ -34,20 +34,7 @@ export function ConfigList(props: ConfigListProps) {
     // 刷新中的空数组不是最终结果；只在读取完成后记住校正页码。
     if (!loading && !error && page !== current) setPage(current);
   }, [page, current, loading, error]);
-  const [sort, setSort] = useState<{ key?: Key; order?: 'ascend' | 'descend' | null }>({});
-  // 排序作用于全部筛选结果再分页，不只排当前页（表格本身不分页）。
-  const columns = props.columns.map((column) =>
-    column.sorter ? { ...column, sortOrder: sort.key === column.key ? sort.order : null } : column,
-  );
-  const compare = props.columns.find((column) => column.key === sort.key && sort.order)?.sorter;
-  const sorted =
-    typeof compare === 'function'
-      ? [...rows].sort((a, b) => (sort.order === 'descend' ? -1 : 1) * compare(a, b))
-      : rows;
-  const onChange: TableProps<ReviewRecord>['onChange'] = (_, __, sorter) => {
-    const single = Array.isArray(sorter) ? sorter[0] : sorter;
-    setSort({ key: single?.columnKey, order: single?.order });
-  };
+  const { columns, sorted, onChange } = useSortedRows(props.columns, rows);
   const shown = sorted.slice((current - 1) * pageSize, current * pageSize);
   const selected = keys.filter((key) => shown.some((row) => row.id === key));
   return (
@@ -104,6 +91,23 @@ export function ConfigList(props: ConfigListProps) {
       </div>
     </section>
   );
+}
+
+/** 受控排序：作用于全部筛选结果再分页，不只排当前页（表格本身不分页）。 */
+function useSortedRows(source: TableColumnsType<ReviewRecord>, rows: ReviewRecord[]) {
+  const [sort, setSort] = useState<{ key?: Key; order?: 'ascend' | 'descend' | null }>({});
+  const orderOf = (key: Key | undefined) => (sort.key === key ? sort.order : null);
+  const columns = source.map((column) => (column.sorter ? { ...column, sortOrder: orderOf(column.key) } : column));
+  const compare = source.find((column) => column.key === sort.key && sort.order)?.sorter;
+  const sorted =
+    typeof compare === 'function'
+      ? [...rows].sort((a, b) => (sort.order === 'descend' ? -1 : 1) * compare(a, b))
+      : rows;
+  const onChange: TableProps<ReviewRecord>['onChange'] = (_, __, sorter) => {
+    const single = Array.isArray(sorter) ? sorter[0] : sorter;
+    setSort({ key: single?.columnKey, order: single?.order });
+  };
+  return { columns, sorted, onChange };
 }
 
 /** 列表时间列：租户时区 YYYY-MM-DD HH:mm:ss（DEC-056），不用浏览器时区。 */
