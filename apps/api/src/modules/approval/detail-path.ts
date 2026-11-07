@@ -1,6 +1,6 @@
 /**
  * F-478 S2 详情的路径披露（设计 §4）：`path` 把版本里的节点标成 passed / current / pending / not_on_path，
- * `exits` 是查看人此刻能办理的出口。passed 的出口取自节点最近一次激活的任务 decision_exit / 会签领域结算（实际走过的），
+ * `exits` 是查看人此刻能办理的出口。passed 的出口取自节点最近一次激活的结算结果（单人节点看任务是否走到结算、会签走领域结算，实际走过的），
  * pending 用引擎同一个求值函数按当前快照与默认同意出口推演（walkDefaultPath），不另写一套路由解释。
  */
 import { sql, type Tx } from '@italent/db';
@@ -19,6 +19,7 @@ import {
 import { rowsOf, type ApprovalContext } from './context.js';
 import { settledOutcome } from './countersign.js';
 import type { InstanceRow, TaskRow } from './store.js';
+import { AWAITING_STATUSES } from './task-state.js';
 import { withoutRetrieved } from './task-history.js';
 import { conditionContext } from './matching.js';
 
@@ -75,24 +76,28 @@ async function decisionExits(tx: Tx, tenantId: string, instance: InstanceRow): P
 }
 
 /**
- * 单人节点这一次激活的出口。任务上的 decision_exit 只说明“这一票是同意 / 不同意”，不说明节点流转出去了：
- * 后加签（本人同意并交给加签人）先给本人任务写同意出口，加签人驳回或被取消 / 跳转截断后节点并没有走出；前加签人的同意票
- * 也先于原审批人的最终表态。所以只认“激活里最后一次表态”：它是驳回（无出口）就没有出口；它是后加签的本人任务（名下挂着
- * 没人表态的加签人任务）说明链条没走完，也没有出口。加签人按序依次办理，后表态的任务序号更大。
+ * 单人节点这一次激活的结算出口，与办理引擎同口径。引擎只在两处让单人节点流转出去：不同意（disagreeTask 直接
+ * followExit，不论发生在加签链的哪一环）；同意（afterNodeApproved 在本节点再没有待审批 / 排队任务时 followExit）。
+ * 任务上的 decision_exit 只是“这一票”的表态——后加签先给本人写同意、前加签人与转交接任人的同意都是中间票——所以不按
+ * “哪一票最后”（任务序号随转交、排队加签并不等于办理顺序）取，而看这次激活（剔除撤回作废部分）有没有走到结算：
+ * 有不同意 → disagree；被驳回、被跳转 / 取消截断（cancelled）、仍有待办或排队（加签链没走完）→ 没有出口；
+ * 其余（至少一张同意 / 跳过且没有未完成任务）→ 流转的同意族出口。本次激活里所有同意 / 跳过任务出口相同（人工恒为
+ * approve，自动处理的节点只有一张任务），取其记下的出口，旧任务没有记录时按 approve。
  */
-function singleExitOf(activation: readonly TaskRow[], decided: ReadonlyMap<string, string>): string | null | undefined {
+function settledExitOf(activation: readonly TaskRow[], decided: ReadonlyMap<string, string>): string | null {
   const live = withoutRetrieved(activation);
-  const last = live.filter((task) => decided.has(task.id) || task.status === 'rejected').at(-1);
-  if (!last) return undefined;
-  if (last.status === 'rejected') return null;
-  const signing = live.some((task) => task.parentTaskId === last.id && task.origin === 'add_sign_after');
-  return signing ? null : decided.get(last.id)!;
+  if (live.some((task) => task.status === 'disagreed')) return 'disagree';
+  const unsettled = (task: TaskRow) =>
+    task.status === 'rejected' || task.status === 'cancelled' || AWAITING_STATUSES.has(task.status);
+  if (live.some(unsettled)) return null;
+  const settled = live.find((task) => task.status === 'approved' || task.status === 'skipped');
+  return settled ? (decided.get(settled.id) ?? 'approve') : null;
 }
 
 /**
- * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点见 singleExitOf。
- * 撤回会让同一次激活重新办理，所以不信激活台账里那条可能已作废的流转行，只在任务上没有任何表态（本版本上线前办理的
- * 任务）且这次激活没被撤回过时才退回台账的流转行。
+ * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点见 settledExitOf。
+ * 只有激活里没有任何任务（本版本上线前办理、没有激活行的节点）才退回台账里的流转行——撤回会让同一次激活重新办理，
+ * 台账里那条流转行可能已作废，有任务时一律以任务结算为准。
  */
 function exitOfActivation(
   node: ApprovalNode | undefined,
@@ -104,11 +109,7 @@ function exitOfActivation(
     const outcome = settledOutcome(activation, exitRulesOf(node.transitionRule, nodeExits(node)));
     return outcome.kind === 'flow' ? outcome.exit : null;
   }
-  const exit = singleExitOf(activation, decided);
-  if (exit !== undefined) return exit;
-  // 撤回复用原激活：原同意连同它在台账里的流转行一起作废，重开后没办完就是没有出口，不能回落到旧流转行
-  const retrieved = activation.some((task) => task.origin === 'retrieve' && task.parentTaskId !== null);
-  return retrieved ? null : flowFallback;
+  return activation.length === 0 ? flowFallback : settledExitOf(activation, decided);
 }
 
 /** 台账里从这次激活出去的最近一条流转（兼容本版本上线前在途、没有激活行的节点：来路激活为空）。 */
