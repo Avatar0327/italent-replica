@@ -130,10 +130,9 @@ describe('AC-FE-R1c 审批中心子页按原站', () => {
     expect(todoTools.initiated).toEqual(['delegate', 'manage']);
     expect(todoSort).toEqual({ pending: '接收时间倒序', completed: '处理时间倒序', initiated: '申请时间倒序' });
   });
-  it('我的申请只显示接口有的列，发起人 / 当前处理人 / 申请理由列为缺口', async () => {
-    const { applicationColumns, applicationGapColumns } = await approval();
-    expect(applicationColumns).toEqual(['title', 'category', 'status', 'createdAt']);
-    expect(applicationGapColumns).toEqual(['initiator', 'handler', 'reason']);
+  it('我的申请列序按原站 §2.10：标题、类别、发起人、当前处理人、审批状态、申请理由、申请时间', async () => {
+    const { applicationColumns } = await approval();
+    expect(applicationColumns).toEqual(['title', 'category', 'initiator', 'handler', 'status', 'reason', 'createdAt']);
   });
   it('委托与流程管理页的视图、工具栏与列序按原站', async () => {
     const { gapPages } = await approval();

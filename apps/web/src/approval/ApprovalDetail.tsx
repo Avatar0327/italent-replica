@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { DecisionNote, FormOverlay, PageState, useApiClient, useSession } from '../foundation/index.js';
 import { presetLabels } from '../transfer/messages.js';
 import { completedDetail } from '../demo-stubs/approval.js';
+import { applicationGroups } from './application-groups.js';
 import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
-import { NAME_KEYS, namedValue } from './named-fields.js';
+import { NAME_KEYS, namedValue, sameValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
 import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
@@ -28,21 +29,40 @@ export function displayValue(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 /** 原站申请信息：标签 + 值；改变后的值橙色显示，下方浅灰“原：旧值”。 */
-export function ApprovalFields({ detail }: { detail: Detail }) {
-  const rows = Object.entries(detail.form.values).filter(([key]) => !NAME_KEYS.has(key));
+export function ApprovalFields({ detail, grouped }: { detail: Detail; grouped?: boolean }) {
+  const rows = Object.keys(detail.form.values).filter((key) => !NAME_KEYS.has(key));
   if (!rows.length) return <Empty description={m.noValues} />;
+  const groups = grouped ? applicationGroups(detail.approvalType, detail.form.values) : undefined;
+  if (!groups) return <FieldList detail={detail} fields={rows.map((key) => ({ key, label: fieldLabel(key) }))} />;
+  return (
+    <>
+      {groups.map((group) => (
+        <section key={group.title} className="approval-field-group">
+          <h3>{group.title}</h3>
+          <FieldList detail={detail} fields={group.fields} />
+        </section>
+      ))}
+    </>
+  );
+}
+const fieldLabel = (key: string) => fieldLabels[key] ?? presetLabels[key] ?? key;
+function FieldList({ detail, fields }: { detail: Detail; fields: { key: string; label: string }[] }) {
   const originals = detail.form.originals ?? {};
   return (
     <dl className="approval-fields">
-      {rows.map(([key]) => (
-        <div key={key} className="approval-field">
-          <dt>{fieldLabels[key] ?? presetLabels[key] ?? key}</dt>
-          <dd className={key in originals ? 'approval-changed' : undefined}>
-            <span>{displayValue(namedValue(detail.form.values, key))}</span>
-            {key in originals && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
-          </dd>
-        </div>
-      ))}
+      {fields.map(({ key, label }) => {
+        // 后端 originals 带着前一条记录的全部字段，没变的也在里面：只有值真的不同才算“改变”
+        const changed = key in originals && !sameValue(detail.form.values[key], originals[key]);
+        return (
+          <div key={key} className="approval-field">
+            <dt>{label}</dt>
+            <dd className={changed ? 'approval-changed' : undefined}>
+              <span>{displayValue(namedValue(detail.form.values, key))}</span>
+              {changed && <small>{d.original(displayValue(namedValue(originals, key)))}</small>}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }
@@ -52,6 +72,8 @@ interface DetailProps {
   demo?: boolean;
   /** DEC-799：仅待办入口启用，保留我的申请详情呈现。 */
   todo?: boolean;
+  /** F-474-3b：仅“我的申请”入口启用（完整日志、协作区、调动分组、终止节点变灰）；其他入口不变。 */
+  applications?: boolean;
   /** 审批中心内在当前页打开（带返回）；合同等页面行内打开时用右侧抽屉。 */
   layout?: 'drawer' | 'page';
   onClose(): void;
@@ -134,6 +156,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
             row={props.row}
             demo={demo}
             todo={props.todo}
+            applications={props.applications}
             detail={detail}
             action={action}
             refresh={state.refresh}
@@ -146,7 +169,7 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       {!state.error && !detail && <PageState kind="loading" />}
       {action.pending && <Alert type="warning" showIcon message={d.locked(m[action.pending])} />}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
-      {detail && <DetailColumns detail={detail} todo={props.todo} />}
+      {detail && <DetailColumns detail={detail} todo={props.todo} applications={props.applications} />}
     </div>
   );
 }
@@ -155,10 +178,11 @@ function headline(detail: Detail, timezone: string) {
   const type = typeLabels[detail.approvalType] ?? detail.approvalType;
   return [type, status, formatInstant(detail.createdAt, timezone)].filter(Boolean).join(' · ');
 }
-function DetailColumns({ detail, todo }: { detail: Detail; todo?: boolean }) {
+function DetailColumns({ detail, todo, applications }: { detail: Detail; todo?: boolean; applications?: boolean }) {
+  const titled = todo || applications;
   const collaboration = (
     <Tabs
-      className={todo ? undefined : 'approval-detail-collab'}
+      className={titled ? undefined : 'approval-detail-collab'}
       type="card"
       items={[
         { key: 'records', label: d.records(detail.logs.length), children: <ApprovalHistory detail={detail} /> },
@@ -172,13 +196,15 @@ function DetailColumns({ detail, todo }: { detail: Detail; todo?: boolean }) {
   );
   return (
     <>
-      <ApprovalProgress detail={detail} />
+      <ApprovalProgress detail={detail} terminatedGrey={applications} />
       <div className="approval-detail-columns">
         <Tabs
           className="approval-detail-form"
-          items={[{ key: 'form', label: m.values, children: <ApprovalFields detail={detail} /> }]}
+          items={[
+            { key: 'form', label: m.values, children: <ApprovalFields detail={detail} grouped={applications} /> },
+          ]}
         />
-        {todo ? (
+        {titled ? (
           <section className="approval-detail-collab">
             <h3 className="approval-collaboration-title">{d.collaboration}</h3>
             {collaboration}
@@ -191,9 +217,17 @@ function DetailColumns({ detail, todo }: { detail: Detail; todo?: boolean }) {
   );
 }
 /** 原站进度：开始 → 各节点 → 结束；已走过绿、当前蓝、后续灰。接口只给已产生的任务，后续节点暂缺。 */
-export function ApprovalProgress({ detail }: { detail: Detail }) {
+export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; terminatedGrey?: boolean }) {
   const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
   const running = detail.status === 'running';
+  // 我的申请（§3.8）：已终止的流程，终止的节点与结尾置灰；其他入口保持原呈现
+  const terminated = !!terminatedGrey && detail.status === 'cancelled';
+  const nodeStatus = (status: string) =>
+    status === 'pending'
+      ? ('process' as const)
+      : terminated && status === 'cancelled'
+        ? ('wait' as const)
+        : ('finish' as const);
   return (
     <div className="approval-progress">
       <Steps
@@ -202,9 +236,11 @@ export function ApprovalProgress({ detail }: { detail: Detail }) {
           { title: d.start, status: 'finish' },
           ...nodes.map((task) => ({
             title: task.nodeName,
-            status: task.status === 'pending' ? ('process' as const) : ('finish' as const),
+            status: nodeStatus(task.status),
           })),
-          { title: d.end, status: running ? ('wait' as const) : ('finish' as const) },
+          terminated
+            ? { title: d.terminated, status: 'wait' as const }
+            : { title: d.end, status: running ? ('wait' as const) : ('finish' as const) },
         ]}
       />
       {running && <small className="approval-muted">{d.progressGap}</small>}
@@ -251,6 +287,7 @@ function ActionBar(props: {
   row: ApprovalRow;
   demo?: boolean;
   todo?: boolean;
+  applications?: boolean;
   detail: Detail;
   action: ActionState;
   refresh(): void;
@@ -276,7 +313,7 @@ function ActionBar(props: {
       <Tooltip title={d.gapTool}>
         <Button disabled>{d.processManage}</Button>
       </Tooltip>
-      {props.todo && !demo ? (
+      {(props.todo || props.applications) && !demo ? (
         <ProcessLog
           id={detail.id}
           render={(logs) => <ApprovalHistory full detail={{ ...detail, logs, recordsHidden: false }} />}

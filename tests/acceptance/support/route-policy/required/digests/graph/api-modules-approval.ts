@@ -1055,6 +1055,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/withdraw-eligibility.ts#approvalWithdrawalFailure',
   ],
   'apps/api/src/modules/approval/disclosure.ts#namedForm': [
+    'apps/api/src/modules/approval/reference-names.ts#referenceNames',
     'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
@@ -1473,6 +1474,27 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/matching.ts#originalSiteMatch': ['#byCode'],
   'apps/api/src/modules/approval/matching.ts#replicaMatch': ['#byCode'],
+  'apps/api/src/modules/approval/my-applications.ts#currentHandlers': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'apps/api/src/modules/approval/store.ts#withActorNames',
+  ],
+  'apps/api/src/modules/approval/my-applications.ts#listMyApplications': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#currentHandlers',
+    '#orderBy',
+    'apps/api/src/modules/approval/store.ts#withActorNames',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+    'packages/domain/src/approval/types.ts#isApprovalType',
+  ],
+  'apps/api/src/modules/approval/my-applications.ts#myApplicationsQuery': ['#querySchema'],
+  'apps/api/src/modules/approval/my-applications.ts#orderBy': ['#statusRank'],
+  'apps/api/src/modules/approval/my-applications.ts#querySchema': [
+    '#STATUSES',
+    '#list',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+    'packages/domain/src/approval/types.ts#isApprovalType',
+  ],
+  'apps/api/src/modules/approval/my-applications.ts#statusRank': ['#STATUSES'],
   'apps/api/src/modules/approval/node-actions.ts#copySend': [
     'apps/api/src/modules/approval/actions.ts#assertOpen',
     'apps/api/src/modules/approval/actions.ts#ok',
@@ -1553,6 +1575,29 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     'packages/domain/src/approval/recusal.ts#nodeRecusal',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#departmentNames': [
+    '#UUID',
+    'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#dictionaryNames': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    'packages/domain/src/transfer/catalog.ts#TRANSFER_REASONS',
+    'packages/domain/src/transfer/catalog.ts#TRANSFER_TYPES',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#personNames': [
+    '#UUID',
+    'apps/api/src/modules/employment/employees.ts#employeeName',
+  ],
+  'apps/api/src/modules/approval/reference-names.ts#referenceNames': [
+    '#CODE_KEYS',
+    '#DEPARTMENT_KEYS',
+    '#PERSON_KEYS',
+    '#departmentNames',
+    '#dictionaryNames',
+    '#personNames',
+    '#stringsOf',
   ],
   'apps/api/src/modules/approval/resolver.ts#adminAncestors': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/resolver.ts#assigneeGate': [
@@ -1765,6 +1810,8 @@ export const GRAPH: Graph = {
     '#readCtx',
   ],
   'apps/api/src/modules/approval/routes.ts#route:GET /instances': [
+    'apps/api/src/modules/approval/my-applications.ts#listMyApplications',
+    'apps/api/src/modules/approval/my-applications.ts#myApplicationsQuery',
     'apps/api/src/modules/approval/queries.ts#listInstances',
     '#readCtx',
     'apps/api/src/modules/job/context.ts#pageQuery',
