@@ -18,7 +18,7 @@ import {
 } from '@italent/domain';
 import { rowsOf, type ApprovalContext } from './context.js';
 import { settledOutcome } from './countersign.js';
-import { loadTasks, type InstanceRow, type TaskRow } from './store.js';
+import type { InstanceRow, TaskRow } from './store.js';
 import { withoutRetrieved } from './task-history.js';
 import { conditionContext } from './matching.js';
 
@@ -117,6 +117,7 @@ async function activatedExits(
   tenantId: string,
   instance: InstanceRow,
   nodes: readonly ApprovalNode[],
+  allTasks: readonly TaskRow[],
 ): Promise<Map<string, string | null>> {
   const entries = await entriesOf(tx, tenantId, instance);
   const latest = new Map<string, string | null>();
@@ -126,7 +127,7 @@ async function activatedExits(
       latest.set(entry.fromNodeKey, null);
     }
   }
-  const tasks = (await loadTasks(tx, tenantId, instance.id)).filter((task) => task.round === instance.round);
+  const tasks = allTasks.filter((task) => task.round === instance.round);
   const decided = await decisionExits(tx, tenantId, instance);
   const activated = new Map<string, string | null>();
   for (const [nodeKey, activationId] of latest) {
@@ -164,9 +165,11 @@ export async function loadPathFacts(
   instance: InstanceRow,
   nodes: readonly ApprovalNode[],
   conditionValues: Readonly<Record<string, unknown>>,
+  /** 详情已加载的完整任务（readDetail.allTasks），复用以免再扫一遍任务表。 */
+  allTasks: readonly TaskRow[],
 ): Promise<PathFacts> {
   return {
-    activated: await activatedExits(tx, ctx.tenantId, instance, nodes),
+    activated: await activatedExits(tx, ctx.tenantId, instance, nodes, allTasks),
     walk: await pendingWalk(tx, ctx, instance, nodes, conditionValues),
   };
 }

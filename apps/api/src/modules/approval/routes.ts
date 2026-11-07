@@ -213,8 +213,9 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   // path 只有详情接口下发，事实在这里取，不放进 readDetail（它还被别的模块的披露复用）
   const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const detail = await readDetail(tx, ctx, instanceId, viewer);
-    const { instance, version, snapshot } = detail;
-    return { data: detail, pathFacts: await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues) };
+    const { instance, version, snapshot, allTasks } = detail;
+    const pathFacts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
+    return { data: detail, pathFacts };
   });
   const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts);
   return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
