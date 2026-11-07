@@ -11,6 +11,8 @@ export const ROUTE_END = 'END';
 export const MAX_ROUTE_BRANCHES = 10;
 /** 分支条件项上限，对应 item_no 的数据库范围。 */
 export const MAX_ROUTE_CONDITION_ITEMS = 20;
+/** 条件分支优先级的可存储上限：库里是 smallint，越界写库会变成 500，所以在域内就按 invalid_condition 拒绝。 */
+export const MAX_ROUTE_PRIORITY = 32767;
 
 export type RouteBranchKind = 'condition' | 'else' | 'direct';
 
@@ -123,7 +125,8 @@ function branchViolation(
 ): RouteReason | null {
   if (branch.kind === 'condition') {
     const conditions = branch.conditions;
-    const prioritized = Number.isSafeInteger(branch.priority) && (branch.priority ?? 0) >= 1;
+    const priority = branch.priority ?? 0;
+    const prioritized = Number.isSafeInteger(priority) && priority >= 1 && priority <= MAX_ROUTE_PRIORITY;
     if (!conditions || !conditions.items.length || !prioritized) return 'invalid_condition';
     const reason = conditionReason(conditions, fields);
     if (reason) return reason;
