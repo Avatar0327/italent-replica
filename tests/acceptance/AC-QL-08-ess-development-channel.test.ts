@@ -182,7 +182,7 @@ describe('AC-QL-08 ESS：员工通道卡片', () => {
     const body = (await (await card()).json()) as Card;
     expect(body.standard).toEqual({
       standardId: cw.standard.id,
-      name: cw.standard.name,
+      name: '任职资格标准',
       levels: [
         { levelId: cw.p1.id, levelName: 'P10', displayOrder: 10, isCurrent: false, description: null, targets: [] },
         {

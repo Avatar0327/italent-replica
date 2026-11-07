@@ -237,7 +237,7 @@ export const DIGESTS: Digests = {
     'route:POST /part-time-requests/:id/submit': 'fbb9dac22a79',
   },
   'apps/api/src/modules/employee-self-service/development-channel.ts': {
-    ownDevelopmentChannel: 'ab01695d60cf',
+    ownDevelopmentChannel: 'd8c4ad8764b0',
   },
   'apps/api/src/modules/employee-self-service/page-permission.ts': {
     employeePageGranted: '60075b3241ff',
@@ -2069,7 +2069,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:POST /part-time-requests': '029539073858',
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:POST /part-time-requests/:id/submit':
     '029539073858',
-  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': '3fa342e5e393',
+  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': '9bab5036f2d0',
   'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted': '56f201e2ddd6',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': '8a95f51afdbb',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': 'e968821b8727',
