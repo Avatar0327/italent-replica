@@ -1829,7 +1829,7 @@ export const DIGESTS: Digests = {
     PERSONNEL_OBJECT: '6f0f375e3da0',
   },
   'packages/domain/src/personnel/fields.ts': {
-    SUBSETS: '69c2e06650f7',
+    SUBSETS: 'bdf8544ec04f',
   },
   'packages/domain/src/qualification/catalog.ts': {
     QUALIFICATION_OBJECTS: '5362e11495c2',

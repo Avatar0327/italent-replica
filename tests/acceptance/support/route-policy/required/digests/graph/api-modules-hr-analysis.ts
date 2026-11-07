@@ -61,7 +61,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/hr-analysis/report-queries.ts#nameFilter': ['#like'],
   'apps/api/src/modules/hr-analysis/report-queries.ts#withOrganizations': [
-    'apps/api/src/modules/hr-analysis/roster-org.ts#rosterOrganizations',
+    'apps/api/src/modules/org/org-display.ts#orgDisplays',
   ],
   'apps/api/src/modules/hr-analysis/report-routes.ts#DEDICATED_COLUMNS': [
     'packages/domain/src/hr-analysis/reports.ts#CONTRACT_LEDGER_COLUMNS',
@@ -194,11 +194,6 @@ export const GRAPH: Graph = {
     '#cell',
     'packages/domain/src/hr-analysis/roster.ts#rosterCellText',
   ],
-  'apps/api/src/modules/hr-analysis/roster-org.ts#rosterOrganizations': [
-    'apps/api/src/modules/org/read-model.ts#resolveOrgPaths',
-    'apps/api/src/modules/org/read-model.ts#rowsOf',
-    'apps/api/src/modules/org/settings.ts#readOrgSettings',
-  ],
   'apps/api/src/modules/hr-analysis/roster-query.ts#ROSTER_BASE': [
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_EMPLOYEE_STATUSES',
     'packages/domain/src/hr-analysis/roster.ts#ROSTER_EMPLOY_TYPES',
@@ -210,11 +205,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/store.ts#rows',
   ],
   'apps/api/src/modules/hr-analysis/roster-query.ts#listRoster': [
-    'apps/api/src/modules/hr-analysis/roster-org.ts#rosterOrganizations',
     '#ROSTER_BASE',
     '#population',
     '#rosterJoins',
     '#rosterRow',
+    'apps/api/src/modules/org/org-display.ts#orgDisplays',
     'apps/api/src/modules/personnel/store.ts#rows',
   ],
   'apps/api/src/modules/hr-analysis/roster-query.ts#population': [

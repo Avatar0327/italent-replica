@@ -156,6 +156,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org-adjustment/pause.ts#OrgAdjustmentPausedError',
   ],
   'apps/api/src/modules/org/import-service.ts#saveReceipt': ['apps/api/src/audit/record.ts#recordAudit'],
+  'apps/api/src/modules/org/org-display.ts#orgDisplays': [
+    'apps/api/src/modules/org/read-model.ts#resolveOrgPaths',
+    'apps/api/src/modules/org/read-model.ts#rowsOf',
+    'apps/api/src/modules/org/settings.ts#readOrgSettings',
+  ],
   'apps/api/src/modules/org/people.ts#assertOrgPeopleEligible': [
     'apps/api/src/modules/employment/org-people.ts#ineligibleOrgPeople',
     'apps/api/src/modules/org/validation.ts#ORG_PERSON_FIELDS',
