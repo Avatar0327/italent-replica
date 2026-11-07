@@ -54,6 +54,10 @@ export const allFields = [
   'email',
   'mobilePhone',
   'lastWorkDate',
+  'orgCode',
+  'orgFullName',
+  'employType',
+  'positionName',
 ];
 export const permission = (fields = allFields) => ({
   dataOperations: { read: true, create: true, update: true },

@@ -15,6 +15,7 @@ import {
 } from './AC-EV-leave-support.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 const database = useTestDb();
@@ -111,6 +112,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
         const restorePartTime = await addPrePartTimeTables(handle.db);
         // R2-T03 B3-3：离职开闸后旧结构上的离职会查在途考核，临时补出考核表（同下，support/pre-assessment-schema.ts）
         const restoreAssessment = await addPreAssessmentTable(handle.db);
+        // F-480：任职写入会读写 employment_cycles.trainee_start_date，旧结构没有，临时补列；writer_first 在升级迁移前撤掉，
+        // migration_first 全程不跑完整迁移，随测试库销毁（同兼职表，support/pre-intern-cycle-schema.ts）
+        const restoreInternCycle = await addPreInternCycleColumn(handle.db);
         const w = await evaluationLeaveWorld(handle.db);
         await restoreBlacklist();
         const leave = await w.leave('2026-12-20');
@@ -118,6 +122,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EV-leave-pg：设计 §7.4 �
         if (order === 'writer_first') {
           await restorePartTime();
           await restoreAssessment();
+          await restoreInternCycle();
         }
         let otherId = other?.id;
         const insert = async (pause: boolean) =>

@@ -14,7 +14,7 @@ import { cycleRegularization } from '../employment/probation.js';
 import { personScope, type AccessContext } from '../personnel/access.js';
 import { employeeJoins } from '../personnel/employee-read.js';
 import { camel, rows, type Row } from '../personnel/store.js';
-import { rosterOrganizations } from './roster-org.js';
+import { orgDisplays } from '../org/org-display.js';
 
 export interface RosterFilter {
   readonly name?: string;
@@ -130,7 +130,7 @@ export async function listRoster(
       ORDER BY e.code COLLATE "C", e.id
       LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
-  const organizations = await rosterOrganizations(
+  const organizations = await orgDisplays(
     tx,
     ctx.tenantId,
     asOf,
@@ -140,7 +140,7 @@ export async function listRoster(
 }
 
 /** 一行的全量列（键 = ROSTER_COLUMNS 的 key）；年龄 / 司龄 / 工龄按 asOf 计算。 */
-function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typeof rosterOrganizations>>): Row {
+function rosterRow(row: Row, asOf: string, organizations: Awaited<ReturnType<typeof orgDisplays>>): Row {
   const profile = camel((row.profile ?? {}) as Row);
   const org = organizations.get(String(row.department_id));
   return {

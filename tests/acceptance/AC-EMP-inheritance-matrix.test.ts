@@ -43,7 +43,9 @@ describe('REQ-EMP-002 R7 每格继承规则覆盖六类非入职业务', () => {
 
       const created = await fixture.business(fixture.employee.id, body, fixture.hired.employeeRevision);
       expect(created.record?.customFields[fixture.field.id] ?? null).toBe(expected);
-      expect(created.record?.staffId).toBe(fixture.hired.record?.staffId);
+      // DEC-797：实习转正新开任职周期（新 StaffID），其余五类仍沿用上一任职的周期；继承的字段值不受影响
+      if (kind === 'intern_regularization') expect(created.record?.staffId).not.toBe(fixture.hired.record?.staffId);
+      else expect(created.record?.staffId).toBe(fixture.hired.record?.staffId);
       expect(created.record?.fields).toMatchObject({
         place: '上一任职工作地',
         remarks: '上一任职备注',
