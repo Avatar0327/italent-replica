@@ -681,7 +681,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/detail-path.ts#activatedExits': ['8c57fb0c215f', '5b91c91a56ea'],
   'apps/api/src/modules/approval/detail-path.ts#decisionExits': ['8b3d69d8defe', '7d79bf994311'],
   'apps/api/src/modules/approval/detail-path.ts#entriesOf': ['9a35baff213f', '91e07ae2689c'],
-  'apps/api/src/modules/approval/detail-path.ts#exitOfActivation': ['36514aa199d1', 'd36407313485'],
+  'apps/api/src/modules/approval/detail-path.ts#exitOfActivation': ['be3bac050ea2', 'd36407313485'],
   'apps/api/src/modules/approval/detail-path.ts#exitsView': ['dd544a737be6', '8a4c1ec88582'],
   'apps/api/src/modules/approval/detail-path.ts#flowFrom': ['8e5d15752082', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/detail-path.ts#loadPathFacts': ['ecfb48e88a94', 'cf47f2feec5c'],
