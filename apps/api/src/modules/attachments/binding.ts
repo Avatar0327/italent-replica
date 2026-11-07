@@ -160,3 +160,53 @@ export async function sealAttachments(
   }
   for (const row of pending) await move(tx, ctx, row, 'seal', { sealedAt: ctx.now });
 }
+
+/**
+ * 改期生成后继离职单时的附件继承（F-479 R1）：后继单是新的业务单，引用必须归属后继单（读取侧的归属校验不放宽）。
+ * 做法是为后继单各建一条已封存的新附件行并复制同一份字节，前单的行与字节原样保留，所以前单照常可读；
+ * 只继承前单仍 bound 在前单名下且字节在的引用，其余（已 detached 等）不带过去。返回后继单的新引用列表（顺序同前单）。
+ */
+export async function inheritAttachments(
+  tx: Tx,
+  ctx: BindingContext,
+  input: { readonly fromBusinessId: string; readonly toBusinessId: string; readonly refs: unknown },
+): Promise<string[]> {
+  const refs = lower(input.refs);
+  if (!refs.length) return [];
+  const files = await lockFiles(tx, ctx.tenantId, refs);
+  const inherited: string[] = [];
+  for (const id of refs) {
+    const row = files.get(id);
+    const live =
+      row?.status === 'bound' &&
+      row.businessType === EXIT_BUSINESS_TYPE &&
+      row.businessId?.toLowerCase() === input.fromBusinessId.toLowerCase();
+    const bytes = live ? await PgBlobStore.read(tx, ctx.tenantId, id) : null;
+    if (!row || !bytes) continue;
+    const [copy] = await tx
+      .insert(F)
+      .values({
+        tenantId: ctx.tenantId,
+        purpose: row.purpose,
+        ownerUserId: row.ownerUserId,
+        ownerEmployeeId: row.ownerEmployeeId,
+        status: 'bound',
+        businessType: EXIT_BUSINESS_TYPE,
+        businessId: input.toBusinessId,
+        sealedAt: row.sealedAt ?? ctx.now,
+        filename: row.filename,
+        declaredType: row.declaredType,
+        contentType: row.contentType,
+        byteSize: row.byteSize,
+        sha256: row.sha256,
+        uploadedAt: row.uploadedAt,
+        createdAt: ctx.now,
+        updatedAt: ctx.now,
+      })
+      .returning();
+    await PgBlobStore.put(tx, ctx.tenantId, copy!.id, bytes);
+    await record(tx, ctx, 'inherit', null, copy!);
+    inherited.push(copy!.id);
+  }
+  return inherited;
+}
