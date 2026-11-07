@@ -1,4 +1,4 @@
-import { Alert, Button, Form, Input, Radio, Select, Space, Steps } from 'antd';
+import { Alert, Button, Form, Input, Radio, Select, Space, Steps, type FormItemProps } from 'antd';
 import { useEffect, useState } from 'react';
 import type { ApiClient, Command } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
@@ -98,7 +98,10 @@ function TemplateForm({ record, saved }: { record?: ReviewRecord; saved(): void 
       {notice && <Alert type="info" showIcon message={notice} />}
       <FormLock locked={locked}>
         <Form form={form} layout="vertical" initialValues={record} disabled={!writable}>
-          <TemplateFields editable={(field) => editable.includes(field)} />
+          <TemplateFields
+            visible={(field) => permission.field(field).visible}
+            editable={(field) => editable.includes(field)}
+          />
         </Form>
       </FormLock>
       <Space className="review-template-footer">
@@ -128,72 +131,79 @@ async function sendTemplate(api: ApiClient, record: ReviewRecord | undefined, se
 
 /**
  * 第一步“基本信息”字段（R3cd spec §2.6）。盘点流程原站标必填，后端只在启用时要求（TEMPLATE_FLOW_REQUIRED），
- * 前端按后端口径校验；描述后端没有字段，只读标未完成。
+ * 前端按后端口径校验；描述后端没有字段，只读标未完成。无查看权的字段不渲染；校验只注册给当前可编辑字段，
+ * 只读或被裁剪的字段不阻断其他字段保存（与 FormOverlay 同口径）；必填星号按原站单独标出。
  */
-function TemplateFields({ editable }: { editable(field: string): boolean }) {
+function TemplateFields(props: { visible(field: string): boolean; editable(field: string): boolean }) {
+  const { visible, editable } = props;
   const required = { required: true, message: tr.required };
   const lock = (field: string) => !editable(field);
+  const rules = (field: string, list: FormItemProps['rules']) => (editable(field) ? list : []);
   return (
     <>
-      <Form.Item
-        name="name"
-        label={tp.columns.name}
-        rules={[required, { whitespace: true, max: 50, message: tr.nameRule }]}
-      >
-        <LockedField disabled={lock('name')}>
-          <Input maxLength={50} />
-        </LockedField>
-      </Form.Item>
-      <Form.Item label={tp.columns.flowId} required>
-        <Space.Compact block>
-          <Form.Item
-            name="flowId"
-            noStyle
-            dependencies={['enabled']}
-            rules={[
-              ({ getFieldValue }) => ({
-                validator: (_, value) =>
-                  getFieldValue('enabled') === true && !value
-                    ? Promise.reject(new Error(tp.flowRequired))
-                    : Promise.resolve(),
-              }),
-            ]}
-          >
-            <LockedField disabled={lock('flowId')}>
-              <ReferenceSelect path={`${base}/flows`} />
-            </LockedField>
-          </Form.Item>
-          <Button disabled title={tr.unverified}>
-            {tp.configure}
-          </Button>
-        </Space.Compact>
-      </Form.Item>
-      <Form.Item name="ownerOrgId" label={tp.columns.ownerOrgId} rules={[required]}>
-        <LockedField disabled={lock('ownerOrgId')}>
-          <ReferenceSelect path="/api/tenant/org/organizations" />
-        </LockedField>
-      </Form.Item>
-      <Form.Item name="downwardPublic" label={tp.columns.downwardPublic} rules={[required]}>
-        <LockedField disabled={lock('downwardPublic')}>
-          <Radio.Group
-            options={[
-              { value: true, label: tr.yes },
-              { value: false, label: tr.no },
-            ]}
-          />
-        </LockedField>
-      </Form.Item>
-      <Form.Item name="enabled" label={tp.columns.enabled} rules={[required]}>
-        <LockedField disabled={lock('enabled')}>
-          <Select
-            placeholder={tr.choose}
-            options={[
-              { value: true, label: tr.enabled },
-              { value: false, label: tr.disabled },
-            ]}
-          />
-        </LockedField>
-      </Form.Item>
+      {visible('name') && (
+        <Form.Item
+          name="name"
+          label={tp.columns.name}
+          required
+          rules={rules('name', [required, { whitespace: true, max: 50, message: tr.nameRule }])}
+        >
+          <LockedField disabled={lock('name')}>
+            <Input maxLength={50} />
+          </LockedField>
+        </Form.Item>
+      )}
+      {visible('flowId') && (
+        <Form.Item label={tp.columns.flowId} required>
+          <Space.Compact block>
+            <Form.Item name="flowId" noStyle dependencies={['enabled']} rules={rules('flowId', [flowRule])}>
+              <LockedField disabled={lock('flowId')}>
+                <ReferenceSelect path={`${base}/flows`} />
+              </LockedField>
+            </Form.Item>
+            <Button disabled title={tr.unverified}>
+              {tp.configure}
+            </Button>
+          </Space.Compact>
+        </Form.Item>
+      )}
+      {visible('ownerOrgId') && (
+        <Form.Item name="ownerOrgId" label={tp.columns.ownerOrgId} required rules={rules('ownerOrgId', [required])}>
+          <LockedField disabled={lock('ownerOrgId')}>
+            <ReferenceSelect path="/api/tenant/org/organizations" />
+          </LockedField>
+        </Form.Item>
+      )}
+      {visible('downwardPublic') && (
+        <Form.Item
+          name="downwardPublic"
+          label={tp.columns.downwardPublic}
+          required
+          rules={rules('downwardPublic', [required])}
+        >
+          <LockedField disabled={lock('downwardPublic')}>
+            <Radio.Group
+              options={[
+                { value: true, label: tr.yes },
+                { value: false, label: tr.no },
+              ]}
+            />
+          </LockedField>
+        </Form.Item>
+      )}
+      {visible('enabled') && (
+        <Form.Item name="enabled" label={tp.columns.enabled} required rules={rules('enabled', [required])}>
+          <LockedField disabled={lock('enabled')}>
+            <Select
+              placeholder={tr.choose}
+              options={[
+                { value: true, label: tr.enabled },
+                { value: false, label: tr.disabled },
+              ]}
+            />
+          </LockedField>
+        </Form.Item>
+      )}
       <Form.Item label={tp.description} extra={tr.unavailable}>
         <Input.TextArea
           disabled
@@ -204,3 +214,9 @@ function TemplateFields({ editable }: { editable(field: string): boolean }) {
     </>
   );
 }
+
+/** 启用时须选流程（后端 TEMPLATE_FLOW_REQUIRED）；停用可不选。 */
+const flowRule: NonNullable<FormItemProps['rules']>[number] = ({ getFieldValue }) => ({
+  validator: (_, value) =>
+    getFieldValue('enabled') === true && !value ? Promise.reject(new Error(tp.flowRequired)) : Promise.resolve(),
+});
