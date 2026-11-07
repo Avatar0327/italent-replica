@@ -185,6 +185,16 @@ describe('AC-TR-F475B 盘点模板列表', () => {
 });
 
 describe('AC-TR-F475B 盘点模板整页', () => {
+  it('内核自查 d：名称、状态被裁剪时记录照常显示，不出对应筛选与排序', async () => {
+    server.fields[TEMPLATE] = templateFields.filter((field) => field !== 'name' && field !== 'enabled');
+    await openTemplates();
+    expect(rows()).toHaveLength(2);
+    expect(headers(list()!)).not.toContain('模板名称');
+    expect(headers(list()!)).not.toContain('状态');
+    expect(squash(list()!.querySelector('.page-filters')?.textContent)).toBe('所属组织▾');
+    expect(list()!.querySelector('.ant-table-column-sorters')).toBeNull();
+  });
+
   it('点名称进入整页：三步导航停在基本信息，右上返回，字段与必填按原站', async () => {
     await openTemplates();
     await openTemplate('合成模板甲');
