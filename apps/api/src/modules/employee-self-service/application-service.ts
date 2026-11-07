@@ -92,8 +92,10 @@ export async function checkApplication(
     if (department && typeof date === 'string') await selfPartTimeDepartmentScope(tx, self, date, department);
   } else if (action === 'submit') {
     const current = existing as Record<string, unknown>;
+    // attachmentRefs 非空时一并按当前字段写权复核，撤权后不能再提交 / 封存（设计 §2.4）；空数组等于没有附件。
+    const attachments = Array.isArray(current.attachmentRefs) && current.attachmentRefs.length > 0;
     payload = Object.fromEntries(
-      ['lastWorkDate', 'reasonCode', 'whereaboutsCode']
+      ['lastWorkDate', 'reasonCode', 'whereaboutsCode', ...(attachments ? ['attachmentRefs'] : [])]
         .filter((key) => present(current[key]))
         .map((key) => [key, current[key]]),
     );
