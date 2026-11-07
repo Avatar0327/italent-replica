@@ -73,9 +73,19 @@ describe('AC-FE-R1b-columns 设置显示字段', () => {
 // #326 第 2 轮 P2-3 / P2-5：原站候选与默认已选含“首次参加工作日期”（后端字段 workDate），分组名为“当前列表字段”。
 describe('AC-FE-R1b-columns 候选字段与分组按原站', () => {
   const { columnLabel } = model;
-  it('首次参加工作日期在候选与默认已选中，排在员工ID之后、性别之前，恢复默认同样带上', () => {
+  it('首次参加工作日期在候选与默认已选中，排在职位之后、性别之前，恢复默认同样带上', () => {
     expect(columnChoices).toContain('workDate');
-    expect(defaultColumns.slice(0, 5)).toEqual(['name', 'code', 'workDate', 'gender', 'entryDate']);
+    expect(defaultColumns.slice(0, 9)).toEqual([
+      'name',
+      'code',
+      'orgCode',
+      'orgFullName',
+      'employType',
+      'positionName',
+      'workDate',
+      'gender',
+      'entryDate',
+    ]);
     expect(restoreDefaultColumns()).toContain('workDate');
     expect(columnLabel('workDate')).toBe('首次参加工作日期');
     expect(matchColumns(['workDate', 'entryDate'], '参加工作')).toEqual(['workDate']);

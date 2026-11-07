@@ -1,4 +1,5 @@
 import { listMyApplications, myApplicationsQuery } from './my-applications.js';
+import { readCarrierAttachment, respondAttachment as respondAttachmentBytes } from '../attachments/carrier-read.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
 import { todoForm, todoSummary } from './todo-summary.js';
 /**
@@ -207,18 +208,41 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
 }
 
-async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+/**
+ * 详情视图：与附件下载共用同一个取值函数（F-479）。path 只有详情接口下发，事实在这里按 withPath 取（同一事务、
+ * 取自 readDetail 的 allTasks），不放进 readDetail（它还被别的模块的披露复用）；附件下载不需要，传 false 不多读。
+ */
+async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, withPath: boolean) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
-  // path 只有详情接口下发，事实在这里取，不放进 readDetail（它还被别的模块的披露复用）
   const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const detail = await readDetail(tx, ctx, instanceId, viewer);
+    if (!withPath) return { data: detail, pathFacts: undefined };
     const { instance, version, snapshot, allTasks } = detail;
-    const pathFacts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
-    return { data: detail, pathFacts };
+    const facts = await loadPathFacts(tx, ctx, instance, version.nodes, snapshot.conditionValues, allTasks);
+    return { data: detail, pathFacts: facts };
   });
-  const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts);
+  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data), pathFacts) };
+}
+
+async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+  const { ctx, view } = await detailViewOf(c, deps, instanceId, true);
   return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+}
+
+/**
+ * F-479 §3.3 审批载体下载：先走与详情同一个取值函数（readDetail → detailView：能打开实例、节点表单含 attachmentRefs、
+ * 查看人有字段查看权才有值），再只认值里的引用且 status=bound；打不开实例 404“审批实例不存在”，其余 404“附件不存在”。
+ */
+async function respondAttachment(c: C, deps: TenantRouteDeps) {
+  const instanceId = uuidParam(c);
+  const fileId = uuidParam(c, 'fileId');
+  const { ctx, view } = await detailViewOf(c, deps, instanceId, false);
+  const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
+  const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
+  );
+  return respondAttachmentBytes(c, row, bytes);
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -519,6 +543,7 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));
+  router.get('/instances/:id/attachments/:fileId/content', (c) => respondAttachment(c, deps));
   router.get('/instances/:id/tasks', (c) => respondHistory(c, deps, 'tasks'));
   router.get('/instances/:id/logs', (c) => respondHistory(c, deps, 'logs'));
   router.get('/admin-logs', async (c) => {

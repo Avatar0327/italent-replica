@@ -117,6 +117,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/personnel/employee-read.ts#employeeJoins': [
+    'apps/api/src/modules/employment/intern-entry.ts#countsAsEntryOnce',
     '#jobJoin',
     'apps/api/src/modules/personnel/sorting.ts#sortRankJoins',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
@@ -164,12 +165,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/employment/employee-status.ts#isEntryStatusCode',
   ],
   'apps/api/src/modules/personnel/lists.ts#listEmployees': [
+    'apps/api/src/modules/org/org-display.ts#orgDisplays',
     'apps/api/src/modules/personnel/access.ts#personScope',
     'apps/api/src/modules/personnel/employee-read.ts#employeeAttributes',
     'apps/api/src/modules/personnel/employee-read.ts#employeeDto',
     'apps/api/src/modules/personnel/employee-read.ts#employeeJoins',
     'apps/api/src/modules/personnel/employee-read.ts#employeeProfile',
+    '#listColumns',
     'apps/api/src/modules/personnel/store.ts#rows',
+    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/personnel/lists.ts#listFieldVisibility': [
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',

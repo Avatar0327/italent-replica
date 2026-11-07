@@ -6,6 +6,7 @@ import { evaluationLeaveWorld, rowsOf, LEAVE_MIGRATION } from './AC-EV-leave-sup
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipped 且不终止评定', async () => {
@@ -17,6 +18,8 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     const restorePartTime = await addPrePartTimeTables(handle.db);
     // R2-T03 B3-3：离职开闸后旧结构上的离职会查在途考核，临时补出考核表，升级迁移前撤掉（support/pre-assessment-schema.ts）
     const restoreAssessment = await addPreAssessmentTable(handle.db);
+    // F-480：当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，临时补列，升级迁移前撤掉（support/pre-intern-cycle-schema.ts）
+    const restoreInternCycle = await addPreInternCycleColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     await restoreBlacklist();
     const id = await w.seed();
@@ -25,6 +28,7 @@ it('AC-EV-leave-upgrade：补入未来离职后在生效前删除，立即 skipp
     const leave = await w.leave(date!.future);
     await restorePartTime();
     await restoreAssessment();
+    await restoreInternCycle();
     await handle.migrate();
     expect(await w.queue(leave.id)).toHaveLength(1);
     await w.remove(leave);

@@ -12,7 +12,7 @@ import { partTimeCurrentEndSql } from '../employment/part-time/span-sql.js';
 import { personScope, type AccessContext } from '../personnel/access.js';
 import { employeeJoins } from '../personnel/employee-read.js';
 import { rows, type Row } from '../personnel/store.js';
-import { rosterOrganizations } from './roster-org.js';
+import { orgDisplays } from '../org/org-display.js';
 
 export interface Page {
   readonly limit: number;
@@ -37,7 +37,7 @@ const nameFilter = (name: string | undefined): SQL =>
   name ? sql` AND COALESCE(v.name,e.name) ILIKE ${like(name)}` : sql``;
 
 async function withOrganizations(tx: Tx, ctx: AccessContext, asOf: string, data: Row[]) {
-  const organizations = await rosterOrganizations(
+  const organizations = await orgDisplays(
     tx,
     ctx.tenantId,
     asOf,

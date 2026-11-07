@@ -89,7 +89,8 @@ describe('AC-DM-28 B-65 自助 / 经理代发的字段子集与身份关系', ()
   it('self：缺 HR 字段可建单，原因缺省 personal，发起人 / 被离职人 / 发起方式分开记录并写审计', async () => {
     const { w, staff, userOf, create } = await world('app-self');
     const user = await userOf(staff.id);
-    const created = await create(user, self(staff.id, { whereaboutsCode: 'startup', attachmentRefs: [randomUUID()] }));
+    // F-479 S2 R-4：attachmentRefs 现在要求引用本人已上传的文件，随手造的 UUID 会被拒；绑定路径见 AC-ATT-09 ～ 18
+    const created = await create(user, self(staff.id, { whereaboutsCode: 'startup' }));
     expect(created.status).toBe('draft');
     expect(await w.exitRow(created.id)).toMatchObject({
       initiator: 'self',

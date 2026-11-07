@@ -89,30 +89,52 @@ const entries = [
   ['PATCH', '/part-time-requests/:id', 'PartTime.Self', 'write'],
   ['POST', '/part-time-requests/:id/submit', 'PartTime.Self', 'write'],
 ] as const;
+/** F-479 S2 本人载体下载：selfAccess 绑定员工 + Exit.Self 按钮（requireAttachmentRead）+ 本人单（ownExitAttachmentRefs）。 */
+const DOWNLOAD_PATH = '/exit-requests/:id/attachments/:fileId/content';
+const downloadAt: Evidence[] = [
+  { role: 'call', unit: `${ROUTES}#route:GET ${DOWNLOAD_PATH}`, anchor: 'downloadAttachment(c, deps' },
+  { role: 'impl', unit: `${SHARED}#selfAccess`, anchor: 'boundEmployee(tx, tenant)' },
+];
+const DOWNLOAD: Obligation[] = [
+  { perm: 'self', facts: ['self:selfAccess'], at: downloadAt },
+  {
+    perm: 'btn:self#Exit.Self@detail',
+    facts: ['button:buttonResource', 'button:object.button'],
+    at: [...downloadAt, permission],
+  },
+  {
+    perm: 'guard:selfService.application',
+    facts: ['guard:selfService.application'],
+    at: [...downloadAt, permission],
+  },
+];
 /** 显式列出所有本片端点；不从产品声明或探测器生成。 */
-export const SELF_APPLICATIONS: RequiredTable = Object.fromEntries(
-  entries.map(([method, path, code, handler]) => {
-    const at: Evidence[] = [
-      { role: 'call', unit: `${ROUTES}#route:${method} ${path}`, anchor: `${handler}(c, deps` },
-      { role: 'impl', unit: `${SHARED}#selfAccess`, anchor: 'boundEmployee(tx, tenant)' },
-    ];
-    return [
-      `${method} /api/tenant/self-service${path}`,
-      [
-        { perm: 'self', facts: ['self:selfAccess'], at },
-        ...(handler === 'form' ? capabilities(at) : []),
-        ...(handler === 'write' ? writes(at, method === 'POST' && !path.includes(':id')) : []),
-        {
-          perm: `btn:self#${code}@detail`,
-          facts: ['button:buttonResource', 'button:object.button'],
-          at: [...at, permission],
-        },
-        {
-          perm: 'guard:selfService.application',
-          facts: ['guard:selfService.application'],
-          at: [...at, permission],
-        },
-      ],
-    ];
-  }),
-);
+export const SELF_APPLICATIONS: RequiredTable = {
+  [`GET /api/tenant/self-service${DOWNLOAD_PATH}`]: DOWNLOAD,
+  ...Object.fromEntries(
+    entries.map(([method, path, code, handler]) => {
+      const at: Evidence[] = [
+        { role: 'call', unit: `${ROUTES}#route:${method} ${path}`, anchor: `${handler}(c, deps` },
+        { role: 'impl', unit: `${SHARED}#selfAccess`, anchor: 'boundEmployee(tx, tenant)' },
+      ];
+      return [
+        `${method} /api/tenant/self-service${path}`,
+        [
+          { perm: 'self', facts: ['self:selfAccess'], at },
+          ...(handler === 'form' ? capabilities(at) : []),
+          ...(handler === 'write' ? writes(at, method === 'POST' && !path.includes(':id')) : []),
+          {
+            perm: `btn:self#${code}@detail`,
+            facts: ['button:buttonResource', 'button:object.button'],
+            at: [...at, permission],
+          },
+          {
+            perm: 'guard:selfService.application',
+            facts: ['guard:selfService.application'],
+            at: [...at, permission],
+          },
+        ],
+      ];
+    }),
+  ),
+};

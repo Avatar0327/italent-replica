@@ -200,3 +200,109 @@
   gap: 20px;
   margin-top: 20px;
 }
+.matrix-pills {
+  margin-bottom: 16px;
+}
+.matrix-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 24px;
+}
+.matrix-section {
+  margin-bottom: 24px;
+}
+.matrix-section > h3 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.matrix-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+.matrix-label {
+  color: #595959;
+  min-width: 180px;
+}
+.matrix-required {
+  color: #f5222d;
+  margin-right: 2px;
+}
+.matrix-gap {
+  display: inline-block;
+  width: 24px;
+}
+.matrix-note {
+  color: #868b8f;
+}
+.matrix-group {
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.matrix-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.matrix-expression {
+  width: 240px;
+}
+.matrix-actions {
+  margin: 8px 0;
+}
+.matrix-delete::before {
+  content: '\2715';
+}
+.matrix-swatch i {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #d9d9d9;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.matrix-export {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+/* 盘点模板 / 计算规则：与项目列表同一套列表外观；名称链接左对齐、超长省略。 */
+.review-config-list .ant-table-cell .ant-btn-link {
+  padding: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-config-list .review-name-text {
+  color: #146eff;
+}
+/* 原站计算规则编辑约 750px 居中弹窗；FormOverlay 弹窗默认 800，这里收到原站宽度。 */
+.review-calc-rule-form .ant-modal {
+  max-width: 750px;
+}
+.review-config-list .page-filters .review-filter-select {
+  min-width: 88px;
+}
+.review-template-page > .page-heading h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.review-template-steps {
+  max-width: 720px;
+  margin: 8px auto 24px;
+}
+.review-template-page .ant-form {
+  max-width: 560px;
+}
+.review-template-page > .ant-alert {
+  margin-bottom: 16px;
+}
+.review-template-footer {
+  margin-top: 8px;
+}

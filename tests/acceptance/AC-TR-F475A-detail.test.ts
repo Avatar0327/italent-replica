@@ -9,7 +9,8 @@ vi.mock('../../apps/web/src/foundation/Permissions.js', () => ({
   usePermissions: () => ({ field: (key: string) => ({ visible: !state.hidden.includes(key), editable: false }) }),
 }));
 vi.mock('../../apps/web/src/foundation/DecisionNote.js', () => ({ DecisionNote: () => null }));
-const { RecordDetail } = await import(resolve('apps/web/src/talent-review/RecordDetail.tsx'));
+// F-475 盘点B：模板改整页后 RecordDetail 只剩委托，删去，项目详情直接测 ProjectDetail。
+const { ProjectDetail: RecordDetail } = await import(resolve('apps/web/src/talent-review/ProjectDetail.tsx'));
 const props = {
   collection: 'projects',
   record: { id: 'synthetic-project', name: '合成项目', criterionId: '合成标准标识' },

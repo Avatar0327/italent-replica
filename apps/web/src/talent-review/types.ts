@@ -1,4 +1,4 @@
-export type Collection = 'projects' | 'templates' | 'matrices';
+export type Collection = 'projects' | 'templates' | 'calc-rules' | 'matrices';
 export interface ReviewRecord {
   id: string;
   revision?: number;
@@ -17,6 +17,7 @@ export interface ReviewRecord {
 export const objects = {
   projects: 'TalentReview.Project',
   templates: 'TalentReview.Template',
+  'calc-rules': 'TalentReview.CalcRule',
   matrices: 'TalentReview.Matrix',
 } as const;
 export type ProjectAction = 'update' | 'start' | 'end' | 'restart';
