@@ -189,6 +189,9 @@ export const SUBSETS = {
       { code: 'mentor', kind: 'text' },
       { code: 'activityNumber', kind: 'text' },
       { code: 'hasMedal', kind: 'boolean' },
+      // 原站培训表单：培训类别名称（文本）、培训分类（下拉，候选未取证，先按文本）
+      { code: 'categoryName', kind: 'text' },
+      { code: 'classification', kind: 'text' },
     ],
   },
   certificate: {
@@ -215,6 +218,8 @@ export const SUBSETS = {
       { code: 'level', kind: 'text' },
       { code: 'awardDate', kind: 'date' },
       { code: 'description', kind: 'text' },
+      { code: 'amount', kind: 'decimal' },
+      { code: 'payDate', kind: 'date' },
     ],
   },
   'project-experience': {
@@ -257,6 +262,7 @@ export const SUBSETS = {
       { code: 'writing', kind: 'text' },
       { code: 'isNative', kind: 'boolean' },
       { code: 'description', kind: 'text' },
+      { code: 'acquiredCertificate', kind: 'text' },
     ],
   },
   'estimation-result': {

@@ -169,6 +169,11 @@ export const m = {
     category: '类别',
     level: '级别',
     awardDate: '获奖日期',
+    amount: '奖励金额',
+    payDate: '发放日期',
+    categoryName: '培训类别名称',
+    classification: '培训分类',
+    acquiredCertificate: '获取证书',
     description: '说明',
     results: '成果',
     proficiency: '熟练程度',
@@ -190,7 +195,15 @@ export const m = {
     isHighestLevel: '最高级别',
   } as Record<string, string>,
   /** 列表列名与档案字段名不同时以原站列名为准。 */
-  columnLabels: { workDate: '首次参加工作日期' } as Record<string, string>,
+  columnLabels: {
+    workDate: '首次参加工作日期',
+    orgCode: '机构ID',
+    orgFullName: '组织全称',
+    employType: '雇佣关系',
+    positionName: '职位',
+  } as Record<string, string>,
+  /** 雇佣关系取值同任职字段 employType（原站“内部员工 / 实习生 / 外部人员”）。 */
+  employTypes: { internal: '内部员工', intern: '实习生', external: '外部人员' } as Record<string, string>,
   kinds: {
     part_time: '兼职',
     hire: '入职',

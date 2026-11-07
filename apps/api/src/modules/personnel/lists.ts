@@ -2,6 +2,7 @@ import { sortRankColumns } from './sorting.js';
 import { sql, type Tx } from '@italent/db';
 import {
   isEmployeeStatusCode,
+  tenantLocalDate,
   isEntryStatusCode,
   SUBSET_EMPLOYEE_ATTRIBUTES,
   PERSONNEL_OBJECT,
@@ -11,6 +12,7 @@ import {
 import type { Context } from 'hono';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { orgDisplays } from '../org/org-display.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
 import { personScope, trimWithFields, type AccessContext } from './access.js';
@@ -75,19 +77,37 @@ export interface ListOptions {
   readonly filter: SQL;
 }
 export const UNSORTED: ListOptions = { order: sql``, filter: sql`true` };
+/** F-474-4a 员工列表补列：现任主职的部门（只用于解析机构ID / 组织全称，不随列表返回）、雇佣关系、职位。 */
+const listColumns = sql`r.current_fields->>'department_id' AS department_id,
+  r.current_fields->>'employ_type' AS employ_type,jp.name AS position_name`;
 export async function listEmployees(
   tx: Tx,
   ctx: AccessContext,
   page: { limit: number; offset: number },
   options: ListOptions,
 ) {
-  return rows(
-    await tx.execute(sql`SELECT e.id,${employeeAttributes},${employeeProfile} AS profile
+  const data = rows(
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},${listColumns},${employeeProfile} AS profile
     FROM employment_employees e ${employeeJoins(ctx)} WHERE e.tenant_id=${ctx.tenantId}
     AND ${personScope(ctx)} AND ${options.filter}
     ORDER BY ${options.order} person_rank.order_code ASC NULLS LAST,e.code COLLATE "C",e.id
     LIMIT ${page.limit} OFFSET ${page.offset}`),
-  ).map((row) => employeeDto(row, ctx));
+  );
+  // 组织与列表同取租户今天（employeeJoins 的默认时点），解析口径与时点花名册共用 org/org-display
+  const organizations = await orgDisplays(
+    tx,
+    ctx.tenantId,
+    tenantLocalDate(ctx.now, ctx.timezone),
+    data.map((row) => row.department_id as string | null),
+  );
+  return data.map((row) => {
+    const { department_id: departmentId, ...rest } = row;
+    const organization = organizations.get(departmentId as string);
+    return employeeDto(
+      { ...rest, org_code: organization?.code ?? null, org_full_name: organization?.fullName ?? null },
+      ctx,
+    );
+  });
 }
 export function subsetDto(row: Row, kind: SubsetKind) {
   const result = camel(row);

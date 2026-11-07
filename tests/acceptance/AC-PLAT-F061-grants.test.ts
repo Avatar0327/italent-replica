@@ -252,8 +252,10 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       47: '852cc4f73fe34ee8',
       // F-479 S1（DEC-819）：本人离职申请专属字段 attachmentRefs（员工身份可查看 / 编辑）；版本为 main + 1 占位，合并时重算。
       48: 'acea7ac6a18b528e',
+      // F-474-4a（DEC-776 / DEC-778）：员工列表补四列与培训 / 奖励 / 语言子集补字段；版本为 main + 1 占位，合并时重算。
+      49: '037c84bc0ad5afb2',
       // F-480（DEC-797，占位同号）：任职记录新增只读系统字段 traineeStartDate（实习开始日）的查看授权
-      49: 'e3a1b9f2a38cc652',
+      50: '9a513a1f39304868',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
