@@ -134,4 +134,19 @@ describe('F-478 S2 详情 path', () => {
     ]);
     expect(detail.path!.find((step) => step.nodeKey === 'joint')).toMatchObject({ state: 'passed', exit: 'approve' });
   });
+
+  it('撤回后重办：N1 同意→撤回→N1 改选不同意结束，N1 的 exit=disagree（作废的流转行不作数）', async () => {
+    const s = await routeScene(testDb().db, 'f478-path-retrieve');
+    await publishViaHttp(s.w, s.nodes({ n1: { exits: ['approve', 'disagree'] } }).slice(0, 3), {});
+    let view = await s.start(s.depts.d1);
+    const first = pendingOf(view)[0]!;
+    view = await approveCurrent(s, view);
+    await s.w.json(await taskPost(s, view, 'retrieve', {}, first.id, first.assigneeUserId));
+    view = await s.w.detail(view.id);
+    expect(view.currentNodeKey).toBe('n1');
+    view = await disagreeCurrent(s, view);
+    const detail = await detailOf(s.w, view.id);
+    expect(detail.status).toBe('disapproved');
+    expect(detail.path!.find((step) => step.nodeKey === 'n1')).toMatchObject({ state: 'passed', exit: 'disagree' });
+  });
 });

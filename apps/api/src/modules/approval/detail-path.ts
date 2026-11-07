@@ -1,11 +1,14 @@
 /**
  * F-478 S2 详情的路径披露（设计 §4）：`path` 把版本里的节点标成 passed / current / pending / not_on_path，
- * `exits` 是查看人此刻能办理的出口。passed 的出口取自节点激活台账与任务的 decision_exit（实际走过的），
+ * `exits` 是查看人此刻能办理的出口。passed 的出口取自节点最近一次激活的任务 decision_exit / 会签领域结算（实际走过的），
  * pending 用引擎同一个求值函数按当前快照与默认同意出口推演（walkDefaultPath），不另写一套路由解释。
  */
 import { sql, type Tx } from '@italent/db';
 import {
   EXIT_LABELS,
+  exitRulesOf,
+  isCountersign,
+  nodeExits,
   tenantLocalDate,
   walkDefaultPath,
   type ApprovalNode,
@@ -14,7 +17,9 @@ import {
   type PathWalk,
 } from '@italent/domain';
 import { rowsOf, type ApprovalContext } from './context.js';
-import type { InstanceRow } from './store.js';
+import { settledOutcome } from './countersign.js';
+import { loadTasks, type InstanceRow, type TaskRow } from './store.js';
+import { withoutRetrieved } from './task-history.js';
 import { conditionContext } from './matching.js';
 
 export interface PathFacts {
@@ -33,27 +38,101 @@ export interface PathStepView {
   readonly exit?: string;
 }
 
-async function activatedExits(tx: Tx, tenantId: string, instance: InstanceRow) {
-  const activated = new Map<string, string | null>();
+interface EntryRow {
+  readonly nodeKey: string;
+  readonly activationId: string;
+  readonly kind: string;
+  readonly fromNodeKey: string | null;
+  readonly fromActivationId: string | null;
+  readonly fromExit: string | null;
+}
+
+async function entriesOf(tx: Tx, tenantId: string, instance: InstanceRow): Promise<EntryRow[]> {
   const rows = rowsOf(
-    await tx.execute(sql`SELECT node_key,entry_kind,from_node_key,from_exit FROM approval_node_activations
+    await tx.execute(sql`SELECT activation_id,node_key,entry_kind,from_activation_id,from_node_key,from_exit
+      FROM approval_node_activations
       WHERE tenant_id=${tenantId} AND instance_id=${instance.id}::uuid AND round=${instance.round}
       ORDER BY created_seq`),
   );
-  for (const row of rows) {
-    const key = String(row.node_key);
-    if (!activated.has(key)) activated.set(key, null);
-    if (row.entry_kind === 'flow') activated.set(String(row.from_node_key), String(row.from_exit));
-  }
-  // 最后一个节点没有“下一次激活”：出口只记在它关闭的任务上
-  const decided = rowsOf(
-    await tx.execute(sql`SELECT DISTINCT ON (node_key) node_key,decision_exit FROM approval_tasks
+  return rows.map((row) => ({
+    nodeKey: String(row.node_key),
+    activationId: String(row.activation_id),
+    kind: String(row.entry_kind),
+    fromNodeKey: (row.from_node_key as string | null) ?? null,
+    fromActivationId: (row.from_activation_id as string | null) ?? null,
+    fromExit: (row.from_exit as string | null) ?? null,
+  }));
+}
+
+/** 任务关闭时记下的出口（approval_tasks.decision_exit）；TaskRow 不带这一列，所以单独取。 */
+async function decisionExits(tx: Tx, tenantId: string, instance: InstanceRow): Promise<Map<string, string>> {
+  const rows = rowsOf(
+    await tx.execute(sql`SELECT id,decision_exit FROM approval_tasks
       WHERE tenant_id=${tenantId} AND instance_id=${instance.id}::uuid AND round=${instance.round}
-        AND decision_exit IS NOT NULL ORDER BY node_key,seq DESC`),
+        AND decision_exit IS NOT NULL`),
   );
-  for (const row of decided) {
-    const key = String(row.node_key);
-    if (activated.has(key) && activated.get(key) === null) activated.set(key, String(row.decision_exit));
+  return new Map(rows.map((row) => [String(row.id), String(row.decision_exit)]));
+}
+
+/**
+ * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点取这一次激活里
+ * 最后一张未被撤回的已办任务的出口。撤回会让同一次激活重新办理，所以不信激活台账里那条可能已作废的流转行，
+ * 只在任务上没有出口（本版本上线前办理的任务）时才退回台账的流转行。
+ */
+function exitOfActivation(
+  node: ApprovalNode | undefined,
+  activation: readonly TaskRow[],
+  decided: ReadonlyMap<string, string>,
+  flowFallback: string | null,
+): string | null {
+  if (node && isCountersign(node)) {
+    const outcome = settledOutcome(activation, exitRulesOf(node.transitionRule, nodeExits(node)));
+    return outcome.kind === 'flow' ? outcome.exit : null;
+  }
+  const last = withoutRetrieved(activation)
+    .filter((task) => decided.has(task.id))
+    .at(-1);
+  return last ? decided.get(last.id)! : flowFallback;
+}
+
+/** 台账里从这次激活出去的最近一条流转（兼容本版本上线前在途、没有激活行的节点：来路激活为空）。 */
+function flowFrom(entries: readonly EntryRow[], nodeKey: string, activationId: string | null): string | null {
+  const flow = entries
+    .filter(
+      (entry) =>
+        entry.kind === 'flow' &&
+        entry.fromNodeKey === nodeKey &&
+        (activationId === null ? entry.fromActivationId === null : entry.fromActivationId === activationId),
+    )
+    .at(-1);
+  return flow?.fromExit ?? null;
+}
+
+/**
+ * 本轮进入过的节点 → 它最近一次激活的实际出口。重入（驳回到上一步、跳转、撤回后重办）以最近一次激活为准，旧出口
+ * 随之作废；没有走出去的激活（办理中、被驳回 / 跳转中断）没有出口。
+ */
+async function activatedExits(
+  tx: Tx,
+  tenantId: string,
+  instance: InstanceRow,
+  nodes: readonly ApprovalNode[],
+): Promise<Map<string, string | null>> {
+  const entries = await entriesOf(tx, tenantId, instance);
+  const latest = new Map<string, string | null>();
+  for (const entry of entries) {
+    latest.set(entry.nodeKey, entry.activationId);
+    if (entry.kind === 'flow' && entry.fromNodeKey && !latest.has(entry.fromNodeKey)) {
+      latest.set(entry.fromNodeKey, null);
+    }
+  }
+  const tasks = (await loadTasks(tx, tenantId, instance.id)).filter((task) => task.round === instance.round);
+  const decided = await decisionExits(tx, tenantId, instance);
+  const activated = new Map<string, string | null>();
+  for (const [nodeKey, activationId] of latest) {
+    const activation = tasks.filter((task) => activationId !== null && task.activationId === activationId);
+    const node = nodes.find((candidate) => candidate.key === nodeKey);
+    activated.set(nodeKey, exitOfActivation(node, activation, decided, flowFrom(entries, nodeKey, activationId)));
   }
   return activated;
 }
@@ -87,7 +166,7 @@ export async function loadPathFacts(
   conditionValues: Readonly<Record<string, unknown>>,
 ): Promise<PathFacts> {
   return {
-    activated: await activatedExits(tx, ctx.tenantId, instance),
+    activated: await activatedExits(tx, ctx.tenantId, instance, nodes),
     walk: await pendingWalk(tx, ctx, instance, nodes, conditionValues),
   };
 }
