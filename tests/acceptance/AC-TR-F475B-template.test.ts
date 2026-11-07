@@ -161,6 +161,13 @@ describe('AC-TR-F475B 盘点模板列表', () => {
     expect(squash(list()!.querySelector('.page-total')?.textContent)).toBe('已选中1条，共2条');
   });
 
+  it('内核自查 c：按钮返回了但对象没有 create / update 操作权，不显示新增 / 编辑', async () => {
+    server.operations = { view: true, create: false, update: false };
+    await openTemplates();
+    expect(button('新增', list()!.querySelector('.page-heading')!)).toBeUndefined();
+    expect(button('编辑', rows()[0])).toBeUndefined();
+  });
+
   it('筛选：名称、所属组织、状态；名称与状态按本页数据过滤', async () => {
     await openTemplates();
     const filters = list()!.querySelector('.page-filters') as HTMLElement;

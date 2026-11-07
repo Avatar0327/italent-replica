@@ -148,6 +148,12 @@ describe('AC-TR-F475B 盘点计算规则列表', () => {
     await edit();
     expect(formItem('应用说明', dialog()!)).toBeUndefined();
   });
+
+  it('内核自查 c：按钮返回了但对象没有 update 操作权，不显示编辑', async () => {
+    server.operations = { view: true, create: true, update: false };
+    await openRules();
+    expect(button('编辑', rows()[0])).toBeUndefined();
+  });
 });
 
 describe('AC-TR-F475B 盘点计算规则基础编辑', () => {

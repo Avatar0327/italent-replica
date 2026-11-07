@@ -31,6 +31,8 @@ export const server = {
   fields: {} as Record<string, string[]>,
   editable: {} as Record<string, string[]>,
   buttons: ['create', 'update'],
+  /** 对象数据操作权（与 /permission/me/objects 同形）；写权限按它判断，按钮只决定显示（DEC-502① c）。 */
+  operations: { view: true, create: true, update: true } as Record<string, boolean>,
   writes: [] as Sent[],
   /** 写请求的排队回复；空时按真实后端只改带上的字段、revision + 1。 */
   replies: [] as Reply[],
@@ -86,7 +88,7 @@ function read(url: string): Response {
     const fields = server.fields[objectCode] ?? [];
     return json({
       objectCode,
-      dataOperations: { view: true, create: true, update: true },
+      dataOperations: server.operations,
       viewableFields: fields,
       editableFields: server.editable[objectCode] ?? fields,
       buttons: server.buttons.map((buttonCode) => ({ buttonCode, level: buttonCode === 'create' ? 'list' : 'detail' })),
@@ -115,6 +117,7 @@ export function resetServer() {
   server.fields = {};
   server.editable = {};
   server.buttons = ['create', 'update'];
+  server.operations = { view: true, create: true, update: true };
   server.writes = [];
   server.replies = [];
   server.reads = [];
