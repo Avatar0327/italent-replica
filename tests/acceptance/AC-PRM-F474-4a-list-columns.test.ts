@@ -27,7 +27,13 @@ async function job(w: RosterWorld, kind: 'posts' | 'positions', name: string, ex
 async function fixture(label: string) {
   const w = await rosterWorld(database().db, label);
   const group = await w.org('集团G');
-  const rd = (await w.org('研发部R', group)) as { id: string; revision: number; code?: string };
+  // 机构编码由夹具指定，测试里手写完整期望，不拿别的入口的响应当预期（4a 第 1 轮 P3-1）
+  const rdCode = `L4A_RD_${uniqueSuffix()}`;
+  const rd = await w.session.org('研发部R', {
+    code: rdCode,
+    establishedOn: '2024-01-01',
+    parents: { admin: { parentId: group.id } },
+  });
   const post = await job(w, 'posts', '合成职务');
   const position = await job(w, 'positions', '合成后端工程师', { orgId: rd.id, postId: post.id });
   const zhang = await w.session.employee('张三', 'L4A001');
@@ -42,7 +48,7 @@ async function fixture(label: string) {
     zhang.revision,
   );
   const li = await w.session.employee('李四', 'L4A002');
-  return { w, rd, zhang, li };
+  return { w, rd, rdCode, zhang, li };
 }
 
 async function list(request: RosterWorld['call'], query = '') {
@@ -54,14 +60,14 @@ const byCode = (items: ListItem[], code: string) => items.find((item) => item.co
 
 describe('AC-PRM F-474-4a 员工列表补列', () => {
   it('返回机构ID、组织全称、雇佣关系、职位，组织全称与时点花名册同口径', async () => {
-    const { w, rd, zhang } = await fixture('prm4a-cols');
+    const { w, rdCode, zhang } = await fixture('prm4a-cols');
     const row = byCode(await list(w.call), 'L4A001');
     const roster = (await w.rosterOk('2026-10-06')).items.find((item) => item.code === 'L4A001')!;
     expect(row).toMatchObject({ id: zhang.id, employType: 'internal', positionName: '合成后端工程师' });
     expect(row.orgFullName).toBe(roster.orgFullName);
-    expect(row.orgFullName).toContain('研发部R');
-    const org = (await (await w.call('GET', `/api/tenant/org/organizations/${rd.id}`)).json()) as { code: string };
-    expect(row.orgCode).toBe(org.code);
+    // 夹具手写的精确期望：完整全称（租户根 → 集团 → 研发部，夹具租户根名为“租户<label>”）与机构编码
+    expect(row.orgFullName).toBe('租户prm4a-cols/集团G/研发部R');
+    expect(row.orgCode).toBe(rdCode);
     // 部门 ID 只用于解析组织，不随列表返回
     expect(row).not.toHaveProperty('departmentId');
   });
