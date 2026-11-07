@@ -25,7 +25,7 @@ export interface Sent {
 }
 type Reply = Response | Error | ((sent: Sent) => Response);
 export const server = {
-  /** 集合路径（如 templates）→ 列表 items；详情按 id 在其中查找。 */
+  /** 集合路径（如 templates）→ 列表 items；详情按 id 在其中查找。organizations 是组织候选。 */
   collections: {} as Record<string, Record<string, unknown>[]>,
   /** 对象编码 → 可见字段 / 可编辑字段 / 按钮。 */
   fields: {} as Record<string, string[]>,
@@ -80,7 +80,11 @@ function read(url: string): Response {
       buttons: server.buttons.map((buttonCode) => ({ buttonCode, level: buttonCode === 'create' ? 'list' : 'detail' })),
     });
   }
-  const path = new URL(url, 'http://local').pathname.replace(`${base}/`, '');
+  const pathname = new URL(url, 'http://local').pathname;
+  // 组织候选不在盘点前缀下（RecordForm / ReferenceSelect 读 /api/tenant/org/organizations）
+  if (pathname === '/api/tenant/org/organizations')
+    return json({ page: 1, pageSize: 200, hasMore: false, items: server.collections.organizations ?? [] });
+  const path = pathname.replace(`${base}/`, '');
   const [collection, id] = path.split('/');
   const rows = server.collections[collection!];
   if (rows && id) {
@@ -173,3 +177,20 @@ export function headers(scope: ParentNode = document.body) {
 export function headerWidths(scope: ParentNode = document.body) {
   return Array.from(scope.querySelectorAll('colgroup col')).map((col) => (col as HTMLElement).style.width);
 }
+/** 打开 scope 里的 antd Select 并点选文字为 label 的选项（下拉挂在 body 上，只取当前展开的那个）。 */
+export async function choose(scope: Element, label: string) {
+  const selector = scope.querySelector('.ant-select-selector') as HTMLElement;
+  await act(async () => {
+    selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  await settle();
+  const options = Array.from(
+    document.body.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option'),
+  );
+  await click(options.find((option) => squash(option.textContent) === label));
+}
+/** 表单项：按标签文字（去掉必填星号）找 .ant-form-item。 */
+export const formItem = (label: string, scope: ParentNode = document.body) =>
+  Array.from(scope.querySelectorAll('.ant-form-item')).find(
+    (item) => squash(item.querySelector('.ant-form-item-label label')?.textContent) === label,
+  ) as HTMLElement | undefined;
