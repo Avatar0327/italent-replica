@@ -272,3 +272,37 @@
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+/* 盘点模板 / 计算规则：与项目列表同一套列表外观；名称链接左对齐、超长省略。 */
+.review-config-list .ant-table-cell .ant-btn-link {
+  padding: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-config-list .review-name-text {
+  color: #146eff;
+}
+/* 原站计算规则编辑约 750px 居中弹窗；FormOverlay 弹窗默认 800，这里收到原站宽度。 */
+.review-calc-rule-form .ant-modal {
+  max-width: 750px;
+}
+.review-config-list .page-filters .review-filter-select {
+  min-width: 88px;
+}
+.review-template-page > .page-heading h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.review-template-steps {
+  max-width: 720px;
+  margin: 8px auto 24px;
+}
+.review-template-page .ant-form {
+  max-width: 560px;
+}
+.review-template-page > .ant-alert {
+  margin-bottom: 16px;
+}
+.review-template-footer {
+  margin-top: 8px;
+}
