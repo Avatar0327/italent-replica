@@ -26,12 +26,15 @@ export function StaffDetail({
   actions,
   onSaved,
   reload,
+  initialTab,
 }: {
   employeeId: string;
   onClose(): void;
   actions?: ReactNode;
   onSaved?(): void;
   reload?: number;
+  /** 首次打开的页签（如任职记录列表的“编辑任职”直达任职记录页签）；默认人员信息 */
+  initialTab?: 'profile' | 'records' | 'part-time';
 }) {
   const result = useRead<Row>(`/api/tenant/personnel/employees/${encodeURIComponent(employeeId)}`);
   const permission = usePermissions(PERSONNEL_OBJECT);
@@ -42,6 +45,7 @@ export function StaffDetail({
       open
       onClose={onClose}
       title={m.detail}
+      defaultTab={initialTab}
       actions={
         <>
           <EditPersonButton

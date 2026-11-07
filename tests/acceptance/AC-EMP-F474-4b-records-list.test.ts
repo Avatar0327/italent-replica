@@ -10,6 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { PERSON_OBJECT, RECORD_OBJECT, rosterWorld, type RosterWorld } from './AC-HA-roster-support.js';
+import { RECORD_ROW } from './support/f474-records-row.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const database = useTestDb();
@@ -95,6 +96,11 @@ describe('AC-EMP F-474-4b #16 全租户任职记录列表', () => {
       isCurrent: false,
     });
     expect(rowOf(page, 'F4B002:hire')).toMatchObject({ orgCode: rdCode, effectiveDate: '2025-06-01' });
+    // 响应形状与前端夹具共用同一样例（support/f474-records-row.ts）
+    expect(Object.keys(rowOf(page, 'F4B001:transfer')).sort()).toEqual(Object.keys(RECORD_ROW).sort());
+    expect(Object.keys(rowOf(page, 'F4B001:transfer').fields as object).sort()).toEqual(
+      Object.keys(RECORD_ROW.fields).sort(),
+    );
     // 员工标识类内部字段不外露：只给 employeeId（本列表的跳转键）
     expect(rowOf(page, 'F4B002:hire')).not.toHaveProperty('departmentId');
     expect(new Set(page.items.map((item) => item.serviceType))).toEqual(new Set(['primary']));
