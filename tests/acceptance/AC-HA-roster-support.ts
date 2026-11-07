@@ -215,7 +215,12 @@ export async function rosterWorld(db: Db, label: string, today = '2026-10-06') {
       scope: async () => scope,
       authorize: async (request) => authorize(request),
       fields: async (_tenantId, _userId, objectCode) => {
-        const all = [...PERSONNEL_OBJECTS, MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.contract]
+        const all = [
+          ...PERSONNEL_OBJECTS,
+          MODULE_OBJECTS.employmentRecord,
+          MODULE_OBJECTS.contract,
+          MODULE_OBJECTS.employee,
+        ]
           .find((definition) => definition.code === objectCode)!
           .fields.map((field) => field.code);
         return new Set(all.filter((field) => !options.hidden?.[objectCode]?.includes(field)));

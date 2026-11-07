@@ -3,7 +3,8 @@
  * - GET /api/tenant/self-service/development-channel 与 GET /employees/:id/development-channel（:id 只能是绑定本人）；
  * - 关系入口：不要求 Qualification 数据范围，也不要求 DevelopmentChannel / QualificationStandard 的对象权限；要求员工发展通道
  *   页面权限（employeePageGranted），无权 403 PAGE_PERMISSION_REQUIRED；
- * - 卡片数据由后端按本人直接读取，返回固定投影（键集合固定，不随对象字段权限变化），不含各级标准明细（23 §19）；
+ * - 卡片数据由后端按本人直接读取，返回固定投影（键集合固定，不随对象字段权限变化）；含本人当前类别的各级标准卡
+ *   （级别描述、指标目标值 / 权重、能力标准；DEC-778①，取代“不含各级标准明细”）；他类别的标准不出现；
  * - 没有当前资格是空态；他人员工 ID 不可经 ESS 读。
  * 所有 ESS 请求走真实授权器（authorize: undefined）；配置与权限用全部允许的钩子准备。
  */
@@ -19,6 +20,7 @@ import { createProfile, type PermissionWorld, grant, makeGrantable, setObjectPer
 import { boundUser, type ChannelWorld, channelWorld, ESS } from './AC-QL-08-support.js';
 import { QL_NOW } from './AC-QL-support.js';
 import { putObject } from './support/f061.js';
+import { CARD_SAMPLE, shapeOf } from './support/f474-qualification-card.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
@@ -38,6 +40,24 @@ interface Card {
     targetLevelId: string;
     targetLevelName: string;
   }[];
+  standard: {
+    standardId: string;
+    name: string;
+    levels: {
+      levelId: string;
+      levelName: string;
+      displayOrder: number;
+      isCurrent: boolean;
+      description: string | null;
+      targets: {
+        targetId: string;
+        targetName: string;
+        targetValue: string | null;
+        weight: number | null;
+        abilities: { content: string; targetValue: string | null; weight: number | null }[];
+      }[];
+    }[];
+  } | null;
 }
 const keys = (value: object) => Object.keys(value).sort();
 
@@ -142,7 +162,7 @@ describe('AC-QL-08 ESS：员工通道卡片', () => {
     const res = await card(user.as);
     expect(res.status).toBe(200);
     const empty = (await res.json()) as Card;
-    expect(empty).toMatchObject({ current: null, vertical: [], horizontal: [] });
+    expect(empty).toMatchObject({ current: null, vertical: [], horizontal: [], standard: null });
     expect(keys(empty)).toEqual(keys(filled));
   });
 
@@ -154,11 +174,43 @@ describe('AC-QL-08 ESS：员工通道卡片', () => {
     const user = await boundUser(cw, id);
     const body = (await (await real.request('GET', `${ESS}/development-channel`, user.as)).json()) as Card;
     expect(body.current).toMatchObject({ categoryId: cw.bareCategory.id, levelId: cw.p1.id });
-    expect(body).toMatchObject({ vertical: [], horizontal: [] });
+    expect(body).toMatchObject({ vertical: [], horizontal: [], standard: null });
+  });
+
+  it('各级标准卡：本人当前类别每个级别的描述 / 指标目标值与权重 / 能力标准；他类别标准不出现（AC-QL-08，DEC-778①）', async () => {
+    const { cw, card } = await essWorld('ql08-ess-standard-card');
+    const body = (await (await card()).json()) as Card;
+    expect(body.standard).toEqual({
+      standardId: cw.standard.id,
+      name: '任职资格标准',
+      levels: [
+        { levelId: cw.p1.id, levelName: 'P10', displayOrder: 10, isCurrent: false, description: null, targets: [] },
+        {
+          levelId: cw.p2.id,
+          levelName: 'P20',
+          displayOrder: 20,
+          isCurrent: true,
+          description: '本类二级描述',
+          targets: [
+            {
+              targetId: cw.ownTarget.id,
+              targetName: '本类指标',
+              targetValue: null,
+              weight: null,
+              abilities: [{ content: '本类二级能力', targetValue: null, weight: null }],
+            },
+          ],
+        },
+        { levelId: cw.p3.id, levelName: 'P30', displayOrder: 30, isCurrent: false, description: null, targets: [] },
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain('他类');
+    // 前端夹具（support/f474-qualification-card.ts）与真实响应同形：键结构逐层一致
+    expect(shapeOf(body)).toEqual(shapeOf(CARD_SAMPLE));
   });
 });
 
-describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级标准明细）', () => {
+describe('AC-QL-08 ESS：固定投影（不走对象字段权限；各级标准卡只含本人当前类别，DEC-778①）', () => {
   /** 给员工另授一个 Qualification 身份：DevelopmentChannel / QualificationStandard 字段全可见或全隐藏。 */
   async function withQualificationIdentity(cw: ChannelWorld, userId: string, visible: boolean) {
     const admin = await adminOf(cw);
@@ -180,7 +232,7 @@ describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级�
     expect((await grant(admin, userId, profile.id)).status).toBe(201);
   }
 
-  it('无身份 / 对象字段全可见 / 对象字段全隐藏的三个员工，卡片逐字相同；键集合固定；无标准明细字段（AC-QL-08）', async () => {
+  it('无身份 / 对象字段全可见 / 对象字段全隐藏的三个员工，卡片逐字相同；键集合固定；标准卡只含本人当前类别、不含他类标准与配置内部字段（AC-QL-08，DEC-778①）', async () => {
     const { cw, real, card } = await essWorld('ql08-ess-fixed');
     const baseline = (await (await card()).json()) as Card;
     const bodies: Card[] = [baseline];
@@ -195,7 +247,7 @@ describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级�
     }
     for (const body of bodies) expect(body).toEqual(baseline);
     // 固定键集合（契约：不随对象字段权限变化）
-    expect(keys(baseline)).toEqual(['asOf', 'current', 'horizontal', 'vertical']);
+    expect(keys(baseline)).toEqual(['asOf', 'current', 'horizontal', 'standard', 'vertical']);
     expect(keys(baseline.current!)).toEqual(['categoryId', 'categoryName', 'levelId', 'levelName', 'startDate']);
     expect(keys(baseline.vertical[0]!)).toEqual(['displayOrder', 'isCurrent', 'levelId', 'levelName']);
     expect(keys(baseline.horizontal[0]!)).toEqual([
@@ -205,8 +257,22 @@ describe('AC-QL-08 ESS：固定投影（不走对象字段权限，不含各级�
       'targetLevelId',
       'targetLevelName',
     ]);
+    expect(keys(baseline.standard!)).toEqual(['levels', 'name', 'standardId']);
+    const level = baseline.standard!.levels.find((l) => l.targets.length)!;
+    expect(keys(level)).toEqual(['description', 'displayOrder', 'isCurrent', 'levelId', 'levelName', 'targets']);
+    expect(keys(level.targets[0]!)).toEqual(['abilities', 'targetId', 'targetName', 'targetValue', 'weight']);
+    expect(keys(level.targets[0]!.abilities[0]!)).toEqual(['content', 'targetValue', 'weight']);
+    // 他类别的标准、配置内部字段（来源 / 锁定 / 修订号 / 负责人）不出现在卡片里
     const text = JSON.stringify(baseline);
-    for (const hidden of ['cells', 'abilities', 'details', 'description', 'content', '本类二级能力']) {
+    for (const hidden of [
+      '他类二级能力',
+      '他类二级描述',
+      'sourceTargetId',
+      'targetGradeId',
+      'locked',
+      'revision',
+      'ownerId',
+    ]) {
       expect(text, hidden).not.toContain(hidden);
     }
   });
