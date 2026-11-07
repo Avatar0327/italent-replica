@@ -1034,7 +1034,6 @@ export const GRAPH: Graph = {
     '#entriesOf',
     '#exitOfActivation',
     '#flowFrom',
-    'apps/api/src/modules/approval/store.ts#loadTasks',
   ],
   'apps/api/src/modules/approval/detail-path.ts#decisionExits': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/detail-path.ts#entriesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
