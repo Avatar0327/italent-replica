@@ -53,3 +53,6 @@
 .exit-termination-options .ant-form-item {
   margin-bottom: 8px;
 }
+.exit-import {
+  width: 100%;
+}
