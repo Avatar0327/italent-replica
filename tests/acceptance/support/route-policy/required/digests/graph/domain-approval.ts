@@ -208,7 +208,7 @@ export const GRAPH: Graph = {
   ],
   'packages/domain/src/approval/recusal.ts#recusalFacts': ['#lower'],
   'packages/domain/src/approval/routes.ts#autoApproveExit': ['#exitGroupOf', '#isBusinessExit', '#rawExits'],
-  'packages/domain/src/approval/routes.ts#branchViolation': ['#ROUTE_END', '#conditionReason'],
+  'packages/domain/src/approval/routes.ts#branchViolation': ['#MAX_ROUTE_PRIORITY', '#ROUTE_END', '#conditionReason'],
   'packages/domain/src/approval/routes.ts#conditionReason': [
     'packages/domain/src/approval/conditions.ts#conditionViolations',
     '#MAX_ROUTE_CONDITION_ITEMS',

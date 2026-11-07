@@ -688,7 +688,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/context.ts#schedulerAwareContext': ['apps/api/src/system-actor.ts#SYSTEM_USER_ID'],
   'apps/api/src/modules/approval/countersign.ts#HELD': ['apps/api/src/modules/approval/task-state.ts#OPEN_STATUSES'],
   'apps/api/src/modules/approval/countersign.ts#activationVotes': [
-    '#votingTasks',
+    '#tally',
     'packages/domain/src/approval/countersign.ts#countersignVote',
   ],
   'apps/api/src/modules/approval/countersign.ts#countersignFlowed': [
@@ -738,6 +738,13 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/policies.ts#countersignEndedReason',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'apps/api/src/modules/approval/countersign.ts#settledOutcome': [
+    '#RESTORE_ORIGINS',
+    '#tally',
+    'packages/domain/src/approval/countersign.ts#countersignOutcome',
+    'packages/domain/src/approval/countersign.ts#countersignVote',
+  ],
+  'apps/api/src/modules/approval/countersign.ts#tally': ['#votingTasks'],
   'apps/api/src/modules/approval/countersign.ts#votingTasks': [
     'apps/api/src/modules/approval/rules.ts#votesInTransition',
     'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
@@ -1022,7 +1029,22 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
   ],
-  'apps/api/src/modules/approval/detail-path.ts#activatedExits': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/detail-path.ts#activatedExits': [
+    '#decisionExits',
+    '#entriesOf',
+    '#exitOfActivation',
+    '#flowFrom',
+    'apps/api/src/modules/approval/store.ts#loadTasks',
+  ],
+  'apps/api/src/modules/approval/detail-path.ts#decisionExits': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/detail-path.ts#entriesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
+  'apps/api/src/modules/approval/detail-path.ts#exitOfActivation': [
+    'apps/api/src/modules/approval/countersign.ts#settledOutcome',
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
+    'packages/domain/src/approval/countersign.ts#exitRulesOf',
+    'packages/domain/src/approval/types.ts#isCountersign',
+    'packages/domain/src/approval/types.ts#nodeExits',
+  ],
   'apps/api/src/modules/approval/detail-path.ts#exitsView': ['packages/domain/src/approval/types.ts#EXIT_LABELS'],
   'apps/api/src/modules/approval/detail-path.ts#loadPathFacts': ['#activatedExits', '#pendingWalk'],
   'apps/api/src/modules/approval/detail-path.ts#pendingWalk': [
