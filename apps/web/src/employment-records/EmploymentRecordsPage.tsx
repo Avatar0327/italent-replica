@@ -38,7 +38,9 @@ function useAllowed(): { allowed: Allowed; department: boolean } {
         ? person.field('email').visible
         : field === 'departmentId'
           ? department
-          : employee.field(field).visible,
+          : field === 'isCurrent'
+            ? record.field(field).visible
+            : employee.field(field).visible,
   };
 }
 
@@ -169,13 +171,15 @@ function QuickFilters({ filters, allowed, apply }: { filters: Filters; allowed: 
           style={{ minWidth: 100 }}
           options={[{ value: 'effective', label: m.effective }]}
         />
-        <Select
-          aria-label={m.current}
-          value={filters.current ?? 'all'}
-          onChange={(value: string) => set({ current: value })}
-          style={{ minWidth: 100 }}
-          options={yesNo}
-        />
+        {allowed('isCurrent') && (
+          <Select
+            aria-label={m.current}
+            value={filters.current ?? 'all'}
+            onChange={(value: string) => set({ current: value })}
+            style={{ minWidth: 100 }}
+            options={yesNo}
+          />
+        )}
         <Button
           type="text"
           onClick={() => {

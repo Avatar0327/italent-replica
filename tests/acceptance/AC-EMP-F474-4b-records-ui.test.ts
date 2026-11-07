@@ -20,7 +20,12 @@ const page = async () =>
   (await import(resolve('apps/web/src/employment-records/EmploymentRecordsPage.tsx'))).EmploymentRecordsPage;
 const calls = () => (globalThis.fetch as Mock).mock.calls.map(([url]) => new URL(String(url), 'http://localhost'));
 const listCalls = () => calls().filter((url) => url.pathname === LIST);
-const withoutField = (...hidden: string[]) => allFields.filter((field) => !hidden.includes(field));
+/** 任职记录字段（isCurrent / serviceType / departmentId）要显式给查看权，否则按字段权隐藏对应列与筛选。 */
+const recordFields = [...allFields, 'isCurrent', 'serviceType', 'departmentId'];
+const withoutField = (...hidden: string[]) => recordFields.filter((field) => !hidden.includes(field));
+/** 后端按字段权裁剪后的行：不可见的键整体缺席（形状同后端响应，只删键不造值）。 */
+const rowWithout = (...keys: string[]) =>
+  Object.fromEntries(Object.entries(RECORD_ROW).filter(([key]) => !keys.includes(key)));
 
 describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
   it('入口登记在 调动管理（任职管理）应用下，按任职记录对象的查看权出现', () => {
@@ -34,7 +39,7 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
   });
 
   it('列序与宽度：复选 / 姓名 / 工号 / 任职类型 / 任职机构 / 一二三级组织 / 任职部门 / 操作', async () => {
-    await ui.render(h(await page()), '/', undefined, { [LIST]: { items: [RECORD_ROW], total: 1 } });
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [RECORD_ROW], total: 1 } });
     expect(ui.headers()).toEqual([
       '',
       '姓名',
@@ -52,7 +57,7 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
   });
 
   it('默认筛选：任职中 + 生效 + 当前生效 = 是，每页 30 条', async () => {
-    await ui.render(h(await page()), '/', undefined, { [LIST]: { items: [RECORD_ROW], total: 1 } });
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [RECORD_ROW], total: 1 } });
     // 对象权限读到之前字段不可见，筛选先不带；读到后按字段权补上，以最后一次请求为准
     const query = listCalls().at(-1)!.searchParams;
     expect(Object.fromEntries(query)).toEqual({
@@ -65,7 +70,7 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
   });
 
   it('行取值：主职、机构全称、各级组织与部门；缺级显示占位', async () => {
-    await ui.render(h(await page()), '/', undefined, { [LIST]: { items: [RECORD_ROW], total: 1 } });
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [RECORD_ROW], total: 1 } });
     const cells = Array.from(ui.host.querySelectorAll('tbody tr:not([aria-hidden]) td')).map((c) => c.textContent);
     expect(cells.slice(1, 9)).toEqual([
       '合成员工甲',
@@ -93,12 +98,22 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
     expect(query).not.toHaveProperty('departmentId');
   });
 
+  it('是否当前生效字段不可见：无该筛选，请求不带 current，也不带默认值（审查 R1 P2-1）', async () => {
+    await ui.render(h(await page()), '/', withoutField('isCurrent'), {
+      [LIST]: { items: [rowWithout('isCurrent')], total: 1 },
+    });
+    expect(ui.host.querySelector('[aria-label="是否当前生效"]')).toBeNull();
+    const query = Object.fromEntries(listCalls().at(-1)!.searchParams);
+    expect(query).not.toHaveProperty('current');
+    expect(query).toMatchObject({ employeeStatus: 'working', approvalState: 'effective' });
+  });
+
   it('无数据范围时给出无权限空态；“编辑任职”打开员工档案的任职记录页签', async () => {
-    await ui.render(h(await page()), '/', undefined, { [LIST]: { items: [], total: 0, hasDataPermission: false } });
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [], total: 0, hasDataPermission: false } });
     expect(ui.host.textContent).toContain('当前没有可查看的数据范围');
     await ui.close();
     ui = uiHarness();
-    await ui.render(h(await page()), '/', undefined, { [LIST]: { items: [RECORD_ROW], total: 1 } });
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [RECORD_ROW], total: 1 } });
     const edit = Array.from(ui.host.querySelectorAll('button')).find((b) => b.textContent === '编辑任职')!;
     await act(async () => edit.click());
     await act(async () => {

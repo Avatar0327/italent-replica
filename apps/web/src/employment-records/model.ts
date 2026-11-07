@@ -40,7 +40,7 @@ export interface Filters {
 export const defaultFilters: Filters = { employeeStatus: 'working', approvalState: 'effective', current: 'yes' };
 
 /** 筛选键对应的可见字段；对应字段不可见时不能带该筛选（后端会 403「筛选字段不可查看」）。 */
-export type FilterField = 'name' | 'email' | 'employeeStatus' | 'departmentId';
+export type FilterField = 'name' | 'email' | 'employeeStatus' | 'departmentId' | 'isCurrent';
 export type Allowed = (field: FilterField | 'code') => boolean;
 
 export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
@@ -52,6 +52,8 @@ export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
     delete next.departmentId;
     delete next.includeChildren;
   }
+  // 是否当前生效不可见时连默认值一起丢掉：后端对不可见字段的 current 筛选一律 403（审查 R1 P2-1）
+  if (!allowed('isCurrent')) delete next.current;
   return next;
 }
 

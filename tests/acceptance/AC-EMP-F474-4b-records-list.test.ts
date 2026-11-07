@@ -208,6 +208,19 @@ describe('AC-EMP F-474-4b #16 全租户任职记录列表', () => {
     expect((await noStatus('GET', `${LIST}?employeeStatus=working`)).status).toBe(403);
   });
 
+  it('是否当前生效不可见：current=true / false 筛选一律 403，不带 current 仍读到裁剪后的结果（审查 R1 P2-1）', async () => {
+    const { w } = await fixture('emp4b-hide-current');
+    const noCurrent = w.restricted(allow, { hidden: { [RECORD_OBJECT]: ['isCurrent'] } });
+    for (const value of ['true', 'false'])
+      expect((await noCurrent('GET', `${LIST}?page=1&pageSize=50&current=${value}`)).status, value).toBe(403);
+    const page = await list(noCurrent);
+    expect(page.total).toBe(5 + BASELINE_RECORDS);
+    expect(page.items.length).toBeGreaterThan(0);
+    for (const item of page.items) expect(item).not.toHaveProperty('isCurrent');
+    // 对照：字段可见时 current 筛选照常可用
+    expect((await list(w.call, '&current=true')).items.every((item) => item.isCurrent === true)).toBe(true);
+  });
+
   it('没有任职记录对象的查看权：403；本接口只读，没有写入口', async () => {
     const { w } = await fixture('emp4b-deny');
     const denied = w.restricted((request) => !(request.resource === RECORD_OBJECT && request.action === 'object.view'));

@@ -4,6 +4,7 @@
  * - 数据范围：employmentVisibilitySql（DEC-177）在 LIMIT / OFFSET 之前过滤，total 与本页同一份物化候选集；
  * - 字段权：任职字段按任职记录对象裁剪；姓名 / 工号按人员对象；机构类列（任职机构、一至三级组织、任职部门）
  *   随任职记录的 departmentId 字段权；用不可见字段筛选一律 403，不让筛选成为探针；
+ * - isCurrent 同样按任职记录字段权裁剪，用 current 筛选也须可见；
  * - 只列时间轴上的主职记录（兼职 / 借调 / 外派走兼职接口，不在本列表）；所有任职记录行都是已生效的
  *   （审批中的业务在 employment_business_objects / employment_state_events，不进 employment_records）。
  */
@@ -124,7 +125,9 @@ function requireViewableFilters(filter: RecordListFilter, show: Viewable): void 
     (!filter.name || show.employee('name')) &&
     (!filter.email || show.person('email')) &&
     (filter.employeeStatus === undefined || show.employee('employeeStatus')) &&
-    (!filter.departmentId || show.employment('departmentId'));
+    (!filter.departmentId || show.employment('departmentId')) &&
+    // 是否当前生效是任职记录字段：隐藏后仍能用 current 筛选比对行集合恢复字段值，同其它不可见字段一律 403
+    (filter.current === undefined || show.employment('isCurrent'));
   if (!allowed) throw new AppError('FORBIDDEN', '筛选字段不可查看');
 }
 
