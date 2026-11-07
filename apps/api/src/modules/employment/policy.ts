@@ -2046,6 +2046,20 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     write: employmentCommand(['requireEmployeeInScope', 'assertRevision']),
     ...byId,
   }),
+  // ---- employment/record-list.ts：F-474-4b #16 全租户任职记录列表（DEC-776，只读）----------------------------------
+  // readPageContext(list)；筛选 name / email / employeeStatus / serviceType / departmentId(+includeChildren) /
+  // approvalState / current 严格校验 400，用不可见字段筛选 403「筛选字段不可查看」（employment.viewableFilters）；
+  // 分页前 employmentVisibilitySql（DEC-177）过滤，total 与本页同一份候选集；任职字段按任职记录、姓名 / 工号按人员
+  // 对象可见字段裁剪（无权缺席），机构类列随 departmentId 字段权。授权沿用对象 TenantBase.EmploymentRecord 的查看权，
+  // 不新增对象 / 字段编码
+  'GET /records': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('列表无按钮'),
+    guards: ['employment.viewableFilters'],
+    scope: listScope('employment.visibility'),
+    fields: RESPONSE,
+  }),
   // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------
   // 视图：view ∈ in_progress / completed / all / cancellations（缺失或不合法 400）；筛选 departmentId（含下级，可 includeChildren=false）/
   // keyword / lastWorkDateFrom / lastWorkDateTo / exitTypeCode / reasonCode / whereaboutsCode / status（仅离职中 / 全部）/

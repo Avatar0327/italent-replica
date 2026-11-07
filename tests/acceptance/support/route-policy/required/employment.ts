@@ -18,6 +18,7 @@ const TRF = `${SRC}/transfer/routes.ts`;
 const MGR = `${SRC}/transfer/manager-routes.ts`;
 const LNK = `${SRC}/transfer/linkage/routes.ts`;
 const EXIT = `${SRC}/employment/exit-routes.ts`;
+const RECORD_LIST = `${SRC}/employment/record-list.ts`;
 const RETIRE = `${SRC}/employment/retirement-routes.ts`;
 const RETIRE_VIEWS = `${SRC}/employment/retirement-view-routes.ts`;
 const ENTRY = `${SRC}/employment/entry-routes.ts`;
@@ -2089,6 +2090,18 @@ export const EMPLOYMENT: RequiredTable = {
       'guard:employment.noVisibleRecords',
       [],
       [at(EMP, 'GET', '/employees/:id/records', "if (!visible.length) throw new AppError('NOT_FOUND', '员工不存在')")],
+    ),
+  ],
+  // ---- F-474-4b #16 全租户任职记录列表（record-list.ts registerRecordList，只读）-------------------------------------
+  'GET /api/tenant/employment/records': [
+    recordView(at(RECORD_LIST, 'GET', '/records', "const ctx = await readPageContext(c, deps, 'list')")),
+    ob(
+      'guard:employment.viewableFilters',
+      [],
+      [
+        at(RECORD_LIST, 'GET', '/records', 'requireViewableFilters(filter, show)'),
+        fn(RECORD_LIST, 'requireViewableFilters', "throw new AppError('FORBIDDEN', '筛选字段不可查看')"),
+      ],
     ),
   ],
   'POST /api/tenant/employment/employees/:id/preview': [
