@@ -80,7 +80,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
     expect(await session.getEmployee(employee.id)).toMatchObject({ id: employee.id, status: 'employed' });
   });
 
-  it('AC-EMP-07 实习转正保留 StaffID 与继承字段，雇佣关系自动转为内部员工', async () => {
+  it('AC-EMP-07 实习转正新开任职周期（新 StaffID、入职日 = 转正日、实习开始日另存），继承字段，雇佣关系自动转为内部员工', async () => {
     const session = await employmentSession(testDb().db, 'empcore07');
     const employee = await session.employee('实习合成员工');
     const hire = await session.business(
@@ -98,8 +98,10 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
       { kind: 'intern_regularization', mode: 'direct', effectiveDate: '2026-09-01' },
       hire.employeeRevision,
     );
-    expect(regularized.record!.staffId).toBe(hire.record!.staffId);
-    expect(regularized.record!.entryDate).toBe('2026-08-01');
+    // DEC-797：转正把档案入职日重置为转正日并新开周期（新 StaffID），实习开始日另存，不再沿用实习周期
+    expect(regularized.record!.staffId).not.toBe(hire.record!.staffId);
+    expect(regularized.record!.entryDate).toBe('2026-09-01');
+    expect(regularized.record).toMatchObject({ traineeStartDate: '2026-08-01' });
     expect(regularized.record!.fields).toMatchObject({
       employType: 'internal',
       place: '实习地点',

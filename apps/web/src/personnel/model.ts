@@ -5,12 +5,16 @@ import { m } from './messages.js';
 export type Row = { id: string; [field: string]: unknown };
 export type Filters = { name?: string; code?: string; entryDate?: string; employeeStatus?: string };
 /**
- * 原站默认已选：员工姓名、员工ID、（机构ID、组织全称、雇佣关系、职位）、首次参加工作日期、性别、入职日期……
- * 括号内字段列表接口暂未返回（见后端缺口），入职日期之后的复刻字段排序未与原站逐项核对。
+ * 原站默认已选：员工姓名、员工ID、机构ID、组织全称、雇佣关系、职位、首次参加工作日期、性别、入职日期……
+ * 机构ID 起四列由列表接口按现任主职返回（F-474-4a）；入职日期之后的复刻字段排序未与原站逐项核对。
  */
 export const defaultColumns = [
   'name',
   'code',
+  'orgCode',
+  'orgFullName',
+  'employType',
+  'positionName',
   'workDate',
   'gender',
   'entryDate',
@@ -117,6 +121,7 @@ const dateFields = new Set([
 ]);
 export function fieldValue(key: string, value: unknown, format?: 'long') {
   if (key === 'employeeStatus' && typeof value === 'number') return m.statuses[value] ?? displayValue(value);
+  if (key === 'employType' && typeof value === 'string') return m.employTypes[value] ?? displayValue(value);
   if (format === 'long' && dateFields.has(key) && typeof value === 'string') return longDate(value);
   return displayValue(value);
 }

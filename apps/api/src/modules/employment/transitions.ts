@@ -444,7 +444,9 @@ async function deleteEmploymentBusiness(
       createdAt: ctx.now.toISOString(),
     });
     if (record) {
-      const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
+      // DEC-797：实习转正也开新周期，删除规则同入职类。
+      const opensCycle =
+        NEW_CYCLE_KINDS.includes(business.payload.kind) || business.payload.kind === 'intern_regularization';
       const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
       if (!isExitKind(record.kind)) await assertDeletionNotPaused(tx, ctx, record, point);
       if (point && exitCancel)

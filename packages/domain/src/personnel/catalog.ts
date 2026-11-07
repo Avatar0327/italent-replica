@@ -31,6 +31,11 @@ export const EMPLOYEE_ATTRIBUTE_FIELDS = [
   // F-022：当前生效主职版本的人员状态 / 入职状态（只读，可筛选排序）
   'employeeStatus',
   'entryStatus',
+  // F-474-4a：员工列表补列（原站机构ID、组织全称、雇佣关系、职位）；现任主职的只读投影，无档案字段
+  'orgCode',
+  'orgFullName',
+  'employType',
+  'positionName',
 ];
 export const SUBSET_EMPLOYEE_ATTRIBUTES: Readonly<Record<string, string>> = {
   code: 'code',

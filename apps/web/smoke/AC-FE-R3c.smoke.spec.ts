@@ -22,7 +22,61 @@ const fields = [
   'steps',
   'permissions',
   'cells',
+  'xFieldId',
+  'yFieldId',
+  'zFieldId',
+  'xDraggable',
+  'yDraggable',
+  'placementSource',
+  'greenRateReference',
+  'positionFields',
+  'axisLevels',
+  'ratioGroups',
 ];
+/** 与 apps/api/src/modules/talent-review/matrix-view.ts 的 MatrixView 同形；格子按 xLevelNo / yLevelNo 给出。 */
+function matrixItem(cells: { cellNo: number; xLevelNo: number; yLevelNo: number; name: string }[]) {
+  return {
+    id,
+    revision: 1,
+    code: 'DEMO_MATRIX',
+    name: '合成年度盘点',
+    xFieldId: id,
+    yFieldId: id,
+    zFieldId: null,
+    xDraggable: true,
+    yDraggable: true,
+    placementSource: 'after_else_before',
+    greenRateReference: false,
+    preset: false,
+    sortNo: 1,
+    enabled: true,
+    createdBy: id,
+    createdAt: '2026-10-01T02:00:00.000Z',
+    updatedBy: id,
+    updatedAt: '2026-10-01T02:00:00.000Z',
+    positionFields: [
+      { role: 'before', fieldId: id },
+      { role: 'after', fieldId: id },
+    ],
+    axisLevels: [],
+    cells: cells.map((cell) => ({
+      ...cell,
+      color: '#dfeeff',
+      textColor: '#1f2329',
+      exportOrder: cell.cellNo,
+      countsGreen: false,
+    })),
+    ratioGroups: [],
+  };
+}
+async function routeMatrix(page: Page, cells: Parameters<typeof matrixItem>[0]) {
+  const item = matrixItem(cells);
+  await page.route(/\/talent-review\/matrices(\/|\?|$)/, (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).pathname.endsWith(id) ? item : { items: [item], hasDataPermission: true },
+    }),
+  );
+}
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/permission/me/objects/TalentReview.*', (route) =>
@@ -114,7 +168,36 @@ test('AC-FE-R3c-01 切换演示身份，项目列表、八页签详情与配置�
   expect(errors).toEqual([]);
 });
 
-for (const section of ['盘点模板', '九宫格设置', '盘点校准会']) {
+test('AC-FE-R3c-02 九宫格设置 设置页渲染无错误', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  await routeMatrix(page, [{ cellNo: 1, xLevelNo: 1, yLevelNo: 1, name: '合成格' }]);
+  await page.goto('/talent-review');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
+  await page.getByRole('tab', { name: '九宫格设置', exact: true }).click();
+  const settings = page.locator('.matrix-settings');
+  await expect(settings.getByRole('tab', { name: '九宫格详细设置', exact: true })).toBeVisible();
+  await expect(settings.locator('.ant-radio-button-wrapper-checked')).toHaveText('合成年度盘点');
+  await expect(settings.locator('.matrix-section h3')).toHaveText([
+    '基础设置',
+    '九宫格展示',
+    '比例控制及说明',
+    '导出设置',
+  ]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /保\s*存/ })).toHaveCount(0);
+  await settings.getByRole('tab', { name: '九宫格通用设置', exact: true }).click();
+  await expect(settings.locator('.matrix-general')).toContainText('姓名默认宽度设置');
+  expect(errors).toEqual([]);
+});
+
+for (const section of ['盘点模板', '盘点校准会']) {
   test(`AC-FE-R3c-02 ${section} 列表与详情渲染无错误`, async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
@@ -247,10 +330,7 @@ for (const count of [16, 31]) {
   });
 }
 
-for (const [collection, label] of [
-  ['templates', '盘点模板'],
-  ['matrices', '九宫格设置'],
-] as const) {
+for (const [collection, label] of [['templates', '盘点模板']] as const) {
   test(`AC-FE-R3c-08 ${label} 刷新缩页使用同一有效页码`, async ({ page }) => {
     let items = Array.from({ length: 16 }, (_, i) => ({ id: `item-${i}`, name: `分页记录${i + 1}` }));
     await page.route(`**/talent-review/${collection}?*`, (route) => route.fulfill({ json: { items } }));
@@ -283,17 +363,14 @@ for (const [xCount, yCount] of [
       yLevelNo: Math.floor(i / xCount) + 1,
       name: `X${(i % xCount) + 1}Y${Math.floor(i / xCount) + 1}`,
     })).reverse();
-    await page.route(`**/talent-review/matrices/${id}`, (route) =>
-      route.fulfill({ json: { id, name: '合成年度盘点', cells } }),
-    );
+    await routeMatrix(page, cells);
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
     await page.getByRole('button', { name: '应用导航' }).click();
     await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
     await page.getByRole('tab', { name: '九宫格设置', exact: true }).click();
-    await page.getByRole('button', { name: '合成年度盘点', exact: true }).click();
-    const grid = page.getByRole('dialog').locator('.review-grid');
+    const grid = page.locator('.matrix-settings .review-grid');
     await expect(grid.locator('.review-cell')).toHaveCount(xCount * yCount);
     const boxes = await grid.locator('.review-cell').evaluateAll((nodes) =>
       nodes.map((node) => {
