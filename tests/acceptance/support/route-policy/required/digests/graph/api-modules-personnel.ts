@@ -117,6 +117,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/personnel/employee-read.ts#employeeJoins': [
+    'apps/api/src/modules/employment/intern-entry.ts#countsAsEntryOnce',
     '#jobJoin',
     'apps/api/src/modules/personnel/sorting.ts#sortRankJoins',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',

@@ -5,6 +5,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 import { avatarSql } from '../avatar/references.js';
+import { countsAsEntryOnce } from '../employment/intern-entry.js';
 
 /** 人员 / 任职 / 职务属性的“按日取值”唯一入口：personnel 列表固定取租户今天，时点花名册（BE-12a）传 asOf。 */
 export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.now, ctx.timezone)): SQL {
@@ -21,10 +22,11 @@ export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.
         ORDER BY p.version_no DESC LIMIT 1) p ON true
       WHERE t.tenant_id=e.tenant_id AND t.employee_id=e.id AND t.start_date<=${asOf}::date
       ORDER BY t.start_date DESC,t.sort_order DESC LIMIT 1) r ON true
-    LEFT JOIN LATERAL (SELECT min(entry_date) AS first_entry_date, max(entry_date) AS latest_entry_date
+    LEFT JOIN LATERAL (SELECT min(c.entry_date) FILTER (WHERE ${countsAsEntryOnce('c', asOf)}) AS first_entry_date,
+        max(c.entry_date) AS latest_entry_date
       FROM employment_records c JOIN employment_timeline ct ON ct.tenant_id=c.tenant_id AND ct.record_id=c.id
       WHERE c.tenant_id=e.tenant_id AND c.employee_id=e.id
-      -- DEC-797：实习转正重置入职日（开新周期）；最近入职日期随之，首次入职日期仍是实习开始日
+      -- DEC-797：实习转正重置入职日（开新周期）；最近入职日期随之；DEC-830①：已转正者首次入职日期也取转正日（其实习开始记录不参与，未转正者不变）
       AND c.kind IN ('hire','rehire','retire_rehire','intern_regularization')
       AND c.entry_date<=${asOf}::date) cycles ON true
     ${jobJoin('job_level_versions', 'jl', 'level_id', asOf)}
