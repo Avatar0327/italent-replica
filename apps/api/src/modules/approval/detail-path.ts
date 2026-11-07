@@ -77,7 +77,7 @@ async function decisionExits(tx: Tx, tenantId: string, instance: InstanceRow): P
 /**
  * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点取这一次激活里
  * 最后一张未被撤回的已办任务的出口。撤回会让同一次激活重新办理，所以不信激活台账里那条可能已作废的流转行，
- * 只在任务上没有出口（本版本上线前办理的任务）时才退回台账的流转行。
+ * 只在任务上没有出口（本版本上线前办理的任务）且这次激活没被撤回过时才退回台账的流转行。
  */
 function exitOfActivation(
   node: ApprovalNode | undefined,
@@ -92,7 +92,10 @@ function exitOfActivation(
   const last = withoutRetrieved(activation)
     .filter((task) => decided.has(task.id))
     .at(-1);
-  return last ? decided.get(last.id)! : flowFallback;
+  if (last) return decided.get(last.id)!;
+  // 撤回复用原激活：原同意连同它在台账里的流转行一起作废，重开后没办完（或改为驳回）就是没有出口，不能回落到旧流转行
+  const retrieved = activation.some((task) => task.origin === 'retrieve' && task.parentTaskId !== null);
+  return retrieved ? null : flowFallback;
 }
 
 /** 台账里从这次激活出去的最近一条流转（兼容本版本上线前在途、没有激活行的节点：来路激活为空）。 */
