@@ -537,9 +537,8 @@ test('AC-TR F-475A 自检：详情读取失败可返回并再次进入', async (
   await expect(page.locator('.review-project-detail h1')).toHaveText('合成年度盘点');
 });
 
-test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，补丁带版本与命令 ID', async ({ page }, testInfo) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+/** 计算规则冒烟夹具：权限快照与列表 / 详情 / PATCH 回执，返回收到的写请求。 */
+async function routeCalcRules(page: Page) {
   // 计算规则对象另给可见字段（含应用说明），与 calc-rule-view 的列一致。
   const ruleFields = ['id', 'revision', 'name', 'enabled', 'description', 'items', 'createdBy', 'updatedAt'];
   await page.route('**/permission/me/objects/TalentReview.CalcRule', (route) =>
@@ -598,6 +597,13 @@ test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，�
       json: url.pathname.endsWith(id) ? rule : { items: [rule], hasDataPermission: true, page: 1, pageSize: 200 },
     });
   });
+  return sent;
+}
+
+test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，补丁带版本与命令 ID', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const sent = await routeCalcRules(page);
   await page.goto('/talent-review');
   await page.getByLabel('切换演示身份').selectOption(user);
   await expect(page).toHaveURL(/\/staff$/);
