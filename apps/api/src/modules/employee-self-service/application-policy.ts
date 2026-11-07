@@ -10,6 +10,7 @@ import {
   noScope,
   noFields,
   BAD_REQUEST,
+  fixed,
 } from '../../route-policy/presets.js';
 
 const capability = (operation: 'create' | 'update') =>
@@ -42,6 +43,13 @@ export const SELF_APPLICATION_POLICIES = {
   'GET /exit-requests/:id': requestPolicy('Exit.Self', false, true),
   'POST /exit-requests': requestPolicy('Exit.Self', true),
   'PATCH /exit-requests/:id': requestPolicy('Exit.Self', true, true),
+  // F-479 §3.3 本人载体下载：本人单 + attachmentRefs 查看权（requireAttachmentRead）；文件不在本单引用里 / 非 bound 一律 404
+  'GET /exit-requests/:id/attachments/:fileId/content': self({
+    button: button('Exit.Self', 'detail'),
+    guards: ['selfService.application'],
+    fields: fixed(['<binary>'], '附件字节：Content-Type 嗅探值、nosniff、sandbox CSP、no-store'),
+    invalidId: BAD_REQUEST,
+  }),
   'POST /exit-requests/:id/submit': requestPolicy('Exit.Self', true, true),
   'GET /part-time-requests/form': requestPolicy('PartTime.Self', false, false, true),
   'GET /part-time-requests/references/:code': requestPolicy('PartTime.Self'),

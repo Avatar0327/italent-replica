@@ -200,7 +200,7 @@ describe('AC-PRM-FW-02 P2-3 内部“或”备选绑定：数据态备选不能�
     os.filter((o) => o.inner?.role === 'or').map((o) => [key, o] as const),
   );
 
-  it('现表的内部“或”义务：审批 canOpen 管理员按钮 6 条 + IDP 执行人计划查看权 9 条，全部登记', () => {
+  it('现表的内部“或”义务：审批 canOpen 管理员按钮 8 条（F-479 S2 载体下载路由 +2） + IDP 执行人计划查看权 9 条，全部登记', () => {
     bindingChecks({ table: REQUIRED, routes: manifest.declared, contract: frozen })
       .find((check) => check.id === 'orCounts')!
       .verify();

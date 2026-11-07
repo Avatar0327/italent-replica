@@ -546,10 +546,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     'apps/api/src/modules/approval/context.ts#rowsOf',
     'apps/api/src/modules/approval/dashboard-date.ts#employmentDashboardDate',
+    'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-application.ts#parseExitPatch',
     'apps/api/src/modules/employment/exit-application.ts#updateExitFields',
     'apps/api/src/modules/employment/exit-gate.ts#businessKind',
+    'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockExitOrganizationResources',
     'apps/api/src/modules/employment/exit-void-applications.ts#lockOtherBusinessHeads',
     'apps/api/src/modules/employment/read-model.ts#findCurrentRecord',
@@ -1056,6 +1058,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/disclosure.ts#namedForm': [
     'apps/api/src/modules/approval/reference-names.ts#referenceNames',
+    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
     'apps/api/src/modules/employment/employment-types.ts#employmentTypeNames',
   ],
   'apps/api/src/modules/approval/disclosure.ts#readDetail': [
@@ -1671,6 +1674,13 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#approvalError',
     '#LOCK_CONFLICTS',
   ],
+  'apps/api/src/modules/approval/routes.ts#detailViewOf': [
+    'apps/api/src/modules/approval/disclosure.ts#detailView',
+    'apps/api/src/modules/approval/disclosure.ts#readDetail',
+    '#detailViewable',
+    '#readCtx',
+    '#viewerOf',
+  ],
   'apps/api/src/modules/approval/routes.ts#detailViewable': [
     'apps/api/src/modules/approval/foreign-fields.ts#foreignVisibility',
     'apps/api/src/modules/approval/foreign-fields.ts#viewableWithForeign',
@@ -1767,13 +1777,15 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#ADD_SIGN_TYPES',
     'packages/domain/src/approval/types.ts#MAX_ADD_SIGNERS',
   ],
+  'apps/api/src/modules/approval/routes.ts#respondAttachment': [
+    '#detailViewOf',
+    '#uuidParam',
+    'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
+    'apps/api/src/modules/attachments/carrier-read.ts#respondAttachment',
+  ],
   'apps/api/src/modules/approval/routes.ts#respondDetail': [
-    'apps/api/src/modules/approval/disclosure.ts#detailView',
     'apps/api/src/modules/approval/disclosure.ts#namedForm',
-    'apps/api/src/modules/approval/disclosure.ts#readDetail',
-    '#detailViewable',
-    '#readCtx',
-    '#viewerOf',
+    '#detailViewOf',
   ],
   'apps/api/src/modules/approval/routes.ts#respondHistory': [
     'apps/api/src/modules/approval/disclosure.ts#disclosedFields',

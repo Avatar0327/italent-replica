@@ -3,7 +3,7 @@
  * 业务写、审计、outbox 同事务，审计与 outbox 只含元数据，不含字节与 base64。
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { attachmentFiles as F, attachmentOutbox as O, and, eq, inArray, sql, type Tx } from '@italent/db';
+import { attachmentFiles as F, and, eq, inArray, sql, type Tx } from '@italent/db';
 import {
   ATTACHMENT_PURPOSES,
   attachmentExtension,
@@ -11,13 +11,15 @@ import {
   sanitizeAttachmentFilename,
   type AttachmentPurposeConfig,
 } from '@italent/domain';
-import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { SelfAccess } from '../employee-self-service/access.js';
 import { decodeImage, sniffImageType, validateImageMetadata } from '../talent/model-image-format.js';
 import { PgBlobStore } from './blob-store.js';
 import { attachmentNotFound } from './access.js';
+import { receipt, record, type FileRow } from './audit.js';
+
+export { receipt };
 
 export interface AttachmentContext extends TenantContext {
   readonly now: Date;
@@ -32,59 +34,12 @@ export interface RegisterInput {
   readonly sha256: string;
 }
 
-type FileRow = typeof F.$inferSelect;
 const HOUR = 3_600_000;
 const limitsOf = (config: AttachmentPurposeConfig) => ({
   maxBytes: config.maxBytes,
   label: '附件',
   limitText: `${config.maxBytes / 1024 / 1024}MiB`,
 });
-
-/** 回执：顶层 id / revision / kind（命令结果回查按这三个键取）；不含字节。 */
-export function receipt(row: FileRow) {
-  return {
-    kind: 'attachment_file' as const,
-    id: row.id,
-    revision: row.revision,
-    status: row.status,
-    purpose: row.purpose,
-    filename: row.filename,
-    contentType: row.contentType,
-    byteSize: row.byteSize,
-    sha256: row.sha256,
-    expiresAt: row.expiresAt?.toISOString() ?? null,
-    uploadedAt: row.uploadedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-const snapshot = (row: FileRow) => {
-  const { kind: _kind, ...rest } = receipt(row);
-  return rest;
-};
-
-async function record(tx: Tx, ctx: AttachmentContext, operation: string, before: FileRow | null, after: FileRow) {
-  const eventType = `attachment.file.${operation}`;
-  await recordAudit(tx, {
-    tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
-    action: eventType,
-    objectType: 'attachment_file',
-    objectId: after.id,
-    before: before ? snapshot(before) : null,
-    after: snapshot(after),
-    commandId: ctx.commandId,
-    occurredAt: ctx.now,
-  });
-  await tx.insert(O).values({
-    tenantId: ctx.tenantId,
-    fileId: after.id,
-    commandId: ctx.commandId,
-    eventType,
-    payload: snapshot(after),
-    createdAt: ctx.now,
-  });
-}
 
 /** 本人名下、尚未绑定的文件；锁行以串行化上传 / 删除。别人的、不存在的、跨租户的（RLS）一律同一个 404。 */
 async function ownFile(tx: Tx, self: SelfAccess, id: string, lock: boolean): Promise<FileRow> {

@@ -3798,8 +3798,12 @@ export const EMPLOYMENT: RequiredTable = {
       ],
     ),
   ],
+  // F-479 S2 HR 载体下载：与详情同一个取值（readExitDetail → readPageContext('detail')），再叠 attachmentRefs 字段权
+  'GET /api/tenant/employment/exits/:id/attachments/:fileId/content': [
+    recordView(at(EXIT, 'GET', '/exits/:id/attachments/:fileId/content', 'await readExitDetail(c)')),
+  ],
   'GET /api/tenant/employment/exits/:id': [
-    recordView(at(EXIT, 'GET', '/exits/:id', "const ctx = await readPageContext(c, deps, 'detail')")),
+    recordView(at(EXIT, 'GET', '/exits/:id', 'const { ctx, detail, show } = await readExitDetail(c)')),
     exitActionsIntervene(
       at(EXIT, 'GET', '/exits/:id', 'await exitActions(deps, ctx, [detail], { withHandle: false })'),
     ),

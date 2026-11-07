@@ -112,6 +112,7 @@ const LEAVE_ONLY_KEYS = [
   'employerName',
   'actualLeaveDate',
   'attachmentRefs',
+  'attachments',
 ] as const;
 
 function withoutLeaveOnly<T extends object>(value: T): Record<string, unknown> {
