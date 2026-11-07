@@ -18,6 +18,9 @@ const FIELD_OBJECT = 'TalentReview.Field';
 export function MatrixSettings() {
   return (
     <section className="matrix-settings">
+      <header className="page-heading">
+        <h1>{mx.title}</h1>
+      </header>
       <DecisionNote id="talent-review-matrices" />
       <Tabs
         items={[
