@@ -5,7 +5,7 @@
  * 接口夹具取 support/f474-records-row.ts（后端验收断言真实响应键集与它一致），列序 / 宽度 / 默认筛选手写自 codex-R1bd spec §2.4。
  */
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { PAGES } from '../../apps/web/src/foundation/routes.js';
 import { act, allFields, h, uiHarness } from './support/f474-ui.js';
 import { RECORD_ROW } from './support/f474-records-row.js';
@@ -139,6 +139,33 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
     );
     const active = document.querySelector('.ant-tabs-tab-active')?.textContent;
     expect(active).toBe('任职记录');
+  });
+
+  it('人员信息查看被拒（403）时，“编辑任职”仍打开档案并落在任职记录页签，内容照常读出（审查 R1 P2-3）', async () => {
+    const own = `/api/tenant/employment/employees/${RECORD_ROW.employeeId}/records`;
+    await ui.render(h(await page()), '/', [...recordFields, 'kind', 'effectiveDate'], {
+      [LIST]: { items: [RECORD_ROW], total: 1 },
+      [own]: { items: [RECORD_ROW], total: 1 },
+    });
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', async (raw: string) =>
+      new URL(raw, 'http://localhost').pathname === `/api/tenant/personnel/employees/${RECORD_ROW.employeeId}`
+        ? Response.json({ error: { code: 'FORBIDDEN', message: '无权查看人员信息' } }, { status: 403 })
+        : real(raw),
+    );
+    const edit = Array.from(ui.host.querySelectorAll('button')).find((b) => b.textContent === '编辑任职')!;
+    await act(async () => edit.click());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(document.querySelector('.ant-tabs-tab-active')?.textContent).toBe('任职记录');
+    expect(document.querySelector('.staff-records')?.textContent).toContain('调动');
+    // 人员信息页签按 403 处理：切过去是错误态，不是空白，也没有残留档案
+    const profile = Array.from(document.querySelectorAll<HTMLElement>('.ant-tabs-tab')).find(
+      (t) => t.textContent === '人员信息',
+    )!;
+    await act(async () => profile.click());
+    expect(document.querySelector('.ant-drawer .ant-tabs-tabpane-active')?.textContent).toContain('暂无访问权限');
   });
 
   it('筛选查询串：不限不发；部门含下级默认不发、取消才发 false；不可见字段的筛选被丢弃', async () => {

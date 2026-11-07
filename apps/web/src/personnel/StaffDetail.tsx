@@ -85,17 +85,35 @@ export function StaffDetail({
           </ReadPanel>
         </>
       }
-      tabs={
-        row
-          ? [
-              { key: 'profile', label: m.profile, children: <PersonnelProfile row={row} employeeId={employeeId} /> },
-              { key: 'records', label: m.records, children: <EmploymentRecords employeeId={employeeId} /> },
-              { key: 'part-time', label: partTime.profileTab, children: <EmployeePartTimes employeeId={employeeId} /> },
-            ]
-          : undefined
-      }
+      tabs={detailTabs(row, employeeId, result, initialTab !== undefined)}
     />
   );
+}
+
+/**
+ * 页签。带 initialTab 的入口（任职记录列表的“编辑任职”）按任职记录自身权限独立加载：人员档案读取 403 / 失败时仍挂载页签，
+ * 人员信息页签显示读取状态；不带 initialTab 的其它调用方仍是没读到档案就不渲染页签。
+ */
+function detailTabs(
+  row: Row | undefined,
+  employeeId: string,
+  result: { loading: boolean; error?: unknown; refresh(): void },
+  independent: boolean,
+) {
+  if (!row && !independent) return undefined;
+  return [
+    {
+      key: 'profile',
+      label: m.profile,
+      children: row ? (
+        <PersonnelProfile row={row} employeeId={employeeId} />
+      ) : (
+        <ReadPanel {...result}>{null}</ReadPanel>
+      ),
+    },
+    { key: 'records', label: m.records, children: <EmploymentRecords employeeId={employeeId} /> },
+    { key: 'part-time', label: partTime.profileTab, children: <EmployeePartTimes employeeId={employeeId} /> },
+  ];
 }
 
 /**
