@@ -865,7 +865,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/routes.ts#comment': ['da33c32f1754', 'fa363758b0fe'],
   'apps/api/src/modules/approval/routes.ts#decision': ['01bcf5f77420', 'b52ade2ba763'],
   'apps/api/src/modules/approval/routes.ts#decisionLedger': ['df9b3f4de936', 'e3b0c44298fc'],
-  'apps/api/src/modules/approval/routes.ts#detailViewOf': ['52cf4ab8b5a7', '801a0febab94'],
+  'apps/api/src/modules/approval/routes.ts#detailViewOf': ['765a4841665a', '801a0febab94'],
   'apps/api/src/modules/approval/routes.ts#detailViewable': ['21a1a8f9b204', '0baa90250ac3'],
   'apps/api/src/modules/approval/routes.ts#exitReschedule': ['d30e9476c2e3', 'd4c8d57c01ae'],
   'apps/api/src/modules/approval/routes.ts#fieldAccess': ['22beaba599ac', '75f0b1cd5aab'],

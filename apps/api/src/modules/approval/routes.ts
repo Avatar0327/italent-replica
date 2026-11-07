@@ -210,9 +210,9 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
 
 /**
  * 详情视图：与附件下载共用同一个取值函数（F-479）。path 只有详情接口下发，事实在这里按 withPath 取（同一事务、
- * 取自 readDetail 的 allTasks），不放进 readDetail（它还被别的模块的披露复用）；附件下载不需要，传 false 不多读。
+ * 取自 readDetail 的 allTasks），不放进 readDetail（它还被别的模块的披露复用）；附件下载不需要（默认 false），不多读。
  */
-async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, withPath: boolean) {
+async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string, withPath = false) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
   const { data, pathFacts } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
@@ -237,7 +237,7 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
 async function respondAttachment(c: C, deps: TenantRouteDeps) {
   const instanceId = uuidParam(c);
   const fileId = uuidParam(c, 'fileId');
-  const { ctx, view } = await detailViewOf(c, deps, instanceId, false);
+  const { ctx, view } = await detailViewOf(c, deps, instanceId);
   const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
   const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
     readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
