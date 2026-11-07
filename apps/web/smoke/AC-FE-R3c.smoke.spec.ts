@@ -221,7 +221,8 @@ for (const section of ['盘点模板', '盘点校准会']) {
       return;
     }
     // F-475 盘点B：模板点名称进入整页（R3cd spec §2.6），顶部三步导航，不弹窗。
-    await page.locator('.list-card tbody button').first().click();
+    // 点数据行里的名称（tbody 首个按钮是表格测量行里的齿轮）。
+    await page.locator('.list-card tbody .ant-table-row button').first().click();
     await expect(page.locator('.review-template-page')).toBeVisible();
     await expect(page.locator('.review-template-page .ant-steps-item')).toHaveCount(3);
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -609,7 +610,8 @@ test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，�
   await expect(page).toHaveURL(/\/staff$/);
   await page.getByRole('button', { name: '应用导航' }).click();
   await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
-  await expect(page.getByRole('tab')).toHaveText([
+  // 只核对模块顶层页签；盘点项目页内还有进行中 / 已结束两个视图页签。
+  await expect(page.locator('.talent-review-page > .ant-tabs').getByRole('tab')).toHaveText([
     '盘点项目',
     '盘点模板',
     '盘点计算规则',
