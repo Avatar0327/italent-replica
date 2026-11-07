@@ -4,6 +4,10 @@ import { test, expect, user, employee } from './fixtures.js';
 const fields = [
   'name',
   'code',
+  'orgCode',
+  'orgFullName',
+  'employType',
+  'positionName',
   'workDate',
   'gender',
   'entryDate',
@@ -44,6 +48,10 @@ async function staffFixtures(page: Page) {
                   id: employee,
                   name: '合成林晓',
                   code: 'DEMO-001',
+                  orgCode: 'O-DEMO',
+                  orgFullName: '合成集团/合成部',
+                  employType: 'internal',
+                  positionName: '合成职位',
                   gender: '女',
                   employeeStatus: 3,
                   entryDate: '2024-01-01',
@@ -179,6 +187,34 @@ test('AC-FE-R1b-04 隐藏字段不显示，详情失败不回退列表快照', a
   await expect(page.getByRole('dialog')).not.toContainText('lin@example.com');
 });
 
+// 原站默认已选列顺序；拖“雇佣关系”到“员工ID”前后的顺序（右栏固定 360px，只拖可视区内的行）
+const defaultColumnTitles = [
+  '员工姓名',
+  '员工ID',
+  '机构ID',
+  '组织全称',
+  '雇佣关系',
+  '职位',
+  '首次参加工作日期',
+  '性别',
+  '入职日期',
+  '人员状态',
+  '电子邮件',
+];
+const movedColumnTitles = [
+  '员工姓名',
+  '雇佣关系',
+  '员工ID',
+  '机构ID',
+  '组织全称',
+  '职位',
+  '首次参加工作日期',
+  '性别',
+  '入职日期',
+  '人员状态',
+  '电子邮件',
+];
+
 async function openColumnSettings(page: Page) {
   // 原站：表头右侧齿轮 → “设置显示字段” → 居中双栏弹窗
   await page.getByRole('button', { name: '列设置', exact: true }).click();
@@ -196,16 +232,8 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
   await expect(page.locator('.staff-columns-modal .ant-modal')).toBeVisible();
   await expect(dialog.getByRole('checkbox', { name: '员工姓名', exact: true })).toBeDisabled();
   const selected = dialog.getByRole('list', { name: '已选字段' });
-  await expect(dialog.getByText('已选字段 7/8', { exact: true })).toBeVisible();
-  await expect(selected.getByRole('listitem')).toHaveText([
-    '员工姓名',
-    '员工ID',
-    '首次参加工作日期',
-    '性别',
-    '入职日期',
-    '人员状态',
-    '电子邮件',
-  ]);
+  await expect(dialog.getByText('已选字段 11/12', { exact: true })).toBeVisible();
+  await expect(selected.getByRole('listitem')).toHaveText(defaultColumnTitles);
   await expect(selected.getByRole('listitem').first()).toHaveAttribute('draggable', 'false');
   // 原站左栏分组名“当前列表字段”；右栏已选字段逐行浅底带边框（#326 第 2 轮 P2-5）
   await expect(dialog.getByRole('checkbox', { name: '当前列表字段', exact: true })).toBeVisible();
@@ -213,42 +241,30 @@ test('AC-FE-R1b-03c 设置显示字段：居中双栏、姓名锁定、拖拽排
   await expect(row).toHaveCSS('background-color', 'rgb(245, 246, 247)');
   await expect(row).toHaveCSS('border-top-width', '1px');
   await expect(row).toHaveCSS('margin-bottom', '8px');
-  await selected.getByRole('listitem', { name: '入职日期' }).dragTo(selected.getByRole('listitem', { name: '员工ID' }));
-  await expect(selected.getByRole('listitem')).toHaveText([
-    '员工姓名',
-    '入职日期',
-    '员工ID',
-    '首次参加工作日期',
-    '性别',
-    '人员状态',
-    '电子邮件',
-  ]);
+  await selected.getByRole('listitem', { name: '雇佣关系' }).dragTo(selected.getByRole('listitem', { name: '员工ID' }));
+  await expect(selected.getByRole('listitem')).toHaveText(movedColumnTitles);
   await dialog.getByRole('checkbox', { name: '性别', exact: true }).uncheck();
-  await expect(dialog.getByText('已选字段 6/8', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('已选字段 10/12', { exact: true })).toBeVisible();
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('日期');
   await expect(dialog.getByRole('checkbox', { name: '员工ID', exact: true })).toHaveCount(0);
   await dialog.getByRole('searchbox', { name: '搜索字段' }).fill('');
   await dialog.getByRole('button', { name: /^确\s*定$/ }).click();
   await expect(page.getByRole('columnheader')).toHaveText([
     '员工姓名',
-    '入职日期',
+    '雇佣关系',
     '员工ID',
+    '机构ID',
+    '组织全称',
+    '职位',
     '首次参加工作日期',
+    '入职日期',
     '人员状态',
     '电子邮件',
     '',
   ]);
   await openColumnSettings(page);
   await dialog.getByRole('button', { name: '恢复默认', exact: true }).click();
-  await expect(selected.getByRole('listitem')).toHaveText([
-    '员工姓名',
-    '员工ID',
-    '首次参加工作日期',
-    '性别',
-    '入职日期',
-    '人员状态',
-    '电子邮件',
-  ]);
+  await expect(selected.getByRole('listitem')).toHaveText(defaultColumnTitles);
   await dialog.getByRole('button', { name: /^取\s*消$/ }).click();
   await expect(page.getByRole('columnheader', { name: '性别', exact: true })).toHaveCount(0);
 });
