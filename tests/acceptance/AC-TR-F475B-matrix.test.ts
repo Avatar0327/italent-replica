@@ -11,6 +11,7 @@ import {
   click,
   headerWidths,
   headers,
+  json,
   mount,
   openTab,
   resetServer,
@@ -226,5 +227,27 @@ describe('AC-TR-F475B 九宫格详细设置', () => {
     ]);
     expect(radios.every((input) => input.disabled)).toBe(true);
     expect(button('保存')).toBeUndefined();
+  });
+
+  it('页面主标题“九宫格”在详细设置与通用设置两个页签下都保留（审查 P2-1）', async () => {
+    await openMatrices();
+    const title = () => Array.from(document.querySelectorAll('.matrix-settings h1')).map((n) => n.textContent);
+    expect(title()).toEqual(['九宫格']);
+    await openTab('九宫格通用设置');
+    expect(title()).toEqual(['九宫格']);
+    await openTab('九宫格详细设置');
+    expect(title()).toEqual(['九宫格']);
+  });
+
+  it('集合首次读取 503 后点“重新加载”恢复配置内容，不发写请求（审查 P2-2）', async () => {
+    const unavailable = { error: { code: 'SERVICE_UNAVAILABLE', message: '服务暂不可用' } };
+    server.readReplies.matrices = [json(unavailable, 503)];
+    await openMatrices();
+    expect(document.querySelector('.matrix-settings [role="alert"]')).not.toBeNull();
+    expect(section('基础设置')).toBeUndefined();
+    await click(button('重新加载'));
+    expect(document.querySelector('.matrix-settings [role="alert"]')).toBeNull();
+    expect(text(section('基础设置')!)).toContain('X轴盘点字段合成绩效');
+    expect(server.writes).toEqual([]);
   });
 });

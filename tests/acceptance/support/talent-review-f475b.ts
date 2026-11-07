@@ -37,6 +37,8 @@ export const server = {
   /** 写请求的排队回复；空时按真实后端只改带上的字段、revision + 1。 */
   replies: [] as Reply[],
   reads: [] as string[],
+  /** 集合路径 → 读请求的排队回复（如首次 503），用完按正常数据返回。 */
+  readReplies: {} as Record<string, Response[]>,
 };
 export const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -100,6 +102,8 @@ function read(url: string): Response {
     return json({ page: 1, pageSize: 200, hasMore: false, items: server.collections.organizations ?? [] });
   const path = pathname.replace(`${base}/`, '');
   const [collection, id] = path.split('/');
+  const queued = server.readReplies[path]?.shift();
+  if (queued) return queued;
   const rows = server.collections[collection!];
   if (rows && id) {
     const row = rows.find((item) => item.id === id);
@@ -121,6 +125,7 @@ export function resetServer() {
   server.writes = [];
   server.replies = [];
   server.reads = [];
+  server.readReplies = {};
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init: RequestInit = {}) =>
