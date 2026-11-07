@@ -4,7 +4,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { FormOverlay, type FormField } from '../foundation/FormOverlay.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { useCommandForm } from '../foundation/forms/useCommandForm.js';
-import type { Values } from '../foundation/forms/store.js';
+import { equal, type Values } from '../foundation/forms/store.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient, useSession } from '../foundation/Session.js';
 import { base, readLatest } from './api.js';
@@ -125,7 +125,9 @@ function CalcRuleForm(props: { record: ReviewRecord; permission: Permission; clo
     ...command,
     reload: () => command.reread(readLatest(api, COLLECTION, record.id)),
   };
-  const fields = calcRuleFields(permission, record);
+  // “改过”按内核当前基线判断：冲突重读并确认后基线是最新记录，回填的说明不算用户修改（DEC-502① b）。
+  const state = command.state;
+  const fields = calcRuleFields(permission, state && state.status !== 'done' ? state.baseline : record);
   return (
     <FormOverlay
       open
@@ -186,7 +188,7 @@ function normalize(body: Values) {
  * 规则名必填、最多 50（后端 trim 后 1～50）；应用说明原站计数 0/200，后端上限 500：
  * 只校验用户改过的值，超过 200 的旧说明未改动时照常放行（不截断、不阻断其他字段保存）。
  */
-function calcRuleFields(permission: Permission, record: ReviewRecord): FormField[] {
+function calcRuleFields(permission: Permission, baseline: Values): FormField[] {
   const access = (name: string) => permission.field(name);
   const count = { formatter: ({ count }: { count: number }) => `${count}/200` };
   return [
@@ -208,7 +210,7 @@ function calcRuleFields(permission: Permission, record: ReviewRecord): FormField
       rules: [
         {
           validator: (_, value: unknown) =>
-            typeof value === 'string' && value.length > 200 && value !== record.description
+            typeof value === 'string' && value.length > 200 && !equal(value, baseline.description)
               ? Promise.reject(new Error(cr.descriptionMax))
               : Promise.resolve(),
         },
