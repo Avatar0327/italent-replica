@@ -519,6 +519,8 @@ const employmentAdapter: BusinessAdapter = {
     const { attachmentRefs, ...input } = rawInput;
     if (attachmentRefs !== undefined)
       assertRefsUnchanged((await loadExitRequest(tx, ctx.tenantId, id))?.attachmentRefs, attachmentRefs);
+    // 同值回传剔除后没有业务字段变更：不调 updateEmploymentBusiness({})，动作沿用既有授权照常成功
+    if (!Object.keys(input).length) return;
     await requireExitApprovalEdit(tx, ctx, id, input);
     // R2-T03 §4B / F-140：扩展字段写薄扩展行，日期变更与任职字段共用改期编排。
     const { exit, employment, datesOnly } = splitExitEdit(input);
