@@ -28,6 +28,13 @@ export const GRAPH: Graph = {
     '#normalize',
     '#purposeOf',
   ],
+  'apps/api/src/modules/attachments/binding.ts#inheritAttachments': [
+    'apps/api/src/modules/attachments/audit.ts#record',
+    '#EXIT_BUSINESS_TYPE',
+    '#lockFiles',
+    '#lower',
+    'apps/api/src/modules/attachments/blob-store.ts#PgBlobStore',
+  ],
   'apps/api/src/modules/attachments/binding.ts#lower': ['#refsOf'],
   'apps/api/src/modules/attachments/binding.ts#move': ['apps/api/src/modules/attachments/audit.ts#record'],
   'apps/api/src/modules/attachments/binding.ts#normalize': ['#UUID', '#invalid'],

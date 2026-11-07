@@ -3307,6 +3307,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/store.ts#appendLinkageVersion',
   ],
   'apps/api/src/modules/employment/exit-replacement.ts#replaceExit': [
+    'apps/api/src/modules/attachments/binding.ts#inheritAttachments',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-cancel.ts#cancelExit',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
