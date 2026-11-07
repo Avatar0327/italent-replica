@@ -1039,7 +1039,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/approval/detail-path.ts#entriesOf': ['apps/api/src/modules/approval/context.ts#rowsOf'],
   'apps/api/src/modules/approval/detail-path.ts#exitOfActivation': [
     'apps/api/src/modules/approval/countersign.ts#settledOutcome',
-    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
+    '#singleExitOf',
     'packages/domain/src/approval/countersign.ts#exitRulesOf',
     'packages/domain/src/approval/types.ts#isCountersign',
     'packages/domain/src/approval/types.ts#nodeExits',
@@ -1050,6 +1050,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/matching.ts#conditionContext',
     'packages/domain/src/approval/routes.ts#walkDefaultPath',
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
+  ],
+  'apps/api/src/modules/approval/detail-path.ts#singleExitOf': [
+    'apps/api/src/modules/approval/task-history.ts#withoutRetrieved',
   ],
   'apps/api/src/modules/approval/disclosure.ts#actionsFor': [
     '#initiatorActions',
