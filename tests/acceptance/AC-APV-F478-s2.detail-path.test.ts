@@ -167,4 +167,58 @@ describe('F-478 S2 详情 path', () => {
     const n1 = detail.path!.find((step) => step.nodeKey === 'n1')!;
     expect(n1).not.toHaveProperty('exit');
   });
+
+  const ADD_SIGN_ACTIONS = { rejectToPrevious: true, jump: true, retrieve: true, reject: true, addSign: true };
+
+  /** N1 同意→N2 未处理时撤回；返回撤回后重开的 N1 待办与所在视图。 */
+  async function retrieveFirst(s: RouteScene) {
+    await publishViaHttp(s.w, s.nodes({ n1: { actions: ADD_SIGN_ACTIONS } }).slice(0, 3), {});
+    let view = await s.start(s.depts.d1);
+    const first = pendingOf(view)[0]!;
+    view = await approveCurrent(s, view);
+    await s.w.json(await taskPost(s, view, 'retrieve', {}, first.id, first.assigneeUserId));
+    view = await s.w.detail(view.id);
+    expect(view.currentNodeKey).toBe('n1');
+    return view;
+  }
+
+  async function expectReturnedWithoutExit(s: RouteScene, instanceId: string) {
+    const detail = await detailOf(s.w, instanceId);
+    expect(detail.status).toBe('returned');
+    expect(detail.path!.find((step) => step.nodeKey === 'n1')).not.toHaveProperty('exit');
+  }
+
+  it('撤回后后加签再被加签人驳回：N1 同意（中间票）→撤回→后加签给 C→C 驳回（returned），N1 不带 exit', async () => {
+    const s = await routeScene(testDb().db, 'f478-path-retrieve-after-sign');
+    const view = await retrieveFirst(s);
+    const task = pendingOf(view)[0]!;
+    const body = { userIds: [s.people.n4.userId], type: 'after' };
+    await s.w.json(await s.w.taskAction(task.assigneeUserId, task.id, 'add-sign', view.revision, body));
+    const signing = await s.w.detail(view.id);
+    const signer = pendingOf(signing)[0]!;
+    expect(signer.assigneeUserId).toBe(s.people.n4.userId);
+    const rejected = await s.w.taskAction(signer.assigneeUserId, signer.id, 'reject', signing.revision, {
+      comment: '驳回',
+    });
+    expect(rejected.status, await rejected.clone().text()).toBe(200);
+    await expectReturnedWithoutExit(s, view.id);
+  });
+
+  it('撤回后前加签、加签人同意后原审批人驳回：N1 不带 exit（加签人的同意票不是节点出口）', async () => {
+    const s = await routeScene(testDb().db, 'f478-path-retrieve-before-sign');
+    const view = await retrieveFirst(s);
+    const task = pendingOf(view)[0]!;
+    const body = { userIds: [s.people.n4.userId], type: 'before' };
+    await s.w.json(await s.w.taskAction(task.assigneeUserId, task.id, 'add-sign', view.revision, body));
+    const signing = await s.w.detail(view.id);
+    const signer = pendingOf(signing)[0]!;
+    expect(signer.assigneeUserId).toBe(s.people.n4.userId);
+    await s.w.json(await s.w.taskAction(signer.assigneeUserId, signer.id, 'approve', signing.revision, {}));
+    const back = await s.w.detail(view.id);
+    const own = pendingOf(back)[0]!;
+    expect(own.assigneeUserId).toBe(task.assigneeUserId);
+    const rejected = await s.w.taskAction(own.assigneeUserId, own.id, 'reject', back.revision, { comment: '驳回' });
+    expect(rejected.status, await rejected.clone().text()).toBe(200);
+    await expectReturnedWithoutExit(s, view.id);
+  });
 });
