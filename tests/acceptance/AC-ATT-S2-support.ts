@@ -5,6 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Authorizer } from '@italent/api';
+import { runEmploymentActivations } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -12,7 +13,7 @@ import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.j
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { grantVisibleFields, permissionAdmin, type Person } from './AC-APV-support.js';
 import { attachmentWorld, png, type Receipt } from './AC-ATT-support.js';
-import { tenantApi } from './support/tenant-api.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 export const SELF = '/api/tenant/self-service';
 export const APPROVAL = '/api/tenant/approval';
@@ -45,6 +46,8 @@ export interface NodeOptions {
   readonly skipFirst?: boolean;
   /** 审批节点开放 attachmentRefs 为可编辑（单独编辑 / 同意时带编辑），用来验证审批编辑出口对它只读（AC-ATT-16）。 */
   readonly editMode?: 'separate' | 'with_approve';
+  /** 审批节点可编辑的字段，默认只有 attachmentRefs；R1 要测“同值回传 + 正常字段编辑”时加上 lastWorkDate。 */
+  readonly editableFields?: readonly string[];
 }
 
 export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label: string, node: NodeOptions = {}) {
@@ -72,7 +75,9 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
         approver: { type: 'specified', value: approver.userId },
         formFields: node.formFields ?? ['lastWorkDate', 'attachmentRefs'],
         actions: { transfer: true, addSign: true, copySend: true },
-        ...(node.editMode ? { editableFields: ['attachmentRefs'], editMode: node.editMode } : {}),
+        ...(node.editMode
+          ? { editableFields: node.editableFields ?? ['attachmentRefs'], editMode: node.editMode }
+          : {}),
       },
     ],
   });
@@ -160,6 +165,29 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
       api.request(method, `${EMPLOYMENT_API}${path}`, { ...w.as(w.hr.id), ...init });
   }
 
+  /** 离职类型是同意前必须由 HR 补齐的字段（EXIT_HR_FIELDS_REQUIRED）：经 HR 编辑入口补上，供 R1 走到“审批通过”。 */
+  async function fillExitType(id: string) {
+    const api = restrictedHr(() => true, ['id', 'status', 'revision', 'lastWorkDate', 'exitTypeCode', 'mode', 'exit']);
+    const detail = await w.json<{ revision: number }>(await api(`/exits/${id}`));
+    const response = await api(`/exits/${id}`, 'PATCH', {
+      ifMatch: detail.revision,
+      body: { exitTypeCode: 'voluntary' },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+
+  /** 定时生效：按给定的服务器时刻跑本租户的任职生效任务（审批通过 ≠ 生效，R1 P2-2 要走到已生效）。 */
+  async function activateAt(iso: string) {
+    const result = await runEmploymentActivations(
+      w.db,
+      cmd(),
+      { tenantId: w.tenant.id },
+      { clock: () => new Date(iso) },
+    );
+    expect(result.runs).toHaveLength(1);
+    return result.runs[0]!;
+  }
+
   /** 给用户授予任职对象的字段查看权（审批人 / HR 的 attachmentRefs 字段权，AC-ATT-13～15）。 */
   let admin: ReturnType<typeof permissionAdmin> | undefined;
   async function grantFields(userId: string, fields: readonly string[]) {
@@ -177,6 +205,8 @@ export async function exitWorld(db: Parameters<typeof attachmentWorld>[0], label
   return {
     grantFields,
     bindElsewhere,
+    activateAt,
+    fillExitType,
     a: a as World,
     w,
     approver,
