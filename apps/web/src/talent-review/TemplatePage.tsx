@@ -10,7 +10,7 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { base, readLatest } from './api.js';
-import { checkReceipt, display, templateWritable } from './model.js';
+import { canOperate, checkReceipt, display, templateWritable } from './model.js';
 import { tp, tr } from './messages.js';
 import { ReferenceSelect } from './ReferenceSelect.js';
 import { objects, type ReviewRecord } from './types.js';
@@ -51,7 +51,8 @@ function TemplateForm({ record, saved }: { record?: ReviewRecord; saved(): void 
   const permission = usePermissions(objects.templates);
   const [form] = Form.useForm<Values>();
   const [notice, setNotice] = useState<string>();
-  const writable = record ? templateWritable(record, permission.can) : permission.can('create', 'list');
+  const object = objects.templates;
+  const writable = record ? templateWritable(record, permission, object) : canOperate(permission, object, 'create');
   const editable = writable ? FIELDS.filter((field) => permission.field(field).editable) : [];
   // 未确认命令按稳定原单路径存槽，新建用集合路径（DEC-502① e）；FormCommands 在 TalentReviewPage 根部。
   const command = useCommandForm(slotKey(COLLECTION, record?.id));

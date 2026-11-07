@@ -4,7 +4,7 @@ import { DecisionNote } from '../foundation/DecisionNote.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useSession } from '../foundation/Session.js';
 import { ConfigList, dateTime, settingsColumn } from './ConfigList.js';
-import { display, enabledText, matchesFilters, templateWritable, type ReviewFilters } from './model.js';
+import { canOperate, display, enabledText, matchesFilters, templateWritable, type ReviewFilters } from './model.js';
 import { tp, tr } from './messages.js';
 import { ProjectOrgFilter } from './ProjectOrgFilter.js';
 import { TemplatePage } from './TemplatePage.js';
@@ -63,7 +63,7 @@ function TemplateList({
         hideOnSinglePage
         actions={
           <>
-            {permission.can('create', 'list') && (
+            {canOperate(permission, objects.templates, 'create') && (
               <Button type="primary" onClick={() => open()}>
                 {tr.create}
               </Button>
@@ -129,7 +129,7 @@ function templateColumns(props: {
           <Button type="link" disabled title={tr.unverified}>
             {tp.copy}
           </Button>
-          {templateWritable(row, permission.can) && (
+          {templateWritable(row, permission, objects.templates) && (
             <Button type="link" onClick={() => open(row.id)}>
               {tr.update}
             </Button>

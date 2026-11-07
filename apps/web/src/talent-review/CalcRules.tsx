@@ -94,7 +94,7 @@ function calcRuleColumns(props: {
       width: 160,
       render: (_, row) => (
         <Space size={8}>
-          {configWritable(row, permission.can) && (
+          {configWritable(row, permission, OBJECT) && (
             <Button type="link" onClick={() => edit(row)}>
               {cr.edit}
             </Button>

@@ -100,13 +100,21 @@ export function matchesFilters(row: ReviewRecord, filters: ReviewFilters, visibl
   return true;
 }
 
-/** 模板可编辑：管理权限、版本有效、有编辑按钮（与后端 accessLevel 一致，不在前端放宽）。 */
-export const templateWritable = (row: ReviewRecord, can: (button: string) => boolean) =>
-  row.accessLevel === 'manage' && Number.isInteger(row.revision) && can('update');
-
+/** 页面权限的最小形状（usePermissions 返回值）：对象操作权在快照里，按钮按层级判断。 */
+export interface WriteAccess {
+  can(button: string, level?: string): boolean;
+  snapshot: { objects: Record<string, { dataOperations: Readonly<Record<string, boolean>> } | undefined> };
+}
+/** 写权限按对象操作权 create / update 判断，按钮只决定是否显示服务端返回的动作（DEC-502① c）。 */
+export const canOperate = (access: WriteAccess, object: string, operation: 'create' | 'update') =>
+  access.snapshot.objects[object]?.dataOperations[operation] === true &&
+  access.can(operation, operation === 'create' ? 'list' : 'detail');
+/** 模板可编辑：管理权限、版本有效、有 update 操作权与编辑按钮（与后端 accessLevel 一致，不在前端放宽）。 */
+export const templateWritable = (row: ReviewRecord, access: WriteAccess, object: string) =>
+  row.accessLevel === 'manage' && Number.isInteger(row.revision) && canOperate(access, object, 'update');
 /** 配置对象（计算规则）的写权限：设置类对象不带 accessLevel，数据范围由服务端按全部 / 创建人裁剪（DEC-121）。 */
-export const configWritable = (row: ReviewRecord, can: (button: string) => boolean) =>
-  Number.isInteger(row.revision) && can('update');
+export const configWritable = (row: ReviewRecord, access: WriteAccess, object: string) =>
+  Number.isInteger(row.revision) && canOperate(access, object, 'update');
 /** 回执须是本对象、版本前进；否则按结果未知锁定，不当成功（DEC-502① a）。 */
 export function checkReceipt(receipt: ReviewRecord | undefined, id: string | undefined, revision: number | undefined) {
   if (
