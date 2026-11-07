@@ -145,6 +145,28 @@ export async function listEmploymentRecords(
   ).map(record);
 }
 
+/** 按 id 批量取记录（全租户列表分页后补全字段）；返回顺序不保证，调用方按 id 对应。 */
+export async function listEmploymentRecordsByIds(
+  tx: Tx,
+  tenantId: string,
+  ids: readonly string[],
+  asOf: string,
+  scope?: EmploymentScope,
+) {
+  if (!ids.length) return [];
+  return rowsOf<Record<string, unknown>>(
+    await tx.execute(
+      recordsQuery(
+        tenantId,
+        asOf,
+        sql`r.id=ANY(${`{${ids.join(',')}}`}::uuid[])`,
+        { limit: ids.length, offset: 0 },
+        scope,
+      ),
+    ),
+  ).map(record);
+}
+
 export async function loadEmploymentRecord(
   tx: Tx,
   tenantId: string,

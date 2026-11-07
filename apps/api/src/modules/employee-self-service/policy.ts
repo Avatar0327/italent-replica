@@ -202,7 +202,7 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   }),
   // ---- registerDevelopmentChannelRoutes：员工通道卡片（C1-6，23 §19）---------------------------------------------
   // 关系入口：本人 + 员工发展通道页面权限（employeePageGranted，缺权 403 PAGE_PERMISSION_REQUIRED），不要求 Qualification
-  // 数据范围，也不要求 DevelopmentChannel / QualificationStandard 的对象权限；固定投影，不含各级标准明细
+  // 数据范围，也不要求 DevelopmentChannel / QualificationStandard 的对象权限；固定投影，含本人当前类别的各级标准卡（DEC-778①）
   'GET /development-channel': self({
     button: DEVELOPMENT_CHANNEL_BUTTON,
     guards: [DEVELOPMENT_CHANNEL_PAGE],

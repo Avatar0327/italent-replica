@@ -105,6 +105,7 @@ export function DetailPage({
   summary,
   actions,
   tabs,
+  defaultTab,
   sections = [],
 }: {
   open: boolean;
@@ -113,6 +114,8 @@ export function DetailPage({
   summary?: ReactNode;
   actions?: ReactNode;
   tabs?: TabsProps['items'];
+  /** 首次打开时选中的页签键（来源页直达某页签）；不传沿用第一个 */
+  defaultTab?: string;
   sections?: DetailSection[];
 }) {
   return open ? (
@@ -127,7 +130,7 @@ export function DetailPage({
       rootClassName="detail-drawer"
     >
       {summary}
-      {tabs && <Tabs items={tabs} />}
+      {tabs && <Tabs items={tabs} defaultActiveKey={defaultTab} />}
       {sections.map((section) => (
         <section key={section.key} className="detail-section">
           <h2>{section.title}</h2>
