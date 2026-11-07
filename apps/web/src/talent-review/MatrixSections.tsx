@@ -117,7 +117,8 @@ export function DisplaySection({ record, visible }: SectionProps) {
       <Row label={mx.displayOptions}>
         <Unavailable />
       </Row>
-      {!visible('cells') ? null : !cells.length ? <Empty description={tr.noCells} /> : <CellGrid cells={cells} />}
+      {visible('cells') && cells.length === 0 && <Empty description={tr.noCells} />}
+      {cells.length > 0 && <CellGrid cells={cells} />}
       {cells.length > 0 && (
         <Table
           size="small"
