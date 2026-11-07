@@ -74,7 +74,8 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
     expect(() => applyInitiationSubset('self', 'application', { reasonCode: 'invalid' })).toThrow();
   });
 
-  it('离职默认字段投影、建草稿/暂存/冲突/提交及只读回查；不收附件和他人 ID', async () => {
+  // F-479 S2 R-4：attachmentRefs 现在是本人草稿的合法入参（UUID 数组 ≤5，AC-ATT-09）；这里只留“他人 ID”与非法形状
+  it('离职默认字段投影、建草稿/暂存/冲突/提交及只读回查；不收他人 ID 与非法附件形状', async () => {
     const actor = await fresh();
     const form = await opening(actor, 'exit-requests');
     expect(form.fieldModes).toMatchObject({ lastWorkDate: 'editable', whereaboutsCode: 'editable' });
@@ -82,7 +83,8 @@ describe('AC-ESS-F020 / DEC-790 本人申请', () => {
       {},
       { lastWorkDate: 'invalid' },
       { lastWorkDate: '2026-12-01', whereaboutsCode: 'invalid' },
-      { lastWorkDate: '2026-12-01', attachmentRefs: [] },
+      { lastWorkDate: '2026-12-01', attachmentRefs: 'x' },
+      { lastWorkDate: '2026-12-01', attachmentRefs: [randomUUID()] },
       { lastWorkDate: '2026-12-01', employeeId: manager.employeeId },
       { lastWorkDate: '2026-12-01', employeeId: randomUUID() },
       { lastWorkDate: '2026-12-01', exitTypeCode: 'voluntary' },
