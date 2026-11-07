@@ -239,7 +239,7 @@ export const DIGESTS: Digests = {
     'route:POST /part-time-requests/:id/submit': 'fbb9dac22a79',
   },
   'apps/api/src/modules/employee-self-service/development-channel.ts': {
-    ownDevelopmentChannel: 'ab01695d60cf',
+    ownDevelopmentChannel: 'd8c4ad8764b0',
   },
   'apps/api/src/modules/employee-self-service/page-permission.ts': {
     employeePageGranted: '60075b3241ff',
@@ -526,6 +526,10 @@ export const DIGESTS: Digests = {
     'route:PUT /employees/:id/probation': '604dbfac27aa',
     'route:PUT /employees/:id/regularization-draft': 'cf486c0583bb',
     'route:PUT /probation-results/:id': 'e1504b0925a6',
+  },
+  'apps/api/src/modules/employment/record-list.ts': {
+    requireViewableFilters: '2d77f9277bca',
+    'route:GET /records': '4b23dae37df4',
   },
   'apps/api/src/modules/employment/regularization-reschedule.ts': {
     rescheduleRegularization: '2020cec359d9',
@@ -2071,7 +2075,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:POST /part-time-requests': '029539073858',
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:POST /part-time-requests/:id/submit':
     '029539073858',
-  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': '3fa342e5e393',
+  'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': '9bab5036f2d0',
   'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted': '56f201e2ddd6',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplication': '8a95f51afdbb',
   'apps/api/src/modules/employee-self-service/queries.ts#ownApplications': 'e968821b8727',
@@ -2281,6 +2285,8 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/probation': '98ec4c8d2cb9',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /employees/:id/regularization-draft': 'a6f0fe33f871',
   'apps/api/src/modules/employment/probation-routes.ts#route:PUT /probation-results/:id': '598aaee12ea9',
+  'apps/api/src/modules/employment/record-list.ts#requireViewableFilters': 'f5174f751364',
+  'apps/api/src/modules/employment/record-list.ts#route:GET /records': '9a944cef7503',
   'apps/api/src/modules/employment/regularization-reschedule.ts#rescheduleRegularization': 'cdda3cbdeba6',
   'apps/api/src/modules/employment/regularization.ts#regularizeOne': 'e7d39c809936',
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchGuard': 'e5ccbdc81aaf',

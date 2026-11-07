@@ -231,3 +231,13 @@
 .service-search-filter {
   width: 260px;
 }
+.self-qualification h2 {
+  margin: 24px 0 8px;
+  font-size: 16px;
+}
+.self-standard-card {
+  margin-bottom: 16px;
+}
+.self-standard-card.current {
+  border-color: #0054f0;
+}

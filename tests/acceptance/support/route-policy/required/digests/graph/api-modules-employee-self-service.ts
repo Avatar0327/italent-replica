@@ -206,9 +206,15 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employee-self-service/development-channel.ts#ownDevelopmentChannel': [
     '#PAGE',
     '#names',
+    '#standardCard',
     'apps/api/src/modules/employee-self-service/page-permission.ts#employeePageGranted',
     'apps/api/src/modules/qualification/development-channel-data.ts#channelOverview',
     'packages/domain/src/qualification/catalog.ts#QUALIFICATION_APP',
+  ],
+  'apps/api/src/modules/employee-self-service/development-channel.ts#standardCard': [
+    '#names',
+    'apps/api/src/modules/qualification/read-model.ts#loadRow',
+    'apps/api/src/modules/qualification/read-model.ts#withStandardParts',
   ],
   'apps/api/src/modules/employee-self-service/disclosure.ts#discloseOwnRecord': [
     'apps/api/src/modules/employee-self-service/field-disclosure.ts#visibleFields',

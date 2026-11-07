@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { DetailPage, ListPage, PageState, pageQuery, useSession, type PageResult } from '../../foundation/index.js';
 import { PersonAvatar } from '../../shared/PersonAvatar.js';
 import { ApplicationDrawer } from './ApplicationDrawer.js';
+import { QualificationTab } from './QualificationTab.js';
 import type { Profile, OwnRecord, Application } from '../../employee-self-service/types.js';
 import { selfServiceDemo } from '../../demo-stubs/self-service.js';
 import { canApplySelf, instant, recordItems, SELF, statusText, valueText } from './model.js';
@@ -48,6 +49,7 @@ function SelfWorkspace({ path }: { path: string }) {
 function ProfilePage({ profile, refresh }: { profile: Profile; refresh(): void }) {
   const { tenantId } = useSession();
   const [detail, setDetail] = useState(false);
+  const [tab, setTab] = useState('personnel');
   return (
     <>
       <Notes id="self.profile" />
@@ -75,43 +77,16 @@ function ProfilePage({ profile, refresh }: { profile: Profile; refresh(): void }
         </div>
       </div>
       <Tabs
-        activeKey="personnel"
+        activeKey={tab}
+        onChange={(key) => key !== 'employment' && setTab(key)}
         items={[
           { key: 'personnel', label: m.personnel },
           { key: 'employment', label: <Link to="/self/applications">{m.employment}</Link> },
+          { key: 'qualification', label: m.qualification },
         ]}
       />
-      <div className="service-profile-layout">
-        <div>
-          <section className="service-section" id="self-basic">
-            <h2>{m.employeeInfo}</h2>
-            <Descriptions
-              column={2}
-              items={[
-                { key: 'name', label: m.name, children: profile.employee.name },
-                { key: 'code', label: m.code, children: profile.employee.code },
-              ]}
-            />
-            <p className="service-muted">{m.profileReadonly}</p>
-          </section>
-          <section className="service-section" id="self-employment">
-            <h2>{m.employmentInfo}</h2>
-            <RecordInfo record={profile.record} />
-          </section>
-          {selfServiceDemo.sections.map((section) => (
-            <DemoSection key={section.key} section={section} />
-          ))}
-        </div>
-        <aside className="service-outline">
-          <a href="#self-basic">{m.employeeInfo}</a>
-          <a href="#self-employment">{m.employmentInfo}</a>
-          {selfServiceDemo.sections.map((section) => (
-            <a key={section.key} href={`#demo-${section.key}`}>
-              {section.title}
-            </a>
-          ))}
-        </aside>
-      </div>
+      {tab === 'qualification' && <QualificationTab />}
+      {tab === 'personnel' && <PersonnelSections profile={profile} />}
       <DetailPage
         open={detail}
         onClose={() => setDetail(false)}
@@ -119,6 +94,41 @@ function ProfilePage({ profile, refresh }: { profile: Profile; refresh(): void }
         tabs={[{ key: 'record', label: m.employmentInfo, children: <RecordInfo record={profile.record} /> }]}
       />
     </>
+  );
+}
+function PersonnelSections({ profile }: { profile: Profile }) {
+  return (
+    <div className="service-profile-layout">
+      <div>
+        <section className="service-section" id="self-basic">
+          <h2>{m.employeeInfo}</h2>
+          <Descriptions
+            column={2}
+            items={[
+              { key: 'name', label: m.name, children: profile.employee.name },
+              { key: 'code', label: m.code, children: profile.employee.code },
+            ]}
+          />
+          <p className="service-muted">{m.profileReadonly}</p>
+        </section>
+        <section className="service-section" id="self-employment">
+          <h2>{m.employmentInfo}</h2>
+          <RecordInfo record={profile.record} />
+        </section>
+        {selfServiceDemo.sections.map((section) => (
+          <DemoSection key={section.key} section={section} />
+        ))}
+      </div>
+      <aside className="service-outline">
+        <a href="#self-basic">{m.employeeInfo}</a>
+        <a href="#self-employment">{m.employmentInfo}</a>
+        {selfServiceDemo.sections.map((section) => (
+          <a key={section.key} href={`#demo-${section.key}`}>
+            {section.title}
+          </a>
+        ))}
+      </aside>
+    </div>
   );
 }
 function ApplicationsPage({ profile, requests }: { profile: Profile; requests: boolean }) {
