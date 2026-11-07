@@ -76,6 +76,7 @@ export const tr = {
   clearSelection: '清空已选',
   unnamed: '未命名',
   templates: '盘点模板',
+  'calc-rules': '盘点计算规则',
   matrices: '九宫格设置',
   meetings: '盘点校准会',
   pools: '人才池',
@@ -276,4 +277,43 @@ export const mx = {
   ],
   exportFields: '导出字段',
   empty: '暂无九宫格配置',
+};
+/** 盘点模板列表 / 整页第一步（R3cd spec §2.6、§3.3）。 */
+export const tp = {
+  columns: {
+    name: '模板名称',
+    flowId: '盘点流程',
+    ownerOrgId: '所属组织',
+    downwardPublic: '向下公开',
+    enabled: '状态',
+    createdBy: '创建人',
+    createdAt: '创建时间',
+  },
+  copy: '复制',
+  remove: '删除',
+  disable: '停用',
+  enable: '启用',
+  create: '新增盘点模板',
+  steps: ['基本信息', '模块设置', '权限设置'],
+  configure: '配置',
+  description: '描述',
+  save: '保存',
+  next: '下一步',
+  noChanges: '没有修改，无需保存',
+  flowRequired: '启用模板须先选择盘点流程',
+};
+
+export const cr = {
+  columns: {
+    name: '规则名',
+    description: '应用说明',
+    enabled: '状态',
+    createdBy: '创建人',
+    updatedAt: '最近一次修改时间',
+  },
+  edit: '编辑',
+  copy: '复制',
+  translate: '翻译助手',
+  configure: '配置表单',
+  descriptionMax: '最多200字',
 };
