@@ -221,6 +221,18 @@ describe('AC-EMP F-474-4b #16 全租户任职记录列表', () => {
     expect((await list(w.call, '&current=true')).items.every((item) => item.isCurrent === true)).toBe(true);
   });
 
+  it('任职类型不可见：响应无 serviceType，用它筛选 403；可见时照常是主职（审查 R1 P2-2）', async () => {
+    const { w } = await fixture('emp4b-hide-service-type');
+    const noType = w.restricted(allow, { hidden: { [RECORD_OBJECT]: ['serviceType'] } });
+    const page = await list(noType);
+    expect(page.items.length).toBeGreaterThan(0);
+    for (const item of page.items) expect(item).not.toHaveProperty('serviceType');
+    expect((await noType('GET', `${LIST}?page=1&pageSize=50&serviceType=primary`)).status).toBe(403);
+    const visible = await list(w.call, '&serviceType=primary');
+    expect(visible.items.length).toBeGreaterThan(0);
+    expect(new Set(visible.items.map((item) => item.serviceType))).toEqual(new Set(['primary']));
+  });
+
   it('没有任职记录对象的查看权：403；本接口只读，没有写入口', async () => {
     const { w } = await fixture('emp4b-deny');
     const denied = w.restricted((request) => !(request.resource === RECORD_OBJECT && request.action === 'object.view'));

@@ -38,7 +38,7 @@ function useAllowed(): { allowed: Allowed; department: boolean } {
         ? person.field('email').visible
         : field === 'departmentId'
           ? department
-          : field === 'isCurrent'
+          : field === 'isCurrent' || field === 'serviceType'
             ? record.field(field).visible
             : employee.field(field).visible,
   };
@@ -156,13 +156,15 @@ function QuickFilters({ filters, allowed, apply }: { filters: Filters; allowed: 
             ]}
           />
         )}
-        <Select
-          aria-label={m.serviceType}
-          value="primary"
-          disabled
-          style={{ minWidth: 100 }}
-          options={[{ value: 'primary', label: m.primary }]}
-        />
+        {allowed('serviceType') && (
+          <Select
+            aria-label={m.serviceType}
+            value="primary"
+            disabled
+            style={{ minWidth: 100 }}
+            options={[{ value: 'primary', label: m.primary }]}
+          />
+        )}
         {allowed('departmentId') && <DepartmentFilter filters={filters} set={set} />}
         <Select
           aria-label={m.approvalState}

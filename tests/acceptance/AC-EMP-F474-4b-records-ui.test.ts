@@ -108,6 +108,21 @@ describe('AC-EMP F-474-4b #16 任职记录列表页面', () => {
     expect(query).toMatchObject({ employeeStatus: 'working', approvalState: 'effective' });
   });
 
+  it('任职类型字段不可见：无该列也无类型筛选；可见时显示“主职”（审查 R1 P2-2）', async () => {
+    await ui.render(h(await page()), '/', withoutField('serviceType'), {
+      [LIST]: { items: [rowWithout('serviceType')], total: 1 },
+    });
+    expect(ui.headers()).not.toContain('任职类型');
+    expect(ui.host.querySelector('[aria-label="任职类型"]')).toBeNull();
+    expect(ui.host.textContent).not.toContain('主职');
+    await ui.close();
+    ui = uiHarness();
+    await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [RECORD_ROW], total: 1 } });
+    expect(ui.headers()).toContain('任职类型');
+    expect(ui.host.querySelector('[aria-label="任职类型"]')).not.toBeNull();
+    expect(ui.host.textContent).toContain('主职');
+  });
+
   it('无数据范围时给出无权限空态；“编辑任职”打开员工档案的任职记录页签', async () => {
     await ui.render(h(await page()), '/', recordFields, { [LIST]: { items: [], total: 0, hasDataPermission: false } });
     expect(ui.host.textContent).toContain('当前没有可查看的数据范围');

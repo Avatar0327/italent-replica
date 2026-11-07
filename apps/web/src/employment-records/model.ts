@@ -12,7 +12,7 @@ export const PAGE_SIZE = 30;
 export interface Row {
   id: string;
   employeeId: string;
-  serviceType: string;
+  serviceType?: string;
   employeeCode?: string;
   employeeName?: string;
   kind?: string;
@@ -41,7 +41,8 @@ export const defaultFilters: Filters = { employeeStatus: 'working', approvalStat
 
 /** 筛选键对应的可见字段；对应字段不可见时不能带该筛选（后端会 403「筛选字段不可查看」）。 */
 export type FilterField = 'name' | 'email' | 'employeeStatus' | 'departmentId' | 'isCurrent';
-export type Allowed = (field: FilterField | 'code') => boolean;
+/** 'code' / 'serviceType' 只决定列，不是筛选键。 */
+export type Allowed = (field: FilterField | 'code' | 'serviceType') => boolean;
 
 export function allowedFilters(filters: Filters, allowed: Allowed): Filters {
   const next: Filters = { ...filters };
@@ -83,7 +84,7 @@ export interface ColumnSpec {
 export const columns: readonly ColumnSpec[] = [
   { key: 'name', width: 140, present: (row) => 'employeeName' in row },
   { key: 'code', width: 140, present: (row) => 'employeeCode' in row },
-  { key: 'serviceType', width: 140, present: () => true },
+  { key: 'serviceType', width: 140, present: (row) => 'serviceType' in row },
   { key: 'org', width: 140, present: (row) => 'orgFullName' in row },
   { key: 'level1', width: 140, present: (row) => 'orgLevels' in row },
   { key: 'level2', width: 140, present: (row) => 'orgLevels' in row },
@@ -93,10 +94,12 @@ export const columns: readonly ColumnSpec[] = [
 /** 页内任一行带该字段就出列；一页都没有（含空页）时按字段权：姓名 / 工号 / 机构类取 allowed。 */
 export function visibleColumns(rows: readonly Row[], allowed: Allowed, departmentAllowed: boolean): ColumnSpec[] {
   return columns.filter((column) => {
+    // 任职类型随任职记录字段权：字段不可见时即使行里误带也不出列
+    if (column.key === 'serviceType' && !allowed('serviceType')) return false;
     if (rows.length) return rows.some((row) => column.present(row));
     if (column.key === 'name') return allowed('name');
     if (column.key === 'code') return allowed('code');
-    if (column.key === 'serviceType') return true;
+    if (column.key === 'serviceType') return allowed('serviceType');
     return departmentAllowed;
   });
 }
