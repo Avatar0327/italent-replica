@@ -76,6 +76,7 @@ export const tr = {
   clearSelection: '清空已选',
   unnamed: '未命名',
   templates: '盘点模板',
+  'calc-rules': '盘点计算规则',
   matrices: '九宫格设置',
   meetings: '盘点校准会',
   pools: '人才池',
@@ -300,4 +301,19 @@ export const tp = {
   next: '下一步',
   noChanges: '没有修改，无需保存',
   flowRequired: '启用模板须先选择盘点流程',
+};
+
+export const cr = {
+  columns: {
+    name: '规则名',
+    description: '应用说明',
+    enabled: '状态',
+    createdBy: '创建人',
+    updatedAt: '最近一次修改时间',
+  },
+  edit: '编辑',
+  copy: '复制',
+  translate: '翻译助手',
+  configure: '配置表单',
+  descriptionMax: '最多200字',
 };

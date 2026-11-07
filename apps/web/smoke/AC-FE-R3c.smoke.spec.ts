@@ -536,3 +536,115 @@ test('AC-TR F-475A 自检：详情读取失败可返回并再次进入', async (
   await list.getByRole('button', { name: '合成年度盘点', exact: true }).click();
   await expect(page.locator('.review-project-detail h1')).toHaveText('合成年度盘点');
 });
+
+test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，补丁带版本与命令 ID', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // 计算规则对象另给可见字段（含应用说明），与 calc-rule-view 的列一致。
+  const ruleFields = ['id', 'revision', 'name', 'enabled', 'description', 'items', 'createdBy', 'updatedAt'];
+  await page.route('**/permission/me/objects/TalentReview.CalcRule', (route) =>
+    route.fulfill({
+      json: {
+        objectCode: 'TalentReview.CalcRule',
+        dataOperations: { view: true, create: true, update: true },
+        viewableFields: ruleFields,
+        editableFields: ruleFields,
+        buttons: ['create', 'update'].map((buttonCode) => ({
+          buttonCode,
+          level: buttonCode === 'create' ? 'list' : 'detail',
+        })),
+      },
+    }),
+  );
+  // 与对外 GET / 写响应同形：CalcRuleView + hints 投影、items[].formulaBindings。
+  const rule = {
+    id,
+    name: '合成计算规则',
+    enabled: true,
+    assessmentLatestWindow: 'before_project_end',
+    description: '合成说明',
+    sortNo: 1,
+    revision: 3,
+    createdBy: id,
+    createdAt: '2026-10-01T02:00:00.000Z',
+    updatedBy: id,
+    updatedAt: '2026-10-02T02:00:00.000Z',
+    items: [
+      {
+        targetFieldId: id,
+        priority: 1,
+        formula: '1',
+        description: null,
+        sortNo: 1,
+        usesRanking: false,
+        formulaBindings: [],
+      },
+    ],
+    hints: { order: [id], blocked: [], cycles: [], warnings: [] },
+  };
+  const sent: { ifMatch?: string; key?: string; body?: unknown }[] = [];
+  await page.route('**/talent-review/calc-rules**', (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      sent.push({
+        ifMatch: request.headers()['if-match'],
+        key: request.headers()['idempotency-key'],
+        body: request.postDataJSON(),
+      });
+      return route.fulfill({ json: { ...rule, ...request.postDataJSON(), revision: 4 } });
+    }
+    const url = new URL(request.url());
+    return route.fulfill({
+      json: url.pathname.endsWith(id) ? rule : { items: [rule], hasDataPermission: true, page: 1, pageSize: 200 },
+    });
+  });
+  await page.goto('/talent-review');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await expect(page).toHaveURL(/\/staff$/);
+  await page.getByRole('button', { name: '应用导航' }).click();
+  await page.getByRole('dialog', { name: '全部菜单' }).getByRole('link', { name: '人才盘点', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveText([
+    '盘点项目',
+    '盘点模板',
+    '盘点计算规则',
+    '九宫格设置',
+    '盘点校准会',
+    '人才池',
+  ]);
+  await page.getByRole('tab', { name: '盘点计算规则', exact: true }).click();
+  const list = page.locator('.review-calc-rule-list');
+  await expect(list.locator('thead th')).toHaveText([
+    '规则名',
+    '应用说明',
+    '状态',
+    '创建人',
+    '最近一次修改时间',
+    '操作',
+    '⚙',
+  ]);
+  const widths = await list
+    .locator('colgroup col')
+    .evaluateAll((cols) => cols.map((col) => (col as HTMLElement).style.width));
+  expect(widths).toEqual(['211px', '211px', '181px', '201px', '229px', '160px', '24px']);
+  await expect(list.locator('tbody .ant-table-row td').nth(4)).toHaveText('2026-10-02 10:00:00');
+  await expect(list.locator('.page-total')).toHaveText('共1条');
+  await expect(list.locator('.ant-pagination')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('calc-rules.png'), fullPage: true, animations: 'disabled' });
+  await list.getByRole('button', { name: /编\s*辑/ }).click();
+  const dialog = page.getByRole('dialog', { name: /编辑/ });
+  await expect(dialog).toBeVisible();
+  const box = await page.locator('.review-calc-rule-form .ant-modal').boundingBox();
+  expect(box?.width).toBe(750);
+  await expect(dialog.getByRole('button', { name: '翻译助手' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: '配置表单' })).toBeDisabled();
+  await expect(dialog).toContainText('4/200');
+  await page.screenshot({ path: testInfo.outputPath('calc-rule-form.png'), fullPage: true, animations: 'disabled' });
+  await dialog.getByLabel('规则名', { exact: true }).fill('合成计算规则改');
+  await dialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(dialog).toBeHidden();
+  expect(sent).toHaveLength(1);
+  expect(sent[0]!.ifMatch).toBe('3');
+  expect(sent[0]!.key).toMatch(/^[0-9a-f-]{36}$/);
+  expect(sent[0]!.body).toEqual({ name: '合成计算规则改' });
+  expect(errors).toEqual([]);
+});

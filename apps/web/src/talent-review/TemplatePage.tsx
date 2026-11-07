@@ -1,9 +1,8 @@
 import { Alert, Button, Form, Input, Radio, Select, Space, Steps } from 'antd';
 import { useEffect, useState } from 'react';
-import { ApiError, type ApiClient, type Command } from '../foundation/client.js';
+import type { ApiClient, Command } from '../foundation/client.js';
 import { CommandStatus } from '../foundation/forms/CommandStatus.js';
 import { FormLock, LockedField } from '../foundation/forms/FormLock.js';
-import { messages as commandMessages } from '../foundation/forms/messages.js';
 import { slotKey } from '../foundation/forms/slot.js';
 import { equal, type Values } from '../foundation/forms/store.js';
 import { useCommandForm, useDraftRefill } from '../foundation/forms/useCommandForm.js';
@@ -11,7 +10,7 @@ import { PageState } from '../foundation/PageState.js';
 import { usePermissions } from '../foundation/Permissions.js';
 import { useApiClient } from '../foundation/Session.js';
 import { base } from './api.js';
-import { display, templateWritable } from './model.js';
+import { checkReceipt, display, templateWritable } from './model.js';
 import { tp, tr } from './messages.js';
 import { ReferenceSelect } from './ReferenceSelect.js';
 import { objects, type ReviewRecord } from './types.js';
@@ -121,7 +120,6 @@ function TemplateForm({ record, saved }: { record?: ReviewRecord; saved(): void 
   );
 }
 
-/** 回执须是本对象、版本前进；否则按结果未知锁定，不当成功（DEC-502① a）。 */
 async function sendTemplate(api: ApiClient, record: ReviewRecord | undefined, sent: Command<Values>) {
   const body = { ...sent.body };
   if (typeof body.name === 'string') body.name = body.name.trim();
@@ -130,15 +128,7 @@ async function sendTemplate(api: ApiClient, record: ReviewRecord | undefined, se
     method: record ? 'PATCH' : 'POST',
     command: { ...sent, body },
   });
-  if (
-    typeof receipt?.id !== 'string' ||
-    !receipt.id ||
-    (record && receipt.id !== record.id) ||
-    !Number.isSafeInteger(receipt.revision) ||
-    receipt.revision! <= (sent.revision ?? 0)
-  )
-    throw new ApiError(0, 'UNCERTAIN_RECEIPT', 'unknown', commandMessages.unknown);
-  return receipt;
+  return checkReceipt(receipt, record?.id, sent.revision);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { ApiError } from '../foundation/client.js';
+import { messages as commandMessages } from '../foundation/forms/messages.js';
 import type { ProjectAction, ReviewRecord } from './types.js';
 import { tr } from './messages.js';
 export function projectActions(row: ReviewRecord, can: (button: string) => boolean): ProjectAction[] {
@@ -97,3 +98,19 @@ export function matchesFilters(row: ReviewRecord, filters: ReviewFilters, visibl
 /** 模板可编辑：管理权限、版本有效、有编辑按钮（与后端 accessLevel 一致，不在前端放宽）。 */
 export const templateWritable = (row: ReviewRecord, can: (button: string) => boolean) =>
   row.accessLevel === 'manage' && Number.isInteger(row.revision) && can('update');
+
+/** 配置对象（计算规则）的写权限：设置类对象不带 accessLevel，数据范围由服务端按全部 / 创建人裁剪（DEC-121）。 */
+export const configWritable = (row: ReviewRecord, can: (button: string) => boolean) =>
+  Number.isInteger(row.revision) && can('update');
+/** 回执须是本对象、版本前进；否则按结果未知锁定，不当成功（DEC-502① a）。 */
+export function checkReceipt(receipt: ReviewRecord | undefined, id: string | undefined, revision: number | undefined) {
+  if (
+    typeof receipt?.id !== 'string' ||
+    !receipt.id ||
+    (id && receipt.id !== id) ||
+    !Number.isSafeInteger(receipt.revision) ||
+    receipt.revision! <= (revision ?? 0)
+  )
+    throw new ApiError(0, 'UNCERTAIN_RECEIPT', 'unknown', commandMessages.unknown);
+  return receipt;
+}

@@ -279,6 +279,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.review-config-list .review-name-text {
+  color: #146eff;
+}
+/* 原站计算规则编辑约 750px 居中弹窗；FormOverlay 弹窗默认 800，这里收到原站宽度。 */
+.review-calc-rule-form .ant-modal {
+  max-width: 750px;
+}
 .review-config-list .page-filters .review-filter-select {
   min-width: 88px;
 }

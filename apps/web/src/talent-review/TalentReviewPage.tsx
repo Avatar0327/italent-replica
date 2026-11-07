@@ -14,6 +14,7 @@ import { RecordForm } from './RecordForm.js';
 import { Meetings } from './Meetings.js';
 import { MatrixSettings } from './MatrixSettings.js';
 import { Templates } from './Templates.js';
+import { CalcRules } from './CalcRules.js';
 import { FormCommands } from '../foundation/forms/useCommandForm.js';
 import './review.css';
 
@@ -21,10 +22,12 @@ export function TalentReviewPage() {
   const session = useSession();
   const project = usePermissions(objects.projects);
   const template = usePermissions(objects.templates);
+  const calcRule = usePermissions(objects['calc-rules']);
   const matrix = usePermissions(objects.matrices);
   const [selected, setSelected] = useState('projects');
-  const items = (['projects', 'templates', 'matrices'] as const)
-    .filter((key) => !!{ projects: project, templates: template, matrices: matrix }[key].snapshot.objects[objects[key]])
+  const permissions = { projects: project, templates: template, 'calc-rules': calcRule, matrices: matrix };
+  const items = (['projects', 'templates', 'calc-rules', 'matrices'] as const)
+    .filter((key) => !!permissions[key].snapshot.objects[objects[key]])
     .map((key) => ({ key: key as string, label: tr[key] }));
   if (project.snapshot.objects[objects.projects])
     items.push({ key: 'meetings', label: tr.meetings }, { key: 'pools', label: tr.pools });
@@ -47,6 +50,7 @@ export function TalentReviewPage() {
 function renderTab(active: string, key: string) {
   if (active === 'meetings' || active === 'pools') return <Meetings pool={active === 'pools'} />;
   if (active === 'matrices') return <MatrixSettings key={key} />;
+  if (active === 'calc-rules') return <CalcRules key={key} />;
   if (active === 'templates') return <Templates key={key} />;
   return <ProjectsPage key={key} />;
 }

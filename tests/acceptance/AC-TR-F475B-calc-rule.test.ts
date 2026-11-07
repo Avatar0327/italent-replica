@@ -40,7 +40,7 @@ const ruleFields = [
   'updatedBy',
   'updatedAt',
 ];
-/** 与 calc-rule-view.ts 的 CalcRuleView 同形：规则行 + items（计算项目）。 */
+/** 与对外 GET / 写响应同形（calc-rule-view.ts CalcRuleView + calc-rule-routes.ts 投影的 hints、items[].formulaBindings）。 */
 function rule(id: string, name: string, extra: Record<string, unknown> = {}) {
   return {
     id,
@@ -54,7 +54,18 @@ function rule(id: string, name: string, extra: Record<string, unknown> = {}) {
     createdAt: '2026-10-01T02:00:00.000Z',
     updatedBy: 'u-1',
     updatedAt: '2026-10-02T02:00:00.000Z',
-    items: [{ targetFieldId: 'f-1', priority: 1, formula: '1', description: null, sortNo: 1, usesRanking: false }],
+    items: [
+      {
+        targetFieldId: 'f-1',
+        priority: 1,
+        formula: '1',
+        description: null,
+        sortNo: 1,
+        usesRanking: false,
+        formulaBindings: [],
+      },
+    ],
+    hints: { order: ['f-1'], blocked: [], cycles: [], warnings: [] },
     ...extra,
   };
 }
