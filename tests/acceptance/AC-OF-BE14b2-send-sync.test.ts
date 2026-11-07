@@ -5,8 +5,7 @@
  */
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as employmentContext from '../../apps/api/src/modules/employment/context.js';
+import { afterEach, describe, expect, it } from 'vitest';
 import { loginEmailOf } from './AC-EMP-support.js';
 import { OFFERS } from './support/route-policy/required/offers.js';
 import {
@@ -138,29 +137,45 @@ describe('第 4 轮 P2-1：真实强控（不注入检查器），确认标记�
   });
 });
 
-describe('第 4 轮 P2-3：send 的 F-039 登记与真实运行时一致', () => {
-  it('on_send 的发送确实调用任职落地内核的联动复核，且必需义务表为 send 路由登记了 guard:employment.linkage', async () => {
-    const spy = vi.spyOn(employmentContext, 'requireLinkedEmploymentRecord');
-    try {
-      const w = await syncWorld(testDb().db, 'send-linkage');
-      await w.timing({ mode: 'on_send' });
-      // 关联在职实习生：同步落成“实习转正”任职记录，会走联动复核（全新人员没有后续记录，不经此守卫）
-      const intern = await w.internEmployee('在职实习生');
-      await w.laterTransfer(intern.id, '2026-12-01'); // 转正日之后还有一条任职记录：联动改写后续记录前才会过联动复核
-      const offer = await w.social({ personalEmail: loginEmailOf(intern.id), source: 'intern_conversion' });
-      const linked = await w.request('POST', `/${offer.id}/link-employee`, {
-        ifMatch: 1,
-        body: { employeeId: intern.id },
-      });
-      expect(linked.status).toBe(200);
-      const response = await w.send({ id: offer.id, revision: 2 });
-      expect(response.status, await response.clone().text()).toBe(200);
-      expect(await body(response)).toMatchObject({ syncStatus: 'success', syncTarget: 'intern_regularization' });
-      expect(spy.mock.calls.length).toBeGreaterThan(0);
-    } finally {
-      spy.mockRestore();
-    }
+describe('第 4 轮 P2-3：send 的 F-039 登记；F-480 / DEC-797 后实习转正同步的联动复核口径', () => {
+  /** 在职实习生 + 关联它的实习转正 Offer（计划入职日 = 转正日），时机 = 发送时。 */
+  async function linkedConversion(tag: string, laterRecordOn?: string) {
+    const w = await syncWorld(testDb().db, tag);
+    await w.timing({ mode: 'on_send' });
+    const intern = await w.internEmployee('在职实习生');
+    if (laterRecordOn) await w.laterTransfer(intern.id, laterRecordOn);
+    const offer = await w.social({ personalEmail: loginEmailOf(intern.id), source: 'intern_conversion' });
+    const linked = await w.request('POST', `/${offer.id}/link-employee`, {
+      ifMatch: 1,
+      body: { employeeId: intern.id },
+    });
+    expect(linked.status).toBe(200);
+    return { w, intern, offer };
+  }
+
+  it('转正新开任职周期（DEC-797）：没有同周期后续记录时，发送即同步成功，实习转正记录落在新 StaffID 上', async () => {
+    const { w, intern, offer } = await linkedConversion('send-linkage');
+    const response = await w.send({ id: offer.id, revision: 2 });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await body(response)).toMatchObject({ syncStatus: 'success', syncTarget: 'intern_regularization' });
+    const records = await w.recordsOf(intern.id);
+    expect(records.map((record) => record.kind)).toEqual(['hire', 'intern_regularization']);
+    // F-039：send 路由仍登记 guard:employment.linkage（联动复核的静态可达登记；DEC-797 后实习转正同步没有同周期后续记录
+    // 可联动，运行时到不了这个守卫，登记是否收窄由总编排另定，见 PR 描述“后补”）
     const obligations = OFFERS['POST /api/tenant/offers/:id/send'] ?? [];
     expect(obligations.some((item) => item.perm === 'guard:employment.linkage')).toBe(true);
+  });
+
+  it('转正日之后实习周期里还有任职记录：转正会让它们悬在新周期之外，同步失败 INTERN_CYCLE_SUCCESSOR_EXISTS，发送保留、不落转正', async () => {
+    const { w, intern, offer } = await linkedConversion('send-linkage-successor', '2026-12-01');
+    const response = await w.send({ id: offer.id, revision: 2 });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await body(response)).toMatchObject({
+      status: 'sent',
+      syncStatus: 'failed',
+      syncReason: 'INTERN_CYCLE_SUCCESSOR_EXISTS',
+      syncTarget: null,
+    });
+    expect((await w.recordsOf(intern.id)).map((record) => record.kind)).toEqual(['hire', 'transfer']);
   });
 });

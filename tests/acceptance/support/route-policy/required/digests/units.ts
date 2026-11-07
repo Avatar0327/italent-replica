@@ -627,7 +627,7 @@ export const DIGESTS: Digests = {
     employmentWithdrawalFailure: '148a6020239b',
   },
   'apps/api/src/modules/employment/write-service.ts': {
-    materializeEmploymentRecord: '81d24df87fd8',
+    materializeEmploymentRecord: '9ee842355dd2',
   },
   'apps/api/src/modules/establishment/copy-service.ts': {
     listNotifications: 'ea9103b1ab2d',
@@ -2353,7 +2353,7 @@ export const UNIT_BINDINGS: Readonly<Record<string, string>> = {
   'apps/api/src/modules/employment/routes.ts#route:PUT /settings': 'fcfd4017c2bb',
   'apps/api/src/modules/employment/transition-access.ts#requireEmploymentTransitionWrite': '413b0e4e2c2a',
   'apps/api/src/modules/employment/withdraw-eligibility.ts#employmentWithdrawalFailure': '573e99887edc',
-  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'e97b94708fdd',
+  'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord': 'c407882418e6',
   'apps/api/src/modules/establishment/copy-service.ts#listNotifications': '5cecb2b72dfa',
   'apps/api/src/modules/establishment/routes.ts#OBJECT': '962a8dd9a03e',
   'apps/api/src/modules/establishment/routes.ts#route:DELETE /api/tenant/establishment/schemes/:id': 'ad749dd90f8a',
