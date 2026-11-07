@@ -28,11 +28,13 @@ export async function channelWorld(database: ReturnType<typeof useTestDb>, label
     categoryId: category.id,
     levelIds: [p1.id, p2.id, p3.id],
     details: [{ levelId: p2.id, targetId: ownTarget.id, abilities: [{ content: '本类二级能力' }] }],
+    levelDescriptions: [{ levelId: p2.id, description: '本类二级描述' }],
   });
   const otherStandard = await w.standard({
     categoryId: otherCategory.id,
     levelIds: [p1.id, p2.id],
     details: [{ levelId: p2.id, targetId: otherTarget.id, abilities: [{ content: '他类二级能力' }] }],
+    levelDescriptions: [{ levelId: p2.id, description: '他类二级描述' }],
   });
   const put = await w.request('PUT', `/standards/${standard.id}/channels`, {
     ifMatch: standard.revision,
