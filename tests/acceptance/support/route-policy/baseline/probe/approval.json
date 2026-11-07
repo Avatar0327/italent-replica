@@ -69,6 +69,30 @@
       "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
     ]
   },
+  "GET /api/tenant/approval/instances/:id/attachments/:fileId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list",
+      "scope:TenantBase/TenantBase.Offer/TenantBase.Offer.list",
+      "scope:TenantBase/TenantBase.OrganizationApproval/TenantBase.OrganizationApproval.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
+    ]
+  },
   "GET /api/tenant/approval/instances/:id/logs": {
     "all": {
       "code": "NOT_FOUND",

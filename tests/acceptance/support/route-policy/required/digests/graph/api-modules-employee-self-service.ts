@@ -2,6 +2,7 @@
  * 直接依赖图：区域 api-modules-employee-self-service（节点 → 直接依赖，字典序；同文件的依赖写作 #名字；没有依赖的叶子不登记）。
  * 生成文件（F-072）：改源码后用 `ROUTE_POLICY_UPDATE_DIGESTS=1` 重算，不要手改；冲突时取任一侧后重算。
  */
+/* eslint-disable max-len -- 生成文件，键含完整路径 */
 import type { Graph } from '../../../evidence-graph.js';
 
 export const GRAPH: Graph = {
@@ -65,7 +66,12 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFieldsInTransaction',
     'packages/domain/src/platform/employee-self-service.ts#SELF_APPLICATION_OBJECTS',
   ],
+  'apps/api/src/modules/employee-self-service/application-access.ts#ownExitAttachmentRefs': [
+    'apps/api/src/modules/attachments/binding.ts#refsOf',
+    '#ownRequest',
+  ],
   'apps/api/src/modules/employee-self-service/application-access.ts#ownRequest': [
+    'apps/api/src/modules/attachments/binding.ts#refsOf',
     '#ownRequestMissing',
     'apps/api/src/modules/employment/exit-gate.ts#loadExitRequest',
     'apps/api/src/modules/employment/exit-gate.ts#withAckWarnings',
@@ -76,6 +82,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employee-self-service/application-access.ts#projectApplication': [
+    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
     '#protocol',
     'apps/api/src/modules/employee-self-service/field-disclosure.ts#visibleFields',
     'apps/api/src/modules/employment/context.ts#EMPLOYMENT_OBJECT',
@@ -91,6 +98,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employee-self-service/application-access.ts#selfPartTimeDepartmentScope': [
     'apps/api/src/modules/org/read-model.ts#loadOrgSnapshot',
+  ],
+  'apps/api/src/modules/employee-self-service/application-routes.ts#downloadAttachment': [
+    'apps/api/src/modules/attachments/access.ts#requireAttachmentRead',
+    'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
+    'apps/api/src/modules/attachments/carrier-read.ts#respondAttachment',
+    'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
+    'apps/api/src/modules/employee-self-service/application-access.ts#ownExitAttachmentRefs',
+    'apps/api/src/modules/job/context.ts#uuidParam',
   ],
   'apps/api/src/modules/employee-self-service/application-routes.ts#form': [
     'apps/api/src/modules/employee-self-service/access.ts#selfAccess',
@@ -115,6 +130,8 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /exit-requests/:id': ['#read'],
+  'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /exit-requests/:id/attachments/:fileId/content':
+    ['#downloadAttachment'],
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /exit-requests/form': ['#form'],
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /part-time-requests/:id': ['#read'],
   'apps/api/src/modules/employee-self-service/application-routes.ts#route:GET /part-time-requests/form': ['#form'],

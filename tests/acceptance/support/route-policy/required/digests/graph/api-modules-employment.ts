@@ -2017,7 +2017,14 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/personnel/employee-write.ts#appendEmployee',
     'apps/api/src/modules/personnel/employee-write.ts#employeeSnapshot',
   ],
+  'apps/api/src/modules/employment/exit-application.ts#assertDictionaries': [
+    'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
+  ],
+  'apps/api/src/modules/employment/exit-application.ts#auditExitUpdate': [
+    'apps/api/src/modules/employment/context.ts#auditEmployment',
+  ],
   'apps/api/src/modules/employment/exit-application.ts#createExitApplication': [
+    'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     'apps/api/src/modules/employment/exit-activation.ts#activateIfDue',
@@ -2027,6 +2034,8 @@ export const GRAPH: Graph = {
     '#selectedStaffOf',
     '#withBlacklist',
     '#writeRetirement',
+    'apps/api/src/modules/employment/exit-attachments.ts#bindOnCreate',
+    'apps/api/src/modules/employment/exit-attachments.ts#gateExit',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
     'apps/api/src/modules/employment/exit-gate.ts#EXIT_GATE_PASS',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
@@ -2062,12 +2071,14 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/exit-application.ts#updateExitFields': [
     'apps/api/src/modules/approval/engine.ts#refreshBusinessVersion',
-    'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-account-store.ts#queueExitAccount',
     '#SETTLED',
+    '#assertDictionaries',
+    '#auditExitUpdate',
     '#columnValues',
     '#withBlacklist',
-    'apps/api/src/modules/employment/exit-dictionaries.ts#assertExitDictionaryEnabled',
+    '#withDates',
+    'apps/api/src/modules/employment/exit-attachments.ts#writeRefs',
     'apps/api/src/modules/employment/exit-gate.ts#assertHandoverEmployee',
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-reschedule.ts#exitDateChange',
@@ -2084,6 +2095,16 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/exit-application.ts#writeRetirement': [
     'apps/api/src/modules/employment/retirement-application.ts#writeRetirementExtension',
     'apps/api/src/modules/employment/retirement-rehire.ts#validateRehirePlan',
+  ],
+  'apps/api/src/modules/employment/exit-attachments.ts#bindOnCreate': [
+    'apps/api/src/modules/attachments/binding.ts#EXIT_CARRIER',
+    'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs',
+  ],
+  'apps/api/src/modules/employment/exit-attachments.ts#writeRefs': [
+    'apps/api/src/modules/attachments/binding.ts#EXIT_CARRIER',
+    'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged',
+    'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs',
+    'apps/api/src/modules/attachments/binding.ts#refsOf',
   ],
   'apps/api/src/modules/employment/exit-batch.ts#createExitBatch': [
     'apps/api/src/modules/employment/exit-application.ts#createExitApplication',
@@ -3241,6 +3262,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/read-model.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail': [
+    'apps/api/src/modules/attachments/carrier-read.ts#attachmentSummaries',
     'apps/api/src/modules/employment/activation-store.ts#activationSummary',
     'apps/api/src/modules/employment/exit-list-order.ts#exitListOrder',
     '#LEAVE_SOURCE',
@@ -3285,6 +3307,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/linkage/store.ts#appendLinkageVersion',
   ],
   'apps/api/src/modules/employment/exit-replacement.ts#replaceExit': [
+    'apps/api/src/modules/attachments/binding.ts#inheritAttachments',
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/exit-cancel.ts#cancelExit',
     'apps/api/src/modules/employment/exit-confirmation.ts#confirmExit',
@@ -3458,16 +3481,14 @@ export const GRAPH: Graph = {
     'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id': [
-    'apps/api/src/authorization.ts#requirePermission',
-    'apps/api/src/modules/employment/context.ts#readPageContext',
     'apps/api/src/modules/employment/exit-actions.ts#exitActions',
     'apps/api/src/modules/employment/exit-later-records.ts#projectExitFailureDetails',
-    'apps/api/src/modules/employment/exit-queries.ts#loadExitDetail',
     'apps/api/src/modules/employment/exit-queries.ts#trimExitDetail',
-    '#viewableIn',
-    'apps/api/src/modules/employment/read-model.ts#loadEmploymentBusiness',
+  ],
+  'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/:id/attachments/:fileId/content': [
+    'apps/api/src/modules/attachments/carrier-read.ts#readCarrierAttachment',
+    'apps/api/src/modules/attachments/carrier-read.ts#respondAttachment',
     'apps/api/src/modules/job/context.ts#uuidParam',
-    'packages/domain/src/tenant-time.ts#tenantLocalDate',
   ],
   'apps/api/src/modules/employment/exit-routes.ts#route:GET /exits/dictionaries/:dict': [
     'apps/api/src/modules/employment/context.ts#readContext',
@@ -7660,6 +7681,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/probation-guard.ts#assertProbationProcessesIdle',
     'apps/api/src/modules/employment/regularization-eligibility.ts#assertRegularizationApplication',
   ],
+  'apps/api/src/modules/employment/transitions.ts#assertSubmitPreconditions': [
+    '#assertRegularizationSubmittable',
+    'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence',
+  ],
   'apps/api/src/modules/employment/transitions.ts#assertTransition': ['#transitionPermitted'],
   'apps/api/src/modules/employment/transitions.ts#auditDeletedRecord': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
@@ -7701,6 +7726,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/exit-gate.ts#requireExitGate',
     'apps/api/src/modules/employment/exit-gate.ts#saveAck',
   ],
+  'apps/api/src/modules/employment/transitions.ts#sealOnSubmit': [
+    'apps/api/src/modules/attachments/binding.ts#sealAttachments',
+  ],
   'apps/api/src/modules/employment/transitions.ts#snapshotRecord': [
     'apps/api/src/modules/employment/read-model.ts#snapshotFields',
   ],
@@ -7722,12 +7750,12 @@ export const GRAPH: Graph = {
     '#STATE_AFTER',
     '#activateExitPort',
     '#approveBusiness',
-    '#assertRegularizationSubmittable',
+    '#assertSubmitPreconditions',
     '#assertTransition',
     '#deleteEmploymentBusiness',
     '#exitGateFor',
+    '#sealOnSubmit',
     'apps/api/src/modules/employment/write-service.ts#appendEmploymentState',
-    'apps/api/src/modules/employment/write-service.ts#assertBusinessSequence',
     'apps/api/src/modules/employment/write-service.ts#materializeEmploymentRecord',
     'apps/api/src/modules/employment/write-service.ts#requireSavedBusiness',
     'apps/api/src/modules/establishment/carried-transfer.ts#assertReleasedEstablishment',

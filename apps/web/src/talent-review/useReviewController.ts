@@ -83,8 +83,6 @@ export function useReviewController(collection: Collection) {
 }
 
 function allowedActions(collection: Collection, row: ReviewRecord, can: (action: string) => boolean): ProjectAction[] {
-  if (collection === 'projects') return projectActions(row, can);
-  return collection === 'templates' && row.accessLevel === 'manage' && Number.isInteger(row.revision) && can('update')
-    ? ['update']
-    : [];
+  // 模板的编辑入口在 Templates 整页（model.templateWritable）；九宫格设置页只读。
+  return collection === 'projects' ? projectActions(row, can) : [];
 }

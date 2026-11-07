@@ -1,5 +1,5 @@
 import { withTenant, type Tx } from '@italent/db';
-import { ATTACHMENT_PURPOSES, attachmentDisposition } from '@italent/domain';
+import { ATTACHMENT_PURPOSES } from '@italent/domain';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { runCommand } from '../../commands.js';
@@ -10,6 +10,7 @@ import { selfAccess } from '../employee-self-service/access.js';
 import type { SelfAccess } from '../employee-self-service/access.js';
 import { parseBody, revision, uuidParam } from '../job/context.js';
 import { requireAttachmentRead, requireAttachmentWrite } from './access.js';
+import { respondAttachment } from './carrier-read.js';
 import * as service from './service.js';
 
 export const ATTACHMENTS_BASE = '/api/tenant/attachments';
@@ -66,16 +67,7 @@ export const registerAttachmentRoutes: TenantRouteModule = (router, deps) => {
       await requireAttachmentRead(tx, self);
       return service.readTemporaryContent(tx, self, id);
     });
-    // 防内联执行：附件下载、禁嗅探、沙箱 CSP、同源资源策略、不缓存
-    c.header('Content-Type', row.contentType!);
-    c.header('Content-Disposition', attachmentDisposition(row.filename));
-    c.header('X-Content-Type-Options', 'nosniff');
-    c.header('Content-Security-Policy', "default-src 'none'; sandbox");
-    c.header('Cross-Origin-Resource-Policy', 'same-origin');
-    c.header('Cache-Control', 'private, no-store');
-    c.header('Content-Length', String(bytes.length));
-    c.header('ETag', `"${row.sha256}"`);
-    return c.body(new Uint8Array(bytes));
+    return respondAttachment(c, row, bytes);
   });
 };
 

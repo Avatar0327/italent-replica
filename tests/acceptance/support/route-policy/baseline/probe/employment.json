@@ -603,6 +603,26 @@
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
+  "GET /api/tenant/employment/exits/:id/attachments/:fileId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:data.scope.all:"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
   "GET /api/tenant/employment/exits/:id/handover": {
     "all": {
       "code": "NOT_FOUND",

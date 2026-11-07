@@ -2113,6 +2113,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     },
     ...byId,
   }),
+  // F-479 §3.3 HR 载体下载：与详情同一取值（readExitDetail：详情按钮 403、范围外 / 不存在 404、tenant.employment.read），
+  // 再复核 attachmentRefs 字段查看权（无权 404「附件不存在」）与 bound 归属
+  'GET /exits/:id/attachments/:fileId/content': object({
+    object: EMPLOYMENT,
+    operation: 'view',
+    button: noButton('详情无按钮'),
+    scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
+    fields: fixed(['<binary>'], '附件字节：Content-Type 嗅探值、nosniff、sandbox CSP、no-store'),
+    ...byId,
+  }),
   // ---- employment/retirement-view-routes.ts：R2-T04 BE-5d1 退休五视图与详情（设计 §10、§12.1）-----------------------------
   // 视图：view ∈ upcoming / overdue / processing / completed / all / cancelled（缺失或不合法 400）；
   // cancelled = 撤销的退休（F-277，沿用离职撤销视图，不按 asOf）；asOf 缺省租户今天（不合法 400）；

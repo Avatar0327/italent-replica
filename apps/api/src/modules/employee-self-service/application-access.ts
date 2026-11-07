@@ -10,6 +10,7 @@ import {
 import { AppError } from '../../errors.js';
 import { requirePermission } from '../../authorization.js';
 import { EMPLOYMENT_OBJECT, requireEmploymentWrite } from '../employment/context.js';
+import { attachmentSummaries } from '../attachments/carrier-read.js';
 import { loadExitRequest, withAckWarnings } from '../employment/exit-gate.js';
 import { loadExitDetail } from '../employment/exit-queries.js';
 import { loadEmploymentBusiness } from '../employment/read-model.js';
@@ -17,6 +18,7 @@ import { loadPartTimeRequest } from '../employment/part-time/request-store.js';
 import { requestDto } from '../employment/part-time/request-read.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import { getModuleViewableFieldsInTransaction, authorizeInTransaction } from '../permission/module-access.js';
+import { refsOf } from '../attachments/binding.js';
 import type { SelfAccess } from './access.js';
 import { visibleFields } from './field-disclosure.js';
 
@@ -57,7 +59,14 @@ export async function ownRequest(tx: Tx, self: SelfAccess, kind: SelfApplication
     lastWorkDate: detail.lastWorkDate,
     reasonCode: row.reasonCode,
     whereaboutsCode: row.whereaboutsCode,
+    attachmentRefs: refsOf(row.attachmentRefs),
   });
+}
+
+/** F-479 §3.3：本人离职单当前的附件引用（本人单校验同 ownRequest）。 */
+export async function ownExitAttachmentRefs(tx: Tx, self: SelfAccess, id: string): Promise<string[]> {
+  const own = await ownRequest(tx, self, 'exit', id);
+  return 'attachmentRefs' in own ? refsOf(own.attachmentRefs) : [];
 }
 
 /** PT-R3 / DEC-790：本租户启用部门，不裁员工数据范围；根节点只作导航。读候选和写复核共用。 */
@@ -99,7 +108,7 @@ export async function requireApplicationAccess(
 }
 
 const protocol = ['id', 'employeeId', 'employeeRevision', 'revision', 'status', 'kind'];
-/** 固定协议字段 + 当前专属查看权；别把 HR 扩展、附件和自定义字段带回本人入口。 */
+/** 固定协议字段 + 当前专属查看权；别把 HR 扩展和自定义字段带回本人入口；附件只带摘要（元数据，无字节）。 */
 export async function projectApplication(self: SelfAccess, body: unknown) {
   return withTenant(self.deps.db, self.ctx.tenantId, async (tx) => {
     await self.check(tx);
@@ -108,7 +117,9 @@ export async function projectApplication(self: SelfAccess, body: unknown) {
     const source = body as Record<string, unknown>;
     const result = visibleFields(source, new Set([...protocol, ...visible]));
     delete result.customFields;
-    delete result.attachmentRefs;
+    // attachmentRefs 随查看权保留（visibleFields 已裁）；摘要与它同权限、同取值，无查看权则两个键都不出现（F-479 §3.1）
+    if (visible.has('attachmentRefs') && Array.isArray(source.attachmentRefs) && typeof source.id === 'string')
+      result.attachments = await attachmentSummaries(tx, self.ctx.tenantId, source.id, source.attachmentRefs);
     if (Array.isArray(source.warnings))
       result.warnings = source.warnings.map((warning: object | string) =>
         typeof warning === 'string' ? { reason: warning } : visibleFields(warning, new Set(['reason', 'limit'])),
