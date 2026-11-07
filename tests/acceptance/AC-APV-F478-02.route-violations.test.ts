@@ -18,6 +18,7 @@ import {
 } from './AC-APV-F478-support.js';
 import type { ProcessView } from './AC-APV-support.js';
 import { cloneForPut, errorInfo, getProcess, putDraft, withRoutesOn } from './AC-APV-F478-s2-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 
@@ -189,5 +190,57 @@ describe('AC-APV-F478-02 保存草稿的违规原因', () => {
     });
     const response = await putDraft(s.w, created, body);
     expect(response.status, await response.clone().text()).toBe(200);
+  });
+
+  describe('priority 取值范围（库里是 smallint：1～32767）', () => {
+    const routesAt = (s: RouteScene, priority: number): RoutesInput => ({
+      n1: [approveTo(when(priority, 'eq', s.depts.d1, 'n3'), otherwise('n2'))],
+    });
+    const invalid = { status: 400, code: 'VALIDATION_FAILED', reason: 'invalid_condition' } as const;
+    const at = { detailCode: 'APPROVAL_ROUTE_INVALID', nodeKey: 'n1', exit: 'approve', branchNo: 1 } as const;
+
+    it('草稿 PUT：32767 保存成功并读回；32768 / 0 / 小数 → 400 invalid_condition，草稿与 revision 不变', async () => {
+      const s = await routeScene(testDb().db, 'f478-02-priority-put');
+      const ok = await saveRoutes(s, routesAt(s, 32767));
+      const saved = await s.w.json<ProcessView>(ok.response);
+      expect(saved.latestVersion.nodes[0]).toMatchObject({ routes: [{ branches: [{ priority: 32767 }, {}] }] });
+      for (const priority of [32768, 2147483648, 0, 1.5]) {
+        const { response } = await saveRoutes(s, routesAt(s, priority), saved);
+        expect(await errorInfo(response), String(priority)).toMatchObject({ ...invalid, ...at });
+        const after = await getProcess(s.w, saved.id);
+        expect(after.revision, String(priority)).toBe(saved.revision);
+        expect(after.latestVersion.nodes[0], String(priority)).toMatchObject({
+          routes: [{ branches: [{ priority: 32767 }, {}] }],
+        });
+      }
+    });
+
+    it('创建流程：32767 成功；32768 → 400 invalid_condition，且不落库', async () => {
+      const s = await routeScene(testDb().db, 'f478-02-priority-create');
+      const create = (priority: number, code: string) =>
+        s.w.request(s.w.hr.id, 'POST', `${APV}/processes`, {
+          ifMatch: 0,
+          body: {
+            code,
+            name: '合成调动流程',
+            approvalType: 'transfer',
+            priority: 0,
+            isFallback: false,
+            exceptionAdminUserId: null,
+            conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }] },
+            nodes: withRoutesOn(s.nodes(), routesAt(s, priority)),
+          },
+        });
+      const okCode = `P_${uniqueSuffix()}`;
+      const ok = await create(32767, okCode);
+      expect(ok.status, await ok.clone().text()).toBe(201);
+      const badCode = `P_${uniqueSuffix()}`;
+      expect(await errorInfo(await create(32768, badCode))).toMatchObject({ ...invalid, ...at });
+      const listed = await s.w.json<{ items: { code: string }[] }>(
+        await s.w.request(s.w.hr.id, 'GET', `${APV}/processes`),
+      );
+      expect(listed.items.map((item) => item.code)).toContain(okCode);
+      expect(listed.items.map((item) => item.code)).not.toContain(badCode);
+    });
   });
 });
