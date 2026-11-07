@@ -44,7 +44,7 @@ function MatrixDetail() {
   const fieldName = (id: unknown) =>
     typeof id === 'string' ? display(catalog.data.items.find((row) => row.id === id)?.name ?? id) : tr.missing;
   if (result.loading) return <PageState kind="loading" />;
-  if (result.error) return <PageState kind="error" error={result.error} />;
+  if (result.error) return <PageState kind="error" error={result.error} retry={refresh} />;
   if (!items.length) return <Empty description={mx.empty} />;
   const record = detail && detail.id === selected?.id ? detail : undefined;
   const props = record && { record, visible: (field: string) => permission.field(field).visible, fieldName };
