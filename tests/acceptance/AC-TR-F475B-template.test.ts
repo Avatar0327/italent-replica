@@ -129,10 +129,12 @@ describe('AC-TR-F475B 盘点模板列表', () => {
       '是',
       '启用',
       'u-1',
-      '2026-10-01 10:00:00',
+      '2026-10-0110:00:00',
       '复制编辑删除',
       '',
     ]);
+    // cells() 去掉全部空白；时间列另核原文，日期与时间之间保留一个空格（租户时区 Asia/Shanghai）。
+    expect(rows()[0]!.querySelectorAll('td')[7]!.textContent).toBe('2026-10-01 10:00:00');
     expect(cells(rows()[1]!).slice(1, 6)).toEqual(['合成模板乙', '--', 'org-1', '否', '停用']);
     expect(button('刷新')).toBeUndefined();
     expect(text(list()!)).not.toContain('当前版本');

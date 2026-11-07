@@ -108,6 +108,10 @@ test.beforeEach(async ({ page }) => {
       periodStartDate: '2026-10-01',
       periodEndDate: '2026-10-31',
       enabled: true,
+      createdBy: id,
+      createdAt: '2026-10-01T02:00:00.000Z',
+      updatedBy: id,
+      updatedAt: '2026-10-01T02:00:00.000Z',
       modules: [{ id: 'module-one', name: '合成指标模块', kind: 'indicator', scoring: 'weighted_sum' }],
       steps: [{ nodeKey: 'review', name: '上级评价', stepType: 'evaluate', mode: 'single' }],
       permissions: [{ nodeKey: 'review', roleId: null, moduleName: '合成指标模块', visible: true, weight: 100 }],
@@ -216,12 +220,11 @@ for (const section of ['盘点模板', '盘点校准会']) {
       expect(errors).toEqual([]);
       return;
     }
+    // F-475 盘点B：模板点名称进入整页（R3cd spec §2.6），顶部三步导航，不弹窗。
     await page.locator('.list-card tbody button').first().click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    if (section === '盘点模板') {
-      await page.getByRole('button', { name: '编辑模板', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: '编辑模板', exact: true })).toBeVisible();
-    }
+    await expect(page.locator('.review-template-page')).toBeVisible();
+    await expect(page.locator('.review-template-page .ant-steps-item')).toHaveCount(3);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }
@@ -331,9 +334,12 @@ for (const count of [16, 31]) {
 }
 
 for (const [collection, label] of [['templates', '盘点模板']] as const) {
-  test(`AC-FE-R3c-08 ${label} 刷新缩页使用同一有效页码`, async ({ page }) => {
+  test(`AC-FE-R3c-08 ${label} 从整页返回后重读缩页，回到有效页`, async ({ page }) => {
     let items = Array.from({ length: 16 }, (_, i) => ({ id: `item-${i}`, name: `分页记录${i + 1}` }));
     await page.route(`**/talent-review/${collection}?*`, (route) => route.fulfill({ json: { items } }));
+    await page.route(`**/talent-review/${collection}/item-*`, (route) =>
+      route.fulfill({ json: { ...items.at(-1), revision: 1, accessLevel: 'manage' } }),
+    );
     await page.goto('/talent-review');
     await page.getByLabel('切换演示身份').selectOption(user);
     await expect(page).toHaveURL(/\/staff$/);
@@ -342,11 +348,14 @@ for (const [collection, label] of [['templates', '盘点模板']] as const) {
     await page.getByRole('tab', { name: label, exact: true }).click();
     await page.locator('.ant-pagination-item[title="2"]').click();
     await expect(page.getByRole('button', { name: '分页记录16', exact: true })).toBeVisible();
+    // 模板列表没有“刷新”（R3cd spec §3.3）；从整页返回即重读，只剩一页时不显示页码。
+    await page.getByRole('button', { name: '分页记录16', exact: true }).click();
+    await expect(page.locator('.review-template-page')).toBeVisible();
     items = items.slice(0, 15);
-    await page.getByRole('button', { name: /刷\s*新/, exact: true }).click();
+    await page.getByRole('button', { name: /返\s*回/ }).click();
     await expect(page.locator('.page-total')).toHaveText('共15条');
-    await expect(page.locator('.ant-pagination-item-active')).toHaveAttribute('title', '1');
     await expect(page.locator('.list-card tbody .ant-table-row')).toHaveCount(15);
+    await expect(page.locator('.review-template-list .ant-pagination')).toHaveCount(0);
   });
 }
 

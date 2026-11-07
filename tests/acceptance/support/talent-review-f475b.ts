@@ -68,7 +68,19 @@ function write(url: string, init: RequestInit): Response | Promise<Response> {
 function read(url: string): Response {
   server.reads.push(url);
   if (url.endsWith('/me/snapshot'))
-    return json({ session: { tenantId: 't', userId: 'u' }, apps: [], scope: [], adminMenus: [] });
+    // 与 /api/tenant/me/snapshot 同形：会话带租户名与租户时区，页面按租户时区显示时间（DEC-056）
+    return json({
+      session: {
+        tenantId: 't',
+        userId: 'u',
+        tenantName: '合成租户',
+        timezone: 'Asia/Shanghai',
+        displayName: '合成用户',
+      },
+      apps: [],
+      scope: [],
+      adminMenus: [],
+    });
   if (url.includes('/permission/me/objects/')) {
     const objectCode = url.split('/').at(-1)!;
     const fields = server.fields[objectCode] ?? [];

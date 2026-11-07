@@ -72,12 +72,15 @@ export interface ReviewFilters {
   startTo?: string | null;
   endFrom?: string | null;
   endTo?: string | null;
+  /** 模板状态筛选；字段被裁剪时不参与过滤（DEC-502① d）。 */
+  enabled?: boolean;
 }
 export function matchesFilters(row: ReviewRecord, filters: ReviewFilters, visible: (field: string) => boolean) {
   if (visible('name') && filters.name && !row.name?.includes(filters.name.trim())) return false;
   if (visible('ownerOrgId') && filters.ownerOrgId && row.ownerOrgId !== filters.ownerOrgId) return false;
   if (visible('ownerOrgId') && filters.ownerOrgIds?.length && !filters.ownerOrgIds.includes(row.ownerOrgId ?? ''))
     return false;
+  if (visible('enabled') && filters.enabled !== undefined && row.enabled !== filters.enabled) return false;
   if (visible('categoryId') && filters.categoryId && row.categoryId !== filters.categoryId) return false;
   if (visible('year') && filters.year !== null && filters.year !== undefined && row.year !== filters.year) return false;
   for (const [field, from, to] of [
@@ -90,3 +93,7 @@ export function matchesFilters(row: ReviewRecord, filters: ReviewFilters, visibl
   }
   return true;
 }
+
+/** 模板可编辑：管理权限、版本有效、有编辑按钮（与后端 accessLevel 一致，不在前端放宽）。 */
+export const templateWritable = (row: ReviewRecord, can: (button: string) => boolean) =>
+  row.accessLevel === 'manage' && Number.isInteger(row.revision) && can('update');
