@@ -254,6 +254,21 @@ describe('AC-TR-F475B 盘点模板保存接表单内核', () => {
     expect(cells(rows()[0]!)[1]).toBe('合成模板甲改');
   });
 
+  it('所属组织无查看权、详情省略：整页不出该字段也不校验，只改名称照常发出仅含名称的补丁（审查 P2-1）', async () => {
+    server.fields[TEMPLATE] = templateFields.filter((field) => field !== 'ownerOrgId');
+    for (const row of server.collections.templates!) delete row.ownerOrgId;
+    await openTemplates();
+    await openTemplate('合成模板甲');
+    expect(formItem('所属组织', page()!)).toBeUndefined();
+    expect(text(page()!)).not.toContain('所属组织');
+    await type(nameInput(), '合成模板甲改');
+    await click(button('保存', page()!));
+    expect(server.writes).toHaveLength(1);
+    expect([server.writes[0]!.method, server.writes[0]!.ifMatch]).toEqual(['PATCH', '3']);
+    expect(server.writes[0]!.body).toEqual({ name: '合成模板甲改' });
+    expect(page()).toBeNull();
+  });
+
   it('没有修改不发请求', async () => {
     await openTemplates();
     await openTemplate('合成模板甲');

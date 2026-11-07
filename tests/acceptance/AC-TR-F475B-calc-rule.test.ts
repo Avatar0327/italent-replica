@@ -256,6 +256,22 @@ describe('AC-TR-F475B 盘点计算规则基础编辑', () => {
     ]);
   });
 
+  it('409 重读回填的 250 字说明不算用户修改：只改名称重提不受 200 字限制（审查 P2-2）', async () => {
+    await openRules();
+    await edit();
+    Object.assign(server.collections['calc-rules']![0]!, { description: '他'.repeat(250), revision: 6 });
+    server.replies.push(conflict());
+    await type(nameInput(), '我的改名');
+    await click(button('保存', dialog()!));
+    await click(button('重读最新版本', dialog()!));
+    await click(button('已核对差异，继续编辑', dialog()!));
+    expect(descriptionInput().value).toBe('他'.repeat(250));
+    await click(button('保存', dialog()!));
+    expect(text(document.body)).not.toContain('最多200字');
+    expect(server.writes).toHaveLength(2);
+    expect([server.writes[1]!.ifMatch, server.writes[1]!.body]).toEqual(['6', { name: '我的改名' }]);
+  });
+
   it('回执版本未前进判为结果未知：只读锁定', async () => {
     await openRules();
     await edit();
