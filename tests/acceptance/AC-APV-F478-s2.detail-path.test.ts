@@ -221,4 +221,23 @@ describe('F-478 S2 详情 path', () => {
     expect(rejected.status, await rejected.clone().text()).toBe(200);
     await expectReturnedWithoutExit(s, view.id);
   });
+
+  it('后加签走完仍披露出口：加签人同意→N1 exit=approve；加签人不同意→N1 exit=disagree', async () => {
+    for (const [action, exit] of [
+      ['approve', 'approve'],
+      ['disagree', 'disagree'],
+    ] as const) {
+      const s = await routeScene(testDb().db, `f478-path-after-sign-${action}`);
+      await publishViaHttp(s.w, s.nodes({ n1: { exits: ['approve', 'disagree'], actions: ADD_SIGN_ACTIONS } }), {});
+      const view = await s.start(s.depts.d1);
+      const task = pendingOf(view)[0]!;
+      const body = { userIds: [s.people.n4.userId], type: 'after' };
+      await s.w.json(await s.w.taskAction(task.assigneeUserId, task.id, 'add-sign', view.revision, body));
+      const signing = await s.w.detail(view.id);
+      const signer = pendingOf(signing)[0]!;
+      await s.w.json(await s.w.taskAction(signer.assigneeUserId, signer.id, action, signing.revision, {}));
+      const detail = await detailOf(s.w, view.id);
+      expect(detail.path!.find((step) => step.nodeKey === 'n1')).toMatchObject({ state: 'passed', exit });
+    }
+  });
 });

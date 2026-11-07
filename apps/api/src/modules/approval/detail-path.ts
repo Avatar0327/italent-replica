@@ -75,9 +75,24 @@ async function decisionExits(tx: Tx, tenantId: string, instance: InstanceRow): P
 }
 
 /**
- * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点取这一次激活里
- * 最后一张未被撤回的已办任务的出口。撤回会让同一次激活重新办理，所以不信激活台账里那条可能已作废的流转行，
- * 只在任务上没有出口（本版本上线前办理的任务）且这次激活没被撤回过时才退回台账的流转行。
+ * 单人节点这一次激活的出口。任务上的 decision_exit 只说明“这一票是同意 / 不同意”，不说明节点流转出去了：
+ * 后加签（本人同意并交给加签人）先给本人任务写同意出口，加签人驳回或被取消 / 跳转截断后节点并没有走出；前加签人的同意票
+ * 也先于原审批人的最终表态。所以只认“激活里最后一次表态”：它是驳回（无出口）就没有出口；它是后加签的本人任务（名下挂着
+ * 没人表态的加签人任务）说明链条没走完，也没有出口。加签人按序依次办理，后表态的任务序号更大。
+ */
+function singleExitOf(activation: readonly TaskRow[], decided: ReadonlyMap<string, string>): string | null | undefined {
+  const live = withoutRetrieved(activation);
+  const last = live.filter((task) => decided.has(task.id) || task.status === 'rejected').at(-1);
+  if (!last) return undefined;
+  if (last.status === 'rejected') return null;
+  const signing = live.some((task) => task.parentTaskId === last.id && task.origin === 'add_sign_after');
+  return signing ? null : decided.get(last.id)!;
+}
+
+/**
+ * 节点这一次激活实际走的出口。会签按领域结算（票的口径与引擎同源），不用某一个人的票代替；单人节点见 singleExitOf。
+ * 撤回会让同一次激活重新办理，所以不信激活台账里那条可能已作废的流转行，只在任务上没有任何表态（本版本上线前办理的
+ * 任务）且这次激活没被撤回过时才退回台账的流转行。
  */
 function exitOfActivation(
   node: ApprovalNode | undefined,
@@ -89,11 +104,9 @@ function exitOfActivation(
     const outcome = settledOutcome(activation, exitRulesOf(node.transitionRule, nodeExits(node)));
     return outcome.kind === 'flow' ? outcome.exit : null;
   }
-  const last = withoutRetrieved(activation)
-    .filter((task) => decided.has(task.id))
-    .at(-1);
-  if (last) return decided.get(last.id)!;
-  // 撤回复用原激活：原同意连同它在台账里的流转行一起作废，重开后没办完（或改为驳回）就是没有出口，不能回落到旧流转行
+  const exit = singleExitOf(activation, decided);
+  if (exit !== undefined) return exit;
+  // 撤回复用原激活：原同意连同它在台账里的流转行一起作废，重开后没办完就是没有出口，不能回落到旧流转行
   const retrieved = activation.some((task) => task.origin === 'retrieve' && task.parentTaskId !== null);
   return retrieved ? null : flowFallback;
 }
