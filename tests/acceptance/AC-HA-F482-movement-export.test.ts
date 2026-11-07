@@ -103,7 +103,7 @@ describe('AC-HA-F482 流动情况两张统计报表导出', () => {
       expectLikePage(cellsAt(book, 3 + index), row.cells, row.key);
     });
     expect(cellsAt(book, 3)).toEqual([5, 0, 1, 5, 0.2]); // 手写：1 月 期初 5、入职 0、离职 1、期末 5
-    expect(cellsAt(book, 4)).toEqual([5, 2, 0, 6, 0]); // 2 月
+    expect(cellsAt(book, 4)).toEqual([5, 1, 0, 6, 0]); // 2 月（DEC-832①：未转正实习生不计入职，原入职 2）
     expect(cellsAt(book, 12)).toEqual([6, 1, 0, 6, 0]); // 10 月（期初 ≠ 9 月期末）
     expect(cellsAt(book, 13)).toEqual([undefined, undefined, undefined, undefined, undefined]);
 

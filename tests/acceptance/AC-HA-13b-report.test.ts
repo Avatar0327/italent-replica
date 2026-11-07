@@ -62,19 +62,20 @@ describe('AC-HA-13b B54 流动情况报表', () => {
       growthRate: -0.2222,
       totalChange: 6,
     });
+    // DEC-832①：未转正的实习生（2/1 入职，在丙部门 B）不计入职；原 hires 2 / totalChange 3
     expect(row(report, 'flow', w.B.id)).toEqual({
       yearStart: 0,
-      hires: 2,
+      hires: 1,
       transfers: 0,
       exits: 1,
       yearEnd: 1,
       netGrowth: 1,
       growthRate: 2,
-      totalChange: 3,
+      totalChange: 2,
     });
     expect(table(report, 'flow').summary.cells).toMatchObject({
       yearStart: 5,
-      hires: 6,
+      hires: 5, // 原 6：未转正实习生不计（DEC-832①）
       transfers: 1,
       exits: 5,
       yearEnd: 6,
@@ -94,7 +95,8 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     );
     // 一月底离职（最后工作日 1/31）：1 月期末仍在职、计 1 月离职；2 月期初已不在
     expect(row(report, 'monthly', '2026-01')).toEqual({ opening: 5, hires: 0, exits: 1, closing: 5, rate: 0.2 });
-    expect(row(report, 'monthly', '2026-02')).toEqual({ opening: 5, hires: 2, exits: 0, closing: 6, rate: 0 });
+    // DEC-832①：2 月入职原为 2（含未转正实习生 2/1），现 1；期末人数仍含在职实习生
+    expect(row(report, 'monthly', '2026-02')).toEqual({ opening: 5, hires: 1, exits: 0, closing: 6, rate: 0 });
     // 范围外离职（最后工作日 8/31）归 8 月，9 月期初不含
     expect(row(report, 'monthly', '2026-08')).toEqual({ opening: 5, hires: 0, exits: 1, closing: 5, rate: 0.2 });
     expect(row(report, 'monthly', '2026-09')).toEqual({ opening: 5, hires: 1, exits: 0, closing: 5, rate: 0 });
@@ -129,9 +131,9 @@ describe('AC-HA-13b B54 流动情况报表', () => {
       'age:25to30': 1,
       averageAge: 30,
     });
-    // 无序列：十月一日 / 三十一天 / 实习生 / 范围外 / 底层夹具员工（外部人员不计）
-    expect(row(report, 'inflow', 'none')).toMatchObject({ total: 5, averageAge: null });
-    expect(table(report, 'inflow').summary.cells).toMatchObject({ total: 6 });
+    // 无序列：十月一日 / 三十一天 / 范围外 / 底层夹具员工（外部人员不计；DEC-832①：未转正实习生不计，原总计 5 / 6）
+    expect(row(report, 'inflow', 'none')).toMatchObject({ total: 4, averageAge: null });
+    expect(table(report, 'inflow').summary.cells).toMatchObject({ total: 5 });
   });
 
   it('AC-HA-13b-08 / 09：流出——离职类型 × 原因、职务序列 × 属性；合计 = 人事看板“本年离职”', async () => {
@@ -200,7 +202,7 @@ describe('AC-HA-13b B54 流动情况报表', () => {
     const scope = managementScope(w.tenantId, [w.A.id, w.A1.id, w.B.id]);
     const limited = movementClient(w.db, w.who, restrictedAuthorizer({ scope }));
     await limited.expectCount(BASE, '6.29', ids(p.lastYear, p.jan31, p.m30, p.m31, p.retired), AS_OF);
-    await limited.expectCount(BASE, '6.26', ids(p.intern), AS_OF, 'hire:2026-02');
+    await limited.expectCount(BASE, '6.26', [], AS_OF, 'hire:2026-02'); // DEC-832①：未转正实习生不计（原 ids(p.intern)）
     await limited.expectCount(BASE, '6.25', ids(p.old, p.oct1, p.intern, p.reg, p.orgAdj), AS_OF, '2026-10');
     const report = await limited.report('flow', AS_OF);
     expect(
@@ -224,7 +226,7 @@ describe('AC-HA-13b B54 流动情况报表', () => {
       expect(table(flow, 'flow').summary.cells[column], `合计 ${column}`).toBe(
         rows.reduce((total, item) => total + (item.cells[column] ?? 0), 0),
       );
-    expect(table(flow, 'flow').summary.cells).toMatchObject({ yearStart: 5, hires: 4, transfers: 1, exits: 4 });
+    expect(table(flow, 'flow').summary.cells).toMatchObject({ yearStart: 5, hires: 3, transfers: 1, exits: 4 }); // hires 原 4（DEC-832①）
 
     // 各月入离职：范围外部门 8/31 的离职不计（全范围 8 月离职 1）；流出合计 = 范围内离职 4
     const monthly = await limited.report('monthly', AS_OF);
