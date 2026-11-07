@@ -12,6 +12,7 @@ import { ReviewList } from './ReviewList.js';
 import { RecordDetail } from './RecordDetail.js';
 import { RecordForm } from './RecordForm.js';
 import { Meetings } from './Meetings.js';
+import { MatrixSettings } from './MatrixSettings.js';
 import './review.css';
 
 export function TalentReviewPage() {
@@ -29,18 +30,19 @@ export function TalentReviewPage() {
   return (
     <div className="talent-review-page">
       <Tabs activeKey={active} onChange={setSelected} items={items} />
-      {!active ? (
-        <PageState kind={project.loading ? 'loading' : 'forbidden'} />
-      ) : active === 'meetings' || active === 'pools' ? (
-        <Meetings pool={active === 'pools'} />
+      {active ? (
+        renderTab(active, `${session.tenantId}/${session.identityKey}/${active}`)
       ) : (
-        <CollectionPage
-          key={`${session.tenantId}/${session.identityKey}/${active}`}
-          collection={active as Collection}
-        />
+        <PageState kind={project.loading ? 'loading' : 'forbidden'} />
       )}
     </div>
   );
+}
+/** 页签内容：key 带租户 / 身份，切换身份即重挂载，不沿用上一身份的列表状态。 */
+function renderTab(active: string, key: string) {
+  if (active === 'meetings' || active === 'pools') return <Meetings pool={active === 'pools'} />;
+  if (active === 'matrices') return <MatrixSettings key={key} />;
+  return <CollectionPage key={key} collection={active as Collection} />;
 }
 function CollectionPage({ collection }: { collection: Collection }) {
   const state = useReviewController(collection);

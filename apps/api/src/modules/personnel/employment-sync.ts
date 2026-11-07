@@ -12,6 +12,8 @@ const switches: Record<string, string> = {
   hire: 'EntrySyncJobHistory',
   rehire: 'EntrySyncJobHistory',
   retire_rehire: 'EntrySyncJobHistory',
+  // DEC-797：转正开新周期、重置入职日，等同一次正式入职；实习段经历在转正日前一天封口
+  intern_regularization: 'EntrySyncJobHistory',
   transfer: 'TransferSyncJobHistory',
   leave: 'DismissSyncJobHistory',
   retirement: 'DismissSyncJobHistory',
@@ -44,7 +46,7 @@ export async function syncEmploymentHistory(
       WHERE j.tenant_id=${ctx.tenantId} AND j.employee_id=${employeeId}::uuid AND NOT j.deleted
         AND j.employment_record_id=${recordId}::uuid LIMIT 1`),
     ),
-    ...(trigger ? await previousHistory(tx, ctx, employeeId, recordId) : []),
+    ...(trigger ? await previousHistory(tx, ctx, employeeId, recordId, kind === 'intern_regularization') : []),
   ].map(camel);
   // TODO(需取证 Q-M0-37)：离职是否另建历史行未取证；只同步已知工作区间终点，不虚构离职后任期。
   if (mayCreate && trigger && !terminal && !existing.some((row) => row.employmentRecordId === recordId))
@@ -58,11 +60,21 @@ export async function syncEmploymentHistory(
     await syncOne(tx, ctx, employeeId, previous, record, leaveDate);
   }
 }
-/** 时间轴上（生效日 + 同日操作先后）排在触发记录之前、同周期内最近一条已有履历的任职，其结束日随之变化。 */
-async function previousHistory(tx: Tx, ctx: EmploymentContext, employeeId: string, recordId: string) {
+/**
+ * 时间轴上（生效日 + 同日操作先后）排在触发记录之前、同周期内最近一条已有履历的任职，其结束日随之变化。
+ * 实习转正（acrossCycles）新开 staffId 但中间没有离职封口，前驱在上一周期，需跨周期取（DEC-797）。
+ */
+async function previousHistory(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  recordId: string,
+  acrossCycles = false,
+) {
   return rows(
     await tx.execute(sql`SELECT j.* FROM employment_timeline t
-      JOIN employment_timeline p ON p.tenant_id=t.tenant_id AND p.employee_id=t.employee_id AND p.staff_id=t.staff_id
+      JOIN employment_timeline p ON p.tenant_id=t.tenant_id AND p.employee_id=t.employee_id
+        AND (${acrossCycles} OR p.staff_id=t.staff_id)
         AND (p.start_date,p.sort_order)<(t.start_date,t.sort_order)
       JOIN personnel_job_history j ON j.tenant_id=p.tenant_id AND j.employee_id=p.employee_id
         AND j.employment_record_id=p.record_id AND NOT j.deleted

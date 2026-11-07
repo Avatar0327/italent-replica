@@ -51,6 +51,7 @@ function record(row: Record<string, unknown>): EmploymentRecord {
     revision: Number(row.revision),
     staffId: String(row.staff_id),
     entryDate: String(row.entry_date),
+    traineeStartDate: (row.trainee_start_date as string | null) ?? null,
     kind: row.kind as BusinessKind,
     changeType: (row.change_type as ChangeType | null) ?? null,
     serviceType: row.service_type as EmploymentRecord['serviceType'],
@@ -80,7 +81,10 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     creator: employmentCreator(tenantId, sql`r.id`, true),
   });
   return sql`
-    SELECT r.*,t.start_date::text AS start_date,b.revision,current_payload.body AS current_payload,
+    SELECT r.*,t.start_date::text AS start_date,
+      (SELECT c.trainee_start_date::text FROM employment_cycles c
+        WHERE c.tenant_id=r.tenant_id AND c.id=r.staff_id) AS trainee_start_date,
+      b.revision,current_payload.body AS current_payload,
       CASE WHEN isempty(t.valid_during) THEN (t.start_date-1)::text
         WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,

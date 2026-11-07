@@ -38,7 +38,7 @@ it('AC-EMP-F432-09：以业务落地时开关为准，审批通过未生效不�
   expect(off.record?.fields.workYearCompanyBefore).toBe(1);
 });
 
-it('AC-EMP-F432-10：上一段取离职快照与最后工作日；后续同周期继承，实习原入职日行为保持', async () => {
+it('AC-EMP-F432-10：上一段取离职快照与最后工作日；后续同周期继承；重聘开关不管实习转正（转正归 DEC-797 独立开关）', async () => {
   const w = await rehireWorld(db().db, 'snapshot');
   const prior = await w.departed();
   const changed = await w.s.request('PATCH', `/records/${prior.leave.id}`, {
@@ -80,5 +80,6 @@ it('AC-EMP-F432-10：上一段取离职快照与最后工作日；后续同周�
     },
     hired.employeeRevision,
   );
-  expect(regularized.record).toMatchObject({ entryDate: '2025-01-01', fields: { workYearCompanyBefore: 1 } });
+  // 重聘开关打开不影响转正的写法；转正的入职日与校正值由 F-480 的独立开关决定（默认开：1 + 638 天 / 365 → 2.7）
+  expect(regularized.record).toMatchObject({ entryDate: '2026-10-01', fields: { workYearCompanyBefore: 2.7 } });
 });

@@ -156,7 +156,9 @@ export const GRAPH: Graph = {
     '#employType',
     '#list',
     'apps/api/src/modules/employment/employee-status.ts#ENTRY_KINDS',
+    'apps/api/src/modules/employment/employee-status.ts#ENTRY_LIKE_KINDS',
     'apps/api/src/modules/employment/entry-views.ts#entryViewPredicate',
+    'apps/api/src/modules/employment/intern-entry.ts#countsAsEntryOnce',
   ],
   'apps/api/src/modules/analytics/hr-dashboard.ts#exitSource': [
     '#CYCLE_JOIN',

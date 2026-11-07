@@ -8,6 +8,7 @@ import { removeEmploymentTimeline } from '../../apps/api/src/modules/employment/
 import { runEvaluationLeave } from '../../apps/api/src/modules/evaluation/leave-handler.js';
 import { addPreAssessmentTable } from './support/pre-assessment-schema.js';
 import { addPreBlacklistTable } from './support/pre-blacklist-schema.js';
+import { addPreInternCycleColumn } from './support/pre-intern-cycle-schema.js';
 import { addPrePartTimeTables } from './support/pre-part-time-schema.js';
 
 it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周期补入；已删除与无评定旧周期排除，重跑不重复', async () => {
@@ -19,6 +20,8 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     const restorePartTime = await addPrePartTimeTables(handle.db);
     // R2-T03 B3-3：离职开闸后旧结构上的离职会查在途考核，临时补出考核表，升级迁移前撤掉（support/pre-assessment-schema.ts）
     const restoreAssessment = await addPreAssessmentTable(handle.db);
+    // F-480：当前接口建入职周期会写 employment_cycles.trainee_start_date，旧结构没有，临时补列，升级迁移前撤掉（support/pre-intern-cycle-schema.ts）
+    const restoreInternCycle = await addPreInternCycleColumn(handle.db);
     const w = await evaluationLeaveWorld(handle.db);
     const [date] = rowsOf<{ old: string; future: string; later: string }>(
       await handle.db.execute(sql`
@@ -52,6 +55,7 @@ it('AC-EV-leave-upgrade：C1 未来离职、三天前已生效且有评定的周
     await restorePartTime();
     await restoreBlacklist();
     await restoreAssessment();
+    await restoreInternCycle();
     await handle.migrate();
     expect(await w.queue(oldLeave.id)).toHaveLength(1);
     expect(await w.queue(futureLeave.id)).toHaveLength(1);

@@ -89,6 +89,8 @@ export const employmentCycles = pgTable(
     entryDate: day('entry_date').notNull(),
     entryType: text('entry_type').notNull(),
     employType: text('employ_type').notNull(),
+    // DEC-797：实习转正开新周期时，原实习开始日单独保存在周期上（周期内各版本共用，不覆盖）。
+    traineeStartDate: day('trainee_start_date'),
     createdAt: utc(),
   },
   (t) => [
@@ -97,7 +99,15 @@ export const employmentCycles = pgTable(
     unique('employment_cycles_employee_entry').on(t.tenantId, t.employeeId, t.id, t.entryDate),
     reference('employment_cycles_employee_fk', t.tenantId, t.employeeId, employmentEmployees),
     index('employment_cycles_employee_date').on(t.tenantId, t.employeeId, t.entryDate, t.id),
-    check('employment_cycles_entry_type', sql`${t.entryType} IN ('hire', 'rehire', 'retire_rehire')`),
+    check(
+      'employment_cycles_entry_type',
+      sql`${t.entryType} IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization')`,
+    ),
+    check(
+      'employment_cycles_trainee_start',
+      sql`${t.traineeStartDate} IS NULL OR
+        (${t.entryType} = 'intern_regularization' AND ${t.traineeStartDate} <= ${t.entryDate})`,
+    ),
     check('employment_cycles_employ_type', sql`${t.employType} IN ('internal', 'intern', 'external')`),
     check('employment_cycles_entry_finite', sql`isfinite(${t.entryDate})`),
   ],
