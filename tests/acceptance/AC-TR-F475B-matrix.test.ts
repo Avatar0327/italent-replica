@@ -163,7 +163,9 @@ describe('AC-TR-F475B 九宫格详细设置', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     const grid = section('九宫格展示')!.querySelector('.review-grid') as HTMLElement;
     expect(grid.style.gridTemplateColumns).toBe('repeat(3, minmax(0, 1fr))');
-    const cell = Array.from(grid.querySelectorAll('.review-cell')).find((n) => n.textContent === '合成格9') as HTMLElement;
+    const cell = Array.from(grid.querySelectorAll('.review-cell')).find(
+      (n) => n.textContent === '合成格9',
+    ) as HTMLElement;
     expect(cell.style.gridColumn).toBe('3');
     expect(cell.style.gridRow).toBe('1');
   });

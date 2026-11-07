@@ -1,4 +1,4 @@
-import { Alert, Collapse, Descriptions, Empty, Table, Tag } from 'antd';
+import { Alert, Collapse, Descriptions, Table, Tag } from 'antd';
 import type { ReactNode } from 'react';
 import { DetailPage } from '../foundation/templates.js';
 import { DecisionNote } from '../foundation/DecisionNote.js';
@@ -32,11 +32,9 @@ export function RecordDetail({
       summary={summary}
       tabs={tabs}
       sections={
-        collection === 'matrices'
-          ? [{ key: 'matrix', title: tr.matrices, children: <MatrixPreview record={record} /> }]
-          : collection === 'templates'
-            ? [{ key: 'notice', title: tr.settings, children: <Alert message={tr.templateNote} type="info" /> }]
-            : []
+        collection === 'templates'
+          ? [{ key: 'notice', title: tr.settings, children: <Alert message={tr.templateNote} type="info" /> }]
+          : []
       }
     />
   );
@@ -67,37 +65,6 @@ function StructureTable({
     />
   );
 }
-function MatrixPreview({ record }: { record: ReviewRecord }) {
-  const permission = usePermissions(objects.matrices);
-  if (!permission.field('cells').visible) return null;
-  const cells = (record.cells ?? []) as { cellNo: number; xLevelNo: number; yLevelNo: number; name: string }[];
-  if (!cells.length) return <Empty description={tr.noCells} />;
-  // 服务端 checkCells 保证从 1 连续铺满全部轴段；直接使用已授权格子的坐标，不假定三档。
-  const xLevels = Math.max(...cells.map((cell) => cell.xLevelNo));
-  const yLevels = Math.max(...cells.map((cell) => cell.yLevelNo));
-  return (
-    <>
-      <Alert message={tr.gridNote} type="info" />
-      <div
-        className="review-grid"
-        style={{ gridTemplateColumns: `repeat(${xLevels}, 1fr)`, gridTemplateRows: `repeat(${yLevels}, auto)` }}
-      >
-        {[...cells]
-          .sort((a, b) => b.yLevelNo - a.yLevelNo || a.xLevelNo - b.xLevelNo)
-          .map((cell) => (
-            <div
-              className="review-cell blue"
-              key={cell.cellNo}
-              style={{ gridColumn: cell.xLevelNo, gridRow: yLevels - cell.yLevelNo + 1 }}
-            >
-              <strong>{cell.name}</strong>
-            </div>
-          ))}
-      </div>
-    </>
-  );
-}
-
 function RecordSummary({ collection, record }: { collection: Collection; record: ReviewRecord }) {
   const permission = usePermissions(objects[collection]);
   const fields = ['ownerOrgId', 'flowId', 'enabled', 'currentVersionNo'].filter((key) => permission.field(key).visible);

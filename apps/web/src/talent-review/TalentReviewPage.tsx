@@ -12,6 +12,7 @@ import { ReviewList } from './ReviewList.js';
 import { RecordDetail } from './RecordDetail.js';
 import { RecordForm } from './RecordForm.js';
 import { Meetings } from './Meetings.js';
+import { MatrixSettings } from './MatrixSettings.js';
 import './review.css';
 
 export function TalentReviewPage() {
@@ -33,6 +34,8 @@ export function TalentReviewPage() {
         <PageState kind={project.loading ? 'loading' : 'forbidden'} />
       ) : active === 'meetings' || active === 'pools' ? (
         <Meetings pool={active === 'pools'} />
+      ) : active === 'matrices' ? (
+        <MatrixSettings key={`${session.tenantId}/${session.identityKey}/matrices`} />
       ) : (
         <CollectionPage
           key={`${session.tenantId}/${session.identityKey}/${active}`}

@@ -153,7 +153,9 @@ export async function click(element: Element | undefined | null) {
   await settle();
 }
 export async function openTab(label: string) {
-  const tab = Array.from(document.body.querySelectorAll('.ant-tabs-tab-btn')).find((node) => node.textContent === label);
+  const tab = Array.from(document.body.querySelectorAll('.ant-tabs-tab-btn')).find(
+    (node) => node.textContent === label,
+  );
   await click(tab);
 }
 export async function type(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
