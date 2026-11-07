@@ -58,29 +58,31 @@ it('AC-EMP-F480-11：任职记录列表与详情——实习段保留原入职�
   expect(history).toMatchObject({ entryDate: '2025-01-01' });
 });
 
-it('AC-EMP-F480-12：人员档案读取——入职日期 = 转正日（当前任职），首次入职日期保留实习开始日', async () => {
+it('AC-EMP-F480-12：人员档案读取——入职日期 = 转正日（当前任职），首次入职日期同取转正日（DEC-830①）', async () => {
   const { w, e } = await regularizedWorld('personnel');
   const response = await w.call('GET', `/api/tenant/personnel/employees/${e.id}`);
   expect(response.status, await response.clone().text()).toBe(200);
   expect(await response.json()).toMatchObject({
     entryDate: '2026-10-01',
     latestEntryDate: '2026-10-01',
-    firstEntryDate: '2025-01-01',
+    firstEntryDate: '2026-10-01', // DEC-830①：原为实习开始日 2025-01-01
   });
 });
 
-it('AC-EMP-F480-13：看板入职指标——转正记录不是入职类（ENTRY_KINDS），不重复计入；转正改入职日不改变口径（实习入职仍按实习开始日计入，转正日不计第二次）', async () => {
+it('AC-EMP-F480-13：看板入职指标——转正的人按转正日计一次，实习开始日不再计（DEC-830①）；转正日之前的时点仍按实习开始日', async () => {
   const { w, hire, reg } = await regularizedWorld('entries');
-  const ids = (since?: string) =>
+  const ids = (since?: string, asOf = '2026-12-31') =>
     w
-      .sqlRows<{ id: string }>(
-        sql`SELECT r.id ${entriesFrom({ tenantId: w.tenantId, asOf: '2026-12-31' }, 'hired', since)}`,
-      )
+      .sqlRows<{ id: string }>(sql`SELECT r.id ${entriesFrom({ tenantId: w.tenantId, asOf }, 'hired', since)}`)
       .then((rows) => rows.map((r) => r.id));
-  expect(await ids()).toEqual([hire.id]);
-  expect(await ids('2025-01-01')).toEqual([hire.id]);
-  expect(await ids('2026-10-01')).toEqual([]);
-  expect([...(await ids()), ...(await ids('2025-01-01'))]).not.toContain(reg.id);
+  // 原断言为 [hire.id] / [hire.id] / []：实习开始日计入职、转正日不计；DEC-830① 起整体翻转
+  expect(await ids()).toEqual([reg.id]);
+  expect(await ids('2026-10-01')).toEqual([reg.id]);
+  expect(await ids('2025-01-01')).toEqual([reg.id]);
+  expect(await ids('2026-10-02')).toEqual([]);
+  // 追溯：期末早于转正日时转正尚未发生，实习开始日照常计（未转正实习生口径不变）
+  expect(await ids(undefined, '2026-09-30')).toEqual([hire.id]);
+  expect(await ids('2025-01-01', '2026-09-30')).toEqual([hire.id]);
 });
 
 it('AC-EMP-F480-14：转正后离职沿用转正周期，离职记录与转正记录同周期（编制占用按时间轴连续，不重叠）', async () => {
