@@ -19,6 +19,7 @@ import { withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
+import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
 import { exitActions } from './exit-actions.js';
 import { handoverRowActions } from './exit-handover-batch.js';
 import { AppError } from '../../errors.js';
@@ -604,7 +605,8 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
   });
   // 详情：范围外 / 不存在 / 不是离职单同一个 404；先按任职业务口径（DEC-177）确认可见，再取离职详情
-  router.get('/exits/:id', async (c) => {
+  // 详情与附件下载共用的取值：按钮 / 范围 / 读权限同一套判定（F-479 §3.3 “与详情接口同一个取值函数”）
+  const readExitDetail = async (c: Context<TenantEnv>) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
     const today = tenantLocalDate(ctx.now, ctx.timezone);
@@ -615,7 +617,20 @@ function registerExitViews(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     if (!detail) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: detail.employeeId });
-    const show = await viewableIn(deps, ctx);
+    return { ctx, detail, show: await viewableIn(deps, ctx) };
+  };
+  // F-479 §3.3 HR 载体下载：无附件字段查看权 / 文件不属于本单 / 不是 bound 一律 404“附件不存在”；缺详情按钮 403（readPageContext）
+  router.get('/exits/:id/attachments/:fileId/content', async (c) => {
+    const fileId = uuidParam(c, 'fileId');
+    const { ctx, detail, show } = await readExitDetail(c);
+    if (!show.employment('attachmentRefs')) throw new AppError('NOT_FOUND', '附件不存在');
+    const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      readCarrierAttachment(tx, ctx.tenantId, detail.id, detail.attachmentRefs, fileId),
+    );
+    return respondAttachment(c, row, bytes);
+  });
+  router.get('/exits/:id', async (c) => {
+    const { ctx, detail, show } = await readExitDetail(c);
     // 动作随“状态”字段权裁剪（依赖表登记 actions）：无状态查看权的人拿不到，也就无法由动作反推状态
     const actions = (await exitActions(deps, ctx, [detail], { withHandle: false })).get(detail.id) ?? [];
     if (detail.activation?.details) {

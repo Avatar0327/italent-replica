@@ -35,7 +35,13 @@ import {
 } from './exit-initiation.js';
 import { normalizeEmploymentInput } from './fields.js';
 import { loadPlannedEffectiveDate } from './timeline.js';
-import { bumpEmploymentBusiness, lockEmploymentBusiness, lockEmploymentEmployee, rowsOf } from './record-store.js';
+import {
+  bumpEmploymentBusiness,
+  lockEmploymentBusiness,
+  lockEmploymentEmployee,
+  rowsOf,
+  type LockedEmploymentBusiness,
+} from './record-store.js';
 import type { ChangeType, CustomFields, EmploymentBusiness, EmploymentContext, PresetFields } from './types.js';
 import { lockExitParticipants } from './exit-lock-plan.js';
 import { createEmploymentBusiness, requireSavedBusiness } from './write-service.js';
@@ -44,6 +50,8 @@ import { normalizeLinkage, type LinkageOptions } from '../transfer/linkage/input
 import { appendLinkageVersion } from '../transfer/linkage/store.js';
 import { validateLinkage } from '../transfer/linkage/validation.js';
 import { queueExitAccount } from './exit-account-store.js';
+import { assertRefsUnchanged } from '../attachments/binding.js';
+import { bindOnCreate, gateExit, writeRefs } from './exit-attachments.js';
 
 export type { ExitInitiation } from './exit-initiation.js';
 
@@ -67,6 +75,8 @@ export interface ExitApplicationInput {
   readonly kind?: 'leave' | 'retirement';
   /** 退休专有入参（kind = retirement）：同时返聘计划（5b）。 */
   readonly retirement?: RetirementCreateInput;
+  /** 只有本人自助新建置真：exit.attachmentRefs 走绑定；其余出口只许空 / 不带（F-479 §2.4 R-2）。 */
+  readonly bindAttachments?: boolean;
 }
 
 /** 请求里出现加黑键时，用合并后的整组替换（false 时三项清空）；没出现则原样返回。 */
@@ -80,7 +90,15 @@ function withBlacklist<T extends Partial<BlacklistFields>>(
 
 /** exit_requests 的可写列（扩展行 ← exit 区块）；金额以字符串入库。 */
 function columnValues(exit: ExitOptions) {
-  const { dutyTransfer: _duty, pendingTransferAck: _ack, compensationAmount, nonCompeteAmount, ...rest } = exit;
+  // attachmentRefs 只由绑定函数（attachments/binding.ts）写入，不走这条通用列映射（F-479 §2.4）
+  const {
+    dutyTransfer: _duty,
+    pendingTransferAck: _ack,
+    attachmentRefs: _refs,
+    compensationAmount,
+    nonCompeteAmount,
+    ...rest
+  } = exit;
   return {
     ...rest,
     ...(rest.blacklistNote === undefined ? {} : { blacklistNote: rest.blacklistNote || null }),
@@ -113,6 +131,7 @@ export async function createExitApplication(
   const subset = applyInitiationSubset(input.initiation, input.mode, input.exit ?? {});
   const typed = input.changeType ? { changeType: input.changeType } : {};
   if (kind === 'retirement') assertRetirementFields(subset);
+  if (!input.bindAttachments) assertRefsUnchanged([], subset.attachmentRefs);
   assertBusinessInputSubset(input.initiation, input);
   const normalized = normalizeEmploymentInput(ctx, {
     kind,
@@ -124,7 +143,7 @@ export async function createExitApplication(
     customFields: input.customFields ?? {},
   });
   // 加黑三项在锁之前校验（400 不占锁）；只在勾选时把合并后的整组写进扩展行，未勾选的离职扩展行与审计保持原样
-  const exit = withBlacklist(subset, NO_BLACKLIST, normalized.effectiveDate);
+  const { attachmentRefs: requestedRefs, ...exit } = withBlacklist(subset, NO_BLACKLIST, normalized.effectiveDate);
   // 职责转交计划（DEC-213）：结构校验在锁之前；参与员工闭包（离职人 + 转交下属）先于任何其他锁取齐（§5.2 ①，与批量共用）
   const duty = exit.dutyTransfer === undefined ? null : normalizeLinkage({ dutyTransfer: exit.dutyTransfer });
   await lockExitParticipants(tx, ctx, [{ employeeId, dutyTransfer: exit.dutyTransfer }]);
@@ -137,7 +156,7 @@ export async function createExitApplication(
     initiation: input.initiation,
     mode: input.mode,
     lastWorkDate: normalized.lastWorkDate!,
-    exit,
+    exit: gateExit(input.bindAttachments, exit, requestedRefs),
     payload: { fields: normalized.fields, customFields: normalized.customFields },
     ...typed,
   });
@@ -145,8 +164,11 @@ export async function createExitApplication(
     exitPass: EXIT_GATE_PASS,
     ...typed,
   });
+  // 绑定在业务行之后（需要业务 ID）、扩展行之前：失败整命令回滚；只在 execute 内（台账未命中）执行
+  const attachmentRefs = await bindOnCreate(tx, ctx, input.bindAttachments, business.id, requestedRefs);
+  const stored = { ...columnValues(exit), ...(attachmentRefs ? { attachmentRefs } : {}) };
   await tx.insert(exitRequests).values({
-    ...columnValues(exit),
+    ...stored,
     tenantId: ctx.tenantId,
     businessId: business.id,
     employeeId,
@@ -165,7 +187,7 @@ export async function createExitApplication(
     'exit-request',
     business.id,
     null,
-    { initiation: input.initiation, initiatorUserId: ctx.userId, employeeId, mode: input.mode, ...columnValues(exit) },
+    { initiation: input.initiation, initiatorUserId: ctx.userId, employeeId, mode: input.mode, ...stored },
     undefined,
     undefined,
     { employeeId },
@@ -241,6 +263,50 @@ export function parseExitPatch(raw: unknown): ExitPatch {
   };
 }
 
+/** 校验用的业务视图：载荷换成本次改期后的日期（只在内存里换，不落库）。 */
+function withDates(
+  business: LockedEmploymentBusiness,
+  dates: { readonly lastWorkDate: string | null; readonly effectiveDate: string },
+): LockedEmploymentBusiness {
+  const { lastWorkDate, effectiveDate } = dates;
+  return { ...business, payload: { ...business.payload, lastWorkDate, effectiveDate } };
+}
+
+/** 编辑审计：只记本次改动的列（变更前取自改前的扩展行）。 */
+async function auditExitUpdate(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: {
+    readonly kind: 'leave' | 'retirement';
+    readonly business: LockedEmploymentBusiness;
+    readonly row: Record<string, unknown>;
+    readonly values: Record<string, unknown>;
+  },
+) {
+  const { kind, business, row, values } = input;
+  const picked = Object.fromEntries(Object.keys(values).map((key) => [key, row[key]]));
+  const action = kind === 'retirement' ? 'retirement.request.update' : 'exit.request.update';
+  const scope = { employeeId: business.employeeId };
+  await auditEmployment(tx, ctx, action, 'exit-request', business.id, picked, values, undefined, undefined, scope);
+}
+
+/** 薄扩展字典项必须仍启用；只校验本次改了的值。 */
+async function assertDictionaries(
+  tx: Tx,
+  ctx: EmploymentContext,
+  fields: Partial<Record<'reasonCode' | 'whereaboutsCode' | 'exitTypeCode', string | null | undefined>>,
+  row: Record<string, unknown>,
+) {
+  for (const [key, dictionary] of [
+    ['reasonCode', 'reasons'],
+    ['whereaboutsCode', 'whereabouts'],
+    ['exitTypeCode', 'types'],
+  ] as const) {
+    const value = fields[key];
+    if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, dictionary, value);
+  }
+}
+
 /**
  * 编辑离职（B14 / F-140）：扩展字段与改期同事务，未放开的状态仍由日期门禁拒绝。
  * approvalEdit：审批中心先按节点规则授权，改期仍走同一编排与占用校验。
@@ -250,7 +316,12 @@ export async function updateExitFields(
   ctx: EmploymentContext,
   businessId: string,
   patch: ExitPatch,
-  options: { readonly approvalEdit?: boolean; readonly kind?: 'leave' | 'retirement' } = {},
+  options: {
+    readonly approvalEdit?: boolean;
+    readonly kind?: 'leave' | 'retirement';
+    /** 只有本人自助修改置真：patch.fields.attachmentRefs 走绑定；其余出口只许不带或与当前相同（F-479 §2.4 R-2）。 */
+    readonly bindAttachments?: boolean;
+  } = {},
 ): Promise<EmploymentBusiness & { readonly downstreamHints?: Downstream }> {
   const kind = options.kind ?? 'leave';
   const business = await lockExitForEdit(tx, ctx, businessId);
@@ -262,38 +333,38 @@ export async function updateExitFields(
     throw new AppError('NOT_FOUND', kind === 'retirement' ? '退休单不存在' : '离职单不存在');
   if (SETTLED.includes(business.state))
     throw new AppError('CONFLICT', '已办结的离职不能再编辑', { reason: 'EXIT_NOT_EDITABLE' });
+  const { attachmentRefs: nextRefs, ...patchFields } = patch.fields;
   const mayReschedule =
     kind === 'leave' && ['draft', 'rejected', 'in_review', 'approved', 'effective'].includes(business.state);
   const changing = mayReschedule && (await exitDateChange(tx, ctx, business, patch.dates));
   // 薄扩展字段按本次新日期校验；人工版本及重新入队仍只由 rescheduleExit 编排。
-  const validationBusiness = changing
-    ? {
-        ...business,
-        payload: { ...business.payload, lastWorkDate: changing.lastWorkDate, effectiveDate: changing.effectiveDate },
-      }
-    : business;
+  const validationBusiness = changing ? withDates(business, changing) : business;
   await requireExitGate(tx, ctx, 'update', {
     employeeId: business.employeeId,
     kind,
     business: validationBusiness,
     patch: patch.dates,
-    payload: patch.fields,
+    payload: options.bindAttachments ? patch.fields : patchFields,
     ...(options.approvalEdit ? { approvalEdit: true } : {}),
   });
-  for (const [key, dictionary] of [
-    ['reasonCode', 'reasons'],
-    ['whereaboutsCode', 'whereabouts'],
-    ['exitTypeCode', 'types'],
-  ] as const) {
-    const value = patch.fields[key];
-    if (value && value !== row[key]) await assertExitDictionaryEnabled(tx, ctx.tenantId, dictionary, value);
-  }
-  await assertHandoverEmployee(tx, ctx, patch.fields.handoverEmployeeId);
+  await assertDictionaries(tx, ctx, patchFields, row);
+  await assertHandoverEmployee(tx, ctx, patchFields.handoverEmployeeId);
   // 加黑三项与 addToBlacklist 合并校验（创建同一入口）：生效日取计划生效日，“是”改“否”清掉旧值
   const planned = await loadPlannedEffectiveDate(tx, ctx.tenantId, businessId, business.payload.effectiveDate);
-  const values = columnValues(withBlacklist(patch.fields, row, changing ? changing.effectiveDate : planned));
+  const values: Record<string, unknown> = columnValues(
+    withBlacklist(patchFields, row, changing ? changing.effectiveDate : planned),
+  );
+  await writeRefs(tx, ctx, {
+    bind: options.bindAttachments,
+    businessId,
+    current: row.attachmentRefs,
+    nextRefs,
+    values,
+  });
   if (!Object.keys(values).length && !changing) {
     if (mayReschedule && Object.keys(patch.dates).length) return requireSavedBusiness(tx, ctx, businessId);
+    // 只带了与当前相同的附件列表：等于没改，按成功返回（既有动作照常，AC-ATT-16）
+    if (nextRefs !== undefined) return requireSavedBusiness(tx, ctx, businessId);
     throw new AppError('VALIDATION_FAILED', '必须提供要修改的离职字段');
   }
   if (Object.keys(values).length) {
@@ -302,19 +373,7 @@ export async function updateExitFields(
       .set(values)
       .where(and(eq(exitRequests.tenantId, ctx.tenantId), eq(exitRequests.businessId, businessId)));
     await bumpEmploymentBusiness(tx, ctx, business);
-    const picked = Object.fromEntries(Object.keys(values).map((key) => [key, row[key as keyof typeof row]]));
-    await auditEmployment(
-      tx,
-      ctx,
-      kind === 'retirement' ? 'retirement.request.update' : 'exit.request.update',
-      'exit-request',
-      businessId,
-      picked,
-      values,
-      undefined,
-      undefined,
-      { employeeId: business.employeeId },
-    );
+    await auditExitUpdate(tx, ctx, { kind, business, row, values });
   }
   // R6 的生效订阅方必须看到本次扩展字段；后续任何门禁失败都回滚整个命令。
   const downstream = changing ? await rescheduleExit(tx, ctx, business, patch.dates, { ...patch, ...options }) : null;
@@ -324,7 +383,7 @@ export async function updateExitFields(
     const { refreshBusinessVersion } = await import('../approval/engine.js');
     await refreshBusinessVersion(tx, ctx, 'employment', businessId);
   }
-  await queueExitAccount(tx, ctx, businessId, patch.fields.actualLeaveDate !== undefined);
+  await queueExitAccount(tx, ctx, businessId, patchFields.actualLeaveDate !== undefined);
   const saved = await requireSavedBusiness(tx, ctx, businessId);
   if (!downstream) return saved;
   const { successor, ...downstreamHints } = downstream;

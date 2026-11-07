@@ -1,4 +1,5 @@
 import { listMyApplications, myApplicationsQuery } from './my-applications.js';
+import { readCarrierAttachment, respondAttachment as respondAttachmentBytes } from '../attachments/carrier-read.js';
 import { listTodoCards, todoCardsQuery } from './todo-cards.js';
 import { todoForm, todoSummary } from './todo-summary.js';
 /**
@@ -205,12 +206,31 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
 }
 
-async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+async function detailViewOf(c: C, deps: TenantRouteDeps, instanceId: string) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
-  const view = detailView(data, ctx.userId, await detailViewable(deps, ctx, data));
+  return { ctx, view: detailView(data, ctx.userId, await detailViewable(deps, ctx, data)) };
+}
+
+async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
+  const { ctx, view } = await detailViewOf(c, deps, instanceId);
   return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => namedForm(tx, ctx, view)));
+}
+
+/**
+ * F-479 §3.3 审批载体下载：先走与详情同一个取值函数（readDetail → detailView：能打开实例、节点表单含 attachmentRefs、
+ * 查看人有字段查看权才有值），再只认值里的引用且 status=bound；打不开实例 404“审批实例不存在”，其余 404“附件不存在”。
+ */
+async function respondAttachment(c: C, deps: TenantRouteDeps) {
+  const instanceId = uuidParam(c);
+  const fileId = uuidParam(c, 'fileId');
+  const { ctx, view } = await detailViewOf(c, deps, instanceId);
+  const refs = (view.form.values as Record<string, unknown>).attachmentRefs;
+  const { row, bytes } = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    readCarrierAttachment(tx, ctx.tenantId, view.businessId, Array.isArray(refs) ? refs : [], fileId),
+  );
+  return respondAttachmentBytes(c, row, bytes);
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -511,6 +531,7 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));
+  router.get('/instances/:id/attachments/:fileId/content', (c) => respondAttachment(c, deps));
   router.get('/instances/:id/tasks', (c) => respondHistory(c, deps, 'tasks'));
   router.get('/instances/:id/logs', (c) => respondHistory(c, deps, 'logs'));
   router.get('/admin-logs', async (c) => {

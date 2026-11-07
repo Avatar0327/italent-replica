@@ -28,7 +28,8 @@ import type { EmploymentContext } from '../employment/types.js';
 import type { SelfAccess } from './access.js';
 import { ownRequest, requireApplicationAccess, selfPartTimeDepartmentScope } from './application-access.js';
 
-const exitFields = exitOptionsSchema.pick({ reasonCode: true, whereaboutsCode: true }).extend({
+// attachmentRefs（F-479 S2）：UUID 数组，张数上限与归属 / 状态由绑定函数判定并给 ATTACHMENT_LIMIT / ATTACHMENT_INVALID
+const exitFields = exitOptionsSchema.pick({ reasonCode: true, whereaboutsCode: true, attachmentRefs: true }).extend({
   whereaboutsCode: z.string().trim().max(100).optional(), // DEC-790：空串清空选填去向。
 });
 const exitCreate = exitFields.extend({ lastWorkDate: day, pendingTransferAck: z.string().max(200).optional() });
@@ -134,15 +135,23 @@ export async function writeApplication(
           reasonCode: data.reasonCode,
           whereaboutsCode: data.whereaboutsCode,
           pendingTransferAck: data.pendingTransferAck,
+          attachmentRefs: data.attachmentRefs,
         },
+        bindAttachments: true,
       });
     if (action === 'submit') return submitExit(tx, ctx, id!, data.pendingTransferAck);
     const { lastWorkDate, pendingTransferAck, ...fields } = data;
-    return updateExitFields(tx, ctx, id!, {
-      fields,
-      dates: lastWorkDate === undefined ? {} : { lastWorkDate },
-      pendingTransferAck,
-    });
+    return updateExitFields(
+      tx,
+      ctx,
+      id!,
+      {
+        fields,
+        dates: lastWorkDate === undefined ? {} : { lastWorkDate },
+        pendingTransferAck,
+      },
+      { bindAttachments: true },
+    );
   }
   const data = body as z.infer<typeof createSchema> & { requestRemark?: string | null };
   if (action === 'create')

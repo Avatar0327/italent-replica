@@ -85,10 +85,10 @@ export const EXIT_BLACKLIST_DETAIL_FIELDS: readonly string[] = [
   'blacklistNote',
 ];
 
-/** 审批表单里的离职扩展字段（LEAVE_FORM 与审批适配器 exitMetadata 共用；附件引用不进表单，§9）。 */
+/** 审批表单里的离职扩展字段（LEAVE_FORM 与审批适配器 exitMetadata 共用）；附件引用只读展示（F-479 §3.1，审批人不可改）。 */
 export const EXIT_FORM_FIELDS: readonly string[] = [
   'reasonCode',
-  ...EXIT_REQUEST_FIELDS.filter((field) => field !== 'attachmentRefs' && !EXIT_BLACKLIST_DETAIL_FIELDS.includes(field)),
+  ...EXIT_REQUEST_FIELDS.filter((field) => !EXIT_BLACKLIST_DETAIL_FIELDS.includes(field)),
 ];
 
 /** 系统写入、只可查看的离职字段：发起人账号、批次、编制预减时点、转交时机快照（§2.1）。 */

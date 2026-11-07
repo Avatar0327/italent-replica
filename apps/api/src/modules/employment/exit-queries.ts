@@ -6,6 +6,7 @@
  * “原定”最后工作日 = 计划生效日（plannedEffectiveDate，§5.0A 唯一来源）− 1 天，不另算。
  */
 import { sql, type Tx } from '@italent/db';
+import { attachmentSummaries, type AttachmentSummary } from '../attachments/carrier-read.js';
 import type { OrgId } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
@@ -366,6 +367,8 @@ export async function listExitView(
 /** 扩展行的业务字段（详情用）；金额按数字返回，缺省为 null。 */
 export interface ExitExtension {
   readonly attachmentRefs: readonly string[] | null;
+  /** F-479 §3.1：引用展开的元数据（无字节）；与 attachmentRefs 同一字段权，无权整个键缺席。 */
+  readonly attachments: readonly AttachmentSummary[];
   readonly handoverEmployeeId: string | null;
   readonly addToBlacklist: boolean;
   /** F-393：加黑三项（有效截止日期空 = 永久）；只在详情披露，按任职记录同名字段的查看权裁剪。 */
@@ -473,6 +476,7 @@ export async function loadExitDetail(
     ...item,
     ...(failure?.details && item.activation ? { activation: { ...item.activation, details: failure.details } } : {}),
     attachmentRefs: (ext.attachmentRefs as string[] | null | undefined) ?? null,
+    attachments: await attachmentSummaries(tx, tenantId, id, ext.attachmentRefs as string[] | null | undefined),
     handoverEmployeeId: (ext.handoverEmployeeId as string | null) ?? null,
     addToBlacklist: Boolean(ext.addToBlacklist),
     blacklistExpiryDate: (ext.blacklistExpiryDate as string | null) ?? null,
@@ -572,6 +576,15 @@ export const EXIT_RESPONSE_DEPENDENCIES: Readonly<Record<string, Dependency>> = 
   // 附件元数据 ID：数组与元素同一字段权；空数组、未填写也是该字段的值，无权时整个键缺席
   attachmentRefs: on('attachmentRefs'),
   'attachmentRefs[]': on('attachmentRefs'),
+  // 附件摘要（F-479 §3.1）：数组 / 元素 / 每个键都跟随 attachmentRefs 的字段权
+  attachments: on('attachmentRefs'),
+  'attachments[]': on('attachmentRefs'),
+  'attachments[].id': on('attachmentRefs'),
+  'attachments[].filename': on('attachmentRefs'),
+  'attachments[].contentType': on('attachmentRefs'),
+  'attachments[].byteSize': on('attachmentRefs'),
+  'attachments[].uploadedAt': on('attachmentRefs'),
+  'attachments[].missing': on('attachmentRefs'),
   // 生效失败 / 挂起标记（最近一次生效尝试）
   activation: on('activation'),
   'activation.status': on('activation'),

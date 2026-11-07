@@ -477,6 +477,9 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   ]),
   // 详情按钮逐个公布（viewerOf 两个 adminScope，N8）；tasks 为展示窗口，logs 受 DEC-104 / 115 记录隐藏
   'GET /instances/:id': canOpen,
+  // F-479 §3.3 审批载体下载：与详情同一个取值函数（能打开实例 + 节点表单含 attachmentRefs + 字段查看权），只认 bound
+  // 响应只有字节；字段声明沿用详情（取值函数同一份，字段裁剪决定“能不能读到这个附件”）
+  'GET /instances/:id/attachments/:fileId/content': canOpen,
   // 历史分页（DEC-101 / X-19）：items 经 visibleTasks / projectLog，recordsHidden 同详情
   'GET /instances/:id/tasks': canOpen,
   'GET /instances/:id/logs': canOpen,

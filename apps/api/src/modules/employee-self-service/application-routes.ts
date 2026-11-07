@@ -7,11 +7,14 @@ import { AppError } from '../../errors.js';
 import { jsonBody, pageQuery, revision, runWrite, uuidParam } from '../employment/context.js';
 import { businessDate } from '../employment/fields.js';
 import { listEmployees } from '../employment/employees.js';
+import { requireAttachmentRead } from '../attachments/access.js';
+import { readCarrierAttachment, respondAttachment } from '../attachments/carrier-read.js';
 import { selfAccess } from './access.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
   applicationForm,
+  ownExitAttachmentRefs,
   ownRequest,
   projectApplication,
   requireApplicationAccess,
@@ -27,6 +30,7 @@ export function registerSelfApplicationRoutes(router: Hono<TenantEnv>, deps: Ten
   router.patch('/exit-requests/:id', (c) => write(c, deps, 'exit', 'update'));
   router.post('/exit-requests/:id/submit', (c) => write(c, deps, 'exit', 'submit'));
   router.get('/exit-requests/:id', (c) => read(c, deps, 'exit'));
+  router.get('/exit-requests/:id/attachments/:fileId/content', (c) => downloadAttachment(c, deps));
   router.post('/part-time-requests', (c) => write(c, deps, 'partTime', 'create'));
   router.patch('/part-time-requests/:id', (c) => write(c, deps, 'partTime', 'update'));
   router.post('/part-time-requests/:id/submit', (c) => write(c, deps, 'partTime', 'submit'));
@@ -44,6 +48,18 @@ async function read(c: Context<TenantEnv>, deps: TenantRouteDeps, kind: SelfAppl
     return ownRequest(tx, self, kind, id);
   });
   return c.json(await projectApplication(self, row));
+}
+/** F-479 §3.3 本人载体：本人单（ownRequest）+ attachmentRefs 查看权；缺查看权 / 文件不属于本单一律 404“附件不存在”。 */
+async function downloadAttachment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const self = await selfAccess(c, deps, 0, 'exit');
+  const id = uuidParam(c);
+  const fileId = uuidParam(c, 'fileId');
+  const { row, bytes } = await withTenant(deps.db, self.ctx.tenantId, async (tx) => {
+    await requireAttachmentRead(tx, self);
+    const refs = await ownExitAttachmentRefs(tx, self, id);
+    return readCarrierAttachment(tx, self.ctx.tenantId, id, refs, fileId);
+  });
+  return respondAttachment(c, row, bytes);
 }
 async function write(
   c: Context<TenantEnv>,

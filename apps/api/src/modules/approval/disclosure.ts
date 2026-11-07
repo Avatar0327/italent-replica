@@ -5,6 +5,7 @@
  * 授权、披露与动作一律按完整任务计算（F1），最新 200 条只是展示窗口。
  */
 import { sql, type Tx } from '@italent/db';
+import { attachmentSummaries } from '../attachments/carrier-read.js';
 import {
   instanceRecusal,
   jumpAllowed,
@@ -310,7 +311,18 @@ export async function namedForm(
   ctx: TenantContext & { readonly now: Date },
   view: DetailView,
 ): Promise<DetailView> {
-  const typed = { ...view, form: (await employmentTypeNames(tx, ctx.tenantId, view.form)) as DetailView['form'] };
+  const named = (await employmentTypeNames(tx, ctx.tenantId, view.form)) as DetailView['form'];
+  // F-479 §3.1：附件摘要与 attachmentRefs 同权限同取值（值已按节点表单 ∩ 字段查看权裁剪，没下发引用就没有摘要）
+  const refs = named.values.attachmentRefs;
+  const typed = {
+    ...view,
+    form: Array.isArray(refs)
+      ? {
+          ...named,
+          values: { ...named.values, attachments: await attachmentSummaries(tx, ctx.tenantId, view.businessId, refs) },
+        }
+      : named,
+  };
   // F-474-3b P2-2：调动原因 / 类型、部门、经理同样按已下发的值取名（见 reference-names.ts）
   return referenceNames(tx, ctx, view.approvalType, typed);
 }

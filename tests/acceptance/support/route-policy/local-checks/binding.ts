@@ -81,14 +81,15 @@ export function bindingChecks(context: LocalCheckContext) {
     },
     {
       id: 'orCounts',
-      label: '现表的内部“或”义务：审批 canOpen 管理员按钮 6 条 + IDP 执行人计划查看权 9 条，全部登记',
+      label:
+        '现表的内部“或”义务：审批 canOpen 管理员按钮 8 条（F-479 S2 载体下载路由 +2） + IDP 执行人计划查看权 9 条，全部登记',
       wrapped: false,
       verify: () => {
         const actual = Object.values(REQUIRED)
           .flat()
           .filter((o) => o.inner?.role === 'or');
         registration('审批 canOpen 内部或数量', () =>
-          expect(actual.filter((o) => o.purpose === 'guard:approval.canOpen')).toHaveLength(6),
+          expect(actual.filter((o) => o.purpose === 'guard:approval.canOpen')).toHaveLength(8),
         );
         registration('IDP 执行人内部或数量', () =>
           expect(actual.filter((o) => o.purpose === 'guard:idp.executor')).toHaveLength(9),

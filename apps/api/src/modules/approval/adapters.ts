@@ -1,4 +1,5 @@
 import { employmentDashboardDate } from './dashboard-date.js';
+import { assertRefsUnchanged } from '../attachments/binding.js';
 import { createHash } from 'node:crypto';
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
@@ -235,7 +236,10 @@ async function exitInitiation(tx: Tx, tenantId: string, businessId: string): Pro
 async function exitMetadata(tx: Tx, tenantId: string, businessId: string, kind: string): Promise<Row> {
   const row = (await loadExitRequest(tx, tenantId, businessId)) as Row | undefined;
   if (!row) return {};
-  if (kind !== 'retirement') return Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, row[field] ?? null]));
+  // 空列表按“没填”口径（null），避免撤光附件后的 [] 被当成新填内容进变化字段 / 盲审
+  const value = (field: string) =>
+    field === 'attachmentRefs' ? ((row[field] as unknown[] | null)?.length ? row[field] : null) : (row[field] ?? null);
+  if (kind !== 'retirement') return Object.fromEntries(EXIT_FORM_FIELDS.map((field) => [field, value(field)]));
   const retirement = await loadRetirementRequest(tx, tenantId, businessId);
   return {
     handoverEmployeeId: row.handoverEmployeeId ?? null,
@@ -510,7 +514,11 @@ const employmentAdapter: BusinessAdapter = {
   resubmit: () => {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
-  async edit(tx, ctx, id, input) {
+  async edit(tx, ctx, id, rawInput) {
+    // F-479 §2.4：审批编辑不能改附件。表单整张回传时带的 attachmentRefs 与当前相同视同没改（不进字段编辑权判定），不同 400
+    const { attachmentRefs, ...input } = rawInput;
+    if (attachmentRefs !== undefined)
+      assertRefsUnchanged((await loadExitRequest(tx, ctx.tenantId, id))?.attachmentRefs, attachmentRefs);
     await requireExitApprovalEdit(tx, ctx, id, input);
     // R2-T03 §4B / F-140：扩展字段写薄扩展行，日期变更与任职字段共用改期编排。
     const { exit, employment, datesOnly } = splitExitEdit(input);
