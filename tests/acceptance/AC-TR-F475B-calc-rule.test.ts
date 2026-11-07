@@ -231,6 +231,25 @@ describe('AC-TR-F475B 盘点计算规则基础编辑', () => {
     expect([server.writes[1]!.ifMatch, server.writes[1]!.body]).toEqual(['6', { name: '我的改名' }]);
   });
 
+  it('自查 2：409 重读后把应用说明改回打开时的原值，仍按与最新版本的差异发送', async () => {
+    await openRules();
+    await edit();
+    Object.assign(server.collections['calc-rules']![0]!, { description: '他人说明', revision: 6 });
+    server.replies.push(conflict());
+    await type(nameInput(), '我的改名');
+    await click(button('保存', dialog()!));
+    await click(button('重读最新版本', dialog()!));
+    await click(button('已核对差异，继续编辑', dialog()!));
+    expect(descriptionInput().value).toBe('他人说明');
+    await type(descriptionInput(), '合成说明');
+    await click(button('保存', dialog()!));
+    expect(server.writes).toHaveLength(2);
+    expect([server.writes[1]!.ifMatch, server.writes[1]!.body]).toEqual([
+      '6',
+      { name: '我的改名', description: '合成说明' },
+    ]);
+  });
+
   it('回执版本未前进判为结果未知：只读锁定', async () => {
     await openRules();
     await edit();
