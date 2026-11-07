@@ -239,6 +239,12 @@ export const GRAPH: Graph = {
     '#routeViolations',
     '#unreachableViolations',
   ],
+  'packages/domain/src/approval/routes.ts#walkDefaultPath': [
+    '#ROUTE_END',
+    '#autoApproveExit',
+    '#missingFields',
+    '#resolveSuccessor',
+  ],
   'packages/domain/src/approval/routing.ts#adminRecused': [
     'packages/domain/src/approval/recusal.ts#instanceRecusal',
     '#whoOf',

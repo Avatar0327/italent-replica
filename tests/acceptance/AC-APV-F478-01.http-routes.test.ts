@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { APV, approveTo, otherwise, routeScene, when, type RouteScene } from './AC-APV-F478-support.js';
-import { approvalWorld, type ProcessView } from './AC-APV-support.js';
+import { approvalWorld, type NodeInput, type ProcessView } from './AC-APV-support.js';
 import { cloneForPut, errorInfo, getProcess, putDraft, withRoutesOn } from './AC-APV-F478-s2-support.js';
 
 const testDb = useTestDb();
@@ -85,7 +85,7 @@ describe('AC-APV-F478-01 草稿保存 routes', () => {
     });
     // 入参不带 routes 字段的节点沿用草稿现有分支（旧页面只提交旧字段时也不丢）
     const stripped = cloneForPut(again.latestVersion, {
-      nodes: again.latestVersion.nodes.map(({ routes: _routes, ...node }: Record<string, unknown>) => node),
+      nodes: again.latestVersion.nodes.map(({ routes: _routes, ...node }: NodeInput & { routes?: unknown }) => node),
     });
     const kept = await s.w.json<ProcessView>(await putDraft(s.w, again, stripped));
     expect(kept.latestVersion.nodes.find((node) => node.key === 'n1')).toHaveProperty(

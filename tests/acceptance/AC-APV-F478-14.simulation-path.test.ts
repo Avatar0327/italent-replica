@@ -85,10 +85,14 @@ describe('AC-APV-F478-14 仿真路径', () => {
     expect(viaN2.nodes[2]).toMatchObject({ key: 'n3', status: 'pass', resolution: 'resolved' });
   });
 
-  it('直达 END：路径只含 N1，其余节点都在路径外', async () => {
+  it('直达 END：路径只含 N1，其余节点都在路径外（后继节点孤立，只能是草稿；发布会因不可达被拦）', async () => {
     const s = await routeScene(testDb().db, 'f478-14-end');
-    const process = await publishViaHttp(s.w, s.nodes().slice(0, 3), { n1: [approveTo(direct('END'))] });
-    const result = await simulate(s, process, {});
+    const created = await s.w.createProcess({ nodes: s.nodes().slice(0, 3) });
+    const body = cloneForPut(created.latestVersion, {
+      nodes: withRoutesOn(created.latestVersion.nodes, { n1: [approveTo(direct('END'))] }),
+    });
+    const saved = await s.w.json<ProcessView>(await putDraft(s.w, created, body));
+    const result = await simulate(s, saved, {}, 'latest');
     expect(result.path).toEqual(['n1']);
     expect(result.nodes.map((node) => node.onPath)).toEqual([true, false, false]);
   });

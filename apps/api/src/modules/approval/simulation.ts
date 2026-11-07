@@ -29,7 +29,10 @@ import {
   type Candidate,
   type ConditionContext,
   type NodeDecision,
+  type PathStep,
+  type PathWalk,
   type RoutingFacts,
+  walkDefaultPath,
 } from '@italent/domain';
 import { validIsoDate } from '../org/read-model.js';
 import { approvalError, type ApprovalContext } from './context.js';
@@ -281,12 +284,15 @@ function countersignSummary(node: ApprovalNode, seats: readonly (Outcome & { exp
  * 逐节点推演：假定每个节点由解析出的审批人同意（会签节点假定全部审批人同意），据此计算后续节点的相同 / 历史审批人与
  * 审批链。DEC-114：“与上一节点相同”比较上一节点解析出的候选人（跳过的节点也有候选人；会签节点有多个）。
  */
-function simulateNodes(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
+function simulateNodes(ctx: ApprovalContext, version: VersionView, data: SimulationData, walk: PathWalk | null) {
   const initiatorUserId = data.initiatorUserId ?? ctx.userId;
   const approved: string[] = [];
   let previous: string[] = [];
   let previousApproved: string[] = [];
+  const steps = new Map((walk?.steps ?? []).map((step) => [step.nodeKey, step]));
   return version.nodes.map((node, index) => {
+    // F-478 §3.4：路径外节点不参与推演，也不进入后续节点的审批链 / 相同审批人比较
+    if (walk && !steps.has(node.key)) return offPathNode(node);
     const facts: RoutingFacts = {
       ...virtualFacts(ctx, version, data, index),
       previousApproverUserIds: previous,
@@ -317,8 +323,33 @@ function simulateNodes(ctx: ApprovalContext, version: VersionView, data: Simulat
     );
     const base = { key: node.key, name: node.name, kind: nodeKindOf(node), exits: nodeExits(node) };
     const countersign = isCountersign(node) ? { approvers: seats } : {};
-    return { ...base, formFields: node.formFields, messages, ...countersignSummary(node, seats), ...countersign };
+    return {
+      ...base,
+      formFields: node.formFields,
+      messages,
+      ...countersignSummary(node, seats),
+      ...countersign,
+      ...(walk ? stepFields(steps.get(node.key)!) : {}),
+    };
   });
+}
+
+/** 路径外节点：只给节点自身的配置，没有审批人解析与消息。 */
+function offPathNode(node: ApprovalNode) {
+  const base = { key: node.key, name: node.name, kind: nodeKindOf(node), exits: nodeExits(node) };
+  return { ...base, formFields: node.formFields, messages: [], onPath: false as boolean };
+}
+
+/** 路径上节点的出口与分支序号；分支条件字段缺失时只标 undetermined，不猜出口。 */
+function stepFields(step: PathStep) {
+  if (step.undetermined) return { onPath: true, branch: 'undetermined' };
+  return { onPath: true, ...(step.exit ? { exit: step.exit, branchNo: step.branchNo } : {}) };
+}
+
+/** 版本里配置了分支才推演路径；线性流程的输出与现状一致，只在顶层补 path（全部节点）。 */
+function walkOf(version: VersionView, type: ApprovalTypeCode, context: ConditionContext): PathWalk | null {
+  if (!version.nodes.some((node) => node.routes?.length) || !version.nodes[0]) return null;
+  return walkDefaultPath(version.nodes, version.nodes[0].key, type, context);
 }
 
 export async function simulateProcess(
@@ -330,8 +361,10 @@ export async function simulateProcess(
   const process = await loadProcess(tx, ctx.tenantId, processId);
   const version = request.scope === 'published' ? process.currentVersion : process.latestVersion;
   if (!version) throw approvalError('CONFLICT', 'APPROVAL_NOT_PUBLISHED', '流程尚无已发布版本');
-  const conditions = evaluateCondition(version.conditions, conditionContext(process.approvalType, request.data));
-  const nodes = simulateNodes(ctx, version, request.data);
+  const context = conditionContext(process.approvalType, request.data);
+  const conditions = evaluateCondition(version.conditions, context);
+  const walk = walkOf(version, process.approvalType, context);
+  const nodes = simulateNodes(ctx, version, request.data, walk);
   const blockers = preflight(ctx, version, request.data);
   return {
     processId,
@@ -339,6 +372,7 @@ export async function simulateProcess(
     versionStatus: version.status,
     conditions,
     nodes,
+    path: walk ? walk.steps.map((step) => step.nodeKey) : version.nodes.map((node) => node.key),
     blockers,
     startable: conditions.result && blockers.length === 0,
     requiredInputs: APPROVAL_TYPES[process.approvalType].conditionFields.map((field) => field.path),

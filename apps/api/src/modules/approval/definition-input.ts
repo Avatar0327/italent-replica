@@ -1,6 +1,7 @@
 /** 流程定义的请求体校验：只接受 JSON 白名单结构，再交给领域校验（definitionViolations）。 */
 import {
   APPROVER_SOURCE_TYPES,
+  BUSINESS_EXIT_CODES,
   approverSourceViolations,
   type ApproverSource,
   AUTO_RESULTS,
@@ -25,6 +26,8 @@ import {
   avoidSubjectsViolations,
   type ApprovalNode,
   type ApprovalTypeCode,
+  type ExitRoute,
+  type NodeExit,
   type ProcessDefinition,
 } from '@italent/domain';
 import { z } from 'zod';
@@ -89,6 +92,36 @@ const sourceSchema = z.unknown().transform((value): ApproverSource => {
   };
 });
 
+const conditionItem = z.strictObject({
+  no: z.number().int().min(1).max(999),
+  field: text(100),
+  operator: z.enum(CONDITION_OPERATORS),
+  value: z
+    .union([z.string().max(500), z.array(z.string().max(500)).max(200)])
+    .nullable()
+    .optional(),
+});
+
+/**
+ * F-478 节点出口分支（设计 §2、§3.4）。条件值与发起条件同形（`in / not_in` 为数组）。结构上限放宽到与节点、条件项的
+ * 一般上限一致，业务上限（分支 ≤10、条件项 ≤20）交给领域校验，才能给出精确的机器原因（too_many_branches 等）。
+ * 同一节点的出口编码必须唯一：领域校验不查重复，数据库主键冲突会变成 500。
+ */
+const ROUTE_EXIT_CODES = [...NODE_EXITS, ...BUSINESS_EXIT_CODES] as const;
+const routeBranch = z.strictObject({
+  kind: z.enum(['condition', 'else', 'direct']),
+  priority: z.number().optional(),
+  conditions: z
+    .strictObject({ items: z.array(conditionItem).max(50), expression: z.string().max(500).default('') })
+    .optional(),
+  target: text(40),
+});
+const exitRoute = z.strictObject({ exit: z.enum(ROUTE_EXIT_CODES), branches: z.array(routeBranch).min(1).max(50) });
+const nodeRoutes = z
+  .array(exitRoute)
+  .max(ROUTE_EXIT_CODES.length)
+  .refine((routes) => new Set(routes.map((route) => route.exit)).size === routes.length, '同一节点的出口分支不能重复');
+
 const node = z.strictObject({
   key: text(40),
   name: text(100).optional(),
@@ -100,7 +133,9 @@ const node = z.strictObject({
   approvers: z.array(sourceSchema).max(200).optional(),
   transitionRule: transitionRule.optional(),
   /** 出口动作（DEC-144）：缺省只有「同意」。 */
-  exits: z.array(z.enum(NODE_EXITS)).max(NODE_EXITS.length).default(['approve']),
+  exits: z.array(z.enum(ROUTE_EXIT_CODES)).max(ROUTE_EXIT_CODES.length).default(['approve']),
+  /** F-478：不给沿用草稿现有分支（definitions.inheritRoutes），给 [] 清空；已发布版本不可改。 */
+  routes: nodeRoutes.optional(),
   noAssignee: z.enum(NO_ASSIGNEE_POLICIES).default('exception_admin'),
   sameAssigneeSkip: z.boolean().default(false),
   historySameAssigneeSkip: z.boolean().default(false),
@@ -146,16 +181,6 @@ const node = z.strictObject({
   messageRules: z.array(messageRule).max(20).default([]),
 });
 
-const conditionItem = z.strictObject({
-  no: z.number().int().min(1).max(999),
-  field: text(100),
-  operator: z.enum(CONDITION_OPERATORS),
-  value: z
-    .union([z.string().max(500), z.array(z.string().max(500)).max(200)])
-    .nullable()
-    .optional(),
-});
-
 export const definitionSchema = z.strictObject({
   name: text(100),
   groupName: optionalText(100),
@@ -192,9 +217,34 @@ function nodeTypeViolations(input: NodeInput): string[] {
   return violations;
 }
 
+function toRoutes(routes: NodeInput['routes']): ExitRoute[] | undefined {
+  return routes?.map((route) => ({
+    exit: route.exit,
+    branches: route.branches.map((branch) => ({
+      kind: branch.kind,
+      ...(branch.priority === undefined ? {} : { priority: branch.priority }),
+      ...(branch.conditions
+        ? {
+            conditions: {
+              expression: branch.conditions.expression.trim(),
+              items: branch.conditions.items.map((item) => ({ ...item, value: item.value ?? null })),
+            },
+          }
+        : {}),
+      target: branch.target,
+    })),
+  }));
+}
+
 function toNode(input: NodeInput): ApprovalNode {
-  const { kind, approver, approvers, transitionRule, name, ...common } = input;
-  const base = { ...common, name: name ?? input.key };
+  const { kind, approver, approvers, transitionRule, name, routes, exits, ...common } = input;
+  // 业务出口编码是否可用由领域校验（出口组登记表）判定，所以枚举先放进来，类型上收窄转换。
+  const base = {
+    ...common,
+    exits: exits as NodeExit[],
+    ...(routes === undefined ? {} : { routes: toRoutes(routes) }),
+    name: name ?? input.key,
+  };
   if (kind === 'countersign') {
     // DEC-144：新会签节点缺省为任一人同意即可。
     return { ...base, kind, approvers: approvers ?? [], transitionRule: transitionRule ?? { type: 'any' } };
