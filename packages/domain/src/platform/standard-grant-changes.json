@@ -1,8 +1,10 @@
 {
-  "reason": "F-479 S1（DEC-819）：本人离职申请专属字段 attachmentRefs（手写申请图片引用），仅员工身份默认可查看、可编辑；不新增按钮或数据范围",
+  "reason": "F-480（DEC-797）：任职记录新增只读系统字段 traineeStartDate（实习转正前的实习开始日），随司龄校正值的查看口径授给同样能看入职日的身份；不新增编辑、按钮或数据范围",
   "add": [
-    "employee_self_service/TenantBase.SelfExit/field:attachmentRefs:view",
-    "employee_self_service/TenantBase.SelfExit/field:attachmentRefs:edit"
+    "standard_org_system_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_hr_admin/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_hr_specialist/TenantBase.EmploymentRecord/field:traineeStartDate:view",
+    "standard_manager/TenantBase.EmploymentRecord/field:traineeStartDate:view"
   ],
   "remove": []
 }

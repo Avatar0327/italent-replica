@@ -103,7 +103,16 @@ export function StaffPage() {
 }
 
 // 未在首屏渲染的列宽未取证，保留原宽度。
-const staffWidths: Record<string, number> = { name: 140, code: 140, workDate: 105, gender: 140 };
+const staffWidths: Record<string, number> = {
+  name: 140,
+  code: 140,
+  orgCode: 140,
+  orgFullName: 140,
+  employType: 140,
+  positionName: 140,
+  workDate: 105,
+  gender: 140,
+};
 function staffColumns(selectedColumns: string[], allowed: readonly string[], setEmployeeId: (id: string) => void) {
   const columns: TableColumnsType<Row> = visibleColumns(selectedColumns, allowed).map((key) => ({
     key,

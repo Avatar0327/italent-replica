@@ -179,6 +179,8 @@ export interface EmploymentRecord {
   readonly revision: number;
   readonly staffId: string;
   readonly entryDate: string;
+  /** DEC-797：实习转正开出的周期上保存的原实习开始日；其余周期为 null。 */
+  readonly traineeStartDate: string | null;
   readonly serviceType: string;
   readonly kind: BusinessKind;
   readonly changeType: ChangeType | null;

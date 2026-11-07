@@ -4173,6 +4173,11 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
+  'apps/api/src/modules/employment/intern-seniority.ts#applyInternSeniority': [
+    '#INTERN_SENIORITY_SETTING',
+    'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
+    'packages/domain/src/hr-analysis/roster.ts#tenureYears',
+  ],
   'apps/api/src/modules/employment/intern-termination.ts#confirmInFlightRegularizations': [
     'apps/api/src/modules/employment/exit-gate.ts#disclose',
     'apps/api/src/modules/employment/exit-gate.ts#inFlightApplications',
@@ -7721,6 +7726,9 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
   ],
   'apps/api/src/modules/employment/write-service.ts#assertEmployTypeUsage': ['#NEW_CYCLE_KINDS'],
+  'apps/api/src/modules/employment/write-service.ts#assertNoInternCycleSuccessor': [
+    'apps/api/src/modules/employment/timeline.ts#employmentTimelineNeighbors',
+  ],
   'apps/api/src/modules/employment/write-service.ts#assertSuccessorSequence': [
     'apps/api/src/modules/employment/exit-gate.ts#isExitKind',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
@@ -7770,7 +7778,10 @@ export const GRAPH: Graph = {
     '#withImportedUntil',
     '#withPositionManagerDerivation',
   ],
-  'apps/api/src/modules/employment/write-service.ts#cycleForMaterialization': ['#selectEmploymentCycle'],
+  'apps/api/src/modules/employment/write-service.ts#cycleForMaterialization': [
+    '#assertNoInternCycleSuccessor',
+    '#selectEmploymentCycle',
+  ],
   'apps/api/src/modules/employment/write-service.ts#effectiveEmployType': ['#NEW_CYCLE_KINDS'],
   'apps/api/src/modules/employment/write-service.ts#forwardMaterializedRecord': [
     'apps/api/src/modules/employment/forward-update.ts#forwardUpdateEmployment',
@@ -7803,6 +7814,7 @@ export const GRAPH: Graph = {
     '#auditMaterialization',
     '#checkMaterializedCapacity',
     '#cycleForMaterialization',
+    '#cycleIdentity',
     '#effectiveEmployType',
     '#forwardMaterializedRecord',
     '#insertNewEmploymentCycle',
@@ -7814,6 +7826,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/transfer/required-fields.ts#assertRequiredTransferFields',
   ],
   'apps/api/src/modules/employment/write-service.ts#materializedFields': [
+    'apps/api/src/modules/employment/intern-seniority.ts#applyInternSeniority',
     'apps/api/src/modules/employment/rehire-seniority.ts#applyRehireSeniority',
   ],
   'apps/api/src/modules/employment/write-service.ts#normalizePatchedInput': [

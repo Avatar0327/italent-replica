@@ -2,7 +2,7 @@
 // @vitest-environment happy-dom
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { act, h, permission, uiHarness } from './support/f474-ui.js';
+import { act, allFields, h, permission, uiHarness } from './support/f474-ui.js';
 const { SelfPage } = await import(resolve('apps/web/src/self-service/pages/SelfPage.tsx'));
 const { StaffPage } = await import(resolve('apps/web/src/personnel/StaffPage.tsx'));
 const { SubsetCreate } = await import(resolve('apps/web/src/personnel/EditCommands.tsx'));
@@ -12,17 +12,43 @@ const { ProfilesPage } = await import(resolve('apps/web/src/settings/ProfilesPag
 const { AuditPage } = await import(resolve('apps/web/src/settings/AuditPage.tsx'));
 const { teamKeys } = await import(resolve('apps/web/src/self-service/pages/model.ts'));
 let ui: ReturnType<typeof uiHarness>;
+const allFieldsWithout = (...hidden: string[]) => allFields.filter((field) => !hidden.includes(field));
 beforeEach(() => {
   ui = uiHarness();
 });
 afterEach(async () => ui.close());
 describe('AC-EMP / AC-PRM F-474 员工、团队与用户列表', () => {
-  it('员工已确认首屏姓名、编码140，参加工作日期105，操作164，齿轮24', async () => {
+  it('员工列表首屏列序与宽度：姓名、员工ID、机构ID、组织全称、雇佣关系、职位、首次参加工作日期、性别', async () => {
     await ui.render(h(StaffPage));
-    const widths = ui.widths();
-    expect(widths.slice(0, 4)).toEqual(['140px', '140px', '105px', '140px']);
-    expect(widths.slice(-2)).toEqual(['164px', '24px']);
-    expect(widths[4]).toBe('155px'); // 未取证的横滚列保持原宽度，不能一律设为140。
+    // 原站首屏 140 / 140 / 140 / 140 / 140 / 140 / 105 / 140，操作 164、齿轮 24（F-474-4a 补齐机构ID等四列）
+    expect(ui.widths().slice(0, 8)).toEqual(['140px', '140px', '140px', '140px', '140px', '140px', '105px', '140px']);
+    expect(ui.widths().slice(-2)).toEqual(['164px', '24px']);
+    expect(ui.headers().slice(0, 8)).toEqual([
+      '员工姓名',
+      '员工ID',
+      '机构ID',
+      '组织全称',
+      '雇佣关系',
+      '职位',
+      '首次参加工作日期',
+      '性别',
+    ]);
+    expect(ui.widths()[8]).toBe('155px'); // 未取证的横滚列保持原宽度，不能一律设为140。
+  });
+  it('员工列表补列取值：雇佣关系显示中文，空值显示占位；无查看权的列不显示', async () => {
+    const row = { id: '30000000-0000-4000-8000-000000000474', name: '合成员工', code: 'SYNTH-474' };
+    const items = [
+      { ...row, orgCode: 'O474', orgFullName: '合成集团/合成部', employType: 'intern', positionName: '合成职位' },
+      { ...row, id: '30000000-0000-4000-8000-000000000475', code: 'SYNTH-475' },
+    ];
+    await ui.render(h(StaffPage), '/', undefined, { '/api/tenant/personnel/employees': { items, total: 2 } });
+    const cells = Array.from(ui.host.querySelectorAll('tbody tr:not([aria-hidden]) td')).map((c) => c.textContent);
+    expect(cells.slice(2, 6)).toEqual(['O474', '合成集团/合成部', '实习生', '合成职位']);
+    expect(cells.slice(16, 20)).toEqual(['—', '—', '—', '—']); // 每行 14 格：12 列 + 操作 + 齿轮
+    await ui.close();
+    ui = uiHarness();
+    await ui.render(h(StaffPage), '/', allFieldsWithout('orgFullName', 'positionName'));
+    expect(ui.headers().slice(0, 5)).toEqual(['员工姓名', '员工ID', '机构ID', '雇佣关系', '首次参加工作日期']);
   });
   it('内部员工列表已有字段采用原站宽度，数据缺口不拼合成值', () => {
     const columns = userColumns(true, () => {});
@@ -63,9 +89,27 @@ describe('AC-EMP / AC-PRM F-474 子集顺序与设置列表', () => {
   it.each([
     ['education', ['school', 'graduationType', 'startDate', 'endDate', 'educationLevel']],
     ['jobhistory', ['company', 'post', 'startDate', 'endDate', 'referenceName']],
-    ['training', ['name', 'institution', 'category', 'score', 'startDate']],
+    [
+      'training',
+      [
+        'name',
+        'institution',
+        'category',
+        'score',
+        'categoryName',
+        'startDate',
+        'endDate',
+        'hours',
+        'classification',
+        'passed',
+      ],
+    ],
     ['family', ['name', 'birthday', 'gender', 'relationship', 'mobilePhone']],
-    ['language-ability', ['language', 'isNative', 'proficiency', 'writing', 'reading']],
+    [
+      'language-ability',
+      ['language', 'isNative', 'proficiency', 'writing', 'reading', 'speaking', 'acquiredCertificate'],
+    ],
+    ['awards', ['name', 'awardDate', 'amount', 'payDate', 'description']],
     ['skill', ['name', 'proficiency', 'category', 'months']],
     ['professional-technical-post', ['qualificationName', 'level', 'assessmentDate', 'qualificationRoute']],
   ])('%s 的已有字段按取证顺序排列', (kind, fields) => {

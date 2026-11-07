@@ -422,6 +422,8 @@ function trainingFields() {
     mentor: text('mentor'),
     activityNumber: text('activity_number'),
     hasMedal: boolean('has_medal'),
+    categoryName: text('category_name'),
+    classification: text('classification'),
   };
 }
 export const personnelTraining = pgTable(
@@ -520,6 +522,8 @@ function awardsFields() {
     level: text('level'),
     awardDate: date('award_date', { mode: 'string' }),
     description: text('description'),
+    amount: numeric('amount'),
+    payDate: date('pay_date', { mode: 'string' }),
   };
 }
 export const personnelAwards = pgTable(
@@ -674,6 +678,7 @@ function languageAbilityFields() {
     writing: text('writing'),
     isNative: boolean('is_native'),
     description: text('description'),
+    acquiredCertificate: text('acquired_certificate'),
   };
 }
 export const personnelLanguageAbility = pgTable(
