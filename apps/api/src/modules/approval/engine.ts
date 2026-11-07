@@ -79,6 +79,7 @@ import {
   type InstanceRow,
   type TaskRow,
 } from './store.js';
+import { AWAITING_STATUSES } from './task-state.js';
 import { withoutRetrieved, withoutRewoundDownstream } from './task-history.js';
 
 /** 一次命令内的流转现场：实例状态在内存中推进，命令结束时一次落库（revision 只加一）。 */
@@ -967,7 +968,7 @@ export async function afterNodeApproved(
   const nodeKey = approved.nodeKey;
   const tasks = known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id));
   const open = (task: TaskRow) =>
-    task.round === run.instance.round && task.nodeKey === nodeKey && ['pending', 'queued'].includes(task.status);
+    task.round === run.instance.round && task.nodeKey === nodeKey && AWAITING_STATUSES.has(task.status);
   if (tasks.some(open)) return;
   await followExit(tx, run, nodeKey, 'approve', approved.activationId, tasks);
 }

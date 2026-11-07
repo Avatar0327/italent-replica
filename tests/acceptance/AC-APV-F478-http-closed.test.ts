@@ -1,6 +1,6 @@
 /**
- * F-478 S1 边界：HTTP 草稿 schema（strictObject）本片不开放 routes；路由只能由定义服务进程内写入。
- * 同时核对命令台账重放不会重复写激活行（设计 §6）。
+ * F-478 S1 / S2 边界：S1 时 HTTP 草稿 schema（strictObject）不开放 routes；S2 起创建与草稿保存接受 routes（契约变化，
+ * 原“携带 routes → 400”断言改为 201 并读回）。同时核对命令台账重放不会重复写激活行（设计 §6）。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -18,8 +18,8 @@ import {
 
 const testDb = useTestDb();
 
-describe('F-478 S1 routes 不对 HTTP 开放', () => {
-  it('创建流程时携带 routes → 400', async () => {
+describe('F-478 S2 routes 对 HTTP 开放（S1 时为 400）', () => {
+  it('创建流程时携带 routes → 201，并在读回里原样返回', async () => {
     const s = await routeScene(testDb().db, 'f478-http-closed');
     const nodes = s
       .nodes()
@@ -39,7 +39,12 @@ describe('F-478 S1 routes 不对 HTTP 开放', () => {
         nodes,
       },
     });
-    expect(response.status).toBe(400);
+    expect(response.status, await response.clone().text()).toBe(201);
+    const created = await s.w.json<{ latestVersion: { nodes: { key: string; routes?: unknown }[] } }>(response, 201);
+    expect(created.latestVersion.nodes[0]!.routes).toEqual([
+      { exit: 'approve', branches: [{ kind: 'direct', target: 'END' }] },
+    ]);
+    expect(created.latestVersion.nodes[1]).not.toHaveProperty('routes');
   });
 });
 

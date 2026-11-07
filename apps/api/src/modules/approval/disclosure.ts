@@ -27,6 +27,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { referenceNames } from './reference-names.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
+import { exitsView, NO_PATH_FACTS, pathView, type PathFacts } from './detail-path.js';
 import { editSurface, type EditSurface } from './edit-surface.js';
 import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
@@ -248,7 +249,12 @@ function initiatorActions({ instance, version }: DetailData, userId: string): st
   return actions;
 }
 
-export function detailView(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
+export function detailView(
+  data: DetailData,
+  userId: string,
+  viewable: ReadonlySet<string> | undefined,
+  pathFacts: PathFacts = NO_PATH_FACTS,
+) {
   const { instance, version, snapshot } = data;
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
@@ -295,6 +301,9 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
       ...(edit ? { edit } : {}),
     },
     actions: [...new Set(actions)],
+    exits: exitsView(actions),
+    // DEC-104 / DEC-115：看不到审批记录的人不披露路径（路径会暴露已走过的节点与分支结果）
+    path: hidden ? [] : pathView(version.nodes, instance.currentNodeKey, pathFacts),
   };
 }
 
