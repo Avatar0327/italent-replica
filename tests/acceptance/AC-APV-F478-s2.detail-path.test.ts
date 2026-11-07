@@ -10,11 +10,14 @@ import {
   approveTo,
   disagreeCurrent,
   otherwise,
+  pendingOf,
   routeScene,
+  taskPost,
   when,
   type RouteScene,
 } from './AC-APV-F478-support.js';
 import { detailOf, publishViaHttp, type PathStep } from './AC-APV-F478-s2-support.js';
+import type { NodeInput } from './AC-APV-support.js';
 
 const testDb = useTestDb();
 
@@ -78,5 +81,57 @@ describe('F-478 S2 详情 path', () => {
     expect(hidden.path).toEqual([]);
     const admin = await detailOf(s.w, view.id, s.w.hr.id);
     expect(states(admin.path)).toEqual(['n1:current', 'n2:not_on_path', 'n3:pending', 'n4:pending']);
+  });
+
+  it('重入清除旧出口：N1 同意→N2 驳回到上一步→N1 再选不同意结束，N1 的 exit=disagree', async () => {
+    const s = await routeScene(testDb().db, 'f478-path-reentry');
+    await publishViaHttp(s.w, s.nodes({ n1: { exits: ['approve', 'disagree'] } }).slice(0, 3), {});
+    let view = await s.start(s.depts.d1);
+    view = await approveCurrent(s, view);
+    await s.w.json(await taskPost(s, view, 'reject-previous', { comment: '请复核' }));
+    view = await s.w.detail(view.id);
+    expect(view.currentNodeKey).toBe('n1');
+    view = await disagreeCurrent(s, view);
+    const detail = await detailOf(s.w, view.id);
+    expect(detail.status).toBe('disapproved');
+    expect(detail.path!.find((step) => step.nodeKey === 'n1')).toMatchObject({ state: 'passed', exit: 'disagree' });
+    expect(detail.path!.find((step) => step.nodeKey === 'n2')).not.toHaveProperty('exit');
+  });
+
+  it('会签末节点以领域结算出口为准：同意 / 不同意都是 2 票流转，最高序号者先投不同意，其余两人同意 → exit=approve', async () => {
+    const s = await routeScene(testDb().db, 'f478-path-countersign');
+    const voters = [s.people.n2, s.people.n3, s.people.n4];
+    const joint: NodeInput = {
+      key: 'joint',
+      name: '三人会签',
+      kind: 'countersign',
+      approvers: voters.map((person) => ({ type: 'specified', value: person.userId })),
+      exits: ['approve', 'disagree'],
+      transitionRule: {
+        type: 'custom',
+        rules: { approve: { kind: 'count', value: 2 }, disagree: { kind: 'count', value: 2 } },
+      },
+    } as NodeInput;
+    await publishViaHttp(s.w, [s.nodes().slice(0, 1)[0]!, joint], {});
+    let view = await s.start(s.depts.d1);
+    view = await approveCurrent(s, view);
+    const seats = pendingOf(view); // 详情里的任务按序号正序
+    expect(seats).toHaveLength(3);
+    // 序号最高的席位先投“不同意”，再由另外两人先后“同意”：2 票同意先于 2 票不同意达成
+    const [first, second, last] = seats as [(typeof seats)[0], (typeof seats)[0], (typeof seats)[0]];
+    for (const [task, action] of [
+      [last, 'disagree'],
+      [first, 'approve'],
+      [second, 'approve'],
+    ] as const) {
+      const current = await s.w.detail(view.id);
+      await s.w.json(await s.w.taskAction(task.assigneeUserId, task.id, action, current.revision, { comment: '会签' }));
+    }
+    const detail = await detailOf(s.w, view.id);
+    expect(detail.status).toBe('approved');
+    expect(detail.logs.filter((log) => log.event === 'countersign_flow')).toEqual([
+      expect.objectContaining({ detail: expect.objectContaining({ exit: 'approve' }) }),
+    ]);
+    expect(detail.path!.find((step) => step.nodeKey === 'joint')).toMatchObject({ state: 'passed', exit: 'approve' });
   });
 });
