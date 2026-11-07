@@ -26,7 +26,7 @@ export function employeeJoins(ctx: PersonnelContext, asOf = tenantLocalDate(ctx.
         max(c.entry_date) AS latest_entry_date
       FROM employment_records c JOIN employment_timeline ct ON ct.tenant_id=c.tenant_id AND ct.record_id=c.id
       WHERE c.tenant_id=e.tenant_id AND c.employee_id=e.id
-      -- DEC-797：实习转正重置入职日（开新周期）；最近入职日期随之；DEC-830①：已转正者首次入职日期也取转正日（其实习开始记录不参与，未转正者不变）
+      -- DEC-797：实习转正重置入职日（开新周期）；最近入职日期随之；DEC-832①：首次入职日期实习开始记录不参与——转正者取转正日，未转正（含撤销转正）为空
       AND c.kind IN ('hire','rehire','retire_rehire','intern_regularization')
       AND c.entry_date<=${asOf}::date) cycles ON true
     ${jobJoin('job_level_versions', 'jl', 'level_id', asOf)}

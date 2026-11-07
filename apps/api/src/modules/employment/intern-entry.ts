@@ -1,24 +1,23 @@
 /**
- * DEC-830①：实习转正的人只在转正日计一次入职。
- * 转正开新周期（DEC-797），实习周期开头那条入职记录的 entry_date 存在新周期的 trainee_start_date 上；
- * 期末（asOf）当天或之前已转正的，这条“实习开始”记录不再算入职 / 首次入职，由转正记录按转正日计。
- * 转正周期是追加保留数据：撤销（删除）转正后周期仍在、转正记录已离开时间轴，所以必须确认该周期的转正记录仍在时间轴上，
- * 否则删除后实习开始记录被误排除（入职漏计、首次入职日期为空）。
- * 未转正（含转正日在 asOf 之后的追溯视图、转正已撤销）和实习期满前就离职的人不受影响。
+ * DEC-832①（取代 DEC-830①）：实习生只在【转正日】计一次入职，实习开始日永远不算入职。
+ * - 实习开始那条入职记录 = 入职类记录（hire / rehire / retire_rehire）所在周期的 employ_type = 'intern'
+ *   （employment_cycles.employ_type，周期只在入职类业务上设置，转正开出的新周期是 internal）；这条记录一律不计，
+ *   不管后来有没有转正：未转正的在职实习生、实习期内没转正就离职的，始终不计入职 / 首次入职日期为空。
+ * - 转正记录（intern_regularization）仍在有效时间轴上、转正日 <= asOf 时才计，按转正日一次；
+ *   追溯查询时期末早于转正日同样不计；转正被删除（撤销）后转正记录离开时间轴，这个人回到未转正状态。
+ * - 非实习的正常入职、转正后离职再入职（新入职记录，周期不是实习）保持原口径。
+ * 看板入职（entriesFrom）、人员流动流入（hires 同源）、档案首次入职日期（employeeJoins）共用本片段。
  */
 import { sql } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 
 /**
- * `rec` 是任职记录别名（要有 tenant_id / employee_id / kind / entry_date）。
- * 为真 = 这条记录可作为一次入职：转正记录要转正日已到（asOf 当天或之前），其余记录不能是已转正者的实习开始记录。
+ * `rec` 是任职记录别名（要有 tenant_id / kind / staff_id / entry_date），且已 JOIN 任职时间轴（只认现存记录）。
+ * 为真 = 这条记录可作为一次入职。
  */
 export function countsAsEntryOnce(rec: string, asOf: string | SQL): SQL {
   const r = sql.raw(rec);
   return sql`(CASE WHEN ${r}.kind = 'intern_regularization' THEN ${r}.entry_date <= ${asOf}::date
     ELSE NOT EXISTS (SELECT 1 FROM employment_cycles k
-      JOIN employment_records g ON g.tenant_id=k.tenant_id AND g.staff_id=k.id AND g.kind='intern_regularization'
-      JOIN employment_timeline gt ON gt.tenant_id=g.tenant_id AND gt.record_id=g.id
-      WHERE k.tenant_id=${r}.tenant_id AND k.employee_id=${r}.employee_id
-        AND k.trainee_start_date=${r}.entry_date AND g.entry_date<=${asOf}::date) END)`;
+      WHERE k.tenant_id=${r}.tenant_id AND k.id=${r}.staff_id AND k.employ_type='intern') END)`;
 }

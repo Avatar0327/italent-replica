@@ -96,7 +96,7 @@ const noWorkStartDate = (c: DashboardAsOf) => sql`(SELECT v.work_date FROM perso
 
 /**
  * 入职类任职记录的 FROM … WHERE（别名 r / t / snap / s）；人员流动的流入（BE-13b）同用，asOf 即期间末日。
- * DEC-830①：已入职视图里，实习转正按转正日计一次入职（转正记录入口径），其实习开始记录不再计。
+ * DEC-832①：已入职视图里，实习生只在转正日计一次入职（转正记录入口径）；实习开始记录一律不计（未转正 / 未转正离职也不计）。
  */
 export function entriesFrom(c: Pick<DashboardAsOf, 'tenantId' | 'asOf'>, view: 'hired' | 'all', since?: string): SQL {
   const hired = view === 'hired';

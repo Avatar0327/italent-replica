@@ -226,7 +226,8 @@ describe('AC-HA-13b B54 流动情况报表', () => {
       expect(table(flow, 'flow').summary.cells[column], `合计 ${column}`).toBe(
         rows.reduce((total, item) => total + (item.cells[column] ?? 0), 0),
       );
-    expect(table(flow, 'flow').summary.cells).toMatchObject({ yearStart: 5, hires: 3, transfers: 1, exits: 4 }); // hires 原 4（DEC-832①）
+    // hires 原 4（DEC-832①）
+    expect(table(flow, 'flow').summary.cells).toMatchObject({ yearStart: 5, hires: 3, transfers: 1, exits: 4 });
 
     // 各月入离职：范围外部门 8/31 的离职不计（全范围 8 月离职 1）；流出合计 = 范围内离职 4
     const monthly = await limited.report('monthly', AS_OF);
