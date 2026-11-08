@@ -338,8 +338,9 @@ function ActionBar(props: {
   const decisions = demo ? [] : decisionButtons(detail);
   const others = demo ? [] : actions.filter((item) => item !== 'approve' && item !== 'disagree');
   const taskId = actionTask(detail, row.taskId);
+  // 槽里没记出口（旧形状下发起）时只按动作匹配，避免重读后带 exits 把唯一可核对的按钮也锁住
   const locked = (item: ApprovalAction, exit?: string) =>
-    !!action.pending && (action.pending !== item || action.pendingExit !== exit);
+    !!action.pending && (action.pending !== item || (action.pendingExit !== undefined && action.pendingExit !== exit));
   return (
     <Space wrap className="approval-action-bar">
       {decisions.map((item) => (
