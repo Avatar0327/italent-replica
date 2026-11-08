@@ -28,6 +28,8 @@ export interface OrgNodeDto {
   name?: string;
   code?: string;
   headcount?: number;
+  establishment?: number | null;
+  personInChargeName?: string | null;
   children?: OrgNodeDto[];
   [field: string]: unknown;
 }
@@ -84,6 +86,33 @@ export async function orgWorld(db: Db) {
     ifMatch: a.revision,
     body: { personInChargeId: regular.id, effectiveDate: AT },
   });
+
+  // 编制：甲 10（本级编制，含下级汇总 10）、乙 5；甲一无编制（卡片显示“--”）
+  const scheme = await setup.request('POST', '/api/tenant/establishment/schemes', {
+    ...world.asAdmin,
+    ifMatch: 0,
+    body: {
+      name: `编制方案${suffix}`,
+      periodType: 'annual',
+      startMonth: 1,
+      maintenanceMode: 'local',
+      subdivision: 'none',
+      startDate: '2026-01-01',
+    },
+  });
+  expect(scheme.status, await scheme.clone().text()).toBe(201);
+  const schemeId = ((await scheme.json()) as { id: string }).id;
+  for (const [orgId, localCapacity] of [
+    [a.id, 10],
+    [b.id, 5],
+  ] as const) {
+    const capacity = await setup.request('POST', '/api/tenant/establishment/capacities', {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { orgId, schemeId, periodStart: '2026-01-01', localCapacity, strictControl: false },
+    });
+    expect(capacity.status, await capacity.clone().text()).toBe(201);
+  }
 
   const definition = MODULE_OBJECTS.organization;
   type Range = { orgId: string; includeDescendants: boolean };

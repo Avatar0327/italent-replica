@@ -103,6 +103,14 @@ export const ORG_POLICIES = defineTable('org', {
     scope: listScope('module.scopeSql'),
     fields: organization,
   }),
+  // F-474-2b 架构图卡片：同树的对象查看权 / 范围谓词；personInChargeName 跟随 personInChargeId 字段权，编制为系统字段
+  [`GET ${BASE}/organizations/chart`]: object({
+    object: ORG,
+    operation: 'view',
+    button: noButton('架构图卡片只按对象查看权（objectContext view），无按钮'),
+    scope: listScope('module.scopeSql'),
+    fields: organization,
+  }),
   // 页面 / 数据源编码 TenantBase.Organization.detail；asOf 非法 400；ETag = revision
   [`GET ${BASE}/organizations/:id`]: object({
     ...byId,

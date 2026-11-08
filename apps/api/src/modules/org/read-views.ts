@@ -6,6 +6,7 @@
 import type { Tx } from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { establishmentByOrg, headNames } from '../org-adjustment/preview.js';
 import type { ModuleScope } from '../permission/module-access.js';
 import { type DimensionEdges, loadDimensionEdges, readHeadcounts } from './headcount.js';
 import { countOrgSnapshot, displayOrganization, loadOrgSnapshot, type OrgRecord } from './read-model.js';
@@ -71,4 +72,36 @@ export async function readOrgTreeNodes(tx: Tx, q: OrgViewQuery) {
       edges,
     ),
   };
+}
+
+/**
+ * 架构图卡片（R1a §2.3）：在树节点上补负责人姓名与编制。
+ * 负责人只取姓名（人员版本链最新姓名，与调整预览、组织详情同口径），不带人员其他字段；负责人在查看人范围外时
+ * 仍显示姓名（DEC-325③ 范围外上级、DEC-339② 范围外负责人：只给姓名）。personInChargeId 仅供调用方按字段权裁剪，
+ * 不进响应。编制取查询日有效周期的含下级编制，没有编制为 null（前端显示 “--”）。
+ */
+export async function readOrgChartNodes(tx: Tx, q: OrgViewQuery) {
+  const { nodes, parents } = await readOrgTreeNodes(tx, q);
+  const heads = await headNames(
+    tx,
+    q.tenantId,
+    nodes.flatMap((node) => (node.personInChargeId ? [node.personInChargeId] : [])),
+  );
+  const establishment = await establishmentByOrg(
+    tx,
+    q.tenantId,
+    q.asOf,
+    nodes.map((node) => node.id),
+  );
+  const cards = nodes.map((node) => ({
+    id: node.id,
+    code: node.code,
+    name: node.name,
+    enabled: node.enabled,
+    headcount: node.headcount,
+    establishment: establishment.get(node.id) ?? null,
+    personInChargeId: node.personInChargeId,
+  }));
+  const headNameOf = new Map(nodes.map((node) => [node.id, heads.get(node.personInChargeId ?? '') ?? null]));
+  return { cards, parents, headNameOf };
 }

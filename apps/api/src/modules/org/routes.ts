@@ -31,7 +31,7 @@ import { pageQuery } from '../job/context.js';
 import { releaseCode, reserveCode } from './codes.js';
 import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from './import-service.js';
 import { displayOrganization, loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
-import { readOrgPage, readOrgTreeNodes } from './read-views.js';
+import { readOrgChartNodes, readOrgPage, readOrgTreeNodes } from './read-views.js';
 import { nestTree } from './tree.js';
 import { readOrgSettings, writeOrgSettings } from './settings.js';
 import { ORG_PERSON_FIELDS } from './validation.js';
@@ -146,6 +146,28 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     return c.json({
       roots: nestTree(trimmed, tree.parents),
       total: flat.length,
+      hasDataPermission: scope.hasDataPermission,
+    });
+  });
+  // 架构图卡片（F-474-2b）：树节点 + 负责人姓名 + 编制；同样先于 /organizations/:id。
+  router.get(`${BASE}/organizations/chart`, async (c) => {
+    const ctx = await context(c, deps, 'read');
+    const { scope, view } = await listView(c, deps, ctx);
+    const chart = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const config = await readOrgSettings(tx, ctx.tenantId);
+      if (!config.enabledDimensions.includes(view.dimension))
+        return { cards: [], parents: [], headNameOf: new Map<string, string | null>() };
+      return readOrgChartNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
+    });
+    // 负责人姓名跟随「负责人」字段的查看权：personInChargeId 被裁掉时姓名一并去掉；ID 本身不返回
+    const trimmed = await trimModuleResponse(deps, ctx, OBJECT, chart.cards);
+    const cards = trimmed.map(({ personInChargeId, ...card }) => ({
+      ...card,
+      ...(personInChargeId !== undefined ? { personInChargeName: chart.headNameOf.get(card.id!) ?? null } : {}),
+    }));
+    return c.json({
+      roots: nestTree(cards, chart.parents),
+      total: cards.length,
       hasDataPermission: scope.hasDataPermission,
     });
   });
