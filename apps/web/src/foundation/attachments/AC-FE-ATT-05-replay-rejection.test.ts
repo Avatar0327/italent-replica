@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestError } from '../../part-time/request-model.js';
 import { acceptSelfRequest, selfRequestBody } from '../../self-service/pages/request-model.js';
 import { pendingReplay, recoverSelfRequest, replaySelfRequest } from '../../self-service/pages/request-replay.js';
-import { createApiClient, rejectionMessage } from '../client.js';
-import { createFormStore, isLocked } from '../forms/store.js';
+import { type Command, createApiClient, rejectionMessage } from '../client.js';
+import { createFormStore, isLocked, type Values } from '../forms/store.js';
 
 const COLLECTION = '/api/tenant/self-service/exit-requests';
 // 每条用例一张单：恢复槽是模块级的，按路径区分
@@ -61,7 +61,7 @@ function saveInput(refs: string[]) {
     revision: 3,
     businessId: ID,
     patchOnly: true,
-    send: async (sent: { body: object; revision?: number }) => {
+    send: async (sent: Command<Values>) => {
       const body = selfRequestBody('exit', sent.body, editable);
       const raw = await recoverSelfRequest(PATH, async () => {
         try {
