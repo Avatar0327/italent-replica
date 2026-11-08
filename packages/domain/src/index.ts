@@ -18,6 +18,7 @@ export {
 } from './contracts/org-hierarchy.js';
 export * from './permission/index.js';
 export * from './personnel/index.js';
+export * from './hr-analysis/all-people.js';
 export * from './hr-analysis/reports.js';
 export * from './hr-analysis/roster.js';
 export * from './hr-analysis/segments.js';

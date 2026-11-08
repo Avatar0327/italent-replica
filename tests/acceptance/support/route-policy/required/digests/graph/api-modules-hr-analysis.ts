@@ -169,6 +169,15 @@ export const GRAPH: Graph = {
     '#RECORD_OBJECT',
     'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
   ],
+  'apps/api/src/modules/hr-analysis/roster-access.ts#allPeopleAccess': [
+    'apps/api/src/authorization.ts#requirePermission',
+    '#CONTRACT_OBJECT',
+    '#RECORD_OBJECT',
+    '#SOURCE_OBJECTS',
+    'apps/api/src/modules/permission/module-access.ts#getModuleViewableFields',
+    'apps/api/src/modules/personnel/access.ts#access',
+    'packages/domain/src/personnel/catalog.ts#PERSONNEL_OBJECT',
+  ],
   'apps/api/src/modules/hr-analysis/roster-access.ts#requireExportButton': [
     'apps/api/src/authorization.ts#requirePermission',
     '#ROSTER_OBJECT',

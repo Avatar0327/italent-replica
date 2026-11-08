@@ -64,6 +64,34 @@ export async function rosterAccess(
   return { ctx, columns, canSee, viewable };
 }
 
+/**
+ * 全部人员（F-474-4c，DEC-836）的权限链：员工档案对象查看权与数据范围（personScope 先于分页，同花名册）→ 入口改按
+ * 任职记录对象的查看权准入（不依赖人事分析对象）→ 逐列字段权。另起一个函数而不给 rosterAccess 加参数，是为了让
+ * 花名册 / 人事报表既有的权限链源码与 F-039 登记保持原样（它们不得因本单被放松或改写）。
+ */
+export async function allPeopleAccess(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  definitions: readonly RosterColumn[],
+): Promise<RosterAccess> {
+  const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list');
+  await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: RECORD_OBJECT });
+  const viewable: Record<RosterSource, boolean> = {
+    person: true,
+    record: true,
+    contract: await deps.authorize({ ...ctx, action: 'object.view', resource: CONTRACT_OBJECT }),
+  };
+  const sets = new Map<RosterSource, ReadonlySet<string> | undefined | false>();
+  for (const source of Object.keys(SOURCE_OBJECTS) as RosterSource[])
+    sets.set(source, viewable[source] ? await getModuleViewableFields(deps, ctx, SOURCE_OBJECTS[source]) : false);
+  const canSee = (source: RosterSource, field: string) => {
+    const fields = sets.get(source);
+    return fields === undefined || (fields !== false && fields.has(field));
+  };
+  const columns = definitions.filter((column) => column.gate.every(([source, field]) => canSee(source, field)));
+  return { ctx, columns, canSee, viewable };
+}
+
 /** 筛选条件涉及的字段无查看权 → 403（同 personnel 列表：不能用看不到的字段探测值）。 */
 export function requireFilterField(rights: RosterAccess, source: RosterSource, field: string) {
   if (!rights.canSee(source, field)) throw new AppError('FORBIDDEN', '花名册筛选字段不可查看');

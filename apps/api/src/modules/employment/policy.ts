@@ -64,6 +64,7 @@ import {
   RETIREMENT_INTENTION_BUTTON,
   MODULE_OBJECTS,
   PART_TIME_BUTTONS,
+  PERSONNEL_OBJECT,
 } from '@italent/domain';
 import {
   type ButtonPolicy,
@@ -2060,6 +2061,43 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: listScope('employment.visibility'),
     fields: RESPONSE,
   }),
+  // ---- employment/all-people.ts：F-474-4c 全部人员列表（DEC-776 / DEC-836，只读）-----------------------------------
+  // allPeopleAccess（花名册同链，入口对象 = 任职记录）：员工档案对象查看权 + 页面 list 范围解析（personnel.access，personScope 先于分页，
+  // total 与本页同一谓词）→ 任职记录对象（TenantBase.EmploymentRecord）查看权 → 逐列字段权（人员侧按员工档案、任职侧按
+  // 任职记录，无权整列缺席）；筛选 name / email / employeeId / employmentForm / employType / employeeStatus(逗号多选) /
+  // serviceType 严格校验 400，用无权字段筛选 403「花名册筛选字段不可查看」。入口不依赖人事分析对象（TenantBase.HrRoster），
+  // 不新增对象 / 字段编码
+  'GET /all-people': all(
+    [
+      object({
+        object: PERSONNEL_OBJECT,
+        operation: 'view',
+        button: noButton('列表无按钮'),
+        scope: listScope('personnel.personScope'),
+        fields: projector('employment.allPeople', 'employment.allPeople'),
+      }),
+      object({
+        object: EMPLOYMENT,
+        operation: 'view',
+        button: noButton('列表无按钮'),
+        scope: noScope('任职记录对象在此只作入口权；数据范围由员工档案对象解析，字段权按列逐对象裁剪'),
+        fields: projector('employment.allPeople', 'employment.allPeople'),
+      }),
+    ],
+    projector('employment.allPeople', 'employment.allPeople'),
+    {
+      // 合同对象查看权不拒绝请求，只决定合同类列是否出现（披露，同花名册 contractColumns）
+      optional: {
+        contractColumns: object({
+          object: CONTRACT_OBJECT,
+          operation: 'view',
+          button: noButton('列只按对象查看权与字段权出现，无按钮'),
+          scope: listScope('personnel.personScope'),
+          fields: projector('employment.allPeople', 'employment.allPeople'),
+        }),
+      },
+    },
+  ),
   // ---- employment/exit-routes.ts：R2-T03 B5 离职视图与详情（设计 §3.2 / §9.1）---------------------------------------------
   // 视图：view ∈ in_progress / completed / all / cancellations（缺失或不合法 400）；筛选 departmentId（含下级，可 includeChildren=false）/
   // keyword / lastWorkDateFrom / lastWorkDateTo / exitTypeCode / reasonCode / whereaboutsCode / status（仅离职中 / 全部）/

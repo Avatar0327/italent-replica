@@ -4647,6 +4647,28 @@
         ]
       }
     },
+    "GET /api/tenant/employment/all-people": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "employment",
+      "primitives": {
+        "object": [
+          "object.* 动作"
+        ]
+      }
+    },
     "GET /api/tenant/employment/auto-assessment-rules": {
       "edge": {
         "anonymous": {
