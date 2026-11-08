@@ -60,6 +60,7 @@ export const tr = {
       columns: ['流程', '状态', '主体人', '当前步骤', '当前审批人', '操作'],
     },
   ],
+  projectViews: '项目视图',
   createWizard: '新增（步骤导航）',
   unverified: '此操作未验证，暂不开放',
   columnSettings: '列设置',

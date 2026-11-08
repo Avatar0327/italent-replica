@@ -4,9 +4,15 @@ import { APP_ROUTES } from './page-registry.js';
 import { ui } from '../src/foundation/messages.js';
 import { centerText } from '../src/approval/messages.js';
 import { listText } from '../src/transfer/messages.js';
+import { tr as reviewText } from '../src/talent-review/messages.js';
 
-// F-132（#333）按原站（DEC-489）：这两个应用首页没有页面级 h1，以横向视图 / 分类导航代替标题（F-170）。
-const viewNavigation: Record<string, string> = { '/transfer': listText.views, '/approval': centerText.categories };
+// F-132（#333）按原站（DEC-489）：这些应用首页没有页面级 h1，以横向视图 / 分类导航代替标题（F-170）；
+// 人才盘点项目列表同样以两种项目视图代替标题（F-475A，F-495）。
+const viewNavigation: Record<string, string> = {
+  '/transfer': listText.views,
+  '/approval': centerText.categories,
+  '/talent-review': reviewText.projectViews,
+};
 // 导航不依赖列表状态，加载失败时照样可见（#345 第 1 轮 P2）；另须等到列表或正常空态，且没有加载失败。
 const listReady: Record<string, (page: Page) => Locator> = {
   '/transfer': (page) => page.locator('.r1c-list .ant-table-row').first().or(page.locator('.r1c-list .ant-empty')),
