@@ -327,6 +327,35 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return handoverHrAdmin(tx, subject);
     case 'handover_employee':
       return candidateOf(tx, subject, subject.subjectEmployeeId);
+    // F-478 S3（设计 §5.1 / §5.2）：业务主体员工本人（HR 代发时也是被审批的员工，不是发起人）；本租户第一位系统管理员
+    case 'subject_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
+    case 'system_admin':
+      return systemAdmin(tx, subject);
+  }
+}
+
+/**
+ * 系统管理员：本租户 permission_admins 里角色为 system_admin、记录有效的管理员，按开通先后（created_at, id）取第一个
+ * 具备审批资格的账号（成员有效、人员在职，DEC-098）。租户管理员（tenant_admin）不是此来源，DEC-537 取证原站唯一可指派
+ * 的管理员是“系统管理员（企业设置）”。单人节点只能解析出一个人，取第一位与 handoverHrAdmin 同一做法，结果可复现。
+ */
+async function systemAdmin(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  // 按 (created_at, id) 游标分批扫到找着合格者或真正耗尽：不能只看前一批，前面的账号可能都已停用。
+  // 游标取 created_at 的文本形式，保住微秒精度，不经 JS 时间类型截断。
+  let after = sql``;
+  for (;;) {
+    const admins = rowsOf<{ user_id: string; id: string; created_text: string }>(
+      await tx.execute(sql`SELECT user_id, id, created_at::text AS created_text FROM permission_admins
+        WHERE tenant_id=${subject.tenantId} AND role='system_admin' AND status='active' ${after}
+        ORDER BY created_at, id LIMIT ${HR_ADMIN_SCAN}`),
+    );
+    for (const { user_id: userId } of admins)
+      if (await isEligibleApprover(tx, subject, userId))
+        return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+    const last = admins.at(-1);
+    if (admins.length < HR_ADMIN_SCAN || !last) return NOBODY;
+    after = sql`AND (created_at, id) > (${last.created_text}::timestamptz, ${last.id}::uuid)`;
   }
 }
 
