@@ -172,6 +172,7 @@ export async function createCapacity(
     ctx.tenantId,
     { orgId: input.orgId, schemeId: input.schemeId, periodStart: input.periodStart, periodEnd: end },
     date,
+    async (schemeId) => (await ctx.canDiscloseSchemeName?.(tx, schemeId)) ?? false,
   );
   const id = randomUUID();
   await tx.insert(establishmentObjects).values({

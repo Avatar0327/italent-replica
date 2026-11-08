@@ -21,6 +21,11 @@ export interface EstablishmentContext {
   readonly commandId: string;
   readonly expectedRevision: number;
   readonly authorizeCapacityScope?: (tx: Tx, target: CapacityScopeTarget) => Promise<void>;
+  /**
+   * 当前操作人能否在错误提示里看到该方案的名称：方案详情查看范围命中且名称字段可读（DEC-121）。
+   * 未注入（内部可信端口、无授权器）按不可见处理，提示不带名称。
+   */
+  readonly canDiscloseSchemeName?: (tx: Tx, schemeId: string) => Promise<boolean>;
   readonly authorizeCapacity?: (
     tx: Tx,
     change: CapacityScopeTarget & {

@@ -1,5 +1,5 @@
 import type { Authorizer } from '@italent/api';
-import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
+import { ESTABLISHMENT_SCHEME_DATASOURCE } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -9,7 +9,6 @@ import { tenantApi } from './support/tenant-api.js';
 import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
-const OBJECT = MODULE_OBJECTS.establishment.code;
 const FIELDS = [
   'id',
   'orgId',
