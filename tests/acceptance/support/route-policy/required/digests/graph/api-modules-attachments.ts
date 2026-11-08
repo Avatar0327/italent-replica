@@ -16,7 +16,11 @@ export const GRAPH: Graph = {
     '#ATTACHMENT_FIELD',
     'apps/api/src/modules/employee-self-service/application-access.ts#requireApplicationAccess',
   ],
-  'apps/api/src/modules/attachments/audit.ts#record': ['apps/api/src/audit/record.ts#recordAudit', '#snapshot'],
+  'apps/api/src/modules/attachments/audit.ts#record': [
+    'apps/api/src/audit/record.ts#recordAudit',
+    '#snapshot',
+    'apps/api/src/system-actor.ts#auditActor',
+  ],
   'apps/api/src/modules/attachments/audit.ts#snapshot': ['#receipt'],
   'apps/api/src/modules/attachments/binding.ts#assertRefsUnchanged': ['#lower'],
   'apps/api/src/modules/attachments/binding.ts#bindAttachmentRefs': [
