@@ -65,7 +65,8 @@ export const employmentEmployees = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    code: text('code').notNull(),
+    // F-493 S1：工号可空（NULL 在唯一索引里互不相等）；全空白仍由 CHECK 拒绝
+    code: text('code'),
     name: text('name').notNull(),
     revision: integer('revision').notNull().default(1),
     createdAt: utc(),
