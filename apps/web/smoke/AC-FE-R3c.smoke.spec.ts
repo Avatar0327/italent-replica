@@ -641,10 +641,16 @@ test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，�
   await list.getByRole('button', { name: /编\s*辑/ }).click();
   const dialog = page.getByRole('dialog', { name: /编辑/ });
   await expect(dialog).toBeVisible();
-  // F-502：antd 弹窗入场是缩放动画（起点 scale 0.2，即 750×0.2=150），toBeVisible 在动画中途就成立；
-  // 轮询到动画结束的稳定宽度，期望值仍是原站 750，不放宽。
+  // F-502：antd 弹窗入场是缩放动画（150→750，且动画开始前一帧宽度本就是 750），toBeVisible 在动画中途就成立，
+  // 所以不能“首次量到 750 就算过”。先等动画结束：rc-motion 清掉 ant-zoom-* 类名，且弹窗根下所有动画 finished；
+  // 之后只取一次原始宽度，精确比较原站的 750（不取整、不加容差）。
   const modal = page.locator('.review-calc-rule-form .ant-modal');
-  await expect.poll(async () => Math.round((await modal.boundingBox())?.width ?? -1)).toBe(750);
+  await expect(modal).not.toHaveClass(/ant-zoom/);
+  await modal.evaluate(async (el) => {
+    const root = el.closest('.review-calc-rule-form') ?? el;
+    await Promise.all(root.getAnimations({ subtree: true }).map((animation) => animation.finished));
+  });
+  expect((await modal.boundingBox())?.width).toBe(750);
   await expect(dialog.getByRole('button', { name: '翻译助手' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: '配置表单' })).toBeDisabled();
   await expect(dialog).toContainText('4/200');
