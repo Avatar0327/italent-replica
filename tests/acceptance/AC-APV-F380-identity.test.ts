@@ -1,9 +1,9 @@
 /** AC-APV-F380 / DEC-691 D5·D6：任意身份展开为审批人；合成数据，租户写入均用 withTenant。 */
 import './support/exit-gate-enforced.js';
 import { randomUUID } from 'node:crypto';
-import { useTestDb } from '@italent/testkit';
-import { sql, withTenant } from '@italent/db';
-import { describe, expect, it, vi } from 'vitest';
+import { createTestDb } from '@italent/testkit';
+import { sql, withPlatform, withTenant, type DbHandle } from '@italent/db';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { relationWorld, source, resolved, save, type RelationWorld } from './AC-APV-F318c-support.js';
 import { permissionAdmin } from './AC-APV-support.js';
 import { BASE, createProfile, grant, makeGrantable } from './AC-PRM-support.js';
@@ -14,7 +14,22 @@ import { rowsOf } from '../../apps/api/src/modules/approval/context.js';
 import { limitApprovers, resolveSource } from '../../apps/api/src/modules/approval/source-resolver.js';
 import { acceptCandidates } from '../../apps/web/src/approval/designer/source-candidates.js';
 
-const database = useTestDb();
+/**
+ * F-494：PG16 分片负载高时，useTestDb 写死的 60 秒建库钩子与 afterAll 钩子曾超时。本文件改为自建库钩子：
+ * 建库 + 迁移 180 秒（原 60 秒的 3 倍），关库走 hookTimeout 同值。200+ 人 / 501 人两条用例的超时由 300 秒放宽到 600 秒，
+ * 同样只作保底：改批量夹具后各只需数秒。
+ */
+const HOOK_TIMEOUT = 180_000;
+vi.setConfig({ hookTimeout: HOOK_TIMEOUT });
+let handle: DbHandle | undefined;
+beforeAll(async () => {
+  handle = await createTestDb();
+}, HOOK_TIMEOUT);
+afterAll(async () => handle?.close());
+const database = () => {
+  if (!handle) throw new Error('测试库尚未初始化：只能在测试体内调用');
+  return handle;
+};
 const identity = (id: string) => source('identity', id);
 
 /** 同一租户只开通一次管理员（重复开通会撞唯一约束）。 */
@@ -41,6 +56,61 @@ async function standardProfile(w: RelationWorld, code: string) {
       VALUES (${id}::uuid,${w.tenant.id},${code},${`标准${code}`},'standard')`),
   );
   return id;
+}
+
+/** 批量夹具的并行数组参数（PG 文本数组字面量；合成值不含逗号、花括号、引号）。 */
+const pgArray = (values: readonly string[], type: 'uuid' | 'text') =>
+  sql`${`{${values.join(',')}}`}::${sql.raw(`${type}[]`)}`;
+/**
+ * 可信夹具（F-494）：批量造 count 名“在职、账号有效、挂在 departmentId”的合成人员，返回账号编号。
+ * 逐个 w.person 要走 HTTP 建员工 + 入职（每人十余次写入、审计与 outbox），501 人在 PG16 分片上撞 300 秒用例超时；
+ * 这里把 w.person 实际写入的人员主体表（账号 / 成员 / 档案绑定 / 员工 / 入职业务单 / 任职周期 / 入职版本 / 任职记录 /
+ * 状态事件 / 时间轴）各用一条 unnest 插入。审计、命令台账、outbox、资格同步队列是 API 的副作用，不属于人员数据形状，
+ * 且本文件用例不读，故不写。表单快照 / 显式字段码取自同租户 w.head 的入职版本，保证与 API 入职同形。
+ */
+async function bulkPeople(w: RelationWorld, label: string, count: number, departmentId: string): Promise<string[]> {
+  const fresh = () => Array.from({ length: count }, () => randomUUID());
+  const [user, employee, business, cycle, payload, event] = [fresh(), fresh(), fresh(), fresh(), fresh(), fresh()];
+  const names = user.map((_, i) => `${label}${i}`);
+  const people = sql`unnest(${pgArray(user, 'uuid')}, ${pgArray(employee, 'uuid')}, ${pgArray(business, 'uuid')},
+    ${pgArray(cycle, 'uuid')}, ${pgArray(payload, 'uuid')}, ${pgArray(event, 'uuid')}, ${pgArray(names, 'text')})
+    AS p(u, e, b, c, v, s, name)`;
+  const tenant = w.tenant.id;
+  await withPlatform(w.db, (tx) =>
+    tx.execute(sql`INSERT INTO users (id,email,display_name)
+      SELECT p.u, ${label}::text || '-' || p.u::text || '@example.com', p.name FROM ${people}`),
+  );
+  await withTenant(w.db, tenant, async (tx) => {
+    await tx.execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id) SELECT ${tenant}, p.u FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_employees (id,tenant_id,code,name,revision)
+      SELECT p.e, ${tenant}, 'APV_' || replace(p.e::text,'-',''), p.name, 2 FROM ${people}`);
+    await tx.execute(sql`INSERT INTO permission_user_person_links (tenant_id,user_id,employee_id)
+      SELECT ${tenant}, p.u, p.e FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_business_objects (id,tenant_id,employee_id)
+      SELECT p.b, ${tenant}, p.e FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_cycles (id,tenant_id,employee_id,entry_date,entry_type,employ_type)
+      SELECT p.c, ${tenant}, p.e, '2020-01-01', 'hire', 'internal' FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_payload_versions
+      (id,tenant_id,employee_id,business_id,version_no,kind,mode,form_id,form_snapshot,effective_date,
+       planned_effective_date,employee_status,department_id,explicit_field_codes,deferred_field_codes,
+       is_record_snapshot)
+      SELECT p.v, ${tenant}, p.e, p.b, 1, 'hire', 'direct', 'standard', h.form_snapshot, '2020-01-01', '2020-01-01',
+        3, ${departmentId}::uuid, h.explicit_field_codes, h.deferred_field_codes, false
+      FROM ${people}, employment_payload_versions h
+      WHERE h.tenant_id=${tenant} AND h.employee_id=${w.head.employeeId}::uuid`);
+    await tx.execute(sql`INSERT INTO employment_records
+      (id,tenant_id,employee_id,staff_id,payload_version_id,kind,service_type,employ_type,job_number,entry_date,
+       start_date,employee_status,department_id,is_inserted)
+      SELECT p.b, ${tenant}, p.e, p.c, p.v, 'hire', 'primary', 'internal', 'APV_' || replace(p.e::text,'-',''),
+        '2020-01-01', '2020-01-01', 3, ${departmentId}::uuid, false FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_state_events
+      (id,tenant_id,employee_id,business_id,payload_version_id,state,event_no,command_id)
+      SELECT p.s, ${tenant}, p.e, p.b, p.v, 'effective', 1, p.s::text FROM ${people}`);
+    await tx.execute(sql`INSERT INTO employment_timeline
+      (tenant_id,employee_id,staff_id,record_id,sort_order,start_date,valid_during)
+      SELECT ${tenant}, p.e, p.c, p.b, 0, '2020-01-01', daterange('2020-01-01', NULL) FROM ${people}`);
+  });
+  return user;
 }
 
 describe('AC-APV-F380 身份展开', () => {
@@ -119,8 +189,7 @@ describe('AC-APV-F380 身份展开', () => {
   it('成员超过 200 时来源层不截断，会签合并后真实派单只取 100', async () => {
     const w = await relationWorld(database().db, 'f380-many');
     const { profile } = await profileWith(w, 'f380b', []);
-    const users: string[] = [];
-    for (let i = 0; i < 201; i++) users.push((await w.person(`合成成员${i}`, w.staff)).userId);
+    const users = await bulkPeople(w, '合成成员', 201, w.staff);
     await withTenant(w.db, w.tenant.id, (tx) =>
       tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id,source,status)
         SELECT ${w.tenant.id},u::uuid,${profile.id}::uuid,'manual','active'
@@ -134,13 +203,12 @@ describe('AC-APV-F380 身份展开', () => {
     const ids = w.pending(instance).map((t) => t.assigneeUserId);
     expect(ids).toHaveLength(100);
     expect(ids.every((id) => users.includes(id!))).toBe(true);
-  }, 300_000);
+  }, 600_000);
 
   it('AC-APV-F380：501 名有效成员正序与逆序返回时，同一 seed 抽取相同 100 人', async () => {
     const w = await relationWorld(database().db, 'f380-stable');
     const { profile } = await profileWith(w, 'f380stable', []);
-    const users: string[] = [];
-    for (let i = 0; i < 501; i++) users.push((await w.person(`合成稳定成员${i}`, w.staff)).userId);
+    const users = await bulkPeople(w, '合成稳定成员', 501, w.staff);
     await withTenant(w.db, w.tenant.id, (tx) =>
       tx.execute(sql`INSERT INTO permission_grants (tenant_id,user_id,profile_id,source,status)
         SELECT ${w.tenant.id},u::uuid,${profile.id}::uuid,'manual','active'
@@ -191,7 +259,7 @@ describe('AC-APV-F380 身份展开', () => {
     const ascending = await sample(1);
     const descending = await sample(-1);
     expect(descending, '同一成员集合和 seed 的最终 100 人集合必须一致').toEqual(ascending);
-  }, 300_000);
+  }, 600_000);
 
   it('身份候选：仅流程编辑者可读、最少字段、分页搜索、跨租户不回显', async () => {
     const w = await relationWorld(database().db, 'f380-candidates');
