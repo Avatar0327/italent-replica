@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { APV, approveTo, otherwise, routeScene, when, type RouteScene } from './AC-APV-F478-support.js';
 import { approvalWorld, type NodeInput, type ProcessView } from './AC-APV-support.js';
 import { cloneForPut, errorInfo, getProcess, putDraft, withRoutesOn } from './AC-APV-F478-s2-support.js';
+import { uniqueSuffix } from './support/unique.js';
 
 const testDb = useTestDb();
 const LEVEL = randomUUID();
@@ -131,7 +132,7 @@ describe('AC-APV-F478-01 草稿保存 routes', () => {
       await s.w.request(s.w.hr.id, 'POST', `${APV}/processes`, {
         ifMatch: 0,
         body: {
-          code: `P_F478_${randomUUID().slice(0, 8)}`,
+          code: `P_F478_${uniqueSuffix()}`,
           name: '创建即带分支',
           approvalType: 'transfer',
           exceptionAdminUserId: s.w.exceptionAdmin,
