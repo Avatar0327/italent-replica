@@ -119,7 +119,7 @@ function standardCondition(type: ApprovalTypeCode): Pick<ProcessDefinition, 'con
   };
 }
 
-/** 未单列的任职类审批沿用两节点；入职名称按 `14` §13 对齐，转正 / 实习转正保持基线（DEC-789）。 */
+/** 未单列的任职类审批沿用两节点；入职名称按 `14` §13 对齐（转正 / 实习转正已在 F-478 S3 单列）。 */
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
 type GenericType = Exclude<
   ApprovalTypeCode,
@@ -135,6 +135,8 @@ type GenericType = Exclude<
   | 'org_adjustment'
   | 'retirement_intention'
   | 'exit_handover'
+  | 'regularization'
+  | 'intern_regularization'
 >;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
@@ -363,6 +365,49 @@ const ASSESSMENT_PRESETS: readonly PresetProcess[] = (
   }),
 }));
 
+/**
+ * F-478 S3（设计 §6.2 / §6.3）：转正为「员工自评 → 上级评价」，实习转正为单个「系统管理员」节点。
+ * - 自评节点的审批人是被转正员工本人（HR 代发时也派给员工，设计 §5.1），不回避、不提供驳回（填写节点，同考核自评）；
+ * - 上级评价取任职记录部门负责人，“不同意”出口直连结束（不通过，DEC-144），本人回避开启；
+ * - 实习转正的系统管理员节点沿用 PRESET_ACTIONS（本人回避开启：管理员恰是发起人 / 主体时改派其直线经理）。
+ * 两份预置只对新装租户生效：installPresets 按 preset_key 幂等，不改写已装的旧版（DEC-402 不做老租户兼容）。
+ */
+const REGULARIZATION_PRESETS: readonly PresetProcess[] = [
+  {
+    presetKey: 'standard_regularization',
+    code: 'Standard_regularization',
+    approvalType: 'regularization',
+    definition: draft({
+      name: `标准${APPROVAL_TYPES.regularization.name}流程`,
+      description: '出厂预置：员工自评 → 上级评价，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('regularization'),
+      nodes: [
+        node('self_evaluation', '员工自评', 'subject_employee', {
+          formFields: GENERIC_FORM,
+          actions: { ...PRESET_ACTIONS, avoidSelf: false, reject: false },
+        }),
+        node('manager_review', '上级评价', 'record_department_head', {
+          formFields: GENERIC_FORM,
+          exits: AGREE_OR_NOT,
+        }),
+      ],
+    }),
+  },
+  {
+    presetKey: 'standard_intern_regularization',
+    code: 'Standard_intern_regularization',
+    approvalType: 'intern_regularization',
+    definition: draft({
+      name: `标准${APPROVAL_TYPES.intern_regularization.name}流程`,
+      description: '出厂预置：系统管理员审批，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('intern_regularization'),
+      nodes: [node('system_admin', '系统管理员', 'system_admin', { formFields: GENERIC_FORM })],
+    }),
+  },
+];
+
 /** 会签（任一人同意）节点：审批人表达式列表只有一个，多席由表达式自己展开（兜底处理人，handover-empty.ts resolveHandoverApprovers）。 */
 const anyOneNode = (
   key: string,
@@ -507,17 +552,9 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       }),
     }),
   },
+  ...REGULARIZATION_PRESETS,
   ...(
-    [
-      'regularization',
-      'intern_regularization',
-      'hire',
-      'add_employee',
-      'contract_create',
-      'contract_renew',
-      'contract_change',
-      'contract_terminate',
-    ] as const
+    ['hire', 'add_employee', 'contract_create', 'contract_renew', 'contract_change', 'contract_terminate'] as const
   ).map(genericPreset),
   partTimePreset('part_time_add', 'StandardParttimeJob', HRBP_FIRST),
   partTimePreset('part_time_extend', 'StandardExtendParttimeJob', HRBP_FIRST),
