@@ -137,10 +137,14 @@ function useTemporaryRemoval(commit: (next: AttachmentView[]) => void, latest: (
       drop(item.id);
     } catch (error) {
       if (!current.mounted || isAbort(error)) return;
-      const gone = error instanceof ApiError && error.status === 404;
-      if (!isUncertain(error)) current.commands.delete(item.id);
-      note(item.id, gone ? undefined : isUncertain(error) ? text.deleteUnknown : text.deleteFailed);
-      if (gone) drop(item.id);
+      if (isUncertain(error)) return note(item.id, text.deleteUnknown);
+      current.commands.delete(item.id);
+      // 404：文件已不在（过期清理或此前的删除其实已成功），按删除成功从列表移除
+      if (error instanceof ApiError && error.status === 404) {
+        note(item.id);
+        return drop(item.id);
+      }
+      note(item.id, text.deleteFailed);
     }
   };
   return { notes, remove: (item: AttachmentView) => void remove(item) };
