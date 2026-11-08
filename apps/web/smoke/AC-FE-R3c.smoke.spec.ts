@@ -641,8 +641,10 @@ test('AC-TR F-475B 计算规则列表与基础编辑弹窗：列宽按原站，�
   await list.getByRole('button', { name: /编\s*辑/ }).click();
   const dialog = page.getByRole('dialog', { name: /编辑/ });
   await expect(dialog).toBeVisible();
-  const box = await page.locator('.review-calc-rule-form .ant-modal').boundingBox();
-  expect(box?.width).toBe(750);
+  // F-502：antd 弹窗入场是缩放动画（起点 scale 0.2，即 750×0.2=150），toBeVisible 在动画中途就成立；
+  // 轮询到动画结束的稳定宽度，期望值仍是原站 750，不放宽。
+  const modal = page.locator('.review-calc-rule-form .ant-modal');
+  await expect.poll(async () => Math.round((await modal.boundingBox())?.width ?? -1)).toBe(750);
   await expect(dialog.getByRole('button', { name: '翻译助手' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: '配置表单' })).toBeDisabled();
   await expect(dialog).toContainText('4/200');
