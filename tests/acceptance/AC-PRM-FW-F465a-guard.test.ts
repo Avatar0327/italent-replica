@@ -81,9 +81,13 @@ describe('AC-PRM-FW F-465a P2-2：报表对象准入是具名守卫 + 条件准�
       }
     });
 
-    it(`${key}：源码删掉守卫调用 → EVIDENCE_STALE；把拒绝改成不拒绝（只裁列）→ EVIDENCE_STALE`, () => {
+    // F-494：原一条用例连跑两次全量 checkEvidence，贴 30 秒全局超时；拆成两条，各跑一次，断言不变。
+    it(`${key}：源码删掉守卫调用 → EVIDENCE_STALE`, () => {
       const removed = patched((text) => text.replaceAll('requireReportObjects(rights, report);', ''));
       expect(codes(checkEvidence(only(key), { read: removed })), '删守卫调用').toContain('EVIDENCE_STALE');
+    });
+
+    it(`${key}：把拒绝改成不拒绝（只裁列）→ EVIDENCE_STALE`, () => {
       const softened = patched((text) =>
         text.replace(/(function requireReportObjects[\s\S]*?)throw new AppError/, '$1void new AppError'),
       );

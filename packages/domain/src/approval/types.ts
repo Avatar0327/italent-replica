@@ -51,6 +51,9 @@ export const APPROVER_EXPRESSIONS = [
   'handover_work_owner', // 离职交接 - 工作交接：离职申请的交接人，没填取直线经理
   'handover_hr_admin', // 离职交接 - 其他事项交接：人事管理员角色（standard_hr_admin 的有效授权人，按授权先后取首个可用者）
   'handover_employee', // 离职交接 - 员工确认：离职员工本人（不按自审处理）
+  // F-478 S3（设计 §5.1 / §5.2）：业务主体员工本人（单主体类型）、本租户按开通先后第一位系统管理员（任一类型）
+  'subject_employee',
+  'system_admin',
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 
@@ -62,8 +65,8 @@ export const IDP_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['idp
  * 批量审批不得用“录用部门负责人”（OF-R15）。三个新取值也只用于这两类，不改其他业务的审批行为。
  */
 export const OFFER_APPROVERS: Readonly<Record<'offer' | 'offer_batch', ReadonlySet<ApproverExpression>>> = {
-  offer: new Set(['owner', 'initiator_direct_manager', 'offer_department_head']),
-  offer_batch: new Set(['owner', 'initiator_direct_manager', 'approval_subject_first_level_org_head']),
+  offer: new Set(['owner', 'initiator_direct_manager', 'offer_department_head', 'system_admin']),
+  offer_batch: new Set(['owner', 'initiator_direct_manager', 'approval_subject_first_level_org_head', 'system_admin']),
 };
 /** 只在试用期考核两类审批上可用的审批人表达式：取考核对象本人（员工自评）。 */
 export const ASSESSMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['assessment_employee']);
@@ -96,6 +99,7 @@ export const ORG_ADJUSTMENT_APPROVERS: ReadonlySet<ApproverExpression> = new Set
   'owner',
   'approval_subject_org_hrbp',
   'approval_subject_org_head',
+  'system_admin', // F-478 S3：系统管理员适用所有审批类型（设计 §5.2），不依赖主体
 ]);
 export const ORG_ADJUSTMENT_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set([
   'approval_subject_org_hrbp',

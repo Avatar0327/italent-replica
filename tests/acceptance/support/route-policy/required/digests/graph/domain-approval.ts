@@ -45,9 +45,11 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#TRANSITION_RULE_TYPES',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'packages/domain/src/approval/definition.ts#allowsSubjectEmployee': ['#MULTI_SUBJECT_ADAPTERS'],
   'packages/domain/src/approval/definition.ts#approverSourceViolations': [
     '#offerApproverViolation',
     '#orgAdjustmentApproverViolation',
+    '#subjectEmployeeViolations',
     'packages/domain/src/approval/sources.ts#approverSourcesOf',
     'packages/domain/src/approval/sources.ts#relationSource',
     'packages/domain/src/approval/sources.ts#sourceViolation',
@@ -105,6 +107,12 @@ export const GRAPH: Graph = {
     '#avoidSubjectsViolations',
     'packages/domain/src/approval/types.ts#hasExit',
   ],
+  'packages/domain/src/approval/definition.ts#subjectEmployeeViolations': [
+    '#allowsSubjectEmployee',
+    'packages/domain/src/approval/types.ts#approverExpressionsOf',
+    'packages/domain/src/approval/types.ts#avoidsSelf',
+    'packages/domain/src/approval/types.ts#avoidsSubjects',
+  ],
   'packages/domain/src/approval/presets.ts#APPROVAL_EDIT_REQUIRED': [
     '#FIELD_REQUIRED',
     'packages/domain/src/employment/part-time-constants.ts#PART_TIME_ERRORS',
@@ -155,6 +163,7 @@ export const GRAPH: Graph = {
     '#OFFER_PRESETS',
     '#ORG_ADJUSTMENT_PRESET',
     '#PRESET_ACTIONS',
+    '#REGULARIZATION_PRESETS',
     '#RETIRE_FORM',
     '#anyOneNode',
     '#draft',
@@ -164,6 +173,15 @@ export const GRAPH: Graph = {
     '#standardCondition',
     'packages/domain/src/employment/exit-handover.ts#HANDOVER_NODE_KEYS',
     'packages/domain/src/employment/retirement-intention.ts#RETIREMENT_INTENTION_FORM_FIELDS',
+  ],
+  'packages/domain/src/approval/presets.ts#REGULARIZATION_PRESETS': [
+    '#AGREE_OR_NOT',
+    '#GENERIC_FORM',
+    '#PRESET_ACTIONS',
+    '#draft',
+    '#node',
+    '#standardCondition',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'packages/domain/src/approval/presets.ts#RETIRE_FORM': [
     'packages/domain/src/employment/retirement.ts#RETIREMENT_REQUEST_FIELDS',

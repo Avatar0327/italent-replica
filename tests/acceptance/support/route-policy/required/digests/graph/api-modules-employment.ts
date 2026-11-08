@@ -6266,12 +6266,16 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/employment/rehire-match.ts#findRehireCandidates': ['#endedPeople'],
   'apps/api/src/modules/employment/rehire-match.ts#matchRehire': ['#endedPeople'],
+  'apps/api/src/modules/employment/rehire-seniority.ts#RULES': [
+    '#REHIRE_SENIORITY_SETTING',
+    '#RETIRE_REHIRE_SENIORITY_SETTING',
+  ],
   'apps/api/src/modules/employment/rehire-seniority.ts#applyRehireSeniority': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
     'apps/api/src/modules/employment/read-model.ts#findPredecessor',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
-    '#SETTING',
+    '#RULES',
     'apps/api/src/modules/tenant-settings/service.ts#readEffectiveSetting',
     'packages/domain/src/employment/employee-status.ts#EMPLOYEE_STATUS',
     'packages/domain/src/hr-analysis/roster.ts#tenureYears',
@@ -6279,12 +6283,14 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/employment/rehire-seniority.ts#completeRehireSeniority': [
     'apps/api/src/modules/employment/forward-update.ts#forwardUpdateEmployment',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#RULES',
     '#applyRehireSeniority',
   ],
   'apps/api/src/modules/employment/rehire-seniority.ts#restoreRehireSeniority': [
     'apps/api/src/modules/employment/context.ts#auditEmployment',
     'apps/api/src/modules/employment/forward-store.ts#appendForwardPayload',
     'apps/api/src/modules/employment/record-store.ts#rowsOf',
+    '#RULES',
   ],
   'apps/api/src/modules/employment/replay-guard.ts#exitBatchFailure': [
     'apps/api/src/modules/employment/errors.ts#EmploymentError',
