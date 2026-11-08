@@ -65,6 +65,7 @@ export interface OperationLog {
   readonly failureCount: number;
   readonly result: 'succeeded' | 'partial' | 'failed';
   readonly errorReport: unknown;
+  readonly attachment?: unknown;
   readonly ip: string | null;
   readonly terminal: string | null;
   readonly commandId: string | null;
