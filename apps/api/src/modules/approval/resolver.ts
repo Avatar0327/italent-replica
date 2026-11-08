@@ -327,7 +327,29 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       return handoverHrAdmin(tx, subject);
     case 'handover_employee':
       return candidateOf(tx, subject, subject.subjectEmployeeId);
+    // F-478 S3（设计 §5.1 / §5.2）：业务主体员工本人（HR 代发时也是被审批的员工，不是发起人）；本租户第一位系统管理员
+    case 'subject_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
+    case 'system_admin':
+      return systemAdmin(tx, subject);
   }
+}
+
+/**
+ * 系统管理员：本租户 permission_admins 里角色为 system_admin、记录有效的管理员，按开通先后（created_at, id）取第一个
+ * 具备审批资格的账号（成员有效、人员在职，DEC-098）。租户管理员（tenant_admin）不是此来源，DEC-537 取证原站唯一可指派
+ * 的管理员是“系统管理员（企业设置）”。单人节点只能解析出一个人，取第一位与 handoverHrAdmin 同一做法，结果可复现。
+ */
+async function systemAdmin(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
+  const admins = rowsOf<{ user_id: string }>(
+    await tx.execute(sql`SELECT user_id FROM permission_admins
+      WHERE tenant_id=${subject.tenantId} AND role='system_admin' AND status='active'
+      ORDER BY created_at, id LIMIT ${HR_ADMIN_SCAN}`),
+  );
+  for (const { user_id: userId } of admins)
+    if (await isEligibleApprover(tx, subject, userId))
+      return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+  return NOBODY;
 }
 
 /** 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）。 */

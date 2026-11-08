@@ -1700,6 +1700,14 @@ export const GRAPH: Graph = {
     '#isEligibleApprover',
     '#orgRole',
     '#personOfUser',
+    '#systemAdmin',
+  ],
+  'apps/api/src/modules/approval/resolver.ts#systemAdmin': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#HR_ADMIN_SCAN',
+    '#NOBODY',
+    '#isEligibleApprover',
+    '#personOfUser',
   ],
   'apps/api/src/modules/approval/resolver.ts#tenantAdminPage': [
     'apps/api/src/modules/approval/context.ts#rowsOf',

@@ -113,7 +113,9 @@ describe('AC-APV-F478-20 实习转正预置：单个系统管理员节点', () =
       201,
     );
     const view = await w.submit(business);
-    expect(w.pending(view).map((task) => [task.nodeKey, task.assigneeUserId])).toEqual([['system_admin', admin.userId]]);
+    expect(w.pending(view).map((task) => [task.nodeKey, task.assigneeUserId])).toEqual([
+      ['system_admin', admin.userId],
+    ]);
   });
 
   it('重复安装幂等；已装（含被租户改过）的预置流程不被改写', async () => {
@@ -130,7 +132,9 @@ describe('AC-APV-F478-20 实习转正预置：单个系统管理员节点', () =
           conditions: { items: [] },
           isFallback: true,
           exceptionAdminUserId: w.exceptionAdmin,
-          nodes: [{ key: 'custom', name: '自定义', approver: { type: 'department', value: 'latest_record_department_head' } }],
+          nodes: [
+            { key: 'custom', name: '自定义', approver: { type: 'department', value: 'latest_record_department_head' } },
+          ],
         },
       }),
     );

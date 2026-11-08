@@ -50,7 +50,11 @@ describe('AC-APV-F478-16 新来源保存与来源误用', () => {
   it.each(MULTI_SUBJECT)('%s：多主体类型选主体员工本人 → 422 来源误用', async (type) => {
     const w = await approvalWorld(database().db, `f478s3-multi-${type}`);
     const failure = await failureOf(await saveSingleNode(w, type, subjectEmployeeSource, { avoidSelf: false }));
-    expect(failure).toMatchObject({ status: 422, code: 'APPROVAL_SOURCE_INVALID', reason: 'APPROVAL_DEFINITION_INVALID' });
+    expect(failure).toMatchObject({
+      status: 422,
+      code: 'APPROVAL_SOURCE_INVALID',
+      reason: 'APPROVAL_DEFINITION_INVALID',
+    });
     expect(failure.violations).toContain(`节点 one 的审批人“主体员工本人”${NOT_SINGLE}`);
   });
 
@@ -61,14 +65,22 @@ describe('AC-APV-F478-16 新来源保存与来源误用', () => {
       const failure = await failureOf(
         await saveSingleNode(w, 'regularization', subjectEmployeeSource, { avoidSelf: false, ...actions }),
       );
-      expect(failure).toMatchObject({ status: 422, code: 'APPROVAL_SOURCE_INVALID', reason: 'APPROVAL_DEFINITION_INVALID' });
+      expect(failure).toMatchObject({
+        status: 422,
+        code: 'APPROVAL_SOURCE_INVALID',
+        reason: 'APPROVAL_DEFINITION_INVALID',
+      });
       expect(failure.violations).toEqual([`节点 one 使用“主体员工本人”${NO_RECUSAL}`]);
     },
   );
 });
 
 /** 调动场景下的两节点流程：第 1 节点 = 被测来源或调出负责人，第 2 节点 = 另一个。 */
-async function twoNodeRun(w: ApprovalWorld, first: 'subject' | 'head', scene: Awaited<ReturnType<typeof transferScene>>) {
+async function twoNodeRun(
+  w: ApprovalWorld,
+  first: 'subject' | 'head',
+  scene: Awaited<ReturnType<typeof transferScene>>,
+) {
   const subjectNode = node('subj', subjectEmployeeSource);
   const headNode = node('head', { type: 'department', value: 'latest_record_department_head' }, { avoidSelf: true });
   const nodes = first === 'subject' ? [subjectNode, headNode] : [headNode, subjectNode];

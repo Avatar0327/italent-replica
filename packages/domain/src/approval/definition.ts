@@ -8,6 +8,7 @@ import { HANDOVER_NODE_KEYS } from '../employment/exit-handover.js';
 import {
   approverExpressionsOf,
   ASSESSMENT_ONLY_APPROVERS,
+  avoidsSelf,
   avoidsSubjects,
   ENABLED_AVOID_SUBJECTS_RESULTS,
   hasExit,
@@ -97,10 +98,30 @@ export function approverSourceViolations(node: ApprovalNode, type: ApprovalTypeD
   if (type.adapter !== 'exit_handover' && handoverOnly.length) {
     violations.push(`节点 ${node.key} 的审批人“离职交接”类取值只能用于离职交接申请审批`);
   }
+  violations.push(...subjectEmployeeViolations(node, type));
   const offerViolation = offerApproverViolation(node, type);
   if (offerViolation) violations.push(offerViolation);
   const orgAdjustmentViolation = orgAdjustmentApproverViolation(node, type);
   if (orgAdjustmentViolation) violations.push(orgAdjustmentViolation);
+  return violations;
+}
+
+/** 多主体审批没有唯一的“主体员工本人”（F-048 批量、人才盘点、Offer、组织调整）。 */
+const MULTI_SUBJECT_ADAPTERS: ReadonlySet<ApprovalTypeDefinition['adapter']> = new Set([
+  'talent_review',
+  'offer',
+  'offer_batch',
+  'org_adjustment',
+]);
+
+/** F-478 S3 设计 §5.1：主体员工本人只用于单主体类型，且节点不得开启本人 / 主体回避（回避会把自评任务改派走）。 */
+function subjectEmployeeViolations(node: ApprovalNode, type: ApprovalTypeDefinition): string[] {
+  if (!approverExpressionsOf(node).includes('subject_employee')) return [];
+  const violations: string[] = [];
+  if (MULTI_SUBJECT_ADAPTERS.has(type.adapter))
+    violations.push(`节点 ${node.key} 的审批人“主体员工本人”只能用于单主体审批`);
+  if (avoidsSelf(node) || avoidsSubjects(node))
+    violations.push(`节点 ${node.key} 使用“主体员工本人”时不能开启本人回避或主体回避`);
   return violations;
 }
 
