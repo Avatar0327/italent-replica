@@ -125,6 +125,10 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/audit.ts#record',
     '#ownFile',
   ],
+  'apps/api/src/modules/attachments/service.ts#lockOwnerRegistration': [
+    'apps/api/src/advisory-lock.ts#advisoryLock',
+    'apps/api/src/advisory-lock.ts#asUuid',
+  ],
   'apps/api/src/modules/attachments/service.ts#ownFile': [
     'apps/api/src/modules/attachments/access.ts#attachmentNotFound',
   ],
@@ -141,7 +145,7 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/attachments/audit.ts#receipt',
     'apps/api/src/modules/attachments/audit.ts#record',
     '#checkRegistration',
-    '#ownerLockKey',
+    '#lockOwnerRegistration',
   ],
   'apps/api/src/modules/attachments/service.ts#uploadFile': [
     'apps/api/src/modules/attachments/audit.ts#receipt',

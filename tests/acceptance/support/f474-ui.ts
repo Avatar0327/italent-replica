@@ -85,7 +85,11 @@ export function uiHarness() {
             ...permission(fields),
             objectCode: decodeURIComponent(url.pathname.split('/').at(-1)!),
           });
-        if (Object.hasOwn(responses, url.pathname)) return Response.json(responses[url.pathname]);
+        if (Object.hasOwn(responses, url.pathname)) {
+          const response = responses[url.pathname];
+          // 函数形态的夹具按请求地址现算（服务端搜索 / 分页）；其余仍是固定响应
+          return Response.json(typeof response === 'function' ? response(url) : response);
+        }
         return Response.json({ items: [], today: '2026-11-03', hasDataPermission: true });
       }),
     );
