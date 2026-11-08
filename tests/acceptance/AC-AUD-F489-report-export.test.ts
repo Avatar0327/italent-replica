@@ -170,4 +170,30 @@ describe('AC-AUD-F489 审计页显示统计报表导出日志', () => {
     });
     expect([400, 401, 403, 404]).toContain(response.status);
   });
+
+  it('AC-AUD-F489-06：三个导出入口的日志在审计页可见，但不带导出附件（文件名 / 筛选条件 / 说明）', async () => {
+    await exportMovement('monthly', 'data');
+    await exportMovement('institution', 'formula');
+    await exportQuality('data');
+    const cases: [typeof movementAs, typeof movement.db, string, string, string][] = [
+      [movementAs, movement.db, movement.who.tenant, HR_MOVEMENT_REPORT_OBJECT, 'monthly'],
+      [movementAs, movement.db, movement.who.tenant, HR_MOVEMENT_REPORT_OBJECT, 'institution'],
+      [structureAs, structure.db, structure.who.tenant, HR_STRUCTURE_REPORT_OBJECT, 'quality'],
+    ];
+    for (const [as, db, tenant, objectType, code] of cases) {
+      // 导出侧确实存了附件（审计存储不改），否则下面的“为空”没有意义
+      const stored = (await exportLogs(db, tenant, objectType)).filter((row) => row.object_id === code);
+      expect(stored.length, `${code} 导出侧存了日志`).toBeGreaterThan(0);
+      expect(stored.every((row) => row.attachment !== null)).toBe(true);
+
+      const { items } = await page(as(), { objectType, objectId: code });
+      expect(items.length, `${code} 审计页可见`).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.attachment ?? null, `${code} 附件不返回`).toBeNull();
+        const text = JSON.stringify(item);
+        for (const leaked of ['fileName', 'filter', 'note', '.xlsx'])
+          expect(text, `${code} 不含 ${leaked}`).not.toContain(leaked);
+      }
+    }
+  });
 });
