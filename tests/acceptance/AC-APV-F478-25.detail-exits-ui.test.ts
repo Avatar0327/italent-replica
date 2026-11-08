@@ -111,11 +111,11 @@ async function openDetail(s: RouteScene, instanceId: string, taskId: string) {
 }
 
 const squash = (text?: string | null) => text?.replace(/\s/g, '') ?? '';
-const headButtons = () => [...host.querySelectorAll<HTMLButtonElement>('.approval-detail-head button')];
+const headButtons = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.approval-detail-head button'));
 const headLabels = () => headButtons().map((node) => squash(node.textContent));
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 const steps = () =>
-  [...host.querySelectorAll('.approval-progress .ant-steps-item')].map((item) => [
+  Array.from(host.querySelectorAll('.approval-progress .ant-steps-item')).map((item) => [
     squash(item.querySelector('.ant-steps-item-title')?.textContent),
     squash(item.querySelector('.ant-steps-item-description')?.textContent),
   ]);
@@ -130,7 +130,9 @@ const pressHead = (label: string) =>
     label,
   );
 const saveButton = () =>
-  [...document.querySelectorAll<HTMLButtonElement>('button')].find((node) => squash(node.textContent) === '保存');
+  Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+    (node) => squash(node.textContent) === '保存',
+  );
 async function saveDialog() {
   await settleUntil(() => !!saveButton() && !saveButton()!.disabled);
   await press(saveButton(), '保存');
@@ -165,7 +167,7 @@ describe('AC-APV-F478-25 办理页按接口 exits 渲染并提交 exit（真实�
     const calls = forward(s, task.assigneeUserId);
     await openDetail(s, view.id, task.id);
     const read = calls.find((call) => call.method === 'GET' && call.path === `${APV}/instances/${view.id}`)!;
-    const exits = read.result.exits as DetailWithExits['exits'];
+    const exits = read.result.exits as NonNullable<DetailWithExits['exits']>;
     expect(exits.map((exit) => exit.code)).toEqual(['approve', 'disagree']);
     expect(headLabels().slice(1, 3)).toEqual(exits.map((exit) => exit.label));
     expect(steps()).toEqual([
@@ -229,7 +231,7 @@ describe('AC-APV-F478-25 他人先办理造成 409：提示重读，不自动重
     expect(document.body.textContent).not.toMatch(/REVISION_CONFLICT|APPROVAL_/);
     await wait(300);
     expect(posts(calls)).toHaveLength(1);
-    const reread = [...dialog()!.querySelectorAll<HTMLButtonElement>('button')].find((node) =>
+    const reread = Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('button')).find((node) =>
       squash(node.textContent).includes('重读'),
     );
     const gets = calls.filter((call) => call.method === 'GET').length;

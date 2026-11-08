@@ -8,7 +8,7 @@ import { approvalEditGroup } from './EditFields.js';
 import { actionTask, editValues } from './edit-model.js';
 import { NAME_KEYS, namedValue, sameValue } from './named-fields.js';
 import { useApprovalAction } from './action-command.js';
-import { logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
+import { decisionButtons, logActor, logComment, readApproval, uuidPattern, visibleActions } from './api.js';
 import {
   detailText as d,
   fieldLabels,
@@ -20,7 +20,7 @@ import {
 } from './messages.js';
 import { ProcessLog } from './ProcessLog.js';
 import { actionOrder } from './page-model.js';
-import type { ApprovalAction, ApprovalDetail as Detail, ApprovalRow } from './types.js';
+import type { ApprovalAction, ApprovalDetail as Detail, ApprovalPathStep, ApprovalRow } from './types.js';
 
 export function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return m.empty;
@@ -120,7 +120,7 @@ export function ApprovalDetail(props: DetailProps) {
           mode="modal"
           recordKey={detail.id}
           submission={action.command}
-          title={m[action.action]}
+          title={decisionLabel(detail, action.action, action.exit)}
           onClose={action.close}
           onSubmit={async (values) => {
             await action.submit(detail, values);
@@ -167,7 +167,9 @@ function DetailBody(props: DetailProps & { state: DetailState; action: ActionSta
       {demo && <Alert type="info" message={m.demo} description={m.demoDetail} showIcon />}
       {!!state.error && <PageState kind="error" error={state.error} retry={state.refresh} />}
       {!state.error && !detail && <PageState kind="loading" />}
-      {action.pending && <Alert type="warning" showIcon message={d.locked(m[action.pending])} />}
+      {action.pending && (
+        <Alert type="warning" showIcon message={d.locked(decisionLabel(detail, action.pending, action.pendingExit))} />
+      )}
       {detail?.status === 'approved' && <Alert type="info" message={m.approvedNotice} showIcon />}
       {detail && <DetailColumns detail={detail} todo={props.todo} applications={props.applications} />}
     </div>
@@ -216,12 +218,25 @@ function DetailColumns({ detail, todo, applications }: { detail: Detail; todo?: 
     </>
   );
 }
-/** 原站进度：开始 → 各节点 → 结束；已走过绿、当前蓝、后续灰。接口只给已产生的任务，后续节点暂缺。 */
+/** 同意 / 不同意的显示文案取接口 exits.label（F-478 S5）；其余动作及旧形状用本地文案。 */
+function decisionLabel(detail: Detail | undefined, action: ApprovalAction | 'urge', exit?: string) {
+  const found =
+    detail && exit !== undefined
+      ? decisionButtons(detail).find((item) => item.action === action && item.exit === exit)
+      : undefined;
+  return found?.label ?? m[action];
+}
+/**
+ * 原站进度：开始 → 各节点 → 结束；已走过绿、当前蓝、后续灰。
+ * F-478 S5：接口给了 path 时按 path[].state 原样显示（不在前端推算）；path 为空（记录隐藏）或旧形状沿用已产生任务。
+ */
 export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; terminatedGrey?: boolean }) {
-  const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
-  const running = detail.status === 'running';
   // 我的申请（§3.8）：已终止的流程，终止的节点与结尾置灰；其他入口保持原呈现
   const terminated = !!terminatedGrey && detail.status === 'cancelled';
+  if (detail.path?.length)
+    return <PathProgress path={detail.path} running={detail.status === 'running'} terminated={terminated} />;
+  const nodes = [...new Map(detail.tasks.map((task) => [task.nodeName, task])).values()];
+  const running = detail.status === 'running';
   const nodeStatus = (status: string) =>
     status === 'pending'
       ? ('process' as const)
@@ -238,12 +253,36 @@ export function ApprovalProgress({ detail, terminatedGrey }: { detail: Detail; t
             title: task.nodeName,
             status: nodeStatus(task.status),
           })),
-          terminated
-            ? { title: d.terminated, status: 'wait' as const }
-            : { title: d.end, status: running ? ('wait' as const) : ('finish' as const) },
+          endStep(running, terminated),
         ]}
       />
       {running && <small className="approval-muted">{d.progressGap}</small>}
+    </div>
+  );
+}
+const endStep = (running: boolean, terminated: boolean) =>
+  terminated
+    ? { title: d.terminated, status: 'wait' as const }
+    : { title: d.end, status: running ? ('wait' as const) : ('finish' as const) };
+const pathStatus = { passed: 'finish', current: 'process', pending: 'wait', not_on_path: 'wait' } as const;
+/** 节点名与可见性按接口披露（pathView）；不显示 path[].exit，经过的出口见操作记录。 */
+function PathProgress(props: { path: ApprovalPathStep[]; running: boolean; terminated: boolean }) {
+  return (
+    <div className="approval-progress">
+      <Steps
+        size="small"
+        items={[
+          { title: d.start, status: 'finish' },
+          ...props.path.map((step) => ({
+            key: step.nodeKey,
+            title: step.name,
+            description: d.pathStates[step.state],
+            status: pathStatus[step.state],
+            className: step.state === 'not_on_path' ? 'approval-path-skipped' : undefined,
+          })),
+          endStep(props.running, props.terminated),
+        ]}
+      />
     </div>
   );
 }
@@ -281,6 +320,7 @@ function ApprovalHistory({ detail, full = false }: { detail: Detail; full?: bool
 }
 /**
  * 顶部按钮只取详情 actions（服务端下发），按原站顺序；有未确认命令时只允许打开那一个动作核对。
+ * 同意 / 不同意按接口 exits 渲染、文案取 label（F-478 S5，decisionButtons），排在其他动作前。
  * 完整日志仅待办入口接分页弹窗（DEC-799）；我的申请与演示入口保留原有呈现。
  */
 function ActionBar(props: {
@@ -295,21 +335,33 @@ function ActionBar(props: {
   const { row, demo, detail, action } = props;
   const available = visibleActions(detail);
   const actions = [...actionOrder, 'edit' as const].filter((item) => available.includes(item));
+  const decisions = demo ? [] : decisionButtons(detail);
+  const others = demo ? [] : actions.filter((item) => item !== 'approve' && item !== 'disagree');
   const taskId = actionTask(detail, row.taskId);
+  const locked = (item: ApprovalAction, exit?: string) =>
+    !!action.pending && (action.pending !== item || action.pendingExit !== exit);
   return (
     <Space wrap className="approval-action-bar">
-      {!demo &&
-        actions.map((item) => (
-          <Button
-            key={item}
-            type={item === 'approve' ? 'primary' : 'default'}
-            ghost={item === 'disagree'}
-            disabled={(!!action.pending && action.pending !== item) || (item !== 'withdraw' && !taskId)}
-            onClick={() => action.open(item, detail)}
-          >
-            {m[item]}
-          </Button>
-        ))}
+      {decisions.map((item) => (
+        <Button
+          key={`${item.action}:${item.exit ?? ''}`}
+          type={item.action === 'approve' ? 'primary' : 'default'}
+          ghost={item.action === 'disagree'}
+          disabled={locked(item.action, item.exit) || !taskId}
+          onClick={() => action.open(item.action, detail, item.exit)}
+        >
+          {item.label}
+        </Button>
+      ))}
+      {others.map((item) => (
+        <Button
+          key={item}
+          disabled={locked(item) || (item !== 'withdraw' && !taskId)}
+          onClick={() => action.open(item, detail)}
+        >
+          {m[item]}
+        </Button>
+      ))}
       <Tooltip title={d.gapTool}>
         <Button disabled>{d.processManage}</Button>
       </Tooltip>
@@ -324,7 +376,7 @@ function ActionBar(props: {
         </Tooltip>
       )}
       <Button onClick={props.refresh}>{m.refresh}</Button>
-      {!demo && !actions.length && <span className="approval-muted">{m.noAction}</span>}
+      {!demo && !decisions.length && !others.length && <span className="approval-muted">{m.noAction}</span>}
       {!taskId && actions.some((item) => item !== 'withdraw') && <span>{m.taskRequired}</span>}
     </Space>
   );

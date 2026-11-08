@@ -17,6 +17,8 @@ import type { ApprovalAction, ApprovalDetail, ApprovalRow } from './types.js';
 type ActionContext = {
   action: ApprovalAction | 'urge';
   taskId?: string;
+  /** F-478 S5：所选出口（接口 exits.code）；旧形状兜底时没有，请求体也不带。 */
+  exit?: string;
 };
 /** 各动作可编辑的字段：意见、转交对象；撤销不带字段（后端 strictObject 只收这些键）。 */
 export const actionFields: Record<ApprovalAction, readonly string[]> = {
@@ -49,15 +51,15 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
         values: context && context.action !== 'urge' ? editValues(detail, context.action) : {},
       };
     });
-  const open = (action: ApprovalAction, detail: ApprovalDetail) => {
+  const open = (action: ApprovalAction, detail: ApprovalDetail, exit?: string) => {
     // 被拒或已完成的槽可以清掉重来；锁定的槽 clear 无效，仍按槽里的动作打开。
     command.clear();
-    setChosen({ action, taskId: actionTask(detail, row.taskId) });
+    setChosen({ action, taskId: actionTask(detail, row.taskId), ...(exit === undefined ? {} : { exit }) });
   };
   async function submit(detail: ApprovalDetail, values: Values) {
     // 催办由合同行内发起，本单不重提；槽里是催办时各按钮都已禁用。
     if (!context || context.action === 'urge') return;
-    const { action, taskId } = context;
+    const { action, taskId, exit } = context;
     // 冲突重读换了任务时不把原动作转投另一节点；用户需关闭并核对新任务。
     if (taskId !== actionTask(detail, row.taskId))
       throw new ApiError(403, 'ACTION_UNAVAILABLE', 'forbidden', m.actionDenied);
@@ -75,7 +77,8 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
       revision: detail.revision,
       businessId: detail.id,
       send: async (sent) => {
-        const request = approvalRequest(detail, action, taskId, sent.body);
+        // 重读后出口已不在最新 exits 里时 approvalRequest 直接拒绝，不发请求（不自动改投其他出口）。
+        const request = approvalRequest(detail, action, taskId, sent.body, exit);
         const receipt = await api
           .request<unknown>(request.path, { method: 'POST', command: { ...sent, body: request.body } })
           .catch((error: unknown) => {
@@ -83,7 +86,7 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
           });
         return acceptReceipt(receipt, detail.id, sent.revision ?? detail.revision);
       },
-      context: { action, ...(taskId ? { taskId } : {}) },
+      context: { action, ...(taskId ? { taskId } : {}), ...(exit === undefined ? {} : { exit }) },
     });
     if (result.status !== 'done') throw result.error ?? new Error(kernel.unknown);
     command.clear();
@@ -92,7 +95,9 @@ export function useApprovalAction(row: ApprovalRow, onRead: (detail: ApprovalDet
     command: { ...command, reload },
     /** 弹窗只在用户点了按钮后打开；锁定时标题与提交仍按槽里的动作。 */
     action: chosen && context?.action !== 'urge' ? context?.action : undefined,
+    exit: chosen && context?.action !== 'urge' ? context?.exit : undefined,
     pending: pending?.action,
+    pendingExit: pending?.exit,
     open,
     close: () => setChosen(undefined),
     submit,

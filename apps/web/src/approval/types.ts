@@ -37,6 +37,22 @@ export interface ApprovalDetail extends ApprovalRow {
   }[];
   /** 详情只带最近 200 条（升序）；完整分页在 GET /instances/:id/logs。 */
   logs: ApprovalLog[];
+  /** F-478 S5：本人当前可办理节点的同意 / 不同意出口（后端 detail-path.ts exitsView）；旧形状没有。 */
+  exits?: ApprovalExit[];
+  /** F-478 S5：路径条（后端 pathView）；审批记录对本人隐藏时为空数组，旧形状没有。 */
+  path?: ApprovalPathStep[];
+}
+export interface ApprovalExit {
+  code: string;
+  label: string;
+  family: 'approve' | 'disagree';
+}
+export type ApprovalPathState = 'passed' | 'current' | 'pending' | 'not_on_path';
+export interface ApprovalPathStep {
+  nodeKey: string;
+  name: string;
+  state: ApprovalPathState;
+  exit?: string;
 }
 export interface ApprovalLog {
   event: string;
