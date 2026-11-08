@@ -16,6 +16,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { memberInstanceScope } from '../approval/access.js';
 import { disclosedFields, readDetail, type DetailData } from '../approval/disclosure.js';
+import { contentViewOf } from '../approval/handling-content.js';
 import { latestInstanceOf, type InstanceRow } from '../approval/store.js';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import {
@@ -50,6 +51,22 @@ export interface Disclosure {
   readonly instanceId: string | null;
   /** 内容源：已办读办理时冻结份；null = 读现值（F-476 §5.4）。预览 / 导出本片仍只读现值。 */
   readonly source: OrgContent | null;
+  /** 内容来源说明（与审批中心详情的 contentView 同形）；无审批实例时为现值（F-476 §5.4）。 */
+  readonly contentView: ContentView;
+}
+
+export interface ContentView {
+  readonly mode: 'live' | 'frozen';
+  readonly instanceId: string | null;
+  readonly taskId: string | null;
+  readonly round: number | null;
+  readonly actedAt: string | null;
+}
+
+function contentViewFor(instance: InstanceRow | null, data: DetailData | null): ContentView {
+  if (!instance || !data)
+    return { mode: 'live', instanceId: instance?.id ?? null, taskId: null, round: null, actedAt: null };
+  return contentViewOf(instance.id, data.content);
 }
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
@@ -79,10 +96,19 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
     const fields = disclosedFields(data, ctx.userId, viewable);
     // 冻结读：完整展示办理时的内容，不套用查看人当前的组织 / 任职数据范围（DEC-834④）；字段权限仍取当前
-    return { view, via: 'approver', fields, ...APPROVER_SCOPE, instanceId: instance.id, source } satisfies Disclosure;
+    return {
+      view,
+      via: 'approver',
+      fields,
+      ...APPROVER_SCOPE,
+      instanceId: instance.id,
+      source,
+      contentView: contentViewFor(instance, data),
+    } satisfies Disclosure;
   }
+  const contentView = contentViewFor(instance, data);
   const hr = await hrDisclosure(tx, bound, ctx, view);
-  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null } satisfies Disclosure;
+  if (hr) return { ...hr, instanceId: instance?.id ?? null, source: null, contentView } satisfies Disclosure;
   if (instance && data) {
     const viewable = await getModuleViewableFieldsInTransaction(bound, ctx, OBJECT, tx);
     const fields = disclosedFields(data, ctx.userId, viewable);
@@ -93,6 +119,7 @@ export async function orgAdjustmentDisclosure(tx: Tx, deps: Deps, ctx: TenantCon
       ...APPROVER_SCOPE,
       instanceId: instance.id,
       source: null,
+      contentView,
     } satisfies Disclosure;
   }
   throw notFound();

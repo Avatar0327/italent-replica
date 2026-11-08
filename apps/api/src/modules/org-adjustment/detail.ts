@@ -45,7 +45,15 @@ export async function readDetail(tx: Tx, tenantId: string, disclosure: Disclosur
     // §10 分区为空不返回：按查看人可见的行数判断，全部行被隐去时同样不返回（不经分区露出“有隐藏行”）。
     if (items.length > 0) sections[ORG_SECTION] = { count: items.length, hiddenRowCount };
   }
-  return { ...projected, revision: head.revision, approvalInstanceId: disclosure.instanceId, sections };
+  // 内容取 source（冻结时是办理时的头），并发元数据 revision 取当前业务现值：写请求带它做 If-Match（设计 §0.2）
+  const { revision } = disclosure.view;
+  return {
+    ...projected,
+    revision,
+    approvalInstanceId: disclosure.instanceId,
+    contentView: disclosure.contentView,
+    sections,
+  };
 }
 
 /** 明细（路由 14）：section 只接受 org；分区字段全不披露时与不存在同一 404。 */
