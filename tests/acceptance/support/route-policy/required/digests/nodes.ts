@@ -773,7 +773,7 @@ export const NODE_DIGESTS: Readonly<Record<string, NodeRecord>> = {
   'apps/api/src/modules/approval/handling-content.ts#capViewable': ['4accd144fc81', '82583603a31b'],
   'apps/api/src/modules/approval/handling-content.ts#contentViewOf': ['ea06ecb6b305', 'e3b0c44298fc'],
   'apps/api/src/modules/approval/handling-content.ts#prepareHandlingContent': ['ed23a93708e8', '0203ca827642'],
-  'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['291cb7e8de20', '38ad85cd0354'],
+  'apps/api/src/modules/approval/handling-content.ts#recordHandlingContent': ['e08c83343571', '7087de11c270'],
   'apps/api/src/modules/approval/handling-content.ts#selectContent': ['76e50eb60220', '387b92cc6782'],
   'apps/api/src/modules/approval/handover-empty.ts#decideHandoverApprovers': ['98143f9166b5', '1ba34a53a763'],
   'apps/api/src/modules/approval/handover-empty.ts#resolveHandoverApprovers': ['ca474ea79600', '369e008f1013'],
