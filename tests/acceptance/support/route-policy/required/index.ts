@@ -19,6 +19,7 @@ import { TEAM_DASHBOARD } from './team-dashboard.js';
 import { HR_MOVEMENT } from './hr-movement.js';
 import { CONTRACT_BOARD } from './contract-board.js';
 import { DUTY_TRANSFER } from './duty-transfer.js';
+import { ESIGN } from './esign.js';
 import { HR_ANALYSIS } from './hr-analysis.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
@@ -71,6 +72,7 @@ export const REQUIRED_BY_MODULE: Readonly<Record<string, RequiredTable>> = {
   'contract-board': CONTRACT_BOARD,
   'org-adjustment': ORG_ADJUSTMENT,
   'duty-transfer': DUTY_TRANSFER,
+  esign: ESIGN,
 };
 
 const PARTS: readonly RequiredTable[] = Object.values(REQUIRED_BY_MODULE);
