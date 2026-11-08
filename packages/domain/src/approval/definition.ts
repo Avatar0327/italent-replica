@@ -114,12 +114,15 @@ const MULTI_SUBJECT_ADAPTERS: ReadonlySet<ApprovalTypeDefinition['adapter']> = n
   'org_adjustment',
 ]);
 
+/** 设计 §5.1 / §8.2：该审批类型有唯一的“主体员工本人”可选（候选接口与保存校验同源）。 */
+export const allowsSubjectEmployee = (type: ApprovalTypeDefinition): boolean =>
+  !MULTI_SUBJECT_ADAPTERS.has(type.adapter);
+
 /** F-478 S3 设计 §5.1：主体员工本人只用于单主体类型，且节点不得开启本人 / 主体回避（回避会把自评任务改派走）。 */
 function subjectEmployeeViolations(node: ApprovalNode, type: ApprovalTypeDefinition): string[] {
   if (!approverExpressionsOf(node).includes('subject_employee')) return [];
   const violations: string[] = [];
-  if (MULTI_SUBJECT_ADAPTERS.has(type.adapter))
-    violations.push(`节点 ${node.key} 的审批人“主体员工本人”只能用于单主体审批`);
+  if (!allowsSubjectEmployee(type)) violations.push(`节点 ${node.key} 的审批人“主体员工本人”只能用于单主体审批`);
   if (avoidsSelf(node) || avoidsSubjects(node))
     violations.push(`节点 ${node.key} 使用“主体员工本人”时不能开启本人回避或主体回避`);
   return violations;

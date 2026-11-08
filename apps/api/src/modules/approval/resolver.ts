@@ -341,15 +341,22 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
  * 的管理员是“系统管理员（企业设置）”。单人节点只能解析出一个人，取第一位与 handoverHrAdmin 同一做法，结果可复现。
  */
 async function systemAdmin(tx: Tx, subject: RoutingSubject): Promise<Candidate> {
-  const admins = rowsOf<{ user_id: string }>(
-    await tx.execute(sql`SELECT user_id FROM permission_admins
-      WHERE tenant_id=${subject.tenantId} AND role='system_admin' AND status='active'
-      ORDER BY created_at, id LIMIT ${HR_ADMIN_SCAN}`),
-  );
-  for (const { user_id: userId } of admins)
-    if (await isEligibleApprover(tx, subject, userId))
-      return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
-  return NOBODY;
+  // 按 (created_at, id) 游标分批扫到找着合格者或真正耗尽：不能只看前一批，前面的账号可能都已停用。
+  // 游标取 created_at 的文本形式，保住微秒精度，不经 JS 时间类型截断。
+  let after = sql``;
+  for (;;) {
+    const admins = rowsOf<{ user_id: string; id: string; created_text: string }>(
+      await tx.execute(sql`SELECT user_id, id, created_at::text AS created_text FROM permission_admins
+        WHERE tenant_id=${subject.tenantId} AND role='system_admin' AND status='active' ${after}
+        ORDER BY created_at, id LIMIT ${HR_ADMIN_SCAN}`),
+    );
+    for (const { user_id: userId } of admins)
+      if (await isEligibleApprover(tx, subject, userId))
+        return { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+    const last = admins.at(-1);
+    if (admins.length < HR_ADMIN_SCAN || !last) return NOBODY;
+    after = sql`AND (created_at, id) > (${last.created_text}::timestamptz, ${last.id}::uuid)`;
+  }
 }
 
 /** 工作交接：离职申请的交接人；没填、或交接人没有可用账号时取离职员工的直线经理（DEC-230 同一取法）。 */

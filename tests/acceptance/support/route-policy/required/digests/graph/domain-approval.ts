@@ -45,6 +45,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#TRANSITION_RULE_TYPES',
     'packages/domain/src/approval/types.ts#nodeExits',
   ],
+  'packages/domain/src/approval/definition.ts#allowsSubjectEmployee': ['#MULTI_SUBJECT_ADAPTERS'],
   'packages/domain/src/approval/definition.ts#approverSourceViolations': [
     '#offerApproverViolation',
     '#orgAdjustmentApproverViolation',
@@ -107,7 +108,7 @@ export const GRAPH: Graph = {
     'packages/domain/src/approval/types.ts#hasExit',
   ],
   'packages/domain/src/approval/definition.ts#subjectEmployeeViolations': [
-    '#MULTI_SUBJECT_ADAPTERS',
+    '#allowsSubjectEmployee',
     'packages/domain/src/approval/types.ts#approverExpressionsOf',
     'packages/domain/src/approval/types.ts#avoidsSelf',
     'packages/domain/src/approval/types.ts#avoidsSubjects',
