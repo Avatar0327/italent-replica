@@ -17,7 +17,7 @@ import { fieldValue } from '../../exit/ExitDetail.js';
 import { SelfRequestInfo } from '../../self-service/pages/SelfRequest.js';
 import { requestFields, selfRequestBody } from '../../self-service/pages/request-model.js';
 import { SessionProvider } from '../Session.js';
-import type { AttachmentView } from './index.js';
+import { AttachmentRefsInput, attachmentViews, type AttachmentView } from './index.js';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const EXIT = '44444444-4444-4444-8444-444444444444';
@@ -257,5 +257,45 @@ describe('AC-FE-ATT-10 HR 离职详情：同一展示组件，地址指向 HR �
 
   it('无字段权：详情项里没有该键', () => {
     expect(detailKeys(row())).not.toContain('attachmentRefs');
+  });
+});
+
+describe('AC-FE-ATT-05 / 08 表单字段适配：表单里存 ID 数组，控件里是展示项', () => {
+  it('attachmentViews 只收形状正确的项；缺键或非数组得到空列表', () => {
+    const good = summary(1);
+    expect(attachmentViews([good, { filename: '无编号.png' }, null, 'x'])).toEqual([good]);
+    expect(attachmentViews(undefined)).toEqual([]);
+  });
+
+  it('删除已绑定的一张：表单值按 ID 去掉那张，不发删除请求，剩下的仍走本人载体', async () => {
+    const items = [summary(1), summary(2)];
+    serve('self-service/exit-requests', EXIT, items);
+    const seen: unknown[] = [];
+    function Probe() {
+      const [form] = Form.useForm();
+      const ids = Form.useWatch('attachmentRefs', form) as unknown;
+      seen.push(ids);
+      return h(Form, {
+        form,
+        initialValues: { attachmentRefs: items.map((item) => item.id) },
+        children: h(Form.Item, {
+          name: 'attachmentRefs',
+          children: h(AttachmentRefsInput, {
+            purpose: 'exit.handwritten_application',
+            carrier: 'selfExit',
+            ownerId: EXIT,
+            views: items,
+          }),
+        }),
+      });
+    }
+    await mount(h(Probe));
+    const row = [...container.querySelectorAll('[data-attachment]')].find((li) => li.textContent?.includes('手写2'));
+    const remove = [...row!.querySelectorAll('button')].find((b) => b.textContent?.replace(/\s/g, '') === '删除');
+    await act(async () => remove!.click());
+    await settle();
+    expect(seen.at(-1)).toEqual([items[0]!.id]);
+    expect(text()).not.toContain('手写2.png');
+    expect(backend.calls.some((call) => call.method === 'DELETE')).toBe(false);
   });
 });

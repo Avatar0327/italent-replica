@@ -126,12 +126,15 @@ const thumbs = (scope: Page | Locator) => scope.locator('.attachment-item img.at
 const strip = (value: string | null) => (value ?? '').replace(/\s/g, '');
 
 /** AC-FE-ATT-10 公共断言：内容请求全部带本租户头且 200；缩略图都是 blob:；页面上没有指向 /api/ 的 src / href。 */
-async function expectBlobOnly(page: Page, reads: ContentRead[], persona: Persona, prefix: string) {
+async function expectBlobOnly(page: Page, reads: ContentRead[], persona: Persona, ...prefixes: string[]) {
   expect(reads.length).toBeGreaterThan(0);
   for (const read of reads) {
     expect(read.tenant).toBe(persona.tenant);
     expect(read.status).toBe(200);
-    expect(read.path.startsWith(prefix), read.path).toBe(true);
+    expect(
+      prefixes.some((prefix) => read.path.startsWith(prefix)),
+      read.path,
+    ).toBe(true);
   }
   for (const src of await thumbs(page).evaluateAll((nodes) => nodes.map((node) => node.getAttribute('src'))))
     expect(src).toMatch(/^blob:/);
@@ -176,7 +179,9 @@ async function openTodo(page: Page) {
 }
 async function myRequest(page: Page) {
   await page.goto('/self/requests');
-  await page.getByRole('button', { name: '本人离职', exact: true }).first().click();
+  // 申请标题取自审批实例（后端 employee-self-service/routes.ts），分类列为“离职申请”：按分类找行、点标题打开详情
+  const row = page.locator('.ant-table-row').filter({ hasText: '离职申请' }).first();
+  await row.getByRole('button').first().click();
   return page.getByRole('dialog');
 }
 async function backendExit(context: BrowserContext, persona: Persona) {
@@ -195,15 +200,13 @@ test('AC-FE-ATT-05 上传 2 张 → 暂存 → 提交 → 申请详情 2 张缩�
   await page.getByLabel('日期').fill('2026-12-01');
   await page.getByLabel('日期').press('Enter');
   await expect(page.getByText(FIELD, { exact: true })).toBeVisible();
-  await page
-    .locator('.image-attachments input[type="file"]')
-    .setInputFiles(
-      NAMES.map((name, index) => ({
-        name,
-        mimeType: 'image/png',
-        buffer: Buffer.from(manifest.images[index]!, 'base64'),
-      })),
-    );
+  await page.locator('.image-attachments input[type="file"]').setInputFiles(
+    NAMES.map((name, index) => ({
+      name,
+      mimeType: 'image/png',
+      buffer: Buffer.from(manifest.images[index]!, 'base64'),
+    })),
+  );
   await expect(thumbs(page)).toHaveCount(2);
   await save(page);
   await expect(page).toHaveURL(/\/self\/exit\/[0-9a-f-]{36}$/);
@@ -215,7 +218,8 @@ test('AC-FE-ATT-05 上传 2 张 → 暂存 → 提交 → 申请详情 2 张缩�
   await expect(thumbs(detail)).toHaveCount(2);
   for (const name of NAMES) await expect(detail.getByText(name, { exact: true })).toBeVisible();
   expect((await backendExit(context, me)).attachments.map((item) => item.filename)).toEqual(NAMES);
-  await expectBlobOnly(page, reads, me, '/api/tenant/self-service/exit-requests/');
+  // 暂存前的缩略图是临时文件，走 /attachments/:id/content；暂存绑定后走本人载体
+  await expectBlobOnly(page, reads, me, '/api/tenant/self-service/exit-requests/', '/api/tenant/attachments/');
 });
 
 test('AC-FE-ATT-06 审批人打开待办下载：带租户头、200、attachment，浏览器得到原名文件', async ({
@@ -288,7 +292,8 @@ test('AC-FE-ATT-10 三载体只走 blob、下载与新标签打开；切换租�
   let reads = await signIn(context, baseURL!, me);
   await page.goto(`/self/exit/${exitId}`);
   await expect(thumbs(page)).toHaveCount(1);
-  await thumbs(page).first().click();
+  // antd 缩略图上覆着“预览”遮罩，用户点的是遮罩所在的图片容器
+  await page.locator('.attachment-item .ant-image').first().click();
   const preview = page.locator('.ant-image-preview-img');
   await expect(preview).toBeVisible();
   expect(await preview.getAttribute('src')).toMatch(/^blob:/);
