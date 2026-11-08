@@ -65,7 +65,7 @@ function Host() {
 }
 async function mountAndChoose(name: string) {
   root = createRoot(container);
-  await act(async () => root!.render(h(SessionProvider, { session }, h(Host))));
+  await act(async () => root!.render(h(SessionProvider, { session, children: h(Host) })));
   const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
   const file = new File([pngBytes(7) as BlobPart], name, { type: 'image/png' });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });

@@ -73,7 +73,7 @@ const OWNER = '22222222-2222-4222-8222-222222222222';
 
 async function mount(initial: AttachmentView[] = []) {
   root = createRoot(container);
-  await act(async () => root!.render(h(SessionProvider, { session }, h(Host, { initial }))));
+  await act(async () => root!.render(h(SessionProvider, { session, children: h(Host, { initial }) })));
   await settle(2);
 }
 
