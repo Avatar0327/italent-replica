@@ -141,6 +141,34 @@ describe('R1 P2-2 失败记录与回报不带 SQL / 参数 / 内容（AC-ATT-20�
   });
 });
 
+describe('R1 P2-2 自查：整轮抛出的驱动错误同样不进调度器上报', () => {
+  it('列租户 / 取候选阶段抛出真实 DrizzleQueryError：onError 只收到白名单码，不含 SQL 与参数', async () => {
+    const { db } = database();
+    const driverError = await db
+      .execute(sql`SELECT 1 FROM attachment_missing_table WHERE marker = ${'PARAM-SECRET'}`)
+      .then(
+        () => null,
+        (error: unknown) => error as Error,
+      );
+    expect(driverError?.message).toContain('Failed query'); // 对照：原始异常确实带 SQL，才说明下面的断言有意义
+    const broken = new Proxy(db, {
+      get: (target, prop) =>
+        prop === 'transaction' ? () => Promise.reject(driverError) : (Reflect.get(target, prop, target) as unknown),
+    });
+    const reported: Error[] = [];
+    const scheduler = startAttachmentCleanupScheduler(broken, {
+      intervalMs: 3_600_000,
+      onError: (e) => reported.push(e as Error),
+    });
+    await scheduler.stop();
+
+    expect(reported).toHaveLength(1);
+    const text = `${reported[0]!.message}\n${reported[0]!.stack}`;
+    for (const fragment of SENSITIVE) expect(text).not.toContain(fragment);
+    expect(reported[0]!.message).toContain('db_error');
+  });
+});
+
 /** 给查询构造器套一层：被 await 完成后先执行 hook，再把结果交还调用方（用来在“读之后、写之前”插入屏障）。 */
 function afterAwait<T extends object>(builder: T, hook: () => Promise<void>): T {
   return new Proxy(builder, {
