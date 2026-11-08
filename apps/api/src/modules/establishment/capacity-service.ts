@@ -12,6 +12,7 @@ import {
 } from '@italent/db';
 import { gt } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { assertNoCapacityOverlap, findCapacityOverlap } from './capacity-overlap.js';
 import { capacityFor, readCapacity, type CapacityRecord } from './capacity-read.js';
 import { validateCapacity } from './constraints.js';
 import { assertOrg, parentOrg, subtreeIds } from './org-reader.js';
@@ -165,19 +166,13 @@ export async function createCapacity(
   const date = businessDate(input.effectiveDate ?? (input.periodStart < today(ctx) ? input.periodStart : today(ctx)));
   const scheme = await loadScheme(tx, ctx.tenantId, input.schemeId, date);
   const end = periodEnd(scheme, input.periodStart);
-  const [existing] = await tx
-    .select({ id: establishmentObjects.id })
-    .from(establishmentObjects)
-    .where(
-      and(
-        eq(establishmentObjects.tenantId, ctx.tenantId),
-        eq(establishmentObjects.orgId, input.orgId),
-        eq(establishmentObjects.schemeId, input.schemeId),
-        eq(establishmentObjects.periodStart, input.periodStart),
-      ),
-    )
-    .limit(1);
-  if (existing) throw new AppError('CONFLICT', '该组织、方案和周期已有编制', { reason: 'CAPACITY_EXISTS' });
+  // DEC-295①：同一组织按月份区间重叠判定，跨方案也拦；已持 lockEstablishment，检查与插入之间无并发写入
+  await assertNoCapacityOverlap(
+    tx,
+    ctx.tenantId,
+    { orgId: input.orgId, schemeId: input.schemeId, periodStart: input.periodStart, periodEnd: end },
+    date,
+  );
   const id = randomUUID();
   await tx.insert(establishmentObjects).values({
     id,
@@ -200,19 +195,14 @@ export async function createCapacity(
       period.slice(0, 4) === input.periodStart.slice(0, 4);
       period = nextPeriod(period, scheme)
     ) {
-      const [exists] = await tx
-        .select({ id: establishmentObjects.id })
-        .from(establishmentObjects)
-        .where(
-          and(
-            eq(establishmentObjects.tenantId, ctx.tenantId),
-            eq(establishmentObjects.orgId, input.orgId),
-            eq(establishmentObjects.schemeId, input.schemeId),
-            eq(establishmentObjects.periodStart, period),
-          ),
-        )
-        .limit(1);
-      if (exists) continue;
+      // 补齐月份已有本方案或别的方案的编制就跳过（月度补齐是自动延伸，不是用户指定的期间，不能因此整体失败）
+      const occupied = await findCapacityOverlap(tx, ctx.tenantId, {
+        orgId: input.orgId,
+        schemeId: input.schemeId,
+        periodStart: period,
+        periodEnd: periodEnd(scheme, period),
+      });
+      if (occupied) continue;
       await createCapacity(tx, ctx, { ...input, periodStart: period, effectiveDate: date }, { autoFill: false });
     }
   }

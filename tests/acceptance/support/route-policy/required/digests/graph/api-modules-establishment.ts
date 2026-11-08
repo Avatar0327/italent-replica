@@ -8,6 +8,7 @@ export const GRAPH: Graph = {
   'apps/api/src/modules/establishment/capacity-exists.ts#hasCapacityFrom': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
+  'apps/api/src/modules/establishment/capacity-overlap.ts#assertNoCapacityOverlap': ['#findCapacityOverlap'],
   'apps/api/src/modules/establishment/capacity-read.ts#batchLocalSums': [
     'apps/api/src/modules/establishment/store.ts#rowsOf',
   ],
@@ -43,6 +44,8 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/establishment/store.ts#today',
   ],
   'apps/api/src/modules/establishment/capacity-service.ts#createCapacity': [
+    'apps/api/src/modules/establishment/capacity-overlap.ts#assertNoCapacityOverlap',
+    'apps/api/src/modules/establishment/capacity-overlap.ts#findCapacityOverlap',
     '#append',
     '#createCapacity',
     '#syncAncestors',
