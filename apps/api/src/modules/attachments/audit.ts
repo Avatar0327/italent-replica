@@ -4,6 +4,7 @@
  */
 import { type attachmentFiles as F, attachmentOutbox as O, type Tx } from '@italent/db';
 import { recordAudit } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export type FileRow = typeof F.$inferSelect;
 
@@ -47,7 +48,8 @@ export async function record(tx: Tx, ctx: RecordContext, operation: string, befo
   const eventType = `attachment.file.${operation}`;
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    // 清理任务以系统身份写入：审计操作人记空（显示为“系统”），不冒用真实用户
+    actorUserId: auditActor(ctx.userId),
     action: eventType,
     objectType: 'attachment_file',
     objectId: after.id,

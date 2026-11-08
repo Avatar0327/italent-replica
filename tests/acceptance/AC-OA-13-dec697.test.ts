@@ -90,11 +90,12 @@ describe('AC-OA-13 DEC-697 双向来源', () => {
     for (const value of values) await rejected(await save(w, type, source(value)));
   });
 
-  it('组织调整原三项白名单不变，指定人员 / 上一节点等不能借新结构进入', async () => {
+  it('组织调整原三项白名单不变（F-478 S3 另加系统管理员），指定人员 / 上一节点等不能借新结构进入', async () => {
     const w = await approvalWorld(db().db, 'dec697-whitelist');
     for (const value of APPROVER_EXPRESSIONS) {
       const response = await save(w, 'org_adjustment', approverSource(value));
-      if (['owner', ...values].includes(value)) expect(response.status, value).toBe(201);
+      // F-478 S3：系统管理员适用所有审批类型，随原三项一起进入组织调整白名单
+      if (['owner', 'system_admin', ...values].includes(value)) expect(response.status, value).toBe(201);
       else await rejected(response);
     }
     for (const candidate of [
@@ -132,7 +133,7 @@ describe('AC-OA-13 DEC-697 双向来源', () => {
     const enabled = sourceOptions(node, 'org_adjustment').flatMap((type) =>
       type.children.filter((value) => !value.disabled).map((value) => value.value),
     );
-    expect(enabled.sort()).toEqual(['owner', ...values].sort());
+    expect(enabled.sort()).toEqual(['owner', 'system_admin', ...values].sort());
     expect(
       sourceInputError({ type: 'specified', value: 'a3000000-0000-4000-8000-000000000003' }, node, 'org_adjustment'),
     ).toBeDefined();
