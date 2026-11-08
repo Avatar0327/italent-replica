@@ -1,0 +1,53 @@
+.image-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.attachment-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.attachment-notices {
+  display: flex;
+  flex-direction: column;
+}
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.attachment-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.attachment-blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--ant-color-fill-tertiary, #f5f5f5);
+  color: var(--ant-color-text-tertiary, #8c8c8c);
+  font-size: 12px;
+}
+.attachment-meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
