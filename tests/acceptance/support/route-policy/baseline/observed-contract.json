@@ -7939,6 +7939,31 @@
         ]
       }
     },
+    "GET /api/tenant/job/candidates/resource-sets": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "job",
+      "primitives": {
+        "domain": [
+          "job.kind"
+        ],
+        "object": [
+          "objectContext"
+        ]
+      }
+    },
     "GET /api/tenant/job/sequence-sync/messages": {
       "edge": {
         "anonymous": {

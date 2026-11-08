@@ -17,7 +17,7 @@
     "hr-process-dashboard": 2,
     "hr-structure": 4,
     "idp": 58,
-    "job": 14,
+    "job": 15,
     "offers": 21,
     "org": 14,
     "org-adjustment": 16,
@@ -39,5 +39,5 @@
     "team-dashboard": 2,
     "tenant-settings": 3
   },
-  "total": 874
+  "total": 875
 }
