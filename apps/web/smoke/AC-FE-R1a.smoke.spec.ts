@@ -17,6 +17,8 @@ const fields = [
   'level',
   'orgId',
   'postId',
+  'headcount',
+  'establishment',
   'periodType',
   'maintenanceMode',
 ];
@@ -49,7 +51,25 @@ test.beforeEach(async ({ page }) => {
             establishedOn: '2026-01-01',
             parents: { admin: { parentId: null, sequence: null } },
           }
-        : { items: [{ id, revision: 1, name: '合成组织', code: 'ORG-001', enabled: true }], hasDataPermission: true },
+        : {
+            items: [{ id, revision: 1, name: '合成组织', code: 'ORG-001', enabled: true, headcount: 2 }],
+            total: 1,
+            hasDataPermission: true,
+          },
+    }),
+  );
+  // 完整树与架构图按后端真实形状（apps/api org/routes.ts）：{ roots: 嵌套节点, total, hasDataPermission }
+  const treeNode = { id, code: 'ORG-001', name: '合成组织', enabled: true, headcount: 2 };
+  await page.route('**/api/tenant/org/organizations/tree**', (route) =>
+    route.fulfill({ json: { roots: [{ ...treeNode, children: [] }], total: 1, hasDataPermission: true } }),
+  );
+  await page.route('**/api/tenant/org/organizations/chart**', (route) =>
+    route.fulfill({
+      json: {
+        roots: [{ ...treeNode, establishment: 4, personInChargeName: '合成负责人', children: [] }],
+        total: 1,
+        hasDataPermission: true,
+      },
     }),
   );
   await page.route('**/api/tenant/job/**', (route) =>
@@ -298,6 +318,24 @@ test('AC-FE-R1a-14 详情页签留在右侧抽屉，编辑使用双列弹窗', a
   await expect(page.locator('.form-fields-modal').first()).toHaveCSS('display', 'grid');
   await expect(page.locator('.ant-modal')).toHaveCSS('transform', 'none');
   await page.screenshot({ path: testInfo.outputPath('reference-form.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('AC-FE-F474-2b 列表有在岗人数列，架构卡片图显示负责人与在岗/编制', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/org');
+  await page.getByLabel('切换演示身份').selectOption(user);
+  await page.waitForURL('**/staff');
+  await page.goto('/org');
+  await expect(page.getByRole('columnheader', { name: '在岗人数', exact: true })).toBeVisible();
+  await page.goto('/org?tab=chart');
+  const card = page.locator('.org-chart-card').first();
+  await expect(card.getByRole('button', { name: '合成组织', exact: true })).toBeVisible();
+  await expect(card.getByText('负责人：合成负责人', { exact: true })).toBeVisible();
+  await expect(card.getByText('在岗2/编制4', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: '合成组织', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('tab', { name: '组织单元', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 for (const route of ['/org', '/job?kind=positions']) {
