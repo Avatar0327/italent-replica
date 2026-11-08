@@ -111,7 +111,7 @@ describe('AC-AUD-F489 审计页显示统计报表导出日志', () => {
     const settled = (await page(movementAs(), { objectType: HR_MOVEMENT_REPORT_OBJECT })).items.length;
     expect(settled, '成功的导出在审计页可见，下面才有对比意义').toBeGreaterThan(0);
 
-    const bad: [string, number, typeof mover | undefined][] = [
+    const bad: [string, number, typeof mover?][] = [
       [`${MOVEMENT_BASE}/reports/monthly/export?${MOVEMENT_QUERY}`, 400],
       [exportPath(MOVEMENT_BASE, 'monthly', MOVEMENT_QUERY, 'pdf'), 400],
       [exportPath(MOVEMENT_BASE, 'unknown', MOVEMENT_QUERY, 'data'), 404],
