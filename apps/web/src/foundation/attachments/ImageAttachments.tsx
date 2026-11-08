@@ -17,7 +17,10 @@ export interface ImageAttachmentsProps {
   readonly readonly?: boolean;
   /** 已绑定文件的内容地址（所在载体的下载路由）；临时文件固定走 `/attachments/:id/content`。 */
   readonly contentPath?: (item: AttachmentView) => string | undefined;
-  /** 有排队或在传的文件时为 true：宿主据此禁用保存 / 提交（设计 §5.1“并发”）。 */
+  /**
+   * 为 true 时宿主须禁用保存 / 提交：有排队或在传的文件（设计 §5.1“并发”），
+   * 或临时文件删除在途 / 结果未知（值里的引用可能已失效，确认前不得提交）。
+   */
   readonly onBusyChange?: (busy: boolean) => void;
 }
 
@@ -35,7 +38,7 @@ export function ImageAttachments(props: ImageAttachmentsProps) {
   const latest = useCallback(() => latestValue.current, []);
   const queue = useUploadQueue({ purpose: props.purpose, commit, latest });
   const removal = useTemporaryRemoval(commit, latest);
-  useBusy(queue.busy, props.onBusyChange);
+  useBusy(queue.busy || removal.unconfirmed(props.value), props.onBusyChange);
   const input = useRef<HTMLInputElement>(null);
   const editable = !props.readonly && !props.disabled;
   const full = props.value.length + queue.tasks.length >= config.maxFiles;
@@ -147,7 +150,10 @@ function useTemporaryRemoval(commit: (next: AttachmentView[]) => void, latest: (
       note(item.id, text.deleteFailed);
     }
   };
-  return { notes, remove: (item: AttachmentView) => void remove(item) };
+  // 在途或结果未知的删除：服务端可能已置为待清理，宿主若此时保存会提交失效引用
+  const unconfirmed = (value: readonly AttachmentView[]) =>
+    value.some((item) => notes[item.id] === pending || notes[item.id] === text.deleteUnknown);
+  return { notes, unconfirmed, remove: (item: AttachmentView) => void remove(item) };
 }
 
 interface TaskListProps {
