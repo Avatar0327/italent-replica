@@ -4,6 +4,7 @@ import { maybeStartLeaveConsumerScheduler } from './modules/evaluation/leave-con
 import { startReviewGroupExitScheduler } from './modules/evaluation/review-group-exit-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
+import { startAttachmentCleanupScheduler } from './modules/attachments/cleanup-scheduler.js';
 import { startOfferSyncScheduler } from './modules/offer/sync-scheduler.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
@@ -53,6 +54,13 @@ if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {
 }
 
 if (handle && process.env.CONTRACT_SCHEDULER !== 'off') startContractScheduler(handle.db);
+
+// F-479 S3 附件清理：临时文件 24h 过期转待清理，再过 1h 删字节；单文件失败记次数并下轮重试，多实例靠行锁去重。
+if (handle && process.env.ATTACHMENT_CLEANUP_SCHEDULER !== 'off') {
+  startAttachmentCleanupScheduler(handle.db, {
+    intervalMs: Number(process.env.ATTACHMENT_CLEANUP_INTERVAL_MS || 900_000),
+  });
+}
 
 // R2 BE-14b2：Offer 夜间补同步待入职（OF-R8）；按租户时区业务日判定，扫描幂等、多实例靠 Offer 行锁去重。
 if (handle && process.env.OFFER_SYNC_SCHEDULER !== 'off') {

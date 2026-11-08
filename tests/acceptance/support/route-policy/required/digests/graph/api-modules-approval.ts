@@ -1027,6 +1027,7 @@ export const GRAPH: Graph = {
   ],
   'apps/api/src/modules/approval/designer-sources.ts#candidateRows': [
     'apps/api/src/modules/approval/context.ts#approvalError',
+    '#namedRows',
     'apps/api/src/modules/approval/source-reference.ts#dimensionEnabled',
     'apps/api/src/modules/approval/source-reference.ts#jobReferenceRows',
     'apps/api/src/modules/approval/source-reference.ts#orgReferenceRows',
@@ -1037,10 +1038,15 @@ export const GRAPH: Graph = {
     'apps/api/src/modules/approval/context.ts#rowsOf',
     '#candidateRows',
   ],
+  'apps/api/src/modules/approval/designer-sources.ts#namedRows': [
+    'packages/domain/src/approval/definition.ts#allowsSubjectEmployee',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
+  ],
   'apps/api/src/modules/approval/designer-sources.ts#querySchema': [
     'apps/api/src/modules/approval/context.ts#canonicalId',
     'apps/api/src/modules/org/read-model.ts#validIsoDate',
     'packages/domain/src/approval/sources.ts#RELATION_SOURCE_TYPES',
+    'packages/domain/src/approval/types.ts#APPROVAL_TYPES',
   ],
   'apps/api/src/modules/approval/detail-path.ts#activatedExits': [
     '#decisionExits',
@@ -1729,6 +1735,14 @@ export const GRAPH: Graph = {
     '#handoverWorkOwner',
     '#isEligibleApprover',
     '#orgRole',
+    '#personOfUser',
+    '#systemAdmin',
+  ],
+  'apps/api/src/modules/approval/resolver.ts#systemAdmin': [
+    'apps/api/src/modules/approval/context.ts#rowsOf',
+    '#HR_ADMIN_SCAN',
+    '#NOBODY',
+    '#isEligibleApprover',
     '#personOfUser',
   ],
   'apps/api/src/modules/approval/resolver.ts#tenantAdminPage': [

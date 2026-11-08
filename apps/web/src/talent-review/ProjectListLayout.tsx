@@ -18,7 +18,8 @@ export function ProjectListLayout(props: ComponentProps<typeof ListPage<ReviewRe
   return (
     <section className="list-page review-project-list">
       <header className="page-heading">
-        <div className="review-project-views">
+        {/* 原站项目列表无页面级 h1，以两种项目视图代替标题；带名导航同 /transfer、/approval（F-170，F-495）。 */}
+        <nav className="review-project-views" aria-label={tr.projectViews}>
           <span className="page-view-icon">
             <MenuIcon />
           </span>
@@ -30,7 +31,7 @@ export function ProjectListLayout(props: ComponentProps<typeof ListPage<ReviewRe
               view?.onChange(value);
             }}
           />
-        </div>
+        </nav>
         <Space>
           {props.actions}
           <Button type="primary" disabled title={tr.unverified}>
