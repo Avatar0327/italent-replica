@@ -25,6 +25,7 @@ interface Row {
   status: string;
   revision: number;
   cleanup_at: string | null;
+  created_at: string;
   purged_at: string | null;
   filename: string;
   sha256: string;
@@ -33,7 +34,8 @@ interface Row {
 const fileRow = async (db: Db, tenantId: string, id: string) =>
   rowsOf<Row>(
     await withTenant(db, tenantId, (tx) =>
-      tx.execute(sql`SELECT id,status,revision,cleanup_at::text,purged_at::text,filename,sha256,byte_size
+      tx.execute(sql`SELECT id,status,revision,cleanup_at::text,created_at::text,purged_at::text,
+        filename,sha256,byte_size
         FROM attachment_files WHERE tenant_id=${tenantId} AND id=${id}::uuid`),
     ),
   )[0]!;
@@ -120,22 +122,26 @@ describe('AC-ATT-19 临时文件 24h 后转待清理，再过 1h 删字节', () 
     const me = await x.a.person('合成本人乙');
     const bytes = png(4, 4);
     const registered = (await x.w.json<Receipt>(await x.a.register(me, registration(bytes)), 201)) as Receipt;
-    const base = new Date(registered.createdAt as unknown as string);
+    const base = new Date((await fileRow(db, tenantId, registered.id)).created_at);
     const deleted = await x.a.stored(me, png(5, 5), '手写乙.png');
     expect((await x.a.remove(me, deleted.id, deleted.revision)).status).toBe(200);
     const removedAt = new Date((await fileRow(db, tenantId, deleted.id)).cleanup_at!);
 
-    await runAttachmentCleanup({ db, clock: () => at(base, 24 * HOUR - 60_000), tenantId });
-    expect((await fileRow(db, tenantId, registered.id)).status).toBe('registered');
+    const sweep = (offset: number) => runAttachmentCleanup({ db, clock: () => at(base, offset), tenantId });
+    // 本人删除的文件宽限内不删字节；登记未上传的文件未满 24h 不回收
+    await sweep(HOUR - 60_000);
     expect((await fileRow(db, tenantId, deleted.id)).status).toBe('pending_cleanup');
-
-    await runAttachmentCleanup({ db, clock: () => at(base, 24 * HOUR + 1000), tenantId });
-    expect((await fileRow(db, tenantId, registered.id)).status).toBe('pending_cleanup');
+    expect(await blobBytes(db, tenantId, deleted.id)).not.toBeNull();
+    await sweep(2 * HOUR);
     expect((await fileRow(db, tenantId, deleted.id)).status).toBe('purged');
+    expect(await blobBytes(db, tenantId, deleted.id)).toBeNull();
     expect(new Date((await fileRow(db, tenantId, deleted.id)).purged_at!).getTime()).toBeGreaterThan(
       removedAt.getTime(),
     );
-    expect(await blobBytes(db, tenantId, deleted.id)).toBeNull();
+    await sweep(24 * HOUR - 60_000);
+    expect((await fileRow(db, tenantId, registered.id)).status).toBe('registered');
+    await sweep(24 * HOUR + 1000);
+    expect((await fileRow(db, tenantId, registered.id)).status).toBe('pending_cleanup');
   });
 
   it('跨租户 fail-closed：只指定租户 A 时，租户 B 的过期文件不动；不指定租户时各租户各自清理', async () => {
