@@ -256,6 +256,8 @@ describe('AC-PLAT-F061 T-16 授权项编码与指纹守卫', () => {
       49: '037c84bc0ad5afb2',
       // F-480（DEC-797，占位同号）：任职记录新增只读系统字段 traineeStartDate（实习开始日）的查看授权
       50: '9a513a1f39304868',
+      // F-474-2a（DEC-776 / DEC-778）：职位职责说明 / 任职要求，职级资源集合与薪资上中下限的字段授权；版本为 main + 1 占位，合并时重算。
+      51: '2e7004768ac79fe1',
     };
     expect(HISTORY[STANDARD_GRANT_VERSION], `version ${STANDARD_GRANT_VERSION} 没有登记指纹：追加一行`).toBe(
       STANDARD_GRANT_DIGEST,
