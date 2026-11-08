@@ -1378,6 +1378,16 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
 }
 
 /**
+ * 操作日志附件（F-489 第 1 轮 P2-1）：统计报表导出日志的附件是导出时的文件名与筛选条件（F-482），审计页只展示
+ * “谁在何时导出了哪张报表”，附件内容不返回；其它类型的附件保持原样。导出侧的审计存储不动。
+ */
+const ATTACHMENT_WITHHELD_TYPES: ReadonlySet<string> = new Set([HR_MOVEMENT_REPORT_OBJECT, HR_STRUCTURE_REPORT_OBJECT]);
+
+export function visibleAttachment(objectType: string, attachment: unknown): unknown {
+  return ATTACHMENT_WITHHELD_TYPES.has(objectType) ? null : attachment;
+}
+
+/**
  * 任务错误报告：行号、错误码、原因是任务协议信息；出错字段的编码（field）按该字段的查看权限保留，
  * 其余（来源编码、编码等）按字段权限裁剪；只保留可见行（rows 为 undefined 表示不按行裁剪）。
  */
