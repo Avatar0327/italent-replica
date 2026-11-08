@@ -159,6 +159,43 @@ function currentOrgVersions(
     .as('current_org');
 }
 
+/** 列表、分页与总数共用的现行版本条件，保证 total 与列表同口径（F-474-2b）。 */
+function snapshotConditions(
+  current: ReturnType<typeof currentOrgVersions>,
+  tenantId: string,
+  asOf: string,
+  filter: Parameters<typeof loadOrgSnapshot>[4],
+) {
+  return and(
+    sql`${current.stopDate} >= ${asOf}::date`,
+    ...(filter?.name !== undefined ? [eq(current.name, filter.name)] : []),
+    ...(filter?.includeDisabled === false ? [eq(current.enabled, true)] : []),
+    ...(filter?.dimension && filter.dimension !== 'admin'
+      ? [
+          sql`EXISTS (
+        SELECT 1 FROM org_hierarchy_links h WHERE h.tenant_id = ${tenantId}
+        AND h.version_id = ${current.id} AND h.dimension = ${filter.dimension}
+      )`,
+        ]
+      : []),
+  );
+}
+
+/** 分页列表同一过滤下的总条数（同样排除租户根组织，且按范围在 SQL 内过滤）。 */
+export async function countOrgSnapshot(
+  tx: Tx,
+  tenantId: string,
+  asOf: string,
+  filter: Parameters<typeof loadOrgSnapshot>[4],
+): Promise<number> {
+  const current = currentOrgVersions(tx, tenantId, asOf, true, filter);
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(current)
+    .where(snapshotConditions(current, tenantId, asOf, filter));
+  return Number(row?.n ?? 0);
+}
+
 function orgSnapshotQuery(
   tx: Tx,
   tenantId: string,
@@ -208,21 +245,7 @@ function orgSnapshotQuery(
         sql`${personnelOrgSortRanks.validTo} > ${asOf}::date`,
       ),
     )
-    .where(
-      and(
-        sql`${current.stopDate} >= ${asOf}::date`,
-        ...(filter?.name !== undefined ? [eq(current.name, filter.name)] : []),
-        ...(filter?.includeDisabled === false ? [eq(current.enabled, true)] : []),
-        ...(filter?.dimension && filter.dimension !== 'admin'
-          ? [
-              sql`EXISTS (
-        SELECT 1 FROM org_hierarchy_links h WHERE h.tenant_id = ${tenantId}
-        AND h.version_id = ${current.id} AND h.dimension = ${filter.dimension}
-      )`,
-            ]
-          : []),
-      ),
-    )
+    .where(snapshotConditions(current, tenantId, asOf, filter))
     // DEC-089 / DEC-037（`15` §12 Q-M0-07）：组织的排序编码按名次口径，直接取迁移 0027 预计算并存储的组织名次
     // （行政路径上逐级比较行政维度顺序号、再比较编码），不现算、不拼长整数分段编码；停用或不在行政树上的组织
     // 没有名次，排在最后按编码。分页在 SQL 内完成，页内不再重排。

@@ -31,6 +31,8 @@ import { pageQuery } from '../job/context.js';
 import { releaseCode, reserveCode } from './codes.js';
 import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from './import-service.js';
 import { displayOrganization, loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
+import { readOrgPage, readOrgTreeNodes } from './read-views.js';
+import { nestTree } from './tree.js';
 import { readOrgSettings, writeOrgSettings } from './settings.js';
 import { ORG_PERSON_FIELDS } from './validation.js';
 import {
@@ -112,33 +114,38 @@ export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
 function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.get(`${BASE}/organizations`, async (c) => {
     const ctx = await context(c, deps, 'read');
-    const asOf = queryDate(c, ctx);
-    const dimension = z.enum(ORG_DIMENSIONS).safeParse(c.req.query('dimension') ?? 'admin');
-    if (!dimension.success) throw new AppError('VALIDATION_FAILED', '组织维度不合法');
-    const includeDisabled = c.req.query('includeDisabled') === 'true';
+    const { scope, view } = await listView(c, deps, ctx);
     const page = queryInteger(c, 'page', 1, 1, 1_000_000);
     const pageSize = queryInteger(c, 'pageSize', 50, 1, 200);
-    const scope = await requestScope(c, deps, ctx, OBJECT);
-    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const config = await readOrgSettings(tx, ctx.tenantId);
-      if (!config.enabledDimensions.includes(dimension.data)) return [];
-      return (
-        await loadOrgSnapshot(
-          tx,
-          ctx.tenantId,
-          asOf,
-          { limit: pageSize, offset: (page - 1) * pageSize },
-          {
-            scope,
-            includeDisabled,
-            dimension: dimension.data,
-            name: c.req.query('name'),
-          },
-        )
-      ).map((org) => displayOrganization(org, config.fullNameStartLevel));
+      if (!config.enabledDimensions.includes(view.dimension)) return { items: [], total: 0 };
+      return readOrgPage(
+        tx,
+        { ...view, fullNameStartLevel: config.fullNameStartLevel },
+        { limit: pageSize, offset: (page - 1) * pageSize },
+      );
     });
     return c.json({
-      items: await trimModuleResponse(deps, ctx, OBJECT, items),
+      items: await trimModuleResponse(deps, ctx, OBJECT, result.items),
+      total: result.total,
+      hasDataPermission: scope.hasDataPermission,
+    });
+  });
+  // 完整组织树（F-474-2b）：服务端按查看人范围组装，必须排在 /organizations/:id 之前。
+  router.get(`${BASE}/organizations/tree`, async (c) => {
+    const ctx = await context(c, deps, 'read');
+    const { scope, view } = await listView(c, deps, ctx);
+    const tree = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const config = await readOrgSettings(tx, ctx.tenantId);
+      if (!config.enabledDimensions.includes(view.dimension)) return { nodes: [], parents: [] };
+      return readOrgTreeNodes(tx, { ...view, fullNameStartLevel: config.fullNameStartLevel });
+    });
+    const flat = tree.nodes.map(({ id, code, name, enabled, headcount }) => ({ id, code, name, enabled, headcount }));
+    const trimmed = await trimModuleResponse(deps, ctx, OBJECT, flat);
+    return c.json({
+      roots: nestTree(trimmed, tree.parents),
+      total: flat.length,
       hasDataPermission: scope.hasDataPermission,
     });
   });
@@ -209,6 +216,22 @@ async function anyPersonFieldEditable(deps: TenantRouteDeps, ctx: ReturnType<typ
     }
   }
   return false;
+}
+
+/** 组织列表与组织树共用的查询参数解析和范围取得（范围先于任何数据读取）。 */
+async function listView(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: Awaited<ReturnType<typeof context>>) {
+  const dimension = z.enum(ORG_DIMENSIONS).safeParse(c.req.query('dimension') ?? 'admin');
+  if (!dimension.success) throw new AppError('VALIDATION_FAILED', '组织维度不合法');
+  const scope = await requestScope(c, deps, ctx, OBJECT);
+  const view = {
+    tenantId: ctx.tenantId,
+    asOf: queryDate(c, ctx),
+    dimension: dimension.data,
+    includeDisabled: c.req.query('includeDisabled') === 'true',
+    scope,
+    name: c.req.query('name'),
+  };
+  return { scope, view };
 }
 
 function queryInteger(c: Context, name: string, fallback: number, minimum: number, maximum: number): number {
