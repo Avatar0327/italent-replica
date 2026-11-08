@@ -303,3 +303,75 @@ describe('设计 §5.1 删除', () => {
     expect(changes.at(-1)).toEqual([]);
   });
 });
+
+describe('设计 §5.1 删除未确认时宿主不能保存（R1 P2-1）', () => {
+  async function uploadOne(name: string) {
+    await mount();
+    await choose([png(name)]);
+    expect(busy.at(-1)).toBe(false);
+    const temporary = changes.at(-1)!.find((item) => item.temporary)!;
+    const remove = container.querySelector<HTMLButtonElement>(`[data-attachment="${temporary.id}"] .remove`)!;
+    return { temporary, remove };
+  }
+
+  it('DELETE 在途：确认前 busy 为 true、值里仍有该项；服务端确认后移除并解除保护', async () => {
+    let release: () => void = () => {};
+    const { temporary, remove } = await uploadOne('删除在途.png');
+    backend.inject(
+      'DELETE',
+      META,
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => {
+            const file = backend.files.get(temporary.id)!;
+            Object.assign(file, { status: 'pending_cleanup', revision: file.revision + 1 });
+            resolve(Response.json(receiptOf(file)));
+          };
+        }),
+    );
+    await click(remove);
+    expect(busy.at(-1)).toBe(true);
+    expect(changes.at(-1)!.map((item) => item.id)).toEqual([temporary.id]);
+
+    release();
+    await settle();
+    expect(changes.at(-1)).toEqual([]);
+    expect(busy.at(-1)).toBe(false);
+  });
+
+  it('DELETE 已提交但回执丢失：结果未知期间 busy 为 true；再点删除按原键重提，移除后解除保护', async () => {
+    const { temporary, remove } = await uploadOne('回执丢失.png');
+    backend.inject('DELETE', META, 'lost');
+    await click(remove);
+    expect(backend.files.get(temporary.id)!.status).toBe('pending_cleanup');
+    expect(text()).toContain('删除结果未知，请重试');
+    expect(changes.at(-1)!.map((item) => item.id)).toEqual([temporary.id]);
+    expect(busy.at(-1)).toBe(true);
+
+    await click(container.querySelector<HTMLButtonElement>(`[data-attachment="${temporary.id}"] .remove`)!);
+    const deletes = backend.calledWith('DELETE', META);
+    expect(deletes).toHaveLength(2);
+    expect(deletes[1]!.headers.get('idempotency-key')).toBe(deletes[0]!.headers.get('idempotency-key'));
+    expect(deletes[1]!.headers.get('if-match')).toBe(deletes[0]!.headers.get('if-match'));
+    expect(changes.at(-1)).toEqual([]);
+    expect(text()).not.toContain('删除结果未知');
+    expect(busy.at(-1)).toBe(false);
+  });
+});
+
+describe('设计 §5.1 并发：同时最多上传 2 张（R1 P3-1）', () => {
+  it('选 5 张且请求被阻塞时只启动 2 张；结束一张后才启动第 3 张', async () => {
+    const pending: ((response: Response) => void)[] = [];
+    backend.inject('POST', REGISTER, () => new Promise<Response>((resolve) => pending.push(resolve)), 5);
+    await mount();
+    await choose([1, 2, 3, 4, 5].map((i) => png(`并发${i}.png`, i)));
+    expect(backend.calledWith('POST', REGISTER)).toHaveLength(2);
+
+    pending.shift()!(Response.json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: '合成' } }, { status: 415 }));
+    await settle();
+    expect(backend.calledWith('POST', REGISTER)).toHaveLength(3);
+    for (const resolve of pending.splice(0))
+      resolve(Response.json({ error: { code: 'X', message: '合成' } }, { status: 415 }));
+    await settle();
+  });
+});
